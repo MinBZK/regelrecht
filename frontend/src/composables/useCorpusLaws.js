@@ -19,6 +19,14 @@ import { lawsListUrl } from './corpusUrls.js';
 // so the gap is visible rather than silently broken.
 const FETCH_LIMIT = 1000;
 
+// LRU cap on the per-scope caches. Without one a long session that
+// hops between many trajects accumulates one entry per scope forever.
+// 5 is enough to cover the global view + a handful of recently-used
+// trajects without thrashing. `Map` preserves insertion order, so the
+// oldest key is always the first; touching a key (re-adding via
+// `delete` + `set`) bumps it to the most-recent position.
+const SCOPE_CACHE_MAX = 5;
+
 const lawsByScope = new Map(); // scopeKey -> Ref<Array>
 const fetchByScope = new Map(); // scopeKey -> Promise
 
@@ -26,10 +34,27 @@ function scopeKey(trajectRef) {
   return trajectRef || '';
 }
 
+function touchScope(key) {
+  // Re-insert to mark as most recently used, then evict the oldest if
+  // the cap is exceeded. The global scope (`''`) follows the same
+  // rules — that's fine because it just gets re-fetched on demand.
+  if (lawsByScope.has(key)) {
+    const v = lawsByScope.get(key);
+    lawsByScope.delete(key);
+    lawsByScope.set(key, v);
+  }
+  while (lawsByScope.size > SCOPE_CACHE_MAX) {
+    const oldest = lawsByScope.keys().next().value;
+    lawsByScope.delete(oldest);
+    fetchByScope.delete(oldest);
+  }
+}
+
 function ensureFetched(trajectRef) {
   const key = scopeKey(trajectRef);
   if (fetchByScope.has(key)) return fetchByScope.get(key);
   if (!lawsByScope.has(key)) lawsByScope.set(key, ref([]));
+  touchScope(key);
   const lawsRef = lawsByScope.get(key);
   const p = fetch(lawsListUrl(trajectRef, `limit=${FETCH_LIMIT}`))
     .then(r => {

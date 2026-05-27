@@ -601,18 +601,22 @@ async function selectTab(tab) {
   router.replace(editorRouteFor(tab.lawId, tab.articleNumber));
 }
 
-// Browser back/forward (or any external navigation) — pull state from URL.
-// Local mutations from selectTab already match the destination, so the
-// guards below short-circuit; the work only happens for true URL changes.
-// trajectRef changes go through `watch(activeTrajectRef)` above, which
-// re-fetches the law via the new traject's backends; this guard handles
-// the law/article portion.
-onBeforeRouteUpdate(async (to, from) => {
+// Browser back/forward (or any external navigation) — pull state from
+// URL. Local mutations from selectTab already match the destination,
+// so the guards below short-circuit; the work only happens for true
+// URL changes.
+//
+// trajectRef-only changes are intentionally NOT handled here: the
+// `watch(activeTrajectRef)` above already does `unloadAllLaws` +
+// `loadCorpusLaws` + `switchLaw`, and triggering switchLaw twice in
+// the same tick would burn an extra fetch (the first await loses the
+// switchVersion race, but still hits the network). This guard handles
+// the law / article portion only.
+onBeforeRouteUpdate(async (to) => {
   const newLawId = to.params.lawId;
   const newArticle = to.params.articleNumber;
-  const trajectChanged = to.params.trajectRef !== from.params.trajectRef;
   if (!newLawId) return;
-  if (newLawId !== lawId.value || trajectChanged) {
+  if (newLawId !== lawId.value) {
     const gen = ++switchGeneration;
     await switchLaw(newLawId, newArticle, to.params.trajectRef || null);
     if (gen !== switchGeneration) return;

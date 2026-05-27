@@ -6,14 +6,16 @@
  * that scenario writes live under `/api/trajects/{tid}/corpus/...`.
  *
  * @param {import('vue').Ref<string>} lawId
- * @param {import('vue').Ref<string|null>} trajectRef active traject id,
- *   `null` for a global read context (no edits possible)
+ * @param {import('vue').Ref<string|null>=} trajectRef Active traject
+ *   ref. Defaults to `ref(null)` so omitting the second arg gives a
+ *   read-only / global-scope view instead of a `TypeError: Cannot read
+ *   properties of undefined` deep inside the fetch.
  */
 import { ref, watch } from 'vue';
 import { getEditorSessionId, lastSavedPr, sanitizeSavedPr } from './useEditorSession.js';
 import { requireTraject, scenarioFileUrl, scenariosListUrl } from './corpusUrls.js';
 
-export function useScenarios(lawId, trajectRef) {
+export function useScenarios(lawId, trajectRef = ref(null)) {
   const scenarios = ref([]);
   const selectedScenario = ref(null);
   const featureText = ref('');

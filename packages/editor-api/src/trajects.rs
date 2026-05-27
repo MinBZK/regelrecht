@@ -220,9 +220,11 @@ pub fn traject_ref(name: &str, traject_id: Uuid) -> String {
 ///
 /// The UUID prefix is uniformly distributed across 32 bits — with 1k
 /// trajects the collision probability is ~10^-5; we accept that for the
-/// readability gain and treat any ambiguous prefix as 404 (caller can
-/// pick a different ref). A monitoring counter on the duplicate branch
-/// catches the case in production before it bites a user.
+/// readability gain and surface any ambiguous prefix as 409 Conflict
+/// (the URL is genuinely ambiguous; we refuse to guess and the caller
+/// must rebuild the ref against a fresh traject). A tracing error on
+/// the duplicate branch catches the case in production before it bites
+/// a user.
 pub async fn resolve_traject_ref(
     pool: &PgPool,
     traject_ref: &str,
@@ -265,14 +267,14 @@ pub async fn resolve_traject_ref(
     }
     let suffix_lower = suffix.to_ascii_lowercase();
 
-    // UUID text format starts with the first 8 hex chars (`xxxxxxxx-...`),
-    // so a LIKE on the textual representation matches our short id
-    // exactly. For 1k trajects the sequential scan is irrelevant; an
-    // index on `(left(id::text, 8))` is the obvious next step if the
+    // UUID text format starts with the first 8 hex chars (`xxxxxxxx-...`).
+    // Equality on `left(id::text, 8)` matches our short id exactly and
+    // uses the functional index from migration 0017
+    // (`trajects_short_id_idx`) — every traject-scoped request runs this
+    // lookup, so the index avoids a seq scan on every save once the
     // table grows.
-    let pattern = format!("{suffix_lower}-%");
-    let rows: Vec<(Uuid,)> = sqlx::query_as("SELECT id FROM trajects WHERE id::text LIKE $1")
-        .bind(&pattern)
+    let rows: Vec<(Uuid,)> = sqlx::query_as("SELECT id FROM trajects WHERE left(id::text, 8) = $1")
+        .bind(&suffix_lower)
         .fetch_all(pool)
         .await
         .map_err(|e| {

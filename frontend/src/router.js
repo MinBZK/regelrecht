@@ -22,6 +22,14 @@ const router = createRouter({
       // The `:trajectRef` regex pins the param to `{slug}-{8hex}` so a
       // plain law-id slug like `zorgtoeslagwet` does NOT match this
       // route — it falls through to the no-traject editor below.
+      //
+      // **Invariant**: law `$id` slugs must not match this regex (i.e.
+      // they must not end in `-{8hex}`). Today every harvested $id uses
+      // underscores (e.g. `wet_op_de_zorgtoeslag`) which are excluded
+      // from the character class, so the collision is structurally
+      // impossible. If a future harvester ever emits hyphenated ids, a
+      // schema check (or this regex tightened to require a leading
+      // word from the slug, not just hex chars) must be added.
       path: '/editor/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:lawId?/:articleNumber?',
       name: 'editor-traject',
       component: () => import('./EditorApp.vue'),
