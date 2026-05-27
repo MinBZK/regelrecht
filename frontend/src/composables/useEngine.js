@@ -14,7 +14,26 @@ let initPromise = null;
 // would see whichever copy happened to be loaded first — switching
 // trajects then runs scenarios against a stale dependency. Keyed by
 // `lawId`, value is the `trajectRef || ''` the load used.
+//
+// LRU-capped. In practice `unloadAllLaws()` already clears the map on
+// every traject switch, so the map only grows within one traject's
+// session. The cap is a safety net for any future code path that
+// loads a dependency without going through `unloadAllLaws` on scope
+// change. Cap mirrors `lawCache`'s order of magnitude (`useLaw.js`).
+const LOADED_SCOPES_MAX = 50;
 const loadedScopes = new Map();
+
+function touchLoadedScopes(lawId) {
+  if (loadedScopes.has(lawId)) {
+    const v = loadedScopes.get(lawId);
+    loadedScopes.delete(lawId);
+    loadedScopes.set(lawId, v);
+  }
+  while (loadedScopes.size > LOADED_SCOPES_MAX) {
+    const oldest = loadedScopes.keys().next().value;
+    loadedScopes.delete(oldest);
+  }
+}
 
 const ready = ref(false);
 const initError = ref(null);
@@ -71,6 +90,7 @@ async function loadDependency(lawId, trajectRef = null) {
   const yaml = await res.text();
   engine.loadLaw(yaml);
   loadedScopes.set(lawId, scope);
+  touchLoadedScopes(lawId);
 }
 
 /**
@@ -88,7 +108,10 @@ async function loadLawYaml(yaml, lawId = null, trajectRef = null) {
   const engine = await initEngine();
   if (lawId && engine.hasLaw(lawId)) engine.unloadLaw(lawId);
   const result = engine.loadLaw(yaml);
-  if (lawId) loadedScopes.set(lawId, trajectRef || '');
+  if (lawId) {
+    loadedScopes.set(lawId, trajectRef || '');
+    touchLoadedScopes(lawId);
+  }
   return result;
 }
 

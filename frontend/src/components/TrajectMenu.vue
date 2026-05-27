@@ -145,7 +145,15 @@ async function submitCreate() {
     });
     showCreate.value = false;
     // Jump straight into the new traject — same per-tab navigation as
-    // selecting from the dropdown.
+    // selecting from the dropdown. Mirror the `selectTraject` guard:
+    // the backend's `create` handler always calls `fill_ref()` so this
+    // shouldn't fire today, but a future refactor that returns a
+    // half-filled `TrajectSummary` would otherwise navigate to
+    // `/editor/undefined/...` and silently no-op.
+    if (!created.ref) {
+      console.warn('TrajectMenu: created traject has no ref', created);
+      return;
+    }
     await goToTraject(created.ref);
     emit('switched', created.ref);
   } catch (e) {
