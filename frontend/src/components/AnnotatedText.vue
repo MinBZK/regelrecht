@@ -44,6 +44,13 @@ const noteByIdx = computed(() => props.notesForArticle.map((n) => n.note));
 // is encapsulated within — the inner segment renders the inner note only by
 // default, but hover should still show the outer's extent.
 const hoverBridge = new Map();
+// Currently hover-bridged note idx, so .note-hovered can be removed cleanly
+// when the cursor leaves the bridged region. Declared alongside hoverBridge
+// because clearHighlights resets both together — a re-render mid-hover (e.g.
+// a draft added while the cursor sits on a mark) must drop both the lookup
+// table and the tracker, or the next pointerover early-exits in
+// applyHoverBridge and .note-hovered never lands on the new marks.
+let hoveredIdx = null;
 
 function collectTextNodes(root) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -166,6 +173,12 @@ function clearHighlights(root) {
     parent.normalize(); // re-join the split text nodes so offsets are stable
   }
   hoverBridge.clear();
+  // The marks the bridge tracker pointed at are gone; clear it too. Without
+  // this, a re-render mid-hover (e.g. a draft added while the cursor sits on
+  // a mark) leaves hoveredIdx pointing at the same note, and the next
+  // pointerover early-exits in applyHoverBridge so .note-hovered never lands
+  // on the new marks until the user hovers a different note first.
+  hoveredIdx = null;
 }
 
 // Vue paints the sanitized markdown via v-html, then we layer the marks on
@@ -254,9 +267,6 @@ watch(
 const popoverEl = useTemplateRef('popoverEl');
 const activeNote = ref(null);
 let closeTimer = null;
-// Currently hover-bridged note idx, so .note-hovered can be removed cleanly
-// when the cursor leaves the bridged region.
-let hoveredIdx = null;
 
 function markFromEvent(event) {
   const el = event.target?.closest?.('mark[data-primary-idx]');
