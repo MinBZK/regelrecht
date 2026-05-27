@@ -96,12 +96,14 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
       const yamlText = await res.text();
 
       const engine = await initEngine();
-      // The resolver needs the law's articles loaded; mirror how the rest of
-      // the editor pulls a law into the engine. Pass the traject so the
-      // dependency fetch sees the same scope (read-your-writes parity).
-      if (!engine.hasLaw(id)) {
-        await loadDependency(id, tr);
-      }
+      // The resolver needs the law's articles loaded; mirror how the
+      // rest of the editor pulls a law into the engine. Call
+      // `loadDependency` unconditionally — it short-circuits when the
+      // engine already has the law under the same scope, and unloads +
+      // refetches when a previous load came from a different traject.
+      // A bare `if (!engine.hasLaw(id))` gate here would skip that scope
+      // check and resolve notes against stale-scope content.
+      await loadDependency(id, tr);
       const result = engine.resolveNotes(id, yamlText);
       const list = Array.isArray(result) ? result : [];
       cache.set(key, list);
