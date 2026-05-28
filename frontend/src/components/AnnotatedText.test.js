@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import AnnotatedText from './AnnotatedText.vue';
@@ -288,6 +288,14 @@ describe('AnnotatedText popover suppression during drag-selection', () => {
   // Attach to document.body so events dispatched on marks bubble up to the
   // document-level pointerdown/pointerup listeners the gate registers. The
   // default mount is detached and pointer events would never reach document.
+  // Each wrapper goes on the `wrappers` list and is unmounted in afterEach
+  // so its document-level listeners are removed before the next test; without
+  // this, stale wrappers across tests would all see each other's pointer
+  // events and a future regression test could observe spurious state changes.
+  const wrappers = [];
+  afterEach(() => {
+    while (wrappers.length) wrappers.pop().unmount();
+  });
   async function mountedWithMark() {
     const wrapper = mount(AnnotatedText, {
       props: {
@@ -299,6 +307,7 @@ describe('AnnotatedText popover suppression during drag-selection', () => {
       attachTo: document.body,
       global: { stubs: nlddStubs },
     });
+    wrappers.push(wrapper);
     await nextTick();
     await nextTick();
     return {

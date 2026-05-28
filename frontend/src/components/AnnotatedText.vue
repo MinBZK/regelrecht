@@ -289,7 +289,9 @@ let closeTimer = null;
 // any in-flight drag (and any standing non-collapsed selection rooted in
 // our rich-text element), and reopens via a click-to-pin on tap-without-
 // move so touch users still have a way to surface a note.
-const isDragging = ref(false);
+// Plain `let` (not a ref): isDragging is read imperatively by openFor and
+// the document-level handlers, never bound to a template/watcher/computed.
+let isDragging = false;
 let pointerDownAt = null; // { x, y } at most recent primary-button pointerdown
 const PIN_MAX_MOVE = 4; // px; below this on pointerup is treated as a tap
 
@@ -315,7 +317,13 @@ function closePopoverNow() {
 
 function onDocPointerDown(event) {
   if (event.button !== 0) return; // only primary-button drags select text
-  isDragging.value = true;
+  // A press inside the popover panel itself is interacting with the
+  // popover, not starting a new selection — closing it on its own mousedown
+  // would swallow any click inside (currently moot, the popover holds only
+  // a `@click.prevent` link, but cheap insurance for any future control).
+  const pop = popoverEl.value;
+  if (pop?.contains?.(event.target)) return;
+  isDragging = true;
   pointerDownAt = { x: event.clientX, y: event.clientY };
   closePopoverNow();
 }
@@ -323,7 +331,7 @@ function onDocPointerDown(event) {
 function onDocPointerUp(event) {
   const start = pointerDownAt;
   pointerDownAt = null;
-  isDragging.value = false;
+  isDragging = false;
   if (!start) return;
   // Click-to-pin: a tap that did not move (mouse click without drag, or a
   // touch tap) on a mark with no resulting selection opens the popover
@@ -387,7 +395,7 @@ function openFor(el, note, idx) {
   // Hover gate: skip while a drag is in flight, or while a non-collapsed
   // selection is standing inside this rich-text root (post-mouseup but
   // before the user clears it). See the comment block on isDragging above.
-  if (isDragging.value || isSelectingInRoot()) return;
+  if (isDragging || isSelectingInRoot()) return;
   if (closeTimer) {
     clearTimeout(closeTimer);
     closeTimer = null;
