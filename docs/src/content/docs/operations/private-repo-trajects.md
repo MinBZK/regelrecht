@@ -108,7 +108,7 @@ Wanneer je traject-create faalt, toont de UI een specifieke melding. De belangri
 | Statuscode | Melding | Wat je moet doen |
 |---|---|---|
 | 503 | "deze repo is nog niet door je beheerder geconfigureerd (verwacht env var X)" | Vraag de operator de getoonde env-var-naam te configureren |
-| 401 | "het token van je beheerder wordt door GitHub geweigerd" | PAT is verlopen of ongeldig — vraag operator om verversing |
+| 502 | "het token van je beheerder wordt door GitHub geweigerd" | PAT is verlopen of ongeldig — vraag operator om verversing |
 | 403 | "het geconfigureerde token heeft geen schrijftoegang tot deze repo" | PAT mist `Contents: write` of de PAT-account is geen collaborator op de repo |
 | 404 | "repo X bestaat niet of het token kan 'm niet zien" | Tikfout in owner/repo, of de fine-grained PAT is niet aan deze repo gekoppeld |
 | 404 | "branch 'X' bestaat niet op owner/repo" | De `base_branch` bestaat nog niet op de repo — initialiseer 'm met minstens één commit |
@@ -124,3 +124,10 @@ Tijdens het bewerken kunnen ook saves falen. De meeste meldingen zijn vergelijkb
 - **PAT-verloop is operator-werk**. De editor weigert reads/writes zodra de PAT door GitHub geweigerd wordt; de operator moet 'm dan verversen. Plan dit in.
 - **Geen self-service**. Voor elke nieuwe repo moet een operator een env var configureren. Voor occasioneel gebruik is dat prima; voor schaalbare zelfbediening is een **GitHub App** een betere richting (geparkeerd voor latere fase).
 - **Geen tokens in DB of browser**. Bewust ontwerp: een bug, breach of insider met DB-toegang kan geen tokens exfiltreren. Wel betekent dit dat tokens niet "even snel" zelf zijn in te stellen.
+
+## Rollout-aandachtspunten (alleen relevant bij de eerste deploy)
+
+De eerste deploy met deze feature scherpt twee oude paden aan; controleer onderstaande punten op je deployment vóór je de release uitrolt.
+
+- **De writable-own source gebruikt voortaan strikte token-resolutie** (geen `CORPUS_GIT_TOKEN`-fallback). Bestaande trajects die via de central MinBZK-repo committen, hebben dus `CORPUS_AUTH_MINBZK_CENTRAL_TOKEN` nodig als losse env var. Deployments die tot nu toe leunden op alleen `CORPUS_GIT_TOKEN` voor het centrale schrijfpad, zien stille push-failures na de release als die env var ontbreekt. Zet 'm vóór deploy en check de editor-logs op de eerste run; de diagnostic-log toont expliciet de verwachte env-var-naam wanneer de resolver `None` returnt voor de writable-own source.
+- **Bestaande SSO-sessies missen de nieuwe `email_verified`-claim**. Eerste save na deploy levert dan een 403 op met de melding "log opnieuw in". Geen onderhoud, geen migratie — gewoon eenmalig opnieuw inloggen lost het op.

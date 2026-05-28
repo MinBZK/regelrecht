@@ -940,8 +940,14 @@ fn repo_access_error_to_status(
 ) -> (StatusCode, String) {
     use regelrecht_corpus::repo_access::RepoAccessError as E;
     match err {
+        // The *user* is fully authenticated (made it through OIDC + this
+        // handler's middleware). What failed is the *operator's*
+        // GitHub PAT — that is an upstream credential issue, not a
+        // missing user credential. Use BAD_GATEWAY rather than 401 so
+        // proxies / browsers don't try to inject WWW-Authenticate or
+        // pop a credential dialog at the editor's user.
         E::Unauthorized => (
-            StatusCode::UNAUTHORIZED,
+            StatusCode::BAD_GATEWAY,
             "het token van je beheerder wordt door GitHub geweigerd".to_string(),
         ),
         E::RepoNotFound => (

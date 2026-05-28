@@ -88,31 +88,43 @@ pub fn resolve_token_strict(auth_ref: &str, auth_file: Option<&Path>) -> Result<
         }
     }
 
-    // 2. Auth file. Same parser as `resolve_token` below; we deliberately
-    // do NOT fall through to `CORPUS_GIT_TOKEN` afterwards.
-    if let Some(path) = auth_file {
-        if path.exists() {
-            let content = std::fs::read_to_string(path).map_err(|e| {
-                CorpusError::Config(format!(
-                    "Failed to read auth file {}: {}",
-                    path.display(),
-                    e
-                ))
-            })?;
-            let config: AuthConfig = serde_yaml_ng::from_str(&content).map_err(|e| {
-                CorpusError::Config(format!(
-                    "Failed to parse auth file {}: {}",
-                    path.display(),
-                    e
-                ))
-            })?;
-            if let Some(entry) = config.sources.iter().find(|s| s.id == auth_ref) {
-                return Ok(Some(entry.token.clone()));
-            }
-        }
-    }
+    // 2. Auth file. We deliberately do NOT fall through to
+    // `CORPUS_GIT_TOKEN` afterwards — see `resolve_token` for the legacy
+    // fallback path.
+    find_in_auth_file(auth_ref, auth_file)
+}
 
-    Ok(None)
+/// Read the auth file (if any) and look up `auth_ref` in it. Returns
+/// `None` when the file is absent or the ref isn't listed. Shared
+/// between [`resolve_token`] and [`resolve_token_strict`] so both
+/// parsers stay in lock-step — a future change to the auth-file shape
+/// only needs to land here.
+fn find_in_auth_file(auth_ref: &str, auth_file: Option<&Path>) -> Result<Option<String>> {
+    let Some(path) = auth_file else {
+        return Ok(None);
+    };
+    if !path.exists() {
+        return Ok(None);
+    }
+    let content = std::fs::read_to_string(path).map_err(|e| {
+        CorpusError::Config(format!(
+            "Failed to read auth file {}: {}",
+            path.display(),
+            e
+        ))
+    })?;
+    let config: AuthConfig = serde_yaml_ng::from_str(&content).map_err(|e| {
+        CorpusError::Config(format!(
+            "Failed to parse auth file {}: {}",
+            path.display(),
+            e
+        ))
+    })?;
+    Ok(config
+        .sources
+        .iter()
+        .find(|s| s.id == auth_ref)
+        .map(|entry| entry.token.clone()))
 }
 
 /// Look up a GitHub token by key.
@@ -140,28 +152,8 @@ pub fn resolve_token(source_id: &str, auth_file: Option<&Path>) -> Result<Option
     }
 
     // 2. Auth file
-    if let Some(path) = auth_file {
-        if path.exists() {
-            let content = std::fs::read_to_string(path).map_err(|e| {
-                CorpusError::Config(format!(
-                    "Failed to read auth file {}: {}",
-                    path.display(),
-                    e
-                ))
-            })?;
-
-            let config: AuthConfig = serde_yaml_ng::from_str(&content).map_err(|e| {
-                CorpusError::Config(format!(
-                    "Failed to parse auth file {}: {}",
-                    path.display(),
-                    e
-                ))
-            })?;
-
-            if let Some(entry) = config.sources.iter().find(|s| s.id == source_id) {
-                return Ok(Some(entry.token.clone()));
-            }
-        }
+    if let Some(token) = find_in_auth_file(source_id, auth_file)? {
+        return Ok(Some(token));
     }
 
     // 3. Legacy shared CORPUS_GIT_TOKEN (harvester-era single token)
