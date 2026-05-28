@@ -372,6 +372,13 @@ onBeforeUnmount(() => {
 function markFromEvent(event) {
   const el = event.target?.closest?.('mark[data-primary-idx]');
   if (!el) return null;
+  // Document-level handlers (onDocPointerUp) can see events targeted at any
+  // mark on the page, including another AnnotatedText instance's marks in a
+  // multi-article view. Reject anything outside this instance's rich-text
+  // root so the click-to-pin path never resolves noteByIdx against the wrong
+  // notes array. Component-scoped callers (@pointerover/@focusin on the
+  // wrap) are already in-scope so this is a no-op for them.
+  if (!richTextEl.value?.contains(el)) return null;
   const idx = Number(el.dataset.primaryIdx);
   return { el, note: noteByIdx.value[idx] || null, idx };
 }
@@ -724,9 +731,7 @@ onBeforeUnmount(() => {
 .annotated-wrap :deep(mark) {
   padding: 0 0.1em;
   border-radius: 2px;
-  /* `text` not `help`: drag-selection is the primary affordance here; the
-     popover stays discoverable via hover/Tab. The drag-gate in the script
-     also makes selecting across a mark work without losing the selection. */
+  /* text, not help: drag-selection is the primary affordance */
   cursor: text;
 }
 .annotated-wrap :deep(mark.note-authoritative) {

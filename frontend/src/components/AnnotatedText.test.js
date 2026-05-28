@@ -397,6 +397,23 @@ describe('AnnotatedText popover suppression during drag-selection', () => {
     expect(wrapper.vm.activeNote).toBeNull();
   });
 
+  it('click-to-pin on one instance does not open the popover on another mounted instance', async () => {
+    // Two AnnotatedText instances both register document-level pointerup
+    // listeners. Without a containment guard, a tap on instance B's mark
+    // would resolve to instance A's noteByIdx[idx] and pop A's popover
+    // with the wrong note attached to B's DOM. The guard inside
+    // markFromEvent rejects targets outside the instance's own
+    // richTextEl, so A stays untouched.
+    const { wrapper: wrapperA } = await mountedWithMark();
+    const { wrapper: wrapperB, mark: markB } = await mountedWithMark();
+    // Sanity: A's activeNote starts null.
+    expect(wrapperA.vm.activeNote).toBeNull();
+    fire(document, 'pointerdown', { button: 0, clientX: 20, clientY: 20 });
+    fire(markB, 'pointerup', { button: 0, clientX: 21, clientY: 22 });
+    expect(wrapperB.vm.activeNote).toBeTruthy(); // B's own click-to-pin
+    expect(wrapperA.vm.activeNote).toBeNull(); // A must not have opened
+  });
+
   it('closes an already-open popover immediately on a new pointerdown', async () => {
     const { wrapper, mark } = await mountedWithMark();
     fire(mark, 'pointerover');
