@@ -182,8 +182,8 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           p: 'Kunnen we traditionele wetgeving transformeren naar machine-uitvoerbare specificaties? We onderzoeken of dit de kloof tussen wetgever en uitvoering kan verkleinen.',
         },
         {
-          h: 'Eén bron van waarheid',
-          p: 'Wat als er één centrale, machine-uitvoerbare versie van elke wet bestaat die alle partijen gebruiken? We verkennen of dit interpretatieverschillen kan verminderen.',
+          h: 'Gedeelde, controleerbare uitvoering',
+          p: 'Wat als de manier waarop een wet wordt uitgevoerd publiek leesbaar en machine-uitvoerbaar gepubliceerd wordt, naast de wettekst zelf? Verschillende organisaties kunnen die uitvoering dan onafhankelijk controleren en draaien, en interpretatieverschillen worden zichtbaar in plaats van verborgen in code.',
         },
         {
           h: 'Volledige transparantie',
@@ -235,7 +235,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
         {
           title: 'Gestandaardiseerd ecosysteem',
-          text: 'Een landelijke infrastructuur waar alle overheidssystemen dezelfde wettelijke definities gebruiken. Eén bron van waarheid voor regeltoepassing.',
+          text: 'Een landelijke infrastructuur waar overheidssystemen dezelfde wettelijke definities gebruiken. Een gemeenschappelijke, gepubliceerde basis waar elke partij vanaf werkt en die ze onafhankelijk kunnen verifiëren.',
         },
         {
           title: 'Harmonisatie van wetgeving',
@@ -466,6 +466,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           a: 'Juridische regels worden dan geschreven als uitvoerbare code die computers direct kunnen draaien en toepassen, zonder tussenkomst van menselijke interpretatie of programmeurs. Is dat realiseerbaar? En hoe verhoudt het zich tot traditioneel analoog recht?',
         },
         {
+          q: 'Betekent dit één centrale interpretatie?',
+          a: 'Nee. RegelRecht verkent of de manier waarop een wet wordt uitgevoerd publiek gepubliceerd kan worden, niet of er één partij is die bepaalt wat de waarheid is. De bevoegde uitvoerder publiceert zijn lezing als gezaghebbende interpretatie, maar andere organisaties, juristen en burgers kunnen hun lezing daarnaast publiceren. De executie wordt bovendien niet aan één engine opgehangen: meerdere onafhankelijke implementaties moeten op dezelfde regels en data dezelfde uitkomst geven. Wat centraal wordt is de publicatie en controleerbaarheid, niet de interpretatie zelf.',
+        },
+        {
           q: 'Wat gebeurt er met open normen?',
           a: 'Wetten bevatten bewust ruimte voor interpretatie: termen die "bij ministeriële regeling" worden ingevuld, of begrippen die een afweging aan de uitvoerder laten. Bij gewone automatisering verdwijnt die ruimte stilzwijgend in code: de keuze die een programmeur maakt wordt feitelijk recht, zonder publicatie of toetsing. RegelRecht maakt zo\'n keuze juist expliciet: de hogere wet markeert een open norm, de lagere regeling vult hem in, en juristen kunnen aantekenen of een begrip volledig, deels of nog niet is ingevuld. Zo wordt zichtbaar waar de wet eindigt en de interpretatie begint. Echte menselijke beoordelingen in een besluitproces, zoals een hardheidsclausule of een individuele afweging door een ambtenaar, blijven gewoon menselijk werk; die proberen we niet weg te automatiseren.',
         },
@@ -624,8 +628,8 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           p: 'Can we transform traditional legislation into machine-executable specifications? We are investigating whether this can narrow the gap between legislator and execution.',
         },
         {
-          h: 'A single source of truth',
-          p: 'What if there were one central, machine-executable version of every law that all parties use? We are exploring whether this can reduce differences in interpretation.',
+          h: 'Shared, verifiable execution',
+          p: 'What if the way a law is executed were published in machine-executable form alongside the legal text itself? Different organisations could then independently verify and run that execution, and differences in interpretation would become visible instead of being hidden inside code.',
         },
         {
           h: 'Full transparency',
@@ -677,7 +681,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
         {
           title: 'Standardised ecosystem',
-          text: 'A national infrastructure where all government systems use the same legal definitions. A single source of truth for rule application.',
+          text: 'A national infrastructure where government systems use the same legal definitions. A shared, published baseline that every party works from and can independently verify.',
         },
         {
           title: 'Harmonising legislation',
@@ -906,6 +910,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           q: 'What could a digital legal system mean?',
           a: 'Legal rules are written as executable code that computers can run and apply directly, without human interpretation or programmers in between. Is that achievable? And how does it relate to traditional analogue law?',
+        },
+        {
+          q: 'Does this mean one central interpretation?',
+          a: 'No. RegelRecht explores whether the way a law is executed can be published, not whether one party decides what is true. The competent authority publishes its reading as the authoritative interpretation, but other organisations, lawyers and citizens can publish their reading alongside it. Execution is not tied to a single engine either: multiple independent implementations must produce the same outcome on the same rules and data. What becomes central is publication and verifiability, not interpretation itself.',
         },
         {
           q: 'What happens to open norms?',
