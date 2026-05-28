@@ -327,13 +327,17 @@ function bind(field) {
             </nldd-list-item>
           </nldd-list>
 
-          <div class="traject-source-toggle">
+          <!-- The `<label>` wraps the switch so clicking the label text
+               toggles the control and screen readers announce the two
+               together — `for=`/`id=` pairing is harder to keep stable
+               across NDD's slotted internals. -->
+          <label class="traject-source-toggle">
             <nldd-switch
               :checked="form.useCustomRepo ? true : undefined"
               @change="form.useCustomRepo = Boolean($event.detail?.checked)"
             ></nldd-switch>
-            <label>Eigen GitHub-repo gebruiken (i.p.v. de standaard MinBZK-repo)</label>
-          </div>
+            <span>Eigen GitHub-repo gebruiken (i.p.v. de standaard MinBZK-repo)</span>
+          </label>
 
           <nldd-list v-if="form.useCustomRepo" variant="box" class="traject-form-list">
             <nldd-list-item size="md">
@@ -452,8 +456,6 @@ function bind(field) {
   gap: 10px;
   margin: 16px 0 8px;
   font-size: 14px;
-}
-.traject-source-toggle label {
   cursor: pointer;
   user-select: none;
 }

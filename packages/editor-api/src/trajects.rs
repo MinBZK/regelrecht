@@ -172,10 +172,14 @@ fn valid_branch_name(s: &str) -> bool {
     if s.contains("..") || s.contains("@{") || s.contains("//") {
         return false;
     }
-    // No path component may end with `.lock` — git treats `<ref>.lock`
-    // as a lockfile sentinel, so `main.lock` and `feature/foo.lock` are
-    // both refused as refnames.
-    if s.split('/').any(|c| c.ends_with(".lock")) {
+    // Per `git-check-ref-format`: no path component may start with `.`
+    // (so `.hidden` and `feature/.hidden` are both refused) and none may
+    // end with `.lock` (git treats `<ref>.lock` as a lockfile sentinel,
+    // so `main.lock` and `feature/foo.lock` are refused). Walk the
+    // components once for both rules.
+    if s.split('/')
+        .any(|c| c.starts_with('.') || c.ends_with(".lock"))
+    {
         return false;
     }
     s.chars().all(|c| {
@@ -1722,6 +1726,11 @@ mod tests {
         assert!(!valid_branch_name("@"));
         assert!(!valid_branch_name("main.lock"));
         assert!(!valid_branch_name("feat/foo.lock"));
+        // No path component may start with `.`. GitHub would accept
+        // these refs but git would refuse them downstream at push time.
+        assert!(!valid_branch_name(".hidden"));
+        assert!(!valid_branch_name("feature/.hidden"));
+        assert!(!valid_branch_name(".github"));
         // Sanity: dots / "lock" inside a name (not as a trailing
         // component / suffix) stay accepted.
         assert!(valid_branch_name("main.foo"));
