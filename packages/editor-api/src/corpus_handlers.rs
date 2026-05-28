@@ -8,7 +8,9 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tower_sessions::Session;
 
-use regelrecht_auth::handlers::{SESSION_KEY_EMAIL, SESSION_KEY_NAME, SESSION_KEY_SUB};
+use regelrecht_auth::handlers::{
+    SESSION_KEY_EMAIL, SESSION_KEY_EMAIL_VERIFIED, SESSION_KEY_NAME, SESSION_KEY_SUB,
+};
 use regelrecht_corpus::annotation_schema::{
     append_notes_to_sidecar, first_note_not_targeting_law, parse_and_validate_annotation_yaml,
     validate_annotation_doc, AppendOutcome,
@@ -756,22 +758,58 @@ fn corpus_write_error(kind: &'static str) -> impl FnOnce(CorpusError) -> (Status
 // Save / Delete scenario endpoints
 // ---------------------------------------------------------------------------
 
-/// Pull the editor user identity out of the OIDC session, when both name
-/// and email are populated.
+/// Pull the editor user identity out of the OIDC session, but only
+/// when the IdP has marked the email as verified.
 ///
-/// Returns `None` when auth is disabled or the relevant session keys
-/// haven't been set — in those cases the resulting commit just has no
-/// `Co-Authored-By` trailer, which is harmless. We do NOT fail the save
-/// over a missing identity.
+/// Why the strict check: this identity ends up as the commit-author on
+/// every save. Without `email_verified=true` we can't claim the email
+/// is really the user's — GitHub will still happily render anyone's
+/// name+email on a commit, so without IdP verification an attacker
+/// could change their preferred email mid-session and impersonate
+/// someone else on the resulting commits. Returning `None` here makes
+/// the save-handler refuse the write with a 403, which is the right
+/// fail-closed behaviour for an attribution system.
+///
+/// Returns `None` also when the session keys aren't populated at all
+/// (auth disabled, or a session created before the verified-email
+/// claim was added); the caller distinguishes those cases via its own
+/// error message.
 async fn editor_user_from_session(session: &Session) -> Option<EditorUser> {
     let name: Option<String> = session.get(SESSION_KEY_NAME).await.ok().flatten();
     let email: Option<String> = session.get(SESSION_KEY_EMAIL).await.ok().flatten();
-    match (name, email) {
-        (Some(name), Some(email)) if !name.is_empty() && !email.is_empty() => {
+    let verified: Option<bool> = session.get(SESSION_KEY_EMAIL_VERIFIED).await.ok().flatten();
+    match (name, email, verified) {
+        (Some(name), Some(email), Some(true)) if !name.is_empty() && !email.is_empty() => {
             Some(EditorUser { name, email })
         }
         _ => None,
     }
+}
+
+/// Wrapper around [`editor_user_from_session`] for write paths that
+/// REQUIRE an attributable identity. Returns 403 with a user-facing
+/// message when the editor isn't fully authenticated — better than
+/// silently committing under the service account, which would let an
+/// unverified email leak into the git history.
+///
+/// Note for ops at rollout: any session that predates the deploy that
+/// introduced `SESSION_KEY_EMAIL_VERIFIED` lacks the claim entirely
+/// and will hit this 403 even when the user's email *is* verified at
+/// the IdP. The message therefore nudges towards a re-login, which
+/// re-runs the OIDC callback and populates the missing claim.
+async fn require_editor_user(session: &Session) -> Result<EditorUser, (StatusCode, String)> {
+    editor_user_from_session(session).await.ok_or_else(|| {
+        (
+            StatusCode::FORBIDDEN,
+            "Je sessie heeft geen geverifieerd e-mailadres. \
+             Mogelijke oorzaken: (1) je sessie is van vóór de laatste deploy — \
+             log opnieuw in om de verificatie-status uit je organisatie-account \
+             in te lezen; (2) je e-mail is daadwerkelijk niet geverifieerd — \
+             vraag je beheerder om in Keycloak 'email_verified' aan te zetten \
+             voor je account."
+                .to_string(),
+        )
+    })
 }
 
 /// Resolved write target for editor saves: a backend lock + the file
@@ -999,7 +1037,7 @@ pub async fn save_scenario(
     body: String,
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
     validate_scenario_filename(&filename)?;
-    let author = editor_user_from_session(&session).await;
+    let author = Some(require_editor_user(&session).await?);
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let target = resolve_traject_scenario_target(&traject, &law_id, &filename).await?;
@@ -1052,7 +1090,7 @@ pub async fn save_annotations(
     Path((traject_ref, law_id)): Path<(String, String)>,
     body: String,
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
-    let author = editor_user_from_session(&session).await;
+    let author = Some(require_editor_user(&session).await?);
 
     // Body is a JSON array of new notes. Parse + bound it before touching
     // the backend.
@@ -1219,7 +1257,7 @@ pub async fn save_law(
     Path((traject_ref, law_id)): Path<(String, String)>,
     body: String,
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
-    let author = editor_user_from_session(&session).await;
+    let author = Some(require_editor_user(&session).await?);
 
     // Validation:
     //   1. Body must parse as well-formed YAML. extract_law_id below is a
@@ -1308,7 +1346,7 @@ pub async fn delete_scenario(
     Path((traject_ref, law_id, filename)): Path<(String, String, String)>,
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
     validate_scenario_filename(&filename)?;
-    let author = editor_user_from_session(&session).await;
+    let author = Some(require_editor_user(&session).await?);
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let target = resolve_traject_scenario_target(&traject, &law_id, &filename).await?;
@@ -1432,5 +1470,120 @@ mod tests {
         assert!(body.pr.is_none());
         // Law/scenario saves are never a notes no-op.
         assert!(!body.no_change);
+    }
+
+    // ---- editor_user_from_session: attribution invariants ----
+
+    use std::sync::Arc;
+    use tower_sessions::{MemoryStore, Session};
+
+    fn empty_session() -> Session {
+        Session::new(None, Arc::new(MemoryStore::default()), None)
+    }
+
+    async fn session_with(
+        name: Option<&str>,
+        email: Option<&str>,
+        verified: Option<bool>,
+    ) -> Session {
+        let s = empty_session();
+        if let Some(n) = name {
+            s.insert(SESSION_KEY_NAME, n.to_string()).await.unwrap();
+        }
+        if let Some(e) = email {
+            s.insert(SESSION_KEY_EMAIL, e.to_string()).await.unwrap();
+        }
+        if let Some(v) = verified {
+            s.insert(SESSION_KEY_EMAIL_VERIFIED, v).await.unwrap();
+        }
+        s
+    }
+
+    #[tokio::test]
+    async fn editor_user_requires_verified_email() {
+        // verified=false must produce None even when name+email are
+        // present — otherwise an IdP that doesn't verify emails would
+        // let an attacker pick any email and have it land in the commit
+        // author field.
+        let s = session_with(Some("Alice"), Some("alice@example.com"), Some(false)).await;
+        assert!(editor_user_from_session(&s).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn editor_user_missing_verified_claim_is_rejected() {
+        // No verified key at all (older session created before the
+        // claim was added, or auth disabled) falls in the same bucket
+        // as `verified=false`: fail closed.
+        let s = session_with(Some("Alice"), Some("alice@example.com"), None).await;
+        assert!(editor_user_from_session(&s).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn editor_user_happy_path() {
+        let s = session_with(Some("Alice"), Some("alice@example.com"), Some(true)).await;
+        let user = editor_user_from_session(&s).await.unwrap();
+        assert_eq!(user.name, "Alice");
+        assert_eq!(user.email, "alice@example.com");
+    }
+
+    #[tokio::test]
+    async fn require_editor_user_returns_403_when_unverified() {
+        let s = session_with(Some("Alice"), Some("alice@example.com"), Some(false)).await;
+        let err = require_editor_user(&s).await.expect_err("must refuse");
+        assert_eq!(err.0, StatusCode::FORBIDDEN);
+        assert!(
+            err.1.contains("e-mailadres"),
+            "message should mention email verification: {}",
+            err.1
+        );
+    }
+
+    // ---- Spoofing-by-body invariant ----
+
+    /// The handler-input contract guarantees that no save handler exposes
+    /// a JSON field named `author` (or a structurally similar one) that
+    /// could overwrite the OIDC-derived attribution. This is enforced at
+    /// the type system level — `save_scenario` / `save_annotations` /
+    /// `save_law` all take `body: String` (raw scenario / raw JSON
+    /// notes array / raw YAML), never a `Json<SomeRequest>` struct that
+    /// might carry an `author` field.
+    ///
+    /// If a future refactor switches one of those handlers to take a
+    /// structured body, this test fails (the function signature no
+    /// longer matches) and the author has to come back and re-examine
+    /// the spoofing surface. Document the invariant via a compile-time
+    /// signature assertion rather than a runtime probe — the runtime
+    /// path is "session in → context out", with no body in between.
+    #[test]
+    fn save_handler_signatures_take_raw_body_no_author_field() {
+        // Compile-time assertions: the function pointer types include
+        // `body: String` as the last positional argument. If any handler
+        // changes to `Json<X>` for some struct `X`, this code won't
+        // compile — forcing a re-review of whether `X` can carry an
+        // `author`-shaped field.
+        let _: fn(
+            axum::extract::State<crate::state::AppState>,
+            Session,
+            axum::extract::Path<(String, String, String)>,
+            String,
+        ) -> _ = save_scenario;
+        let _: fn(
+            axum::extract::State<crate::state::AppState>,
+            Session,
+            axum::extract::Path<(String, String)>,
+            String,
+        ) -> _ = save_annotations;
+        let _: fn(
+            axum::extract::State<crate::state::AppState>,
+            Session,
+            axum::extract::Path<(String, String)>,
+            String,
+        ) -> _ = save_law;
+        // delete_scenario takes no body at all — even stronger guarantee.
+        let _: fn(
+            axum::extract::State<crate::state::AppState>,
+            Session,
+            axum::extract::Path<(String, String, String)>,
+        ) -> _ = delete_scenario;
     }
 }

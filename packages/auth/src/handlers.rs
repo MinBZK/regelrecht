@@ -24,6 +24,13 @@ pub const SESSION_KEY_PKCE_VERIFIER: &str = "oidc_pkce_verifier";
 pub const SESSION_KEY_AUTHENTICATED: &str = "authenticated";
 pub const SESSION_KEY_SUB: &str = "person_sub";
 pub const SESSION_KEY_EMAIL: &str = "person_email";
+/// Whether the upstream IdP claims the email is verified
+/// (`email_verified=true` claim). Stored as a `bool`; absent or `false`
+/// means the email failed verification (or no claim was sent) and
+/// downstream code that attributes actions to the user should refuse
+/// rather than fall back to a service identity (see
+/// `editor_user_from_session` in editor-api).
+pub const SESSION_KEY_EMAIL_VERIFIED: &str = "person_email_verified";
 pub const SESSION_KEY_NAME: &str = "person_name";
 pub const SESSION_KEY_ID_TOKEN: &str = "id_token_hint";
 pub const SESSION_KEY_ROLES: &str = "person_roles";
@@ -304,6 +311,11 @@ pub async fn callback<S: OidcAppState>(
 
     let sub = claims.subject().as_str().to_string();
     let email = claims.email().map(|e| (**e).clone()).unwrap_or_default();
+    // Standard OIDC `email_verified` claim — `false`/missing is the
+    // safe default. Editor commit attribution refuses to use the email
+    // when this is `false`, so a misconfigured IdP fails closed instead
+    // of letting a spoofed email through.
+    let email_verified = claims.email_verified().unwrap_or(false);
     let name = claims
         .name()
         .and_then(|n| n.get(None).map(|v| (**v).clone()))
@@ -332,6 +344,15 @@ pub async fn callback<S: OidcAppState>(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     session_insert(&session, SESSION_KEY_SUB, sub.clone()).await?;
     session_insert(&session, SESSION_KEY_EMAIL, email.clone()).await?;
+    // `email_verified` is a bool, not a String — go through `insert`
+    // directly. Same error mapping as `session_insert` for consistency.
+    session
+        .insert(SESSION_KEY_EMAIL_VERIFIED, email_verified)
+        .await
+        .map_err(|e| {
+            tracing::error!(key = SESSION_KEY_EMAIL_VERIFIED, error = %e, "failed to insert into session");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     session_insert(&session, SESSION_KEY_NAME, name.clone()).await?;
     session_insert(&session, SESSION_KEY_ID_TOKEN, id_token_jwt).await?;
     // Persist the realm roles so route-level `require_role` middleware can
