@@ -126,7 +126,7 @@ function uniqueIdx(items) {
   return out;
 }
 
-function sameSet(a, b) {
+function sameOrderedList(a, b) {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
   return true;
@@ -141,8 +141,8 @@ function mergeAdjacent(segments) {
     if (
       prev.end === cur.start &&
       prev.primaryIdx === cur.primaryIdx &&
-      sameSet(prev.visibleIdx, cur.visibleIdx) &&
-      sameSet(prev.coveringIdx, cur.coveringIdx)
+      sameOrderedList(prev.visibleIdx, cur.visibleIdx) &&
+      sameOrderedList(prev.coveringIdx, cur.coveringIdx)
     ) {
       prev.end = cur.end;
     } else {

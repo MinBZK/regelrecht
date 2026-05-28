@@ -262,11 +262,6 @@ const notesForArticle = computed(() => [
   ...draftNotesForArticle.value,
 ]);
 
-// (No longer needed: AnnotatedText now boundary-splits overlapping spans so
-// a draft overlapping a committed note renders layered, and an encapsulated
-// outer is only suppressed in the inner's segment but still renders in its
-// flanks. There is no "silently not highlighted" case to warn about.)
-
 function onCreateNote(note) {
   addDraft(note);
 }
