@@ -467,7 +467,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
         {
           q: 'Betekent dit één centrale interpretatie?',
-          a: 'Nee. RegelRecht verkent of de manier waarop een wet wordt uitgevoerd publiek gepubliceerd kan worden, niet of er één partij is die bepaalt wat de waarheid is. De bevoegde uitvoerder publiceert zijn lezing als gezaghebbende interpretatie, maar andere organisaties, juristen en burgers kunnen hun lezing daarnaast publiceren. De executie wordt bovendien niet aan één engine opgehangen: meerdere onafhankelijke implementaties moeten op dezelfde regels en data dezelfde uitkomst geven. Wat centraal wordt is de publicatie en controleerbaarheid, niet de interpretatie zelf.',
+          a: 'Nee. RegelRecht verkent of de manier waarop een wet wordt uitgevoerd publiek gepubliceerd kan worden, niet of er één partij is die bepaalt wat de waarheid is. Het bevoegd gezag publiceert zijn lezing als gezaghebbende interpretatie, maar andere organisaties, juristen en burgers kunnen hun lezing daarnaast publiceren. De executie wordt bovendien niet aan één engine opgehangen: meerdere onafhankelijke implementaties moeten op dezelfde regels en data dezelfde uitkomst geven. Wat centraal wordt is de publicatie en controleerbaarheid, niet de interpretatie zelf.',
         },
         {
           q: 'Wat gebeurt er met open normen?',
