@@ -149,7 +149,16 @@ function wrapSegmentSlice(slice, seg, notes) {
       .join(', ');
     mark.style.backgroundImage = layers;
   }
-  mark.setAttribute('aria-label', `Notitie: ${primary?.motivation ?? ''}`);
+  // Announce every visible note's motivation on a multi-note segment so a
+  // screen-reader user is not told only about the primary while a second
+  // note is silently layered underneath.
+  const motivations = seg.visibleIdx
+    .map((i) => notes[i]?.note?.motivation)
+    .filter(Boolean);
+  const ariaLabel = motivations.length > 1
+    ? `${motivations.length} notities: ${motivations.join(', ')}`
+    : `Notitie: ${primary?.motivation ?? ''}`;
+  mark.setAttribute('aria-label', ariaLabel);
   mark.setAttribute('tabindex', '0');
   try {
     range.surroundContents(mark);
