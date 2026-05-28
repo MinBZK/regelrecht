@@ -567,36 +567,6 @@ const toc = [
             text={t.feedback.cta}
           />
         </nldd-simple-section>
-
-        {/* Internet.nl 100% badge. Per the internet.nl badge policy
-            (https://internet.nl/faqs/badges/) the SVG is served from our own
-            domain (no hot-link), the page's domain matches the 100%-scoring
-            domain, and the badge hyperlinks to https://internet.nl/. The
-            badge is only rendered on the landing — docs and the signup page
-            do not show it. */}
-        <nldd-simple-section
-          id="compliance"
-          sm-padding-block="24"
-          md-padding-block="32"
-          lg-padding-block="48"
-        >
-          <nldd-rich-text>
-            <p>
-              <a
-                href={t.compliance.internetNlUrl}
-                rel="noopener external"
-                aria-label={t.compliance.label}
-              >
-                <img
-                  src="/internet-nl-100-website.svg"
-                  alt={t.compliance.alt}
-                  width="204"
-                  height="38"
-                />
-              </a>
-            </p>
-          </nldd-rich-text>
-        </nldd-simple-section>
       </Fragment>
     )
   }
