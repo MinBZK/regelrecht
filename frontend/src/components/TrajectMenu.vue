@@ -70,6 +70,13 @@ function emptyForm() {
     name: '',
     description: '',
     scope: '',
+    // When `useCustomRepo` is false the create call omits the repo
+    // fields and the backend falls back to the default MinBZK repo —
+    // existing trajects keep their behaviour unchanged.
+    useCustomRepo: false,
+    repo_owner: '',
+    repo_name: '',
+    base_branch: 'main',
   };
 }
 
@@ -136,13 +143,33 @@ async function submitCreate() {
     createError.value = 'Naam is verplicht';
     return;
   }
+
+  // Build the request body. Only attach the repo fields when the toggle
+  // is on — leaving them out lets the backend pick the MinBZK default
+  // so existing flows are unchanged for users who don't need a custom
+  // repo.
+  const payload = {
+    name: form.value.name.trim(),
+    description: form.value.description,
+    scope: form.value.scope,
+  };
+  if (form.value.useCustomRepo) {
+    const owner = form.value.repo_owner.trim();
+    const repo = form.value.repo_name.trim();
+    const branch = form.value.base_branch.trim();
+    if (!owner || !repo || !branch) {
+      createError.value =
+        'Eigen repo: vul owner, repo en base-branch in (of zet de schakelaar uit).';
+      return;
+    }
+    payload.repo_owner = owner;
+    payload.repo_name = repo;
+    payload.base_branch = branch;
+  }
+
   createBusy.value = true;
   try {
-    const created = await createTraject({
-      name: form.value.name.trim(),
-      description: form.value.description,
-      scope: form.value.scope,
-    });
+    const created = await createTraject(payload);
     showCreate.value = false;
     // Jump straight into the new traject — same per-tab navigation as
     // selecting from the dropdown. Mirror the `selectTraject` guard:
@@ -288,10 +315,78 @@ function bind(field) {
             </nldd-list-item>
           </nldd-list>
 
+          <div class="traject-source-toggle">
+            <nldd-switch
+              :checked="form.useCustomRepo ? true : undefined"
+              @change="form.useCustomRepo = Boolean($event.detail?.checked)"
+            ></nldd-switch>
+            <label>Eigen GitHub-repo gebruiken (i.p.v. de standaard MinBZK-repo)</label>
+          </div>
+
+          <nldd-list v-if="form.useCustomRepo" variant="box" class="traject-form-list">
+            <nldd-list-item size="md">
+              <nldd-text-cell
+                text="Repo owner"
+                supporting-text="Organisatie of gebruiker op GitHub, bijv. 'MinBZK'."
+                max-width="180px"
+              ></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-cell>
+                <nldd-text-field
+                  size="md"
+                  :value="form.repo_owner"
+                  @input="bind('repo_owner')($event)"
+                ></nldd-text-field>
+              </nldd-cell>
+            </nldd-list-item>
+            <nldd-list-item size="md">
+              <nldd-text-cell
+                text="Repo"
+                supporting-text="Naam van de repository."
+                max-width="180px"
+              ></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-cell>
+                <nldd-text-field
+                  size="md"
+                  :value="form.repo_name"
+                  @input="bind('repo_name')($event)"
+                ></nldd-text-field>
+              </nldd-cell>
+            </nldd-list-item>
+            <nldd-list-item size="md">
+              <nldd-text-cell
+                text="Base branch"
+                supporting-text="Branch waarop het traject z'n PR opent (vaak 'main')."
+                max-width="180px"
+              ></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-cell>
+                <nldd-text-field
+                  size="md"
+                  :value="form.base_branch"
+                  @input="bind('base_branch')($event)"
+                ></nldd-text-field>
+              </nldd-cell>
+            </nldd-list-item>
+          </nldd-list>
+
           <div class="traject-source-hint">
-            Edits in dit traject worden gepusht naar een aparte branch op
-            <code>MinBZK/regelrecht-corpus</code> (basis: <code>development</code>).
-            Per-gebruiker GitHub-auth komt later.
+            <template v-if="form.useCustomRepo">
+              Edits worden gepusht naar
+              <code>{{ form.repo_owner || '…' }}/{{ form.repo_name || '…' }}</code>
+              (basis: <code>{{ form.base_branch || 'main' }}</code>).
+              Je beheerder moet voor deze repo een <code>CORPUS_AUTH_*_TOKEN</code>
+              env-var hebben gezet — anders krijg je een foutmelding bij aanmaken.
+              Commits verschijnen onder je eigen naam (uit je SSO-account), niet
+              onder het service-account.
+            </template>
+            <template v-else>
+              Edits in dit traject worden gepusht naar een aparte branch op
+              <code>MinBZK/regelrecht-corpus</code> (basis:
+              <code>development</code>). Commits verschijnen onder je eigen naam
+              (uit je SSO-account).
+            </template>
           </div>
 
           <div v-if="createError" class="traject-error">{{ createError }}</div>
@@ -323,6 +418,17 @@ function bind(field) {
 }
 .traject-form-list nldd-text-field {
   width: 100%;
+}
+.traject-source-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 8px;
+  font-size: 14px;
+}
+.traject-source-toggle label {
+  cursor: pointer;
+  user-select: none;
 }
 .traject-source-hint {
   margin-top: 16px;

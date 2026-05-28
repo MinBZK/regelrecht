@@ -218,12 +218,25 @@ async fn build_traject_corpus(
     // Build a backend per source, scoped to a traject-specific clone path.
     let mut backends: HashMap<String, BackendEntry> = HashMap::new();
     for (row, source) in rows.iter().zip(sources.iter()) {
-        let token = regelrecht_corpus::auth::resolve_token_for_source(
-            &source.id,
-            source.auth_ref.as_deref(),
-            auth_file,
-        )
-        .unwrap_or_else(|e| {
+        // For the writable-own source we resolve strictly (no legacy
+        // `CORPUS_GIT_TOKEN` fallback). The `auth_ref` on this row was
+        // derived from the create-request's repo coords, so a missing
+        // per-repo token MUST fail closed — not transparently ship the
+        // central token to a user-chosen GitHub repo on the next push.
+        // Seeded (non-writable) sources keep the legacy fallback so
+        // pre-existing deployments that rely on a single global PAT for
+        // read-only mirrors keep working.
+        let token_result = if row.is_writable_own {
+            let key = source.auth_ref.as_deref().unwrap_or(&source.id);
+            regelrecht_corpus::auth::resolve_token_strict(key, auth_file)
+        } else {
+            regelrecht_corpus::auth::resolve_token_for_source(
+                &source.id,
+                source.auth_ref.as_deref(),
+                auth_file,
+            )
+        };
+        let token = token_result.unwrap_or_else(|e| {
             tracing::warn!(
                 traject = %traject_id,
                 source_id = %source.id,
