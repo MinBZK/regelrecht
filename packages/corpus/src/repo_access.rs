@@ -187,9 +187,12 @@ mod inner {
             StatusCode::OK => Ok(()),
             StatusCode::NOT_FOUND => Err(RepoAccessError::BranchNotFound),
             StatusCode::UNAUTHORIZED => Err(RepoAccessError::Unauthorized),
-            // Per-branch 403 = branch protection forbids reads with this
-            // token. Surface as "no push access" — protected branches
-            // require contents:write for read on the bypass list.
+            // Per-branch 403 = the token can resolve the repo (passed the
+            // `/repos/{owner}/{repo}` check above) but the fine-grained PAT
+            // scopes don't include `contents:read`. Surface as "no push
+            // access" since the operator's fix is identical: widen the
+            // token. Branch protection itself only governs writes, so it
+            // can't be the cause of a 403 on this GET.
             StatusCode::FORBIDDEN => Err(RepoAccessError::NoPushAccess),
             other => {
                 let body = response.text().await.unwrap_or_default();

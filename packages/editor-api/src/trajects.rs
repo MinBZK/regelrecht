@@ -160,10 +160,22 @@ fn valid_branch_name(s: &str) -> bool {
     if s.is_empty() || s.len() > 200 {
         return false;
     }
-    if s.starts_with('-') || s.starts_with('/') || s.ends_with('/') {
+    // `git-check-ref-format` rejects the bare `@` as a refname.
+    if s == "@" {
+        return false;
+    }
+    // Leading `-`/`/`, trailing `/`, and a trailing `.` are all rejected
+    // by `git-check-ref-format` (e.g. `main.` is refused).
+    if s.starts_with('-') || s.starts_with('/') || s.ends_with('/') || s.ends_with('.') {
         return false;
     }
     if s.contains("..") || s.contains("@{") || s.contains("//") {
+        return false;
+    }
+    // No path component may end with `.lock` — git treats `<ref>.lock`
+    // as a lockfile sentinel, so `main.lock` and `feature/foo.lock` are
+    // both refused as refnames.
+    if s.split('/').any(|c| c.ends_with(".lock")) {
         return false;
     }
     s.chars().all(|c| {
@@ -1681,6 +1693,21 @@ mod tests {
         assert!(!valid_branch_name(""));
         let oversized: String = "a".repeat(201);
         assert!(!valid_branch_name(&oversized));
+    }
+
+    #[test]
+    fn valid_branch_name_rejects_git_specific_corner_cases() {
+        // git-check-ref-format rejects refnames that end with `.`, the
+        // bare `@`, or any component ending in `.lock`. Mirror those
+        // here so the boundary check matches the refname grammar.
+        assert!(!valid_branch_name("main."));
+        assert!(!valid_branch_name("@"));
+        assert!(!valid_branch_name("main.lock"));
+        assert!(!valid_branch_name("feat/foo.lock"));
+        // Sanity: dots / "lock" inside a name (not as a trailing
+        // component / suffix) stay accepted.
+        assert!(valid_branch_name("main.foo"));
+        assert!(valid_branch_name("locked-down"));
     }
 
     #[test]

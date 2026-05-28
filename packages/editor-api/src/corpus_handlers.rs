@@ -801,9 +801,12 @@ async fn require_editor_user(session: &Session) -> Result<EditorUser, (StatusCod
     editor_user_from_session(session).await.ok_or_else(|| {
         (
             StatusCode::FORBIDDEN,
-            "Je sessie mist een geverifieerd e-mailadres — log opnieuw in om de \
-             editor weer te kunnen gebruiken. (Als dit blijft optreden: vraag je \
-             beheerder om in Keycloak 'email_verified' aan te zetten voor je account.)"
+            "Je sessie heeft geen geverifieerd e-mailadres. \
+             Mogelijke oorzaken: (1) je sessie is van vóór de laatste deploy — \
+             log opnieuw in om de verificatie-status uit je organisatie-account \
+             in te lezen; (2) je e-mail is daadwerkelijk niet geverifieerd — \
+             vraag je beheerder om in Keycloak 'email_verified' aan te zetten \
+             voor je account."
                 .to_string(),
         )
     })

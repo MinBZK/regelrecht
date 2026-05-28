@@ -77,6 +77,11 @@ function emptyForm() {
     repo_owner: '',
     repo_name: '',
     base_branch: 'main',
+    // Sub-path within the repo where regulation YAML files live. Empty
+    // means "everything under repo root" — the right default for user
+    // repos dedicated to regulations. Set to e.g. `regulation/nl` when
+    // the YAMLs live in a sub-directory.
+    repo_path: '',
   };
 }
 
@@ -165,6 +170,13 @@ async function submitCreate() {
     payload.repo_owner = owner;
     payload.repo_name = repo;
     payload.base_branch = branch;
+    // `repo_path` is optional; only attach when the user filled it in
+    // so the backend keeps using its empty-string default ("repo root")
+    // for personal regulation repos.
+    const subpath = form.value.repo_path.trim();
+    if (subpath) {
+      payload.repo_path = subpath;
+    }
   }
 
   createBusy.value = true;
@@ -366,6 +378,21 @@ function bind(field) {
                   size="md"
                   :value="form.base_branch"
                   @input="bind('base_branch')($event)"
+                ></nldd-text-field>
+              </nldd-cell>
+            </nldd-list-item>
+            <nldd-list-item size="md">
+              <nldd-text-cell
+                text="Subpath (optioneel)"
+                supporting-text="Submap met regulation YAML-bestanden. Laat leeg voor repo-root."
+                max-width="180px"
+              ></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-cell>
+                <nldd-text-field
+                  size="md"
+                  :value="form.repo_path"
+                  @input="bind('repo_path')($event)"
                 ></nldd-text-field>
               </nldd-cell>
             </nldd-list-item>
