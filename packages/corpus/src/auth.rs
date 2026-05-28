@@ -301,6 +301,11 @@ sources:
     fn resolve_token_strict_still_uses_per_source_env() {
         // The strict variant still honours the explicit per-source env
         // var — that's the path operators are supposed to configure.
+        // Holds `ENV_LOCK` like the sibling strict test: even though
+        // the key here is unique, env-mutating tests run serialised so
+        // a concurrent test holding the lock and mutating arbitrary
+        // env vars can't race with this one.
+        let _g = ENV_LOCK.lock().unwrap();
         let key = "CORPUS_AUTH_STRICT_PER_SOURCE_OK_TOKEN";
         unsafe { std::env::set_var(key, "per-source-value") };
         let result = resolve_token_strict("strict-per-source-ok", None).unwrap();

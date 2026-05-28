@@ -188,6 +188,13 @@ fn valid_branch_name(s: &str) -> bool {
             && c != '*'
             && c != '['
             && c != '\\'
+            // `#` is a legal refname char in git but is the URL fragment
+            // delimiter. `format!(".../branches/{base_branch}")` followed
+            // by reqwest parsing would silently drop everything after
+            // `#`, so a branch name `main#spoof` would 200-pass the
+            // pre-flight (it matches `main`) but later git operations
+            // reference the non-existent `main#spoof`. Reject up front.
+            && c != '#'
     })
 }
 
@@ -1682,6 +1689,11 @@ mod tests {
         assert!(!valid_branch_name("a[b"));
         assert!(!valid_branch_name("a\\b"));
         assert!(!valid_branch_name("feat@{1}"));
+        // `#` is legal in git refnames but is the URL fragment delimiter,
+        // so `main#spoof` would 200-pass the pre-flight (matches `main`)
+        // and produce a non-existent refname downstream. Refuse it.
+        assert!(!valid_branch_name("main#spoof"));
+        assert!(!valid_branch_name("#"));
         // `..` (dot-dot), leading `-`, leading/trailing `/`, double `/`.
         assert!(!valid_branch_name(".."));
         assert!(!valid_branch_name("a..b"));
