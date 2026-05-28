@@ -3,6 +3,7 @@ import { ref, computed, reactive, watch, watchEffect, nextTick } from 'vue';
 import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
 import yaml from 'js-yaml';
 import { useLaw, fetchLaw } from './composables/useLaw.js';
+import { lawsListUrl } from './composables/corpusUrls.js';
 import { useEngine } from './composables/useEngine.js';
 import { useAuth } from './composables/useAuth.js';
 import { useTrajects } from './composables/useTrajects.js';
@@ -143,16 +144,17 @@ function setPaneView(idx, viewId) {
   paneViews.value = next;
 }
 
-// All edit operations are gated behind SSO + an active traject. SSO gates
-// access to the editor as a whole; the active traject scopes writes to a
-// branch on a corpus source — without it the editor renders read-only and
-// the save handlers return 403. The `requiresAuth` router guard awaits
-// the auth-check before this component mounts so the SSO half of the
-// guard is in practice always true; the traject half can flip at runtime
-// when the user picks a different option from the TrajectMenu.
-const { activeTrajectId, trajectSwitchEpoch } = useTrajects();
+// All edit operations are gated behind SSO + an active traject. The
+// editor renders in two shapes:
+//   - `/editor/{lawId?}/{articleNumber?}`         → read-only view,
+//     `canEdit` is false; save buttons disabled.
+//   - `/editor/{trajectRef}/{lawId?}/{article?}`  → full edit mode,
+//     `canEdit` is true; writes land in that traject's branch.
+// Pick a traject in the TrajectMenu to flip from the first shape to
+// the second.
+const { activeTrajectRef } = useTrajects();
 const canEdit = computed(
-  () => (!oidcConfigured.value || authenticated.value) && activeTrajectId.value !== null,
+  () => (!oidcConfigured.value || authenticated.value) && activeTrajectRef.value !== null,
 );
 // Tekst-pane is only editable when the user has write access AND the
 // `editor.article_text_edit` flag is on. Visibility of the pane is
@@ -178,13 +180,24 @@ const {
   saveError: lawSaveError,
   saveLaw,
   lastSavedPr,
-} = useLaw(route.params.lawId, route.params.articleNumber);
+} = useLaw(route.params.lawId, route.params.articleNumber, route.params.trajectRef);
 
-// On user-driven traject switch (epoch bump): refresh corpus index and refetch the open law.
-watch(trajectSwitchEpoch, () => {
+// When the active traject changes (router.push to /editor/{otherRef}/…)
+// the URL stays on the same component; refresh the corpus index and
+// re-fetch the open law through the new traject's backends. `switchLaw`
+// crosses trajects too via its third argument so the law cache key
+// stays correct.
+//
+// Also flush the WASM engine: it caches loaded laws by id only, so
+// without this a scenario run after a traject switch would evaluate
+// the open law against the *previous* traject's dependencies. The
+// dependency walker re-loads on demand on the next run, so a single
+// `unloadAllLaws` is enough — no per-dep bookkeeping needed.
+watch(activeTrajectRef, (next) => {
+  unloadAllLaws();
   loadCorpusLaws();
   if (lawId.value) {
-    switchLaw(lawId.value, selectedArticleNumber.value);
+    switchLaw(lawId.value, selectedArticleNumber.value, next);
   }
 });
 
@@ -195,7 +208,7 @@ const {
   loading: notesLoading,
   error: notesError,
   reload: reloadNotes,
-} = useNotes(lawId, selectedArticle);
+} = useNotes(lawId, selectedArticle, activeTrajectRef);
 
 // Notes are a layer over the Tekst pane, not a separate pane. This toggle is
 // the user's "show notes now" preference; panel.notes (a feature flag) is the
@@ -232,11 +245,12 @@ const {
   clearDrafts,
   exportYaml,
   saveToRepo,
-} = useDraftNotes(lawId);
+} = useDraftNotes(lawId, activeTrajectRef);
 const { draftNotesForArticle } = useResolvedDraftNotes(
   draftNotes,
   lawId,
   selectedArticle,
+  activeTrajectRef,
 );
 const canCreateNotes = computed(
   () => isEnabled('notes.create') && notesActive.value,
@@ -385,7 +399,7 @@ let corpusLawsGeneration = 0;
 async function loadCorpusLaws() {
   const gen = ++corpusLawsGeneration;
   try {
-    const res = await fetch('/api/corpus/laws?limit=1000');
+    const res = await fetch(lawsListUrl(activeTrajectRef.value, 'limit=1000'));
     if (!res.ok) return;
     if (gen !== corpusLawsGeneration) return; // stale response, discard
     const list = await res.json();
@@ -494,15 +508,35 @@ function saveActiveTab(tab) {
   else localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, JSON.stringify(tab));
 }
 
-// If the user lands on /editor without a lawId, restore the last tab
-// they had open before the refresh.
+/**
+ * Build a router target for the editor that preserves the current
+ * traject scope. With a traject in the URL the user stays in
+ * `editor-traject` (full edit mode); without one they stay in `editor`
+ * (read-only). Vue Router requires the route name to match the
+ * presence/absence of the `:trajectRef` param, so a single literal
+ * `name: 'editor'` won't survive a no-traject ↔ with-traject switch.
+ */
+function editorRouteFor(lawIdVal, articleNumber) {
+  const trajectRef = route.params.trajectRef;
+  if (trajectRef) {
+    return {
+      name: 'editor-traject',
+      params: { trajectRef, lawId: lawIdVal, articleNumber },
+    };
+  }
+  return {
+    name: 'editor',
+    params: { lawId: lawIdVal, articleNumber },
+  };
+}
+
+// If the user lands on the editor without a lawId, restore the last
+// tab they had open before the refresh — keeping the same traject
+// scope (or lack of it).
 if (!route.params.lawId) {
   const last = loadSavedActiveTab();
   if (last?.lawId) {
-    router.replace({
-      name: 'editor',
-      params: { lawId: last.lawId, articleNumber: last.articleNumber || undefined },
-    });
+    router.replace(editorRouteFor(last.lawId, last.articleNumber || undefined));
   }
 }
 
@@ -564,22 +598,27 @@ async function selectTab(tab) {
   // Sync the URL so deep-linking and browser back/forward stay in step.
   // `replace` (not `push`) keeps history clean — a tab switch isn't
   // navigation the user wants to undo with the back button.
-  router.replace({
-    name: 'editor',
-    params: { lawId: tab.lawId, articleNumber: tab.articleNumber },
-  });
+  router.replace(editorRouteFor(tab.lawId, tab.articleNumber));
 }
 
-// Browser back/forward (or any external navigation) — pull state from URL.
-// Local mutations from selectTab already match the destination, so the
-// guards below short-circuit; the work only happens for true URL changes.
+// Browser back/forward (or any external navigation) — pull state from
+// URL. Local mutations from selectTab already match the destination,
+// so the guards below short-circuit; the work only happens for true
+// URL changes.
+//
+// trajectRef-only changes are intentionally NOT handled here: the
+// `watch(activeTrajectRef)` above already does `unloadAllLaws` +
+// `loadCorpusLaws` + `switchLaw`, and triggering switchLaw twice in
+// the same tick would burn an extra fetch (the first await loses the
+// switchVersion race, but still hits the network). This guard handles
+// the law / article portion only.
 onBeforeRouteUpdate(async (to) => {
   const newLawId = to.params.lawId;
   const newArticle = to.params.articleNumber;
   if (!newLawId) return;
   if (newLawId !== lawId.value) {
     const gen = ++switchGeneration;
-    await switchLaw(newLawId, newArticle);
+    await switchLaw(newLawId, newArticle, to.params.trajectRef || null);
     if (gen !== switchGeneration) return;
     lawNames.value = { ...lawNames.value, [newLawId]: lawName.value };
   } else if (newArticle && String(newArticle) !== String(selectedArticleNumber.value)) {
@@ -604,17 +643,26 @@ function tabDisplayName(tab) {
   return lawNames.value[tab.lawId] || tab.lawId;
 }
 
-// Load lawNames for persisted tabs on startup (parallel, deduplicated)
+// Load lawNames for persisted tabs on startup (parallel, deduplicated).
+// Reads go through the currently-active traject so tab labels match
+// what the editor pane shows after a save.
 const uniqueLawIds = [...new Set(openTabs.value.map(t => t.lawId))];
 Promise.all(uniqueLawIds.map(async (id) => {
   try {
-    const entry = await fetchLaw(id);
+    const entry = await fetchLaw(activeTrajectRef.value, id);
     lawNames.value = { ...lawNames.value, [id]: entry.lawName };
   } catch { /* ignore */ }
 }));
 
 // --- Engine ---
-const { ready: engineReady, initError: engineInitError, initEngine, getEngine } = useEngine();
+const {
+  ready: engineReady,
+  initError: engineInitError,
+  initEngine,
+  getEngine,
+  loadLawYaml,
+  unloadAllLaws,
+} = useEngine();
 initEngine().catch(() => {});
 
 // The engine-loading watch lives below, next to `currentLawYaml`, so it
@@ -829,18 +877,18 @@ const currentLawYaml = computed(() => {
   }
 });
 
-// Load current law into engine. Reacts to currentLawYaml so in-memory edits
-// are immediately visible to scenarios.
+// Load current law into engine. Reacts to currentLawYaml so in-memory
+// edits are immediately visible to scenarios. Goes through
+// useEngine.loadLawYaml so the engine's scope-tracking map sees this
+// load under the right traject — otherwise a later loadDependency call
+// for the same law id would treat it as already-current and skip the
+// refetch on a traject switch.
 watch(
   [currentLawYaml, engineReady],
-  ([lawYaml, isReady]) => {
+  async ([lawYaml, isReady]) => {
     if (!isReady || !lawYaml) return;
-    const engine = getEngine();
     try {
-      if (engine.hasLaw(lawId.value)) {
-        engine.unloadLaw(lawId.value);
-      }
-      engine.loadLaw(lawYaml);
+      await loadLawYaml(lawYaml, lawId.value, activeTrajectRef.value);
     } catch (e) {
       console.warn(`Failed to load law '${lawId.value}' into engine:`, e);
     }
@@ -1690,6 +1738,7 @@ async function handleActionSave() {
                   :dirty="isMachineReadableDirty"
                   :saving="lawSaving"
                   :save-error="machineReadableSaveError"
+                  :traject-ref="activeTrajectRef"
                   @open-action="handleOpenAction"
                   @open-edit="activeEditItem = $event"
                   @init-mr="handleInitMr"
@@ -1737,6 +1786,7 @@ async function handleActionSave() {
                   :engine="getEngine()"
                   :ready="engineReady"
                   :articles="articles"
+                  :traject-ref="activeTrajectRef"
                   @executed="handleScenarioExecuted"
                 />
               </template>
@@ -1812,7 +1862,7 @@ async function handleActionSave() {
   </nldd-app-view>
 
   <ActionSheet :action="activeAction" :article="editedArticle" :editable="canEdit" :is-new="activeActionIsNew" @close="handleActionClose" @save="handleActionSave" />
-  <EditSheet :item="activeEditItem" :article="editedArticle" @save="handleSave" @close="activeEditItem = null" />
+  <EditSheet :item="activeEditItem" :article="editedArticle" :traject-ref="activeTrajectRef" @save="handleSave" @close="activeEditItem = null" />
   <SearchPopover
     ref="searchPopoverRef"
     :laws="corpusLaws"
@@ -1880,6 +1930,7 @@ async function handleActionSave() {
         :result="lastResult"
         :output-name="lastOutputName"
         :expectations="lastExpectations"
+        :traject-ref="activeTrajectRef"
       />
     </nldd-page>
   </nldd-sheet>

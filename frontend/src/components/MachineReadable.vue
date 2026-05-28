@@ -1,11 +1,9 @@
 <script setup>
-import { computed, ref, watch, nextTick } from 'vue';
+import { computed, ref, toRef, watch, nextTick } from 'vue';
 import { humanize } from '../utils/outputFormat.js';
 import { useCorpusLaws } from '../composables/useCorpusLaws.js';
 import BreakableName from './BreakableName.vue';
 import RowActionsMenu from './RowActionsMenu.vue';
-
-const { displayName: lawDisplayName } = useCorpusLaws();
 
 const props = defineProps({
   article: { type: Object, default: null },
@@ -16,7 +14,12 @@ const props = defineProps({
   saving: { type: Boolean, default: false },
   /** Error from the most recent save attempt (Error instance or null) */
   saveError: { type: Object, default: null },
+  /** Active traject ref — scopes the corpus-laws lookup so display
+   *  names reflect the traject's view (including its in-progress edits). */
+  trajectRef: { type: String, default: null },
 });
+
+const { displayName: lawDisplayName } = useCorpusLaws(toRef(props, 'trajectRef'));
 
 const emit = defineEmits([
   'open-action',

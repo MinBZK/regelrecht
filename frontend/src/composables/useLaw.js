@@ -1,22 +1,37 @@
 import { computed, ref, shallowRef } from 'vue';
 import yaml from 'js-yaml';
 import { getEditorSessionId, lastSavedPr, sanitizeSavedPr } from './useEditorSession.js';
+import { lawUrl } from './corpusUrls.js';
 
-// --- Shared law cache ---
+// Shared law cache, keyed by `${trajectRef || ''}::${lawId}` so a law
+// opened in traject A and in traject B (or globally) returns the
+// per-traject view rather than whichever was fetched first. The
+// trajectRef is part of the URL, so per-tab navigation never silently
+// mixes content across trajects.
+//
+// LRU-capped so a long session that hops across many trajects doesn't
+// grow the cache without bound. 50 entries comfortably covers global +
+// a handful of trajects × the laws a session realistically opens;
+// evictions are cheap (the next fetch re-populates from the API).
+// Insertion order on a Map IS the LRU order — `touchLawCache` bumps a
+// key by `delete` + `set`.
+const LAW_CACHE_MAX = 50;
 const lawCache = new Map();
 
-/**
- * Drop every cached law-content entry. Called by the traject switcher
- * after a successful active-traject change so the next read fetches the
- * new traject's content via the API instead of returning a previously
- * cached version from another traject (or from the no-traject scope).
- *
- * `lawCache` is keyed by law_id only — without this clear, switching
- * trajecten with the editor open shows whichever traject the law was
- * first opened in.
- */
-export function clearLawCache() {
-  lawCache.clear();
+function lawCacheKey(trajectRef, lawId) {
+  return `${trajectRef || ''}::${lawId}`;
+}
+
+function touchLawCache(key) {
+  if (lawCache.has(key)) {
+    const v = lawCache.get(key);
+    lawCache.delete(key);
+    lawCache.set(key, v);
+  }
+  while (lawCache.size > LAW_CACHE_MAX) {
+    const oldest = lawCache.keys().next().value;
+    lawCache.delete(oldest);
+  }
 }
 
 export function resolveLawName(law) {
@@ -42,27 +57,44 @@ export function lawFetchError(status) {
   return err;
 }
 
-export async function fetchLaw(lawId) {
-  if (lawCache.has(lawId)) return lawCache.get(lawId);
-  const res = await fetch(`/api/corpus/laws/${encodeURIComponent(lawId)}`);
+/**
+ * Fetch a law's YAML, possibly from cache. The traject id is part of
+ * the cache key so this never returns content from a different traject
+ * than the caller asked for.
+ *
+ * @param {string|null} trajectRef - active traject (null = global read)
+ * @param {string} lawId
+ */
+export async function fetchLaw(trajectRef, lawId) {
+  const key = lawCacheKey(trajectRef, lawId);
+  if (lawCache.has(key)) {
+    touchLawCache(key);
+    return lawCache.get(key);
+  }
+  const res = await fetch(lawUrl(trajectRef, lawId));
   if (!res.ok) throw lawFetchError(res.status);
   const text = await res.text();
   const law = yaml.load(text);
   const entry = { law, rawYaml: text, lawName: resolveLawName(law) };
-  lawCache.set(lawId, entry);
+  lawCache.set(key, entry);
+  touchLawCache(key);
   return entry;
 }
 
-export function useLaw(lawParam, articleParam) {
+export function useLaw(lawParam, articleParam, trajectRefParam) {
   if (!lawParam) {
     const params = new URLSearchParams(window.location.search);
     lawParam = params.get('law') || 'zorgtoeslagwet';
   }
   const initialArticle = articleParam || null;
-  // If the parameter looks like a URL, fetch directly; otherwise use the API.
-  const yamlUrl = (lawParam.startsWith('/') || lawParam.startsWith('http'))
-    ? lawParam
-    : `/api/corpus/laws/${encodeURIComponent(lawParam)}`;
+  // Current traject id for this composable instance. `switchLaw` may
+  // update this when navigation crosses trajects, so URL builders read
+  // through the closure instead of capturing a snapshot.
+  let currentTrajectRef = trajectRefParam || null;
+  // If the parameter looks like a URL, fetch directly; otherwise build
+  // the API URL from the current trajectRef.
+  const initialDirectUrl =
+    lawParam.startsWith('/') || lawParam.startsWith('http') ? lawParam : null;
   const law = shallowRef(null);
   const rawYaml = ref('');
   const selectedArticleNumber = ref(null);
@@ -70,15 +102,6 @@ export function useLaw(lawParam, articleParam) {
   const error = ref(null);
   const saving = ref(false);
   const saveError = ref(null);
-  // PR opened or updated by the most recent successful save through the
-  // federated write-back path (RFC-010 phase 6). Imported as a
-  // module-shared ref from useEditorSession so the badge in EditorApp
-  // reflects the most recent save regardless of which composable issued
-  // it (law-content saves via useLaw, scenario saves via useScenarios).
-  // Stays populated across saves in the same editor session — every
-  // successful save returns the same PR info from the backend until the
-  // session ends or the PR is merged/closed. Null for local-source saves
-  // (no upstream PR).
 
   const articles = computed(() => law.value?.articles ?? []);
 
@@ -94,24 +117,24 @@ export function useLaw(lawParam, articleParam) {
   // Shared version counter for `load()` and `switchLaw()`; stale awaits compare and discard.
   let switchVersion = 0;
 
-  // Initial fetch; shares `switchVersion` with `switchLaw` so a mid-flight traject switch wins.
   async function load() {
     const version = ++switchVersion;
     try {
       loading.value = true;
-      const res = await fetch(yamlUrl);
+      const url = initialDirectUrl ?? lawUrl(currentTrajectRef, lawParam);
+      const res = await fetch(url);
       if (!res.ok) throw lawFetchError(res.status);
-      // Gate before and after `res.text()`: skip the body read for stale 200s, and catch races during it.
       if (version !== switchVersion) return;
       const text = await res.text();
       if (version !== switchVersion) return;
       rawYaml.value = text;
       law.value = yaml.load(text);
-      // Populate cache
       const resolvedId = law.value?.$id || lawParam;
-      if (!lawCache.has(resolvedId)) {
-        lawCache.set(resolvedId, { law: law.value, rawYaml: text, lawName: resolveLawName(law.value) });
+      const key = lawCacheKey(currentTrajectRef, resolvedId);
+      if (!lawCache.has(key)) {
+        lawCache.set(key, { law: law.value, rawYaml: text, lawName: resolveLawName(law.value) });
       }
+      touchLawCache(key);
       if (articles.value.length > 0 && !selectedArticleNumber.value) {
         if (initialArticle && articles.value.some(a => String(a.number) === initialArticle)) {
           selectedArticleNumber.value = initialArticle;
@@ -120,7 +143,7 @@ export function useLaw(lawParam, articleParam) {
         }
       }
     } catch (e) {
-      if (version !== switchVersion) return; // stale, discard
+      if (version !== switchVersion) return;
       error.value = e;
     } finally {
       if (version === switchVersion) {
@@ -134,21 +157,24 @@ export function useLaw(lawParam, articleParam) {
   // Derive the law ID from the parsed law or the original param
   const lawId = computed(() => law.value?.$id || lawParam);
 
-  async function switchLaw(newLawId, articleNumber) {
+  /**
+   * Re-load the open law's content, optionally switching law id /
+   * article / traject in one step. Passing `newTrajectRef` is how a
+   * cross-traject URL change drives a fresh fetch (and the cache key
+   * keeps the previous traject's copy untouched).
+   */
+  async function switchLaw(newLawId, articleNumber, newTrajectRef) {
     const version = ++switchVersion;
     try {
       loading.value = true;
       error.value = null;
-      // Reset save state too — a failed save on the previous law must not
-      // leak its error dialog (or spinner) into the new law's Machine
-      // panel. `saving` is cleared here alongside `saveError` because an
-      // in-flight PUT from the previous law will still set `saving = false`
-      // in its own `finally`, but until that stale response arrives the
-      // new law should not inherit the spinner.
       saveError.value = null;
       saving.value = false;
-      const entry = await fetchLaw(newLawId);
-      if (version !== switchVersion) return; // stale, discard
+      if (newTrajectRef !== undefined) {
+        currentTrajectRef = newTrajectRef || null;
+      }
+      const entry = await fetchLaw(currentTrajectRef, newLawId);
+      if (version !== switchVersion) return;
       law.value = entry.law;
       rawYaml.value = entry.rawYaml;
       if (articleNumber) {
@@ -157,7 +183,7 @@ export function useLaw(lawParam, articleParam) {
         selectedArticleNumber.value = String(articles.value[0].number);
       }
     } catch (e) {
-      if (version !== switchVersion) return; // stale, discard
+      if (version !== switchVersion) return;
       error.value = e;
     } finally {
       if (version === switchVersion) {
@@ -182,28 +208,29 @@ export function useLaw(lawParam, articleParam) {
     if (!lawId.value) {
       throw new Error('Cannot save law: no lawId');
     }
+    if (!currentTrajectRef) {
+      throw new Error('Cannot save law: no active traject');
+    }
     // Snapshot the law we're saving *before* the await. If the user
     // switches laws while the PUT is in flight, `switchLaw` will replace
     // `lawId` / `rawYaml` / `law` with the new law's state; when the stale
     // response eventually arrives, we must not overwrite the new law's
     // reactive state with the old law's YAML.
     const savedLawId = lawId.value;
+    const savedTrajectRef = currentTrajectRef;
     saving.value = true;
     saveError.value = null;
     try {
-      const res = await fetch(
-        `/api/corpus/laws/${encodeURIComponent(savedLawId)}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'text/yaml; charset=utf-8',
-            // Required by editor-api on every write — scopes this save to
-            // a per-(session, source) feature branch + PR upstream.
-            'X-Editor-Session': getEditorSessionId(),
-          },
-          body: yamlText,
+      const res = await fetch(lawUrl(savedTrajectRef, savedLawId), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'text/yaml; charset=utf-8',
+          // Required by editor-api on every write — scopes this save to
+          // a per-(session, source) feature branch + PR upstream.
+          'X-Editor-Session': getEditorSessionId(),
         },
-      );
+        body: yamlText,
+      });
       if (!res.ok) {
         // Only surface the body when it's our editor-api speaking. The
         // editor-api returns plain `text/plain; charset=utf-8` for its
@@ -223,11 +250,6 @@ export function useLaw(lawParam, articleParam) {
         throw new Error(text);
       }
       // Backend returns `{ pr: { url, number, branch } | null }` on 200.
-      // Update `lastSavedPr` unconditionally — the badge represents "last
-      // save's PR" not "current law's PR", and `useScenarios.saveScenario`
-      // applies the same rule. The reactive refs for `rawYaml`/`law` are
-      // still gated on `lawId.value === savedLawId` below because writing
-      // them after a law-switch would corrupt the new law's editor state.
       try {
         const json = await res.json();
         lastSavedPr.value = sanitizeSavedPr(json?.pr);
@@ -235,40 +257,27 @@ export function useLaw(lawParam, articleParam) {
         // Older deployments return a bare 200 without JSON — keep the
         // existing PR (if any) and treat the save as successful.
       }
-      // Parse once and reuse for both reactive state and the shared
-      // lawCache so they remain referentially consistent.
       const parsed = yaml.load(yamlText);
       // Bail on the success path if the user navigated away mid-flight.
-      // The write succeeded on the backend (so the cache update below is
-      // still worth doing), but we must not touch the now-foreign
-      // reactive refs.
-      if (lawId.value === savedLawId) {
+      if (lawId.value === savedLawId && currentTrajectRef === savedTrajectRef) {
         rawYaml.value = yamlText;
         law.value = parsed;
       }
-      // Keep the shared cache in sync so other tabs on the same law see
-      // the edited version on their next fetchLaw() call. The cache key
-      // is the saved law's ID, independent of the composable's current
-      // `lawId` ref, so this refresh is safe even if the user switched.
       const resolvedId = parsed?.$id || savedLawId;
-      lawCache.set(resolvedId, {
+      const savedKey = lawCacheKey(savedTrajectRef, resolvedId);
+      lawCache.set(savedKey, {
         law: parsed,
         rawYaml: yamlText,
         lawName: resolveLawName(parsed),
       });
+      touchLawCache(savedKey);
     } catch (e) {
-      // Only surface the error on the originating law's state. If the user
-      // navigated away, the error belongs to law A and the new law's
-      // Machine panel must not inherit it.
-      if (lawId.value === savedLawId) {
+      if (lawId.value === savedLawId && currentTrajectRef === savedTrajectRef) {
         saveError.value = e;
       }
       throw e;
     } finally {
-      // Same story for the spinner: only clear it if we're still on the
-      // same law. If the user switched, switchLaw already reset `saving`
-      // and we don't want to fight that.
-      if (lawId.value === savedLawId) {
+      if (lawId.value === savedLawId && currentTrajectRef === savedTrajectRef) {
         saving.value = false;
       }
     }

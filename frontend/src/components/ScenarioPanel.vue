@@ -7,10 +7,19 @@ import ScenarioGherkin from './ScenarioGherkin.vue';
 const props = defineProps({
   lawId: { type: String, required: true },
   lawYaml: { type: String, default: null },
+  trajectRef: { type: String, default: null },
 });
 
 const mode = ref('form');
 const { ready, initError, initEngine, loadDependency, getEngine } = useEngine();
+
+// Wrap loadDependency so scenario runs pull dependencies through the
+// same traject scope as the current law. Without this the engine
+// would fetch dependencies from the global view and miss any
+// in-progress edits within the traject.
+function loadDependencyInScope(lawId) {
+  return loadDependency(lawId, props.trajectRef || null);
+}
 
 // Initialize the engine on mount
 initEngine().catch(() => {});
@@ -63,6 +72,7 @@ function onModeChange(event) {
           :law-yaml="lawYaml"
           :engine="getEngine()"
           :ready="ready"
+          :traject-ref="trajectRef"
         />
       </KeepAlive>
 
@@ -73,7 +83,8 @@ function onModeChange(event) {
           :law-id="lawId"
           :engine="getEngine()"
           :ready="ready"
-          :load-dependency="loadDependency"
+          :load-dependency="loadDependencyInScope"
+          :traject-ref="trajectRef"
         />
       </KeepAlive>
     </template>

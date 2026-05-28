@@ -137,6 +137,12 @@ function stubSave(putResponse) {
 }
 
 describe('useDraftNotes.saveToRepo', () => {
+  // Traject ref used across these saveToRepo tests — must look like
+  // `{slug}-{8hex}` so the URL builder produces the canonical shape and
+  // the assertions stay stable.
+  const TRAJECT_REF = 'tarief-2026-3f4a8b2c';
+  const TRAJECT_ROUTE = `/api/trajects/${TRAJECT_REF}`;
+
   beforeEach(() => {
     lastSavedPr.value = null;
   });
@@ -148,18 +154,21 @@ describe('useDraftNotes.saveToRepo', () => {
         pr: { url: 'https://github.com/x/y/pull/7', number: 7, branch: 'b' },
       }),
     });
-    const { addDraft, saveToRepo, drafts } = useDraftNotes(ref('zorgtoeslagwet'));
+    const { addDraft, saveToRepo, drafts } = useDraftNotes(
+      ref('zorgtoeslagwet'),
+      ref(TRAJECT_REF),
+    );
     addDraft({ ...NOTE, __draft: true });
 
     await saveToRepo();
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     const [url, opts] = globalThis.fetch.mock.calls[0];
-    expect(url).toBe('/api/corpus/laws/zorgtoeslagwet/annotations');
+    expect(url).toBe(`${TRAJECT_ROUTE}/corpus/laws/zorgtoeslagwet/annotations`);
     expect(opts.method).toBe('PUT');
     expect(opts.headers['Content-Type']).toBe('application/json');
-    // No X-Editor-Session: the traject is implicit in the session cookie
-    // (same as law/scenario saves since #632).
+    // No X-Editor-Session: the traject is explicit in the URL path, not
+    // a session header.
     expect(opts.headers['X-Editor-Session']).toBeUndefined();
     const sent = JSON.parse(opts.body);
     expect(Array.isArray(sent)).toBe(true);
@@ -174,18 +183,37 @@ describe('useDraftNotes.saveToRepo', () => {
     });
   });
 
-  it('never appends a ?source= query — the traject decides the target', async () => {
+  it('uses the traject path; ignores any spurious source argument', async () => {
     stubSave({ ok: true, json: async () => ({ pr: null }) });
-    const { addDraft, saveToRepo } = useDraftNotes(ref('zorgtoeslagwet'));
+    const { addDraft, saveToRepo } = useDraftNotes(
+      ref('zorgtoeslagwet'),
+      ref(TRAJECT_REF),
+    );
     addDraft({ ...NOTE, __draft: true });
 
-    // saveToRepo takes no source argument anymore; even if one is passed
-    // it must not leak into the URL.
+    // saveToRepo takes no source argument; passing one must not leak
+    // into the URL.
     await saveToRepo('amsterdam');
 
     expect(globalThis.fetch.mock.calls[0][0]).toBe(
-      '/api/corpus/laws/zorgtoeslagwet/annotations',
+      `${TRAJECT_ROUTE}/corpus/laws/zorgtoeslagwet/annotations`,
     );
+  });
+
+  it('throws "no active traject" when called without a traject ref', async () => {
+    // Per-tab traject lives in the URL; an editor session without one
+    // has no business calling saveToRepo. The thrown shape matches the
+    // requireTraject helper so the editor surfaces a clear error.
+    stubSave({ ok: true, json: async () => ({ pr: null }) });
+    const { addDraft, saveToRepo, drafts } = useDraftNotes(
+      ref('zorgtoeslagwet'),
+      ref(null),
+    );
+    addDraft({ ...NOTE, __draft: true });
+
+    await expect(saveToRepo()).rejects.toThrow(/active traject/);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(drafts.value).toHaveLength(1);
   });
 
   it('keeps the existing PR badge on a NoChange re-save', async () => {
@@ -194,7 +222,10 @@ describe('useDraftNotes.saveToRepo', () => {
     // so the UI can say "already saved" instead of looking like loss.
     lastSavedPr.value = { url: 'https://github.com/x/y/pull/3', number: 3, branch: 'b' };
     stubSave({ ok: true, json: async () => ({ pr: null, no_change: true }) });
-    const { addDraft, saveToRepo, drafts } = useDraftNotes(ref('w'));
+    const { addDraft, saveToRepo, drafts } = useDraftNotes(
+      ref('w'),
+      ref(TRAJECT_REF),
+    );
     addDraft({ ...NOTE, __draft: true });
 
     const result = await saveToRepo();
@@ -218,7 +249,10 @@ describe('useDraftNotes.saveToRepo', () => {
       headers: { get: () => 'text/plain; charset=utf-8' },
       text: async () => 'Notes are not valid against the annotation schema',
     });
-    const { addDraft, saveToRepo, drafts } = useDraftNotes(ref('w'));
+    const { addDraft, saveToRepo, drafts } = useDraftNotes(
+      ref('w'),
+      ref(TRAJECT_REF),
+    );
     addDraft({ ...NOTE, __draft: true });
 
     await expect(saveToRepo()).rejects.toThrow(/not valid against/);
@@ -233,7 +267,7 @@ describe('useDraftNotes.saveToRepo', () => {
       () => new Promise((r) => { resolvePut = r; }),
     );
     const lawId = ref('lawA');
-    const { addDraft, saveToRepo, drafts } = useDraftNotes(lawId);
+    const { addDraft, saveToRepo, drafts } = useDraftNotes(lawId, ref(TRAJECT_REF));
     addDraft({ ...NOTE, __draft: true }); // a draft on lawA
 
     const p = saveToRepo(); // snapshots id = 'lawA'

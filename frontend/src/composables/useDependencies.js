@@ -8,6 +8,7 @@
 import { ref } from 'vue';
 import yaml from 'js-yaml';
 import { useBwbHarvest } from './useBwbHarvest.js';
+import { lawsListUrl } from './corpusUrls.js';
 
 /**
  * Extract all unique `source.regulation` references from a parsed law object.
@@ -97,8 +98,11 @@ export function useDependencies() {
    * @param {string} lawYamlText - Raw YAML text of the main law
    * @param {object} engine - WasmEngine instance
    * @param {(lawId: string) => Promise<string>} fetchLawYaml - Fetch law YAML by ID
+   * @param {string|null} trajectRef - Active traject reference. Drives
+   *   which corpus list is scanned for implementing regulations so
+   *   in-progress trajects pick up their own implementors.
    */
-  async function loadAllDependencies(lawYamlText, engine, fetchLawYaml) {
+  async function loadAllDependencies(lawYamlText, engine, fetchLawYaml, trajectRef = null) {
     loading.value = true;
     error.value = null;
     loadedDeps.value = [];
@@ -114,7 +118,7 @@ export function useDependencies() {
 
       // Phase 2: Discover implementing regulations
       try {
-        const corpusRes = await fetch('/api/corpus/laws?limit=1000');
+        const corpusRes = await fetch(lawsListUrl(trajectRef, 'limit=1000'));
         if (corpusRes.ok) {
           const allLaws = await corpusRes.json();
 
