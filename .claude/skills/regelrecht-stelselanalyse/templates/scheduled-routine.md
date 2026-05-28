@@ -57,12 +57,13 @@ Push nooit naar een publieke repo."}
 - `/schedule list` — overzicht · `/schedule update` — wijzigen · `/schedule run` — nu draaien
 - Web-UI: claude.ai/code/routines (triggers, omgeving, connectors)
 
-### Harness-afdwinging (geïnstalleerd)
+### Harness-afdwinging (lokaal instellen)
 
-Er staat een globale PreToolUse-hook in `~/.claude/settings.json`
+Installeer een globale PreToolUse-hook in `~/.claude/settings.json`
 (`~/.claude/hooks/git-push-private-guard.sh`) die **elke** `git push` blokkeert tenzij de
-target een private GitHub-repo is. Escape-hatch voor een bewuste publieke push:
-`ALLOW_PUBLIC_PUSH=1 git push`.
+target een private GitHub-repo is. Deze hook is **machine-lokaal** en reist niet mee met
+de repo — registreer 'm zelf in je eigen `~/.claude/`. Escape-hatch voor een bewuste
+publieke push: `ALLOW_PUBLIC_PUSH=1 git push`.
 
 > ⚠ **Lokaal vs cloud.** Deze hook beschermt **lokale** sessies en `/loop`-runs (die op
 > jouw machine draaien). `/schedule`-routines draaien in een **aparte cloud-omgeving** en
