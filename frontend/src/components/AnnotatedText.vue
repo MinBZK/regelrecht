@@ -74,8 +74,11 @@ function motivationClass(note) {
 }
 
 // Same scheme but as a CSS colour — used for the inline layered backgrounds
-// in segments with multiple visible notes. The values mirror the CSS rules
-// below; if either side changes, the other must follow.
+// in segments with multiple visible notes. The values mirror these CSS rules
+// (search the file for each selector if you change one side): `:deep(mark.
+// note-linking)`, `note-commenting`, `note-questioning`, `note-tagging`,
+// `note-other`. Note the `questioning` row is 0.30 by design — slightly more
+// opaque so orange reads against light text — keep both sides in sync.
 const MOTIVATION_COLOR = {
   linking: 'rgba(59, 130, 246, 0.28)',
   commenting: 'rgba(234, 179, 8, 0.28)',

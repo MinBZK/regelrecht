@@ -61,7 +61,15 @@ export function planSegments(items) {
     const visible = covering.filter(
       (x) => !covering.some((y) => y !== x && strictlyContains(x, y)),
     );
-    if (visible.length === 0) continue;
+    // Strict containment is asymmetric (A ⊃ B ∧ B ⊃ A would require both
+    // boundaries equal, which violates the "at least one strict" clause), so
+    // a non-empty covering set always has at least one minimal element that
+    // survives the filter. Surfacing the invariant as a throw, not a silent
+    // continue, means a future change to strictlyContains that breaks it
+    // fails loudly instead of producing empty render segments.
+    if (visible.length === 0) {
+      throw new Error('planSegments invariant: visible must be non-empty when covering is non-empty');
+    }
 
     const primary = pickPrimary(visible);
     segments.push({
