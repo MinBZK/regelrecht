@@ -329,6 +329,13 @@ function onDocPointerDown(event) {
 }
 
 function onDocPointerUp(event) {
+  // Match the button filter from onDocPointerDown: a secondary-button
+  // pointerup while the primary-button drag is still in flight must not
+  // consume the drag's start coords or clear isDragging — otherwise the
+  // remaining drag falls through to only the isSelectingInRoot() guard.
+  // pointercancel is exempt: any cancel aborts the whole gesture, primary
+  // or not.
+  if (event.type !== 'pointercancel' && event.button !== 0) return;
   const start = pointerDownAt;
   pointerDownAt = null;
   isDragging = false;

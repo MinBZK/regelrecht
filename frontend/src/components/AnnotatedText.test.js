@@ -384,6 +384,19 @@ describe('AnnotatedText popover suppression during drag-selection', () => {
     }
   });
 
+  it('ignores a secondary-button pointerup while a primary drag is in flight', async () => {
+    // Right-button release mid-left-drag must not consume the left-drag's
+    // start coords or clear isDragging — otherwise the remaining drag would
+    // fall back to only the selection-based guard for the rest of the
+    // gesture and a pointerover on a mark could re-open the popover before
+    // the actual left release.
+    const { wrapper, mark } = await mountedWithMark();
+    fire(document, 'pointerdown', { button: 0, clientX: 10, clientY: 10 });
+    fire(mark, 'pointerup', { button: 2, clientX: 12, clientY: 11 }); // secondary
+    fire(mark, 'pointerover');
+    expect(wrapper.vm.activeNote).toBeNull();
+  });
+
   it('closes an already-open popover immediately on a new pointerdown', async () => {
     const { wrapper, mark } = await mountedWithMark();
     fire(mark, 'pointerover');
