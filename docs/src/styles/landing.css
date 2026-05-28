@@ -44,3 +44,20 @@
     scroll-behavior: smooth;
   }
 }
+
+/* --- Pre-paint defaults ---
+   <html> initially renders in light scheme; the inline theme bootstrap in
+   Base.astro flips it to dark when needed. Set via class to keep CSP's
+   style-src free of 'unsafe-inline'. The bootstrap overrides this with
+   .colorScheme as soon as it runs. */
+html {
+  color-scheme: light;
+}
+
+/* --- Layout utility ---
+   Prevents long content (wide tables, code blocks) inside the right column
+   of nldd-one-third-two-thirds-section from forcing the column wider than
+   its share. Used on docs and RFC slug pages. */
+.rr-min-width-0 {
+  min-width: 0;
+}

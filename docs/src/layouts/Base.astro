@@ -196,7 +196,7 @@ const legalLinks = [
 ---
 
 <!doctype html>
-<html lang={lang} data-scheme="light" style="color-scheme: light;">
+<html lang={lang} data-scheme="light">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -457,6 +457,33 @@ const legalLinks = [
                 </nldd-rich-text>
               </nldd-container>
             </nldd-container>
+          )}
+          {isLanding && (
+            <Fragment>
+              {/* Internet.nl 100% badge. Per the internet.nl badge policy
+                  (https://internet.nl/faqs/badges/) the SVG is served from our
+                  own domain (no hot-link), the page's domain matches the
+                  100%-scoring domain, and the badge hyperlinks to
+                  https://internet.nl/. Rendered only on the landing
+                  (regelrecht.rijks.app), not on docs or signup. */}
+              <nldd-spacer size="24" />
+              <nldd-rich-text>
+                <p>
+                  <a
+                    href={t.compliance.internetNlUrl}
+                    rel="noopener external"
+                    aria-label={t.compliance.label}
+                  >
+                    <img
+                      src="/internet-nl-100-website.svg"
+                      alt={t.compliance.alt}
+                      width="204"
+                      height="38"
+                    />
+                  </a>
+                </p>
+              </nldd-rich-text>
+            </Fragment>
           )}
           <nldd-page-footer-legal-bar slot="legal-bar" accessible-label={legalLabel}>
             <nldd-page-footer-legal-bar-item slot="start" text={copyrightText} />

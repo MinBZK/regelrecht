@@ -91,6 +91,7 @@ export interface LandingContent {
     }[]
   }
   feedback: { title: string; body: string; cta: string; ctaHref: string }
+  compliance: { label: string; alt: string; internetNlUrl: string }
   footer: {
     blurb: string
     linksTitle: string
@@ -516,6 +517,11 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       body: 'Deze verkenning van machine-uitvoerbare wetgeving roept veel vragen op. Hoe zie jij de toekomst van de digitale overheid? Wat zijn je zorgen en verwachtingen bij deze ontwikkelingen? Jouw input helpt ons deze verkenning verder vorm te geven.',
       cta: 'Meld je aan of deel je gedachten',
       ctaHref: SIGNUP_NL_PATH,
+    },
+    compliance: {
+      label: '100% score op de Internet.nl websitetest',
+      alt: 'Badge: 100% score op de Internet.nl websitetest',
+      internetNlUrl: 'https://internet.nl/',
     },
     footer: {
       blurb:
@@ -949,6 +955,11 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       body: 'This exploration of machine-executable legislation raises many questions. How do you see the future of digital government? What are your concerns and expectations around these developments? Your input helps us shape this exploration further.',
       cta: 'Sign up or share your thoughts',
       ctaHref: SIGNUP_EN_PATH,
+    },
+    compliance: {
+      label: '100% score on the Internet.nl website test',
+      alt: 'Badge: 100% score on the Internet.nl website test',
+      internetNlUrl: 'https://internet.nl/',
     },
     footer: {
       blurb:
