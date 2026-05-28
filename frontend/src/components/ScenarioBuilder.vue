@@ -2,6 +2,7 @@
 import { ref, computed, watch, nextTick } from 'vue';
 import { useDependencies } from '../composables/useDependencies.js';
 import { useScenarios } from '../composables/useScenarios.js';
+import { lawUrl } from '../composables/corpusUrls.js';
 import { parseFeature } from '../gherkin/parser.js';
 import { mapFeatureToForm, getEffectiveSetup, formStateToGherkin, syncEditedValues } from '../gherkin/formMapper.js';
 import { matchStatus, humanize } from '../utils/outputFormat.js';
@@ -15,6 +16,10 @@ const props = defineProps({
   ready: { type: Boolean, default: false },
   /** Articles array from useLaw() for article mapping */
   articles: { type: Array, default: () => [] },
+  /** Active traject ref. Required for scenario writes; reads route
+   *  through the matching traject's backend so a save is visible
+   *  without a corpus reload. */
+  trajectRef: { type: String, default: null },
 });
 
 const emit = defineEmits(['executed', 'dirty-change']);
@@ -32,6 +37,7 @@ const {
 
 // --- Scenario loading ---
 const lawIdRef = computed(() => props.lawId);
+const trajectRefRef = computed(() => props.trajectRef);
 const {
   scenarios: scenarioFiles,
   selectedScenario: selectedScenarioFile,
@@ -41,7 +47,7 @@ const {
   saveError,
   selectScenario: selectScenarioFile,
   saveScenario,
-} = useScenarios(lawIdRef);
+} = useScenarios(lawIdRef, trajectRefRef);
 
 const formState = ref(null);
 const saveSuccess = ref(false);
@@ -125,12 +131,18 @@ watch(featureText, (text) => {
   }
 });
 
-// Cache for fetched law YAML texts
+// Cache for fetched law YAML texts, scoped to the active traject so a
+// traject switch doesn't return the previous traject's body.
 const yamlCache = {};
+let yamlCacheTrajectRef = null;
 
 async function fetchLawYaml(lawId) {
+  if (yamlCacheTrajectRef !== props.trajectRef) {
+    Object.keys(yamlCache).forEach((k) => delete yamlCache[k]);
+    yamlCacheTrajectRef = props.trajectRef;
+  }
   if (yamlCache[lawId]) return yamlCache[lawId];
-  const res = await fetch(`/api/corpus/laws/${encodeURIComponent(lawId)}`);
+  const res = await fetch(lawUrl(props.trajectRef, lawId));
   if (!res.ok) throw new Error(`Failed to fetch law '${lawId}': ${res.status}`);
   const text = await res.text();
   yamlCache[lawId] = text;
@@ -150,7 +162,7 @@ watch(
     const version = ++watchVersion;
     depsReady.value = false;
 
-    await loadAllDependencies(lawYaml, props.engine, fetchLawYaml);
+    await loadAllDependencies(lawYaml, props.engine, fetchLawYaml, props.trajectRef);
     if (version !== watchVersion) return;
 
     // Also load dependencies from scenario background + per-scenario steps
