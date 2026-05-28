@@ -60,10 +60,16 @@ focus niet afgedekt (minimum en uitgebreid), focusverschijning, sleepbewegingen,
 klikdoelgrootte, consistente hulp, herhaalde invoer, en toegankelijke
 authenticatie (minimum en uitgebreid). Daarnaast is met de hand getest:
 
-- de werking met alleen een toetsenbord, inclusief de sla-over-link en de
-  focusvolgorde;
-- de donkere modus, op contrast en leesbaarheid;
-- weergave bij 200% zoom en bij 400% herschaling.
+- de werking met alleen een toetsenbord, inclusief de sla-over-link
+  ("Direct naar de inhoud") en de focusvolgorde;
+- de focusindicatie (zichtbare blauwe omkadering op elk interactief element);
+- de drie thema's (Systeem, Licht, Donker) via het thema-menu, op contrast en
+  leesbaarheid;
+- weergave bij 200% zoom en bij 400% herschaling (zonder horizontale scroll);
+- steekproefsgewijs contrastverhoudingen in de browser gemeten op de
+  landingspagina (donkere en lichte modus): titels 11,3–12,4:1, links 5,8–9,4:1,
+  alles ruim boven de AA-eis. De documentatiepagina's gebruiken hetzelfde
+  NLDD-palet maar zijn niet element-voor-element nagemeten.
 
 ## Bekende beperkingen
 
@@ -82,10 +88,6 @@ meting, met een toelichting in de configuratie:
   hetzelfde element; de toets verwart de twee kleurensets en meet een mengsel dat
   niet op het scherm verschijnt. De werkelijke tekst haalt in beide modi ruim de
   4,5:1 die AA vraagt.
-- **De hero op de landingspagina.** De titeltekst staat in wit op een donkerblauwe
-  verloopachtergrond. axe kan een verloop niet beoordelen. De zwakste plek van het
-  verloop, de lichtste stop, geeft wit-op-donkerblauw een verhouding van 11,4:1;
-  naar de donkere kant loopt dat op tot 15,5:1.
 
 De toegankelijke naam van elk diagram (`role="img"` met een `aria-label`) wordt in
 dezelfde gate apart tegen de bouwoutput gecontroleerd, los van de uitgesloten
@@ -96,8 +98,15 @@ contrastmeting.
 - Er is **geen onafhankelijke audit** geweest. Alles hierboven berust op de eigen
   toets en controle van het team.
 - De interface gebruikt web-componenten uit het NLDD-designsysteem die hun inhoud
-  in een schaduw-DOM tekenen. Hun eigen focusindicatie en interne toegankelijkheid
-  vallen buiten de site-eigen controle en hangen af van het designsysteem.
+  in een schaduw-DOM tekenen. De `<main>`-landmark wordt door `nldd-page`
+  binnen die schaduw-DOM gerenderd. Ondersteuning hiervoor verschilt nog per
+  schermlezer (NVDA en JAWS komen er goed mee om, VoiceOver op iOS is
+  inconsistent met landmarks in schaduw-DOM); de toegankelijkheid hangt af
+  van het designsysteem en is door dit team niet apart per schermlezer
+  geverifieerd.
+- Het `nldd-page-footer-legal-bar-item` (de copyright-tekst onderin de footer)
+  haalt door zijn token-kleur net geen AA-contrast. Dat ligt bij het
+  designsysteem en wordt daar opgepakt.
 
 ## Probleem melden
 
@@ -107,6 +116,6 @@ op welke pagina; dan pakken we het op.
 
 ## Opgesteld
 
-Deze conceptverklaring is opgesteld op 21 mei 2026, op basis van de toets en
-controle van dat moment. RegelRecht is een verkenning en wordt nog ontwikkeld; de
+Deze conceptverklaring is opgesteld op 21 mei 2026 en bijgewerkt op 27 mei 2026
+na een hercontrole. RegelRecht is een verkenning en wordt nog ontwikkeld; de
 verklaring wordt bijgewerkt als de site verandert of na een formele audit.
