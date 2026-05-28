@@ -132,6 +132,45 @@ fn valid_repo_segment(s: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
 }
 
+/// Validate a user-supplied `repo_path` (sub-directory within a repo).
+///
+/// Empty is allowed and means "repo root". Otherwise the path must be
+/// relative (no leading `/`, no Windows prefix) and contain only
+/// "normal" components — no `..`, no `.`, no root. Each segment is
+/// further constrained to the same character set as `valid_repo_segment`
+/// so it can safely flow into a GitHub Contents-API URL without
+/// double-encoding or escaping surprises.
+///
+/// `validate_relative_path` inside `GitBackend::resolve` covers the
+/// inner per-file relative path, but the *base* `repo_subpath` (stored
+/// on the row as `gh_path`) never reaches that check. Without this
+/// guard a caller could ship `repo_path = "../../etc"` and the backend
+/// would read/write outside the per-traject clone.
+fn valid_repo_path(s: &str) -> bool {
+    if s.is_empty() {
+        return true;
+    }
+    let p = std::path::Path::new(s);
+    if p.is_absolute() {
+        return false;
+    }
+    for c in p.components() {
+        match c {
+            std::path::Component::Normal(seg) => {
+                let seg_str = seg.to_string_lossy();
+                if !valid_repo_segment(&seg_str) {
+                    return false;
+                }
+            }
+            // ParentDir (`..`), CurDir (`.`), RootDir, Prefix — all
+            // rejected so the stored gh_path is always a clean,
+            // forward-traversal-only relative path.
+            _ => return false,
+        }
+    }
+    true
+}
+
 // Phase-1 default writable source — the central MinBZK corpus repo on
 // its `development` branch, using the app-wide
 // `CORPUS_AUTH_MINBZK_CENTRAL_TOKEN`. Used when the create-request omits
@@ -671,11 +710,51 @@ async fn resolve_writable_target(
                         .to_string(),
                 ));
             }
+            // Validate the optional repo sub-path at the API boundary.
+            // `GitBackend::resolve` only validates the inner *relative*
+            // path on each read/write; the base `gh_path` itself is
+            // never re-checked downstream, so a traversal like
+            // `../../etc` would let the backend read/write outside the
+            // per-traject clone. Reject up-front.
+            let repo_path_input = req
+                .repo_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("");
+            if !valid_repo_path(repo_path_input) {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    "repo_path moet een relatief pad zijn zonder '..' segmenten en \
+                     mag alleen letters, cijfers, en '-', '_', '.' bevatten"
+                        .to_string(),
+                ));
+            }
             let auth_ref = derive_auth_ref(owner, repo);
             if auth_ref.is_empty() {
                 return Err((
                     StatusCode::BAD_REQUEST,
                     format!("owner/repo \"{owner}/{repo}\" produces an empty auth_ref"),
+                ));
+            }
+            // Reject the rare collision where a user-supplied
+            // owner/repo combination derives to the same slug as the
+            // hardcoded central writable auth ref. Without this check,
+            // a user who happens to point a traject at
+            // `MinBZK/central` would silently get the central token
+            // routed to their repo, violating the design principle
+            // that the central token only ever reaches the central
+            // repo. Surface as a 400 so the operator picks a
+            // different slug (or omits the repo fields entirely to
+            // use the actual MinBZK default).
+            if auth_ref == CENTRAL_WRITABLE_AUTH_REF {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    format!(
+                        "repo \"{owner}/{repo}\" botst met de gereserveerde central auth ref; \
+                         gebruik een andere repo of laat de repo-velden weg om naar de centrale \
+                         MinBZK-repo te wijzen"
+                    ),
                 ));
             }
 
@@ -701,10 +780,7 @@ async fn resolve_writable_target(
                         )
                     })?
                     .ok_or_else(|| {
-                        let env_name = format!(
-                            "CORPUS_AUTH_{}_TOKEN",
-                            auth_ref.to_uppercase().replace('-', "_")
-                        );
+                        let env_name = regelrecht_corpus::auth::token_env_name(&auth_ref);
                         tracing::warn!(
                             auth_ref = %auth_ref,
                             env_name = %env_name,
@@ -746,14 +822,9 @@ async fn resolve_writable_target(
                 // under repo root", which the corpus client already
                 // handles correctly. The MinBZK default explicitly sets
                 // "regulation/nl"; user repos dedicated to regulations
-                // typically don't need a subpath.
-                path: req
-                    .repo_path
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or("")
-                    .to_string(),
+                // typically don't need a subpath. Already validated
+                // above as a clean relative path.
+                path: repo_path_input.to_string(),
                 auth_ref,
                 display_name: format!("{owner}/{repo}"),
             })
@@ -1455,5 +1526,51 @@ mod tests {
         // it reaches the INSERT.
         assert_eq!(derive_auth_ref("...", "..."), "");
         assert_eq!(derive_auth_ref(".foo.", ".bar."), "foo-bar");
+    }
+
+    #[test]
+    fn valid_repo_path_accepts_empty_and_simple_subdirs() {
+        assert!(valid_repo_path(""));
+        assert!(valid_repo_path("regulation/nl"));
+        assert!(valid_repo_path("a"));
+        assert!(valid_repo_path("a/b/c"));
+        assert!(valid_repo_path("dir.with.dots/and_underscores"));
+    }
+
+    #[test]
+    fn valid_repo_path_rejects_traversal_and_absolute() {
+        // The whole point of this check: the base gh_path is never
+        // re-validated by GitBackend::resolve, so any traversal or
+        // absolute path that lands in the DB row will be honoured by
+        // the backend on subsequent reads/writes. Reject at the API
+        // boundary.
+        assert!(!valid_repo_path("../etc"));
+        assert!(!valid_repo_path("/etc"));
+        assert!(!valid_repo_path("regulation/../../etc"));
+        assert!(!valid_repo_path("./regulation"));
+        assert!(!valid_repo_path(".."));
+        assert!(!valid_repo_path("regulation/with space"));
+        assert!(!valid_repo_path("regulation/with!bang"));
+    }
+
+    #[test]
+    fn minbzk_central_collides_with_reserved_auth_ref() {
+        // Documents the collision the `resolve_writable_target` guard
+        // exists to prevent: a user-supplied owner=MinBZK, repo=central
+        // derives byte-for-byte to the hardcoded CENTRAL_WRITABLE_AUTH_REF.
+        // Without the guard, that traject would silently get the central
+        // token routed to a user-chosen repo. The guard rejects the
+        // request before INSERT; this test pins the precondition so a
+        // future rename of either constant or `derive_auth_ref` can't
+        // silently break the guard's premise.
+        assert_eq!(
+            derive_auth_ref("MinBZK", "central"),
+            CENTRAL_WRITABLE_AUTH_REF
+        );
+        // Sanity check: an unrelated repo doesn't collide.
+        assert_ne!(
+            derive_auth_ref("MinBZK", "regelrecht-corpus"),
+            CENTRAL_WRITABLE_AUTH_REF
+        );
     }
 }

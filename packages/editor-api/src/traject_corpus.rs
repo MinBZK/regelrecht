@@ -251,19 +251,16 @@ async fn build_traject_corpus(
         // operator can see whether the row carries the expected ref and
         // whether the env var matches.
         if token.is_none() && source.id == writable_own_source_id {
+            let expected_env = regelrecht_corpus::auth::token_env_name(
+                source.auth_ref.as_deref().unwrap_or(&source.id),
+            );
             tracing::error!(
                 traject = %traject_id,
                 source_id = %source.id,
                 auth_ref = ?source.auth_ref,
                 auth_file = ?auth_file,
-                "traject writable-own source resolved NO token — push will fail; \
-                 expected env var: CORPUS_AUTH_{}_TOKEN",
-                source
-                    .auth_ref
-                    .as_deref()
-                    .unwrap_or(&source.id)
-                    .to_uppercase()
-                    .replace('-', "_")
+                expected_env = %expected_env,
+                "traject writable-own source resolved NO token — push will fail"
             );
         }
 

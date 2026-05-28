@@ -116,9 +116,10 @@ mod inner {
         token: &str,
     ) -> Result<RepoInfo, RepoAccessError> {
         let url = format!("{}/repos/{}/{}", base_url, owner, repo);
+        let headers = default_headers(token)?;
         let response = client
             .get(&url)
-            .headers(default_headers(token))
+            .headers(headers)
             .send()
             .await
             .map_err(|e| RepoAccessError::Transport(e.to_string()))?;
@@ -174,9 +175,10 @@ mod inner {
             "{}/repos/{}/{}/branches/{}",
             base_url, owner, repo, base_branch
         );
+        let headers = default_headers(token)?;
         let response = client
             .get(&url)
-            .headers(default_headers(token))
+            .headers(headers)
             .send()
             .await
             .map_err(|e| RepoAccessError::Transport(e.to_string()))?;
@@ -200,7 +202,14 @@ mod inner {
         }
     }
 
-    fn default_headers(token: &str) -> HeaderMap {
+    /// Build the default header set for every GitHub API call, including
+    /// the `Authorization` header. Returns `RepoAccessError::Other` when
+    /// the token contains bytes that aren't valid in an HTTP header value
+    /// (BOM, CR/LF, non-ASCII) — silently dropping the header would send
+    /// an unauthenticated request and surface as a misleading 401, which
+    /// the operator would chase as "GitHub rejected the token" while the
+    /// real cause is a malformed env var.
+    fn default_headers(token: &str) -> Result<HeaderMap, RepoAccessError> {
         let mut headers = HeaderMap::new();
         headers.insert(
             USER_AGENT,
@@ -214,10 +223,15 @@ mod inner {
             "X-GitHub-Api-Version",
             HeaderValue::from_static("2022-11-28"),
         );
-        if let Ok(val) = HeaderValue::from_str(&format!("Bearer {}", token)) {
-            headers.insert(AUTHORIZATION, val);
-        }
-        headers
+        let auth_value = HeaderValue::from_str(&format!("Bearer {}", token)).map_err(|_| {
+            RepoAccessError::Other(
+                "token contains characters not valid in an HTTP header value \
+                 — check the env var for whitespace/BOM/non-ASCII"
+                    .to_string(),
+            )
+        })?;
+        headers.insert(AUTHORIZATION, auth_value);
+        Ok(headers)
     }
 
     /// UTF-8-safe slice up to `max` *bytes*, walking back to the
@@ -356,6 +370,39 @@ mod inner {
                 .await
                 .expect_err("missing branch should error");
             assert!(matches!(err, RepoAccessError::BranchNotFound));
+        }
+
+        #[tokio::test]
+        async fn malformed_token_surfaces_as_other_not_silent_unauth() {
+            // A token with bytes that aren't valid in an HTTP header
+            // value (here: an embedded newline) used to silently drop
+            // the Authorization header and surface as 401, sending the
+            // operator on a wild "token rejected by GitHub" chase. Now
+            // it returns RepoAccessError::Other so the operator-facing
+            // message names the real cause (corrupt env var).
+            //
+            // No server interaction expected — the failure happens
+            // *before* we hit the network. We still spin one up so the
+            // signature is consistent with the other tests; assert that
+            // it isn't touched.
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path("/repos/acme/foo"))
+                .respond_with(ResponseTemplate::new(200))
+                .expect(0)
+                .mount(&server)
+                .await;
+
+            let err = validate_repo_access(&server.uri(), "acme", "foo", "main", "bad\ntoken")
+                .await
+                .expect_err("malformed token must error");
+            match err {
+                RepoAccessError::Other(msg) => assert!(
+                    msg.contains("not valid in an HTTP header value"),
+                    "unexpected Other body: {msg}"
+                ),
+                other => panic!("expected RepoAccessError::Other, got {other:?}"),
+            }
         }
 
         #[tokio::test]

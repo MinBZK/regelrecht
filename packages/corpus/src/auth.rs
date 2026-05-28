@@ -2,6 +2,22 @@ use std::path::Path;
 
 use crate::error::{CorpusError, Result};
 
+/// Construct the per-source token env-var name from a slug.
+///
+/// Single source of truth — used by the resolver and surfaced in
+/// operator-facing error messages so the name shown to the operator
+/// matches what the resolver actually looks up. Keeping it in one place
+/// guarantees that if the naming scheme ever changes (lowercase prefix,
+/// extra separator, etc.) the resolver and the diagnostic log can't
+/// silently drift apart and confuse an operator who follows the error
+/// message.
+pub fn token_env_name(auth_ref: &str) -> String {
+    format!(
+        "CORPUS_AUTH_{}_TOKEN",
+        auth_ref.to_uppercase().replace('-', "_")
+    )
+}
+
 /// Auth configuration for a corpus source, loaded from `corpus-auth.yaml`.
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct AuthConfig {
@@ -65,10 +81,7 @@ pub fn resolve_token_for_source(
 /// to a repo the attacker controls, a token-exfiltration vector.
 pub fn resolve_token_strict(auth_ref: &str, auth_file: Option<&Path>) -> Result<Option<String>> {
     // 1. Per-source environment variable
-    let env_key = format!(
-        "CORPUS_AUTH_{}_TOKEN",
-        auth_ref.to_uppercase().replace('-', "_")
-    );
+    let env_key = token_env_name(auth_ref);
     if let Ok(token) = std::env::var(&env_key) {
         if !token.is_empty() {
             return Ok(Some(token));
@@ -119,10 +132,7 @@ pub fn resolve_token_strict(auth_ref: &str, auth_file: Option<&Path>) -> Result<
 /// 4. None (unauthenticated, lower rate limits).
 pub fn resolve_token(source_id: &str, auth_file: Option<&Path>) -> Result<Option<String>> {
     // 1. Per-source environment variable
-    let env_key = format!(
-        "CORPUS_AUTH_{}_TOKEN",
-        source_id.to_uppercase().replace('-', "_")
-    );
+    let env_key = token_env_name(source_id);
     if let Ok(token) = std::env::var(&env_key) {
         if !token.is_empty() {
             return Ok(Some(token));
