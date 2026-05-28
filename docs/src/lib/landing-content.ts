@@ -465,6 +465,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           a: 'Juridische regels worden dan geschreven als uitvoerbare code die computers direct kunnen draaien en toepassen, zonder tussenkomst van menselijke interpretatie of programmeurs. Is dat realiseerbaar? En hoe verhoudt het zich tot traditioneel analoog recht?',
         },
         {
+          q: 'Wat gebeurt er met open normen?',
+          a: 'Wetten bevatten bewust ruimte voor interpretatie: termen die "bij ministeriële regeling" worden ingevuld, of begrippen die een afweging aan de uitvoerder laten. Bij gewone automatisering verdwijnt die ruimte stilzwijgend in code: de keuze die een programmeur maakt wordt feitelijk recht, zonder publicatie of toetsing. RegelRecht maakt zo\'n keuze juist expliciet: de hogere wet markeert een open norm, de lagere regeling vult hem in, en juristen kunnen aantekenen of een begrip volledig, deels of nog niet is ingevuld. Zo wordt zichtbaar waar de wet eindigt en de interpretatie begint. Echte menselijke beoordelingen in een besluitproces, zoals een hardheidsclausule of een individuele afweging door een ambtenaar, blijven gewoon menselijk werk; die proberen we niet weg te automatiseren.',
+        },
+        {
           q: 'Waarom een eigen regelformaat?',
           a: 'Het formaat is YAML met wettekst en machine-uitvoerbare regels naast elkaar in één bestand. Een versioned JSON Schema bewaakt de structuur, BDD-scenario’s leggen de bedoelde uitkomsten vast. Zo kunnen juristen meelezen, ontwikkelaars meebouwen, en verschillende overheidssystemen dezelfde regels gebruiken.',
           link: { label: 'Lees RFC-001', href: '/rfcs/rfc-001' },
@@ -896,6 +900,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           q: 'What could a digital legal system mean?',
           a: 'Legal rules are written as executable code that computers can run and apply directly, without human interpretation or programmers in between. Is that achievable? And how does it relate to traditional analogue law?',
+        },
+        {
+          q: 'What happens to open norms?',
+          a: 'Laws deliberately leave room for interpretation: terms that are filled in "by ministerial regulation", or concepts that leave a judgement to the implementing body. In ordinary automation that room quietly disappears into code: the choice the programmer makes effectively becomes law, with no publication or scrutiny. RegelRecht turns that choice into something explicit instead: the higher law marks an open norm, the lower regulation fills it in, and lawyers can record whether a concept is fully, partly or not yet filled in. That makes visible where the statute ends and interpretation begins. Genuinely human judgements inside a decision process, such as a hardship clause or a case-by-case assessment by an official, stay human work; we are not trying to automate those away.',
         },
         {
           q: 'Why a dedicated rule format?',
