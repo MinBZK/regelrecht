@@ -171,9 +171,17 @@ mod inner {
         base_branch: &str,
         token: &str,
     ) -> Result<(), RepoAccessError> {
+        // Branch names can legitimately contain `/` (e.g. `feature/foo`,
+        // `release/1.0`). Spliced raw into the path, the slash collapses
+        // into the URL router so GitHub matches `branch = "feature"` with
+        // a trailing path segment and returns 404. Percent-encode the
+        // segment so the branch reaches the API as-typed.
         let url = format!(
             "{}/repos/{}/{}/branches/{}",
-            base_url, owner, repo, base_branch
+            base_url,
+            owner,
+            repo,
+            percent_encode_path_segment(base_branch)
         );
         let headers = default_headers(token)?;
         let response = client
@@ -255,6 +263,30 @@ mod inner {
         format!("{}…", &s[..end])
     }
 
+    /// Percent-encode a single URL path segment per RFC 3986 §2.3:
+    /// unreserved chars (alphanumeric, `-._~`) pass through, everything
+    /// else becomes `%XX`. In particular `/`, `#`, `?`, and `%` are
+    /// encoded — without that, a branch like `feature/foo` collapses
+    /// into the URL path and GitHub matches `branch = "feature"` with a
+    /// trailing segment instead of looking up the real ref.
+    ///
+    /// Inline rather than via a crate dependency: the call is tiny,
+    /// the rule is fixed by the RFC, and the corpus crate already runs
+    /// without the `percent_encoding` / `url` crates as direct deps.
+    fn percent_encode_path_segment(s: &str) -> String {
+        use std::fmt::Write;
+        let mut out = String::with_capacity(s.len());
+        for &b in s.as_bytes() {
+            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
+                out.push(b as char);
+            } else {
+                // `write!` into a String can't fail; ignore the result.
+                let _ = write!(out, "%{:02X}", b);
+            }
+        }
+        out
+    }
+
     #[cfg(test)]
     #[allow(clippy::unwrap_used)]
     mod tests {
@@ -284,6 +316,7 @@ mod inner {
                 .await;
             Mock::given(method("GET"))
                 .and(path("/repos/acme/foo/branches/main"))
+                .and(header("Authorization", "Bearer t"))
                 .respond_with(
                     ResponseTemplate::new(200).set_body_json(serde_json::json!({"name":"main"})),
                 )
@@ -296,6 +329,72 @@ mod inner {
                 .unwrap();
             assert_eq!(info.default_branch, "main");
             assert!(info.is_private);
+        }
+
+        #[tokio::test]
+        async fn slashed_branch_is_percent_encoded() {
+            // `feature/foo` would collapse into the URL path if we spliced
+            // it raw: GitHub's router would match `branch = "feature"` with
+            // a trailing path segment and return 404. We must percent-
+            // encode the slash so the API sees `branches/feature%2Ffoo`.
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path("/repos/acme/foo"))
+                .respond_with(
+                    ResponseTemplate::new(200).set_body_json(ok_repo_body("main", true, true)),
+                )
+                .expect(1)
+                .mount(&server)
+                .await;
+            // wiremock matches against the raw (still-encoded) request
+            // path. Asserting on the literal `%2F` form proves the
+            // client is sending the encoded variant — without the
+            // percent-encoding fix, the request would go out as
+            // `branches/feature/foo` and the mock would not match.
+            Mock::given(method("GET"))
+                .and(path("/repos/acme/foo/branches/feature%2Ffoo"))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_json(serde_json::json!({"name":"feature/foo"})),
+                )
+                .expect(1)
+                .mount(&server)
+                .await;
+            // Negative-path catch-all: a regression that drops the
+            // encoding would hit this route, return 200 (with a body
+            // that does not match the route), and the positive mock's
+            // `.expect(1)` would still fail with "expected 1, got 0".
+            // The catch-all just makes the failure mode louder by
+            // letting the bogus route succeed visibly.
+            Mock::given(method("GET"))
+                .and(path("/repos/acme/foo/branches/feature"))
+                .respond_with(ResponseTemplate::new(404))
+                .expect(0)
+                .mount(&server)
+                .await;
+
+            validate_repo_access(&server.uri(), "acme", "foo", "feature/foo", "t")
+                .await
+                .expect("slashed branch should resolve");
+        }
+
+        #[test]
+        fn percent_encode_path_segment_examples() {
+            // Spot-checks for the inline encoder so a future refactor
+            // (e.g. swapping to a crate) is forced to preserve the
+            // contract.
+            assert_eq!(percent_encode_path_segment("main"), "main");
+            assert_eq!(percent_encode_path_segment("feature/foo"), "feature%2Ffoo");
+            assert_eq!(
+                percent_encode_path_segment("release-1.0_rc~final"),
+                "release-1.0_rc~final"
+            );
+            assert_eq!(percent_encode_path_segment("a b"), "a%20b");
+            assert_eq!(percent_encode_path_segment("a#b"), "a%23b");
+            assert_eq!(percent_encode_path_segment("a?b"), "a%3Fb");
+            // Multi-byte UTF-8: encoded as raw bytes per RFC 3986.
+            // `é` is 0xC3 0xA9 in UTF-8.
+            assert_eq!(percent_encode_path_segment("é"), "%C3%A9");
         }
 
         #[tokio::test]
