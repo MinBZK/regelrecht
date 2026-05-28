@@ -183,7 +183,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
         {
           h: 'Gedeelde, controleerbare uitvoering',
-          p: 'Wat als de manier waarop een wet wordt uitgevoerd publiek leesbaar en machine-uitvoerbaar gepubliceerd wordt, naast de wettekst zelf? Verschillende organisaties kunnen die uitvoering dan onafhankelijk controleren en draaien, en interpretatieverschillen worden zichtbaar in plaats van verborgen in code.',
+          p: 'Wat als de manier waarop een wet wordt uitgevoerd publiek leesbaar en machine-uitvoerbaar gepubliceerd wordt, naast de wettekst zelf? Verschillende partijen, van uitvoeringsorganisaties tot burgers, kunnen die uitvoering dan onafhankelijk controleren en draaien, en interpretatieverschillen worden zichtbaar in plaats van verborgen in code.',
         },
         {
           h: 'Volledige transparantie',
@@ -629,7 +629,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
         {
           h: 'Shared, verifiable execution',
-          p: 'What if the way a law is executed were published in machine-executable form alongside the legal text itself? Different organisations could then independently verify and run that execution, and differences in interpretation would become visible instead of being hidden inside code.',
+          p: 'What if the way a law is executed were published in machine-executable form alongside the legal text itself? Different parties, from implementing organisations to citizens, could then independently verify and run that execution, and differences in interpretation would become visible instead of being hidden inside code.',
         },
         {
           h: 'Full transparency',
