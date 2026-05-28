@@ -125,11 +125,58 @@ pub struct CreateTrajectRequest {
 /// itself allows for these identifiers — alphanumerics plus `-`, `_`,
 /// and `.`. Lets us refuse path-traversal-shaped input (`..`, `/`) at
 /// the API boundary rather than relying on GitHub to 404 it.
+///
+/// GitHub additionally disallows the literal segments `.` and `..` and
+/// names starting with a leading `.` (hidden/reserved). Reject those
+/// here so we don't store a row that GitHub will subsequently 404 on
+/// every contents/branches call.
 fn valid_repo_segment(s: &str) -> bool {
-    !s.is_empty()
-        && s.len() <= 100
-        && s.chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    if s.is_empty() || s.len() > 100 {
+        return false;
+    }
+    if s == "." || s == ".." || s.starts_with('.') {
+        return false;
+    }
+    s.chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+}
+
+/// Reject branch names that git itself would refuse as refnames.
+///
+/// Mirrors the subset of `git-check-ref-format` rules that we can apply
+/// to a single component: no control chars, no whitespace, no
+/// `~^:?*[\` or `..`, no leading dash, no leading/trailing slash, no
+/// `@{` sequence. Bounded length so an oversized input can't bloat the
+/// on-disk branch name.
+///
+/// `base_branch` flows unencoded into a GitHub Contents-API URL
+/// (`/repos/{owner}/{repo}/branches/{base_branch}`) and is later
+/// persisted + used as a git refname in `commit_and_push_to_branch`.
+/// A non-empty trim check would let `"main?spoof=1"` through — GitHub
+/// strips the query, validates `main`, and the bogus suffix lands in
+/// the DB. This guard refuses any refname-illegal character at the API
+/// boundary so the persisted value is always a clean refname.
+fn valid_branch_name(s: &str) -> bool {
+    if s.is_empty() || s.len() > 200 {
+        return false;
+    }
+    if s.starts_with('-') || s.starts_with('/') || s.ends_with('/') {
+        return false;
+    }
+    if s.contains("..") || s.contains("@{") || s.contains("//") {
+        return false;
+    }
+    s.chars().all(|c| {
+        !c.is_control()
+            && c != ' '
+            && c != '~'
+            && c != '^'
+            && c != ':'
+            && c != '?'
+            && c != '*'
+            && c != '['
+            && c != '\\'
+    })
 }
 
 /// Validate a user-supplied `repo_path` (sub-directory within a repo).
@@ -655,7 +702,12 @@ struct WritableTarget {
     owner: String,
     repo: String,
     base_branch: String,
-    path: String,
+    /// Optional sub-path within the repo. `None` means "everything
+    /// under repo root" and is persisted as SQL `NULL` — consistent
+    /// with how seeded sources without a subpath are stored. `Some` is
+    /// always a non-empty, validated relative path (see
+    /// `valid_repo_path`).
+    path: Option<String>,
     auth_ref: String,
     /// Display name used as the source label in the federation config.
     /// `MinBZK/regelrecht-corpus` for the default, `<owner>/<repo>` for
@@ -696,7 +748,7 @@ async fn resolve_writable_target(
             owner: CENTRAL_WRITABLE_OWNER.to_string(),
             repo: CENTRAL_WRITABLE_REPO.to_string(),
             base_branch: CENTRAL_WRITABLE_BASE_BRANCH.to_string(),
-            path: CENTRAL_WRITABLE_PATH.to_string(),
+            path: Some(CENTRAL_WRITABLE_PATH.to_string()),
             auth_ref: CENTRAL_WRITABLE_AUTH_REF.to_string(),
             display_name: CENTRAL_WRITABLE_NAME.to_string(),
         }),
@@ -710,25 +762,43 @@ async fn resolve_writable_target(
                         .to_string(),
                 ));
             }
+            // `base_branch` flows unencoded into a GitHub URL and is
+            // later persisted + used as a git refname; reject any
+            // refname-illegal character at the boundary so neither
+            // GitHub nor git ever sees a malformed ref. See
+            // `valid_branch_name` for the exact rule set.
+            if !valid_branch_name(base_branch) {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    "base_branch bevat tekens die niet zijn toegestaan in een git branch-naam"
+                        .to_string(),
+                ));
+            }
             // Validate the optional repo sub-path at the API boundary.
             // `GitBackend::resolve` only validates the inner *relative*
             // path on each read/write; the base `gh_path` itself is
             // never re-checked downstream, so a traversal like
             // `../../etc` would let the backend read/write outside the
             // per-traject clone. Reject up-front.
-            let repo_path_input = req
+            //
+            // Trim + treat empty as "no subpath" → stored as SQL NULL
+            // (matches how seeded sources without a subpath are stored;
+            // avoids the "" vs NULL inconsistency on the row).
+            let repo_path: Option<String> = req
                 .repo_path
                 .as_deref()
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
-                .unwrap_or("");
-            if !valid_repo_path(repo_path_input) {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    "repo_path moet een relatief pad zijn zonder '..' segmenten en \
-                     mag alleen letters, cijfers, en '-', '_', '.' bevatten"
-                        .to_string(),
-                ));
+                .map(str::to_string);
+            if let Some(ref p) = repo_path {
+                if !valid_repo_path(p) {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        "repo_path moet een relatief pad zijn zonder '..' segmenten en \
+                         mag alleen letters, cijfers, en '-', '_', '.' bevatten"
+                            .to_string(),
+                    ));
+                }
             }
             let auth_ref = derive_auth_ref(owner, repo);
             if auth_ref.is_empty() {
@@ -818,13 +888,14 @@ async fn resolve_writable_target(
                 owner: owner.to_string(),
                 repo: repo.to_string(),
                 base_branch: base_branch.to_string(),
-                // `repo_path` is optional — empty means "everything
-                // under repo root", which the corpus client already
-                // handles correctly. The MinBZK default explicitly sets
-                // "regulation/nl"; user repos dedicated to regulations
-                // typically don't need a subpath. Already validated
-                // above as a clean relative path.
-                path: repo_path_input.to_string(),
+                // `repo_path` is optional — `None` means "everything
+                // under repo root" (persisted as NULL), which the
+                // corpus client already handles correctly. The MinBZK
+                // default explicitly sets "regulation/nl"; user repos
+                // dedicated to regulations typically don't need a
+                // subpath. Already validated above as a clean relative
+                // path.
+                path: repo_path,
                 auth_ref,
                 display_name: format!("{owner}/{repo}"),
             })
@@ -1551,6 +1622,65 @@ mod tests {
         assert!(!valid_repo_path(".."));
         assert!(!valid_repo_path("regulation/with space"));
         assert!(!valid_repo_path("regulation/with!bang"));
+    }
+
+    #[test]
+    fn valid_repo_segment_rejects_leading_dot_and_dots_only() {
+        // GitHub disallows segments that are literal `.` or `..` and
+        // names starting with a leading `.`. The previous validator
+        // permitted these because they're inside the `[A-Za-z0-9._-]`
+        // character class; this test pins the explicit rejection.
+        assert!(!valid_repo_segment("."));
+        assert!(!valid_repo_segment(".."));
+        assert!(!valid_repo_segment(".hidden"));
+        assert!(!valid_repo_segment(".github"));
+        // Dots in the middle of a segment remain valid (e.g. version
+        // suffixes like `repo.v2`).
+        assert!(valid_repo_segment("a.b"));
+        assert!(valid_repo_segment("regelrecht-corpus"));
+    }
+
+    #[test]
+    fn valid_branch_name_accepts_common_branches() {
+        // Real branch names that flow through `resolve_writable_target`
+        // every day: must not be rejected by the boundary guard.
+        assert!(valid_branch_name("main"));
+        assert!(valid_branch_name("develop"));
+        assert!(valid_branch_name("feature/foo"));
+        assert!(valid_branch_name("release-1.0"));
+        assert!(valid_branch_name("user/feature/sub-branch"));
+    }
+
+    #[test]
+    fn valid_branch_name_rejects_url_injection_and_refname_illegals() {
+        // `?` would let `main?spoof=1` pass the trim+non-empty check
+        // because GitHub strips the query before validating `main`;
+        // refuse it at the boundary so the persisted refname is clean.
+        assert!(!valid_branch_name("main?spoof=1"));
+        // Trailing/embedded whitespace and control chars.
+        assert!(!valid_branch_name("main "));
+        assert!(!valid_branch_name("ma in"));
+        assert!(!valid_branch_name("main\n"));
+        assert!(!valid_branch_name("main\t"));
+        // Refname-illegal characters from `git-check-ref-format`.
+        assert!(!valid_branch_name("feat~1"));
+        assert!(!valid_branch_name("feat^2"));
+        assert!(!valid_branch_name("a:b"));
+        assert!(!valid_branch_name("a*b"));
+        assert!(!valid_branch_name("a[b"));
+        assert!(!valid_branch_name("a\\b"));
+        assert!(!valid_branch_name("feat@{1}"));
+        // `..` (dot-dot), leading `-`, leading/trailing `/`, double `/`.
+        assert!(!valid_branch_name(".."));
+        assert!(!valid_branch_name("a..b"));
+        assert!(!valid_branch_name("-x"));
+        assert!(!valid_branch_name("/x"));
+        assert!(!valid_branch_name("x/"));
+        assert!(!valid_branch_name("feat//bar"));
+        // Empty + oversized.
+        assert!(!valid_branch_name(""));
+        let oversized: String = "a".repeat(201);
+        assert!(!valid_branch_name(&oversized));
     }
 
     #[test]
