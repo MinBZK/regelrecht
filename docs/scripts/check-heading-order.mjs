@@ -26,6 +26,20 @@ function htmlFiles(dir) {
 // Capture each heading's level and a short text snippet for the error message.
 const HEADING_RE = /<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi;
 
+// Strip HTML tags iteratively until the string is stable. A single
+// `replace(/<[^>]+>/g, '')` pass can leave behind embedded tag fragments
+// (e.g. `<sc<script>ript>` collapses to `<script>` after one pass) — only
+// matters for the error-message snippet here, but iterating keeps it honest
+// and silences CodeQL's incomplete-multi-character-sanitization rule.
+function stripTags(s) {
+  let prev;
+  do {
+    prev = s;
+    s = s.replace(/<[^>]*>/g, '');
+  } while (s !== prev);
+  return s;
+}
+
 const failures = [];
 let totalHeadings = 0;
 
@@ -37,7 +51,7 @@ for (const file of htmlFiles(DIST)) {
   while ((m = HEADING_RE.exec(html)) !== null) {
     totalHeadings++;
     const lvl = +m[1];
-    const text = m[2].replace(/<[^>]+>/g, '').trim().slice(0, 60);
+    const text = stripTags(m[2]).trim().slice(0, 60);
     if (last && lvl > last + 1) {
       failures.push(
         `${file.replace(DIST, 'dist')}: h${last} → h${lvl} jump at "${text}"`,
