@@ -14,10 +14,13 @@ beforeEach(() => {
 // The watcher awaits nextTick before applyHighlights, so the test must wait
 // two ticks: one for the watcher to fire, one for its inner nextTick.
 
-// Component-level tests for the two DOM-bound behaviours the pure
-// useNotesHighlight tests cannot cover: idempotent re-apply (clear before
-// re-wrap) and the deterministic overlap drop. The markdown render + offset
-// alignment themselves are covered by useNotesHighlight.test.js.
+// Component-level tests for the DOM-bound behaviours the pure
+// useNotesHighlight / useNotesSegments tests cannot cover: idempotent
+// re-apply (clear before re-wrap) and the boundary-segment overlap render
+// (partial overlap = layered, encapsulation = inner shown, outer suppressed
+// in the inner's segment). The markdown render + offset alignment are
+// covered by useNotesHighlight.test.js; the segment-planning rules
+// themselves by useNotesSegments.test.js.
 
 const nlddStubs = {
   'nldd-rich-text': { template: '<div><slot/></div>' },
@@ -87,19 +90,88 @@ describe('AnnotatedText markdown highlighting', () => {
     expect(wrapper.element.querySelectorAll('mark mark')).toHaveLength(0);
   });
 
-  it('drops a later note overlapping an earlier one (document order wins)', async () => {
+  it('splits a partial overlap into three marks; the middle one shows both notes layered', async () => {
+    // A on "verzekerde" (raw 7..17), B on "kerde heeft a" (raw 12..25):
+    // boundaries 7,12,17,25 -> three segments. The middle [12,17) has both
+    // notes visible (layered backgrounds); flanks have one each. Primary in
+    // the middle is the earlier-start note (A), so its popover opens on
+    // hover.
     const wrapper = mountWith(ART, [
-      // Earlier note (by raw start) wins; the overlapping one is dropped,
-      // matching markRanges()'s deterministic behaviour.
       { note: noteVerzekerde, spans: [{ start: 7, end: 17 }] },
       { note: noteZorgtoeslag, spans: [{ start: 12, end: 25 }] },
     ]);
     await nextTick();
     await nextTick();
-    const marks = wrapper.element.querySelectorAll('mark[data-note-idx]');
-    expect(marks).toHaveLength(1);
+    const marks = [
+      ...wrapper.element.querySelectorAll('mark[data-primary-idx]'),
+    ];
+    expect(marks).toHaveLength(3);
+    // [7,12) — only A.
+    expect(marks[0].textContent).toBe('verze');
     expect(marks[0].dataset.noteIdx).toBe('0');
-    expect(marks[0].textContent).toBe('verzekerde');
+    expect(marks[0].dataset.primaryIdx).toBe('0');
+    expect(marks[0].className).toContain('note-commenting');
+    // [12,17) — both, primary is A (earlier start), bg is the layered
+    // marker class (no class-background; inline backgroundImage stacks).
+    expect(marks[1].textContent).toBe('kerde');
+    expect(marks[1].dataset.noteIdx).toBe('0,1');
+    expect(marks[1].dataset.primaryIdx).toBe('0');
+    expect(marks[1].className).toContain('note-multi');
+    expect(marks[1].style.backgroundImage).toContain('linear-gradient');
+    // [17,25) — only B.
+    expect(marks[2].textContent).toBe(' heeft a');
+    expect(marks[2].dataset.noteIdx).toBe('1');
+    expect(marks[2].dataset.primaryIdx).toBe('1');
+  });
+
+  it('encapsulation: outer is suppressed inside the inner segment (inner shown cleanly)', async () => {
+    // Outer A on "een verzekerde heeft aanspraak " (raw 3..34) wraps inner
+    // B on "verzekerde" (raw 7..17). The inner segment [7,17) must show
+    // only B; the outer's segments [3,7) and [17,34) show only A. A stays
+    // in coveringIdx of the inner segment so a hover-bridge can reach it.
+    const wrapper = mountWith(ART, [
+      { note: noteVerzekerde, spans: [{ start: 3, end: 34 }] }, // outer
+      { note: noteZorgtoeslag, spans: [{ start: 7, end: 17 }] }, // inner
+    ]);
+    await nextTick();
+    await nextTick();
+    const marks = [
+      ...wrapper.element.querySelectorAll('mark[data-primary-idx]'),
+    ];
+    expect(marks).toHaveLength(3);
+    // Outer's left flank: A only.
+    expect(marks[0].textContent).toBe('een ');
+    expect(marks[0].dataset.noteIdx).toBe('0');
+    expect(marks[0].dataset.coverIdx).toBe('0');
+    // Inner: B shown, A suppressed but reachable via coverIdx.
+    expect(marks[1].textContent).toBe('verzekerde');
+    expect(marks[1].dataset.noteIdx).toBe('1');
+    expect(marks[1].dataset.coverIdx).toBe('0,1');
+    expect(marks[1].dataset.primaryIdx).toBe('1');
+    // Outer's right flank: A only.
+    expect(marks[2].dataset.noteIdx).toBe('0');
+  });
+
+  it('hovering the outer in encapsulation bridges .note-hovered across the inner segment', async () => {
+    // Same setup as the encapsulation test. Firing pointerover on the
+    // outer's left flank must add .note-hovered to all three marks — the
+    // inner segment too, even though it does not render the outer's
+    // background by default — so the outer's full extent reads as one
+    // continuous range.
+    const wrapper = mountWith(ART, [
+      { note: noteVerzekerde, spans: [{ start: 3, end: 34 }] },
+      { note: noteZorgtoeslag, spans: [{ start: 7, end: 17 }] },
+    ]);
+    await nextTick();
+    await nextTick();
+    const marks = [
+      ...wrapper.element.querySelectorAll('mark[data-primary-idx]'),
+    ];
+    marks[0].dispatchEvent(new Event('pointerover', { bubbles: true }));
+    await nextTick();
+    expect(marks[0].classList.contains('note-hovered')).toBe(true);
+    expect(marks[1].classList.contains('note-hovered')).toBe(true);
+    expect(marks[2].classList.contains('note-hovered')).toBe(true);
   });
 
   it('does not wrap the inter-<li> whitespace nodes when a span crosses leden', async () => {

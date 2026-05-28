@@ -262,28 +262,6 @@ const notesForArticle = computed(() => [
   ...draftNotesForArticle.value,
 ]);
 
-// AnnotatedText paints a flat partition: a draft whose span overlaps a
-// committed note's span resolves fine but is silently not highlighted (the
-// earlier note wins, RFC-018's documented overlapping-notes limitation).
-// Through the write path that is confusing — the count says "1 concept" but
-// nothing lights up — so detect it and tell the user explicitly.
-const hiddenDraftCount = computed(() => {
-  const committed = committedNotesForArticle.value.flatMap((n) => n.spans);
-  let hidden = 0;
-  for (const d of draftNotesForArticle.value) {
-    for (const s of d.spans) {
-      const overlaps = committed.some(
-        (c) => s.start < c.end && c.start < s.end,
-      );
-      if (overlaps) {
-        hidden++;
-        break;
-      }
-    }
-  }
-  return hidden;
-});
-
 function onCreateNote(note) {
   addDraft(note);
 }
@@ -1656,12 +1634,6 @@ async function handleActionSave() {
                       v-if="canCreateNotes && draftCount > 0"
                       data-testid="draft-notes-bar"
                       :text="`${draftCount} concept-notitie(s), nog niet opgeslagen`"
-                      :supporting-text="
-                        hiddenDraftCount > 0
-                          ? `${hiddenDraftCount} overlapt een bestaande notitie en wordt niet gemarkeerd.`
-                          : undefined
-                      "
-                      :icon-color="hiddenDraftCount > 0 ? 'warning' : undefined"
                     >
                       <nldd-button
                         slot="actions"
