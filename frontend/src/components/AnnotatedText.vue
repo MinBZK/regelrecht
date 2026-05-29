@@ -142,6 +142,17 @@ function wrapSegmentSlice(slice, seg, notes) {
   mark.dataset.noteIdx = seg.visibleIdx.join(',');
   mark.dataset.coverIdx = seg.coveringIdx.join(',');
   mark.dataset.primaryIdx = String(seg.primaryIdx);
+  // Cover-depth signal: how many notes (visible + suppressed) cover this
+  // segment. Painted as a stacked underline in CSS so that overlap is
+  // legible even when motivation colours match. Encapsulation's inner
+  // segment also picks up the outer here, so a same-motivation nesting
+  // reads as "two notes" without depending on a colour shift. Capped at 3
+  // so the styling stays in two CSS rules; deeper stacks fall into the
+  // "3+" bucket and are visually clamped (acceptable — overlapping more
+  // than three notes on one span is vanishingly rare in real corpus).
+  mark.dataset.coverDepth = String(
+    Math.min(seg.coveringIdx.length, 3),
+  );
   if (multi) {
     const layers = seg.visibleIdx
       .map((i) => motivationColor(notes[i]?.note))
@@ -767,6 +778,26 @@ onBeforeUnmount(() => {
    from the primary's authority class stays. */
 .annotated-wrap :deep(mark.note-multi) {
   background: none;
+}
+/* Cover-depth signal: a thin currentColor line along the TOP edge of any
+   mark whose segment is covered by 2+ notes (visible or suppressed by
+   encapsulation). Paired with the existing border-bottom (authority style)
+   so a same-motivation overlap reads as "bracketed" — two parallel lines
+   instead of one — without depending on a colour shift. The encapsulated
+   inner segment also picks this up because the suppressed outer counts in
+   coveringIdx, so a same-motivation nesting is visible without colour
+   difference. data-cover-depth is capped at 3 in the script; we use a 3px
+   line for the three-deep case so the stacks-getting-busier signal is
+   monotonic without needing an explicit depth-counting glyph. */
+.annotated-wrap :deep(mark[data-cover-depth="2"]) {
+  box-shadow: inset 0 2px 0 currentColor;
+  border-left: 1px solid currentColor;
+  border-right: 1px solid currentColor;
+}
+.annotated-wrap :deep(mark[data-cover-depth="3"]) {
+  box-shadow: inset 0 3px 0 currentColor;
+  border-left: 2px solid currentColor;
+  border-right: 2px solid currentColor;
 }
 /* Hover-bridge: every mark whose coverage includes the hovered note's idx
    gets this class, so the note's full span reads as one continuous range
