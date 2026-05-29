@@ -1,24 +1,36 @@
 ---
 /*
- * "Edit this page on GitHub" link. The relanding editLink pattern was
- * https://github.com/MinBZK/regelrecht/edit/main/docs/:path . After the
- * content move the markdown lives under docs/src/content/docs/ (and
- * docs/src/content/rfcs/ for RFCs), so the base path is updated to match
- * the real file location and the links stay valid.
+ * "Edit this page on GitHub" link.
+ *
+ * The source path is taken straight from the content entry's `filePath`
+ * (e.g. "src/content/rfcs/rfc-011.md"), so the link always points at the
+ * real file, extension and all. Earlier this component rebuilt the path from
+ * the collection name + entry id, but Astro's glob loader strips the
+ * extension from `entry.id` ("rfc-011", not "rfc-011.md"), which produced
+ * extension-less URLs that GitHub's /edit/ view rejects — and the docs
+ * collection mixes .md and .mdx, so the extension can't be assumed.
+ *
+ * `lines` optionally narrows the link to a source range (#L<a>-L<b>); the
+ * select-lines-to-edit affordance uses this at runtime, but the static
+ * sidebar link omits it and edits the whole file.
  */
 interface Props {
-  /** Collection entry id, e.g. "guide/what-is-regelrecht.md" */
-  entryId: string;
-  /** Which collection the entry belongs to. */
-  collection: 'docs' | 'rfcs';
+  /** Repo-root relative source path, e.g. "src/content/rfcs/rfc-011.md". */
+  filePath?: string;
+  /** Optional 1-based [start, end] source line range. */
+  lines?: [number, number];
+  /** Link label; defaults to the whole-page wording. */
+  text?: string;
 }
-const { entryId, collection } = Astro.props;
+const { filePath, lines, text = 'Edit page on GitHub' } = Astro.props;
 
-const base =
-  collection === 'rfcs'
-    ? 'https://github.com/MinBZK/regelrecht/edit/main/docs/src/content/rfcs/'
-    : 'https://github.com/MinBZK/regelrecht/edit/main/docs/src/content/docs/';
-const editUrl = base + entryId;
+const fragment = lines ? `#L${lines[0]}-L${lines[1]}` : '';
+const editUrl = filePath
+  ? `https://github.com/MinBZK/regelrecht/edit/main/docs/${filePath}${fragment}`
+  : undefined;
 ---
-
-<nldd-link size="sm" href={editUrl} target="_blank" text="Edit page on GitHub" />
+{
+  editUrl && (
+    <nldd-link size="sm" href={editUrl} target="_blank" text={text} />
+  )
+}

@@ -828,6 +828,119 @@ const legalLinks = [
       });
     </script>
 
+    <!-- Select lines in a doc/RFC, jump to GitHub edit at that source range.
+         Pure chrome, no hydration: one floating nldd-button wired to the
+         current text selection. Active only on pages whose content wrapper
+         carries data-edit-base (doc + RFC templates); the source line numbers
+         come from rehype-source-lines (data-line / data-line-end). -->
+    <script>
+      // Bound once for the document lifetime: the global listeners
+      // (selectionchange, scroll, keydown) survive ClientRouter swaps, and the
+      // button + content wrapper are re-resolved live on each selection.
+      function setupEditSelection() {
+        if (window.__rrEditSelectionWired) return;
+        window.__rrEditSelectionWired = true;
+
+        // Positioned wrapper (plain div) holding an nldd-button. The wrapper
+        // owns absolute positioning + show/hide; the design-system button owns
+        // appearance and the link, so it matches the rest of the site.
+        let wrap = document.getElementById('rr-edit-selection');
+        let btn;
+        if (!wrap) {
+          wrap = document.createElement('div');
+          wrap.id = 'rr-edit-selection';
+          wrap.hidden = true;
+          btn = document.createElement('nldd-button');
+          btn.setAttribute('size', 'sm');
+          btn.setAttribute('variant', 'primary');
+          btn.setAttribute('start-icon', 'pencil');
+          btn.setAttribute('text', 'Edit these lines on GitHub');
+          btn.setAttribute('target', '_blank');
+          btn.setAttribute('rel', 'noopener');
+          wrap.appendChild(btn);
+          document.body.appendChild(wrap);
+        } else {
+          btn = wrap.querySelector('nldd-button');
+        }
+
+        const hide = () => {
+          wrap.hidden = true;
+        };
+
+        const update = () => {
+          // Content wrapper is re-resolved every time: it lives in the swapped
+          // <body>, so it changes on each ClientRouter navigation.
+          const content = document.querySelector('[data-edit-base]');
+          const editBase = content && content.getAttribute('data-edit-base');
+          if (!content || !editBase) return hide();
+
+          const sel = window.getSelection();
+          if (!sel || sel.isCollapsed || sel.rangeCount === 0) return hide();
+          const range = sel.getRangeAt(0);
+          if (!content.contains(range.commonAncestorContainer)) return hide();
+
+          // Every data-line element the selection touches; min start / max end
+          // gives the source range even across multiple blocks.
+          let min = Infinity;
+          let max = -Infinity;
+          content.querySelectorAll('[data-line]').forEach((el) => {
+            if (!range.intersectsNode(el)) return;
+            const a = Number(el.getAttribute('data-line'));
+            const b = Number(el.getAttribute('data-line-end')) || a;
+            if (a && a < min) min = a;
+            if (b && b > max) max = b;
+          });
+          if (min === Infinity || max === -Infinity) return hide();
+
+          btn.setAttribute('href', `${editBase}#L${min}-L${max}`);
+          const rect = range.getBoundingClientRect();
+          if (!rect.width && !rect.height) return hide();
+          // Anchor just above the selection start, clamped into the viewport.
+          const top = window.scrollY + rect.top - 44;
+          const left = Math.max(8, window.scrollX + rect.left);
+          wrap.style.top = `${Math.max(window.scrollY + 8, top)}px`;
+          wrap.style.left = `${left}px`;
+          wrap.hidden = false;
+        };
+
+        document.addEventListener('selectionchange', update);
+        // Reposition while the page scrolls under a held selection.
+        window.addEventListener('scroll', () => {
+          if (!wrap.hidden) update();
+        });
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') hide();
+        });
+        // Clicking the button must not clear the selection before navigating.
+        wrap.addEventListener('mousedown', (e) => e.preventDefault());
+      }
+
+      // Run now if the DOM is already parsed (script is at end of body), and
+      // again on every ClientRouter navigation; the guard makes it idempotent.
+      setupEditSelection();
+      document.addEventListener('astro:page-load', setupEditSelection);
+    </script>
+
+    <!-- Global (unscoped) so it matches the button, which is created in plain
+         JS via document.createElement and therefore never carries Astro's
+         scoped data-astro-cid attribute that a scoped <style> would require. -->
+    <style is:global>
+      /* Floating wrapper for the "edit these lines on GitHub" button shown on
+         text selection. Only the wrapper is positioned here; the nldd-button
+         inside owns its appearance (and is keyboard/AT-reachable as a link).
+         The wrapper carries the soft drop shadow so it reads as a floating
+         toolbar above the prose. */
+      #rr-edit-selection {
+        position: absolute;
+        z-index: 50;
+        border-radius: 6px;
+        box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
+      }
+      #rr-edit-selection[hidden] {
+        display: none;
+      }
+    </style>
+
     <style>
       /* nldd-page owns the scroll: it is the scroll container (height: 100%,
          overflow-y: auto) and also provides the layout-container so page

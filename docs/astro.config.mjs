@@ -5,6 +5,7 @@ import rehypeMermaid from 'rehype-mermaid';
 import { rehypeMermaidAlt } from './src/lib/rehype-mermaid-alt.ts';
 import { rehypeNlddCodeViewer } from './src/lib/rehype-nldd-code-viewer.ts';
 import { rehypeRfcMeta } from './src/lib/rehype-rfc-meta.ts';
+import { rehypeSourceLines } from './src/lib/rehype-source-lines.ts';
 
 export default defineConfig({
   site: 'https://docs.regelrecht.rijks.app',
@@ -42,6 +43,9 @@ export default defineConfig({
     // colouring to docs.css (.mermaid svg rules), keyed off currentColor and
     // NLDD tokens, light and dark.
     rehypePlugins: [
+      // Stamp source-line data attributes first, before the plugins below
+      // restructure nodes and lose the original markdown positions.
+      rehypeSourceLines,
       [
         rehypeMermaid,
         {
