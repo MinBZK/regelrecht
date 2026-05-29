@@ -33,7 +33,7 @@ corpus/regulation/nl/
 ### Header Metadata
 
 ```yaml
-$schema: https://raw.githubusercontent.com/.../refs/tags/schema-v0.5.1/schema/v0.5.1/schema.json
+$schema: https://raw.githubusercontent.com/.../refs/tags/schema-v0.5.2/schema/v0.5.2/schema.json
 $id: zorgtoeslagwet
 regulatory_layer: WET
 publication_date: '2025-01-01'
@@ -119,15 +119,13 @@ Operations are the building blocks of law logic:
 |----------|-----------|--------|
 | **Arithmetic** | `ADD`, `SUBTRACT`, `MULTIPLY`, `DIVIDE` | `values: [...]` |
 | **Aggregate** | `MIN`, `MAX` | `values: [...]` |
-| **Comparison** | `EQUALS`, `NOT_EQUALS`, `GREATER_THAN`, `LESS_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN_OR_EQUAL` | `subject:`, `value:` |
-| **Logical** | `AND`, `OR` | `conditions: [...]` |
-| **Membership** | `IN`, `NOT_IN` | `subject:`, `values: [...]` |
-| **Conditional** | `IF` | `when:`, `then:`, `else:` |
-| **Multi-branch** | `SWITCH` | `cases: [{when:, then:}]`, `default:` |
-| **Date** | `SUBTRACT_DATE` | `subject:`, `value:`, `unit:` |
-| **Null** | `IS_NULL`, `NOT_NULL` | `subject:` |
+| **Comparison** | `EQUALS`, `GREATER_THAN`, `LESS_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN_OR_EQUAL` | `subject:`, `value:` |
+| **Logical** | `AND`, `OR`, `NOT` | `conditions: [...]` (`NOT` wraps one condition) |
+| **Collection** | `IN`, `LIST` | `IN`: `subject:`, `values: [...]`; `LIST`: `values: [...]` |
+| **Conditional** | `IF` (alias `SWITCH`) | `cases: [{when:, then:}]`, `default:` |
+| **Date** | `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK` | `AGE`: `date_of_birth:`, `reference_date:`; `DATE_ADD`: `date:` + `years:`/`months:`/`days:`; `DATE`: `year:`, `month:`, `day:`; `DAY_OF_WEEK`: `date:` |
 
-See [RFC-004: Uniform Operation Syntax](/rfcs/rfc-004) for the full specification.
+These 21 operations make up the schema. The engine also accepts the compat aliases `NOT_EQUALS`, `IS_NULL`, `NOT_NULL`, and `NOT_IN` for backward compatibility, but they are outside the schema, so prefer wrapping the positive operation in `NOT`. See [RFC-004: Uniform Operation Syntax](/rfcs/rfc-004) for the full specification.
 
 ### Variable References
 
@@ -210,13 +208,15 @@ output:
 
 ## Corpus Contents
 
-The current corpus contains laws across three regulatory layers:
+The corpus is still small and growing. At the time of writing it spans three regulatory layers:
 
-| Layer | Count | Examples |
-|-------|-------|---------|
-| WET | 11 | Participatiewet, Zorgtoeslag, Zorgverzekeringswet, BW Boek 5 |
+| Layer | Laws | Examples |
+|-------|------|---------|
+| WET | ~15 | Participatiewet, Zorgtoeslag, Zorgverzekeringswet, AWB, BW Boek 5 |
 | MINISTERIELE_REGELING | 1 | Regeling standaardpremie (2 versions) |
 | GEMEENTELIJKE_VERORDENING | 2 | Amsterdam APV erfgrens, Diemen afstemmingsverordening |
+
+For the authoritative, current set, see `corpus/regulation/` in the repository.
 
 ## Next Steps
 

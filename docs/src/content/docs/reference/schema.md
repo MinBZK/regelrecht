@@ -39,19 +39,19 @@ Validate law files against the schema:
 
 ```bash
 just validate                    # All files
-just validate corpus/regulation/nl/wet/zorgtoeslag/2025-01-01.yaml  # Specific file
+just validate corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml  # Specific file
 ```
 
 ## Schema Structure
 
 The schema defines:
 
-- **Top-level metadata**: `$id`, `$schema`, `name`, `effective_date`
-- **Service definition**: `input`, `output`, `articles`
-- **Article structure**: `id`, `name`, `text`, `machine_readable`
-- **Machine-readable**: `input`, `output`, `operations`
-- **Operations**: Typed operations with `input` and `output` fields
-- **Cross-references**: `source` blocks pointing to other regulations
+- **Top-level metadata**: `$id`, `$schema`, `name`, `regulatory_layer`, `publication_date`, `valid_from`, `url` (required: `regulatory_layer`, `publication_date`, `url`, `articles`)
+- **Articles**: an `articles` array; each article requires `number`, `text`, and `url`, and may carry a `machine_readable` section and `references`
+- **Machine-readable section**: `execution`, plus `open_terms`, `implements`, `definitions`, `hooks`, `overrides`, `untranslatables`, `competent_authority`, `enables`, `requires`, `endpoint`
+- **Execution block**: `parameters`, `input`, `output`, `actions`, `produces`
+- **Operations**: each action operation carries an `operation` type plus its operands (`values`, `subject`/`value`, `conditions`, `cases`/`default`, date fields)
+- **Cross-references**: `source` blocks on inputs, pointing to other regulations
 - **Open terms**: `open_terms` and `implements` for delegation
 
 See [Law Format](/concepts/law-format) for a guided walkthrough.

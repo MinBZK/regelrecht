@@ -1,8 +1,9 @@
 ---
 title: "Validation Methodology"
+description: "Short overview of RegelRecht's execution-first validation method and the generate/validate/reverse-check loop."
 ---
 
-RegelRecht uses an **execution-first** approach to validate machine-readable law interpretations.
+RegelRecht uses an **execution-first** approach to validate machine-readable law interpretations. This page is a short overview; for the research background and the full argument, see [RegelRecht Validation: From Analysis-First to Execution-First](./validation-methodology).
 
 ## From Analysis-First to Execution-First
 

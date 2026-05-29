@@ -2,7 +2,7 @@
 title: "Cross-Law References"
 ---
 
-Dutch laws reference each other constantly. The Healthcare Allowance Act (*Zorgtoeslagwet*) needs your income, which is defined by the AWIR. It needs your insurance status, which comes from the Zorgverzekeringswet. It needs your age, which comes from the BRP.
+Dutch laws reference each other constantly. The Healthcare Allowance Act (*Zorgtoeslagwet*) needs your income, which is defined by the AWIR. It needs your insurance status, which comes from the Zorgverzekeringswet. It needs to know whether you have an allowance partner, which the AWIR determines.
 
 Rather than duplicating these definitions, each law declares what it needs from other laws. The engine follows these references automatically.
 
@@ -45,20 +45,19 @@ The Zorgtoeslagwet article 2 declares these cross-law inputs:
 
 ```yaml
 input:
-  - name: leeftijd
-    type: number
-    source:
-      regulation: wet_basisregistratie_personen
-      output: leeftijd
-      parameters:
-        bsn: $bsn
-        peildatum: $referencedate
-
   - name: is_verzekerde
     type: boolean
     source:
       regulation: zorgverzekeringswet
       output: is_verzekerd
+      parameters:
+        bsn: $bsn
+
+  - name: heeft_toeslagpartner
+    type: boolean
+    source:
+      regulation: algemene_wet_inkomensafhankelijke_regelingen
+      output: heeft_toeslagpartner
       parameters:
         bsn: $bsn
 

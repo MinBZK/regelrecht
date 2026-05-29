@@ -72,7 +72,7 @@ The engine walks through the relevant articles, resolves all inputs, applies the
 To answer "does person X qualify for healthcare allowance?", the engine:
 
 1. Loads the *Zorgtoeslagwet*
-2. Looks at article 2, which needs: age (from the BRP), insurance status (from the Zorgverzekeringswet), income (from the AWIR), and the standard premium (from a ministerial regulation)
+2. Looks at article 2, which needs: insurance status (from the Zorgverzekeringswet), allowance-partner status and income (from the AWIR), and the standard premium (from a ministerial regulation)
 3. Loads and executes those other laws automatically to get their values
 4. Runs the calculation
 5. Returns `heeft_recht_op_zorgtoeslag: true` and `hoogte_zorgtoeslag: 1234`
@@ -87,7 +87,7 @@ These ideas show up throughout the system. Each has a dedicated page with exampl
 
 ### Laws that reference each other
 
-Dutch laws reference each other constantly. The healthcare allowance law needs your income (defined by the AWIR), your insurance status (from the Zorgverzekeringswet), and your age (from the BRP). In YAML, an article declares a `source` block pointing to another law:
+Dutch laws reference each other constantly. The healthcare allowance law needs your income (defined by the AWIR), your insurance status (from the Zorgverzekeringswet), and your allowance-partner status (also from the AWIR). In YAML, an article declares a `source` block pointing to another law:
 
 ```yaml
 input:
@@ -127,7 +127,7 @@ Every execution produces a receipt: a sealed envelope containing the engine vers
 
 ### Organizational boundaries and federated corpus
 
-Different government organizations handle different parts of the law chain. The Tax Authority determines income, the Allowances Service determines healthcare allowance, municipalities handle social assistance. The engine models these boundaries and supports both simulation mode (compute everything locally) and authoritative mode (exchange signed results between organizations). See [Multi-Org Execution](./multi-org-execution).
+Different government organizations handle different parts of the law chain. The Tax Authority determines income, the Allowances Service determines healthcare allowance, municipalities handle social assistance. The engine models these boundaries. Today it runs in simulation mode (compute everything locally); the authoritative mode that exchanges signed results between organizations is the proposed end state, not yet implemented. See [Multi-Org Execution](./multi-org-execution).
 
 On the data side, 342 municipalities, 12 provinces, and 21 water boards all produce their own regulations. The [federated corpus](./federated-corpus) model lets each authority maintain their own law files in their own Git repository while the engine discovers and loads them through a registry.
 
