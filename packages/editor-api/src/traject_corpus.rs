@@ -41,6 +41,11 @@ pub struct TrajectCorpus {
     /// routed through the traject's own branch on the same upstream
     /// repo.
     pub write_target_for_source: HashMap<String, String>,
+    /// Source id of the writable-own backend in this traject. Used by
+    /// handlers that have no per-law context (e.g. the documents CRUD
+    /// endpoints) to address the traject's own branch directly without
+    /// having to reverse-engineer it out of `write_target_for_source`.
+    pub writable_own_source_id: String,
     /// Read-your-writes overlay for law YAML content. After a successful
     /// `save_law` we mirror the persisted body here so subsequent reads
     /// in the same traject (any session, any user) see the new content
@@ -358,6 +363,7 @@ async fn build_traject_corpus(
             auth_file: auth_file.map(|p| p.to_path_buf()),
         },
         write_target_for_source,
+        writable_own_source_id,
         overlay: RwLock::new(HashMap::new()),
     }))
 }

@@ -39,6 +39,7 @@ url.workspace = true
 
 [dev-dependencies]
 regelrecht-pipeline = { path = "../pipeline", features = ["test-utils"] }
+async-trait.workspace = true
 pretty_assertions.workspace = true
 tempfile.workspace = true
 
