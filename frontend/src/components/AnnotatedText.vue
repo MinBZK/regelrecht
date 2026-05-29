@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch, nextTick, useTemplateRef, onBeforeUnmount } from 'vue';
+import { computed, ref, watch, nextTick, useTemplateRef, onMounted, onBeforeUnmount } from 'vue';
 import { renderArticleHtml } from '../composables/useArticleMarkdown.js';
 import {
   buildAlignment,
@@ -280,9 +280,105 @@ const popoverEl = useTemplateRef('popoverEl');
 const activeNote = ref(null);
 let closeTimer = null;
 
+// Drag-aware popover gating. nldd-popover is the native HTML Popover API:
+// showPopover() puts the element into the top layer and steals focus via
+// _manageFocus(). If that runs while the user is mid-drag selecting text,
+// the pointermove from the drag lands on the popover instead of the
+// underlying text run and the Selection cannot extend past the first mark
+// the pointer touches. The gate below shuts the hover-popover path during
+// any in-flight drag (and any standing non-collapsed selection rooted in
+// our rich-text element), and reopens via a click-to-pin on tap-without-
+// move so touch users still have a way to surface a note.
+// Plain `let` (not a ref): isDragging is read imperatively by openFor and
+// the document-level handlers, never bound to a template/watcher/computed.
+let isDragging = false;
+let pointerDownAt = null; // { x, y } at most recent primary-button pointerdown
+const PIN_MAX_MOVE = 4; // px; below this on pointerup is treated as a tap
+
+function isSelectingInRoot() {
+  const root = richTextEl.value;
+  const sel = typeof window !== 'undefined' ? window.getSelection?.() : null;
+  if (!root || !sel || sel.rangeCount === 0 || sel.isCollapsed) return false;
+  return root.contains(sel.anchorNode);
+}
+
+// Hard-close path used by the pointerdown handler: bypasses the scheduleClose
+// debounce because a fresh drag must not be anchored over the just-pressed
+// mark for even one frame.
+function closePopoverNow() {
+  if (closeTimer) {
+    clearTimeout(closeTimer);
+    closeTimer = null;
+  }
+  popoverEl.value?.hidePopover?.();
+  activeNote.value = null;
+  clearHoverBridge();
+}
+
+function onDocPointerDown(event) {
+  if (event.button !== 0) return; // only primary-button drags select text
+  // A press inside the popover panel itself is interacting with the
+  // popover, not starting a new selection — closing it on its own mousedown
+  // would swallow any click inside (currently moot, the popover holds only
+  // a `@click.prevent` link, but cheap insurance for any future control).
+  const pop = popoverEl.value;
+  if (pop?.contains?.(event.target)) return;
+  isDragging = true;
+  pointerDownAt = { x: event.clientX, y: event.clientY };
+  closePopoverNow();
+}
+
+function onDocPointerUp(event) {
+  // Match the button filter from onDocPointerDown: a secondary-button
+  // pointerup while the primary-button drag is still in flight must not
+  // consume the drag's start coords or clear isDragging — otherwise the
+  // remaining drag falls through to only the isSelectingInRoot() guard.
+  // pointercancel is exempt: any cancel aborts the whole gesture, primary
+  // or not.
+  if (event.type !== 'pointercancel' && event.button !== 0) return;
+  const start = pointerDownAt;
+  pointerDownAt = null;
+  isDragging = false;
+  if (!start) return;
+  // Click-to-pin: a tap that did not move (mouse click without drag, or a
+  // touch tap) on a mark with no resulting selection opens the popover
+  // for that mark. Preserves the pre-fix mousedown-pins behaviour for the
+  // non-drag case so touch users still have a way in.
+  if (event.type === 'pointercancel') return;
+  const dx = (event.clientX ?? start.x) - start.x;
+  const dy = (event.clientY ?? start.y) - start.y;
+  if (Math.hypot(dx, dy) >= PIN_MAX_MOVE) return;
+  if (isSelectingInRoot()) return;
+  const hit = markFromEvent({ target: event.target });
+  if (hit?.note) openFor(hit.el, hit.note, hit.idx);
+}
+
+onMounted(() => {
+  // Capture-phase pointerdown so the gate flips before nldd-popover's own
+  // focus-management runs on the next frame. pointerup/pointercancel stay
+  // in bubble phase: the click-to-pin path reads `event.target` to find the
+  // mark under release, and we want the natural bubble path (which is what
+  // happy-dom and real browsers route reliably).
+  document.addEventListener('pointerdown', onDocPointerDown, true);
+  document.addEventListener('pointerup', onDocPointerUp);
+  document.addEventListener('pointercancel', onDocPointerUp);
+});
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', onDocPointerDown, true);
+  document.removeEventListener('pointerup', onDocPointerUp);
+  document.removeEventListener('pointercancel', onDocPointerUp);
+});
+
 function markFromEvent(event) {
   const el = event.target?.closest?.('mark[data-primary-idx]');
   if (!el) return null;
+  // Document-level handlers (onDocPointerUp) can see events targeted at any
+  // mark on the page, including another AnnotatedText instance's marks in a
+  // multi-article view. Reject anything outside this instance's rich-text
+  // root so the click-to-pin path never resolves noteByIdx against the wrong
+  // notes array. Component-scoped callers (@pointerover/@focusin on the
+  // wrap) are already in-scope so this is a no-op for them.
+  if (!richTextEl.value?.contains(el)) return null;
   const idx = Number(el.dataset.primaryIdx);
   return { el, note: noteByIdx.value[idx] || null, idx };
 }
@@ -310,6 +406,10 @@ function clearHoverBridge() {
 }
 
 function openFor(el, note, idx) {
+  // Hover gate: skip while a drag is in flight, or while a non-collapsed
+  // selection is standing inside this rich-text root (post-mouseup but
+  // before the user clears it). See the comment block on isDragging above.
+  if (isDragging || isSelectingInRoot()) return;
   if (closeTimer) {
     clearTimeout(closeTimer);
     closeTimer = null;
@@ -631,7 +731,8 @@ onBeforeUnmount(() => {
 .annotated-wrap :deep(mark) {
   padding: 0 0.1em;
   border-radius: 2px;
-  cursor: help;
+  /* text, not help: drag-selection is the primary affordance */
+  cursor: text;
 }
 .annotated-wrap :deep(mark.note-authoritative) {
   border-bottom: 2px solid currentColor;
