@@ -31,7 +31,7 @@ export default defineConfig({
     pagefind({ indexConfig: { forceLanguage: 'en' } }),
   ],
   markdown: {
-    // No Shiki: rehype-nldd-code-viewer turns every fenced block into <nldd-code>,
+    // No Shiki: rehype-nldd-code-viewer turns every fenced block into <nldd-code-viewer>,
     // which owns styling + (Prism) highlighting. Disabling Shiki also leaves
     // ```mermaid blocks as real <pre><code class="language-mermaid"> for
     // rehype-mermaid (it skips them via the language check).
