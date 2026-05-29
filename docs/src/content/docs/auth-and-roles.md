@@ -68,7 +68,7 @@ To add a new specific right:
 4. In the application code: `route_layer(require_role("<app>-<verb>"))` on the
    protected route.
 
-No changes are needed to existing routes, the pattern is composable.
+No changes are needed to existing routes; the pattern is composable.
 
 ## JWT shape
 
@@ -187,7 +187,7 @@ reads this cached list rather than re-parsing the token, which means:
   the user to log out and back in before the new role is honoured by the
   application.
 - **Role revocation has the same delay.** Removing a role in Keycloak does
-  *not* immediately revoke access, the live session continues to carry the
+  *not* immediately revoke access; the live session continues to carry the
   expanded role list until it expires.
 
 For emergency revocation (compromised account, immediate downgrade) the

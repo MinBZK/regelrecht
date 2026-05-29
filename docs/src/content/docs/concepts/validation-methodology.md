@@ -135,7 +135,7 @@ The automated steps cover:
 What is missing: a **structured process for legal experts to systematically assess the AI proposals**. This differs from the Wetsanalyse validation step (step 4), because:
 
 1. The expert did not build the proposal, the mental model is absent
-2. The AI does not document its interpretation choices, they must be uncovered
+2. The AI does not document its interpretation choices; they must be uncovered
 3. The scale demands an efficient process, not every law can take weeks
 
 ## Proposal: validation method in three phases
