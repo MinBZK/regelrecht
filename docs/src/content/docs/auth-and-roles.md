@@ -224,7 +224,7 @@ Do NOT run this configuration in production.
 ```
 
 The same applies to the harvester-admin service. **Never deploy a service
-without OIDC configured**, the warning is the only safeguard, and the
+without OIDC configured**: the warning is the only safeguard, and the
 admin-tier routes (corpus reload, feature-flag toggles, job deletion, source
 sync) are fully open in this mode.
 

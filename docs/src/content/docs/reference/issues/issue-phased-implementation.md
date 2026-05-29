@@ -2,9 +2,11 @@
 title: "Issue #2: Phased Implementation (Gefaseerde Inwerkingtreding)"
 ---
 
+> **Resolved.** This issue is implemented in the harvester. Articles with a `<tussenkop>` version separator are now extracted as a single component (`has_version_separator` / `extract_full_article_content` in `packages/harvester/src/splitting/engine.rs`), and `<redactie>` editorial content is excluded (`is_editorial_content` + the registered `RedactieHandler`). The write-up below is kept as background on the problem and the chosen approach.
+
 ## Problem Summary
 
-Articles with phased implementation ("gefaseerde inwerkingtreding") contain **multiple versions of the same article content** within a single XML `<artikel>` element. The harvester currently splits by `<lid>` (paragraph), producing duplicate article numbers like `8:36c.1` appearing twice.
+Articles with phased implementation ("gefaseerde inwerkingtreding") contain **multiple versions of the same article content** within a single XML `<artikel>` element. Splitting naively by `<lid>` (paragraph) would produce duplicate article numbers like `8:36c.1` appearing twice; the harvester therefore detects the version separator and keeps such articles whole (see the resolution note above).
 
 ## Affected Laws
 
