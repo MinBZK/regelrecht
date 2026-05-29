@@ -19,6 +19,9 @@ const props = defineProps({
   lawId: { type: String, default: '' },
   // Loaded WASM engine, for selector uniqueness validation in NoteCreator.
   engine: { type: Object, default: null },
+  // Active traject ref, threaded through to NoteCreator so a note can
+  // link to a document in this traject's documents tree.
+  trajectRef: { type: String, default: '' },
 });
 
 const emit = defineEmits(['create-note']);
@@ -672,6 +675,7 @@ onBeforeUnmount(() => {
         :article="article"
         :engine="engine"
         :anchor="selAnchorEl"
+        :traject-ref="trajectRef"
         @create="onNoteCreated"
         @cancel="onCreatorCancel"
       />

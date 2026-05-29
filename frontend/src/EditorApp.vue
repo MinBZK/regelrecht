@@ -1613,6 +1613,7 @@ async function handleActionSave() {
                       :can-create="canCreateNotes"
                       :law-id="lawId"
                       :engine="noteEngine"
+                      :traject-ref="$route.params.trajectRef || ''"
                       @create-note="onCreateNote"
                     />
                     <nldd-inline-dialog
