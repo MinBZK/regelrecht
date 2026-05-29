@@ -1596,6 +1596,21 @@ fn extract_if_match(headers: &axum::http::HeaderMap) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+/// Allowlist for the `Content-Type` of an incoming document PUT. The
+/// fase-1 endpoints only accept text bodies; semicolon-parameters
+/// (`; charset=utf-8`) are stripped before matching, and an empty or
+/// whitespace-only header is rejected — that input is malformed and
+/// must surface as `415` rather than slip through as "no content type".
+fn allowed_document_content_type(value: &str) -> bool {
+    let mime = value
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    matches!(mime.as_str(), "text/markdown" | "text/plain")
+}
+
 /// Check a client-supplied `If-Match` against the file's current state
 /// and return the current ETag (or `None` when the file does not yet
 /// exist). A `412 Precondition Failed` is surfaced on mismatch so the
@@ -1611,16 +1626,6 @@ fn extract_if_match(headers: &axum::http::HeaderMap) -> Option<String> {
 /// through to a blind overwrite. The frontend composable
 /// `useTrajectDocuments` always echoes the last seen ETag, so this
 /// only matters for raw API consumers (curl, future tooling).
-fn allowed_document_content_type(value: &str) -> bool {
-    let mime = value
-        .split(';')
-        .next()
-        .unwrap_or("")
-        .trim()
-        .to_ascii_lowercase();
-    matches!(mime.as_str(), "text/markdown" | "text/plain")
-}
-
 async fn enforce_if_match(
     backend: &dyn RepoBackend,
     relative_path: &std::path::Path,
@@ -1751,11 +1756,14 @@ pub async fn save_traject_document(
     validate_document_path(&doc_path)?;
     let author = Some(require_editor_user(&session).await?);
 
-    // The body is always text in fase 1. Browsers occasionally omit
-    // the Content-Type header on `fetch(PUT, body: string)`, so an
-    // absent header is treated as text/plain. A binary type — e.g.
-    // someone pointing the document endpoint at a PDF — must fail
-    // closed (415) rather than silently land in git as opaque bytes.
+    // The body is always text in fase 1. A *missing* Content-Type is
+    // allowed because browsers occasionally omit it on
+    // `fetch(PUT, body: string)`; that gets treated as text/plain by
+    // the handler. A *present* Content-Type, however, must pass the
+    // allowlist — an empty value is rejected as malformed and a binary
+    // type (e.g. someone pointing the document endpoint at a PDF)
+    // fails closed (415) instead of silently landing in git as opaque
+    // bytes.
     if let Some(ct) = headers
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
