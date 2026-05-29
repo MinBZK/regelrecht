@@ -807,6 +807,21 @@ onBeforeUnmount(() => {
 .annotated-wrap :deep(mark.note-hovered) {
   box-shadow: inset 0 -3px 0 currentColor;
 }
+/* Hover on a multi-cover mark stacks both signals: keep the cover-depth
+   top-edge line AND add the hover bottom-edge stripe. Without this rule
+   the equal-specificity `.note-hovered` would override the depth-2/3
+   single-shadow above and the top-edge bracket would vanish — exactly
+   while the user is asking "what's here?". */
+.annotated-wrap :deep(mark[data-cover-depth="2"].note-hovered) {
+  box-shadow:
+    inset 0 2px 0 currentColor,
+    inset 0 -3px 0 currentColor;
+}
+.annotated-wrap :deep(mark[data-cover-depth="3"].note-hovered) {
+  box-shadow:
+    inset 0 3px 0 currentColor,
+    inset 0 -3px 0 currentColor;
+}
 .annotated-wrap :deep(mark:focus-visible) {
   outline: 2px solid currentColor;
   outline-offset: 1px;
