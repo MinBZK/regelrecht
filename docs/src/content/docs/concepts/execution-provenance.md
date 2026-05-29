@@ -2,7 +2,7 @@
 title: "Execution Provenance"
 ---
 
-Government agencies must be able to reproduce a specific decision months or years later, with the exact same result. Dutch administrative law requires this (Awb Art. 3:46, the AERIUS rulings), and the EU AI Act makes it mandatory for high-risk systems from August 2026.
+Government agencies must be able to reproduce a specific decision months or years later, with the exact same result. Dutch administrative law requires this (AWB Art. 3:46, the AERIUS rulings), and the EU AI Act makes it mandatory for high-risk systems from August 2026.
 
 Determinism within a single execution is necessary but not sufficient. Reproducibility requires pinning three things: the regulation YAML, the schema version it conforms to, and the engine version that executed it.
 
@@ -46,11 +46,11 @@ The schema defines the regulation format. The engine interprets and executes reg
 - **Schema versions** are immutable directories under `schema/` (e.g., `schema/v0.5.1/schema.json`). A published version is never modified.
 - **Engine versions** correspond to GitHub Release tags. Each release declares which schema versions it supports.
 
-This distinction matters because third-party organisations may build their own engine implementations. The schema is the specification; the engine is one implementation of it.
+This distinction matters because third-party organizations may build their own engine implementations. The schema is the specification; the engine is one implementation of it.
 
-## Cross-organisation reproducibility
+## Cross-organization reproducibility
 
-When a decision depends on values from other organisations (via [Multi-Org Execution](./multi-org-execution)), the receipt captures the provenance of each accepted value:
+When a decision depends on values from other organizations (via [Multi-Org Execution](./multi-org-execution)), the receipt captures the provenance of each accepted value:
 
 ```json
 {
@@ -67,7 +67,7 @@ When a decision depends on values from other organisations (via [Multi-Org Execu
 }
 ```
 
-When reproducing the decision, the engine uses these **sealed accepted values** rather than re-calling the other organisation. The other organisation may now be running a different engine version. A *beschikking* stands once issued — the accepted value at the time is a legal fact.
+When reproducing the decision, the engine uses these **sealed accepted values** rather than re-calling the other organization. The other organization may now be running a different engine version. A *beschikking* stands once issued — the accepted value at the time is a legal fact.
 
 ## What this enables
 
@@ -76,6 +76,6 @@ A reproducible decision with a sealed receipt is a different animal from an opaq
 ## Further reading
 
 - [Hooks and Reactive Execution](./hooks-and-reactive-execution) - AWB procedure hooks
-- [Multi-Org Execution](./multi-org-execution) - cross-organisation value exchange
+- [Multi-Org Execution](./multi-org-execution) - cross-organization value exchange
 - [RFC-013: Execution Provenance](/rfcs/rfc-013) - full specification
 - [RFC-014: Engine Conformance](/rfcs/rfc-014) - conformance test suite

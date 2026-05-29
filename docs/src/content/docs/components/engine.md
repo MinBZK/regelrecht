@@ -135,7 +135,7 @@ const result = engine.execute(
 }
 ```
 
-The `output_name` (singular) field is still accepted for backwards compatibility.
+The `output_name` (singular) field is still accepted for backward compatibility.
 
 ## Operations
 
@@ -147,7 +147,7 @@ The engine supports 21 schema operations for expressing legal logic:
 | **Arithmetic** (4) | `ADD`, `SUBTRACT`, `MULTIPLY`, `DIVIDE` |
 | **Aggregate** (2) | `MAX`, `MIN` |
 | **Logical** (3) | `AND`, `OR`, `NOT` |
-| **Conditional** (1) | `IF` (when/then/else, or cases/default; `SWITCH` is an accepted alias) |
+| **Conditional** (1) | `IF` (`cases: [{when, then}]` + `default`; `SWITCH` is an accepted alias) |
 | **Collection** (2) | `IN`, `LIST` |
 | **Date** (4) | `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK` |
 
@@ -254,6 +254,8 @@ engine.hasLaw(lawId): boolean
 engine.unloadLaw(lawId): boolean
 engine.lawCount(): number
 engine.version(): string
+engine.resolveNote(lawId, selector): ResolvedNote
+engine.resolveNotes(lawId, annotationsYaml: string): ResolvedNote[]
 ```
 
 > **WASM limitations.** Open term resolution (`open_terms` / `implements` IoC pattern) is not yet available in the WASM build. Cross-law references work when all referenced laws are pre-loaded via `loadLaw()`.

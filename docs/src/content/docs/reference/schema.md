@@ -31,7 +31,7 @@ This table is the single source of truth for which schema version introduced whi
 | v0.3.0 | Cross-law references (`source`) | — |
 | v0.2.0 | Initial public schema: `regulatory_layer`, `competent_authority`, `execution.produces` | [RFC-001](/rfcs/rfc-001), [RFC-002](/rfcs/rfc-002) |
 
-Multi-organisation execution ([RFC-009](/rfcs/rfc-009)) reuses `competent_authority` (v0.2.0) and adds no schema construct of its own.
+Multi-organization execution ([RFC-009](/rfcs/rfc-009)) reuses `competent_authority` (v0.2.0) and adds no schema construct of its own.
 
 ## Validation
 

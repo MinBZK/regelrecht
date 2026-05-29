@@ -99,7 +99,7 @@ machine_readable:
 
 ## Overrides (lex specialis)
 
-Sometimes a specific law overrides a general AWB rule. The Aliens Act (*Vreemdelingenwet*) article 69 says: *"in afwijking van artikel 6:7 Awb bedraagt de termijn vier weken"* ("departing from AWB article 6:7, the period is four weeks").
+Sometimes a specific law overrides a general AWB rule. The Aliens Act (*Vreemdelingenwet*) article 69 says: *"in afwijking van artikel 6:7 AWB bedraagt de termijn vier weken"* ("departing from AWB article 6:7, the period is four weeks").
 
 This is modeled with `overrides`:
 

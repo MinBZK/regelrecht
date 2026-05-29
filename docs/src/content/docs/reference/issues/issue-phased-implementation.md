@@ -8,7 +8,7 @@ Articles with phased implementation ("gefaseerde inwerkingtreding") contain **mu
 
 ## Affected Laws
 
-- **Awb (BWBR0005537)**: Artikel 8:36c - two versions of leden 1-4
+- **AWB (BWBR0005537)**: Artikel 8:36c - two versions of leden 1-4
 - **Mediawet 2008 (BWBR0025028)**: Artikel 2.88.5 - two different texts
 
 ## Legal Background
