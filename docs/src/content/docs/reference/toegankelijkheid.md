@@ -104,9 +104,6 @@ contrastmeting.
   inconsistent met landmarks in schaduw-DOM); de toegankelijkheid hangt af
   van het designsysteem en is door dit team niet apart per schermlezer
   geverifieerd.
-- Het `nldd-page-footer-legal-bar-item` (de copyright-tekst onderin de footer)
-  haalt door zijn token-kleur net geen AA-contrast. Dat ligt bij het
-  designsysteem en wordt daar opgepakt.
 
 ## Probleem melden
 
@@ -116,6 +113,8 @@ op welke pagina; dan pakken we het op.
 
 ## Opgesteld
 
-Deze conceptverklaring is opgesteld op 21 mei 2026 en bijgewerkt op 27 mei 2026
-na een hercontrole. RegelRecht is een verkenning en wordt nog ontwikkeld; de
-verklaring wordt bijgewerkt als de site verandert of na een formele audit.
+Deze conceptverklaring is opgesteld op 21 mei 2026, bijgewerkt op 27 mei 2026 na
+een hercontrole, en opnieuw bijgewerkt op 29 mei 2026 nadat de copyright-tekst in
+de footer in het NLDD-designsysteem op AA-contrast is gebracht. RegelRecht is een
+verkenning en wordt nog ontwikkeld; de verklaring wordt bijgewerkt als de site
+verandert of na een formele audit.
