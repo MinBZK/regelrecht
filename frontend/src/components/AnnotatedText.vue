@@ -142,6 +142,8 @@ function wrapSegmentSlice(slice, seg, notes) {
   mark.dataset.noteIdx = seg.visibleIdx.join(',');
   mark.dataset.coverIdx = seg.coveringIdx.join(',');
   mark.dataset.primaryIdx = String(seg.primaryIdx);
+  // Includes notes suppressed by encapsulation; capped at 3.
+  mark.dataset.coverDepth = String(Math.min(seg.coveringIdx.length, 3));
   if (multi) {
     const layers = seg.visibleIdx
       .map((i) => motivationColor(notes[i]?.note))
@@ -768,6 +770,18 @@ onBeforeUnmount(() => {
 .annotated-wrap :deep(mark.note-multi) {
   background: none;
 }
+/* Top-edge line + side brackets when 2+ notes cover a span (suppressed
+   outers in coveringIdx count). Hover stacking lives below. */
+.annotated-wrap :deep(mark[data-cover-depth="2"]) {
+  box-shadow: inset 0 2px 0 currentColor;
+  border-left: 1px solid currentColor;
+  border-right: 1px solid currentColor;
+}
+.annotated-wrap :deep(mark[data-cover-depth="3"]) {
+  box-shadow: inset 0 3px 0 currentColor;
+  border-left: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+}
 /* Hover-bridge: every mark whose coverage includes the hovered note's idx
    gets this class, so the note's full span reads as one continuous range
    even when boundary-splitting placed it in multiple <mark> elements (and
@@ -775,6 +789,17 @@ onBeforeUnmount(() => {
    underline that visually carries across the inline marks. */
 .annotated-wrap :deep(mark.note-hovered) {
   box-shadow: inset 0 -3px 0 currentColor;
+}
+/* Stack both shadows so the cover-depth top bar survives hover. */
+.annotated-wrap :deep(mark[data-cover-depth="2"].note-hovered) {
+  box-shadow:
+    inset 0 2px 0 currentColor,
+    inset 0 -3px 0 currentColor;
+}
+.annotated-wrap :deep(mark[data-cover-depth="3"].note-hovered) {
+  box-shadow:
+    inset 0 3px 0 currentColor,
+    inset 0 -3px 0 currentColor;
 }
 .annotated-wrap :deep(mark:focus-visible) {
   outline: 2px solid currentColor;

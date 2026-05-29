@@ -110,18 +110,23 @@ describe('AnnotatedText markdown highlighting', () => {
     expect(marks[0].textContent).toBe('verze');
     expect(marks[0].dataset.noteIdx).toBe('0');
     expect(marks[0].dataset.primaryIdx).toBe('0');
+    expect(marks[0].dataset.coverDepth).toBe('1');
     expect(marks[0].className).toContain('note-commenting');
     // [12,17) — both, primary is A (earlier start), bg is the layered
     // marker class (no class-background; inline backgroundImage stacks).
+    // coverDepth=2 drives the top-edge underline that makes same-motivation
+    // overlap legible without depending on a colour shift.
     expect(marks[1].textContent).toBe('kerde');
     expect(marks[1].dataset.noteIdx).toBe('0,1');
     expect(marks[1].dataset.primaryIdx).toBe('0');
+    expect(marks[1].dataset.coverDepth).toBe('2');
     expect(marks[1].className).toContain('note-multi');
     expect(marks[1].style.backgroundImage).toContain('linear-gradient');
     // [17,25) — only B.
     expect(marks[2].textContent).toBe(' heeft a');
     expect(marks[2].dataset.noteIdx).toBe('1');
     expect(marks[2].dataset.primaryIdx).toBe('1');
+    expect(marks[2].dataset.coverDepth).toBe('1');
   });
 
   it('encapsulation: outer is suppressed inside the inner segment (inner shown cleanly)', async () => {
@@ -143,13 +148,38 @@ describe('AnnotatedText markdown highlighting', () => {
     expect(marks[0].textContent).toBe('een ');
     expect(marks[0].dataset.noteIdx).toBe('0');
     expect(marks[0].dataset.coverIdx).toBe('0');
-    // Inner: B shown, A suppressed but reachable via coverIdx.
+    expect(marks[0].dataset.coverDepth).toBe('1');
+    // Inner: B shown, A suppressed but reachable via coverIdx. coverDepth=2
+    // surfaces the nested boundary visually even if outer and inner share a
+    // motivation (suppressed outer would otherwise erase the colour shift).
     expect(marks[1].textContent).toBe('verzekerde');
     expect(marks[1].dataset.noteIdx).toBe('1');
     expect(marks[1].dataset.coverIdx).toBe('0,1');
     expect(marks[1].dataset.primaryIdx).toBe('1');
+    expect(marks[1].dataset.coverDepth).toBe('2');
     // Outer's right flank: A only.
     expect(marks[2].dataset.noteIdx).toBe('0');
+    expect(marks[2].dataset.coverDepth).toBe('1');
+  });
+
+  it('caps cover-depth at 3 even when four+ notes share a span', async () => {
+    // Four notes on identical spans — none strictly contains another, all
+    // four are visible. coveringIdx.length is 4 but data-cover-depth must
+    // clamp to '3' so the CSS rule set stays bounded.
+    const wrapper = mountWith(ART, [
+      { note: noteVerzekerde, spans: [{ start: 7, end: 17 }] },
+      { note: noteZorgtoeslag, spans: [{ start: 7, end: 17 }] },
+      { note: { motivation: 'questioning', creator: 'C' }, spans: [{ start: 7, end: 17 }] },
+      { note: { motivation: 'tagging', creator: 'D' }, spans: [{ start: 7, end: 17 }] },
+    ]);
+    await nextTick();
+    await nextTick();
+    const marks = [
+      ...wrapper.element.querySelectorAll('mark[data-primary-idx]'),
+    ];
+    expect(marks).toHaveLength(1);
+    expect(marks[0].dataset.noteIdx).toBe('0,1,2,3');
+    expect(marks[0].dataset.coverDepth).toBe('3');
   });
 
   it('hovering the outer in encapsulation bridges .note-hovered across the inner segment', async () => {

@@ -13,8 +13,8 @@ function textContent(node: RootContent): string {
 
 /**
  * Replace fenced code blocks (<pre><code class="language-X">…) with
- * <nldd-code language="X">…</nldd-code> so the design-system code component
- * owns the styling and (Prism) highlighting.
+ * <nldd-code-viewer language="X">…</nldd-code-viewer> so the design-system
+ * code component owns the styling and (Prism) highlighting.
  *
  * Mermaid blocks are skipped — rehype-mermaid has already turned them into an
  * <svg> by the time this runs. The component only highlights its supported
@@ -45,7 +45,7 @@ export function rehypeNlddCodeViewer() {
 
       parent.children[index] = {
         type: 'element',
-        tagName: 'nldd-code',
+        tagName: 'nldd-code-viewer',
         properties: language ? { language } : {},
         children: [{ type: 'text', value: raw }],
       };
