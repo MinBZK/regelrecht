@@ -162,6 +162,26 @@ describe('AnnotatedText markdown highlighting', () => {
     expect(marks[2].dataset.coverDepth).toBe('1');
   });
 
+  it('caps cover-depth at 3 even when four+ notes share a span', async () => {
+    // Four notes on identical spans — none strictly contains another, all
+    // four are visible. coveringIdx.length is 4 but data-cover-depth must
+    // clamp to '3' so the CSS rule set stays bounded.
+    const wrapper = mountWith(ART, [
+      { note: noteVerzekerde, spans: [{ start: 7, end: 17 }] },
+      { note: noteZorgtoeslag, spans: [{ start: 7, end: 17 }] },
+      { note: { motivation: 'questioning', creator: 'C' }, spans: [{ start: 7, end: 17 }] },
+      { note: { motivation: 'tagging', creator: 'D' }, spans: [{ start: 7, end: 17 }] },
+    ]);
+    await nextTick();
+    await nextTick();
+    const marks = [
+      ...wrapper.element.querySelectorAll('mark[data-primary-idx]'),
+    ];
+    expect(marks).toHaveLength(1);
+    expect(marks[0].dataset.noteIdx).toBe('0,1,2,3');
+    expect(marks[0].dataset.coverDepth).toBe('3');
+  });
+
   it('hovering the outer in encapsulation bridges .note-hovered across the inner segment', async () => {
     // Same setup as the encapsulation test. Firing pointerover on the
     // outer's left flank must add .note-hovered to all three marks — the
