@@ -114,6 +114,7 @@ export const sidebar: Record<string, SidebarGroup[]> = {
       text: 'Corpus Management',
       items: [
         { text: 'Adding a Law', link: '/operations/adding-a-law' },
+        { text: 'Private-repo trajects', link: '/operations/private-repo-trajects' },
       ],
     },
     {

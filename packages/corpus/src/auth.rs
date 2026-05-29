@@ -2,6 +2,22 @@ use std::path::Path;
 
 use crate::error::{CorpusError, Result};
 
+/// Construct the per-source token env-var name from a slug.
+///
+/// Single source of truth — used by the resolver and surfaced in
+/// operator-facing error messages so the name shown to the operator
+/// matches what the resolver actually looks up. Keeping it in one place
+/// guarantees that if the naming scheme ever changes (lowercase prefix,
+/// extra separator, etc.) the resolver and the diagnostic log can't
+/// silently drift apart and confuse an operator who follows the error
+/// message.
+pub fn token_env_name(auth_ref: &str) -> String {
+    format!(
+        "CORPUS_AUTH_{}_TOKEN",
+        auth_ref.to_uppercase().replace('-', "_")
+    )
+}
+
 /// Auth configuration for a corpus source, loaded from `corpus-auth.yaml`.
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct AuthConfig {
@@ -33,7 +49,16 @@ impl std::fmt::Debug for SourceAuth {
 /// Resolution order:
 /// 1. Environment variable `CORPUS_AUTH_{KEY}_TOKEN` (uppercased, hyphens → underscores)
 /// 2. `corpus-auth.yaml` file (if it exists)
-/// 3. None (unauthenticated, lower rate limits)
+/// 3. Legacy shared `CORPUS_GIT_TOKEN` (harvester-era fallback)
+/// 4. None (unauthenticated, lower rate limits)
+///
+/// **Security**: the legacy fallback at step 3 returns the same token
+/// for *any* `auth_ref`, which makes it unsafe whenever the `auth_ref`
+/// is derived from user input (e.g. a user picking which repo a
+/// traject points at). Use [`resolve_token_strict`] there instead —
+/// it omits the legacy fallback so an unknown `auth_ref` cleanly
+/// returns `None` rather than leaking the central token to a
+/// user-chosen repo on the outgoing API call.
 pub fn resolve_token_for_source(
     source_id: &str,
     auth_ref: Option<&str>,
@@ -41,6 +66,65 @@ pub fn resolve_token_for_source(
 ) -> Result<Option<String>> {
     let key = auth_ref.unwrap_or(source_id);
     resolve_token(key, auth_file)
+}
+
+/// Like [`resolve_token_for_source`] but only consults the per-source
+/// env var and the auth file. Returns `None` when neither yields a
+/// token — the legacy `CORPUS_GIT_TOKEN` fallback is intentionally
+/// skipped.
+///
+/// Use this for any code path where the lookup key is derived from
+/// untrusted input. Today that's the writable-own source of a traject
+/// whose repo coordinates came from the create-request — without this
+/// guard, an attacker-controlled `auth_ref` would fall through to the
+/// shared `CORPUS_GIT_TOKEN` and ship it (via `Authorization: Bearer`)
+/// to a repo the attacker controls, a token-exfiltration vector.
+pub fn resolve_token_strict(auth_ref: &str, auth_file: Option<&Path>) -> Result<Option<String>> {
+    // 1. Per-source environment variable
+    let env_key = token_env_name(auth_ref);
+    if let Ok(token) = std::env::var(&env_key) {
+        if !token.is_empty() {
+            return Ok(Some(token));
+        }
+    }
+
+    // 2. Auth file. We deliberately do NOT fall through to
+    // `CORPUS_GIT_TOKEN` afterwards — see `resolve_token` for the legacy
+    // fallback path.
+    find_in_auth_file(auth_ref, auth_file)
+}
+
+/// Read the auth file (if any) and look up `auth_ref` in it. Returns
+/// `None` when the file is absent or the ref isn't listed. Shared
+/// between [`resolve_token`] and [`resolve_token_strict`] so both
+/// parsers stay in lock-step — a future change to the auth-file shape
+/// only needs to land here.
+fn find_in_auth_file(auth_ref: &str, auth_file: Option<&Path>) -> Result<Option<String>> {
+    let Some(path) = auth_file else {
+        return Ok(None);
+    };
+    if !path.exists() {
+        return Ok(None);
+    }
+    let content = std::fs::read_to_string(path).map_err(|e| {
+        CorpusError::Config(format!(
+            "Failed to read auth file {}: {}",
+            path.display(),
+            e
+        ))
+    })?;
+    let config: AuthConfig = serde_yaml_ng::from_str(&content).map_err(|e| {
+        CorpusError::Config(format!(
+            "Failed to parse auth file {}: {}",
+            path.display(),
+            e
+        ))
+    })?;
+    Ok(config
+        .sources
+        .iter()
+        .find(|s| s.id == auth_ref)
+        .map(|entry| entry.token.clone()))
 }
 
 /// Look up a GitHub token by key.
@@ -60,10 +144,7 @@ pub fn resolve_token_for_source(
 /// 4. None (unauthenticated, lower rate limits).
 pub fn resolve_token(source_id: &str, auth_file: Option<&Path>) -> Result<Option<String>> {
     // 1. Per-source environment variable
-    let env_key = format!(
-        "CORPUS_AUTH_{}_TOKEN",
-        source_id.to_uppercase().replace('-', "_")
-    );
+    let env_key = token_env_name(source_id);
     if let Ok(token) = std::env::var(&env_key) {
         if !token.is_empty() {
             return Ok(Some(token));
@@ -71,28 +152,8 @@ pub fn resolve_token(source_id: &str, auth_file: Option<&Path>) -> Result<Option
     }
 
     // 2. Auth file
-    if let Some(path) = auth_file {
-        if path.exists() {
-            let content = std::fs::read_to_string(path).map_err(|e| {
-                CorpusError::Config(format!(
-                    "Failed to read auth file {}: {}",
-                    path.display(),
-                    e
-                ))
-            })?;
-
-            let config: AuthConfig = serde_yaml_ng::from_str(&content).map_err(|e| {
-                CorpusError::Config(format!(
-                    "Failed to parse auth file {}: {}",
-                    path.display(),
-                    e
-                ))
-            })?;
-
-            if let Some(entry) = config.sources.iter().find(|s| s.id == source_id) {
-                return Ok(Some(entry.token.clone()));
-            }
-        }
+    if let Some(token) = find_in_auth_file(source_id, auth_file)? {
+        return Ok(Some(token));
     }
 
     // 3. Legacy shared CORPUS_GIT_TOKEN (harvester-era single token)
@@ -203,5 +264,44 @@ sources:
     fn test_resolve_token_missing_file_is_none() {
         let result = resolve_token("test", Some(Path::new("/nonexistent/auth.yaml"))).unwrap();
         assert_eq!(result, None);
+    }
+
+    #[test]
+    fn resolve_token_strict_skips_legacy_corpus_git_token() {
+        // The whole point of `resolve_token_strict`: an unknown auth_ref
+        // must NOT fall through to `CORPUS_GIT_TOKEN`. If it did, an
+        // attacker who can pick `auth_ref` (via repo coords on the
+        // create-traject endpoint) would harvest the operator's
+        // central token on the next outgoing GitHub call. This test
+        // pins the strict behaviour so a future refactor of the
+        // resolver can't silently regress it.
+        let _g = ENV_LOCK.lock().unwrap();
+        let prev = std::env::var("CORPUS_GIT_TOKEN").ok();
+        unsafe { std::env::set_var("CORPUS_GIT_TOKEN", "central-secret") };
+        let result = resolve_token_strict("attacker-supplied-key", None).unwrap();
+        match prev {
+            Some(v) => unsafe { std::env::set_var("CORPUS_GIT_TOKEN", v) },
+            None => unsafe { std::env::remove_var("CORPUS_GIT_TOKEN") },
+        }
+        assert_eq!(
+            result, None,
+            "strict resolver must NOT leak the legacy token"
+        );
+    }
+
+    #[test]
+    fn resolve_token_strict_still_uses_per_source_env() {
+        // The strict variant still honours the explicit per-source env
+        // var — that's the path operators are supposed to configure.
+        // Holds `ENV_LOCK` like the sibling strict test: even though
+        // the key here is unique, env-mutating tests run serialised so
+        // a concurrent test holding the lock and mutating arbitrary
+        // env vars can't race with this one.
+        let _g = ENV_LOCK.lock().unwrap();
+        let key = "CORPUS_AUTH_STRICT_PER_SOURCE_OK_TOKEN";
+        unsafe { std::env::set_var(key, "per-source-value") };
+        let result = resolve_token_strict("strict-per-source-ok", None).unwrap();
+        unsafe { std::env::remove_var(key) };
+        assert_eq!(result, Some("per-source-value".to_string()));
     }
 }

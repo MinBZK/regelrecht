@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import AnnotatedText from './AnnotatedText.vue';
@@ -260,5 +260,168 @@ describe('AnnotatedText markdown highlighting', () => {
     await nextTick();
     expect(wrapper.vm.creatorOpen).toBe(false);
     expect(wrapper.vm.selectionRange).toBe(null);
+  });
+});
+
+// nldd-popover uses the native HTML popover API: showPopover() puts the
+// element in the top layer and steals focus. Opening it from a pointerover
+// while the user is mid-drag therefore lands the drag's pointermove on the
+// popover instead of the underlying text — selection cannot extend past the
+// first mark it touches. These tests pin the drag-aware gate that closes
+// the hover-popover path during a selection drag, while keeping hover and
+// keyboard discoverability intact.
+//
+// The signal under test is `wrapper.vm.activeNote`, not a spy on the
+// popover stub. openFor sets activeNote BEFORE calling pop.showPopover,
+// so observing activeNote tells us whether the gate let openFor through.
+// This sidesteps quirks in how Vue Test Utils stubs expose setup() returns
+// via useTemplateRef + optional-chained calls.
+describe('AnnotatedText popover suppression during drag-selection', () => {
+  function fire(target, type, init = {}) {
+    // MouseEvent matches the type names Vue listens to for pointer events
+    // (pointerover/pointerdown/pointerup/pointercancel) and gives us
+    // clientX/clientY/button without depending on PointerEvent constructor
+    // support in happy-dom.
+    target.dispatchEvent(new MouseEvent(type, { bubbles: true, ...init }));
+  }
+
+  // Attach to document.body so events dispatched on marks bubble up to the
+  // document-level pointerdown/pointerup listeners the gate registers. The
+  // default mount is detached and pointer events would never reach document.
+  // Each wrapper goes on the `wrappers` list and is unmounted in afterEach
+  // so its document-level listeners are removed before the next test; without
+  // this, stale wrappers across tests would all see each other's pointer
+  // events and a future regression test could observe spurious state changes.
+  const wrappers = [];
+  afterEach(() => {
+    while (wrappers.length) wrappers.pop().unmount();
+  });
+  async function mountedWithMark() {
+    const wrapper = mount(AnnotatedText, {
+      props: {
+        article: ART,
+        notesForArticle: [
+          { note: noteVerzekerde, spans: [{ start: 7, end: 17 }] },
+        ],
+      },
+      attachTo: document.body,
+      global: { stubs: nlddStubs },
+    });
+    wrappers.push(wrapper);
+    await nextTick();
+    await nextTick();
+    return {
+      wrapper,
+      mark: wrapper.element.querySelector('mark[data-primary-idx]'),
+    };
+  }
+
+  it('opens the popover on a hover without any prior pointerdown', async () => {
+    const { wrapper, mark } = await mountedWithMark();
+    fire(mark, 'pointerover');
+    expect(wrapper.vm.activeNote).toBeTruthy();
+  });
+
+  it('does not open the popover when pointerover hits a mark mid-drag', async () => {
+    const { wrapper, mark } = await mountedWithMark();
+    fire(document, 'pointerdown', { button: 0, clientX: 10, clientY: 10 });
+    fire(mark, 'pointerover');
+    expect(wrapper.vm.activeNote).toBeNull();
+  });
+
+  it('does not open the popover on focusin during a drag', async () => {
+    const { wrapper, mark } = await mountedWithMark();
+    fire(document, 'pointerdown', { button: 0, clientX: 10, clientY: 10 });
+    mark.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    expect(wrapper.vm.activeNote).toBeNull();
+  });
+
+  it('opens the popover on focusin via keyboard (no prior pointerdown)', async () => {
+    const { wrapper, mark } = await mountedWithMark();
+    mark.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    expect(wrapper.vm.activeNote).toBeTruthy();
+  });
+
+  it('does not pin the popover on pointerup when the pointer moved (real drag)', async () => {
+    const { wrapper, mark } = await mountedWithMark();
+    fire(document, 'pointerdown', { button: 0, clientX: 10, clientY: 10 });
+    fire(mark, 'pointerup', { button: 0, clientX: 80, clientY: 50 });
+    expect(wrapper.vm.activeNote).toBeNull();
+  });
+
+  it('pins the popover on pointerup when the pointer did not move (tap on mark)', async () => {
+    const { wrapper, mark } = await mountedWithMark();
+    fire(document, 'pointerdown', { button: 0, clientX: 20, clientY: 20 });
+    fire(mark, 'pointerup', { button: 0, clientX: 21, clientY: 22 });
+    expect(wrapper.vm.activeNote).toBeTruthy();
+  });
+
+  it('releases the drag flag on pointercancel so later hovers open again', async () => {
+    const { wrapper, mark } = await mountedWithMark();
+    fire(document, 'pointerdown', { button: 0, clientX: 10, clientY: 10 });
+    fire(document, 'pointercancel');
+    fire(mark, 'pointerover');
+    expect(wrapper.vm.activeNote).toBeTruthy();
+  });
+
+  it('does not open the popover when a non-collapsed selection lives inside the rich-text root', async () => {
+    const { wrapper, mark } = await mountedWithMark();
+    // Stub getSelection to return a non-collapsed Selection anchored inside
+    // the rich-text root — covers the post-mouseup path where the drag is
+    // done but the selection is still standing.
+    const fakeSel = {
+      rangeCount: 1,
+      isCollapsed: false,
+      anchorNode: mark.firstChild ?? mark,
+    };
+    const orig = window.getSelection;
+    window.getSelection = () => fakeSel;
+    try {
+      fire(mark, 'pointerover');
+      expect(wrapper.vm.activeNote).toBeNull();
+    } finally {
+      window.getSelection = orig;
+    }
+  });
+
+  it('ignores a secondary-button pointerup while a primary drag is in flight', async () => {
+    // Right-button release mid-left-drag must not consume the left-drag's
+    // start coords or clear isDragging — otherwise the remaining drag would
+    // fall back to only the selection-based guard for the rest of the
+    // gesture and a pointerover on a mark could re-open the popover before
+    // the actual left release.
+    const { wrapper, mark } = await mountedWithMark();
+    fire(document, 'pointerdown', { button: 0, clientX: 10, clientY: 10 });
+    fire(mark, 'pointerup', { button: 2, clientX: 12, clientY: 11 }); // secondary
+    fire(mark, 'pointerover');
+    expect(wrapper.vm.activeNote).toBeNull();
+  });
+
+  it('click-to-pin on one instance does not open the popover on another mounted instance', async () => {
+    // Two AnnotatedText instances both register document-level pointerup
+    // listeners. Without a containment guard, a tap on instance B's mark
+    // would resolve to instance A's noteByIdx[idx] and pop A's popover
+    // with the wrong note attached to B's DOM. The guard inside
+    // markFromEvent rejects targets outside the instance's own
+    // richTextEl, so A stays untouched.
+    const { wrapper: wrapperA } = await mountedWithMark();
+    const { wrapper: wrapperB, mark: markB } = await mountedWithMark();
+    // Sanity: A's activeNote starts null.
+    expect(wrapperA.vm.activeNote).toBeNull();
+    fire(document, 'pointerdown', { button: 0, clientX: 20, clientY: 20 });
+    fire(markB, 'pointerup', { button: 0, clientX: 21, clientY: 22 });
+    expect(wrapperB.vm.activeNote).toBeTruthy(); // B's own click-to-pin
+    expect(wrapperA.vm.activeNote).toBeNull(); // A must not have opened
+  });
+
+  it('closes an already-open popover immediately on a new pointerdown', async () => {
+    const { wrapper, mark } = await mountedWithMark();
+    fire(mark, 'pointerover');
+    expect(wrapper.vm.activeNote).toBeTruthy();
+    // Starting a drag while the hover-popover is up must drop the popover
+    // straight away so the in-flight drag-select is not anchored over the
+    // mark the popover is attached to.
+    fire(document, 'pointerdown', { button: 0, clientX: 10, clientY: 10 });
+    expect(wrapper.vm.activeNote).toBeNull();
   });
 });

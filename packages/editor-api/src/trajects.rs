@@ -95,14 +95,159 @@ pub struct CreateTrajectRequest {
     pub description: String,
     #[serde(default)]
     pub scope: String,
+    /// GitHub `owner` for the writable-own source. When `None`, falls
+    /// back to the central MinBZK repo (phase-1 default). When set,
+    /// `repo_name` and `base_branch` must also be set; the server
+    /// derives `auth_ref` deterministically and looks up the matching
+    /// `CORPUS_AUTH_{AUTH_REF}_TOKEN` env var.
+    #[serde(default)]
+    pub repo_owner: Option<String>,
+    /// GitHub `repo`. Required when `repo_owner` is set.
+    #[serde(default)]
+    pub repo_name: Option<String>,
+    /// Branch to base the traject branch off of (and target with the
+    /// session PR). Required when `repo_owner` is set; the default
+    /// branch of the repo if you're unsure.
+    #[serde(default)]
+    pub base_branch: Option<String>,
+    /// Optional sub-path within the repo where regulation YAML files
+    /// live. Empty / omitted means "everything under repo root" — the
+    /// right default for user repos dedicated to regulations. Set this
+    /// when the YAML files sit in a subdirectory like `regulation/nl`
+    /// (which is the MinBZK default).
+    #[serde(default)]
+    pub repo_path: Option<String>,
 }
 
-// Phase-1: trajects always push to a single, app-wide writable source —
-// the central MinBZK corpus repo on its `development` branch, using the
-// app-wide CORPUS_AUTH_MINBZK_CENTRAL_TOKEN. No per-user / per-traject
-// auth yet; that's phase 2 (probably GitHub-App OAuth so we don't have
-// to store PATs in the database at all). When phase 2 lands these
-// constants become a fallback default for the request body.
+/// GitHub `owner` / `repo` segments end up in a URL path
+/// (`/repos/{owner}/{repo}`), in the on-disk session-branch name, and
+/// in the commit/PR body. Accept only the character set that GitHub
+/// itself allows for these identifiers — alphanumerics plus `-`, `_`,
+/// and `.`. Lets us refuse path-traversal-shaped input (`..`, `/`) at
+/// the API boundary rather than relying on GitHub to 404 it.
+///
+/// GitHub additionally disallows the literal segments `.` and `..` and
+/// names starting with a leading `.` (hidden/reserved). Reject those
+/// here so we don't store a row that GitHub will subsequently 404 on
+/// every contents/branches call.
+fn valid_repo_segment(s: &str) -> bool {
+    if s.is_empty() || s.len() > 100 {
+        return false;
+    }
+    if s == "." || s == ".." || s.starts_with('.') {
+        return false;
+    }
+    s.chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+}
+
+/// Reject branch names that git itself would refuse as refnames.
+///
+/// Mirrors the subset of `git-check-ref-format` rules that we can apply
+/// to a single component: no control chars, no whitespace, no
+/// `~^:?*[\` or `..`, no leading dash, no leading/trailing slash, no
+/// `@{` sequence. Bounded length so an oversized input can't bloat the
+/// on-disk branch name.
+///
+/// `base_branch` flows unencoded into a GitHub Contents-API URL
+/// (`/repos/{owner}/{repo}/branches/{base_branch}`) and is later
+/// persisted + used as a git refname in `commit_and_push_to_branch`.
+/// A non-empty trim check would let `"main?spoof=1"` through — GitHub
+/// strips the query, validates `main`, and the bogus suffix lands in
+/// the DB. This guard refuses any refname-illegal character at the API
+/// boundary so the persisted value is always a clean refname.
+fn valid_branch_name(s: &str) -> bool {
+    if s.is_empty() || s.len() > 200 {
+        return false;
+    }
+    // `git-check-ref-format` rejects the bare `@` as a refname.
+    if s == "@" {
+        return false;
+    }
+    // Leading `-`/`/`, trailing `/`, and a trailing `.` are all rejected
+    // by `git-check-ref-format` (e.g. `main.` is refused).
+    if s.starts_with('-') || s.starts_with('/') || s.ends_with('/') || s.ends_with('.') {
+        return false;
+    }
+    if s.contains("..") || s.contains("@{") || s.contains("//") {
+        return false;
+    }
+    // Per `git-check-ref-format`: no path component may start with `.`
+    // (so `.hidden` and `feature/.hidden` are both refused) and none may
+    // end with `.lock` (git treats `<ref>.lock` as a lockfile sentinel,
+    // so `main.lock` and `feature/foo.lock` are refused). Walk the
+    // components once for both rules.
+    if s.split('/')
+        .any(|c| c.starts_with('.') || c.ends_with(".lock"))
+    {
+        return false;
+    }
+    s.chars().all(|c| {
+        !c.is_control()
+            && c != ' '
+            && c != '~'
+            && c != '^'
+            && c != ':'
+            && c != '?'
+            && c != '*'
+            && c != '['
+            && c != '\\'
+            // `#` is a legal refname char in git but is the URL fragment
+            // delimiter. `format!(".../branches/{base_branch}")` followed
+            // by reqwest parsing would silently drop everything after
+            // `#`, so a branch name `main#spoof` would 200-pass the
+            // pre-flight (it matches `main`) but later git operations
+            // reference the non-existent `main#spoof`. Reject up front.
+            && c != '#'
+    })
+}
+
+/// Validate a user-supplied `repo_path` (sub-directory within a repo).
+///
+/// Empty is allowed and means "repo root". Otherwise the path must be
+/// relative (no leading `/`, no Windows prefix) and contain only
+/// "normal" components — no `..`, no `.`, no root. Each segment is
+/// further constrained to the same character set as `valid_repo_segment`
+/// so it can safely flow into a GitHub Contents-API URL without
+/// double-encoding or escaping surprises.
+///
+/// `validate_relative_path` inside `GitBackend::resolve` covers the
+/// inner per-file relative path, but the *base* `repo_subpath` (stored
+/// on the row as `gh_path`) never reaches that check. Without this
+/// guard a caller could ship `repo_path = "../../etc"` and the backend
+/// would read/write outside the per-traject clone.
+fn valid_repo_path(s: &str) -> bool {
+    if s.is_empty() {
+        return true;
+    }
+    let p = std::path::Path::new(s);
+    if p.is_absolute() {
+        return false;
+    }
+    for c in p.components() {
+        match c {
+            std::path::Component::Normal(seg) => {
+                let seg_str = seg.to_string_lossy();
+                if !valid_repo_segment(&seg_str) {
+                    return false;
+                }
+            }
+            // ParentDir (`..`), CurDir (`.`), RootDir, Prefix — all
+            // rejected so the stored gh_path is always a clean,
+            // forward-traversal-only relative path.
+            _ => return false,
+        }
+    }
+    true
+}
+
+// Phase-1 default writable source — the central MinBZK corpus repo on
+// its `development` branch, using the app-wide
+// `CORPUS_AUTH_MINBZK_CENTRAL_TOKEN`. Used when the create-request omits
+// the repo_* fields entirely, so existing flows keep working unchanged.
+// When the request *does* supply repo coordinates, all four user-facing
+// fields (owner/repo/branch/path) are taken from the request and
+// `auth_ref` is derived from owner+repo (see `derive_auth_ref`).
 const CENTRAL_WRITABLE_OWNER: &str = "MinBZK";
 const CENTRAL_WRITABLE_REPO: &str = "regelrecht-corpus";
 const CENTRAL_WRITABLE_PATH: &str = "regulation/nl";
@@ -157,6 +302,28 @@ fn db_err<E: std::fmt::Display>(context: &'static str) -> impl FnOnce(E) -> Stat
     move |e| {
         tracing::error!(error = %e, "{context}");
         StatusCode::INTERNAL_SERVER_ERROR
+    }
+}
+
+/// Same as [`get_pool`] but for handlers that return `(StatusCode, String)`
+/// so the body can carry a user-facing message. Used by `create` where
+/// failure reasons (missing token, missing branch, …) need to reach the UI.
+fn get_pool_msg(state: &AppState) -> Result<&PgPool, (StatusCode, String)> {
+    state.pool.as_ref().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "database not configured".to_string(),
+    ))
+}
+
+/// Same as [`db_err`] but returning `(StatusCode, String)`. Empty body —
+/// 500s caused by a DB issue carry no information the caller can act on,
+/// so we just log on the server and let the client see a bare 500.
+fn db_err_msg<E: std::fmt::Display>(
+    context: &'static str,
+) -> impl FnOnce(E) -> (StatusCode, String) {
+    move |e| {
+        tracing::error!(error = %e, "{context}");
+        (StatusCode::INTERNAL_SERVER_ERROR, String::new())
     }
 }
 
@@ -226,6 +393,42 @@ pub fn short_id(traject_id: Uuid) -> String {
 /// existing URLs.
 pub fn traject_ref(name: &str, traject_id: Uuid) -> String {
     format!("{}-{}", slugify(name), short_id(traject_id))
+}
+
+/// Derive the `auth_ref` for a user-supplied `<owner>/<repo>` so the
+/// existing token-resolver picks up the right
+/// `CORPUS_AUTH_{AUTH_REF_UPPER}_TOKEN` env var without anyone having
+/// to hand-maintain the mapping. Operators see a deterministic env-var
+/// name derived from the repo coordinates.
+///
+/// Rule: lowercase, runs of non-alphanumeric characters collapse to a
+/// single `-`, leading/trailing dashes trimmed. This is a slug, not a
+/// hash — it's lossy and not injective (e.g. `("a-", "-b")` and
+/// `("a", "b")` both produce `"a-b"`), so two pathological repo
+/// names could share an env var. Acceptable trade-off for legibility;
+/// the env-var collision just means both repos use the same token.
+///
+/// Examples:
+///   ("Acme",   "Secret-Repo")        → "acme-secret-repo"
+///   ("MinBZK", "regelrecht-corpus")  → "minbzk-regelrecht-corpus"
+///   ("a.b",    "c_d")                → "a-b-c-d"
+pub fn derive_auth_ref(owner: &str, repo: &str) -> String {
+    let mut out = String::new();
+    let mut prev_dash = true; // suppress leading dashes
+    let combined = format!("{owner}/{repo}");
+    for ch in combined.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            prev_dash = false;
+        } else if !prev_dash {
+            out.push('-');
+            prev_dash = true;
+        }
+    }
+    while out.ends_with('-') {
+        out.pop();
+    }
+    out
 }
 
 /// Resolve a `{slug}-{8hex}` URL ref to a traject UUID. Returns 400 on
@@ -514,6 +717,272 @@ pub async fn get(
     }))
 }
 
+/// Resolved writable-own source coordinates for the create handler.
+/// Either the phase-1 MinBZK defaults or the user-supplied repo after
+/// validation. The handler picks once up-front and then threads this
+/// through the INSERT — no `Option` juggling in the SQL bind list.
+struct WritableTarget {
+    owner: String,
+    repo: String,
+    base_branch: String,
+    /// Optional sub-path within the repo. `None` means "everything
+    /// under repo root" and is persisted as SQL `NULL` — consistent
+    /// with how seeded sources without a subpath are stored. `Some` is
+    /// always a non-empty, validated relative path (see
+    /// `valid_repo_path`).
+    path: Option<String>,
+    auth_ref: String,
+    /// Display name used as the source label in the federation config.
+    /// `MinBZK/regelrecht-corpus` for the default, `<owner>/<repo>` for
+    /// user-supplied repos.
+    display_name: String,
+}
+
+/// Decide whether the create-request asks for the MinBZK default or a
+/// user-supplied repo, then validate the latter against the configured
+/// token before we open the DB transaction.
+///
+/// The three `repo_*` fields are all-or-nothing: any subset other than
+/// "none" or "all three" is a 400 — partial submissions almost always
+/// mean the frontend forgot to wire one field.
+async fn resolve_writable_target(
+    state: &AppState,
+    req: &CreateTrajectRequest,
+) -> Result<WritableTarget, (StatusCode, String)> {
+    let owner = req
+        .repo_owner
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let repo = req
+        .repo_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let base = req
+        .base_branch
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+
+    match (owner, repo, base) {
+        // No repo coords → phase-1 default.
+        (None, None, None) => Ok(WritableTarget {
+            owner: CENTRAL_WRITABLE_OWNER.to_string(),
+            repo: CENTRAL_WRITABLE_REPO.to_string(),
+            base_branch: CENTRAL_WRITABLE_BASE_BRANCH.to_string(),
+            path: Some(CENTRAL_WRITABLE_PATH.to_string()),
+            auth_ref: CENTRAL_WRITABLE_AUTH_REF.to_string(),
+            display_name: CENTRAL_WRITABLE_NAME.to_string(),
+        }),
+        // All three filled → user-supplied repo path. Validate.
+        (Some(owner), Some(repo), Some(base_branch)) => {
+            if !valid_repo_segment(owner) || !valid_repo_segment(repo) {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    "repo_owner / repo_name mogen alleen letters, cijfers, en \
+                     de tekens '-', '_' en '.' bevatten"
+                        .to_string(),
+                ));
+            }
+            // `base_branch` flows unencoded into a GitHub URL and is
+            // later persisted + used as a git refname; reject any
+            // refname-illegal character at the boundary so neither
+            // GitHub nor git ever sees a malformed ref. See
+            // `valid_branch_name` for the exact rule set.
+            if !valid_branch_name(base_branch) {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    "base_branch bevat tekens die niet zijn toegestaan in een git branch-naam"
+                        .to_string(),
+                ));
+            }
+            // Validate the optional repo sub-path at the API boundary.
+            // `GitBackend::resolve` only validates the inner *relative*
+            // path on each read/write; the base `gh_path` itself is
+            // never re-checked downstream, so a traversal like
+            // `../../etc` would let the backend read/write outside the
+            // per-traject clone. Reject up-front.
+            //
+            // Trim + treat empty as "no subpath" → stored as SQL NULL
+            // (matches how seeded sources without a subpath are stored;
+            // avoids the "" vs NULL inconsistency on the row).
+            let repo_path: Option<String> = req
+                .repo_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+            if let Some(ref p) = repo_path {
+                if !valid_repo_path(p) {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        "repo_path moet een relatief pad zijn zonder '..' segmenten en \
+                         mag alleen letters, cijfers, en '-', '_', '.' bevatten"
+                            .to_string(),
+                    ));
+                }
+            }
+            let auth_ref = derive_auth_ref(owner, repo);
+            if auth_ref.is_empty() {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    format!("owner/repo \"{owner}/{repo}\" produces an empty auth_ref"),
+                ));
+            }
+            // Reject the rare collision where a user-supplied
+            // owner/repo combination derives to the same slug as the
+            // hardcoded central writable auth ref. Without this check,
+            // a user who happens to point a traject at
+            // `MinBZK/central` would silently get the central token
+            // routed to their repo, violating the design principle
+            // that the central token only ever reaches the central
+            // repo. Surface as a 400 so the operator picks a
+            // different slug (or omits the repo fields entirely to
+            // use the actual MinBZK default).
+            if auth_ref == CENTRAL_WRITABLE_AUTH_REF {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    format!(
+                        "repo \"{owner}/{repo}\" botst met de gereserveerde central auth ref; \
+                         gebruik een andere repo of laat de repo-velden weg om naar de centrale \
+                         MinBZK-repo te wijzen"
+                    ),
+                ));
+            }
+
+            // Resolve the token. Use the *strict* resolver here — the
+            // `auth_ref` is derived from user-supplied repo coords, so
+            // an unknown ref must NOT fall back to `CORPUS_GIT_TOKEN`
+            // (that would ship the central token to a repo the user
+            // picked, a token-exfiltration vector). The strict variant
+            // returns `None` when no per-repo env var or auth-file
+            // entry is configured, which we then surface as a clean
+            // 503 with the expected env-var name.
+            let auth_file = {
+                let corpus = state.corpus.read().await;
+                corpus.auth_file.clone()
+            };
+            let token =
+                regelrecht_corpus::auth::resolve_token_strict(&auth_ref, auth_file.as_deref())
+                    .map_err(|e| {
+                        tracing::error!(error = %e, "auth lookup failed for new traject repo");
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "auth lookup failed".to_string(),
+                        )
+                    })?
+                    .ok_or_else(|| {
+                        let env_name = regelrecht_corpus::auth::token_env_name(&auth_ref);
+                        tracing::warn!(
+                            auth_ref = %auth_ref,
+                            env_name = %env_name,
+                            "no token configured for user-supplied repo"
+                        );
+                        (
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            format!(
+                                "deze repo is nog niet door je beheerder geconfigureerd \
+                         (verwacht env var {env_name})"
+                            ),
+                        )
+                    })?;
+
+            let info = regelrecht_corpus::repo_access::validate_repo_access(
+                "https://api.github.com",
+                owner,
+                repo,
+                base_branch,
+                &token,
+            )
+            .await
+            .map_err(|e| repo_access_error_to_status(&e, owner, repo, base_branch))?;
+
+            tracing::info!(
+                owner = %owner,
+                repo = %repo,
+                base_branch = %base_branch,
+                default_branch = %info.default_branch,
+                is_private = info.is_private,
+                "validated user-supplied repo for new traject"
+            );
+
+            Ok(WritableTarget {
+                owner: owner.to_string(),
+                repo: repo.to_string(),
+                base_branch: base_branch.to_string(),
+                // `repo_path` is optional — `None` means "everything
+                // under repo root" (persisted as NULL), which the
+                // corpus client already handles correctly. The MinBZK
+                // default explicitly sets "regulation/nl"; user repos
+                // dedicated to regulations typically don't need a
+                // subpath. Already validated above as a clean relative
+                // path.
+                path: repo_path,
+                auth_ref,
+                display_name: format!("{owner}/{repo}"),
+            })
+        }
+        // Partial → caller error, refuse rather than guess.
+        _ => Err((
+            StatusCode::BAD_REQUEST,
+            "repo_owner, repo_name en base_branch moeten alle drie worden meegegeven \
+             (of alle drie weggelaten worden voor de standaard MinBZK repo)"
+                .to_string(),
+        )),
+    }
+}
+
+/// Map a `RepoAccessError` to the appropriate HTTP status + a NL message
+/// the create-sheet can show as-is. Kept verbose so each failure mode is
+/// distinguishable in the UI.
+fn repo_access_error_to_status(
+    err: &regelrecht_corpus::repo_access::RepoAccessError,
+    owner: &str,
+    repo: &str,
+    base_branch: &str,
+) -> (StatusCode, String) {
+    use regelrecht_corpus::repo_access::RepoAccessError as E;
+    match err {
+        // The *user* is fully authenticated (made it through OIDC + this
+        // handler's middleware). What failed is the *operator's*
+        // GitHub PAT — that is an upstream credential issue, not a
+        // missing user credential. Use BAD_GATEWAY rather than 401 so
+        // proxies / browsers don't try to inject WWW-Authenticate or
+        // pop a credential dialog at the editor's user.
+        E::Unauthorized => (
+            StatusCode::BAD_GATEWAY,
+            "het token van je beheerder wordt door GitHub geweigerd".to_string(),
+        ),
+        E::RepoNotFound => (
+            StatusCode::NOT_FOUND,
+            format!("repo {owner}/{repo} bestaat niet of het token kan 'm niet zien"),
+        ),
+        E::BranchNotFound => (
+            StatusCode::NOT_FOUND,
+            format!("branch '{base_branch}' bestaat niet op {owner}/{repo}"),
+        ),
+        E::NoPushAccess => (
+            StatusCode::FORBIDDEN,
+            "het geconfigureerde token heeft geen schrijftoegang tot deze repo".to_string(),
+        ),
+        E::Transport(msg) => {
+            tracing::warn!(error = %msg, "transport error validating repo");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "kon GitHub niet bereiken om de repo te valideren".to_string(),
+            )
+        }
+        E::Other(msg) => {
+            tracing::warn!(error = %msg, "unexpected GitHub response validating repo");
+            (
+                StatusCode::BAD_GATEWAY,
+                "onverwacht antwoord van GitHub bij repo-validatie".to_string(),
+            )
+        }
+    }
+}
+
 /// POST /api/trajects — create a new traject.
 ///
 /// Seeds the federated config by copying the global registry's sources
@@ -521,18 +990,30 @@ pub async fn get(
 /// source at priority 0. Branch creation on the writable source is
 /// handled by `GitBackend` on first use, which falls back to the
 /// configured base branch when the traject branch doesn't yet exist.
+///
+/// When the request supplies `repo_owner`/`repo_name`/`base_branch`,
+/// the writable-own source points to that user repo and the
+/// pre-existing `CORPUS_AUTH_*_TOKEN` env var (named after a
+/// deterministic slug of `owner-repo` — see [`derive_auth_ref`])
+/// authenticates it. No request omitted → phase-1 MinBZK default.
 pub async fn create(
     State(state): State<AppState>,
     Extension(account): Extension<AccountRecord>,
     Json(req): Json<CreateTrajectRequest>,
-) -> Result<(StatusCode, Json<TrajectSummary>), StatusCode> {
+) -> Result<(StatusCode, Json<TrajectSummary>), (StatusCode, String)> {
     let name = req.name.trim();
     if name.is_empty() {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err((StatusCode::BAD_REQUEST, "name is required".to_string()));
     }
 
-    let pool = get_pool(&state)?;
-    let mut tx = pool.begin().await.map_err(db_err("begin tx"))?;
+    // Resolve the writable-own target first — the validation may need to
+    // talk to GitHub (which can fail with a helpful 4xx); we want to do
+    // that *before* we open the DB transaction so a network blip doesn't
+    // leak a half-rolled row.
+    let target = resolve_writable_target(&state, &req).await?;
+
+    let pool = get_pool_msg(&state)?;
+    let mut tx = pool.begin().await.map_err(db_err_msg("begin tx"))?;
 
     let traject_id: Uuid = sqlx::query_scalar(
         "INSERT INTO trajects (name, description, scope, created_by)
@@ -544,7 +1025,7 @@ pub async fn create(
     .bind(account.id)
     .fetch_one(&mut *tx)
     .await
-    .map_err(db_err("insert traject"))?;
+    .map_err(db_err_msg("insert traject"))?;
 
     sqlx::query(
         "INSERT INTO traject_members (traject_id, account_id, role)
@@ -554,7 +1035,7 @@ pub async fn create(
     .bind(account.id)
     .execute(&mut *tx)
     .await
-    .map_err(db_err("insert member"))?;
+    .map_err(db_err_msg("insert member"))?;
 
     // Seed federated config from the global registry. The global corpus
     // read guard is dropped before the next await so we don't hold it
@@ -594,15 +1075,14 @@ pub async fn create(
         .bind(seed.scopes)
         .execute(&mut *tx)
         .await
-        .map_err(db_err("seed traject source"))?;
+        .map_err(db_err_msg("seed traject source"))?;
     }
 
-    // Writable-own source: hardcoded to the central MinBZK corpus on
-    // `development` for phase 1. The branch name is derived from the
-    // traject name + id; auth flows through `CORPUS_AUTH_MINBZK_CENTRAL_TOKEN`
-    // via `auth_ref = "minbzk-central"`. Columns stay populated as a
-    // record — phase 2 (per-user auth, per-traject fork choice) can swap
-    // these constants for request-body fields without touching the DB.
+    // Writable-own source: either the phase-1 MinBZK default or the
+    // user-supplied repo (already validated up-front for push access).
+    // The branch name is derived from the traject name + id; auth flows
+    // through `CORPUS_AUTH_{AUTH_REF_UPPER}_TOKEN` via the `auth_ref`
+    // stored on this row.
     let writable_branch = derive_branch_name(name, traject_id);
     let writable_source_id = format!("traject-own-{}", traject_id.simple());
     sqlx::query(
@@ -616,18 +1096,20 @@ pub async fn create(
     )
     .bind(traject_id)
     .bind(&writable_source_id)
-    .bind(CENTRAL_WRITABLE_NAME)
-    .bind(CENTRAL_WRITABLE_OWNER)
-    .bind(CENTRAL_WRITABLE_REPO)
+    .bind(&target.display_name)
+    .bind(&target.owner)
+    .bind(&target.repo)
     .bind(&writable_branch)
-    .bind(CENTRAL_WRITABLE_BASE_BRANCH)
-    .bind(CENTRAL_WRITABLE_PATH)
-    .bind(CENTRAL_WRITABLE_AUTH_REF)
+    .bind(&target.base_branch)
+    .bind(&target.path)
+    .bind(&target.auth_ref)
     .execute(&mut *tx)
     .await
-    .map_err(db_err("insert writable source"))?;
+    .map_err(db_err_msg("insert writable source"))?;
 
-    tx.commit().await.map_err(db_err("commit traject create"))?;
+    tx.commit()
+        .await
+        .map_err(db_err_msg("commit traject create"))?;
 
     state.trajects.invalidate(traject_id).await;
 
@@ -1108,5 +1590,171 @@ mod tests {
         let branch = derive_branch_name("Tarief", id);
         assert!(branch.starts_with("traject/tarief-"));
         assert_eq!(branch.len(), "traject/tarief-".len() + 8);
+    }
+
+    #[test]
+    fn auth_ref_lowercases_and_collapses_separators() {
+        // Owner + repo combined with `/`, all separators collapse to a
+        // single dash. Operators read this back as the env-var stem
+        // `CORPUS_AUTH_<UPPER>_TOKEN`.
+        assert_eq!(derive_auth_ref("Acme", "Secret-Repo"), "acme-secret-repo");
+        assert_eq!(
+            derive_auth_ref("MinBZK", "regelrecht-corpus"),
+            "minbzk-regelrecht-corpus"
+        );
+        assert_eq!(derive_auth_ref("a.b", "c_d"), "a-b-c-d");
+    }
+
+    #[test]
+    fn auth_ref_stable_under_already_normalised_input() {
+        // An already-normalised owner/repo (lowercase + dash-only) must
+        // come out byte-identical — operators read this back from the
+        // DB row to know the matching env-var name; any drift between
+        // create-time and read-time would mean "broken token resolution
+        // after a rename".
+        assert_eq!(derive_auth_ref("acme", "secret-repo"), "acme-secret-repo");
+        assert_eq!(
+            derive_auth_ref("minbzk", "regelrecht-corpus"),
+            "minbzk-regelrecht-corpus"
+        );
+    }
+
+    #[test]
+    fn auth_ref_trims_leading_and_trailing_dashes() {
+        // Garbage in/out: only-special-chars resolves to "" rather than
+        // a string of pure dashes. The caller should reject this before
+        // it reaches the INSERT.
+        assert_eq!(derive_auth_ref("...", "..."), "");
+        assert_eq!(derive_auth_ref(".foo.", ".bar."), "foo-bar");
+    }
+
+    #[test]
+    fn valid_repo_path_accepts_empty_and_simple_subdirs() {
+        assert!(valid_repo_path(""));
+        assert!(valid_repo_path("regulation/nl"));
+        assert!(valid_repo_path("a"));
+        assert!(valid_repo_path("a/b/c"));
+        assert!(valid_repo_path("dir.with.dots/and_underscores"));
+    }
+
+    #[test]
+    fn valid_repo_path_rejects_traversal_and_absolute() {
+        // The whole point of this check: the base gh_path is never
+        // re-validated by GitBackend::resolve, so any traversal or
+        // absolute path that lands in the DB row will be honoured by
+        // the backend on subsequent reads/writes. Reject at the API
+        // boundary.
+        assert!(!valid_repo_path("../etc"));
+        assert!(!valid_repo_path("/etc"));
+        assert!(!valid_repo_path("regulation/../../etc"));
+        assert!(!valid_repo_path("./regulation"));
+        assert!(!valid_repo_path(".."));
+        assert!(!valid_repo_path("regulation/with space"));
+        assert!(!valid_repo_path("regulation/with!bang"));
+    }
+
+    #[test]
+    fn valid_repo_segment_rejects_leading_dot_and_dots_only() {
+        // GitHub disallows segments that are literal `.` or `..` and
+        // names starting with a leading `.`. The previous validator
+        // permitted these because they're inside the `[A-Za-z0-9._-]`
+        // character class; this test pins the explicit rejection.
+        assert!(!valid_repo_segment("."));
+        assert!(!valid_repo_segment(".."));
+        assert!(!valid_repo_segment(".hidden"));
+        assert!(!valid_repo_segment(".github"));
+        // Dots in the middle of a segment remain valid (e.g. version
+        // suffixes like `repo.v2`).
+        assert!(valid_repo_segment("a.b"));
+        assert!(valid_repo_segment("regelrecht-corpus"));
+    }
+
+    #[test]
+    fn valid_branch_name_accepts_common_branches() {
+        // Real branch names that flow through `resolve_writable_target`
+        // every day: must not be rejected by the boundary guard.
+        assert!(valid_branch_name("main"));
+        assert!(valid_branch_name("develop"));
+        assert!(valid_branch_name("feature/foo"));
+        assert!(valid_branch_name("release-1.0"));
+        assert!(valid_branch_name("user/feature/sub-branch"));
+    }
+
+    #[test]
+    fn valid_branch_name_rejects_url_injection_and_refname_illegals() {
+        // `?` would let `main?spoof=1` pass the trim+non-empty check
+        // because GitHub strips the query before validating `main`;
+        // refuse it at the boundary so the persisted refname is clean.
+        assert!(!valid_branch_name("main?spoof=1"));
+        // Trailing/embedded whitespace and control chars.
+        assert!(!valid_branch_name("main "));
+        assert!(!valid_branch_name("ma in"));
+        assert!(!valid_branch_name("main\n"));
+        assert!(!valid_branch_name("main\t"));
+        // Refname-illegal characters from `git-check-ref-format`.
+        assert!(!valid_branch_name("feat~1"));
+        assert!(!valid_branch_name("feat^2"));
+        assert!(!valid_branch_name("a:b"));
+        assert!(!valid_branch_name("a*b"));
+        assert!(!valid_branch_name("a[b"));
+        assert!(!valid_branch_name("a\\b"));
+        assert!(!valid_branch_name("feat@{1}"));
+        // `#` is legal in git refnames but is the URL fragment delimiter,
+        // so `main#spoof` would 200-pass the pre-flight (matches `main`)
+        // and produce a non-existent refname downstream. Refuse it.
+        assert!(!valid_branch_name("main#spoof"));
+        assert!(!valid_branch_name("#"));
+        // `..` (dot-dot), leading `-`, leading/trailing `/`, double `/`.
+        assert!(!valid_branch_name(".."));
+        assert!(!valid_branch_name("a..b"));
+        assert!(!valid_branch_name("-x"));
+        assert!(!valid_branch_name("/x"));
+        assert!(!valid_branch_name("x/"));
+        assert!(!valid_branch_name("feat//bar"));
+        // Empty + oversized.
+        assert!(!valid_branch_name(""));
+        let oversized: String = "a".repeat(201);
+        assert!(!valid_branch_name(&oversized));
+    }
+
+    #[test]
+    fn valid_branch_name_rejects_git_specific_corner_cases() {
+        // git-check-ref-format rejects refnames that end with `.`, the
+        // bare `@`, or any component ending in `.lock`. Mirror those
+        // here so the boundary check matches the refname grammar.
+        assert!(!valid_branch_name("main."));
+        assert!(!valid_branch_name("@"));
+        assert!(!valid_branch_name("main.lock"));
+        assert!(!valid_branch_name("feat/foo.lock"));
+        // No path component may start with `.`. GitHub would accept
+        // these refs but git would refuse them downstream at push time.
+        assert!(!valid_branch_name(".hidden"));
+        assert!(!valid_branch_name("feature/.hidden"));
+        assert!(!valid_branch_name(".github"));
+        // Sanity: dots / "lock" inside a name (not as a trailing
+        // component / suffix) stay accepted.
+        assert!(valid_branch_name("main.foo"));
+        assert!(valid_branch_name("locked-down"));
+    }
+
+    #[test]
+    fn minbzk_central_collides_with_reserved_auth_ref() {
+        // Documents the collision the `resolve_writable_target` guard
+        // exists to prevent: a user-supplied owner=MinBZK, repo=central
+        // derives byte-for-byte to the hardcoded CENTRAL_WRITABLE_AUTH_REF.
+        // Without the guard, that traject would silently get the central
+        // token routed to a user-chosen repo. The guard rejects the
+        // request before INSERT; this test pins the precondition so a
+        // future rename of either constant or `derive_auth_ref` can't
+        // silently break the guard's premise.
+        assert_eq!(
+            derive_auth_ref("MinBZK", "central"),
+            CENTRAL_WRITABLE_AUTH_REF
+        );
+        // Sanity check: an unrelated repo doesn't collide.
+        assert_ne!(
+            derive_auth_ref("MinBZK", "regelrecht-corpus"),
+            CENTRAL_WRITABLE_AUTH_REF
+        );
     }
 }

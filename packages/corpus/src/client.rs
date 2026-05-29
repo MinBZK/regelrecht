@@ -398,6 +398,8 @@ impl CorpusClient {
             "--single-branch",
         ];
         if sparse {
+            // Partial clone: lazy-fetch blobs via sparse paths instead of shipping the full pack.
+            args.push("--filter=blob:none");
             args.push("--no-checkout");
         }
         args.push(&url);
@@ -449,6 +451,8 @@ impl CorpusClient {
             "--single-branch",
         ];
         if sparse {
+            // Partial clone — see `git_clone` for the rationale.
+            args.push("--filter=blob:none");
             args.push("--no-checkout");
         }
         args.push(&url);

@@ -14,6 +14,8 @@ pub mod models;
 #[cfg(feature = "github")]
 pub mod pr_client;
 pub mod registry;
+#[cfg(feature = "github")]
+pub mod repo_access;
 pub mod source_map;
 pub mod validation;
 
@@ -31,4 +33,6 @@ pub use models::{RegistryManifest, Source, SourceType};
 #[cfg(feature = "github")]
 pub use pr_client::PullRequestClient;
 pub use registry::CorpusRegistry;
+#[cfg(feature = "github")]
+pub use repo_access::{validate_repo_access, RepoAccessError, RepoInfo};
 pub use source_map::SourceMap;
