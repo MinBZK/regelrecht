@@ -17,4 +17,4 @@ See [RFC-000](./rfc-000) for the process. RFCs are warranted for:
 - Cross-cutting design patterns
 - Integration patterns between components
 
-The template is at `docs/rfcs/template.md` in the repository.
+The template is at `docs/src/content/rfcs/template.md` in the repository.

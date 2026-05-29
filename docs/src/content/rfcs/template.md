@@ -5,6 +5,7 @@ title: "RFC-NNN: Title"
 **Status:** Proposed
 **Date:** YYYY-MM-DD
 **Authors:** Your Name
+**Depends on:** RFC-NNN, RFC-MMM (optional; omit this line if the RFC has no hard dependencies)
 
 ## Context
 
