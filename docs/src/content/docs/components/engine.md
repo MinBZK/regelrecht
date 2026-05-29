@@ -139,18 +139,19 @@ The `output_name` (singular) field is still accepted for backwards compatibility
 
 ## Operations
 
-The engine supports 21 operations for expressing legal logic:
+The engine supports 21 schema operations for expressing legal logic:
 
 | Category | Operations |
 |----------|-----------|
-| **Comparison** | `EQUALS`, `NOT_EQUALS`, `GREATER_THAN`, `LESS_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN_OR_EQUAL` |
-| **Arithmetic** | `ADD`, `SUBTRACT`, `MULTIPLY`, `DIVIDE` |
-| **Aggregate** | `MAX`, `MIN` |
-| **Logical** | `AND`, `OR` |
-| **Conditional** | `IF` (when/then/else), `SWITCH` (cases/default) |
-| **Null checking** | `IS_NULL`, `NOT_NULL` |
-| **Membership** | `IN`, `NOT_IN` |
-| **Date** | `SUBTRACT_DATE` (with unit: days/months/years) |
+| **Comparison** (5) | `EQUALS`, `GREATER_THAN`, `LESS_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN_OR_EQUAL` |
+| **Arithmetic** (4) | `ADD`, `SUBTRACT`, `MULTIPLY`, `DIVIDE` |
+| **Aggregate** (2) | `MAX`, `MIN` |
+| **Logical** (3) | `AND`, `OR`, `NOT` |
+| **Conditional** (1) | `IF` (when/then/else, or cases/default; `SWITCH` is an accepted alias) |
+| **Collection** (2) | `IN`, `LIST` |
+| **Date** (4) | `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK` |
+
+Negation and null checks are expressed by wrapping a positive operation in `NOT` (for example `NOT` around `EQUALS`, or `NOT` around an `IS_NULL`-style check). For backward compatibility the engine also accepts the aliases `NOT_EQUALS`, `IS_NULL`, `NOT_NULL`, and `NOT_IN`, but these are **not** part of the v0.5.0 schema: YAML using them executes correctly yet fails schema validation, so new laws should use `NOT` instead.
 
 See [RFC-004](/rfcs/rfc-004) for the full specification.
 
@@ -255,9 +256,7 @@ engine.lawCount(): number
 engine.version(): string
 ```
 
-::: warning WASM Limitations
-Open term resolution (`open_terms` / `implements` IoC pattern) is not yet available in the WASM build. Cross-law references work when all referenced laws are pre-loaded via `loadLaw()`.
-:::
+> **WASM limitations.** Open term resolution (`open_terms` / `implements` IoC pattern) is not yet available in the WASM build. Cross-law references work when all referenced laws are pre-loaded via `loadLaw()`.
 
 ## Security Limits
 

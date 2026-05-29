@@ -1,7 +1,6 @@
 /*
- * Documentation sidebar structure, ported verbatim from the former
- * VitePress themeConfig.sidebar object literal. Single source of truth for
- * the per-section navigation; the /rfcs/ group items come from rfcs.ts so
+ * Documentation sidebar structure. Single source of truth for the
+ * per-section navigation; the /rfcs/ group items come from rfcs.ts so
  * the RFC list cannot drift from the actual rfc-*.md files.
  */
 import { rfcSidebarItems } from './rfcs';
