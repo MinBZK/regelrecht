@@ -13,6 +13,7 @@
 import { ref, computed, watch } from 'vue';
 import { buildSelector } from '../composables/useTextSelection.js';
 import { useAmbiguityVocabulary } from '../composables/useAmbiguityVocabulary.js';
+import { documentsListUrl } from '../composables/corpusUrls.js';
 
 const props = defineProps({
   // Raw char range from selectionToRawRange(), or null when closed.
@@ -26,6 +27,9 @@ const props = defineProps({
   // Anchor element for the popover (the <mark>-less selection rectangle is
   // gone once the form opens, so AnnotatedText passes a stable anchor).
   anchor: { type: Object, default: null },
+  // Active traject ref. Required to surface the "Document" link mode —
+  // without a traject there is no documents folder to pick from.
+  trajectRef: { type: String, default: '' },
 });
 
 const emit = defineEmits(['create', 'cancel']);
@@ -36,10 +40,45 @@ const motivation = ref('commenting');
 const creator = ref(localStorage.getItem('regelrecht-note-creator') || '');
 const commentText = ref('');
 const linkTarget = ref('');
+// Linking sub-mode: 'element' is the existing intra-law machine_readable
+// target, 'document' points at a markdown/text file in the traject's
+// documents tree. Lives on the form because both produce a
+// `SpecificResource` body and the W3C `motivation` is `linking` for both.
+const linkMode = ref('element');
+const documentTarget = ref('');
+const documentOptions = ref([]);
+const documentsLoadError = ref(null);
 const ambiguityTag = ref('');
 const workflow = ref('open');
 
 const { items: ambiguityItems } = useAmbiguityVocabulary();
+
+const documentsAvailable = computed(
+  () => !!props.trajectRef && documentOptions.value.length > 0,
+);
+
+// Lazy-load the traject's documents the first time the form opens with
+// a traject in scope. Without a traject there is no documents folder to
+// link into, so skip the fetch.
+async function fetchDocumentOptions() {
+  if (!props.trajectRef) return;
+  documentsLoadError.value = null;
+  try {
+    const res = await fetch(documentsListUrl(props.trajectRef));
+    if (!res.ok) {
+      documentsLoadError.value = new Error(`HTTP ${res.status}`);
+      documentOptions.value = [];
+      return;
+    }
+    const json = await res.json();
+    documentOptions.value = Array.isArray(json?.documents)
+      ? json.documents.map((d) => d.path)
+      : [];
+  } catch (e) {
+    documentsLoadError.value = e;
+    documentOptions.value = [];
+  }
+}
 
 // Flatten the article's machine_readable element names so a linking note can
 // point at one. Outputs and definitions are the link-worthy elements (RFC-018
@@ -78,7 +117,11 @@ const selectorReason = computed(() => selectorResult.value?.reason ?? null);
 const canSave = computed(() => {
   if (!selectorResult.value) return false;
   if (selectorStatus.value !== 'found') return false; // ambiguous/orphaned: fix first
-  if (motivation.value === 'linking') return !!linkTarget.value;
+  if (motivation.value === 'linking') {
+    return linkMode.value === 'document'
+      ? !!documentTarget.value
+      : !!linkTarget.value;
+  }
   if (motivation.value === 'commenting') return commentText.value.trim().length > 0;
   if (motivation.value === 'questioning') return commentText.value.trim().length > 0;
   if (motivation.value === 'tagging') return !!ambiguityTag.value;
@@ -99,6 +142,10 @@ watch(
       } catch {
         /* already open */
       }
+      // Refresh the documents list each time the form opens. The list is
+      // small (a fresh traject often has zero) so a re-fetch on every open
+      // is cheap and beats caching staleness across saves.
+      fetchDocumentOptions().catch(() => {});
     } else {
       pop.hidePopover?.();
       // Clear the form too: range goes null on cancel/article-switch, and
@@ -113,6 +160,8 @@ function reset() {
   motivation.value = 'commenting'; // back to the default, not sticky on linking
   commentText.value = '';
   linkTarget.value = '';
+  linkMode.value = 'element';
+  documentTarget.value = '';
   ambiguityTag.value = '';
   workflow.value = 'open';
 }
@@ -150,6 +199,19 @@ function save() {
 
 function buildBody() {
   if (motivation.value === 'linking') {
+    if (linkMode.value === 'document') {
+      return {
+        type: 'SpecificResource',
+        // Document URI: `regelrecht://doc/<traject>/<pad>`. The
+        // documentTarget already includes the in-traject relative path
+        // (e.g. `mvt/concept.md`); slashes inside are kept verbatim so
+        // the engine can resolve back to the file. The traject ref is
+        // URI-safe by construction (`{slug}-{8hex}`) so no extra
+        // encoding is needed here.
+        source: `regelrecht://doc/${props.trajectRef}/${documentTarget.value}`,
+        purpose: 'linking',
+      };
+    }
     return {
       type: 'SpecificResource',
       source: `regelrecht://${props.lawId}/${linkTarget.value}#${linkTarget.value}`,
@@ -248,8 +310,23 @@ const statusInfo = computed(() => {
         </nldd-segmented-control>
       </label>
 
-      <!-- Linking: pick a machine_readable element of this article. -->
-      <label v-if="motivation === 'linking'" class="nc-field">
+      <!-- Linking: choose between a machine_readable element of this
+           article or a markdown/text document in the traject's
+           documents folder. Document mode only shows up when an active
+           traject is in scope. -->
+      <label v-if="motivation === 'linking' && trajectRef" class="nc-field">
+        <span class="nc-field__label">Koppel aan</span>
+        <nldd-segmented-control
+          size="md"
+          :value="linkMode"
+          @change="linkMode = $event.target?.value ?? $event.detail?.value ?? linkMode"
+        >
+          <nldd-segmented-control-item value="element" text="Element"></nldd-segmented-control-item>
+          <nldd-segmented-control-item value="document" text="Document"></nldd-segmented-control-item>
+        </nldd-segmented-control>
+      </label>
+
+      <label v-if="motivation === 'linking' && linkMode === 'element'" class="nc-field">
         <span class="nc-field__label">Koppel aan element</span>
         <nldd-dropdown
           size="md"
@@ -262,6 +339,25 @@ const statusInfo = computed(() => {
         </nldd-dropdown>
         <span v-if="linkableElements.length === 0" class="nc-hint">
           Dit artikel heeft geen machine_readable-elementen om aan te koppelen.
+        </span>
+      </label>
+
+      <label v-if="motivation === 'linking' && linkMode === 'document'" class="nc-field">
+        <span class="nc-field__label">Koppel aan document</span>
+        <nldd-dropdown
+          size="md"
+          @change="documentTarget = $event.detail?.value ?? $event.target?.value ?? documentTarget"
+        >
+          <select :value="documentTarget" data-testid="note-document-target">
+            <option value="" disabled>Kies een document…</option>
+            <option v-for="path in documentOptions" :key="path" :value="path">{{ path }}</option>
+          </select>
+        </nldd-dropdown>
+        <span v-if="!documentsAvailable && !documentsLoadError" class="nc-hint">
+          Dit traject heeft nog geen documenten. Maak er eerst een aan via Documenten.
+        </span>
+        <span v-if="documentsLoadError" class="nc-hint">
+          Documenten kunnen niet worden geladen ({{ documentsLoadError.message }}).
         </span>
       </label>
 

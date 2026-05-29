@@ -34,6 +34,21 @@ const router = createRouter({
       meta: { title: 'Bibliotheek' },
     },
     {
+      // Documents pane for a traject. Separate URL surface so a deep
+      // link to a document does not collide with a law-id slug; the
+      // `:docPath(.*)?` catch-all captures hierarchical paths verbatim
+      // (e.g. `mvt/concept.md`) — backend uses the same `{*doc_path}`
+      // wildcard.
+      //
+      // Listed BEFORE `editor-traject` so the literal `documents`
+      // segment matches this route instead of being captured as a
+      // `:lawId`.
+      path: '/editor/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/documents/:docPath(.*)?',
+      name: 'editor-documents',
+      component: () => import('./DocumentsApp.vue'),
+      meta: { title: 'Documenten', requiresAuth: true },
+    },
+    {
       // Traject-scoped editor: full read + write. Per-tab active
       // traject lives in the URL; switching in one tab no longer
       // leaks into another tab's saves. API hangs under

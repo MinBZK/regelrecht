@@ -1,0 +1,124 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { ref, nextTick } from 'vue';
+import { useTrajectDocuments } from './useTrajectDocuments.js';
+
+// Helper: shape a Response-like object with headers + body + status.
+function res({ ok = true, status = 200, body = '', etag = null, json = null }) {
+  const headers = new Map();
+  if (etag) headers.set('etag', etag);
+  if (json) headers.set('content-type', 'application/json');
+  else if (typeof body === 'string') headers.set('content-type', 'text/plain');
+  return {
+    ok,
+    status,
+    headers: {
+      get: (k) => headers.get(k.toLowerCase()) ?? null,
+    },
+    async text() {
+      return typeof body === 'string' ? body : JSON.stringify(body);
+    },
+    async json() {
+      return json ?? body;
+    },
+  };
+}
+
+beforeEach(() => {
+  localStorage.clear();
+  vi.restoreAllMocks();
+});
+
+describe('useTrajectDocuments', () => {
+  it('fetches the documents list for the active traject', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(
+      res({ json: { documents: [{ path: 'notes.md' }, { path: 'mvt/concept.md' }] } }),
+    );
+    globalThis.fetch = fetchSpy;
+
+    const trajectRef = ref('mig-1a2b3c4d');
+    const { documents, fetchList } = useTrajectDocuments(trajectRef);
+    await fetchList();
+
+    expect(fetchSpy).toHaveBeenCalledWith('/api/trajects/mig-1a2b3c4d/corpus/documents');
+    expect(documents.value.map((d) => d.path)).toEqual([
+      'notes.md',
+      'mvt/concept.md',
+    ]);
+  });
+
+  it('captures the ETag on open and sends it back as If-Match on save', async () => {
+    const trajectRef = ref('mig-1a2b3c4d');
+    // 1st call: openDocument GET.
+    // 2nd call: list refresh on trajectRef change (the immediate watch).
+    // 3rd call: saveCurrent PUT.
+    const calls = [];
+    globalThis.fetch = vi.fn().mockImplementation(async (url, opts) => {
+      calls.push({ url, opts: opts ?? {} });
+      if (url === '/api/trajects/mig-1a2b3c4d/corpus/documents') {
+        return res({ json: { documents: [{ path: 'notes.md' }] } });
+      }
+      if (opts?.method === 'PUT') {
+        return res({ status: 200, etag: '"new"', json: { etag: '"new"' } });
+      }
+      return res({ body: '# Existing', etag: '"v1"' });
+    });
+
+    const docs = useTrajectDocuments(trajectRef);
+    await nextTick(); // let the immediate watch fire
+    await docs.openDocument('notes.md');
+    expect(docs.currentEtag.value).toBe('"v1"');
+
+    docs.currentBody.value = '# Updated';
+    await docs.saveCurrent();
+
+    const put = calls.find((c) => c.opts?.method === 'PUT');
+    expect(put).toBeTruthy();
+    expect(put.opts.headers['If-Match']).toBe('"v1"');
+    expect(docs.currentEtag.value).toBe('"new"');
+  });
+
+  it('surfaces a 412 as a conflict instead of overwriting silently', async () => {
+    const trajectRef = ref('mig-1a2b3c4d');
+    globalThis.fetch = vi.fn().mockImplementation(async (url, opts) => {
+      if (url.endsWith('/documents')) return res({ json: { documents: [] } });
+      if (opts?.method === 'PUT') return res({ ok: false, status: 412 });
+      return res({ body: '# Existing', etag: '"v1"' });
+    });
+
+    const docs = useTrajectDocuments(trajectRef);
+    await docs.openDocument('notes.md');
+    docs.currentBody.value = '# Edited';
+    const result = await docs.saveCurrent();
+
+    expect(result).toEqual({ ok: false, conflict: true });
+    expect(docs.conflict.value).toMatch(/gewijzigd/i);
+  });
+
+  it('refuses to operate without a trajectRef', async () => {
+    const trajectRef = ref(null);
+    const docs = useTrajectDocuments(trajectRef);
+    docs.currentPath.value = 'notes.md';
+    docs.currentBody.value = 'x';
+    await expect(docs.saveCurrent()).rejects.toThrow(/traject/);
+  });
+
+  it('encodes hierarchical paths segment-by-segment so `/` is preserved', async () => {
+    const trajectRef = ref('mig-1a2b3c4d');
+    const fetchSpy = vi.fn().mockResolvedValue(
+      res({ body: '# Concept', etag: '"v1"' }),
+    );
+    globalThis.fetch = fetchSpy;
+
+    const docs = useTrajectDocuments(trajectRef);
+    await docs.openDocument('mvt/concept with spaces.md');
+
+    // Spaces are encoded but the in-path slash stays a literal `/`
+    // so the backend's `{*doc_path}` wildcard receives the structure.
+    const url = fetchSpy.mock.calls.find((c) =>
+      c[0].includes('mvt'),
+    )?.[0];
+    expect(url).toBe(
+      '/api/trajects/mig-1a2b3c4d/corpus/documents/mvt/concept%20with%20spaces.md',
+    );
+  });
+});
