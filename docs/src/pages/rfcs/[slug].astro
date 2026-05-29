@@ -18,6 +18,11 @@ const { entry } = Astro.props;
 const { Content, headings } = await render(entry);
 
 const pathname = '/rfcs/' + entry.id.replace(/\.md$/, '');
+// Edit-link base for this page (whole-file sidebar link + the per-selection
+// line-range affordance both build off it).
+const editBase = entry.filePath
+  ? `https://github.com/MinBZK/regelrecht/edit/main/docs/${entry.filePath}`
+  : undefined;
 // Frontmatter strings may use `&shy;` as a readable marker for U+00AD
 // (soft hyphen); the browser only renders the hyphen when the word needs
 // to break.
@@ -41,10 +46,10 @@ const title = pageTitle + ' · RegelRecht';
     <div slot="left">
       <DocsOutline headings={headings} />
       <nldd-spacer size="24" sm-size="16" />
-      <EditLink entryId={entry.id} collection="rfcs" />
+      <EditLink filePath={entry.filePath} />
     </div>
     <div slot="right" class="rr-min-width-0">
-      <nldd-rich-text>
+      <nldd-rich-text data-edit-base={editBase}>
         <Content />
       </nldd-rich-text>
       <DocsFooter pathname={pathname} />
