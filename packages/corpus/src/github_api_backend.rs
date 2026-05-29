@@ -289,6 +289,13 @@ impl RepoBackend for GitHubApiBackend {
         // (`relative path under the listing root`, `full API path`); the
         // empty prefix on the seed means the seed directory's direct
         // children appear with bare filenames in the output.
+        //
+        // **GitHub limit**: the Contents API caps each directory listing
+        // at 1000 entries with no pagination. A `documents/<traject>/`
+        // folder is extremely unlikely to hit that, but if it ever does
+        // the listing truncates silently. Switching to the Git Trees API
+        // (`/git/trees/{sha}?recursive=1`) is the proper fix when the
+        // need arises — it returns the entire subtree in one call.
         let mut queue: Vec<(String, String)> = vec![(String::new(), api_root)];
         let mut out: Vec<RecursiveFileEntry> = Vec::new();
 

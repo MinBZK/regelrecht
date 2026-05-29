@@ -102,7 +102,11 @@ describe('useTrajectDocuments', () => {
     await expect(docs.saveCurrent()).rejects.toThrow(/traject/);
   });
 
-  it('encodes hierarchical paths segment-by-segment so `/` is preserved', async () => {
+  it('keeps the `/` literal so the backend wildcard receives the hierarchy', async () => {
+    // URL-builder unit test: paths the backend accepts (lowercase
+    // `[a-z0-9._-]` segments) must reach the API with their slashes
+    // preserved, not percent-encoded. End-to-end rejection of weird
+    // characters is the backend's job (see `validate_document_path`).
     const trajectRef = ref('mig-1a2b3c4d');
     const fetchSpy = vi.fn().mockResolvedValue(
       res({ body: '# Concept', etag: '"v1"' }),
@@ -110,15 +114,13 @@ describe('useTrajectDocuments', () => {
     globalThis.fetch = fetchSpy;
 
     const docs = useTrajectDocuments(trajectRef);
-    await docs.openDocument('mvt/concept with spaces.md');
+    await docs.openDocument('mvt/concept-v2.md');
 
-    // Spaces are encoded but the in-path slash stays a literal `/`
-    // so the backend's `{*doc_path}` wildcard receives the structure.
     const url = fetchSpy.mock.calls.find((c) =>
       c[0].includes('mvt'),
     )?.[0];
     expect(url).toBe(
-      '/api/trajects/mig-1a2b3c4d/corpus/documents/mvt/concept%20with%20spaces.md',
+      '/api/trajects/mig-1a2b3c4d/corpus/documents/mvt/concept-v2.md',
     );
   });
 });

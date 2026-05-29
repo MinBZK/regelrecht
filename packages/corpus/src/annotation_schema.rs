@@ -512,6 +512,26 @@ annotations:
         assert_eq!(parse_regelrecht_uri("https://example.com/x"), None);
     }
 
+    /// `doc` is reserved as the document-scheme head — a regulation
+    /// with `$id: doc` would silently parse as a `Document` instead of
+    /// a `Law` reference. Pin the precedence so a future change that
+    /// flips the order trips this test.
+    #[test]
+    fn parse_regelrecht_uri_treats_doc_as_reserved_head() {
+        // `regelrecht://doc/<traject>/<path>` resolves as Document
+        // even though `doc` is a syntactically valid law id slug.
+        assert!(matches!(
+            parse_regelrecht_uri("regelrecht://doc/traject-12345678/notes.md"),
+            Some(RegelrechtRef::Document { .. })
+        ));
+        // A scheme head that merely starts with `doc` (e.g. `docs`,
+        // `doctrine`) is a regular law id, NOT a document reference.
+        assert!(matches!(
+            parse_regelrecht_uri("regelrecht://docs/foo"),
+            Some(RegelrechtRef::Law { .. })
+        ));
+    }
+
     #[test]
     fn first_note_not_targeting_law_is_an_allowlist() {
         // All on-law → None.

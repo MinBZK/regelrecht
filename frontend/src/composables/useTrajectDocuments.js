@@ -105,13 +105,17 @@ export function useTrajectDocuments(trajectRef) {
     docError.value = null;
     saveError.value = null;
     conflict.value = null;
-    currentPath.value = path;
+    // Cancel any debounce that was scheduled by the previous document's
+    // last keystroke: when the watch fires after we swap `currentPath`
+    // it would otherwise persist the new body under the old path.
+    cancelDraftTimer();
     try {
       const res = await fetch(documentFileUrl(trajectRef.value, path));
       if (res.status === 404) {
-        docError.value = new Error('Document niet gevonden');
+        currentPath.value = path;
         currentBody.value = '';
         currentEtag.value = null;
+        docError.value = new Error('Document niet gevonden');
         return;
       }
       if (!res.ok) {
@@ -119,12 +123,17 @@ export function useTrajectDocuments(trajectRef) {
         return;
       }
       const serverBody = await res.text();
-      currentEtag.value = res.headers.get('ETag');
+      const serverEtag = res.headers.get('ETag');
 
+      // Set the path + body atomically (post-await) so the debounce
+      // watch only fires on user input, not on this controlled swap.
+      const draft = loadDraft(trajectRef.value, path);
+      cancelDraftTimer();
+      currentPath.value = path;
+      currentEtag.value = serverEtag;
       // If the user had an unsaved draft for this document, prefer it
       // over the server body but flag the divergence so the editor can
       // offer "drop draft, keep server version".
-      const draft = loadDraft(trajectRef.value, path);
       if (draft !== null && draft !== serverBody) {
         currentBody.value = draft;
         docError.value = {
@@ -159,9 +168,15 @@ export function useTrajectDocuments(trajectRef) {
   // the textarea against currentBody and get the draft persistence for
   // free.
   let draftTimer = null;
+  function cancelDraftTimer() {
+    if (draftTimer) {
+      clearTimeout(draftTimer);
+      draftTimer = null;
+    }
+  }
   watch(currentBody, (text) => {
     if (!currentPath.value || !trajectRef.value) return;
-    if (draftTimer) clearTimeout(draftTimer);
+    cancelDraftTimer();
     draftTimer = setTimeout(() => {
       persistDraft(trajectRef.value, currentPath.value, text);
     }, DRAFT_DEBOUNCE_MS);
@@ -176,6 +191,10 @@ export function useTrajectDocuments(trajectRef) {
   async function saveCurrent({ ifMatch } = {}) {
     if (!currentPath.value) return;
     requireTraject(trajectRef.value, 'document save');
+    // Drop any pending draft flush — if it fires after `clearDraft`
+    // below, it'd re-create the localStorage row we just removed and
+    // leak a phantom draft for the next open.
+    cancelDraftTimer();
     saving.value = true;
     saveError.value = null;
     conflict.value = null;
@@ -237,10 +256,13 @@ export function useTrajectDocuments(trajectRef) {
 
   /**
    * Create a new document at `path`. Generates a minimal H1 template
-   * body and PUTs it with `If-Match: *` semantics so a hostile race
-   * (someone else just created the same path) surfaces as 412 rather
-   * than blind overwrite. On success the editor switches to the new
-   * document.
+   * body and PUTs it without `If-Match`, so a brand-new file lands at
+   * `200/201 OK`. The caller (`DocumentsApp.submitCreate`) does a
+   * client-side duplicate check against the already-fetched list
+   * before invoking us — without that check, a race where another
+   * user creates the same path between list-refresh and submit would
+   * silently overwrite. A future iteration can tighten this by adding
+   * `If-None-Match: *` support to the backend.
    */
   async function createDocument(path) {
     requireTraject(trajectRef.value, 'document create');
@@ -249,6 +271,7 @@ export function useTrajectDocuments(trajectRef) {
     // they can immediately replace.
     const stem = path.split('/').pop().replace(/\.[^.]+$/, '');
     const body = `# ${stem}\n\n`;
+    cancelDraftTimer();
     currentPath.value = path;
     currentBody.value = body;
     currentEtag.value = null;
@@ -258,6 +281,10 @@ export function useTrajectDocuments(trajectRef) {
 
   async function deleteDocument(path) {
     requireTraject(trajectRef.value, 'document delete');
+    // Same reasoning as in `saveCurrent`: if the doc being deleted is
+    // the open one, the pending debounce would resurrect a draft after
+    // we clear it below.
+    if (path === currentPath.value) cancelDraftTimer();
     const headers = {};
     if (path === currentPath.value && currentEtag.value) {
       headers['If-Match'] = currentEtag.value;

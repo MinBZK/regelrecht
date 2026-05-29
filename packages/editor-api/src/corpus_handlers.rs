@@ -1563,37 +1563,24 @@ fn traject_documents_base(traject_ref: &str) -> PathBuf {
     PathBuf::from("documents").join(traject_ref)
 }
 
-/// Get the writable-own backend for a traject. The writable_own's
-/// source_id is captured implicitly in `write_target_for_source` as
-/// the unique value mapped-to by every non-own seed source; we read
-/// it back from there and fall back to "first writable backend" on
-/// the single-source path (a local-only traject that has no seed to
-/// route around). Documents don't have a per-law context so we
-/// resolve the target without going through `resolve_traject_law_write`.
+/// Get the writable-own backend for a traject. Documents have no
+/// per-law context, so we address the writable_own source directly via
+/// the id captured at `TrajectCorpus` construction time. Reading the
+/// id off `traject.writable_own_source_id` makes the invariant local —
+/// previously this function inferred it from
+/// `write_target_for_source.values().next()`, which relied on every
+/// value being identical (true today, but unenforced).
 async fn resolve_traject_documents_writer(
     traject: &Arc<TrajectCorpus>,
 ) -> Result<tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>, (StatusCode, String)> {
-    let target_id = traject
-        .write_target_for_source
-        .values()
-        .next()
-        .cloned()
-        .or_else(|| {
-            traject
-                .corpus
-                .backends
-                .iter()
-                .find(|(_, e)| e.writable)
-                .map(|(id, _)| id.clone())
-        })
+    let entry = traject
+        .corpus
+        .backends
+        .get(&traject.writable_own_source_id)
         .ok_or((
             StatusCode::SERVICE_UNAVAILABLE,
-            "Traject has no writable backend".to_string(),
+            "Writable backend not initialised".to_string(),
         ))?;
-    let entry = traject.corpus.backends.get(&target_id).ok_or((
-        StatusCode::SERVICE_UNAVAILABLE,
-        "Writable backend not initialised".to_string(),
-    ))?;
     if !entry.writable {
         return Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()));
     }
@@ -1614,6 +1601,26 @@ fn extract_if_match(headers: &axum::http::HeaderMap) -> Option<String> {
 /// exist). A `412 Precondition Failed` is surfaced on mismatch so the
 /// frontend can distinguish a stale-view conflict from a generic 409
 /// upstream race.
+///
+/// **`if_match = None` is intentionally a no-op.** The documents PUT
+/// has to support brand-new files where the client has no prior ETag
+/// to send, and DELETE accepts an unconditional remove for "kill it
+/// with fire" cleanup. Callers that need optimistic-concurrency
+/// guarantees MUST send the previously-issued ETag (or `*` for
+/// "match anything that exists"); silently absent headers fall
+/// through to a blind overwrite. The frontend composable
+/// `useTrajectDocuments` always echoes the last seen ETag, so this
+/// only matters for raw API consumers (curl, future tooling).
+fn allowed_document_content_type(value: &str) -> bool {
+    let mime = value
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    matches!(mime.as_str(), "text/markdown" | "text/plain")
+}
+
 async fn enforce_if_match(
     backend: &dyn RepoBackend,
     relative_path: &std::path::Path,
@@ -1753,13 +1760,7 @@ pub async fn save_traject_document(
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
     {
-        let mime = ct
-            .split(';')
-            .next()
-            .unwrap_or("")
-            .trim()
-            .to_ascii_lowercase();
-        if !matches!(mime.as_str(), "text/markdown" | "text/plain" | "") {
+        if !allowed_document_content_type(ct) {
             return Err((
                 StatusCode::UNSUPPORTED_MEDIA_TYPE,
                 "Alleen text/markdown of text/plain is toegestaan".to_string(),
@@ -2072,5 +2073,144 @@ mod tests {
             HeaderValue::from_static("\"abc\""),
         );
         assert_eq!(extract_if_match(&h).as_deref(), Some("\"abc\""));
+    }
+
+    #[test]
+    fn allowed_document_content_type_accepts_text_variants() {
+        // Mime parameters (charset, boundary) are stripped before
+        // matching so a normal `text/markdown; charset=utf-8` passes.
+        assert!(allowed_document_content_type("text/markdown"));
+        assert!(allowed_document_content_type(
+            "text/markdown; charset=utf-8"
+        ));
+        assert!(allowed_document_content_type("TEXT/PLAIN"));
+        assert!(allowed_document_content_type(
+            "text/plain; charset=US-ASCII"
+        ));
+    }
+
+    #[test]
+    fn allowed_document_content_type_rejects_binary_and_empty() {
+        // An explicit binary type — the protection against someone
+        // pointing the document endpoint at a PDF — must fail.
+        assert!(!allowed_document_content_type("application/pdf"));
+        assert!(!allowed_document_content_type("image/png"));
+        assert!(!allowed_document_content_type("application/octet-stream"));
+        // An empty Content-Type header is a malformed request; the
+        // allowlist refuses it explicitly instead of silently passing.
+        assert!(!allowed_document_content_type(""));
+        assert!(!allowed_document_content_type("   "));
+    }
+
+    // ---- enforce_if_match matrix ----
+
+    use async_trait::async_trait;
+    use regelrecht_corpus::backend::{
+        FileEntry, PersistOutcome, RepoBackend, WriteContext as CorpusWriteContext,
+    };
+    use regelrecht_corpus::error::Result as CorpusResult;
+    use std::path::Path as StdPath;
+
+    /// Read-only backend stub that pretends the file's body is
+    /// `Some(content)` (or `None` when the file is absent). Used to
+    /// drive `enforce_if_match` through all of its branches without an
+    /// axum harness.
+    struct StubBackend {
+        body: Option<String>,
+    }
+
+    #[async_trait]
+    impl RepoBackend for StubBackend {
+        async fn read_file(&self, _: &StdPath) -> CorpusResult<Option<String>> {
+            Ok(self.body.clone())
+        }
+        async fn write_file(&self, _: &StdPath, _: &str) -> CorpusResult<()> {
+            unreachable!("enforce_if_match never writes")
+        }
+        async fn delete_file(&self, _: &StdPath) -> CorpusResult<()> {
+            unreachable!("enforce_if_match never deletes")
+        }
+        async fn list_files(&self, _: &StdPath, _: Option<&str>) -> CorpusResult<Vec<FileEntry>> {
+            Ok(Vec::new())
+        }
+        async fn persist(&self, _: &CorpusWriteContext) -> CorpusResult<PersistOutcome> {
+            Ok(PersistOutcome::default())
+        }
+        async fn ensure_ready(&mut self) -> CorpusResult<()> {
+            Ok(())
+        }
+        fn is_writable(&self) -> bool {
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn enforce_if_match_returns_current_etag_when_no_precondition() {
+        // No `If-Match` header → no check; the caller still gets the
+        // current ETag back so a subsequent write can chain.
+        let backend = StubBackend {
+            body: Some("hello".to_string()),
+        };
+        let etag = enforce_if_match(&backend, StdPath::new("x"), None)
+            .await
+            .unwrap();
+        assert_eq!(etag.as_deref(), Some(document_etag("hello").as_str()));
+    }
+
+    #[tokio::test]
+    async fn enforce_if_match_returns_none_when_file_absent_and_no_precondition() {
+        let backend = StubBackend { body: None };
+        let etag = enforce_if_match(&backend, StdPath::new("x"), None)
+            .await
+            .unwrap();
+        assert!(etag.is_none());
+    }
+
+    #[tokio::test]
+    async fn enforce_if_match_412_on_etag_mismatch() {
+        let backend = StubBackend {
+            body: Some("hello".to_string()),
+        };
+        let err = enforce_if_match(&backend, StdPath::new("x"), Some("\"stale\""))
+            .await
+            .expect_err("must refuse stale etag");
+        assert_eq!(err.0, StatusCode::PRECONDITION_FAILED);
+    }
+
+    #[tokio::test]
+    async fn enforce_if_match_passes_on_exact_etag() {
+        let backend = StubBackend {
+            body: Some("hello".to_string()),
+        };
+        let etag = document_etag("hello");
+        let returned = enforce_if_match(&backend, StdPath::new("x"), Some(&etag))
+            .await
+            .unwrap();
+        assert_eq!(returned.as_deref(), Some(etag.as_str()));
+    }
+
+    #[tokio::test]
+    async fn enforce_if_match_wildcard_412_on_missing_file() {
+        // `If-Match: *` semantically means "match any existing version".
+        // Against a file that doesn't exist yet, the precondition fails.
+        let backend = StubBackend { body: None };
+        let err = enforce_if_match(&backend, StdPath::new("x"), Some("*"))
+            .await
+            .expect_err("must refuse `*` against missing file");
+        assert_eq!(err.0, StatusCode::PRECONDITION_FAILED);
+    }
+
+    #[tokio::test]
+    async fn enforce_if_match_wildcard_passes_on_any_existing_file() {
+        let backend = StubBackend {
+            body: Some("anything".to_string()),
+        };
+        let returned = enforce_if_match(&backend, StdPath::new("x"), Some("*"))
+            .await
+            .unwrap();
+        assert_eq!(
+            returned.as_deref(),
+            Some(document_etag("anything").as_str())
+        );
     }
 }
