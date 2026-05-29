@@ -7,6 +7,7 @@
  * exception, so every button ships a real <a> fallback next to the
  * <nldd-button> and CSS shows exactly one (see landing.css).
  */
+import { Image, type ImageMetadata } from 'astro:assets';
 import { content } from '~/lib/landing-content';
 import SignupForm from './SignupForm.astro';
 
@@ -18,6 +19,31 @@ interface Props {
 const { lang, showSignup } = Astro.props;
 const t = content[lang];
 const home = lang === 'en' ? '/en/' : '/';
+
+// The example screenshots live in src/assets so Astro's <Image> generates
+// responsive, optimised variants (the originals are ~3390px wide for a ~600px
+// column) and sets intrinsic width/height to avoid layout shift. They are
+// browser-window mockups with their own drop shadow baked into a transparent
+// PNG, so they render as a plain <img> flush in the figure, not wrapped in
+// nldd-image (whose surface background and rounded corners would show through
+// the transparent margins). landing-content keys them by their old public-path
+// string; map those keys to the processed assets here.
+const screenshots = import.meta.glob<{ default: ImageMetadata }>(
+  '~/assets/*-screenshot.png',
+  { eager: true },
+);
+const imageByKey = new Map(
+  Object.entries(screenshots).map(([path, mod]) => [
+    `/${path.split('/').pop()}`,
+    mod.default,
+  ]),
+);
+const sizes = '(min-width: 1024px) 600px, (min-width: 768px) 700px, 100vw';
+function exampleImage(key: string): ImageMetadata {
+  const asset = imageByKey.get(key);
+  if (!asset) throw new Error(`Landing example image not found: ${key}`);
+  return asset;
+}
 
 // Hero ToC: every landing section's title rendered in the right column.
 const toc = [
@@ -413,7 +439,14 @@ const toc = [
               >
                 <nldd-rich-text>
                   <figure>
-                    <img src={ex.img} alt={ex.alt} />
+                    <Image
+                      src={exampleImage(ex.img)}
+                      alt={ex.alt}
+                      widths={[600, 900, 1200, 1800]}
+                      sizes={sizes}
+                      format="webp"
+                      loading="lazy"
+                    />
                     <figcaption>{ex.caption}</figcaption>
                   </figure>
                 </nldd-rich-text>
