@@ -2,14 +2,14 @@
 title: "Private-repo trajects"
 ---
 
-Vanaf [PR #704](https://github.com/MinBZK/regelrecht/pull/704) kan een traject in de editor gekoppeld worden aan een **eigen GitHub-repo** in plaats van de centrale `MinBZK/regelrecht-corpus`. Handig voor organisaties of teams die hun regelgeving in een private repo willen beheren, met behoud van Regelrecht's editor- en attributie-eigenschappen.
+Vanaf [PR #704](https://github.com/MinBZK/regelrecht/pull/704) kan een traject in de editor gekoppeld worden aan een **eigen GitHub-repo** in plaats van de centrale `MinBZK/regelrecht-corpus`. Handig voor organisaties of teams die hun regelgeving in een private repo willen beheren, met behoud van RegelRecht's editor- en attributie-eigenschappen.
 
 Deze pagina beschrijft de end-to-end flow: wat je als eindgebruiker, traject-eigenaar en operator moet doen.
 
 ## Hoe het werkt op hoofdlijnen
 
 - Bij het aanmaken van een traject kies je **of** de centrale MinBZK-repo (default), **of** een eigen `owner/repo` + base branch.
-- Authenticatie naar de eigen repo gebeurt met een **GitHub Personal Access Token** (fine-grained) die door de **operator van het Regelrecht-deployment** als environment variable wordt geconfigureerd. Tokens leven dus niet in de database en niet in de browser — alleen in de runtime-omgeving van de editor.
+- Authenticatie naar de eigen repo gebeurt met een **GitHub Personal Access Token** (fine-grained) die door de **operator van het RegelRecht-deployment** als environment variable wordt geconfigureerd. Tokens leven dus niet in de database en niet in de browser — alleen in de runtime-omgeving van de editor.
 - Commits in de repo verschijnen onder **de naam en het email-adres van de echte gebruiker** (afkomstig uit de OIDC-sessie, mits geverifieerd door de IdP). Niet onder een service-account.
 
 ## Wie doet wat
