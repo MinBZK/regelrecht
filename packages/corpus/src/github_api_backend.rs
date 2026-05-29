@@ -32,7 +32,7 @@ use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 
-use crate::backend::{FileEntry, PersistOutcome, RepoBackend, WriteContext};
+use crate::backend::{FileEntry, PersistOutcome, RecursiveFileEntry, RepoBackend, WriteContext};
 use crate::error::{CorpusError, Result};
 use crate::github::{Committer, GitHubFetcher};
 use crate::models::GitHubSource;
@@ -274,6 +274,69 @@ impl RepoBackend for GitHubApiBackend {
             .map(|e| FileEntry { name: e.name })
             .collect();
         out.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(out)
+    }
+
+    async fn list_files_recursive(
+        &self,
+        dir: &Path,
+        extension: Option<&str>,
+    ) -> Result<Vec<RecursiveFileEntry>> {
+        let api_root = self.api_path(dir)?;
+        let mut inner = self.inner.lock().await;
+
+        // Iterative BFS over Contents-API directory pages. Each tuple is
+        // (`relative path under the listing root`, `full API path`); the
+        // empty prefix on the seed means the seed directory's direct
+        // children appear with bare filenames in the output.
+        let mut queue: Vec<(String, String)> = vec![(String::new(), api_root)];
+        let mut out: Vec<RecursiveFileEntry> = Vec::new();
+
+        while let Some((rel_prefix, api_dir)) = queue.pop() {
+            let entries = inner
+                .fetcher
+                .list_directory(
+                    &self.full_repo(),
+                    &self.branch,
+                    &api_dir,
+                    self.token.as_deref(),
+                )
+                .await?;
+            for e in entries {
+                let child_rel = if rel_prefix.is_empty() {
+                    e.name.clone()
+                } else {
+                    format!("{}/{}", rel_prefix, e.name)
+                };
+                match e.entry_type.as_str() {
+                    "file" => {
+                        if let Some(ext) = extension {
+                            let matches = Path::new(&e.name)
+                                .extension()
+                                .and_then(|s| s.to_str())
+                                .is_some_and(|s| s == ext);
+                            if !matches {
+                                continue;
+                            }
+                        }
+                        out.push(RecursiveFileEntry {
+                            relative_path: child_rel,
+                        });
+                    }
+                    "dir" => {
+                        let child_api = if api_dir.is_empty() {
+                            e.name
+                        } else {
+                            format!("{}/{}", api_dir.trim_end_matches('/'), e.name)
+                        };
+                        queue.push((child_rel, child_api));
+                    }
+                    _ => continue,
+                }
+            }
+        }
+
+        out.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
         Ok(out)
     }
 
