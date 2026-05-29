@@ -53,7 +53,7 @@ This doesn't raise new modeling questions. It does provide a rich set of cross-l
 
 The Kieswet is already in the corpus. Seat allocation algorithms, quorum requirements, voting procedures, electoral deadlines: all highly structured. The Gemeentewet and Provinciewet contain similar procedural rules for local government.
 
-Beyond electoral mechanics, constitutional law gets into principle territory — see Grondrechten below.
+Beyond electoral mechanics, constitutional law gets into principle territory, see Grondrechten below.
 
 ### Grondrechten (Constitutional Rights)
 

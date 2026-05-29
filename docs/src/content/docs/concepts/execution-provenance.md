@@ -67,7 +67,7 @@ When a decision depends on values from other organizations (via [Multi-Org Execu
 }
 ```
 
-When reproducing the decision, the engine uses these **sealed accepted values** rather than re-calling the other organization. The other organization may now be running a different engine version. A *beschikking* stands once issued — the accepted value at the time is a legal fact.
+When reproducing the decision, the engine uses these **sealed accepted values** rather than re-calling the other organization. The other organization may now be running a different engine version. A *beschikking* stands once issued, the accepted value at the time is a legal fact.
 
 ## What this enables
 

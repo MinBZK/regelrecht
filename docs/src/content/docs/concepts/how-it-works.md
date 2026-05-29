@@ -115,11 +115,11 @@ The General Administrative Law Act (AWB) applies to every government decision wi
 
 ### Overrides (lex specialis)
 
-Sometimes a specific law overrides a general rule. The Aliens Act (*Vreemdelingenwet*) article 69 says: *"in afwijking van artikel 6:7 AWB bedraagt de termijn vier weken"* — departing from the AWB's standard 6-week objection period. This is modeled with `overrides`: the specific law unilaterally replaces a value from the general law. The AWB does not know it is being overridden. This only applies when the overriding law is part of the execution chain. See [Hooks and Reactive Execution](./hooks-and-reactive-execution#overrides-lex-specialis).
+Sometimes a specific law overrides a general rule. The Aliens Act (*Vreemdelingenwet*) article 69 says: *"in afwijking van artikel 6:7 AWB bedraagt de termijn vier weken"*, departing from the AWB's standard 6-week objection period. This is modeled with `overrides`: the specific law unilaterally replaces a value from the general law. The AWB does not know it is being overridden. This only applies when the overriding law is part of the execution chain. See [Hooks and Reactive Execution](./hooks-and-reactive-execution#overrides-lex-specialis).
 
 ### Untranslatables
 
-The engine's operation set is deliberately small. When a legal construct cannot be faithfully expressed — rounding rules, complex table lookups, discretionary assessments — it is flagged as an **untranslatable** rather than approximated. The engine can error, warn, or propagate taint through downstream outputs, depending on the mode. This prevents silent divergence between law text and machine-readable interpretation. See [Untranslatables](./untranslatables).
+The engine's operation set is deliberately small. When a legal construct cannot be faithfully expressed, rounding rules, complex table lookups, discretionary assessments, it is flagged as an **untranslatable** rather than approximated. The engine can error, warn, or propagate taint through downstream outputs, depending on the mode. This prevents silent divergence between law text and machine-readable interpretation. See [Untranslatables](./untranslatables).
 
 ### Execution provenance
 

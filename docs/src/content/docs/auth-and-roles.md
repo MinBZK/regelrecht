@@ -9,7 +9,7 @@ configuration each service needs.
 ## The four-layer model
 
 Access is governed by a layered set of realm roles. The hierarchy is encoded
-in Keycloak as **composite roles** — a higher role contains the lower one, so
+in Keycloak as **composite roles**, a higher role contains the lower one, so
 a user holding a higher role automatically holds all lower roles in their
 token. The application code never has to check `role-A OR role-B`; each
 protected route asks for exactly one role.
@@ -29,8 +29,8 @@ Keycloak composite role).
 
 There are two applications today:
 
-- **editor** — `packages/editor-api` + `frontend/` (law and scenario editor)
-- **harvester** — `packages/admin` (harvester job queue & corpus sync dashboard)
+- **editor**: `packages/editor-api` + `frontend/` (law and scenario editor)
+- **harvester**: `packages/admin` (harvester job queue & corpus sync dashboard)
 
 ### Role reference
 
@@ -68,7 +68,7 @@ To add a new specific right:
 4. In the application code: `route_layer(require_role("<app>-<verb>"))` on the
    protected route.
 
-No changes are needed to existing routes — the pattern is composable.
+No changes are needed to existing routes, the pattern is composable.
 
 ## JWT shape
 
@@ -130,7 +130,7 @@ role (`editor-reader` / `harvester-reader`) once the migration completes.
 The `zad-actions/deploy@v4` GitHub action used in `.github/workflows/deploy.yml`
 takes only `image` and `clone-from`; env vars are set out-of-band per
 component via the ZAD CLI or dashboard. For preview deploys, `clone-from:
-regelrecht` carries the value from the production deployment automatically —
+regelrecht` carries the value from the production deployment automatically,
 you only need to set it once per environment.
 
 ```bash
@@ -147,7 +147,7 @@ Sessions created before this code shipped carry `authenticated = true` but no
 `SESSION_KEY_ROLES` key. The per-route role check distinguishes "key absent"
 (pre-RBAC session) from "key present but empty list" (a legitimately
 mis-configured Keycloak): the former returns 401, which triggers the OIDC
-re-login redirect — the callback then populates `SESSION_KEY_ROLES` from the
+re-login redirect, the callback then populates `SESSION_KEY_ROLES` from the
 JWT and the session self-heals. **No session flush is required at deploy.**
 
 ## Migration from the legacy `allowed-user` role
@@ -158,12 +158,12 @@ with no per-route gating. To migrate without locking anyone out:
 1. **Keycloak (hard prerequisite)**: create the seven new roles, set up
    composites, attach the ID-token mapper, and grant every existing user an
    appropriate new role (most editor users → `editor-writer`). This must be
-   fully rolled out before Step 2 — any user without one of the new roles
+   fully rolled out before Step 2, any user without one of the new roles
    will get **403 on every API request** once the new code is live, because
    the per-route middleware checks for `editor-reader` / `harvester-reader`
    etc., not `allowed-user`.
 2. **Deploy the new code**. If `OIDC_REQUIRED_ROLE` is unset on the existing
-   deployment, the new code falls back to `allowed-user` and logs a warning —
+   deployment, the new code falls back to `allowed-user` and logs a warning,
    so the login redirect keeps working during the rolling deploy (provided
    step 1 is complete). Per-route checks gate on the new roles immediately,
    so users without one of the new roles will see 403 on every protected
@@ -187,7 +187,7 @@ reads this cached list rather than re-parsing the token, which means:
   the user to log out and back in before the new role is honoured by the
   application.
 - **Role revocation has the same delay.** Removing a role in Keycloak does
-  *not* immediately revoke access — the live session continues to carry the
+  *not* immediately revoke access, the live session continues to carry the
   expanded role list until it expires.
 
 For emergency revocation (compromised account, immediate downgrade) the
@@ -213,7 +213,7 @@ OIDC login again, which re-reads roles from Keycloak.
 
 When the OIDC environment variables are not configured (`OIDC_CLIENT_ID`
 unset), each service starts with **all per-route auth checks bypassed**.
-Every tier — reader, writer, *and* admin — is reachable without a session.
+Every tier (reader, writer, *and* admin) is reachable without a session.
 This mode exists for local development convenience (no Keycloak required)
 and emits a `warn!` line at startup:
 
@@ -224,24 +224,24 @@ Do NOT run this configuration in production.
 ```
 
 The same applies to the harvester-admin service. **Never deploy a service
-without OIDC configured** — the warning is the only safeguard, and the
+without OIDC configured**, the warning is the only safeguard, and the
 admin-tier routes (corpus reload, feature-flag toggles, job deletion, source
 sync) are fully open in this mode.
 
 ## Programmatic access (admin API key)
 
 The harvester-admin service accepts a bearer API key on **GET** and **DELETE**
-requests (`ADMIN_API_KEY` env var). This is an out-of-band trust path — the holder
+requests (`ADMIN_API_KEY` env var). This is an out-of-band trust path, the holder
 is treated as a `regelrecht-admin`-equivalent for those methods. POST is never
 allowed via the API key path; use a user session with `harvester-writer` or
 `harvester-admin` for mutations. The editor service has no API key path.
 
 ## Implementation pointers
 
-- Shared crate: `packages/auth/` — `require_role(role)` middleware factory.
-- Editor routes: `packages/editor-api/src/main.rs` — router split into
+- Shared crate: `packages/auth/`, `require_role(role)` middleware factory.
+- Editor routes: `packages/editor-api/src/main.rs`, router split into
   public / reader / writer / admin groups.
-- Harvester-admin routes: `packages/admin/src/main.rs` — router split into
+- Harvester-admin routes: `packages/admin/src/main.rs`, router split into
   reader / writer / admin groups; `require_auth(role)` in
   `packages/admin/src/middleware.rs` keeps the API-key bypass.
 - Roles are persisted in the session at login (`SESSION_KEY_ROLES`) so

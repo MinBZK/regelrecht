@@ -4,7 +4,7 @@ title: "Translation Examples"
 
 This page shows how Dutch law is translated into machine-readable YAML, with detailed reasoning about why specific patterns are chosen.
 
-## Example: BW 5:42 and Amsterdam APV — Erfgrensbeplanting
+## Example: BW 5:42 and Amsterdam APV: Erfgrensbeplanting
 
 ### The law
 
@@ -72,7 +72,7 @@ actions:
       default: 50  # ← WRONG: gives 50cm for trees outside centrum
 ```
 
-The problem: once Amsterdam claims to implement `minimale_afstand_cm`, it must return a value for **every** case. But Amsterdam has nothing to say about trees outside the centrum. If the default is 50, non-centrum trees get 50 cm instead of 200 cm. If we hardcode 200 in the APV, we're putting BW 5:42's value in Amsterdam's regulation — a scope violation.
+The problem: once Amsterdam claims to implement `minimale_afstand_cm`, it must return a value for **every** case. But Amsterdam has nothing to say about trees outside the centrum. If the default is 50, non-centrum trees get 50 cm instead of 200 cm. If we hardcode 200 in the APV, we're putting BW 5:42's value in Amsterdam's regulation, a scope violation.
 
 ### The correct translation
 
@@ -82,9 +82,9 @@ The key insight is to read the BW text carefully. It says:
 
 The "tenzij" (unless) structure tells us exactly how to model this:
 
-1. **The BW sets its own defaults** — these are the rule.
-2. **The BW offers an optional delegation** — this is the exception.
-3. **The BW decides which to use** — if the delegation produces a value, use it; otherwise, use the default.
+1. **The BW sets its own defaults**: these are the rule.
+2. **The BW offers an optional delegation**: this is the exception.
+3. **The BW decides which to use**: if the delegation produces a value, use it; otherwise, use the default.
 
 This maps directly to the YAML:
 
@@ -195,9 +195,9 @@ machine_readable:
 
 Each article stays within its own scope:
 
-- **BW 5:42** sets the rule (200/50) and defines the exception mechanism ("tenzij verordening"). Both are in the article text. The null-check is the machine-readable expression of "tenzij" — if no exception exists, the rule applies.
+- **BW 5:42** sets the rule (200/50) and defines the exception mechanism ("tenzij verordening"). Both are in the article text. The null-check is the machine-readable expression of "tenzij", if no exception exists, the rule applies.
 
-- **Amsterdam APV 2.75** only produces values where it has something to say (centrum bomen: 100, heggen: 50). For cases it doesn't cover (bomen buiten centrum), it returns null — meaning "I have no opinion on this." The BW then applies its own default.
+- **Amsterdam APV 2.75** only produces values where it has something to say (centrum bomen: 100, heggen: 50). For cases it doesn't cover (bomen buiten centrum), it returns null, meaning "I have no opinion on this." The BW then applies its own default.
 
 No article hardcodes values from another article. No scope violations. The delegation mechanism faithfully represents the "tenzij" structure of the law.
 
@@ -210,7 +210,7 @@ This pattern applies whenever a higher law sets defaults that lower regulations 
 3. The higher law uses a **null-check** to choose between the override and the default.
 4. The lower regulation **only returns values where it deviates**; null otherwise.
 
-The "tenzij" in the law text is the signal that this pattern applies. The word literally means "unless" — the rule applies *unless* the exception is triggered.
+The "tenzij" in the law text is the signal that this pattern applies. The word literally means "unless", the rule applies *unless* the exception is triggered.
 
 ```
 Rule: X

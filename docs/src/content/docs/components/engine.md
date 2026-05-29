@@ -72,7 +72,7 @@ Articles can define multiple outputs (e.g., `heeft_recht_op_zorgtoeslag` and `ho
 
 ### Privacy by Design
 
-Callers must explicitly list the outputs they need. There's no "return all" mode. The engine returns requested outputs plus any causally-entailed outputs from hooks and overrides (a beschikking is legally indivisible — AWB consequences like motivering and bezwaartermijn cannot be stripped).
+Callers must explicitly list the outputs they need. There's no "return all" mode. The engine returns requested outputs plus any causally-entailed outputs from hooks and overrides (a beschikking is legally indivisible, AWB consequences like motivering and bezwaartermijn cannot be stripped).
 
 ### Rust API
 
