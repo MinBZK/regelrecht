@@ -158,16 +158,17 @@ function dataSourceToTableProps(ds) {
 
         <!-- Data sources (collapsed by default for compactness) -->
         <div v-if="scenario.setup.dataSources.length > 0" class="sv-ds-section">
-          <DataSourceTable
-            v-for="(ds, di) in scenario.setup.dataSources"
-            :key="di"
-            :title="ds.sourceName"
-            :key-field="dataSourceToTableProps(ds).keyField"
-            :fields="dataSourceToTableProps(ds).fields"
-            :model-value="dataSourceToTableProps(ds).rows"
-            :default-expanded="false"
-            :readonly="readonly"
-          />
+          <template v-for="(ds, di) in scenario.setup.dataSources" :key="di">
+            <nldd-spacer v-if="di > 0" size="12"></nldd-spacer>
+            <DataSourceTable
+              :title="ds.sourceName"
+              :key-field="dataSourceToTableProps(ds).keyField"
+              :fields="dataSourceToTableProps(ds).fields"
+              :model-value="dataSourceToTableProps(ds).rows"
+              :default-expanded="false"
+              :readonly="readonly"
+            />
+          </template>
         </div>
 
         <!-- Execution -->

@@ -1,34 +1,22 @@
 /* Admin UI Styles - Uses Storybook design tokens */
 
 
-/* ============================================================
-   Job Creation Section (collapsible, above table)
-   ============================================================ */
-
-.job-creation {
-  display: flex;
-  align-items: center;
-  gap: var(--primitives-space-8);
-  margin: var(--primitives-space-16) var(--primitives-space-24) 0;
+/* Temporary: until @nldd/design-system/styles ships an html/body reset.
+   See upstream issue at MinBZK/storybook. */
+html, body {
+  margin: 0;
+  height: 100%;
 }
 
-.job-creation__label {
-  font-family: var(--primitives-font-family-body);
-  font-size: var(--primitives-font-size-80);
-  color: var(--semantics-content-color);
-  white-space: nowrap;
-}
-
-
-/* ============================================================
-   Cell content wrapper — prevents content from stretching
-   inside ndd-cell (which defaults to align-items: stretch)
-   ============================================================ */
-
-.cell-wrap {
-  align-self: flex-start;
-  min-width: 0;
-  overflow-wrap: anywhere;
+/* nldd-tooltip appends sr-only description spans (`id="nldd-tooltip-N"`)
+   directly under <body> with `position: absolute` but no top/left, which on
+   pages with many tooltips can pile up at the end of the document and
+   trigger an unwanted scroll. Force them to top-left so they're truly out
+   of flow. Visual sizing/clipping is already 1px + clip-path on the inline
+   styles, so this just pins their position. */
+[id^="nldd-tooltip-"] {
+  top: 0;
+  left: 0;
 }
 
 
@@ -40,7 +28,6 @@
   display: flex;
   align-items: center;
   gap: var(--primitives-space-8);
-  padding-bottom: var(--primitives-space-8);
   flex-wrap: wrap;
 }
 
@@ -55,254 +42,36 @@
   color: var(--semantics-content-secondary-color);
 }
 
-.cell-null {
-  color: var(--semantics-content-secondary-color);
-  opacity: 0.6;
-}
-
-.cell-error {
-  font-size: 12px;
-  color: var(--primitives-color-danger-700);
-  max-width: 300px;
-  display: inline-block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  vertical-align: middle;
-}
-
-
 
 /* ============================================================
-   Status Badges
+   Status Bar (segmented job-status distribution in grouped view)
    ============================================================ */
 
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px var(--primitives-space-8);
-  font-size: 12px;
-  font-weight: var(--primitives-font-weight-body-extra-bold);
+.status-bar {
+  display: flex;
+  width: 100%;
+  height: 8px;
   border-radius: var(--primitives-corner-radius-xs);
-  white-space: nowrap;
-  line-height: 1.5;
+  overflow: hidden;
+  background: var(--primitives-color-neutral-100);
 }
 
-.badge--green {
-  background-color: var(--primitives-color-success-75);
-  color: var(--primitives-color-success-700);
+.status-bar__segment {
+  height: 100%;
+  min-width: 2px;
 }
 
-.badge--red {
-  background-color: var(--primitives-color-danger-75);
-  color: var(--primitives-color-danger-700);
+.status-bar__segment--pending {
+  background: light-dark(var(--primitives-color-neutral-150), var(--primitives-color-neutral-250));
 }
-
-.badge--yellow {
-  background-color: var(--primitives-color-warning-75);
-  color: var(--primitives-color-warning-700);
+.status-bar__segment--processing {
+  background: light-dark(var(--primitives-color-accent-500), var(--primitives-color-accent-400));
 }
-
-.badge--grey {
-  background-color: var(--primitives-color-neutral-75);
-  color: var(--primitives-color-neutral-700);
+.status-bar__segment--completed {
+  background: light-dark(var(--primitives-color-success-450), var(--primitives-color-success-550));
 }
-
-
-/* ============================================================
-   Law ID Links
-   ============================================================ */
-
-.law-id-link {
-  color: var(--semantics-accent-color, var(--primitives-color-accent-500));
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.law-id-link:hover {
-  text-decoration: underline;
-}
-
-
-/* ============================================================
-   Row Action Buttons
-   ============================================================ */
-
-.action-btns {
-  display: inline-flex;
-  gap: var(--primitives-space-4);
-  white-space: nowrap;
-}
-
-
-/* ============================================================
-   Grouped View - Group Rows & Child Rows
-   ============================================================ */
-
-.group-row {
-  font-weight: var(--primitives-font-weight-body-extra-bold);
-}
-
-.child-row {
-  padding-left: var(--primitives-space-16);
-}
-
-
-/* ============================================================
-   Detail Panel (slide-in from right)
-   ============================================================ */
-
-.detail-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.3);
-  z-index: 90;
-  opacity: 0;
-  transition: opacity 200ms ease;
-}
-
-.detail-backdrop.is-open {
-  opacity: 1;
-}
-
-.detail-panel {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(520px, 90vw);
-  background: var(--semantics-surfaces-background-color);
-  border-left: 1px solid var(--semantics-dividers-color);
-  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
-  z-index: 100;
-  display: flex;
-  flex-direction: column;
-  transform: translateX(100%);
-  transition: transform 250ms ease;
-}
-
-.detail-panel.is-open {
-  transform: translateX(0);
-}
-
-.detail-panel__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--primitives-space-16) var(--primitives-space-24);
-  border-bottom: 1px solid var(--semantics-dividers-color);
-  flex-shrink: 0;
-}
-
-.detail-panel__title {
-  font-size: 18px;
-  font-weight: var(--primitives-font-weight-body-extra-bold);
-  color: var(--semantics-content-color);
-}
-
-.detail-panel__body {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--primitives-space-24);
-}
-
-.detail-section {
-  margin-bottom: var(--primitives-space-24);
-}
-
-.detail-section__title {
-  font-size: 12px;
-  font-weight: var(--primitives-font-weight-body-extra-bold);
-  color: var(--semantics-content-secondary-color);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: var(--primitives-space-8);
-}
-
-.detail-grid {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: var(--primitives-space-4) var(--primitives-space-16);
-  font-size: var(--primitives-font-size-80);
-}
-
-.detail-grid dt {
-  color: var(--semantics-content-secondary-color);
-  white-space: nowrap;
-}
-
-.detail-grid dd {
-  color: var(--semantics-content-color);
-  word-break: break-all;
-}
-
-.detail-error {
-  background: var(--primitives-color-danger-75);
-  border: 1px solid var(--primitives-color-danger-200, #fecaca);
-  border-radius: var(--primitives-corner-radius-sm);
-  padding: var(--primitives-space-8) var(--primitives-space-16);
-  color: var(--primitives-color-danger-700);
-  font-size: var(--primitives-font-size-80);
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-family: var(--primitives-font-family-monospace);
-}
-
-.detail-json {
-  background: var(--semantics-surfaces-tinted-background-color);
-  border: 1px solid var(--semantics-dividers-color);
-  border-radius: var(--primitives-corner-radius-sm);
-  padding: var(--primitives-space-8) var(--primitives-space-16);
-  font-size: 12px;
-  font-family: var(--primitives-font-family-monospace);
-  color: var(--semantics-content-color);
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-/* ============================================================
-   Progress Phase Indicator (detail panel)
-   ============================================================ */
-
-.detail-phase {
-  display: flex;
-  align-items: center;
-  gap: var(--primitives-space-8);
-  padding: var(--primitives-space-8) var(--primitives-space-16);
-  background: var(--primitives-color-accent-75);
-  border: 1px solid var(--primitives-color-accent-200);
-  border-radius: var(--primitives-corner-radius-sm);
-}
-
-.detail-phase__steps {
-  display: flex;
-  gap: var(--primitives-space-4);
-}
-
-.detail-phase__dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--primitives-color-neutral-300, #cbd5e1);
-}
-
-.detail-phase__dot--active {
-  background: var(--primitives-color-accent-500);
-}
-
-.detail-phase__label {
-  font-size: var(--primitives-font-size-80);
-  font-weight: var(--primitives-font-weight-body-extra-bold);
-  color: var(--primitives-color-accent-700);
-}
-
-.detail-phase__meta {
-  margin-top: var(--primitives-space-8);
-  font-size: 12px;
-  color: var(--semantics-content-secondary-color);
-  padding-left: var(--primitives-space-16);
+.status-bar__segment--failed {
+  background: var(--primitives-color-critical-450);
 }
 
 
@@ -312,13 +81,6 @@
   top: 8px;
   right: 16px;
   z-index: 1000;
-  padding: 2px 8px;
-  font-size: 12px;
-  font-weight: var(--primitives-font-weight-body-extra-bold);
-  color: #854d0e;
-  background: #fef9c3;
-  border: 1px solid #fde68a;
-  border-radius: var(--primitives-corner-radius-xs);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }

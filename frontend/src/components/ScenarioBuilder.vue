@@ -2,6 +2,7 @@
 import { ref, computed, watch, nextTick } from 'vue';
 import { useDependencies } from '../composables/useDependencies.js';
 import { useScenarios } from '../composables/useScenarios.js';
+import { lawUrl } from '../composables/corpusUrls.js';
 import { parseFeature } from '../gherkin/parser.js';
 import { mapFeatureToForm, getEffectiveSetup, formStateToGherkin, syncEditedValues } from '../gherkin/formMapper.js';
 import { matchStatus, humanize } from '../utils/outputFormat.js';
@@ -15,6 +16,10 @@ const props = defineProps({
   ready: { type: Boolean, default: false },
   /** Articles array from useLaw() for article mapping */
   articles: { type: Array, default: () => [] },
+  /** Active traject ref. Required for scenario writes; reads route
+   *  through the matching traject's backend so a save is visible
+   *  without a corpus reload. */
+  trajectRef: { type: String, default: null },
 });
 
 const emit = defineEmits(['executed', 'dirty-change']);
@@ -32,6 +37,7 @@ const {
 
 // --- Scenario loading ---
 const lawIdRef = computed(() => props.lawId);
+const trajectRefRef = computed(() => props.trajectRef);
 const {
   scenarios: scenarioFiles,
   selectedScenario: selectedScenarioFile,
@@ -41,7 +47,7 @@ const {
   saveError,
   selectScenario: selectScenarioFile,
   saveScenario,
-} = useScenarios(lawIdRef);
+} = useScenarios(lawIdRef, trajectRefRef);
 
 const formState = ref(null);
 const saveSuccess = ref(false);
@@ -49,16 +55,57 @@ const isDirty = ref(false);
 const selectedScenarioIndex = ref(null);
 const scenarioSheetEl = ref(null);
 
+// Name of the data source the active ScenarioForm is drilled into (null =
+// scenario overview). Reported by ScenarioForm via @drill-change; the
+// top-title-bar back button uses it to pop one level back out.
+const drilledSourceName = ref(null);
+
 watch(selectedScenarioIndex, async (idx) => {
+  // Opening / switching a scenario always lands on its overview, so reset
+  // every form's drill state (only the active form can be drilled into).
+  drilledSourceName.value = null;
   await nextTick();
-  if (idx !== null) scenarioSheetEl.value?.show();
-  else scenarioSheetEl.value?.hide();
+  scenarioRefs.value.forEach((f) => f?.clearDrill?.());
+  if (idx !== null) {
+    // Baseline the editable state so Save can disappear again once the
+    // user manually reverts every change (markDirty re-compares).
+    dirtyBaseline = editSnapshot();
+    isDirty.value = false;
+    scenarioSheetEl.value?.show();
+  } else {
+    scenarioSheetEl.value?.hide();
+  }
 });
+
+// Serialised editable surface: the (in-place edited) scenario objects plus
+// each ScenarioForm's local input values. Compared against the baseline so
+// reverting an edit clears the dirty state.
+let dirtyBaseline = '';
+function editSnapshot() {
+  try {
+    return JSON.stringify({
+      s: formState.value?.scenarios ?? null,
+      f: scenarioRefs.value.map((r) => (r?.getFormValues ? r.getFormValues() : null)),
+    });
+  } catch {
+    return `dirty-${Date.now()}`;
+  }
+}
+
+const currentScenarioName = computed(() =>
+  selectedScenarioIndex.value !== null
+    ? formState.value?.scenarios?.[selectedScenarioIndex.value]?.name ?? ''
+    : '',
+);
+function onTitleBack() {
+  const idx = selectedScenarioIndex.value;
+  if (idx !== null) scenarioRefs.value[idx]?.clearDrill?.();
+}
 
 watch(isDirty, (val) => emit('dirty-change', val));
 
 function markDirty() {
-  if (!isDirty.value) isDirty.value = true;
+  isDirty.value = editSnapshot() !== dirtyBaseline;
 }
 
 function scenarioExpectations(index) {
@@ -84,12 +131,18 @@ watch(featureText, (text) => {
   }
 });
 
-// Cache for fetched law YAML texts
+// Cache for fetched law YAML texts, scoped to the active traject so a
+// traject switch doesn't return the previous traject's body.
 const yamlCache = {};
+let yamlCacheTrajectRef = null;
 
 async function fetchLawYaml(lawId) {
+  if (yamlCacheTrajectRef !== props.trajectRef) {
+    Object.keys(yamlCache).forEach((k) => delete yamlCache[k]);
+    yamlCacheTrajectRef = props.trajectRef;
+  }
   if (yamlCache[lawId]) return yamlCache[lawId];
-  const res = await fetch(`/api/corpus/laws/${encodeURIComponent(lawId)}`);
+  const res = await fetch(lawUrl(props.trajectRef, lawId));
   if (!res.ok) throw new Error(`Failed to fetch law '${lawId}': ${res.status}`);
   const text = await res.text();
   yamlCache[lawId] = text;
@@ -109,7 +162,7 @@ watch(
     const version = ++watchVersion;
     depsReady.value = false;
 
-    await loadAllDependencies(lawYaml, props.engine, fetchLawYaml);
+    await loadAllDependencies(lawYaml, props.engine, fetchLawYaml, props.trajectRef);
     if (version !== watchVersion) return;
 
     // Also load dependencies from scenario background + per-scenario steps
@@ -217,20 +270,54 @@ function onShowDetails(index, view = 'trace') {
   const fresh = formRef?.getExecutionData?.();
   const hasFresh = fresh && (fresh.result || fresh.traceText || fresh.error);
   const data = hasFresh ? fresh : scenarioResults.value.get(index);
-  if (data) {
-    const scenarioName = formState.value?.scenarios[index]?.name || '';
-    emit('executed', {
-      result: data.result,
-      traceText: data.traceText,
-      error: data.error,
-      expectations: data.expectations || {},
-      scenarioName,
-      // Forward the scenario's entry output so the graph view can pin
-      // its "▶ start" marker to the right output leaf.
-      outputName: data.outputName || null,
-      view,
-    });
-  }
+  const scenarioName = formState.value?.scenarios[index]?.name || '';
+  // Always emit so the sheet opens: the result sheet itself handles the
+  // loading / error (with reload) / empty states instead of the button
+  // being a dead gate.
+  emit('executed', {
+    result: data?.result || null,
+    traceText: data?.traceText || null,
+    error: data?.error || null,
+    // Always false today: execute() is synchronous (see the CONTRACT
+    // note on ScenarioForm.execute) so `running` is reset in its finally
+    // before getExecutionData() is read here. The "Bezig met uitvoeren…"
+    // branch in ExecutionTraceView and the lastRunning/lastReload
+    // scaffolding in EditorApp are therefore unreachable *by design* —
+    // deliberately kept so the async path lights up for free if that
+    // contract is ever lifted. Not dead code to be removed in isolation.
+    running: !!fresh?.running,
+    expectations: data?.expectations || {},
+    scenarioName,
+    // Forward the scenario's entry output so the graph view can pin
+    // its "▶ start" marker to the right output leaf.
+    outputName: data?.outputName || null,
+    index,
+    // Bound to this builder + scenario so the result sheet's reload
+    // action re-runs exactly the right scenario regardless of how many
+    // ScenarioBuilder instances (panes) exist.
+    //
+    // Known limitation: `index` is captured by value and the result
+    // sheet can outlive the scenario sheet. It stays correct in practice
+    // because scenario count/order is stable across an inputs-only save
+    // and cancelEdits() no longer replaces formState — so nothing
+    // reindexes scenarios while the sheet is open, and the UI has no
+    // reorder/delete-scenario affordance. If the index ever did go out
+    // of bounds, reExecute()'s optional chaining makes it a safe no-op
+    // (empty result) rather than running the wrong scenario.
+    reload: () => reExecute(index),
+    view,
+  });
+}
+
+// Re-run a scenario from the result sheet's reload action, then refresh the
+// sheet with the fresh outcome. ScenarioForm.execute() runs the WASM engine
+// in-process and synchronously (no API call, no await; `running` is reset in
+// its finally before it returns), so the result/error is already set by the
+// time onShowDetails reads it back via getExecutionData().
+function reExecute(index) {
+  const formRef = scenarioRefs.value[index];
+  if (formRef?.execute) formRef.execute();
+  onShowDetails(index);
 }
 
 // Memoized setup per scenario (avoids new object on every render)
@@ -264,6 +351,13 @@ async function onSave() {
     await saveScenario(selectedScenarioFile.value, gherkin);
     saveSuccess.value = true;
     isDirty.value = false;
+    // The just-saved state is the new clean baseline. Re-snapshot here so
+    // the dirty check stays correct even if the sheet is *not* closed on
+    // save (today selectedScenarioIndex is nulled below, but don't let the
+    // invariant depend on that): without this, reverting back to the saved
+    // state would still compare unequal to the pre-edit baseline and keep
+    // the Save footer wrongly visible.
+    dirtyBaseline = editSnapshot();
     selectedScenarioIndex.value = null;
     setTimeout(() => { saveSuccess.value = false; }, 3000);
   } catch (e) {
@@ -293,15 +387,16 @@ async function onSaveAndShow() {
 }
 
 function cancelEdits() {
-  // Discard edits by re-parsing the last-loaded feature text into formState.
-  // Each ScenarioForm's deep watcher resets its local inputs when its
-  // `scenario`/`setup` props are replaced.
-  const text = featureText.value;
-  if (text) {
-    try {
-      const parsed = parseFeature(text);
-      formState.value = mapFeatureToForm(parsed);
-    } catch { /* keep the previous state */ }
+  // Discard unsaved edits *without* replacing formState. Re-parsing it
+  // remounts the whole overview — clearing cached results/refs (via the
+  // formState watcher) and resetting the scenarios-pane scroll position.
+  // Edits live entirely in the edited ScenarioForm's local refs (only
+  // synced into formState on save), so asking that form to re-init from
+  // its unchanged props discards them while leaving the overview — and
+  // its scroll position — intact, exactly as when nothing was edited.
+  const idx = selectedScenarioIndex.value;
+  if (isDirty.value && idx !== null) {
+    scenarioRefs.value[idx]?.discardEdits?.();
   }
   isDirty.value = false;
   selectedScenarioIndex.value = null;
@@ -359,9 +454,8 @@ defineExpose({ save: onSave });
             <nldd-container slot="footer" padding-inline="16" padding-bottom="16">
               <nldd-button-group orientation="horizontal">
                 <nldd-button
-                  variant="primary"
                   :disabled="!scenarioResults.get(i) || undefined"
-                  text="Toon resultaat"
+                  text="Resultaat"
                   @click="onShowDetails(i, 'trace')"
                 ></nldd-button>
                 <nldd-button
@@ -394,17 +488,34 @@ defineExpose({ save: onSave });
       ref="scenarioSheetEl"
       placement="right"
       width="640px"
-      full-height
       @close="cancelEdits"
     >
       <nldd-page sticky-header :sticky-footer="isDirty || undefined">
+        <!-- Overview header: scenario name (revealed in the bar on scroll
+             via the content-title anchor), no back. -->
         <nldd-top-title-bar
+          v-if="!drilledSourceName"
           slot="header"
-          :text="selectedScenarioIndex !== null ? formState.scenarios[selectedScenarioIndex].name : ''"
+          :text="currentScenarioName"
+          collapse-anchor="scenario-title-anchor"
           dismiss-text="Annuleer"
           @dismiss="cancelEdits"
         ></nldd-top-title-bar>
+        <!-- Drilled-in header: its own bar — a back button to the scenario
+             overview (the data-source heading lives in the content). -->
+        <nldd-top-title-bar
+          v-else
+          slot="header"
+          :back-text="currentScenarioName"
+          dismiss-text="Annuleer"
+          @back="onTitleBack"
+          @dismiss="cancelEdits"
+        ></nldd-top-title-bar>
         <nldd-simple-section>
+          <template v-if="!drilledSourceName">
+            <nldd-title id="scenario-title-anchor" size="3"><h2>{{ currentScenarioName }}</h2></nldd-title>
+            <nldd-spacer size="16"></nldd-spacer>
+          </template>
           <ScenarioForm
             v-for="(scenario, i) in formState.scenarios"
             v-show="selectedScenarioIndex === i"
@@ -419,6 +530,7 @@ defineExpose({ save: onSave });
             @show-details="() => onShowDetails(i)"
             @executed="(data) => onScenarioResult(i, data)"
             @change="markDirty"
+            @drill-change="(name) => { if (selectedScenarioIndex === i) drilledSourceName = name; }"
           />
         </nldd-simple-section>
         <nldd-container v-if="isDirty" slot="footer" padding="16">

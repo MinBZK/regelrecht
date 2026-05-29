@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -9,10 +9,13 @@ use sqlx::PgPool;
 use tokio::sync::{Mutex, RwLock};
 
 use crate::config::AppConfig;
+use crate::traject_corpus::TrajectCorpusCache;
 
 #[derive(Clone)]
 pub struct AppState {
-    /// Loaded corpus sources with provenance metadata.
+    /// Loaded corpus sources with provenance metadata. Used for
+    /// browse-only reads when no traject is active and as the seed for
+    /// per-traject corpus configs.
     pub corpus: Arc<RwLock<CorpusState>>,
     pub oidc_client: Option<Arc<ConfiguredClient>>,
     pub end_session_url: Option<String>,
@@ -28,6 +31,14 @@ pub struct AppState {
     /// authenticated user could burn through the 5000 req/hr token quota
     /// with a single `xargs -P` and block corpus reads for everyone.
     pub reload_lock: Arc<Mutex<()>>,
+    /// Lazy per-traject corpus cache. When a request carries an active
+    /// traject in the session, save handlers route through this cache
+    /// instead of [`AppState::corpus`].
+    pub trajects: Arc<TrajectCorpusCache>,
+    /// Favorites set used to limit which laws are loaded from GitHub
+    /// sources. Shared between the global corpus init and per-traject
+    /// corpus builds so trajects see the same law set.
+    pub favorites: Arc<HashSet<String>>,
 }
 
 impl OidcAppState for AppState {

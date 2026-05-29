@@ -16,6 +16,7 @@ use tower_sessions::SessionManagerLayer;
 use tower_sessions_memory_store::MemoryStore;
 use tower_sessions_sqlx_store::PostgresStore;
 
+mod accounts;
 mod config;
 mod corpus_handlers;
 mod favorites;
@@ -23,6 +24,8 @@ mod feature_flags;
 mod harvest_proxy;
 mod middleware;
 mod state;
+mod traject_corpus;
+mod trajects;
 mod user_settings;
 
 use state::{AppState, CorpusState};
@@ -58,7 +61,8 @@ async fn main() {
 
     // --- Corpus init ---
     let static_dir = env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string());
-    let corpus_state = init_corpus(&static_dir).await;
+    let favorites = Arc::new(load_favorites(&static_dir));
+    let corpus_state = init_corpus(&favorites).await;
 
     let hostname = env::var("HOSTNAME").ok();
     let pipeline_api_url =
@@ -74,15 +78,46 @@ async fn main() {
         ),
     }
 
-    let mut app_state = AppState {
+    // The pool has to be created BEFORE `app_state` is built, because the
+    // `route_layer(from_fn_with_state(app_state.clone(), …))` below captures
+    // a snapshot of `app_state` at call time — anything we mutate on the
+    // outer binding after that point is invisible to the middleware.
+    // Migrations + session-store setup still live in the auth-enabled
+    // branch further down; here we only spin up the connection.
+    let pool: Option<sqlx::PgPool> = if app_config.is_auth_enabled() {
+        let database_url = env::var("DATABASE_URL")
+            .or_else(|_| env::var("DATABASE_SERVER_FULL"))
+            .unwrap_or_else(|_| {
+                tracing::error!(
+                    "DATABASE_URL is required when OIDC is enabled (for session storage)"
+                );
+                std::process::exit(1);
+            });
+        Some(
+            sqlx::postgres::PgPoolOptions::new()
+                .max_connections(5)
+                .connect(&database_url)
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::error!(error = %e, "failed to connect to database");
+                    std::process::exit(1);
+                }),
+        )
+    } else {
+        None
+    };
+
+    let app_state = AppState {
         corpus: Arc::new(RwLock::new(corpus_state)),
         oidc_client,
         end_session_url,
         config: Arc::new(app_config),
         http_client,
-        pool: None, // set below when auth is enabled
+        pool: pool.clone(),
         pipeline_api_url,
         reload_lock: Arc::new(tokio::sync::Mutex::new(())),
+        trajects: Arc::new(traject_corpus::TrajectCorpusCache::new()),
+        favorites,
     };
 
     let index_file = PathBuf::from(&static_dir).join("index.html");
@@ -90,7 +125,10 @@ async fn main() {
     // --- Routes ---
     let auth_routes = regelrecht_auth::auth_routes::<AppState>();
 
-    // Public API routes — accessible without authentication
+    // Public API routes — accessible without authentication. The corpus
+    // reads under `/api/corpus/...` here serve the **global** view (no
+    // per-traject overlay). Edits and traject-scoped reads live under
+    // `/api/trajects/{tid}/corpus/...` (writer-tier, see `traject_routes`).
     let public_api_routes = Router::new()
         .route("/api/sources", get(corpus_handlers::list_sources))
         .route("/api/corpus/laws", get(corpus_handlers::list_corpus_laws))
@@ -110,6 +148,10 @@ async fn main() {
             "/api/corpus/laws/{law_id}/scenarios/{filename}",
             get(corpus_handlers::get_scenario),
         )
+        .route(
+            "/api/corpus/laws/{law_id}/annotations",
+            get(corpus_handlers::get_annotations),
+        )
         .route("/api/feature-flags", get(feature_flags::list_feature_flags))
         // Harvest status — forwarded to pipeline-api. Read-only DB lookup,
         // safe to expose unauthenticated. (The search endpoint lives behind
@@ -117,39 +159,43 @@ async fn main() {
         // and would otherwise be an amplification vector.)
         .route("/api/harvest/status", get(harvest_proxy::proxy_harvest));
 
-    // Protected API routes — require authentication when OIDC is enabled.
-    // Write endpoints (PUT/DELETE) for scenarios live here so they cannot be
-    // invoked anonymously when a deployment has a git push token configured.
-    //
-    // The 1 MiB body cap is generous for a single Gherkin scenario file
-    // (real-world scenarios are a few KiB) and prevents a caller from
-    // streaming an arbitrarily large body to disk — important when OIDC
-    // is disabled in local dev and the endpoint is reachable without auth.
+    // Body-size caps for write routes. The 1 MiB scenario cap is generous for
+    // a single Gherkin file (real-world scenarios are a few KiB) and the 5 MiB
+    // law cap leaves headroom for federated regulations that can reach a few
+    // hundred KiB.
     const MAX_SCENARIO_BODY: usize = 1024 * 1024;
-    // Law YAMLs are larger than scenarios — zorgtoeslag's ~25 KiB is typical
-    // but federated regulations can reach a few hundred KiB. A 5 MiB cap
-    // gives ample headroom while still rejecting pathological bodies.
     const MAX_LAW_BODY: usize = 5 * 1024 * 1024;
-    let protected_api_routes = Router::new()
-        .route(
-            "/api/corpus/laws/{law_id}/scenarios/{filename}",
-            axum::routing::put(corpus_handlers::save_scenario)
-                .delete(corpus_handlers::delete_scenario)
-                .layer(axum::extract::DefaultBodyLimit::max(MAX_SCENARIO_BODY)),
-        )
-        .route(
-            "/api/corpus/laws/{law_id}",
-            axum::routing::put(corpus_handlers::save_law)
-                .layer(axum::extract::DefaultBodyLimit::max(MAX_LAW_BODY)),
-        )
+
+    // Reader routes — `editor-reader` covers user-scoped reads (favorites,
+    // settings) and harvest search (search is behind auth because it triggers
+    // outbound requests and would otherwise be an amplification vector).
+    let reader_routes = Router::new()
         .route("/api/favorites", get(favorites::list))
+        .route("/api/user/settings", get(user_settings::list))
+        .route("/api/harvest/search", get(harvest_proxy::proxy_harvest))
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_role::<AppState>("editor-reader"),
+        ));
+
+    // Writer routes — `editor-writer` covers user-scoped writes. Corpus
+    // edits live under `/api/trajects/{tid}/corpus/...` in `traject_routes`
+    // (membership + traject path on every request, making "no traject = no
+    // write" an URL-level invariant rather than a runtime check). Harvest
+    // POSTs (which trigger outbound requests) sit here so anonymous callers
+    // can never reach them.
+    let writer_routes = Router::new()
         .route(
             "/api/favorites/{law_id}",
             axum::routing::put(favorites::add).delete(favorites::remove),
         )
-        // Harvest proxy — write operations behind auth. Search is also
-        // behind auth because it makes outbound requests to the SRU API.
-        .route("/api/harvest/search", get(harvest_proxy::proxy_harvest))
+        // 4 KiB is ample for `{"value":"<one allowed enum>"}` and rejects
+        // oversized bodies before deserialization.
+        .route(
+            "/api/user/settings/{key}",
+            axum::routing::put(user_settings::set)
+                .layer(axum::extract::DefaultBodyLimit::max(4096)),
+        )
         .route(
             "/api/harvest",
             axum::routing::post(harvest_proxy::proxy_harvest),
@@ -158,6 +204,14 @@ async fn main() {
             "/api/harvest/batch",
             axum::routing::post(harvest_proxy::proxy_harvest),
         )
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_role::<AppState>("editor-writer"),
+        ));
+
+    // Admin routes — `editor-admin` covers destructive/global operations
+    // (full corpus reload, feature flag toggles).
+    let admin_routes = Router::new()
         .route(
             "/api/corpus/reload",
             axum::routing::post(corpus_handlers::reload_corpus),
@@ -166,52 +220,146 @@ async fn main() {
             "/api/feature-flags/{key}",
             axum::routing::put(feature_flags::update_feature_flag),
         )
-        .route("/api/user/settings", get(user_settings::list))
-        // 4 KiB is ample for `{"value":"<one allowed enum>"}` and stops a
-        // caller from streaming a much larger body that `validate` would only
-        // reject after deserialization.
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_role::<AppState>("editor-admin"),
+        ));
+
+    // Traject routes — user-scoped CRUD on shared editing sessions plus
+    // the traject-scoped corpus endpoints (read + write). Handlers extract
+    // `Extension<AccountRecord>`, so `account_middleware` must run before
+    // each request to load the account row from the DB. Writer-tier
+    // because users manage their own trajects; the per-traject membership
+    // model handles finer-grained access within each handler.
+    //
+    // Why the corpus routes live here too: writes against a traject's
+    // branch require the traject id to be in the URL (per RFC discussion
+    // — the active traject is per-tab via the SPA route, not a server
+    // session). All `/api/trajects/{id}/corpus/...` routes go through the
+    // same membership re-check that `traject_routes` already use.
+    // Traject-scoped reads (editor-reader tier). Listing/viewing the
+    // trajects you're a member of and reading the per-traject corpus
+    // overlay don't require write privilege — a Keycloak `editor-reader`
+    // who has been invited to a traject must be able to see in-progress
+    // edits. Membership is re-checked per request inside the handlers,
+    // so the role here is the broader "is this an authenticated reader
+    // at all" gate. Writes live in `traject_writer_routes` below.
+    let traject_reader_routes = Router::new()
+        .route("/api/trajects", get(trajects::list))
+        .route("/api/trajects/{id}", get(trajects::get))
         .route(
-            "/api/user/settings/{key}",
-            axum::routing::put(user_settings::set)
-                .layer(axum::extract::DefaultBodyLimit::max(4096)),
+            "/api/trajects/{traject_ref}/sources",
+            get(corpus_handlers::list_traject_sources),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws",
+            get(corpus_handlers::list_traject_corpus_laws),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}",
+            get(corpus_handlers::get_traject_corpus_law),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}/outputs",
+            get(corpus_handlers::list_traject_law_outputs),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}/scenarios",
+            get(corpus_handlers::list_traject_scenarios),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}/scenarios/{filename}",
+            get(corpus_handlers::get_traject_scenario),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}/annotations",
+            get(corpus_handlers::get_traject_annotations),
         )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
-            middleware::require_session_auth::<AppState>,
+            accounts::account_middleware,
+        ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_role::<AppState>("editor-reader"),
+        ));
+
+    // Traject-scoped writes (editor-writer tier). Mutations to traject
+    // metadata + membership AND the traject-branch corpus content all
+    // require write privilege. Axum merges the reader and writer
+    // routers at the same path by method: a PUT against
+    // `/corpus/laws/{lid}/scenarios/{fn}` resolves to the writer
+    // handler, while a GET on the same path resolves to the reader
+    // handler above.
+    let traject_writer_routes = Router::new()
+        .route("/api/trajects", axum::routing::post(trajects::create))
+        .route(
+            "/api/trajects/{id}",
+            axum::routing::patch(trajects::update).delete(trajects::delete),
+        )
+        .route(
+            "/api/trajects/{id}/leave",
+            axum::routing::post(trajects::leave),
+        )
+        .route(
+            "/api/trajects/{id}/members",
+            axum::routing::post(trajects::add_member),
+        )
+        .route(
+            "/api/trajects/{id}/members/{account_id}",
+            axum::routing::patch(trajects::update_member).delete(trajects::remove_member),
+        )
+        .route(
+            "/api/trajects/{id}/invites/{email}",
+            axum::routing::delete(trajects::remove_invite),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}/scenarios/{filename}",
+            axum::routing::put(corpus_handlers::save_scenario)
+                .delete(corpus_handlers::delete_scenario)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_SCENARIO_BODY)),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}/annotations",
+            axum::routing::put(corpus_handlers::save_annotations)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_SCENARIO_BODY)),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}",
+            axum::routing::put(corpus_handlers::save_law)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_LAW_BODY)),
+        )
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            accounts::account_middleware,
+        ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_role::<AppState>("editor-writer"),
         ));
 
     // --- Build app with session layer ---
     // SessionManagerLayer is generic over the store type, so we build the
     // router in two branches depending on whether auth is enabled.
     if app_state.config.is_auth_enabled() {
-        let database_url = env::var("DATABASE_URL")
-            .or_else(|_| env::var("DATABASE_SERVER_FULL"))
-            .unwrap_or_else(|_| {
-                tracing::error!(
-                    "DATABASE_URL is required when OIDC is enabled (for session storage)"
-                );
-                std::process::exit(1);
-            });
-
-        let pool = sqlx::postgres::PgPoolOptions::new()
-            .max_connections(5)
-            .connect(&database_url)
-            .await
-            .unwrap_or_else(|e| {
-                tracing::error!(error = %e, "failed to connect to database");
-                std::process::exit(1);
-            });
+        // Pool was created above app_state so the route_layer middleware
+        // sees a populated app_state.pool. The outer `is_auth_enabled`
+        // branch above already returned `Some`, but we still take the
+        // safe path here so a refactor that breaks the invariant fails
+        // with a clear error instead of a panic.
+        let Some(pool) = pool else {
+            tracing::error!("pool was not created despite auth being enabled");
+            std::process::exit(1);
+        };
 
         // The editor shares a database with the pipeline; ensure_schema runs
-        // all pipeline migrations (including 0008_user_favorites). If the
-        // services are ever split to separate databases this should be replaced
-        // with an editor-specific migration runner.
+        // all pipeline migrations (including 0008_user_favorites and 0014
+        // trajects). If the services are ever split to separate databases
+        // this should be replaced with an editor-specific migration runner.
         if let Err(e) = regelrecht_pipeline::ensure_schema(&pool).await {
             tracing::error!(error = %e, "database migration failed");
             std::process::exit(1);
         }
-
-        app_state.pool = Some(pool.clone());
 
         let session_store = PostgresStore::new(pool);
         if let Err(e) = session_store.migrate().await {
@@ -236,7 +384,11 @@ async fn main() {
             .route("/health", get(|| async { "OK" }))
             .merge(auth_routes)
             .merge(public_api_routes)
-            .merge(protected_api_routes)
+            .merge(reader_routes)
+            .merge(writer_routes)
+            .merge(admin_routes)
+            .merge(traject_reader_routes)
+            .merge(traject_writer_routes)
             .with_state(app_state)
             .layer(session_layer)
             .layer(axum_middleware::from_fn(middleware::security_headers))
@@ -258,7 +410,11 @@ async fn main() {
             .route("/health", get(|| async { "OK" }))
             .merge(auth_routes)
             .merge(public_api_routes)
-            .merge(protected_api_routes)
+            .merge(reader_routes)
+            .merge(writer_routes)
+            .merge(admin_routes)
+            .merge(traject_reader_routes)
+            .merge(traject_writer_routes)
             .with_state(app_state)
             .layer(session_layer)
             .layer(axum_middleware::from_fn(middleware::security_headers))
@@ -312,7 +468,7 @@ async fn serve(
 
 /// Initialize the corpus: load local sources, then fetch only the
 /// favorites that are missing from GitHub sources.
-async fn init_corpus(static_dir: &str) -> CorpusState {
+async fn init_corpus(favorites: &HashSet<String>) -> CorpusState {
     let manifest_str =
         env::var("CORPUS_REGISTRY_PATH").unwrap_or_else(|_| "corpus-registry.yaml".to_string());
     let local_str = env::var("CORPUS_REGISTRY_LOCAL_PATH")
@@ -338,14 +494,13 @@ async fn init_corpus(static_dir: &str) -> CorpusState {
         regelrecht_corpus::CorpusRegistry::empty()
     };
 
-    let favorites = load_favorites(static_dir);
     let auth_file = if auth_path.exists() {
         Some(auth_path.as_path())
     } else {
         None
     };
 
-    let source_map = match registry.load_favorites_async(&favorites, auth_file).await {
+    let source_map = match registry.load_favorites_async(favorites, auth_file).await {
         Ok(map) => {
             tracing::info!(laws = map.len(), "loaded corpus laws");
             map

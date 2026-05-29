@@ -1,0 +1,17 @@
+---
+import Base from '~/layouts/Base.astro';
+import LandingSections from '~/components/LandingSections.astro';
+import { content } from '~/lib/landing-content';
+
+const t = content.nl;
+---
+
+<Base
+  lang="nl"
+  kind="landing"
+  pathname="/"
+  title={t.meta.title}
+  description={t.meta.description}
+>
+  <LandingSections lang="nl" showSignup={false} />
+</Base>

@@ -23,6 +23,7 @@ jobs:
       ci: ${{ steps.filter.outputs.ci }}
       admin: ${{ steps.filter.outputs.admin }}
       editor-api: ${{ steps.filter.outputs.editor-api }}
+      docs: ${{ steps.filter.outputs.docs }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
 
@@ -53,6 +54,10 @@ jobs:
               - packages/corpus/**
               - packages/pipeline/**
               - packages/harvester/**
+              - Justfile
+              - .github/workflows/ci.yml
+            docs:
+              - docs/**
               - Justfile
               - .github/workflows/ci.yml
 
@@ -304,7 +309,7 @@ jobs:
 
       - name: Setup Node.js
         if: needs.changes.outputs.ci == 'true'
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
         with:
           node-version: '22'
           registry-url: https://npm.pkg.github.com
@@ -315,8 +320,6 @@ jobs:
         if: needs.changes.outputs.ci == 'true'
         working-directory: frontend
         run: npm ci
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run frontend tests
         if: needs.changes.outputs.ci == 'true'
@@ -415,14 +418,10 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install admin frontend dependencies
         working-directory: packages/admin/frontend-src
         run: npm ci
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install just
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
@@ -499,8 +498,6 @@ jobs:
         if: needs.changes.outputs.admin == 'true'
         working-directory: packages/admin/frontend-src
         run: npm ci
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build admin frontend
         if: needs.changes.outputs.admin == 'true'
@@ -563,3 +560,46 @@ jobs:
       - name: Skip (no relevant changes)
         if: needs.changes.outputs.editor-api != 'true'
         run: echo "No editor-api changes, skipping"
+
+  docs-a11y:
+    name: Docs accessibility gate
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - name: Install just
+        if: needs.changes.outputs.docs == 'true'
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
+
+      - name: Setup Node.js
+        if: needs.changes.outputs.docs == 'true'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Install docs dependencies
+        if: needs.changes.outputs.docs == 'true'
+        working-directory: docs
+        run: npm ci
+
+      # rehype-mermaid renders diagrams with a headless Chromium at build time,
+      # and pa11y drives Chromium too — install it (with system deps) the same
+      # way docs/Dockerfile does.
+      - name: Install Playwright Chromium
+        if: needs.changes.outputs.docs == 'true'
+        working-directory: docs
+        run: npx playwright install --with-deps chromium
+
+      # `just docs-a11y` builds the site, regenerates .pa11yci from the build,
+      # then runs pa11y-ci (htmlcs + axe) over every page. Non-zero exit fails.
+      - name: Run accessibility gate
+        if: needs.changes.outputs.docs == 'true'
+        run: just docs-a11y
+
+      - name: Skip (no relevant changes)
+        if: needs.changes.outputs.docs != 'true'
+        run: echo "No docs changes, skipping accessibility gate"

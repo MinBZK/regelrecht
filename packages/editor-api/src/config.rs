@@ -23,7 +23,11 @@ impl AppConfig {
         if oidc.is_some() {
             tracing::info!("OIDC authentication is enabled");
         } else {
-            tracing::warn!("OIDC authentication is DISABLED — editor is unprotected");
+            tracing::warn!(
+                "OIDC authentication is DISABLED — editor is unprotected. \
+                 All routes (editor-reader/writer/admin tiers) bypass auth checks. \
+                 Do NOT run this configuration in production."
+            );
         }
 
         let base_url = regelrecht_auth::parse_base_url()?;

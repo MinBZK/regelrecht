@@ -2,15 +2,14 @@ import { ref, reactive, computed } from 'vue';
 import { usePollingFetch } from './usePollingFetch.js';
 import { JOB_SORT_KEYS, GROUPED_SORT_KEYS } from '../constants.js';
 
-export function useJobs() {
-  const sort = ref('latest_created_at');
+export function useJobs(options = {}) {
+  const initialView = options.initialViewMode === 'flat' ? 'flat' : 'grouped';
+  const sort = ref(initialView === 'flat' ? 'created_at' : 'latest_created_at');
   const order = ref('desc');
   const limit = ref(50);
   const offset = ref(0);
   const filters = reactive({});
-  const viewMode = ref('grouped');
-  const expandedLawIds = reactive(new Set());
-  const expandedJobsCache = reactive({});
+  const viewMode = ref(initialView);
 
   function buildUrl() {
     const allowedKeys = viewMode.value === 'grouped' ? GROUPED_SORT_KEYS : JOB_SORT_KEYS;
@@ -33,42 +32,6 @@ export function useJobs() {
 
   async function refresh() {
     await rawRefresh();
-    // Re-fetch expanded groups after main data refresh
-    if (viewMode.value === 'grouped' && expandedLawIds.size > 0) {
-      await Promise.all([...expandedLawIds].map((lawId) => fetchJobsForLaw(lawId)));
-    }
-  }
-
-  async function fetchJobsForLaw(lawId) {
-    try {
-      const params = new URLSearchParams();
-      params.set('law_id', lawId);
-      params.set('sort', 'created_at');
-      params.set('order', 'desc');
-      params.set('limit', '50');
-      if (filters.status) params.set('status', filters.status);
-      if (filters.job_type) params.set('job_type', filters.job_type);
-
-      const response = await fetch(`api/jobs?${params.toString()}`);
-      if (!response.ok) {
-        expandedJobsCache[lawId] = [];
-        return;
-      }
-      const json = await response.json();
-      expandedJobsCache[lawId] = json.data || [];
-    } catch {
-      expandedJobsCache[lawId] = [];
-    }
-  }
-
-  async function toggleGroupExpansion(lawId) {
-    if (expandedLawIds.has(lawId)) {
-      expandedLawIds.delete(lawId);
-      delete expandedJobsCache[lawId];
-    } else {
-      expandedLawIds.add(lawId);
-      await fetchJobsForLaw(lawId);
-    }
   }
 
   async function toggleViewMode() {
@@ -76,10 +39,6 @@ export function useJobs() {
     offset.value = 0;
     sort.value = viewMode.value === 'grouped' ? 'latest_created_at' : 'created_at';
     order.value = 'desc';
-    expandedLawIds.clear();
-    for (const key of Object.keys(expandedJobsCache)) {
-      delete expandedJobsCache[key];
-    }
     if (viewMode.value === 'grouped') {
       delete filters.law_id;
     }
@@ -87,14 +46,17 @@ export function useJobs() {
     await refresh();
   }
 
-  function setSort(key) {
+  function setSort(key, newOrder) {
     const allowedKeys = viewMode.value === 'grouped' ? GROUPED_SORT_KEYS : JOB_SORT_KEYS;
     if (!allowedKeys.has(key)) return;
-    if (sort.value === key) {
+    if (newOrder === 'asc' || newOrder === 'desc') {
+      sort.value = key;
+      order.value = newOrder;
+    } else if (sort.value === key) {
       order.value = order.value === 'asc' ? 'desc' : 'asc';
     } else {
       sort.value = key;
-      order.value = 'asc';
+      order.value = 'desc';
     }
     offset.value = 0;
     refresh();
@@ -107,10 +69,6 @@ export function useJobs() {
       delete filters[key];
     }
     offset.value = 0;
-    // Clear expanded jobs cache so child rows re-fetch with new filters
-    for (const k of Object.keys(expandedJobsCache)) {
-      delete expandedJobsCache[k];
-    }
     refresh();
   }
 
@@ -122,21 +80,12 @@ export function useJobs() {
   }
 
   function setLawIdFilter(lawId) {
-    if (viewMode.value === 'grouped') {
-      // In grouped view, auto-expand this law instead of filtering
-      for (const key of Object.keys(filters)) delete filters[key];
-      expandedLawIds.clear();
-      for (const key of Object.keys(expandedJobsCache)) delete expandedJobsCache[key];
-      expandedLawIds.add(lawId);
-      offset.value = 0;
-      reset();
-      refresh();
-    } else {
-      for (const key of Object.keys(filters)) delete filters[key];
+    for (const key of Object.keys(filters)) delete filters[key];
+    if (viewMode.value === 'flat') {
       filters.law_id = lawId;
-      offset.value = 0;
-      refresh();
     }
+    offset.value = 0;
+    refresh();
   }
 
   const currentPage = computed(() => Math.floor(offset.value / limit.value) + 1);
@@ -149,10 +98,10 @@ export function useJobs() {
   return {
     data, totalCount, loading, error,
     sort, order, limit, offset, filters,
-    viewMode, expandedLawIds, expandedJobsCache,
+    viewMode,
     currentPage, totalPages,
     setSort, setFilter, goToPage,
-    toggleViewMode, toggleGroupExpansion, setLawIdFilter,
+    toggleViewMode, setLawIdFilter,
     refresh, startPolling, stopPolling,
   };
 }

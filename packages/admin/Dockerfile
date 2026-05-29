@@ -1,10 +1,9 @@
 # syntax=docker/dockerfile:1
 # Stage 1: Build frontend
-FROM node:24-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a665f40a06dbdfc94f AS frontend-builder
+FROM node:26-alpine@sha256:7c6af15abe4e3de859690e7db171d0d711bf37d27528eddfe625b2fe89e097f8 AS frontend-builder
 WORKDIR /app
 COPY packages/admin/frontend-src/package.json packages/admin/frontend-src/package-lock.json* packages/admin/frontend-src/.npmrc ./
-RUN --mount=type=secret,id=GITHUB_TOKEN \
-    GITHUB_TOKEN=$(cat /run/secrets/GITHUB_TOKEN) npm ci
+RUN npm ci
 COPY packages/admin/frontend-src/ .
 # vite outDir is '../static' which resolves to /static from /app
 RUN npm run build

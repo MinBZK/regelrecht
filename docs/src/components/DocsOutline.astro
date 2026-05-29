@@ -1,0 +1,32 @@
+---
+/*
+ * Table of contents for the article page's left column. Built from the
+ * headings Astro returns from entry.render() ({ depth, slug, text }), kept to
+ * depth 2-3. Rendered as a boxed navigation list; depth-3 entries get an extra
+ * leading spacer-cell for indentation.
+ */
+interface Heading {
+  depth: number;
+  slug: string;
+  text: string;
+}
+
+interface Props {
+  headings: Heading[];
+}
+const { headings } = Astro.props;
+const flat = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
+---
+
+{
+  flat.length > 0 && (
+    <nldd-list type="navigation" variant="simple" aria-label="On this page">
+      {flat.map((h) => (
+        <nldd-list-item href={`#${h.slug}`}>
+          {h.depth === 3 && <nldd-spacer-cell />}
+          <nldd-text-cell text={h.text} />
+        </nldd-list-item>
+      ))}
+    </nldd-list>
+  )
+}

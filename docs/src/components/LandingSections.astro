@@ -1,0 +1,572 @@
+---
+/*
+ * Landing page content, ported verbatim from the relanding LandingPage.vue
+ * <template>. Wrapper/skip-link/nav/footer live in Base.astro. NLDD elements
+ * render their slotted content in light DOM so the real headings/paragraphs
+ * are server-rendered and work without JS; only nldd-button is the
+ * exception, so every button ships a real <a> fallback next to the
+ * <nldd-button> and CSS shows exactly one (see landing.css).
+ */
+import { content } from '~/lib/landing-content';
+import SignupForm from './SignupForm.astro';
+
+interface Props {
+  lang: 'nl' | 'en';
+  showSignup: boolean;
+}
+
+const { lang, showSignup } = Astro.props;
+const t = content[lang];
+const home = lang === 'en' ? '/en/' : '/';
+
+// Hero ToC: every landing section's title rendered in the right column.
+const toc = [
+  { text: t.whatIsIt.title, href: '#what-is-it' },
+  { text: t.jobs.title, href: '#jobs' },
+  { text: t.whyImportant.title, href: '#why-important' },
+  { text: t.howItWorks.title, href: '#how-it-works' },
+  { text: t.tools.title, href: '#tools' },
+  { text: t.example.title, href: '#example' },
+  { text: t.innovation.title, href: '#innovation' },
+  { text: t.references.title, href: '#references' },
+  { text: t.faq.title, href: '#faq' },
+];
+---
+
+{
+  showSignup ? (
+      <nldd-simple-section
+        id="signup"
+        width="640px"
+        sm-padding-bottom="32"
+        md-padding-bottom="64"
+        lg-padding-bottom="96"
+      >
+        <nldd-title size="2">
+          <h1>{t.signup.pageTitle}</h1>
+        </nldd-title>
+        <nldd-spacer size="8" />
+        <nldd-rich-text>
+          <p>{t.signup.lede}</p>
+        </nldd-rich-text>
+        <nldd-spacer size="24" />
+        <SignupForm lang={lang} />
+        <noscript>
+          <p>{t.signup.noscript}</p>
+        </noscript>
+      </nldd-simple-section>
+    ) : (
+      <Fragment>
+        {/* scheme="dark" forces the NLDD color-scheme dark (the tinted surface
+            reads dark); the `dark` theme class re-defines the docs' own --vp-*
+            vars that colour the slotted headings/body. */}
+        <nldd-two-thirds-one-third-section
+          class="dark"
+          background="tinted"
+          scheme="dark"
+          sm-padding-block="40"
+          md-padding-block="64"
+          lg-padding-block="96"
+        >
+          <div slot="left">
+            <nldd-title size="1">
+              <h1>RegelRecht</h1>
+            </nldd-title>
+            <nldd-title size="4">
+              <p>{t.hero.titleSmall}</p>
+            </nldd-title>
+            <nldd-spacer size="24" />
+            <nldd-rich-text>
+              <p>{t.hero.intro}</p>
+            </nldd-rich-text>
+            <nldd-spacer size="24" />
+            <nldd-button-group orientation="horizontal">
+              <nldd-button
+                variant="primary"
+                href={home + '#what-is-it'}
+                text={t.hero.cta}
+              />
+              <nldd-button
+                variant="secondary"
+                href="/docs/"
+                start-icon="books"
+                text={t.nav.docs}
+              />
+              <nldd-button
+                variant="secondary"
+                href={t.feedback.ctaHref}
+                text={t.feedback.cta}
+              />
+            </nldd-button-group>
+            <nldd-spacer size="24" />
+            <nldd-rich-text>
+              <p>
+                {t.partners.label}{' '}
+                {t.partners.items.map((p, i) => {
+                  const sep =
+                    i === 0
+                      ? ''
+                      : i === t.partners.items.length - 1
+                        ? lang === 'en'
+                          ? ', and '
+                          : ' en '
+                        : ', ';
+                  return (<Fragment>{sep}<a href={p.href}>{p.label}</a></Fragment>);
+                })}
+              </p>
+            </nldd-rich-text>
+          </div>
+          <nldd-list slot="right" type="navigation">
+            {toc.map((item) => (
+              <nldd-list-item href={item.href}>
+                <nldd-text-cell text={item.text} />
+              </nldd-list-item>
+            ))}
+          </nldd-list>
+        </nldd-two-thirds-one-third-section>
+
+        <nldd-simple-section
+          id="what-is-it"
+          sm-padding-top="32"
+          md-padding-top="64"
+          lg-padding-top="96"
+        >
+          <nldd-title size="2">
+            <h2>{t.whatIsIt.title}</h2>
+          </nldd-title>
+          <nldd-spacer size="8" />
+          <nldd-rich-text>
+            <p>{t.whatIsIt.lede}</p>
+          </nldd-rich-text>
+          <nldd-spacer size="24" />
+          <nldd-collection layout="grid" item-width="320px">
+            {t.whatIsIt.cards.map((c) => (
+              <nldd-card accessible-label={c.h}>
+                <nldd-container padding="20">
+                  <nldd-title size="4">
+                    <h3>{c.h}</h3>
+                  </nldd-title>
+                  <nldd-spacer size="8" />
+                  <nldd-rich-text>
+                    <p>{c.p}</p>
+                  </nldd-rich-text>
+                </nldd-container>
+              </nldd-card>
+            ))}
+          </nldd-collection>
+        </nldd-simple-section>
+
+        <nldd-simple-section
+          id="jobs"
+          background="tinted"
+          sm-padding-block="32"
+          md-padding-block="64"
+          lg-padding-block="96"
+        >
+          <nldd-title size="2">
+            <h2>{t.jobs.title}</h2>
+          </nldd-title>
+          <nldd-spacer size="8" />
+          <nldd-rich-text>
+            <p>{t.jobs.lede}</p>
+          </nldd-rich-text>
+          <nldd-spacer size="24" />
+          <nldd-collection layout="grid" item-width="720px">
+            {t.jobs.items.map((job) => (
+              <nldd-card accessible-label={`${t.jobs.vacancyTag}: ${job.title}`}>
+                <nldd-container padding="20">
+                  <nldd-container layout="wrap" gap="6" horizontal-alignment="left">
+                    <nldd-tag color="accent" size="md">{t.jobs.vacancyTag}</nldd-tag>
+                    <nldd-tag color="brand" size="md">{job.organisation}</nldd-tag>
+                  </nldd-container>
+                  <nldd-spacer size="12" />
+                  <nldd-title size="3">
+                    <h3>{job.title}</h3>
+                  </nldd-title>
+                  <nldd-spacer size="12" />
+                  <nldd-rich-text>
+                    <p>{job.pitch}</p>
+                  </nldd-rich-text>
+                  <nldd-spacer size="16" />
+                  <nldd-container layout="wrap" gap="6" horizontal-alignment="left">
+                    {job.meta.map((m) => (
+                      <nldd-tag color="neutral" size="md">{m}</nldd-tag>
+                    ))}
+                  </nldd-container>
+                  <nldd-spacer size="20" />
+                  <nldd-button-group orientation="horizontal">
+                    <nldd-button
+                      variant="primary"
+                      href={job.ctaHref}
+                      end-icon="external-link"
+                      text={job.ctaLabel}
+                    />
+                  </nldd-button-group>
+                  {job.contacts.length > 0 && (
+                    <Fragment>
+                      <nldd-spacer size="16" />
+                      <nldd-rich-text>
+                        <p>
+                          {t.jobs.contactsLabel}{' '}
+                          {job.contacts.map((c, i, arr) => {
+                            const sep =
+                              i === 0
+                                ? ''
+                                : i === arr.length - 1
+                                  ? lang === 'en'
+                                    ? ' or '
+                                    : ' of '
+                                  : ', ';
+                            return (
+                              <Fragment>
+                                {sep}
+                                <a href={c.href}>{c.label}</a>
+                              </Fragment>
+                            );
+                          })}.
+                        </p>
+                      </nldd-rich-text>
+                    </Fragment>
+                  )}
+                </nldd-container>
+              </nldd-card>
+            ))}
+          </nldd-collection>
+        </nldd-simple-section>
+
+        <nldd-simple-section
+          id="why-important"
+          sm-padding-bottom="32"
+          md-padding-bottom="64"
+          lg-padding-bottom="96"
+        >
+          <nldd-title size="2">
+            <h2>{t.whyImportant.title}</h2>
+          </nldd-title>
+          <nldd-spacer size="8" />
+          <nldd-rich-text>
+            <p>{t.whyImportant.lede}</p>
+          </nldd-rich-text>
+          <nldd-spacer size="24" />
+          {t.whyImportant.problemSolutions.map((ps, i) => (
+            <Fragment>
+              {i > 0 && <nldd-spacer size="24" />}
+              <nldd-collection layout="grid" item-width="480px">
+                <nldd-card accessible-label={ps.problemTitle}>
+                  <nldd-container padding="20">
+                    <nldd-tag color="critical" size="md">
+                      {lang === 'en' ? 'The problem' : 'Het probleem'}
+                    </nldd-tag>
+                    <nldd-spacer size="8" />
+                    <nldd-title size="4">
+                      <h3>{ps.problemTitle}</h3>
+                    </nldd-title>
+                    <nldd-spacer size="8" />
+                    <nldd-rich-text>
+                      <p>{ps.problemText}</p>
+                    </nldd-rich-text>
+                  </nldd-container>
+                </nldd-card>
+                <nldd-card accessible-label={ps.solutionTitle}>
+                  <nldd-container padding="20">
+                    <nldd-tag color="accent" size="md">
+                      {lang === 'en' ? 'Possible direction' : 'Mogelijke richting'}
+                    </nldd-tag>
+                    <nldd-spacer size="8" />
+                    <nldd-title size="4">
+                      <h3>{ps.solutionTitle}</h3>
+                    </nldd-title>
+                    <nldd-spacer size="8" />
+                    <nldd-rich-text>
+                      <p>{ps.solutionText}</p>
+                    </nldd-rich-text>
+                  </nldd-container>
+                </nldd-card>
+              </nldd-collection>
+            </Fragment>
+          ))}
+        </nldd-simple-section>
+
+        <nldd-simple-section
+          id="how-it-works"
+          background="tinted"
+          width="800px"
+          sm-padding-block="32"
+          md-padding-block="64"
+          lg-padding-block="96"
+        >
+          <nldd-title size="2">
+            <h2>{t.howItWorks.title}</h2>
+          </nldd-title>
+          <nldd-spacer size="8" />
+          <nldd-rich-text>
+            <p>{t.howItWorks.lede}</p>
+          </nldd-rich-text>
+          <nldd-spacer size="24" />
+          <nldd-list no-dividers>
+            {t.howItWorks.steps.map((step, i, arr) => (
+              <nldd-list-item>
+                <nldd-title-cell
+                  text={String(i + 1)}
+                  size="2"
+                  width="fit-content"
+                  vertical-alignment="center"
+                />
+                <nldd-spacer-cell size="16" />
+                <nldd-timeline-track-cell
+                  child={
+                    i === 0 ? 'first' : i === arr.length - 1 ? 'last' : 'between'
+                  }
+                />
+                <nldd-spacer-cell size="16" />
+                <nldd-cell width="full" vertical-alignment="top">
+                  <nldd-title size="5">
+                    <h3>{step.title}</h3>
+                  </nldd-title>
+                  <nldd-rich-text>
+                    <p>{step.text}</p>
+                  </nldd-rich-text>
+                </nldd-cell>
+              </nldd-list-item>
+            ))}
+          </nldd-list>
+        </nldd-simple-section>
+
+        <nldd-simple-section
+          id="tools"
+          sm-padding-block="32"
+          md-padding-block="64"
+          lg-padding-block="96"
+        >
+          <nldd-title size="2">
+            <h2>{t.tools.title}</h2>
+          </nldd-title>
+          <nldd-spacer size="24" />
+          <nldd-collection layout="grid" item-width="320px">
+            {t.tools.items.map((tool) => (
+              <nldd-card accessible-label={tool.title}>
+                <nldd-container padding="20">
+                  <nldd-title size="4">
+                    <h3>{tool.title}</h3>
+                  </nldd-title>
+                  {tool.meta && (
+                    <Fragment>
+                      <nldd-spacer size="8" />
+                      <nldd-container
+                        layout="wrap"
+                        gap="6"
+                        horizontal-alignment="left"
+                      >
+                        {tool.meta.split('•').map((tag) => (
+                          <nldd-tag color="accent" size="md">
+                            {tag.trim()}
+                          </nldd-tag>
+                        ))}
+                      </nldd-container>
+                    </Fragment>
+                  )}
+                  <nldd-spacer size="8" />
+                  <nldd-rich-text>
+                    <p>
+                      {tool.text}
+                      {tool.link && (
+                        <Fragment>
+                          {' '}
+                          <a href={tool.link.href}>{tool.link.label}</a>
+                        </Fragment>
+                      )}
+                    </p>
+                  </nldd-rich-text>
+                </nldd-container>
+              </nldd-card>
+            ))}
+          </nldd-collection>
+        </nldd-simple-section>
+
+        <nldd-simple-section
+          id="example"
+          background="tinted"
+          sm-padding-block="32"
+          md-padding-block="64"
+          lg-padding-block="96"
+        >
+          <nldd-title size="2">
+            <h2>{t.example.title}</h2>
+          </nldd-title>
+          <nldd-spacer size="8" />
+          <nldd-rich-text>
+            <p>{t.example.lede}</p>
+          </nldd-rich-text>
+          <nldd-spacer size="24" />
+
+          {t.example.cases.map((ex, i) => (
+            <>
+              {i > 0 && <nldd-spacer size="48" />}
+              <nldd-container
+                layout="grid"
+                sm-column-count="1"
+                md-column-count="1"
+                sm-gap="16"
+                md-gap="24"
+                lg-gap="32"
+                vertical-alignment="center"
+              >
+                <nldd-rich-text>
+                  <figure>
+                    <img src={ex.img} alt={ex.alt} />
+                    <figcaption>{ex.caption}</figcaption>
+                  </figure>
+                </nldd-rich-text>
+                <nldd-rich-text
+                  lg-order={ex.reverse ? '-1' : undefined}
+                >
+                  <h3>{ex.h}</h3>
+                  <p>{ex.p}</p>
+                  <ul>
+                    {ex.bullets.map((b) => (
+                      <li>{b}</li>
+                    ))}
+                  </ul>
+                </nldd-rich-text>
+              </nldd-container>
+            </>
+          ))}
+        </nldd-simple-section>
+
+        <nldd-simple-section
+          id="innovation"
+          sm-padding-block="32"
+          md-padding-block="64"
+          lg-padding-block="96"
+        >
+          <nldd-title size="2">
+            <h2>{t.innovation.title}</h2>
+          </nldd-title>
+          <nldd-spacer size="8" />
+          <nldd-rich-text>
+            <p>{t.innovation.ledeBefore}<a href={t.innovation.ledeLink.href}>{t.innovation.ledeLink.label}</a>{t.innovation.ledeAfter}</p>
+          </nldd-rich-text>
+          <nldd-spacer size="24" />
+          <nldd-collection layout="grid" item-width="320px">
+            {t.innovation.cards.map((c) => (
+              <nldd-card accessible-label={c.h}>
+                <nldd-container padding="20">
+                  <nldd-tag color="accent" size="md">{c.meta}</nldd-tag>
+                  <nldd-spacer size="8" />
+                  <nldd-title size="4">
+                    <h3>{c.h}</h3>
+                  </nldd-title>
+                  <nldd-spacer size="8" />
+                  <nldd-rich-text>
+                    <p>{c.p}</p>
+                  </nldd-rich-text>
+                </nldd-container>
+              </nldd-card>
+            ))}
+          </nldd-collection>
+        </nldd-simple-section>
+
+        <nldd-simple-section
+          id="references"
+          background="tinted"
+          sm-padding-top="32"
+          md-padding-top="64"
+          lg-padding-top="96"
+          sm-padding-bottom="32"
+          md-padding-bottom="40"
+          lg-padding-bottom="48"
+        >
+          <nldd-title size="2">
+            <h2>{t.references.title}</h2>
+          </nldd-title>
+          <nldd-spacer size="8" />
+          <nldd-rich-text>
+            <p>{t.references.lede}</p>
+          </nldd-rich-text>
+          <nldd-spacer size="24" />
+          <nldd-collection layout="horizontal-scroll" item-width="320px">
+            {t.references.items.map((ref) => (
+              <nldd-card accessible-label={ref.title}>
+                <nldd-container padding="20" padding-bottom="12">
+                  <nldd-title size="3">
+                    <h3>{ref.title}</h3>
+                    <p slot="subtitle">{ref.meta}</p>
+                  </nldd-title>
+                  <nldd-spacer size="12" />
+                  <nldd-rich-text>
+                    <p>{ref.text}</p>
+                  </nldd-rich-text>
+                </nldd-container>
+                <nldd-container slot="footer" padding="20" padding-top="0">
+                  <nldd-button
+                    variant="secondary"
+                    width="full"
+                    href={ref.href}
+                    text={`${lang === 'en' ? 'Read' : 'Lees'} ${ref.linkLabel}`}
+                    accessible-label={`${lang === 'en' ? 'Read' : 'Lees'} ${ref.linkLabel}: ${ref.title}`}
+                  />
+                </nldd-container>
+              </nldd-card>
+            ))}
+          </nldd-collection>
+        </nldd-simple-section>
+
+        <nldd-simple-section
+          id="faq"
+          sm-padding-block="32"
+          md-padding-block="64"
+          lg-padding-block="96"
+        >
+          <nldd-title size="2">
+            <h2>{t.faq.title}</h2>
+          </nldd-title>
+          <nldd-spacer size="24" />
+          <nldd-collection layout="grid" item-width="480px">
+            {t.faq.items.map((item) => (
+              <nldd-card accessible-label={item.q}>
+                <nldd-container padding="20">
+                  <nldd-title size="4">
+                    <h3>{item.q}</h3>
+                  </nldd-title>
+                  <nldd-spacer size="12" />
+                  <nldd-rich-text>
+                    <p>
+                      {item.a}
+                      {item.link && (
+                        <Fragment>
+                          {' '}
+                          <a href={item.link.href}>{item.link.label}</a>
+                        </Fragment>
+                      )}
+                    </p>
+                  </nldd-rich-text>
+                </nldd-container>
+              </nldd-card>
+            ))}
+          </nldd-collection>
+        </nldd-simple-section>
+
+        <nldd-simple-section
+          id="feedback"
+          background="tinted"
+          sm-padding-block="32"
+          md-padding-block="64"
+          lg-padding-block="96"
+        >
+          <nldd-title size="2">
+            <h2>{t.feedback.title}</h2>
+          </nldd-title>
+          <nldd-spacer size="8" />
+          <nldd-rich-text>
+            <p>{t.feedback.body}</p>
+          </nldd-rich-text>
+          <nldd-spacer size="24" />
+          <nldd-button
+            variant="primary"
+            href={t.feedback.ctaHref}
+            text={t.feedback.cta}
+          />
+        </nldd-simple-section>
+      </Fragment>
+    )
+  }

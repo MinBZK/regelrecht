@@ -1,0 +1,219 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.2/annotation-schema.json",
+  "title": "RegelRecht Note Sidecar Schema v0.5.2",
+  "description": "Stand-off notes on legal texts (RFC-005, RFC-018). A note file holds a list of W3C Web Annotation objects anchored to law text via a TextQuoteSelector. The feature is called 'notes' (RFC-005 terminology); the W3C entity is named 'Annotation'.",
+  "type": "object",
+  "required": ["annotations"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Reference to this schema."
+    },
+    "annotations": {
+      "type": "array",
+      "description": "The notes in this sidecar file.",
+      "items": { "$ref": "#/definitions/Annotation" }
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "Annotation": {
+      "type": "object",
+      "required": ["type", "motivation", "target", "body"],
+      "properties": {
+        "type": { "const": "Annotation" },
+        "motivation": {
+          "type": "string",
+          "description": "W3C motivation: why this note exists. W3C makes this optional; RegelRecht requires it for explicit intent.",
+          "enum": [
+            "assessing",
+            "bookmarking",
+            "classifying",
+            "commenting",
+            "describing",
+            "editing",
+            "highlighting",
+            "identifying",
+            "linking",
+            "moderating",
+            "questioning",
+            "replying",
+            "tagging"
+          ]
+        },
+        "creator": {
+          "description": "Who created the note. MVP: a string (org name, person, or tool). Future: a structured W3C Agent.",
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "object",
+              "required": ["name"],
+              "properties": {
+                "type": { "type": "string" },
+                "name": { "type": "string" },
+                "organisation_id": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "created": {
+          "type": "string",
+          "description": "Optional ISO 8601 creation timestamp (for systems not using Git history)."
+        },
+        "modified": {
+          "type": "string",
+          "description": "Optional ISO 8601 modification timestamp."
+        },
+        "resolution": {
+          "type": "string",
+          "description": "Technical dimension: can the selector locate the text? Derived at resolution time; the stored value is advisory and mirrors the resolver's MatchStatus (found / orphaned / ambiguous).",
+          "enum": ["found", "orphaned", "ambiguous"],
+          "default": "found"
+        },
+        "workflow": {
+          "type": "string",
+          "description": "Process dimension: has the issue been addressed? Used with the questioning motivation for ambiguity tracking (RFC-018).",
+          "enum": ["open", "resolved"],
+          "default": "open"
+        },
+        "target": { "$ref": "#/definitions/Target" },
+        "body": {
+          "description": "One body, or a list of bodies (W3C permits multiple).",
+          "oneOf": [
+            { "$ref": "#/definitions/Body" },
+            {
+              "type": "array",
+              "items": { "$ref": "#/definitions/Body" },
+              "minItems": 1
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Target": {
+      "type": "object",
+      "required": ["source", "selector"],
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "URI of the annotated law (e.g. regelrecht://zorgtoeslagwet)."
+        },
+        "selector": { "$ref": "#/definitions/TextQuoteSelector" }
+      },
+      "additionalProperties": false
+    },
+    "TextQuoteSelector": {
+      "type": "object",
+      "required": ["type", "exact"],
+      "properties": {
+        "type": { "const": "TextQuoteSelector" },
+        "exact": {
+          "type": "string",
+          "description": "The exact text to locate.",
+          "minLength": 1
+        },
+        "prefix": {
+          "type": "string",
+          "description": "Text immediately before the exact match (disambiguation)."
+        },
+        "suffix": {
+          "type": "string",
+          "description": "Text immediately after the exact match (disambiguation)."
+        },
+        "regelrecht:hint": {
+          "type": "object",
+          "description": "Non-authoritative performance hint. If the text is not found here, the whole law is searched.",
+          "required": ["type", "value"],
+          "properties": {
+            "type": { "const": "CssSelector" },
+            "value": {
+              "type": "string",
+              "pattern": "^article\\[number=['\"][^'\"]+['\"]\\]$",
+              "description": "CSS selector for the article, e.g. article[number='2']."
+            },
+            "refinedBy": {
+              "type": "object",
+              "required": ["type", "start", "end"],
+              "properties": {
+                "type": { "const": "TextPositionSelector" },
+                "start": { "type": "integer", "minimum": 0 },
+                "end": { "type": "integer", "minimum": 0 }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "Body": {
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Inline textual body (comment, question, or tag value).",
+          "required": ["type", "value", "purpose"],
+          "properties": {
+            "type": { "const": "TextualBody" },
+            "value": { "type": "string" },
+            "purpose": {
+              "type": "string",
+              "enum": [
+                "assessing",
+                "bookmarking",
+                "classifying",
+                "commenting",
+                "describing",
+                "editing",
+                "highlighting",
+                "identifying",
+                "linking",
+                "moderating",
+                "questioning",
+                "replying",
+                "tagging"
+              ]
+            },
+            "format": { "type": "string" },
+            "language": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "description": "Link to another resource (e.g. a machine_readable element).",
+          "required": ["type", "source", "purpose"],
+          "properties": {
+            "type": { "const": "SpecificResource" },
+            "source": {
+              "type": "string",
+              "description": "Target URI, e.g. regelrecht://zorgtoeslagwet/hoogte_zorgtoeslag#hoogte_zorgtoeslag."
+            },
+            "purpose": {
+              "type": "string",
+              "enum": [
+                "assessing",
+                "bookmarking",
+                "classifying",
+                "commenting",
+                "describing",
+                "editing",
+                "highlighting",
+                "identifying",
+                "linking",
+                "moderating",
+                "questioning",
+                "replying",
+                "tagging"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

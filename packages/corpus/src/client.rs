@@ -5,6 +5,27 @@ use tokio::process::Command;
 use crate::config::CorpusConfig;
 use crate::error::{CorpusError, Result};
 
+/// Best-effort: write the snapshot contents back to disk after a failed
+/// `checkout -B`. Used only on the error path so the working tree does not
+/// look truncated to the user while their dirty content is still preserved
+/// in memory by the caller. Filesystem errors are swallowed deliberately —
+/// the original git error is what the caller cares about.
+async fn replay_snapshot_best_effort(snapshots: &[(PathBuf, Option<Vec<u8>>)]) {
+    for (path, content) in snapshots {
+        match content {
+            Some(bytes) => {
+                if let Some(parent) = path.parent() {
+                    let _ = tokio::fs::create_dir_all(parent).await;
+                }
+                let _ = tokio::fs::write(path, bytes).await;
+            }
+            None => {
+                let _ = tokio::fs::remove_file(path).await;
+            }
+        }
+    }
+}
+
 pub struct CorpusClient {
     config: CorpusConfig,
     askpass_path: Option<PathBuf>,
@@ -203,6 +224,165 @@ impl CorpusClient {
         Err(last_error.unwrap_or_else(|| CorpusError::Git("push failed after retries".into())))
     }
 
+    /// Stage paths, commit, and push to a session branch (not the configured
+    /// branch). Used by the editor write-back path: each editor session owns
+    /// its own branch on the source repo, and `persist` calls land as
+    /// fast-forward commits on that branch (which a PR then surfaces).
+    ///
+    /// The session branch is single-writer per (session UUID, source). On
+    /// the first call it is created from `origin/{base_branch}`; on
+    /// subsequent calls it picks up wherever `origin/{branch}` left off so
+    /// the editor-api can restart between saves without losing progress
+    /// (the branch is the source of truth, not the in-memory state).
+    ///
+    /// Push is **not** force: if a second writer ever races us, the second
+    /// push fails with non-fast-forward and the user retries. Force-pushing
+    /// would silently drop the racing commit.
+    ///
+    /// `co_authored_by` is `(name, email)`; when present it gets appended
+    /// as a `Co-authored-by` trailer so GitHub credits the human editor on
+    /// the commit even though the git author/committer stays the service
+    /// identity.
+    ///
+    /// Returns `Ok(true)` when a commit was created and pushed to the
+    /// remote, `Ok(false)` when there was nothing to commit (empty `paths`
+    /// or all files matched the base content after snapshot+replay). The
+    /// caller uses this to gate downstream side-effects like opening a PR
+    /// — calling PR-open against a branch that was never pushed would
+    /// return a 422 from GitHub.
+    pub async fn commit_and_push_to_branch(
+        &self,
+        branch: &str,
+        base_branch: &str,
+        paths: &[PathBuf],
+        message: &str,
+        co_authored_by: Option<(&str, &str)>,
+    ) -> Result<bool> {
+        // Make sure we have the latest base, and the session branch tip
+        // when one already exists on the remote.
+        self.run_git(&["fetch", "--depth", "1", "origin", base_branch])
+            .await?;
+        let session_remote_exists = self.remote_branch_exists(branch).await?;
+        if session_remote_exists {
+            self.run_git(&["fetch", "--depth", "1", "origin", branch])
+                .await?;
+        }
+
+        // Snapshot the dirty paths in memory BEFORE the checkout so we can
+        // restore them on top of `start_point`. Without this snapshot,
+        // `checkout -B branch <start_point>` would fail with "Your local
+        // changes would be overwritten" when the session branch was deleted
+        // upstream (start_point flips to origin/<base>) and the working
+        // tree's dirty file content conflicts with the base. A missing
+        // file in the snapshot means the caller invoked `delete_file`; we
+        // record `None` and replay by removing the file post-checkout so
+        // deletes survive the rebase onto `start_point`.
+        let mut snapshots: Vec<(PathBuf, Option<Vec<u8>>)> = Vec::with_capacity(paths.len());
+        for p in paths {
+            match tokio::fs::read(p).await {
+                Ok(bytes) => snapshots.push((p.clone(), Some(bytes))),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    snapshots.push((p.clone(), None));
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+
+        // Position on the session branch. `-B` resets-or-creates. Safe
+        // because the session branch is single-writer per session UUID and
+        // the editor-api process serialises persists for one session via
+        // the SessionRegistry mutex; the local checkout is just a workspace
+        // we keep moving onto whichever session branch is being written.
+        let start_point = if session_remote_exists {
+            format!("origin/{branch}")
+        } else {
+            format!("origin/{base_branch}")
+        };
+        // Remove the snapshot paths from disk so the subsequent
+        // `checkout -B` can never fail on "would be overwritten". We then
+        // replay the snapshot to put the user's edits back on top of
+        // `start_point`. Removing the file directly (rather than `git
+        // reset --hard`) avoids clobbering any *other* in-flight
+        // sibling-session edits in the same working tree.
+        for (path, _) in &snapshots {
+            match tokio::fs::remove_file(path).await {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e.into()),
+            }
+        }
+        // If `checkout -B` fails, the dirty paths are still removed from disk
+        // (above). The caller's `persist` keeps the in-memory `dirty_files`
+        // list intact, but a follow-up save would re-write the paths before
+        // committing — so the *content* is recoverable from browser state. To
+        // avoid leaving the working tree visibly missing files in the meantime,
+        // best-effort replay the snapshot back to disk before propagating the
+        // checkout error.
+        if let Err(e) = self
+            .run_git(&["checkout", "-B", branch, &start_point])
+            .await
+        {
+            replay_snapshot_best_effort(&snapshots).await;
+            return Err(e);
+        }
+
+        // Replay the snapshot: write back tracked content, remove paths
+        // that were marked for deletion.
+        for (path, content) in &snapshots {
+            match content {
+                Some(bytes) => {
+                    if let Some(parent) = path.parent() {
+                        tokio::fs::create_dir_all(parent).await?;
+                    }
+                    tokio::fs::write(path, bytes).await?;
+                }
+                None => match tokio::fs::remove_file(path).await {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(e.into()),
+                },
+            }
+        }
+
+        // Stage the explicitly provided paths. Anything else dirty in the
+        // working tree (left over from a previous sibling-session write)
+        // stays unstaged and won't be committed.
+        let mut add_args = vec!["add", "--"];
+        let path_strings: Vec<String> = paths
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+        for p in &path_strings {
+            add_args.push(p);
+        }
+        self.run_git(&add_args).await?;
+
+        // Skip empty commits — the user may have hit Save without changes.
+        let status = self.run_git_output(&["status", "--porcelain"]).await?;
+        if status.trim().is_empty() {
+            tracing::debug!(branch = %branch, "no changes to commit on session branch");
+            return Ok(false);
+        }
+
+        let commit_message = match co_authored_by {
+            Some((name, email)) => format!("{message}\n\nCo-authored-by: {name} <{email}>"),
+            None => message.to_string(),
+        };
+        self.run_git(&["commit", "-m", &commit_message]).await?;
+
+        // First push of a new session branch needs `-u` to set upstream;
+        // after that the remote tracking is in place. Use `-u` always for
+        // safety — git is idempotent here.
+        self.run_git(&["push", "-u", "origin", branch]).await?;
+
+        tracing::info!(
+            branch = %branch,
+            base = %base_branch,
+            "pushed editor session commit"
+        );
+        Ok(true)
+    }
+
     async fn git_clone(&self) -> Result<()> {
         let url = self.config.clone_url();
         let path_str = self.config.repo_path.to_string_lossy().to_string();
@@ -218,6 +398,8 @@ impl CorpusClient {
             "--single-branch",
         ];
         if sparse {
+            // Partial clone: lazy-fetch blobs via sparse paths instead of shipping the full pack.
+            args.push("--filter=blob:none");
             args.push("--no-checkout");
         }
         args.push(&url);
@@ -250,11 +432,14 @@ impl CorpusClient {
         Ok(())
     }
 
-    /// Clone the `development` base branch, then create and push the target branch.
+    /// Clone the base branch (configurable via [`CorpusConfig::base_branch`],
+    /// defaulting to `"development"` for the legacy harvester flow), then
+    /// create and push the target branch.
     async fn git_clone_and_create_branch(&self) -> Result<()> {
         let url = self.config.clone_url();
         let path_str = self.config.repo_path.to_string_lossy().to_string();
         let sparse = self.config.sparse_paths.is_some();
+        let base = self.config.base_branch.as_deref().unwrap_or("development");
 
         let mut args = vec![
             "clone",
@@ -262,10 +447,12 @@ impl CorpusClient {
             "1",
             "--quiet",
             "--branch",
-            "development",
+            base,
             "--single-branch",
         ];
         if sparse {
+            // Partial clone — see `git_clone` for the rationale.
+            args.push("--filter=blob:none");
             args.push("--no-checkout");
         }
         args.push(&url);
@@ -281,7 +468,7 @@ impl CorpusClient {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let sanitized = self.sanitize_output(&stderr);
             return Err(CorpusError::Git(format!(
-                "git clone (development) failed: {sanitized}"
+                "git clone (base={base}) failed: {sanitized}"
             )));
         }
 
@@ -294,7 +481,11 @@ impl CorpusClient {
         self.run_git(&["push", "-u", "origin", &self.config.branch])
             .await?;
 
-        tracing::info!(branch = %self.config.branch, "created and pushed new branch");
+        tracing::info!(
+            branch = %self.config.branch,
+            base = %base,
+            "created and pushed new branch"
+        );
         Ok(())
     }
 
@@ -1187,5 +1378,316 @@ mod tests {
             .unwrap();
         let branches = String::from_utf8_lossy(&output.stdout);
         assert!(branches.contains("pr999"));
+    }
+
+    #[tokio::test]
+    async fn commit_and_push_to_branch_creates_session_branch_with_trailer() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+        let repo_path = dir.path().join("corpus");
+        clone_with_config(&bare_path, &repo_path).await;
+
+        // Configure the client against `development` (the base) — the test
+        // covers the case where the session branch does NOT yet exist on
+        // the remote.
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.branch = "development".to_string();
+        let client = CorpusClient::new(config);
+
+        let edit = repo_path.join("article.md");
+        tokio::fs::write(&edit, "edit 1").await.unwrap();
+
+        client
+            .commit_and_push_to_branch(
+                "editor/session-test1",
+                "development",
+                &[edit.clone()],
+                "Update article.md",
+                Some(("Anne Schuth", "anne@example.gov")),
+            )
+            .await
+            .unwrap();
+
+        // Session branch should exist on the bare remote
+        let branches = Command::new("git")
+            .args(["branch"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let out = String::from_utf8_lossy(&branches.stdout);
+        assert!(
+            out.contains("editor/session-test1"),
+            "session branch missing from remote: {out}"
+        );
+
+        // The commit on that branch should carry the Co-authored-by trailer
+        let log = Command::new("git")
+            .args(["log", "editor/session-test1", "--format=%B", "-1"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let body = String::from_utf8_lossy(&log.stdout);
+        assert!(
+            body.contains("Co-authored-by: Anne Schuth <anne@example.gov>"),
+            "missing trailer in commit body: {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn commit_and_push_to_branch_appends_to_existing_session_branch() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+        let repo_path = dir.path().join("corpus");
+        clone_with_config(&bare_path, &repo_path).await;
+
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.branch = "development".to_string();
+        let client = CorpusClient::new(config);
+
+        // First commit on the session branch
+        let f1 = repo_path.join("a.md");
+        tokio::fs::write(&f1, "first").await.unwrap();
+        client
+            .commit_and_push_to_branch(
+                "editor/session-multi",
+                "development",
+                &[f1],
+                "first edit",
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Second commit on the SAME session branch
+        let f2 = repo_path.join("b.md");
+        tokio::fs::write(&f2, "second").await.unwrap();
+        client
+            .commit_and_push_to_branch(
+                "editor/session-multi",
+                "development",
+                &[f2],
+                "second edit",
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Both commits should be on the session branch on the remote
+        let log = Command::new("git")
+            .args(["log", "editor/session-multi", "--oneline"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let out = String::from_utf8_lossy(&log.stdout);
+        assert!(out.contains("first edit"), "missing first commit: {out}");
+        assert!(out.contains("second edit"), "missing second commit: {out}");
+    }
+
+    /// Regression test: when the session branch is force-deleted upstream
+    /// while the working tree still carries dirty edits for files that
+    /// also exist on `base_branch` with different content, the next
+    /// `commit_and_push_to_branch` must NOT fail with "Your local changes
+    /// would be overwritten". The snapshot-then-replay path preserves
+    /// the user's edits across the rebase onto `origin/<base>`.
+    #[tokio::test]
+    async fn commit_and_push_to_branch_recovers_after_session_branch_deleted_upstream() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+        let repo_path = dir.path().join("corpus");
+        clone_with_config(&bare_path, &repo_path).await;
+
+        // Seed development with a file that the editor will later edit.
+        let seed = repo_path.join("article.md");
+        tokio::fs::write(&seed, "original").await.unwrap();
+        for args in [
+            vec!["add", "."],
+            vec!["commit", "-m", "seed"],
+            vec!["push", "origin", "development"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&repo_path)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.branch = "development".to_string();
+        let client = CorpusClient::new(config);
+
+        // First save creates the session branch upstream.
+        tokio::fs::write(&seed, "edit 1").await.unwrap();
+        client
+            .commit_and_push_to_branch(
+                "editor/session-rolled",
+                "development",
+                &[seed.clone()],
+                "first edit",
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Simulate upstream force-deletion of the session branch.
+        Command::new("git")
+            .args(["branch", "-D", "editor/session-rolled"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+
+        // User edits again — working tree now diverges from origin/development.
+        tokio::fs::write(&seed, "edit 2").await.unwrap();
+
+        // This previously failed with "Your local changes would be
+        // overwritten" because the session branch was gone, `start_point`
+        // flipped to origin/development, and the dirty working tree
+        // conflicted with the base. The fix snapshots the dirty content
+        // before resetting and replays it after.
+        client
+            .commit_and_push_to_branch(
+                "editor/session-rolled",
+                "development",
+                &[seed.clone()],
+                "second edit",
+                None,
+            )
+            .await
+            .unwrap();
+
+        // The recovered session branch on the remote contains the second
+        // edit (no first edit, because it died with the force-deleted
+        // branch).
+        let log = Command::new("git")
+            .args(["log", "editor/session-rolled", "--oneline"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let out = String::from_utf8_lossy(&log.stdout);
+        assert!(out.contains("second edit"), "missing second edit: {out}");
+
+        // And the file content on the recovered branch reflects the
+        // user's most recent edit, not the base-branch version.
+        let show = Command::new("git")
+            .args(["show", "editor/session-rolled:article.md"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let content = String::from_utf8_lossy(&show.stdout);
+        assert_eq!(content.trim(), "edit 2");
+    }
+
+    #[tokio::test]
+    async fn commit_and_push_to_branch_no_changes_is_noop() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+        let repo_path = dir.path().join("corpus");
+        clone_with_config(&bare_path, &repo_path).await;
+
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.branch = "development".to_string();
+        let client = CorpusClient::new(config);
+
+        // Empty paths and clean tree → should not error and should not
+        // create the branch on the remote.
+        let pushed = client
+            .commit_and_push_to_branch("editor/session-empty", "development", &[], "no-op", None)
+            .await
+            .unwrap();
+        assert!(
+            !pushed,
+            "no-op call must report `pushed=false` so callers can skip PR-open"
+        );
+
+        let branches = Command::new("git")
+            .args(["branch"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let out = String::from_utf8_lossy(&branches.stdout);
+        assert!(
+            !out.contains("editor/session-empty"),
+            "no-op should not create remote branch: {out}"
+        );
+    }
+
+    /// Regression for the iteration-3 finding: when `paths` is non-empty
+    /// but every path's content already matches the base after
+    /// snapshot+replay, no commit is created and no branch is pushed.
+    /// The function must report `pushed=false` so the editor's
+    /// `SessionGitBackend::persist` can skip `ensure_pr` (calling the
+    /// GitHub PR-open API against a branch that was never pushed returns
+    /// 422).
+    #[tokio::test]
+    async fn commit_and_push_to_branch_reports_no_push_when_content_matches_base() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+        let repo_path = dir.path().join("corpus");
+        clone_with_config(&bare_path, &repo_path).await;
+
+        // Seed `development` with a file the user will later "save"
+        // without actually changing.
+        let seed = repo_path.join("article.md");
+        tokio::fs::write(&seed, "base content").await.unwrap();
+        for args in [
+            vec!["add", "."],
+            vec!["commit", "-m", "seed"],
+            vec!["push", "origin", "development"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&repo_path)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.branch = "development".to_string();
+        let client = CorpusClient::new(config);
+
+        // The user "edits" the file but the content is identical to
+        // origin/development — the editor still passes the path through
+        // `dirty_files` because `write_file` cannot cheaply distinguish.
+        tokio::fs::write(&seed, "base content").await.unwrap();
+
+        let pushed = client
+            .commit_and_push_to_branch(
+                "editor/session-unchanged",
+                "development",
+                &[seed.clone()],
+                "no-op save",
+                None,
+            )
+            .await
+            .unwrap();
+        assert!(
+            !pushed,
+            "content-matches-base must report `pushed=false` so callers can skip PR-open"
+        );
+
+        let branches = Command::new("git")
+            .args(["branch"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let out = String::from_utf8_lossy(&branches.stdout);
+        assert!(
+            !out.contains("editor/session-unchanged"),
+            "no-commit path must not push branch to remote: {out}"
+        );
     }
 }

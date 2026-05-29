@@ -5,23 +5,8 @@ Static HTML/CSS/JS prototype for the RegelRecht user interface.
 ## Prerequisites
 
 - Node.js 18+
-- GitHub Personal Access Token with `read:packages` scope
 
 ## Setup
-
-### 1. Configure GitHub Token
-
-This project uses `@minbzk/storybook` from GitHub Packages. You need to authenticate:
-
-```bash
-# Option 1: Set environment variable
-export GITHUB_TOKEN=your_github_token_here
-
-# Option 2: Login to GitHub npm registry
-npm login --registry=https://npm.pkg.github.com
-```
-
-### 2. Install Dependencies
 
 ```bash
 cd frontend
@@ -72,7 +57,7 @@ frontend/
 
 ## Components
 
-### From @minbzk/storybook
+### From @nldd/design-system
 - `<rvo-button>` - Buttons
 - `<rvo-navbar>` - Navigation bar
 - `<rvo-toggle-button>` - Toggle buttons

@@ -71,6 +71,43 @@ fn clamped_offset(offset: Option<i64>) -> i64 {
     offset.unwrap_or(0).max(0)
 }
 
+/// SQL ORDER BY expression for a validated job sort column. For `status` we
+/// substitute a CASE expression that orders by relevance (failed → pending →
+/// processing → completed) instead of alphabetical, since that's the order
+/// operators actually scan for issues. Higher number = higher relevance, so a
+/// DESC sort surfaces failed first.
+fn job_sort_expression(col: &str) -> String {
+    match col {
+        "status" => "CASE status::text \
+            WHEN 'failed' THEN 4 \
+            WHEN 'pending' THEN 3 \
+            WHEN 'processing' THEN 2 \
+            WHEN 'completed' THEN 1 \
+            ELSE 0 END"
+            .to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// SQL ORDER BY expression for the law_entries query. Treats NULL
+/// `coverage_score` as the lowest value (via COALESCE) so empty coverage sorts
+/// after 0% rather than at the top with DESC default NULLS FIRST.
+fn law_sort_expression(col: &str) -> String {
+    match col {
+        "coverage_score" => "COALESCE(coverage_score, -1)".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// Escape LIKE/ILIKE wildcard metacharacters so user input matches literally.
+/// Postgres uses `\` as the default escape character; we escape `\` first so
+/// the subsequent `\%` / `\_` insertions aren't themselves re-escaped.
+fn like_escape(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
 #[derive(Deserialize)]
 pub struct LawEntriesQuery {
     pub status: Option<String>,
@@ -105,6 +142,7 @@ pub async fn list_law_entries(
     .ok_or(ApiError::BadRequest("invalid sort column".to_string()))?;
 
     let order = normalized_order(params.order.as_deref());
+    let sort_expr = law_sort_expression(sort_column);
 
     // Count query
     let total: i64 = if let Some(ref status) = params.status {
@@ -128,7 +166,7 @@ pub async fn list_law_entries(
              harvest_job_id, enrich_job_id, harvest_fail_count, enrich_fail_count, \
              created_at, updated_at \
              FROM law_entries WHERE status::text = $1 \
-             ORDER BY {sort_column} {order} LIMIT $2 OFFSET $3"
+             ORDER BY {sort_expr} {order} LIMIT $2 OFFSET $3"
         )
     } else {
         format!(
@@ -136,7 +174,7 @@ pub async fn list_law_entries(
              harvest_job_id, enrich_job_id, harvest_fail_count, enrich_fail_count, \
              created_at, updated_at \
              FROM law_entries \
-             ORDER BY {sort_column} {order} LIMIT $1 OFFSET $2"
+             ORDER BY {sort_expr} {order} LIMIT $1 OFFSET $2"
         )
     };
 
@@ -199,7 +237,8 @@ pub struct JobSummary {
     pub latest_created_at: chrono::DateTime<chrono::Utc>,
 }
 
-const ALLOWED_SORT_COLUMNS_JOB_SUMMARY: &[&str] = &["law_id", "total_jobs", "latest_created_at"];
+const ALLOWED_SORT_COLUMNS_JOB_SUMMARY: &[&str] =
+    &["law_id", "total_jobs", "latest_created_at", "status"];
 
 const ALLOWED_SORT_COLUMNS_JOB: &[&str] = &[
     "id",
@@ -246,7 +285,9 @@ pub async fn list_jobs(
     }
 
     if params.law_id.is_some() {
-        where_clauses.push(format!("law_id = ${bind_index}"));
+        // Partial / case-insensitive match so the search field finds e.g.
+        // "18" inside "BWBR0018451" or "cvdr" inside "CVDR681386".
+        where_clauses.push(format!("law_id ILIKE ${bind_index}"));
         bind_index += 1;
     }
 
@@ -267,7 +308,7 @@ pub async fn list_jobs(
         count_query = count_query.bind(job_type);
     }
     if let Some(ref law_id) = params.law_id {
-        count_query = count_query.bind(law_id);
+        count_query = count_query.bind(format!("%{}%", like_escape(law_id)));
     }
 
     let total: i64 = count_query
@@ -280,11 +321,12 @@ pub async fn list_jobs(
     let limit_idx = bind_index;
     let offset_idx = bind_index + 1;
 
+    let sort_expr = job_sort_expression(sort_column);
     let data_sql = format!(
         "SELECT id, job_type, law_id, status, \
          priority, payload, result, progress, attempts, max_attempts, created_at, updated_at, started_at, completed_at \
          FROM jobs {where_sql} \
-         ORDER BY {sort_column} {order} LIMIT ${limit_idx} OFFSET ${offset_idx}"
+         ORDER BY {sort_expr} {order} LIMIT ${limit_idx} OFFSET ${offset_idx}"
     );
 
     let mut data_query = sqlx::query_as::<_, Job>(&data_sql);
@@ -295,7 +337,7 @@ pub async fn list_jobs(
         data_query = data_query.bind(job_type);
     }
     if let Some(ref law_id) = params.law_id {
-        data_query = data_query.bind(law_id);
+        data_query = data_query.bind(format!("%{}%", like_escape(law_id)));
     }
     data_query = data_query.bind(limit).bind(offset);
 
@@ -370,17 +412,41 @@ pub async fn list_jobs_summary(
     let limit_idx = bind_index;
     let offset_idx = bind_index + 1;
 
+    // Build ORDER BY clause. Status uses a multi-key sort by percentage
+    // (failed% → pending% → processing% → completed%, all DESC) so rows
+    // ladder from "most broken" at the top to "fully completed" at the
+    // bottom, with predictable in-group ordering. The frontend's
+    // GROUPED_SORT_OPTIONS deliberately omits directionLabels for status,
+    // so `order` is ignored here — there is no meaningful ascending
+    // equivalent of "least-broken-first" beyond reversing the existing
+    // ladder, which we don't expose. Other columns use the generic
+    // {expr} {order} shape.
+    let order_by_clause = if sort_column == "status" {
+        "failed::float / NULLIF(total_jobs, 0) DESC, \
+         pending::float / NULLIF(total_jobs, 0) DESC, \
+         processing::float / NULLIF(total_jobs, 0) DESC, \
+         completed::float / NULLIF(total_jobs, 0) ASC"
+            .to_string()
+    } else {
+        format!("{sort_column} {order}")
+    };
+    // Wrap the GROUP BY in a subquery so the ORDER BY can reference the
+    // aggregate aliases (e.g. `failed`, `pending`) which Postgres won't
+    // resolve when they're combined inside expressions like CASE/GREATEST
+    // directly on the grouping query.
     let data_sql = format!(
-        "SELECT law_id, \
-         COUNT(*) as total_jobs, \
-         COUNT(*) FILTER (WHERE status = 'pending') as pending, \
-         COUNT(*) FILTER (WHERE status = 'processing') as processing, \
-         COUNT(*) FILTER (WHERE status = 'completed') as completed, \
-         COUNT(*) FILTER (WHERE status = 'failed') as failed, \
-         MAX(created_at) as latest_created_at \
-         FROM jobs {where_sql} \
-         GROUP BY law_id \
-         ORDER BY {sort_column} {order} LIMIT ${limit_idx} OFFSET ${offset_idx}"
+        "SELECT * FROM ( \
+            SELECT law_id, \
+            COUNT(*) as total_jobs, \
+            COUNT(*) FILTER (WHERE status = 'pending') as pending, \
+            COUNT(*) FILTER (WHERE status = 'processing') as processing, \
+            COUNT(*) FILTER (WHERE status = 'completed') as completed, \
+            COUNT(*) FILTER (WHERE status = 'failed') as failed, \
+            MAX(created_at) as latest_created_at \
+            FROM jobs {where_sql} \
+            GROUP BY law_id \
+         ) sub \
+         ORDER BY {order_by_clause} LIMIT ${limit_idx} OFFSET ${offset_idx}"
     );
 
     let mut data_query = sqlx::query_as::<_, JobSummary>(&data_sql);

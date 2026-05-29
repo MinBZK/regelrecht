@@ -1,0 +1,18 @@
+---
+/*
+ * Doc page footer: divider + prev/next pager. The component is placed
+ * directly after <nldd-rich-text> by the doc page layouts; the spacer +
+ * divider + spacer here separates the toolbar from the article body.
+ */
+import DocsPrevNext from './DocsPrevNext.astro';
+
+interface Props {
+  pathname: string;
+}
+const { pathname } = Astro.props;
+---
+
+<nldd-spacer size="24" />
+<nldd-divider></nldd-divider>
+<nldd-spacer size="24" />
+<DocsPrevNext pathname={pathname} />

@@ -15,5 +15,5 @@ const yamlText = computed(() => {
 
 <template>
   <nldd-inline-dialog v-if="!yamlText" text="Geen machine-leesbare gegevens voor dit artikel"></nldd-inline-dialog>
-  <nldd-code v-else language="yaml">{{ yamlText }}</nldd-code>
+  <nldd-code-viewer v-else language="yaml">{{ yamlText }}</nldd-code-viewer>
 </template>

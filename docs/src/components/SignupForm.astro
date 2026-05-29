@@ -1,0 +1,379 @@
+---
+/*
+ * Signup form, built on @nldd/design-system form components.
+ *
+ * NLDD controls (upgraded by the single body <script> import in Base.astro):
+ *  - email + name: nldd-form-field > nldd-text-field + nldd-form-field-error-text.
+ *    The form-field auto-wires the accessible label (aria-label), aria-invalid
+ *    (from the field's `invalid` attribute), aria-describedby (via the field's
+ *    error-message-ids), and toggles the error-text visibility. We drive
+ *    `invalid` + `error-message` from the same validation as before.
+ *  - org + role: optional nldd-form-field > nldd-text-field (no validation).
+ *  - bijdragen: nldd-form-field (group label) > nldd-radio-button-group >
+ *    nldd-radio-button-field. The group renders role=radiogroup with the label
+ *    forwarded as aria-label.
+ *  - opDeHoogte: nldd-checkbox-field (self-labelled).
+ *
+ * The <form> is wrapped in <nldd-form> in user-provided-form mode: nldd-form
+ * is a shadow-less plain element that renders a real light-DOM <form>, and when
+ * it finds a <form> child it only mirrors attributes (no DOM migration), which
+ * is SSR/Astro-safe. That pulls in NLDD's form vertical-rhythm CSS (from the
+ * global @nldd/design-system/styles import in Base.astro) so field spacing
+ * comes from the design system.
+ *
+ * Submit + reset use nldd-button inside nldd-form-actions. nldd-button is NOT
+ * form-associated — it renders its <button> in shadow DOM and does not wire it
+ * to the surrounding form — so a click never triggers submit on its own. The
+ * inline script bridges this: a click on the submit nldd-button calls
+ * form.requestSubmit(), and the reset buttons are handled as before. Because
+ * the real submit control then lives in shadow DOM, the htmlcs runner (which
+ * walks light DOM only) would flag the form as having no submit button, so we
+ * keep a visually-hidden native <button type="submit"> in the light DOM purely
+ * to satisfy the a11y gate and the no-JS path.
+ *
+ * The honeypot (off-screen, aria-hidden) stays bare HTML for spam protection.
+ *
+ * Vue reactivity is replaced by a vanilla TypeScript handler in the inline
+ * <script>: honeypot early-return, the same email/name validation (regex
+ * /^[^\s@]+@[^\s@]+\.[^\s@]+$/, same error strings), the exact markdown webhook
+ * payload, fetch in no-cors mode, and focus management. The three states
+ * (idle/success/error) are rendered and toggled with `hidden`. Values are read
+ * from the element properties (.value / .checked), never from event.detail.
+ */
+import { content } from '~/lib/landing-content';
+
+interface Props {
+  lang: 'nl' | 'en';
+}
+const { lang } = Astro.props;
+const s = content[lang].signup;
+
+const EMAIL = 'regelrecht@minbzk.nl';
+
+// Split a string on the support email so it can be rendered as a mailto link.
+function parts(text: string) {
+  const i = text.indexOf(EMAIL);
+  if (i === -1) return { before: text, after: '' };
+  return { before: text.slice(0, i), after: text.slice(i + EMAIL.length) };
+}
+const errorParts = parts(s.errorBody);
+
+const optionalLabel = lang === 'en' ? 'Optional' : 'Optioneel';
+// On success the form navigates to a dedicated thank-you page (a real URL,
+// shareable and refreshable) instead of toggling an in-page panel.
+const successUrl = lang === 'en' ? '/en/signup/thanks' : '/aanmelden/bedankt';
+---
+
+<div
+  class="rr-signup-root"
+  data-err-email-empty={s.errEmailEmpty}
+  data-err-email-invalid={s.errEmailInvalid}
+  data-err-name={s.errName}
+  data-submitting={s.submitting}
+  data-submit={s.submit}
+  data-success-url={successUrl}
+>
+  <nldd-form novalidate label-alignment="top">
+  <form
+    novalidate
+    data-state="idle"
+  >
+    <div class="rr-honeypot" aria-hidden="true">
+      <label for="rr-company">{s.companyHoneypot}</label>
+      <input
+        id="rr-company"
+        type="text"
+        name="_honey"
+        tabindex="-1"
+        autocomplete="off"
+      />
+    </div>
+
+    <nldd-form-field label={s.legend}>
+      <nldd-radio-button-group name="bijdragen" data-field="bijdragen">
+        <nldd-radio-button-field value="Ja" label={s.radioYes} checked />
+        <nldd-radio-button-field value="Nee" label={s.radioNo} />
+      </nldd-radio-button-group>
+    </nldd-form-field>
+
+    <nldd-form-field>
+      <nldd-checkbox-field
+        name="opDeHoogte"
+        label={s.updates}
+        data-field="opDeHoogte"
+        checked
+      ></nldd-checkbox-field>
+    </nldd-form-field>
+
+    <nldd-form-field label={s.emailLabel}>
+      <nldd-text-field
+        data-field="email"
+        type="email"
+        name="email"
+        data-autocomplete="email"
+        required
+        error-message="rr-email-error"
+      ></nldd-text-field>
+      <nldd-form-field-error-text id="rr-email-error"></nldd-form-field-error-text>
+    </nldd-form-field>
+
+    <nldd-form-field label={s.nameLabel}>
+      <nldd-text-field
+        data-field="naam"
+        type="text"
+        name="naam"
+        data-autocomplete="name"
+        required
+        error-message="rr-naam-error"
+      ></nldd-text-field>
+      <nldd-form-field-error-text id="rr-naam-error"></nldd-form-field-error-text>
+    </nldd-form-field>
+
+    <nldd-form-field label={s.orgLabel} optional optional-label={optionalLabel}>
+      <nldd-form-field-help-text>{s.orgPlaceholder}</nldd-form-field-help-text>
+      <nldd-text-field
+        data-field="organisatie"
+        type="text"
+        name="organisatie"
+        data-autocomplete="organization"
+      ></nldd-text-field>
+    </nldd-form-field>
+
+    <nldd-form-field label={s.roleLabel} optional optional-label={optionalLabel}>
+      <nldd-form-field-help-text>{s.rolePlaceholder}</nldd-form-field-help-text>
+      <nldd-text-field
+        data-field="functie"
+        type="text"
+        name="functie"
+        data-autocomplete="organization-title"
+      ></nldd-text-field>
+    </nldd-form-field>
+
+    <p class="rr-form-status" role="status" aria-live="polite">
+      <span class="rr-form-status-submitting" hidden>{s.submitting}</span>
+    </p>
+
+    {/*
+      The visible submit is the nldd-button; the inline script bridges its click
+      to form.requestSubmit() (nldd-button is not form-associated). The native
+      <button type="submit"> is nested with slot="fallback" — a slot the button
+      doesn't define — so it renders only while the element is undefined (no JS),
+      and is unassigned (hidden) once nldd-button upgrades. It's the no-JS submit
+      and the real light-DOM submit control (Enter-to-submit + the pa11y H32.2
+      gate, since the nldd-button's own <button> lives in shadow DOM).
+    */}
+    <nldd-form-actions>
+      <nldd-button
+        id="rr-submit-btn"
+        variant="primary"
+        type="submit"
+        width="full"
+        text={s.submit}
+      >
+        <button slot="fallback" type="submit">{s.submit}</button>
+      </nldd-button>
+    </nldd-form-actions>
+  </form>
+  </nldd-form>
+
+  <div
+    class="rr-status-box rr-status-box--err"
+    role="alert"
+    aria-live="assertive"
+    hidden
+  >
+    <h2 tabindex="-1">{s.errorTitle}</h2>
+    <p>
+      {errorParts.before}<a href={`mailto:${EMAIL}`}>{EMAIL}</a>{
+        errorParts.after
+      }
+    </p>
+    <nldd-button
+      variant="secondary"
+      type="button"
+      text={s.errorReset}
+    ></nldd-button>
+  </div>
+</div>
+
+<script>
+  const WEBHOOK =
+    'https://digilab.overheid.nl/chat/hooks/khcsah5zg3gy8notbfy5baoxwh';
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  // Minimal structural views over the NLDD custom elements. We read .value /
+  // .checked off the element (set by the component on input/change), never off
+  // event.detail.
+  interface NlddValueField extends HTMLElement {
+    value: string;
+    invalid: boolean;
+    autocomplete: string;
+    focus(options?: FocusOptions): void;
+  }
+  interface NlddCheckedField extends HTMLElement {
+    checked: boolean;
+    value: string;
+  }
+
+  document.querySelectorAll<HTMLElement>('.rr-signup-root').forEach((root) => {
+    const form = root.querySelector('form') as HTMLFormElement | null;
+    if (!form) return;
+
+    const labels = {
+      emailEmpty: root.dataset.errEmailEmpty || '',
+      emailInvalid: root.dataset.errEmailInvalid || '',
+      name: root.dataset.errName || '',
+      submitting: root.dataset.submitting || '',
+      submit: root.dataset.submit || '',
+    };
+
+    const honeypot = form.querySelector(
+      'input[name="_honey"]'
+    ) as HTMLInputElement;
+    const emailField = form.querySelector(
+      '[data-field="email"]'
+    ) as NlddValueField;
+    const naamField = form.querySelector(
+      '[data-field="naam"]'
+    ) as NlddValueField;
+    const orgField = form.querySelector(
+      '[data-field="organisatie"]'
+    ) as NlddValueField;
+    const functieField = form.querySelector(
+      '[data-field="functie"]'
+    ) as NlddValueField;
+    const bijdragenGroup = form.querySelector(
+      '[data-field="bijdragen"]'
+    ) as HTMLElement;
+    const radioFields = Array.from(
+      bijdragenGroup.querySelectorAll('nldd-radio-button-field')
+    ) as NlddCheckedField[];
+    const opDeHoogte = form.querySelector(
+      '[data-field="opDeHoogte"]'
+    ) as NlddCheckedField;
+    const emailErr = form.querySelector('#rr-email-error') as HTMLElement;
+    const naamErr = form.querySelector('#rr-naam-error') as HTMLElement;
+    const submitting = form.querySelector(
+      '.rr-form-status-submitting'
+    ) as HTMLElement;
+    // nldd-button host: `disabled` is an attribute, the label is the `text`
+    // property. It is not form-associated, so a click does not submit on its
+    // own — we bridge it to form.requestSubmit() below.
+    const submitBtn = form.querySelector('#rr-submit-btn') as HTMLElement & {
+      disabled: boolean;
+      text: string;
+    };
+
+    // Set autocomplete as a JS property (not a host attribute) so nldd-text-field
+    // forwards it to the inner native <input autocomplete>. Keeping it off the
+    // custom-element host avoids a WCAG 1.3.5 false positive: the htmlcs runner
+    // rejects an autocomplete token on a non-text-control host, but the real
+    // input that receives the forwarded value validates fine.
+    [emailField, naamField, orgField, functieField].forEach((field) => {
+      const hint = field.dataset.autocomplete;
+      if (hint) field.autocomplete = hint;
+    });
+
+    const successUrl = root.dataset.successUrl || '';
+    const errorBox = root.querySelector(
+      '.rr-status-box--err'
+    ) as HTMLElement;
+
+    // Setting `invalid` + filling the error-text drives nldd-form-field's
+    // _syncErrorText: it toggles the error-text visible and forwards the id to
+    // the inner <input aria-describedby>. aria-invalid follows `invalid`.
+    function setFieldError(
+      field: NlddValueField,
+      el: HTMLElement,
+      msg: string
+    ) {
+      el.textContent = msg;
+      field.invalid = Boolean(msg);
+    }
+
+    function validate(): boolean {
+      let emailMsg = '';
+      let naamMsg = '';
+      const email = emailField.value.trim();
+      const naam = naamField.value.trim();
+      if (!email) emailMsg = labels.emailEmpty;
+      else if (!EMAIL_RE.test(email)) emailMsg = labels.emailInvalid;
+      if (!naam) naamMsg = labels.name;
+      setFieldError(emailField, emailErr, emailMsg);
+      setFieldError(naamField, naamErr, naamMsg);
+      return !emailMsg && !naamMsg;
+    }
+
+    // Success navigates to a dedicated page; this only drives the in-form busy
+    // state. The error case is handled inline (errorBox) so the user keeps their
+    // input and can retry.
+    function setBusy(busy: boolean) {
+      form.setAttribute('aria-busy', busy ? 'true' : 'false');
+      submitting.hidden = !busy;
+      submitBtn.disabled = busy;
+      submitBtn.text = busy ? labels.submitting : labels.submit;
+    }
+
+    // nldd-button is not form-associated: clicking it never fires the form's
+    // submit event. Bridge it to requestSubmit() (which runs our submit
+    // handler). Skip while disabled so a double-click during the in-flight
+    // request can't re-submit.
+    submitBtn.addEventListener('click', () => {
+      if (!submitBtn.disabled) form.requestSubmit();
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (honeypot.value) return;
+
+      if (!validate()) {
+        if (emailField.invalid) {
+          emailField.focus();
+        } else {
+          naamField.focus();
+        }
+        return;
+      }
+
+      errorBox.hidden = true;
+      setBusy(true);
+
+      const bijdragen =
+        radioFields.find((f) => f.checked)?.value || 'Ja';
+
+      const text =
+        '#### Nieuwe aanmelding: RegelRecht\n' +
+        '| Veld | Waarde |\n' +
+        '|:-----|:-------|\n' +
+        `| **Naam** | ${naamField.value} |\n` +
+        `| **E-mail** | ${emailField.value} |\n` +
+        `| **Organisatie** | ${orgField.value || '-'} |\n` +
+        `| **Functie** | ${functieField.value || '-'} |\n` +
+        `| **Bijdragen aan validatie** | ${bijdragen} |\n` +
+        `| **Op de hoogte blijven** | ${opDeHoogte.checked ? 'Ja' : 'Nee'} |`;
+
+      try {
+        await fetch(WEBHOOK, {
+          method: 'POST',
+          mode: 'no-cors',
+          body: JSON.stringify({ text }),
+        });
+        // Go to the dedicated thank-you page.
+        window.location.assign(successUrl);
+      } catch {
+        // Network failure: surface the inline error and let the user retry with
+        // their input intact.
+        setBusy(false);
+        errorBox.hidden = false;
+        (errorBox.querySelector('h3') as HTMLElement)?.focus();
+      }
+    });
+
+    // "Try again" simply dismisses the inline error so the user can resubmit.
+    const errorReset = errorBox.querySelector('nldd-button');
+    errorReset?.addEventListener('click', () => {
+      errorBox.hidden = true;
+      emailField.focus();
+    });
+  });
+</script>

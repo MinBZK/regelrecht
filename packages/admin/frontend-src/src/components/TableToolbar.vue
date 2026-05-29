@@ -1,8 +1,10 @@
 <script setup>
 import { computed, onUnmounted, useId } from 'vue';
+import { formatStatus } from '../formatters.js';
 
 const props = defineProps({
   columns: { type: Array, required: true },
+  sortOptions: { type: Array, default: null },
   sort: { type: String, default: '' },
   order: { type: String, default: 'desc' },
   filters: { type: Object, default: () => ({}) },
@@ -13,16 +15,37 @@ const emit = defineEmits(['sort', 'filter-change']);
 // Unique prefix for menu anchor IDs (avoid collisions when multiple toolbars exist)
 const uid = useId();
 
-const sortableColumns = computed(() => props.columns.filter((c) => c.sortable));
+const sortableColumns = computed(
+  () => props.sortOptions || props.columns.filter((c) => c.sortable),
+);
 const filterColumns = computed(() => props.columns.filter((c) => c.filter));
 const dropdownFilters = computed(() => filterColumns.value.filter((c) => c.filter.options));
 const textFilters = computed(() => filterColumns.value.filter((c) => c.filter.type === 'text'));
 
+const sortMenuItems = computed(() => {
+  const items = [];
+  for (const opt of sortableColumns.value) {
+    if (opt.directionLabels) {
+      for (const [dir, dirLabel] of Object.entries(opt.directionLabels)) {
+        items.push({
+          key: opt.key,
+          order: dir,
+          value: `${opt.key}:${dir}`,
+          text: `${opt.label} (${dirLabel})`,
+        });
+      }
+    } else {
+      items.push({ key: opt.key, order: 'desc', value: opt.key, text: opt.label });
+    }
+  }
+  return items;
+});
+
 const activeSortLabel = computed(() => {
-  const col = sortableColumns.value.find((c) => c.key === props.sort);
-  if (!col) return 'Sort';
-  const arrow = props.order === 'asc' ? '\u2191' : '\u2193';
-  return `${col.label} ${arrow}`;
+  const opt = sortableColumns.value.find((c) => c.key === props.sort);
+  if (!opt) return 'Sort';
+  const dirLabel = opt.directionLabels?.[props.order];
+  return dirLabel ? `Sort: ${opt.label} (${dirLabel})` : `Sort: ${opt.label}`;
 });
 
 function getFilterKey(col) {
@@ -37,18 +60,18 @@ function getFilterButtonLabel(col) {
   const key = getFilterKey(col);
   const value = props.filters[key];
   const label = getFilterLabel(col);
-  if (value) return `${label}: ${value}`;
-  return label;
+  return `${label}: ${value ? formatStatus(value) : 'All'}`;
 }
 
 function onSortSelect(event) {
-  const item = event.target.closest('ndd-menu-item');
+  const item = event.target.closest('nldd-menu-item');
   if (!item) return;
-  emit('sort', item.value);
+  const [key, order] = String(item.value).split(':');
+  emit('sort', key, order || 'desc');
 }
 
 function onFilterSelect(col, event) {
-  const item = event.target.closest('ndd-menu-item');
+  const item = event.target.closest('nldd-menu-item');
   if (!item) return;
   const key = getFilterKey(col);
   // Empty string value means "All" (clear filter)
@@ -59,7 +82,8 @@ function onFilterSelect(col, event) {
 const debounceTimers = {};
 function onTextFilter(col, event) {
   const key = getFilterKey(col);
-  const value = event.target.value.trim();
+  const raw = event.detail?.value ?? event.target?.value ?? '';
+  const value = String(raw).trim();
   clearTimeout(debounceTimers[key]);
   debounceTimers[key] = setTimeout(() => {
     emit('filter-change', key, value);
@@ -71,8 +95,10 @@ onUnmounted(() => Object.values(debounceTimers).forEach(clearTimeout));
 
 <template>
   <div v-if="sortableColumns.length > 0 || filterColumns.length > 0" class="table-toolbar">
+    <slot name="prefix" />
+
     <!-- Sort menu -->
-    <ndd-button
+    <nldd-button
       v-if="sortableColumns.length > 0"
       :id="`sort-btn-${uid}`"
       expandable
@@ -80,54 +106,58 @@ onUnmounted(() => Object.values(debounceTimers).forEach(clearTimeout));
       size="sm"
       :text="activeSortLabel"
     />
-    <ndd-menu
+    <nldd-menu
       v-if="sortableColumns.length > 0"
       :anchor="`sort-btn-${uid}`"
       @select="onSortSelect"
     >
-      <ndd-menu-item
-        v-for="col in sortableColumns"
-        :key="col.key"
-        :text="col.label"
-        :value="col.key"
-        :selected="sort === col.key"
+      <nldd-menu-item
+        v-for="item in sortMenuItems"
+        :key="item.value"
+        type="radio"
+        :text="item.text"
+        :value="item.value"
+        :selected="sort === item.key && order === item.order"
       />
-    </ndd-menu>
+    </nldd-menu>
 
     <!-- Dropdown filter menus -->
     <template v-for="col in dropdownFilters" :key="getFilterKey(col)">
-      <ndd-button
+      <nldd-button
         :id="`filter-btn-${uid}-${getFilterKey(col)}`"
         expandable
         variant="neutral-tinted"
         size="sm"
         :text="getFilterButtonLabel(col)"
       />
-      <ndd-menu
+      <nldd-menu
         :anchor="`filter-btn-${uid}-${getFilterKey(col)}`"
         @select="onFilterSelect(col, $event)"
       >
-        <ndd-menu-item
+        <nldd-menu-item
+          type="radio"
           text="All"
           value=""
           :selected="!filters[getFilterKey(col)]"
         />
-        <ndd-menu-item
+        <nldd-menu-item
           v-for="v in col.filter.options"
           :key="v"
-          :text="v"
+          type="radio"
+          :text="formatStatus(v)"
           :value="v"
           :selected="filters[getFilterKey(col)] === v"
         />
-      </ndd-menu>
+      </nldd-menu>
     </template>
 
     <!-- Text filter inputs -->
-    <ndd-text-field
+    <nldd-search-field
       v-for="col in textFilters"
       :key="getFilterKey(col)"
       size="sm"
-      :placeholder="`Filter ${getFilterLabel(col)}…`"
+      width="200px"
+      :placeholder="getFilterLabel(col)"
       :accessible-label="`Filter ${getFilterLabel(col)}`"
       :value="filters[getFilterKey(col)] || ''"
       @input="onTextFilter(col, $event)"

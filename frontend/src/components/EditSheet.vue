@@ -1,10 +1,15 @@
 <script setup>
 import { ref, computed, watch, watchEffect, nextTick } from 'vue';
 import { collectAvailableVariables } from '../utils/operationTree.js';
+import { lawsListUrl } from '../composables/corpusUrls.js';
 
 const props = defineProps({
   item: { type: Object, default: null },
   article: { type: Object, default: null },
+  /** Active traject ref. When set the law search dropdown is scoped to
+   *  the traject's corpus so newly-added laws in this traject can be
+   *  selected as a source. */
+  trajectRef: { type: String, default: null },
 });
 
 const emit = defineEmits(['save', 'close']);
@@ -13,6 +18,19 @@ const sheetEl = ref(null);
 const lawComboBoxEl = ref(null);
 const outputComboBoxEl = ref(null);
 const values = ref({});
+
+// Snapshot of the form taken when an item opens. For a NEW item the Save
+// button is always shown (you opened the sheet to add it); for an existing
+// item it only appears once the user actually changes something.
+const baseline = ref('');
+const isDirty = computed(() => {
+  if (props.item?.isNew) return true;
+  try {
+    return JSON.stringify(values.value) !== baseline.value;
+  } catch {
+    return true;
+  }
+});
 
 const typeOptions = ['string', 'number', 'boolean', 'amount'];
 
@@ -37,11 +55,19 @@ const paramValueGroups = computed(() => {
 });
 
 // --- Law search / output selection ---
+// Cache scoped per (traject, instance). Resetting on a traject change
+// keeps cross-traject content from leaking when the same sheet is
+// opened again under a different traject.
 let lawsCache = null;
+let lawsCacheTrajectRef = null;
 async function fetchLawsList() {
+  if (lawsCacheTrajectRef !== props.trajectRef) {
+    lawsCache = null;
+    lawsCacheTrajectRef = props.trajectRef;
+  }
   if (lawsCache) return lawsCache;
   try {
-    const res = await fetch('/api/corpus/laws?limit=1000');
+    const res = await fetch(lawsListUrl(props.trajectRef, 'limit=1000'));
     if (!res.ok) return [];
     lawsCache = await res.json();
   } catch {
@@ -251,6 +277,7 @@ watch(() => props.item, async (item) => {
     };
   }
 
+  baseline.value = JSON.stringify(values.value);
   await nextTick();
   sheetEl.value?.show();
 }, { immediate: true });
@@ -354,7 +381,7 @@ const sectionLabels = {
 </script>
 
 <template>
-  <nldd-sheet ref="sheetEl" placement="right" width="640px" full-height @close="emit('close')">
+  <nldd-sheet ref="sheetEl" placement="right" width="640px" @close="emit('close')">
     <!-- `:key` forces nldd-page to remount whenever the section changes.
          nldd-page captures the sticky-header height ONCE per mount via
          requestAnimationFrame; if the header text changes after that
@@ -394,12 +421,19 @@ const sectionLabels = {
                        the visual clutter that felt out of place for "fixed
                        value from law" semantics. The plain text-field used
                        previously silently produced NaN on Dutch comma input
-                       and 0 on cleared field. -->
+                       and 0 on cleared field.
+                       Both @input and @change are intentional, not a
+                       copy-paste: @input gives live-as-you-type updates
+                       (dirty marking); @change delivers the value the
+                       field normalises on commit/blur (locale/step). The
+                       assignment is idempotent so a same-tick double-fire
+                       is harmless — do not drop @change. -->
                   <nldd-number-field
                     :value="values.displayValue"
                     :step="values.controlType === 'currency' ? '0.01' : (values.controlType === 'percentage' ? '0.001' : undefined)"
-                    full-width
+                    width="full"
                     hide-spin-buttons
+                    @input="values.displayValue = $event.detail?.value ?? values.displayValue"
                     @change="values.displayValue = $event.detail?.value ?? values.displayValue"
                   ></nldd-number-field>
                 </nldd-cell>
@@ -473,6 +507,7 @@ const sectionLabels = {
                   <nldd-combo-box
                     ref="lawComboBoxEl"
                     size="md"
+                    width="100%"
                     placeholder="Zoek regelgeving..."
                     accessible-label="Bron regelgeving"
                     :value="values.sourceRegulation"
@@ -500,6 +535,7 @@ const sectionLabels = {
                     v-if="availableOutputs.length > 0"
                     ref="outputComboBoxEl"
                     size="md"
+                    width="100%"
                     placeholder="Selecteer output..."
                     accessible-label="Bron output"
                     :value="values.sourceOutput"
@@ -575,8 +611,8 @@ const sectionLabels = {
           </template>
       </nldd-simple-section>
 
-      <nldd-container slot="footer" padding="16">
-        <nldd-button variant="primary" size="md" full-width data-testid="edit-sheet-save-btn" @click="save" text="Opslaan"></nldd-button>
+      <nldd-container v-if="isDirty" slot="footer" padding="16">
+        <nldd-button variant="primary" size="md" width="full" data-testid="edit-sheet-save-btn" @click="save" text="Opslaan"></nldd-button>
       </nldd-container>
     </nldd-page>
   </nldd-sheet>

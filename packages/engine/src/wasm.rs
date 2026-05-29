@@ -58,10 +58,11 @@ use serde_wasm_bindgen::Serializer;
 use std::collections::BTreeMap;
 use wasm_bindgen::prelude::*;
 
+use crate::annotation::{self, law_id_from_source, TextQuoteSelector};
 use crate::config;
 use crate::engine::OutputProvenance;
 use crate::error::EngineError;
-use crate::service::LawExecutionService;
+use crate::service::{LawExecutionService, ServiceProvider};
 use crate::trace::{PathNode, TraceBuilder};
 use crate::types::{RegulatoryLayer, Value};
 
@@ -500,6 +501,119 @@ impl WasmEngine {
     #[wasm_bindgen(js_name = lawCount)]
     pub fn law_count(&self) -> usize {
         self.service.law_count()
+    }
+
+    /// Resolve a single TextQuoteSelector against a loaded law (RFC-005).
+    ///
+    /// The law must already be loaded via `loadLaw()`. The selector is
+    /// content-addressed, so it resolves on whichever version is loaded.
+    ///
+    /// # Arguments
+    /// * `law_id` - ID of the loaded law
+    /// * `selector` - JS object: `{ exact, prefix?, suffix?, "regelrecht:hint"? }`
+    ///
+    /// # Returns
+    /// * `Ok(JsValue)` - `MatchResult`: `{ status, matches: [{ article_number,
+    ///   start, end, confidence, matched_text }] }`. `start`/`end` are **`char`
+    ///   offsets** (Unicode scalar values), not UTF-16 code units: JS code
+    ///   slicing the article text must convert accordingly.
+    /// * `Err(JsValue)` - Error if the law is not loaded or the selector is invalid
+    #[wasm_bindgen(js_name = resolveNote)]
+    pub fn resolve_note(&self, law_id: &str, selector: JsValue) -> Result<JsValue, JsValue> {
+        let selector: TextQuoteSelector = serde_wasm_bindgen::from_value(selector)
+            .map_err(|e| wasm_error(&format!("Invalid selector: {e}")))?;
+        let law = ServiceProvider::get_law(&self.service, law_id)
+            .ok_or_else(|| wasm_error(&format!("Law not loaded: {law_id}")))?;
+        let result = annotation::resolve(&selector, &law.articles);
+        result
+            .serialize(&js_serializer())
+            .map_err(|e| wasm_error(&format!("Serialization error: {e}")))
+    }
+
+    /// Resolve all notes in a note-sidecar YAML string against a loaded law.
+    ///
+    /// Parses an `annotations:` document (the format validated by
+    /// `just validate-annotations`) and resolves every note's selector.
+    ///
+    /// Notes whose `target.source` names a different law than `law_id` are
+    /// skipped (a sidecar may legitimately carry notes for several laws). A
+    /// note with a missing or unparseable selector is **not** silently
+    /// dropped: it appears in the result with an `error` string and a `null`
+    /// `match`, so the caller can distinguish "no notes" from "notes that
+    /// failed to parse".
+    ///
+    /// # Arguments
+    /// * `law_id` - ID of the loaded law to resolve against
+    /// * `annotations_yaml` - Contents of an `annotations.yaml` sidecar file
+    ///
+    /// # Returns
+    /// * `Ok(JsValue)` - Array of `{ note, match, error }` objects. `match` is
+    ///   the `MatchResult` (or `null` on error); `error` is `null` on success
+    ///   or a message string. Match `start`/`end` are **`char` offsets**, not
+    ///   UTF-16 code units.
+    /// * `Err(JsValue)` - Error if the law is not loaded or the YAML is invalid
+    #[wasm_bindgen(js_name = resolveNotes)]
+    pub fn resolve_notes(&self, law_id: &str, annotations_yaml: &str) -> Result<JsValue, JsValue> {
+        let law = ServiceProvider::get_law(&self.service, law_id)
+            .ok_or_else(|| wasm_error(&format!("Law not loaded: {law_id}")))?;
+
+        let doc: serde_json::Value = serde_yaml_ng::from_str(annotations_yaml)
+            .map_err(|e| wasm_error(&format!("Invalid annotations YAML: {e}")))?;
+        let notes = doc
+            .get("annotations")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| wasm_error("Missing 'annotations' list"))?;
+
+        let mut resolved: Vec<serde_json::Value> = Vec::with_capacity(notes.len());
+        for note in notes {
+            // Skip notes that target a different law (federated sidecars may
+            // carry notes for several laws).
+            if let Some(source) = note
+                .get("target")
+                .and_then(|t| t.get("source"))
+                .and_then(|s| s.as_str())
+            {
+                if let Some(target_law) = law_id_from_source(source) {
+                    if target_law != law_id {
+                        continue;
+                    }
+                }
+            }
+
+            let (match_value, error) = match note.get("target").and_then(|t| t.get("selector")) {
+                None => (
+                    serde_json::Value::Null,
+                    Some("note has no target.selector".to_string()),
+                ),
+                Some(selector_value) => {
+                    match serde_json::from_value::<TextQuoteSelector>(selector_value.clone()) {
+                        Err(e) => (
+                            serde_json::Value::Null,
+                            Some(format!("invalid selector: {e}")),
+                        ),
+                        Ok(selector) => {
+                            let result = annotation::resolve(&selector, &law.articles);
+                            match serde_json::to_value(&result) {
+                                Ok(v) => (v, None),
+                                Err(e) => (
+                                    serde_json::Value::Null,
+                                    Some(format!("serialization error: {e}")),
+                                ),
+                            }
+                        }
+                    }
+                }
+            };
+            resolved.push(serde_json::json!({
+                "note": note,
+                "match": match_value,
+                "error": error,
+            }));
+        }
+
+        serde_json::Value::Array(resolved)
+            .serialize(&js_serializer())
+            .map_err(|e| wasm_error(&format!("Serialization error: {e}")))
     }
 
     /// Register a tabular data source from flat records.

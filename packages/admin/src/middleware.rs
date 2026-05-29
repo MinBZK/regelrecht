@@ -1,3 +1,6 @@
+use std::future::Future;
+use std::pin::Pin;
+
 use axum::extract::{Request, State};
 use axum::http::header;
 use axum::http::Method;
@@ -8,7 +11,7 @@ use subtle::ConstantTimeEq;
 use tower_sessions::Session;
 
 pub use regelrecht_auth::middleware::security_headers;
-use regelrecht_auth::SESSION_KEY_AUTHENTICATED;
+use regelrecht_auth::{check_session_role, RoleCheck};
 
 use crate::error::ApiError;
 use crate::state::AppState;
@@ -16,54 +19,68 @@ use crate::state::AppState;
 /// Methods allowed via API key authentication (no OIDC session required).
 const API_KEY_ALLOWED_METHODS: &[Method] = &[Method::GET, Method::DELETE];
 
-pub async fn require_auth(
-    State(state): State<AppState>,
-    session: Session,
-    request: Request,
-    next: Next,
-) -> Result<Response, ApiError> {
-    // Check bearer token first (fast path for programmatic access).
-    if let Some(ref key_hash) = state.config.api_key_hash {
-        if let Some(token) = extract_bearer_token(&request) {
-            // Compare SHA-256 digests in constant time to prevent
-            // timing leaks of both key content and length.
-            let token_hash = Sha256::digest(token.as_bytes());
-            let token_matches = token_hash.ct_eq(key_hash).into();
-            if token_matches {
-                if !API_KEY_ALLOWED_METHODS.contains(request.method()) {
-                    tracing::warn!(
-                        method = %request.method(),
-                        uri = %request.uri(),
-                        "API key auth: method not allowed"
-                    );
-                    return Err(ApiError::Forbidden("method not allowed".to_string()));
+type RequireAuthFuture = Pin<Box<dyn Future<Output = Result<Response, ApiError>> + Send>>;
+
+/// Route-level auth gate for the admin (harvester) dashboard.
+///
+/// Two trust paths:
+/// 1. A valid bearer API key — out-of-band trust, treated as regelrecht-admin
+///    equivalent for the methods listed in [`API_KEY_ALLOWED_METHODS`]
+///    (GET/DELETE). The key holder is whoever provisioned the deployment.
+/// 2. An authenticated OIDC session — must carry `required_role` in
+///    `SESSION_KEY_ROLES`. Composite expansion in Keycloak means higher
+///    roles automatically satisfy lower-role checks.
+pub fn require_auth(
+    required_role: &'static str,
+) -> impl Fn(State<AppState>, Session, Request, Next) -> RequireAuthFuture + Clone + Send + Sync + 'static
+{
+    move |State(state): State<AppState>, session: Session, request: Request, next: Next| {
+        Box::pin(async move {
+            // Check bearer token first (fast path for programmatic access).
+            if let Some(ref key_hash) = state.config.api_key_hash {
+                if let Some(token) = extract_bearer_token(&request) {
+                    // Compare SHA-256 digests in constant time to prevent
+                    // timing leaks of both key content and length.
+                    let token_hash = Sha256::digest(token.as_bytes());
+                    let token_matches = token_hash.ct_eq(key_hash).into();
+                    if token_matches {
+                        if !API_KEY_ALLOWED_METHODS.contains(request.method()) {
+                            tracing::warn!(
+                                method = %request.method(),
+                                uri = %request.uri(),
+                                "API key auth: method not allowed"
+                            );
+                            return Err(ApiError::Forbidden("method not allowed".to_string()));
+                        }
+                        return Ok(next.run(request).await);
+                    }
+                    // Invalid bearer token — reject immediately, don't fall
+                    // through to session (a wrong token is a deliberate signal).
+                    tracing::warn!(uri = %request.uri(), "API key auth: invalid bearer token");
+                    return Err(ApiError::Unauthorized("invalid bearer token".to_string()));
                 }
+            }
+
+            // Fall through to OIDC/session authentication.
+            if !state.config.is_auth_enabled() {
                 return Ok(next.run(request).await);
             }
-            // Invalid bearer token — reject immediately, don't fall through to session.
-            tracing::warn!(uri = %request.uri(), "API key auth: invalid bearer token");
-            return Err(ApiError::Unauthorized("invalid bearer token".to_string()));
-        }
-    }
 
-    // Fall through to OIDC/session authentication.
-    if !state.config.is_auth_enabled() {
-        return Ok(next.run(request).await);
-    }
-
-    let authenticated: bool = session
-        .get(SESSION_KEY_AUTHENTICATED)
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or(false);
-
-    if authenticated {
-        Ok(next.run(request).await)
-    } else {
-        Err(ApiError::Unauthorized(
-            "authentication required".to_string(),
-        ))
+            match check_session_role(&session, required_role).await {
+                RoleCheck::Allowed => Ok(next.run(request).await),
+                RoleCheck::NotAuthenticated => Err(ApiError::Unauthorized(
+                    "authentication required".to_string(),
+                )),
+                RoleCheck::MissingRole { sub } => {
+                    tracing::warn!(
+                        required = %required_role,
+                        sub = ?sub,
+                        "user lacks required role for route"
+                    );
+                    Err(ApiError::Forbidden("forbidden".to_string()))
+                }
+            }
+        })
     }
 }
 
@@ -116,6 +133,7 @@ mod tests {
     use axum::middleware as axum_middleware;
     use axum::routing::get;
     use axum::Router;
+    use regelrecht_auth::{SESSION_KEY_AUTHENTICATED, SESSION_KEY_ROLES};
     use sqlx::postgres::PgPoolOptions;
     use std::sync::Arc;
     use tower::ServiceExt;
@@ -129,7 +147,7 @@ mod tests {
                     client_id: "test".into(),
                     client_secret: "test".into(),
                     issuer_url: "https://example.com".into(),
-                    required_role: "user".into(),
+                    required_role: "harvester-reader".into(),
                 })
             } else {
                 None
@@ -164,6 +182,10 @@ mod tests {
     }
 
     fn test_app(state: AppState) -> Router {
+        test_app_with_role(state, "harvester-reader")
+    }
+
+    fn test_app_with_role(state: AppState, role: &'static str) -> Router {
         let store = MemoryStore::default();
         let session_layer = SessionManagerLayer::new(store);
 
@@ -176,7 +198,7 @@ mod tests {
             )
             .route_layer(axum_middleware::from_fn_with_state(
                 state.clone(),
-                require_auth,
+                require_auth(role),
             ))
             .with_state(state)
             .layer(session_layer)
@@ -254,7 +276,7 @@ mod tests {
             .route("/test", get(|| async { "ok" }))
             .route_layer(axum_middleware::from_fn_with_state(
                 state.clone(),
-                require_auth,
+                require_auth("harvester-reader"),
             ))
             .route(
                 "/set-auth",
@@ -263,6 +285,10 @@ mod tests {
                         .insert(SESSION_KEY_AUTHENTICATED, true)
                         .await
                         .expect("insert");
+                    session
+                        .insert(SESSION_KEY_ROLES, vec!["harvester-reader".to_string()])
+                        .await
+                        .expect("insert roles");
                     "set"
                 }),
             )
@@ -546,5 +572,276 @@ mod tests {
             .expect("response");
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // --- Role-based gating ---
+
+    /// Build an app gated on `role` with a `/seed?roles=` helper that
+    /// authenticates the session and inserts a roles list. The `/test` route
+    /// also accepts DELETE so we can exercise the API-key bypass path on a
+    /// destructive method against an admin-tier role.
+    fn role_app(state: AppState, role: &'static str) -> Router {
+        let store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(store);
+
+        let gated = Router::new()
+            .route(
+                "/test",
+                get(|| async { "ok" })
+                    .post(|| async { "ok" })
+                    .delete(|| async { "ok" }),
+            )
+            .route_layer(axum_middleware::from_fn_with_state(
+                state.clone(),
+                require_auth(role),
+            ));
+
+        regelrecht_auth::test_utils::with_seed_route(gated)
+            .with_state(state)
+            .layer(session_layer)
+    }
+
+    use regelrecht_auth::test_utils::seed_session as seed_and_get_cookie;
+
+    #[tokio::test]
+    async fn reader_can_access_reader_route() {
+        let app = role_app(test_state(true), "harvester-reader");
+        let cookie = seed_and_get_cookie(&app, "harvester-reader").await;
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/test")
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn reader_cannot_access_writer_route() {
+        let app = role_app(test_state(true), "harvester-writer");
+        let cookie = seed_and_get_cookie(&app, "harvester-reader").await;
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/test")
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn writer_can_access_reader_route() {
+        // Keycloak composite expansion: a writer's token contains the reader role.
+        let app = role_app(test_state(true), "harvester-reader");
+        let cookie = seed_and_get_cookie(&app, "harvester-writer,harvester-reader").await;
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/test")
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn api_key_bypasses_role_check_on_get_reader_route() {
+        // Reader-tier baseline: a GET request with a valid API key reaches a
+        // reader-tier route without a session. Today reader_routes already
+        // contains GETs (e.g. `GET /api/jobs`), so this case is exercised in
+        // production — this test locks the invariant. Pairs with the writer-
+        // and admin-tier variants below to cover all three tiers explicitly.
+        let state = test_state_with_api_key(true, Some("test-key"));
+        let app = role_app(state, "harvester-reader");
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/test")
+                    .header("authorization", "Bearer test-key")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn api_key_bypasses_role_check_on_get_admin_route() {
+        // Locks in the documented invariant: a valid API key is treated as
+        // regelrecht-admin-equivalent for the allowed methods, so GET on an
+        // admin-tier route succeeds even though the bearer path carries no
+        // role. Today writer_routes and admin_routes contain no GETs, but if
+        // a future GET is added on either tier, this test ensures it's
+        // obvious that route is reachable via the API key without a session.
+        let state = test_state_with_api_key(true, Some("test-key"));
+        let app = role_app(state, "harvester-admin");
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("GET")
+                    .uri("/test")
+                    .header("authorization", "Bearer test-key")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn api_key_bypasses_role_check_on_get_writer_route() {
+        // Same invariant as the admin-tier variant above, but for the
+        // writer tier. Writer routes currently contain no GETs either; this
+        // test makes the API-key reachability of any future writer-tier GET
+        // explicit and forces a deliberate change here if the invariant
+        // ever shifts.
+        let state = test_state_with_api_key(true, Some("test-key"));
+        let app = role_app(state, "harvester-writer");
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("GET")
+                    .uri("/test")
+                    .header("authorization", "Bearer test-key")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn api_key_bypasses_role_check_on_delete_admin_route() {
+        // Locks in the documented invariant: a valid API key is treated as
+        // regelrecht-admin-equivalent for the allowed methods, so DELETE on
+        // an admin-tier route succeeds even though the bearer path carries
+        // no role. If this invariant changes (e.g. API key gains a role
+        // restriction), this test must change deliberately — protecting any
+        // future admin-tier DELETE from a silent permission shift.
+        let state = test_state_with_api_key(true, Some("test-key"));
+        let app = role_app(state, "harvester-admin");
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("DELETE")
+                    .uri("/test")
+                    .header("authorization", "Bearer test-key")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn merged_split_path_preserves_per_method_role_gate() {
+        // Regression guard for the split-path setup in `main.rs`, where
+        // `GET /api/jobs` lives behind `harvester-reader` (in `reader_routes`)
+        // and `DELETE /api/jobs` behind `harvester-admin` (in `admin_routes`),
+        // wired together via `.merge()`. Axum bakes `route_layer` into each
+        // method's `MethodRouter` before the merge, so the per-method
+        // middleware must survive — but if axum ever changes that semantic,
+        // a reader session would silently gain the admin DELETE. This test
+        // locks that invariant explicitly.
+        //
+        // Builds two single-method sub-routers on the same path with
+        // different role gates, merges them, and asserts a reader session
+        // gets 200 on GET but 403 on DELETE.
+        let store = MemoryStore::default();
+        let state = test_state(true);
+        let session_layer = SessionManagerLayer::new(store);
+
+        let reader_branch = Router::new()
+            .route("/test", get(|| async { "ok" }))
+            .route_layer(axum_middleware::from_fn_with_state(
+                state.clone(),
+                require_auth("harvester-reader"),
+            ));
+
+        let admin_branch = Router::new()
+            .route("/test", axum::routing::delete(|| async { "ok" }))
+            .route_layer(axum_middleware::from_fn_with_state(
+                state.clone(),
+                require_auth("harvester-admin"),
+            ));
+
+        let merged = reader_branch.merge(admin_branch);
+
+        let app = regelrecht_auth::test_utils::with_seed_route(merged)
+            .with_state(state)
+            .layer(session_layer);
+
+        let cookie = seed_and_get_cookie(&app, "harvester-reader").await;
+
+        // GET passes (reader has the role).
+        let response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/test")
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "GET should succeed for harvester-reader"
+        );
+
+        // DELETE is gated on harvester-admin — reader must be rejected.
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("DELETE")
+                    .uri("/test")
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(
+            response.status(),
+            StatusCode::FORBIDDEN,
+            "DELETE must reject harvester-reader — per-method middleware did not survive merge"
+        );
+    }
+
+    #[tokio::test]
+    async fn api_key_post_still_rejected_regardless_of_role() {
+        // POST is not in API_KEY_ALLOWED_METHODS — the bearer path rejects
+        // it before role checks. Verifies the order of operations is unchanged.
+        let state = test_state_with_api_key(true, Some("test-key"));
+        let app = role_app(state, "harvester-writer");
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/test")
+                    .header("authorization", "Bearer test-key")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
 }

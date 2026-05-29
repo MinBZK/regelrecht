@@ -1,0 +1,63 @@
+/*
+ * Landing + page-shell styles.
+ *
+ * Layout-critical and SSR-safe: nothing here depends on the client-only
+ * @nldd/design-system import.
+ *
+ * Typography, focus appearance and surface backgrounds are owned by the
+ * design-system primitives + nldd-* components (focus falls back to native
+ * for non-NLDD elements; html owns the canvas background via tokens.css).
+ * The .rr-* rules below carry only the layout/SSR-fallback concerns that
+ * are not covered by the design system.
+ */
+
+/* --- Signup form --- */
+.rr-honeypot {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.rr-form-status {
+  margin: 1rem 0;
+}
+.rr-status-box {
+  border-radius: 8px;
+  padding: 1.5rem;
+  border: 1px solid var(--semantics-dividers-color);
+}
+.rr-status-box--err {
+  background: var(--semantics-surfaces-tinted-background-color);
+  border-color: #b00020;
+}
+.rr-status-box h3 {
+  margin: 0 0 0.5rem;
+}
+.rr-status-box p {
+  margin: 0 0 1rem;
+}
+
+/* --- Motion: only animate when the user allows it --- */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* --- Pre-paint defaults ---
+   <html> initially renders in light scheme; the inline theme bootstrap in
+   Base.astro flips it to dark when needed. Set via class to keep CSP's
+   style-src free of 'unsafe-inline'. The bootstrap overrides this with
+   .colorScheme as soon as it runs. */
+html {
+  color-scheme: light;
+}
+
+/* --- Layout utility ---
+   Prevents long content (wide tables, code blocks) inside the right column
+   of nldd-one-third-two-thirds-section from forcing the column wider than
+   its share. Used on docs and RFC slug pages. */
+.rr-min-width-0 {
+  min-width: 0;
+}

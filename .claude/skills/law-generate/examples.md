@@ -1,6 +1,6 @@
 # Law Generate - Usage Examples
 
-All examples below conform to schema v0.5.1 and pass `just validate`.
+All examples below pass `just validate` against the latest schema.
 
 ## Example 1: Simple Constant (direct value assignment)
 
@@ -369,7 +369,7 @@ actions:
 ```
 
 **Key points:**
-- Use `IF` with `cases`/`default` for multi-branch conditionals (SWITCH does not exist in v0.5.1)
+- Use `IF` with `cases`/`default` for multi-branch conditionals (SWITCH was removed in v0.5.0)
 - Cases are evaluated in order; the first matching case wins
 - Each case has `when` (condition) and `then` (result value)
 - `default` is the fallback if no case matches

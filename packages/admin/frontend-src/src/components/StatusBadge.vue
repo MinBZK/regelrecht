@@ -1,14 +1,18 @@
 <script setup>
 import { computed } from 'vue';
 import { STATUS_BADGE_MAP } from '../constants.js';
+import { formatStatus } from '../formatters.js';
 
 const props = defineProps({
   status: { type: String, required: true },
+  size: { type: String, default: 'sm' },
 });
 
-const variant = computed(() => STATUS_BADGE_MAP[props.status] || 'grey');
+// Colour stays keyed on the raw enum value; only the visible label is humanised.
+const variant = computed(() => STATUS_BADGE_MAP[props.status] || 'neutral');
+const label = computed(() => formatStatus(props.status));
 </script>
 
 <template>
-  <span class="badge" :class="'badge--' + variant">{{ status }}</span>
+  <nldd-tag :color="variant" :text="label" :size="size" />
 </template>

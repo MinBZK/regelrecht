@@ -8,12 +8,12 @@
     "build": "vite build"
   },
   "dependencies": {
-    "@minbzk/storybook": "^0.8.24",
-    "vue": "^3.5.33",
-    "vue-router": "^5.0.6"
+    "@nldd/design-system": "^0.8.50",
+    "vue": "^3.5.35",
+    "vue-router": "^5.1.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^6.0.6",
-    "vite": "^8.0.10"
+    "@vitejs/plugin-vue": "^6.0.7",
+    "vite": "^8.0.14"
   }
 }

@@ -1,5 +1,5 @@
-import '@minbzk/storybook';
-import '@minbzk/storybook/css';
+import '@nldd/design-system';
+import '@nldd/design-system/styles';
 import { createApp } from 'vue';
 import App from './src/App.vue';
 

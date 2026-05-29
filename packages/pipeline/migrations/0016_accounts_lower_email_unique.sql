@@ -1,0 +1,13 @@
+-- Functional unique index on lower(accounts.email).
+--
+-- `add_member` (and any future call site that maps an external email to
+-- an account) looks the account up case-insensitively:
+--   SELECT id FROM accounts WHERE lower(email) = $1
+-- A B-tree index on `email` (from migration 0014) cannot satisfy this
+-- predicate, so the lookup degrades to a sequential scan as `accounts`
+-- grows. Adding a functional unique index makes the lookup index-only
+-- and tightens the schema: case-variants of the same address can no
+-- longer coexist as two rows (existing data already satisfies this — no
+-- way to create case-variants today since accounts are keyed on
+-- `person_sub` and OIDC emails don't bounce between casings).
+CREATE UNIQUE INDEX idx_accounts_email_lower ON accounts (lower(email));

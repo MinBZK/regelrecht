@@ -1,0 +1,24 @@
+---
+/*
+ * "Edit this page on GitHub" link. The relanding editLink pattern was
+ * https://github.com/MinBZK/regelrecht/edit/main/docs/:path . After the
+ * content move the markdown lives under docs/src/content/docs/ (and
+ * docs/src/content/rfcs/ for RFCs), so the base path is updated to match
+ * the real file location and the links stay valid.
+ */
+interface Props {
+  /** Collection entry id, e.g. "guide/what-is-regelrecht.md" */
+  entryId: string;
+  /** Which collection the entry belongs to. */
+  collection: 'docs' | 'rfcs';
+}
+const { entryId, collection } = Astro.props;
+
+const base =
+  collection === 'rfcs'
+    ? 'https://github.com/MinBZK/regelrecht/edit/main/docs/src/content/rfcs/'
+    : 'https://github.com/MinBZK/regelrecht/edit/main/docs/src/content/docs/';
+const editUrl = base + entryId;
+---
+
+<nldd-link size="sm" href={editUrl} target="_blank" text="Edit page on GitHub" />

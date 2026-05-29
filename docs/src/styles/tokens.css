@@ -1,0 +1,55 @@
+/* Rijksoverheid Fonts - registered as RijksSansVF to align with design tokens */
+@font-face {
+  font-family: 'RijksSansVF';
+  src: url('/fonts/ROsanswebtextregular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'RijksSansVF';
+  src: url('/fonts/ROsanswebtextbold.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'RijksSansVF';
+  src: url('/fonts/ROsanswebtextitalic.woff') format('woff');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'RijksoverheidSerif';
+  src: url('/fonts/ROserifwebregular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'RijksoverheidSerif';
+  src: url('/fonts/ROserifwebbold.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'RijksoverheidSerif';
+  src: url('/fonts/ROserifwebitalic.woff') format('woff');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+html {
+  background: var(--semantics-surfaces-background-color);
+  /* Sticky top nav offsets anchored scrolling (#anchor links land under the
+     nav otherwise). Applies site-wide — landing + docs. */
+  scroll-padding-top: 5rem;
+}

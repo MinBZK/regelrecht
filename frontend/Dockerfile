@@ -22,11 +22,10 @@ RUN cargo build --target wasm32-unknown-unknown --release --features wasm -p reg
       target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
 
 # Stage 1b: Build frontend (with WASM module)
-FROM node:24-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a665f40a06dbdfc94f AS frontend-builder
+FROM node:26-alpine@sha256:7c6af15abe4e3de859690e7db171d0d711bf37d27528eddfe625b2fe89e097f8 AS frontend-builder
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json* frontend/.npmrc ./
-RUN --mount=type=secret,id=GITHUB_TOKEN \
-    GITHUB_TOKEN=$(cat /run/secrets/GITHUB_TOKEN) npm ci
+RUN npm ci
 COPY frontend/ .
 COPY --from=wasm-builder /wasm-pkg/ public/wasm/pkg/
 RUN npm run build
@@ -75,6 +74,13 @@ COPY packages/engine/ engine/
 COPY packages/harvester/ harvester/
 COPY packages/pipeline/ pipeline/
 COPY packages/shared/ shared/
+# regelrecht-corpus (annotation-validation feature) embeds the note schema
+# via `include_str!("../../../schema/...")`, relative to packages/corpus/src/.
+# WORKDIR is /build and the crate is COPYed to /build/corpus/, so that
+# literal resolves to /schema/... here. Put the canonical schema there so
+# the embed compiles; this is the same file the source tree has at repo
+# root (no second copy — it is COPYed, not vendored).
+COPY schema/ /schema/
 # Invalidate cargo's fingerprint cache so it recompiles with real source
 # instead of using the stub binary from cargo-chef cook.
 RUN find . -name '*.rs' -exec touch {} + && \

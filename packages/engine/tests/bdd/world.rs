@@ -5,7 +5,9 @@
 #![allow(unused_imports)]
 
 use cucumber::World;
-use regelrecht_engine::{ArticleResult, EngineError, LawExecutionService, Value};
+use regelrecht_engine::{
+    Article, ArticleResult, EngineError, LawExecutionService, MatchResult, TextQuoteSelector, Value,
+};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::path::PathBuf;
@@ -32,6 +34,12 @@ pub struct RegelrechtWorld {
     pub error: Option<EngineError>,
     /// External data sources for zorgtoeslag scenarios
     pub external_data: ExternalData,
+    /// Articles set up for note-resolution scenarios (RFC-005, RFC-018)
+    pub note_articles: Vec<Article>,
+    /// Selector built for the current note-resolution scenario
+    pub note_selector: Option<TextQuoteSelector>,
+    /// Result of the last note resolution
+    pub note_result: Option<MatchResult>,
 }
 
 impl fmt::Debug for RegelrechtWorld {
@@ -96,6 +104,9 @@ impl RegelrechtWorld {
             result: None,
             error: None,
             external_data: ExternalData::default(),
+            note_articles: Vec::new(),
+            note_selector: None,
+            note_result: None,
         }
     }
 
@@ -107,6 +118,9 @@ impl RegelrechtWorld {
         self.result = None;
         self.error = None;
         self.external_data = ExternalData::default();
+        self.note_articles.clear();
+        self.note_selector = None;
+        self.note_result = None;
     }
 
     /// Returns true if trace output is enabled via the `TRACE` env var.

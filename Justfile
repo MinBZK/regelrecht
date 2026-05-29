@@ -36,9 +36,14 @@ build-check:
 validate *FILES:
     script/validate.sh {{FILES}}
 
-# Run all quality checks (format + lint + check + validate + tests)
+# Validate note sidecar files (RFC-005, RFC-016)
+# Orphaned/ambiguous notes and unknown tags are warnings, not errors.
+validate-annotations *FILES:
+    script/validate-annotations.sh {{FILES}}
+
+# Run all quality checks (format + lint + check + validate + validate-annotations + tests)
 # Note: pipeline-integration-test excluded — it requires Docker (testcontainers)
-check: format lint build-check validate test harvester-test pipeline-test admin-fmt admin-lint admin-check admin-test admin-frontend editor-api-fmt editor-api-lint editor-api-check
+check: format lint build-check validate validate-annotations test harvester-test pipeline-test admin-fmt admin-lint admin-check admin-test admin-frontend editor-api-fmt editor-api-lint editor-api-check
 
 # --- Tests ---
 
@@ -107,7 +112,7 @@ audit:
 admin:
     cd packages && cargo run --package regelrecht-admin
 
-# Build admin frontend (requires GITHUB_TOKEN env var for npm)
+# Build admin frontend
 admin-frontend:
     cd packages/admin/frontend-src && npm ci && npm run build
 
@@ -144,6 +149,11 @@ editor-api-lint:
 # Format check editor API Rust code
 editor-api-fmt:
     cd packages && cargo fmt --check --package regelrecht-editor-api
+
+# Run editor API integration tests (requires Docker for testcontainers).
+# Excluded from `just check` for the same reason `pipeline-integration-test` is.
+editor-api-integration-test:
+    cd packages && {{ci_flags}} cargo test --package regelrecht-editor-api --test '*'
 
 # --- Development (native with hot reload) ---
 
@@ -212,7 +222,7 @@ dev:
         if (cd packages/admin/frontend-src && npm ci --silent) > /dev/null 2>&1; then
             printf "${green}done${reset}\n"
         else
-            printf "${yellow}skipped${reset} (set GITHUB_TOKEN in .env for private packages)\n"
+            printf "${yellow}skipped${reset} (npm ci failed)\n"
             admin_fe=false
         fi
     fi
@@ -221,7 +231,7 @@ dev:
         if (cd frontend && npm ci --silent) > /dev/null 2>&1; then
             printf "${green}done${reset}\n"
         else
-            printf "${yellow}skipped${reset} (set GITHUB_TOKEN in .env for private packages)\n"
+            printf "${yellow}skipped${reset} (npm ci failed)\n"
             editor_fe=false
         fi
     fi
@@ -360,24 +370,11 @@ local-clean:
 
 # --- Documentation ---
 
-# Install docs dependencies (requires GITHUB_TOKEN for @minbzk/storybook)
-# Token is only needed for install, not for dev/build/preview.
+# Install docs dependencies
 docs-install:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    # Try macOS keychain first, then fall back to environment variable
-    TOKEN="${GITHUB_TOKEN:-$(security find-generic-password -a "$USER" -s github-packages-read -w 2>/dev/null || echo "")}"
-    if [ -z "$TOKEN" ]; then
-        printf "\033[31mNo GITHUB_TOKEN found.\033[0m\n"
-        printf "Create a classic PAT at https://github.com/settings/tokens\n"
-        printf "with only the read:packages scope. Then:\n\n"
-        printf "  macOS:  security add-generic-password -a \"\$USER\" -s github-packages-read -w \"ghp_YOUR_TOKEN\"\n"
-        printf "  Linux:  export GITHUB_TOKEN=ghp_YOUR_TOKEN\n"
-        exit 1
-    fi
-    cd docs && GITHUB_TOKEN="$TOKEN" npm ci
+    cd docs && npm ci
 
-# Start docs dev server (VitePress)
+# Start docs dev server (Astro, with HMR) at http://localhost:4321
 docs:
     cd docs && npm run dev
 
@@ -385,6 +382,10 @@ docs:
 docs-build:
     cd docs && npm run build
 
-# Preview production docs build
+# Preview production docs build (Pagefind search works here, not in dev)
 docs-preview:
     cd docs && npm run preview
+
+# Run the accessibility gate (build + mermaid-alt + heading-order + pa11y-ci htmlcs+axe, WCAG 2.1 AA)
+docs-a11y:
+    cd docs && npm run a11y

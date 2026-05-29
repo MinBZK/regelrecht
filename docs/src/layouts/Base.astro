@@ -1,0 +1,874 @@
+---
+import '@nldd/design-system/styles';
+import '~/styles/tokens.css';
+import '~/styles/landing.css';
+import '~/styles/docs.css';
+import { ClientRouter } from 'astro:transitions';
+import { content } from '~/lib/landing-content';
+import { categoryForPath } from '~/lib/sidebar';
+
+interface BreadcrumbCrumb {
+  text: string;
+  href?: string;
+  current?: boolean;
+}
+
+interface Props {
+  lang: 'nl' | 'en';
+  title: string;
+  description?: string;
+  kind: 'landing' | 'docs' | 'notfound';
+  pathname: string;
+  // Docs pages without a sidebar group (e.g. /auth-and-roles) render in the
+  // narrower centered layout instead of the 3-column grid. Defaults to true
+  // so the common sidebar'd docs pages need not pass it.
+  hasSidebar?: boolean;
+}
+
+const {
+  lang,
+  title,
+  description,
+  kind,
+  pathname,
+  hasSidebar = true,
+} = Astro.props;
+
+const isLanding = kind === 'landing';
+const isNotFound = kind === 'notfound';
+
+const t = content[lang];
+// Landing is bilingual (path-driven); docs are English-only.
+const home = isLanding ? (lang === 'en' ? '/en/' : '/') : '/en/';
+// One brand subtitle everywhere (per language): the same tagline on the
+// landing and the docs, not a separate docs string.
+const brandSubtitle = t.nav.brandTagline;
+// The signup variant of the landing has no in-page anchor nav.
+const showSignup = isLanding && /\/aanmelden|\/en\/signup/.test(pathname);
+// Status pages (the thank-you page and error pages like 404) present an
+// inline-dialog whose own actions offer all the navigation, so they show no
+// global menu and no back button.
+const isSuccessPage = /\/aanmelden\/bedankt$|\/en\/signup\/thanks$/.test(pathname);
+const isStatusPage = isNotFound || isSuccessPage;
+
+interface NavItem {
+  text: string;
+  href: string;
+  current?: boolean;
+  icon?: string;
+}
+
+// Landing home for this language, used as the base for the section anchors.
+const landingHome = lang === 'en' ? '/en/' : '/';
+let globalLinks: NavItem[];
+// Docs pages use the top-navigation-bar's dedicated back button instead of
+// global menu items: it points at the parent category (or Home from a category
+// page). The landing keeps its own global links and no back button.
+let backHref = '';
+let backText = '';
+if (isStatusPage) {
+  // No global menu and no back button — the inline-dialog's actions navigate.
+  globalLinks = [];
+} else if (showSignup) {
+  // The signup page replaces the global menu with a back button to Home so the
+  // page stays focused on the form.
+  globalLinks = [];
+  backHref = landingHome;
+  backText = t.nav.home;
+} else if (isLanding) {
+  // No global menu: the logo is Home and the documentation link lives in the
+  // hero, so the top-nav keeps only the utility menu.
+  globalLinks = [];
+} else {
+  globalLinks = [];
+  const isDocsRoot = pathname === '/docs/' || pathname === '/docs';
+  const cat = categoryForPath(pathname);
+  const onCategoryPage = cat !== null && pathname === cat.prefix;
+  if (isDocsRoot) {
+    // The documentation root goes up to the site home.
+    backHref = '/en/';
+    backText = 'Home';
+  } else if (cat && !onCategoryPage) {
+    // An article goes up to its category.
+    backHref = cat.prefix;
+    backText = cat.title;
+  } else {
+    // Category (overview) pages and stray docs pages go up to the docs root.
+    backHref = '/docs/';
+    backText = 'Documentation';
+  }
+}
+
+// Language switch lives on the right (utility) side of the bar as an
+// expandable menu. Only the landing is bilingual; docs are English-only so
+// no switch there. On the signup page the options stay on signup
+// (NL /aanmelden <-> EN /en/signup) instead of jumping back to the home.
+interface LangOption {
+  code: 'nl' | 'en';
+  label: string;
+  href: string;
+}
+const nlHref = isSuccessPage
+  ? '/aanmelden/bedankt'
+  : showSignup
+    ? '/aanmelden'
+    : '/';
+const enHref = isSuccessPage
+  ? '/en/signup/thanks'
+  : showSignup
+    ? '/en/signup'
+    : '/en/';
+const langOptions: LangOption[] | null = isLanding
+  ? [
+      { code: 'nl', label: 'Nederlands', href: nlHref },
+      { code: 'en', label: 'English', href: enHref },
+    ]
+  : null;
+// The non-current language, for the no-JS fallback link.
+const langOther = langOptions?.find((o) => o.code !== lang) ?? null;
+
+const searchLabel = lang === 'en' ? 'Search' : 'Zoeken';
+const searchPlaceholder =
+  lang === 'en' ? 'Search documentation' : 'Documentatie doorzoeken';
+const searchResultsLabel =
+  lang === 'en' ? 'Search results' : 'Zoekresultaten';
+const searchNoResults =
+  lang === 'en' ? 'No results found.' : 'Geen resultaten gevonden.';
+const searchDevHint =
+  lang === 'en'
+    ? 'Search is available in the production build.'
+    : 'Zoeken is beschikbaar in de productiebuild.';
+const skipText = lang === 'en' ? 'Skip to content' : 'Direct naar de inhoud';
+const navLabel = lang === 'en' ? 'Main navigation' : 'Hoofdnavigatie';
+const themeMenuLabel = lang === 'en' ? 'Theme' : 'Thema';
+const themeOptions = [
+  { value: 'system', label: lang === 'en' ? 'System' : 'Systeem' },
+  { value: 'light', label: lang === 'en' ? 'Light' : 'Licht' },
+  { value: 'dark', label: lang === 'en' ? 'Dark' : 'Donker' },
+];
+const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
+
+// Page-footer breadcrumb trail. Landing pages get no breadcrumbs. Docs pages
+// get Home → Documentation → Category → Current page.
+//
+// `title` is the HTML <title> with the " · RegelRecht" suffix consumers add;
+// strip it for the breadcrumb so the trail reads as the CMS page title only.
+const homeHref = lang === 'en' ? '/en/' : '/';
+const homeText = 'Home';
+const docsHref = '/docs/';
+const docsText = 'Documentation';
+const pageTitle = title.replace(/\s·\sRegelRecht$/, '');
+let breadcrumbs: BreadcrumbCrumb[] = [];
+if (!isLanding && !isNotFound) {
+  const isDocsRoot = pathname === '/docs/' || pathname === '/docs';
+  breadcrumbs.push({ text: homeText, href: homeHref });
+  breadcrumbs.push({
+    text: docsText,
+    href: docsHref,
+    current: isDocsRoot,
+  });
+  if (!isDocsRoot) {
+    const cat = categoryForPath(pathname);
+    const onCategoryPage = cat !== null && pathname === cat.prefix;
+    if (cat) {
+      breadcrumbs.push({
+        text: cat.title,
+        href: cat.prefix,
+        current: onCategoryPage,
+      });
+      if (!onCategoryPage) {
+        breadcrumbs.push({ text: pageTitle, current: true });
+      }
+    } else {
+      breadcrumbs.push({ text: pageTitle, current: true });
+    }
+  }
+}
+
+const legalLabel = lang === 'en' ? 'Legal links' : 'Juridische links';
+const copyrightText = t.footer.copyright;
+const legalLinks = [
+  {
+    text: lang === 'en' ? 'Accessibility' : 'Toegankelijkheid',
+    href: lang === 'en' ? '/reference/accessibility' : '/reference/toegankelijkheid',
+  },
+];
+---
+
+<!doctype html>
+<html lang={lang} data-scheme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    {description && <meta name="description" content={description} />}
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="/regelrecht-icon.svg"
+    />
+    <slot name="head" />
+    {/* View transitions keep the DOM/CSS/fonts live between navigations, so
+        the NLDD Lit components do not re-upgrade on every page change — that
+        re-upgrade was the flicker on full page loads. The default cross-fade
+        animation is disabled below: we want the persistence benefit, not the
+        fade. */}
+    <ClientRouter />
+    <style is:global>
+      ::view-transition-old(root),
+      ::view-transition-new(root) {
+        animation: none;
+      }
+    </style>
+    <script is:inline>
+      // Three-state theme: 'system' | 'light' | 'dark' (default 'system').
+      // NLDD colours resolve via data-scheme; the landing/chrome CSS uses the
+      // `.dark` class. Resolve + apply before first paint so there is no flash.
+      //
+      // ClientRouter (view transitions) swaps the document on navigation and
+      // re-renders <html> from the new page's server markup, which does NOT
+      // carry the client-set data-scheme/.dark — so the theme would reset on
+      // every navigation. Re-apply on astro:after-swap (fires after the new DOM
+      // is in place, before paint) to keep the choice sticky across navigations.
+      (function () {
+        // In-memory fallback so the choice survives navigations even when
+        // localStorage is unavailable (private mode, blocked storage). It lives
+        // on window so the persistent inline script and the after-swap handler
+        // share it across the document swap.
+        function readPref() {
+          try {
+            var v = localStorage.getItem('rr-theme');
+            if (v) return v;
+          } catch (e) {}
+          return window.__rrTheme || 'system';
+        }
+        function prefersDark() {
+          return (
+            !!window.matchMedia &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches
+          );
+        }
+        function applyTheme() {
+          var pref = readPref();
+          var dark = pref === 'dark' || (pref === 'system' && prefersDark());
+          var root = document.documentElement;
+          root.setAttribute('data-scheme', dark ? 'dark' : 'light');
+          root.style.colorScheme = dark ? 'dark' : 'light';
+          root.classList.toggle('dark', dark);
+        }
+        // Exposed so the deferred wiring module can re-apply on option clicks.
+        window.__rrReadThemePref = readPref;
+        window.__rrApplyTheme = applyTheme;
+        applyTheme();
+        document.addEventListener('astro:after-swap', applyTheme);
+        // Follow the OS while the choice is 'system'.
+        if (window.matchMedia) {
+          window
+            .matchMedia('(prefers-color-scheme: dark)')
+            .addEventListener('change', function () {
+              if (readPref() === 'system') applyTheme();
+            });
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <nldd-page background={isLanding ? 'base' : undefined}>
+      {/* nldd-skip-link wraps the nav: its skip control sits before the nav and
+          focuses the next sibling (the first main-content element) — no anchor
+          id needed, so there is no separate skip target div. */}
+      <nldd-skip-link slot="header" text={skipText}>
+      <nldd-top-navigation-bar
+          logo-title="RegelRecht"
+          logo-subtitle={brandSubtitle}
+          logo-href={home}
+          website-href={home}
+          back-href={backHref || undefined}
+          back-text={backText || undefined}
+        >
+          <nldd-menu-bar slot="global">
+            {
+              globalLinks.map((item) => (
+                <nldd-menu-bar-item
+                  href={item.href}
+                  text={item.text}
+                  icon={item.icon || undefined}
+                  current={item.current || undefined}
+                />
+              ))
+            }
+          </nldd-menu-bar>
+          <nldd-menu-bar slot="utility">
+            <nldd-menu-bar-item
+              id="rr-search-trigger"
+              text={searchLabel}
+              icon="search"
+            ></nldd-menu-bar-item>
+            {
+              langOptions && (
+                <nldd-menu-bar-item
+                  id="rr-lang-menu"
+                  text={lang === 'en' ? 'EN' : 'NL'}
+                  accessible-label={langMenuLabel}
+                  icon="languages"
+                  expandable
+                >
+                  <nldd-menu>
+                    {langOptions.map((opt) => (
+                      <nldd-menu-item
+                        data-menu="lang"
+                        type="radio"
+                        value={opt.href}
+                        text={opt.label}
+                        selected={opt.code === lang || undefined}
+                      />
+                    ))}
+                  </nldd-menu>
+                </nldd-menu-bar-item>
+              )
+            }
+            <nldd-menu-bar-item id="rr-theme-menu" text={themeMenuLabel} expandable>
+              <nldd-menu>
+                {/* SSR-default: always render 'system' as selected. The
+                    stored preference (localStorage.theme) is only readable
+                    on the client, so any other default would flash an
+                    incorrect selection until the JS-side `syncThemeRadios()`
+                    runs on `astro:page-load` and corrects it. JS-disabled
+                    users see "system" — which is also the effective default
+                    for them since the theme-flip script wouldn't run either. */}
+                {
+                  themeOptions.map((opt) => (
+                    <nldd-menu-item
+                      data-menu="theme"
+                      type="radio"
+                      value={opt.value}
+                      text={opt.label}
+                      selected={opt.value === 'system' || undefined}
+                    />
+                  ))
+                }
+              </nldd-menu>
+            </nldd-menu-bar-item>
+            <nldd-menu-bar-item
+              text="GitHub"
+              href="https://github.com/MinBZK/regelrecht"
+            ></nldd-menu-bar-item>
+          </nldd-menu-bar>
+        </nldd-top-navigation-bar>
+
+        {/* Semantic fallback: real <a> links rendered server-side, so the
+            site is navigable without JS / before @nldd upgrades. Hidden
+            once <nldd-top-navigation-bar> is :defined (see CSS). */}
+        <nav class="rr-nav-fallback" aria-label={navLabel}>
+          <a class="rr-nav-fallback-brand" href={home}>RegelRecht</a>
+          <ul>
+            {
+              globalLinks.map((item) => (
+                <li>
+                  <a
+                    href={item.href}
+                    aria-current={item.current ? 'page' : undefined}
+                  >
+                    {item.text}
+                  </a>
+                </li>
+              ))
+            }
+            {
+              langOther && (
+                <li>
+                  <a href={langOther.href}>{langOther.label}</a>
+                </li>
+              )
+            }
+            <li>
+              <a href="https://github.com/MinBZK/regelrecht">GitHub</a>
+            </li>
+          </ul>
+        </nav>
+      </nldd-skip-link>
+
+      {/*
+        nldd-page renders the <main> (page__main) and <footer> (page__footer,
+        contentinfo) landmarks itself; page-type styling + lang live on the
+        nldd-page host. Skipping the nav is handled by nldd-skip-link above
+        (it focuses this content as its next sibling), so there is no separate
+        skip-target div.
+      */}
+      <slot />
+
+      {/* The default site footer on every page (landing, docs and the error
+          page). Wrapped in a native element because Astro consumes `slot` on a
+          component instance instead of forwarding it to the rendered root, so
+          the slot attribute must live on a real DOM child of nldd-page. */}
+      <div slot="footer">
+        <nldd-page-footer>
+          {breadcrumbs.length > 0 && (
+            <nldd-breadcrumbs slot="breadcrumbs" accessible-label="Breadcrumb">
+              {breadcrumbs.map((crumb) => (
+                <nldd-breadcrumbs-item
+                  text={crumb.text}
+                  href={crumb.href}
+                  current={crumb.current || undefined}
+                />
+              ))}
+            </nldd-breadcrumbs>
+          )}
+          {!showSignup && !isSuccessPage && (
+            <nldd-container layout="grid" column-count="4" md-column-count="2" sm-column-count="1" gap="32">
+              <nldd-container>
+                {/* Footer-rubrieken semantisch h2 (page-level section);
+                    nldd-title size kiest alleen de visuele grootte. */}
+                <nldd-title size="5"><h2>RegelRecht</h2></nldd-title>
+                <nldd-spacer size="8" />
+                <nldd-rich-text><p>{t.footer.blurb}</p></nldd-rich-text>
+              </nldd-container>
+              <nldd-container>
+                <nldd-title size="5"><h2>{t.footer.linksTitle}</h2></nldd-title>
+                <nldd-spacer size="8" />
+                <nldd-rich-text>
+                  <p>
+                    {t.footer.links.map((l, i) => (
+                      <Fragment>
+                        {i > 0 && <br />}
+                        <a href={l.href}>{l.label}</a>
+                      </Fragment>
+                    ))}
+                  </p>
+                </nldd-rich-text>
+              </nldd-container>
+              <nldd-container>
+                <nldd-title size="5"><h2>{t.footer.contactTitle}</h2></nldd-title>
+                <nldd-spacer size="8" />
+                <nldd-rich-text>
+                  <p><a href="mailto:regelrecht@minbzk.nl">regelrecht@minbzk.nl</a></p>
+                </nldd-rich-text>
+              </nldd-container>
+              <nldd-container>
+                <nldd-title size="5"><h2>{t.footer.partOfTitle}</h2></nldd-title>
+                <nldd-spacer size="8" />
+                <nldd-rich-text>
+                  <p>
+                    {t.footer.partOf.map((o, i) => (
+                      <Fragment>
+                        {i > 0 && <br />}
+                        {o}
+                      </Fragment>
+                    ))}
+                  </p>
+                </nldd-rich-text>
+              </nldd-container>
+            </nldd-container>
+          )}
+          {isLanding && (
+            <Fragment>
+              {/* Internet.nl 100% badge. Per the internet.nl badge policy
+                  (https://internet.nl/faqs/badges/) the SVG is served from our
+                  own domain (no hot-link), the page's domain matches the
+                  100%-scoring domain, and the badge hyperlinks to
+                  https://internet.nl/. Rendered only on the landing
+                  (regelrecht.rijks.app), not on docs or signup. */}
+              <nldd-spacer size="24" />
+              <nldd-rich-text>
+                <p>
+                  <a
+                    href={t.compliance.internetNlUrl}
+                    rel="noopener external"
+                    aria-label={t.compliance.label}
+                  >
+                    <img
+                      src="/internet-nl-100-website.svg"
+                      alt={t.compliance.alt}
+                      width="204"
+                      height="38"
+                    />
+                  </a>
+                </p>
+              </nldd-rich-text>
+            </Fragment>
+          )}
+          <nldd-page-footer-legal-bar slot="legal-bar" accessible-label={legalLabel}>
+            <nldd-page-footer-legal-bar-item slot="start" text={copyrightText} />
+            {legalLinks.map((link) => (
+              <nldd-page-footer-legal-bar-item
+                slot="end"
+                text={link.text}
+                href={link.href}
+              />
+            ))}
+          </nldd-page-footer-legal-bar>
+        </nldd-page-footer>
+      </div>
+    </nldd-page>
+
+    {/* Search modal host. Pagefind does the search logic (indexing, ranking,
+        highlighting, sub-results) via its HEADLESS API; the presentation is
+        custom NLDD. Pagefind only indexes after `astro build`, so the headless
+        module is absent in `astro dev` (guarded in the script below). */}
+    <nldd-window
+      id="rr-search-dialog"
+      accessible-label={searchLabel}
+      centered
+      top="15vh"
+      width="min(40rem, 92vw)"
+    >
+      <nldd-container padding="16">
+        <nldd-search-field
+          id="rr-search-input"
+          placeholder={searchPlaceholder}
+          accessible-label={searchPlaceholder}
+        ></nldd-search-field>
+      </nldd-container>
+      <nldd-container
+        id="rr-search-results"
+        padding="16"
+        padding-top="0"
+        hidden
+      >
+        <nldd-list role="listbox" aria-label={searchResultsLabel}></nldd-list>
+      </nldd-container>
+      <nldd-container
+        id="rr-search-status"
+        padding="16"
+        padding-top="0"
+        hidden
+      >
+        <nldd-inline-dialog id="rr-search-state"></nldd-inline-dialog>
+      </nldd-container>
+    </nldd-window>
+
+    <script>
+      import '@nldd/design-system';
+    </script>
+
+    <script>
+      // Theme + language live in expandable <nldd-menu-bar-item> popovers
+      // (each wraps its items in <nldd-menu>). Selection is handled via event
+      // delegation on the document: the `select` event bubbles and is composed.
+      // It carries no detail, so we identify the firing item by its data-menu
+      // attribute and (for language) navigate to its value, (for theme) persist
+      // and re-apply. Selected state is reflected onto matching items by
+      // data-menu attribute on every page-load + preference change.
+      function syncThemeRadios() {
+        const pref =
+          (window.__rrReadThemePref && window.__rrReadThemePref()) || 'system';
+        document
+          .querySelectorAll('nldd-menu-item[data-menu="theme"]')
+          .forEach((item) => {
+            if (item.getAttribute('value') === pref)
+              item.setAttribute('selected', '');
+            else item.removeAttribute('selected');
+          });
+      }
+      document.addEventListener('astro:page-load', syncThemeRadios);
+
+      document.addEventListener('select', (e) => {
+        const path = e.composedPath ? e.composedPath() : [];
+        const item = path.find((n) => n && n.tagName === 'NLDD-MENU-ITEM');
+        if (!item) return;
+        const kind = item.getAttribute('data-menu');
+        const value = item.getAttribute('value');
+        if (kind === 'theme') {
+          // Persist to localStorage when available, and always to the in-memory
+          // fallback so the choice sticks across ClientRouter navigations.
+          window.__rrTheme = value;
+          try {
+            localStorage.setItem('rr-theme', value);
+          } catch (err) {}
+          if (window.__rrApplyTheme) window.__rrApplyTheme();
+          syncThemeRadios();
+        } else if (kind === 'lang') {
+          if (value) window.location.assign(value);
+        }
+      });
+    </script>
+
+    <script
+      define:vars={{
+        searchNoResults,
+        searchDevHint,
+      }}
+    >
+      // Custom NLDD search UI on top of Pagefind's HEADLESS API. Pagefind keeps
+      // doing the search logic (indexing, ranking, highlighting, sub-results);
+      // only the presentation is ours. The headless module is emitted to
+      // /pagefind/pagefind.js by astro-pagefind during the build and is absent
+      // in `astro dev` — the dynamic import is guarded so dev degrades to a hint.
+      // These elements are replaced on each ClientRouter navigation, so they
+      // are `let` and re-resolved in wireSearch() on astro:page-load.
+      let dialog = null;
+      let trigger = null;
+      let field = null;
+      let resultsEl = null;     // container that wraps nldd-list (hidden when no items)
+      let listEl = null;        // the nldd-list itself (where list-items go)
+      let statusEl = null;      // container that wraps the state inline-dialog
+      let stateEl = null;       // the nldd-inline-dialog whose text reflects the current state
+
+      // Pagefind instance (loaded lazily on first open). `null` until loaded,
+      // `false` once an import attempt has failed (e.g. in `astro dev`).
+      // Module-scope so it survives navigations and is loaded at most once.
+      let pagefind = null;
+      let pagefindFailed = false;
+      let loading = false;
+      let debounceTimer = 0;
+      let activeIndex = -1; // currently highlighted result, -1 = none
+
+      function setState(stateText, kind) {
+        if (!stateEl || !statusEl || !resultsEl || !listEl) return;
+        activeIndex = -1;
+        stateEl.setAttribute('text', stateText);
+        if (kind) stateEl.dataset.state = kind;
+        statusEl.hidden = false;
+        resultsEl.hidden = true;
+        listEl.innerHTML = '';
+      }
+
+      async function ensurePagefind() {
+        if (pagefind || pagefindFailed || loading) return;
+        loading = true;
+        try {
+          // Vite would try to resolve a static '/pagefind/pagefind.js' import at
+          // build time (the file does not exist yet then), so build the path
+          // dynamically to keep it a pure runtime fetch.
+          const modulePath = '/pagefind/pagefind.js';
+          pagefind = await import(/* @vite-ignore */ modulePath);
+          if (pagefind.options) {
+            await pagefind.options({ excerptLength: 15 });
+          }
+        } catch (e) {
+          // Expected in `astro dev`: the index has not been built. Degrade to a
+          // hint instead of throwing. Don't spam the console on every open.
+          pagefindFailed = true;
+          setState(searchDevHint, 'dev');
+        } finally {
+          loading = false;
+        }
+      }
+
+      // Render a list of resolved Pagefind result records as NLDD-styled links.
+      function renderResults(records) {
+        if (!listEl || !resultsEl || !statusEl) return;
+        activeIndex = -1;
+        listEl.innerHTML = '';
+        if (!records.length) {
+          setState(searchNoResults, 'empty');
+          return;
+        }
+        // Build a list-item per result (and sub-result). Wrap in a generic
+        // nldd-cell with nldd-title (semantic heading) + nldd-rich-text (for
+        // the Pagefind excerpt — sanitized HTML with <mark> on the matched
+        // terms). nldd-text-cell escapes its supporting-text slot's HTML in
+        // some flows; nldd-rich-text preserves <mark> reliably.
+        function makeListItem(href, titleText, excerptHtml, isSubresult) {
+          const item = document.createElement('nldd-list-item');
+          item.setAttribute('href', href);
+          item.setAttribute('role', 'option');
+          item.tabIndex = -1;
+
+          if (isSubresult) {
+            item.appendChild(document.createElement('nldd-spacer-cell'));
+          }
+
+          const cell = document.createElement('nldd-cell');
+          cell.setAttribute('width', 'full');
+
+          const title = document.createElement('nldd-title');
+          title.setAttribute('size', '5');
+          const heading = document.createElement('h3');
+          heading.textContent = titleText;
+          title.appendChild(heading);
+          cell.appendChild(title);
+
+          if (excerptHtml) {
+            const rich = document.createElement('nldd-rich-text');
+            const p = document.createElement('p');
+            p.innerHTML = excerptHtml;
+            rich.appendChild(p);
+            cell.appendChild(rich);
+          }
+
+          item.appendChild(cell);
+          return item;
+        }
+
+        const frag = document.createDocumentFragment();
+        for (const rec of records) {
+          const title = (rec.meta && rec.meta.title) || rec.url;
+          frag.appendChild(makeListItem(rec.url, title, rec.excerpt, false));
+
+          // Sub-results (deep links into the same page, e.g. headings).
+          const subs = (rec.sub_results || []).slice(0, 3);
+          for (const sub of subs) {
+            // The top result of sub_results usually duplicates the page itself.
+            if (sub.url === rec.url) continue;
+            frag.appendChild(makeListItem(sub.url, sub.title, sub.excerpt, true));
+          }
+        }
+        listEl.appendChild(frag);
+        statusEl.hidden = true;
+        resultsEl.hidden = false;
+      }
+
+      function resultLinks() {
+        return listEl
+          ? Array.from(listEl.querySelectorAll('nldd-list-item'))
+          : [];
+      }
+
+      function setActive(index) {
+        const links = resultLinks();
+        if (!links.length) return;
+        activeIndex = (index + links.length) % links.length;
+        links.forEach((a, i) => {
+          const on = i === activeIndex;
+          a.toggleAttribute('selected', on);
+          if (on) {
+            a.focus();
+            a.scrollIntoView({ block: 'nearest' });
+          }
+        });
+      }
+
+      function clearState() {
+        // Empty query — no message, no list, just both panes hidden.
+        activeIndex = -1;
+        if (listEl) listEl.innerHTML = '';
+        if (resultsEl) resultsEl.hidden = true;
+        if (statusEl) statusEl.hidden = true;
+      }
+
+      async function runQuery(query) {
+        const q = String(query ?? '').trim();
+        if (!q) {
+          clearState();
+          return;
+        }
+        await ensurePagefind();
+        if (!pagefind) return; // dev hint already shown
+        const search = await pagefind.search(q);
+        const records = await Promise.all(
+          search.results.slice(0, 8).map((r) => r.data())
+        );
+        renderResults(records);
+      }
+
+      function onInput(value) {
+        window.clearTimeout(debounceTimer);
+        debounceTimer = window.setTimeout(() => {
+          runQuery(value);
+        }, 200);
+      }
+
+      // nldd-search-field reflects its value onto the element's `.value`
+      // property (a string) and onto the inner input — read that, not
+      // event.detail (whose `.value` is not a plain string and broke
+      // query.trim()).
+      const fieldValue = () => field?.value ?? '';
+
+      function openSearch() {
+        if (!dialog) return;
+        ensurePagefind();
+        dialog.show();
+        field?.focus();
+      }
+
+      // (Re)resolve the search elements and bind their listeners. The elements
+      // are recreated on each ClientRouter navigation, so this runs on every
+      // astro:page-load. The global Cmd/Ctrl+K listener is bound once below
+      // (it reads the live `dialog`/`field` via openSearch).
+      function wireSearch() {
+        dialog = document.getElementById('rr-search-dialog');
+        trigger = document.getElementById('rr-search-trigger');
+        field = document.getElementById('rr-search-input');
+        resultsEl = document.getElementById('rr-search-results');
+        listEl = resultsEl?.querySelector('nldd-list') ?? null;
+        statusEl = document.getElementById('rr-search-status');
+        stateEl = document.getElementById('rr-search-state');
+
+        field?.addEventListener('input', () => onInput(fieldValue()));
+        field?.addEventListener('search', () => {
+          window.clearTimeout(debounceTimer);
+          runQuery(fieldValue());
+        });
+        trigger?.addEventListener('click', openSearch);
+        // Any element opting in (e.g. the 404 page's "Search" action) opens
+        // the same dialog.
+        document
+          .querySelectorAll('[data-search-trigger]')
+          .forEach((el) => el.addEventListener('click', openSearch));
+
+        // Keyboard a11y within the modal: arrows move through the focusable
+        // list result list, Enter follows the active one. Escape close and
+        // backdrop-click close are handled by nldd-window itself.
+        dialog?.addEventListener('keydown', (e) => {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setActive(activeIndex + 1);
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setActive(activeIndex - 1);
+          } else if (e.key === 'Enter') {
+            const links = resultLinks();
+            if (activeIndex >= 0 && links[activeIndex]) {
+              e.preventDefault();
+              links[activeIndex].click();
+            }
+          }
+        });
+      }
+      document.addEventListener('astro:page-load', wireSearch);
+
+      // Global hotkey bound once for the document's lifetime (not per page-load,
+      // which would stack duplicate listeners). Uses the live element refs.
+      document.addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+          e.preventDefault();
+          openSearch();
+        }
+      });
+    </script>
+
+    <style>
+      /* nldd-page owns the scroll: it is the scroll container (height: 100%,
+         overflow-y: auto) and also provides the layout-container so page
+         sections size to it via container queries. */
+      html {
+        /* Reserve the scrollbar's space permanently so opening the search
+           modal does not shift the viewport ~15px and jump content. */
+        scrollbar-gutter: stable;
+      }
+      html,
+      body {
+        margin: 0;
+        /* nldd-page is the scroll container (height: 100%); give it a full
+           viewport box to fill. */
+        height: 100%;
+      }
+      nldd-top-navigation-bar {
+        display: block;
+        width: 100%;
+      }
+
+      /* No-JS / pre-upgrade navigation fallback. The semantic <nav> is the
+         SSR-rendered, always-functional navigation. Once @nldd loads and
+         the web component upgrades (:defined), show the rich nav and hide
+         the fallback. Without JS the fallback simply stays. */
+      nldd-top-navigation-bar:not(:defined) {
+        display: none;
+      }
+      nldd-top-navigation-bar:defined ~ .rr-nav-fallback {
+        display: none;
+      }
+
+/* nldd-window provides the modal chrome (border, radius, background,
+         box-shadow, backdrop). The internal layout is split into three
+         nldd-containers (search field / results / state); only the results
+         container needs a max-height so a long result list scrolls inside
+         the window instead of pushing it off-screen. */
+      #rr-search-results {
+        max-height: 60vh;
+        overflow-y: auto;
+      }
+    </style>
+  </body>
+</html>

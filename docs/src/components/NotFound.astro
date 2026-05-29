@@ -1,0 +1,57 @@
+---
+/*
+ * 404 / error state, presented as an nldd-inline-dialog. Language comes from
+ * the request path prefix (langFromPath). No back button — the dialog's own
+ * actions offer all navigation (see Base.astro's isStatusPage handling).
+ */
+import { langFromPath } from '~/lib/landing-content';
+
+interface Props {
+  pathname: string;
+}
+const { pathname } = Astro.props;
+
+const lang = langFromPath(pathname);
+const home = lang === 'en' ? '/en/' : '/';
+
+const t =
+  lang === 'en'
+    ? {
+        title: 'Page not found',
+        body: 'The page you were looking for does not exist or has moved.',
+        home: 'Back to home',
+        search: 'Search',
+      }
+    : {
+        title: 'Pagina niet gevonden',
+        body: 'De pagina die je zocht bestaat niet of is verplaatst.',
+        home: 'Terug naar de startpagina',
+        search: 'Zoeken',
+      };
+const docsHref = '/docs/';
+---
+
+<nldd-simple-section>
+  <nldd-inline-dialog
+    size="lg"
+    icon="face-frowning"
+    text={t.title}
+    supporting-text={t.body}
+    heading-level="1"
+  >
+  <nldd-button slot="actions" variant="primary" href={home} text={t.home}>
+    <a slot="fallback" href={home}>{t.home}</a>
+  </nldd-button>
+  {/* Opens the search dialog via Base.astro's wiring ([data-search-trigger]).
+      No href so it acts as a button; the fallback links to the docs for the
+      no-JS path, since search is JS-only. */}
+  <nldd-button
+    slot="actions"
+    variant="secondary"
+    text={t.search}
+    data-search-trigger
+  >
+    <a slot="fallback" href={docsHref}>{t.search}</a>
+  </nldd-button>
+  </nldd-inline-dialog>
+</nldd-simple-section>
