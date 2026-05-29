@@ -476,7 +476,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           q: 'Waarom een eigen regelformaat?',
           a: 'Het formaat is YAML met wettekst en machine-uitvoerbare regels naast elkaar in één bestand. Een versioned JSON Schema bewaakt de structuur, BDD-scenario’s leggen de bedoelde uitkomsten vast. Zo kunnen juristen meelezen, ontwikkelaars meebouwen, en verschillende overheidssystemen dezelfde regels gebruiken.',
-          link: { label: 'Lees RFC-001', href: '/rfcs/rfc-001' },
+          link: { label: 'Lees RFC-011', href: '/rfcs/rfc-011' },
         },
         {
           q: 'Hoe zou dit zich kunnen verhouden tot bestaande systemen?',
@@ -922,7 +922,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           q: 'Why a dedicated rule format?',
           a: 'The format is YAML, with legal text and machine-executable rules side by side in a single file. A versioned JSON Schema guards the structure, and BDD scenarios capture the intended outcomes. Legal experts can read along, developers can contribute, and different government systems can use the same rules.',
-          link: { label: 'Read RFC-001', href: '/rfcs/rfc-001' },
+          link: { label: 'Read RFC-011', href: '/rfcs/rfc-011' },
         },
         {
           q: 'How could this relate to existing systems?',

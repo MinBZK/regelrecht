@@ -4,6 +4,7 @@ import pagefind from 'astro-pagefind';
 import rehypeMermaid from 'rehype-mermaid';
 import { rehypeMermaidAlt } from './src/lib/rehype-mermaid-alt.ts';
 import { rehypeNlddCodeViewer } from './src/lib/rehype-nldd-code-viewer.ts';
+import { rehypeRfcMeta } from './src/lib/rehype-rfc-meta.ts';
 
 export default defineConfig({
   site: 'https://docs.regelrecht.rijks.app',
@@ -30,7 +31,7 @@ export default defineConfig({
     pagefind({ indexConfig: { forceLanguage: 'en' } }),
   ],
   markdown: {
-    // No Shiki: rehype-nldd-code-viewer turns every fenced block into <nldd-code-viewer>,
+    // No Shiki: rehype-nldd-code-viewer turns every fenced block into <nldd-code>,
     // which owns styling + (Prism) highlighting. Disabling Shiki also leaves
     // ```mermaid blocks as real <pre><code class="language-mermaid"> for
     // rehype-mermaid (it skips them via the language check).
@@ -58,6 +59,7 @@ export default defineConfig({
       ],
       rehypeMermaidAlt,
       rehypeNlddCodeViewer,
+      rehypeRfcMeta,
     ],
   },
   vite: {
