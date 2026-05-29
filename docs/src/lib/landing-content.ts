@@ -272,7 +272,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           title: 'Execution engine',
           meta: 'Rust + WebAssembly',
-          link: { label: 'Documentatie', href: '/docs/components/engine' },
+          link: { label: 'Documentatie', href: '/components/engine' },
           text: 'Een deterministische execution engine die de YAML-regels uitvoert. Werkt in Rust en compileert naar WebAssembly zodat dezelfde regels in de browser en op de server hetzelfde resultaat geven.',
         },
         {
@@ -283,7 +283,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           title: 'Editor',
           meta: 'Werk in uitvoering',
-          link: { label: 'Documentatie', href: '/docs/components/editor-api' },
+          link: { label: 'Documentatie', href: '/components/editor-api' },
           text: 'Een werkomgeving waarin juristen wetten machine-uitvoerbaar kunnen maken. We zijn aan het ontdekken hoe deze editor er precies uit moet zien.',
         },
         {
@@ -294,7 +294,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           title: 'Corpus',
           meta: 'Git-gebaseerd',
-          link: { label: 'Documentatie', href: '/docs/components/corpus' },
+          link: { label: 'Documentatie', href: '/components/corpus' },
           text: 'De bibliotheek van machine-uitvoerbare regels. Git verzorgt de versiegeschiedenis; een registry verbindt verschillende bronnen tot één geheel.',
         },
         {
@@ -718,7 +718,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           title: 'Execution engine',
           meta: 'Rust + WebAssembly',
-          link: { label: 'Documentation', href: '/docs/components/engine' },
+          link: { label: 'Documentation', href: '/components/engine' },
           text: 'A deterministic execution engine that runs the YAML rules. Written in Rust and compiled to WebAssembly so the same rules give the same result in the browser and on the server.',
         },
         {
@@ -729,7 +729,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           title: 'Editor',
           meta: 'Work in progress',
-          link: { label: 'Documentation', href: '/docs/components/editor-api' },
+          link: { label: 'Documentation', href: '/components/editor-api' },
           text: 'A working environment for legal experts to make laws machine-executable. We are still discovering what this editor should look like.',
         },
         {
@@ -740,7 +740,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           title: 'Corpus',
           meta: 'Git-based',
-          link: { label: 'Documentation', href: '/docs/components/corpus' },
+          link: { label: 'Documentation', href: '/components/corpus' },
           text: 'The library of machine-executable rules. Git handles the version history; a registry ties different sources into a single whole.',
         },
         {

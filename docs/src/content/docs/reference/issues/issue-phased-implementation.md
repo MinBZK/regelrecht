@@ -150,7 +150,7 @@ All `<redactie>` elements must be excluded from the extracted text. They are edi
 - [Staatsblad 2016, 288](https://zoek.officielebekendmakingen.nl/stb-2016-288.html) - Original KEI law
 - [Staatsblad 2017, 174](https://zoek.officielebekendmakingen.nl/stb-2017-174.html) - First implementation decree
 - [Staatsblad 2020, 99](https://zoek.officielebekendmakingen.nl/stb-2020-99.html) - Tax cassation implementation
-- [KEI Overview](https://www.rijksoverheid.nl/onderwerpen/rechtspraak-en-geschiloplossing/kwaliteit-en-innovatie-kei-rechtspraak) - Government info page
+- [Rechtspraak en geschiloplossing](https://www.rijksoverheid.nl/onderwerpen/rechtspraak-en-geschiloplossing) - Government info page (the KEI-specific subpage has been retired)
 
 ## Test Data
 

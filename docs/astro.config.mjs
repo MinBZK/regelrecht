@@ -1,6 +1,7 @@
 import { defineConfig } from 'astro/config';
 import mdx from '@astrojs/mdx';
 import pagefind from 'astro-pagefind';
+import remarkGfm from 'remark-gfm';
 import rehypeMermaid from 'rehype-mermaid';
 import { rehypeMermaidAlt } from './src/lib/rehype-mermaid-alt.ts';
 import { rehypeNlddCodeViewer } from './src/lib/rehype-nldd-code-viewer.ts';
@@ -37,6 +38,12 @@ export default defineConfig({
     // ```mermaid blocks as real <pre><code class="language-mermaid"> for
     // rehype-mermaid (it skips them via the language check).
     syntaxHighlight: false,
+    // GFM tables (and the rest of GitHub-flavored markdown) parse into real
+    // <table> nodes that nldd-rich-text then styles. Astro enables gfm for
+    // plain .md by default, but @astrojs/mdx does not pick it up, so without
+    // this an MDX page renders a pipe table as raw text. Listing remark-gfm
+    // explicitly here covers both .md and .mdx (MDX extends markdown config).
+    remarkPlugins: [remarkGfm],
     // inline-svg renders the diagram as an inline <svg> in the DOM (not an
     // <img>), so its colours can be themed with CSS and follow the .dark
     // toggle. Mermaid's `base` theme with neutral themeVariables hands the
