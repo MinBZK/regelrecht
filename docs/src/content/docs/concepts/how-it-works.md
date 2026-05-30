@@ -72,7 +72,7 @@ The engine walks through the relevant articles, resolves all inputs, applies the
 To answer "does person X qualify for healthcare allowance?", the engine:
 
 1. Loads the *Zorgtoeslagwet*
-2. Looks at article 2, which needs: insurance status (from the Zorgverzekeringswet), allowance-partner status and income (from the AWIR), and the standard premium (from a ministerial regulation)
+2. Looks at article 2, which needs: insurance status (from the Zorgverzekeringswet), allowance-partner status and income (from the Awir), and the standard premium (from a ministerial regulation)
 3. Loads and executes those other laws automatically to get their values
 4. Runs the calculation
 5. Returns `heeft_recht_op_zorgtoeslag: true` and `hoogte_zorgtoeslag: 1234`
@@ -87,7 +87,7 @@ These ideas show up throughout the system. Each has a dedicated page with exampl
 
 ### Laws that reference each other
 
-Dutch laws reference each other constantly. The healthcare allowance law needs your income (defined by the AWIR), your insurance status (from the Zorgverzekeringswet), and your allowance-partner status (also from the AWIR). In YAML, an article declares a `source` block pointing to another law:
+Dutch laws reference each other constantly. The healthcare allowance law needs your income (defined by the Awir), your insurance status (from the Zorgverzekeringswet), and your allowance-partner status (also from the Awir). In YAML, an article declares a `source` block pointing to another law:
 
 ```yaml
 input:
@@ -135,7 +135,7 @@ On the data side, 342 municipalities, 12 provinces, and 21 water boards all prod
 
 Every execution produces a trace tree. The trace shows which articles were applied, which inputs were fetched and from where, which operations ran, and what each step produced. Think of it as an explanation of the legal reasoning in structured form.
 
-Traces show cross-law references ("income came from AWIR article 8"), IoC resolution ("standard premium came from Regeling standaardpremie"), and organizational boundaries ("income accepted from Tax Authority"). Citizens can request their trace from each contributing organization.
+Traces show cross-law references ("income came from Awir article 8"), IoC resolution ("standard premium came from Regeling standaardpremie"), and organizational boundaries ("income accepted from Tax Authority"). Citizens can request their trace from each contributing organization.
 
 ## Temporal versioning
 

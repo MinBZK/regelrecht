@@ -2,7 +2,7 @@
 title: "Cross-Law References"
 ---
 
-Dutch laws reference each other constantly. The Healthcare Allowance Act (*Zorgtoeslagwet*) needs your income, which is defined by the AWIR. It needs your insurance status, which comes from the Zorgverzekeringswet. It needs to know whether you have an allowance partner, which the AWIR determines.
+Dutch laws reference each other constantly. The Healthcare Allowance Act (*Zorgtoeslagwet*) needs your income, which is defined by the Awir. It needs your insurance status, which comes from the Zorgverzekeringswet. It needs to know whether you have an allowance partner, which the Awir determines.
 
 Rather than duplicating these definitions, each law declares what it needs from other laws. The engine follows these references automatically.
 
@@ -11,7 +11,7 @@ Rather than duplicating these definitions, each law declares what it needs from 
 An article declares its inputs. When an input has a `source` block pointing to another law, the engine loads that law, executes it with the specified parameters, and feeds the result back.
 
 ```yaml
-# Zorgtoeslagwet, article 2 - needs income from the AWIR
+# Zorgtoeslagwet, article 2 - needs income from the Awir
 input:
   - name: toetsingsinkomen
     type: amount
@@ -26,15 +26,15 @@ The engine loads `algemene_wet_inkomensafhankelijke_regelingen`, executes it for
 
 ## Chains of references
 
-References can chain. The Zorgtoeslagwet references the AWIR, which might reference the Wet inkomstenbelasting, which references the BRP. The engine resolves the full chain, loading and executing each law as needed.
+References can chain. The Zorgtoeslagwet references the Awir, which might reference the Wet inkomstenbelasting, which references the BRP. The engine resolves the full chain, loading and executing each law as needed.
 
 ```mermaid
 flowchart LR
-    ZT[Zorgtoeslagwet] -->|toetsingsinkomen| AWIR
+    ZT[Zorgtoeslagwet] -->|toetsingsinkomen| Awir
     ZT -->|is_verzekerd| ZVW[Zorgverzekeringswet]
     ZT -->|leeftijd| BRP[BRP]
     ZT -->|standaardpremie| RSP[Regeling standaardpremie]
-    AWIR -->|inkomen| WIB[Wet inkomstenbelasting]
+    Awir -->|inkomen| WIB[Wet inkomstenbelasting]
 ```
 
 Results are cached: if two laws both need the same value from the BRP, it is computed once.
