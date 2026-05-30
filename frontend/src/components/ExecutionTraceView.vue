@@ -113,13 +113,13 @@ const overallStatus = computed(() => {
     <template v-if="result && traceText">
       <nldd-title size="5" class="etv-section-title"><span>Execution trace</span></nldd-title>
       <nldd-spacer size="8"></nldd-spacer>
-      <nldd-code-viewer>{{ traceText }}</nldd-code-viewer>
+      <pre class="etv-trace">{{ traceText }}</pre>
     </template>
 
     <template v-if="error && traceText && !result">
       <nldd-title size="5" class="etv-section-title"><span>Partial trace (tot fout)</span></nldd-title>
       <nldd-spacer size="8"></nldd-spacer>
-      <nldd-code-viewer>{{ traceText }}</nldd-code-viewer>
+      <pre class="etv-trace">{{ traceText }}</pre>
       <template v-if="canReload">
         <nldd-spacer size="12"></nldd-spacer>
         <nldd-button size="md" text="Opnieuw uitvoeren" @click="emit('reload')"></nldd-button>
@@ -127,3 +127,18 @@ const overallStatus = computed(() => {
     </template>
   </template>
 </template>
+
+<style scoped>
+.etv-trace {
+  white-space: pre;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin: 0;
+}
+</style>

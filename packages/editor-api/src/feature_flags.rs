@@ -15,7 +15,7 @@ static DEFAULTS: LazyLock<HashMap<String, bool>> = LazyLock::new(|| {
         ("panel.scenario_form".into(), true),
         ("panel.yaml_editor".into(), true),
         ("panel.machine_readable".into(), true),
-        ("panel.law_graph".into(), false),
+        ("panel.law_graph".into(), true),
         // Notes pane (RFC-005/RFC-018). Default off: display-only MVP, notes
         // exist for one law so far. Must be registered here or the toggle PUT
         // 400s and the frontend silently reverts it (see the editor.* note

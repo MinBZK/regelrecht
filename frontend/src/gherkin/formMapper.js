@@ -33,6 +33,16 @@ const PATTERNS = [
       parameters: tableToParams(step.dataTable),
     }),
   },
+  // cucumber-rs grammar used by the .feature files in this repo's features/
+  // directory. The table has no header row — every row is a (name, value).
+  {
+    id: 'citizenDataTable',
+    pattern: /^a citizen with the following data:$/,
+    extract: (_match, step) => ({
+      type: 'parameterTable',
+      parameters: noHeaderTableToParams(step.dataTable),
+    }),
+  },
   {
     id: 'dependency',
     pattern: /^law "([^"]+)" is loaded$/,
@@ -64,6 +74,18 @@ const PATTERNS = [
     id: 'evaluate',
     pattern: /^I evaluate "([^"]+)" of "([^"]+)"$/,
     extract: (match) => ({ type: 'execution', outputName: match[1], lawId: match[2] }),
+  },
+  // cucumber-rs grammar: comma-separated outputs collapse to the first one;
+  // the editor's execution model is single-output. Sufficient for the form
+  // to wire up an execution + show a result.
+  {
+    id: 'executeLawForOutputs',
+    pattern: /^the law "([^"]+)" is executed for outputs "([^"]+)"$/,
+    extract: (match) => ({
+      type: 'execution',
+      outputName: match[2].split(',')[0].trim(),
+      lawId: match[1],
+    }),
   },
   {
     id: 'succeeds',
@@ -110,11 +132,53 @@ const PATTERNS = [
     pattern: /^output "([^"]+)" contains "([^"]+)"$/,
     extract: (match) => ({ type: 'assertion', assertionType: 'contains', outputName: match[1], value: match[2] }),
   },
+  // cucumber-rs grammar variants: "the output ..." prefix + quoted booleans.
+  // The quoted-boolean pattern must come before the generic quoted-string
+  // pattern so "true"/"false" classify as boolean assertions.
+  {
+    id: 'outputTheBoolQuoted',
+    pattern: /^the output "([^"]+)" is "(true|false)"$/,
+    extract: (match) => ({
+      type: 'assertion',
+      assertionType: 'boolean',
+      outputName: match[1],
+      value: match[2] === 'true',
+    }),
+  },
+  {
+    id: 'outputTheEqualsNumeric',
+    pattern: /^the output "([^"]+)" is "(-?\d+(?:\.\d+)?)"$/,
+    extract: (match) => ({
+      type: 'assertion',
+      assertionType: 'equals',
+      outputName: match[1],
+      value: parseValue(match[2]),
+    }),
+  },
+  {
+    id: 'outputTheEqualsString',
+    pattern: /^the output "([^"]+)" is "([^"]*)"$/,
+    extract: (match) => ({
+      type: 'assertion',
+      assertionType: 'equalsString',
+      outputName: match[1],
+      value: match[2],
+    }),
+  },
 ];
 
 function tableToParams(dataTable) {
   if (!dataTable || dataTable.length < 2) return [];
   return dataTable.slice(1).map((row) => ({
+    name: row[0],
+    value: parseValue(row[1] || ''),
+  }));
+}
+
+// cucumber-rs "citizen data" tables have no header row.
+function noHeaderTableToParams(dataTable) {
+  if (!dataTable || dataTable.length === 0) return [];
+  return dataTable.map((row) => ({
     name: row[0],
     value: parseValue(row[1] || ''),
   }));

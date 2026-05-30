@@ -247,17 +247,27 @@ impl RepoBackend for LocalBackend {
 
     async fn list_files(&self, dir: &Path, extension: Option<&str>) -> Result<Vec<FileEntry>> {
         let abs = self.resolve(dir)?;
+        tracing::info!(abs = %abs.display(), ext = ?extension, "DEBUG list_files");
         let mut entries = Vec::new();
 
         let mut read_dir = match tokio::fs::read_dir(&abs).await {
             Ok(rd) => rd,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(entries),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                tracing::info!(abs = %abs.display(), "DEBUG dir NotFound");
+                return Ok(entries);
+            }
             Err(e) => return Err(e.into()),
         };
 
         while let Some(entry) = read_dir.next_entry().await? {
-            let ft = entry.file_type().await?;
-            if !ft.is_file() {
+            let path = entry.path();
+            // tokio::fs::metadata follows symlinks; entry.metadata() does not.
+            // Scenario `.feature` files in the corpus are checked-in symlinks
+            // into the top-level `features/` directory, so we must follow.
+            let Ok(md) = tokio::fs::metadata(&path).await else {
+                continue;
+            };
+            if !md.is_file() {
                 continue;
             }
             let path = entry.path();
@@ -474,17 +484,27 @@ impl RepoBackend for GitBackend {
 
     async fn list_files(&self, dir: &Path, extension: Option<&str>) -> Result<Vec<FileEntry>> {
         let abs = self.resolve(dir)?;
+        tracing::info!(abs = %abs.display(), ext = ?extension, "DEBUG list_files");
         let mut entries = Vec::new();
 
         let mut read_dir = match tokio::fs::read_dir(&abs).await {
             Ok(rd) => rd,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(entries),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                tracing::info!(abs = %abs.display(), "DEBUG dir NotFound");
+                return Ok(entries);
+            }
             Err(e) => return Err(e.into()),
         };
 
         while let Some(entry) = read_dir.next_entry().await? {
-            let ft = entry.file_type().await?;
-            if !ft.is_file() {
+            let path = entry.path();
+            // tokio::fs::metadata follows symlinks; entry.metadata() does not.
+            // Scenario `.feature` files in the corpus are checked-in symlinks
+            // into the top-level `features/` directory, so we must follow.
+            let Ok(md) = tokio::fs::metadata(&path).await else {
+                continue;
+            };
+            if !md.is_file() {
                 continue;
             }
             let path = entry.path();
@@ -766,17 +786,27 @@ impl RepoBackend for SessionGitBackend {
 
     async fn list_files(&self, dir: &Path, extension: Option<&str>) -> Result<Vec<FileEntry>> {
         let abs = self.resolve(dir)?;
+        tracing::info!(abs = %abs.display(), ext = ?extension, "DEBUG list_files");
         let mut entries = Vec::new();
 
         let mut read_dir = match tokio::fs::read_dir(&abs).await {
             Ok(rd) => rd,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(entries),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                tracing::info!(abs = %abs.display(), "DEBUG dir NotFound");
+                return Ok(entries);
+            }
             Err(e) => return Err(e.into()),
         };
 
         while let Some(entry) = read_dir.next_entry().await? {
-            let ft = entry.file_type().await?;
-            if !ft.is_file() {
+            let path = entry.path();
+            // tokio::fs::metadata follows symlinks; entry.metadata() does not.
+            // Scenario `.feature` files in the corpus are checked-in symlinks
+            // into the top-level `features/` directory, so we must follow.
+            let Ok(md) = tokio::fs::metadata(&path).await else {
+                continue;
+            };
+            if !md.is_file() {
                 continue;
             }
             let path = entry.path();

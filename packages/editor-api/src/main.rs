@@ -433,7 +433,7 @@ async fn serve(
         tokio::task::JoinHandle<Result<(), tower_sessions::session_store::Error>>,
     >,
 ) {
-    let addr = SocketAddr::from(([0, 0, 0, 0], 8000));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 8008));
     tracing::info!("listening on {addr}");
 
     let listener = tokio::net::TcpListener::bind(addr)
