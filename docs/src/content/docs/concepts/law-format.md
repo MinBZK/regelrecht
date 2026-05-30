@@ -120,7 +120,8 @@ Operations are the building blocks of law logic:
 | **Arithmetic** | `ADD`, `SUBTRACT`, `MULTIPLY`, `DIVIDE` | `values: [...]` |
 | **Aggregate** | `MIN`, `MAX` | `values: [...]` |
 | **Comparison** | `EQUALS`, `GREATER_THAN`, `LESS_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN_OR_EQUAL` | `subject:`, `value:` |
-| **Logical** | `AND`, `OR`, `NOT` | `conditions: [...]` (`NOT` wraps one condition) |
+| **Logical** | `AND`, `OR` | `conditions: [...]` |
+| **Logical** | `NOT` | `value:` (wraps a single operation) |
 | **Collection** | `IN`, `LIST` | `IN`: `subject:`, `values: [...]`; `LIST`: `items: [...]` |
 | **Conditional** | `IF` (alias `SWITCH`) | `cases: [{when:, then:}]`, `default:` |
 | **Date** | `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK` | `AGE`: `date_of_birth:`, `reference_date:`; `DATE_ADD`: `date:` + `years:`/`months:`/`days:`; `DATE`: `year:`, `month:`, `day:`; `DAY_OF_WEEK`: `date:` |
