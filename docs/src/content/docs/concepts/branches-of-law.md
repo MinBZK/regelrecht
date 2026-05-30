@@ -33,7 +33,7 @@ Bestuursrecht is the natural home for machine-readable law. Government bodies ap
 
 Eligibility checks, benefit calculations, permit conditions: these follow deterministic if/then logic with defined inputs and outputs. The engine's cross-law reference mechanism maps directly to how administrative law works, where higher laws delegate to lower regulations and ministeriële regelingen fill in concrete values.
 
-The corpus already contains the Awb, Participatiewet, Zorgtoeslag, WLZ, and Zorgverzekeringswet. The sheer number of laws, regulations, and policy rules that interact is what makes scaling hard.
+The corpus already contains the Awb, Participatiewet, Zorgtoeslag, Wlz, and Zorgverzekeringswet. The sheer number of laws, regulations, and policy rules that interact is what makes scaling hard.
 
 ### Belastingrecht (Tax Law)
 
