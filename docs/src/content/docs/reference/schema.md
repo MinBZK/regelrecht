@@ -28,7 +28,7 @@ This table is the single source of truth for which schema version introduced whi
 | v0.4.0 | `open_terms`, `implements` (IoC); `legal_character`; `date` and `array` value types | [RFC-003](/rfcs/rfc-003) |
 | v0.3.2 | Minor fixes | |
 | v0.3.1 | Patch release | |
-| v0.3.0 | Cross-law references (`source`) | |
+| v0.3.0 | Cross-law reference refinements | |
 | v0.2.0 | Initial public schema: `regulatory_layer`, `competent_authority`, `execution.produces`, cross-law references (`source`) | [RFC-001](/rfcs/rfc-001), [RFC-002](/rfcs/rfc-002) |
 
 Multi-organization execution ([RFC-009](/rfcs/rfc-009)) reuses `competent_authority` (v0.2.0) and adds no schema construct of its own.
