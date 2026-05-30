@@ -25,18 +25,24 @@ function walk(dir) {
   return out;
 }
 
-// Map every URL path the site serves -> set of element ids on that page.
-const files = walk(DIST);
-const pageIds = new Map(); // route (no trailing slash, no .html) -> Set<id>
-const routes = new Set();
-const htmlByFile = new Map(); // read each file once, reuse for the link scan below
-
 function routeFor(file) {
   let r = '/' + relative(DIST, file).replace(/\\/g, '/');
   r = r.replace(/index\.html$/, '').replace(/\.html$/, '');
   if (r.length > 1 && r.endsWith('/')) r = r.slice(0, -1);
   return r === '' ? '/' : r;
 }
+
+function normalize(route) {
+  if (route.length > 1 && route.endsWith('/')) route = route.slice(0, -1);
+  return route === '' ? '/' : route;
+}
+
+// First pass: read each file once, record the route it serves and the set of
+// element ids on it. Cache the HTML so the link scan below does not re-read.
+const files = walk(DIST);
+const pageIds = new Map(); // route (no trailing slash, no .html) -> Set<id>
+const routes = new Set();
+const htmlByFile = new Map();
 
 for (const f of files) {
   const html = readFileSync(f, 'utf8');
@@ -49,11 +55,7 @@ for (const f of files) {
   pageIds.set(route, ids);
 }
 
-function normalize(route) {
-  if (route.length > 1 && route.endsWith('/')) route = route.slice(0, -1);
-  return route === '' ? '/' : route;
-}
-
+// Second pass: scan every <a href> and verify it resolves.
 const problems = [];
 const externalHosts = new Set();
 
@@ -90,10 +92,9 @@ for (const f of files) {
       // The page is served at <route> with NO trailing slash (nginx try_files
       // serves <route>/index.html for the slash-less URL, no redirect). So a
       // browser resolves "./x" relative to the slash-less URL: it replaces the
-      // last segment. Model exactly that — base is the route itself, not the
+      // last segment. Model exactly that: base is the route itself, not the
       // route + "/". This matches what a user navigating via the slash-less
-      // nav links actually experiences. We also record whether the SAME link
-      // would break had the user arrived on the trailing-slash variant.
+      // nav links actually experiences.
       target = new URL(path, 'http://x' + fromRoute).pathname;
     }
     target = normalize(target);
