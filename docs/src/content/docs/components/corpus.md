@@ -44,9 +44,11 @@ use std::path::Path;
 // corpus-registry.local.yaml override when present.
 let registry = CorpusRegistry::load(Path::new("corpus-registry.yaml"), None)?;
 
-// load_all_sources_async includes GitHub sources; pass the auth file when
-// private repositories need a token.
-let source_map = registry.load_all_sources_async(None).await?;
+// load_all_sources_async includes GitHub sources. Pass the auth file when
+// private repositories need a token, or None when all sources are public.
+let source_map = registry
+    .load_all_sources_async(Some(Path::new("corpus-auth.yaml")))
+    .await?;
 
 let law = source_map.get_law("zorgtoeslagwet");
 ```

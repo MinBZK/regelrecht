@@ -56,7 +56,7 @@ CI uses path filters to determine which checks to run:
 | `editor-api` | `packages/editor-api/`, `packages/corpus/`, `packages/pipeline/`, `packages/harvester/` |
 | `docs` | `docs/` |
 
-The `ci` group includes `frontend/`, so frontend changes also trigger the Rust checks (the editor image bundles the editor-api binary). Docs-only changes skip the Rust checks and run just the docs accessibility gate (`just docs-a11y`).
+The `ci` group includes `frontend/`, so frontend changes also trigger the Rust checks (the editor is shipped as one image built from `frontend/` plus the `editor-api` Rust binary that serves it). Docs-only changes skip the Rust checks and run just the docs accessibility gate (`just docs-a11y`).
 
 ## Further reading
 

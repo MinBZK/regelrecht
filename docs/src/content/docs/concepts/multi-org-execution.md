@@ -17,16 +17,21 @@ This distinction determines the execution boundary. A calculation can be run by 
 
 ## How the engine decides
 
-A law that produces a formal decision declares `competent_authority`. It sits at the top level of the law (or inside a `machine_readable` section), as a sibling of `execution`, not inside `execution.produces`:
+A law that produces a formal decision declares `competent_authority`. The schema allows it at the top level of the law or inside a `machine_readable` section; it is **not** a field of `execution.produces`. The corpus uses the top-level form (see `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`):
 
 ```yaml
+$id: zorgtoeslagwet
 competent_authority: belastingdienst_toeslagen
+# ...
 
-# ... elsewhere, the article's execution declares what it produces:
-execution:
-  produces:
-    legal_character: BESCHIKKING
-    decision_type: TOEKENNING
+# elsewhere, an article's execution declares what it produces:
+articles:
+  - number: "2"
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
 ```
 
 When the engine hits a cross-law reference and needs to resolve it, the intended decision tree is:
