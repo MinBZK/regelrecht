@@ -1,5 +1,6 @@
 ---
 title: "RegelRecht Validation: From Analysis-First to Execution-First"
+description: "The full research background for RegelRecht's execution-first validation method, fifteen years in the making."
 ---
 
 ## Problem statement

@@ -1,5 +1,6 @@
 ---
 title: "How RegelRecht Works"
+description: "A plain-language walkthrough of the core ideas behind turning legislation into executable files."
 ---
 
 RegelRecht turns Dutch legislation into structured files that a computer can execute. This page explains the core ideas.

@@ -1,5 +1,6 @@
 ---
 title: "Testing"
+description: "The testing strategies RegelRecht uses, led by Gherkin BDD scenarios run with cucumber-rs."
 ---
 
 RegelRecht uses multiple testing strategies to ensure correctness.

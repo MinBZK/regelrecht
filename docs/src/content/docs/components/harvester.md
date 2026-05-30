@@ -1,5 +1,6 @@
 ---
 title: "Harvester"
+description: "Downloads Dutch legislation from BWB and CVDR and converts it into the corpus YAML format."
 ---
 
 The harvester downloads Dutch legislation and converts it to the RegelRecht YAML format. It handles two sources: national law from the BWB (Basiswettenbestand / wetten.nl) and decentralized regulations from the CVDR (Centrale Voorziening Decentrale Regelgeving). The CLI picks the right source from the identifier, so `BWBR…` IDs are fetched from BWB and `CVDR…` IDs from the CVDR.

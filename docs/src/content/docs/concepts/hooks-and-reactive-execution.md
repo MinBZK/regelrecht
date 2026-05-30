@@ -1,5 +1,6 @@
 ---
 title: "Hooks and Reactive Execution"
+description: "How cross-cutting laws like the Awb apply to decisions automatically, without being called explicitly."
 ---
 
 Some laws apply to every government decision without being called explicitly. The General Administrative Law Act (Algemene wet bestuursrecht, Awb) is the main example: whenever any government body issues a formal decision (*beschikking*), Awb rules about reasoning requirements, objection periods, and notification deadlines kick in automatically.
