@@ -194,25 +194,25 @@ This is the current pipeline. The AI generates a candidate rule specification an
 
 The expert reviews the proposal *before* scenarios are run. This is the phase missing from the current pipeline and it draws on insights from Wetsanalyse:
 
-**B1. Completeness check**, Are all articles covered? Did the AI skip articles that contain executable logic? This is analogous to the scope step (step 1) of Wetsanalyse, but after the fact: not "what will we analyze" but "has everything been analyzed."
+**B1. Completeness check**: Are all articles covered? Did the AI skip articles that contain executable logic? This is analogous to the scope step (step 1) of Wetsanalyse, but after the fact: not "what will we analyze" but "has everything been analyzed."
 
-**B2. Assumption assessment**, Reverse validation has flagged assumptions. The expert assesses each one: is this a defensible choice, or does it need to change? This addresses the risk of implicit interpretation choices.
+**B2. Assumption assessment**: Reverse validation has flagged assumptions. The expert assesses each one: is this a defensible choice, or does it need to change? This addresses the risk of implicit interpretation choices.
 
-**B3. Interpretation inventory**, Where does the law allow multiple readings? Which reading did the AI pick? Is it defensible? This is analogous to the meaning step (step 3) of Wetsanalyse, but reactive: not "what does this mean" but "is the AI's reading correct." This step counters automation bias.
+**B3. Interpretation inventory**: Where does the law allow multiple readings? Which reading did the AI pick? Is it defensible? This is analogous to the meaning step (step 3) of Wetsanalyse, but reactive: not "what does this mean" but "is the AI's reading correct." This step counters automation bias.
 
 ### Phase C: Scenario validation (workshop)
 
 The expert validates the *behavior* of the specification, not the YAML itself. This is the heart of the method:
 
-**C1. Walk through MvT scenarios**, The engine runs scenarios from parliamentary documents. The expert checks whether outcomes match legislative intent.
+**C1. Walk through MvT scenarios**: The engine runs scenarios from parliamentary documents. The expert checks whether outcomes match legislative intent.
 
-**C2. Build adversarial scenarios**, This is where the expert is irreplaceable. The AI has no access to case law, implementation practice, or political context. The expert builds scenarios that stress-test the specification:
+**C2. Build adversarial scenarios**: This is where the expert is irreplaceable. The AI has no access to case law, implementation practice, or political context. The expert builds scenarios that stress-test the specification:
 - Edge cases from practice and case law
 - Exception paths ("unless" clauses)
 - Boundary values (just above/below thresholds)
 - Concurrence situations (interaction between laws)
 
-**C3. Run adversarial scenarios**, The engine runs them. The expert checks the outcomes. Errors lead to iteration.
+**C3. Run adversarial scenarios**: The engine runs them. The expert checks the outcomes. Errors lead to iteration.
 
 ### Phase D: Wrap-up
 
