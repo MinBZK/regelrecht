@@ -31,10 +31,10 @@ References can chain. The Zorgtoeslagwet references the Awir, which might refere
 ```mermaid
 flowchart LR
     ZT[Zorgtoeslagwet] -->|toetsingsinkomen| Awir
-    ZT -->|is_verzekerd| ZVW[Zorgverzekeringswet]
-    ZT -->|leeftijd| BRP[BRP]
-    ZT -->|standaardpremie| RSP[Regeling standaardpremie]
+    ZT -->|heeft_toeslagpartner| Awir
+    ZT -->|is_verzekerde| ZVW[Zorgverzekeringswet]
     Awir -->|inkomen| WIB[Wet inkomstenbelasting]
+    WIB -->|persoonsgegevens| BRP[BRP]
 ```
 
 Results are cached: if two laws both need the same value from the BRP, it is computed once.
