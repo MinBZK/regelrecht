@@ -33,7 +33,7 @@ export const docsNav: DocsNavItem[] = [
     link: '/concepts/how-it-works',
     match: '/concepts/',
     summary:
-      'The core ideas — how law becomes executable code, references, delegation, and provenance.',
+      'The core ideas: how law becomes executable code, references, delegation, and provenance.',
     intro:
       'The ideas behind RegelRecht: how Dutch legislation is turned into executable code, how laws reference and delegate to one another, and how every result traces back to its legal source.',
   },
@@ -44,7 +44,7 @@ export const docsNav: DocsNavItem[] = [
     summary:
       'The building blocks: engine, corpus, pipeline, harvester, and the user-facing tools.',
     intro:
-      'A tour of the parts that make up RegelRecht — the execution engine and corpus at the core, the processing pipeline and harvester, and the editors and dashboards on top.',
+      'A tour of the parts that make up RegelRecht: the execution engine and corpus at the core, the processing pipeline and harvester, and the editors and dashboards on top.',
   },
   {
     text: 'Operations',
@@ -59,7 +59,7 @@ export const docsNav: DocsNavItem[] = [
     text: 'Auth & Roles',
     link: '/auth-and-roles',
     match: '/auth-and-roles',
-    summary: 'Who can do what — the authorization and role model.',
+    summary: 'Who can do what: the authorization and role model.',
   },
   {
     text: 'RFCs',

@@ -1,6 +1,6 @@
 ---
 title: "System Overview"
-description: "A high-level tour of the two pillars — the Corpus Juris and the Execution Engine — and how the pieces fit."
+description: "A high-level tour of the two pillars, the Corpus Juris and the Execution Engine, and how the pieces fit."
 ---
 
 RegelRecht is built on two pillars: the **Corpus Juris** (a git-versioned body of all Dutch law) and the **Execution Engine** (a runtime that evaluates laws deterministically).
