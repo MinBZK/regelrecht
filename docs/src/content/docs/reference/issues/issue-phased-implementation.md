@@ -1,5 +1,6 @@
 ---
 title: "Issue #2: Phased Implementation (Gefaseerde Inwerkingtreding)"
+description: "How laws that come into force in phases were handled in the harvester (resolved), kept as background."
 ---
 
 > **Resolved.** This issue is implemented in the harvester. Articles with a `<tussenkop>` version separator are now extracted as a single component (`has_version_separator` / `extract_full_article_content` in `packages/harvester/src/splitting/engine.rs`), and `<redactie>` editorial content is excluded (`is_editorial_content` + the registered `RedactieHandler`). The write-up below is kept as background on the problem and the chosen approach.

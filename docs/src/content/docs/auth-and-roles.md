@@ -1,5 +1,6 @@
 ---
 title: "Authentication & Roles"
+description: "The layered role model that gates the editor and harvester-admin services, and how it maps to Keycloak."
 ---
 
 This page describes the role model that gates the editor and harvester-admin

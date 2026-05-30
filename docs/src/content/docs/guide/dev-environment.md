@@ -1,5 +1,6 @@
 ---
 title: "Development Environment"
+description: "How the local stack runs — infrastructure in Docker and application services natively with hot reload."
 ---
 
 ## Architecture

@@ -1,5 +1,6 @@
 ---
 title: "Execution Engine"
+description: "The deterministic Rust runtime at the core of RegelRecht that evaluates machine-readable law."
 ---
 
 The execution engine is the core of RegelRecht: a deterministic Rust runtime that evaluates machine-readable Dutch law.

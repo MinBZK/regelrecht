@@ -1,5 +1,6 @@
 ---
 title: "Lawmaking Frontend"
+description: "Visualizes the Dutch legislative process as an interactive, step-through flow diagram."
 ---
 
 The lawmaking frontend visualizes the Dutch legislative process as an interactive flow diagram.

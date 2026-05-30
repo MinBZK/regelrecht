@@ -1,5 +1,6 @@
 ---
 title: "Schema Reference"
+description: "The JSON schema every law YAML file must conform to, and how versioned schema URLs work."
 ---
 
 The law format is defined by a JSON Schema. All law YAML files in the corpus must conform to this schema.

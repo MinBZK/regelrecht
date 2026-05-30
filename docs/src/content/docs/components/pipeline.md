@@ -1,5 +1,6 @@
 ---
 title: "Pipeline"
+description: "A PostgreSQL-backed job queue that orchestrates and tracks the law-processing workflow."
 ---
 
 The pipeline is a PostgreSQL-backed job queue and law status tracking system that orchestrates the law processing workflow.

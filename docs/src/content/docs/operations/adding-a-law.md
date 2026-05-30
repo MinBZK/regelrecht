@@ -1,5 +1,6 @@
 ---
 title: "Adding a Law"
+description: "A step-by-step walkthrough from downloading a law's text to running tests against it."
 ---
 
 This guide walks through adding a new law to the corpus, from downloading the legal text to running tests against it.

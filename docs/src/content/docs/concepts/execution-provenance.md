@@ -1,5 +1,6 @@
 ---
 title: "Execution Provenance"
+description: "How every result can be reproduced later by pinning the regulation, schema, and engine version."
 ---
 
 Government agencies must be able to reproduce a specific decision months or years later, with the exact same result. Dutch administrative law requires this (Awb Art. 3:46, the AERIUS rulings), and the EU AI Act makes it mandatory for high-risk systems from August 2026.

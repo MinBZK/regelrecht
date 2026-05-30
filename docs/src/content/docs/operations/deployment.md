@@ -1,5 +1,6 @@
 ---
 title: "Deployment"
+description: "How components are built and deployed to ZAD (RIG/Quattro/rijksapps) through GitHub Actions."
 ---
 
 All components are deployed to ZAD (RIG/Quattro/rijksapps) via GitHub Actions. Docker images are pushed to GitHub Container Registry (GHCR).
