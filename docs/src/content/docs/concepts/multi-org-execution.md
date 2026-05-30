@@ -17,35 +17,44 @@ This distinction determines the execution boundary. A calculation can be run by 
 
 ## How the engine decides
 
-Each article that produces a formal decision declares `competent_authority`:
+A law that produces a formal decision declares `competent_authority`. The engine reads it from the top level of the law (or from a `machine_readable` section); it is **not** a field of `execution.produces`. The JSON schema defines `competent_authority` on the `machine_readable` section, but the top-level form is accepted too (the top-level object does not reject extra keys), and that is what the corpus uses, often as a `#`-reference into the law's definitions (see `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`):
 
 ```yaml
-execution:
-  produces:
-    legal_character: BESCHIKKING
-    decision_type: TOEKENNING
-    competent_authority: belastingdienst_toeslagen
+$id: zorgtoeslagwet
+competent_authority: '#bevoegd_gezag'   # top-level, resolved from definitions
+# ...
+
+# elsewhere, an article's execution declares what it produces:
+articles:
+  - number: "2"
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
 ```
 
-When the engine hits a cross-law reference and needs to resolve it, the decision tree is:
+When the engine hits a cross-law reference and needs to resolve it, the intended decision tree is:
 
 1. Does the target article produce a BESCHIKKING? If no: **execute locally** (it is just a calculation)
 2. Is `competent_authority` declared? If no: **execute locally** with a warning
 3. Is the competent authority the same organization running this engine? If yes: **execute locally**
 4. Otherwise: **accept** the other organization's determination
 
+Step 4 (accepting an external authority's determination) belongs to the federated modes below and is not yet implemented; in the current Solo mode the engine always executes locally.
+
 ## Execution modes
 
-The engine supports four modes, based on two independent choices:
+The design ([RFC-009](/rfcs/rfc-009)) describes four modes, based on two independent choices, **connectivity** (Solo or Federated) and **legal status** (Simulation or Authoritative):
 
 | | Simulation | Authoritative |
 |---|---|---|
 | **Solo** (local only) | Execute everything locally. No identity, unsigned outputs. Good for exploring the full chain. | Execute with identity. Sign outputs. No cross-org calls. |
 | **Federated** (cross-org) | Identity + real calls to other engines. Unsigned outputs. For testing inter-org flows. | Identity + real calls + signed outputs. Production mode. |
 
-**Solo simulation** is the default. Anyone can explore the full calculation chain for any law without needing credentials or organizational identity. This is what runs in the browser editor.
+Today the engine implements only **Solo / Simulation**: it executes everything locally with no organizational identity and unsigned outputs. This is the default and is what runs in the browser editor.
 
-**Federated authoritative** is production mode. Each engine identifies as a specific organization, calls other organizations' engines through FSC (Federated Service Connectivity), and signs its outputs cryptographically.
+The other three modes are the proposed end state. **Federated authoritative** is the eventual production mode, where each engine identifies as a specific organization, calls other organizations' engines through FSC (Federated Service Connectivity), and signs its outputs cryptographically. Federated connectivity, the Authoritative legal status, FSC calls, and output signing are not implemented yet.
 
 ## What the trace shows
 
@@ -57,6 +66,6 @@ A citizen requesting their trace can see: "your income was determined by the Tax
 
 ## Further reading
 
-- [Hooks and Reactive Execution](./hooks-and-reactive-execution) - how AWB rules apply across organizations
+- [Hooks and Reactive Execution](./hooks-and-reactive-execution) - how Awb rules apply across organizations
 - [Federated Corpus](./federated-corpus) - how different organizations maintain their own law files
 - [RFC-009: Multi-Org Execution](/rfcs/rfc-009) - the full design specification

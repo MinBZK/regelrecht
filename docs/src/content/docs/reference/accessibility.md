@@ -79,12 +79,12 @@ team measured the real ratio in the browser and excluded these elements from the
 automated check, with a note in the configuration:
 
 - **Diagrams (Mermaid).** Diagrams render as inline SVG, with text on transparent
-  layers where axe cannot read the colour behind it. The measured ratio is 14.4:1
+  layers where axe cannot read the color behind it. The measured ratio is 14.4:1
   for text in flow and state diagrams (dark blue on light blue) and well above the
-  requirement for the C4 diagrams (white on dark blue). The diagram colours come
+  requirement for the C4 diagrams (white on dark blue). The diagram colors come
   from the NLDD palette.
 - **Code samples.** Code blocks carry a light and a dark theme on the same
-  element; the test mixes the two colour sets and measures a blend that never
+  element; the test mixes the two color sets and measures a blend that never
   appears on screen. The text that does appear clears the 4.5:1 that AA asks for
   in both modes.
 

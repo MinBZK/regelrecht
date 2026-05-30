@@ -2,9 +2,11 @@
 title: "Issue #2: Phased Implementation (Gefaseerde Inwerkingtreding)"
 ---
 
+> **Resolved.** This issue is implemented in the harvester. Articles with a `<tussenkop>` version separator are now extracted as a single component (`has_version_separator` / `extract_full_article_content` in `packages/harvester/src/splitting/engine.rs`), and `<redactie>` editorial content is excluded (`is_editorial_content` + the registered `RedactieHandler`). The write-up below is kept as background on the problem and the chosen approach.
+
 ## Problem Summary
 
-Articles with phased implementation ("gefaseerde inwerkingtreding") contain **multiple versions of the same article content** within a single XML `<artikel>` element. The harvester currently splits by `<lid>` (paragraph), producing duplicate article numbers like `8:36c.1` appearing twice.
+Articles with phased implementation ("gefaseerde inwerkingtreding") contain **multiple versions of the same article content** within a single XML `<artikel>` element. Splitting naively by `<lid>` (paragraph) would produce duplicate article numbers like `8:36c.1` appearing twice; the harvester therefore detects the version separator and keeps such articles whole (see the resolution note above).
 
 ## Affected Laws
 
@@ -36,7 +38,7 @@ As of 2024, **both versions remain valid simultaneously**:
 
 ## XML Structure
 
-See AWB XML from wetten.nl (article 8:36c, lines 6685-6731)
+See Awb XML from wetten.nl (article 8:36c, lines 6685-6731)
 
 ```xml
 <artikel label="Artikel 8:36c" inwerking="2020-04-15" bron="Stb.2016-288">
@@ -150,9 +152,9 @@ All `<redactie>` elements must be excluded from the extracted text. They are edi
 - [Staatsblad 2016, 288](https://zoek.officielebekendmakingen.nl/stb-2016-288.html) - Original KEI law
 - [Staatsblad 2017, 174](https://zoek.officielebekendmakingen.nl/stb-2017-174.html) - First implementation decree
 - [Staatsblad 2020, 99](https://zoek.officielebekendmakingen.nl/stb-2020-99.html) - Tax cassation implementation
-- [KEI Overview](https://www.rijksoverheid.nl/onderwerpen/rechtspraak-en-geschiloplossing/kwaliteit-en-innovatie-kei-rechtspraak) - Government info page
+- [Rechtspraak en geschiloplossing](https://www.rijksoverheid.nl/onderwerpen/rechtspraak-en-geschiloplossing) - Government info page (the KEI-specific subpage has been retired)
 
 ## Test Data
 
-- XML source: AWB from wetten.nl
+- XML source: Awb from wetten.nl
 - Article 8:36c location: lines 6685-6731

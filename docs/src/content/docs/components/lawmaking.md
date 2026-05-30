@@ -16,7 +16,7 @@ The app presents the legislative process as an animated, step-through diagram. U
 
 - **Simple** - the basic legislative path
 - **Advanced** - detailed stages and decision points
-- **Wet open overheid (WOO)** - the process through the lens of open government law
+- **Wet open overheid (Woo)** - the process through the lens of open government law
 
 No backend is needed. Flow data is defined as static JavaScript modules in `src/data/`.
 

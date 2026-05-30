@@ -10,17 +10,19 @@ The primary testing approach uses Gherkin feature files executed by [cucumber-rs
 
 ### Feature Files
 
-Located in `features/`, these describe expected law behavior:
+Located in `features/`, these describe expected law behavior. Use the step phrasings the cucumber-rs suite actually defines (`packages/engine/tests/bdd/steps/`); a minimal scenario looks like:
 
 ```gherkin
-Feature: Kinderbijslag
+Feature: Healthcare allowance
 
-  Scenario: Parent with two children receives kinderbijslag
-    Given the law "wet_kinderbijslag"
-    And input "aantal_kinderen" is 2
-    When the law is executed
-    Then output "heeft_recht" should be true
+  Scenario: Output is present for an eligible person
+    Given the calculation date is "2025-01-01"
+    When the law "zorgtoeslagwet" is executed for outputs "hoogte_zorgtoeslag"
+    Then the execution succeeds
+    And the output "hoogte_zorgtoeslag" is "123400"
 ```
+
+Laws that need source data (BRP, Belastingdienst, etc.) provide it with data-table steps such as `Given the following RVIG "personal_data" data:`. See `features/zorgtoeslag.feature` for a complete, data-driven example.
 
 ### Running BDD Tests
 

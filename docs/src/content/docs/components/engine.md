@@ -72,7 +72,7 @@ Articles can define multiple outputs (e.g., `heeft_recht_op_zorgtoeslag` and `ho
 
 ### Privacy by Design
 
-Callers must explicitly list the outputs they need. There's no "return all" mode. The engine returns requested outputs plus any causally-entailed outputs from hooks and overrides (a beschikking is legally indivisible — AWB consequences like motivering and bezwaartermijn cannot be stripped).
+Callers must explicitly list the outputs they need. There's no "return all" mode. The engine returns requested outputs plus any causally-entailed outputs from hooks and overrides (a beschikking is legally indivisible, Awb consequences like motivering and bezwaartermijn cannot be stripped).
 
 ### Rust API
 
@@ -102,7 +102,7 @@ Each output is tagged with how it was produced:
 | Provenance | Meaning |
 |------------|---------|
 | `Direct` | Produced by the article's own actions |
-| `Reactive` | Produced by a hook (e.g., AWB firing on BESCHIKKING) |
+| `Reactive` | Produced by a hook (e.g., Awb firing on BESCHIKKING) |
 | `Override` | Produced by a lex specialis override (RFC-007) |
 
 The `output_provenance` field appears in `ArticleResult`, WASM results, CLI output, and the Execution Receipt. It's omitted when empty (e.g., simple articles with no hooks).
@@ -135,22 +135,23 @@ const result = engine.execute(
 }
 ```
 
-The `output_name` (singular) field is still accepted for backwards compatibility.
+The `output_name` (singular) field is still accepted for backward compatibility.
 
 ## Operations
 
-The engine supports 21 operations for expressing legal logic:
+The engine supports 21 schema operations for expressing legal logic:
 
 | Category | Operations |
 |----------|-----------|
-| **Comparison** | `EQUALS`, `NOT_EQUALS`, `GREATER_THAN`, `LESS_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN_OR_EQUAL` |
-| **Arithmetic** | `ADD`, `SUBTRACT`, `MULTIPLY`, `DIVIDE` |
-| **Aggregate** | `MAX`, `MIN` |
-| **Logical** | `AND`, `OR` |
-| **Conditional** | `IF` (when/then/else), `SWITCH` (cases/default) |
-| **Null checking** | `IS_NULL`, `NOT_NULL` |
-| **Membership** | `IN`, `NOT_IN` |
-| **Date** | `SUBTRACT_DATE` (with unit: days/months/years) |
+| **Comparison** (5) | `EQUALS`, `GREATER_THAN`, `LESS_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN_OR_EQUAL` |
+| **Arithmetic** (4) | `ADD`, `SUBTRACT`, `MULTIPLY`, `DIVIDE` |
+| **Aggregate** (2) | `MAX`, `MIN` |
+| **Logical** (3) | `AND`, `OR`, `NOT` |
+| **Conditional** (1) | `IF` (`cases: [{when, then}]` + `default`; `SWITCH` is an accepted alias) |
+| **Collection** (2) | `IN`, `LIST` |
+| **Date** (4) | `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK` |
+
+Negation is expressed by wrapping a positive operation in `NOT`: `NOT` around `EQUALS` for "not equal", `NOT` around `IN` for "not in". A null check is `EQUALS` against `value: null` (wrap it in `NOT` for "is not null"). For backward compatibility the engine also accepts the aliases `NOT_EQUALS`, `IS_NULL`, `NOT_NULL`, and `NOT_IN`, but these are **not** part of the schema: YAML using them executes correctly yet fails schema validation, so new laws should use the `NOT` / `EQUALS null` forms instead.
 
 See [RFC-004](/rfcs/rfc-004) for the full specification.
 
@@ -253,11 +254,11 @@ engine.hasLaw(lawId): boolean
 engine.unloadLaw(lawId): boolean
 engine.lawCount(): number
 engine.version(): string
+engine.resolveNote(lawId, selector): ResolvedNote
+engine.resolveNotes(lawId, annotationsYaml: string): ResolvedNote[]
 ```
 
-::: warning WASM Limitations
-Open term resolution (`open_terms` / `implements` IoC pattern) is not yet available in the WASM build. Cross-law references work when all referenced laws are pre-loaded via `loadLaw()`.
-:::
+> **WASM limitations.** Open term resolution (`open_terms` / `implements` IoC pattern) is not yet available in the WASM build. Cross-law references work when all referenced laws are pre-loaded via `loadLaw()`.
 
 ## Security Limits
 

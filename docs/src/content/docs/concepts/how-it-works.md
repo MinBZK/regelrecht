@@ -72,7 +72,7 @@ The engine walks through the relevant articles, resolves all inputs, applies the
 To answer "does person X qualify for healthcare allowance?", the engine:
 
 1. Loads the *Zorgtoeslagwet*
-2. Looks at article 2, which needs: age (from the BRP), insurance status (from the Zorgverzekeringswet), income (from the AWIR), and the standard premium (from a ministerial regulation)
+2. Looks at article 2, which needs: insurance status (from the Zorgverzekeringswet), allowance-partner status and income (from the Awir), and the standard premium (from a ministerial regulation)
 3. Loads and executes those other laws automatically to get their values
 4. Runs the calculation
 5. Returns `heeft_recht_op_zorgtoeslag: true` and `hoogte_zorgtoeslag: 1234`
@@ -87,7 +87,7 @@ These ideas show up throughout the system. Each has a dedicated page with exampl
 
 ### Laws that reference each other
 
-Dutch laws reference each other constantly. The healthcare allowance law needs your income (defined by the AWIR), your insurance status (from the Zorgverzekeringswet), and your age (from the BRP). In YAML, an article declares a `source` block pointing to another law:
+Dutch laws reference each other constantly. The healthcare allowance law needs your income (defined by the Awir), your insurance status (from the Zorgverzekeringswet), and your allowance-partner status (also from the Awir). In YAML, an article declares a `source` block pointing to another law:
 
 ```yaml
 input:
@@ -111,23 +111,23 @@ See [Inversion of Control](./inversion-of-control).
 
 ### Laws that fire automatically
 
-The General Administrative Law Act (AWB) applies to every government decision without being called explicitly. When any law produces a *beschikking*, AWB rules about objection periods and reasoning requirements kick in through hooks. Neither law knows about the other. See [Hooks and Reactive Execution](./hooks-and-reactive-execution).
+The General Administrative Law Act (Awb) applies to every government decision without being called explicitly. When any law produces a *beschikking*, Awb rules about objection periods and reasoning requirements kick in through hooks. Neither law knows about the other. See [Hooks and Reactive Execution](./hooks-and-reactive-execution).
 
 ### Overrides (lex specialis)
 
-Sometimes a specific law overrides a general rule. The Aliens Act (*Vreemdelingenwet*) article 69 says: *"in afwijking van artikel 6:7 Awb bedraagt de termijn vier weken"* — departing from the AWB's standard 6-week objection period. This is modeled with `overrides`: the specific law unilaterally replaces a value from the general law. The AWB does not know it is being overridden. This only applies when the overriding law is part of the execution chain. See [Hooks and Reactive Execution](./hooks-and-reactive-execution#overrides-lex-specialis).
+Sometimes a specific law overrides a general rule. The Aliens Act (*Vreemdelingenwet*) article 69 says: *"in afwijking van artikel 6:7 Awb bedraagt de termijn vier weken"*, departing from the Awb's standard 6-week objection period. This is modeled with `overrides`: the specific law unilaterally replaces a value from the general law. The Awb does not know it is being overridden. This only applies when the overriding law is part of the execution chain. See [Hooks and Reactive Execution](./hooks-and-reactive-execution#overrides-lex-specialis).
 
 ### Untranslatables
 
-The engine's operation set is deliberately small. When a legal construct cannot be faithfully expressed — rounding rules, complex table lookups, discretionary assessments — it is flagged as an **untranslatable** rather than approximated. The engine can error, warn, or propagate taint through downstream outputs, depending on the mode. This prevents silent divergence between law text and machine-readable interpretation. See [Untranslatables](./untranslatables).
+The engine's operation set is deliberately small. When a legal construct cannot be faithfully expressed, rounding rules, complex table lookups, discretionary assessments, it is flagged as an **untranslatable** rather than approximated. The engine can error, warn, or propagate taint through downstream outputs, depending on the mode. This prevents silent divergence between law text and machine-readable interpretation. See [Untranslatables](./untranslatables).
 
 ### Execution provenance
 
-Every execution produces a receipt: a sealed envelope containing the engine version, schema version, all loaded regulations (with content hashes), input parameters, outputs, and trace. This makes every decision reproducible and auditable, satisfying legal requirements from the Awb, AERIUS rulings, and EU AI Act. For cross-organisation decisions, the receipt also captures the provenance of accepted values from other authorities. See [Execution Provenance](./execution-provenance).
+Every execution produces a receipt: a sealed envelope containing the engine version, schema version, all loaded regulations (with content hashes), input parameters, outputs, and trace. This makes every decision reproducible and auditable, satisfying legal requirements from the Awb, AERIUS rulings, and EU AI Act. For cross-organization decisions, the receipt also captures the provenance of accepted values from other authorities. See [Execution Provenance](./execution-provenance).
 
 ### Organizational boundaries and federated corpus
 
-Different government organizations handle different parts of the law chain. The Tax Authority determines income, the Allowances Service determines healthcare allowance, municipalities handle social assistance. The engine models these boundaries and supports both simulation mode (compute everything locally) and authoritative mode (exchange signed results between organizations). See [Multi-Org Execution](./multi-org-execution).
+Different government organizations handle different parts of the law chain. The Tax Authority determines income, the Allowances Service determines healthcare allowance, municipalities handle social assistance. The engine models these boundaries. Today it runs in simulation mode (compute everything locally); the authoritative mode that exchanges signed results between organizations is the proposed end state, not yet implemented. See [Multi-Org Execution](./multi-org-execution).
 
 On the data side, 342 municipalities, 12 provinces, and 21 water boards all produce their own regulations. The [federated corpus](./federated-corpus) model lets each authority maintain their own law files in their own Git repository while the engine discovers and loads them through a registry.
 
@@ -135,7 +135,7 @@ On the data side, 342 municipalities, 12 provinces, and 21 water boards all prod
 
 Every execution produces a trace tree. The trace shows which articles were applied, which inputs were fetched and from where, which operations ran, and what each step produced. Think of it as an explanation of the legal reasoning in structured form.
 
-Traces show cross-law references ("income came from AWIR article 8"), IoC resolution ("standard premium came from Regeling standaardpremie"), and organizational boundaries ("income accepted from Tax Authority"). Citizens can request their trace from each contributing organization.
+Traces show cross-law references ("income came from Awir article 8"), IoC resolution ("standard premium came from Regeling standaardpremie"), and organizational boundaries ("income accepted from Tax Authority"). Citizens can request their trace from each contributing organization.
 
 ## Temporal versioning
 

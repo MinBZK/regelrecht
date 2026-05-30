@@ -15,7 +15,7 @@ When a PR is opened or updated:
 3. A preview deployment named `pr{N}` is created on ZAD
 4. The PR gets a comment with preview URLs
 
-Only changed components are rebuilt. The editor is always built (it is the primary interface).
+Only changed components are rebuilt. Any component can also be forced to build by adding its `deploy:<component>` label to the PR (for example `deploy:editor`).
 
 ### On merge to main
 
@@ -37,6 +37,7 @@ The preview deployment and its GHCR images are cleaned up automatically.
 | Admin | `regelrecht-admin` | `harvester-admin.regelrecht.rijks.app` |
 | Harvester Worker | `regelrecht-harvester-worker` | (no web UI) |
 | Enrich Worker | `regelrecht-enrich-worker` | (no web UI) |
+| Pipeline API | `regelrecht-pipeline-api` | (no public URL; reached in-cluster) |
 | Lawmaking | `regelrecht-lawmaking` | `lawmaking.regelrecht.rijks.app` |
 | Docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` + `regelrecht.rijks.app` (landing) |
 | Grafana | `regelrecht-grafana` | `grafana.regelrecht.rijks.app` |

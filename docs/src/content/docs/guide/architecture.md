@@ -33,22 +33,29 @@ C4Container
 
     System_Boundary(rr, "RegelRecht") {
         Container(editor, "Editor", "Vue 3 / Vite", "Law editing and browsing")
+        Container(editorapi, "Editor API", "Rust / Axum", "Serves the editor and corpus REST API")
         Container(engine, "Engine", "Rust / WASM", "Deterministic law execution")
         Container(pipeline, "Pipeline", "Rust / PostgreSQL", "Job queue and law status tracking")
-        Container(harvester, "Harvester", "Rust", "Downloads laws from BWB")
+        Container(harvester, "Harvester", "Rust", "Downloads laws from BWB / CVDR")
+        Container(enrich, "Enrich Worker", "Rust / LLM", "Adds machine_readable sections")
         Container(admin, "Admin", "Rust + Vue", "Operations dashboard")
         ContainerDb(corpus, "Corpus Juris", "Git / YAML", "All laws in machine-readable format")
         ContainerDb(db, "PostgreSQL", "Database", "Job queue and law status")
     }
 
     Rel(user, editor, "Browses and edits laws")
+    Rel(editor, editorapi, "REST API calls")
     Rel(editor, engine, "Executes laws (WASM)")
-    Rel(editor, corpus, "Reads law files")
+    Rel(editorapi, corpus, "Reads and writes law files")
     Rel(harvester, corpus, "Writes harvested laws")
+    Rel(enrich, corpus, "Writes enriched laws")
     Rel(pipeline, db, "Manages jobs")
     Rel(pipeline, harvester, "Triggers harvesting")
+    Rel(pipeline, enrich, "Triggers enrichment")
     Rel(admin, db, "Monitors pipeline")
 ```
+
+The editor, TUI, lawmaking visualization, Grafana, and the engine's WASM/CLI builds are additional surfaces over the same engine and corpus; they are omitted here to keep the container view readable. See the [component docs](/components/engine) for each.
 
 ## Data Flow
 

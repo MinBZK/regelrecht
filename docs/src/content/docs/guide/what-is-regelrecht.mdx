@@ -74,7 +74,7 @@ Each article sits alongside the original legal text. The `machine_readable` sect
 
 ### Cross-Law References
 
-Dutch laws reference each other extensively. The Wet op de zorgtoeslag references the Zorgverzekeringswet, the AWIR, and the BRP. The engine resolves these dependencies automatically - if law A depends on a value computed by law B, the engine executes both.
+Dutch laws reference each other extensively. The Wet op de zorgtoeslag references the Zorgverzekeringswet, the Awir, and the BRP. The engine resolves these dependencies automatically - if law A depends on a value computed by law B, the engine executes both.
 
 ### Inversion of Control
 
@@ -90,17 +90,17 @@ Legislation is decentralized: municipalities, provinces, and water boards produc
 
 ### Administrative Procedures
 
-Individual decisions (*beschikkingen*) are not instant computations - they are administrative law processes spanning stages over time (application → review → decision → notification → objection). The AWB lifecycle is modeled as data in YAML, not hardcoded in the engine.
+Individual decisions (*beschikkingen*) are not instant computations - they are administrative law processes spanning stages over time (application → review → decision → notification → objection). The Awb lifecycle is modeled as data in YAML, not hardcoded in the engine.
 
 ## Design Principles
 
 | Principle | What It Means |
 |-----------|--------------|
 | **Zero domain knowledge** | No hardcoded holidays, tax rates, or special cases. Everything comes from law YAML. |
-| **Identical execution** | Browser, backend, editor — same inputs, same result. |
+| **Identical execution** | Browser, backend, editor: same inputs, same result. |
 | **Version control as governance** | Git history captures legislative evolution. Branches are proposals, merges are publication. |
 | **Traceability** | Every computed value points back to a specific article and paragraph. |
-| **Open by default** | Law, tooling, decisions — all publicly auditable. |
+| **Open by default** | Law, tooling, decisions: all publicly auditable. |
 
 ## Who is this for?
 

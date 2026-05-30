@@ -2,7 +2,7 @@
 title: "Grafana Monitoring"
 ---
 
-Grafana provides monitoring dashboards and alerting for the regelrecht platform.
+Grafana provides monitoring dashboards and alerting for the RegelRecht platform.
 
 ## Overview
 

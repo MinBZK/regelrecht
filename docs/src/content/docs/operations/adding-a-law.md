@@ -51,18 +51,19 @@ Fix any schema errors before proceeding.
 
 Derive test scenarios from the Memorie van Toelichting (MvT) - the explanatory memorandum that accompanies the law. The MvT contains worked examples of how the legislature intended the law to be applied.
 
-Create a Gherkin feature file in `features/`:
+Create a Gherkin feature file in `features/`. Use the step phrasings the cucumber-rs suite actually defines (see `packages/engine/tests/bdd/steps/` and the existing `features/*.feature` files for the full vocabulary). A minimal scenario looks like:
 
 ```gherkin
 Feature: Wet op de zorgtoeslag
 
-  Scenario: MvT example - single person with low income
-    Given the law "zorgtoeslagwet"
-    And the reference date is "2025-01-01"
-    And the parameter "bsn" is "999993653"
-    When I evaluate "hoogte_zorgtoeslag"
-    Then the result should be 123400
+  Scenario: MvT example - single person, output present
+    Given the calculation date is "2025-01-01"
+    When the law "zorgtoeslagwet" is executed for outputs "hoogte_zorgtoeslag"
+    Then the execution succeeds
+    And the output "hoogte_zorgtoeslag" is "123400"
 ```
+
+Laws that need source data (BRP, Belastingdienst, etc.) provide it with the data-table steps, for example `Given the following RVIG "personal_data" data:` followed by a table. See `features/zorgtoeslag.feature` for a complete, data-driven example.
 
 Run the tests:
 
