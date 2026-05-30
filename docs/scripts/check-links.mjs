@@ -29,6 +29,7 @@ function walk(dir) {
 const files = walk(DIST);
 const pageIds = new Map(); // route (no trailing slash, no .html) -> Set<id>
 const routes = new Set();
+const htmlByFile = new Map(); // read each file once, reuse for the link scan below
 
 function routeFor(file) {
   let r = '/' + relative(DIST, file).replace(/\\/g, '/');
@@ -39,6 +40,7 @@ function routeFor(file) {
 
 for (const f of files) {
   const html = readFileSync(f, 'utf8');
+  htmlByFile.set(f, html);
   const route = routeFor(f);
   routes.add(route);
   const ids = new Set();
@@ -56,8 +58,11 @@ const problems = [];
 const externalHosts = new Set();
 
 for (const f of files) {
-  const html = readFileSync(f, 'utf8');
+  const html = htmlByFile.get(f);
   const fromRoute = routeFor(f);
+  // Only matches double-quoted hrefs. Astro's built HTML always double-quotes
+  // attributes, so single-quoted/unquoted hrefs do not occur here; if that ever
+  // changes this regex would silently skip them.
   for (const m of html.matchAll(/<a\b[^>]*\shref="([^"]+)"/g)) {
     let href = m[1].trim();
     if (!href) continue;

@@ -68,7 +68,7 @@ waarbij `<OWNER>_<REPO>` een **deterministische slug** is van de coordinates: lo
 | `acme/regels` | `CORPUS_AUTH_ACME_REGELS_TOKEN` |
 | `tdjager/regelrecht-private-test` | `CORPUS_AUTH_TDJAGER_REGELRECHT_PRIVATE_TEST_TOKEN` |
 
-De centrale schrijfbare repo (`MinBZK/regelrecht-corpus`) gebruikt niet de afgeleide slug maar de vaste auth-ref `minbzk-central`, dus `CORPUS_AUTH_MINBZK_CENTRAL_TOKEN`.
+> **Let op:** de centrale schrijfbare repo (`MinBZK/regelrecht-corpus`) gebruikt **niet** de afgeleide slug maar de vaste auth-ref `minbzk-central`, dus de env var heet `CORPUS_AUTH_MINBZK_CENTRAL_TOKEN` (niet `CORPUS_AUTH_MINBZK_REGELRECHT_CORPUS_TOKEN`).
 
 De operator weet hoe ze env vars op het cluster moeten zetten, dat is omgevings-specifiek (ZAD, Kubernetes, docker-compose). Na de wijziging moet de editor-pod herstart worden zodat de nieuwe var wordt opgepikt. **Eén env var per repo**, als meerdere trajects naar dezelfde repo wijzen, is één configuratie genoeg.
 
