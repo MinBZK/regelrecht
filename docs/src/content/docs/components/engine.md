@@ -151,7 +151,7 @@ The engine supports 21 schema operations for expressing legal logic:
 | **Collection** (2) | `IN`, `LIST` |
 | **Date** (4) | `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK` |
 
-Negation is expressed by wrapping a positive operation in `NOT`: `NOT` around `EQUALS` for "not equal", `NOT` around `IN` for "not in". A null check is `EQUALS` against `value: null` (wrap it in `NOT` for "is not null"). For backward compatibility the engine also accepts the aliases `NOT_EQUALS`, `IS_NULL`, `NOT_NULL`, and `NOT_IN`, but these are **not** part of the v0.5.0 schema: YAML using them executes correctly yet fails schema validation, so new laws should use the `NOT` / `EQUALS null` forms instead.
+Negation is expressed by wrapping a positive operation in `NOT`: `NOT` around `EQUALS` for "not equal", `NOT` around `IN` for "not in". A null check is `EQUALS` against `value: null` (wrap it in `NOT` for "is not null"). For backward compatibility the engine also accepts the aliases `NOT_EQUALS`, `IS_NULL`, `NOT_NULL`, and `NOT_IN`, but these are **not** part of the schema: YAML using them executes correctly yet fails schema validation, so new laws should use the `NOT` / `EQUALS null` forms instead.
 
 See [RFC-004](/rfcs/rfc-004) for the full specification.
 
