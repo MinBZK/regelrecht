@@ -24,7 +24,7 @@ This table is the single source of truth for which schema version introduced whi
 |---------|-----------|-----|
 | v0.5.2 | `annotation-schema.json` for stand-off notes | [RFC-005](/rfcs/rfc-005), [RFC-018](/rfcs/rfc-018) |
 | v0.5.1 | Tag-based immutable schema URLs; refinements within the v0.5.x line | [RFC-013](/rfcs/rfc-013) |
-| v0.5.0 | `hooks`, `overrides` (reactive execution); `procedure`, `procedure_id` (AWB lifecycle); WOO support | [RFC-007](/rfcs/rfc-007), [RFC-008](/rfcs/rfc-008) |
+| v0.5.0 | `hooks`, `overrides` (reactive execution); `procedure`, `procedure_id` (Awb lifecycle); WOO support | [RFC-007](/rfcs/rfc-007), [RFC-008](/rfcs/rfc-008) |
 | v0.4.0 | `open_terms`, `implements` (IoC); `legal_character`; `date` and `array` value types | [RFC-003](/rfcs/rfc-003) |
 | v0.3.2 | Minor fixes | |
 | v0.3.1 | Patch release | |

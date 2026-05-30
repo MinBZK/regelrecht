@@ -10,7 +10,7 @@ Articles with phased implementation ("gefaseerde inwerkingtreding") contain **mu
 
 ## Affected Laws
 
-- **AWB (BWBR0005537)**: Artikel 8:36c - two versions of leden 1-4
+- **Awb (BWBR0005537)**: Artikel 8:36c - two versions of leden 1-4
 - **Mediawet 2008 (BWBR0025028)**: Artikel 2.88.5 - two different texts
 
 ## Legal Background
@@ -38,7 +38,7 @@ As of 2024, **both versions remain valid simultaneously**:
 
 ## XML Structure
 
-See AWB XML from wetten.nl (article 8:36c, lines 6685-6731)
+See Awb XML from wetten.nl (article 8:36c, lines 6685-6731)
 
 ```xml
 <artikel label="Artikel 8:36c" inwerking="2020-04-15" bron="Stb.2016-288">
@@ -156,5 +156,5 @@ All `<redactie>` elements must be excluded from the extracted text. They are edi
 
 ## Test Data
 
-- XML source: AWB from wetten.nl
+- XML source: Awb from wetten.nl
 - Article 8:36c location: lines 6685-6731

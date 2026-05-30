@@ -192,7 +192,7 @@ execution:
     decision_type: TOEKENNING      # Grant
 ```
 
-This enables the AWB procedure hooks ([RFC-008](/rfcs/rfc-008)).
+This enables the Awb procedure hooks ([RFC-008](/rfcs/rfc-008)).
 
 ### Type Specifications
 
@@ -213,7 +213,7 @@ The corpus is still small and growing. At the time of writing it spans three reg
 
 | Layer | Laws | Examples |
 |-------|------|---------|
-| WET | ~15 | Participatiewet, Zorgtoeslag, Zorgverzekeringswet, AWB, BW Boek 5 |
+| WET | ~15 | Participatiewet, Zorgtoeslag, Zorgverzekeringswet, Awb, BW Boek 5 |
 | MINISTERIELE_REGELING | 1 | Regeling standaardpremie (2 versions) |
 | GEMEENTELIJKE_VERORDENING | 2 | Amsterdam APV erfgrens, Diemen afstemmingsverordening |
 

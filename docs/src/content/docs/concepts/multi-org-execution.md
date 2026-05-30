@@ -66,6 +66,6 @@ A citizen requesting their trace can see: "your income was determined by the Tax
 
 ## Further reading
 
-- [Hooks and Reactive Execution](./hooks-and-reactive-execution) - how AWB rules apply across organizations
+- [Hooks and Reactive Execution](./hooks-and-reactive-execution) - how Awb rules apply across organizations
 - [Federated Corpus](./federated-corpus) - how different organizations maintain their own law files
 - [RFC-009: Multi-Org Execution](/rfcs/rfc-009) - the full design specification

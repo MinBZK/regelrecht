@@ -72,7 +72,7 @@ Articles can define multiple outputs (e.g., `heeft_recht_op_zorgtoeslag` and `ho
 
 ### Privacy by Design
 
-Callers must explicitly list the outputs they need. There's no "return all" mode. The engine returns requested outputs plus any causally-entailed outputs from hooks and overrides (a beschikking is legally indivisible, AWB consequences like motivering and bezwaartermijn cannot be stripped).
+Callers must explicitly list the outputs they need. There's no "return all" mode. The engine returns requested outputs plus any causally-entailed outputs from hooks and overrides (a beschikking is legally indivisible, Awb consequences like motivering and bezwaartermijn cannot be stripped).
 
 ### Rust API
 
@@ -102,7 +102,7 @@ Each output is tagged with how it was produced:
 | Provenance | Meaning |
 |------------|---------|
 | `Direct` | Produced by the article's own actions |
-| `Reactive` | Produced by a hook (e.g., AWB firing on BESCHIKKING) |
+| `Reactive` | Produced by a hook (e.g., Awb firing on BESCHIKKING) |
 | `Override` | Produced by a lex specialis override (RFC-007) |
 
 The `output_provenance` field appears in `ArticleResult`, WASM results, CLI output, and the Execution Receipt. It's omitted when empty (e.g., simple articles with no hooks).

@@ -18,7 +18,7 @@ Dutch legal terminology used throughout RegelRecht, with English translations.
 
 | Dutch | English | Description |
 |-------|---------|-------------|
-| **Algemene wet bestuursrecht (AWB)** | General Administrative Law Act | Framework law for government decision-making |
+| **Algemene wet bestuursrecht (Awb)** | General Administrative Law Act | Framework law for government decision-making |
 | **Beschikking** | Administrative decision | A decision by a government body affecting an individual |
 | **Aanvraag** | Application | A request for a decision from a government body |
 | **Bezwaar** | Objection | First recourse against a decision |

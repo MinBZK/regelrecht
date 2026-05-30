@@ -2,7 +2,7 @@
 title: "Execution Provenance"
 ---
 
-Government agencies must be able to reproduce a specific decision months or years later, with the exact same result. Dutch administrative law requires this (AWB Art. 3:46, the AERIUS rulings), and the EU AI Act makes it mandatory for high-risk systems from August 2026.
+Government agencies must be able to reproduce a specific decision months or years later, with the exact same result. Dutch administrative law requires this (Awb Art. 3:46, the AERIUS rulings), and the EU AI Act makes it mandatory for high-risk systems from August 2026.
 
 Determinism within a single execution is necessary but not sufficient. Reproducibility requires pinning three things: the regulation YAML, the schema version it conforms to, and the engine version that executed it.
 
@@ -75,7 +75,7 @@ A reproducible decision with a sealed receipt is a different animal from an opaq
 
 ## Further reading
 
-- [Hooks and Reactive Execution](./hooks-and-reactive-execution) - AWB procedure hooks
+- [Hooks and Reactive Execution](./hooks-and-reactive-execution) - Awb procedure hooks
 - [Multi-Org Execution](./multi-org-execution) - cross-organization value exchange
 - [RFC-013: Execution Provenance](/rfcs/rfc-013) - full specification
 - [RFC-014: Engine Conformance](/rfcs/rfc-014) - conformance test suite
