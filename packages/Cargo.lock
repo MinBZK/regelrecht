@@ -3670,6 +3670,7 @@ dependencies = [
 name = "regelrecht-editor-api"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "pretty_assertions",
  "regelrecht-auth",
@@ -3680,6 +3681,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml_ng",
+ "sha2",
  "sqlx",
  "tempfile",
  "time",

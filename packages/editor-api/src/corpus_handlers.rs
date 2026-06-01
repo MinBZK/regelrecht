@@ -1441,6 +1441,429 @@ pub struct ReloadResponse {
     pub law_count: usize,
 }
 
+// ---------------------------------------------------------------------------
+// Document endpoints
+// ---------------------------------------------------------------------------
+//
+// Documents live alongside laws in the writable-own backend's source
+// root under `documents/<traject-ref>/<rest>` so they share the
+// traject's branch, PR review and access control with the laws
+// themselves. The MVP allows two text-based extensions (`.md` and
+// `.txt`); binary uploads (PDF/images) and canvas-style collaboration
+// are explicit out-of-scope for fase 1.
+//
+// Optimistic concurrency uses a SHA-256 over the on-branch body as
+// the `ETag`. Returning a separate `PreconditionFailed` (412) lets
+// the frontend distinguish "your view is stale, reload" from "the
+// upstream raced us, retry" (409 `Conflict`).
+
+const ALLOWED_DOCUMENT_EXTENSIONS: &[&str] = &["md", "txt"];
+
+#[derive(Debug, Serialize)]
+pub struct TrajectDocumentListEntry {
+    /// Path relative to `documents/<traject-ref>/`, forward slashes.
+    pub path: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TrajectDocumentList {
+    pub documents: Vec<TrajectDocumentListEntry>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SaveDocumentResponse {
+    /// The new ETag after the save. Clients keep this for the next
+    /// PUT/DELETE's `If-Match` header.
+    pub etag: String,
+    /// Mirrors `SaveResponse.pr` — populated when the writable
+    /// backend surfaced a PR link.
+    pub pr: Option<SavePrInfo>,
+}
+
+/// Compute the document ETag used for optimistic-concurrency checks.
+/// Wrapped in double quotes per RFC 7232 so the header value can be
+/// returned verbatim.
+fn document_etag(content: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(content.as_bytes());
+    format!("\"{:x}\"", digest)
+}
+
+/// Validate a caller-supplied document path. The path lives under
+/// `documents/<traject-ref>/` so a traversal escape would land in
+/// another traject (worst case) or in the writable backend's law
+/// tree. Rules: non-empty; no leading `/`, no `\`, no NUL; no `.`
+/// or `..` segments; segments match `[a-z0-9._-]+`; the file
+/// extension is one of [`ALLOWED_DOCUMENT_EXTENSIONS`].
+fn validate_document_path(raw: &str) -> Result<(), (StatusCode, String)> {
+    if raw.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Pad mag niet leeg zijn".to_string(),
+        ));
+    }
+    if raw.starts_with('/') || raw.contains('\\') || raw.contains('\0') {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Ongeldige tekens in pad".to_string(),
+        ));
+    }
+    let segments: Vec<&str> = raw.split('/').collect();
+    for segment in &segments {
+        if segment.is_empty() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Pad bevat lege segmenten".to_string(),
+            ));
+        }
+        if *segment == "." || *segment == ".." || segment.starts_with('.') {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Pad mag geen '.' of '..' bevatten".to_string(),
+            ));
+        }
+        if !segment
+            .chars()
+            .all(|c| matches!(c, 'a'..='z' | '0'..='9' | '.' | '_' | '-'))
+        {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Pad mag alleen kleine letters, cijfers en '._-' bevatten".to_string(),
+            ));
+        }
+    }
+    // `segments` is non-empty because `raw` is non-empty (checked
+    // above) and `split('/')` always yields at least one element.
+    // Falling back to the empty string keeps the check side-effect-free
+    // even if that invariant ever drifted, and the extension lookup
+    // below then correctly rejects the empty filename.
+    let filename = segments.last().copied().unwrap_or("");
+    let ext = std::path::Path::new(filename)
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+    if !ALLOWED_DOCUMENT_EXTENSIONS.contains(&ext) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Alleen bestanden met extensie {} zijn toegestaan",
+                ALLOWED_DOCUMENT_EXTENSIONS
+                    .iter()
+                    .map(|e| format!(".{e}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// Source-relative base directory for documents in a traject.
+fn traject_documents_base(traject_ref: &str) -> PathBuf {
+    PathBuf::from("documents").join(traject_ref)
+}
+
+/// Get the writable-own backend for a traject. Documents have no
+/// per-law context, so we address the writable_own source directly via
+/// the id captured at `TrajectCorpus` construction time. Reading the
+/// id off `traject.writable_own_source_id` makes the invariant local —
+/// previously this function inferred it from
+/// `write_target_for_source.values().next()`, which relied on every
+/// value being identical (true today, but unenforced).
+async fn resolve_traject_documents_writer(
+    traject: &Arc<TrajectCorpus>,
+) -> Result<tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>, (StatusCode, String)> {
+    let entry = traject
+        .corpus
+        .backends
+        .get(&traject.writable_own_source_id)
+        .ok_or((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Writable backend not initialised".to_string(),
+        ))?;
+    if !entry.writable {
+        return Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()));
+    }
+    Ok(entry.backend.clone().lock_owned().await)
+}
+
+/// Read the `If-Match` header value, trimmed. `None` when absent or empty.
+fn extract_if_match(headers: &axum::http::HeaderMap) -> Option<String> {
+    headers
+        .get(axum::http::header::IF_MATCH)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Allowlist for the `Content-Type` of an incoming document PUT. The
+/// fase-1 endpoints only accept text bodies; semicolon-parameters
+/// (`; charset=utf-8`) are stripped before matching, and an empty or
+/// whitespace-only header is rejected — that input is malformed and
+/// must surface as `415` rather than slip through as "no content type".
+fn allowed_document_content_type(value: &str) -> bool {
+    let mime = value
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    matches!(mime.as_str(), "text/markdown" | "text/plain")
+}
+
+/// Check a client-supplied `If-Match` against the file's current state
+/// and return the current ETag (or `None` when the file does not yet
+/// exist). A `412 Precondition Failed` is surfaced on mismatch so the
+/// frontend can distinguish a stale-view conflict from a generic 409
+/// upstream race.
+///
+/// **`if_match = None` is intentionally a no-op.** The documents PUT
+/// has to support brand-new files where the client has no prior ETag
+/// to send, and DELETE accepts an unconditional remove for "kill it
+/// with fire" cleanup. Callers that need optimistic-concurrency
+/// guarantees MUST send the previously-issued ETag (or `*` for
+/// "match anything that exists"); silently absent headers fall
+/// through to a blind overwrite. The frontend composable
+/// `useTrajectDocuments` always echoes the last seen ETag, so this
+/// only matters for raw API consumers (curl, future tooling).
+async fn enforce_if_match(
+    backend: &dyn RepoBackend,
+    relative_path: &std::path::Path,
+    if_match: Option<&str>,
+) -> Result<Option<String>, (StatusCode, String)> {
+    let current = backend
+        .read_file(relative_path)
+        .await
+        .map_err(corpus_write_error("document"))?;
+    let current_etag = current.as_deref().map(document_etag);
+    if let Some(client) = if_match {
+        match (client, &current_etag) {
+            ("*", Some(_)) => {}
+            ("*", None) => {
+                return Err((
+                    StatusCode::PRECONDITION_FAILED,
+                    "Document bestaat (nog) niet".to_string(),
+                ))
+            }
+            (val, Some(etag)) if val == etag.as_str() => {}
+            _ => {
+                return Err((
+                    StatusCode::PRECONDITION_FAILED,
+                    "Document is intussen door iemand anders gewijzigd".to_string(),
+                ))
+            }
+        }
+    }
+    Ok(current_etag)
+}
+
+/// GET /api/trajects/{traject_ref}/corpus/documents
+///
+/// List all documents in the traject's documents folder, recursively.
+/// A fresh traject without any documents yet returns an empty list
+/// rather than 404 — the editor's sidebar shows "Geen documenten" and
+/// offers the create form.
+pub async fn list_traject_documents(
+    State(state): State<AppState>,
+    session: Session,
+    Path(traject_ref): Path<String>,
+) -> Result<Json<TrajectDocumentList>, (StatusCode, String)> {
+    let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let backend = resolve_traject_documents_writer(&traject).await?;
+    let base = traject_documents_base(&traject_ref);
+    let entries = backend
+        .list_files_recursive(&base, None)
+        .await
+        .map_err(|e| {
+            tracing::warn!(error = %e, "list_files_recursive on documents failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Kon documenten niet ophalen".to_string(),
+            )
+        })?;
+    // Filter at the API boundary too — the on-disk tree could carry a
+    // stray hand-committed file (e.g. an editor's `~` backup or a
+    // hidden `.DS_Store`) and the API should not advertise those.
+    let documents = entries
+        .into_iter()
+        .filter(|e| {
+            std::path::Path::new(&e.relative_path)
+                .extension()
+                .and_then(|s| s.to_str())
+                .is_some_and(|ext| ALLOWED_DOCUMENT_EXTENSIONS.contains(&ext))
+        })
+        .map(|e| TrajectDocumentListEntry {
+            path: e.relative_path,
+        })
+        .collect();
+    Ok(Json(TrajectDocumentList { documents }))
+}
+
+/// GET /api/trajects/{traject_ref}/corpus/documents/{*doc_path}
+///
+/// Returns the raw markdown/text body, an appropriate `Content-Type`,
+/// and an `ETag` header the client echoes back in `If-Match` on the
+/// next PUT/DELETE to detect a concurrent edit.
+pub async fn get_traject_document(
+    State(state): State<AppState>,
+    session: Session,
+    Path((traject_ref, doc_path)): Path<(String, String)>,
+) -> Result<axum::response::Response, (StatusCode, String)> {
+    use axum::response::IntoResponse;
+    validate_document_path(&doc_path)?;
+    let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let backend = resolve_traject_documents_writer(&traject).await?;
+    let relative_path = traject_documents_base(&traject_ref).join(&doc_path);
+    let content = backend
+        .read_file(&relative_path)
+        .await
+        .map_err(corpus_write_error("document"))?
+        .ok_or((StatusCode::NOT_FOUND, "Document niet gevonden".to_string()))?;
+    let etag = document_etag(&content);
+    let content_type = match std::path::Path::new(&doc_path)
+        .extension()
+        .and_then(|s| s.to_str())
+    {
+        Some("md") => "text/markdown; charset=utf-8",
+        _ => "text/plain; charset=utf-8",
+    };
+    Ok((
+        StatusCode::OK,
+        [
+            (axum::http::header::CONTENT_TYPE, content_type.to_string()),
+            (axum::http::header::ETAG, etag),
+        ],
+        content,
+    )
+        .into_response())
+}
+
+/// PUT /api/trajects/{traject_ref}/corpus/documents/{*doc_path}
+///
+/// Create or replace a document. Honors an optional `If-Match` header
+/// (the previously returned ETag) for optimistic concurrency, and
+/// returns the new ETag both in the response body and the response
+/// `ETag` header. New documents return `201 Created`; updates return
+/// `200 OK`.
+pub async fn save_traject_document(
+    State(state): State<AppState>,
+    session: Session,
+    Path((traject_ref, doc_path)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
+    body: String,
+) -> Result<axum::response::Response, (StatusCode, String)> {
+    use axum::response::IntoResponse;
+    validate_document_path(&doc_path)?;
+    let author = Some(require_editor_user(&session).await?);
+
+    // The body is always text in fase 1. A *missing* Content-Type is
+    // allowed because browsers occasionally omit it on
+    // `fetch(PUT, body: string)`; that gets treated as text/plain by
+    // the handler. A *present* Content-Type, however, must pass the
+    // allowlist — an empty value is rejected as malformed and a binary
+    // type (e.g. someone pointing the document endpoint at a PDF)
+    // fails closed (415) instead of silently landing in git as opaque
+    // bytes.
+    if let Some(ct) = headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+    {
+        if !allowed_document_content_type(ct) {
+            return Err((
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "Alleen text/markdown of text/plain is toegestaan".to_string(),
+            ));
+        }
+    }
+
+    let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let backend = resolve_traject_documents_writer(&traject).await?;
+    let relative_path = traject_documents_base(&traject_ref).join(&doc_path);
+
+    let if_match = extract_if_match(&headers);
+    let existed_before = enforce_if_match(&**backend, &relative_path, if_match.as_deref())
+        .await?
+        .is_some();
+
+    backend
+        .write_file(&relative_path, &body)
+        .await
+        .map_err(corpus_write_error("document"))?;
+
+    let message = if existed_before {
+        format!("Update document {doc_path}")
+    } else {
+        format!("Add document {doc_path}")
+    };
+    let outcome = backend
+        .persist(&WriteContext { message, author })
+        .await
+        .map_err(corpus_write_error("document"))?;
+
+    let new_etag = document_etag(&body);
+    let status = if existed_before {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
+    Ok((
+        status,
+        [(axum::http::header::ETAG, new_etag.clone())],
+        Json(SaveDocumentResponse {
+            etag: new_etag,
+            pr: outcome.pr.map(|pr| SavePrInfo {
+                url: pr.html_url,
+                number: pr.number,
+            }),
+        }),
+    )
+        .into_response())
+}
+
+/// DELETE /api/trajects/{traject_ref}/corpus/documents/{*doc_path}
+///
+/// Remove a document, optionally guarded by `If-Match` for a
+/// conflict-safe delete. A delete against a non-existent file returns
+/// `404` rather than a silent success: the editor's confirm-and-delete
+/// flow assumes the user just looked at the document, so absence
+/// signals real divergence (someone else removed it) worth surfacing.
+pub async fn delete_traject_document(
+    State(state): State<AppState>,
+    session: Session,
+    Path((traject_ref, doc_path)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<SaveResponse>, (StatusCode, String)> {
+    validate_document_path(&doc_path)?;
+    let author = Some(require_editor_user(&session).await?);
+
+    let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let backend = resolve_traject_documents_writer(&traject).await?;
+    let relative_path = traject_documents_base(&traject_ref).join(&doc_path);
+
+    let if_match = extract_if_match(&headers);
+    let existed = enforce_if_match(&**backend, &relative_path, if_match.as_deref())
+        .await?
+        .is_some();
+    if !existed {
+        return Err((StatusCode::NOT_FOUND, "Document niet gevonden".to_string()));
+    }
+
+    backend
+        .delete_file(&relative_path)
+        .await
+        .map_err(corpus_write_error("document"))?;
+
+    let outcome = backend
+        .persist(&WriteContext {
+            message: format!("Delete document {doc_path}"),
+            author,
+        })
+        .await
+        .map_err(corpus_write_error("document"))?;
+
+    Ok(Json(save_response_from_traject(outcome)))
+}
+
 #[cfg(test)]
 mod tests {
     //! Tests for the small, pure helpers in this module. The full
@@ -1585,5 +2008,227 @@ mod tests {
             Session,
             axum::extract::Path<(String, String, String)>,
         ) -> _ = delete_scenario;
+    }
+
+    // ---- Document helpers ----
+
+    #[test]
+    fn validate_document_path_accepts_simple_md() {
+        validate_document_path("notes.md").unwrap();
+        validate_document_path("mvt/concept.md").unwrap();
+        validate_document_path("a/b/c.txt").unwrap();
+        validate_document_path("with-dashes_and.dots.md").unwrap();
+    }
+
+    #[test]
+    fn validate_document_path_rejects_traversal() {
+        // The traject-folder prefix means a `..` would land in another
+        // traject, so it must be refused at the validation boundary.
+        assert!(validate_document_path("../escape.md").is_err());
+        assert!(validate_document_path("mvt/../escape.md").is_err());
+        assert!(validate_document_path("/leading.md").is_err());
+        assert!(validate_document_path("with\\backslash.md").is_err());
+        assert!(validate_document_path("with\0nul.md").is_err());
+    }
+
+    #[test]
+    fn validate_document_path_rejects_hidden_segments() {
+        // Dot-leading segments would let a local-checkout backend touch
+        // hidden filesystem entries (`.git`, `.env`); refuse them outright.
+        assert!(validate_document_path(".git").is_err());
+        assert!(validate_document_path(".env").is_err());
+        assert!(validate_document_path("mvt/.git/config").is_err());
+        assert!(validate_document_path(".DS_Store.md").is_err());
+    }
+
+    #[test]
+    fn validate_document_path_rejects_disallowed_extensions() {
+        assert!(validate_document_path("notes.pdf").is_err());
+        assert!(validate_document_path("notes.html").is_err());
+        assert!(validate_document_path("noextension").is_err());
+    }
+
+    #[test]
+    fn validate_document_path_rejects_uppercase_or_unicode() {
+        // Lowercase-only keeps the on-branch tree predictable across
+        // case-insensitive filesystems and avoids the "Notes.md" /
+        // "notes.md" duplicate-document footgun on macOS.
+        assert!(validate_document_path("NOTES.md").is_err());
+        assert!(validate_document_path("notités.md").is_err());
+    }
+
+    #[test]
+    fn validate_document_path_rejects_empty_or_blank() {
+        assert!(validate_document_path("").is_err());
+        assert!(validate_document_path("/").is_err());
+        assert!(validate_document_path("a//b.md").is_err());
+    }
+
+    #[test]
+    fn document_etag_is_quoted_hex() {
+        let etag = document_etag("hello world");
+        // RFC 7232 strong validator: quoted ASCII.
+        assert!(etag.starts_with('"') && etag.ends_with('"'));
+        // SHA-256 hex = 64 chars; +2 quotes.
+        assert_eq!(etag.len(), 66);
+        // Same input → same ETag.
+        assert_eq!(document_etag("hello world"), etag);
+        // Different input → different ETag.
+        assert_ne!(document_etag("hello world!"), etag);
+    }
+
+    #[test]
+    fn extract_if_match_trims_and_normalises() {
+        use axum::http::{HeaderMap, HeaderValue};
+        let mut h = HeaderMap::new();
+        assert!(extract_if_match(&h).is_none());
+
+        h.insert(axum::http::header::IF_MATCH, HeaderValue::from_static("  "));
+        assert!(extract_if_match(&h).is_none());
+
+        h.insert(
+            axum::http::header::IF_MATCH,
+            HeaderValue::from_static("\"abc\""),
+        );
+        assert_eq!(extract_if_match(&h).as_deref(), Some("\"abc\""));
+    }
+
+    #[test]
+    fn allowed_document_content_type_accepts_text_variants() {
+        // Mime parameters (charset, boundary) are stripped before
+        // matching so a normal `text/markdown; charset=utf-8` passes.
+        assert!(allowed_document_content_type("text/markdown"));
+        assert!(allowed_document_content_type(
+            "text/markdown; charset=utf-8"
+        ));
+        assert!(allowed_document_content_type("TEXT/PLAIN"));
+        assert!(allowed_document_content_type(
+            "text/plain; charset=US-ASCII"
+        ));
+    }
+
+    #[test]
+    fn allowed_document_content_type_rejects_binary_and_empty() {
+        // An explicit binary type — the protection against someone
+        // pointing the document endpoint at a PDF — must fail.
+        assert!(!allowed_document_content_type("application/pdf"));
+        assert!(!allowed_document_content_type("image/png"));
+        assert!(!allowed_document_content_type("application/octet-stream"));
+        // An empty Content-Type header is a malformed request; the
+        // allowlist refuses it explicitly instead of silently passing.
+        assert!(!allowed_document_content_type(""));
+        assert!(!allowed_document_content_type("   "));
+    }
+
+    // ---- enforce_if_match matrix ----
+
+    use async_trait::async_trait;
+    use regelrecht_corpus::backend::{
+        FileEntry, PersistOutcome, RepoBackend, WriteContext as CorpusWriteContext,
+    };
+    use regelrecht_corpus::error::Result as CorpusResult;
+    use std::path::Path as StdPath;
+
+    /// Read-only backend stub that pretends the file's body is
+    /// `Some(content)` (or `None` when the file is absent). Used to
+    /// drive `enforce_if_match` through all of its branches without an
+    /// axum harness.
+    struct StubBackend {
+        body: Option<String>,
+    }
+
+    #[async_trait]
+    impl RepoBackend for StubBackend {
+        async fn read_file(&self, _: &StdPath) -> CorpusResult<Option<String>> {
+            Ok(self.body.clone())
+        }
+        async fn write_file(&self, _: &StdPath, _: &str) -> CorpusResult<()> {
+            unreachable!("enforce_if_match never writes")
+        }
+        async fn delete_file(&self, _: &StdPath) -> CorpusResult<()> {
+            unreachable!("enforce_if_match never deletes")
+        }
+        async fn list_files(&self, _: &StdPath, _: Option<&str>) -> CorpusResult<Vec<FileEntry>> {
+            Ok(Vec::new())
+        }
+        async fn persist(&self, _: &CorpusWriteContext) -> CorpusResult<PersistOutcome> {
+            Ok(PersistOutcome::default())
+        }
+        async fn ensure_ready(&mut self) -> CorpusResult<()> {
+            Ok(())
+        }
+        fn is_writable(&self) -> bool {
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn enforce_if_match_returns_current_etag_when_no_precondition() {
+        // No `If-Match` header → no check; the caller still gets the
+        // current ETag back so a subsequent write can chain.
+        let backend = StubBackend {
+            body: Some("hello".to_string()),
+        };
+        let etag = enforce_if_match(&backend, StdPath::new("x"), None)
+            .await
+            .unwrap();
+        assert_eq!(etag.as_deref(), Some(document_etag("hello").as_str()));
+    }
+
+    #[tokio::test]
+    async fn enforce_if_match_returns_none_when_file_absent_and_no_precondition() {
+        let backend = StubBackend { body: None };
+        let etag = enforce_if_match(&backend, StdPath::new("x"), None)
+            .await
+            .unwrap();
+        assert!(etag.is_none());
+    }
+
+    #[tokio::test]
+    async fn enforce_if_match_412_on_etag_mismatch() {
+        let backend = StubBackend {
+            body: Some("hello".to_string()),
+        };
+        let err = enforce_if_match(&backend, StdPath::new("x"), Some("\"stale\""))
+            .await
+            .expect_err("must refuse stale etag");
+        assert_eq!(err.0, StatusCode::PRECONDITION_FAILED);
+    }
+
+    #[tokio::test]
+    async fn enforce_if_match_passes_on_exact_etag() {
+        let backend = StubBackend {
+            body: Some("hello".to_string()),
+        };
+        let etag = document_etag("hello");
+        let returned = enforce_if_match(&backend, StdPath::new("x"), Some(&etag))
+            .await
+            .unwrap();
+        assert_eq!(returned.as_deref(), Some(etag.as_str()));
+    }
+
+    #[tokio::test]
+    async fn enforce_if_match_wildcard_412_on_missing_file() {
+        // `If-Match: *` semantically means "match any existing version".
+        // Against a file that doesn't exist yet, the precondition fails.
+        let backend = StubBackend { body: None };
+        let err = enforce_if_match(&backend, StdPath::new("x"), Some("*"))
+            .await
+            .expect_err("must refuse `*` against missing file");
+        assert_eq!(err.0, StatusCode::PRECONDITION_FAILED);
+    }
+
+    #[tokio::test]
+    async fn enforce_if_match_wildcard_passes_on_any_existing_file() {
+        let backend = StubBackend {
+            body: Some("anything".to_string()),
+        };
+        let returned = enforce_if_match(&backend, StdPath::new("x"), Some("*"))
+            .await
+            .unwrap();
+        assert_eq!(
+            returned.as_deref(),
+            Some(document_etag("anything").as_str())
+        );
     }
 }

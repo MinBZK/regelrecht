@@ -299,6 +299,52 @@ pub fn law_id_from_source(source: &str) -> Option<&str> {
     Some(rest.split('/').next().unwrap_or(rest))
 }
 
+/// A parsed `regelrecht://...` URI. Annotations can target laws
+/// (`target.source`) and reference documents from their bodies
+/// (`body[SpecificResource].source`); both flavours share the same
+/// scheme so callers ask `parse_regelrecht_uri` once and match on the
+/// returned variant.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RegelrechtRef {
+    /// `regelrecht://<law_id>` or `regelrecht://<law_id>/<rest>`. The
+    /// trailing path is preserved verbatim for the engine to interpret.
+    Law { law_id: String, rest: String },
+    /// `regelrecht://doc/<traject_ref>/<relative_path>` — a document
+    /// inside the editor's `documents/<traject_ref>/...` tree.
+    Document {
+        traject_ref: String,
+        relative_path: String,
+    },
+}
+
+/// Parse a `regelrecht://...` URI.
+///
+/// Falls back to `None` for unrelated schemes (`https://...`,
+/// arbitrary strings). The document form takes priority when the
+/// first path segment is literally `doc`, so a law accidentally
+/// named `doc` would collide; that name is reserved.
+pub fn parse_regelrecht_uri(source: &str) -> Option<RegelrechtRef> {
+    let rest = source.strip_prefix("regelrecht://")?;
+    let (head, tail) = match rest.split_once('/') {
+        Some((h, t)) => (h, t),
+        None => (rest, ""),
+    };
+    if head == "doc" {
+        let (traject_ref, path) = tail.split_once('/')?;
+        if traject_ref.is_empty() || path.is_empty() {
+            return None;
+        }
+        return Some(RegelrechtRef::Document {
+            traject_ref: traject_ref.to_string(),
+            relative_path: path.to_string(),
+        });
+    }
+    Some(RegelrechtRef::Law {
+        law_id: head.to_string(),
+        rest: tail.to_string(),
+    })
+}
+
 /// Why a note's `target.source` is not an acceptable reference to the law
 /// the sidecar is being written for.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -417,6 +463,73 @@ annotations:
             Some("zorgtoeslagwet")
         );
         assert_eq!(law_id_from_source("https://example.com/x"), None);
+    }
+
+    #[test]
+    fn parse_regelrecht_uri_recognises_laws() {
+        assert_eq!(
+            parse_regelrecht_uri("regelrecht://zorgtoeslagwet"),
+            Some(RegelrechtRef::Law {
+                law_id: "zorgtoeslagwet".to_string(),
+                rest: "".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_regelrecht_uri("regelrecht://zorgtoeslagwet/hoogte#out"),
+            Some(RegelrechtRef::Law {
+                law_id: "zorgtoeslagwet".to_string(),
+                rest: "hoogte#out".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_regelrecht_uri_recognises_documents() {
+        assert_eq!(
+            parse_regelrecht_uri("regelrecht://doc/migratie-1a2b3c4d/notes.md"),
+            Some(RegelrechtRef::Document {
+                traject_ref: "migratie-1a2b3c4d".to_string(),
+                relative_path: "notes.md".to_string(),
+            })
+        );
+        // Nested paths are preserved verbatim.
+        assert_eq!(
+            parse_regelrecht_uri("regelrecht://doc/migratie-1a2b3c4d/mvt/concept.md"),
+            Some(RegelrechtRef::Document {
+                traject_ref: "migratie-1a2b3c4d".to_string(),
+                relative_path: "mvt/concept.md".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_regelrecht_uri_rejects_malformed() {
+        // No traject or no path.
+        assert_eq!(parse_regelrecht_uri("regelrecht://doc/foo"), None);
+        assert_eq!(parse_regelrecht_uri("regelrecht://doc/"), None);
+        assert_eq!(parse_regelrecht_uri("regelrecht://doc"), None);
+        // Non-regelrecht scheme.
+        assert_eq!(parse_regelrecht_uri("https://example.com/x"), None);
+    }
+
+    /// `doc` is reserved as the document-scheme head — a regulation
+    /// with `$id: doc` would silently parse as a `Document` instead of
+    /// a `Law` reference. Pin the precedence so a future change that
+    /// flips the order trips this test.
+    #[test]
+    fn parse_regelrecht_uri_treats_doc_as_reserved_head() {
+        // `regelrecht://doc/<traject>/<path>` resolves as Document
+        // even though `doc` is a syntactically valid law id slug.
+        assert!(matches!(
+            parse_regelrecht_uri("regelrecht://doc/traject-12345678/notes.md"),
+            Some(RegelrechtRef::Document { .. })
+        ));
+        // A scheme head that merely starts with `doc` (e.g. `docs`,
+        // `doctrine`) is a regular law id, NOT a document reference.
+        assert!(matches!(
+            parse_regelrecht_uri("regelrecht://docs/foo"),
+            Some(RegelrechtRef::Law { .. })
+        ));
     }
 
     #[test]
