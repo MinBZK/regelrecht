@@ -159,10 +159,14 @@ over juridische correctheid.
   bronnen-dossier + INDEX, WebFetch-ontginning.
 - `cycle-workflow.md` — de cyclus-motor: planning, loop-prompts, harvest, schema-migratie,
   eindrapport, micro-cycli.
+- `check-keten.md` — overzicht van alle checks op wets-zuiverheid & cross-law, met per
+  check het *orakel* (waartegen) en of het een CI-gate of methodologisch is.
 - `cross-law-integriteit.py` — herbruikbaar script voor de source-refs-integriteitsscan:
-  bouwt `regulation → outputs`, detecteert dangling source-bindingen en plain-param-
-  placeholders, en print de telling `clean / dangling / plain-param` (exit 1 bij
-  bevindingen). Corpus-agnostisch; draai als preflight in de `Valideer`-stap.
+  bouwt `regulation → outputs`, detecteert MISPLACED/DANGLING/PLAIN-PARAM source-bindingen
+  én IMPL-DANGLING (`implements` naar een niet-gedeclareerde open_term) / IMPL-NO-DATE
+  (implementing-regeling zonder `valid_from`), en print de telling (exit 1 bij bevindingen).
+  Corpus-agnostisch; draait ook als CI-gate (`cross-law-integrity` job) en als preflight
+  in de `Valideer`-stap.
 
 **templates/** — `cyclus-plan`, `loop-prompt`, `scheduled-routine`, `schema-migratie`,
 `harvest-rapport`, `mr-uitbreiding-rapport`, `validatie-review`, `synthese`,

@@ -123,6 +123,11 @@ pub struct LawEntry {
     pub status: LawStatusValue,
     pub harvest_job_id: Option<Uuid>,
     pub enrich_job_id: Option<Uuid>,
+    /// Completeness metric: fraction of articles that received a
+    /// `machine_readable` section during enrichment. This measures COVERAGE,
+    /// not CORRECTNESS — a score of 1.0 means every article was modelled, not
+    /// that the modelling is legally faithful. Correctness is checked elsewhere
+    /// (schema/cross-law gates, BDD, and the methodological drift/desk-review).
     pub coverage_score: Option<f64>,
     pub harvest_fail_count: i32,
     pub enrich_fail_count: i32,
