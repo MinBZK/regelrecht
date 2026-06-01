@@ -39,6 +39,8 @@ skill-namen te onthouden — zeg wat je wilt, de router triageert en dispatcht.
 > **Eén regel**: feitelijke defecten → naar binnen (desk); oordeels-/praktijkvragen → naar buiten (workshop).
 > Open norm = *acceptabele untranslatable* bij kenbare beslisser + kader, anders *wetgevings-fout*.
 
+Canonieke definities: `regelrecht-stelselanalyse/references/classification.md` — deze kaart is de spiekversie.
+
 ## Workshop: twee modi (gate is mode-afhankelijk)
 
 - **Verkennend** — vroeg, géén gate: domeinkennis ontginnen op een ruwe scope-analyse.

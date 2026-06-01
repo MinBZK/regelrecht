@@ -177,6 +177,8 @@ voor polling, `/schedule`-routine voor onbeheerd terugkerend werk): zie
 **scripts/** — `assert-private-repo.sh`: fail-closed guard die alleen doorlaat als de
 push-target een **private** GitHub-repo is (autonome routines mogen committen/pushen, maar
 alleen naar private repos). Draai als preflight vóór elke push; PUBLIC/INTERNAL → geweigerd.
+`test-assert-private-repo.sh` borgt de invarianten van die guard met gestubde `git`/`gh`
+(gitlab/enterprise/bitbucket → block, github-private → pass, onbereikbaar → block).
 
 **Zustersskills** (apart geïnstalleerd, geen bestand in deze skill):
 - `law-version-drift-check` — **Step 0** van elke micro-cyclus: spiegelt YAML-tekst tegen

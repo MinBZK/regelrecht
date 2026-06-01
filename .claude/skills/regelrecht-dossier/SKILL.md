@@ -33,6 +33,9 @@ buiten (workshop).** De vier-weg-classificatie van een bevinding bepaalt de best
 | wetgevings-fout | desk documenteert → wetgevings-notitie (stakeholders, niet de validatieworkshop) |
 | acceptabele untranslatable / interpretatie- of praktijk-onzeker | **workshop** |
 
+Canonieke definities + de open-norm-beslisregel: `regelrecht-stelselanalyse/references/classification.md`
+(één bron van waarheid; deze tabel is de routing-samenvatting).
+
 ## Triage: waar begin je?
 
 Stel (of leid af) een paar dingen vast, dan volgt de route:
