@@ -400,6 +400,21 @@ to fall back to a plain param. That assumption is false: schema v0.5.2 supports 
 `source:` bindings per article, and they resolve fine. When in doubt, bind for real and
 prove it with a BDD scenario.
 
+**Section placement — a `source:` MUST live under `input:`, NEVER under `parameters:`.**
+This is the single most common way a binding looks real but silently does nothing. The
+engine has two distinct structs: `Parameter` (the items under `parameters:`) has **no
+`source` field**, while `Input` (the items under `input:`) is the only one that carries
+`source`. A `source:` block placed under `parameters:` is therefore **dropped at parse time**
+— the value degrades to a plain caller-supplied parameter and cross-law resolution never
+fires. It will still "pass" any BDD scenario that injects the value directly, which hides
+the defect. Rule of thumb:
+- The cross-law-resolved value (the thing the other law produces) → declare under `input:` with its `source:`.
+- The leaf parameters that FEED that binding's `source.parameters` mapping → stay under `parameters:` as direct inputs.
+
+A binding only truly resolves when its `input:` entry is reached AND no overriding parameter
+of the same name is supplied. Verify with a BDD scenario that loads the target law and sets
+the *leaf* inputs (not the bound value), then asserts the dependent output flips.
+
 **Name-mismatch rule:** if the local input name differs from the target output name, put
 the *target's* output name in `source.output` and the *local* name in `name`, and note the
 difference in the `description`:

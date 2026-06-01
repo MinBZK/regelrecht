@@ -86,17 +86,26 @@ over juridische correctheid.
    is geen losse steekproef maar een volledig algoritme over het hele corpus:
    1. Bouw een map `regulation → set(action-outputs)` over het hele corpus (welke output
       produceert elke wet feitelijk).
-   2. Voor elke `source: { regulation, output }`: verifieer `output ∈ outputs[regulation]`.
-      Zo niet → **DANGLING**-bevinding (classificatie: **modellering-fout**).
-   3. Scan elke input-`description` op tokens als "conceptueel", "forward naar",
-      "tijdelijk als directe parameter", plus een regulation-naam-patroon; heeft zo'n input
-      géén `source:`-blok → **PLAIN-PARAM**-bevinding (**modellering-fout**).
-   4. Rapporteer een telling `clean / dangling / plain-param`. Een corpus is pas
-      **source-clean** als `dangling = 0` én `plain-param = 0`.
+   2. **MISPLACED** — een `source:`-blok onder `parameters:` (i.p.v. `input:`). De engine
+      heeft twee aparte structs: `Parameter` (onder `parameters:`) kent **geen** `source`-veld,
+      alleen `Input` (onder `input:`) wel. Een source onder `parameters:` wordt dus bij het
+      parsen **stil weggegooid** — de binding lijkt echt maar vuurt nooit; scenario's die de
+      waarde direct injecteren maskeren het. Detecteer per `source` of de omsluitende lijst
+      `input:` is; zo niet → **MISPLACED** (**modellering-fout**). Dit is de meest
+      voorkomende verborgen vorm.
+   3. **DANGLING** — voor elke `source: { regulation, output }` onder `input:`: verifieer
+      `output ∈ outputs[regulation]`. Zo niet → **DANGLING** (**modellering-fout**).
+   4. **PLAIN-PARAM** — een `parameters:`-item waarvan de `description` "conceptueel" of
+      "tijdelijk als directe parameter" bevat maar dat géén binding is. (Let op: woorden als
+      "forward naar" op een leaf-parameter die een binding-mapping vóédt zijn legitiem — niet
+      flaggen.)
+   5. Rapporteer `clean / misplaced / dangling / plain-param`. Een corpus is pas
+      **source-clean** als `misplaced = 0`, `dangling = 0` én `plain-param = 0`.
 
-   **DANGLING en PLAIN-PARAM zijn in de vier-weg-classificatie ALTIJD modellering-fout —
-   nooit "engine-limitatie".** Het "de engine kan geen meerdere bindingen per artikel"-
-   excuus is ongeldig (schema v0.5.2 ondersteunt dit); bind echt en test.
+   **MISPLACED, DANGLING en PLAIN-PARAM zijn in de vier-weg-classificatie ALTIJD
+   modellering-fout — nooit "engine-limitatie".** Het "de engine kan geen meerdere bindingen
+   per artikel"-excuus is ongeldig (schema v0.5.2 ondersteunt dit); bind echt — onder
+   `input:` — en bewijs met een BDD-scenario dat de bron-wet laadt en de leaf-inputs zet.
 
    Draai de scan reproduceerbaar met
    `python3 .claude/skills/regelrecht-stelselanalyse/references/cross-law-integriteit.py <corpus-root>`
