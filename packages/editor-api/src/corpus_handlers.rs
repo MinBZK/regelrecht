@@ -1516,7 +1516,7 @@ fn validate_document_path(raw: &str) -> Result<(), (StatusCode, String)> {
                 "Pad bevat lege segmenten".to_string(),
             ));
         }
-        if *segment == "." || *segment == ".." {
+        if *segment == "." || *segment == ".." || segment.starts_with('.') {
             return Err((
                 StatusCode::BAD_REQUEST,
                 "Pad mag geen '.' of '..' bevatten".to_string(),
@@ -2029,6 +2029,16 @@ mod tests {
         assert!(validate_document_path("/leading.md").is_err());
         assert!(validate_document_path("with\\backslash.md").is_err());
         assert!(validate_document_path("with\0nul.md").is_err());
+    }
+
+    #[test]
+    fn validate_document_path_rejects_hidden_segments() {
+        // Dot-leading segments would let a local-checkout backend touch
+        // hidden filesystem entries (`.git`, `.env`); refuse them outright.
+        assert!(validate_document_path(".git").is_err());
+        assert!(validate_document_path(".env").is_err());
+        assert!(validate_document_path("mvt/.git/config").is_err());
+        assert!(validate_document_path(".DS_Store.md").is_err());
     }
 
     #[test]

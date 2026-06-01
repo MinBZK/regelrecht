@@ -80,6 +80,7 @@ function validateNewPath(value) {
   const segments = value.split('/');
   for (const seg of segments) {
     if (!seg) return 'Pad bevat lege segmenten.';
+    if (seg.startsWith('.')) return "Pad mag geen verborgen segmenten ('.') bevatten.";
     if (!/^[a-z0-9._-]+$/.test(seg)) {
       return "Gebruik alleen kleine letters, cijfers en '._-'.";
     }
@@ -254,6 +255,13 @@ function handleKeydown(e) {
           >
             {{ docError.message }}
             <button type="button" @click="dropDraft">Draft verwerpen</button>
+          </div>
+
+          <div
+            v-if="docError && docError.kind !== 'draft-present'"
+            class="documents-app__banner documents-app__banner--error"
+          >
+            {{ docError.message }}
           </div>
 
           <div v-if="saveError" class="documents-app__banner documents-app__banner--error">

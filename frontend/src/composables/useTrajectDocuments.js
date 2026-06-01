@@ -115,11 +115,23 @@ export function useTrajectDocuments(trajectRef) {
         currentPath.value = path;
         currentBody.value = '';
         currentEtag.value = null;
-        docError.value = new Error('Document niet gevonden');
+        docError.value = {
+          kind: 'load-error',
+          message: 'Document niet gevonden',
+        };
         return;
       }
       if (!res.ok) {
-        docError.value = new Error(`Document ophalen mislukt: ${res.status}`);
+        // Keep state consistent with the URL the consumer already
+        // navigated to: adopt the new path with an empty body so a
+        // subsequent Save can't PUT stale content back to the old path.
+        currentPath.value = path;
+        currentBody.value = '';
+        currentEtag.value = null;
+        docError.value = {
+          kind: 'load-error',
+          message: `Document ophalen mislukt: ${res.status}`,
+        };
         return;
       }
       const serverBody = await res.text();
