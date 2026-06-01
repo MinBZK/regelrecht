@@ -132,6 +132,15 @@ async function handleSave() {
   }
 }
 
+// Resolve a 412 conflict by force-overwriting the server version. We
+// must bypass the now-stale `currentEtag` — re-sending it would just
+// trip the precondition again and loop. `If-Match: '*'` tells the
+// backend "match any existing version", so the write goes through and
+// `saveCurrent` refreshes `currentEtag` + clears the conflict banner.
+function overwriteServer() {
+  return saveCurrent({ ifMatch: '*' });
+}
+
 async function handleDelete() {
   if (!currentPath.value) return;
   const path = currentPath.value;
@@ -236,7 +245,7 @@ function handleKeydown(e) {
           <div v-if="conflict" class="documents-app__banner documents-app__banner--warn">
             {{ conflict }}
             <button type="button" @click="reloadCurrent">Server-versie laden</button>
-            <button type="button" @click="handleSave">Lokaal overschrijven</button>
+            <button type="button" @click="overwriteServer">Lokaal overschrijven</button>
           </div>
 
           <div
