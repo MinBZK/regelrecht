@@ -82,6 +82,26 @@ over juridische correctheid.
    parallel werk: één sub-agent per as via de `Agent`-tool. Zie
    `references/review-orchestration.md`.
 
+   **Source-refs — verplichte, niet-overslaanbare integriteitsscan.** De `source-refs`-as
+   is geen losse steekproef maar een volledig algoritme over het hele corpus:
+   1. Bouw een map `regulation → set(action-outputs)` over het hele corpus (welke output
+      produceert elke wet feitelijk).
+   2. Voor elke `source: { regulation, output }`: verifieer `output ∈ outputs[regulation]`.
+      Zo niet → **DANGLING**-bevinding (classificatie: **modellering-fout**).
+   3. Scan elke input-`description` op tokens als "conceptueel", "forward naar",
+      "tijdelijk als directe parameter", plus een regulation-naam-patroon; heeft zo'n input
+      géén `source:`-blok → **PLAIN-PARAM**-bevinding (**modellering-fout**).
+   4. Rapporteer een telling `clean / dangling / plain-param`. Een corpus is pas
+      **source-clean** als `dangling = 0` én `plain-param = 0`.
+
+   **DANGLING en PLAIN-PARAM zijn in de vier-weg-classificatie ALTIJD modellering-fout —
+   nooit "engine-limitatie".** Het "de engine kan geen meerdere bindingen per artikel"-
+   excuus is ongeldig (schema v0.5.2 ondersteunt dit); bind echt en test.
+
+   Draai de scan reproduceerbaar met
+   `python3 .claude/skills/regelrecht-stelselanalyse/references/cross-law-integriteit.py <corpus-root>`
+   (exit-code 0 = source-clean, 1 = bevindingen).
+
 4. **Classificeer** elke bevinding 4-weg (zie boven). Voer de meta-check uit.
 
 5. **Synthese + heroverweging.** Voeg parallelle reviews samen; markeer twijfel-claims;
@@ -112,6 +132,10 @@ over juridische correctheid.
   bronnen-dossier + INDEX, WebFetch-ontginning.
 - `cycle-workflow.md` — de cyclus-motor: planning, loop-prompts, harvest, schema-migratie,
   eindrapport, micro-cycli.
+- `cross-law-integriteit.py` — herbruikbaar script voor de source-refs-integriteitsscan:
+  bouwt `regulation → outputs`, detecteert dangling source-bindingen en plain-param-
+  placeholders, en print de telling `clean / dangling / plain-param` (exit 1 bij
+  bevindingen). Corpus-agnostisch; draai als preflight in de `Valideer`-stap.
 
 **templates/** — `cyclus-plan`, `loop-prompt`, `scheduled-routine`, `schema-migratie`,
 `harvest-rapport`, `mr-uitbreiding-rapport`, `validatie-review`, `synthese`,
