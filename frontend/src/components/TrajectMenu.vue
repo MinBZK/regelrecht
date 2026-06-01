@@ -41,21 +41,6 @@ async function goToTraject(trajectRef) {
 }
 
 /**
- * Open the documents pane for the active traject. Documents live in the
- * same corpus repo as the laws, behind the `editor-documents` route. No
- * doc is selected here — the user picks or creates one from the sidebar
- * on that page. Only reachable with an active traject (the menu item is
- * gated the same way), so the early return is a defensive guard.
- */
-async function goToDocuments() {
-  if (!activeTrajectRef.value) return;
-  await router.push({
-    name: 'editor-documents',
-    params: { trajectRef: activeTrajectRef.value },
-  });
-}
-
-/**
  * Leave traject scope. Stays in the editor (read-only view) when the
  * user is currently editing; goes to the library when they were
  * browsing. Either way the open law is preserved.
@@ -256,12 +241,6 @@ function bind(field) {
       @select="selectTraject(t)"
     ></nldd-menu-item>
     <nldd-menu-divider></nldd-menu-divider>
-    <nldd-menu-item
-      v-if="activeTraject"
-      text="Documenten…"
-      start-icon="file-text"
-      @click="goToDocuments"
-    ></nldd-menu-item>
     <nldd-menu-item
       v-if="activeTraject"
       text="Beheer leden…"

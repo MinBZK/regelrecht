@@ -22,12 +22,18 @@ import EditSheet from './components/EditSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
 import MachineReadable from './components/MachineReadable.vue';
 import ScenarioBuilder from './components/ScenarioBuilder.vue';
+import DocumentsPanel from './components/DocumentsPanel.vue';
 import ExecutionTraceView from './components/ExecutionTraceView.vue';
 import LawGraphView from './components/LawGraphView.vue';
 
 const { authenticated, loading: authLoading, oidcConfigured, person, login, logout } = useAuth();
 const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
 const { colorScheme, setColorScheme } = useColorScheme();
+// Declared up here (not with the other traject-gated computeds below)
+// because `availableViews` / `editorPanelFlags` reference it and the
+// `availableViews` watcher runs with `immediate: true` during setup —
+// referencing a still-uninitialised `const` there would hit the TDZ.
+const { activeTrajectRef } = useTrajects();
 
 const colorSchemeOptions = [
   ['auto', 'Systeem'],
@@ -35,21 +41,29 @@ const colorSchemeOptions = [
   ['dark', 'Donker'],
 ];
 
-const editorPanelFlags = [
-  ['panel.article_text', 'Tekst editor'],
-  ['panel.machine_readable', 'Machine editor'],
-  ['panel.scenario_form', 'Scenario editor'],
-  ['panel.yaml_editor', 'YAML editor'],
-  // Capability gate: when on, the Tekst pane offers a "Notities"
-  // toggle that overlays resolved notes on the article text. Not a
-  // separate pane (notes are a layer over the text, not other content).
-  ['panel.notes', 'Notities'],
-  // Note authoring (RFC-018 write path). Separate gate from panel.notes so
-  // notes can be shown read-only without exposing the (MVP, local-only)
-  // creation + export flow.
-  ['notes.create', 'Notities aanmaken'],
-  ['editor.article_text_edit', 'Tekst bewerken'],
-];
+const editorPanelFlags = computed(() => {
+  const flags = [
+    ['panel.article_text', 'Tekst editor'],
+    ['panel.machine_readable', 'Machine editor'],
+    ['panel.scenario_form', 'Scenario editor'],
+    ['panel.yaml_editor', 'YAML editor'],
+    // Capability gate: when on, the Tekst pane offers a "Notities"
+    // toggle that overlays resolved notes on the article text. Not a
+    // separate pane (notes are a layer over the text, not other content).
+    ['panel.notes', 'Notities'],
+    // Note authoring (RFC-018 write path). Separate gate from panel.notes so
+    // notes can be shown read-only without exposing the (MVP, local-only)
+    // creation + export flow.
+    ['notes.create', 'Notities aanmaken'],
+    ['editor.article_text_edit', 'Tekst bewerken'],
+  ];
+  // Documents live in the traject's corpus branch, so the panel only
+  // makes sense with an active traject — hide the toggle otherwise.
+  if (activeTrajectRef.value) {
+    flags.push(['panel.documents', 'Documenten']);
+  }
+  return flags;
+});
 
 // Per-pane view selection. Each pane independently picks one of the
 // available views (Tekst, Machine, Scenario's, YAML). Same view can be
@@ -63,9 +77,19 @@ const VIEW_DEFINITIONS = [
   { id: 'machine', flag: 'panel.machine_readable', label: 'Machine' },
   { id: 'scenario', flag: 'panel.scenario_form', label: "Scenario's" },
   { id: 'yaml', flag: 'panel.yaml_editor', label: 'YAML' },
+  // Traject-scoped documents. Gated on an active traject in
+  // `availableViews` below (no global counterpart exists).
+  { id: 'documents', flag: 'panel.documents', label: 'Documenten' },
 ];
 
-const availableViews = computed(() => VIEW_DEFINITIONS.filter(v => isEnabled(v.flag)));
+const availableViews = computed(() =>
+  VIEW_DEFINITIONS.filter(
+    // The documents view additionally requires an active traject — its
+    // content (and the writable backend behind it) only exist in a
+    // traject scope.
+    (v) => isEnabled(v.flag) && (v.id !== 'documents' || activeTrajectRef.value),
+  ),
+);
 
 function viewLabel(viewId) {
   return VIEW_DEFINITIONS.find(v => v.id === viewId)?.label ?? viewId;
@@ -151,8 +175,8 @@ function setPaneView(idx, viewId) {
 //   - `/editor/{trajectRef}/{lawId?}/{article?}`  → full edit mode,
 //     `canEdit` is true; writes land in that traject's branch.
 // Pick a traject in the TrajectMenu to flip from the first shape to
-// the second.
-const { activeTrajectRef } = useTrajects();
+// the second. (`activeTrajectRef` is destructured near the top of the
+// script — the view computeds need it before this point.)
 const canEdit = computed(
   () => (!oidcConfigured.value || authenticated.value) && activeTrajectRef.value !== null,
 );
@@ -1794,6 +1818,13 @@ async function handleActionSave() {
                   @input="onYamlInput"
                 ></nldd-code-editor>
                 <div v-if="parseError" class="editor-parse-error-detail">{{ parseError }}</div>
+              </nldd-simple-section>
+
+              <!-- Documenten — traject-scoped files. The list lives in the
+                   pane; clicking or creating one opens it in a markdown
+                   edit-sheet (same overlay pattern as scenario editing). -->
+              <nldd-simple-section v-else-if="view === 'documents'" width="full">
+                <DocumentsPanel :traject-ref="activeTrajectRef" />
               </nldd-simple-section>
             </nldd-page>
           </nldd-split-view-pane>
