@@ -285,7 +285,9 @@ impl RepoBackend for GitHubApiBackend {
         let api_root = self.api_path(dir)?;
         let mut inner = self.inner.lock().await;
 
-        // Iterative BFS over Contents-API directory pages. Each tuple is
+        // Iterative DFS (LIFO `Vec` used as a stack) over Contents-API
+        // directory pages. Traversal order doesn't matter — the result is
+        // sorted afterwards. Each tuple is
         // (`relative path under the listing root`, `full API path`); the
         // empty prefix on the seed means the seed directory's direct
         // children appear with bare filenames in the output.
