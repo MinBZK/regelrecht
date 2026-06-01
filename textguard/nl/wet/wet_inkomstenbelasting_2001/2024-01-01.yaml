@@ -1,0 +1,36 @@
+$id: wet_inkomstenbelasting_2001
+valid_from: '2024-01-01'
+source: corpus/regulation/nl/wet/wet_inkomstenbelasting_2001/2024-01-01.yaml
+articles:
+- number: '3.1'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 0b3f9a6d52d4966c50ffbe247f25736d5f4179993d37f949211b50bd28c1b695
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Belastbaar inkomen uit werk en woning is het inkomen uit werk en woning verminderd met de te verrekenen verliezen uit werk en woning.
+- number: '4.12'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: df90168f9f365d04acda8a5083f5e3e21f939c74a95aff7bc62d4b361eae80a8
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Inkomen uit aanmerkelijk belang is het gezamenlijke bedrag van de reguliere voordelen en de vervreemdingsvoordelen verminderd met de te verrekenen verliezen uit aanmerkelijk belang.
+- number: '5.2'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: a7a0d38dad382e79adfe4b4a34fdde6ba04891a9dc2cdcdd7189884e049dfac3
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Rendementsgrondslag is de waarde van de bezittingen verminderd met de waarde van de schulden. De rendementsgrondslag aan het begin van het kalenderjaar (peildatum 1 januari) wordt als uitgangspunt genomen.
+- number: '2.18'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: b183a7c23de95422e3f327c47f9d05a04ac1410d5c57401cb7527cb5270bbae9
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Verzamelinkomen is het gezamenlijke bedrag van het inkomen uit werk en woning, het inkomen uit aanmerkelijk belang en het belastbaar inkomen uit sparen en beleggen.

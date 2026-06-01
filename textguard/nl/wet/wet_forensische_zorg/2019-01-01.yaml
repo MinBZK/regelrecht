@@ -1,0 +1,58 @@
+$id: wet_forensische_zorg
+valid_from: '2019-01-01'
+source: corpus/regulation/nl/wet/wet_forensische_zorg/2019-01-01.yaml
+articles:
+- number: '1.1'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 27633576c80679c7fa6aa77f9b51ae44d1b47c5dc68676b838e8125508fc4634
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Artikel 1.1 1. In deze wet en de daarop berustende bepalingen wordt verstaan onder:'
+  - index: 1
+    label: tekst
+    sha256: 9994aa63f3ee1f0e4d2be79c78629916286700fdb481894bd695bc9048cd40fd
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'forensische zorg: geestelijke gezondheidszorg, verslavingszorg en de zorg voor verstandelijk gehandicapten, die onderdeel is van, dan wel aansluit bij een (voorwaardelijke) straf of maatregel of die voortvloeit uit een last tot plaatsing als bedoeld in artikel 2.3.'
+  - index: 2
+    label: lid 2
+    sha256: 2341ee3e671e35d167c935974922232e037018b68956f0e074aad673c9185a78
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '2. Onder forensische zorg als bedoeld in het eerste lid wordt verstaan:'
+  - index: 3
+    label: onderdeel a
+    sha256: 3cb6875972e735ba25ca32b429236aac8608860309480fd5e29bab5abb78b8cc
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: a. geestelijke gezondheidszorg als omschreven bij of krachtens de Wet verplichte geestelijke gezondheidszorg;
+  - index: 4
+    label: onderdeel b
+    sha256: 41c6e29028d98fd7b51045a81190f3c876292f049a11b06ae007a852cc8719a2
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: b. verslavingszorg;
+  - index: 5
+    label: onderdeel c
+    sha256: 9329171a5c21396873a8c9614d4e0e80f0393d93c8d35ca91b7b627f55db5df9
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: c. zorg voor verstandelijk gehandicapten als omschreven bij of krachtens de Wet zorg en dwang psychogeriatrische en verstandelijk gehandicapte clienten.
+- number: '2.1'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 3c6d9f5966bbba86cf3b5a90624355d3011b3a1266897b0591f2dc875c450161
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 2.1 De tenuitvoerlegging van een vrijheidsbenemende straf of maatregel wordt zo veel mogelijk dienstbaar gemaakt aan de voorbereiding van de terugkeer van de forensische patient in de maatschappij en de vermindering van de kans op recidive, met inachtneming van de veiligheid van de samenleving.
+- number: '10.3'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: a4eb79424a859e847056db42995d4bcff7b44216e9b8ef886b336ebef7f53196
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Artikel 10.3 Deze wet wordt aangehaald als: Wet forensische zorg.'

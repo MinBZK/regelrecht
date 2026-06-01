@@ -1,0 +1,30 @@
+$id: burgerlijk_wetboek_boek_5
+valid_from: null
+source: corpus/regulation/nl/wet/burgerlijk_wetboek_boek_5/2024-01-01.yaml
+articles:
+- number: '42'
+  chunks:
+  - index: 0
+    label: lid 1
+    sha256: 63610b8b63cd48649991f729d9397c55999ec62944dc9dfeae830844af2ba860
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 1. Het is niet geoorloofd binnen de in lid 2 bepaalde afstand van de grenslijn van eens anders erf bomen, heesters of heggen te hebben, tenzij de eigenaar daartoe toestemming heeft gegeven of dat erf een openbare weg of een openbaar water is.
+  - index: 1
+    label: lid 2
+    sha256: 03ae44267c329a8c851d50756e079ebe7e2b6298ca1f3ee6f7c414dae810b698
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De in lid 1 bedoelde afstand bedraagt voor bomen twee meter te rekenen vanaf het midden van de voet van de boom en voor heesters en heggen een halve meter, tenzij ingevolge een verordening of een plaatselijke gewoonte een kleinere afstand is toegelaten.
+  - index: 2
+    label: lid 3
+    sha256: 201145cba5eb01122ea341f9992df23d6847edcfbeafb74afc10aa085a1a4c98
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De nabuur kan zich niet verzetten tegen de aanwezigheid van bomen, heesters of heggen die niet hoger reiken dan de scheidsmuur tussen de erven.
+  - index: 3
+    label: lid 4
+    sha256: 678450e23fb8a7eae58071bff9ff2e4c453e6a943f7069f05cf7a0c90eac0017
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. Ter zake van een volgens dit artikel ongeoorloofde toestand is slechts vergoeding verschuldigd van de schade, ontstaan na het tijdstip waartegen tot opheffing van die toestand is aangemaand.

@@ -1,0 +1,2046 @@
+$id: penitentiaire_beginselenwet
+valid_from: null
+source: corpus/regulation/nl/wet/penitentiaire_beginselenwet/2025-01-01.yaml
+articles:
+- number: '1'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: ebf6bcbbe26daf3ecab9fe97190be8ffd203ab1c0075aade3b15f285f4d10b88
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Artikel 1 Voor de toepassing van deze wet en de daarop rustende bepalingen wordt verstaan onder:'
+  - index: 1
+    label: onderdeel a
+    sha256: 361f28fabb7a031660752a2b7aee224300fcb67e6e8b2d9fdcaa584ce142ac5a
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: a. *Onze Minister:* Onze Minister van Justitie; b. *inrichting:* een penitentiaire inrichting als bedoeld in artikel 3, eerste lid; c. *afdeling:* een afdeling van een inrichting als bedoeld in artikel 8, tweede lid; d. *directeur:* de persoon, bedoeld in artikel 3, derde lid, alsmede diens vervanger of vervangers, bedoeld in artikel 3, vierde lid; e. *gedetineerde:* een persoon ten aanzien van wie de tenuitvoerlegging van een vrijheidsstraf of vrijheidsbenemende maatregel in een inrichting plaatsvindt; f. *ambtenaar of medewerker:* een persoon die een taak uitoefent in het kader van de tenuitvoerlegging van een vrijheidsstraf of vrijheidsbenemende maatregel; g. *selectiefunctionaris:* een persoon belast met de plaatsing en overplaatsing van gedetineerden als bedoeld in artikel 15, derde lid; h. *reclasseringswerker:* een reclasseringswerker als bedoeld in artikel 6, eerste lid, van de Reclasseringsregeling 1995; i. *rechtsbijstandverlener:* de advocaat of de medewerker van de stichting, bedoeld in de Wet op de rechtsbijstand; j. *Raad:* de Raad voor strafrechtstoepassing en jeugdbescherming; k. *commissie van toezicht:* een commissie als bedoeld in artikel 7, eerste lid; l. *beklagcommissie:* een commissie als bedoeld in artikel 62, eerste lid; m. *beroepscommissie:* een commissie als bedoeld in artikel 69, tweede lid; n. *verblijfsruimte:* de aan een gedetineerde door de directeur ingevolge artikel 16, tweede lid, toegewezen ruimte; o. *penitentiair programma:* een programma als bedoeld in artikel 4; p. *huisregels:* regels als bedoeld in artikel 5, eerste lid; q. *regime:* het samenstel van de verzorging en activiteiten, bedoeld in hoofdstuk VIII, en de regels die gelden voor gedetineerden in een inrichting of afdeling; r. *activiteiten:* activiteiten als bedoeld in hoofdstuk VIII; s. *vrijheidsstraf:* gevangenisstraf, (vervangende) hechtenis, militaire detentie en (vervangende) jeugddetentie; t. *vrijheidsbenemende maatregel:* voorlopige hechtenis, vreemdelingenbewaring, gijzeling, terbeschikkingstelling met bevel tot verpleging, plaatsing in een inrichting voor de opvang van verslaafden en vrijheidsbeneming die op andere dan de in artikel 1, onder s, genoemde gronden plaatsvindt; u. *strafrestant:* het gedeelte van een opgelegde vrijheidsstraf dan wel van het samenstel van dergelijke straffen dat nog moet worden ondergaan; v. *goed gedrag:* een zodanige opstelling van een gedetineerde dat hij heeft doen blijken van een bijzondere geschiktheid tot terugkeer in de samenleving.
+- number: '2'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 49379f76317cee446dcf87dce7410f3554fb08e787a868f6f29cd6a9e1334a8e
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 2 1. De tenuitvoerlegging van een vrijheidsstraf of vrijheidsbenemende maatregel vindt, voor zover niet bij of k rachtens de wet anders is bepaald, plaats door onderbrenging van de persoon aan wie deze is opgelegd in een penitentiair e inrichting dan wel door diens deelname aan een penitentiair programma.
+  - index: 1
+    label: lid 2
+    sha256: e1ce089dbe355846dcc14be77e49e51f71b3fe8f366841fc36b77ceb38c48917
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Met handhaving van het karakter van de vrijheidsstraf of de vrijheidsbenemende maatregel wordt de tenuitvoerlegging h iervan zoveel mogelijk dienstbaar gemaakt aan de voorbereiding van de terugkeer van de betrokkene in de maatschappij.
+  - index: 2
+    label: lid 3
+    sha256: 124f0f862b736188b9beba1d5596c7850fa535e8d69ee68b4110a1f63297af70
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De tenuitvoerlegging van vrijheidsstraffen of vrijheidsbenemende maatregelen vindt zo spoedig mogelijk plaats na de o plegging van de straf of het nemen van de maatregel.
+  - index: 3
+    label: lid 4
+    sha256: 3cc45d2670f7b334cf43581ea010f094652d327ad1ca21c570bb81ce432a2c43
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. Personen ten aanzien van wie de tenuitvoerlegging plaatsvindt van een vrijheidsstraf of vrijheidsbenemende maatregel worden aan geen andere beperkingen onderworpen dan die welke voor het doel van de vrijheidsbeneming of in het belang van de handhaving van de orde of de veiligheid in de inrichting noodzakelijk zijn.
+- number: '3'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 33448a909a63ce4a9dd3fd9cda349747aa3288c8c512d5a7c15aca3e8aac4fff
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 3 1. Onze Minister wijst penitentiaire inrichtingen aan.
+  - index: 1
+    label: lid 2
+    sha256: 847fb3e46d84ddd9b637fc9990cf157d06a060cfcc478352184beff63358539a
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Het opperbeheer van de inrichtingen berust bij Onze Minister. Onze Minister kan mandaat verlenen inzake de uitvoering hiervan alsmede betreffende de hem bij of krachtens deze wet toegekende overige bevoegdheden aan het hoofd van de Diens t Justitiële lnrichtingen.
+  - index: 2
+    label: lid 3
+    sha256: a0c5441b78f487a204b2a7dd4f736845086e27dbc4666f4e03574a1b0156e458
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Het beheer van een inrichting of afdeling berust bij de directeur, die als zodanig door Onze Minister wordt aangeweze n.
+  - index: 3
+    label: lid 4
+    sha256: bf6856ef58fa43846adcd0e2a990b735373992643ed9a799393de485a6bd78d9
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. Onze Minister wijst een of meer personen aan als plaatsvervanger van de directeur.
+  - index: 4
+    label: lid 5
+    sha256: ccdc7b891db1a6ef88d625efc162b6fa5b6fd247b0c0a4305e893b92b195ca2e
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. Bij of krachtens algemene maatregel van bestuur worden nadere regels gesteld betreffende het beheer van en het regime in een inrichting.
+- number: '4'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 0592fa81c9186894b11aa9aa3505fc679a020c371b9f41a2bae58e533886c5b3
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 4 1. Een penitentiair programma is een samenstel van activiteiten waaraan wordt deelgenomen door personen ter ve rdere tenuitvoerlegging van de aan hen opgelegde vrijheidsstraf of vrijheidsbenemende maatregel in aansluiting op hun ve rblijf in een inrichting en dat als zodanig door Onze Minister is erkend.
+  - index: 1
+    label: lid 2
+    sha256: 8b533d90f1c9b0d3878886ec8eaa9f7d8b6403a236f25d08f5b4728e5c7b9b8a
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '2. Een gedetineerde komt slechts in aanmerking voor deelname aan een penitentiair programma, indien: a. b. c.'
+  - index: 2
+    label: lid 3
+    sha256: 87f1a1d88ffef41825aae4735de72c1444e80508abb8c2b5a11aa2e71c4094d7
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Bij of krachtens algemene maatregel van bestuur worden nadere regels gegeven die in elk geval de inhoud, de voorwaard en voor en het toezicht op deelname, de gevolgen van niet-nakoming van de voorwaarden en de rechtspositie van de deelnem ers aan een penitentiair programma betreffen.
+  - index: 3
+    label: lid 4
+    sha256: 621cbe827c3e24de756ed163ee751bf4decfa6e40469174f609c289e7c9467fc
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. Een krachtens het derde lid vastgestelde algemene maatregel van bestuur treedt niet eerder in werking dan acht weken na de datum van uitgifte van het Staatsblad waarin hij is geplaatst. Van de plaatsing wordt onverwijld mededeling gedaan aan de beide kamers der Staten-Generaal.
+  - index: 4
+    label: lid 5
+    sha256: 4d715bd1688c0b51d50bc518ab22f0ff0a0173c482a7d6d99faeb57ebccdec09
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. Met inachtneming van het tweede lid en de regels krachtens het derde lid kan Onze Minister een penitentiair programma erkennen en bepalen welke gedetineerden voor deelname hieraan in aanmerking komen.
+  - index: 5
+    label: lid 6
+    sha256: 7082de8ad2b3985dfac62b271977441c022859cd47cbe45368fd8bdf0db903fb
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 6. Het tweede lid is niet van toepassing op de maatregel tot plaatsing in een inrichting voor de opvang van verslaafden als bedoeld in [artikel 38m van het Wetboek van Strafrecht](jci1.3:c:BWBR0001854&artikel=38m).
+- number: '5'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 6f30c6681a39cd5b6ac035e7d98e0ab32dc317605d1f7ed8c5e91ae10f518c03
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 5 1. De directeur stelt, in aanvulling op de bij of krachtens deze wet gegeven regels en met inachtneming van he t dienaangaande door Onze Minister vast te stellen model en door deze te geven aanwijzingen, huisregels voor de inrichti ng of afdeling vast.
+  - index: 1
+    label: lid 2
+    sha256: 8d0e4a841b0b96701a09f3cc45ff2584cad9c4b78f710db000bfd911507d2c38
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De directeur kan ambtenaren en medewerkers machtigen tot de uitoefening van hem bij of krachtens deze wet gegeven bev oegdheden en de naleving van zijn zorgplichten, met uitzondering van de bevoegdheden, genoemd in het eerste en vierde li d.
+  - index: 2
+    label: lid 3
+    sha256: 8d42b344efcd2862435481346203235aab9d8ff108d69bfb2b4871b9cdf7e572
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De directeur is, voor zover zulks noodzakelijk is in het belang van de handhaving van de orde of de veiligheid in de inrichting of een ongestoorde tenuitvoerlegging van de vrijheidsbeneming, bevoegd aan de gedetineerden bevelen te geven. De gedetineerden zijn verplicht deze bevelen op te volgen.
+  - index: 3
+    label: lid 4
+    sha256: 774e17bacbf6f29f18b795b060d9262ca994c8e88cb58c8e2750dd463fe9dd09
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '4. Aan de directeur is voorbehouden de beslissing omtrent: a. b. c. d. e. f. g. h.'
+- number: '6'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 3c49be1d09972bb7eae251ba0d15d7b12c830db8d6c63f7047c91cedf4040ea9
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 6 De Raad behandelt beroepschriften ingevolge de [hoofdstukken XII](onbekend), [XIII](onbekend) en [XV](onbekend ), en[ hoofdstuk 7 van de Penitentiaire maatregel](jci1.3:c:BWBR0009398&hoofdstuk=7).
+- number: '7'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 6163b7153014f89135916cf549c9101895755989b73de47bd747fbfa9b1bc957
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 7 1. Bij elke inrichting dan wel afdeling wordt door Onze Minister een commissie van toezicht ingesteld.
+  - index: 1
+    label: lid 2
+    sha256: aa9df027f49c1918b3739fafcafb880ed860cda54f585daaaef1ab9e040d7059
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '2. De commissie van toezicht heeft tot taak: a. b. c. d.'
+  - index: 2
+    label: lid 3
+    sha256: c4d42182c7f71bd3118ce0de0817cae23c94bb71470c9ffacd9e8d61e1c60167
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De commissie van toezicht stelt zich door persoonlijk contact met de gedetineerden regelmatig op de hoogte van onder hen levende wensen en gevoelens. Bij toerbeurt treedt één van haar leden hiertoe op als maandcommissaris.
+  - index: 3
+    label: lid 4
+    sha256: ffc8b0e43f811cfe671a08ccaa9833ccc03dbb15a79bc1581de43b3b1ae1cd8b
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. Bij algemene maatregel van bestuur worden regels gesteld over de bevoegdheden, de samenstelling en de werkwijze van d e commissie, de benoeming en het ontslag van haar leden alsmede over de werkzaamheden van de maandcommissaris.
+- number: '8'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 8f75ad3d886bb609e838774c72b66469851ad6b5ac0ad1cd0d69df346876f195
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 8 1. Onze Minister bepaalt de bestemming van elke inrichting of afdeling ingevolge de artikelen 9 tot en met 14 en stelt regels voor de plaatsing en overplaatsing van de gedetineerden.
+  - index: 1
+    label: lid 2
+    sha256: f6329510ba80708e40317ed0e230d895dc220fc4b63e1f69a82d4fc6d7fc6b34
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Onze Minister kan delen van een inrichting als afdeling met een aparte bestemming aanwijzen.
+- number: '9'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 2923f3a8840d2b7728bb24d02b2e3f7d99e12a245daf5f4e013e59ec16f500fc
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 9 1. Inrichtingen zijn te onderscheiden in huizen van bewaring, gevangenissen en inrichtingen voor de opvang van verslaafden. In bijzondere gevallen kan Onze Minister een inrichting aanwijzen tot zowel huis van bewaring als gevangen is.
+  - index: 1
+    label: lid 2
+    sha256: 76d601476d73eb6dcee1cfafca61c0b3b2905a659dca9b328da2b4b19326b340
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '2. In huizen van bewaring kunnen worden opgenomen: a. b. c. d. e. f. g. h.'
+  - index: 2
+    label: lid 3
+    sha256: 503d45d9ffcd2748ed54607d300fcc86ea38699a0d8452e58c2a8881eb10d604
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Onze Minister wijst in elk arrondissement ten minste één inrichting of afdeling aan als huis van bewaring.
+- number: '10'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: d584e7a347a1f13c0ceb15e8b8917498482f9aef98f6c454adae590bb1cd7e39
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 10 1. Gevangenissen zijn bestemd voor de opneming van personen die tot vrijheidsstraf zijn veroordeeld. Tot geva ngenisstraf veroordeelden aan wie tevens de maatregel van terbeschikkingstelling met bevel tot verpleging van overheidsw ege is opgelegd, kunnen na het einde van de vrijheidsstraf in een gevangenis verblijven, zolang opname in de voor hen be stemde plaats niet mogelijk is.
+  - index: 1
+    label: lid 2
+    sha256: efbe96ad54dd73bbacb9d2113644be9c896aafae7c44db8ca1e193980d05a1cd
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. In bijzondere gevallen kan gijzeling als bedoeld in [artikel 28 van de Wet administratiefrechtelijke handhaving verke ersvoorschriften](jci1.3:c:BWBR0004581&artikel=28) in een gevangenis ten uitvoer worden gelegd.
+  - index: 2
+    label: lid 3
+    sha256: c4c1487211faca2526bacfc0fd04968e1f6368e5bb2a0b294b2fd69cb2e60485
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Gevangenissen kunnen volgens regels te stellen bij of krachtens algemene maatregel van bestuur worden onderscheiden n aar de lengte van de straf of het strafrestant van de daarin op te nemen tot vrijheidsstraf veroordeelden.
+- number: 10a
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: c6f06059127e5965896504a6fbb73a0df61780d8db4624825e0788cfd45b02e5
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 10a 1. Inrichtingen voor de opvang van verslaafden zijn bestemd voor de opvang van personen aan wie een maatrege l als bedoeld in [artikel 38m van het Wetboek van Strafrecht ](jci1.3:c:BWBR0001854&artikel=38m)is opgelegd.
+  - index: 1
+    label: lid 2
+    sha256: f9a62e7f34ad23da4db292c32a507abb9809d445eff6cbbd667447c255cde374
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Onze Minister kan een inrichting voor de opvang van verslaafden aanwijzen als huis van bewaring. Hij kan tevens een h uis van bewaring aanwijzen als een inrichting voor de opvang van verslaafden.
+- number: '11'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 3c2c17298fb0900d50c6bb8aa80d10ba01267a7b54968bf7a342757d4523dcee
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 11 1. Mannelijke en vrouwelijke gedetineerden worden gescheiden ondergebracht.
+  - index: 1
+    label: lid 2
+    sha256: fb8f0c3dfea2b39777f66e5f303fdf8ab0698935e7675a94d7cdca87f25efc30
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Onze Minister wijst inrichtingen of afdelingen aan die uitsluitend zijn bestemd voor de onderbrenging van vrouwelijke gedetineerden.
+  - index: 2
+    label: lid 3
+    sha256: 914dd95bc8542047b71ba7bf5de0751d396b2222ad94b0c69749fdc146fcd982
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Onze Minister kan inrichtingen of afdelingen aanwijzen waarin van het eerste lid wordt afgeweken vanwege hun bestemmi ng als inrichting of afdeling voor bijzondere opvang als bedoeld in artikel 14.
+  - index: 3
+    label: lid 4
+    sha256: fdeb663f1bc8b5394e72f6a4ece3106a14e334f755955e3e9d9735487f64339b
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. De directeur kan gedetineerden van verschillend geslacht die in dezelfde inrichting verblijven in de gelegenheid stel len gezamenlijk aan activiteiten deel te nemen.
+- number: '12'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: d27644b65491b388a5002051d817d8c486c42b7cf9878674ca5fd12ad5734b37
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 12 1. Onze Minister wijst de inrichtingen of de afdelingen aan waarin kinderen tot een in de aanwijzing aangegev en leeftijd kunnen worden ondergebracht.
+  - index: 1
+    label: lid 2
+    sha256: 7d63cb9dd169937769ad61a0c9d98329bdd878c404d964382c19fa0588a4c07c
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '2. Indien een gedetineerde een kind in de inrichting of afdeling, bedoeld in het eerste lid, wil onderbrengen teneinde h et aldaar te verzorgen en op te voeden, behoeft hij de toestemming van de directeur. De directeur kan deze toestemming g even, voor zover dit verblijf zich verdraagt met de volgende belangen: a. b.'
+  - index: 2
+    label: lid 3
+    sha256: 4b8a4db62c69965e1e2a6f3e723680e14efe73357823236895ded73b8a50aa8b
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De directeur kan aan de toestemming voorwaarden verbinden met het oog op een belang als bedoeld in het tweede lid.
+  - index: 3
+    label: lid 4
+    sha256: eb69d6874b1028a7f8e20b4b789cbb639d59a3701cf467c9bcd7a7715d1cfa80
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. De directeur kan over een door hem voorgenomen onderbrenging van een kind in de inrichting of afdeling het advies inw innen van de Raad voor de Kinderbescherming.
+  - index: 4
+    label: lid 5
+    sha256: 3f0561ff7d5416672388c71bc54ad56b513499d710cd6a0dc6b42ae4e09c71d7
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. De directeur kan de toestemming intrekken, indien dit noodzakelijk is met het oog op een belang als bedoeld in het tw eede lid of indien de gedetineerde een bepaalde voorwaarde niet nakomt. Indien de directeur een nader onderzoek nodig oo rdeelt, kan hij de medewerking van de Raad voor de Kinderbescherming inroepen.
+  - index: 5
+    label: lid 6
+    sha256: 9683d9dac1b91be41bd30f714b53765f7b043982ce459245ac8db9da19c3d071
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 6. De directeur is verplicht de toestemming in te trekken, indien de onderbrenging van het kind in de inrichting in stri jd komt met enige op het gezag over het kind betrekking hebbende beslissing.
+  - index: 6
+    label: lid 7
+    sha256: be3e678b0863bf7d20d20d6732098c691e71626299d5703f7287a364f7ca18de
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 7. In de huisregels worden nadere regels gesteld omtrent het verblijf van kinderen in de inrichting.
+  - index: 7
+    label: lid 8
+    sha256: 29feedec60dd1bc7ae501c60c1f9512a1b9ce5648cb19919cec7f8531d74c436
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 8. De kosten van de verzorging van het kind komen voor rekening van het Rijk, voor zover de gedetineerde niet zelf in di e kosten kan voorzien.
+- number: '13'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 462648e7f5cf2b900b0769b2e3295d80d2026b013769a89181cd29e991643d40
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Artikel 13 1. Inrichtingen of afdelingen daarvan zijn naar de mate van beveiliging als volgt te onderscheiden en aan te duiden: a. b. c. d. e.'
+  - index: 1
+    label: lid 2
+    sha256: 8b9b66d1418ab178a71a058e9ad8e0f888a041ed19cbdf367ee48f92037b9b02
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Onze Minister bepaalt ten aanzien van elke inrichting of afdeling de mate van beveiliging, bedoeld in het eerste lid.
+  - index: 2
+    label: lid 3
+    sha256: 92cf74b3c358019df2261189c632f3cb6c0a84dca01883f1e2af9830380821f1
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Onze Minister bepaalt de criteria waaraan gedetineerden moeten voldoen om voor plaatsing in een inrichting of een afd eling als bedoeld in het eerste lid in aanmerking te komen.
+- number: '14'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 75047e79e8fb33962c3c89925fc231139cf8b1be4ba29c3bffa5811aca69d8ba
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 14 1. Inrichtingen of afdelingen daarvan kunnen door Onze Minister worden bestemd voor de onderbrenging van gede tineerden die een bijzondere opvang behoeven.
+  - index: 1
+    label: lid 2
+    sha256: f62d4e53af04dcd8bccb1e58fbe8d81c7f273de9dece822a0106f49cf0142048
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De bijzondere opvang, bedoeld in het eerste lid, kan verband houden met de leeftijd, de persoonlijkheid, de lichameli jke of de geestelijke gezondheidstoestand van de gedetineerden, alsmede met het delict waarvoor zij zijn gedetineerd.
+  - index: 2
+    label: lid 3
+    sha256: 92cf74b3c358019df2261189c632f3cb6c0a84dca01883f1e2af9830380821f1
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Onze Minister bepaalt de criteria waaraan gedetineerden moeten voldoen om voor plaatsing in een inrichting of een afd eling als bedoeld in het eerste lid in aanmerking te komen.
+- number: '15'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: bd239179ab7ffaef21d4bd2d0b7a600ced1f446b9c404d64ea43d3413c724298
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 15 1. De personen ten aanzien van wie de tenuitvoerlegging van vrijheidsstraffen of vrijheidsbenemende maatregel en is gelast worden geplaatst in een inrichting of afdeling dan wel overgeplaatst naar een inrichting of afdeling overee nkomstig de bestemming daarvan ingevolge hoofdstuk III. Van het bepaalde omtrent de bestemming kan worden afgeweken op g ronden gelegen in de persoon van de betrokkene. Indien een persoon voor plaatsing in meer dan één inrichting of afdeling in aanmerking komt, geschiedt deze met inachtneming van artikel 2, tweede, derde en vierde lid.
+  - index: 1
+    label: lid 2
+    sha256: 0128fa818dcfebee1e5a1345e68bf553935cb7a3054f8f67ca7450eb01917fde
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Gedetineerden die hiervoor ingevolge artikel 4, vijfde lid, in aanmerking komen, kunnen in de gelegenheid worden gest eld tot deelname aan een penitentiair programma. Bij het niet voldoen aan de voorwaarden voor deelname, bedoeld in artik el 4, derde lid, kan de deelname worden beëindigd.
+  - index: 2
+    label: lid 3
+    sha256: 793dbe79b4abbcb15235701a1c771db5aed7362580223438a29bd3217ee41273
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Met de plaatsing en overplaatsing, bedoeld in het eerste lid, en de beslissingen, bedoeld in het tweede lid, zijn doo r Onze Minister als zodanig aangewezen selectiefunctionarissen belast. Deze zijn bevoegd de overbrenging van personen te bevelen naar de voor hen bestemde inrichting of afdeling dan wel ten behoeve van deelname aan het voor hen bestemde pen itentiair programma dan wel de beëindiging hiervan. Zij kunnen de overbrenging doen geschieden door daartoe aangewezen a mbtenaren of medewerkers. Zij zijn bovendien bevoegd tot de beslissing of ten aanzien van de individuele gedetineerde is gebleken van goed gedrag dat aanleiding geeft tot deelname van de gedetineerde aan een penitentiair programma, zodra aa n de voorwaarden, bedoeld in artikel 4, tweede lid, onderdelen b en c, is voldaan.
+  - index: 3
+    label: lid 4
+    sha256: ba6db9e886888ab65a31b6ddfaf1895ea3ea1c05c3aa78dd84e8d31fb2c97167
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. De selectiefunctionarissen nemen bij de beslissingen, bedoeld in het eerste en tweede lid, de aanwijzingen van het op enbaar ministerie en van de autoriteiten die de straf of maatregel hebben opgelegd in aanmerking.
+  - index: 4
+    label: lid 5
+    sha256: 0b0e1af3c91dc8020e20bbe879f5d9d3234e078ea72724d54f445c74a2555be1
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. In geval van gebrekkige ontwikkeling of ziekelijke stoornis van de geestvermogens van een gedetineerde kan de selecti efunctionaris bepalen dat de gedetineerde naar een psychiatrisch ziekenhuis als bedoeld in [artikel 1, onder h, van de W et bijzondere opnemingen in psychiatrische ziekenhuizen](jci1.3:c:BWBR0005700&artikel=1) zal worden overgebracht om daar zolang dat noodzakelijk is te worden verpleegd.
+  - index: 5
+    label: lid 6
+    sha256: 94f3109b6f34c835a93b205260b30614a2ca6673ab89efc30533f76f89476689
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 6. Onze Minister stelt nadere regels vast omtrent de procedure van plaatsing en overplaatsing en overbrenging, bedoeld i n het eerste onderscheidenlijk het vijfde lid.
+- number: 15a
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 5b184ebbfb74558bda5324824ddf2163af10bb31a39f0f3dda9633a9c8aad34f
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 15a In afwijking van artikel 15, eerste lid, eerste volzin, kan de selectiefunctionaris bepalen dat een persoon ten aanzien van wie de tenuitvoerlegging van een vrijheidsstraf of een vrijheidsbenemende maatregel is gelast en die in een politiecel verblijft, daar voor een periode van maximaal tien dagen zal verblijven, nadat hij heeft vastgesteld dat er voor deze persoon geen plaats is in een inrichting. De politiecel voldoet aan de regels die voor politiecellencomplex en zijn vastgesteld.
+- number: '16'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: c369a8ff914f532464a16730cefc9979d432efac1fbfcc2cbbe7b490e10d4b9b
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 16 1. De directeur bepaalt de wijze van onderbrenging van de gedetineerden die overeenkomstig artikel 15 zijn ge plaatst in de inrichting of afdeling met het beheer waarvan hij is belast.
+  - index: 1
+    label: lid 2
+    sha256: dd2b84751775c5fe2b8d6207183a3e7d7720c55ed21e786f7b630c784db94456
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De directeur wijst iedere gedetineerde een verblijfsruimte toe met inachtneming van de artikelen 20, tweede lid, 21 e n 22, eerste lid.
+  - index: 2
+    label: lid 3
+    sha256: da324e65468243a65e774f2d2555a41f6b9fbb6907c6deb89200f3f441008434
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De directeur kan onderdelen van de inrichting of afdeling aanwijzen voor de onderbrenging van gedetineerden die een b ijzondere opvang in de zin van artikel 14 behoeven.
+  - index: 3
+    label: lid 4
+    sha256: 7de4694dbb15a1c33ac936bf6a61fa51be17771573919a243d9d596ae1431e17
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. De directeur bepaalt de criteria waaraan de gedetineerde moet voldoen om voor onderbrenging als bedoeld in het derde lid in aanmerking te komen.
+  - index: 4
+    label: lid 5
+    sha256: 333cddc7d23373a768582f215928147f58e8e2abf189235e91c62560f8aa43ff
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. Onze Minister stelt regels omtrent de eisen waaraan een verblijfsruimte als bedoeld in het tweede lid moet voldoen.
+- number: '17'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 00f0cc3b7c31d68e68f6edc55e4a3cf3b4376b2dbccb8f6cb168210820a0ee41
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Artikel 17 1. De betrokkene heeft het recht een met redenen omkleed bezwaarschrift in te dienen tegen de beslissing: a. b.'
+  - index: 1
+    label: lid 2
+    sha256: 056e9229f66f42bcc1d6caf786eec8787c010933e415e5e89ba4493f82bdf66a
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Op de wijze van indiening is artikel 61, tweede, vierde en vijfde lid, van overeenkomstige toepassing.
+  - index: 2
+    label: lid 3
+    sha256: 24c830582b20207400dbf6ee2cca8857cd91dea621efd653ea88022b2f8e6230
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De selectiefunctionaris stelt de betrokkene in de gelegenheid schriftelijk of mondeling diens bezwaarschrift toe te l ichten, tenzij hij het aanstonds kennelijk niet-ontvankelijk, kennelijk ongegrond of kennelijk gegrond acht.
+  - index: 3
+    label: lid 4
+    sha256: 3d5dbdcb6ab5cd51f0c5a9c7cde0415d8495864ff0da0cb31cc59c4ea18198ea
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. De selectiefunctionaris stelt de indiener van het bezwaarschrift binnen zes weken van zijn met redenen omklede beslis sing schriftelijk en zoveel mogelijk in een voor deze begrijpelijke taal op de hoogte. Hierbij wijst hij hem op de mogel ijkheid van het instellen van beroep, bedoeld in hoofdstuk XIII, alsmede de termijnen waarbinnen en de wijze waarop dit gedaan moet worden.
+  - index: 4
+    label: lid 5
+    sha256: 9de2d3d746cb9ba8922ab280e73403ad68ba2efec712cc0217e4a2046e2675d9
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. Het indienen van een bezwaarschrift blijft achterwege, indien de betrokkene in de gelegenheid is gesteld zijn bezware n tegen een door de selectiefunctionaris voorgenomen en hem betreffende beslissing als bedoeld in het eerste lid kenbaar te maken.
+- number: '18'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 7695b5317fb4324c257b35965fbacda98880ab8d7c9789b375dbd91ff6043747
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Artikel 18 1. De betrokkene heeft het recht bij de selectiefunctionaris een met redenen omkleed verzoekschrift in te die nen strekkende tot: a. b.'
+  - index: 1
+    label: lid 2
+    sha256: 053ba00324935d818ec24d1c5aa282fc246778ead9b574910cd33a85fdfdd436
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De artikelen 61, tweede en vierde lid, en 17, derde en vierde lid, zijn van overeenkomstige toepassing.
+  - index: 2
+    label: lid 3
+    sha256: fb33698b67783b061f07489e693b0085f8c4ff634657765aafe8d5ae883a9226
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Indien het verzoekschrift, bedoeld in het eerste lid, is afgewezen, kan zes maanden na deze afwijzing opnieuw een der gelijk verzoekschrift worden ingediend.
+- number: 18a
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: d154d6775ec7225834583c94dbc243657d9d1046f69c3990fb560d5410319a04
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 18a 1. De directeur draagt zorg dat zo spoedig mogelijk en in ieder geval binnen een maand na binnenkomst van de gedetineerde in een inrichting voor de opvang van verslaafden, zo veel mogelijk in overleg met hem, een plan van opvang wordt vastgesteld.
+  - index: 1
+    label: lid 2
+    sha256: e8435d3727b9dc3353c188581d1d8139045dff3a97fbd25a3c5a102da7f2f019
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Bij algemene maatregel van bestuur worden regels gesteld omtrent de eisen waaraan een plan van opvang ten minste moet voldoen en de voorschriften die bij de vaststelling of een wijziging van het plan in acht genomen moeten worden.
+- number: 18b
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 31d9ea066262892deca30989c2ec11f18556a7b7da460976a6a0b25602a1c3b5
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 18b De directeur draagt zorg dat de opvang overeenkomstig het plan van opvang plaatsvindt.
+- number: 18c
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 9588f9a5fded6b0a813e7187b0e45abbc1bae0e7ba72d8fbcd24ddc7a6a3b0bb
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 18c 1. De gedetineerde heeft recht op een periodieke evaluatie door de directeur van het verloop van de opvang. Deze evaluatie vindt ten minste eens per zes maanden plaats.
+  - index: 1
+    label: lid 2
+    sha256: 96a8a0c48adcd6e9850a09f3164597f1b836e0a03da8efd5d3b77e5c2f2d2745
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Indien de rechter bij het opleggen van de maatregel heeft bepaald dat het openbaar ministerie hem binnen een door hem vastgestelde termijn bericht over de wenselijkheid of de noodzakelijkheid van de voortzetting van de tenuitvoerlegging daarvan, vindt de eerste evaluatie in ieder geval plaats voor het verstrijken van die termijn.
+  - index: 2
+    label: lid 3
+    sha256: f8661f079d10c42551ea32aeb3a1567751039e527d8418b93ec88480a3f88dd1
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De directeur draagt zorg dat van iedere evaluatie een verslag wordt gemaakt en dat dit verslag zo spoedig mogelijk me t de gedetineerde wordt besproken.
+  - index: 3
+    label: lid 4
+    sha256: 189a4de7eba7fb20a3352e3ab5f8e8e83f98504bb7e305bcda2c32ad4f7c33f1
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. Indien de gedetineerde van oordeel is dat het evaluatieverslag feitelijk onjuist of onvolledig is, heeft hij het rech t op dit verslag schriftelijk commentaar te geven. Indien het evaluatieverslag niet overeenkomstig het commentaar wordt verbeterd of aangevuld, draagt de directeur zorg dat het commentaar aan het verslag wordt gehecht.
+  - index: 4
+    label: lid 5
+    sha256: 27d6a5b134977619c37e497da1d23d3826c8e516ae86433b596c785ef20e01b9
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. Bij algemene maatregel van bestuur worden regels gesteld omtrent de procedure die met betrekking tot de evaluatie die nt te worden gevolgd en de eisen die aan het verslag daarvan ten minste dienen te worden gesteld.
+- number: '19'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: a1878c915024e0c57891a4ba1196114970b867490a51be1ac43ccbd63cd0976d
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 19 1. De tenuitvoerlegging van een vrijheidsstraf of vrijheidsbenemende maatregel in een inrichting vindt plaats in algehele dan wel beperkte gemeenschap, tenzij plaatsing in een individueel regime noodzakelijk is.
+  - index: 1
+    label: lid 2
+    sha256: f53c29fe00b283ad83fe8ce5f6a1000fe301a107d4c33d682c3b750726b72616
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Onze Minister bepaalt ten aanzien van elke inrichting of afdeling de mate van gemeenschap.
+- number: '20'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 0566dffb30fee285e63e4e5a55969eec283558c0873ffc047eec3a0454cd07a4
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 20 1. In een regime van algehele gemeenschap verblijven gedetineerden tezamen in woon- en werkruimten of nemen g emeenschappelijk deel aan activiteiten.
+  - index: 1
+    label: lid 2
+    sha256: e1b7d7c3150e4368a1693071033e19fc5cb7927301f18b667cd39f62d08d7164
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. In een regime van algehele gemeenschap kunnen gedetineerden worden verplicht zich tijdens de maaltijden, gedurende be zoektijden voor zover zij geen bezoek ontvangen, alsmede gedurende activiteiten waaraan zij niet deelnemen, in hun verbl ijfsruimte op te houden. Deze ruimte is voor hen persoonlijk dan wel voor de gemeenschappelijke onderbrenging van gedeti neerden bestemd.
+  - index: 2
+    label: lid 3
+    sha256: 05a4fae7f9fcf47873177f1de1f4470ccf401a6f01a6c448554a46f5c922ed94
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. In een regime van algehele gemeenschap houden gedetineerden zich gedurende de voor de nachtrust bestemde uren en op i n de huisregels bepaalde overige uren gedurende het weekeinde en de algemeen erkende feestdagen in hun verblijfsruimte o p.
+- number: '21'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 9f6e4048cc1cbf03e1482a41eb374402daa1048b6d1fc80c22b21cc654cac131
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 21 In een regime van beperkte gemeenschap worden gedetineerden in de gelegenheid gesteld gemeenschappelijk aan a ctiviteiten deel te nemen. Overigens houden zij zich in de voor hen persoonlijk bestemde verblijfsruimte op.
+- number: '22'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: e3aa8d862260a12f813f35c5949058c91753d8975e1c95b9d2aa0738d5b69b50
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 22 1. In een individueel regime worden gedetineerden in de gelegenheid gesteld aan activiteiten deel te nemen. O verigens houden zij zich in de voor hen persoonlijk bestemde verblijfsruimte op.
+  - index: 1
+    label: lid 2
+    sha256: 13063a0fce53279a43cd8852a9ba7578afb8e8d0850a70fbf0bcdd7a7fd7b60f
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. In een individueel regime bepaalt de directeur de mate waarin de gedetineerde in staat wordt gesteld individueel dan wel gemeenschappelijk aan activiteiten deel te nemen.
+- number: '23'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 5d57fc494cafd00f2f838ef830ea9e7dfd35a1f84e909ce9c39316ded4f4bf04
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Artikel 23 1. De directeur kan een gedetineerde uitsluiten van deelname aan een of meer activiteiten: a. b. c. d.'
+  - index: 1
+    label: lid 2
+    sha256: bb81d9c2578ab097cd17cdc1d97ec5272803762d6bff792b43a1e6ae3ce619f8
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De uitsluiting ingevolge het eerste lid, onder a of b, duurt ten hoogste twee weken. De directeur kan deze uitsluitin g telkens voor ten hoogste twee weken verlengen, indien hij tot het oordeel is gekomen dat de noodzaak tot uitsluiting n og bestaat.
+  - index: 2
+    label: lid 3
+    sha256: 65de86e6aacab61fb5964293d5877ce249b12aec4f7c5c9d0c2720a3c2fbc77e
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Indien onverwijlde tenuitvoerlegging van de uitsluiting, bedoeld in het eerste lid, onder a of b, geboden is, kan een ambtenaar of medewerker de maatregel, bedoeld in het eerste lid, voor een periode van ten hoogste vijftien uren treffen .
+- number: '24'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 46c2dfe45402e71d5d0fdab84768936ad651bb57d33889936ee68ceccedc22e5
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 24 1. De directeur is bevoegd een gedetineerde in afzondering te plaatsen op de gronden genoemd in artikel 23, e erste lid. De afzondering ingevolge artikel 23, eerste lid, onder a of b, duurt ten hoogste twee weken.
+  - index: 1
+    label: lid 2
+    sha256: 3d69ed4c923ef5f4a75fba869d4026771b140f0319d8db84c80ef712ca488b04
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De afzondering wordt ten uitvoer gelegd in een afzonderingscel of in een andere verblijfsruimte. Gedurende het verbli jf in afzondering neemt de gedetineerde niet deel aan activiteiten, voor zover de directeur niet anders bepaalt en behou dens het dagelijks verblijf in de buitenlucht, bedoeld in artikel 49, derde lid. De directeur kan het contact met de bui tenwereld gedurende het verblijf in de afzonderingscel beperken of uitsluiten.
+  - index: 2
+    label: lid 3
+    sha256: 6a079af951f031e4e03ddfaf411846492c09485cef6295bf4dd5de9d84345ce0
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De directeur kan de afzondering, bedoeld in het eerste lid, op de grond van artikel 23, eerste lid, onder a of b, tel kens voor ten hoogste twee weken verlengen, indien hij tot het oordeel is gekomen dat de noodzaak tot afzondering nog be staat.
+  - index: 3
+    label: lid 4
+    sha256: 5a9b761fb97ec02cdb43506e966574751e811e3b6465c8fd48b90d0037dd8826
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. Indien onverwijlde tenuitvoerlegging van de afzondering op de grond van artikel 23, eerste lid, onder a of b, geboden is, kan een ambtenaar of medewerker een gedetineerde voor een periode van ten hoogste vijftien uren in afzondering plaa tsen. De directeur wordt van deze plaatsing onverwijld op de hoogte gesteld.
+  - index: 4
+    label: lid 5
+    sha256: 778cb52f311af25ba28ed004f2da3b9ce4d769fc5bcfb1363b4abcbadddac37c
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. De directeur draagt zorg dat in geval van afzondering het nodige contact tussen ambtenaren en medewerkers van de inri chting en de gedetineerde wordt gewaarborgd en naar aard en frequentie op de situatie van de gedetineerde wordt afgestem d.
+  - index: 5
+    label: lid 6
+    sha256: b938ae56baa40786e0782c226501071e5e9cdced469afaa3a240146ba3b63781
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 6. De directeur draagt zorg dat, ingeval de afzondering langer dan vierentwintig uren duurt en ten uitvoer wordt gelegd in een afzonderingscel, de commissie van toezicht en de aan de inrichting verbonden arts of diens vervanger terstond hie rvan in kennis worden gesteld.
+  - index: 6
+    label: lid 7
+    sha256: 222857a9b69ec39f7f786327cd4a7dd5c7e0f80a75fc3a588098d5823d30d8c0
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 7. Onze Minister stelt nadere regels omtrent het verblijf in en de inrichting van de afzonderingscel. Deze betreffen in elk geval de rechten die tijdens het verblijf in de afzonderingscel aan de gedetineerde toekomen.
+- number: '25'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 87134fdaf036295120d734c8c8f46a3e543cc256d3dba1a4d20b81bf5c8025b5
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 25 1. Indien de tenuitvoerlegging van de afzondering in de inrichting of afdeling waarin zij is opgelegd op erns tige bezwaren stuit, kan zij in een andere inrichting of afdeling worden ondergaan.
+  - index: 1
+    label: lid 2
+    sha256: 327f823693cced3eb93e82b8c61956401a2adb2dafe9dfa4fa940d6b23bbf4e0
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Indien de directeur van oordeel is dat van de in het eerste lid bedoelde omstandigheid sprake is, plaatst hij in over eenstemming met de selectiefunctionaris de gedetineerde over.
+  - index: 2
+    label: lid 3
+    sha256: 9581081e81e9dfaf89c18e291897b8de6cade334ed06569fdbef7d6f4e55e21a
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Over de verlenging van de afzondering, waarvan de tenuitvoerlegging plaatsvindt in een andere inrichting of afdeling, beslist de directeur van de inrichting of afdeling waarin de afzondering was opgelegd, in overeenstemming met de select iefunctionaris en gehoord de directeur van de inrichting of afdeling waar de tenuitvoerlegging van de afzondering plaats vindt.
+  - index: 3
+    label: lid 4
+    sha256: fc04b12bff7946d4154c2e6da073f860df76da89374a2bfa6716470a056e55b5
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. Onze Minister stelt nadere regels omtrent de procedure van overplaatsing en van verlenging van de afzondering ingevol ge het tweede onderscheidenlijk het derde lid.
+- number: '26'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 2c0406d9dddb3d00953b9a0ee1c3c93bb6c4444734946cc4090d345b5d508a3f
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 26 1. Een gedetineerde kan, ingevolge het derde en het vierde lid, worden toegestaan de inrichting te verlaten.
+  - index: 1
+    label: lid 2
+    sha256: f4b6c0270e31b31d988786b3cfdcf1296a3b0919e41ad29dd0e23946f863e375
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Het verlaten van de inrichting, bedoeld in het eerste lid, schort de tenuitvoerlegging van de vrijheidsstraf of vrijh eidsbenemende maatregel niet op.
+  - index: 2
+    label: lid 3
+    sha256: 7abdb79a64a0de4582ac459a2e1c30f8a4c11c33a028f6d634a07f4f5c042052
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Onze Minister stelt nadere regels aangaande het verlaten van de inrichting bij wijze van verlof. Deze betreffen in el k geval de criteria waaraan een gedetineerde moet voldoen om voor het verlof in aanmerking te komen, de bevoegdheid tot en de wijze van verlening, weigering, beperking en intrekking alsmede de duur en frequentie van het verlof en de voorwaa rden die aan het verlof kunnen worden verbonden.
+  - index: 3
+    label: lid 4
+    sha256: 4e00fefbf9fc41c19e27d15d2beedd11bc819f5082a2014e73251227b010b5f2
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '4. De directeur stelt een gedetineerde in de gelegenheid onder door hem te stellen voorwaarden de inrichting te verlaten teneinde een gerechtelijke procedure bij te wonen: a. b. c.'
+  - index: 4
+    label: lid 5
+    sha256: e81cee75d616a39ee53125b4433e53c778e29601c2c91eb5d9bf5d4b9623652f
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. Met het oog op het verlaten van de inrichting, bedoeld in het vierde lid, kan de directeur aan daartoe door hem aange wezen ambtenaren of medewerkers bevelen dat de betrokken persoon naar de daartoe bestemde plaats wordt overgebracht.
+- number: '27'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: cc5fdd5aeee6ea5c8dc162dc758e14cd8238ea6062d66c8e1dda6a76ab68080d
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 27 Het recht van de gedetineerde op onaantastbaarheid van zijn lichaam, zijn kleding en de van zijn lichaam afge scheiden stoffen en zijn verblijfsruimte kan overeenkomstig de bepalingen van dit hoofdstuk worden beperkt.
+- number: '28'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: ca3486c561dde3ed25a28dd862c8550415b6bc89aa5c9b446fdf928b39b07624
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 28 1. De directeur kan de gedetineerde verplichten een legitimatiebewijs bij zich te dragen en dit op verzoek va n een ambtenaar of medewerker te tonen.
+  - index: 1
+    label: lid 2
+    sha256: ae106310d9b0d618cfb93c3cb4d4f8d5f74f1fc4366ac677ae511fd9302a133c
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De gedetineerde is verplicht zijn medewerking te verlenen aan het vastleggen van zijn beeltenis, het nemen van een vi ngerafdruk of het afnemen van een handscan.
+- number: '29'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: f61c8f55aeaf2b81e0ce959e78e8ec5ade23f81c64c1940793b12bf7878946ae
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 29 1. De directeur is bevoegd een gedetineerde bij binnenkomst of bij het verlaten van de inrichting, voorafgaan d aan of na afloop van bezoek, dan wel indien dit anderszins noodzakelijk is in het belang van de handhaving van de orde of de veiligheid in de inrichting, aan zijn lichaam of aan zijn kleding te onderzoeken.
+  - index: 1
+    label: lid 2
+    sha256: 17420bc7da4a577f8b85ebb69ecbb391c2bfcdc4386ab6aabad753ec57b47db3
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Het onderzoek aan het lichaam van de gedetineerde omvat mede het uitwendig schouwen van de openingen en holten van he t lichaam van de gedetineerde. Het onderzoek aan de kleding van de gedetineerde omvat mede het onderzoek van de voorwerp en die de gedetineerde bij zich draagt of met zich meevoert.
+  - index: 2
+    label: lid 3
+    sha256: 5ee3645f96e2aa0220cee6f31439689426fc35c3c55b150a05f00e624926cb40
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Het onderzoek aan het lichaam van de gedetineerde wordt op een besloten plaats en, voor zover mogelijk, door personen van hetzelfde geslacht als de gedetineerde verricht.
+  - index: 3
+    label: lid 4
+    sha256: 28b9ae83fb41cf816c661c401cb91eee3619a313180002a5bf64c4b2259e841f
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. Indien bij een onderzoek aan het lichaam of de kleding voorwerpen worden aangetroffen die niet in het bezit van de ge detineerde mogen zijn, en, voor zover het onderzoek betrekking heeft op de openingen of holten van het lichaam van de ge detineerde, deze voorwerpen zonder het gebruik van hulpmiddelen daaruit kunnen worden verwijderd, is de directeur bevoeg d deze in beslag te nemen. Hij draagt zorg dat deze voorwerpen, hetzij onder afgifte van een bewijs van ontvangst ten be hoeve van de gedetineerde op diens kosten worden bewaard, hetzij met toestemming van de gedetineerde worden vernietigd, hetzij aan een opsporingsambtenaar ter hand worden gesteld met het oog op de voorkoming of opsporing van strafbare feite n.
+- number: '30'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 227aef75e277375b06480554519b5fef4ae9aa8d7d9bbac049acab4dde58e15f
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 30 1. De directeur kan, indien dit noodzakelijk is in het belang van de handhaving van de orde of de veiligheid in de inrichting dan wel in verband met de beslissing tot plaatsing of overplaatsing dan wel in verband met de verlening van verlof, een gedetineerde verplichten urine af te staan ten behoeve van een onderzoek van die urine op aanwezigheid van gedragsbeïnvloedende middelen.
+  - index: 1
+    label: lid 2
+    sha256: 912723ff83963812af8b484bb2d47c23a5ed2b78aa85514d05dd3dba07bfd63f
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Onze Minister stelt nadere regels omtrent de wijze van uitvoering van het urineonderzoek. Deze regels betreffen in el k geval het recht van de gedetineerde om de uitslag te vernemen en om voor eigen rekening een hernieuwd onderzoek van de afgestane urine te laten plaatsvinden. Artikel 29, derde lid, is van overeenkomstige toepassing.
+- number: '31'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 92abcc88353097037fe04a582638fc08c714d093d7dc621d0018465628a298bb
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 31 1. De directeur kan bepalen dat een gedetineerde in het lichaam wordt onderzocht, indien dit noodzakelijk is ter afwending van ernstig gevaar voor de handhaving van de orde of de veiligheid in de inrichting dan wel voor de gezond heid van de gedetineerde. Het onderzoek in het lichaam wordt verricht door een arts of, in diens opdracht, door een verp leegkundige.
+  - index: 1
+    label: lid 2
+    sha256: d8cfc6f783a00c41e4df7040172c1dfcb1aca172f48e885941d8d182b7b364ce
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Een ambtenaar of medewerker van de inrichting waar de gedetineerde verblijft kan indien onverwijlde tenuitvoerlegging geboden is, een beslissing als bedoeld in het eerste lid nemen.
+  - index: 2
+    label: lid 3
+    sha256: 934ae7799624979598105e1964e917b741d3fa6bcac0cea9327369f43e7db4ca
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Indien bij het onderzoek in het lichaam voorwerpen worden aangetroffen die niet in het bezit van de gedetineerde moge n zijn, en deze voorwerpen door de arts of verpleegkundige uit het lichaam kunnen worden verwijderd, is de directeur bev oegd deze in beslag te nemen. Artikel 29, vierde lid, laatste volzin, is van overeenkomstige toepassing.
+- number: '32'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: ea888960155408824155faabef11b7e58e8f362c288f593f1f05224bf192ed04
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 32 1. De directeur kan een gedetineerde verplichten te gedogen dat ten aanzien van hem een bepaalde geneeskundig e handeling wordt verricht, indien die handeling naar het oordeel van een arts noodzakelijk is ter afwending van ernstig gevaar voor de gezondheid of veiligheid van de gedetineerde of van anderen. De handeling wordt verricht door een arts o f, in diens opdracht, door een verpleegkundige.
+  - index: 1
+    label: lid 2
+    sha256: 7fe8917a4b97508e0b58a3e4fa7848e491dd9ce7da57fb67138cfe47125515f0
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Bij algemene maatregel van bestuur worden nadere regels gesteld omtrent de toepassing van het eerste lid. Deze regels betreffen in ieder geval de melding en registratie van de geneeskundige handeling, alsmede de taak van de verantwoordel ijke arts indien de geneeskundige handeling noodzakelijk is ter afwending van ernstig gevaar, voortvloeiend uit de stoor nis van de geestvermogens van de gedetineerde. De algemene maatregel van bestuur treedt niet eerder in werking dan acht weken na de datum van uitgifte van het Staatsblad waarin hij is geplaatst. Van de plaatsing wordt onverwijld mededeling gedaan aan de beide kamers der Staten-Generaal.
+- number: '33'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 70be0382721c4a77843b889fb00234c2325945a3c521234061f46d360a27c8c9
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 33 1. De directeur kan bepalen dat een gedetineerde tijdens de afzondering door bevestiging van mechanische midd elen aan zijn lichaam voor een periode van ten hoogste vierentwintig uren in zijn bewegingsvrijheid wordt beperkt, indie n die beperking noodzakelijk is ter afwending van een van de gedetineerde uitgaand ernstig gevaar voor diens gezondheid of de veiligheid van anderen dan de gedetineerde. De directeur stelt de arts of diens vervanger en de commissie van toez icht van de bevestiging onverwijld in kennis.
+  - index: 1
+    label: lid 2
+    sha256: 2a9547e7bba8083b234e337cc3426644a027bcfe621e454a0d96741d88706e08
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Indien onverwijlde tenuitvoerlegging van de maatregel, bedoeld in het eerste lid, geboden is, kan een ambtenaar of me dewerker hiertoe beslissen en deze voor een periode van ten hoogste vier uren ten uitvoer leggen. De directeur, de arts of diens vervanger en de commissie van toezicht worden hiervan onverwijld in kennis gesteld.
+  - index: 2
+    label: lid 3
+    sha256: 5c8b64ec46b97178f59ddef30fc2b84f2e7df1eedffe5cf987cca230b09ad9ef
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De directeur kan de beslissing tot bevestiging van mechanische middelen aan het lichaam van de gedetineerde telkens m et ten hoogste vierentwintig uren verlengen. De beslissing tot verlenging wordt genomen na overleg met de aan de inricht ing verbonden arts of diens vervanger.
+  - index: 3
+    label: lid 4
+    sha256: 193742a191343c73309c9505f5f69ae74255491f128c92fdfc5dc2bd07ad49aa
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. Onze Minister stelt nadere regels omtrent de bevestiging van mechanische middelen aan het lichaam.
+- number: '34'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 286faa81d53eca979e38d54111e4b74f94f8fa92180dba589cb2b2d24cae3262
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Artikel 34 1. De directeur is bevoegd de verblijfsruimte van een gedetineerde op de aanwezigheid van voorwerpen die niet in zijn bezit mogen zijn te onderzoeken: a. b.'
+  - index: 1
+    label: lid 2
+    sha256: ba234c0cc41e386a10d365a4a15724c2f79d3c79217dbcfc9291e285807ae25e
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Artikel 29, vierde lid, is van overeenkomstige toepassing.
+- number: '35'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 971d1190477994be27a321f2c5349b5f96ccd03d3d0758c6100ca4fc091c034d
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Artikel 35 1. De directeur is bevoegd jegens een gedetineerde geweld te gebruiken dan wel vrijheidsbeperkende middelen a an te wenden, voor zover dit noodzakelijk is met het oog op een van de volgende belangen: a. b. c.'
+  - index: 1
+    label: lid 2
+    sha256: 22d4741cca1ca5ab1de9fc2370c31387b8ce9a0dd92c33dec86de9758b887c29
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '2. De selectiefunctionaris of een daartoe door hem aangewezen ambtenaar of medewerker is bevoegd jegens een gedetineerde geweld te gebruiken of vrijheidsbeperkende middelen aan te wenden met het oog op een van de volgende belangen: a. b.'
+  - index: 2
+    label: lid 3
+    sha256: aa86b2d6aa169d0df5900dafaa70cfd419bc929e882fd9f5c769f55ed3e540ac
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Aan het gebruik van geweld gaat zo mogelijk een waarschuwing vooraf. Degene die geweld heeft gebruikt maakt hiervan o nverwijld een schriftelijk verslag en doet dit verslag onverwijld aan de directeur dan wel de selectiefunctionaris toeko men.
+  - index: 3
+    label: lid 4
+    sha256: 4ac35b4c7b007b5ee0641c701e68efd0636e5fd8e021ae215e0eb88f3f77dd04
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. Onze Minister stelt nadere regels omtrent het gebruik van geweld en de aanwending van vrijheidsbeperkende middelen.
+- number: '36'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 15089f00e6c83aa430b32566141da8f8eebf96530a2338a24f62c0e29b0000e3
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 36 1. De gedetineerde heeft, behoudens de overeenkomstig het tweede tot en met het vierde lid te stellen beperki ngen, het recht brieven en stukken per post te verzenden en te ontvangen. De hieraan verbonden kosten komen, tenzij de d irecteur anders bepaalt, voor rekening van de gedetineerde.
+  - index: 1
+    label: lid 2
+    sha256: 3cd4e6ec7d44fc7e5e35f487f96d9f989c2eda87ee7705619b683dc4b3c4afcf
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De directeur is bevoegd enveloppen of andere poststukken, afkomstig van of bestemd voor gedetineerden, op de aanwezig heid van bijgesloten voorwerpen te onderzoeken en deze hiertoe te openen. Indien de enveloppen of andere poststukken afk omstig zijn van of bestemd zijn voor de in artikel 37, eerste of tweede lid, genoemde personen of instanties, geschiedt dit onderzoek in aanwezigheid van de betrokken gedetineerde.
+  - index: 2
+    label: lid 3
+    sha256: 01f18d130157a37b95d5ae88e2a227284611da5b2f1f10a8dd6ca3b8ccd08fb1
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De directeur is bevoegd op de inhoud van brieven of andere poststukken afkomstig van of bestemd voor gedetineerden to ezicht uit te oefenen. Dit toezicht kan omvatten het kopiëren van brieven of andere poststukken. Van de wijze van uitoef enen van toezicht wordt aan de gedetineerden tevoren mededeling gedaan.
+  - index: 3
+    label: lid 4
+    sha256: 92e57128c9cdefb2b3e139e5a1921e1243e83a4be883e299086e033295c49f00
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '4. De directeur kan de verzending of uitreiking van bepaalde brieven of andere poststukken alsmede bijgesloten voorwerpe n weigeren, indien dit noodzakelijk is met het oog op een van de volgende belangen: a. b. c.'
+  - index: 4
+    label: lid 5
+    sha256: afde90700ca7a08547730dea6ccda78d44ea45622f04462e84f96656e7a8afba
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. De directeur draagt zorg dat de niet uitgereikte brieven of andere poststukken dan wel bijgesloten voorwerpen, hetzij worden teruggegeven aan de gedetineerde of voor diens rekening worden gezonden aan de verzender of een door de gedetine erde op te geven adres, hetzij onder afgifte van een bewijs van ontvangst ten behoeve van de gedetineerde worden bewaard , hetzij met toestemming van de gedetineerde worden vernietigd, hetzij aan een opsporingsambtenaar ter hand worden geste ld met het oog op de voorkoming of opsporing van strafbare feiten.
+- number: '37'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 0265373aacc9d84738fe19900c352f5754ccea4a59a0cd51c47a55dae276df7b
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Artikel 37 1. Artikel 36, derde en vierde lid, is niet van toepassing op brieven, door de gedetineerde gericht aan of af komstig van: a. b. c. d. e. f. g. h. i. j. k.'
+  - index: 1
+    label: lid 2
+    sha256: 436c195cef0a17e51f197e45a25029d1de98980b0c2f9067df78b93289d2db6d
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '2. Voor de toepassing van het eerste lid, onder d, wordt onder justitiële autoriteiten mede begrepen: organen die kracht ens een wettelijk voorschrift of een in Nederland geldend verdrag bevoegd zijn tot kennisneming van klachten of behandel ing van met een klacht aangevangen zaken.'
+  - index: 2
+    label: lid 3
+    sha256: b908c814e521e7e9431900587d8a3da4be4de892e746a761a42ad603470aa11e
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Onze Minister kan nadere regels stellen omtrent de wijze van verzending van brieven aan en door de in het eerste lid genoemde personen en instanties.
+- number: '38'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: eb1aeeb59e14cd3d77014c19d4685bd785b0fa2b81afb81278549e71d700cbcc
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 38 1. De gedetineerde heeft het recht gedurende ten minste één uur per week op in de huisregels vastgestelde tij den en plaatsen bezoek te ontvangen. In de huisregels worden regels gesteld omtrent het aanvragen van bezoek.
+  - index: 1
+    label: lid 2
+    sha256: 7fc7ff6982bb3c7fc638be0a2844fbb27ce91bd74baca3e96ece08f8324dfc8d
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De directeur kan het aantal tegelijkertijd tot de gedetineerde toe te laten personen beperken, indien dit noodzakelij k is in het belang van de handhaving van de orde of de veiligheid in de inrichting.
+  - index: 2
+    label: lid 3
+    sha256: 044e3905b97ec789ab683b6c2bfabc33f193873b7fb7d164832bdeb2f27c7e94
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De directeur kan de toelating tot de gedetineerde van een bepaald persoon of van bepaalde personen weigeren, indien d it noodzakelijk is met het oog op een belang als bedoeld in artikel 36, vierde lid. Deze weigering geldt voor ten hoogst e drie maanden.
+  - index: 3
+    label: lid 4
+    sha256: 509575c33fad5062ad3aaec9b1d60331d6bbed80cd8149296b426bb36a133de9
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. De directeur kan bepalen dat tijdens het bezoek toezicht wordt uitgeoefend, indien dit noodzakelijk is met het oog op een belang als bedoeld in artikel 36, vierde lid. Dit toezicht kan omvatten het beluisteren of opnemen van het gesprek tussen de bezoeker en de gedetineerde. Tevoren wordt aan betrokkenen mededeling gedaan van de aard en de reden van het t oezicht.
+  - index: 4
+    label: lid 5
+    sha256: ae07cecbbf20345a7845d5ffc909748e446c03e4c208021d25fd7814fdb72e92
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. Iedere bezoeker dient zich bij binnenkomst op deugdelijke wijze te legitimeren. De directeur kan bepalen dat een bezo eker aan zijn kleding wordt onderzocht op de aanwezigheid van voorwerpen die een gevaar kunnen opleveren voor de orde of de veiligheid in de inrichting. Dit onderzoek kan ook betrekking hebben op door hem meegebrachte voorwerpen. De directe ur is bevoegd dergelijke voorwerpen gedurende de duur van het bezoek onder zich te nemen tegen afgifte van een bewijs va n ontvangst dan wel aan een opsporingsambtenaar ter hand te stellen met het oog op de voorkoming of opsporing van strafb are feiten.
+  - index: 5
+    label: lid 6
+    sha256: 2c5b839a3615b9c181090a216b8af8e926afd87ca1f8192ea8acdff4ffbcfb4b
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 6. De directeur kan het bezoek binnen de daarvoor bestemde tijd beëindigen en de bezoeker uit de inrichting doen verwijd eren, indien dit noodzakelijk is met het oog op een belang als bedoeld in artikel 36, vierde lid.
+  - index: 6
+    label: lid 7
+    sha256: d768a7b3c5080f0881268b246dede6d50e1a2fc861e9cde90533ed0f88fd2521
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 7. De in artikel 37, eerste lid, onder g en h, genoemde personen en instanties hebben te allen tijde toegang tot de gede tineerde. De overige in dat lid genoemde personen en instanties hebben toegang tot de gedetineerde op in de huisregels v astgestelde tijden en plaatsen. Tijdens dit bezoek kunnen zij zich vrijelijk met de gedetineerde onderhouden, behoudens ingeval de directeur, na overleg met de desbetreffende bezoeker, van mening is dat van de gedetineerde een ernstig gevaa r uitgaat voor de veiligheid van de bezoeker. In dat geval laat de directeur voor het bezoek weten welke toezichthoudend e maatregelen genomen worden om het onderhoud zo ongestoord mogelijk te laten verlopen. De toezichthoudende maatregelen mogen er niet toe leiden dat vertrouwelijke mededelingen in het onderhoud tussen de gedetineerde en diens rechtsbijstand verlener bij derden bekend kunnen worden.
+- number: '39'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: fcf611fa4c576e8a79acbc72b38b8d433dea2a09112330a8e5d7159c6d3d7ebc
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 39 1. De gedetineerde heeft, behoudens de overeenkomstig het tweede tot en met het vierde lid te stellen beperki ngen, het recht ten minste eenmaal per week op in de huisregels vastgestelde tijden en plaatsen en met behulp van een da artoe aangewezen toestel gedurende tien minuten een of meer telefoongesprekken te voeren met personen buiten de inrichti ng. De hieraan verbonden kosten komen, tenzij de directeur anders bepaalt, voor rekening van de gedetineerde.
+  - index: 1
+    label: lid 2
+    sha256: dcda509b4abd376884d8d57d26b56715b424256439d93b9396cc628fb8c4ea5f
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De directeur kan bepalen dat op de door of met de gedetineerde gevoerde telefoongesprekken toezicht wordt uitgeoefend , indien dit noodzakelijk is om de identiteit van de persoon met wie de gedetineerde een gesprek voert vast te stellen d an wel met het oog op een belang als bedoeld in artikel 36, vierde lid. Dit toezicht kan omvatten het beluisteren of opn emen van het telefoongesprek. Tevoren wordt aan de betrokkene mededeling gedaan van de aard en de reden van het toezicht .
+  - index: 2
+    label: lid 3
+    sha256: 0d9539428236d20abd1244c4e9e676e607165629e637939998c800ed29163f1f
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De directeur kan de gelegenheid tot het voeren van een bepaald telefoongesprek of bepaalde telefoongesprekken weigere n of een telefoongesprek binnen de daarvoor bestemde tijd beëindigen, indien dit noodzakelijk is met het oog op een bela ng als bedoeld in artikel 36, vierde lid. De beslissing tot het weigeren van een bepaald telefoongesprek of bepaalde tel efoongesprekken geldt voor ten hoogste drie maanden.
+  - index: 3
+    label: lid 4
+    sha256: 25e45c0e1836f2785e438ea97dba0f80a8221191941456b2fe8aa900d18f5a6c
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. De gedetineerde wordt in staat gesteld met de in artikel 37, eerste lid, genoemde personen en instanties telefonisch contact te hebben, indien hiervoor de noodzaak en de gelegenheid bestaat. Op deze gesprekken wordt geen ander toezicht u itgeoefend dan noodzakelijk is om de identiteit van de personen of instantie met wie de gedetineerde een telefoongesprek voert of wenst te voeren vast te stellen.
+- number: '40'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 9d23875edd9937b95e2232a40235f12b403a80dfad1e43f9b9027724672bd845
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Artikel 40 1. De directeur kan toestemming geven voor het voeren van een gesprek tussen de gedetineerde en een vertegenw oordiger van de media, voor zover dit zich verdraagt met de volgende belangen: a. b. c. d.'
+  - index: 1
+    label: lid 2
+    sha256: 4928e1450c05cd033966b57215f6301c6b948058e8d2b410f8ac5c2ebc6204ab
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De directeur kan met het oog op de bescherming van de in het eerste lid genoemde belangen aan de toegang van een vert egenwoordiger van de media tot de inrichting voorwaarden verbinden. De directeur is bevoegd een vertegenwoordiger van de media uit de inrichting te doen verwijderen, indien hij de hem opgelegde voorwaarden niet nakomt.
+  - index: 2
+    label: lid 3
+    sha256: c8d21bc1d89ca7fc8e1df08a9ac81ec06a460b555757b18ba5b27cfd4d0e99e4
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De directeur kan op het contact met een vertegenwoordiger van de media toezicht uitoefenen, indien dit noodzakelijk i s met het oog op een belang als bedoeld in het eerste lid. Artikel 38, vierde lid, tweede en derde volzin, en vijfde lid , is van overeenkomstige toepassing.
+- number: '41'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 2bd338920f1415828e0608d0d53f18cc1665de31673e8f3a03abae9e6c63b6c9
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 41 1. De gedetineerde heeft het recht zijn godsdienst of levensovertuiging, individueel of in gemeenschap met an deren, vrij te belijden en te beleven.
+  - index: 1
+    label: lid 2
+    sha256: d1844834dc9f7403a6d482568099244a937aad17b6d5ea2893d94e711b5e14bd
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De directeur draagt zorg dat in de inrichting voldoende geestelijke verzorging, die zoveel mogelijk aansluit bij de g odsdienst of levensovertuiging van de gedetineerden, beschikbaar is.
+  - index: 2
+    label: lid 3
+    sha256: 86d797ac3195ffd75ca990a60dbcb173ad4eb195b75ab91bfe9f0a542ebae86b
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '3. De directeur stelt de gedetineerde in de gelegenheid op in de huisregels vastgestelde tijden en plaatsen: a. b. c.'
+  - index: 3
+    label: lid 4
+    sha256: 12f8ced57d0245d925ec7b0bf83e4901b0cc5ce775ec49e30a950fd087b9cf3f
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. Bij of krachtens algemene maatregel van bestuur worden nadere regels gesteld ten aanzien van de beschikbaarheid van d e geestelijke verzorging. Deze regels hebben betrekking op de verlening van geestelijke verzorging door of vanwege versc hillende richtingen van godsdienst of levensovertuiging, op de organisatie en de bekostiging van de geestelijke verzorgi ng en op de aanstelling van geestelijke verzorgers bij een inrichting.
+- number: '42'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: c8f1739610bcaa055198a8a0130a4d72dcaa23b8b8e42277651efc36c0742237
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 42 1. De gedetineerde heeft recht op verzorging door een aan de inrichting verbonden arts of diens vervanger.
+  - index: 1
+    label: lid 2
+    sha256: b2ae872a518b12bb313b8332ab3480185b9dc4172516d00d319be73e5c512eeb
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De gedetineerde heeft recht op raadpleging, voor eigen rekening, van een arts van zijn keuze. De directeur stelt in o verleg met de gekozen arts de plaats en het tijdstip van de raadpleging vast.
+  - index: 2
+    label: lid 3
+    sha256: a01ae48067596d9d5812416aa62958f4707980bc91945448334342cad802355b
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '3. De directeur draagt zorg dat de aan de inrichting verbonden arts of diens vervanger: a. b. c.'
+  - index: 3
+    label: lid 4
+    sha256: 3b46aae3a1b976463b2812d86e673c453518b222f4569afb4f7e0fab084b020c
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '4. De directeur draagt zorg voor: a. b. c.'
+  - index: 4
+    label: lid 5
+    sha256: 1494aecea2def6d1237ca3f54c466479aacdf9f9339e43013e88cd21fb86a441
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. Bij algemene maatregel van bestuur worden regels gesteld inzake het klagen over beslissingen die ten aanzien van gede tineerden zijn genomen door de aan de inrichting verbonden arts of diens plaatsvervanger.
+- number: '43'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: d411a0fe047f4434d040746b4eebc0b4c359e783f0c2bcba03a6f7b9366ad802
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 43 1. De gedetineerde heeft recht op sociale verzorging en hulpverlening.
+  - index: 1
+    label: lid 2
+    sha256: 6dd72158c5457078b6a1e603797e98c23be90a3b6f3f4894d700028de6bfc243
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De directeur draagt zorg dat reclasseringswerkers en andere daarvoor in aanmerking komende gedragsdeskundigen de in h et eerste lid omschreven zorg en hulp in de inrichting kunnen verlenen.
+  - index: 2
+    label: lid 3
+    sha256: 349f5ba33225b779cd8bccfddd5be9f5e4d47b0076929a6d3edf4ffc743b92ec
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De directeur draagt zorg voor overbrenging van de gedetineerde naar de daartoe bestemde plaats, indien de in het eers te lid omschreven zorg en hulp dit noodzakelijk maken en een dergelijke overbrenging zich verdraagt met de ongestoorde t enuitvoerlegging van de vrijheidsbeneming.
+- number: '44'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 6f59f19ccbe50fc7a1e23d96727ecacf4f02ca9e16c8b4af86f1ab5568d12106
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 44 1. De directeur draagt zorg dat aan de gedetineerde voeding, noodzakelijke kleding en schoeisel worden verstr ekt dan wel dat hem voldoende geldmiddelen ter beschikking worden gesteld om hierin naar behoren te voorzien.
+  - index: 1
+    label: lid 2
+    sha256: 0c48de7d37c2109a4ce647bb8c9c661aa14cba2c500559e24bac19d9ea381681
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De gedetineerde heeft recht op het dragen van eigen kleding en schoeisel, tenzij die een gevaar kunnen opleveren voor de orde of de veiligheid in de inrichting. Hij kan worden verplicht tijdens de arbeid of sport aangepaste kleding of sc hoeisel te dragen. In de huisregels kunnen regels worden gesteld omtrent de wijze van gebruik en onderhoud van kleding e n schoeisel.
+  - index: 2
+    label: lid 3
+    sha256: 4e77556868277a81e04e69b129e9e1b25c3257910d2b710e12421c9f3a282e29
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De directeur draagt zorg dat bij de verstrekking van voeding zoveel mogelijk rekening wordt gehouden met de godsdiens t of levensovertuiging van de gedetineerden.
+  - index: 3
+    label: lid 4
+    sha256: aeba14e8b96c6a60925863a1e0d27f1d707c2d039e037431e99f9c13f88a2081
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. De directeur draagt zorg dat de gedetineerde in staat gesteld wordt zijn uiterlijk en lichamelijke hygiëne naar behor en te verzorgen.
+  - index: 4
+    label: lid 5
+    sha256: 9a326582e69d6f1e033750ca6f0dc51c34d806fd9fa95ef0f29b5ce6c568d8ba
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. In de huisregels worden regels gesteld omtrent de aankoop door gedetineerden van andere gebruiksartikelen dan die wel ke door de directeur ter beschikking worden gesteld.
+- number: '45'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 5d57a72ad3da851801c94f8050b569be07c9700a527d62319829230ec1a28201
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 45 1. In de huisregels kan worden bepaald dat het bezit van bepaalde soorten voorwerpen binnen de inrichting of een bepaalde afdeling daarvan verboden is, indien dit noodzakelijk is in het belang van de handhaving van de orde of de veiligheid in de inrichting, dan wel de beperking van de aansprakelijkheid van de directeur voor de voorwerpen.
+  - index: 1
+    label: lid 2
+    sha256: a64d32f06b5c6e2c7cbb845e0e792666aaf7203bab07f485249169d3544514d4
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '2. De directeur kan een gedetineerde toestemming geven hem toebehorende voorwerpen, waarvan het bezit niet is verboden i ngevolge het eerste lid, in zijn verblijfsruimte te plaatsen dan wel bij zich te hebben voor zover dit zich verdraagt me t de volgende belangen: a. b.'
+  - index: 2
+    label: lid 3
+    sha256: 3ef772d6ab2b126c393767facc646ef7a22a429886aa8e4ef2e80da4426fd964
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De directeur kan aan de toestemming, bedoeld in het tweede lid, voorwaarden verbinden die kunnen betreffen het gebrui k van en de aansprakelijkheid voor deze voorwerpen. Bij of krachtens algemene maatregel van bestuur kunnen regels worden gesteld krachtens welke de aansprakelijkheid van de directeur voor voorwerpen die een gedetineerde ingevolge het tweede lid onder zich heeft wordt beperkt tot een bepaald bedrag.
+  - index: 3
+    label: lid 4
+    sha256: 623531b5507da5aa41fc6962d0053e3debc7298d39a910673ec263719cf9905c
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. De directeur is bevoegd aan de gedetineerde toebehorende voorwerpen voor diens rekening te laten onderzoeken, teneind e vast te stellen of de toelating of het bezit daarvan kan worden toegestaan dan wel is verboden, ingevolge het eerste o nderscheidenlijk het tweede lid.
+  - index: 4
+    label: lid 5
+    sha256: bcf31af79443ef7374fda4fee47f47af9e8e6c8d62e927b03a75c7e5ba860162
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. De directeur is bevoegd voorwerpen ten aanzien waarvan geen toestemming is verleend dan wel die zijn verboden, ingevo lge het eerste onderscheidenlijk het tweede lid, in beslag te nemen. Hij draagt zorg dat deze voorwerpen hetzij onder af gifte van een bewijs van ontvangst ten behoeve van de gedetineerde op diens kosten worden bewaard, hetzij voor diens rek ening worden gezonden aan de verzender of een door de gedetineerde op te geven adres, hetzij met toestemming van de gede tineerde worden vernietigd, hetzij aan een opsporingsambtenaar ter hand worden gesteld met het oog op de voorkoming of o psporing van strafbare feiten.
+- number: '46'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: d042ad261859165661ec4e826bbe1b6520dd46952ceef1425198a8f49fd2cc7f
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 46 1. Het bezit van contant geld door de gedetineerden in de inrichting of een afdeling is verboden, tenzij in d e huisregels anders is bepaald.
+  - index: 1
+    label: lid 2
+    sha256: 4b2ea50bc4fb79538f36e323c38bcdafca1e2a93edc4a0cc96e7f3315945cdab
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. In inrichtingen of afdelingen waar het bezit van contant geld door de gedetineerden verboden is, heeft de gedetineerd e de beschikking over een rekening-courant bij de inrichting.
+  - index: 2
+    label: lid 3
+    sha256: 4df379c99ced82c73c090d44d3ff993b0947724992c28376df5976b4fb1722c3
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. In de huisregels kunnen nadere regels worden gesteld omtrent het bezit van contant geld en het gebruik van de rekenin g-courant. Deze regels kunnen een beperking betreffen van het bedrag waarover de gedetineerde ten hoogste in contanten o f door middel van zijn rekeningcourant mag beschikken.
+- number: '47'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: dd3a21b8e5119d2e2ba1db7601ce97671f35d9028b5ccd256bfd2aacdacbbaef
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 47 1. De gedetineerde heeft recht op deelname aan de in de inrichting beschikbare arbeid.
+  - index: 1
+    label: lid 2
+    sha256: 2cfa38b31875d10bd403f0d00c1613891d84f4fd821f02e4dd5305ec8d042c05
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De directeur draagt zorg voor de beschikbaarheid van arbeid voor de gedetineerden, voor zover de aard van de detentie zich daar niet tegen verzet.
+  - index: 2
+    label: lid 3
+    sha256: d7713e2cb7d6fea17802e792382009bc30fef2073621ffc28178378011ea7520
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Gedetineerden die tot een vrijheidsstraf zijn veroordeeld zijn verplicht de aan hen door de directeur opgedragen arbe id, zowel binnen als buiten de inrichting of afdeling, te verrichten.
+  - index: 3
+    label: lid 4
+    sha256: f8e2a24e66cd7d7d5d2bb465eeba7febf1a01dd098a1a69dc6a118adedbe738a
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. De arbeidstijd wordt in de huisregels vastgesteld binnen de grenzen van hetgeen buiten de inrichting gebruikelijk is.
+  - index: 4
+    label: lid 5
+    sha256: 6b500431e0a330404d676ab24ed556b4eea07e6d69eb50c3232d14843dcbb1d5
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. Onze Minister stelt regels omtrent de samenstelling en de hoogte van het arbeidsloon. De directeur is belast met de v aststelling en uitbetaling van het arbeidsloon.
+- number: '48'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 14e5415fc71228130d7332a8079f0890d5e73bfa7fa7fac12a683d765143c559
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 48 1. De gedetineerde heeft recht op het kennis nemen van het nieuws, voor eigen rekening, en het wekelijks gebr uik maken van een bibliotheekvoorziening. De gedetineerde heeft het recht op het volgen van onderwijs en het deelnemen a an andere educatieve activiteiten voor zover deze zich verdragen met de aard en de duur van de detentie en de persoon va n de gedetineerde.
+  - index: 1
+    label: lid 2
+    sha256: 4bf5212fe13f5c18f30661c3ba725e89e6ff2294d5af2193b437d25653759419
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De gedetineerde heeft recht op lichamelijke oefening en het beoefenen van sport gedurende ten minste tweemaal drie kw artier per week, voor zover zijn gezondheid zich daar niet tegen verzet.
+  - index: 2
+    label: lid 3
+    sha256: 479cae863f00c696a712d6a63d2ca0e09cb39a2d256196d01af20373f0986a55
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De directeur draagt zorg dat daarvoor in aanmerking komende functionarissen in de in het eerste lid, tweede volzin, e n tweede lid bedoelde activiteiten kunnen voorzien.
+  - index: 3
+    label: lid 4
+    sha256: c929b2175e89e40a9cf2f03156b1f115243b5070987dc0eb3b4a01220cad2833
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. Onze Minister stelt regels omtrent de voorwaarden waaronder een tegemoetkoming kan worden verleend in de kosten die v oor de gedetineerde aan het volgen van onderwijs en het deelnemen aan andere educatieve activiteiten voor zover hierin n iet in de inrichting wordt voorzien, kunnen zijn verbonden. Deze voorwaarden kunnen betreffen de aard, de duur en de kos ten van deze activiteiten alsmede de vooropleiding van de gedetineerde en diens vorderingen.
+- number: '49'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 279d3a32962c2861f8cbae78a1813a0c7135d6e70f79d17422295d1b24d6c02c
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 49 1. De gedetineerde heeft recht op recreatie en dagelijks verblijf in de buitenlucht, voor zover zijn gezondhe id zich daar niet tegen verzet.
+  - index: 1
+    label: lid 2
+    sha256: 44532a1d2e2353445140d3724fa5a4694c70b68a3f2b0459674bc16167753c20
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De directeur draagt zorg dat de gedetineerde in de gelegenheid wordt gesteld tot deelname aan recreatieve activiteite n, gedurende ten minste zes uren per week.
+  - index: 2
+    label: lid 3
+    sha256: 638637d63e3bde8772d49f2fa506234b886aa8b46755f310f3160f5b03946fde
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De directeur draagt zorg dat de gedetineerde in de gelegenheid wordt gesteld dagelijks ten minste een uur in de buite nlucht te verblijven.
+- number: '50'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 54a2a3455ac0edd36188c15919b0628d93ff01a672f9a83a44cd5a5434b810b6
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 50 1. Indien een ambtenaar of medewerker constateert dat een gedetineerde betrokken is bij feiten die onverenigb aar zijn met de orde of de veiligheid in de inrichting dan wel met de ongestoorde tenuitvoerlegging van de vrijheidsbene ming en hij voornemens is daarover aan de directeur schriftelijk verslag te doen, deelt hij dit de gedetineerde mede.
+  - index: 1
+    label: lid 2
+    sha256: ec9124432ee21baed32a7d0f6704500ec3360b0b6affe61606ddb19a3865728a
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De directeur beslist over het opleggen van een disciplinaire straf zo spoedig mogelijk nadat hem dit verslag is gedaa n.
+  - index: 2
+    label: lid 3
+    sha256: 36700bb3d721b2523c27abe6d593e7dd85ab643e29a87ba135efc7f693e2a7d9
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Indien de directeur of zijn plaatsvervanger feiten als bedoeld in het eerste lid constateert, blijft het eerste lid b uiten toepassing.
+  - index: 3
+    label: lid 4
+    sha256: c94277d427040854aada979828c298a5a26caaf4bd23b60f6d988c4691fe922a
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. Een straf kan worden opgelegd dan wel ten uitvoer gelegd in een andere inrichting of afdeling dan waarin het verslag, bedoeld in het eerste lid, is opgemaakt.
+- number: '51'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: b047173b9939a536630e51acb8afd506964d4579f5fd705a99825040e432caa6
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Artikel 51 1. De directeur kan wegens het begaan van feiten als bedoeld in artikel 50, eerste lid, de navolgende discipl inaire straffen opleggen: a. b. c. d. e.'
+  - index: 1
+    label: lid 2
+    sha256: 487e792d8be07c0b4c47aa94531b217e91ddd12fcd6fde084a17a63c51c8c02f
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De directeur bepaalt bij de oplegging van een geldboete tevens door welke andere straf deze zal worden vervangen, ing eval de boete niet binnen de daartoe door hem gestelde termijn is betaald.
+  - index: 2
+    label: lid 3
+    sha256: 67c8498d9ff79485599223ea1ae2b100025c38320267dea594ad05d62f9686fa
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De directeur kan voor feiten als bedoeld in artikel 50, eerste lid, meer dan één straf opleggen, met dien verstande d at de in het eerste lid onder a en c genoemde straffen slechts kunnen worden opgelegd voor zover zij tezamen niet langer duren dan twee weken;
+  - index: 3
+    label: lid 4
+    sha256: 60c9c34a9936de140dcfc021bf7e45d0e06db33bb26aca006f469432e904bbe9
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. De oplegging van een straf laat onverlet de mogelijkheid voor de directeur om terzake van de door de gedetineerde toe gebrachte schade met hem een regeling te treffen.
+  - index: 4
+    label: lid 5
+    sha256: 115cd53f332affcc44ba2309c62c9f19426d1ef740efa69dec9e48c541e7d557
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. Geen straf kan worden opgelegd, indien de gedetineerde voor het begaan van een feit als bedoeld in artikel 50, eerste lid, niet verantwoordelijk kan worden gesteld.
+  - index: 5
+    label: lid 6
+    sha256: a0f68cccb7cdcb3eb687a3611b1a74b13b9be46d22aef28556304c43b2625b2a
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 6. Indien een straf is opgelegd wordt deze onverwijld ten uitvoer gelegd. De directeur kan bepalen dat een straf niet of slechts ten dele ten uitvoer wordt gelegd.
+- number: '52'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 5623a7692997ac6366f10e54f9bb007bfc7170a6886609bba90802fbdf55dc3f
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 52 1. Indien de tenuitvoerlegging van de opsluiting in een strafcel in de inrichting of afdeling waarin zij is o pgelegd niet mogelijk is of op ernstige bezwaren stuit, kan zij in een andere inrichting of afdeling worden ondergaan.
+  - index: 1
+    label: lid 2
+    sha256: 8b98b862eaedcdc91630aa703ed6c84242f3346e6f9d5d5f93cc26caf36a47e0
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Indien de directeur van oordeel is dat de in het eerste lid bedoelde omstandigheid zich voordoet, plaatst hij in over eenstemming met de selectiefunctionaris de gedetineerde hiertoe over.
+  - index: 2
+    label: lid 3
+    sha256: f35a8f385178efa4cb124a23a5b0e46ae068e4bec1a65c06e81e4fcb4f90ceb7
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Onze Minister stelt nadere regels omtrent de procedure van overplaatsing ingevolge het tweede lid.
+- number: '53'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 8a03fc897aa707d5defa1b045fc36d04c987a62e1f28fe1aa2893b236e251ee4
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 53 1. Een straf kan geheel of ten dele voorwaardelijk worden opgelegd. De proeftijd bedraagt ten hoogste drie ma anden.
+  - index: 1
+    label: lid 2
+    sha256: 9481ebe7b64bf41cdffa79eb305e01b3bc07e56da8f3b05c9aa4dd5408bbd8ef
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De directeur stelt in elk geval als voorwaarde dat de gedetineerde zich onthoudt van het plegen van feiten die onvere nigbaar zijn met de orde of de veiligheid in de inrichting dan wel met de ongestoorde tenuitvoerlegging van de vrijheids beneming. De directeur kan andere voorwaarden aan het gedrag van de gedetineerde stellen. De opgelegde voorwaarden worde n vermeld in de mededeling, bedoeld in artikel 58, eerste lid.
+  - index: 2
+    label: lid 3
+    sha256: 8ba54334603fd54722e4c4900b7b3044fb630b5db1b0dd4d4f07d8d7ddb71264
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Bij het overtreden van een voorwaarde binnen de proeftijd kan de directeur bepalen dat de opgelegde voorwaardelijke s traf geheel of ten dele ten uitvoer wordt gelegd.
+  - index: 3
+    label: lid 4
+    sha256: 0b4bd80255611c57a005073e5a2710bb5c8a22d7ac4e5f3a021d3b7e0a6e0e0b
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. De directeur kan een onvoorwaardelijke straf geheel of ten dele omzetten in een voorwaardelijke straf.
+- number: '54'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 65cfa3600c7538b96fa293e5c1e105fdf274b55e79892ee371c9588ddde15cde
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 54 1. Van elke strafoplegging dan wel wijziging daarvan houdt de directeur aantekening.
+  - index: 1
+    label: lid 2
+    sha256: 30a0881d41829930b47b0d205d2481363c6b006576ebdc36dd3633c1a25f68a5
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Indien een straf ingevolge de hoofdstukken XI of XII geheel of ten dele wordt herzien, houdt de directeur hiervan aan tekening.
+- number: '55'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: c2d9c176bb684c939989eec8e761d1fd5529ab64d934e536c06c32ec77c5ec4e
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 55 1. De gedetineerde aan wie de disciplinaire straf van opsluiting, bedoeld in artikel 51, eerste lid, onder a, is opgelegd is uitgesloten van het deelnemen aan activiteiten, voor zover de directeur niet anders bepaalt en behoudens het dagelijks verblijf in de buitenlucht, bedoeld in artikel 49, derde lid. De directeur kan het contact met de buitenw ereld gedurende het verblijf in de strafcel beperken of uitsluiten.
+  - index: 1
+    label: lid 2
+    sha256: dc8db6f35dc5fcf2d07c53a9de49a0b4e379f57a3dcc1dd3bcb8dc4c97028ad9
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De directeur draagt zorg dat, ingeval de opsluiting in een strafcel ten uitvoer wordt gelegd en langer dan vierentwin tig uren duurt, de commissie van toezicht en de aan de inrichting verbonden arts of diens vervanger terstond hiervan in kennis worden gesteld.
+  - index: 2
+    label: lid 3
+    sha256: 5bed020af522f4a700e0e386ff547cb39bfcfaf6d9c332b689217d7dc917b7a1
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Onze Minister stelt nadere regels omtrent het verblijf in en de inrichting van de strafcel. Deze betreffen in elk gev al de rechten die tijdens het verblijf in de strafcel aan de gedetineerde toekomen.
+- number: '56'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 83082ac00476c46ca543dae38b5985735ab72aede51d6fc5dbd6026571493cc2
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 56 1. De directeur draagt zorg dat de gedetineerde bij binnenkomst in de inrichting, schriftelijk en zoveel moge lijk in een voor hem begrijpelijke taal, op de hoogte wordt gesteld van zijn bij of krachtens deze wet gestelde rechten en plichten.
+  - index: 1
+    label: lid 2
+    sha256: 699fe785f47f6e0f35b776113d1973d6a38057bca5de411c451b71432567f49a
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '2. De gedetineerde wordt hierbij in het bijzonder gewezen op diens bevoegdheid: a. b. c.'
+  - index: 2
+    label: lid 3
+    sha256: c76642a11d2dae3142e570bef402839991a659e6d5219ff48208ff4988c222cc
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Een gedetineerde vreemdeling wordt bij binnenkomst in de inrichting geïnformeerd over zijn recht de consulaire verteg enwoordiger van zijn land van zijn detentie op de hoogte te laten stellen.
+- number: '57'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: e147d8d574a19ea4f4e961aa520bea2c7fa6869c3da517442cae7150f05f7ad9
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Artikel 57 1. De directeur stelt de gedetineerde in de gelegenheid te worden gehoord, zoveel mogelijk in een voor hem be grijpelijke taal, alvorens hij beslist omtrent: a. b. c. d. e. f. g. h.'
+  - index: 1
+    label: lid 2
+    sha256: ce6e2166fe53bc8a43a3abd0cf6f94d0b20490b5c15e9004240ad0a51ad56e4a
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Zo nodig geschiedt het horen van de gedetineerde met bijstand van een tolk. Van het horen van de gedetineerde wordt a antekening gehouden.
+  - index: 2
+    label: lid 3
+    sha256: 0b886625782ea6193663b43582af80454b128f61c5efd43ae7e47928cefb14ac
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '3. Toepassing van het eerste lid, onder b, c, d, e, f en g, kan achterwege blijven indien: a. b.'
+- number: '58'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 8a1440f71db8d2a3a83cede15b615191a00605af4521854a5f0557daba0c31e0
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 58 1. De directeur geeft de gedetineerde van elke beslissing als bedoeld in artikel 57, eerste lid, onverwijld s chriftelijk en zoveel mogelijk in een voor hem begrijpelijke taal een met redenen omklede, gedagtekende en ondertekende mededeling.
+  - index: 1
+    label: lid 2
+    sha256: 829d58bb5f4b7253f503677e84fab3ba1da73d9eb70d35bdf73000cadccf8417
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '2. De directeur geeft de gedetineerde op de in het eerste lid omschreven wijze een mededeling omtrent: a. b. c. d.'
+  - index: 2
+    label: lid 3
+    sha256: c34a6f776b3278f9a4ae36a67260a221ee54809d81d2e048515b7cd3025f6333
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. In de gevallen, genoemd in het tweede lid, kan de mededeling achterwege blijven, indien de beslissing van de directeu r strekt ter uitvoering van een beperking die aan de gedetineerde is opgelegd ingevolge de [artikelen 222](jci1.3:c:BWBR 0001926&artikel=222) en [225 van de lnvoeringswet van het Wetboek van Strafvordering](jci1.3:c:BWBR0001926&artikel=225).
+  - index: 3
+    label: lid 4
+    sha256: 385291079e43ca57978ec7e634a3a6b3e372096967f1a7e2f5f1215c5c7de246
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. De gedetineerde wordt in de mededeling, bedoeld in het eerste en tweede lid, gewezen op de mogelijkheid van het inste llen van beklag, bedoeld in hoofdstuk Xl, de wijze waarop en de termijn waarbinnen zulks dient te geschieden, alsmede op de mogelijkheid tot het doen van een verzoek aan de voorzitter van de beroepscommissie om hangende de uitspraak op het klaagschrift de tenuitvoerlegging van de beslissing geheel of gedeeltelijk te schorsen.
+- number: '59'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: a8132b46662bbbb8242b4e56445eceea2ae727843c7d351d1c6a48512dcb903e
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 59 Bij of krachtens algemene maatregel van bestuur worden regels gesteld omtrent de aanleg van dossiers. In elk geval betreffen deze de omschrijving van gedetineerden over wie een dossier moet worden aangelegd, de aard van de daarin vervatte informatie, het recht op inzage of afschrift van het dossier door de betrokken gedetineerde en de beperkingen daarop en de termijn gedurende welke alsmede de wijze waarop het dossier bewaard blijft.
+- number: '60'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: f7ae23e489bfddde39ed28e3fb8a9b18c3d4aa53216b6ba609487dcb31fe19a0
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 60 1. Een gedetineerde kan bij de beklagcommissie beklag doen over een hem betreffende door of namens de directe ur genomen beslissing.
+  - index: 1
+    label: lid 2
+    sha256: 907cab163475bb3f839b298d1fb54301c897def3da1148cf21ff2b2106b71af6
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Met een beslissing als bedoeld in het eerste lid wordt gelijkgesteld een verzuim of weigering om te beslissen. Het ne men van een beslissing wordt geacht te zijn verzuimd of geweigerd, indien niet binnen de wettelijke of, bij het ontbreke n daarvan, binnen een redelijke termijn een beslissing is genomen.
+  - index: 2
+    label: lid 3
+    sha256: d0ff38d3bfcbbd9c335f1c8faadabf7cd7efad0af1fad5ef25d2712b38c63e0e
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De directeur draagt zorg dat een gedetineerde die beklag wenst te doen daartoe zo spoedig mogelijk in de gelegenheid wordt gesteld.
+- number: '61'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 50cbdf8ad039a5f03a22ab06a5667a1cb51940cdaf5a3c2d15b203c6d167cbfd
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 61 1. De gedetineerde doet beklag door de indiening van een klaagschrift bij de beklagcommissie bij de inrichtin g waar de beslissing waarover hij klaagt is genomen.
+  - index: 1
+    label: lid 2
+    sha256: 5696bf3913c99c617b4380d95568b0ecd0bc132d72a1359b37923c0061cf5841
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De indiening van het klaagschrift kan door tussenkomst van de directeur van de inrichting waar de gedetineerde verbli jft geschieden. De directeur draagt in dat geval zorg dat het klaagschrift of, indien het klaagschrift zich in een envel op bevindt, de envelop van een dagtekening wordt voorzien, welke geldt als dag van indiening.
+  - index: 2
+    label: lid 3
+    sha256: 501bb8d94dbd684a9c5053b30afe0e0c9138583bac637ae24d8985bbffb7a8d8
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Het klaagschrift vermeldt zo nauwkeurig mogelijk de beslissing waarover wordt geklaagd en de redenen van het beklag.
+  - index: 3
+    label: lid 4
+    sha256: b34cec66dc7098da1766af69507fc90ba8ad98371a621c4cea49b4c953829fd0
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. Indien de gedetineerde de Nederlandse taal niet voldoende beheerst kan hij het klaagschrift in een andere taal indien en. De voorzitter van de beklagcommissie kan bepalen dat het klaagschrift in de Nederlandse taal wordt vertaald. De verg oeding van de voor de vertaling gemaakte kosten geschiedt volgens regelen te stellen bij algemene maatregel van bestuur.
+  - index: 4
+    label: lid 5
+    sha256: dbea47e828860629115b7c2fe38b72154b9c89b767cfed580816467a8eeeee1a
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. Het klaagschrift wordt uiterlijk op de zevende dag na die waarop de gedetineerde kennis heeft gekregen van de besliss ing waarover hij zich wenst te beklagen ingediend. Een na afloop van deze termijn ingediend klaagschrift is niettemin on tvankelijk, indien redelijkerwijs niet kan worden geoordeeld dat de gedetineerde in verzuim is geweest.
+- number: '62'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: d8bb2476eb4855512abb3ef9ba89d6dc406cf8eeeb75f38814f102c448110d7b
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 62 1. Het klaagschrift wordt behandeld door een door de commissie van toezicht benoemde beklagcommissie, bestaan de uit drie leden, die wordt bijgestaan door een secretaris.
+  - index: 1
+    label: lid 2
+    sha256: 403b086b50ddf25bcc377c130a6e1150afcc96dce0765549bae2931818f2aefa
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De voorzitter dan wel een door hem aangewezen lid van de beklagcommissie kan, indien hij het beklag van eenvoudige aa rd, dan wel kennelijk niet-ontvankelijk, kennelijk ongegrond of kennelijk gegrond acht, het klaagschrift enkelvoudig afd oen, met dien verstande dat hij tevens de bevoegdheden bezit die aan de voorzitter van de voltallige beklagcommissie toe komen.
+  - index: 2
+    label: lid 3
+    sha256: 164852a1a6d477f2a2eba950151a66b996f4bc27eca848404ad5274aa2343fab
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De voorzitter, dan wel het door hem aangewezen lid, bedoeld in het tweede lid, kan de behandeling te allen tijde verw ijzen naar de voltallige beklagcommissie.
+  - index: 3
+    label: lid 4
+    sha256: 9be303f0d3b1908a407abe43e9215f58719cc7c6cdfa0d9f0b4f02b676883b38
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. De behandeling van het klaagschrift vindt niet in het openbaar plaats, behoudens ingeval de beklagcommissie van oorde el is dat de niet openbare behandeling niet verenigbaar is met enige een ieder verbindende bepaling van een in Nederland geldend verdrag.
+- number: '63'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 6c6c733798f1d7574fe82a9695d086cbd9a3c478c4ca644475081d0cbdd747eb
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 63 1. De secretaris van de beklagcommissie zendt de directeur een afschrift van het klaagschrift toe.
+  - index: 1
+    label: lid 2
+    sha256: e1f49a3a834c5230b90646daf367091108341060c97002f4cd0e4956f9ea5388
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De directeur geeft dienaangaande zo spoedig mogelijk schriftelijk de nodige inlichtingen aan de beklagcommissie, tenz ij hij van oordeel is dat het klaagschrift kennelijk niet-ontvankelijk of kennelijk ongegrond is of tenzij het vierde li d toepassing vindt. Hij voegt daaraan de opmerkingen toe, waartoe het klaagschrift hem overigens aanleiding geeft.
+  - index: 2
+    label: lid 3
+    sha256: 430de68b67a426344de068bb0c53c4ac8e0063b668f68901c9ac20527781a592
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Aan de klager geeft de secretaris van de beklagcommissie schriftelijk kennis van de inhoud van deze inlichtingen en o pmerkingen.
+  - index: 3
+    label: lid 4
+    sha256: d122f4adda91a3d518a582ea1a3ec99dd68d2c21208c51163aeabcf0506a23cf
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. De beklagcommissie kan het klaagschrift in handen stellen van het lid van de commissie van toezicht, bedoeld in artik el 7, derde lid, teneinde deze in de gelegenheid te stellen terzake te bemiddelen. De secretaris doet hiervan mededeling aan de directeur.
+- number: '64'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 11b9b52e406a5b1639131275401208c12538040ca7e146cc60de6af96855f83a
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 64 1. De beklagcommissie stelt de klager en de directeur in de gelegenheid omtrent het klaagschrift mondeling op merkingen te maken, tenzij zij het beklag aanstonds kennelijk niet-ontvankelijk, kennelijk ongegrond of kennelijk gegron d acht.
+  - index: 1
+    label: lid 2
+    sha256: c21130e54da6bdf7e4710a2fe7a9f0357c9bfefadff2e16610531f79016f40c6
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De klager en de directeur kunnen de voorzitter van de beklagcommissie de vragen opgeven die zij aan elkaar gesteld we nsen te zien.
+  - index: 2
+    label: lid 3
+    sha256: ee87aa8f6040ad6d5128c5014d96a1075bddac6d2115ff8d97de44d2f1e97891
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De beklagcommissie kan de directeur en de klager buiten elkaars aanwezigheid horen. In dat geval worden zij in de gel egenheid gesteld vooraf de vragen op te geven die zij gesteld wensen te zien en wordt de zakelijke inhoud van de aldus a fgelegde verklaring door de voorzitter van de beklagcommissie aan de klager onderscheidenlijk de directeur mondeling med egedeeld.
+  - index: 3
+    label: lid 4
+    sha256: 20f7997b0dea5d38ab2e4f7bddd694922a7068eafcfe98dc44a34e78b784e754
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. De beklagcommissie kan ook bij andere personen mondeling of schriftelijk inlichtingen inwinnen. Indien mondeling inli chtingen worden ingewonnen, zijn het tweede en derde lid, tweede volzin, van overeenkomstige toepassing.
+- number: '65'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 4e80a9e274a6dfe3741afc6f573eaa34fec6dc125b55e2a692f505390d945f68
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 65 1. De klager heeft het recht zich te doen bijstaan door een rechtsbijstandverlener of een andere vertrouwensp ersoon, die daartoe van de beklagcommissie toestemming heeft gekregen. Indien aan de klager een advocaat is toegevoegd, geschieden diens beloning en de vergoeding van de door hem gemaakte kosten volgens regelen te stellen bij algemene maatr egel van bestuur.
+  - index: 1
+    label: lid 2
+    sha256: 47cb4fa5130150d4195f18a49fb5c2632a53e95f41e110bed18b3b64897a9c1b
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Indien de klager de Nederlandse taal niet voldoende beheerst, draagt de voorzitter zorg voor de bijstand van een tolk . De beloning van de tolk en de vergoeding van de door de tolk gemaakte kosten geschieden volgens regelen te stellen bij algemene maatregel van bestuur.
+  - index: 2
+    label: lid 3
+    sha256: df022d56dda2f53ec4d8d54be8e4d218ed23c88e76d2668489e5e214e25a9c83
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Tijdens de beklagprocedure staat de beklagcommissie aan de klager op diens verzoek toe van de gedingstukken kennis te nemen.
+  - index: 3
+    label: lid 4
+    sha256: a4a356dc50c718aa3bc8be586939cb046bdad15c7b85866d1a628548e4ced2ce
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. Indien de klager elders verblijft kunnen de opmerkingen, bedoeld in artikel 64, eerste lid, op verzoek van de beklagc ommissie ten overstaan van een lid van een andere beklagcommissie worden gemaakt.
+  - index: 4
+    label: lid 5
+    sha256: c9e50f97da528583fcdbdd2dabee6cd66d9e6536b713bd1cfa1055f3de3544c2
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. Van het horen van de betrokkenen maakt de secretaris een schriftelijk verslag, dat door de voorzitter en de secretari s wordt ondertekend. Bij verhindering van een van hen wordt de reden daarvan in het verslag vermeld.
+- number: '66'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: b6f4c574fed8b7a43e134df6e2ede0c41496210294a0be51c3a926447c60dcf9
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 66 1. Hangende de uitspraak op het klaagschrift kan de voorzitter van de beroepscommissie op verzoek van de klag er, na de directeur te hebben gehoord, de tenuitvoerlegging van de beslissing waarop het klaagschrift betrekking heeft g eheel of gedeeltelijk schorsen.
+  - index: 1
+    label: lid 2
+    sha256: 6695903aaa3050fb78c430768a8fd1f1f4b10cac206a587b0f7c567899cfd10f
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De voorzitter doet hiervan onverwijld mededeling aan de directeur en de klager.
+- number: '67'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 245cee6bf2d6623a3dfca2cb744abbf2a8b03326acd3392ed5d25c7a9e3a2528
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 67 1. De beklagcommissie doet zo spoedig mogelijk, doch in ieder geval binnen een termijn van vier weken te reke nen vanaf de datum waarop het klaagschrift is ontvangen, uitspraak. In bijzondere omstandigheden kan de beklagcommissie deze termijn met ten hoogste vier weken verlengen. Van deze verlenging wordt aan de directeur en de klager mededeling ge daan.
+  - index: 1
+    label: lid 2
+    sha256: 0487ba7cf7bbb03d4033c918c5901e51b6fdc8e48e4ff45c0325e45764bed3ef
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De uitspraak is met redenen omkleed en gedagtekend. Zij bevat een verslag van het horen van personen door de beklagco mmissie. Zij wordt door de voorzitter, alsmede door de secretaris ondertekend. Bij verhindering van één van hen wordt de reden daarvan in de uitspraak vermeld. Aan de klager en de directeur wordt onverwijld en kosteloos een afschrift van de beslissing van de beklagcommissie toegezonden of uitgereikt. De datum van die toezending of uitreiking wordt op dit afs chrift aangetekend.
+  - index: 2
+    label: lid 3
+    sha256: 7b8413fc9baa1f5bd94e01b266697a178180f570b97c2d6bbbd9a7daefa3f4c7
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De uitspraak vermeldt de mogelijkheid van het instellen van beroep bij de beroepscommissie, de wijze waarop en de ter mijn waarbinnen dit moet worden gedaan alsmede de mogelijkheid tot schorsing van de tenuitvoerlegging van de uitspraak, bedoeld in artikel 70, tweede lid.
+  - index: 3
+    label: lid 4
+    sha256: a36cbcbd172afd4281f23769884dec9276501d061dc3a70e8b20462281340e35
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. Indien de klager de Nederlandse taal niet voldoende beheerst en in de inrichting niet op andere wijze in een vertalin g kan worden voorzien, draagt de voorzitter van de beklagcommissie zorg voor een vertaling van de uitspraak en de medede ling, bedoeld in het tweede, onderscheidenlijk derde lid. De vergoeding van de voor de vertaling gemaakte kosten geschie dt volgens regelen te stellen bij algemene maatregel van bestuur.
+  - index: 4
+    label: lid 5
+    sha256: 14fee237e9d95b285a1fc134692b7883cd26c8b31d9bdc619b8a7cf830a9c5a4
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. De voorzitter van de beklagcommissie kan de uitspraak ook mondeling mededelen aan de klager en de directeur. Zij word en daarbij gewezen op de mogelijkheid tot het instellen van beroep bij de beroepscommissie, de wijze waarop en de termij n waarbinnen dit moet worden gedaan, alsmede op de mogelijkheid tot schorsing van de tenuitvoerlegging van de uitspraak, bedoeld in artikel 70, tweede lid. Als dag van de uitspraak geldt de dag van het doen van deze mededeling. Indien monde ling uitspraak wordt gedaan, wordt deze uitspraak op het klaagschrift aangetekend.
+  - index: 5
+    label: lid 6
+    sha256: 2e9a2f58a9fa00e5358f8cb9a036e343d8f6ce43e076be560e8ec8fcfd6ed842
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 6. Indien het vijfde lid toepassing heeft gevonden en beroep wordt ingesteld als voorzien in artikel 69, eerste lid, vin dt uitwerking van de beslissing van de beklagcommissie plaats op de wijze, bedoeld in het tweede lid. De secretaris van de beklagcommissie zendt een afschrift van deze uitspraak toe aan de directeur, de klager en de beroepscommissie.
+  - index: 6
+    label: lid 7
+    sha256: a1afeb3b202a2e018ca8c5d28961433c85630a8443bddb1bcb4a945c4e88bbb4
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 7. De secretaris zendt van alle uitspraken van de beklagcommissie een afschrift naar Onze Minister. Een ieder heeft rech t op kennisneming van deze uitspraken en het ontvangen van een afschrift daarvan. Onze Minister draagt zorg dat dit afsc hrift geen gegevens bevat waaruit de identiteit van de gedetineerde kan worden afgeleid. Met betrekking tot de kosten va n het ontvangen van een afschrift is het bij of krachtens de [Wet tarieven in strafzaken](jci1.3:c:BWBR0002406) bepaalde van overeenkomstige toepassing.
+- number: '68'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: d20f08a01b01641e7c71c929d3be6df0f0e52851ed3dfa5814dbc7762cf02f3c
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Artikel 68 1. De uitspraak van de beklagcommissie strekt tot gehele of gedeeltelijke: a. b. c.'
+  - index: 1
+    label: lid 2
+    sha256: d719890199593b620021e8e7953b45d24481be2396c247b2035ad5d474f12765
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '2. Indien de beklagcommissie van oordeel is dat de beslissing waarover is geklaagd: a. b.'
+  - index: 2
+    label: lid 3
+    sha256: 349bb6eebeaea743a9800b9c79cca675200dd475220c8c7ed191c43b24c91888
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '3. Bij toepassing van het tweede lid kan de beklagcommissie: a. b. c.'
+  - index: 3
+    label: lid 4
+    sha256: f6342fa884810c82a53f274d1c2319664f21c9021c7af9c68634d96a4201149f
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. Bij toepassing van het derde lid, onder a, kan de beklagcommissie in haar uitspraak een termijn stellen.
+  - index: 4
+    label: lid 5
+    sha256: 30b9060fe582b81428daf58bd6dff45316c0cbe3c8cd73aab08ed9ba95b22e7f
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. De beklagcommissie kan bepalen dat de uitspraak buiten werking blijft totdat deze onherroepelijk is geworden.
+  - index: 5
+    label: lid 6
+    sha256: eba5cecd9fd6949fd187a67d5479f3379c0aff1eaeb4aafc8dc959b124acded5
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 6. Indien het tweede lid toepassing vindt, worden de rechtsgevolgen van de vernietigde beslissing, voor zover mogelijk, door de directeur ongedaan gemaakt, dan wel in overeenstemming gebracht met de uitspraak van de beklagcommissie.
+  - index: 6
+    label: lid 7
+    sha256: 94c2bb97f1c45b585a9cd9761a48450f0849c6f9dbef473d67764e07a9a527c6
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 7. Voor zover de in het zesde lid bedoelde gevolgen niet meer ongedaan te maken zijn, bepaalt de beklagcommissie dan wel de voorzitter, na de directeur te hebben gehoord, of enige tegemoetkoming aan de klager geboden is. Zij stelt de tegemo etkoming, die geldelijk van aard kan zijn, vast.
+- number: '69'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: e80e18ff1d3b7c8f2553d18fe806accd9d5a1a3e75dbcff0a3afe645f9271848
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 69 1. Tegen de uitspraak van de beklagcommissie kunnen de directeur en de klager beroep instellen door het indie nen van een beroepschrift. Het met redenen omklede beroepschrift moet uiterlijk op de zevende dag na die van de ontvangs t van het afschrift van de uitspraak onderscheidenlijk na die van de mondelinge mededeling van de uitspraak worden inged iend.
+  - index: 1
+    label: lid 2
+    sha256: 365d77e0f600253cc3921e2a53edf76cd9e6397c3ac4294df5f6be607b66735e
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Het beroepschrift wordt ingediend bij en behandeld door een door de Raad benoemde beroepscommissie van drie leden, di e wordt bijgestaan door een secretaris.
+  - index: 2
+    label: lid 3
+    sha256: ad39ef9e38ecf3bc26c144244fff4f20ca453dcd441912bed94b62baacf35004
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '3. Ten aanzien van de behandeling van het beroepschrift zijn de artikelen 60, derde lid, 61, vierde lid, 62, vierde lid, 63, eerste, tweede en derde lid, 64, en 65, eerste, tweede en derde lid, van overeenkomstige toepassing, met dien verst ande dat de beroepscommissie kan bepalen dat: a. b. c.'
+- number: '70'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: ee12e7b0d284f17c06ee808d1f504d2106903ea82ba8c4e8fd8c24bcf33f355f
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 70 1. Het indienen van een beroepschrift schorst de tenuitvoerlegging van de uitspraak van de beklagcommissie ni et, behalve voor zover deze de toekenning van een tegemoetkoming als bedoeld in artikel 68, zevende lid, inhoudt.
+  - index: 1
+    label: lid 2
+    sha256: ea8d97bbb1a9d202f1b2159e1db8f9da6331494779a8f297f3ba34e52b746dfa
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Hangende de uitspraak op het beroepschrift kan de voorzitter van de beroepscommissie op verzoek van degene die het be roep heeft ingesteld en gehoord de andere betrokkene in de procedure de tenuitvoerlegging van de uitspraak van de beklag commissie geheel of gedeeltelijk schorsen. Hij doet hiervan onverwijld mededeling aan de directeur en de klager.
+- number: '71'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 5f533e71965a7381d5303884a5ea16d61316011b52fcf4e01719201b86970b32
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 71 1. De beroepscommissie doet zo spoedig mogelijk uitspraak.
+  - index: 1
+    label: lid 2
+    sha256: 8ad5a03759e9c6dd6d2c1c9db05db902cdb74ec9ee9dd4e111d83a2275c3379a
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '2. De uitspraak van de beroepscommissie strekt tot gehele of gedeeltelijke: a. b. c.'
+  - index: 2
+    label: lid 3
+    sha256: c0b665c6d9fd71cb24170f9824d5a23f9510333d6b992390f95df8af33d12a48
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Indien het tweede lid, onder c, toepassing vindt, doet de beroepscommissie hetgeen de beklagcommissie had behoren te doen.
+  - index: 3
+    label: lid 4
+    sha256: 345c5dd1c57c522ef67c4ea6e06d861aa95e5f6239762980dc526f0ad8c0545f
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. Ten aanzien van de uitspraak van de beroepscommissie zijn de artikelen 66 en 67, tweede lid, eerste en derde tot en m et vijfde volzin, vierde en zevende lid, van overeenkomstige toepassing.
+- number: '72'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 4d0a5a5f329a01f9aedb911437c39269729de957bc687d43a11742a5b513bf4e
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 72 1. De betrokkene heeft het recht tegen de beslissing van de selectiefunctionaris op het bezwaar- of verzoeksc hrift voor zover dit betreft een gehele of gedeeltelijke ongegrondverklaring, onderscheidenlijk afwijzing als bedoeld in de artikelen 17 en 18 een met redenen omkleed beroepschrift in te dienen bij de commissie, bedoeld in artikel 73, eerst e lid. De betrokkene heeft ook het recht een beroepschrift in te dienen in het geval dat het indienen van een bezwaarsch rift op de grond als vermeld in artikel 17, vijfde lid, achterwege is gebleven.
+  - index: 1
+    label: lid 2
+    sha256: 69ccc66bb56543452eaafd0a8d6b8a2db4197fd3fe3294a80626bc73b9cc0747
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De gedetineerde heeft het recht tegen een hem betreffende beslissing aangaande verlof, voor zover hiertegen geen bekl ag ingevolge artikel 60, eerste en tweede lid, openstaat, een met redenen omkleed beroepschrift in te dienen bij de comm issie, bedoeld in artikel 73, eerste lid.
+- number: '73'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 88c619966354f662069248eb7be6f1e15e124b51ee7fe144a03d0597e1aff4dd
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 73 1. Het beroepschrift wordt behandeld door een door de Raad benoemde commissie van drie leden, die wordt bijge staan door een secretaris.
+  - index: 1
+    label: lid 2
+    sha256: 6aebb52d151f0c28351455ab89de207af8639705f863cd331906db51f8de2da6
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Het beroepschrift wordt ingediend uiterlijk op de zevende dag na die waarop de betrokkene kennis heeft gekregen van d e beslissing waartegen hij beroep instelt. Een na afloop van deze termijn ingediend beroepschrift is niettemin ontvankel ijk, indien redelijkerwijs niet kan worden geoordeeld dat de gedetineerde in verzuim is geweest.
+  - index: 2
+    label: lid 3
+    sha256: c1fac6acb530934516736be9f42654c61f3e106eb6b92edde1a38d856c098334
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Indien de betrokkene gedetineerd is, kan de indiening van het beroepschrift geschieden door tussenkomst van de direct eur van de inrichting of afdeling waar hij verblijft. De directeur draagt zorg dat het beroepschrift onverwijld van een dagtekening wordt voorzien. Als dag waarop het beroepschrift is ingediend geldt die van de dagtekening.
+  - index: 3
+    label: lid 4
+    sha256: e783353426a6bec8fc34fb39c3f3014a9410f34d4dba4058b3e7d7bb4946c71d
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '4. De artikelen 60, derde lid, 61, vierde lid, 63, 64, 65, 66, 67, tweede lid, eerste en derde tot en met vijfde volzin, vierde en zevende lid, met uitzondering van de eerste volzin, 68, eerste, tweede, derde, vierde, zesde en zevende lid, zijn van overeenkomstige toepassing, met dien verstande dat de commissie, bedoeld in het eerste lid, kan bepalen dat: a. b. c.'
+- number: '74'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: d5abca13bc12547c1dc15af1060453ef7c3ba7f1834be39be9be38ef0a9dcc8a
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 74 De directeur draagt zorg voor een regelmatig overleg met gedetineerden over zaken die rechtstreeks de detenti e raken.
+- number: '75'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: b91f85e432be2515446387a65dc44074b3aef47f28a8f7fbbb4ea8d41ff2bc34
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Artikel 75 1. De in de artikelen 17 en 18, alsmede in de hoofdstukken XI tot en met XIII aan de gedetineerde toegekende rechten kunnen, behoudens ingeval de selectiefunctionaris of beklag- of beroepscommissie van oordeel is dat zwaarwegende belangen van de gedetineerde zich daartegen verzetten, mede worden uitgeoefend door: a. b. c.'
+  - index: 1
+    label: lid 2
+    sha256: 38aafd54b1f9e49c4a2c923e24ee4530ff63436beabfa06e61444d3698960704
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De directeur draagt zorg dat de in het eerste lid genoemde personen op deze rechten opmerkzaam worden gemaakt.
+- number: '76'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: a27f9c787108435cdea6f8c00d2caff838dc0f80ea2a9755e1c2957baa67fa08
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 76 1. De plaatsing van een tot vrijheidsstraf veroordeelde in een justitiële inrichting voor verpleging van ter beschikking gestelden geschiedt voordat zes maanden sedert de beslissing, bedoeld in [artikel 13, eerste lid, van het We tboek van Strafrecht](jci1.3:c:BWBR0001854&artikel=13) is genomen, in een gevangenis of huis van bewaring zijn doorgebra cht.
+  - index: 1
+    label: lid 2
+    sha256: 87fafae887a858f7f39300bb11145fbfcd20df0674bc4f77cfbf5a8b47315d00
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Indien Onze Minister, rekening houdende met de in [artikel 11, tweede lid, van de Beginselenwet verpleging ter beschi kking gestelden](jci1.3:c:BWBR0008765&artikel=11) genoemde eisen, van oordeel is dat de plaatsing niet binnen de in het eerste lid gestelde termijn mogelijk is, kan hij deze termijn telkens met drie maanden verlengen.
+  - index: 2
+    label: lid 3
+    sha256: cdd1263801045f5200c7d58370ada2b12638cd2df4b17d2ed6de393f4aa87a42
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Tegen de beslissing tot verlenging, bedoeld in het tweede lid, kan de tot vrijheidsstraf veroordeelde beroep instelle n bij de Raad. Het bepaalde in [Hoofdstuk XVI van de Beginselenwet verpleging ter beschikking gestelden](jci1.3:c:BWBR00 08765&hoofdstuk=XVI) is van overeenkomstige toepassing.
+- number: '77'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 17a09c33aedca7a488292df021b6116388138d01bb6d8724c43b2547501e6f60
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Artikel 77 1. Een onveroordeelde die met toepassing van [artikel 196](jci1.3:c:BWBR0001903&artikel=196), [317](jci1.3:c: BWBR0001903&artikel=317) of [509g van het Wetboek van Strafvordering](jci1.3:c:BWBR0001903&artikel=509g) in een inrichti ng tot klinische observatie bestemd is opgenomen, wordt voor wat betreft zijn rechtspositie gelijkgesteld met een onvero ordeelde die in een huis van bewaring verblijft, indien de inrichting tot klinische observatie bestemd tevens een huis v an bewaring is.'
+  - index: 1
+    label: lid 2
+    sha256: fc78d36c0dc9aa846d71bd1059c1a481ea5c6bf3e873ffb4e72cabecbefc54ee
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Een ter beschikking gestelde die met toepassing van [artikel 509g](jci1.3:c:BWBR0001903&artikel=509g) of [509o, vijfd e lid, van het Wetboek van Strafvordering](jci1.3:c:BWBR0001903&artikel=509o) in een inrichting tot klinische observatie bestemd is opgenomen, wordt voor wat betreft zijn rechtspositie gelijkgesteld met een ter beschikking gestelde die in e en huis van bewaring verblijft, indien de inrichting tot klinische observatie bestemd tevens huis van bewaring is.
+- number: '78'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: fa59e5669ef404fc50f987caf6071ef813accba41ea0aee5c57038d44ec92e00
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 78 Voor zover de regels van de krijgsmacht daartoe aanleiding geven kan bij militaire gedetineerden van de bepal ingen in deze wet worden afgeweken.
+- number: '79'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 15eb4e65b7056395260436e933f08400bea8067814d07295646b5a6df39d4f53
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 79 Wijzigt het Wetboek van Strafrecht.
+- number: '80'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: ba3099e5499b69514a81d198a1aa391ce155b3e4c5a5a0427883f35f6a29ddfb
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 80 Wijzigt het Wetboek van Strafvordering.
+- number: '81'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 04c6b5e437b3ec7832bc77808f1d9b9eb117d45803cf6a6f6781401bdbc483eb
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 81 Wijzigt de Wet op de rechterlijke organisatie.
+- number: '82'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 2062d1017947c80e7e02d4b2d3099449a94bb1b1cfbe2faa44bd687080ad8fda
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 82 Wijzigt de Wet op de economische delicten.
+- number: '83'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 1e2d6042643cbd1d3f40a1da6fff69d7d9ca9fc60721315c04bdff80b65ddc81
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 83 Wijzigt de Wet bijzondere opnemingen in psychiatrische ziekenhuizen.
+- number: '84'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 9d17603b4977baccdfa11c299a050e65df5f6c7f2d3537131ad3f580c88be290
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 84 Wijzigt de Invoeringswet Wetboek van Strafvordering.
+- number: '85'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: b3a8c8647967919d9e9d3f83d12b8ebdcc95dbb859aa8dcd9faf52707785b88c
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 85 Wijzigt de Wet op de rechtsbijstand.
+- number: '86'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 2296aa54a293c3087609b939f5103c73e805e3c57e913fad57a72457564a6ae4
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 86 Wijzigt de Arbeidsomstandighedenwet.
+- number: '87'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: a5859f4b5d16f8251b8e4ebc773eeabf58b875112371088ced0ba05b85316517
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 87 Wijzigt de Wet ziekenhuisvoorzieningen.
+- number: '88'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 7a911ee6d1337ba037864c1812e30d4b62800e67e211977c9bb75232b1906b23
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 88 Wijzigt de Wet op het voortgezet onderwijs.
+- number: '89'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 6b6d67539a81c6431251af085d0eef66d32b36cd3ee9a98d5b79550b0f14154d
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 89 Wijzigt de Oorlogswet voor Nederland.
+- number: '90'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 7792766fa73d2320826014a936a1f12d9609c20281d0a6716540064167a97564
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 90 Wijzigt de Beginselenwet verpleging ter beschikking gestelden.
+- number: '91'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: a0a4be8aa00bba4eff007b7d83ecd61a6aa32e8e268a9aa5e67c7ff4d1f8f2fd
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 91 De Beginselenwet gevangeniswezen wordt ingetrokken, met uitzondering van de artikelen 2 tot en met 5.
+- number: '92'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 5e3b72466991ba8e9c5b9e81f7f0e210d268e44b4bc3859664c45cb34bb349b2
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 92 De regels en de bestemmingen van gevangenissen en huizen van bewaring vastgesteld krachtens [artikel 22 van h et Wetboek van Strafrecht](jci1.3:c:BWBR0001854&artikel=22), zoals dit artikel gold vóór de inwerkingtreding van deze we t, worden geacht te zijn vastgesteld krachtens de toepasselijke bepalingen van deze wet.
+- number: '93'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: b6f6a5de38e3bd30c07f720ab30506132ec1553e9e3f9528168a964edf8504f3
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 93 Deze wet heeft geen gevolgen voor klaagschriften of beroepschriften die zijn ingediend voor de inwerkingtredi ng van deze wet.
+- number: '94'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 991eefbdedf934127606da879a35cfd4a798312f2508493e42ef1cc5c1097477
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Artikel 94 Deze wet treedt in werking op een bij koninklijk besluit te bepalen tijdstip. Bij koninklijk besluit kan een ander tijdstip worden vastgesteld waarop artikel 76 in werking treedt.
+- number: '95'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 28d2eb1d9de5296e1612fde09a333508b4573798f79616586dbc65e03cc712c0
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Artikel 95 Deze wet wordt aangehaald als: Penitentiaire beginselenwet.'

@@ -1,0 +1,26 @@
+$id: kieswet
+valid_from: '2025-01-01'
+source: corpus/regulation/nl/wet/kieswet/2025-01-01.yaml
+articles:
+- number: B1
+  chunks:
+  - index: 0
+    label: lid 1
+    sha256: 2eabe7251ebb2b622c6e4f8cc2b4427bf75559f944dbbcb64eb91e1f9b63dccf
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 1. De leden van de Tweede Kamer der Staten-Generaal worden gekozen door degenen die op de dag van de kandidaatstelling Nederlander zijn en op de dag van de stemming de leeftijd van achttien jaar hebben bereikt, met uitzondering van degenen die op de dag van de kandidaatstelling hun werkelijke woonplaats hebben in Aruba, Curaçao of Sint Maarten.
+  - index: 1
+    label: lid 2
+    sha256: c2e10c79a66b6e5948915ac21fc019b843bbbfe4269ba99e231524b61d2ef41c
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '2. De uitsluiting, bedoeld in het eerste lid, geldt niet ten aanzien van: a. Nederlanders die gedurende ten minste tien jaren ingezetene van Nederland zijn geweest; b. Nederlanders in Nederlandse openbare dienst in de betrokken gebiedsdelen, alsmede hun Nederlandse echtgenoten, geregistreerde partners of levensgezellen en kinderen, voor zover zij met hen een gemeenschappelijke huishouding voeren.'
+- number: B5
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: b6d998bc7926bd9653ba1c0b301fbef77343f7e35dfecd303ba81938c68e03eb
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Van het kiesrecht zijn uitgesloten zij die bij onherroepelijke rechterlijke uitspraak van het kiesrecht zijn ontzet.

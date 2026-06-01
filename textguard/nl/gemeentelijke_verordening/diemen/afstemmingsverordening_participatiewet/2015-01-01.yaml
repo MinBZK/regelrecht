@@ -1,0 +1,56 @@
+$id: afstemmingsverordening_participatiewet_diemen
+valid_from: '2015-01-01'
+source: corpus/regulation/nl/gemeentelijke_verordening/diemen/afstemmingsverordening_participatiewet/2015-01-01.yaml
+articles:
+- number: '7'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 7cd0306f73604eba56f086bf77f2c1b5661f519f1ea43a9f3fec2b80e82acdd9
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '**Gedragingen Participatiewet**'
+  - index: 1
+    label: tekst
+    sha256: 1f44216f44ec7edf81ff27b481ebfd1012ca42c17dca8d2d38a78eff4a46613c
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Gedragingen van een belanghebbende waardoor de verplichting op grond van artikel 9, eerste lid, van de Participatiewet niet of onvoldoende is nagekomen worden onderscheiden in de volgende categorieën:'
+  - index: 2
+    label: onderdeel a
+    sha256: ebe75680d0819fd5195f92a5fa12d99db8556eaa8b104c0c8565b82c96bf7bf8
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'a. eerste categorie: het zich niet tijdig laten registreren als werkzoekende bij het Uitvoeringsinstituut werknemersverzekeringen;'
+  - index: 3
+    label: onderdeel b
+    sha256: ed1eb00fa2eb8bf1f3be515d58356ab4ef1786b8c7078b481c5f7b1868469ce4
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'b. tweede categorie: 1. het niet of onvoldoende meewerken aan het opstellen, uitvoeren en evalueren van een plan van aanpak als bedoeld in artikel 44a van de Participatiewet; 2. het niet binnen vier weken na melding als bedoeld in artikel 43, vierde en vijfde lid, van de Participatiewet voldoende meewerken aan het onderzoek naar de mogelijkheden tot arbeidsinschakeling of sociale activering als dit een persoon jonger dan 27 jaar betreft; 3. het als alleenstaande ouder niet naar vermogen trachten arbeid in deeltijd te verkrijgen; 4. het niet of onvoldoende verrichten van de door het college opgedragen tegenprestatie als bedoeld in artikel 9, eerste lid, onderdeel c, van de Participatiewet;'
+  - index: 4
+    label: onderdeel c
+    sha256: a8209ad7f6610a974bdeb5dd7ac1203e58d8298e16fef87285aa6abc1df1f79c
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'c. derde categorie: het niet naar vermogen proberen algemeen geaccepteerde arbeid te verkrijgen.'
+- number: '9'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: eaefdd6c309801d9a140a5e97e4a117797ce724dc50d5574a5c10e97b66e9d2f
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '**Hoogte en duur van de verlaging**'
+  - index: 1
+    label: lid 1
+    sha256: a814d66631a85dc2a76eb8d9d57221927e0f1b6a368812cc43720f23f98bd4ef
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '1. De verlaging bij gedragingen als bedoeld in de artikelen 7 en 8 bedraagt: a. eerste categorie: 5 procent van de bijstandsnorm gedurende 1 maand; b. tweede categorie: 30 procent van de bijstandsnorm gedurende 1 maand; c. derde categorie: 100 procent van de bijstandsnorm gedurende 1 maand.'
+  - index: 2
+    label: lid 2
+    sha256: 661410c5b7ad12d171030e520f65531fc1e10241058d3037c949080835892d92
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Het college kan de verlaging afwijkend vaststellen, met een minimum van 5% en een maximum van 100% van de bijstandsnorm, als de ernst van de gedraging, de mate van verwijtbaarheid of de individuele omstandigheden van de belanghebbende daartoe aanleiding geven.

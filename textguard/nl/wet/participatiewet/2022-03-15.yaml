@@ -1,0 +1,362 @@
+$id: participatiewet
+valid_from: '2022-03-15'
+source: corpus/regulation/nl/wet/participatiewet/2022-03-15.yaml
+articles:
+- number: '7'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 5b3ebf4baefc03acdead3ec4e8d7609493c71434ec5afdbef4328c05808e2e31
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '**Opdracht college**'
+  - index: 1
+    label: lid 1
+    sha256: 3c30303367152975839f9776a06af1dbbe50e94911ce697960f470c61a84ef83
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '1. Het college: a. ondersteunt bij arbeidsinschakeling: 1°. personen die algemene bijstand ontvangen, 2°. personen als bedoeld in de artikelen 34a, vijfde lid, onderdeel b, 35, vierde lid, onderdeel b, en 36, derde lid, onderdeel b, van de Wet werk en inkomen naar arbeidsvermogen tot het moment dat het inkomen uit arbeid in dienstbetrekking gedurende twee aaneengesloten jaren ten minste het minimumloon bedraagt en ten behoeve van die persoon in die twee jaren geen loonkostensubsidie als bedoeld in artikel 10d is verleend, 3°. personen als bedoeld in artikel 10, tweede lid, 4°. personen met een nabestaanden- of wezenuitkering op grond van de Algemene nabestaandenwet, 5°. personen met een uitkering op grond van de Wet inkomensvoorziening oudere en gedeeltelijk arbeidsongeschikte werkloze werknemers, 6°. personen met een uitkering op grond van de Wet inkomensvoorziening oudere en gedeeltelijk arbeidsongeschikte gewezen zelfstandigen, en 7°. niet-uitkeringsgerechtigden en, indien het college daarbij het aanbieden van een voorziening, waaronder begrepen sociale activering gericht op arbeidsinschakeling, noodzakelijk acht, bepaalt en biedt deze voorziening aan; b. verleent bijstand aan personen hier te lande die in zodanige omstandigheden verkeren of dreigen te geraken dat zij niet over de middelen beschikken om in de noodzakelijke kosten van het bestaan te voorzien; en c. verleent uitkeringen als bedoeld in de Wet inkomensvoorziening oudere en gedeeltelijk arbeidsongeschikte werkloze werknemers en de Wet inkomensvoorziening oudere en gedeeltelijk arbeidsongeschikte gewezen zelfstandigen.'
+- number: '8'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 4de417b652d82c9439010e775dd1a623297c07076976db0d8b21426aacd93bf8
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '**Verordeningen uitkeringen**'
+  - index: 1
+    label: lid 1
+    sha256: b79fa35b5a2a35a77c730826f3238af025dd32e5ce47e0d24109d39aac3ad44b
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '1. De gemeenteraad stelt bij verordening regels met betrekking tot: a. het verlagen van de bijstand, bedoeld in artikel 18, tweede lid en de periode van de verlaging van de bijstand, bedoeld in artikel 18, vijfde en zesde lid; b. het verlenen van een individuele inkomenstoeslag als bedoeld in artikel 36; c. het verlenen van een individuele studietoeslag als bedoeld in artikel 36b; d. het verlagen van de bijstand, bedoeld in artikel 9a, twaalfde lid.'
+  - index: 2
+    label: lid 2
+    sha256: 55f704ee78f285acbc48f01034bdde5c37dcc459dc1cc00e43c2c040e5237ea8
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De regels, bedoeld in het eerste lid, hebben voor zover het gaat om het eerste lid, onderdeel b, in ieder geval betrekking op de hoogte van de individuele inkomenstoeslag en de wijze waarop invulling wordt gegeven aan de begrippen langdurig en laag inkomen.
+  - index: 3
+    label: lid 3
+    sha256: 49ebc8823794c5230637808333924d96ca7de451ccf411a3b012f34f07d65a4d
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De regels, bedoeld in het eerste lid, hebben voor zover het gaat om het eerste lid, onderdeel c, in ieder geval betrekking op de hoogte en de frequentie van de betaling van de individuele studietoeslag.
+- number: '11'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: cd78f156562796464f9b2781993b3437d8e612fe30f864f492807c0951548454
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '**Rechthebbenden**'
+  - index: 1
+    label: lid 1
+    sha256: 9f7416fd241ea1390c2220e7739f3448c65bf93d282165c015c7361fb29084a5
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 1. Iedere in Nederland woonachtige Nederlander die hier te lande in zodanige omstandigheden verkeert of dreigt te geraken dat hij niet over de middelen beschikt om in de noodzakelijke kosten van bestaan te voorzien, heeft recht op bijstand van overheidswege.
+  - index: 2
+    label: lid 2
+    sha256: cb614ed6114c27e009eb9bc1e104bd5310aeeabf16022ea2e4830237e054463f
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Met de Nederlander, bedoeld in het eerste lid, wordt gelijkgesteld de hier te lande woonachtige vreemdeling die rechtmatig in Nederland verblijf houdt in de zin van artikel 8, onderdelen a tot en met e en l, van de Vreemdelingenwet 2000, met uitzondering van de gevallen, bedoeld in artikel 24, tweede lid, van Richtlijn 2004/38/EG.
+  - index: 3
+    label: lid 3
+    sha256: 3bd1867b888ffae059d526d3bcd7a485ec9b432b41c7c72560c09ada0840db75
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '3. Bij algemene maatregel van bestuur kunnen andere hier te lande woonachtige vreemdelingen dan de in het tweede lid bedoelde voor de toepassing van deze wet met een Nederlander gelijk worden gesteld: a. ter uitvoering van een verdrag dan wel van een besluit van een volkenrechtelijke organisatie, of b. indien zij, na rechtmatig verblijf te hebben gehouden in de zin van artikel 8, onderdelen a tot en met e en l, van de Vreemdelingenwet 2000, rechtmatig in Nederland verblijf hebben als bedoeld in artikel 8, onderdeel g of h, van die wet en zij aan de in die algemene maatregel van bestuur gestelde voorwaarden voldoen.'
+  - index: 4
+    label: lid 4
+    sha256: e62c5ea26ff6ed191d82a0838e91b1f842dbd696efc12f6b0d5918256bfcb7f4
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. Het recht op bijstand komt de echtgenoten gezamenlijk toe, tenzij een van de echtgenoten geen recht op bijstand heeft.
+- number: '18'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: be5c02210aa8474a01627c2aeb0ba543f886a21361b4a0d2236e8c5cff373157
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '**Afstemming**'
+  - index: 1
+    label: lid 1
+    sha256: 07912b65983f9284dd2dc0111495f5ec5abfdee4491a3a8bad4c53e111621785
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 1. Het college stemt de bijstand en de daaraan verbonden verplichtingen af op de omstandigheden, mogelijkheden en middelen van de belanghebbende.
+  - index: 2
+    label: lid 2
+    sha256: 690368d6e3af0e9e608a75b887807068e0ed159e0471f3a463518e4143f1ffd0
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Het college verlaagt de bijstand overeenkomstig de verordening, bedoeld in artikel 8, eerste lid, onderdeel a, ter zake van het niet nakomen door de belanghebbende van de verplichtingen voortvloeiende uit deze wet, met uitzondering van artikel 17, eerste lid, dan wel indien de belanghebbende naar het oordeel van het college tekortschietend besef van verantwoordelijkheid betoont voor de voorziening in het bestaan.
+  - index: 3
+    label: lid 3
+    sha256: b11850e2c4d0ed98b544bc4f7392482c96193cc48c972d6736cc0aca2710f5f2
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Het college heroverweegt een besluit als bedoeld in het tweede lid binnen een door hem te bepalen termijn die ten hoogste drie maanden bedraagt.
+  - index: 4
+    label: lid 4
+    sha256: aa9b98373c6efce9352cc0889e2e2ea587e305ef5ce2887e06b734534051c443
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '4. Het college verlaagt in ieder geval de bijstand overeenkomstig het vijfde, zesde, zevende of achtste lid ter zake van het niet nakomen door de belanghebbende van de volgende verplichtingen: a. het aanvaarden of het behouden van algemeen geaccepteerde arbeid; b. het uitvoering geven aan de door het college opgelegde verplichting om ingeschreven te staan bij een uitzendbureau; c. het naar vermogen verkrijgen van algemeen geaccepteerde arbeid in een andere dan de gemeente van inwoning, alvorens naar die andere gemeente te verhuizen; d. bereid zijn om te reizen over een afstand met een totale reisduur van 3 uur per dag, indien dat noodzakelijk is voor het naar vermogen verkrijgen, het aanvaarden of het behouden van algemeen geaccepteerde arbeid; e. bereid zijn om te verhuizen, indien het college is gebleken dat er geen andere mogelijkheid is voor het naar vermogen verkrijgen, het aanvaarden of het behouden van algemeen geaccepteerde arbeid, en de belanghebbende een arbeidsovereenkomst met een duur van tenminste een jaar en een netto beloning die ten minste gelijk is aan de voor de belanghebbende geldende bijstandsnorm, kan aangaan; f. het verkrijgen en behouden van kennis en vaardigheden, noodzakelijk voor het naar vermogen verkrijgen, het aanvaarden of het behouden van algemeen geaccepteerde arbeid; g. het naar vermogen verkrijgen, het aanvaarden of het behouden van algemeen geaccepteerde arbeid niet belemmeren door kleding, gebrek aan persoonlijke verzorging of gedrag; h. het gebruik maken van door het college aangeboden voorzieningen, waaronder begrepen sociale activering, gericht op arbeidsinschakeling en mee te werken aan onderzoek naar zijn of haar mogelijkheden tot arbeidsinschakeling.'
+  - index: 5
+    label: lid 5
+    sha256: 7d535b9594cfaab29d186d21f5090a95cb55286016e88fb07219f3950b37cd37
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. Indien de belanghebbende een verplichting als bedoeld in het vierde lid niet nakomt, verlaagt het college de bijstand met 100% voor een bij de verordening, bedoeld in artikel 8, eerste lid, onderdeel a, vastgestelde periode van ten minste een maand en ten hoogste drie maanden.
+  - index: 6
+    label: lid 6
+    sha256: 17cff2739b604be8c983ae7b0187916625c685ee8851691a36eadbcde938e852
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 6. Indien de belanghebbende een verplichting als bedoeld in het vierde lid niet nakomt binnen twaalf maanden nadat het vijfde lid toepassing heeft gevonden, verlaagt het college, in afwijking van het vijfde lid, de bijstand met 100% voor een bij de verordening, bedoeld in artikel 8, eerste lid, onderdeel a, vastgestelde periode die in ieder geval langer is dan de op grond van het vijfde lid vastgestelde periode van verlaging en ten hoogste drie maanden.
+  - index: 7
+    label: lid 7
+    sha256: f69898fe218c242bdcf83359a5bc07e2aede7a7dd785fdca30fc91acf8ad3a73
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 7. Indien de belanghebbende een verplichting als bedoeld in het vierde lid niet nakomt binnen twaalf maanden nadat het zesde lid toepassing heeft gevonden, verlaagt het college, in afwijking van het vijfde en zesde lid, de bijstand met 100% voor een periode van drie maanden.
+  - index: 8
+    label: lid 8
+    sha256: e2da8d00aae5912efc88fae0aa1ab3d53152a42989374d49ce7527ba03e6f240
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 8. Indien de belanghebbende een verplichting als bedoeld in het vierde lid niet nakomt binnen twaalf maanden nadat het zevende lid toepassing heeft gevonden, verlaagt het college, in afwijking van het vijfde, zesde en zevende lid, telkens de bijstand met 100% voor een periode van drie maanden.
+  - index: 9
+    label: lid 9
+    sha256: 68eb5285471000f3524a4a84b0cec394dd9279457820f671e5ac77c0b03fb603
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 9. Het college ziet af van het opleggen van een maatregel, indien elke vorm van verwijtbaarheid ontbreekt.
+  - index: 10
+    label: lid 10
+    sha256: a6b9bfc563189b45cfe932b69b18a6a7916edcbb80d3b05a97a376500d10ef3b
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 10. Het college stemt een op te leggen maatregel of een opgelegde maatregel af op de omstandigheden van de belanghebbende en diens mogelijkheden om middelen te verwerven, indien naar zijn oordeel, gelet op bijzondere omstandigheden, dringende redenen daartoe noodzaken.
+  - index: 11
+    label: lid 11
+    sha256: 5c437688e0651937729954758bc9af8f7caf8ae785d216448257a523f5a7d1cc
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 11. Indien het college de bijstand overeenkomstig het vijfde, zesde, zevende of achtste lid heeft verlaagd, kan het college op verzoek van de belanghebbende ten aanzien van wie de maatregel is opgelegd, de verlaging herzien zodra uit de houding en gedragingen van de belanghebbende ondubbelzinnig is gebleken dat hij de verplichtingen, bedoeld in het vierde lid, nakomt.
+  - index: 12
+    label: lid 12
+    sha256: 20919a9fc15e8bdb8ed4f20ac82372ac3ee169586eb0bb00c800c1b822a4e9d2
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 12. Bij de toepassing van dit artikel wordt onder belanghebbende mede verstaan het gezin.
+- number: '21'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: bda1a6ba062ca5ad43bc6cc699dec3d09e5a1008dd269a3105f75db2aa5ab012
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '**Normen 21–pensioengerechtigde leeftijd**'
+  - index: 1
+    label: tekst
+    sha256: 8e75b623ddb84e0c2fcbb2147c830af4a9882281b39edb29179a956b092e3547
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Voor belanghebbenden van 21 jaar of ouder doch jonger dan de pensioengerechtigde leeftijd is de norm per kalendermaand, indien het betreft:'
+  - index: 2
+    label: onderdeel a
+    sha256: 333bec00b698f526c2a975897e12fb7ec003ea5da6e8c2f65f3ee9400e1c71df
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'a. een alleenstaande of een alleenstaande ouder zonder kostendelende medebewoners: € 1.091,71;'
+  - index: 3
+    label: onderdeel b
+    sha256: da7c98f12f5c0db0821377cf57768788c24812ba5f8ebd55ad8d151d908995d0
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'b. gehuwden waarvan beide echtgenoten jonger zijn dan de pensioengerechtigde leeftijd, zonder kostendelende medebewoners: € 1.559,58.'
+- number: '22'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 9982a5802aa5b910d75a11305ecc6e0938ce73bb610cba214df75f232df46adb
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '**Normen pensioengerechtigden**'
+  - index: 1
+    label: tekst
+    sha256: e95785814d95167c50202cd90457b70b8a2c8f3862e0820b6b9776fdf685016a
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Voor belanghebbenden die de pensioengerechtigde leeftijd hebben bereikt is de norm per kalendermaand, indien het betreft:'
+  - index: 2
+    label: onderdeel a
+    sha256: 48c81efe6fce180e5a76f50d676fdff428a102870084fbe6b5e55e11f61974b5
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'a. een alleenstaande of een alleenstaande ouder zonder kostendelende medebewoners: € 1.213,06;'
+  - index: 3
+    label: onderdeel b
+    sha256: 33c82df181d4fafd31718f8cde4f10031a49ff2e2db8950672f59a22692b768b
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'b. gehuwden waarvan beide echtgenoten de pensioengerechtigde leeftijd hebben bereikt, zonder kostendelende medebewoners: € 1.642,54;'
+  - index: 4
+    label: onderdeel c
+    sha256: 07621b5f936be0f8b233f39fa17d02bb26282ead8e921f4a51d21ed4fe215f00
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'c. gehuwden waarvan een echtgenoot de pensioengerechtigde leeftijd heeft bereikt en de andere echtgenoot 21 jaar of ouder, doch de pensioengerechtigde leeftijd nog niet heeft bereikt, zonder kostendelende medebewoners: € 1.642,54.'
+- number: 22a
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 90c09043778922de70bb6b607da28845b74c6f5909004d7c116b6d3a9072258e
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '**Kostendelersnorm**'
+  - index: 1
+    label: lid 1
+    sha256: 2d15bf56336f8572928fe42a563cdf878a075795b21c44afff93f39b963d1396
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '1. Indien de belanghebbende van 21 jaar of ouder een of meer kostendelende medebewoners heeft, is de norm per kalendermaand voor de belanghebbende: Hierbij staat: • A voor het aantal kostendelende medebewoners plus de belanghebbende en zijn echtgenoot van 21 jaar of ouder indien hij gehuwd is; en • B voor de norm, bedoeld in artikel:'
+  - index: 2
+    label: lid 2
+    sha256: ff315a6b63a021fab041848419a1e62f1f3e78de0f33acca6fab44d9c4928c61
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De norm voor gehuwden, op wie het eerste lid van toepassing is, is gelijk aan de som van de normen, bedoeld in dat lid, die voor ieder van de rechthebbende echtgenoten afzonderlijk van toepassing is.
+  - index: 3
+    label: lid 3
+    sha256: 95fffedb3a65d86572c2c55efaf306257ed9c5a894b801f7ce1f45e02beed4e0
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '3. Voor rechthebbende gehuwden, waarvan een echtgenoot 18, 19 of 20 jaar is en de andere echtgenoot 21 jaar of ouder is, met een of meer kostendelende medebewoners, is de norm per kalendermaand: a. indien ze een of meer ten laste komende kinderen hebben: € 581,43 plus de op basis van dit artikel van toepassing zijnde norm voor de echtgenoot van 21 jaar of ouder, b. indien ze geen ten laste komende kinderen hebben: € 269,51 plus de op basis van dit artikel van toepassing zijnde norm voor de echtgenoot van 21 jaar of ouder.'
+- number: '23'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 0c45bda1954676d3806a5a207bf77d7139a54c84ecc9e62440a08f24c5920b3b
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '**Normen in inrichting**'
+  - index: 1
+    label: lid 1
+    sha256: d414f8db43544effaa5bf2e0d5b4887219bef203915c275f10e1b720a0cbf7ca
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '1. Bij een verblijf in een inrichting is de norm per kalendermaand, indien het betreft: a. een alleenstaande of een alleenstaande ouder: € 345,68; b. gehuwden: € 537,69.'
+  - index: 2
+    label: lid 2
+    sha256: 31f97e046841fa8b80e47e1915c8d6249827cf23b7464127be4234a006e0443c
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '2. Het bedrag van de norm, bedoeld in het eerste lid, wordt verhoogd met: a. voor een alleenstaande of een alleenstaande ouder € 34,00; b. voor gehuwden € 79,00.'
+  - index: 3
+    label: lid 3
+    sha256: f0b1c5908eadce4dd14220e8facff8b7c5aacf889eedd1bc517b4a0a3544e2e7
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Indien een van de gehuwden in een inrichting verblijft, is de norm de som van de normen die voor ieder van hen als alleenstaande of alleenstaande ouder zouden gelden.
+- number: '24'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 62606b46dfde866fcd2fa06279f680b93bc38036f6fd9a4c9e534241f084b3e5
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '**Afwijking norm gehuwden**'
+  - index: 1
+    label: tekst
+    sha256: 74cbaf033335bc1ebb00572cbe0d3e4f160884b73f7de78ed26eec8980e814e5
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Voor gehuwden waarvan een echtgenoot geen recht op algemene bijstand heeft is voor de rechthebbende echtgenoot de norm gelijk aan 50% van de norm die voor hem zou gelden als hij gehuwd zou zijn met een rechthebbende echtgenoot van zijn leeftijd, indien:'
+  - index: 2
+    label: onderdeel a
+    sha256: d94ede2dc90bfce873de1124a127f2f436f55d59e15b7dca8613eadcca595a8d
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: a. de rechthebbende echtgenoot 21 jaar of ouder is en geen kostendelende medebewoners heeft; dan wel
+  - index: 3
+    label: onderdeel b
+    sha256: e138718b2893098b12e0c3215f7930588451812aeadcd62f73fac6a8f3386243
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: b. de rechthebbende echtgenoot jonger dan 21 jaar is.
+- number: '43'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 00b34bc4e54ef48aab9d05f7113f266d77ab3d2fad9fe3fca6373c4d54790fb9
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '**Vaststelling op aanvraag**'
+  - index: 1
+    label: lid 1
+    sha256: c051c7629c9fa5451e367143041d7eb39f5d85f296d922ac55cbe1de53980154
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 1. Het college stelt het recht op bijstand op schriftelijke aanvraag of, indien een schriftelijke aanvraag niet mogelijk is, ambtshalve vast.
+  - index: 2
+    label: lid 2
+    sha256: 8422c8756eb791eb2b5e8df6b97c8df60961e7ec999f2ddcfd8bc66e417a813e
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De bijstand wordt door de echtgenoten gezamenlijk aangevraagd dan wel door een van hen met schriftelijke toestemming van de ander.
+  - index: 3
+    label: lid 3
+    sha256: dd2fa1e096cf64d95cb07e07d1b87ecc501305e92291d5c53b6452ea328021b5
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Het college stelt het recht op bijstand ambtshalve vast indien een van de echtgenoten niet met de aanvraag instemt, doch bijstandsverlening, gezien de belangen van de overige gezinsleden, niettemin geboden is.
+  - index: 4
+    label: lid 4
+    sha256: 7b1d66091e6ebe2adab67971f8948619be237a65a5d3a3281d4e71292bb363c0
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. Het college houdt, indien artikel 41, vierde lid, van toepassing is, bij de vaststelling van het recht op algemene bijstand rekening met de houding en gedragingen van de meerderjarige personen die ten tijde van de aanvraag van algemene bijstand jonger dan 27 jaar zijn gedurende de vier weken na de melding, bedoeld in artikel 44.
+  - index: 5
+    label: lid 5
+    sha256: 915a3585104119f50a20e6837849650d3757acd09d24db36d6ba2a1867c2df1a
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. Indien artikel 41, vierde lid, niet van toepassing is, beoordeelt het college in ieder geval de houding en gedragingen gedurende de vier weken na de melding, bedoeld in artikel 44, van de meerderjarige personen die ten tijde van de aanvraag van algemene bijstand jonger dan 27 jaar zijn.
+- number: '69'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 6535cd3d08442a7cd364f2453062a7828da25495e91830c8b51a8ff340d28496
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '**Uitkering en verdeling onder de gemeenten**'
+  - index: 1
+    label: lid 1
+    sha256: 80eb48688f864d98ec7e58debc7ef32e91f5544145b144331abefc3acb970f04
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '1. Onze Minister verstrekt jaarlijks ten laste van ''s Rijks kas aan het college een uitkering om het college van middelen te voorzien met het oog op: a. het toekennen van algemene bijstand en van uitkeringen als bedoeld in de Wet inkomensvoorziening oudere en gedeeltelijk arbeidsongeschikte werkloze werknemers en de Wet inkomensvoorziening oudere en gedeeltelijk arbeidsongeschikte gewezen zelfstandigen en voor de daarbij verschuldigde loonbelasting, premies volksverzekeringen en de inkomensafhankelijke bijdrage, bedoeld in artikel 42 van de Zorgverzekeringswet; b. de kosten van de loonkostensubsidies, die op grond van artikel 10d, worden verstrekt.'
+  - index: 2
+    label: lid 2
+    sha256: ec55dff541bbd83cf471c07cfcf6d82698d04afd8309c6a20969b579a485efce
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Bij wet wordt het totale bedrag dat beschikbaar is voor de uitkering, bedoeld in het eerste lid, vastgesteld, waarbij uitgangspunt is dat dit bedrag voor het desbetreffende kalenderjaar toereikend is voor de geraamde kosten van alle gemeenten in verband met uitgaven als bedoeld in het eerste lid.
+  - index: 3
+    label: lid 3
+    sha256: 95f583beb1a26548b2c763bbd866c1437add6f4fb599ace7ebe876f08a33ab89
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. Bij of krachtens algemene maatregel van bestuur worden regels gesteld voor de verdeling van de uitkering, bedoeld in het eerste lid, onder de gemeenten en het verzamelen van gegevens noodzakelijk voor het vaststellen van deze verdeling.
+  - index: 4
+    label: lid 4
+    sha256: fca728050673ac89eb0e6bc73190fa82d1c5d847af3ee6491d8323433d809285
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. De uitkering aan het college wordt ten minste drie maanden voorafgaand aan het kalenderjaar waarop zij betrekking heeft door Onze Minister bekend gemaakt.
