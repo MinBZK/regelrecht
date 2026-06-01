@@ -381,6 +381,40 @@ machine_readable:
         value: $verlaging_percentage
 ```
 
+#### Binding purity — NEVER leave a cross-law input as a plain-param placeholder
+
+Every `input` that references a concept owned by another legal provision MUST carry a
+real `source:` block. A description is documentation, not a binding — it does not make the
+engine resolve anything.
+
+**Forbidden pattern:** an `input` whose description names another regulation, or uses words
+like "conceptueel", "forward naar", or "tijdelijk als directe parameter", but has NO
+`source:` block. This is a *plain-param placeholder*: it silently turns a cross-law value
+into a free input the caller must supply by hand, and real cross-document resolution never
+happens. If the target law does not yet produce the needed output, FIRST add that output to
+the target law (a `machine_readable` action on the correct article), then bind to it — do
+not leave the reference stranded in a description.
+
+**Never** use "the engine cannot resolve multiple source bindings per article" as a reason
+to fall back to a plain param. That assumption is false: schema v0.5.2 supports multiple
+`source:` bindings per article, and they resolve fine. When in doubt, bind for real and
+prove it with a BDD scenario.
+
+**Name-mismatch rule:** if the local input name differs from the target output name, put
+the *target's* output name in `source.output` and the *local* name in `name`, and note the
+difference in the `description`:
+```yaml
+input:
+  - name: lokaal_inkomen           # local name used by this article's logic
+    type: amount
+    description: "bindt aan output 'toetsingsinkomen' van de andere regeling (naam wijkt af)"
+    source:
+      regulation: algemene_wet_inkomensafhankelijke_regelingen
+      output: toetsingsinkomen     # the name the TARGET law actually produces
+    type_spec:
+      unit: eurocent
+```
+
 ### Field Types
 
 | Context | Valid types |

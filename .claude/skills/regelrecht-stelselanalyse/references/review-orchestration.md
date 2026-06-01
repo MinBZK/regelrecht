@@ -14,7 +14,12 @@ assen:
 3. **Wetten-coverage** — welke wetten in de keten ontbreken nog in het corpus?
 4. **machine_readable-coverage** — welke artikelen/leden hebben nog geen MR-logica?
 5. **Cross-law source-refs** — zijn verwijzingen als echte `source:` gelegd of staan ze
-   alleen in `description`?
+   alleen in `description`? Dit is een verplichte, niet-overslaanbare integriteitsscan
+   (zie SKILL.md stap 3): bouw `regulation → outputs`, vlag elke `source`-binding naar een
+   niet-bestaande output (**DANGLING**) en elke "conceptueel/forward/tijdelijk"-input zonder
+   `source:`-blok (**PLAIN-PARAM**). Beide zijn altijd **modellering-fout**, nooit engine-
+   limitatie. Rapporteer `clean / dangling / plain-param`; source-clean = beide 0. Draai
+   `references/cross-law-integriteit.py <corpus-root>` als reproduceerbare preflight.
 6. **Diagrammen** — kloppen de relatie-/flow-diagrammen met de YAML's?
 7. **Wetgevings-fouten** — fouten in de bron-regelgeving zelf (zie `defect-taxonomy.md`).
 

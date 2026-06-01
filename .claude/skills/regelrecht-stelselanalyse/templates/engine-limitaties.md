@@ -6,6 +6,15 @@
 > kloppen, maar de engine de uitvoering (nog) niet ondersteunt. Géén wetgevings- of
 > modellering-fout — track apart zodat het corpus niet onterecht "fout" lijkt.
 
+> **Bewijs-poort (verplicht).** Een limitatie mag pas hier worden opgenomen ná een
+> **reproduceerbare engine-run die het falen aantoont** — met het scenario/commando en de
+> foutuitkomst in het veld **Bewijs**. Een *onbewezen aanname* ("de engine kan vast geen
+> X") is géén limitatie: noteer die als **open vraag** in de cyclus (of weerleg hem door
+> het juist wél te binden en te testen). Veelgemaakte foute aanname: "de engine kan niet
+> meerdere `source:`-bindingen per artikel resolveren" — dat is onjuist (schema v0.5.2
+> ondersteunt dit); zo'n geval is een modellering-fout, geen limitatie. Zonder Bewijs-veld
+> hoort een regel niet in dit document.
+
 ## Limitaties
 
 ### {nr} — {korte titel}
