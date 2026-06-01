@@ -54,4 +54,3 @@ Inclusief afwijking van de planning en de belangrijkste uitkomst.}
 - Pre/post-diff: `{git ref range}`
 - Formules-doc: `{pad}`
 - Branch / tag: `{ref}`
-</content>

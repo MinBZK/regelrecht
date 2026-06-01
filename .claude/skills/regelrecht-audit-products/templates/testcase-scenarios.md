@@ -94,4 +94,3 @@ brede behandeling van de kleinere open punten (alleen parkeren).
 
 ## Afronding
 1 zin per persoon. Actiepunten (max 3-4: wat/wie/wanneer).
-</content>

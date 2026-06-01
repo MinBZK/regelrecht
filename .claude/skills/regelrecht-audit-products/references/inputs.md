@@ -42,4 +42,3 @@ het scope-analyse-product; lever het meteen in dat formaat op.
 Als alleen één wet/artikel + YAML beschikbaar is, kun je nog steeds een
 per-artikel audit-doc maken. Scope-analyse en de keten-producten vereisen meer dan
 één wet in beeld.
-</content>

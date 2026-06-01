@@ -34,4 +34,3 @@
 ## Bevindingen (4-weg geclassificeerd)
 
 - {bevinding} → {modellering-fout / wetgevings-fout / engine-limitatie / untranslatable}
-</content>

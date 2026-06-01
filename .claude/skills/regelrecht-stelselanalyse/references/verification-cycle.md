@@ -58,4 +58,3 @@ Verificatie kan een bevinding van categorie doen wisselen: een vermeende wetgevi
 die door een recent wijzigingsbesluit al is gerepareerd, wordt `weerlegd`/`verouderd` en
 verdwijnt uit de wetgevings-analyse. Houd de vier-weg-classificatie en de tracker
 synchroon.
-</content>

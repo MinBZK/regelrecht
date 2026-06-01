@@ -25,4 +25,3 @@ extract-bestand; deze INDEX koppelt comments/fouten terug aan bronnen.
 Per bron: WebFetch van de officiële publicatie (Staatsblad/wetten.overheid.nl/uitvoerder);
 PDF's lokaal extraheren indien nodig. Noteer per bron: wat het is, exacte vindplaats, en
 de kern in één regel.
-</content>

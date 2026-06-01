@@ -76,4 +76,3 @@ strict als je iets niet weet ("daar heb ik geen informatie over").
 2. Met file-access: noem de YAML-paden zodat Claude zelf leest. Anders: plak relevante
    YAML-snippets mee bij elke vraag.
 3. Als Claude buiten rol gaat: *"Blijf bij de YAML-lookup-rol. Wat zegt de YAML feitelijk?"*
-</content>

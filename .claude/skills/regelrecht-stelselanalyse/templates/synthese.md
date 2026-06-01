@@ -46,4 +46,3 @@ Per onzekere bevinding: houdt de claim stand?
 
 **Geschrapte claims** blijven zichtbaar in de bronnen-documenten (doorgestreept + reden);
 tellingen aangepast. Geen stille verwijdering.
-</content>

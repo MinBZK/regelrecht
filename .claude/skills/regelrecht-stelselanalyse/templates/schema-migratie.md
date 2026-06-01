@@ -39,4 +39,3 @@ Nieuwe schema-features benutten, per artikel beoordeeld:
 ## Open punten
 
 - {wat een vervolg vereist — bijv. een engine-PR voor een ontbrekende operatie}
-</content>

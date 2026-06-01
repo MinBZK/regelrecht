@@ -23,4 +23,3 @@
 ## Volgende stappen
 
 - {per wet/cluster: wat de volgende cyclus oppakt}
-</content>

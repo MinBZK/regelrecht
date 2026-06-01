@@ -108,4 +108,3 @@ wettekst heen.
 3. Per beslispunt waar *wijzigen* is gekozen: aparte commit met YAML-update + testen
    groen + formules opnieuw genereren.
 4. Verslag intern + extern opstellen.
-</content>

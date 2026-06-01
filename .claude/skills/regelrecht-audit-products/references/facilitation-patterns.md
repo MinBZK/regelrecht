@@ -75,4 +75,3 @@ altijd nodig — overweeg vooraf of de sessie het echt gebruikt.
 Als een deelnemer naar een term vraagt: **vertaal eerst, leg dan uit** (zie
 `jargon-spiekbriefje`). Zo blijft iedereen aangehaakt zonder dat de discussie in
 jargon verzandt.
-</content>

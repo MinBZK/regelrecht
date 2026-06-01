@@ -53,4 +53,3 @@
 
 {Wat de cyclus heeft aangetoond; de stand van het corpus; wat verdere actie behoeft
 buiten dit corpus.}
-</content>

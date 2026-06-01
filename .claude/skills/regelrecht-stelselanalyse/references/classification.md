@@ -55,4 +55,3 @@ Voer bij elke validatie uit: *maken de features en de YAML dezelfde fout?* Zo ja
 valideert de BDD-suite de YAML in plaats van de wet — groene tests bewijzen dan niets
 over juridische correctheid. Dit is een veelvoorkomende valkuil en hoort als expliciete
 meta-bevinding in de synthese.
-</content>

@@ -30,4 +30,3 @@ corpus-fout.}
 
 {Valideren deze scenario's de wet of de YAML? Als ze uit dezelfde (mogelijk foute)
 interpretatie komen als de YAML, bewijzen ze geen juridische correctheid.}
-</content>

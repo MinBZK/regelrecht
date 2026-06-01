@@ -45,6 +45,20 @@ eindrapport ◄─ verifieer (bronnen + tracker) ◄─ classificeer (4-weg)
 
 Eén cyclus pakt één **thema/scope** (niet alles tegelijk). Werk in micro-cycli.
 
+## Step 0 — drift-check (verplicht, vóór elke YAML-edit)
+
+Elke micro-cyclus die een regulation-YAML kán aanraken begint met de zustersskill
+**`law-version-drift-check`**: spiegel elk `text:`-blok tegen de geldende wettekst op
+wetten.overheid.nl bij de `valid_from` van de YAML. Géén bypass, geen "deze cyclus is
+maar docs"-escape — de trigger is "ik ga zo een regulation-YAML bewerken".
+
+Waarom een harde voorwaarde: drift mis-classificeert bevindingen over de hele 4-weg-as.
+Een claim "de YAML zegt X maar de wet zegt Y" is alleen een **wetgevings-fout** als de
+geldende wet écht Y zegt; was Y al gewijzigd door een niet-ingeharvest Stb., dan is
+diezelfde bevinding in werkelijkheid een **modellering-fout (drift)**. Zonder een CLEANE
+(of scope-gerestricteerde) drift-rapport mag geen YAML-edit gemaakt worden, en bevindingen
+op artikelen met open DRIFT-tekst worden bij de synthese (stap 5) verworpen.
+
 ## Kernprincipe: vier-weg-classificatie
 
 Elke bevinding krijgt precies één label. Dit bepaalt waar hij landt en welke actie
@@ -68,6 +82,10 @@ dan valideert de BDD-suite de YAML en niet de wet — groene tests bewijzen dan 
 over juridische correctheid.
 
 ## Werkstroom
+
+0. **Drift-check (Step 0).** Vóór élke YAML-edit: draai de zustersskill
+   `law-version-drift-check` per file. Geen CLEANE/scope-gerestricteerde drift-rapport →
+   geen edit. Zie de sectie *Step 0* hierboven; bevindingen → resolutie-tracker (klasse 1).
 
 1. **Plan de cyclus.** Bepaal thema/scope en deel op in micro-cycli
    (`templates/cyclus-plan.md`). Voor autonome uitvoering: schrijf een self-driving
@@ -160,6 +178,14 @@ voor polling, `/schedule`-routine voor onbeheerd terugkerend werk): zie
 push-target een **private** GitHub-repo is (autonome routines mogen committen/pushen, maar
 alleen naar private repos). Draai als preflight vóór elke push; PUBLIC/INTERNAL → geweigerd.
 
+**Zustersskills** (apart geïnstalleerd, geen bestand in deze skill):
+- `law-version-drift-check` — **Step 0** van elke micro-cyclus: spiegelt YAML-tekst tegen
+  de geldende wettekst vóór elke edit (zie de sectie *Step 0*). Bevindingen → resolutie-
+  tracker als 4-weg klasse 1 (modellering-fout), fixes → `modellering-fixes-plan`.
+- `regelrecht-audit-products` — live expert-validatie (workshop-laag); ontvangt de
+  judgment-untranslatables en scope-analyse uit deze desk-laag.
+- `regelrecht-dossier` — front-door router (`references/routing.md` = canonieke flow).
+
 ## Belangrijke regels
 
 - **Classificeer vóór je documenteert.** Het label bepaalt het product en de actie.
@@ -170,4 +196,3 @@ alleen naar private repos). Draai als preflight vóór elke push; PUBLIC/INTERNA
 - **Scheid corpus- en engine-issues**: een engine-limitatie is geen wetgevings- of
   modellering-fout; track 'm apart zodat het corpus niet onterecht "fout" lijkt.
 - **Dossier-agnostisch blijven**; niets pushen zonder toestemming.
-</content>

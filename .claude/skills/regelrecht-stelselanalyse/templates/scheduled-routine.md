@@ -79,4 +79,3 @@ publieke push: `ALLOW_PUBLIC_PUSH=1 git push`.
 
 `min uur dag-vd-maand maand dag-vd-week` · `*/15 * * * *` elke 15 min ·
 `0 9 * * *` dagelijks 09:00 · `0 6 * * 1` maandag 06:00 · `0 0 1 * *` 1e v/d maand.
-</content>

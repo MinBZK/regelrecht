@@ -34,4 +34,3 @@ verschuiven.}
 ## Risico's / aannames
 
 - {aanname die kan omvallen; wat dan}
-</content>

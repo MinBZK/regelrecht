@@ -28,4 +28,3 @@ fouten-analyse met de juiste categorie.}
 ## Telling
 
 {Aantal bevindingen per classificatie/ernst — input voor de synthese.}
-</content>
