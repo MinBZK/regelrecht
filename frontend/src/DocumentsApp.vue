@@ -27,6 +27,7 @@ const {
   saving,
   saveError,
   conflict,
+  deletedRemotely,
   openDocument,
   saveCurrent,
   reloadCurrent,
@@ -250,6 +251,13 @@ function handleKeydown(e) {
           </div>
 
           <div
+            v-if="deletedRemotely"
+            class="documents-app__banner documents-app__banner--warn"
+          >
+            {{ deletedRemotely }}
+          </div>
+
+          <div
             v-if="docError && docError.kind === 'draft-present'"
             class="documents-app__banner"
           >
@@ -265,7 +273,7 @@ function handleKeydown(e) {
           </div>
 
           <div v-if="saveError" class="documents-app__banner documents-app__banner--error">
-            Opslaan mislukt: {{ saveError.message }}
+            Actie mislukt: {{ saveError.message }}
           </div>
 
           <div class="documents-app__panes">

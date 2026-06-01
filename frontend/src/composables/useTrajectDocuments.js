@@ -74,6 +74,12 @@ export function useTrajectDocuments(trajectRef) {
   // surfaces a conflict banner and lets the user choose
   // "lokaal overschrijven" or "server-versie laden".
   const conflict = ref(null);
+  // Set to a localised string when a save/overwrite returned 412 because
+  // the document no longer exists on the server (deleted between the
+  // initial conflict and the "Lokaal overschrijven" click). Distinct from
+  // `conflict`: the concurrent-edit resolution buttons are a dead end here,
+  // so the editor shows a separate "document is verwijderd" banner instead.
+  const deletedRemotely = ref(null);
 
   async function fetchList() {
     if (!trajectRef.value) {
@@ -105,6 +111,7 @@ export function useTrajectDocuments(trajectRef) {
     docError.value = null;
     saveError.value = null;
     conflict.value = null;
+    deletedRemotely.value = null;
     // Cancel any debounce that was scheduled by the previous document's
     // last keystroke: when the watch fires after we swap `currentPath`
     // it would otherwise persist the new body under the old path.
@@ -210,6 +217,7 @@ export function useTrajectDocuments(trajectRef) {
     saving.value = true;
     saveError.value = null;
     conflict.value = null;
+    deletedRemotely.value = null;
     const headers = {
       'Content-Type': currentPath.value.endsWith('.txt')
         ? 'text/plain; charset=utf-8'
@@ -227,6 +235,21 @@ export function useTrajectDocuments(trajectRef) {
         },
       );
       if (res.status === 412) {
+        // The backend returns 412 for two distinct preconditions: a stale
+        // ETag (someone else edited) and an `If-Match: *` against a file
+        // that no longer exists (someone deleted it). Both share the
+        // status code, so the response body is the only stable
+        // discriminator. The deleted case is a dead end for the
+        // concurrent-edit buttons ("Server-versie laden" 404s,
+        // "Lokaal overschrijven" 412s again), so surface a distinct,
+        // actionable banner instead of the generic conflict one.
+        const body = await safeText(res);
+        if (body.includes('bestaat (nog) niet')) {
+          deletedRemotely.value =
+            'Dit document is intussen verwijderd op de server. Je wijzigingen ' +
+            'staan nog lokaal; sla op als nieuw document of begin opnieuw.';
+          return { ok: false, deleted: true };
+        }
         conflict.value =
           'Het document is intussen door iemand anders gewijzigd. ' +
           'Kies "Server-versie laden" om de nieuwe versie te zien of ' +
@@ -297,31 +320,41 @@ export function useTrajectDocuments(trajectRef) {
     // the open one, the pending debounce would resurrect a draft after
     // we clear it below.
     if (path === currentPath.value) cancelDraftTimer();
+    saveError.value = null;
     const headers = {};
     if (path === currentPath.value && currentEtag.value) {
       headers['If-Match'] = currentEtag.value;
     }
-    const res = await fetch(documentFileUrl(trajectRef.value, path), {
-      method: 'DELETE',
-      headers,
-    });
-    if (res.status === 412) {
-      conflict.value =
-        'Het document is intussen gewijzigd. Open het opnieuw om de huidige versie te zien.';
-      return { ok: false, conflict: true };
+    try {
+      const res = await fetch(documentFileUrl(trajectRef.value, path), {
+        method: 'DELETE',
+        headers,
+      });
+      if (res.status === 412) {
+        conflict.value =
+          'Het document is intussen gewijzigd. Open het opnieuw om de huidige versie te zien.';
+        return { ok: false, conflict: true };
+      }
+      if (!res.ok) {
+        const text = await safeText(res);
+        saveError.value = new Error(text || `Verwijderen mislukt: ${res.status}`);
+        return { ok: false };
+      }
+      clearDraft(trajectRef.value, path);
+      if (path === currentPath.value) {
+        currentPath.value = null;
+        currentBody.value = '';
+        currentEtag.value = null;
+      }
+      await fetchList();
+      return { ok: true };
+    } catch (e) {
+      // Network error (Failed to fetch / timeout) — surface it through
+      // the same `saveError` banner the editor already shows, so a failed
+      // delete isn't swallowed silently. Mirrors `saveCurrent`'s catch.
+      saveError.value = e;
+      return { ok: false };
     }
-    if (!res.ok) {
-      const text = await safeText(res);
-      return { ok: false, error: text || `Verwijderen mislukt: ${res.status}` };
-    }
-    clearDraft(trajectRef.value, path);
-    if (path === currentPath.value) {
-      currentPath.value = null;
-      currentBody.value = '';
-      currentEtag.value = null;
-    }
-    await fetchList();
-    return { ok: true };
   }
 
   // Re-fetch the list whenever the active traject changes — switching
@@ -346,6 +379,7 @@ export function useTrajectDocuments(trajectRef) {
     saving,
     saveError,
     conflict,
+    deletedRemotely,
     fetchList,
     openDocument,
     saveCurrent,
