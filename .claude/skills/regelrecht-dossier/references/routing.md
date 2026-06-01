@@ -13,20 +13,18 @@ Eén bron van waarheid voor hoe `regelrecht-stelselanalyse` (desk) en
 ## De flow (gesloten lus)
 
 ```
-        ┌────────────── DESK · regelrecht-stelselanalyse ──────────────┐
-        │  harvest → modelleer → valideer → 4-weg classificeer → fix   │◀──┐
-        └──────┬───────────────────────────────────────────────────────┘   │
-               │ modellering-fout → fix · engine-limitatie → engine        │
-               │ wetgevings-fout → notitie                                 │
-               │                                                           │
-   corpus workshop-rijp (validerend)                          correctiepunten +
-   of bewust ruw (verkennend)                                 bevestigde interpretaties
-               ▼                                                           │
-        ┌─────────── WORKSHOP · regelrecht-audit-products ─────────────┐   │
-        │  scope-analyse → audit-doc → sessie → correctiepunten +      │   │
-        │  consensus + testcase-scenario's                             │───┘
-        └──────────────────────────────────────────────────────────────┘
-                              terug de desk in: implementeer + verifieer
+   ┌────────────── DESK · regelrecht-stelselanalyse ──────────────┐
+   │  harvest → modelleer → valideer → 4-weg classificeer → fix   │ ◀──┐
+   └───┬──────────────────────────────────────────────────────────┘    │
+       │  modellering-fout → fix · engine-limitatie → engine           │
+       │  wetgevings-fout → notitie                                    │
+       ▼                                                               │
+   ┌──────────── WORKSHOP · regelrecht-audit-products ────────────┐    │
+   │  scope-analyse → audit-doc → sessie → correctiepunten +      │    │
+   │  consensus + testcase-scenario's                             │ ───┘
+   └──────────────────────────────────────────────────────────────┘
+       omlaag: corpus workshop-rijp (validerend) of bewust ruw (verkennend)
+       omhoog: correctiepunten + bevestigde interpretaties → implementeer + verifieer
 ```
 
 ## De router-taal: vier-weg-classificatie
