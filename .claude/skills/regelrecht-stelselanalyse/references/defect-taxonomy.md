@@ -49,4 +49,3 @@ Elke fout volgt dezelfde structuur (zie `templates/wetgevingsfouten-analyse.md`)
 - **Aanbevolen acties** in prioriteits-volgorde — eerst de kleine onbetwiste technische
   reparaties, dan het beleidsinhoudelijke werk.
 - **Adressering** — aan wie de notitie is gericht (wetgevings-eigenaar + uitvoerder).
-</content>

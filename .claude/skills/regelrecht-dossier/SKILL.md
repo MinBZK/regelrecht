@@ -69,4 +69,3 @@ Bij twijfel: gebruik `AskUserQuestion` om de situatie scherp te krijgen voordat 
   resolutie-tracker, documenteer bevestigde wetgevings-fouten).
 
 Zie `references/routing.md` voor het volledige diagram en de gedeelde bruggen.
-</content>

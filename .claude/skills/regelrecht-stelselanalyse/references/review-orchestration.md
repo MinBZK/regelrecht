@@ -61,4 +61,3 @@ status). In een aparte heroverwegings-pass:
   ongewijzigd.
 
 Nooit stilzwijgend verwijderen — de redeneerketen moet traceerbaar blijven.
-</content>

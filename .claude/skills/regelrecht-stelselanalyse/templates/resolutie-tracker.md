@@ -42,4 +42,3 @@ of nog open staat. Leidende status-administratie voor de cyclus.
 - **In scope, open te resolveren**: {lijst ID's}
 - **Out-of-scope** (volgende cyclus): {aantal} comments + {aantal} fouten
 - **Verwacht patroon**: {welke worden weerlegd/verifieerd/onverifieerbaar}
-</content>

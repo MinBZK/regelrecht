@@ -67,4 +67,3 @@ loop is klaar).
 *(de loop vult dit per iteratie aan)*
 
 - **Iteratie 1** — {item}: {uitkomst}. Classificatie: {—}. Discovery: {—}.
-</content>

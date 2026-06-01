@@ -45,4 +45,3 @@ sequenceDiagram
 {Wat het diagram laat zien, welke YAML-elementen het weergeeft, en wat een lezer eruit
 moet halen. Houd het diagram synchroon met de YAML's — bij wijziging: update of markeer
 als verouderd.}
-</content>

@@ -73,4 +73,3 @@ wetgevings-onderhoud volgt.}
 3. **Naam-modernisering institutionele referenties** — klein technisch.
 4. **Beslisser-aanwijzing voor open normen** — beleidsinhoudelijke keuze.
 5. {…}
-</content>

@@ -91,4 +91,3 @@ Drie relatie-types in de wet-graph:
 - `-.grondslag.->` legal_basis (juridisch fundament, geen runtime-dependency)
 - `--overrides-->` B verandert de betekenis van A's output
 - `-.data.->` impliciete parameter-dependency (databron levert data, geen formule)
-</content>

@@ -9,6 +9,13 @@ Eén cyclus pakt één thema/scope; deel hem op in **micro-cycli** met elk een e
 afgebakend doel (bijv. "harvest wet X", "migreer naar schema vN", "review-as Y +
 synthese"). Dit houdt elke stap toetsbaar en maakt een eindrapport per cyclus mogelijk.
 
+## Step 0 — drift-check (verplicht)
+
+Elke micro-cyclus die een regulation-YAML kán aanraken begint met de zustersskill
+`law-version-drift-check` (zie `../SKILL.md`, sectie *Step 0*): spiegel elk `text:`-blok
+tegen de geldende wettekst vóór de eerste edit. Geen CLEANE/scope-gerestricteerde
+drift-rapport → geen corpus-werk. Strikt, geen bypass.
+
 ## Cyclus-plan
 
 `templates/cyclus-plan.md`: legt het thema vast, de micro-cycli, de doelen per micro-
@@ -71,10 +78,9 @@ punten voor de volgende cyclus. Verwijst naar alle producten die de cyclus oplev
 ## Volgorde binnen een cyclus
 
 ```
-cyclus-plan ─► [loop-prompt] ─► corpus-werk (harvest / schema-migratie / mr-uitbreiding)
+cyclus-plan ─► drift-check (Step 0, per file) ─► [loop-prompt] ─► corpus-werk (harvest / schema-migratie / mr-uitbreiding)
    ─► validatie-review(s) ─► synthese + heroverweging
    ─► documentatie (wetgevings-fouten / fixes-plan / engine-limitaties / diagrammen / corpus-status / engine-tests)
    ─► verificatie (bronnen + resolutie-tracker)
    ─► eindrapport
 ```
-</content>

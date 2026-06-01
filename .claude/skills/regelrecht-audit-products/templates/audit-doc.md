@@ -107,4 +107,3 @@ Beschrijf de discrepantie YAML ↔ juridische werkelijkheid en de mogelijke opti
 Na review: vink `[ ]` → `[x]` en schrijf afwijkingen op in een "Bevindingen"-blok
 onderaan. Bij *wijzigen* van een interpretatie: aparte commit met de YAML-update,
 testen groen, formules-doc opnieuw genereren.
-</content>

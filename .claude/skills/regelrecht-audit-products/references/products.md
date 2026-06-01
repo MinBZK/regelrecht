@@ -117,4 +117,3 @@ stelselfouten-analyse, multi-agent review + synthese, resolutie-tracker met bron
 verificatie, eindrapport per cyclus) is **geen workshop-product** en woont in de
 zusterskill `regelrecht-stelselanalyse`. Gebruik die skill zodra het gaat om fouten in
 de *wet zelf* of de *engine* i.p.v. validatie van onze modellering met experts.
-</content>

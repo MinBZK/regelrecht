@@ -132,4 +132,3 @@ juridische grondslag-attributie? Markeer twijfel als beslispunt.}
 - [ ] **S1** — {vraag}? Notitie: —
 - [ ] **S2** — {vraag}? Notitie: —
 - [ ] **S3** — {vraag}? Notitie: —
-</content>

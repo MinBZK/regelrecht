@@ -76,4 +76,3 @@ menselijk. Vandaag bepalen we samen welke zin waar valt."
 **"Deze wet kan morgen veranderen!"**
 → "Daarom is de YAML gelabeld per datum. Bij een wijziging maken we een nieuwe versie;
 de oude blijft beschikbaar voor zaken uit die periode."
-</content>

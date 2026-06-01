@@ -36,4 +36,3 @@
 ## Open vraag (te verifiëren)
 
 - {bijv. komt een waarde uit een nog-niet-geharveste cross-law-bron? → naar tracker}
-</content>

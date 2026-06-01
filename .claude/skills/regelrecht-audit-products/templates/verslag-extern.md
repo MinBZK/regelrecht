@@ -46,4 +46,3 @@ Nogmaals dank voor jullie bijdrage.
 Met vriendelijke groet,
 
 {Naam}
-</content>

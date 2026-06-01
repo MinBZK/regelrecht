@@ -63,4 +63,3 @@ wettekst.}
 1. Kennismaking: warm, persoonlijk · 2. Kennis-oogst: 3-kleur, hun model op tafel ·
 3. Scope: dot-vote, S1..Sn · 4. Pauze · 5. Walk-through: A/B/C, {zware output} ·
 6. Beslispunten: 1-2-4-all · 7. Afronding: rondje + action-items.
-</content>

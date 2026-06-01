@@ -87,4 +87,3 @@ wat eigenlijk onze modelleerfout is. Voor kennis-ontginning is een ruw corpus pr
 | Untranslatables | factual vs judgment geclassificeerd | judgment-set = beslispunten |
 | Scenario's | `engine-tests` (regressie) | `testcase-scenarios` (expert-validatie) |
 | Verslag/rapport | `eindrapport` (per cyclus) | `verslag-intern`/`-extern` (per sessie) |
-</content>

@@ -104,5 +104,3 @@ beoordelings-paden op te halen voordat je schrijft.
   eigen team) vs extern (hoogover, waarderend, voor de klant) — nooit vermengen.
 - **Engine-uitkomsten zijn feiten, geen oordeel.** In het Claude-orakel en in
   scenario's: toon wat de YAML/engine zegt, laat het juridische oordeel bij de experts.
-</content>
-</invoke>
