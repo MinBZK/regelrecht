@@ -1,0 +1,28 @@
+$id: algemene_wet_bestuursrecht
+valid_from: '1994-01-01'
+source: corpus/regulation/nl/wet/algemene_wet_bestuursrecht/1994-01-01.yaml
+articles:
+- number: '3:46'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 7989060f711a41790d2cfd8546b61451790233b95fce82bc7b8bbb5383904ee1
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Een besluit dient te berusten op een deugdelijke motivering.
+- number: '6:7'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: d167979a5b6f2faa1f48d9854fb0b95e5e29785da211ea8ee7002541ed5190f4
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: De termijn voor het indienen van een bezwaar- of beroepschrift bedraagt zes weken.
+- number: '6:8'
+  chunks:
+  - index: 0
+    label: lid 1
+    sha256: c715a1e2654c38ae0bd3f846e9d6bfd094cda19bcdb4c0c447d588da76b99798
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 1. De termijn vangt aan met ingang van de dag na die waarop het besluit op de voorgeschreven wijze is bekendgemaakt.

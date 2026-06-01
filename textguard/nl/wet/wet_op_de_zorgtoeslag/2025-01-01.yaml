@@ -1,0 +1,138 @@
+$id: zorgtoeslagwet
+valid_from: '2025-01-01'
+source: corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml
+articles:
+- number: '1'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: daee5d41ffbd2612d367a8e264ac7de2e6947b371a0b97effa6cc73416e609c4
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'In deze wet en de daarop berustende bepalingen wordt verstaan onder:'
+  - index: 1
+    label: onderdeel a
+    sha256: 13bfc93f4b526c2c29d7b264d46de24f3ffb266c8309906a9a3ee909cdd1639c
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'a. verzekerde: degene die ingevolge de Zorgverzekeringswet verzekerd is; b. toetsingsinkomen: het verzamelinkomen, bedoeld in artikel 2.18 van de Wet inkomstenbelasting 2001; c. drempelinkomen: het bedrag, bedoeld in artikel 2, tweede lid; d. normpremie: de premie, berekend overeenkomstig artikel 2; e. standaardpremie: de premie, bedoeld in artikel 4.'
+- number: 1a
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 15c925b2096e37151c82b3ea28c71add9af7174ed767582810516bc580d5e709
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'In deze wet en de daarop berustende bepalingen wordt verstaan onder Onze Minister: Onze Minister van Volksgezondheid, Welzijn en Sport.'
+- number: '2'
+  chunks:
+  - index: 0
+    label: lid 1
+    sha256: 4ac0f07cad7d0cfcbbb3f46b6185068ebae1bbe99ea274fb9588f6f7e4c880d0
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 1. Indien de normpremie voor een verzekerde in het berekeningsjaar minder bedraagt dan de standaardpremie in dat jaar, heeft de verzekerde aanspraak op een zorgtoeslag ter grootte van dat verschil. Voor een verzekerde met een toeslagpartner geldt het dubbele van de standaardpremie en worden de verzekerde en de toeslagpartner geacht gezamenlijk aanspraak te maken op zorgtoeslag.
+  - index: 1
+    label: lid 2
+    sha256: 5f06152ee0d57229db31f3585ff3ccc4d43f3fe9b4f71513c78a2a54a39c9968
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. De normpremie bedraagt een percentage van het drempelinkomen in het berekeningsjaar, vermeerderd met een percentage van het toetsingsinkomen van de verzekerde. Ingeval de verzekerde een toeslagpartner heeft, wordt het gezamenlijk toetsingsinkomen van de verzekerde en de toeslagpartner in aanmerking genomen.
+  - index: 2
+    label: lid 3
+    sha256: 290d2b8d58c710c91bca94c66f76bc654651bdaa82268589bab638a140f80c3b
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 3. De percentages, bedoeld in het tweede lid, bedragen voor een verzekerde met een toeslagpartner 4,273 procent van het drempelinkomen, vermeerderd met 13,700 procent van het toetsingsinkomen, en voor een verzekerde zonder toeslagpartner 1,896 procent van het drempelinkomen, vermeerderd met 13,700 procent van het toetsingsinkomen. Bij ministeriële regeling kunnen deze percentages worden gewijzigd.
+  - index: 3
+    label: lid 4
+    sha256: b0069189a55acb5f629377535b018f57b7b4f8a8dc41c5b34548a9dc256617af
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 4. In afwijking van het eerste lid bedraagt de aanspraak op een zorgtoeslag voor een verzekerde met een partner die geen verzekerde is, vijftig procent van het op grond van het eerste lid berekende bedrag.
+  - index: 4
+    label: lid 5
+    sha256: 972096518adbb9cd4185a5b7d584b63b0f245766af494786b556f533293c32e1
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. De aanspraak op een zorgtoeslag wordt voor iedere kalendermaand afzonderlijk bepaald.
+  - index: 5
+    label: lid 6
+    sha256: 2de52f7fc559548ccbf5b1fa91a86254a5410e30a6b3a0fcadd1d4e41fc50758
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 6. Bij ministeriële regeling kunnen nadere regels worden gesteld.
+  - index: 6
+    label: lid 7
+    sha256: af51ada54f7df35e1bcc6d0a68f6e728e8de67376da09aded35f550a96801193
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 7. Onze Minister zendt een voornemen tot wijziging van de percentages, bedoeld in het derde lid, ten minste twee weken voor de vaststelling aan beide kamers der Staten-Generaal.
+- number: '3'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: a2737382a91738c30e7f116a4b039395cdd62ba5134f1b9ec1c49743dde920af
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Een verzekerde heeft geen aanspraak op zorgtoeslag indien de rendementsgrondslag, bedoeld in artikel 5.2 van de Wet inkomstenbelasting 2001, van de verzekerde of, ingeval de verzekerde een toeslagpartner heeft, de gezamenlijke rendementsgrondslag van de verzekerde en de toeslagpartner op de peildatum meer bedraagt dan € 141.896 voor een verzekerde zonder toeslagpartner, onderscheidenlijk € 179.429 voor een verzekerde met een toeslagpartner.
+- number: '4'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 424caeef334ded0ea6ef6b0ccec32dd29c0a6ac9f6d4e0efe51513708cfd1a8a
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Onze Minister stelt uiterlijk 22 dagen voorafgaande aan het berekeningsjaar bij regeling de standaardpremie voor het berekeningsjaar vast.
+- number: 4a
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: b9cea51038b7ebd05f04198adc5c78a895a8f18d621331c6a78ec39a69245372
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Voor de persoon, bedoeld in artikel 69 van de Zorgverzekeringswet, wordt de standaardpremie aangepast aan de hand van de verhouding tussen de zorguitgaven per verzekerde in het land waar de persoon woont en de zorguitgaven per verzekerde in Nederland.
+- number: '5'
+  chunks:
+  - index: 0
+    label: lid 1
+    sha256: 64c9fc5d1fef010140ca6f1b0df9c8ba3c8903da38784a630421e927fe0c1059
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 1. De Dienst Toeslagen is belast met de uitvoering van deze wet.
+  - index: 1
+    label: lid 2
+    sha256: 41e7c7227920575fa3af78418895e5cf2bb0e22225320849366e15ba43731efc
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Tot en met 4. [Procedurele bepalingen over aanvraag en betaling]
+  - index: 2
+    label: lid 5
+    sha256: e1ea19f9367df0fbdfcabb7f8f986adece2e71f41b255b475c51073738be8288
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 5. De zorgtoeslag komt ten laste van het Rijk.
+- number: '6'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: ef562d3b744f0c932bbfe8e23f9f9ba38627f6ba17a9c69067ee1e26f78dfade
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Onze Minister zendt binnen vier jaar na de inwerkingtreding van deze wet, en vervolgens telkens na vier jaar, aan de Staten-Generaal een verslag over de doeltreffendheid en de effecten van deze wet in de praktijk.
+- number: '7'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: be07c42696d7b8fbfecfe7f1eabcad72cc15613150e2bbbd52f8150f298f494f
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Deze wet treedt in werking op een bij koninklijk besluit te bepalen tijdstip.
+- number: '8'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: b741e88afa677ea9c48778dedecfc79e1c396698286f2975a10856e8b5191bbb
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Deze wet wordt aangehaald als: Wet op de zorgtoeslag.'

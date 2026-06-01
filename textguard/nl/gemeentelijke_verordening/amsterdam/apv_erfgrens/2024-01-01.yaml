@@ -1,0 +1,24 @@
+$id: apv_erfgrens_amsterdam
+valid_from: '2024-01-01'
+source: corpus/regulation/nl/gemeentelijke_verordening/amsterdam/apv_erfgrens/2024-01-01.yaml
+articles:
+- number: '2.75'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: d26a68648afeb5bff9f9914703b05f1aa29cd9268210d819554fe47b3ebae824
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Afstand van bomen, heesters en heggen tot de erfgrens
+  - index: 1
+    label: lid 1
+    sha256: dd17b2a12891d86a719c97e3677df8b23e96077bd902c7561fdf7e98f075317f
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 1. In afwijking van artikel 5:42 lid 2 van het Burgerlijk Wetboek bedraagt de afstand voor bomen in het centrum van Amsterdam (postcodegebied 1011-1018) een meter.
+  - index: 2
+    label: lid 2
+    sha256: dd41db3a148777c6151e0ce51df4c204d09051a2dce9ae910ebcb96729f0f3b8
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 2. Voor heesters en heggen geldt in heel Amsterdam de afstand van een halve meter als bedoeld in artikel 5:42 lid 2 van het Burgerlijk Wetboek.
