@@ -292,7 +292,7 @@ export function useTrajectDocuments(trajectRef) {
   /**
    * Create a new document at `path`. Generates a minimal H1 template
    * body and PUTs it without `If-Match`, so a brand-new file lands at
-   * `200/201 OK`. The caller (`DocumentsApp.submitCreate`) does a
+   * `200/201 OK`. The caller (`DocumentsPanel.submitCreate`) does a
    * client-side duplicate check against the already-fetched list
    * before invoking us — without that check, a race where another
    * user creates the same path between list-refresh and submit would
