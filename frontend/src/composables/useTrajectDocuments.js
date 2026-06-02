@@ -333,7 +333,12 @@ export function useTrajectDocuments(trajectRef) {
       path === currentPath.value && currentEtag.value ? currentEtag.value : null;
     if (!ifMatch) {
       try {
-        const head = await fetch(documentFileUrl(trajectRef.value, path));
+        // HEAD, not GET: Axum serves HEAD from the GET handler with the
+        // body suppressed, so we get the current `ETag` header without
+        // downloading the document body just to read it.
+        const head = await fetch(documentFileUrl(trajectRef.value, path), {
+          method: 'HEAD',
+        });
         if (head.ok) ifMatch = head.headers.get('ETag');
       } catch {
         /* network error — proceed unconditionally; DELETE surfaces its own error */
@@ -347,8 +352,13 @@ export function useTrajectDocuments(trajectRef) {
         headers,
       });
       if (res.status === 412) {
-        conflict.value =
-          'Het document is intussen gewijzigd. Open het opnieuw om de huidige versie te zien.';
+        // A concurrent modification means our delete precondition failed.
+        // Do NOT reuse the save-conflict `conflict` ref: its banner offers
+        // "reload"/"overwrite" actions that operate on the *open* document
+        // (and "overwrite" is a PUT — the wrong resolution for a delete).
+        // Refresh the list so the caller re-evaluates against current
+        // state, and return a typed result for the panel to surface.
+        await fetchList();
         return { ok: false, conflict: true };
       }
       if (!res.ok) {

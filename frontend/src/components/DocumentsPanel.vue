@@ -137,6 +137,11 @@ function overwriteServer() {
 // recursion.
 const deleteModalEl = ref(null);
 const pendingDeletePath = ref(null);
+// Panel-level feedback for a failed delete. Kept separate from the
+// sheet's save-conflict banner: a delete 412 must not offer
+// reload/overwrite actions (those act on the open document and
+// "overwrite" is a PUT — wrong for a delete intent).
+const deleteNotice = ref(null);
 
 watch(pendingDeletePath, async (path) => {
   await nextTick();
@@ -159,9 +164,18 @@ async function confirmDelete() {
   const path = pendingDeletePath.value;
   pendingDeletePath.value = null;
   if (!path) return;
+  deleteNotice.value = null;
   const result = await deleteDocument(path);
-  if (result?.ok && path === currentPath.value) {
-    sheetOpen.value = false;
+  if (result?.ok) {
+    if (path === currentPath.value) sheetOpen.value = false;
+  } else if (result?.conflict) {
+    deleteNotice.value =
+      `"${path}" is intussen door iemand anders gewijzigd; de lijst is ` +
+      `ververst. Open het document om de huidige versie te zien voordat je ` +
+      `het verwijdert.`;
+  } else {
+    deleteNotice.value =
+      saveError.value?.message || `Verwijderen van "${path}" is mislukt.`;
   }
 }
 
@@ -182,6 +196,14 @@ function handleKeydown(e) {
 
 <template>
   <div class="documents-panel">
+    <div
+      v-if="deleteNotice"
+      class="documents-panel__banner documents-panel__banner--warn"
+    >
+      {{ deleteNotice }}
+      <nldd-button size="md" text="Sluiten" @click="deleteNotice = null"></nldd-button>
+    </div>
+
     <p v-if="listLoading" class="documents-panel__hint">Bezig met laden…</p>
     <p v-else-if="listError" class="documents-panel__error">
       {{ listError.message }}
