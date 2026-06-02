@@ -16,6 +16,12 @@ static DEFAULTS: LazyLock<HashMap<String, bool>> = LazyLock::new(|| {
         ("panel.yaml_editor".into(), true),
         ("panel.machine_readable".into(), true),
         ("panel.law_graph".into(), false),
+        // Documents panel (traject-scoped markdown/text files). Default on
+        // like the other panels; the frontend only surfaces it when a
+        // traject is active. Must be registered here or the toggle PUT 400s
+        // and the frontend silently reverts it (same allow-list rule as the
+        // panel.notes / editor.* keys below).
+        ("panel.documents".into(), true),
         // Notes pane (RFC-005/RFC-018). Default off: display-only MVP, notes
         // exist for one law so far. Must be registered here or the toggle PUT
         // 400s and the frontend silently reverts it (see the editor.* note
