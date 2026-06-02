@@ -58,6 +58,18 @@ describe('isApiUrl', () => {
   it('rejects cross-origin /api/ paths', () => {
     expect(isApiUrl('https://evil.example/api/x')).toBe(false);
   });
+
+  it('resolves bare relative paths against the document path, like fetch', () => {
+    // On /trajects/123, fetch('api/x') hits /trajects/api/x — NOT an API call.
+    window.history.pushState({}, '', '/trajects/123');
+    try {
+      expect(isApiUrl('api/trajects')).toBe(false);
+      // Absolute paths still match regardless of the document path.
+      expect(isApiUrl('/api/trajects')).toBe(true);
+    } finally {
+      window.history.pushState({}, '', '/');
+    }
+  });
 });
 
 describe('installApiAuthGuard', () => {

@@ -35,7 +35,10 @@ export function isApiUrl(input) {
   const raw = input instanceof Request ? input.url : input;
   let url;
   try {
-    url = new URL(raw, window.location.origin);
+    // Resolve against the full current URL (not just the origin) so bare
+    // relative paths resolve exactly as the browser's fetch does — e.g. on
+    // `/trajects/123`, `fetch('api/x')` hits `/trajects/api/x`, not `/api/x`.
+    url = new URL(raw, window.location.href);
   } catch {
     return false;
   }
