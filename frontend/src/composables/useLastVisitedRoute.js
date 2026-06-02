@@ -79,5 +79,14 @@ export function sectionTarget(router, storedPath, activeRef) {
     if (name === 'library-traject') name = 'library';
     else if (name === 'editor-traject') name = 'editor';
   }
+  // Defensive: a corrupted or extremely stale sessionStorage path can
+  // resolve to an unrecognised (or null) route name, which would make the
+  // downstream router.push throw. Fall back to the section root, deriving
+  // the section from the stored path's prefix so the correct tab is kept.
+  const KNOWN = ['library', 'library-traject', 'editor', 'editor-traject'];
+  if (!KNOWN.includes(name)) {
+    const section = storedPath.startsWith('/editor') ? 'editor' : 'library';
+    name = activeRef ? `${section}-traject` : section;
+  }
   return { name, params };
 }

@@ -49,4 +49,12 @@ describe('sectionTarget — traject preserved across tab switches', () => {
     expect(t.params.trajectRef).toBeUndefined();
     expect(t.params.lawId).toBe('foo');
   });
+
+  it('falls back to the section root for an unresolvable stored path', () => {
+    // A corrupted/stale sessionStorage value must not crash router.push.
+    expect(sectionTarget(router, '/totally/unknown', REF).name).toBe('library-traject');
+    expect(sectionTarget(router, '/totally/unknown', null).name).toBe('library');
+    // Section is derived from the path prefix so the right tab is kept.
+    expect(sectionTarget(router, '/editor-bogus/x', null).name).toBe('editor');
+  });
 });

@@ -72,9 +72,9 @@ function editorRouteFor(lawIdVal, articleNumber) {
 const isLibraryRoute = computed(
   () => route.name === 'library' || route.name === 'library-traject',
 );
-const isEditorRoute = computed(
-  () => route.name === 'editor' || route.name === 'editor-traject',
-);
+// The Editor tab is never the active tab while LibraryApp is mounted
+// (this component only serves the library routes), so it needs no
+// `:selected` binding — only the cross-section target/href below.
 const editorTabTarget = computed(() =>
   sectionTarget(router, lastEditorPath.value, activeTrajectRef.value),
 );
@@ -536,7 +536,7 @@ watch(activeTrajectRef, () => {
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar size="md" navigation>
                 <nldd-tab-bar-item :selected="isLibraryRoute || undefined" text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :selected="isEditorRoute || undefined" :href="editorTabHref" @click.prevent="router.push(editorTabTarget)" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :href="editorTabHref" @click.prevent="router.push(editorTabTarget)" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
@@ -585,7 +585,7 @@ watch(activeTrajectRef, () => {
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar size="md" navigation>
                 <nldd-tab-bar-item :selected="isLibraryRoute || undefined" text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :selected="isEditorRoute || undefined" :href="editorTabHref" @click.prevent="router.push(editorTabTarget)" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :href="editorTabHref" @click.prevent="router.push(editorTabTarget)" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="center" min-width="240px" width="33%">
@@ -808,7 +808,7 @@ watch(activeTrajectRef, () => {
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar variant="compact" navigation>
                 <nldd-tab-bar-item :selected="isLibraryRoute || undefined" icon="books" text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :selected="isEditorRoute || undefined" :href="editorTabHref" @click.prevent="router.push(editorTabTarget)" icon="edit" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :href="editorTabHref" @click.prevent="router.push(editorTabTarget)" icon="edit" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
