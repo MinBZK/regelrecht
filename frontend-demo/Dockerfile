@@ -5,10 +5,16 @@ RUN apk add --no-cache musl-dev
 RUN rustup target add wasm32-unknown-unknown
 RUN cargo install wasm-bindgen-cli@0.2.114 --locked
 WORKDIR /build
-COPY packages/Cargo.lock ./
-RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/engine",\n    "packages/shared",\n]\n' > Cargo.toml
-COPY packages/engine/ packages/engine/
-COPY packages/shared/ packages/shared/
+COPY packages/Cargo.lock packages/Cargo.toml ./
+# Trim workspace members to engine + shared (the only crates the wasm build
+# needs) while keeping the real [workspace.dependencies] so inherited deps
+# (e.g. chrono.workspace = true) still resolve. Mirrors frontend/Dockerfile.
+# When adding a new workspace member that this image does NOT build, add it
+# to this exclusion list as well; otherwise cargo will fail to find its source.
+RUN grep -qE '^members = \[$' Cargo.toml && \
+    sed -i '/"admin"/d; /"auth"/d; /"corpus"/d; /"demo-api"/d; /"demo-profile"/d; /"editor-api"/d; /"harvester"/d; /"pipeline"/d; /"tui"/d' Cargo.toml
+COPY packages/engine/ engine/
+COPY packages/shared/ shared/
 RUN cargo build --target wasm32-unknown-unknown --release --features wasm -p regelrecht-engine && \
     wasm-bindgen --target web --out-dir /wasm-pkg \
       target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
