@@ -377,6 +377,22 @@ export function useTrajectDocuments(trajectRef) {
         await fetchList();
         return { ok: false, conflict: true };
       }
+      if (res.status === 404) {
+        // The document is already gone (deleted remotely between the list
+        // load and this click — e.g. the unconditional path where the HEAD
+        // probe 404'd). Delete is idempotent, so treat it as success: drop
+        // the local draft, clear it if it was the open one, and refresh the
+        // list so the stale sidebar entry disappears instead of lingering
+        // until a reload.
+        clearDraft(trajectRef.value, path);
+        if (path === currentPath.value) {
+          currentPath.value = null;
+          currentBody.value = '';
+          currentEtag.value = null;
+        }
+        await fetchList();
+        return { ok: true };
+      }
       if (!res.ok) {
         const text = await safeText(res);
         saveError.value = new Error(text || `Verwijderen mislukt: ${res.status}`);

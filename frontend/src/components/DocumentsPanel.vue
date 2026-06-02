@@ -97,10 +97,11 @@ function validateNewPath(value) {
 
 async function submitCreate() {
   // Guard against a double-fire: the form's @submit.prevent and the
-  // nldd-button @click can both invoke this in the same turn (the
-  // button may render a type=submit internally). `submittingCreate`
-  // is only set after the first `await` below, so without this early
-  // return both calls clear the check and double-PUT.
+  // nldd-button @click can both invoke this in the same turn (the button
+  // may render a type=submit internally). The guard works because
+  // `submittingCreate` is set synchronously before the first `await`
+  // below, so the second caller already sees `true` here and exits early
+  // instead of issuing a duplicate create.
   if (submittingCreate.value) return;
   createError.value = null;
   const value = newPath.value.trim();
