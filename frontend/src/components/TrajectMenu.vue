@@ -23,15 +23,19 @@ const route = useRoute();
 const router = useRouter();
 
 /**
- * Navigate to a traject — push the user into the traject-scoped
- * editor at the same law they were viewing. Per-tab state: a switch
- * here only affects this tab, never other open editors.
+ * Navigate to a traject — push the user into the traject-scoped view of
+ * the section they are currently in (bibliotheek or editor), at the same
+ * law they were viewing. Picking a traject from the bibliotheek keeps you
+ * in the bibliotheek; from the editor it keeps you in the editor. Per-tab
+ * state: a switch here only affects this tab, never other open tabs.
  */
 async function goToTraject(trajectRef) {
   const lawId = route.params.lawId || undefined;
   const articleNumber = route.params.articleNumber || undefined;
+  const inLibrary =
+    route.name === 'library' || route.name === 'library-traject';
   await router.push({
-    name: 'editor-traject',
+    name: inLibrary ? 'library-traject' : 'editor-traject',
     params: { trajectRef, lawId, articleNumber },
   });
 }

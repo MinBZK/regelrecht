@@ -12,7 +12,7 @@ import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useNotes, useResolvedDraftNotes } from './composables/useNotes.js';
 import { useDraftNotes } from './composables/useDraftNotes.js';
 import { useColorScheme } from './composables/useColorScheme.js';
-import { lastLibraryPath } from './composables/useLastVisitedRoute.js';
+import { lastLibraryPath, sectionTarget } from './composables/useLastVisitedRoute.js';
 import { SUPPORT_EMAIL } from './constants.js';
 import ArticleText from './components/ArticleText.vue';
 import AnnotatedText from './components/AnnotatedText.vue';
@@ -163,6 +163,14 @@ const canEditArticleText = computed(() => canEdit.value && isEnabled('editor.art
 
 const route = useRoute();
 const router = useRouter();
+
+// Bibliotheek tab / "naar bibliotheek" buttons: restore the last library
+// position but re-stamp it with the currently active traject, so the
+// traject survives the Editor→Bibliotheek switch (it lives in the URL).
+const libraryTabTarget = computed(() =>
+  sectionTarget(router, lastLibraryPath.value, activeTrajectRef.value),
+);
+const libraryTabHref = computed(() => router.resolve(libraryTabTarget.value).href);
 
 // --- Initial law load (from route params) ---
 const {
@@ -433,7 +441,7 @@ function onSearchSelectLaw(lawIdVal) {
   // Open in the library — search currently only matches law names. As
   // soon as article-level search lands, we can route directly into the
   // editor (with the chosen article as the active tab).
-  router.push(`/library/${encodeURIComponent(lawIdVal)}`);
+  router.push(libraryRouteFor(lawIdVal));
 }
 
 async function onSearchHarvestAvailable(slug) {
@@ -443,7 +451,7 @@ async function onSearchHarvestAvailable(slug) {
     body: JSON.stringify({ law_ids: [slug] }),
   }).catch(() => {});
   await loadCorpusLaws();
-  router.push(`/library/${encodeURIComponent(slug)}`);
+  router.push(libraryRouteFor(slug));
 }
 const resultSheetEl = ref(null);
 watch(resultSheetOpen, async (open) => {
@@ -506,6 +514,19 @@ function editorRouteFor(lawIdVal, articleNumber) {
     name: 'editor',
     params: { lawId: lawIdVal, articleNumber },
   };
+}
+
+/**
+ * Build a router target for the bibliotheek that preserves the current
+ * traject scope, mirroring editorRouteFor. Used when leaving the editor
+ * for the library (e.g. opening a search result) so the active traject
+ * follows the user instead of being dropped.
+ */
+function libraryRouteFor(lawIdVal) {
+  const trajectRef = route.params.trajectRef;
+  return trajectRef
+    ? { name: 'library-traject', params: { trajectRef, lawId: lawIdVal } }
+    : { name: 'library', params: { lawId: lawIdVal } };
 }
 
 // If the user lands on the editor without a lawId, restore the last
@@ -1262,7 +1283,7 @@ async function handleActionSave() {
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar size="md">
-                <nldd-tab-bar-item :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)" text="Bibliotheek"></nldd-tab-bar-item>
                 <nldd-tab-bar-item selected text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
@@ -1324,7 +1345,7 @@ async function handleActionSave() {
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar size="md">
-                <nldd-tab-bar-item :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)" text="Bibliotheek"></nldd-tab-bar-item>
                 <nldd-tab-bar-item selected text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
@@ -1413,7 +1434,7 @@ async function handleActionSave() {
         <nldd-page v-if="!activeTab">
           <nldd-simple-section width="full">
             <nldd-inline-dialog text="Open een artikel vanuit de tabbalk of de bibliotheek om te bewerken.">
-              <nldd-button slot="actions" variant="secondary" text="Ga naar bibliotheek" :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)"></nldd-button>
+              <nldd-button slot="actions" variant="secondary" text="Ga naar bibliotheek" :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)"></nldd-button>
             </nldd-inline-dialog>
           </nldd-simple-section>
         </nldd-page>
@@ -1438,7 +1459,7 @@ async function handleActionSave() {
               :text="`${failedLawName} is niet beschikbaar in dit traject`"
               supporting-text="Wissel van traject via het menu rechtsboven of ga terug naar het overzicht."
             >
-              <nldd-button slot="actions" variant="primary" text="Naar bibliotheek" :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)"></nldd-button>
+              <nldd-button slot="actions" variant="primary" text="Naar bibliotheek" :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)"></nldd-button>
               <nldd-button slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryLoadLaw"></nldd-button>
             </nldd-inline-dialog>
             <nldd-inline-dialog
@@ -1784,7 +1805,7 @@ async function handleActionSave() {
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar variant="compact">
-                <nldd-tab-bar-item :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)" icon="books" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)" icon="books" text="Bibliotheek"></nldd-tab-bar-item>
                 <nldd-tab-bar-item selected icon="edit" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
