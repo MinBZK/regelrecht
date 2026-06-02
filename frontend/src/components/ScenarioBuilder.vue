@@ -409,16 +409,16 @@ defineExpose({ save: onSave });
   <!-- Overview -->
   <nldd-simple-section>
       <div v-if="scenariosLoading" class="sb-loading">Scenario's laden...</div>
-      <select
-        v-else-if="scenarioFiles.length > 1"
-        class="sb-select"
-        :value="selectedScenarioFile"
-        @change="onScenarioFileSelect"
-      >
-        <option v-for="sf in scenarioFiles" :key="sf.filename" :value="sf.filename">
-          {{ sf.filename }}
-        </option>
-      </select>
+      <nldd-dropdown v-else-if="scenarioFiles.length > 1" size="md">
+        <select
+          :value="selectedScenarioFile"
+          @change="onScenarioFileSelect"
+        >
+          <option v-for="sf in scenarioFiles" :key="sf.filename" :value="sf.filename">
+            {{ sf.filename }}
+          </option>
+        </select>
+      </nldd-dropdown>
 
       <nldd-inline-dialog v-if="saveSuccess" text="Opgeslagen"></nldd-inline-dialog>
       <nldd-inline-dialog v-if="saveError" variant="alert" text="Opslaan mislukt" :supporting-text="saveError.message || String(saveError)"></nldd-inline-dialog>
@@ -562,15 +562,6 @@ defineExpose({ save: onSave });
   font-size: 13px;
   margin-bottom: 4px;
   color: var(--semantics-text-color-primary, #1C2029);
-}
-
-.sb-select {
-  padding: 6px 8px;
-  border: 1px solid var(--semantics-dividers-color, #E0E3E8);
-  border-radius: 6px;
-  font-size: 13px;
-  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
-  background: white;
 }
 
 .sb-loading {
