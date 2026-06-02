@@ -6,7 +6,8 @@ use axum::http::header;
 use axum::http::{HeaderValue, StatusCode};
 use axum::middleware::Next;
 use axum::response::Response;
-use openidconnect::{OAuth2TokenResponse, RefreshToken, RequestTokenError};
+use openidconnect::core::CoreErrorResponseType;
+use openidconnect::{OAuth2TokenResponse, RefreshToken, RequestTokenError, StandardErrorResponse};
 use tower_sessions::Session;
 
 use crate::handlers::{
@@ -302,15 +303,23 @@ enum RefreshOutcome {
     Transient,
 }
 
-/// Classify a token-endpoint failure. A `ServerResponse` means the IdP
-/// processed the request and refused it (e.g. `invalid_grant` after logout or
-/// account disable) → definitive. Everything else (network, unparseable
-/// response) is transient and must not log the user out.
-fn outcome_for_error<RE: std::error::Error + 'static, T: openidconnect::ErrorResponse>(
-    err: &RequestTokenError<RE, T>,
+/// Classify a token-endpoint failure.
+///
+/// Only `invalid_grant` is definitive: it means *this refresh token* is
+/// expired/revoked (the user was logged out or disabled at the IdP), the one
+/// case a re-login fixes → [`RefreshOutcome::Rejected`]. Everything else stays
+/// [`RefreshOutcome::Transient`] (keep the session): `server_error` /
+/// `temporarily_unavailable` (RFC 6749 §5.2) are server-side hiccups, and
+/// client-config errors (`invalid_client`/`unauthorized_client`) can't be fixed
+/// by the user re-logging in — flushing active sessions on any of those would
+/// log everyone out on a Keycloak blip. Network/parse errors fall here too.
+fn outcome_for_error<RE: std::error::Error + 'static>(
+    err: &RequestTokenError<RE, StandardErrorResponse<CoreErrorResponseType>>,
 ) -> RefreshOutcome {
     match err {
-        RequestTokenError::ServerResponse(_) => RefreshOutcome::Rejected,
+        RequestTokenError::ServerResponse(resp) if resp.error().as_ref() == "invalid_grant" => {
+            RefreshOutcome::Rejected
+        }
         _ => RefreshOutcome::Transient,
     }
 }
@@ -1077,26 +1086,42 @@ mod tests {
 
     #[test]
     fn outcome_for_error_classifies_definitive_vs_transient() {
-        use openidconnect::core::CoreErrorResponseType;
-        use openidconnect::{HttpClientError, StandardErrorResponse};
+        use openidconnect::HttpClientError;
 
         type Err = RequestTokenError<
             HttpClientError<reqwest::Error>,
             StandardErrorResponse<CoreErrorResponseType>,
         >;
 
-        // A server response (e.g. invalid_grant) is definitive → Rejected.
-        let definitive: Err = RequestTokenError::ServerResponse(StandardErrorResponse::new(
-            CoreErrorResponseType::Extension("invalid_grant".to_string()),
-            None,
-            None,
-        ));
+        fn server_error(code: CoreErrorResponseType) -> Err {
+            RequestTokenError::ServerResponse(StandardErrorResponse::new(code, None, None))
+        }
+
+        // Only invalid_grant is definitive → Rejected.
         assert!(matches!(
-            outcome_for_error(&definitive),
+            outcome_for_error(&server_error(CoreErrorResponseType::InvalidGrant)),
             RefreshOutcome::Rejected
         ));
 
-        // Anything else (network/parse) is transient → keep the session.
+        // Server-side / transient OAuth errors must NOT log the user out.
+        assert!(matches!(
+            outcome_for_error(&server_error(CoreErrorResponseType::Extension(
+                "server_error".to_string()
+            ))),
+            RefreshOutcome::Transient
+        ));
+        assert!(matches!(
+            outcome_for_error(&server_error(CoreErrorResponseType::Extension(
+                "temporarily_unavailable".to_string()
+            ))),
+            RefreshOutcome::Transient
+        ));
+        // Client-config error: re-login can't fix it → keep the session.
+        assert!(matches!(
+            outcome_for_error(&server_error(CoreErrorResponseType::InvalidClient)),
+            RefreshOutcome::Transient
+        ));
+        // Network/parse failure → transient.
         let transient: Err = RequestTokenError::Other("connection refused".to_string());
         assert!(matches!(
             outcome_for_error(&transient),
