@@ -19,13 +19,14 @@
 //! println!("Output: {:?}", result.outputs);
 //! ```
 
-use crate::article::{Action, ActionOperation, Article, ArticleBasedLaw};
+use crate::article::{Action, ActionOperation, ActionValue, Article, ArticleBasedLaw};
 use crate::config;
 use crate::context::RuleContext;
 use crate::error::{EngineError, Result};
 use crate::operations::{evaluate_value, execute_operation};
 use crate::trace::{PathNode, TraceBuilder};
 use crate::types::{PathNodeType, Value};
+use crate::units::{infer_unit, SymbolUnits};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashSet};
 use std::rc::Rc;
@@ -463,15 +464,24 @@ impl<'a> ArticleEngine<'a> {
     /// # Returns
     /// Calculated value
     fn evaluate_action(&self, action: &Action, context: &RuleContext) -> Result<Value> {
+        // Unit check (RFC-019): value-independent, so it runs once per action.
+        // Unknown units never error, so unannotated laws are unaffected.
+        let symbols = SymbolUnits::from_article(self.article);
+
         // Check for operation at action level FIRST
         // When an action has an operation, the value/subject fields are operands, not direct results
         if let Some(operation) = &action.operation {
             let action_op = self.action_to_operation(action, operation)?;
+            infer_unit(
+                &ActionValue::Operation(Box::new(action_op.clone())),
+                &symbols,
+            )?;
             return execute_operation(&action_op, context, 0);
         }
 
         // Check for direct value (only when no operation is specified)
         if let Some(value) = &action.value {
+            infer_unit(value, &symbols)?;
             return evaluate_value(value, context, 0);
         }
 
@@ -753,6 +763,86 @@ articles:
         let result = engine.evaluate(params, "2025-01-01").unwrap();
 
         assert_eq!(result.outputs.get("is_adult"), Some(&Value::Bool(false)));
+    }
+
+    #[test]
+    fn runtime_rejects_incompatible_add() {
+        // RFC-019: adding a eurocent definition to a days definition must fail
+        // at runtime with a UnitMismatch error.
+        let yaml = r#"
+$id: test_units
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: "Unit mismatch test."
+    machine_readable:
+      definitions:
+        bedrag:
+          value: 1000
+          type: amount
+          type_spec:
+            unit: eurocent
+        dagen:
+          value: 5
+          type: number
+          type_spec:
+            unit: days
+      execution:
+        output:
+          - name: resultaat
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: resultaat
+            operation: ADD
+            values: ['$bedrag', '$dagen']
+"#;
+        let law: ArticleBasedLaw = serde_yaml_ng::from_str(yaml).expect("parse law");
+        let article = law.find_article_by_number("1").unwrap();
+        let engine = ArticleEngine::new(article, &law);
+
+        let result = engine.evaluate(BTreeMap::new(), "2025-01-01");
+        match result {
+            Err(EngineError::UnitMismatch { .. }) => {}
+            other => panic!("expected UnitMismatch, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn runtime_allows_unannotated_law() {
+        // Backward-compat cornerstone: a law with no units behaves exactly as
+        // before — Unknown units never trigger a check.
+        let yaml = r#"
+$id: test_no_units
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: "No units."
+    machine_readable:
+      definitions:
+        a:
+          value: 1000
+        b:
+          value: 5
+      execution:
+        output:
+          - name: resultaat
+            type: number
+        actions:
+          - output: resultaat
+            operation: ADD
+            values: ['$a', '$b']
+"#;
+        let law: ArticleBasedLaw = serde_yaml_ng::from_str(yaml).expect("parse law");
+        let article = law.find_article_by_number("1").unwrap();
+        let engine = ArticleEngine::new(article, &law);
+        let result = engine
+            .evaluate(BTreeMap::new(), "2025-01-01")
+            .expect("unannotated law should evaluate without error");
+        assert_eq!(result.outputs.get("resultaat"), Some(&Value::Int(1005)));
     }
 
     #[test]
