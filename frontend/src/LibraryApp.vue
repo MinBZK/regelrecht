@@ -8,6 +8,7 @@ import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
 import TrajectMenu from './components/TrajectMenu.vue';
+import TrajectDocuments from './components/TrajectDocuments.vue';
 import { useAuth } from './composables/useAuth.js';
 import { lawFetchError } from './composables/useLaw.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
@@ -865,6 +866,8 @@ watch(activeTrajectRef, () => {
     @select-law="(lawId) => selectLaw(lawId, true)"
     @harvest-available="onHarvestAvailable"
   />
+  <!-- Traject-documents browser sheet + edit window, opened from TrajectMenu. -->
+  <TrajectDocuments />
 </template>
 
 <style>

@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTrajects } from '../composables/useTrajects.js';
+import { useDocumentsSheet } from '../composables/useDocumentsSheet.js';
 import TrajectMembersDialog from './TrajectMembersDialog.vue';
 
 const props = defineProps({
@@ -21,6 +22,7 @@ const {
 } = useTrajects();
 const route = useRoute();
 const router = useRouter();
+const documentsSheet = useDocumentsSheet();
 
 /**
  * Navigate to a traject — push the user into the traject-scoped view of
@@ -241,6 +243,12 @@ function bind(field) {
       @select="selectTraject(t)"
     ></nldd-menu-item>
     <nldd-menu-divider></nldd-menu-divider>
+    <nldd-menu-item
+      v-if="activeTraject"
+      text="Documenten…"
+      start-icon="file-text"
+      @click="documentsSheet.open()"
+    ></nldd-menu-item>
     <nldd-menu-item
       v-if="activeTraject"
       text="Beheer leden…"
