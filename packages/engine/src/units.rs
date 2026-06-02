@@ -66,9 +66,14 @@ impl Unit {
         }
     }
 
-    /// A scalar multiplier (ratio or count) preserves the other operand's unit.
+    /// A dimensionless scalar multiplier preserves the other operand's unit.
+    ///
+    /// `ratio`, `percentage`, and `count` are all dimensionless: multiplying an
+    /// amount by any of them yields the amount's unit. Whether a `percentage`
+    /// value is later divided by 100 is a value concern, not a unit concern, so
+    /// `eurocent × percentage` is unit-valid (it does NOT mean "forgot /100").
     fn is_scalar(self) -> bool {
-        matches!(self, Unit::Ratio | Unit::Count)
+        matches!(self, Unit::Ratio | Unit::Percentage | Unit::Count)
     }
 
     fn label(self) -> &'static str {
@@ -463,14 +468,20 @@ mod combine_tests {
             combine(AlgebraOp::Multiply, "MULTIPLY", Unit::Count, Unit::Eurocent).unwrap(),
             Unit::Eurocent
         );
-        // amount × percentage is suspicious (forgot /100) → error
-        assert!(combine(
-            AlgebraOp::Multiply,
-            "MULTIPLY",
-            Unit::Eurocent,
-            Unit::Percentage
-        )
-        .is_err());
+        // amount × percentage preserves the amount unit: percentage is a
+        // dimensionless scalar (the `amount × pct / 100` idiom in real law,
+        // e.g. participatiewet art. 18). Whether /100 is applied is a value
+        // concern, not a unit concern.
+        assert_eq!(
+            combine(
+                AlgebraOp::Multiply,
+                "MULTIPLY",
+                Unit::Eurocent,
+                Unit::Percentage
+            )
+            .unwrap(),
+            Unit::Eurocent
+        );
         // amount × amount is meaningless → error
         assert!(combine(
             AlgebraOp::Multiply,
