@@ -97,11 +97,14 @@ fn main() {
         let path = Path::new(arg);
 
         // Step 1: serde deserialization check (catches type/structure errors)
-        if let Err(e) = ArticleBasedLaw::from_yaml_file(path) {
-            eprintln!("FAIL: {}: serde: {e}", path.display());
-            failed = true;
-            continue;
-        }
+        let law = match ArticleBasedLaw::from_yaml_file(path) {
+            Ok(law) => law,
+            Err(e) => {
+                eprintln!("FAIL: {}: serde: {e}", path.display());
+                failed = true;
+                continue;
+            }
+        };
 
         // Step 2: JSON Schema validation
         let content = match std::fs::read_to_string(path) {
@@ -157,6 +160,29 @@ fn main() {
                     eprintln!("FAIL: {}: missing $schema field", path.display());
                     failed = true;
                 }
+            }
+        }
+
+        // Step 3: unit checking (RFC-019). Known incompatible units fail;
+        // missing units on amount outputs warn (does not fail validation).
+        for finding in regelrecht_engine::units::check_law(&law) {
+            if finding.is_error {
+                eprintln!(
+                    "FAIL: {}: unit: art. {} output '{}': {}",
+                    path.display(),
+                    finding.article,
+                    finding.output,
+                    finding.message
+                );
+                failed = true;
+            } else {
+                eprintln!(
+                    "WARN: {}: unit: art. {} output '{}': {}",
+                    path.display(),
+                    finding.article,
+                    finding.output,
+                    finding.message
+                );
             }
         }
     }

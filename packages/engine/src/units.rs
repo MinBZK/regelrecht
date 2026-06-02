@@ -358,6 +358,74 @@ fn infer_operation(op: &ActionOperation, symbols: &SymbolUnits) -> Result<Unit, 
     }
 }
 
+/// A finding from static unit-checking.
+#[derive(Debug, Clone)]
+pub struct UnitFinding {
+    pub article: String,
+    pub output: String,
+    /// true = hard error (known incompatible units); false = warning (missing unit).
+    pub is_error: bool,
+    pub message: String,
+}
+
+/// Statically check every article's actions for unit mismatches, and warn on
+/// `amount`-typed outputs that declare no unit. Never executes the law.
+///
+/// Limitation (RFC-019): only actions expressed via a `value` expression are
+/// walked here. Actions that use an inline action-level `operation` are covered
+/// by the runtime check in `evaluate_action` instead.
+pub fn check_law(law: &crate::article::ArticleBasedLaw) -> Vec<UnitFinding> {
+    use crate::types::ParameterType;
+    let mut findings = Vec::new();
+
+    for article in &law.articles {
+        let symbols = SymbolUnits::from_article(article);
+        let article_no = article.number.clone();
+
+        let Some(exec) = article.get_execution_spec() else {
+            continue;
+        };
+
+        // Hard errors: walk each action's `value` expression.
+        if let Some(actions) = &exec.actions {
+            for action in actions {
+                let output = action.output.clone().unwrap_or_default();
+                if let Some(expr) = &action.value {
+                    if let Err(e) = infer_unit(expr, &symbols) {
+                        findings.push(UnitFinding {
+                            article: article_no.clone(),
+                            output,
+                            is_error: true,
+                            message: e.to_string(),
+                        });
+                    }
+                }
+            }
+        }
+
+        // Warnings: amount outputs without a unit.
+        if let Some(outputs) = &exec.output {
+            for o in outputs {
+                let has_unit = o
+                    .type_spec
+                    .as_ref()
+                    .and_then(|t| t.unit.as_deref())
+                    .is_some();
+                if matches!(o.output_type, ParameterType::Amount) && !has_unit {
+                    findings.push(UnitFinding {
+                        article: article_no.clone(),
+                        output: o.name.clone(),
+                        is_error: false,
+                        message: format!("amount output '{}' has no unit", o.name),
+                    });
+                }
+            }
+        }
+    }
+
+    findings
+}
+
 #[cfg(test)]
 mod combine_tests {
     use super::*;
@@ -497,5 +565,106 @@ mod infer_tests {
         let expr = parse_op("operation: ADD\nvalues: [100, '$inkomen']");
         // 100 is Unknown → no error; result follows the known operand
         assert_eq!(infer_unit(&expr, &symbols()).unwrap(), Unit::Eurocent);
+    }
+}
+
+#[cfg(test)]
+mod check_law_tests {
+    use super::*;
+    use crate::article::ArticleBasedLaw;
+
+    #[test]
+    fn flags_mixed_unit_add_in_value_expression() {
+        let yaml = r#"
+$id: t
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: "Mixed-unit add."
+    machine_readable:
+      execution:
+        input:
+          - name: bedrag
+            type: amount
+            type_spec: {unit: eurocent}
+          - name: dagen
+            type: number
+            type_spec: {unit: days}
+        output:
+          - name: r
+            type: amount
+            type_spec: {unit: eurocent}
+        actions:
+          - output: r
+            value:
+              operation: ADD
+              values: ['$bedrag', '$dagen']
+"#;
+        let law: ArticleBasedLaw = serde_yaml_ng::from_str(yaml).expect("parse");
+        let findings = check_law(&law);
+        assert!(findings.iter().any(|f| f.is_error));
+    }
+
+    #[test]
+    fn warns_on_amount_output_without_unit() {
+        let yaml = r#"
+$id: t
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: "Amount without unit."
+    machine_readable:
+      execution:
+        output:
+          - name: r
+            type: amount
+        actions:
+          - output: r
+            value: 100
+"#;
+        let law: ArticleBasedLaw = serde_yaml_ng::from_str(yaml).expect("parse");
+        let findings = check_law(&law);
+        assert!(findings.iter().any(|f| !f.is_error && f.output == "r"));
+    }
+
+    #[test]
+    fn clean_annotated_law_has_no_errors() {
+        let yaml = r#"
+$id: t
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: "Clean."
+    machine_readable:
+      definitions:
+        rate:
+          value: 0.5
+          type: number
+          type_spec: {unit: ratio}
+      execution:
+        input:
+          - name: bedrag
+            type: amount
+            type_spec: {unit: eurocent}
+        output:
+          - name: r
+            type: amount
+            type_spec: {unit: eurocent}
+        actions:
+          - output: r
+            value:
+              operation: MULTIPLY
+              values: ['$bedrag', '$rate']
+"#;
+        let law: ArticleBasedLaw = serde_yaml_ng::from_str(yaml).expect("parse");
+        let findings = check_law(&law);
+        assert!(
+            !findings.iter().any(|f| f.is_error),
+            "no errors expected: {:?}",
+            findings
+        );
     }
 }
