@@ -248,7 +248,8 @@ export function useTrajectDocuments(trajectRef) {
         if (ifMatchValue === '*') {
           deletedRemotely.value =
             'Dit document is intussen verwijderd op de server. Je wijzigingen ' +
-            'staan nog lokaal; sla op als nieuw document of begin opnieuw.';
+            'staan nog lokaal bewaard; sluit dit venster en maak het document ' +
+            'opnieuw aan om ze terug te zetten.';
           return { ok: false, deleted: true };
         }
         conflict.value =
@@ -322,10 +323,24 @@ export function useTrajectDocuments(trajectRef) {
     // we clear it below.
     if (path === currentPath.value) cancelDraftTimer();
     saveError.value = null;
-    const headers = {};
-    if (path === currentPath.value && currentEtag.value) {
-      headers['If-Match'] = currentEtag.value;
+    // Send `If-Match` so the delete is conditional: a concurrent edit then
+    // surfaces as a 412 instead of being silently destroyed. The open
+    // document already has its ETag in `currentEtag`; for any other entry
+    // (the list does not cache per-entry ETags) fetch the current ETag
+    // first. A non-OK GET (e.g. 404 — already gone) leaves `ifMatch` null
+    // and the DELETE falls through to report the real outcome.
+    let ifMatch =
+      path === currentPath.value && currentEtag.value ? currentEtag.value : null;
+    if (!ifMatch) {
+      try {
+        const head = await fetch(documentFileUrl(trajectRef.value, path));
+        if (head.ok) ifMatch = head.headers.get('ETag');
+      } catch {
+        /* network error — proceed unconditionally; DELETE surfaces its own error */
+      }
     }
+    const headers = {};
+    if (ifMatch) headers['If-Match'] = ifMatch;
     try {
       const res = await fetch(documentFileUrl(trajectRef.value, path), {
         method: 'DELETE',
@@ -392,8 +407,10 @@ export function useTrajectDocuments(trajectRef) {
 }
 
 async function safeText(res) {
-  const ct = res.headers.get('content-type') || '';
-  if (!ct.startsWith('text/plain')) return '';
+  // Read the body unconditionally: Axum's `(StatusCode, String)` errors are
+  // text/plain, but a 413 (DefaultBodyLimit) or a proxy-wrapped error may
+  // arrive without that exact content-type. Returning the body regardless
+  // lets the caller surface the real message instead of a generic status.
   try {
     return await res.text();
   } catch {
