@@ -1,0 +1,45 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.3/schema.json
+$id: test_unit_mismatch
+name: Testwet eenheid-mismatch
+regulatory_layer: WET
+bwb_id: BWBR9999902
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/test_unit_mismatch
+
+articles:
+  - number: '1'
+    url: https://example.com/test_unit_mismatch/1
+    text: >-
+      Deze testwet telt bewust een bedrag (eurocenten) op bij een aantal dagen.
+      Dat is qua eenheden onmogelijk: de engine moet dit tijdens uitvoering
+      afwijzen met een UnitMismatch (RFC-019). De optelling staat als
+      action-level operatie, zodat de statische validatie (die alleen
+      value-expressies controleert) dit bestand doorlaat en de runtime-check
+      hier op getest wordt.
+    machine_readable:
+      definitions:
+        bedrag:
+          value: 1000
+          type: amount
+          type_spec:
+            unit: eurocent
+        dagen:
+          value: 5
+          type: number
+          type_spec:
+            unit: days
+      execution:
+        output:
+          - name: resultaat
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: resultaat
+            operation: ADD
+            values:
+              - $bedrag
+              - $dagen
