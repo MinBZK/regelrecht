@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.0/schema/v0.5.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.3/schema.json
 $id: apv_erfgrens_amsterdam
 uuid: a0a0a0a0-a0a0-a0a0-a0a0-a0a0a0a00363
 regulatory_layer: GEMEENTELIJKE_VERORDENING
@@ -49,6 +49,8 @@ articles:
         output:
           - name: gemeentelijke_afstand_cm
             type: number
+            type_spec:
+              unit: centimeter
             description: Gemeentelijke afstand tot erfgrens in centimeters
 
         actions:

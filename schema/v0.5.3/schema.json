@@ -413,6 +413,8 @@
           "enum": [
             "eurocent",
             "euro",
+            "meter",
+            "centimeter",
             "ratio",
             "percentage",
             "count",

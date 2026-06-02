@@ -16,6 +16,8 @@ use std::collections::BTreeMap;
 pub enum Unit {
     Euro,
     Eurocent,
+    Meter,
+    Centimeter,
     Years,
     Months,
     Weeks,
@@ -32,6 +34,7 @@ pub enum Unit {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Dimension {
     Money,
+    Length,
     Time,
     Ratio,
     Percentage,
@@ -44,6 +47,8 @@ impl Unit {
         match s {
             Some("euro") => Unit::Euro,
             Some("eurocent") => Unit::Eurocent,
+            Some("meter") => Unit::Meter,
+            Some("centimeter") => Unit::Centimeter,
             Some("years") => Unit::Years,
             Some("months") => Unit::Months,
             Some("weeks") => Unit::Weeks,
@@ -58,6 +63,7 @@ impl Unit {
     fn dimension(self) -> Option<Dimension> {
         match self {
             Unit::Euro | Unit::Eurocent => Some(Dimension::Money),
+            Unit::Meter | Unit::Centimeter => Some(Dimension::Length),
             Unit::Years | Unit::Months | Unit::Weeks | Unit::Days => Some(Dimension::Time),
             Unit::Ratio => Some(Dimension::Ratio),
             Unit::Percentage => Some(Dimension::Percentage),
@@ -80,6 +86,8 @@ impl Unit {
         match self {
             Unit::Euro => "euro",
             Unit::Eurocent => "eurocent",
+            Unit::Meter => "meter",
+            Unit::Centimeter => "centimeter",
             Unit::Years => "years",
             Unit::Months => "months",
             Unit::Weeks => "weeks",
@@ -524,6 +532,41 @@ mod combine_tests {
             Unit::Days
         )
         .is_err());
+    }
+
+    #[test]
+    fn length_units_are_a_dimension() {
+        // meter + meter = meter
+        assert_eq!(
+            combine(AlgebraOp::Additive, "ADD", Unit::Meter, Unit::Meter).unwrap(),
+            Unit::Meter
+        );
+        // meter + centimeter = error (the m-vs-cm mix-up, like euro vs eurocent)
+        assert!(combine(AlgebraOp::Additive, "ADD", Unit::Meter, Unit::Centimeter).is_err());
+        // length ÷ length = ratio (same dimension)
+        assert_eq!(
+            combine(
+                AlgebraOp::Divide,
+                "DIVIDE",
+                Unit::Centimeter,
+                Unit::Centimeter
+            )
+            .unwrap(),
+            Unit::Ratio
+        );
+        // length × scalar = length
+        assert_eq!(
+            combine(
+                AlgebraOp::Multiply,
+                "MULTIPLY",
+                Unit::Centimeter,
+                Unit::Count
+            )
+            .unwrap(),
+            Unit::Centimeter
+        );
+        // length combined with another dimension = error
+        assert!(combine(AlgebraOp::Additive, "ADD", Unit::Meter, Unit::Eurocent).is_err());
     }
 }
 
