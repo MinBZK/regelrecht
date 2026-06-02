@@ -114,6 +114,9 @@ export function useBwbHarvest() {
           startPolling();
         }
       } else if (res.status === 401) {
+        // The global apiAuthGuard (src/lib/apiAuthGuard.js) already redirects to
+        // login on a 401, so this branch rarely renders before navigation; kept
+        // as a graceful fallback for the brief window before the page unloads.
         harvestStatus.value = { ...harvestStatus.value, [bwbId]: 'unauthorized' };
       } else {
         harvestStatus.value = { ...harvestStatus.value, [bwbId]: 'error' };
