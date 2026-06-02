@@ -203,9 +203,12 @@ export function useTrajectDocuments(trajectRef) {
 
   /**
    * Save the current body. Honors `currentEtag` as `If-Match` so a
-   * concurrent edit surfaces as a conflict instead of a silent
-   * overwrite. Pass `{ ifMatch: '*' }` to force-create (used by the
-   * "+ Nieuw document" flow where there should not yet be a file).
+   * concurrent edit surfaces as a conflict instead of a silent overwrite.
+   * Pass `{ ifMatch: '*' }` to force-overwrite whatever version exists
+   * (used by `overwriteServer` in the conflict-resolution path); note `*`
+   * still 412s when the file does not exist, so it cannot create. The
+   * create flow instead passes `{ ifMatch: null }` — a blind write with no
+   * precondition, which is what lands a brand-new file.
    */
   async function saveCurrent({ ifMatch } = {}) {
     if (!currentPath.value) return;
@@ -385,9 +388,23 @@ export function useTrajectDocuments(trajectRef) {
 
   // Re-fetch the list whenever the active traject changes — switching
   // trajects routes through a different writable backend.
+  //
+  // Critically, also reset the per-document state: a document loaded from
+  // the previous traject must NOT stay open across a switch. Its path/body/
+  // etag belong to the old traject, so a save would write the old content
+  // to the NEW traject's URL (and the stale etag would trip a misleading
+  // 412 "overschrijven"-prompt). Clearing here makes the switch safe;
+  // DocumentsPanel additionally closes the edit sheet on the same change.
   watch(
     trajectRef,
     () => {
+      cancelDraftTimer();
+      currentPath.value = null;
+      currentBody.value = '';
+      currentEtag.value = null;
+      docError.value = null;
+      conflict.value = null;
+      deletedRemotely.value = null;
       fetchList().catch(() => {});
     },
     { immediate: true },

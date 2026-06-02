@@ -45,6 +45,13 @@ watch(sheetOpen, async (open) => {
   else sheetEl.value?.hide();
 });
 
+// Active traject changed: useTrajectDocuments clears the loaded document
+// on the same change, so close the sheet rather than leave an empty editor
+// open for the new traject.
+watch(trajectRef, () => {
+  sheetOpen.value = false;
+});
+
 // --- Create form ---
 const newPath = ref('');
 const createError = ref(null);

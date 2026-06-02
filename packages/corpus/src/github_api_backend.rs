@@ -311,6 +311,18 @@ impl RepoBackend for GitHubApiBackend {
                     self.token.as_deref(),
                 )
                 .await?;
+            // The Contents API caps a single directory listing at 1000
+            // entries with no pagination (see the note above). Hitting the
+            // cap means the listing was almost certainly truncated and some
+            // documents are silently missing — surface it in logs so it is
+            // diagnosable before it becomes a support incident.
+            if entries.len() >= 1000 {
+                tracing::warn!(
+                    api_dir = %api_dir,
+                    count = entries.len(),
+                    "GitHub Contents API directory listing hit the 1000-entry cap; results may be truncated"
+                );
+            }
             for e in entries {
                 let child_rel = if rel_prefix.is_empty() {
                     e.name.clone()
