@@ -237,14 +237,15 @@ export function useTrajectDocuments(trajectRef) {
       if (res.status === 412) {
         // The backend returns 412 for two distinct preconditions: a stale
         // ETag (someone else edited) and an `If-Match: *` against a file
-        // that no longer exists (someone deleted it). Both share the
-        // status code, so the response body is the only stable
-        // discriminator. The deleted case is a dead end for the
-        // concurrent-edit buttons ("Server-versie laden" 404s,
-        // "Lokaal overschrijven" 412s again), so surface a distinct,
-        // actionable banner instead of the generic conflict one.
-        const body = await safeText(res);
-        if (body.includes('bestaat (nog) niet')) {
+        // that no longer exists (someone deleted it). Discriminate on what
+        // WE sent rather than parsing the server's (localisable) error
+        // string: the backend only emits the "deleted" 412 for `If-Match: *`
+        // against a missing file — i.e. exactly the force-overwrite path —
+        // so `ifMatchValue === '*'` here is an unambiguous, language-stable
+        // signal. The deleted case is a dead end for the concurrent-edit
+        // buttons ("Server-versie laden" 404s, "Lokaal overschrijven" 412s
+        // again), so surface a distinct, actionable banner instead.
+        if (ifMatchValue === '*') {
           deletedRemotely.value =
             'Dit document is intussen verwijderd op de server. Je wijzigingen ' +
             'staan nog lokaal; sla op als nieuw document of begin opnieuw.';

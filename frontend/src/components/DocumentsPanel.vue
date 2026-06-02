@@ -85,6 +85,12 @@ function validateNewPath(value) {
 }
 
 async function submitCreate() {
+  // Guard against a double-fire: the form's @submit.prevent and the
+  // nldd-button @click can both invoke this in the same turn (the
+  // button may render a type=submit internally). `submittingCreate`
+  // is only set after the first `await` below, so without this early
+  // return both calls clear the check and double-PUT.
+  if (submittingCreate.value) return;
   createError.value = null;
   const value = newPath.value.trim();
   const err = validateNewPath(value);
@@ -124,9 +130,35 @@ function overwriteServer() {
   return saveCurrent({ ifMatch: '*' });
 }
 
-async function handleDelete(path) {
+// Delete confirmation via nldd-modal-dialog (consistent with the
+// editor's clear-drafts confirm). A pending-path ref drives show()/hide()
+// the same way — null means closed. nldd-modal-dialog exposes show()/hide()
+// (no close()); @close just clears the flag, avoiding hide()→@close→hide()
+// recursion.
+const deleteModalEl = ref(null);
+const pendingDeletePath = ref(null);
+
+watch(pendingDeletePath, async (path) => {
+  await nextTick();
+  const el = deleteModalEl.value;
+  if (!el) return;
+  if (path) el.show?.();
+  else el.hide?.();
+});
+
+function askDelete(path) {
+  if (path) pendingDeletePath.value = path;
+}
+
+function cancelDelete() {
+  if (pendingDeletePath.value === null) return; // idempotent: @close + button
+  pendingDeletePath.value = null;
+}
+
+async function confirmDelete() {
+  const path = pendingDeletePath.value;
+  pendingDeletePath.value = null;
   if (!path) return;
-  if (!confirm(`Weet je zeker dat je ${path} wilt verwijderen?`)) return;
   const result = await deleteDocument(path);
   if (result?.ok && path === currentPath.value) {
     sheetOpen.value = false;
@@ -175,7 +207,7 @@ function handleKeydown(e) {
           icon="delete"
           size="md"
           accessible-label="Verwijderen"
-          @click="handleDelete(doc.path)"
+          @click="askDelete(doc.path)"
         ></nldd-icon-button>
       </li>
     </ul>
@@ -291,6 +323,29 @@ function handleKeydown(e) {
           </nldd-container>
         </nldd-page>
       </nldd-sheet>
+    </Teleport>
+
+    <!-- Delete confirmation — NLDD modal instead of the native confirm()
+         so it matches the rest of the editor (e.g. the clear-drafts
+         dialog). Teleported to body so it isn't clipped by the pane. -->
+    <Teleport to="body">
+      <nldd-modal-dialog
+        ref="deleteModalEl"
+        variant="alert"
+        text="Document verwijderen?"
+        :supporting-text="pendingDeletePath
+          ? `${pendingDeletePath} wordt definitief uit het traject verwijderd.`
+          : ''"
+        @close="cancelDelete"
+      >
+        <nldd-button slot="actions" text="Annuleer" @click="cancelDelete"></nldd-button>
+        <nldd-button
+          slot="actions"
+          variant="destructive"
+          text="Verwijder"
+          @click="confirmDelete"
+        ></nldd-button>
+      </nldd-modal-dialog>
     </Teleport>
   </div>
 </template>
