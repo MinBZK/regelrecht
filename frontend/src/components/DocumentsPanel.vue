@@ -33,23 +33,23 @@ const {
   dropDraft,
 } = useTrajectDocuments(trajectRef);
 
-// --- Edit sheet (overlay) state. Mirrors the imperative show()/hide()
+// --- Edit window (overlay) state. Mirrors the imperative show()/hide()
 // pattern used by EditSheet / ScenarioBuilder / TrajectMenu: a flag
-// drives the sheet's animate-in/out so it isn't mounted/unmounted. ---
-const sheetEl = ref(null);
-const sheetOpen = ref(false);
+// drives the window's open/close so it isn't mounted/unmounted. ---
+const windowEl = ref(null);
+const windowOpen = ref(false);
 
-watch(sheetOpen, async (open) => {
+watch(windowOpen, async (open) => {
   await nextTick();
-  if (open) sheetEl.value?.show();
-  else sheetEl.value?.hide();
+  if (open) windowEl.value?.show();
+  else windowEl.value?.hide();
 });
 
 // Active traject changed: useTrajectDocuments clears the loaded document
-// on the same change, so close the sheet rather than leave an empty editor
+// on the same change, so close the window rather than leave an empty editor
 // open for the new traject.
 watch(trajectRef, () => {
-  sheetOpen.value = false;
+  windowOpen.value = false;
 });
 
 // --- Create form ---
@@ -61,15 +61,15 @@ const submittingCreate = ref(false);
 // matches the law-text rendering elsewhere in the editor.
 const previewHtml = computed(() => renderArticleHtml(currentBody.value));
 
-// Open a document in the edit sheet.
-async function openInSheet(path) {
+// Open a document in the edit window.
+async function openInWindow(path) {
   await openDocument(path);
-  sheetOpen.value = true;
+  windowOpen.value = true;
 }
 
 function selectDocument(path) {
-  if (path === currentPath.value && sheetOpen.value) return;
-  openInSheet(path);
+  if (path === currentPath.value && windowOpen.value) return;
+  openInWindow(path);
 }
 
 // Lightweight client-side validation mirroring the backend rules so the
@@ -123,8 +123,8 @@ async function submitCreate() {
     }
     newPath.value = '';
     // createDocument already set currentPath/currentBody and persisted,
-    // so just reveal the sheet on the freshly-created document.
-    sheetOpen.value = true;
+    // so just reveal the window on the freshly-created document.
+    windowOpen.value = true;
   } finally {
     submittingCreate.value = false;
   }
@@ -150,7 +150,7 @@ function overwriteServer() {
 const deleteModalEl = ref(null);
 const pendingDeletePath = ref(null);
 // Panel-level feedback for a failed delete. Kept separate from the
-// sheet's save-conflict banner: a delete 412 must not offer
+// window's save-conflict banner: a delete 412 must not offer
 // reload/overwrite actions (those act on the open document and
 // "overwrite" is a PUT — wrong for a delete intent).
 const deleteNotice = ref(null);
@@ -179,7 +179,7 @@ async function confirmDelete() {
   deleteNotice.value = null;
   const result = await deleteDocument(path);
   if (result?.ok) {
-    if (path === currentPath.value) sheetOpen.value = false;
+    if (path === currentPath.value) windowOpen.value = false;
   } else if (result?.conflict) {
     deleteNotice.value =
       `"${path}" is intussen door iemand anders gewijzigd; de lijst is ` +
@@ -191,8 +191,8 @@ async function confirmDelete() {
   }
 }
 
-function closeSheet() {
-  sheetOpen.value = false;
+function closeWindow() {
+  windowOpen.value = false;
 }
 
 // Ctrl/Cmd+S = save without forcing the user to mouse to the button.
@@ -228,7 +228,7 @@ function handleKeydown(e) {
         v-for="doc in documents"
         :key="doc.path"
         class="documents-panel__row"
-        :class="{ 'documents-panel__row--active': doc.path === currentPath && sheetOpen }"
+        :class="{ 'documents-panel__row--active': doc.path === currentPath && windowOpen }"
       >
         <button
           type="button"
@@ -269,22 +269,27 @@ function handleKeydown(e) {
       <p v-if="createError" class="documents-panel__error">{{ createError }}</p>
     </form>
 
-    <!-- Edit sheet: same right-placement overlay pattern as the scenario
-         editor. Teleported to body so it isn't clipped by the pane. -->
+    <!-- Edit window: a modeless, movable nldd-window (storybook
+         components-layout-window) so the user can drag it aside and keep
+         the law text visible behind it. Teleported to body so it isn't
+         clipped by the pane; the title bar carries `window-drag-handle`
+         so the window is draggable by it. -->
     <Teleport to="body">
-      <nldd-sheet
-        ref="sheetEl"
-        placement="right"
-        width="880px"
-        full-height
-        @close="closeSheet"
+      <nldd-window
+        ref="windowEl"
+        modeless
+        movable
+        width="max(280px, 40vw)"
+        accessible-label="Document bewerken"
+        @close="closeWindow"
       >
         <nldd-page sticky-header @keydown="handleKeydown">
           <nldd-top-title-bar
             slot="header"
+            window-drag-handle
             :text="currentPath || 'Document'"
             dismiss-text="Sluiten"
-            @dismiss="closeSheet"
+            @dismiss="closeWindow"
           ></nldd-top-title-bar>
 
           <nldd-simple-section>
@@ -356,7 +361,7 @@ function handleKeydown(e) {
             ></nldd-button>
           </nldd-container>
         </nldd-page>
-      </nldd-sheet>
+      </nldd-window>
     </Teleport>
 
     <!-- Delete confirmation — NLDD modal instead of the native confirm()
