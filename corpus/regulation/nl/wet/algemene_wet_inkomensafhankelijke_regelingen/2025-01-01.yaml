@@ -222,6 +222,8 @@ articles:
         input:
           - name: verzamelinkomen
             type: number
+            type_spec:
+              unit: eurocent
             source:
               regulation: wet_inkomstenbelasting_2001
               output: toetsingsinkomen
