@@ -91,6 +91,21 @@ For delegated values (e.g., "bij ministeriële regeling"), laws use the IoC patt
 higher laws declare `open_terms`, lower regulations declare `implements`.
 See `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` for a working example.
 
+## Frontend / UI Components
+
+**All user interface MUST be built with components from the MinBZK design system: https://github.com/MinBZK/storybook** (the NDD `ndd-*` web components). Do not hand-roll custom UI elements when a design-system component exists. For the required component hierarchy, nesting rules, and layout patterns, use the `storybook-component-hierarchy` skill.
+
+### When you can't build what you want with these components
+
+Do **not** silently improvise. Follow these steps in order:
+
+1. **Reconsider the design choice.** Investigate whether the design should be different. Try to conform to existing choices already made elsewhere in regelrecht (look at how other views/components in `frontend/` and `frontend-lawmaking/` solved similar problems) before introducing anything new.
+2. **If you still can't proceed: stop and ask.** Tell the user explicitly that you need to take a shortcut, describe what's missing, and ask for permission. The user can then say whether it should be done differently or whether they will request a new feature/component from the design system. Do not take the shortcut without approval.
+
+### Reporting additional CSS
+
+If you needed **any additional CSS styling** on top of the design-system components (overrides, custom spacing, layout hacks, etc.), you **must report this explicitly** to the user — list exactly what custom CSS you added and why. Custom styling on top of the design system is a signal that may need a design-system change, so it must never be hidden.
+
 ## RFC Process
 
 This project uses an RFC process for design decisions.
