@@ -1,4 +1,4 @@
-import { useAuth } from '../composables/useAuth.js';
+import { ensureAuthReady, useAuth } from '../composables/useAuth.js';
 
 // Global 401 interceptor for the editor SPA.
 //
@@ -18,6 +18,12 @@ import { useAuth } from '../composables/useAuth.js';
 //   would loop. Call sites show their own "no access" message.
 // - Only same-origin `/api/*` responses are intercepted, so `/auth/*` (incl.
 //   `/auth/status`), `/data/*`, `/wasm/*` and cross-origin fetches pass through.
+// - 401s on sessions that were never authenticated. Public pages legitimately
+//   call `/api/*` endpoints that 401 without a session (e.g. `/library` loads
+//   `/api/favorites`, which the editor tolerates as "no favorites"), and local
+//   dev runs with OIDC disabled. We only redirect a session that loaded
+//   authenticated against a configured IdP and then got a 401 — i.e. its
+//   session expired. This mirrors the router guard's `oidcConfigured` gate.
 
 /**
  * True when the fetch target is a same-origin `/api/...` URL.
@@ -50,11 +56,19 @@ export function installApiAuthGuard() {
   window.fetch = async (input, init) => {
     const response = await originalFetch(input, init);
     if (response.status === 401 && !redirecting && isApiUrl(input)) {
-      redirecting = true;
-      // No explicit returnUrl: the navigation has already committed, so
-      // window.location reflects the page the user is actually on — exactly
-      // where they should return after re-auth.
-      useAuth().login();
+      // Resolve auth status before deciding: an early `/api/*` 401 can race the
+      // `/auth/status` check, leaving the refs at their defaults otherwise.
+      await ensureAuthReady();
+      const { authenticated, oidcConfigured, login } = useAuth();
+      // Only an expired session (loaded authenticated, IdP configured) redirects.
+      // Anonymous visitors on public pages and OIDC-off dev fall through.
+      if (oidcConfigured.value && authenticated.value && !redirecting) {
+        redirecting = true;
+        // No explicit returnUrl: the navigation has already committed, so
+        // window.location reflects the page the user is actually on — exactly
+        // where they should return after re-auth.
+        login();
+      }
     }
     return response;
   };

@@ -1,9 +1,19 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// Spy for useAuth().login — the guard must call it exactly once on a relevant 401.
-const loginSpy = vi.fn();
+// Hoisted shared state: the login spy and the mutable auth refs the guard reads.
+const { loginSpy, authState } = vi.hoisted(() => ({
+  loginSpy: vi.fn(),
+  authState: { authenticated: true, oidcConfigured: true },
+}));
+
 vi.mock('../composables/useAuth.js', () => ({
-  useAuth: () => ({ login: loginSpy }),
+  ensureAuthReady: vi.fn().mockResolvedValue(undefined),
+  useAuth: () => ({
+    // Read authState at call time so a test can set it before the 401 fires.
+    authenticated: { value: authState.authenticated },
+    oidcConfigured: { value: authState.oidcConfigured },
+    login: loginSpy,
+  }),
 }));
 
 import { isApiUrl } from './apiAuthGuard.js';
@@ -12,13 +22,16 @@ import { isApiUrl } from './apiAuthGuard.js';
 const ORIGIN = window.location.origin;
 
 /**
- * Install the guard over a stubbed original fetch that resolves to `status`,
- * then return the wrapped window.fetch. Each call resets the module's redirect
- * latch by re-importing a fresh module instance.
+ * Install the guard over a stubbed original fetch that resolves to `status`.
+ * `auth` overrides the mocked authenticated/oidcConfigured refs (default: an
+ * authenticated session against a configured IdP). A fresh module instance per
+ * call resets the redirect latch.
  */
-async function freshGuard(status) {
+async function freshGuard(status, auth = {}) {
   vi.resetModules();
   loginSpy.mockClear();
+  authState.authenticated = auth.authenticated ?? true;
+  authState.oidcConfigured = auth.oidcConfigured ?? true;
   const original = vi.fn().mockResolvedValue({ status });
   window.fetch = original;
   const { installApiAuthGuard: install } = await import('./apiAuthGuard.js');
@@ -52,10 +65,23 @@ describe('installApiAuthGuard', () => {
     loginSpy.mockClear();
   });
 
-  it('redirects to login on a 401 from an /api/ call', async () => {
+  it('redirects on a 401 from an /api/ call for an authenticated session', async () => {
     const { wrapped } = await freshGuard(401);
     await wrapped('/api/trajects');
     expect(loginSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT redirect an unauthenticated session (anonymous public-page 401)', async () => {
+    // e.g. /library loading /api/favorites without a session — tolerated, no bounce.
+    const { wrapped } = await freshGuard(401, { authenticated: false });
+    await wrapped('/api/favorites');
+    expect(loginSpy).not.toHaveBeenCalled();
+  });
+
+  it('does NOT redirect when OIDC is disabled (local dev)', async () => {
+    const { wrapped } = await freshGuard(401, { oidcConfigured: false, authenticated: false });
+    await wrapped('/api/trajects');
+    expect(loginSpy).not.toHaveBeenCalled();
   });
 
   it('does NOT redirect on a 403 (missing role, not a re-login case)', async () => {
