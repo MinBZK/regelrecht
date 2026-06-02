@@ -265,39 +265,83 @@ async fn try_refresh_token<S: OidcAppState>(state: &S, session: &Session) {
         return;
     };
 
-    match client
+    let outcome = match client
         .exchange_refresh_token(&RefreshToken::new(refresh_token))
         .request_async(state.http_client())
         .await
     {
-        Ok(token_response) => {
-            let new_expiry = unix_now() + access_token_ttl_secs(token_response.expires_in());
-            let _ = session
-                .insert(SESSION_KEY_TOKEN_EXPIRES_AT, new_expiry)
-                .await;
-            // Keycloak rotates the refresh token when rotation is enabled; store
+        Ok(token_response) => RefreshOutcome::Renewed {
+            expires_at: unix_now() + access_token_ttl_secs(token_response.expires_in()),
+            // Keycloak rotates the refresh token when rotation is enabled; carry
             // whatever it returned so the next refresh uses the current one.
-            if let Some(new_refresh) = token_response.refresh_token() {
+            refresh_token: token_response.refresh_token().map(|t| t.secret().clone()),
+            // Roles come from the access token (Keycloak includes `realm_access`
+            // there by default). `None` (parse failure) leaves existing roles.
+            roles: extract_realm_roles(token_response.access_token().secret()),
+        },
+        Err(e) => outcome_for_error(&e),
+    };
+    apply_refresh_outcome(session, outcome).await;
+}
+
+/// Result of a refresh attempt, decoupled from the oauth2/HTTP types so the
+/// session-mutation logic can be unit-tested without a live IdP.
+#[derive(Debug)]
+enum RefreshOutcome {
+    /// Fresh token material to persist (expiry, possibly-rotated refresh token,
+    /// optionally re-extracted roles).
+    Renewed {
+        expires_at: i64,
+        refresh_token: Option<String>,
+        roles: Option<Vec<String>>,
+    },
+    /// IdP definitively rejected the refresh token → invalidate the session.
+    Rejected,
+    /// Transient failure (IdP unreachable / unparseable) → keep the session and
+    /// back off so we retry on a later request instead of hammering the IdP.
+    Transient,
+}
+
+/// Classify a token-endpoint failure. A `ServerResponse` means the IdP
+/// processed the request and refused it (e.g. `invalid_grant` after logout or
+/// account disable) → definitive. Everything else (network, unparseable
+/// response) is transient and must not log the user out.
+fn outcome_for_error<RE: std::error::Error + 'static, T: openidconnect::ErrorResponse>(
+    err: &RequestTokenError<RE, T>,
+) -> RefreshOutcome {
+    match err {
+        RequestTokenError::ServerResponse(_) => RefreshOutcome::Rejected,
+        _ => RefreshOutcome::Transient,
+    }
+}
+
+/// Apply a [`RefreshOutcome`] to the session.
+async fn apply_refresh_outcome(session: &Session, outcome: RefreshOutcome) {
+    match outcome {
+        RefreshOutcome::Renewed {
+            expires_at,
+            refresh_token,
+            roles,
+        } => {
+            let _ = session
+                .insert(SESSION_KEY_TOKEN_EXPIRES_AT, expires_at)
+                .await;
+            if let Some(refresh_token) = refresh_token {
                 let _ = session
-                    .insert(SESSION_KEY_REFRESH_TOKEN, new_refresh.secret().clone())
+                    .insert(SESSION_KEY_REFRESH_TOKEN, refresh_token)
                     .await;
             }
-            // Refresh realm roles from the access token (Keycloak includes
-            // `realm_access` there by default). Only overwrite on a successful
-            // parse so a mapper misconfiguration doesn't wipe existing roles.
-            if let Some(roles) = extract_realm_roles(token_response.access_token().secret()) {
+            if let Some(roles) = roles {
                 let _ = session.insert(SESSION_KEY_ROLES, roles).await;
             }
             tracing::debug!("refreshed OIDC access token");
         }
-        // IdP definitively rejected the token → force re-login.
-        Err(RequestTokenError::ServerResponse(e)) => {
-            tracing::info!(error = ?e, "refresh token rejected by IdP — invalidating session");
+        RefreshOutcome::Rejected => {
+            tracing::info!("refresh token rejected by IdP — invalidating session");
             invalidate_session(session).await;
         }
-        // Transient failure (network/parse) → keep the session, retry later.
-        Err(e) => {
-            tracing::warn!(error = %e, "token refresh failed transiently — will retry");
+        RefreshOutcome::Transient => {
+            tracing::warn!("token refresh failed transiently — will retry");
             let _ = session
                 .insert(
                     SESSION_KEY_TOKEN_EXPIRES_AT,
@@ -308,12 +352,13 @@ async fn try_refresh_token<S: OidcAppState>(state: &S, session: &Session) {
     }
 }
 
-/// Drop the authenticated marker and refresh material so downstream gates treat
-/// the session as unauthenticated (401 → client re-login).
+/// Invalidate the session on definitive rejection. `flush()` deletes the whole
+/// session record (not just the auth marker), so no personal identifiers
+/// (`sub`, name, roles, id_token) linger in the store until natural expiry —
+/// data minimisation for a citizen-facing platform. The dropped auth marker
+/// makes the downstream gate return 401 → client re-login.
 async fn invalidate_session(session: &Session) {
-    let _ = session.remove::<bool>(SESSION_KEY_AUTHENTICATED).await;
-    let _ = session.remove::<String>(SESSION_KEY_REFRESH_TOKEN).await;
-    let _ = session.remove::<i64>(SESSION_KEY_TOKEN_EXPIRES_AT).await;
+    let _ = session.flush().await;
 }
 
 #[cfg(test)]
@@ -868,5 +913,182 @@ mod tests {
             .await
             .expect("response");
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    // --- apply_refresh_outcome: the three core token-exchange paths ---
+    //
+    // The network exchange itself is exercised end-to-end in integration; here
+    // we pin the session mutations each outcome must produce, since those are
+    // the regression-prone bits (wrong session key, missing flush, wrong
+    // backoff). A fresh detached Session over a MemoryStore lets us seed state,
+    // apply an outcome, and read the result back without a live IdP.
+
+    /// A detached, authenticated session seeded as a logged-in user would be.
+    async fn seeded_session() -> Session {
+        let session = Session::new(None, Arc::new(MemoryStore::default()), None);
+        session
+            .insert(SESSION_KEY_AUTHENTICATED, true)
+            .await
+            .unwrap();
+        session.insert(SESSION_KEY_SUB, "sub-123").await.unwrap();
+        session
+            .insert(SESSION_KEY_REFRESH_TOKEN, "old-rt")
+            .await
+            .unwrap();
+        session
+            .insert(SESSION_KEY_TOKEN_EXPIRES_AT, 1_000_i64)
+            .await
+            .unwrap();
+        session
+            .insert(SESSION_KEY_ROLES, vec!["editor-reader".to_string()])
+            .await
+            .unwrap();
+        session
+    }
+
+    #[tokio::test]
+    async fn apply_renewed_updates_expiry_refresh_token_and_roles() {
+        let session = seeded_session().await;
+        apply_refresh_outcome(
+            &session,
+            RefreshOutcome::Renewed {
+                expires_at: 9_999,
+                refresh_token: Some("new-rt".to_string()),
+                roles: Some(vec!["editor-writer".to_string()]),
+            },
+        )
+        .await;
+
+        assert_eq!(
+            session
+                .get::<i64>(SESSION_KEY_TOKEN_EXPIRES_AT)
+                .await
+                .unwrap(),
+            Some(9_999)
+        );
+        assert_eq!(
+            session
+                .get::<String>(SESSION_KEY_REFRESH_TOKEN)
+                .await
+                .unwrap(),
+            Some("new-rt".to_string())
+        );
+        assert_eq!(
+            session.get::<Vec<String>>(SESSION_KEY_ROLES).await.unwrap(),
+            Some(vec!["editor-writer".to_string()])
+        );
+        // Still authenticated.
+        assert_eq!(
+            session
+                .get::<bool>(SESSION_KEY_AUTHENTICATED)
+                .await
+                .unwrap(),
+            Some(true)
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_renewed_keeps_existing_roles_when_none_parsed() {
+        // A mapper misconfiguration (roles = None) must not wipe existing roles.
+        let session = seeded_session().await;
+        apply_refresh_outcome(
+            &session,
+            RefreshOutcome::Renewed {
+                expires_at: 9_999,
+                refresh_token: None,
+                roles: None,
+            },
+        )
+        .await;
+        assert_eq!(
+            session.get::<Vec<String>>(SESSION_KEY_ROLES).await.unwrap(),
+            Some(vec!["editor-reader".to_string()])
+        );
+        // refresh_token untouched when the IdP returned none.
+        assert_eq!(
+            session
+                .get::<String>(SESSION_KEY_REFRESH_TOKEN)
+                .await
+                .unwrap(),
+            Some("old-rt".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_rejected_flushes_session_including_pii() {
+        let session = seeded_session().await;
+        apply_refresh_outcome(&session, RefreshOutcome::Rejected).await;
+        // Auth marker gone → downstream gate returns 401.
+        assert_eq!(
+            session
+                .get::<bool>(SESSION_KEY_AUTHENTICATED)
+                .await
+                .unwrap(),
+            None
+        );
+        // PII flushed, not left lingering.
+        assert_eq!(session.get::<String>(SESSION_KEY_SUB).await.unwrap(), None);
+        assert_eq!(
+            session.get::<Vec<String>>(SESSION_KEY_ROLES).await.unwrap(),
+            None
+        );
+        assert_eq!(
+            session
+                .get::<String>(SESSION_KEY_REFRESH_TOKEN)
+                .await
+                .unwrap(),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_transient_keeps_session_and_backs_off() {
+        let session = seeded_session().await;
+        apply_refresh_outcome(&session, RefreshOutcome::Transient).await;
+        // Session stays authenticated.
+        assert_eq!(
+            session
+                .get::<bool>(SESSION_KEY_AUTHENTICATED)
+                .await
+                .unwrap(),
+            Some(true)
+        );
+        // Expiry bumped into the future by the backoff so we don't refresh every
+        // request, but not invalidated.
+        let exp = session
+            .get::<i64>(SESSION_KEY_TOKEN_EXPIRES_AT)
+            .await
+            .unwrap()
+            .expect("expiry present");
+        assert!(exp >= unix_now() + TOKEN_REFRESH_RETRY_BACKOFF_SECS - 5);
+    }
+
+    #[test]
+    fn outcome_for_error_classifies_definitive_vs_transient() {
+        use openidconnect::core::CoreErrorResponseType;
+        use openidconnect::{HttpClientError, StandardErrorResponse};
+
+        type Err = RequestTokenError<
+            HttpClientError<reqwest::Error>,
+            StandardErrorResponse<CoreErrorResponseType>,
+        >;
+
+        // A server response (e.g. invalid_grant) is definitive → Rejected.
+        let definitive: Err = RequestTokenError::ServerResponse(StandardErrorResponse::new(
+            CoreErrorResponseType::Extension("invalid_grant".to_string()),
+            None,
+            None,
+        ));
+        assert!(matches!(
+            outcome_for_error(&definitive),
+            RefreshOutcome::Rejected
+        ));
+
+        // Anything else (network/parse) is transient → keep the session.
+        let transient: Err = RequestTokenError::Other("connection refused".to_string());
+        assert!(matches!(
+            outcome_for_error(&transient),
+            RefreshOutcome::Transient
+        ));
     }
 }

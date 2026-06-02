@@ -516,10 +516,13 @@ pub(crate) fn unix_now() -> i64 {
         .unwrap_or(0)
 }
 
-/// Access-token lifetime in seconds, defaulting to a conservative 60s when the
-/// IdP omits `expires_in` (so we re-validate soon rather than never).
+/// Access-token lifetime in seconds. Falls back to 300s when the IdP omits
+/// `expires_in` — comfortably above the refresh middleware's skew window so a
+/// missing `expires_in` doesn't put the session straight back into the
+/// refresh-now band (which would refresh on every request). Keycloak always
+/// sends `expires_in`, so the fallback is belt-and-braces.
 pub(crate) fn access_token_ttl_secs(expires_in: Option<std::time::Duration>) -> i64 {
-    expires_in.map(|d| d.as_secs() as i64).unwrap_or(60)
+    expires_in.map(|d| d.as_secs() as i64).unwrap_or(300)
 }
 
 /// Decode `realm_access.roles` from a JWT payload.
