@@ -6,9 +6,13 @@ use axum::http::header;
 use axum::http::{HeaderValue, StatusCode};
 use axum::middleware::Next;
 use axum::response::Response;
+use openidconnect::{OAuth2TokenResponse, RefreshToken, RequestTokenError};
 use tower_sessions::Session;
 
-use crate::handlers::{SESSION_KEY_AUTHENTICATED, SESSION_KEY_ROLES, SESSION_KEY_SUB};
+use crate::handlers::{
+    access_token_ttl_secs, extract_realm_roles, unix_now, SESSION_KEY_AUTHENTICATED,
+    SESSION_KEY_REFRESH_TOKEN, SESSION_KEY_ROLES, SESSION_KEY_SUB, SESSION_KEY_TOKEN_EXPIRES_AT,
+};
 use crate::OidcAppState;
 
 type RequireRoleFuture = Pin<Box<dyn Future<Output = Result<Response, StatusCode>> + Send>>;
@@ -171,6 +175,145 @@ pub fn require_role<S: OidcAppState>(
             }
         })
     }
+}
+
+/// Renew the access token when it has at most this many seconds of life left.
+/// The window absorbs clock skew and the refresh round-trip so re-validation
+/// happens just before, not after, expiry.
+const TOKEN_REFRESH_SKEW_SECS: i64 = 60;
+
+/// Backoff applied to the recorded expiry after a *transient* refresh failure
+/// (IdP unreachable), so we retry on a later request instead of hammering the
+/// token endpoint on every request while the IdP is down.
+const TOKEN_REFRESH_RETRY_BACKOFF_SECS: i64 = 30;
+
+/// Pure refresh decision: true when an expiry is recorded and it is within the
+/// skew window (or already past). A missing expiry means the session predates
+/// this feature (or the IdP sent no `expires_in`) — never refresh then.
+fn should_refresh(expires_at: Option<i64>, now: i64) -> bool {
+    match expires_at {
+        Some(expires_at) => expires_at - now <= TOKEN_REFRESH_SKEW_SECS,
+        None => false,
+    }
+}
+
+/// Transparently re-validate the OIDC session with the IdP.
+///
+/// Runs as a global layer *inside* the session layer (so the session is loaded)
+/// and *outside* the per-route role gates. For an authenticated session whose
+/// access token is within [`TOKEN_REFRESH_SKEW_SECS`] of expiry it uses the
+/// stored refresh token to obtain a fresh access token, then updates the stored
+/// expiry, the (possibly rotated) refresh token, and the realm roles — so role
+/// changes at the IdP propagate without a re-login.
+///
+/// If the IdP *definitively* rejects the refresh token (e.g. the user was
+/// logged out or disabled at Keycloak → `invalid_grant`), the authenticated
+/// marker is dropped so the downstream gate returns 401 and the client
+/// re-logs in. Transient failures (IdP unreachable) leave the session intact
+/// and only nudge the retry window forward.
+///
+/// Concurrency: deliberately lock-free. With Keycloak's default "Revoke Refresh
+/// Token" = off a refresh token is reusable until expiry, so concurrent
+/// refreshes in the skew window are harmless. If rotation is enabled, a rare
+/// concurrent double-use can fail one request's refresh; that self-heals via
+/// the normal re-login redirect (silent while the IdP SSO session is alive).
+/// Serializing per session would pull a `tokio` + `dashmap` runtime dependency
+/// into this intentionally dependency-light shared crate — not worth it for
+/// that edge case.
+pub async fn refresh_session_token<S: OidcAppState>(
+    State(state): State<S>,
+    session: Session,
+    request: Request,
+    next: Next,
+) -> Response {
+    if state.is_auth_enabled() {
+        try_refresh_token(&state, &session).await;
+    }
+    next.run(request).await
+}
+
+async fn try_refresh_token<S: OidcAppState>(state: &S, session: &Session) {
+    let authenticated: bool = session
+        .get(SESSION_KEY_AUTHENTICATED)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or(false);
+    if !authenticated {
+        return;
+    }
+
+    let expires_at = session
+        .get::<i64>(SESSION_KEY_TOKEN_EXPIRES_AT)
+        .await
+        .ok()
+        .flatten();
+    if !should_refresh(expires_at, unix_now()) {
+        return;
+    }
+
+    // Need both an OIDC client and a stored refresh token to re-validate.
+    let Some(client) = state.oidc_client() else {
+        return;
+    };
+    let Some(refresh_token) = session
+        .get::<String>(SESSION_KEY_REFRESH_TOKEN)
+        .await
+        .ok()
+        .flatten()
+    else {
+        return;
+    };
+
+    match client
+        .exchange_refresh_token(&RefreshToken::new(refresh_token))
+        .request_async(state.http_client())
+        .await
+    {
+        Ok(token_response) => {
+            let new_expiry = unix_now() + access_token_ttl_secs(token_response.expires_in());
+            let _ = session
+                .insert(SESSION_KEY_TOKEN_EXPIRES_AT, new_expiry)
+                .await;
+            // Keycloak rotates the refresh token when rotation is enabled; store
+            // whatever it returned so the next refresh uses the current one.
+            if let Some(new_refresh) = token_response.refresh_token() {
+                let _ = session
+                    .insert(SESSION_KEY_REFRESH_TOKEN, new_refresh.secret().clone())
+                    .await;
+            }
+            // Refresh realm roles from the access token (Keycloak includes
+            // `realm_access` there by default). Only overwrite on a successful
+            // parse so a mapper misconfiguration doesn't wipe existing roles.
+            if let Some(roles) = extract_realm_roles(token_response.access_token().secret()) {
+                let _ = session.insert(SESSION_KEY_ROLES, roles).await;
+            }
+            tracing::debug!("refreshed OIDC access token");
+        }
+        // IdP definitively rejected the token → force re-login.
+        Err(RequestTokenError::ServerResponse(e)) => {
+            tracing::info!(error = ?e, "refresh token rejected by IdP — invalidating session");
+            invalidate_session(session).await;
+        }
+        // Transient failure (network/parse) → keep the session, retry later.
+        Err(e) => {
+            tracing::warn!(error = %e, "token refresh failed transiently — will retry");
+            let _ = session
+                .insert(
+                    SESSION_KEY_TOKEN_EXPIRES_AT,
+                    unix_now() + TOKEN_REFRESH_RETRY_BACKOFF_SECS,
+                )
+                .await;
+        }
+    }
+}
+
+/// Drop the authenticated marker and refresh material so downstream gates treat
+/// the session as unauthenticated (401 → client re-login).
+async fn invalidate_session(session: &Session) {
+    let _ = session.remove::<bool>(SESSION_KEY_AUTHENTICATED).await;
+    let _ = session.remove::<String>(SESSION_KEY_REFRESH_TOKEN).await;
+    let _ = session.remove::<i64>(SESSION_KEY_TOKEN_EXPIRES_AT).await;
 }
 
 #[cfg(test)]
@@ -606,5 +749,124 @@ mod tests {
 
         // The gated request must return 401 (NotAuthenticated), not 403.
         assert_eq!(get_test(app, &cookie).await, StatusCode::UNAUTHORIZED);
+    }
+
+    // --- refresh_session_token ---
+
+    #[test]
+    fn should_refresh_decisions() {
+        let now = 1_000_000;
+        // No recorded expiry → never refresh (legacy/no-refresh-token session).
+        assert!(!should_refresh(None, now));
+        // Comfortably in the future → no refresh.
+        assert!(!should_refresh(Some(now + 3600), now));
+        // Just outside the skew window → no refresh.
+        assert!(!should_refresh(
+            Some(now + TOKEN_REFRESH_SKEW_SECS + 1),
+            now
+        ));
+        // Exactly at the skew boundary → refresh.
+        assert!(should_refresh(Some(now + TOKEN_REFRESH_SKEW_SECS), now));
+        // Already expired → refresh.
+        assert!(should_refresh(Some(now - 10), now));
+    }
+
+    /// Gate `/test` with `require_session_auth` behind the refresh layer, and
+    /// expose `/seed-tokens?exp=<unix>` to seed an authenticated session with a
+    /// given access-token expiry. Mirrors the production layer ordering:
+    /// refresh runs inside the session layer and outside the auth gate.
+    fn refresh_test_app(state: TestState) -> Router {
+        let session_layer = SessionManagerLayer::new(MemoryStore::default());
+
+        #[derive(serde::Deserialize)]
+        struct ExpQuery {
+            exp: i64,
+        }
+
+        Router::new()
+            .route("/test", get(|| async { "ok" }))
+            .route_layer(axum_middleware::from_fn_with_state(
+                state.clone(),
+                require_session_auth::<TestState>,
+            ))
+            .route(
+                "/seed-tokens",
+                get(
+                    |session: Session, axum::extract::Query(q): axum::extract::Query<ExpQuery>| async move {
+                        session
+                            .insert(SESSION_KEY_AUTHENTICATED, true)
+                            .await
+                            .expect("insert auth");
+                        session
+                            .insert(SESSION_KEY_TOKEN_EXPIRES_AT, q.exp)
+                            .await
+                            .expect("insert expiry");
+                        "seeded"
+                    },
+                ),
+            )
+            .layer(axum_middleware::from_fn_with_state(
+                state.clone(),
+                refresh_session_token::<TestState>,
+            ))
+            .with_state(state)
+            .layer(session_layer)
+    }
+
+    async fn seed_tokens(app: &Router, exp: i64) -> String {
+        let response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(format!("/seed-tokens?exp={exp}"))
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+        response
+            .headers()
+            .get("set-cookie")
+            .expect("set-cookie header")
+            .to_str()
+            .expect("cookie str")
+            .to_string()
+    }
+
+    #[tokio::test]
+    async fn refresh_layer_passes_through_when_token_valid() {
+        // Far-future expiry → no refresh attempt; the request reaches the gate
+        // with its auth marker intact.
+        let app = refresh_test_app(test_state(true));
+        let cookie = seed_tokens(&app, unix_now() + 3600).await;
+        assert_eq!(get_test(app, &cookie).await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn refresh_layer_does_not_invalidate_when_no_client_configured() {
+        // Token is within the skew window so a refresh is wanted, but TestState
+        // has no OIDC client: the layer must bail without dropping the auth
+        // marker (a misconfiguration must not log everyone out). The gate still
+        // sees an authenticated session.
+        let app = refresh_test_app(test_state(true));
+        let cookie = seed_tokens(&app, unix_now() + 5).await;
+        assert_eq!(get_test(app, &cookie).await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn refresh_layer_passthrough_when_auth_disabled() {
+        // Auth disabled → refresh is a no-op and the gate passes everything.
+        let app = refresh_test_app(test_state(false));
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/test")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
     }
 }
