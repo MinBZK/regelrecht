@@ -346,8 +346,14 @@ pub struct Execution {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Definition {
-    /// Definition with explicit value field
-    Structured { value: Value },
+    /// Definition with explicit value field, optionally carrying type metadata
+    Structured {
+        value: Value,
+        #[serde(default, rename = "type")]
+        def_type: Option<ParameterType>,
+        #[serde(default)]
+        type_spec: Option<TypeSpec>,
+    },
     /// Simple value (for backward compatibility)
     Simple(Value),
 }
@@ -356,8 +362,19 @@ impl Definition {
     /// Get the value from this definition
     pub fn value(&self) -> &Value {
         match self {
-            Definition::Structured { value } => value,
+            Definition::Structured { value, .. } => value,
             Definition::Simple(v) => v,
+        }
+    }
+
+    /// Get the declared unit string, if any.
+    pub fn unit(&self) -> Option<&str> {
+        match self {
+            Definition::Structured {
+                type_spec: Some(ts),
+                ..
+            } => ts.unit.as_deref(),
+            _ => None,
         }
     }
 }
@@ -1928,5 +1945,24 @@ articles:
                 "MAX_YAML_SIZE should not exceed 10MB"
             );
         }
+    }
+
+    #[test]
+    fn test_definition_with_unit() {
+        let yaml = r#"
+value: 3971900
+type: amount
+type_spec:
+  unit: eurocent
+"#;
+        let def: Definition = serde_yaml_ng::from_str(yaml).expect("should parse");
+        assert_eq!(def.value(), &Value::Int(3971900));
+        assert_eq!(def.unit(), Some("eurocent"));
+    }
+
+    #[test]
+    fn test_simple_definition_has_no_unit() {
+        let def: Definition = serde_yaml_ng::from_str("123").expect("should parse");
+        assert_eq!(def.unit(), None);
     }
 }
