@@ -1453,9 +1453,9 @@ pub struct ReloadResponse {
 // are explicit out-of-scope for fase 1.
 //
 // Optimistic concurrency uses a SHA-256 over the on-branch body as
-// the `ETag`. Returning a separate `PreconditionFailed` (412) lets
-// the frontend distinguish "your view is stale, reload" from "the
-// upstream raced us, retry" (409 `Conflict`).
+// the `ETag`. `enforce_if_match` returns a 412 directly so the frontend
+// can distinguish "your view is stale, reload" from "the upstream raced
+// us, retry" (409 `Conflict`).
 
 const ALLOWED_DOCUMENT_EXTENSIONS: &[&str] = &["md", "txt"];
 

@@ -24,13 +24,6 @@ pub enum CorpusError {
     /// strings.
     #[error("conflict: {0}")]
     Conflict(String),
-
-    /// Client-provided precondition (e.g. an `If-Match` ETag) did not
-    /// match the current state. Distinct from `Conflict` so handlers can
-    /// surface a 412 instead of a 409 — semantically "your view is stale,
-    /// reload" rather than "the upstream raced us, retry".
-    #[error("precondition failed: {0}")]
-    PreconditionFailed(String),
 }
 
 pub type Result<T> = std::result::Result<T, CorpusError>;
