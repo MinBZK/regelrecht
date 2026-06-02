@@ -12,8 +12,10 @@ import { useAuth } from './composables/useAuth.js';
 import { lawFetchError } from './composables/useLaw.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
+import { useTrajects } from './composables/useTrajects.js';
+import { lawsListUrl, lawUrl } from './composables/corpusUrls.js';
 import { SUPPORT_EMAIL } from './constants.js';
-import { lastEditorPath } from './composables/useLastVisitedRoute.js';
+import { lastEditorPath, sectionTarget } from './composables/useLastVisitedRoute.js';
 
 const { authenticated, loading: authLoading, oidcConfigured, person, login, logout } = useAuth();
 const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
@@ -43,6 +45,40 @@ const editorPanelFlags = [
 
 const route = useRoute();
 const router = useRouter();
+
+// Active traject (null = global browse). Derived from the URL via
+// `route.params.trajectRef`, so the new `library-traject` route makes the
+// bibliotheek traject-aware without any extra plumbing.
+const { activeTrajectRef } = useTrajects();
+
+// Keep the user's traject scope across in-app navigations. With a traject
+// in the URL we stay on `library-traject` / `editor-traject`; without one
+// on the plain `library` / `editor`. Mirrors EditorApp.editorRouteFor.
+function libraryRouteFor(params = {}) {
+  return activeTrajectRef.value
+    ? { name: 'library-traject', params: { ...params, trajectRef: activeTrajectRef.value } }
+    : { name: 'library', params };
+}
+function editorRouteFor(lawIdVal, articleNumber) {
+  return activeTrajectRef.value
+    ? { name: 'editor-traject', params: { trajectRef: activeTrajectRef.value, lawId: lawIdVal, articleNumber } }
+    : { name: 'editor', params: { lawId: lawIdVal, articleNumber } };
+}
+
+// Tab-bar state + cross-section navigation. The Bibliotheek/Editor tabs
+// must light up for both the plain and traject-scoped route variants, and
+// switching to the Editor tab must carry the active traject across (see
+// sectionTarget).
+const isLibraryRoute = computed(
+  () => route.name === 'library' || route.name === 'library-traject',
+);
+const isEditorRoute = computed(
+  () => route.name === 'editor' || route.name === 'editor-traject',
+);
+const editorTabTarget = computed(() =>
+  sectionTarget(router, lastEditorPath.value, activeTrajectRef.value),
+);
+const editorTabHref = computed(() => router.resolve(editorTabTarget.value).href);
 
 const laws = ref([]);
 const favorites = ref(null);
@@ -260,7 +296,7 @@ async function loadIndex() {
   const gen = ++loadIndexGeneration;
   try {
     const [corpusRes] = await Promise.all([
-      fetch('/api/corpus/laws?limit=1000'),
+      fetch(lawsListUrl(activeTrajectRef.value, 'limit=1000')),
       loadFavorites(),
     ]);
     if (!corpusRes.ok) throw new Error(`Failed to load corpus: ${corpusRes.status}`);
@@ -285,7 +321,7 @@ async function loadLaw(lawId) {
   const gen = ++loadLawGeneration;
   try {
     selectedLawLoading.value = true;
-    const res = await fetch(`/api/corpus/laws/${encodeURIComponent(lawId)}`);
+    const res = await fetch(lawUrl(activeTrajectRef.value, lawId));
     if (!res.ok) throw lawFetchError(res.status);
     // Gate before and after `res.text()`: skip the body read for stale 200s, and catch races during it.
     if (gen !== loadLawGeneration) return;
@@ -334,8 +370,18 @@ function retryLoadCorpus() {
 function editInEditor() {
   if (!selectedLawId.value || !selectedArticleNumber.value) return;
   activeAction.value = null;
-  router.push(`/editor/${encodeURIComponent(selectedLawId.value)}/${encodeURIComponent(selectedArticleNumber.value)}`);
+  // Carry the active traject so "Bewerken" opens the editable
+  // editor-traject view instead of the read-only editor.
+  router.push(editorRouteFor(selectedLawId.value, selectedArticleNumber.value));
 }
+
+// "Bewerken" button in the detail pane: same traject-aware target as
+// editInEditor, exposed as a location + href so the anchor is real (and
+// middle-click / open-in-new-tab works) while the click stays SPA.
+const editLawTarget = computed(() =>
+  editorRouteFor(selectedLawId.value, selectedArticleNumber.value || undefined),
+);
+const editLawHref = computed(() => router.resolve(editLawTarget.value).href);
 
 function selectLaw(lawId, focusAfter = false) {
   if (lawId !== selectedLawId.value || lawError.value) {
@@ -343,7 +389,7 @@ function selectLaw(lawId, focusAfter = false) {
     selectedArticleNumber.value = null;
     activeAction.value = null;
     lawError.value = null;
-    router.push({ name: 'library', params: { lawId } });
+    router.push(libraryRouteFor({ lawId }));
     loadLaw(lawId);
   }
 
@@ -367,7 +413,10 @@ function selectArticle(number) {
   if (articleStr === selectedArticleNumber.value) return;
   selectedArticleNumber.value = articleStr;
   activeAction.value = null;
-  router.replace({ name: 'library', params: { lawId: selectedLawId.value, articleNumber: articleStr }, hash: route.hash });
+  router.replace({
+    ...libraryRouteFor({ lawId: selectedLawId.value, articleNumber: articleStr }),
+    hash: route.hash,
+  });
 }
 
 /**
@@ -399,12 +448,12 @@ function onPaneBack(e) {
 
 function goToLawRoot() {
   if (selectedLawId.value) {
-    router.push({ name: 'library', params: { lawId: selectedLawId.value } });
+    router.push(libraryRouteFor({ lawId: selectedLawId.value }));
   }
 }
 
 function goToLibraryRoot() {
-  router.push({ name: 'library' });
+  router.push(libraryRouteFor());
 }
 
 // Handle browser back/forward navigation
@@ -461,10 +510,20 @@ if (route.params.lawId) {
 }
 loadIndex();
 
-// LibraryApp is the global, no-traject view: it always reads through
-// `/api/corpus/...`. Switching trajects in the TrajectMenu is a route
-// change to `/editor/{ref}/...`, which leaves LibraryApp behind — no
-// in-place refetch needed here.
+// The bibliotheek reads through the active traject's corpus
+// (`/api/trajects/{ref}/corpus/...`) or the global corpus (`/api/corpus/...`)
+// depending on `activeTrajectRef`. When the user switches traject in-place
+// (e.g. picking another traject from the TrajectMenu while staying in the
+// library, or "Geen traject"), the route param changes but the component
+// stays mounted — so refetch the index and the open law through the new
+// scope. Mirrors EditorApp's `watch(activeTrajectRef)`.
+watch(activeTrajectRef, () => {
+  loadIndex();
+  if (selectedLawId.value) {
+    lawError.value = null;
+    loadLaw(selectedLawId.value);
+  }
+});
 </script>
 
 <template>
@@ -476,8 +535,8 @@ loadIndex();
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar size="md" navigation>
-                <nldd-tab-bar-item :selected="route.name === 'library' || undefined" text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :selected="route.name === 'editor' || undefined" :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="isLibraryRoute || undefined" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="isEditorRoute || undefined" :href="editorTabHref" @click.prevent="router.push(editorTabTarget)" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
@@ -525,8 +584,8 @@ loadIndex();
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar size="md" navigation>
-                <nldd-tab-bar-item :selected="route.name === 'library' || undefined" text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :selected="route.name === 'editor' || undefined" :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="isLibraryRoute || undefined" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="isEditorRoute || undefined" :href="editorTabHref" @click.prevent="router.push(editorTabTarget)" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="center" min-width="240px" width="33%">
@@ -725,7 +784,7 @@ loadIndex();
                       </nldd-tab-bar>
                     </nldd-toolbar-item>
                     <nldd-toolbar-item slot="end">
-                      <nldd-button v-if="selectedLawId" variant="secondary" text="Bewerken" :href="`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`" @click.prevent="router.push(`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`)"></nldd-button>
+                      <nldd-button v-if="selectedLawId" variant="secondary" text="Bewerken" :href="editLawHref" @click.prevent="router.push(editLawTarget)"></nldd-button>
                     </nldd-toolbar-item>
                   </nldd-toolbar>
                   <nldd-spacer size="24"></nldd-spacer>
@@ -748,8 +807,8 @@ loadIndex();
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar variant="compact" navigation>
-                <nldd-tab-bar-item :selected="route.name === 'library' || undefined" icon="books" text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :selected="route.name === 'editor' || undefined" :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" icon="edit" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="isLibraryRoute || undefined" icon="books" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="isEditorRoute || undefined" :href="editorTabHref" @click.prevent="router.push(editorTabTarget)" icon="edit" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
