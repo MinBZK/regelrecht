@@ -380,6 +380,9 @@ async fn main() {
             .with_http_only(true)
             .with_secure(true);
 
+        // Clone for the refresh layer: `with_state` below consumes app_state,
+        // and from_fn_with_state needs its own copy of the OIDC client/config.
+        let refresh_state = app_state.clone();
         let app = Router::new()
             .route("/health", get(|| async { "OK" }))
             .merge(auth_routes)
@@ -390,6 +393,13 @@ async fn main() {
             .merge(traject_reader_routes)
             .merge(traject_writer_routes)
             .with_state(app_state)
+            // Inside the session layer (session loaded) and outside the route
+            // role gates (fresh roles / a dropped auth marker are seen by the
+            // gate). Innermost .layer() so session_layer wraps it.
+            .layer(axum_middleware::from_fn_with_state(
+                refresh_state,
+                middleware::refresh_session_token::<AppState>,
+            ))
             .layer(session_layer)
             .layer(axum_middleware::from_fn(middleware::security_headers))
             .layer(TraceLayer::new_for_http())
