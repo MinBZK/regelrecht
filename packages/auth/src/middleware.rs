@@ -342,10 +342,14 @@ async fn apply_refresh_outcome(session: &Session, outcome: RefreshOutcome) {
         }
         RefreshOutcome::Transient => {
             tracing::warn!("token refresh failed transiently — will retry");
+            // Push the recorded expiry past the skew window so the NEXT refresh
+            // only fires after the backoff elapses. Storing just `now + backoff`
+            // would stay inside the skew band (backoff < skew) and refresh on
+            // every request — defeating the backoff.
             let _ = session
                 .insert(
                     SESSION_KEY_TOKEN_EXPIRES_AT,
-                    unix_now() + TOKEN_REFRESH_RETRY_BACKOFF_SECS,
+                    unix_now() + TOKEN_REFRESH_SKEW_SECS + TOKEN_REFRESH_RETRY_BACKOFF_SECS,
                 )
                 .await;
         }
@@ -358,7 +362,14 @@ async fn apply_refresh_outcome(session: &Session, outcome: RefreshOutcome) {
 /// data minimisation for a citizen-facing platform. The dropped auth marker
 /// makes the downstream gate return 401 → client re-login.
 async fn invalidate_session(session: &Session) {
-    let _ = session.flush().await;
+    // A failed flush would leave the session authenticated in the store after a
+    // definitive IdP rejection (the opposite of what we want). The current
+    // request is still denied — flush clears the in-memory session so the
+    // downstream gate sees no auth marker — but a store-delete failure could
+    // resurrect the session on a later request, so surface it loudly.
+    if let Err(e) = session.flush().await {
+        tracing::error!(error = %e, "failed to flush session after token rejection");
+    }
 }
 
 #[cfg(test)]
@@ -1053,14 +1064,15 @@ mod tests {
                 .unwrap(),
             Some(true)
         );
-        // Expiry bumped into the future by the backoff so we don't refresh every
-        // request, but not invalidated.
+        // Expiry bumped past the skew window so we do NOT refresh on the very
+        // next request — the backoff must actually space out retries.
         let exp = session
             .get::<i64>(SESSION_KEY_TOKEN_EXPIRES_AT)
             .await
             .unwrap()
             .expect("expiry present");
-        assert!(exp >= unix_now() + TOKEN_REFRESH_RETRY_BACKOFF_SECS - 5);
+        assert!(!should_refresh(Some(exp), unix_now()));
+        assert!(exp >= unix_now() + TOKEN_REFRESH_SKEW_SECS + TOKEN_REFRESH_RETRY_BACKOFF_SECS - 5);
     }
 
     #[test]
