@@ -321,8 +321,15 @@ pub enum RegelrechtRef {
 ///
 /// Falls back to `None` for unrelated schemes (`https://...`,
 /// arbitrary strings). The document form takes priority when the
-/// first path segment is literally `doc`, so a law accidentally
-/// named `doc` would collide; that name is reserved.
+/// first path segment is literally `doc`.
+///
+/// **RESERVED ID**: `doc` is therefore a reserved law `$id` — a law named
+/// `doc` would be routed to the `Document` variant and become unreachable
+/// via `regelrecht://doc/...`. This collision is structurally impossible
+/// today (harvested `$id`s are underscore-based slugs like
+/// `wet_op_de_zorgtoeslag`), so no creation-time guard is enforced; if a
+/// future source can emit a bare `doc` id, add it to the law-id blocklist
+/// in the schema validator. The `doc`-head precedence is pinned by a test.
 pub fn parse_regelrecht_uri(source: &str) -> Option<RegelrechtRef> {
     let rest = source.strip_prefix("regelrecht://")?;
     let (head, tail) = match rest.split_once('/') {

@@ -112,6 +112,15 @@ pub trait RepoBackend: Send + Sync {
         dir: &Path,
         extension: Option<&str>,
     ) -> Result<Vec<RecursiveFileEntry>> {
+        // All current backends override this; the fallback only runs if a
+        // future backend forgets to. Warn so the resulting truncated
+        // (single-level) listing is diagnosable instead of silently wrong.
+        tracing::warn!(
+            dir = %dir.display(),
+            "RepoBackend::list_files_recursive default used — degrading to a \
+             flat, non-recursive listing; nested files will be missing. \
+             Override this method on the backend for full-tree results."
+        );
         let flat = self.list_files(dir, extension).await?;
         Ok(flat
             .into_iter()

@@ -105,8 +105,14 @@ export function useTrajectDocuments(trajectRef) {
     }
   }
 
+  // Monotonic counter to discard out-of-order `openDocument` responses.
+  // Clicking document A then B fires two concurrent fetches; if A resolves
+  // after B, its (stale) response must not clobber B's loaded state.
+  let openGeneration = 0;
+
   async function openDocument(path) {
     requireTraject(trajectRef.value, 'document open');
+    const gen = ++openGeneration;
     docLoading.value = true;
     docError.value = null;
     saveError.value = null;
@@ -118,6 +124,9 @@ export function useTrajectDocuments(trajectRef) {
     cancelDraftTimer();
     try {
       const res = await fetch(documentFileUrl(trajectRef.value, path));
+      // A newer openDocument started while this fetch was in flight — drop
+      // this stale response so it can't overwrite the newer document.
+      if (gen !== openGeneration) return;
       if (res.status === 404) {
         currentPath.value = path;
         currentBody.value = '';
@@ -142,6 +151,8 @@ export function useTrajectDocuments(trajectRef) {
         return;
       }
       const serverBody = await res.text();
+      // Re-check after the body read — another open may have superseded us.
+      if (gen !== openGeneration) return;
       const serverEtag = res.headers.get('ETag');
 
       // Set the path + body atomically (post-await) so the debounce
@@ -165,9 +176,11 @@ export function useTrajectDocuments(trajectRef) {
         currentBody.value = serverBody;
       }
     } catch (e) {
-      docError.value = e;
+      if (gen === openGeneration) docError.value = e;
     } finally {
-      docLoading.value = false;
+      // Only the latest open controls the loading flag, so a stale
+      // response settling late can't flip it off mid-load.
+      if (gen === openGeneration) docLoading.value = false;
     }
   }
 

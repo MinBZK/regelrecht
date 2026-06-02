@@ -78,7 +78,11 @@ function validateNewPath(value) {
   if (!value) return 'Geef een naam op.';
   if (value.startsWith('/')) return "Pad mag niet beginnen met '/'.";
   if (value.includes('\\')) return "Pad mag geen backslashes bevatten.";
-  if (value.includes('..')) return "Pad mag geen '..' bevatten.";
+  // No blanket `includes('..')` check: the backend only rejects `.` / `..`
+  // as whole segments, and the per-segment `startsWith('.')` guard below
+  // already covers those (and any hidden segment). A blanket substring
+  // check would also reject legitimate names like `a..b.md`, diverging from
+  // the backend's authoritative validation.
   const segments = value.split('/');
   for (const seg of segments) {
     if (!seg) return 'Pad bevat lege segmenten.';
