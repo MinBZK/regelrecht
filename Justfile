@@ -138,6 +138,17 @@ admin-test:
 editor-api:
     cd packages && cargo run --package regelrecht-editor-api
 
+# Run editor API with real SSO Rijk login (loads .env.sso-local; see auth-and-roles.md)
+editor-sso:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -f .env.sso-local ]; then
+        echo "Missing .env.sso-local — copy .env.sso-local.example and fill in the Keycloak values." >&2
+        exit 1
+    fi
+    set -a; . ./.env.sso-local; set +a
+    cd packages && cargo run --package regelrecht-editor-api
+
 # Check editor API Rust code
 editor-api-check:
     cd packages && {{ci_flags}} cargo check --package regelrecht-editor-api

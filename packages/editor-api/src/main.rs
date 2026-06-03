@@ -162,9 +162,12 @@ async fn main() {
     // Body-size caps for write routes. The 1 MiB scenario cap is generous for
     // a single Gherkin file (real-world scenarios are a few KiB) and the 5 MiB
     // law cap leaves headroom for federated regulations that can reach a few
-    // hundred KiB.
+    // hundred KiB. Documents are markdown/text working notes — 1 MiB matches
+    // the scenario cap so a paste of a kamerstuk's full text fits without
+    // accidentally accepting a multi-megabyte binary blob.
     const MAX_SCENARIO_BODY: usize = 1024 * 1024;
     const MAX_LAW_BODY: usize = 5 * 1024 * 1024;
+    const MAX_DOCUMENT_BODY: usize = 1024 * 1024;
 
     // Reader routes — `editor-reader` covers user-scoped reads (favorites,
     // settings) and harvest search (search is behind auth because it triggers
@@ -275,6 +278,14 @@ async fn main() {
             "/api/trajects/{traject_ref}/corpus/laws/{law_id}/annotations",
             get(corpus_handlers::get_traject_annotations),
         )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/documents",
+            get(corpus_handlers::list_traject_documents),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/documents/{*doc_path}",
+            get(corpus_handlers::get_traject_document),
+        )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
             accounts::account_middleware,
@@ -328,6 +339,12 @@ async fn main() {
             "/api/trajects/{traject_ref}/corpus/laws/{law_id}",
             axum::routing::put(corpus_handlers::save_law)
                 .layer(axum::extract::DefaultBodyLimit::max(MAX_LAW_BODY)),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/documents/{*doc_path}",
+            axum::routing::put(corpus_handlers::save_traject_document)
+                .delete(corpus_handlers::delete_traject_document)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_DOCUMENT_BODY)),
         )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
