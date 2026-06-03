@@ -554,9 +554,9 @@ const toc = [
             <h2>{t.faq.title}</h2>
           </nldd-title>
           <nldd-spacer size="24" />
-          <nldd-collection layout="grid" item-width="480px">
+          <nldd-container layout="columns" column-count="1" md-column-count="2" lg-column-count="2" gap="40">
             {t.faq.items.map((item) => (
-              <nldd-card accessible-label={item.q}>
+              <nldd-card class="rr-faq-card" accessible-label={item.q}>
                 <nldd-container padding="20">
                   <nldd-title size="4">
                     <h3>{item.q}</h3>
@@ -576,7 +576,7 @@ const toc = [
                 </nldd-container>
               </nldd-card>
             ))}
-          </nldd-collection>
+          </nldd-container>
         </nldd-simple-section>
 
         <nldd-simple-section
