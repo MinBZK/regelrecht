@@ -39,6 +39,18 @@ pub struct FileEntry {
     pub name: String,
 }
 
+/// Entry returned by recursive list operations. Carries the path
+/// relative to the directory the list call was rooted at, so callers
+/// can rebuild the source-relative path without re-tracking the
+/// starting point.
+pub struct RecursiveFileEntry {
+    /// Path relative to the listing root, using forward slashes
+    /// regardless of platform. Example: when listing `documents/abc`
+    /// and a file lives at `documents/abc/mvt/concept.md`, the
+    /// returned value is `mvt/concept.md`.
+    pub relative_path: String,
+}
+
 /// Identifies a PR opened or updated as part of a [`RepoBackend::persist`]
 /// call. Returned via [`PersistOutcome`] so the editor-api can surface the
 /// URL to the frontend after a save.
@@ -86,6 +98,37 @@ pub trait RepoBackend: Send + Sync {
 
     /// List files in a directory, optionally filtered by extension (without dot).
     async fn list_files(&self, dir: &Path, extension: Option<&str>) -> Result<Vec<FileEntry>>;
+
+    /// List all files in a directory tree, recursively, optionally filtered by
+    /// extension (without dot). Returned entries carry their path relative to
+    /// the listing root, separated by forward slashes regardless of platform.
+    ///
+    /// The default implementation degrades to a flat single-level listing. A
+    /// backend that can do better — local checkouts can walk the tree on
+    /// disk, the GitHub API backend can walk via the Contents API — should
+    /// override this.
+    async fn list_files_recursive(
+        &self,
+        dir: &Path,
+        extension: Option<&str>,
+    ) -> Result<Vec<RecursiveFileEntry>> {
+        // All current backends override this; the fallback only runs if a
+        // future backend forgets to. Warn so the resulting truncated
+        // (single-level) listing is diagnosable instead of silently wrong.
+        tracing::warn!(
+            dir = %dir.display(),
+            "RepoBackend::list_files_recursive default used — degrading to a \
+             flat, non-recursive listing; nested files will be missing. \
+             Override this method on the backend for full-tree results."
+        );
+        let flat = self.list_files(dir, extension).await?;
+        Ok(flat
+            .into_iter()
+            .map(|f| RecursiveFileEntry {
+                relative_path: f.name,
+            })
+            .collect())
+    }
 
     /// Persist pending changes.
     ///
@@ -187,6 +230,63 @@ fn copy_dir_recursive_sync(src: &Path, dst: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Walk a local filesystem subtree and return file paths relative to
+/// `abs_dir`, with forward slashes regardless of platform. Used by the
+/// three filesystem-backed `RepoBackend` implementations to share one
+/// recursive-listing path; the work runs inside `spawn_blocking` so it
+/// does not stall the runtime on a large tree.
+async fn walk_local_tree(
+    abs_dir: PathBuf,
+    extension: Option<String>,
+) -> Result<Vec<RecursiveFileEntry>> {
+    if !abs_dir.exists() {
+        return Ok(Vec::new());
+    }
+    let abs_dir_clone = abs_dir.clone();
+    let work = tokio::task::spawn_blocking(move || -> std::io::Result<Vec<RecursiveFileEntry>> {
+        let mut entries = Vec::new();
+        for entry in walkdir::WalkDir::new(&abs_dir_clone)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let path = entry.path();
+            if let Some(ref ext) = extension {
+                if path.extension().is_none_or(|e| e != ext.as_str()) {
+                    continue;
+                }
+            }
+            let Ok(rel) = path.strip_prefix(&abs_dir_clone) else {
+                continue;
+            };
+            // Normalise to forward slashes — callers serialise these
+            // straight into JSON URLs and the frontend expects `/`.
+            let rel_str = rel
+                .components()
+                .filter_map(|c| match c {
+                    std::path::Component::Normal(s) => s.to_str().map(str::to_string),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("/");
+            if rel_str.is_empty() {
+                continue;
+            }
+            entries.push(RecursiveFileEntry {
+                relative_path: rel_str,
+            });
+        }
+        entries.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+        Ok(entries)
+    })
+    .await
+    .map_err(|e| CorpusError::Config(format!("walk_local_tree task panicked: {e}")))?
+    .map_err(CorpusError::from)?;
+    Ok(work)
+}
+
 /// Reject paths that are absolute or contain `..` components.
 fn validate_relative_path(path: &Path) -> Result<()> {
     if path.is_absolute() {
@@ -275,6 +375,15 @@ impl RepoBackend for LocalBackend {
 
         entries.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(entries)
+    }
+
+    async fn list_files_recursive(
+        &self,
+        dir: &Path,
+        extension: Option<&str>,
+    ) -> Result<Vec<RecursiveFileEntry>> {
+        let abs = self.resolve(dir)?;
+        walk_local_tree(abs, extension.map(str::to_string)).await
     }
 
     async fn persist(&self, _ctx: &WriteContext) -> Result<PersistOutcome> {
@@ -502,6 +611,15 @@ impl RepoBackend for GitBackend {
 
         entries.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(entries)
+    }
+
+    async fn list_files_recursive(
+        &self,
+        dir: &Path,
+        extension: Option<&str>,
+    ) -> Result<Vec<RecursiveFileEntry>> {
+        let abs = self.resolve(dir)?;
+        walk_local_tree(abs, extension.map(str::to_string)).await
     }
 
     async fn persist(&self, ctx: &WriteContext) -> Result<PersistOutcome> {
@@ -796,6 +914,15 @@ impl RepoBackend for SessionGitBackend {
         Ok(entries)
     }
 
+    async fn list_files_recursive(
+        &self,
+        dir: &Path,
+        extension: Option<&str>,
+    ) -> Result<Vec<RecursiveFileEntry>> {
+        let abs = self.resolve(dir)?;
+        walk_local_tree(abs, extension.map(str::to_string)).await
+    }
+
     async fn persist(&self, ctx: &WriteContext) -> Result<PersistOutcome> {
         let paths: Vec<PathBuf> = {
             let mut dirty = self.dirty_files.lock().await;
@@ -1007,6 +1134,65 @@ mod tests {
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].name, "a.feature");
         assert_eq!(entries[1].name, "b.feature");
+    }
+
+    #[tokio::test]
+    async fn local_list_files_recursive_walks_subtree() {
+        let dir = TempDir::new().unwrap();
+        let mut backend = LocalBackend::new("test".to_string(), dir.path().to_path_buf(), true);
+        backend.ensure_ready().await.unwrap();
+
+        // Spread files across nested directories so we can prove the
+        // walker descends rather than stopping at the top level.
+        backend
+            .write_file(Path::new("documents/abc/notes.md"), "a")
+            .await
+            .unwrap();
+        backend
+            .write_file(Path::new("documents/abc/mvt/concept.md"), "b")
+            .await
+            .unwrap();
+        backend
+            .write_file(Path::new("documents/abc/mvt/draft.txt"), "c")
+            .await
+            .unwrap();
+        backend
+            .write_file(Path::new("documents/abc/skip.pdf"), "d")
+            .await
+            .unwrap();
+
+        // Without an extension filter the entries are sorted by relative
+        // path with forward slashes regardless of platform.
+        let all = backend
+            .list_files_recursive(Path::new("documents/abc"), None)
+            .await
+            .unwrap();
+        let paths: Vec<_> = all.iter().map(|e| e.relative_path.as_str()).collect();
+        assert_eq!(
+            paths,
+            vec!["mvt/concept.md", "mvt/draft.txt", "notes.md", "skip.pdf"]
+        );
+
+        // With an extension filter only matching files come back.
+        let md_only = backend
+            .list_files_recursive(Path::new("documents/abc"), Some("md"))
+            .await
+            .unwrap();
+        let md_paths: Vec<_> = md_only.iter().map(|e| e.relative_path.as_str()).collect();
+        assert_eq!(md_paths, vec!["mvt/concept.md", "notes.md"]);
+    }
+
+    #[tokio::test]
+    async fn local_list_files_recursive_missing_dir_returns_empty() {
+        let dir = TempDir::new().unwrap();
+        let mut backend = LocalBackend::new("test".to_string(), dir.path().to_path_buf(), true);
+        backend.ensure_ready().await.unwrap();
+
+        let entries = backend
+            .list_files_recursive(Path::new("documents/nope"), None)
+            .await
+            .unwrap();
+        assert!(entries.is_empty());
     }
 
     #[tokio::test]

@@ -22,6 +22,7 @@ import EditSheet from './components/EditSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
 import MachineReadable from './components/MachineReadable.vue';
 import ScenarioBuilder from './components/ScenarioBuilder.vue';
+import TrajectDocuments from './components/TrajectDocuments.vue';
 import ExecutionTraceView from './components/ExecutionTraceView.vue';
 import LawGraphView from './components/LawGraphView.vue';
 
@@ -1634,6 +1635,7 @@ async function handleActionSave() {
                       :can-create="canCreateNotes"
                       :law-id="lawId"
                       :engine="noteEngine"
+                      :traject-ref="$route.params.trajectRef || ''"
                       @create-note="onCreateNote"
                     />
                     <nldd-inline-dialog
@@ -1856,6 +1858,8 @@ async function handleActionSave() {
 
   <ActionSheet :action="activeAction" :article="editedArticle" :editable="canEdit" :is-new="activeActionIsNew" @close="handleActionClose" @save="handleActionSave" />
   <EditSheet :item="activeEditItem" :article="editedArticle" :traject-ref="activeTrajectRef" @save="handleSave" @close="activeEditItem = null" />
+  <!-- Traject-documents browser sheet + edit window, opened from TrajectMenu. -->
+  <TrajectDocuments />
   <SearchPopover
     ref="searchPopoverRef"
     :laws="corpusLaws"

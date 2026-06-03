@@ -37,6 +37,28 @@ export function annotationsUrl(trajectRef, lawId) {
   return `${lawUrl(trajectRef, lawId)}/annotations`;
 }
 
+// Documents live under the traject-scope only. The list endpoint
+// returns every document in the traject's documents folder, the file
+// endpoint reads/writes one specific path. Both forms require a
+// trajectRef — there is no global-scope counterpart by design.
+export function documentsListUrl(trajectRef) {
+  requireTraject(trajectRef, 'documents listing');
+  return `${corpusBase(trajectRef)}/documents`;
+}
+
+// The document path is hierarchical (e.g. "mvt/concept.md"), so each
+// segment is encoded individually instead of `encodeURIComponent`-ing
+// the whole thing — that would turn `/` into `%2F` and break the
+// axum wildcard match.
+export function documentFileUrl(trajectRef, docPath) {
+  requireTraject(trajectRef, 'document access');
+  const encoded = docPath
+    .split('/')
+    .map(encodeURIComponent)
+    .join('/');
+  return `${corpusBase(trajectRef)}/documents/${encoded}`;
+}
+
 // Writes only exist under the traject prefix. Composables call this at
 // the top of their save function so the call-stack failure is "no
 // traject" instead of a malformed URL.
