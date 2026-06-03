@@ -290,10 +290,17 @@ where
 }
 
 /// Column name on `law_entries` holding the consecutive fail counter for a job type.
-fn fail_count_column(job_type: crate::models::JobType) -> &'static str {
+///
+/// Returns `None` for suggest job types: editor suggestions are advisory and per
+/// traject, not part of the harvest/enrich law lifecycle, so they have no
+/// `law_entries` fail counter. The suggest worker never calls the fail-count or
+/// exhaustion helpers — this guard keeps that invariant explicit.
+fn fail_count_column(job_type: crate::models::JobType) -> Option<&'static str> {
     match job_type {
-        crate::models::JobType::Harvest => "harvest_fail_count",
-        crate::models::JobType::Enrich => "enrich_fail_count",
+        crate::models::JobType::Harvest => Some("harvest_fail_count"),
+        crate::models::JobType::Enrich => Some("enrich_fail_count"),
+        crate::models::JobType::SuggestGuidelines
+        | crate::models::JobType::SuggestMachineReadable => None,
     }
 }
 
@@ -307,7 +314,10 @@ pub async fn increment_fail_count<'e, E>(
 where
     E: sqlx::PgExecutor<'e>,
 {
-    let column = fail_count_column(job_type);
+    let Some(column) = fail_count_column(job_type) else {
+        // Suggest jobs have no law_entries fail counter; nothing to increment.
+        return Ok(0);
+    };
     // Column name is from a match on an enum, not user input — safe to interpolate.
     let sql = format!(
         "UPDATE law_entries SET {column} = {column} + 1, updated_at = now() \
@@ -332,7 +342,10 @@ pub async fn reset_fail_count<'e, E>(
 where
     E: sqlx::PgExecutor<'e>,
 {
-    let column = fail_count_column(job_type);
+    let Some(column) = fail_count_column(job_type) else {
+        // Suggest jobs have no law_entries fail counter; nothing to reset.
+        return Ok(());
+    };
     let sql = format!("UPDATE law_entries SET {column} = 0, updated_at = now() WHERE law_id = $1");
     sqlx::query(&sql).bind(law_id).execute(executor).await?;
 
@@ -359,6 +372,10 @@ where
             LawStatusValue::EnrichFailed,
             LawStatusValue::EnrichExhausted,
         ),
+        // Suggest jobs are advisory and per-traject; they have no exhausted
+        // law-lifecycle state. The suggest worker never calls this.
+        crate::models::JobType::SuggestGuidelines
+        | crate::models::JobType::SuggestMachineReadable => return Ok(()),
     };
     // Only exhaust if status is still the corresponding failed state,
     // preventing a race with admin reset.

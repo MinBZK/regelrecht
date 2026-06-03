@@ -1,7 +1,7 @@
 use regelrecht_pipeline::config::WorkerConfig;
 use regelrecht_pipeline::db;
 use regelrecht_pipeline::health::spawn_health_server;
-use regelrecht_pipeline::worker::run_enrich_worker;
+use regelrecht_pipeline::worker::{run_enrich_worker, run_suggest_worker};
 
 #[tokio::main]
 async fn main() {
@@ -31,10 +31,21 @@ async fn main() {
         }
     };
 
+    // Run the editor-suggestion worker alongside enrich in the same binary, so
+    // suggestions share this component's deployment, secrets, and baked-in
+    // skills without a separate ZAD component.
+    let suggest_config = config.clone();
+
     tokio::select! {
         result = run_enrich_worker(config) => {
             if let Err(e) = result {
                 tracing::error!(error = %e, "enrich worker exited with error");
+                std::process::exit(1);
+            }
+        }
+        result = run_suggest_worker(suggest_config) => {
+            if let Err(e) = result {
+                tracing::error!(error = %e, "suggest worker exited with error");
                 std::process::exit(1);
             }
         }

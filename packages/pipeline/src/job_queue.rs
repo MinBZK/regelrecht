@@ -284,6 +284,53 @@ where
     Ok(job)
 }
 
+/// Create a suggest job only if no active one exists for this law + traject +
+/// kind. The partial unique index `idx_unique_active_suggest_job` (migration
+/// 0018) makes this atomic: a duplicate insert while one is pending/processing
+/// raises a 23505 unique-violation, which we translate into `Ok(None)`.
+///
+/// `traject_ref` must match `req.payload`'s `traject_ref` (the index keys on the
+/// payload field); it is passed separately only for the log line.
+///
+/// Returns `Some(Job)` if created, `None` if an active job already exists.
+pub async fn create_suggest_job_if_not_exists<'e, E>(
+    executor: E,
+    req: CreateJobRequest,
+    traject_ref: &str,
+) -> Result<Option<Job>>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let result = sqlx::query_as::<_, Job>(
+        r#"
+        INSERT INTO jobs (job_type, law_id, priority, payload, max_attempts)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING *
+        "#,
+    )
+    .bind(req.job_type)
+    .bind(&req.law_id)
+    .bind(req.priority.value())
+    .bind(&req.payload)
+    .bind(req.max_attempts)
+    .fetch_optional(executor)
+    .await;
+
+    let job = match result {
+        Ok(job) => job,
+        Err(sqlx::Error::Database(ref db_err)) if db_err.code().as_deref() == Some("23505") => {
+            return Ok(None);
+        }
+        Err(e) => return Err(e.into()),
+    };
+
+    if let Some(ref j) = job {
+        tracing::info!(job_id = %j.id, law_id = %j.law_id, traject = %traject_ref, "suggest job created");
+    }
+
+    Ok(job)
+}
+
 /// Update the progress field of a running job.
 ///
 /// Used by the enrich worker to report live phase information

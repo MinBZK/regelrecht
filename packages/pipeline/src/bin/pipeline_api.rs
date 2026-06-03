@@ -2,7 +2,7 @@ use axum::routing::{get, post};
 use axum::Router;
 use tower_http::trace::TraceLayer;
 
-use regelrecht_pipeline::api::{bwb_search, harvest, status};
+use regelrecht_pipeline::api::{bwb_search, harvest, status, suggest};
 use regelrecht_pipeline::ApiState;
 
 #[tokio::main]
@@ -50,6 +50,8 @@ async fn main() {
         .route("/harvest", post(harvest::request_harvest))
         .route("/harvest/batch", post(harvest::request_harvest_batch))
         .route("/harvest/status", get(status::harvest_status))
+        .route("/suggest", post(suggest::request_suggest))
+        .route("/suggest/status", get(suggest::suggest_status))
         .route("/health", get(health))
         .layer(TraceLayer::new_for_http())
         .with_state(state);

@@ -9,7 +9,9 @@ pub mod harvest;
 pub mod health;
 pub mod job_queue;
 pub mod law_status;
+pub mod llm;
 pub mod models;
+pub mod suggest;
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
 pub mod worker;

@@ -10,6 +10,7 @@ import { useTrajects } from './composables/useTrajects.js';
 import TrajectMenu from './components/TrajectMenu.vue';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useNotes, useResolvedDraftNotes } from './composables/useNotes.js';
+import { useSuggestions } from './composables/useSuggestions.js';
 import { useDraftNotes } from './composables/useDraftNotes.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import { lastLibraryPath, sectionTarget } from './composables/useLastVisitedRoute.js';
@@ -21,6 +22,7 @@ import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
 import MachineReadable from './components/MachineReadable.vue';
+import SuggestionsPane from './components/SuggestionsPane.vue';
 import ScenarioBuilder from './components/ScenarioBuilder.vue';
 import ExecutionTraceView from './components/ExecutionTraceView.vue';
 import LawGraphView from './components/LawGraphView.vue';
@@ -48,6 +50,9 @@ const editorPanelFlags = [
   // notes can be shown read-only without exposing the (MVP, local-only)
   // creation + export flow.
   ['notes.create', 'Notities aanmaken'],
+  // AI-suggestiepane (aanwijzingen + machine_readable). A real pane, unlike
+  // panel.notes which is a layer over the Tekst pane.
+  ['panel.suggestions', 'Aanwijzingen'],
   ['editor.article_text_edit', 'Tekst bewerken'],
 ];
 
@@ -63,6 +68,7 @@ const VIEW_DEFINITIONS = [
   { id: 'machine', flag: 'panel.machine_readable', label: 'Machine' },
   { id: 'scenario', flag: 'panel.scenario_form', label: "Scenario's" },
   { id: 'yaml', flag: 'panel.yaml_editor', label: 'YAML' },
+  { id: 'suggestions', flag: 'panel.suggestions', label: 'Aanwijzingen' },
 ];
 
 const availableViews = computed(() => VIEW_DEFINITIONS.filter(v => isEnabled(v.flag)));
@@ -217,6 +223,17 @@ const {
   error: notesError,
   reload: reloadNotes,
 } = useNotes(lawId, selectedArticle, activeTrajectRef);
+
+// AI suggestions (aanwijzingen + machine_readable) for the current law,
+// resolved against its text the same way notes are. Polled after a save.
+const {
+  suggestionsForArticle,
+  issues: suggestionIssues,
+  loading: suggestionsLoading,
+  jobState: suggestionJobState,
+  pollStatus: pollSuggestions,
+  markResolved: markSuggestionResolved,
+} = useSuggestions(lawId, selectedArticle, activeTrajectRef);
 
 // Notes are a layer over the Tekst pane, not a separate pane. This toggle is
 // the user's "show notes now" preference; panel.notes (a feature flag) is the
@@ -963,10 +980,39 @@ async function handleLawSave() {
     // Successful save — the dialog flags drop back to false.
     lastSaveTouchedText.value = false;
     lastSaveTouchedMachine.value = false;
+    // A save enqueues background AI-suggestion jobs on the traject branch.
+    // Start polling so the Aanwijzingen pane fills in when they finish. Only
+    // when the pane is enabled; fire-and-forget (poll self-cancels on switch).
+    if (isEnabled('panel.suggestions')) {
+      pollSuggestions();
+    }
   } catch (e) {
     // saveError is surfaced via lawSaveError; log for dev visibility.
     console.warn('saveLaw failed:', e);
   }
+}
+
+// Accept a suggestion: copy the proposed text to the clipboard (so the user can
+// paste it where it belongs), then mark it resolved so the span and list entry
+// disappear. For an `editing` suggestion the body carries "Voorgestelde tekst:
+// …". One-click in-place apply is a deliberate follow-up — this keeps the human
+// in the loop, which the skill contract intends.
+async function handleSuggestionAccept(note) {
+  const body = Array.isArray(note?.body) ? note.body[0] : note?.body;
+  const text = body?.value ?? '';
+  if (text && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      /* clipboard blocked — still resolve below */
+    }
+  }
+  markSuggestionResolved(note);
+}
+
+// Reject a suggestion: just mark it resolved so it stops being shown.
+function handleSuggestionReject(note) {
+  markSuggestionResolved(note);
 }
 
 // Per-pane scoped views of lawSaveError. The error is only visible in the
@@ -1794,6 +1840,17 @@ async function handleActionSave() {
                 ></nldd-code-editor>
                 <div v-if="parseError" class="editor-parse-error-detail">{{ parseError }}</div>
               </nldd-simple-section>
+
+              <!-- AI suggestions (aanwijzingen + machine_readable) -->
+              <SuggestionsPane
+                v-else-if="view === 'suggestions'"
+                :suggestions-for-article="suggestionsForArticle"
+                :issues="suggestionIssues"
+                :loading="suggestionsLoading"
+                :job-state="suggestionJobState"
+                @accept="handleSuggestionAccept"
+                @reject="handleSuggestionReject"
+              />
             </nldd-page>
           </nldd-split-view-pane>
         </nldd-side-by-side-split-view>

@@ -24,6 +24,7 @@ mod feature_flags;
 mod harvest_proxy;
 mod middleware;
 mod state;
+mod suggest_proxy;
 mod traject_corpus;
 mod trajects;
 mod user_settings;
@@ -274,6 +275,14 @@ async fn main() {
         .route(
             "/api/trajects/{traject_ref}/corpus/laws/{law_id}/annotations",
             get(corpus_handlers::get_traject_annotations),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}/suggestions",
+            get(corpus_handlers::get_traject_suggestions),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}/suggestions/status",
+            get(suggest_proxy::proxy_suggest_status),
         )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),

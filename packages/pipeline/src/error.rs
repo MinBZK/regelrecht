@@ -35,6 +35,12 @@ pub enum PipelineError {
     #[error("enrichment error: {0}")]
     Enrich(String),
 
+    #[error("suggestion error: {0}")]
+    Suggest(String),
+
+    #[error("LLM error: {0}")]
+    Llm(#[from] crate::llm::LlmError),
+
     #[error("worker error: {0}")]
     Worker(String),
 
