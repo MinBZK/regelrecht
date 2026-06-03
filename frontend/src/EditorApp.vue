@@ -13,6 +13,7 @@ import { useNotes, useResolvedDraftNotes } from './composables/useNotes.js';
 import { useDraftNotes } from './composables/useDraftNotes.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import { lastLibraryPath, sectionTarget } from './composables/useLastVisitedRoute.js';
+import { groupArticles, findGroupForArticleNumber } from './utils/articleGroups.js';
 import { SUPPORT_EMAIL } from './constants.js';
 import ArticleText from './components/ArticleText.vue';
 import AnnotatedText from './components/AnnotatedText.vue';
@@ -189,6 +190,23 @@ const {
   saveLaw,
   lastSavedPr,
 } = useLaw(route.params.lawId, route.params.articleNumber, route.params.trajectRef);
+
+// Harvested laws can be split to leaf level (`1.e.1°`, `2.4.1.a.1°`), giving
+// many `articles[]` entries per actual article. The library groups these per
+// article; the editor mirrors that so an article is one tab and all its
+// segments stay reachable. Editing/saving still operates on the active leaf
+// segment (`selectedArticleNumber`) — grouping is a navigation layer only.
+const articleGroups = computed(() => groupArticles(articles.value));
+const currentGroup = computed(() =>
+  findGroupForArticleNumber(articleGroups.value, selectedArticleNumber.value) ?? null
+);
+// Segments of the article currently open — drives the segment selector.
+const segmentsInArticle = computed(() => currentGroup.value?.segments ?? []);
+// The article-level number for the open segment (e.g. `2.4` for `2.4.1.a.1°`),
+// used for the tab identity/label. Falls back to the raw number when ungrouped.
+const currentArticleNumber = computed(() =>
+  currentGroup.value?.number ?? (selectedArticleNumber.value != null ? String(selectedArticleNumber.value) : null)
+);
 
 // When the active traject changes (router.push to /editor/{otherRef}/…)
 // the URL stays on the same component; refresh the corpus index and
@@ -535,7 +553,10 @@ function libraryRouteFor(lawIdVal) {
 if (!route.params.lawId) {
   const last = loadSavedActiveTab();
   if (last?.lawId) {
-    router.replace(editorRouteFor(last.lawId, last.articleNumber || undefined));
+    // Route on the leaf segment so the editor lands on a real `articles[]`
+    // entry — the tab's `articleNumber` may be a group number (e.g. `2.4`)
+    // that isn't itself a segment. Old saved tabs lack `segment`; fall back.
+    router.replace(editorRouteFor(last.lawId, last.segment || last.articleNumber || undefined));
   }
 }
 
@@ -555,17 +576,28 @@ function findTab(lawIdVal, articleNumber) {
   return openTabs.value.find(t => t.lawId === lawIdVal && t.articleNumber === String(articleNumber));
 }
 
-// Add tab when initial law loads
+// Add/refresh the tab when an article loads. Tabs are keyed by the ARTICLE
+// (group) number so a split article is one tab; the tab remembers which
+// segment is active so the tab "follows" the segment selector instead of
+// spawning a tab per leaf.
 watch([() => lawId.value, selectedArticle], ([id, article]) => {
   if (!id || !article) return;
-  const num = String(article.number);
-  if (!findTab(id, num)) {
+  const seg = String(article.number);
+  const groupNum = currentArticleNumber.value ?? seg;
+  const existing = findTab(id, groupNum);
+  if (existing) {
+    if (existing.segment !== seg) {
+      openTabs.value = openTabs.value.map(t =>
+        (t.lawId === id && t.articleNumber === groupNum) ? { ...t, segment: seg } : t);
+      saveTabs(openTabs.value);
+    }
+  } else {
     const MAX_TABS = 20;
-    const tabs = [...openTabs.value, { lawId: id, articleNumber: num }];
+    const tabs = [...openTabs.value, { lawId: id, articleNumber: groupNum, segment: seg }];
     openTabs.value = tabs.length > MAX_TABS ? tabs.slice(-MAX_TABS) : tabs;
     saveTabs(openTabs.value);
   }
-  activeTab.value = { lawId: id, articleNumber: num };
+  activeTab.value = { lawId: id, articleNumber: groupNum, segment: seg };
   saveActiveTab(activeTab.value);
   if (lawName.value) lawNames.value = { ...lawNames.value, [id]: lawName.value };
 });
@@ -587,17 +619,32 @@ async function selectTab(tab) {
   if (activeAction.value) {
     handleActionClose();
   }
+  // Open the tab's remembered segment — a real `articles[]` entry. Old saved
+  // tabs lack `segment`, so fall back to `articleNumber`.
+  const seg = tab.segment ?? tab.articleNumber;
   if (tab.lawId === lawId.value) {
-    selectedArticleNumber.value = tab.articleNumber;
+    selectedArticleNumber.value = seg;
   } else {
-    await switchLaw(tab.lawId, tab.articleNumber);
+    await switchLaw(tab.lawId, seg);
     if (gen !== switchGeneration) return; // stale, another switch started
     lawNames.value = { ...lawNames.value, [tab.lawId]: lawName.value };
   }
   // Sync the URL so deep-linking and browser back/forward stay in step.
   // `replace` (not `push`) keeps history clean — a tab switch isn't
   // navigation the user wants to undo with the back button.
-  router.replace(editorRouteFor(tab.lawId, tab.articleNumber));
+  router.replace(editorRouteFor(tab.lawId, seg));
+}
+
+// Switch which segment of the open article is being edited. Same-article move,
+// so the tab is reused (the tab-watch updates its remembered segment) rather
+// than a new tab opening. Mirrors a tab switch otherwise (drop a mid-edit
+// action snapshot; existing per-article edit-state behaviour applies).
+function selectSegment(segNum) {
+  const num = String(segNum);
+  if (num === String(selectedArticleNumber.value)) return;
+  if (activeAction.value) handleActionClose();
+  selectedArticleNumber.value = num;
+  router.replace(editorRouteFor(lawId.value, num));
 }
 
 // Browser back/forward (or any external navigation) — pull state from
@@ -773,7 +820,7 @@ watch(selectedArticle, (article) => {
 // fallback but it raced with this effect on tab/article switches.
 watchEffect(() => {
   const detail = [];
-  if (selectedArticle.value) detail.push(`Art. ${selectedArticle.value.number}`);
+  if (currentArticleNumber.value) detail.push(`Art. ${currentArticleNumber.value}`);
   if (lawName.value) detail.push(lawName.value);
   document.title = detail.length > 0
     ? `Editor: ${detail.join(' · ')} · RegelRecht`
@@ -1422,6 +1469,31 @@ async function handleActionSave() {
             >
             </nldd-document-tab-bar-item>
           </nldd-document-tab-bar>
+          <!-- Segment selector — only for split articles (harvested to leaf
+               level). Lets the user reach/edit every onderdeel/lid of the open
+               article without each becoming its own tab. Editing still targets
+               the selected segment (selectedArticleNumber). -->
+          <template v-if="segmentsInArticle.length > 1">
+            <nldd-spacer size="8"></nldd-spacer>
+            <nldd-button
+              id="segment-select-btn"
+              size="md"
+              expandable
+              accessible-label="Kies een onderdeel van dit artikel"
+              :text="`Onderdeel ${selectedArticleNumber}`"
+              popovertarget="segment-select-menu"
+            ></nldd-button>
+            <nldd-menu id="segment-select-menu" anchor="segment-select-btn">
+              <nldd-menu-item
+                v-for="seg in segmentsInArticle"
+                :key="seg.number"
+                type="radio"
+                :selected="String(seg.number) === String(selectedArticleNumber) || undefined"
+                :text="String(seg.number)"
+                @select="selectSegment(seg.number)"
+              ></nldd-menu-item>
+            </nldd-menu>
+          </template>
         </nldd-container>
       </nldd-split-view-pane>
 
