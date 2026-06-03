@@ -283,7 +283,7 @@ function handleKeydown(e) {
           <nldd-button
             variant="primary"
             size="md"
-            full-width
+            width="full"
             :text="submittingCreate ? 'Bezig…' : '+ Nieuw document'"
             :disabled="submittingCreate || undefined"
             @click="submitCreate"
@@ -295,12 +295,18 @@ function handleKeydown(e) {
 
   <!-- Active-document editor — modeless, movable nldd-window
        (storybook components-layout-window). The title bar is the drag
-       handle; the law text stays visible behind it. -->
+       handle; the law text stays visible behind it.
+       `top`/`right` are required: a modeless dialog is position:absolute and
+       would otherwise center within the (tall) editor document, landing
+       below the fold. Pinning it to the top-right corner opens it in view;
+       being movable, the user can reposition from there. -->
   <Teleport to="body">
     <nldd-window
       ref="windowEl"
       modeless
       movable
+      top="72px"
+      right="24px"
       width="max(280px, 40vw)"
       accessible-label="Document bewerken"
       @close="closeWindow"
@@ -369,7 +375,7 @@ function handleKeydown(e) {
           <nldd-button
             variant="primary"
             size="md"
-            full-width
+            width="full"
             :text="saving ? 'Opslaan…' : 'Opslaan (⌘S)'"
             :disabled="saving || !currentPath || undefined"
             @click="handleSave"
