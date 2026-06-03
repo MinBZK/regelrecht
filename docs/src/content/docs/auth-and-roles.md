@@ -229,6 +229,88 @@ without OIDC configured**: the warning is the only safeguard, and the
 admin-tier routes (corpus reload, feature-flag toggles, job deletion, source
 sync) are fully open in this mode.
 
+### Local SSO login (dev/local, real Keycloak)
+
+To test the *real* login + RBAC flow locally — instead of the auth-disabled
+bypass above — you can point the editor at a Keycloak realm and log in with a
+real account over `http://localhost`. No code change is required; the auth
+layer is driven entirely by environment variables.
+
+**How the local flow fits together**
+
+- The editor frontend runs on Vite at `:3000` and proxies `/api`, `/auth`,
+  `/health` to the editor-api on `:8000`. The browser talks only to
+  `http://localhost:3000`.
+- The redirect URI is built as `${BASE_URL}/auth/callback`. With
+  `BASE_URL=http://localhost:3000` it becomes
+  `http://localhost:3000/auth/callback`, which Vite proxies to the backend.
+- When OIDC is enabled the session uses a **PostgreSQL** store, so
+  `DATABASE_URL` is required (the `just dev` Postgres works).
+
+**Keycloak configuration (one-time, realm admin)**
+
+Configure the OIDC client the editor will use (re-use the existing `editor`
+client, or create a dedicated `editor-local` client — adding a `localhost`
+redirect to a production client is a minor token-leakage footgun, so a separate
+dev client is the cleaner choice):
+
+1. **Client type / capability**: *Client authentication* = **On** (a
+   confidential client — the editor sends a client secret, and startup fails if
+   `OIDC_CLIENT_SECRET` is empty). Enable *Standard flow* (Authorization Code).
+   PKCE (S256) is sent by the app and accepted by Keycloak out of the box; you
+   may optionally enforce it under *Advanced → Proof Key for Code Exchange*.
+2. **Valid redirect URIs**: add exactly `http://localhost:3000/auth/callback`
+   (scheme + host + port + path must match the value the app sends).
+3. **Web origins**: add `http://localhost:3000` (or `+` to derive from the
+   redirect URIs) so the browser's CORS checks pass.
+4. **Client scopes**: ensure `openid`, `email`, and `profile` are granted — the
+   app requests these three scopes.
+5. **Realm-roles ID-token mapper**: add a *User Realm Role* mapper on the client
+   (or its dedicated scope) with *Add to ID token* = On. Keycloak only puts
+   `realm_access.roles` in the access token by default; without this mapper the
+   app falls back to parsing the access token (noisier, but still works).
+6. **Roles on your account**: grant your user at least `editor-reader` (the
+   login gate set by `OIDC_REQUIRED_ROLE`). Without it you can authenticate but
+   get **403** on every API call. See the role hierarchy above for higher tiers.
+7. Note the **discovery URL**
+   (`https://<host>/realms/<realm>/.well-known/openid-configuration`), the
+   **client ID**, and the **client secret** (Credentials tab) for the env file.
+
+**Run it**
+
+Copy `.env.editor-local.example` to `.env.editor-local`, fill in the Keycloak
+values, then:
+
+```bash
+just dev            # brings up the dev Postgres (stop/skip the admin API — it
+                    # also binds :8000 and collides with editor-api)
+just editor-sso     # editor-api on :8000 with .env.editor-local loaded
+# in another shell:
+cd frontend && npx vite   # editor frontend on :3000
+```
+
+Open `http://localhost:3000` in **Chrome or Firefox** and log in. The session
+cookie is marked `Secure`; Chrome 89+/Firefox send Secure cookies over
+`http://localhost`, but **Safari does not** — there the OIDC callback fails with
+a CSRF/nonce mismatch. For Safari, front the editor with an `https://localhost`
+TLS proxy instead.
+
+On a successful start the editor-api log shows
+`using OIDC_DISCOVERY_URL for issuer: …` and
+`session store ready (PostgreSQL-backed)` (not the "OIDC is DISABLED" warning).
+
+**Running inside a dev container** (Docker Desktop on the host): published
+container ports live on the Docker host, not the container's `localhost`, so
+two values change:
+
+- `DATABASE_URL` host → `host.docker.internal` (e.g.
+  `postgres://regelrecht:regelrecht_dev@host.docker.internal:5433/regelrecht_pipeline`),
+  the same reason `TESTCONTAINERS_HOST_OVERRIDE` is needed for tests.
+- Use a host-mapped port for the browser-facing frontend (e.g. `7300`):
+  `npx vite --port 7300`, `BASE_URL=http://localhost:7300`, and a matching
+  `http://localhost:7300/auth/callback` redirect URI in Keycloak. The editor-api
+  stays on `:8000` (container-internal; only Vite needs to be reachable).
+
 ## Programmatic access (admin API key)
 
 The harvester-admin service accepts a bearer API key on **GET** and **DELETE**

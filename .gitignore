@@ -49,6 +49,10 @@ corpus-auth.yaml
 
 # Environment
 .env
+.env.editor-local
+
+# Keycloak client exports (local dev only — may contain secrets)
+dev/keycloak/
 
 # Gemini CLI
 .gemini/*
