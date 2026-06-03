@@ -238,14 +238,16 @@ layer is driven entirely by environment variables.
 
 **How the local flow fits together**
 
-- The editor frontend runs on Vite at `:3000` and proxies `/api`, `/auth`,
-  `/health` to the editor-api on `:8000`. The browser talks only to
-  `http://localhost:3000`.
+- The editor frontend runs on Vite (started with `--port 7300`) and proxies
+  `/api`, `/auth`, `/health` to the editor-api on `:8000`. The browser talks
+  only to `http://localhost:7300`. (Vite's config default is `:3000`; we use a
+  host-mapped port — see *Ports and DB host* below.)
 - The redirect URI is built as `${BASE_URL}/auth/callback`. With
-  `BASE_URL=http://localhost:3000` it becomes
-  `http://localhost:3000/auth/callback`, which Vite proxies to the backend.
+  `BASE_URL=http://localhost:7300` it becomes
+  `http://localhost:7300/auth/callback`, which Vite proxies to the backend.
 - When OIDC is enabled the session uses a **PostgreSQL** store, so
-  `DATABASE_URL` is required (the `just dev` Postgres works).
+  `DATABASE_URL` is required (the `just dev` Postgres works; from a dev
+  container reach it via `host.docker.internal`).
 
 **Keycloak configuration (one-time, realm admin)**
 
@@ -260,10 +262,12 @@ URI per app port:
    `OIDC_CLIENT_SECRET` is empty). Enable *Standard flow* (Authorization Code).
    PKCE (S256) is sent by the app and accepted by Keycloak out of the box; you
    may optionally enforce it under *Advanced → Proof Key for Code Exchange*.
-2. **Valid redirect URIs**: add exactly `http://localhost:3000/auth/callback`
-   (scheme + host + port + path must match the value the app sends).
-3. **Web origins**: add `http://localhost:3000` (or `+` to derive from the
-   redirect URIs) so the browser's CORS checks pass.
+2. **Valid redirect URIs**: add exactly `http://localhost:7300/auth/callback`
+   for the editor — and one per other local app, e.g.
+   `http://localhost:7400/auth/callback` for harvester-admin. Scheme + host +
+   port + path must match the value the app sends.
+3. **Web origins**: add `http://localhost:7300` (and `http://localhost:7400`),
+   or `+` to derive from the redirect URIs, so the browser's CORS checks pass.
 4. **Client scopes**: ensure `openid`, `email`, and `profile` are granted — the
    app requests these three scopes.
 5. **Realm-roles ID-token mapper**: add a *User Realm Role* mapper on the client
@@ -284,16 +288,15 @@ values, then:
 
 ```bash
 # 1. Postgres only. (Don't use `just dev` here — it also starts the admin API
-#    on :8000 and its own Vite on :3000, both of which collide with the steps
-#    below.)
+#    on :8000, which collides with editor-api below.)
 docker compose -f docker-compose.dev.yml -f dev/compose.native.yaml up -d postgres
 # 2. editor-api on :8000 with .env.editor-local loaded:
 just editor-sso
-# 3. in another shell — editor frontend on :3000:
-cd frontend && npx vite
+# 3. in another shell — editor frontend on the host-mapped port 7300:
+cd frontend && npx vite --port 7300
 ```
 
-Open `http://localhost:3000` in **Chrome or Firefox** and log in. The session
+Open `http://localhost:7300` in **Chrome or Firefox** and log in. The session
 cookie is marked `Secure`; Chrome 89+/Firefox send Secure cookies over
 `http://localhost`, but **Safari does not** — there the OIDC callback fails with
 a CSRF/nonce mismatch. For Safari, front the editor with an `https://localhost`
@@ -303,17 +306,20 @@ On a successful start the editor-api log shows
 `using OIDC_DISCOVERY_URL for issuer: …` and
 `session store ready (PostgreSQL-backed)` (not the "OIDC is DISABLED" warning).
 
-**Running inside a dev container** (Docker Desktop on the host): published
-container ports live on the Docker host, not the container's `localhost`, so
-two values change:
+**Ports and DB host.** The values above assume a dev container backed by Docker
+Desktop (the common setup here):
 
-- `DATABASE_URL` host → `host.docker.internal` (e.g.
-  `postgres://regelrecht:regelrecht_dev@host.docker.internal:5433/regelrecht_pipeline`),
-  the same reason `TESTCONTAINERS_HOST_OVERRIDE` is needed for tests.
-- Use a host-mapped port for the browser-facing frontend (e.g. `7300`):
-  `npx vite --port 7300`, `BASE_URL=http://localhost:7300`, and a matching
-  `http://localhost:7300/auth/callback` redirect URI in Keycloak. The editor-api
-  stays on `:8000` (container-internal; only Vite needs to be reachable).
+- `DATABASE_URL` uses `host.docker.internal` — published container ports live on
+  the Docker host, not the container's `localhost` (the same reason
+  `TESTCONTAINERS_HOST_OVERRIDE` is needed for tests).
+- The frontend uses a **host-mapped port** in the 7100–7300 range (`7300`)
+  because only mapped ports are reachable from the browser; `3000`/`8000` are
+  not forwarded. The editor-api stays on `:8000` (container-internal; only Vite
+  needs to be reachable).
+
+On a plain Linux host neither applies: use `localhost` for the DB and any free
+port (e.g. `3000`) for `BASE_URL` and Vite, with a matching redirect URI in
+Keycloak.
 
 ## Programmatic access (admin API key)
 
