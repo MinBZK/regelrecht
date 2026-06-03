@@ -72,6 +72,14 @@ describe("groupArticles — besluit_zorgverzekering shape", () => {
     expect(groups.find((g) => g.number === "Aanhef").label).toBe("Aanhef");
     expect(groups.find((g) => g.number === "2.4").label).toBe("Artikel 2.4");
   });
+
+  it("keys anchor-grouped articles on the url fragment (drives list :selected)", () => {
+    const groups = groupArticles(articles);
+    // The list's selected-state compares group.key === selectedGroup.key, so
+    // the key shape is part of the contract.
+    expect(groups.find((g) => g.number === "2.4").key).toBe("#Artikel2.4");
+    expect(groups.find((g) => g.number === "Aanhef").key).toBe("#ArtikelAanhef");
+  });
 });
 
 describe("groupArticles — genuine dotted articles are not over-grouped", () => {
