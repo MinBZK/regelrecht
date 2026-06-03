@@ -2,9 +2,7 @@
 import { ref, computed, shallowRef, nextTick, watch, watchEffect } from 'vue';
 import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
 import yaml from 'js-yaml';
-import ArticleText from './components/ArticleText.vue';
-import MachineReadable from './components/MachineReadable.vue';
-import YamlView from './components/YamlView.vue';
+import ArticleGroup from './components/ArticleGroup.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
 import TrajectMenu from './components/TrajectMenu.vue';
@@ -14,6 +12,7 @@ import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import { useTrajects } from './composables/useTrajects.js';
 import { lawsListUrl, lawUrl } from './composables/corpusUrls.js';
+import { groupArticles, findGroupForArticleNumber } from './utils/articleGroups.js';
 import { SUPPORT_EMAIL } from './constants.js';
 import { lastEditorPath, sectionTarget } from './composables/useLastVisitedRoute.js';
 
@@ -189,19 +188,40 @@ const indexedLawName = computed(() => {
   return law ? displayName(law) : humanizeLawId(selectedLawId.value);
 });
 
-const selectedArticle = computed(() => {
-  if (!selectedArticleNumber.value) return null;
-  return articles.value.find(
-    (a) => String(a.number) === String(selectedArticleNumber.value)
-  ) ?? null;
-});
+// Harvested laws can be split to leaf level (`1.e.1°`, `2.4.1.a.1°`), giving
+// many `articles[]` entries per actual article. The list and detail group those
+// segments per article (keyed on the `#Artikel…` url anchor); see articleGroups.js.
+const articleGroups = computed(() => groupArticles(articles.value));
+
+// The selected article as a group of its segments. Resolves both the canonical
+// article number (`2.4`) and legacy deep-links to a leaf segment (`2.4.1.a.1°`).
+const selectedGroup = computed(() =>
+  findGroupForArticleNumber(articleGroups.value, selectedArticleNumber.value) ?? null
+);
+
+// First segment of the selected group — the concrete `articles[]` entry to open
+// in the (still flat) editor, since a group number like `2.4` need not itself be
+// an entry.
+const firstSegment = computed(() => selectedGroup.value?.segments?.[0] ?? null);
+
+// Segment whose machine_readable owns the currently open action, so the
+// ActionSheet resolves variables against the right segment.
+const activeActionArticle = ref(null);
 
 // True when the URL points at an article that doesn't exist in the
 // loaded law. Distinct from "no article selected" (where no article
 // number is in the URL).
 const articleNotFound = computed(() =>
-  !!(selectedLaw.value && selectedArticleNumber.value && !selectedArticle.value)
+  !!(selectedLaw.value && selectedArticleNumber.value && !selectedGroup.value)
 );
+
+// Canonicalize a deep-linked leaf number (`1.e.1°`) to its grouped article
+// number (`1`) so the URL matches the highlighted list item. selectArticle
+// no-ops when already canonical, so this can't loop.
+watch([selectedGroup, selectedArticleNumber], ([group, number]) => {
+  if (!group || number == null) return;
+  if (String(group.number) !== String(number)) selectArticle(group.number);
+});
 
 // 404 means the law isn't in the active traject's corpus; the error UI shows a traject-specific message.
 const lawErrorIs404 = computed(() => lawError.value?.status === 404);
@@ -217,7 +237,7 @@ const lawErrorIs404 = computed(() => lawError.value?.status === 404);
 // fallback but it raced with this effect on tab/article switches.
 watchEffect(() => {
   const detail = [];
-  if (selectedArticle.value) detail.push(`Art. ${selectedArticle.value.number}`);
+  if (selectedGroup.value) detail.push(`Art. ${selectedGroup.value.number}`);
   // Fall back to indexedLawName so the title reflects the URL even when the
   // law itself failed to load.
   const name = lawName.value || indexedLawName.value;
@@ -367,19 +387,31 @@ function retryLoadCorpus() {
   loadIndex();
 }
 
+// ArticleGroup forwards the action plus the segment it belongs to, so the
+// ActionSheet resolves variables against the correct segment's machine_readable.
+function onOpenAction({ action, article }) {
+  activeAction.value = action;
+  activeActionArticle.value = article ?? null;
+}
+
 function editInEditor() {
-  if (!selectedLawId.value || !selectedArticleNumber.value) return;
+  // The editor is still per-segment, so open the segment that owns the action
+  // (falling back to the group's first segment) rather than the group number.
+  const target = activeActionArticle.value?.number ?? firstSegment.value?.number;
+  if (!selectedLawId.value || !target) return;
   activeAction.value = null;
   // Carry the active traject so "Bewerken" opens the editable
   // editor-traject view instead of the read-only editor.
-  router.push(editorRouteFor(selectedLawId.value, selectedArticleNumber.value));
+  router.push(editorRouteFor(selectedLawId.value, String(target)));
 }
 
 // "Bewerken" button in the detail pane: same traject-aware target as
 // editInEditor, exposed as a location + href so the anchor is real (and
 // middle-click / open-in-new-tab works) while the click stays SPA.
 const editLawTarget = computed(() =>
-  editorRouteFor(selectedLawId.value, selectedArticleNumber.value || undefined),
+  // Open the group's first concrete segment in the (flat) editor — the group
+  // number (`2.4`) need not be an `articles[]` entry on its own.
+  editorRouteFor(selectedLawId.value, firstSegment.value?.number ?? selectedArticleNumber.value ?? undefined),
 );
 const editLawHref = computed(() => router.resolve(editLawTarget.value).href);
 
@@ -687,14 +719,14 @@ watch(activeTrajectRef, () => {
                 <nldd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een wet"></nldd-inline-dialog>
                 <nldd-list v-else variant="simple">
                   <nldd-list-item
-                    v-for="article in articles"
-                    :key="article.number"
+                    v-for="group in articleGroups"
+                    :key="group.key"
                     size="md"
                     type="button"
-                    :selected="String(article.number) === String(selectedArticleNumber) || undefined"
-                    @click="selectArticle(article.number)"
+                    :selected="selectedGroup && group.key === selectedGroup.key || undefined"
+                    @click="selectArticle(group.number)"
                   >
-                    <nldd-text-cell :text="`Artikel ${article.number}`" :supporting-text="articleDescription(article)">
+                    <nldd-text-cell :text="group.label" :supporting-text="articleDescription(group.segments[0])">
                     </nldd-text-cell>
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <nldd-icon-cell size="20">
@@ -707,14 +739,14 @@ watch(activeTrajectRef, () => {
           </nldd-split-view-pane>
 
           <!-- Main: Artikel Detail -->
-          <nldd-split-view-pane slot="main" :has-content="selectedArticle || lawError || articleNotFound || indexError ? true : undefined">
+          <nldd-split-view-pane slot="main" :has-content="selectedGroup || lawError || articleNotFound || indexError ? true : undefined">
             <nldd-page sticky-header>
               <nldd-top-title-bar
                 slot="header"
-                :text="selectedArticle ? `Artikel ${selectedArticle.number}` : undefined"
-                :supporting-text="selectedArticle ? lawName : undefined"
+                :text="selectedGroup ? selectedGroup.label : undefined"
+                :supporting-text="selectedGroup ? lawName : undefined"
                 :back-text="indexError ? undefined : (lawError ? LIBRARY_HOME_BACK_TEXT : (lawName || 'Terug'))"
-                :collapse-anchor="selectedArticle ? 'article-titel' : undefined"
+                :collapse-anchor="selectedGroup ? 'article-titel' : undefined"
               ></nldd-top-title-bar>
 
               <nldd-simple-section width="full" v-if="indexError">
@@ -765,13 +797,13 @@ watch(activeTrajectRef, () => {
                   <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
                 </nldd-inline-dialog>
               </nldd-simple-section>
-              <nldd-simple-section width="full" v-else-if="!selectedArticle">
+              <nldd-simple-section width="full" v-else-if="!selectedGroup">
                 <nldd-inline-dialog text="Selecteer een artikel"></nldd-inline-dialog>
               </nldd-simple-section>
               <template v-else>
                 <nldd-simple-section width="full">
                   <nldd-title id="article-titel" size="3">
-                    <h3>Artikel {{ selectedArticle.number }}</h3>
+                    <h3>{{ selectedGroup.label }}</h3>
                     <span slot="subtitle">{{ lawName }}</span>
                   </nldd-title>
                   <nldd-spacer size="16"></nldd-spacer>
@@ -788,11 +820,13 @@ watch(activeTrajectRef, () => {
                     </nldd-toolbar-item>
                   </nldd-toolbar>
                   <nldd-spacer size="24"></nldd-spacer>
-                  <KeepAlive>
-                    <ArticleText v-if="detailView === 'tekst'" :article="selectedArticle" centered />
-                    <MachineReadable v-else-if="detailView === 'machine'" :article="selectedArticle" @open-action="activeAction = $event" />
-                    <YamlView v-else-if="detailView === 'yaml'" :article="selectedArticle" />
-                  </KeepAlive>
+                  <ArticleGroup
+                    :segments="selectedGroup.segments"
+                    :view="detailView"
+                    :traject-ref="activeTrajectRef"
+                    centered
+                    @open-action="onOpenAction"
+                  />
                 </nldd-simple-section>
               </template>
             </nldd-page>
@@ -858,7 +892,7 @@ watch(activeTrajectRef, () => {
 
   <!-- LibraryApp is a read-only browser; ActionSheet is mounted without editable
        so the output field is hidden and the footer button just closes the sheet. -->
-  <ActionSheet :action="activeAction" :article="selectedArticle" :editable="false" @close="activeAction = null" @save="activeAction = null" @edit="editInEditor" />
+  <ActionSheet :action="activeAction" :article="activeActionArticle || firstSegment" :editable="false" @close="activeAction = null" @save="activeAction = null" @edit="editInEditor" />
   <SearchPopover
     ref="searchPopoverRef"
     :laws="laws"
