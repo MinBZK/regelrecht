@@ -21,7 +21,9 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use regelrecht_corpus::{CorpusClient, CorpusConfig};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::error::{PipelineError, Result};
 use crate::llm::{LlmInvocation, LlmProvider, LlmRunner};
@@ -278,6 +280,52 @@ pub fn suggestions_sidecar_path(law_id: &str) -> String {
 /// Path the skill writes its JSON findings to, inside the repo checkout.
 fn skill_output_path(repo_path: &Path, law_id: &str, kind: SuggestKind) -> PathBuf {
     repo_path.join(format!(".suggest-{}-{}.json", kind.slug(), law_id))
+}
+
+/// Create a `CorpusClient` checked out on the traject branch for a suggest job.
+///
+/// Unlike enrich (which works on `enrich/{provider}` and falls back to
+/// `development`), suggestions run on the traject's own branch — the editor just
+/// saved the law there, so the branch is guaranteed to exist. Sparse-checks out
+/// the law directory, `features/` (the skills read example features), and the
+/// law's `annotations/` directory so an existing sidecar can be overwritten in
+/// place. A per-job checkout dir keeps concurrent suggest jobs isolated.
+pub async fn create_suggest_corpus(
+    base_config: &CorpusConfig,
+    branch: &str,
+    job_id: Uuid,
+    yaml_path: &str,
+    law_id: &str,
+) -> Result<CorpusClient> {
+    let mut config = base_config.clone();
+    config.branch = branch.into();
+
+    let law_dir = Path::new(yaml_path)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .filter(|d| !d.is_empty());
+
+    let mut sparse = vec!["features".to_string(), format!("annotations/{law_id}")];
+    if let Some(dir) = law_dir {
+        sparse.push(dir);
+    }
+    config.sparse_paths = Some(sparse);
+
+    // Separate checkout dir per branch + job so concurrent suggest jobs (and the
+    // enrich worker) never clobber each other's working tree.
+    let dir_name = format!("suggest-{}-{}", branch.replace('/', "-"), job_id);
+    let base_dir = config
+        .repo_path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("/tmp"));
+    config.repo_path = base_dir.join(dir_name);
+
+    let mut client = CorpusClient::new(config);
+    client.ensure_repo().await?;
+    client.checkout_from_branch(branch, &[yaml_path]).await?;
+
+    Ok(client)
 }
 
 /// Build the prompt that drives the skill for a given kind.

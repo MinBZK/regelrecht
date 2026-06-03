@@ -17,6 +17,7 @@ use crate::harvest::{execute_harvest, HarvestPayload, HarvestResult, MAX_HARVEST
 use crate::job_queue::{self, CreateJobRequest};
 use crate::law_status;
 use crate::models::{JobType, LawStatusValue, Priority};
+use crate::suggest::{create_suggest_corpus, execute_suggest, SuggestConfig, SuggestPayload};
 
 /// Run the harvest worker loop.
 ///
@@ -1091,6 +1092,233 @@ async fn handle_enrich_exhausted_or_retry(
         }
         Err(e) => {
             tracing::warn!(error = %e, law_id = %law_id, "failed to increment enrich fail count");
+        }
+    }
+}
+
+/// Run the suggest worker loop.
+///
+/// Polls the job queue for editor-suggestion jobs (both kinds) and runs them.
+/// Designed to run alongside the enrich worker in the same binary so no new ZAD
+/// component is needed. Suggestions are advisory: they write an annotation
+/// sidecar to the traject branch and never touch the law lifecycle. Graceful
+/// shutdown via SIGTERM/SIGINT; an in-flight job runs to completion.
+pub async fn run_suggest_worker(config: WorkerConfig) -> Result<()> {
+    let pipeline_config = config.pipeline_config();
+    let pool = db::create_pool(&pipeline_config).await?;
+    db::ensure_schema(&pool).await?;
+
+    let suggest_config = SuggestConfig::from_env();
+
+    let repo_path = config
+        .corpus_config
+        .as_ref()
+        .map(|c| c.repo_path.clone())
+        .unwrap_or_else(|| config.output_dir.clone());
+
+    tracing::info!(
+        repo_path = %repo_path.display(),
+        provider = %suggest_config.provider.name(),
+        poll_interval = ?config.poll_interval,
+        job_timeout = ?config.job_timeout,
+        "starting suggest worker"
+    );
+
+    let mut sigterm = signal(SignalKind::terminate())
+        .map_err(|e| PipelineError::Worker(format!("failed to register SIGTERM handler: {e}")))?;
+
+    let mut current_interval = std::time::Duration::ZERO;
+
+    loop {
+        tokio::select! {
+            biased;
+
+            _ = tokio::signal::ctrl_c() => {
+                tracing::info!("received SIGINT, stopping suggest worker");
+                break;
+            }
+            _ = sigterm.recv() => {
+                tracing::info!("received SIGTERM, stopping suggest worker");
+                break;
+            }
+            _ = tokio::time::sleep(current_interval) => {}
+        }
+
+        if let Err(e) = job_queue::reap_orphaned_jobs(&pool, config.orphan_timeout).await {
+            tracing::warn!(error = %e, "failed to reap orphaned jobs");
+        }
+
+        match process_next_suggest_job(
+            &pool,
+            &repo_path,
+            &suggest_config,
+            config.corpus_config.as_ref(),
+            config.job_timeout,
+        )
+        .await
+        {
+            Ok(true) => {
+                current_interval = config.poll_interval;
+            }
+            Ok(false) => {
+                current_interval = (current_interval * 2)
+                    .max(config.poll_interval)
+                    .min(config.max_poll_interval);
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "error processing suggest job");
+                current_interval = (current_interval * 2)
+                    .max(config.poll_interval)
+                    .min(config.max_poll_interval);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Claim and process the next available suggest job of either kind.
+///
+/// Returns `Ok(true)` if a job was processed, `Ok(false)` if none was available.
+async fn process_next_suggest_job(
+    pool: &PgPool,
+    repo_path: &Path,
+    suggest_config: &SuggestConfig,
+    corpus_config: Option<&CorpusConfig>,
+    job_timeout: Duration,
+) -> Result<bool> {
+    // Try both suggest kinds; guidelines first (cheaper, read-only).
+    let job = match job_queue::claim_job(pool, Some(JobType::SuggestGuidelines)).await? {
+        Some(job) => job,
+        None => match job_queue::claim_job(pool, Some(JobType::SuggestMachineReadable)).await? {
+            Some(job) => job,
+            None => return Ok(false),
+        },
+    };
+
+    let payload: SuggestPayload = match &job.payload {
+        Some(p) => match serde_json::from_value(p.clone()) {
+            Ok(parsed) => parsed,
+            Err(e) => {
+                tracing::error!(job_id = %job.id, error = %e, "invalid suggest payload");
+                let error_json =
+                    serde_json::json!({ "error": format!("invalid suggest payload: {e}") });
+                let _ = job_queue::fail_job(pool, job.id, Some(error_json)).await;
+                return Ok(true);
+            }
+        },
+        None => {
+            tracing::error!(job_id = %job.id, "suggest job has no payload");
+            let error_json = serde_json::json!({ "error": "suggest job requires a payload" });
+            let _ = job_queue::fail_job(pool, job.id, Some(error_json)).await;
+            return Ok(true);
+        }
+    };
+
+    tracing::info!(
+        job_id = %job.id,
+        law_id = %job.law_id,
+        kind = payload.kind.slug(),
+        traject = %payload.traject_ref,
+        "processing suggest job"
+    );
+
+    // Check out the traject branch (where the editor just saved the law).
+    let suggest_corpus = if let Some(base_config) = corpus_config {
+        match create_suggest_corpus(
+            base_config,
+            &payload.traject_branch,
+            job.id,
+            &payload.yaml_path,
+            &payload.law_id,
+        )
+        .await
+        {
+            Ok(client) => Some(client),
+            Err(e) => {
+                tracing::error!(error = %e, branch = %payload.traject_branch, "failed to check out traject branch for suggestions");
+                let error_json = serde_json::json!({ "error": format!("checkout failed: {e}") });
+                let _ = job_queue::fail_job(pool, job.id, Some(error_json)).await;
+                return Ok(true);
+            }
+        }
+    } else {
+        None
+    };
+
+    let effective_repo = suggest_corpus
+        .as_ref()
+        .map(|c| c.repo_path().to_path_buf())
+        .unwrap_or_else(|| repo_path.to_path_buf());
+
+    // Make the baked-in skills available to the LLM (same mechanism as enrich).
+    if let Err(e) = crate::enrich::ensure_skills(&effective_repo).await {
+        tracing::warn!(error = %e, "failed to set up skill symlinks");
+    }
+
+    // Keep the LLM timeout inside the job timeout so the child is killed cleanly.
+    let mut bounded_config = suggest_config.clone();
+    if bounded_config.timeout >= job_timeout {
+        bounded_config.timeout = job_timeout.saturating_sub(Duration::from_secs(30));
+    }
+
+    let created = chrono::Utc::now().to_rfc3339();
+    let outcome = tokio::time::timeout(
+        job_timeout,
+        execute_suggest(&payload, &effective_repo, &bounded_config, Some(created)),
+    )
+    .await;
+
+    match outcome {
+        Err(_elapsed) => {
+            tracing::error!(job_id = %job.id, timeout = ?job_timeout, "suggest job timed out");
+            let error_json = serde_json::json!({
+                "error": format!("job timed out after {}s", job_timeout.as_secs())
+            });
+            let _ = job_queue::fail_job(pool, job.id, Some(error_json)).await;
+            Ok(true)
+        }
+        Ok(Err(e)) => {
+            tracing::error!(job_id = %job.id, error = %e, "suggest job failed");
+            let error_json = serde_json::json!({ "error": e.to_string() });
+            let _ = job_queue::fail_job(pool, job.id, Some(error_json)).await;
+            Ok(true)
+        }
+        Ok(Ok((result, sidecar_abs))) => {
+            tracing::info!(
+                job_id = %job.id,
+                law_id = %result.law_id,
+                kind = result.kind.slug(),
+                findings = result.findings_count,
+                "suggestion run completed"
+            );
+
+            let commit_result: std::result::Result<(), PipelineError> = async {
+                if let Some(ref corpus) = suggest_corpus {
+                    let message = format!(
+                        "suggesties({}): {} ({})",
+                        result.kind.slug(),
+                        result.law_id,
+                        result.findings_count
+                    );
+                    corpus
+                        .commit_and_push(std::slice::from_ref(&sidecar_abs), &message)
+                        .await
+                        .map_err(|e| PipelineError::Suggest(format!("corpus push failed: {e}")))?;
+                }
+
+                let result_json = serde_json::to_value(&result).ok();
+                job_queue::complete_job(pool, job.id, result_json).await?;
+                Ok(())
+            }
+            .await;
+
+            if let Err(e) = commit_result {
+                tracing::error!(job_id = %job.id, error = %e, "post-suggestion commit failed, marking job failed for retry");
+                let error_json = serde_json::json!({ "error": e.to_string() });
+                let _ = job_queue::fail_job(pool, job.id, Some(error_json)).await;
+            }
+            Ok(true)
         }
     }
 }
