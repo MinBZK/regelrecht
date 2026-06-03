@@ -21,6 +21,11 @@ static DEFAULTS: LazyLock<HashMap<String, bool>> = LazyLock::new(|| {
         // 400s and the frontend silently reverts it (see the editor.* note
         // below — same allow-list mechanism).
         ("panel.notes".into(), false),
+        // AI-suggestiepane: toont de door de pipeline gegenereerde suggesties
+        // (aanwijzingen + machine_readable) als annotaties met accept/reject.
+        // Default off: dark-launch tot de suggest-pipeline op productie draait.
+        // Moet hier staan of de toggle-PUT 400't (allow-list).
+        ("panel.suggestions".into(), false),
         // Note authoring (RFC-018 write path, MVP: localStorage + manual
         // export). Separate gate from panel.notes so notes can be shown
         // read-only without exposing creation. Same allow-list rule: without

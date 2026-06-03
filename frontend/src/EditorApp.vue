@@ -3,13 +3,15 @@ import { ref, computed, reactive, watch, watchEffect, nextTick } from 'vue';
 import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
 import yaml from 'js-yaml';
 import { useLaw, fetchLaw } from './composables/useLaw.js';
-import { lawsListUrl } from './composables/corpusUrls.js';
+import { lawsListUrl, annotationsUrl } from './composables/corpusUrls.js';
+import { getEditorSessionId } from './composables/useEditorSession.js';
 import { useEngine } from './composables/useEngine.js';
 import { useAuth } from './composables/useAuth.js';
 import { useTrajects } from './composables/useTrajects.js';
 import TrajectMenu from './components/TrajectMenu.vue';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useNotes, useResolvedDraftNotes } from './composables/useNotes.js';
+import { useSuggestions } from './composables/useSuggestions.js';
 import { useDraftNotes } from './composables/useDraftNotes.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import { lastLibraryPath, sectionTarget } from './composables/useLastVisitedRoute.js';
@@ -21,6 +23,7 @@ import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
 import MachineReadable from './components/MachineReadable.vue';
+import SuggestionsPane from './components/SuggestionsPane.vue';
 import ScenarioBuilder from './components/ScenarioBuilder.vue';
 import ExecutionTraceView from './components/ExecutionTraceView.vue';
 import LawGraphView from './components/LawGraphView.vue';
@@ -48,6 +51,9 @@ const editorPanelFlags = [
   // notes can be shown read-only without exposing the (MVP, local-only)
   // creation + export flow.
   ['notes.create', 'Notities aanmaken'],
+  // AI-suggestiepane (aanwijzingen + machine_readable). A real pane, unlike
+  // panel.notes which is a layer over the Tekst pane.
+  ['panel.suggestions', 'Aanwijzingen'],
   ['editor.article_text_edit', 'Tekst bewerken'],
 ];
 
@@ -63,6 +69,7 @@ const VIEW_DEFINITIONS = [
   { id: 'machine', flag: 'panel.machine_readable', label: 'Machine' },
   { id: 'scenario', flag: 'panel.scenario_form', label: "Scenario's" },
   { id: 'yaml', flag: 'panel.yaml_editor', label: 'YAML' },
+  { id: 'suggestions', flag: 'panel.suggestions', label: 'Aanwijzingen' },
 ];
 
 const availableViews = computed(() => VIEW_DEFINITIONS.filter(v => isEnabled(v.flag)));
@@ -217,6 +224,17 @@ const {
   error: notesError,
   reload: reloadNotes,
 } = useNotes(lawId, selectedArticle, activeTrajectRef);
+
+// AI suggestions (aanwijzingen + machine_readable) for the current law,
+// resolved against its text the same way notes are. Polled after a save.
+const {
+  suggestionsForArticle,
+  issues: suggestionIssues,
+  loading: suggestionsLoading,
+  jobState: suggestionJobState,
+  reload: reloadSuggestions,
+  pollStatus: pollSuggestions,
+} = useSuggestions(lawId, selectedArticle, activeTrajectRef);
 
 // Notes are a layer over the Tekst pane, not a separate pane. This toggle is
 // the user's "show notes now" preference; panel.notes (a feature flag) is the
@@ -963,9 +981,53 @@ async function handleLawSave() {
     // Successful save — the dialog flags drop back to false.
     lastSaveTouchedText.value = false;
     lastSaveTouchedMachine.value = false;
+    // A save enqueues background AI-suggestion jobs on the traject branch.
+    // Start polling so the Aanwijzingen pane fills in when they finish. Only
+    // when the pane is enabled; fire-and-forget (poll self-cancels on switch).
+    if (isEnabled('panel.suggestions')) {
+      pollSuggestions();
+    }
   } catch (e) {
     // saveError is surfaced via lawSaveError; log for dev visibility.
     console.warn('saveLaw failed:', e);
+  }
+}
+
+// Accept a suggestion: apply its proposed change, then mark it resolved so the
+// span and list entry disappear. For an `editing` suggestion the replacement
+// text was appended to the body ("Voorgestelde tekst: …"); applying it to the
+// Tekst/Machine pane is the user's job for now — here we record the acceptance
+// by reloading after the resolve. (Full one-click apply is a follow-up; this
+// keeps the human in the loop, which the skill contract intends.)
+async function handleSuggestionAccept(note) {
+  await resolveSuggestion(note);
+}
+
+// Reject a suggestion: mark it resolved (workflow: resolved) via the
+// annotations write path so it stops being shown.
+async function handleSuggestionReject(note) {
+  await resolveSuggestion(note);
+}
+
+// Mark a suggestion annotation resolved by appending a resolved copy to the
+// law's annotations sidecar (the same write path notes use), then reload the
+// suggestions so the open one drops out of the list.
+async function resolveSuggestion(note) {
+  const tr = activeTrajectRef.value;
+  if (!tr || !note) return;
+  const resolved = { ...note, workflow: 'resolved' };
+  try {
+    await fetch(annotationsUrl(tr, lawId.value), {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Editor-Session': getEditorSessionId(),
+      },
+      body: JSON.stringify([resolved]),
+    });
+    await reloadSuggestions();
+  } catch (e) {
+    console.warn('resolveSuggestion failed:', e);
   }
 }
 
@@ -1794,6 +1856,17 @@ async function handleActionSave() {
                 ></nldd-code-editor>
                 <div v-if="parseError" class="editor-parse-error-detail">{{ parseError }}</div>
               </nldd-simple-section>
+
+              <!-- AI suggestions (aanwijzingen + machine_readable) -->
+              <SuggestionsPane
+                v-else-if="view === 'suggestions'"
+                :suggestions-for-article="suggestionsForArticle"
+                :issues="suggestionIssues"
+                :loading="suggestionsLoading"
+                :job-state="suggestionJobState"
+                @accept="handleSuggestionAccept"
+                @reject="handleSuggestionReject"
+              />
             </nldd-page>
           </nldd-split-view-pane>
         </nldd-side-by-side-split-view>

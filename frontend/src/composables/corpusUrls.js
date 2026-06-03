@@ -37,6 +37,17 @@ export function annotationsUrl(trajectRef, lawId) {
   return `${lawUrl(trajectRef, lawId)}/annotations`;
 }
 
+// AI-suggestion sidecar written by the pipeline to the traject branch
+// (separate from annotations.yaml). Read-only.
+export function suggestionsUrl(trajectRef, lawId) {
+  return `${lawUrl(trajectRef, lawId)}/suggestions`;
+}
+
+// Poll target for whether the suggestion jobs are still running.
+export function suggestionsStatusUrl(trajectRef, lawId) {
+  return `${lawUrl(trajectRef, lawId)}/suggestions/status`;
+}
+
 // Writes only exist under the traject prefix. Composables call this at
 // the top of their save function so the call-stack failure is "no
 // traject" instead of a malformed URL.
