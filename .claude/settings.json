@@ -18,6 +18,14 @@
       }
     ]
   },
+  "extraKnownMarketplaces": {
+    "nldd-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "MinBZK/storybook"
+      }
+    }
+  },
   "enabledPlugins": {
     "nldd@nldd-plugins": true
   }
