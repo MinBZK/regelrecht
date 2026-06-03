@@ -283,14 +283,14 @@ URI per app port:
 
 **Run it**
 
-Copy `.env.editor-local.example` to `.env.editor-local`, fill in the Keycloak
+Copy `.env.sso-local.example` to `.env.sso-local`, fill in the Keycloak
 values, then:
 
 ```bash
 # 1. Postgres only. (Don't use `just dev` here — it also starts the admin API
 #    on :8000, which collides with editor-api below.)
 docker compose -f docker-compose.dev.yml -f dev/compose.native.yaml up -d postgres
-# 2. editor-api on :8000 with .env.editor-local loaded:
+# 2. editor-api on :8000 with .env.sso-local loaded:
 just editor-sso
 # 3. in another shell — editor frontend on the host-mapped port 7300:
 cd frontend && npx vite --port 7300
