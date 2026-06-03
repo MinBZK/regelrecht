@@ -47,8 +47,12 @@ trace_output/
 corpus-registry.local.yaml
 corpus-auth.yaml
 
-# Environment
-.env
+# Environment — ignore all .env files, keep the committed *.example templates
+.env*
+!.env*.example
+
+# Keycloak client exports (local dev only — may contain secrets)
+dev/keycloak/
 
 # Gemini CLI
 .gemini/*
