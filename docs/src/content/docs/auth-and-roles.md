@@ -282,11 +282,14 @@ Copy `.env.editor-local.example` to `.env.editor-local`, fill in the Keycloak
 values, then:
 
 ```bash
-just dev            # brings up the dev Postgres (stop/skip the admin API — it
-                    # also binds :8000 and collides with editor-api)
-just editor-sso     # editor-api on :8000 with .env.editor-local loaded
-# in another shell:
-cd frontend && npx vite   # editor frontend on :3000
+# 1. Postgres only. (Don't use `just dev` here — it also starts the admin API
+#    on :8000 and its own Vite on :3000, both of which collide with the steps
+#    below.)
+docker compose -f docker-compose.dev.yml -f dev/compose.native.yaml up -d postgres
+# 2. editor-api on :8000 with .env.editor-local loaded:
+just editor-sso
+# 3. in another shell — editor frontend on :3000:
+cd frontend && npx vite
 ```
 
 Open `http://localhost:3000` in **Chrome or Firefox** and log in. The session
