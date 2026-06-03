@@ -17,5 +17,8 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "nldd@nldd-plugins": true
   }
 }
