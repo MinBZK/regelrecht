@@ -376,7 +376,7 @@ function handleKeydown(e) {
             variant="primary"
             size="md"
             width="full"
-            :text="saving ? 'Opslaan…' : 'Opslaan (⌘S)'"
+            :text="saving ? 'Opslaan…' : 'Opslaan'"
             :disabled="saving || !currentPath || undefined"
             @click="handleSave"
           ></nldd-button>
