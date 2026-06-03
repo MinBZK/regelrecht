@@ -249,10 +249,11 @@ layer is driven entirely by environment variables.
 
 **Keycloak configuration (one-time, realm admin)**
 
-Configure the OIDC client the editor will use (re-use the existing `editor`
-client, or create a dedicated `editor-local` client — adding a `localhost`
-redirect to a production client is a minor token-leakage footgun, so a separate
-dev client is the cleaner choice):
+Configure the OIDC client the editor will use. Re-using the production client
+and adding a `localhost` redirect to it is a minor token-leakage footgun, so the
+cleaner choice is a single dedicated dev client — `regelrecht-local`, shared
+across all local apps (editor, harvester-admin, …), with a `localhost` redirect
+URI per app port:
 
 1. **Client type / capability**: *Client authentication* = **On** (a
    confidential client — the editor sends a client secret, and startup fails if
