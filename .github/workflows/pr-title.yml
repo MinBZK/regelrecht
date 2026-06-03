@@ -41,6 +41,7 @@ jobs:
             ci
             schema
             deps
+            dev
           requireScope: false
           subjectPattern: ^[a-z].*$
           subjectPatternError: |
