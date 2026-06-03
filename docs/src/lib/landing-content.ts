@@ -490,6 +490,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           q: 'Hoe draagt dit bij aan transparantie?',
           a: 'Door regels expliciet te maken in code kunnen burgers en organisaties exact zien hoe beslissingen tot stand komen, in plaats van te vertrouwen op ondoorzichtige systemen.',
         },
+        {
+          q: 'Moet ik dan jullie Rust-engine in mijn landschap draaien?',
+          a: 'Nee. RegelRecht legt het regelformaat en de bedoelde uitkomsten vast, niet de implementatie. De Rust-engine is de referentie-implementatie: hij laat zien wat de regels horen te doen en dient als ijkpunt waartegen andere implementaties zich kunnen meten. Een engine kan ook anders geïmplementeerd worden, in een andere taal of architectuur, zodat hij in jouw landschap past. Wat telt is dat elke implementatie op dezelfde regels en data dezelfde uitkomst geeft als de referentie.',
+        },
       ],
     },
     jobs: {
@@ -935,6 +939,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           q: 'How does this contribute to transparency?',
           a: 'By making rules explicit in code, citizens and organisations can see exactly how decisions are reached, instead of relying on opaque systems.',
+        },
+        {
+          q: 'Do I have to run your Rust engine in my own landscape?',
+          a: 'No. RegelRecht fixes the rule format and the intended outcomes, not the implementation. The Rust engine is the reference implementation: it shows what the rules are meant to do and serves as the benchmark other implementations can measure themselves against. An engine can also be implemented differently, in another language or architecture, so that it fits your landscape. What matters is that every implementation produces the same outcome on the same rules and data as the reference.',
         },
       ],
     },
