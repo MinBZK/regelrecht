@@ -3,8 +3,7 @@ import { ref, computed, reactive, watch, watchEffect, nextTick } from 'vue';
 import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
 import yaml from 'js-yaml';
 import { useLaw, fetchLaw } from './composables/useLaw.js';
-import { lawsListUrl, annotationsUrl } from './composables/corpusUrls.js';
-import { getEditorSessionId } from './composables/useEditorSession.js';
+import { lawsListUrl } from './composables/corpusUrls.js';
 import { useEngine } from './composables/useEngine.js';
 import { useAuth } from './composables/useAuth.js';
 import { useTrajects } from './composables/useTrajects.js';
@@ -232,8 +231,8 @@ const {
   issues: suggestionIssues,
   loading: suggestionsLoading,
   jobState: suggestionJobState,
-  reload: reloadSuggestions,
   pollStatus: pollSuggestions,
+  markResolved: markSuggestionResolved,
 } = useSuggestions(lawId, selectedArticle, activeTrajectRef);
 
 // Notes are a layer over the Tekst pane, not a separate pane. This toggle is
@@ -993,42 +992,27 @@ async function handleLawSave() {
   }
 }
 
-// Accept a suggestion: apply its proposed change, then mark it resolved so the
-// span and list entry disappear. For an `editing` suggestion the replacement
-// text was appended to the body ("Voorgestelde tekst: …"); applying it to the
-// Tekst/Machine pane is the user's job for now — here we record the acceptance
-// by reloading after the resolve. (Full one-click apply is a follow-up; this
-// keeps the human in the loop, which the skill contract intends.)
+// Accept a suggestion: copy the proposed text to the clipboard (so the user can
+// paste it where it belongs), then mark it resolved so the span and list entry
+// disappear. For an `editing` suggestion the body carries "Voorgestelde tekst:
+// …". One-click in-place apply is a deliberate follow-up — this keeps the human
+// in the loop, which the skill contract intends.
 async function handleSuggestionAccept(note) {
-  await resolveSuggestion(note);
-}
-
-// Reject a suggestion: mark it resolved (workflow: resolved) via the
-// annotations write path so it stops being shown.
-async function handleSuggestionReject(note) {
-  await resolveSuggestion(note);
-}
-
-// Mark a suggestion annotation resolved by appending a resolved copy to the
-// law's annotations sidecar (the same write path notes use), then reload the
-// suggestions so the open one drops out of the list.
-async function resolveSuggestion(note) {
-  const tr = activeTrajectRef.value;
-  if (!tr || !note) return;
-  const resolved = { ...note, workflow: 'resolved' };
-  try {
-    await fetch(annotationsUrl(tr, lawId.value), {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Editor-Session': getEditorSessionId(),
-      },
-      body: JSON.stringify([resolved]),
-    });
-    await reloadSuggestions();
-  } catch (e) {
-    console.warn('resolveSuggestion failed:', e);
+  const body = Array.isArray(note?.body) ? note.body[0] : note?.body;
+  const text = body?.value ?? '';
+  if (text && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      /* clipboard blocked — still resolve below */
+    }
   }
+  markSuggestionResolved(note);
+}
+
+// Reject a suggestion: just mark it resolved so it stops being shown.
+function handleSuggestionReject(note) {
+  markSuggestionResolved(note);
 }
 
 // Per-pane scoped views of lawSaveError. The error is only visible in the

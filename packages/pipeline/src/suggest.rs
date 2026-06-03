@@ -300,7 +300,13 @@ pub async fn create_suggest_corpus(
     let mut config = base_config.clone();
     config.branch = branch.into();
 
-    let law_dir = Path::new(yaml_path)
+    // Validate + strip legacy absolute prefixes before the path touches git,
+    // exactly as the enrich path does (rejects `..`, absolute paths, and shell
+    // metacharacters). Defense-in-depth: the value is server-derived today, but
+    // the pipeline `/suggest` endpoint trusts the field blind.
+    let normalized = crate::enrich::normalize_yaml_path(yaml_path)?;
+
+    let law_dir = Path::new(&normalized)
         .parent()
         .map(|p| p.to_string_lossy().to_string())
         .filter(|d| !d.is_empty());
@@ -323,7 +329,9 @@ pub async fn create_suggest_corpus(
 
     let mut client = CorpusClient::new(config);
     client.ensure_repo().await?;
-    client.checkout_from_branch(branch, &[yaml_path]).await?;
+    client
+        .checkout_from_branch(branch, &[normalized.as_str()])
+        .await?;
 
     Ok(client)
 }
@@ -423,7 +431,10 @@ pub async fn execute_suggest_with_runner(
     created: Option<String>,
     runner: &dyn LlmRunner,
 ) -> Result<(SuggestResult, PathBuf)> {
-    let yaml_abs = repo_path.join(&payload.yaml_path);
+    // Normalize the same way the checkout did, so we look for the law at the
+    // path that was actually materialized (and reject traversal/absolute paths).
+    let normalized_path = crate::enrich::normalize_yaml_path(&payload.yaml_path)?;
+    let yaml_abs = repo_path.join(&normalized_path);
     if !yaml_abs.exists() {
         return Err(PipelineError::Suggest(format!(
             "law YAML file not found: {}",
@@ -437,7 +448,7 @@ pub async fn execute_suggest_with_runner(
     let _ = tokio::fs::remove_file(&output_path).await;
 
     let prompt = build_prompt(
-        &payload.yaml_path,
+        &normalized_path,
         &output_path.to_string_lossy(),
         payload.kind,
         payload.article_number.as_deref(),

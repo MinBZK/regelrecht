@@ -1251,6 +1251,11 @@ async fn process_next_suggest_job(
         .map(|c| c.repo_path().to_path_buf())
         .unwrap_or_else(|| repo_path.to_path_buf());
 
+    // Per-job checkout path, captured for cleanup after the job completes.
+    // Each suggest job makes a full git clone; without cleanup these accumulate
+    // and fill the worker's disk (mirrors the enrich worker's cleanup).
+    let checkout_path = suggest_corpus.as_ref().map(|c| c.repo_path().to_path_buf());
+
     // Make the baked-in skills available to the LLM (same mechanism as enrich).
     if let Err(e) = crate::enrich::ensure_skills(&effective_repo).await {
         tracing::warn!(error = %e, "failed to set up skill symlinks");
@@ -1276,13 +1281,11 @@ async fn process_next_suggest_job(
                 "error": format!("job timed out after {}s", job_timeout.as_secs())
             });
             let _ = job_queue::fail_job(pool, job.id, Some(error_json)).await;
-            Ok(true)
         }
         Ok(Err(e)) => {
             tracing::error!(job_id = %job.id, error = %e, "suggest job failed");
             let error_json = serde_json::json!({ "error": e.to_string() });
             let _ = job_queue::fail_job(pool, job.id, Some(error_json)).await;
-            Ok(true)
         }
         Ok(Ok((result, sidecar_abs))) => {
             tracing::info!(
@@ -1318,7 +1321,15 @@ async fn process_next_suggest_job(
                 let error_json = serde_json::json!({ "error": e.to_string() });
                 let _ = job_queue::fail_job(pool, job.id, Some(error_json)).await;
             }
-            Ok(true)
         }
     }
+
+    // Clean up the per-job corpus checkout directory (regardless of outcome).
+    if let Some(path) = checkout_path {
+        if let Err(e) = tokio::fs::remove_dir_all(&path).await {
+            tracing::warn!(path = %path.display(), error = %e, "failed to clean up suggest checkout");
+        }
+    }
+
+    Ok(true)
 }

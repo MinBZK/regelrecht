@@ -17,6 +17,42 @@ import { ref, computed, watch } from 'vue';
 import { useEngine } from './useEngine.js';
 import { suggestionsUrl, suggestionsStatusUrl } from './corpusUrls.js';
 
+// Resolved (accepted/rejected) suggestions are remembered locally so they drop
+// out of the pane. There is no server write path for the suggestions sidecar
+// (it is pipeline-owned), and the sidecar is regenerated each save anyway, so a
+// per-(traject,law) localStorage set of resolved keys is the right granularity:
+// it survives refresh, and a fresh save that re-raises the same finding will
+// re-key identically and stay hidden (which is the desired "I already handled
+// this" behaviour) until the user clears it.
+const RESOLVED_KEY = 'regelrecht-resolved-suggestions';
+
+function loadResolved() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(RESOLVED_KEY) || '[]'));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveResolved(set) {
+  try {
+    localStorage.setItem(RESOLVED_KEY, JSON.stringify([...set]));
+  } catch {
+    /* ignore quota / private-mode failures */
+  }
+}
+
+/**
+ * Stable identity for a suggestion: traject + law + anchor + body text. Used to
+ * remember which suggestions the user already accepted/rejected.
+ */
+export function suggestionKey(trajectRef, lawId, note) {
+  const exact = note?.target?.selector?.exact ?? '';
+  const body = note?.body;
+  const value = (Array.isArray(body) ? body[0] : body)?.value ?? '';
+  return `${trajectRef || ''}::${lawId}::${exact}::${value}`;
+}
+
 // Cache resolved suggestions per `${trajectRef}::${lawId}`, like useNotes. The
 // same save-doesn't-bump-$id caveat applies; `reload()` drops the entry so a
 // freshly-generated sidecar shows up without a navigation round-trip.
@@ -40,6 +76,19 @@ export function useSuggestions(lawId, selectedArticle, trajectRef) {
   const error = ref(null);
   // 'idle' | 'running' | 'done' — whether suggestion jobs are in flight.
   const jobState = ref('idle');
+  // Reactive set of locally-resolved suggestion keys; accepted/rejected items
+  // are filtered out of the pane. Reactivity via a bumped counter (a plain Set
+  // is not deeply reactive).
+  const resolvedKeys = ref(loadResolved());
+  const resolvedTick = ref(0);
+
+  /** Mark a suggestion resolved (accepted or rejected) and persist it. */
+  function markResolved(note) {
+    const key = suggestionKey(trajectRef?.value ?? null, lawId.value, note);
+    resolvedKeys.value.add(key);
+    saveResolved(resolvedKeys.value);
+    resolvedTick.value++;
+  }
 
   // Generation guard: only the latest load()/poll() may write reactive state,
   // mirroring useNotes — article numbers collide across laws, so a stale
@@ -157,6 +206,15 @@ export function useSuggestions(lawId, selectedArticle, trajectRef) {
    * the resolved span(s). Same shape and filtering as useNotes.notesForArticle
    * so the editor can render them through the same `markRanges` path.
    */
+  // True when this note has been accepted/rejected this session. Reading
+  // resolvedTick makes the computeds re-run when markResolved fires.
+  function isResolved(note) {
+    void resolvedTick.value;
+    return resolvedKeys.value.has(
+      suggestionKey(trajectRef?.value ?? null, lawId.value, note),
+    );
+  }
+
   const suggestionsForArticle = computed(() => {
     const articleNr = selectedArticle.value?.number;
     if (articleNr == null || articleNr === '') return [];
@@ -165,6 +223,7 @@ export function useSuggestions(lawId, selectedArticle, trajectRef) {
     for (const entry of resolved.value) {
       if (entry.error || !entry.match) continue;
       if (entry.match.status !== 'found') continue;
+      if (isResolved(entry.note)) continue;
       const spans = entry.match.matches.filter(
         (m) => String(m.article_number) === target,
       );
@@ -177,6 +236,7 @@ export function useSuggestions(lawId, selectedArticle, trajectRef) {
   const issues = computed(() =>
     resolved.value
       .filter((e) => e.error || (e.match && e.match.status !== 'found'))
+      .filter((e) => !isResolved(e.note))
       .map((e) => ({
         note: e.note,
         reason: e.error
@@ -195,5 +255,6 @@ export function useSuggestions(lawId, selectedArticle, trajectRef) {
     jobState,
     reload,
     pollStatus,
+    markResolved,
   };
 }
