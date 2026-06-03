@@ -541,6 +541,44 @@ pub async fn get_traject_annotations(
     get_annotations_in_scope(&scope, &law_id).await
 }
 
+/// GET /api/trajects/{traject_id}/corpus/laws/{law_id}/suggestions — read the
+/// AI-suggestion sidecar the pipeline wrote to this traject's branch. Same shape
+/// as the annotations read, but reads `suggestions.yaml` (kept separate from the
+/// human `annotations.yaml` so AI output never pollutes curated notes). 404 when
+/// no suggestions have been generated yet, which the editor treats as "none".
+pub async fn get_traject_suggestions(
+    State(state): State<AppState>,
+    session: Session,
+    Path((traject_ref, law_id)): Path<(String, String)>,
+) -> Result<YamlResponse, (StatusCode, String)> {
+    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    let backend = resolve_annotation_read_backend(&scope, &law_id)?;
+
+    let relative_path = PathBuf::from("annotations")
+        .join(&law_id)
+        .join("suggestions.yaml");
+
+    let backend = backend.lock().await;
+    let content = backend
+        .read_file(&relative_path)
+        .await
+        .map_err(|e| {
+            tracing::warn!(law_id = %law_id, error = %e, "get_suggestions backend read failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to read suggestions".to_string(),
+            )
+        })?
+        .ok_or((StatusCode::NOT_FOUND, "Suggestions not found".to_string()))?;
+    drop(backend);
+
+    Ok((
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "text/yaml; charset=utf-8")],
+        content,
+    ))
+}
+
 async fn get_annotations_in_scope(
     scope: &ReadScope,
     law_id: &str,
@@ -1335,7 +1373,55 @@ pub async fn save_law(
     // the read-your-writes follow-up that used to be punted.
     traject.record_save(law_id.clone(), body).await;
 
+    // Fire-and-forget: ask the pipeline to generate AI suggestions for the
+    // just-saved law on this traject's branch. Advisory — any failure here must
+    // never affect the save, so we only log. Skipped when the pipeline isn't
+    // configured or when the traject has no GitHub branch (a local writable
+    // source the worker can't check out).
+    if let (Some(pipeline_url), Some(branch)) = (
+        state.pipeline_api_url.clone(),
+        traject.writable_branch().map(str::to_string),
+    ) {
+        let http = state.http_client.clone();
+        let yaml_path = relative_path.to_string_lossy().to_string();
+        let law = law_id.clone();
+        let tref = traject_ref.clone();
+        tokio::spawn(async move {
+            enqueue_suggestions(&http, &pipeline_url, &law, &yaml_path, &tref, &branch).await;
+        });
+    }
+
     Ok(Json(save_response_from_traject(outcome)))
+}
+
+/// POST the pipeline `/suggest` enqueue for a saved law. Best-effort: logs and
+/// swallows all errors so it can run detached from the save response.
+async fn enqueue_suggestions(
+    http: &reqwest::Client,
+    pipeline_url: &str,
+    law_id: &str,
+    yaml_path: &str,
+    traject_ref: &str,
+    traject_branch: &str,
+) {
+    let url = format!("{pipeline_url}/suggest");
+    let body = serde_json::json!({
+        "law_id": law_id,
+        "yaml_path": yaml_path,
+        "traject_ref": traject_ref,
+        "traject_branch": traject_branch,
+    });
+    match http.post(&url).json(&body).send().await {
+        Ok(resp) if resp.status().is_success() => {
+            tracing::debug!(law_id, traject_ref, "queued AI suggestions");
+        }
+        Ok(resp) => {
+            tracing::warn!(law_id, status = %resp.status(), "suggest enqueue returned non-success");
+        }
+        Err(e) => {
+            tracing::warn!(law_id, error = %e, "failed to enqueue suggestions");
+        }
+    }
 }
 
 /// DELETE /api/trajects/{traject_id}/corpus/laws/{law_id}/scenarios/{filename}

@@ -57,6 +57,11 @@ pub struct TrajectCorpus {
     /// added that touches many laws per traject, revisit with an LRU
     /// cap.
     overlay: RwLock<HashMap<String, String>>,
+    /// Git branch the traject's writable-own source pushes to
+    /// (`traject/{slug}-{8hex}`). `None` for trajects whose writable source is
+    /// local (no branch). Used by the suggest-on-save flow to tell the pipeline
+    /// which branch to read the saved law from and write the sidecar to.
+    writable_branch: Option<String>,
 }
 
 impl TrajectCorpus {
@@ -78,6 +83,12 @@ impl TrajectCorpus {
     /// so the next GET on the same law (or a refresh) sees the new body.
     pub async fn record_save(&self, law_id: String, body: String) {
         self.overlay.write().await.insert(law_id, body);
+    }
+
+    /// The git branch the traject's saves land on, if the writable source is a
+    /// GitHub branch. `None` for local writable sources.
+    pub fn writable_branch(&self) -> Option<&str> {
+        self.writable_branch.as_deref()
     }
 }
 
@@ -190,11 +201,15 @@ async fn build_traject_corpus(
     // can't route saves on laws read from the seed sources. The actual
     // routing happens via `write_target_for_source` below; the local
     // here is just the guard against a misconfigured traject.
-    let writable_own_source_id = rows
+    let writable_own_row = rows
         .iter()
         .find(|r| r.is_writable_own)
-        .map(|r| r.source_id.clone())
         .ok_or(TrajectCorpusError::NoWritableOwn)?;
+    let writable_own_source_id = writable_own_row.source_id.clone();
+    // The git branch the traject's saves land on (`traject/{slug}-{8hex}`).
+    // Captured here so the suggest-on-save flow can tell the pipeline which
+    // branch to read the saved law from and commit the suggestion sidecar to.
+    let writable_branch = writable_own_row.gh_branch.clone();
 
     // Build the read-source → write-target-source map. Every non-
     // writable_own source (local seed, GitHub seed, …) is routed to the
@@ -359,6 +374,7 @@ async fn build_traject_corpus(
         },
         write_target_for_source,
         overlay: RwLock::new(HashMap::new()),
+        writable_branch,
     }))
 }
 
