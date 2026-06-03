@@ -8,6 +8,17 @@ use uuid::Uuid;
 pub enum JobType {
     Harvest,
     Enrich,
+    /// Editor suggestion: check article text against the Aanwijzingen voor de
+    /// regelgeving and emit suggestions as an annotation sidecar. Advisory; it
+    /// never commits to the law itself.
+    #[sqlx(rename = "suggest_guidelines")]
+    #[serde(rename = "suggest_guidelines")]
+    SuggestGuidelines,
+    /// Editor suggestion: generate proposed `machine_readable` sections as an
+    /// annotation sidecar, for the user to review and apply. Advisory.
+    #[sqlx(rename = "suggest_machine_readable")]
+    #[serde(rename = "suggest_machine_readable")]
+    SuggestMachineReadable,
 }
 
 #[derive(
