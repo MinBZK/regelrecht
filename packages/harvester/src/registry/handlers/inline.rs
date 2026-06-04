@@ -21,9 +21,14 @@ static BWB_PATTERN: LazyLock<Regex> =
 
 #[allow(clippy::expect_used)]
 /// Regex for extracting article number from JCI reference.
-/// Matches both numeric (1, 1a, 12bis) and Roman numeral (I, II, IV, etc.) article numbers.
+///
+/// Captures the full value up to the next JCI parameter (`&`), like the sibling
+/// patterns below. Article numbers can be numeric (`1`, `1a`, `12bis`), dotted
+/// sub-articles (`2.5a`, `3.1`, `2.10`), or Roman numeral (`IV`). The previous
+/// `\w`-only pattern truncated dotted numbers at the dot (`2.5a` → `2`), which
+/// produced wrong reference metadata and `#Artikel2`-style anchor URLs.
 static ARTIKEL_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"artikel=([IVXLCDM]+\w*|\d+\w*)").expect("valid regex"));
+    LazyLock::new(|| Regex::new(r"artikel=([^&]+)").expect("valid regex"));
 
 #[allow(clippy::expect_used)]
 /// Regex for extracting lid (paragraph) from JCI reference.
@@ -414,6 +419,46 @@ mod tests {
         assert_eq!(reference.bwb_id, "BWBR0018451");
         assert_eq!(reference.artikel, Some("IV".to_string()));
         assert_eq!(reference.lid, Some("1".to_string()));
+    }
+
+    #[test]
+    fn test_parse_jci_reference_dotted_artikel() {
+        // Dotted/sub-article numbers (e.g. besluit_zorgverzekering internal
+        // refs) must keep their full number, not truncate at the dot.
+        let jci =
+            "jci1.3:c:BWBR0018492&hoofdstuk=2&paragraaf=1&artikel=2.5a&z=2026-01-01&g=2026-01-01";
+        let reference = parse_jci_reference(jci).unwrap();
+        assert_eq!(reference.bwb_id, "BWBR0018492");
+        assert_eq!(reference.artikel, Some("2.5a".to_string()));
+        assert_eq!(reference.hoofdstuk, Some("2".to_string()));
+        assert_eq!(reference.paragraaf, Some("1".to_string()));
+
+        // Trailing param and end-of-string both bound the value at '&'/end.
+        assert_eq!(
+            parse_jci_reference("jci1.3:c:BWBR0018492&artikel=3.1&z=2026-01-01")
+                .unwrap()
+                .artikel,
+            Some("3.1".to_string())
+        );
+        assert_eq!(
+            parse_jci_reference("jci1.3:c:BWBR0018492&artikel=2.10")
+                .unwrap()
+                .artikel,
+            Some("2.10".to_string())
+        );
+    }
+
+    #[test]
+    fn test_convert_jci_to_url_dotted_artikel() {
+        // The anchor must use the full dotted article number.
+        assert_eq!(
+            convert_jci_to_url("jci1.3:c:BWBR0018492&hoofdstuk=2&paragraaf=1&artikel=2.5a"),
+            "https://wetten.overheid.nl/BWBR0018492#Artikel2.5a"
+        );
+        assert_eq!(
+            convert_jci_to_url("jci1.3:c:BWBR0018492&artikel=3.1&z=2026-01-01"),
+            "https://wetten.overheid.nl/BWBR0018492#Artikel3.1"
+        );
     }
 
     #[test]
