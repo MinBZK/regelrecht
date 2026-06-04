@@ -22,7 +22,7 @@ RUN cargo build --target wasm32-unknown-unknown --release --features wasm -p reg
       target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
 
 # Stage 1b: Build frontend (with WASM module)
-FROM node:26-alpine@sha256:7c6af15abe4e3de859690e7db171d0d711bf37d27528eddfe625b2fe89e097f8 AS frontend-builder
+FROM node:26-alpine@sha256:144769ec3f32e8ee36b3cfde91e82bee25d9367b20f31a151f3f7eea3a2a8541 AS frontend-builder
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json* frontend/.npmrc ./
 RUN npm ci
