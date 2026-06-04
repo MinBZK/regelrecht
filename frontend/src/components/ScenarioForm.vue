@@ -3,6 +3,7 @@ import { ref, computed, watch, onBeforeUnmount, useId } from 'vue';
 import { parseValue } from '../gherkin/steps.js';
 import { formatValue, formatOutputValue, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
 import DataSourceTable from './DataSourceTable.vue';
+import ScenarioParameterInput from './ScenarioParameterInput.vue';
 
 const props = defineProps({
   /** Scenario object from mapFeatureToForm() */
@@ -17,7 +18,16 @@ const props = defineProps({
   lawId: { type: String, required: true },
   /** Article mapping: { outputToArticle, inputToArticle, paramToArticle } */
   articleMap: { type: Object, default: null },
+  /** Datatype mapping from buildTypeMap(): name -> { type, unit } */
+  typeMap: { type: Object, default: null },
 });
+
+// Resolve a parameter's declared datatype/unit; default to a plain text field
+// for params not found in the map (background-only params, articles without
+// machine_readable).
+function paramMeta(name) {
+  return props.typeMap?.get(name) ?? { type: 'string', unit: null };
+}
 
 const emit = defineEmits(['show-details', 'executed', 'change', 'drill-change']);
 
@@ -315,7 +325,14 @@ const dateErrorId = useId();
           <nldd-text-cell text="Datum" min-width="120px" max-width="200px"></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-cell width="full" min-width="120px">
-            <nldd-text-field size="md" type="date" :invalid="dateInvalid || undefined" :error-message-ids="dateInvalid ? dateErrorId : undefined" :value="calculationDate" @input="calculationDate = $event.target?.value ?? $event.detail?.value ?? calculationDate; emit('change')"></nldd-text-field>
+            <ScenarioParameterInput
+              type="date"
+              name="Datum"
+              :value="calculationDate"
+              :invalid="dateInvalid"
+              :error-message-ids="dateErrorId"
+              @update="calculationDate = $event; emit('change')"
+            />
             <span v-if="dateInvalid" :id="dateErrorId" class="sf-error">Datum is verplicht</span>
           </nldd-cell>
         </nldd-list-item>
@@ -323,12 +340,14 @@ const dateErrorId = useId();
           <nldd-text-cell :text="name" :supporting-text="articleMap?.paramToArticle?.get(name) ? `Artikel ${articleMap.paramToArticle.get(name)}` : undefined" min-width="120px" max-width="200px"></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-cell width="full" min-width="120px">
-            <nldd-text-field
-              size="md"
-              :invalid="(!!error && (value === '' || value == null)) || undefined"
+            <ScenarioParameterInput
+              :type="paramMeta(name).type"
+              :unit="paramMeta(name).unit"
+              :name="name"
               :value="value"
-              @input="parameterValues = { ...parameterValues, [name]: $event.target?.value ?? $event.detail?.value ?? '' }; emit('change')"
-            ></nldd-text-field>
+              :invalid="!!error && (value === '' || value == null)"
+              @update="parameterValues = { ...parameterValues, [name]: $event }; emit('change')"
+            />
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
