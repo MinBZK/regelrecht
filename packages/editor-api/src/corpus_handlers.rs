@@ -215,6 +215,36 @@ fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec
         .collect()
 }
 
+/// GET /api/trajects/{traject_ref}/corpus/changed-laws — law ids that have
+/// been edited in this traject (the diff of the traject branch against its
+/// base on the writable-own source, mapped back to law ids).
+///
+/// Feeds the library sidebar's "Bewerkt in dit traject" section. Returns an
+/// empty array — not an error — when nothing has been saved yet (the
+/// traject branch doesn't exist), so the frontend simply hides the section.
+///
+/// Goes through `require_traject_corpus_from_ref` (not `require_traject_scope`)
+/// because it needs the `TrajectCorpus` directly to reach the writable-own
+/// backend; the membership re-check is identical either way.
+pub async fn list_traject_changed_laws(
+    State(state): State<AppState>,
+    session: Session,
+    Path(traject_ref): Path<String>,
+) -> Result<Json<Vec<String>>, (StatusCode, String)> {
+    let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let ids = traject.changed_law_ids().await.map_err(|e| {
+        // A GitHub round-trip failure (token, transport, unexpected status)
+        // is upstream — surface it as 502 with a generic message; details
+        // are logged for operators.
+        tracing::warn!(traject_ref = %traject_ref, error = %e, "changed-laws diff failed");
+        (
+            StatusCode::BAD_GATEWAY,
+            "Kon de gewijzigde wetten van dit traject niet ophalen".to_string(),
+        )
+    })?;
+    Ok(Json(ids))
+}
+
 type YamlResponse = (
     StatusCode,
     [(axum::http::HeaderName, &'static str); 1],

@@ -359,3 +359,69 @@ async fn sub_path_prefixes_api_calls() {
     let got = b.read_file(Path::new("wet/x.yaml")).await.unwrap();
     assert_eq!(got.as_deref(), Some("c"));
 }
+
+#[tokio::test]
+async fn changed_files_maps_compare_to_source_relative_paths() {
+    let server = MockServer::start().await;
+
+    // Compare base...head returns two changed law files plus one file
+    // outside the source's sub_path (repo-root config) that must be dropped.
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus/compare/main...traject/abc"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "files": [
+                { "filename": "regulation/nl/wet/a/2025-01-01.yaml" },
+                { "filename": "regulation/nl/wet/b/2025-01-01.yaml" },
+                { "filename": "README.md" },
+            ]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let src = github_source("acme", "corpus", "traject/abc", Some("regulation/nl"));
+    let b = GitHubApiBackend::new(&src, Some("main".to_string()), Some("t".to_string()))
+        .unwrap()
+        .with_api_base(server.uri());
+
+    let mut changed = b.changed_files().await.unwrap();
+    changed.sort();
+    assert_eq!(
+        changed,
+        vec![
+            "wet/a/2025-01-01.yaml".to_string(),
+            "wet/b/2025-01-01.yaml".to_string(),
+        ],
+        "sub_path prefix must be stripped and out-of-subtree files dropped"
+    );
+}
+
+#[tokio::test]
+async fn changed_files_missing_branch_returns_empty() {
+    let server = MockServer::start().await;
+
+    // No traject branch yet (nothing saved) → Compare API 404 → empty list.
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus/compare/main...traject/abc"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+            "message": "Not Found"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let b = backend(&server);
+    assert!(b.changed_files().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn changed_files_without_token_is_empty_and_makes_no_request() {
+    let server = MockServer::start().await;
+    // No mounted mock: any HTTP call would 404 from wiremock. A read-only
+    // backend (no token) must short-circuit before hitting the network.
+    let src = github_source("acme", "corpus", "traject/abc", None);
+    let b = GitHubApiBackend::new(&src, Some("main".to_string()), None)
+        .unwrap()
+        .with_api_base(server.uri());
+    assert!(b.changed_files().await.unwrap().is_empty());
+}

@@ -77,6 +77,19 @@ mod inner {
         sha: String,
     }
 
+    /// Compare-API response for `GET /repos/{repo}/compare/{base}...{head}`.
+    /// We only need the per-file `filename`s to map changed files back to
+    /// law ids.
+    #[derive(Debug, Deserialize)]
+    struct CompareResponse {
+        #[serde(default)]
+        files: Vec<CompareFile>,
+    }
+    #[derive(Debug, Deserialize)]
+    struct CompareFile {
+        filename: String,
+    }
+
     /// Result of fetching a GitHub source.
     #[derive(Debug)]
     pub enum FetchResult {
@@ -834,6 +847,61 @@ mod inner {
                 )));
             }
             Ok(())
+        }
+
+        /// In-repo paths of files that differ between `base` and `head`,
+        /// via the Compare API (`{base}...{head}` — three-dot, so the
+        /// result is the set of changes `head` introduced since the merge
+        /// base, which is exactly "what this branch changed").
+        ///
+        /// A 404 (base or head ref missing — e.g. the traject branch was
+        /// never created because no edits have been saved yet) maps to an
+        /// empty list rather than an error: "no branch yet" is the normal
+        /// pre-edit state and the caller treats it as "nothing changed".
+        ///
+        /// NOTE: the Compare API caps `files` at 300 entries and paginates
+        /// beyond that. A traject realistically edits a handful of laws, so
+        /// we read the first page only; a diff larger than 300 files would
+        /// be under-reported (acceptable for the curated-sidebar use case).
+        pub async fn compare_files(
+            &mut self,
+            repo: &str,
+            base: &str,
+            head: &str,
+            token: Option<&str>,
+        ) -> Result<Vec<String>> {
+            let url = format!(
+                "{}/repos/{}/compare/{}...{}",
+                self.api_base, repo, base, head
+            );
+            let headers = self.default_headers(token);
+            let response = self
+                .client
+                .get(&url)
+                .headers(headers)
+                .send()
+                .await
+                .map_err(|e| CorpusError::Git(format!("GitHub API request failed: {}", e)))?;
+            self.track_rate_limit(&response);
+
+            let status = response.status();
+            if status == reqwest::StatusCode::NOT_FOUND {
+                return Ok(Vec::new());
+            }
+            if !status.is_success() {
+                return Err(CorpusError::Git(format!(
+                    "GitHub Compare API {}...{} on {} returned {}: {}",
+                    base,
+                    head,
+                    repo,
+                    status,
+                    response.text().await.unwrap_or_default()
+                )));
+            }
+            let parsed: CompareResponse = response.json().await.map_err(|e| {
+                CorpusError::Git(format!("Failed to parse compare response: {}", e))
+            })?;
+            Ok(parsed.files.into_iter().map(|f| f.filename).collect())
         }
     }
 

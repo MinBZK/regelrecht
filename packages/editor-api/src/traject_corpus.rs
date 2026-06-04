@@ -84,6 +84,47 @@ impl TrajectCorpus {
     pub async fn record_save(&self, law_id: String, body: String) {
         self.overlay.write().await.insert(law_id, body);
     }
+
+    /// Law ids that have been edited in this traject: the diff between the
+    /// writable-own source's traject branch and its base branch, mapped
+    /// back to law ids via the source map.
+    ///
+    /// This is the durable source of truth for "what changed in this
+    /// traject" — every save commits to the branch, so the branch-vs-base
+    /// diff survives process restarts and is shared across all members
+    /// (unlike the in-memory `overlay`, which is only a read-your-writes
+    /// cache). Returns an empty list when nothing has been saved yet (the
+    /// traject branch doesn't exist → the Compare API 404s → empty) or the
+    /// writable-own backend isn't initialised.
+    pub async fn changed_law_ids(
+        &self,
+    ) -> Result<Vec<String>, regelrecht_corpus::error::CorpusError> {
+        let Some(entry) = self.corpus.backends.get(&self.writable_own_source_id) else {
+            return Ok(Vec::new());
+        };
+        let changed = {
+            let backend = entry.backend.lock().await;
+            backend.changed_files().await?
+        };
+        if changed.is_empty() {
+            return Ok(Vec::new());
+        }
+        // Match changed source-relative paths against loaded laws. Normalise
+        // separators so a relative_path computed on a non-Unix host still
+        // matches the forward-slash paths GitHub returns.
+        let changed: std::collections::HashSet<String> =
+            changed.into_iter().map(|p| p.replace('\\', "/")).collect();
+        let mut ids: Vec<String> = self
+            .corpus
+            .source_map
+            .laws()
+            .filter(|law| changed.contains(&law.relative_path.replace('\\', "/")))
+            .map(|law| law.law_id.clone())
+            .collect();
+        ids.sort();
+        ids.dedup();
+        Ok(ids)
+    }
 }
 
 /// Lazy registry of per-traject corpora, mirroring the
