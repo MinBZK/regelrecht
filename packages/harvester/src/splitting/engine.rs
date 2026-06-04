@@ -1693,6 +1693,37 @@ mod tests {
     }
 
     #[test]
+    fn test_article_level_vervallen_lid_keeps_lone_enumerator() {
+        // A repealed ("Vervallen") lid has only editorial content, so its body is
+        // empty. We still emit the lid number as a lone block so the structure
+        // reads "1." / "2." with the repealed lid visible (prepend_marker None arm).
+        let engine = article_level_engine();
+
+        let xml = r#"<artikel>
+            <kop><nr>3</nr></kop>
+            <lid><lidnr>1.</lidnr><al><redactie type="vervanging">Vervallen.</redactie></al></lid>
+            <lid><lidnr>2.</lidnr><al>Tweede lid tekst.</al></lid>
+        </artikel>"#;
+
+        let doc = roxmltree::Document::parse(xml).unwrap();
+        let context = SplitContext::new("BWBR0000000", "2025-01-01", "https://example.com");
+        let components = engine.split(doc.root_element(), context);
+
+        assert_eq!(components.len(), 1);
+        let text = &components[0].text;
+        assert!(
+            !text.contains("Vervallen"),
+            "editorial excluded, got:\n{text}"
+        );
+        // The empty lid keeps its number as a standalone block.
+        assert!(
+            text.split("\n\n").any(|b| b.trim() == "1."),
+            "repealed lid should keep a lone '1.' block, got:\n{text}"
+        );
+        assert!(text.contains("2. Tweede lid tekst."), "got:\n{text}");
+    }
+
+    #[test]
     fn test_split_artikel_with_unknown_element_produces_warning() {
         // An unknown element inside <al> should produce a warning but still extract text
         let hierarchy = create_dutch_law_hierarchy();
