@@ -9,7 +9,6 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
@@ -33,8 +32,6 @@ use regelrecht_pipeline::test_utils::TestDb;
 const LAW_ID: &str = "zorgtoeslagwet";
 
 fn empty_state(pool: PgPool) -> AppState {
-    let mut favorites = HashSet::new();
-    favorites.insert(LAW_ID.to_string());
     AppState {
         corpus: Arc::new(RwLock::new(CorpusState::empty())),
         oidc_client: None,
@@ -48,7 +45,6 @@ fn empty_state(pool: PgPool) -> AppState {
         pipeline_api_url: None,
         reload_lock: Arc::new(Mutex::new(())),
         trajects: Arc::new(TrajectCorpusCache::new()),
-        favorites: Arc::new(favorites),
     }
 }
 
