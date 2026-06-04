@@ -463,8 +463,16 @@ mod tests {
 
     #[test]
     fn test_convert_jci_to_url_sanitizes_fragments() {
-        // Note: artikel pattern only matches word chars, so <script> isn't captured
-        // This tests that sanitization is applied to patterns that match more broadly
+        // All anchor patterns now match [^&]+, so any special chars in the
+        // captured value must be stripped by sanitize_fragment before they
+        // reach the URL fragment.
+
+        // artikel pattern matches [^&]+ (since the dotted-artikel fix), so a
+        // crafted value must still be sanitized in the anchor.
+        assert_eq!(
+            convert_jci_to_url("jci1.3:c:BWBR0018451&artikel=2.5a<script>"),
+            "https://wetten.overheid.nl/BWBR0018451#Artikel2.5ascript"
+        );
 
         // hoofdstuk pattern matches [^&]+ which could include special chars
         // Quotes and other special chars should be stripped by sanitize_fragment
