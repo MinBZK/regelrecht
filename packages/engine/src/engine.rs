@@ -19,14 +19,14 @@
 //! println!("Output: {:?}", result.outputs);
 //! ```
 
-use crate::article::{Action, ActionOperation, ActionValue, Article, ArticleBasedLaw};
+use crate::article::{Action, ActionOperation, Article, ArticleBasedLaw};
 use crate::config;
 use crate::context::RuleContext;
 use crate::error::{EngineError, Result};
 use crate::operations::{evaluate_value, execute_operation};
 use crate::trace::{PathNode, TraceBuilder};
 use crate::types::{PathNodeType, Value};
-use crate::units::{infer_unit, SymbolUnits};
+use crate::units::{infer_operation_unit, infer_unit, SymbolUnits};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashSet};
 use std::rc::Rc;
@@ -418,6 +418,10 @@ impl<'a> ArticleEngine<'a> {
         let actions = self.get_actions();
         let tracing_active = context.has_trace();
 
+        // Unit check (RFC-019): the symbol table is value-independent and identical
+        // for every action in the article, so build it once here rather than per action.
+        let symbols = SymbolUnits::from_article(self.article);
+
         for action in actions {
             let output_name = match &action.output {
                 Some(name) => name,
@@ -429,7 +433,7 @@ impl<'a> ArticleEngine<'a> {
                 context.trace_set_message(format!("Computing {}", output_name));
             }
 
-            let value = match self.evaluate_action(action, context) {
+            let value = match self.evaluate_action(action, context, &symbols) {
                 Ok(v) => v,
                 Err(e) => {
                     if tracing_active {
@@ -460,28 +464,30 @@ impl<'a> ArticleEngine<'a> {
     /// # Arguments
     /// * `action` - Action specification
     /// * `context` - Execution context
+    /// * `symbols` - Unit symbol table for the article (built once per article)
     ///
     /// # Returns
     /// Calculated value
-    fn evaluate_action(&self, action: &Action, context: &RuleContext) -> Result<Value> {
-        // Unit check (RFC-019): value-independent, so it runs once per action.
-        // Unknown units never error, so unannotated laws are unaffected.
-        let symbols = SymbolUnits::from_article(self.article);
+    fn evaluate_action(
+        &self,
+        action: &Action,
+        context: &RuleContext,
+        symbols: &SymbolUnits,
+    ) -> Result<Value> {
+        // Unit check (RFC-019): value-independent. Unknown units never error,
+        // so unannotated laws are unaffected.
 
         // Check for operation at action level FIRST
         // When an action has an operation, the value/subject fields are operands, not direct results
         if let Some(operation) = &action.operation {
             let action_op = self.action_to_operation(action, operation)?;
-            infer_unit(
-                &ActionValue::Operation(Box::new(action_op.clone())),
-                &symbols,
-            )?;
+            infer_operation_unit(&action_op, symbols)?;
             return execute_operation(&action_op, context, 0);
         }
 
         // Check for direct value (only when no operation is specified)
         if let Some(value) = &action.value {
-            infer_unit(value, &symbols)?;
+            infer_unit(value, symbols)?;
             return evaluate_value(value, context, 0);
         }
 

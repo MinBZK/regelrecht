@@ -223,7 +223,7 @@ impl SymbolUnits {
 pub fn infer_unit(expr: &ActionValue, symbols: &SymbolUnits) -> Result<Unit, EngineError> {
     match expr {
         ActionValue::Literal(v) => Ok(literal_unit(v, symbols)),
-        ActionValue::Operation(op) => infer_operation(op, symbols),
+        ActionValue::Operation(op) => infer_operation_unit(op, symbols),
     }
 }
 
@@ -266,7 +266,13 @@ fn check_children(children: &[&ActionValue], symbols: &SymbolUnits) -> Result<()
     Ok(())
 }
 
-fn infer_operation(op: &ActionOperation, symbols: &SymbolUnits) -> Result<Unit, EngineError> {
+/// Infer the unit of an [`ActionOperation`] directly, without wrapping it in an
+/// [`ActionValue`]. The runtime check in `evaluate_action` already holds an
+/// `&ActionOperation`, so this entry point lets it avoid cloning the operation AST.
+pub fn infer_operation_unit(
+    op: &ActionOperation,
+    symbols: &SymbolUnits,
+) -> Result<Unit, EngineError> {
     use ActionOperation::*;
     let name = op.operation_name();
     match op {
