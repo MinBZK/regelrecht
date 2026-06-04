@@ -16,10 +16,16 @@ pub struct SplitEngine<S: SplitStrategy> {
     hierarchy: HierarchyRegistry,
     strategy: S,
     parse_engine: ParseEngine,
+    /// When true, each `artikel` is emitted as a SINGLE component with its
+    /// leden/onderdelen folded inline into the text (keeping their enumerators),
+    /// instead of being split into one component per lid/onderdeel. This is the
+    /// harvester default; finer splitting is an explicit author choice made later
+    /// in the editor. Leaf-splitting is retained behind `false` for tests.
+    article_level: bool,
 }
 
 impl<S: SplitStrategy> SplitEngine<S> {
-    /// Create a new split engine.
+    /// Create a new split engine (leaf-splitting; `article_level` off).
     #[must_use]
     pub fn new(hierarchy: HierarchyRegistry, strategy: S) -> Self {
         let registry = create_content_registry();
@@ -28,7 +34,16 @@ impl<S: SplitStrategy> SplitEngine<S> {
             hierarchy,
             strategy,
             parse_engine,
+            article_level: false,
         }
+    }
+
+    /// Enable article-level extraction: one component per `artikel`, with
+    /// leden/onderdelen folded inline (enumerators preserved).
+    #[must_use]
+    pub fn with_article_level(mut self, article_level: bool) -> Self {
+        self.article_level = article_level;
+        self
     }
 
     /// Split an element into components based on hierarchy.
@@ -55,6 +70,16 @@ impl<S: SplitStrategy> SplitEngine<S> {
         // These have <tussenkop> elements that separate different versions
         if tag == "artikel" && self.has_version_separator(node) {
             if let Some(component) = self.extract_full_article_content(node, spec, &context) {
+                return vec![component];
+            }
+            return Vec::new();
+        }
+
+        // Article-level mode (harvester default): emit one component per artikel
+        // with leden/onderdelen folded inline (enumerators preserved), instead of
+        // splitting into one component per lid/onderdeel.
+        if tag == "artikel" && self.article_level {
+            if let Some(component) = self.extract_article_level_content(node, spec, &context) {
                 return vec![component];
             }
             return Vec::new();
@@ -425,6 +450,196 @@ impl<S: SplitStrategy> SplitEngine<S> {
             .with_references(collector.into_references())
             .with_warnings(warnings),
         )
+    }
+
+    /// Extract a whole article at article-level granularity.
+    ///
+    /// Produces ONE component for the artikel, with its leden/onderdelen folded
+    /// inline as blank-line-separated blocks that keep their enumerators
+    /// (`1.`, `a.`, `1°`), matching how whole-article laws (e.g.
+    /// `zorgverzekeringswet`) are already stored so the existing markdown
+    /// rendering shows the structure. Marked lists become separate blocks;
+    /// unmarked/dash/bullet lists stay inline; `redactie`/`tussenkop`/`meta-data`
+    /// are skipped.
+    fn extract_article_level_content(
+        &self,
+        node: Node<'_, '_>,
+        spec: &ElementSpec,
+        context: &SplitContext,
+    ) -> Option<ArticleComponent> {
+        let mut collector = ReferenceCollector::new();
+        let mut warnings: Vec<String> = Vec::new();
+        let mut blocks: Vec<String> = Vec::new();
+
+        for child in node.children() {
+            if !child.is_element() {
+                continue;
+            }
+            let child_tag = get_tag_name(child);
+
+            // Skip kop (number already extracted) and meta-data.
+            if spec.skip_for_number.contains(&child_tag.to_string()) || child_tag == "meta-data" {
+                continue;
+            }
+
+            let (mut child_blocks, errs) =
+                self.collect_article_blocks(child, &mut collector, &context.bwb_id, &context.date);
+            warnings.extend(errs);
+            blocks.append(&mut child_blocks);
+        }
+
+        if blocks.is_empty() {
+            return None;
+        }
+
+        Some(
+            ArticleComponent::new(
+                context.number_parts.clone(),
+                blocks.join("\n\n").trim().to_string(),
+                context.base_url.clone(),
+            )
+            .with_bijlage_prefix(context.bijlage_prefix.clone())
+            .with_references(collector.into_references())
+            .with_warnings(warnings),
+        )
+    }
+
+    /// Collect the blank-line-separated text blocks for one element, recursing
+    /// through lid/lijst/li and re-attaching their enumerators as prefixes.
+    ///
+    /// - `al` → one block (inline text).
+    /// - `lid` → its content blocks, with the `lidnr` prefixed onto the first.
+    /// - `lijst` (marked) → one block per `li`; unmarked/dash/bullet lists are
+    ///   kept inline as a single block (reusing `extract_unmarked_list_text`).
+    /// - `li` → its content blocks, with the `li.nr` marker prefixed onto the first.
+    ///
+    /// Editorial (`redactie`), `tussenkop` and `meta-data` are skipped.
+    fn collect_article_blocks(
+        &self,
+        node: Node<'_, '_>,
+        collector: &mut ReferenceCollector,
+        bwb_id: &str,
+        date: &str,
+    ) -> (Vec<String>, Vec<String>) {
+        let tag = get_tag_name(node);
+        let mut blocks: Vec<String> = Vec::new();
+        let mut warnings: Vec<String> = Vec::new();
+
+        if self.is_editorial_content(node) || tag == "tussenkop" || tag == "meta-data" {
+            return (blocks, warnings);
+        }
+
+        match tag {
+            "al" => {
+                let (text, errs) =
+                    self.extract_inline_text_with_warnings(node, collector, bwb_id, date);
+                warnings.extend(errs);
+                if !text.is_empty() {
+                    blocks.push(text);
+                }
+            }
+            "lid" => {
+                let prefix = Self::enumerator(node, "lidnr");
+                let mut child_blocks = self.collect_marker_children(
+                    node,
+                    "lidnr",
+                    collector,
+                    bwb_id,
+                    date,
+                    &mut warnings,
+                );
+                Self::prepend_marker(&mut child_blocks, prefix);
+                blocks.append(&mut child_blocks);
+            }
+            "li" => {
+                let marker = Self::enumerator(node, "li.nr");
+                let mut child_blocks = self.collect_marker_children(
+                    node,
+                    "li.nr",
+                    collector,
+                    bwb_id,
+                    date,
+                    &mut warnings,
+                );
+                Self::prepend_marker(&mut child_blocks, marker);
+                blocks.append(&mut child_blocks);
+            }
+            "lijst" => {
+                if self.is_effectively_unmarked_list(node) {
+                    // Non-addressable markers (bullets/dashes/unmarked) stay inline.
+                    let text = self.extract_unmarked_list_text(node, collector, bwb_id, date);
+                    if !text.is_empty() {
+                        blocks.push(text);
+                    }
+                } else {
+                    for li in node.children() {
+                        if !li.is_element() || get_tag_name(li) != "li" {
+                            continue;
+                        }
+                        let (mut li_blocks, errs) =
+                            self.collect_article_blocks(li, collector, bwb_id, date);
+                        warnings.extend(errs);
+                        blocks.append(&mut li_blocks);
+                    }
+                }
+            }
+            _ => {
+                // Unknown/other inline element: extract as a single block.
+                let (text, errs) =
+                    self.extract_inline_text_with_warnings(node, collector, bwb_id, date);
+                warnings.extend(errs);
+                if !text.is_empty() {
+                    blocks.push(text);
+                }
+            }
+        }
+
+        (blocks, warnings)
+    }
+
+    /// Collect blocks from a lid/li's children, skipping the marker element.
+    fn collect_marker_children(
+        &self,
+        node: Node<'_, '_>,
+        marker_tag: &str,
+        collector: &mut ReferenceCollector,
+        bwb_id: &str,
+        date: &str,
+        warnings: &mut Vec<String>,
+    ) -> Vec<String> {
+        let mut blocks: Vec<String> = Vec::new();
+        for child in node.children() {
+            if !child.is_element() {
+                continue;
+            }
+            if get_tag_name(child) == marker_tag {
+                continue;
+            }
+            let (mut child_blocks, errs) =
+                self.collect_article_blocks(child, collector, bwb_id, date);
+            warnings.extend(errs);
+            blocks.append(&mut child_blocks);
+        }
+        blocks
+    }
+
+    /// Read and trim a marker element (e.g. `lidnr`, `li.nr`) directly under `node`.
+    fn enumerator(node: Node<'_, '_>, marker_tag: &str) -> Option<String> {
+        node.children()
+            .find(|c| c.is_element() && get_tag_name(*c) == marker_tag)
+            .and_then(|n| n.text())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    }
+
+    /// Prefix the enumerator onto the first block (e.g. `a.` + `wet: ...` →
+    /// `a. wet: ...`), or stand alone if the element had no text blocks.
+    fn prepend_marker(blocks: &mut Vec<String>, marker: Option<String>) {
+        let Some(marker) = marker else { return };
+        match blocks.first_mut() {
+            Some(first) => *first = format!("{marker} {first}"),
+            None => blocks.push(marker),
+        }
     }
 
     /// Recursively extract text from an element and its children.
@@ -1352,6 +1567,129 @@ mod tests {
             components[0].warnings.is_empty(),
             "Expected no warnings for valid content"
         );
+    }
+
+    fn article_level_engine() -> SplitEngine<LeafSplitStrategy> {
+        SplitEngine::new(create_dutch_law_hierarchy(), LeafSplitStrategy).with_article_level(true)
+    }
+
+    #[test]
+    fn test_article_level_folds_lid_and_onderdelen_into_one_component() {
+        let engine = article_level_engine();
+
+        let xml = r#"<artikel>
+            <kop><nr>1</nr></kop>
+            <lid>
+                <lidnr>1.</lidnr>
+                <al>In dit besluit wordt verstaan onder:</al>
+                <lijst>
+                    <li><li.nr>a.</li.nr><al>wet: de Zorgverzekeringswet;</al></li>
+                    <li><li.nr>b.</li.nr><al>verblijf: verblijf gedurende het etmaal;</al></li>
+                </lijst>
+            </lid>
+        </artikel>"#;
+
+        let doc = roxmltree::Document::parse(xml).unwrap();
+        let context = SplitContext::new("BWBR0018492", "2026-01-01", "https://example.com");
+        let components = engine.split(doc.root_element(), context);
+
+        // One component for the whole article (not split per onderdeel).
+        assert_eq!(components.len(), 1);
+        assert_eq!(components[0].to_number(), "1");
+
+        // Onderdeel enumerators are preserved, as blank-line-separated blocks.
+        let text = &components[0].text;
+        assert!(text.contains("In dit besluit wordt verstaan onder:"));
+        assert!(
+            text.contains("a. wet: de Zorgverzekeringswet;"),
+            "missing onderdeel a marker, got:\n{text}"
+        );
+        assert!(
+            text.contains("b. verblijf: verblijf gedurende het etmaal;"),
+            "missing onderdeel b marker, got:\n{text}"
+        );
+        assert!(
+            text.contains("\n\n"),
+            "blocks should be blank-line separated"
+        );
+    }
+
+    #[test]
+    fn test_article_level_keeps_nested_sub_items_with_markers() {
+        let engine = article_level_engine();
+
+        let xml = r#"<artikel>
+            <kop><nr>1</nr></kop>
+            <lid>
+                <lidnr>1.</lidnr>
+                <al>wordt verstaan onder:</al>
+                <lijst>
+                    <li>
+                        <li.nr>e.</li.nr>
+                        <al>in-vitrofertilisatiepoging: zorg, inhoudende:</al>
+                        <lijst>
+                            <li><li.nr>1°</li.nr><al>de follikelpunctie;</al></li>
+                            <li><li.nr>2°</li.nr><al>de bevruchting;</al></li>
+                        </lijst>
+                    </li>
+                </lijst>
+            </lid>
+        </artikel>"#;
+
+        let doc = roxmltree::Document::parse(xml).unwrap();
+        let context = SplitContext::new("BWBR0018492", "2026-01-01", "https://example.com");
+        let components = engine.split(doc.root_element(), context);
+
+        assert_eq!(components.len(), 1);
+        let text = &components[0].text;
+        assert!(
+            text.contains("e. in-vitrofertilisatiepoging"),
+            "got:\n{text}"
+        );
+        assert!(text.contains("1° de follikelpunctie;"), "got:\n{text}");
+        assert!(text.contains("2° de bevruchting;"), "got:\n{text}");
+    }
+
+    #[test]
+    fn test_article_level_multiple_lids_one_component_with_lidnrs() {
+        let engine = article_level_engine();
+
+        let xml = r#"<artikel>
+            <kop><nr>2</nr></kop>
+            <lid><lidnr>1.</lidnr><al>Eerste lid tekst.</al></lid>
+            <lid><lidnr>2.</lidnr><al>Tweede lid tekst.</al></lid>
+        </artikel>"#;
+
+        let doc = roxmltree::Document::parse(xml).unwrap();
+        let context = SplitContext::new("BWBR0000000", "2025-01-01", "https://example.com");
+        let components = engine.split(doc.root_element(), context);
+
+        assert_eq!(components.len(), 1);
+        assert_eq!(components[0].to_number(), "2");
+        let text = &components[0].text;
+        assert!(text.contains("1. Eerste lid tekst."), "got:\n{text}");
+        assert!(text.contains("2. Tweede lid tekst."), "got:\n{text}");
+        // Two lid blocks, blank-line separated.
+        assert_eq!(text.matches("\n\n").count(), 1, "got:\n{text}");
+    }
+
+    #[test]
+    fn test_article_level_excludes_redactie() {
+        let engine = article_level_engine();
+
+        let xml = r#"<artikel>
+            <kop><nr>1</nr></kop>
+            <al><redactie type="extra">Editorial note.</redactie></al>
+            <al>Actual law text.</al>
+        </artikel>"#;
+
+        let doc = roxmltree::Document::parse(xml).unwrap();
+        let context = SplitContext::new("BWBR0000000", "2025-01-01", "https://example.com");
+        let components = engine.split(doc.root_element(), context);
+
+        assert_eq!(components.len(), 1);
+        assert!(!components[0].text.contains("Editorial note"));
+        assert!(components[0].text.contains("Actual law text."));
     }
 
     #[test]

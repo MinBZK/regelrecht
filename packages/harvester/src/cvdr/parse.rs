@@ -52,9 +52,11 @@ pub fn parse_cvdr_articles(xml: &str, base_url: &str) -> Result<ParsedCvdrConten
     let mut articles = Vec::new();
     let mut all_warnings: Vec<String> = Vec::new();
 
-    // Create split engine (reuses BWB article splitting logic)
+    // Create split engine (reuses BWB article splitting logic). Article-level
+    // granularity is the default: one entry per artikel with leden/onderdelen
+    // folded inline (enumerators kept).
     let hierarchy = create_dutch_law_hierarchy();
-    let engine = SplitEngine::new(hierarchy, LeafSplitStrategy);
+    let engine = SplitEngine::new(hierarchy, LeafSplitStrategy).with_article_level(true);
 
     // Find all artikel elements regardless of their position in the tree
     // CVDR structure varies: may be under body, hoofdstuk, paragraaf, afdeling, etc.
@@ -145,9 +147,13 @@ mod tests {
         let result =
             parse_cvdr_articles(xml, "https://lokaleregelgeving.overheid.nl/CVDR123456").unwrap();
 
-        assert_eq!(result.articles.len(), 2);
-        assert_eq!(result.articles[0].number, "2.1");
-        assert_eq!(result.articles[1].number, "2.2");
+        // Article-level granularity: one entry per artikel, leden folded inline
+        // with their lidnr enumerators.
+        assert_eq!(result.articles.len(), 1);
+        assert_eq!(result.articles[0].number, "2");
+        let text = &result.articles[0].text;
+        assert!(text.contains("1. Eerste lid tekst."), "got:\n{text}");
+        assert!(text.contains("2. Tweede lid tekst."), "got:\n{text}");
     }
 
     #[test]
@@ -170,11 +176,14 @@ mod tests {
         let result =
             parse_cvdr_articles(xml, "https://lokaleregelgeving.overheid.nl/CVDR123456").unwrap();
 
-        // Should have: intro + 2 list items = 3 components
-        assert_eq!(result.articles.len(), 3);
-        assert_eq!(result.articles[0].number, "3.1");
-        assert_eq!(result.articles[1].number, "3.1.a");
-        assert_eq!(result.articles[2].number, "3.1.b");
+        // Article-level granularity: one entry per artikel, onderdelen folded
+        // inline with their li.nr enumerators (no longer split into 3.1.a/3.1.b).
+        assert_eq!(result.articles.len(), 1);
+        assert_eq!(result.articles[0].number, "3");
+        let text = &result.articles[0].text;
+        assert!(text.contains("In deze verordening wordt verstaan onder:"));
+        assert!(text.contains("a. begrip a: definitie a;"), "got:\n{text}");
+        assert!(text.contains("b. begrip b: definitie b."), "got:\n{text}");
     }
 
     #[test]
