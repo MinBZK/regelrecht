@@ -119,6 +119,12 @@ pub enum AlgebraOp {
 /// `EngineError::UnitMismatch` if two *known* units are incompatible.
 ///
 /// If either operand is `Unknown`, the result is `Unknown` and no error occurs.
+/// Note this differs from [`fold_operands`], which treats `Unknown` as the fold
+/// *identity* (skipping it) so a known unit keeps flowing across a unit-less
+/// literal. For n-ary `+`/`-`/`×`/`÷` (and `IF` branches), prefer
+/// [`fold_operands`]; call `combine` directly only for genuinely binary
+/// operations (e.g. the `subject`/`value` pair of a comparison), where the
+/// `Unknown`-poisons-the-result behaviour is the intended one.
 pub fn combine(op: AlgebraOp, op_name: &str, lhs: Unit, rhs: Unit) -> Result<Unit, EngineError> {
     if lhs == Unit::Unknown || rhs == Unit::Unknown {
         return Ok(Unit::Unknown);
@@ -238,11 +244,15 @@ fn literal_unit(v: &Value, symbols: &SymbolUnits) -> Unit {
     }
 }
 
-/// Fold `combine` left-to-right over a list of operands.
-fn fold_operands(
+/// Fold `combine` left-to-right over a sequence of operands.
+///
+/// Takes any iterator of `&ActionValue` so callers can pass borrowed operands
+/// (e.g. an article's `values` slice, or the `then`/`default` branches of an
+/// `IF`) without allocating an owned `Vec` or cloning the operands.
+fn fold_operands<'a>(
     op: AlgebraOp,
     op_name: &str,
-    operands: &[ActionValue],
+    operands: impl IntoIterator<Item = &'a ActionValue>,
     symbols: &SymbolUnits,
 ) -> Result<Unit, EngineError> {
     let mut acc: Option<Unit> = None;
@@ -301,15 +311,13 @@ pub fn infer_operation_unit(
 
         // IF: all then/default branches must agree (Additive rule); conditions checked too.
         If { cases, default } => {
-            let mut branches: Vec<ActionValue> = Vec::new();
             for case in cases {
                 infer_unit(&case.when, symbols)?; // check condition subtree
-                branches.push(case.then.clone());
             }
-            if let Some(d) = default {
-                branches.push(d.clone());
-            }
-            fold_operands(AlgebraOp::Additive, name, &branches, symbols)
+            // Fold the `then` branches and the optional `default` by reference —
+            // no clone or owned Vec, since this runs on every IF evaluation.
+            let branches = cases.iter().map(|c| &c.then).chain(default.as_ref());
+            fold_operands(AlgebraOp::Additive, name, branches, symbols)
         }
 
         // Logical → boolean; recurse into operands.
