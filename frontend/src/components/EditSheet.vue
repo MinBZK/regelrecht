@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch, watchEffect, nextTick } from 'vue';
 import { collectAvailableVariables } from '../utils/operationTree.js';
+import { centsToEuros, eurosToCents } from '../utils/currency.js';
 import { lawsListUrl } from '../composables/corpusUrls.js';
 
 const props = defineProps({
@@ -183,13 +184,13 @@ function inferControlType(value, unit) {
 }
 
 function toDisplay(value, controlType) {
-  if (controlType === 'currency') return +(value / 100).toFixed(2);
+  if (controlType === 'currency') return centsToEuros(value);
   if (controlType === 'percentage') return +(value * 100).toFixed(6);
   return value;
 }
 
 function fromDisplay(value, controlType) {
-  if (controlType === 'currency') return Math.round(value * 100);
+  if (controlType === 'currency') return eurosToCents(value);
   if (controlType === 'percentage') return parseFloat((value / 100).toPrecision(15));
   return value;
 }
