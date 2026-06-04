@@ -62,6 +62,11 @@ pub struct CorpusLawEntry {
     pub display_name: Option<String>,
     pub source_id: String,
     pub source_name: String,
+    /// Priority of the providing source (lower = higher priority). The
+    /// search UI groups results by source and orders the groups by this
+    /// value, so the traject's own writable repo (priority 0) sorts above
+    /// the seeded central corpus.
+    pub source_priority: u32,
 }
 
 /// A parameter required by the execution block that declares an output.
@@ -202,6 +207,7 @@ fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec
                 display_name,
                 source_id: law.source_id.clone(),
                 source_name: law.source_name.clone(),
+                source_priority: law.source_priority,
             }
         })
         .collect();
@@ -923,7 +929,7 @@ async fn require_traject_corpus_from_ref(
     };
     state
         .trajects
-        .get_or_build(pool, traject_id, auth_file, &state.favorites)
+        .get_or_build(pool, traject_id, auth_file)
         .await
         .map_err(traject_corpus_error)
 }

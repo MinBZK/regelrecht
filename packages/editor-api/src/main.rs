@@ -117,7 +117,6 @@ async fn main() {
         pipeline_api_url,
         reload_lock: Arc::new(tokio::sync::Mutex::new(())),
         trajects: Arc::new(traject_corpus::TrajectCorpusCache::new()),
-        favorites,
     };
 
     let index_file = PathBuf::from(&static_dir).join("index.html");

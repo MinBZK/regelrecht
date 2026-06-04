@@ -213,6 +213,10 @@ impl CorpusRegistry {
     /// Load all sources (local + GitHub) into a SourceMap.
     ///
     /// Fetches GitHub sources using the provided auth file for token lookup.
+    /// Returns the populated map together with the ids of any sources that
+    /// failed to load. A single source failing is non-fatal (it's logged and
+    /// skipped), but the failed-id list lets callers escalate when a source
+    /// they care about — e.g. a traject's writable-own repo — is among them.
     ///
     /// **Note:** A fresh `GitHubFetcher` is created on each call, so the
     /// `NotModified` branch is currently unreachable (no prior ETag exists).
@@ -220,49 +224,99 @@ impl CorpusRegistry {
     /// sources are merged from a previous `SourceMap` instead of silently
     /// dropped.
     #[cfg(feature = "github")]
-    pub async fn load_all_sources_async(&self, auth_file: Option<&Path>) -> Result<SourceMap> {
+    pub async fn load_all_sources_async(
+        &self,
+        auth_file: Option<&Path>,
+    ) -> Result<(SourceMap, Vec<String>)> {
         let mut map = SourceMap::new();
         let mut fetcher = crate::github::GitHubFetcher::new()?;
+        let mut failed: Vec<String> = Vec::new();
 
         for source in &self.sources {
-            match &source.source_type {
-                SourceType::Local { .. } => {
-                    map.load_source(source)?;
-                }
-                SourceType::GitHub { github } => {
-                    let token = crate::auth::resolve_token_for_source(
-                        &source.id,
-                        source.auth_ref.as_deref(),
-                        auth_file,
-                    )?;
-                    match fetcher.fetch_source(github, token.as_deref()).await? {
-                        crate::github::FetchResult::Fetched(files) => {
-                            for file in &files {
-                                map.load_fetched_file(
-                                    &file.content,
-                                    &file.path,
-                                    github.path.as_deref(),
-                                    &source.id,
-                                    &source.name,
-                                    source.priority,
-                                )?;
-                            }
+            // A single source failing — a missing per-repo token, a
+            // writable-own branch that hasn't been created yet, a transient
+            // GitHub error — must NOT wipe the whole corpus. Log it, record
+            // the id, and move on so the remaining sources still populate the
+            // map.
+            if let Err(e) = Self::load_one_source(&mut map, &mut fetcher, source, auth_file).await {
+                tracing::warn!(
+                    source_id = %source.id,
+                    error = %e,
+                    "failed to load corpus source, skipping"
+                );
+                failed.push(source.id.clone());
+            }
+        }
+
+        if !failed.is_empty() {
+            tracing::warn!(
+                failed = ?failed,
+                loaded = map.len(),
+                "some corpus sources failed to load"
+            );
+        }
+
+        // Validate scopes for parity with `load_local_sources` and
+        // `load_favorites_async`, which both surface scope warnings.
+        for w in crate::validation::validate_scopes(&map, &self.sources) {
+            tracing::warn!(
+                law_id = %w.law_id,
+                source_id = %w.source_id,
+                "{}",
+                w.message
+            );
+        }
+
+        Ok((map, failed))
+    }
+
+    /// Load a single source into `map`. Factored out of
+    /// [`load_all_sources_async`] so one source's failure can be caught and
+    /// skipped without aborting the whole load.
+    #[cfg(feature = "github")]
+    async fn load_one_source(
+        map: &mut SourceMap,
+        fetcher: &mut crate::github::GitHubFetcher,
+        source: &Source,
+        auth_file: Option<&Path>,
+    ) -> Result<()> {
+        match &source.source_type {
+            SourceType::Local { .. } => {
+                map.load_source(source)?;
+            }
+            SourceType::GitHub { github } => {
+                let token = crate::auth::resolve_token_for_source(
+                    &source.id,
+                    source.auth_ref.as_deref(),
+                    auth_file,
+                )?;
+                match fetcher.fetch_source(github, token.as_deref()).await? {
+                    crate::github::FetchResult::Fetched(files) => {
+                        for file in &files {
+                            map.load_fetched_file(
+                                &file.content,
+                                &file.path,
+                                github.path.as_deref(),
+                                &source.id,
+                                &source.name,
+                                source.priority,
+                            )?;
                         }
-                        crate::github::FetchResult::NotModified => {
-                            // INVARIANT: currently unreachable because GitHubFetcher
-                            // is created fresh (no prior ETag). When ETag persistence
-                            // is added, this branch must merge laws from the previous
-                            // SourceMap — otherwise unchanged sources lose their laws.
-                            tracing::debug!(
-                                source_id = %source.id,
-                                "GitHub source unchanged, skipping"
-                            );
-                        }
+                    }
+                    crate::github::FetchResult::NotModified => {
+                        // INVARIANT: currently unreachable because GitHubFetcher
+                        // is created fresh (no prior ETag). When ETag persistence
+                        // is added, this branch must merge laws from the previous
+                        // SourceMap — otherwise unchanged sources lose their laws.
+                        tracing::debug!(
+                            source_id = %source.id,
+                            "GitHub source unchanged, skipping"
+                        );
                     }
                 }
             }
         }
-        Ok(map)
+        Ok(())
     }
 }
 

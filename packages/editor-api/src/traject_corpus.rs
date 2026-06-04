@@ -227,7 +227,6 @@ impl TrajectCorpusCache {
         pool: &PgPool,
         traject_id: Uuid,
         auth_file: Option<PathBuf>,
-        favorites: &std::collections::HashSet<String>,
     ) -> Result<Arc<TrajectCorpus>, TrajectCorpusError> {
         let cell = {
             let mut map = self.cells.write().await;
@@ -238,7 +237,7 @@ impl TrajectCorpusCache {
 
         let built = cell
             .get_or_try_init(|| async {
-                build_traject_corpus(pool, traject_id, auth_file.as_deref(), favorites).await
+                build_traject_corpus(pool, traject_id, auth_file.as_deref()).await
             })
             .await?;
         Ok(built.clone())
@@ -291,7 +290,6 @@ async fn build_traject_corpus(
     pool: &PgPool,
     traject_id: Uuid,
     auth_file: Option<&std::path::Path>,
-    favorites: &std::collections::HashSet<String>,
 ) -> Result<Arc<TrajectCorpus>, TrajectCorpusError> {
     let rows = sqlx::query_as::<_, TrajectSourceRow>(
         "SELECT source_id, name, source_type::text AS source_type,
@@ -456,16 +454,32 @@ async fn build_traject_corpus(
         }
     }
 
-    // Load laws from the same favorites set the global corpus uses, so the
-    // traject sees the same law set (minus any laws the traject's sources
-    // don't contain).
-    let source_map = match registry.load_favorites_async(favorites, auth_file).await {
-        Ok(map) => map,
+    // Load every law from all of the traject's sources — the private
+    // writable-own repo and the seeded central corpus — not just the
+    // favorites set. The bibliotheek search must be able to surface any law
+    // in the traject's corpus, so it needs the full set indexed. Per-source
+    // failures are tolerated inside `load_all_sources_async` (a bad seed
+    // source is skipped, not fatal), but a failure on the writable-own source
+    // is escalated below: its laws are the whole point of the traject, so a
+    // silent drop would reintroduce exactly the "my laws aren't searchable"
+    // bug this load path fixes.
+    let source_map = match registry.load_all_sources_async(auth_file).await {
+        Ok((map, failed)) => {
+            if failed.iter().any(|id| id == &writable_own_source_id) {
+                tracing::error!(
+                    traject = %traject_id,
+                    source_id = %writable_own_source_id,
+                    "traject writable-own source failed to load — the traject's own laws \
+                     will be missing from the bibliotheek until the corpus is rebuilt"
+                );
+            }
+            map
+        }
         Err(e) => {
             tracing::warn!(
                 traject = %traject_id,
                 error = %e,
-                "traject favorites load failed, falling back to local-only"
+                "traject corpus load failed, falling back to local-only"
             );
             registry
                 .load_local_sources()

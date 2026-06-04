@@ -58,6 +58,35 @@ const filteredLaws = computed(() => {
   );
 });
 
+/**
+ * Group the filtered laws by their providing source, ordered by source
+ * priority (lower = higher priority, so the traject's own writable repo at
+ * priority 0 sorts above the seeded central corpus) and then alphabetically.
+ * The popover renders one labelled section per group so a search surfaces
+ * matches from the private repo and the central corpus under their own
+ * headers — the external wetten.overheid.nl fallback only kicks in when
+ * every internal group is empty (see `filteredLaws.length === 0` below).
+ */
+const groupedLaws = computed(() => {
+  const groups = new Map();
+  for (const law of filteredLaws.value) {
+    let group = groups.get(law.source_id);
+    if (!group) {
+      group = {
+        source_id: law.source_id,
+        source_name: law.source_name || '',
+        priority: law.source_priority ?? Number.MAX_SAFE_INTEGER,
+        laws: [],
+      };
+      groups.set(law.source_id, group);
+    }
+    group.laws.push(law);
+  }
+  return [...groups.values()].sort(
+    (a, b) => a.priority - b.priority || a.source_name.localeCompare(b.source_name),
+  );
+});
+
 const hasSearch = computed(() => search.value.length > 0);
 
 watch([search, filteredLaws], ([q, filtered]) => {
@@ -237,23 +266,34 @@ defineExpose({ show });
             </nldd-list-item>
           </nldd-list>
         </template>
-        <nldd-list
-          v-else-if="filteredLaws.length > 0 || search.length >= MIN_QUERY_LENGTH"
-          variant="simple"
-          empty-text="Geen resultaten gevonden"
-          empty-supporting-text="Pas je zoektermen of voorkeuren aan"
-        >
-          <nldd-list-item
-            v-for="law in filteredLaws"
-            :key="law.law_id"
-            size="md"
-            type="button"
-            @click="selectLaw(law.law_id)"
-          >
-            <nldd-text-cell :text="displayName(law)" :supporting-text="law.source_name">
-            </nldd-text-cell>
-          </nldd-list-item>
-        </nldd-list>
+        <template v-else-if="filteredLaws.length > 0 || search.length >= MIN_QUERY_LENGTH">
+          <!-- One labelled section per source, private repo first (priority
+               0), then the central corpus. The source name doubles as the
+               group header, so the per-item supporting-text is dropped to
+               avoid repeating it on every row. -->
+          <template v-for="(group, groupIndex) in groupedLaws" :key="group.source_id">
+            <nldd-spacer v-if="groupIndex > 0" size="16"></nldd-spacer>
+            <nldd-title size="5"><h5>{{ group.source_name }}</h5></nldd-title>
+            <nldd-spacer size="8"></nldd-spacer>
+            <nldd-list variant="simple">
+              <nldd-list-item
+                v-for="law in group.laws"
+                :key="law.law_id"
+                size="md"
+                type="button"
+                @click="selectLaw(law.law_id)"
+              >
+                <nldd-text-cell :text="displayName(law)"></nldd-text-cell>
+              </nldd-list-item>
+            </nldd-list>
+          </template>
+          <nldd-list
+            v-if="groupedLaws.length === 0"
+            variant="simple"
+            empty-text="Geen resultaten gevonden"
+            empty-supporting-text="Pas je zoektermen of voorkeuren aan"
+          ></nldd-list>
+        </template>
       </template>
     </nldd-container>
   </nldd-popover>
