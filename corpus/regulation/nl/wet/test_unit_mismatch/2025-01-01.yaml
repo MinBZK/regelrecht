@@ -1,6 +1,5 @@
 ---
-$schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.3/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.3/schema.json
 $id: test_unit_mismatch
 name: Testwet eenheid-mismatch
 regulatory_layer: WET

@@ -78,6 +78,10 @@ impl Unit {
     /// amount by any of them yields the amount's unit. Whether a `percentage`
     /// value is later divided by 100 is a value concern, not a unit concern, so
     /// `eurocent × percentage` is unit-valid (it does NOT mean "forgot /100").
+    ///
+    /// Two scalars multiplied together stay a scalar (e.g. `percentage ×
+    /// percentage → percentage`, not `%²`): we do not track compound units, per
+    /// RFC-019 §2. This is consistent with `ratio × ratio → ratio`.
     fn is_scalar(self) -> bool {
         matches!(self, Unit::Ratio | Unit::Percentage | Unit::Count)
     }
@@ -392,7 +396,10 @@ pub struct UnitFinding {
 ///
 /// Limitation (RFC-019): only actions expressed via a `value` expression are
 /// walked here. Actions that use an inline action-level `operation` are covered
-/// by the runtime check in `evaluate_action` instead.
+/// by the runtime check in `evaluate_action` instead. In practice most corpus
+/// actions use the inline form, so this static pass examines only a small
+/// fraction of annotated actions — a "0 FAIL" result is not a guarantee that
+/// every annotated action was statically unit-checked.
 pub fn check_law(law: &crate::article::ArticleBasedLaw) -> Vec<UnitFinding> {
     use crate::types::ParameterType;
     let mut findings = Vec::new();
