@@ -59,7 +59,7 @@ function mountDialog() {
 }
 
 describe('TrajectInfoDialog', () => {
-  it('loads detail when opened and renders the create-screen fields', async () => {
+  it('loads detail when opened and renders the traject fields', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(res(DETAIL));
     const wrapper = mountDialog();
 
