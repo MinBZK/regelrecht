@@ -144,17 +144,19 @@ const detailView = computed({
 const activeAction = ref(null);
 
 // Curated sidebar sections (in render order). Each entry is
-// `{ key, title, laws }`; a `null` title renders a headerless list (the
-// no-favorites fallback). Empty sections are never pushed, so the template
+// `{ key, title, laws }`. Empty sections are never pushed, so the template
 // can iterate without per-section emptiness checks.
 //
 //   - "Bewerkt in dit traject" comes first: it's the small, high-signal,
-//     context-specific set, so it sits above the larger favorites/full list.
+//     context-specific set, so it sits above favorites.
 //     Only present when a traject is active and the diff is non-empty.
-//   - "Favorieten": the user's personal favorites. When the user has none we
-//     fall back to the full corpus (today's behavior) under no heading,
-//     rather than showing an empty panel — full browse otherwise lives in
-//     the search popover.
+//   - "Favorieten": the user's personal favorites.
+//
+// There is deliberately NO full-corpus fallback: the central corpus is the
+// full BWB corpus (thousands of laws), so dumping it into the sidebar isn't
+// useful and is exactly the "huge pile" we don't want loaded here. When
+// nothing is curated yet, the template shows a search CTA instead — full
+// browse lives in the search popover.
 const sidebarSections = computed(() => {
   const list = laws.value;
   const sections = [];
@@ -170,13 +172,9 @@ const sidebarSections = computed(() => {
     const favList = list.filter(law => favorites.value.has(law.law_id));
     if (favList.length > 0) {
       sections.push({ key: 'favorites', title: 'Favorieten', laws: favList });
-      return sections;
     }
   }
 
-  // No personal favorites: fall back to the full corpus (headerless),
-  // matching the pre-sections behavior. The curated sections layer on top.
-  sections.push({ key: 'all', title: null, laws: list });
   return sections;
 });
 
@@ -705,6 +703,15 @@ watch(activeTrajectRef, () => {
                 <nldd-title id="home-titel" size="3"><h3>{{ LIBRARY_HOME_TITLE }}</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
                 <nldd-inline-dialog v-if="loading" text="Laden..."></nldd-inline-dialog>
+                <!-- Nothing curated yet (no favorites, no traject edits): point
+                     the user at search rather than dumping the whole corpus. -->
+                <nldd-inline-dialog
+                  v-else-if="sidebarSections.length === 0"
+                  text="Nog niets in je bibliotheek"
+                  supporting-text="Zoek een wet om te openen, of markeer wetten als favoriet."
+                >
+                  <nldd-button slot="actions" variant="primary" start-icon="search" text="Zoeken" @click="openSearch"></nldd-button>
+                </nldd-inline-dialog>
                 <template v-else>
                   <template
                     v-for="(section, sectionIndex) in sidebarSections"
