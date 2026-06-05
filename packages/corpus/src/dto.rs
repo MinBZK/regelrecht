@@ -24,6 +24,12 @@ pub struct PaginationParams {
     pub offset: usize,
     #[serde(default)]
     pub limit: Option<usize>,
+    /// Optional case-insensitive search term. When present, the law list is
+    /// filtered server-side to laws whose `law_id` or name contains it —
+    /// letting the editor search the full corpus index without shipping every
+    /// law to the browser.
+    #[serde(default)]
+    pub q: Option<String>,
 }
 
 impl PaginationParams {

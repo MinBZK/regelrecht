@@ -945,7 +945,6 @@ watch(activeTrajectRef, () => {
   <ActionSheet :action="activeAction" :article="selectedArticle" :editable="false" @close="activeAction = null" @save="activeAction = null" @edit="editInEditor" />
   <SearchPopover
     ref="searchPopoverRef"
-    :laws="laws"
     @select-law="(lawId) => selectLaw(lawId, true)"
     @harvest-available="onHarvestAvailable"
   />

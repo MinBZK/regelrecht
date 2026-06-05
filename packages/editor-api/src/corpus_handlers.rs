@@ -196,9 +196,30 @@ fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec
     let corpus = scope.corpus();
     let limit = params.effective_limit();
 
+    // Optional server-side search. The corpus index can hold thousands of
+    // laws, so the editor sends `?q=` and we filter here rather than shipping
+    // every law to the browser to filter client-side. Underscores in the
+    // `law_id` are treated as spaces so "wet op de zorgtoeslag" matches
+    // `wet_op_de_zorgtoeslag`; loaded laws also match on their `name`.
+    let needle = params
+        .q
+        .as_deref()
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty());
+
     let mut entries: Vec<CorpusLawEntry> = corpus
         .source_map
         .laws()
+        .filter(|law| match &needle {
+            None => true,
+            Some(n) => {
+                law.law_id.replace('_', " ").to_lowercase().contains(n)
+                    || law
+                        .name
+                        .as_deref()
+                        .is_some_and(|name| name.to_lowercase().contains(n))
+            }
+        })
         .map(|law| {
             let display_name = resolve_display_name(&law.yaml_content);
             CorpusLawEntry {
@@ -212,13 +233,25 @@ fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec
         })
         .collect();
 
-    entries.sort_by(|a, b| a.law_id.cmp(&b.law_id));
-
-    entries
-        .into_iter()
-        .skip(params.offset)
-        .take(limit)
-        .collect()
+    if needle.is_some() {
+        // Search mode: order so the grouped UI gets the highest-priority
+        // sources first (the traject's own repo before the central corpus),
+        // and the result cap can't starve a high-priority source. No offset
+        // paging — search returns the top matches.
+        entries.sort_by(|a, b| {
+            a.source_priority
+                .cmp(&b.source_priority)
+                .then_with(|| a.law_id.cmp(&b.law_id))
+        });
+        entries.into_iter().take(limit).collect()
+    } else {
+        entries.sort_by(|a, b| a.law_id.cmp(&b.law_id));
+        entries
+            .into_iter()
+            .skip(params.offset)
+            .take(limit)
+            .collect()
+    }
 }
 
 /// GET /api/trajects/{traject_ref}/corpus/changed-laws — law ids that have
