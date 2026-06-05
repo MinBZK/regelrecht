@@ -62,21 +62,16 @@ defineExpose({ close });
 </script>
 
 <template>
-  <!--
-    NOTE: TrajectMembersDialog wraps this sheet in <Teleport to="body">. We
-    deliberately do not, because Vue Test Utils 2.4.10 cannot reach
-    teleported content from the wrapper (no teleport stub is configured in
-    this project), and the spec's tests assert on wrapper.text()/wrapper.get().
-    nldd-sheet handles its own overlay/portaling at runtime, so dropping the
-    Teleport has no behavioural effect on the rendered sheet.
-  -->
-  <nldd-sheet
-    ref="sheetEl"
-    placement="right"
-    width="520px"
-    full-height
-    @close="close"
-  >
+  <!-- Teleport the sheet out of the toolbar so it doesn't inherit the
+       toolbar's positioning / clipping. Matches TrajectMembersDialog. -->
+  <Teleport to="body">
+    <nldd-sheet
+      ref="sheetEl"
+      placement="right"
+      width="520px"
+      full-height
+      @close="close"
+    >
       <nldd-page sticky-header sticky-footer>
         <nldd-top-title-bar
           slot="header"
@@ -183,7 +178,8 @@ defineExpose({ close });
           ></nldd-button>
         </nldd-container>
       </nldd-page>
-  </nldd-sheet>
+    </nldd-sheet>
+  </Teleport>
 </template>
 
 <style scoped>

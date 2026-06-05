@@ -51,6 +51,10 @@ beforeEach(() => {
 function mountDialog() {
   return mount(TrajectInfoDialog, {
     attachTo: document.body,
+    // Render <Teleport> content inline so the assertions can reach it via
+    // wrapper.text()/wrapper.get(); the component teleports to <body> in
+    // production to escape the toolbar's clipping (like TrajectMembersDialog).
+    global: { stubs: { teleport: true } },
     props: { modelValue: false, trajectId: 'abc', trajectName: 'Tariefswijziging 2026' },
   });
 }
