@@ -196,6 +196,21 @@ fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec
     let corpus = scope.corpus();
     let limit = params.effective_limit();
 
+    // Exact-id filter (highest precedence). The library sidebar sends the
+    // user's favorites + traject edits as `?ids=a,b,c` so it resolves metadata
+    // for just those laws — it never has to load the whole corpus and filter
+    // client-side, and a favorite that sorts past any page cap still resolves.
+    let id_filter: Option<std::collections::HashSet<&str>> = params
+        .ids
+        .as_deref()
+        .map(|s| {
+            s.split(',')
+                .map(str::trim)
+                .filter(|x| !x.is_empty())
+                .collect()
+        })
+        .filter(|s: &std::collections::HashSet<&str>| !s.is_empty());
+
     // Optional server-side search. The corpus index can hold thousands of
     // laws, so the editor sends `?q=` and we filter here rather than shipping
     // every law to the browser to filter client-side. Underscores in the
@@ -210,14 +225,19 @@ fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec
     let mut entries: Vec<CorpusLawEntry> = corpus
         .source_map
         .laws()
-        .filter(|law| match &needle {
-            None => true,
-            Some(n) => {
-                law.law_id.replace('_', " ").to_lowercase().contains(n)
-                    || law
-                        .name
-                        .as_deref()
-                        .is_some_and(|name| name.to_lowercase().contains(n))
+        .filter(|law| {
+            if let Some(ids) = &id_filter {
+                return ids.contains(law.law_id.as_str());
+            }
+            match &needle {
+                None => true,
+                Some(n) => {
+                    law.law_id.replace('_', " ").to_lowercase().contains(n)
+                        || law
+                            .name
+                            .as_deref()
+                            .is_some_and(|name| name.to_lowercase().contains(n))
+                }
             }
         })
         .map(|law| {
@@ -233,11 +253,11 @@ fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec
         })
         .collect();
 
-    if needle.is_some() {
-        // Search mode: order so the grouped UI gets the highest-priority
-        // sources first (the traject's own repo before the central corpus),
-        // and the result cap can't starve a high-priority source. No offset
-        // paging — search returns the top matches.
+    if id_filter.is_some() || needle.is_some() {
+        // Filtered (by ids or search): order so the grouped UI gets the
+        // highest-priority sources first (the traject's own repo before the
+        // central corpus), and the result cap can't starve a high-priority
+        // source. No offset paging — return the matching set.
         entries.sort_by(|a, b| {
             a.source_priority
                 .cmp(&b.source_priority)

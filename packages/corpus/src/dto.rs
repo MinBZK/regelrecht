@@ -30,6 +30,12 @@ pub struct PaginationParams {
     /// law to the browser.
     #[serde(default)]
     pub q: Option<String>,
+    /// Optional comma-separated set of exact `law_id`s. When present, only
+    /// those laws are returned — so the library sidebar can resolve metadata
+    /// for just the user's favorites and traject edits instead of fetching the
+    /// whole corpus and filtering client-side.
+    #[serde(default)]
+    pub ids: Option<String>,
 }
 
 impl PaginationParams {
