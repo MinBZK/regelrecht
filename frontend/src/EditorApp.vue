@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, reactive, watch, watchEffect, nextTick } from 'vue';
+import { ref, computed, reactive, watch, watchEffect, nextTick, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
 import yaml from 'js-yaml';
 import { useLaw, fetchLaw } from './composables/useLaw.js';
@@ -883,18 +883,37 @@ const currentLawYaml = computed(() => {
 // load under the right traject — otherwise a later loadDependency call
 // for the same law id would treat it as already-current and skip the
 // refetch on a traject switch.
+// `currentLawYaml` re-dumps on every keystroke, so reacting directly would
+// reload the WASM engine per keystroke. Debounce the reload ~300ms after the
+// last edit; keep the first load (no previous yaml) synchronous so opening an
+// article isn't delayed.
+let engineLoadDebounce = null;
+
+async function reloadEngineLaw(lawYaml, isReady) {
+  if (!isReady || !lawYaml) return;
+  try {
+    await loadLawYaml(lawYaml, lawId.value, activeTrajectRef.value);
+  } catch (e) {
+    console.warn(`Failed to load law '${lawId.value}' into engine:`, e);
+  }
+}
+
 watch(
   [currentLawYaml, engineReady],
-  async ([lawYaml, isReady]) => {
-    if (!isReady || !lawYaml) return;
-    try {
-      await loadLawYaml(lawYaml, lawId.value, activeTrajectRef.value);
-    } catch (e) {
-      console.warn(`Failed to load law '${lawId.value}' into engine:`, e);
+  ([lawYaml, isReady], prev) => {
+    clearTimeout(engineLoadDebounce);
+    // First load (no previous yaml): run immediately so scenarios see the law
+    // without delay. Subsequent in-memory edits debounce.
+    if (!prev || !prev[0]) {
+      reloadEngineLaw(lawYaml, isReady);
+      return;
     }
+    engineLoadDebounce = setTimeout(() => reloadEngineLaw(lawYaml, isReady), 300);
   },
   { immediate: true },
 );
+
+onBeforeUnmount(() => clearTimeout(engineLoadDebounce));
 
 // Dirty state: the selected article's in-memory machine_readable differs
 // from the article's saved copy. `machineReadable.value` starts as a deep
