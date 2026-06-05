@@ -18,7 +18,8 @@ use regelrecht_corpus::annotation_schema::{
 use regelrecht_corpus::backend::{EditorUser, PersistOutcome, RepoBackend, WriteContext};
 use regelrecht_corpus::dto::{build_source_summaries, PaginationParams, SourceSummary};
 use regelrecht_corpus::source_map::{
-    collect_law_outputs, extract_law_id, resolve_display_name, validate_yaml_syntax, LoadedLaw,
+    collect_law_implements, collect_law_outputs, extract_law_id, resolve_display_name,
+    validate_yaml_syntax, LoadedLaw,
 };
 use regelrecht_corpus::CorpusError;
 
@@ -407,6 +408,65 @@ async fn list_law_outputs_in_scope(
         .collect();
 
     Ok(Json(outputs))
+}
+
+/// GET /api/corpus/laws/{law_id}/implementors — law ids whose articles
+/// declare `implements` an `open_term` of `{law_id}` (the IoC reverse link).
+///
+/// Computed server-side over the already-in-memory corpus. This exists so
+/// the editor's scenario dependency loader can find implementing regulations
+/// with a single request instead of fetching and parsing every law in the
+/// corpus over HTTP — which, for a traject federating the full central
+/// corpus, was hundreds of round-trips per scenario-panel open.
+pub async fn list_law_implementors(
+    State(state): State<AppState>,
+    Path(law_id): Path<String>,
+) -> Result<Json<Vec<String>>, (StatusCode, String)> {
+    let scope = global_scope(&state).await;
+    Ok(Json(implementors_in_scope(&scope, &law_id).await))
+}
+
+/// GET /api/trajects/{traject_id}/corpus/laws/{law_id}/implementors — same
+/// as the global view but resolved through the traject's federated corpus.
+pub async fn list_traject_law_implementors(
+    State(state): State<AppState>,
+    session: Session,
+    Path((traject_ref, law_id)): Path<(String, String)>,
+) -> Result<Json<Vec<String>>, (StatusCode, String)> {
+    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    Ok(Json(implementors_in_scope(&scope, &law_id).await))
+}
+
+async fn implementors_in_scope(scope: &ReadScope, law_id: &str) -> Vec<String> {
+    // The snapshot always carries the full federated law *list* (only bodies
+    // are lazy), so collect candidate ids first, then resolve each body.
+    let candidates: Vec<String> = scope
+        .corpus()
+        .source_map
+        .laws()
+        .map(|law| law.law_id.clone())
+        .filter(|id| id != law_id)
+        .collect();
+
+    let mut out = Vec::new();
+    for id in candidates {
+        // Resolve the body through the scope, NOT `LoadedLaw::yaml_content`
+        // directly: in a traject the federated central laws are metadata-only
+        // until first read, so the snapshot body is empty for them. `law_yaml`
+        // lazily fetches (and caches) the body and applies the read-your-writes
+        // overlay. A miss or fetch error just means this law can't be checked,
+        // so it's skipped rather than failing the whole scan.
+        if let Ok(Some(yaml)) = scope.law_yaml(&id).await {
+            if collect_law_implements(&yaml)
+                .iter()
+                .any(|implemented| implemented == law_id)
+            {
+                out.push(id);
+            }
+        }
+    }
+    out.sort();
+    out
 }
 
 /// A scenario file entry.

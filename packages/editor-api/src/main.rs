@@ -140,6 +140,10 @@ async fn main() {
             get(corpus_handlers::list_law_outputs),
         )
         .route(
+            "/api/corpus/laws/{law_id}/implementors",
+            get(corpus_handlers::list_law_implementors),
+        )
+        .route(
             "/api/corpus/laws/{law_id}/scenarios",
             get(corpus_handlers::list_scenarios),
         )
@@ -268,6 +272,10 @@ async fn main() {
         .route(
             "/api/trajects/{traject_ref}/corpus/laws/{law_id}/outputs",
             get(corpus_handlers::list_traject_law_outputs),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}/implementors",
+            get(corpus_handlers::list_traject_law_implementors),
         )
         .route(
             "/api/trajects/{traject_ref}/corpus/laws/{law_id}/scenarios",
