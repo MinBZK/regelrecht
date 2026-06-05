@@ -112,12 +112,36 @@ impl ReadScope {
     /// takes precedence over the source_map snapshot, so a save +
     /// re-open in the same traject returns the new content without a
     /// full source_map rebuild.
-    async fn law_yaml(&self, law_id: &str) -> Option<String> {
+    async fn law_yaml(
+        &self,
+        law_id: &str,
+    ) -> Result<Option<String>, regelrecht_corpus::error::CorpusError> {
         match self {
             ReadScope::Traject(t) => t.law_yaml(law_id).await,
-            ReadScope::Global(g) => g.source_map.get_law(law_id).map(|l| l.yaml_content.clone()),
+            // The global corpus is fully loaded up front, so there's no lazy
+            // fetch that could fail — a miss is always a genuine miss.
+            ReadScope::Global(g) => {
+                Ok(g.source_map.get_law(law_id).map(|l| l.yaml_content.clone()))
+            }
         }
     }
+}
+
+/// Read a law's YAML within a scope, mapping the outcome to an HTTP error:
+/// a backend failure (lazy fetch threw) becomes 502 "failed to load" so it's
+/// distinguishable from a genuine 404 miss; the error is logged for operators.
+async fn read_law_yaml(scope: &ReadScope, law_id: &str) -> Result<String, (StatusCode, String)> {
+    scope
+        .law_yaml(law_id)
+        .await
+        .map_err(|e| {
+            tracing::warn!(law_id = %law_id, error = %e, "failed to load law body");
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Kon wet '{law_id}' niet laden"),
+            )
+        })?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{law_id}' not found")))
 }
 
 /// Global read scope: no traject, no overlay. Used by every public
@@ -334,10 +358,7 @@ async fn get_corpus_law_in_scope(
     scope: &ReadScope,
     law_id: &str,
 ) -> Result<YamlResponse, (StatusCode, String)> {
-    let yaml = scope
-        .law_yaml(law_id)
-        .await
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?;
+    let yaml = read_law_yaml(scope, law_id).await?;
     Ok((
         StatusCode::OK,
         [(axum::http::header::CONTENT_TYPE, "text/yaml; charset=utf-8")],
@@ -369,10 +390,7 @@ async fn list_law_outputs_in_scope(
     scope: &ReadScope,
     law_id: &str,
 ) -> Result<Json<Vec<LawOutputEntry>>, (StatusCode, String)> {
-    let yaml = scope
-        .law_yaml(law_id)
-        .await
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?;
+    let yaml = read_law_yaml(scope, law_id).await?;
 
     let outputs: Vec<LawOutputEntry> = collect_law_outputs(&yaml)
         .into_iter()

@@ -102,29 +102,47 @@ impl TrajectCorpus {
     /// read for the first time, its body is fetched lazily from the law's own
     /// source backend (one Contents API call), rather than every law's content
     /// being fetched up front at traject-activation time.
-    pub async fn law_yaml(&self, law_id: &str) -> Option<String> {
+    ///
+    /// `Ok(None)` is a genuine miss (the law isn't in this traject's corpus, or
+    /// its source's backend never initialised). A lazy-fetch failure (GitHub
+    /// throttling, token expiry, a network blip) is returned as `Err` so the
+    /// caller can answer "failed to load" instead of masking a transient error
+    /// as a 404 "not found".
+    pub async fn law_yaml(
+        &self,
+        law_id: &str,
+    ) -> Result<Option<String>, regelrecht_corpus::error::CorpusError> {
         if let Some(text) = self.overlay.read().await.get(law_id) {
-            return Some(text.clone());
+            return Ok(Some(text.clone()));
         }
 
         // Pull the bits we need out of the index entry, then drop the borrow
         // before the await below.
         let (source_id, relative_path) = {
-            let law = self.corpus.source_map.get_law(law_id)?;
+            let Some(law) = self.corpus.source_map.get_law(law_id) else {
+                return Ok(None);
+            };
             if law.is_loaded() {
-                return Some(law.yaml_content.clone());
+                return Ok(Some(law.yaml_content.clone()));
             }
             (law.source_id.clone(), law.relative_path.clone())
         };
 
+        // The source is indexed but its backend was skipped at build time
+        // (already logged then) — the law isn't readable. Treat as a miss.
+        let Some(entry) = self.corpus.backends.get(&source_id) else {
+            return Ok(None);
+        };
+
         let content = {
-            let entry = self.corpus.backends.get(&source_id)?;
             let backend = entry.backend.lock().await;
+            // `?` propagates a read error rather than collapsing it to None.
             backend
                 .read_file(std::path::Path::new(&relative_path))
-                .await
-                .ok()
-                .flatten()?
+                .await?
+        };
+        let Some(content) = content else {
+            return Ok(None);
         };
 
         // Cache the lazily-fetched body so re-reads of this unloaded law don't
@@ -138,7 +156,7 @@ impl TrajectCorpus {
             .write()
             .await
             .insert(law_id.to_string(), content.clone());
-        Some(content)
+        Ok(Some(content))
     }
 
     /// Mirror a freshly-saved law's content into the read-your-writes

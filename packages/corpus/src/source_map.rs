@@ -39,6 +39,13 @@ impl LoadedLaw {
     /// Whether this law's body has been fetched. Metadata-only index entries
     /// (from path enumeration) carry an empty `yaml_content` until the law is
     /// opened and its content lazily fetched.
+    ///
+    /// Empty `yaml_content` is a safe "not yet fetched" sentinel only because a
+    /// corpus YAML file is never legitimately empty — it always carries at
+    /// least a `$id`. A genuinely-empty file would report `false` here and be
+    /// re-fetched on each open until the read-your-writes overlay caches it
+    /// (one extra read per pod, then the overlay short-circuits — see
+    /// `TrajectCorpus::law_yaml`), so the contract is "non-empty == loaded".
     pub fn is_loaded(&self) -> bool {
         !self.yaml_content.is_empty()
     }
