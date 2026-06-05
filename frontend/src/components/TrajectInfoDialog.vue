@@ -30,7 +30,11 @@ const repoLabel = computed(() => {
 });
 const repoUrl = computed(() => branchTreeUrl(source.value));
 const subpath = computed(() => {
-  const p = source.value?.gh_path;
+  // No writable source at all → "onbekend", matching the Branch / Base branch
+  // fields. Only when a source exists but its path is blank do we show
+  // "repo-root" (the meaningful "everything under repo root" default).
+  if (!source.value) return 'onbekend';
+  const p = source.value.gh_path;
   return p && p.trim() ? p : 'repo-root';
 });
 

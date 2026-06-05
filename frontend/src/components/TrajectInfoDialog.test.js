@@ -144,7 +144,10 @@ describe('TrajectInfoDialog', () => {
     await flushPromises();
 
     // No writable source → no repo link, and the value cells read "onbekend".
+    // Subpath must NOT fall back to "repo-root" here (that implies a real
+    // source whose path is empty); it should read "onbekend" like the others.
     expect(wrapper.find('nldd-link.traject-info-repo-link').exists()).toBe(false);
     expect(wrapper.text()).toContain('onbekend');
+    expect(wrapper.text()).not.toContain('repo-root');
   });
 });
