@@ -14,6 +14,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use regelrecht_corpus::backend::create_backend;
 use regelrecht_corpus::models::{GitHubSource, LocalSource, Source, SourceType};
@@ -62,7 +63,32 @@ pub struct TrajectCorpus {
     /// added that touches many laws per traject, revisit with an LRU
     /// cap.
     overlay: RwLock<HashMap<String, String>>,
+    /// Short-lived cache of the "edited in this traject" diff
+    /// ([`changed_law_ids`]). Each `changed-laws` request would otherwise
+    /// fire a GitHub Compare API call, and the library sidebar re-requests
+    /// it on every load / traject switch — on a shared, rate-limited token
+    /// that adds up fast. The cache collapses a burst of library loads into
+    /// one Compare call per [`CHANGED_LAWS_TTL`] window. `save_law`
+    /// invalidates it so the saving user sees their own edit appear
+    /// immediately (read-your-writes, like `overlay`); other members /
+    /// replicas converge within the TTL. A stale entry is also served as a
+    /// fallback when a fresh Compare call fails (e.g. token throttled), so
+    /// the section degrades to slightly-stale rather than vanishing.
+    changed_cache: RwLock<Option<ChangedLawsCache>>,
 }
+
+/// Cached result of [`TrajectCorpus::changed_law_ids`] with the instant it
+/// was computed, for TTL expiry.
+struct ChangedLawsCache {
+    computed_at: Instant,
+    law_ids: Vec<String>,
+}
+
+/// How long a cached changed-laws diff is served before a fresh GitHub
+/// Compare call is made. Short enough that another member's save shows up
+/// promptly in the sidebar, long enough to collapse a burst of library
+/// loads (mount + tab switches + retries) into a single Compare call.
+const CHANGED_LAWS_TTL: Duration = Duration::from_secs(60);
 
 impl TrajectCorpus {
     /// Resolve the YAML content for a law in this traject, preferring the
@@ -96,7 +122,58 @@ impl TrajectCorpus {
     /// cache). Returns an empty list when nothing has been saved yet (the
     /// traject branch doesn't exist → the Compare API 404s → empty) or the
     /// writable-own backend isn't initialised.
+    ///
+    /// Cached for [`CHANGED_LAWS_TTL`] (see `changed_cache`) so the library
+    /// sidebar's repeated loads don't each spend a GitHub Compare call. On a
+    /// fresh-compute failure (e.g. token throttled) a stale cached value, if
+    /// any, is served rather than propagating the error — the sidebar keeps
+    /// showing the last-known edit set instead of dropping the section.
     pub async fn changed_law_ids(
+        &self,
+    ) -> Result<Vec<String>, regelrecht_corpus::error::CorpusError> {
+        // Fast path: a fresh cache entry serves without any GitHub call.
+        if let Some(cached) = self.changed_cache.read().await.as_ref() {
+            if cached.computed_at.elapsed() < CHANGED_LAWS_TTL {
+                return Ok(cached.law_ids.clone());
+            }
+        }
+
+        match self.compute_changed_law_ids().await {
+            Ok(ids) => {
+                *self.changed_cache.write().await = Some(ChangedLawsCache {
+                    computed_at: Instant::now(),
+                    law_ids: ids.clone(),
+                });
+                Ok(ids)
+            }
+            Err(e) => {
+                // Serve a stale entry (if we have one) rather than dropping
+                // the section when GitHub is momentarily unavailable /
+                // rate-limited. Only propagate when there's nothing cached.
+                if let Some(cached) = self.changed_cache.read().await.as_ref() {
+                    tracing::warn!(
+                        error = %e,
+                        "changed-laws compute failed; serving stale cached value"
+                    );
+                    return Ok(cached.law_ids.clone());
+                }
+                Err(e)
+            }
+        }
+    }
+
+    /// Drop the cached changed-laws diff so the next [`changed_law_ids`]
+    /// call recomputes against GitHub. Called by `save_law` so the saving
+    /// user's new edit shows up in the sidebar immediately instead of after
+    /// the TTL — the changed-laws analogue of [`record_save`].
+    pub async fn invalidate_changed_cache(&self) {
+        *self.changed_cache.write().await = None;
+    }
+
+    /// Uncached computation behind [`changed_law_ids`]: ask the writable-own
+    /// backend for its branch-vs-base diff and map the changed paths to law
+    /// ids via the source map.
+    async fn compute_changed_law_ids(
         &self,
     ) -> Result<Vec<String>, regelrecht_corpus::error::CorpusError> {
         let Some(entry) = self.corpus.backends.get(&self.writable_own_source_id) else {
@@ -406,6 +483,7 @@ async fn build_traject_corpus(
         write_target_for_source,
         writable_own_source_id,
         overlay: RwLock::new(HashMap::new()),
+        changed_cache: RwLock::new(None),
     }))
 }
 

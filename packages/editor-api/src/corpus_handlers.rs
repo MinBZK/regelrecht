@@ -1365,6 +1365,12 @@ pub async fn save_law(
     // the read-your-writes follow-up that used to be punted.
     traject.record_save(law_id.clone(), body).await;
 
+    // This save added (or kept) this law on the traject branch, so the
+    // cached changed-laws diff is now stale — drop it so the sidebar's
+    // "Bewerkt in dit traject" section reflects the edit on the next load
+    // instead of waiting out the TTL.
+    traject.invalidate_changed_cache().await;
+
     Ok(Json(save_response_from_traject(outcome)))
 }
 
