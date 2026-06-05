@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useTrajects } from '../composables/useTrajects.js';
 import { useDocumentsSheet } from '../composables/useDocumentsSheet.js';
 import TrajectMembersDialog from './TrajectMembersDialog.vue';
+import TrajectInfoDialog from './TrajectInfoDialog.vue';
 
 const props = defineProps({
   // Suffix to keep ids unique when this component is mounted in multiple
@@ -120,6 +121,18 @@ function openMembersForActive() {
   membersTrajectId.value = activeTraject.value.id;
   membersTrajectName.value = activeTraject.value.name;
   showMembers.value = true;
+}
+
+// --- Info dialog state ---
+const showInfo = ref(false);
+const infoTrajectId = ref(null);
+const infoTrajectName = ref('');
+
+function openInfoForActive() {
+  if (!activeTraject.value) return;
+  infoTrajectId.value = activeTraject.value.id;
+  infoTrajectName.value = activeTraject.value.name;
+  showInfo.value = true;
 }
 
 function closeCreate() {
@@ -251,6 +264,12 @@ function bind(field) {
     ></nldd-menu-item>
     <nldd-menu-item
       v-if="activeTraject"
+      text="Traject-info…"
+      start-icon="info"
+      @click="openInfoForActive"
+    ></nldd-menu-item>
+    <nldd-menu-item
+      v-if="activeTraject"
       text="Beheer leden…"
       start-icon="users"
       @click="openMembersForActive"
@@ -266,6 +285,12 @@ function bind(field) {
     v-model="showMembers"
     :traject-id="membersTrajectId"
     :traject-name="membersTrajectName"
+  />
+
+  <TrajectInfoDialog
+    v-model="showInfo"
+    :traject-id="infoTrajectId"
+    :traject-name="infoTrajectName"
   />
 
   <!-- Teleport the sheet out of the toolbar so it doesn't inherit the
