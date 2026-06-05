@@ -1882,7 +1882,6 @@ async function handleActionSave() {
   <TrajectDocuments />
   <SearchPopover
     ref="searchPopoverRef"
-    :laws="corpusLaws"
     @select-law="onSearchSelectLaw"
     @harvest-available="onSearchHarvestAvailable"
   />

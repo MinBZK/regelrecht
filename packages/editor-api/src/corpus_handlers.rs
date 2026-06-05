@@ -62,6 +62,11 @@ pub struct CorpusLawEntry {
     pub display_name: Option<String>,
     pub source_id: String,
     pub source_name: String,
+    /// Priority of the providing source (lower = higher priority). The
+    /// search UI groups results by source and orders the groups by this
+    /// value, so the traject's own writable repo (priority 0) sorts above
+    /// the seeded central corpus.
+    pub source_priority: u32,
 }
 
 /// A parameter required by the execution block that declares an output.
@@ -107,12 +112,36 @@ impl ReadScope {
     /// takes precedence over the source_map snapshot, so a save +
     /// re-open in the same traject returns the new content without a
     /// full source_map rebuild.
-    async fn law_yaml(&self, law_id: &str) -> Option<String> {
+    async fn law_yaml(
+        &self,
+        law_id: &str,
+    ) -> Result<Option<String>, regelrecht_corpus::error::CorpusError> {
         match self {
             ReadScope::Traject(t) => t.law_yaml(law_id).await,
-            ReadScope::Global(g) => g.source_map.get_law(law_id).map(|l| l.yaml_content.clone()),
+            // The global corpus is fully loaded up front, so there's no lazy
+            // fetch that could fail — a miss is always a genuine miss.
+            ReadScope::Global(g) => {
+                Ok(g.source_map.get_law(law_id).map(|l| l.yaml_content.clone()))
+            }
         }
     }
+}
+
+/// Read a law's YAML within a scope, mapping the outcome to an HTTP error:
+/// a backend failure (lazy fetch threw) becomes 502 "failed to load" so it's
+/// distinguishable from a genuine 404 miss; the error is logged for operators.
+async fn read_law_yaml(scope: &ReadScope, law_id: &str) -> Result<String, (StatusCode, String)> {
+    scope
+        .law_yaml(law_id)
+        .await
+        .map_err(|e| {
+            tracing::warn!(law_id = %law_id, error = %e, "failed to load law body");
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Kon wet '{law_id}' niet laden"),
+            )
+        })?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{law_id}' not found")))
 }
 
 /// Global read scope: no traject, no overlay. Used by every public
@@ -191,9 +220,50 @@ fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec
     let corpus = scope.corpus();
     let limit = params.effective_limit();
 
+    // Exact-id filter (highest precedence). The library sidebar sends the
+    // user's favorites + traject edits as `?ids=a,b,c` so it resolves metadata
+    // for just those laws — it never has to load the whole corpus and filter
+    // client-side, and a favorite that sorts past any page cap still resolves.
+    let id_filter: Option<std::collections::HashSet<&str>> = params
+        .ids
+        .as_deref()
+        .map(|s| {
+            s.split(',')
+                .map(str::trim)
+                .filter(|x| !x.is_empty())
+                .collect()
+        })
+        .filter(|s: &std::collections::HashSet<&str>| !s.is_empty());
+
+    // Optional server-side search. The corpus index can hold thousands of
+    // laws, so the editor sends `?q=` and we filter here rather than shipping
+    // every law to the browser to filter client-side. Underscores in the
+    // `law_id` are treated as spaces so "wet op de zorgtoeslag" matches
+    // `wet_op_de_zorgtoeslag`; loaded laws also match on their `name`.
+    let needle = params
+        .q
+        .as_deref()
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty());
+
     let mut entries: Vec<CorpusLawEntry> = corpus
         .source_map
         .laws()
+        .filter(|law| {
+            if let Some(ids) = &id_filter {
+                return ids.contains(law.law_id.as_str());
+            }
+            match &needle {
+                None => true,
+                Some(n) => {
+                    law.law_id.replace('_', " ").to_lowercase().contains(n)
+                        || law
+                            .name
+                            .as_deref()
+                            .is_some_and(|name| name.to_lowercase().contains(n))
+                }
+            }
+        })
         .map(|law| {
             let display_name = resolve_display_name(&law.yaml_content);
             CorpusLawEntry {
@@ -202,17 +272,30 @@ fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec
                 display_name,
                 source_id: law.source_id.clone(),
                 source_name: law.source_name.clone(),
+                source_priority: law.source_priority,
             }
         })
         .collect();
 
-    entries.sort_by(|a, b| a.law_id.cmp(&b.law_id));
-
-    entries
-        .into_iter()
-        .skip(params.offset)
-        .take(limit)
-        .collect()
+    if id_filter.is_some() || needle.is_some() {
+        // Filtered (by ids or search): order so the grouped UI gets the
+        // highest-priority sources first (the traject's own repo before the
+        // central corpus), and the result cap can't starve a high-priority
+        // source. No offset paging — return the matching set.
+        entries.sort_by(|a, b| {
+            a.source_priority
+                .cmp(&b.source_priority)
+                .then_with(|| a.law_id.cmp(&b.law_id))
+        });
+        entries.into_iter().take(limit).collect()
+    } else {
+        entries.sort_by(|a, b| a.law_id.cmp(&b.law_id));
+        entries
+            .into_iter()
+            .skip(params.offset)
+            .take(limit)
+            .collect()
+    }
 }
 
 /// GET /api/trajects/{traject_ref}/corpus/changed-laws — law ids that have
@@ -275,10 +358,7 @@ async fn get_corpus_law_in_scope(
     scope: &ReadScope,
     law_id: &str,
 ) -> Result<YamlResponse, (StatusCode, String)> {
-    let yaml = scope
-        .law_yaml(law_id)
-        .await
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?;
+    let yaml = read_law_yaml(scope, law_id).await?;
     Ok((
         StatusCode::OK,
         [(axum::http::header::CONTENT_TYPE, "text/yaml; charset=utf-8")],
@@ -310,10 +390,7 @@ async fn list_law_outputs_in_scope(
     scope: &ReadScope,
     law_id: &str,
 ) -> Result<Json<Vec<LawOutputEntry>>, (StatusCode, String)> {
-    let yaml = scope
-        .law_yaml(law_id)
-        .await
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?;
+    let yaml = read_law_yaml(scope, law_id).await?;
 
     let outputs: Vec<LawOutputEntry> = collect_law_outputs(&yaml)
         .into_iter()
@@ -923,7 +1000,7 @@ async fn require_traject_corpus_from_ref(
     };
     state
         .trajects
-        .get_or_build(pool, traject_id, auth_file, &state.favorites)
+        .get_or_build(pool, traject_id, auth_file)
         .await
         .map_err(traject_corpus_error)
 }

@@ -144,17 +144,19 @@ const detailView = computed({
 const activeAction = ref(null);
 
 // Curated sidebar sections (in render order). Each entry is
-// `{ key, title, laws }`; a `null` title renders a headerless list (the
-// no-favorites fallback). Empty sections are never pushed, so the template
+// `{ key, title, laws }`. Empty sections are never pushed, so the template
 // can iterate without per-section emptiness checks.
 //
 //   - "Bewerkt in dit traject" comes first: it's the small, high-signal,
-//     context-specific set, so it sits above the larger favorites/full list.
+//     context-specific set, so it sits above favorites.
 //     Only present when a traject is active and the diff is non-empty.
-//   - "Favorieten": the user's personal favorites. When the user has none we
-//     fall back to the full corpus (today's behavior) under no heading,
-//     rather than showing an empty panel — full browse otherwise lives in
-//     the search popover.
+//   - "Favorieten": the user's personal favorites.
+//
+// There is deliberately NO full-corpus fallback: the central corpus is the
+// full BWB corpus (thousands of laws), so dumping it into the sidebar isn't
+// useful and is exactly the "huge pile" we don't want loaded here. When
+// nothing is curated yet, the template shows a search CTA instead — full
+// browse lives in the search popover.
 const sidebarSections = computed(() => {
   const list = laws.value;
   const sections = [];
@@ -170,13 +172,9 @@ const sidebarSections = computed(() => {
     const favList = list.filter(law => favorites.value.has(law.law_id));
     if (favList.length > 0) {
       sections.push({ key: 'favorites', title: 'Favorieten', laws: favList });
-      return sections;
     }
   }
 
-  // No personal favorites: fall back to the full corpus (headerless),
-  // matching the pre-sections behavior. The curated sections layer on top.
-  sections.push({ key: 'all', title: null, laws: list });
   return sections;
 });
 
@@ -331,7 +329,14 @@ async function toggleFavorite(lawId) {
   try {
     const method = isFav ? 'DELETE' : 'PUT';
     const res = await fetch(`/api/favorites/${encodeURIComponent(lawId)}`, { method });
-    if (!res.ok) revert();
+    if (!res.ok) {
+      revert();
+    } else {
+      // Re-resolve the sidebar's id-set so a newly-favorited law (whose
+      // metadata isn't loaded yet, since we only fetch favorites + edits by
+      // id) appears in the Favorieten section without a manual reload.
+      loadIndex();
+    }
   } catch {
     revert();
   } finally {
@@ -347,18 +352,34 @@ async function loadIndex() {
   // both refer to the scope this run started in.
   const trajectRef = activeTrajectRef.value;
   try {
-    const [corpusRes, , changedIds] = await Promise.all([
-      fetch(lawsListUrl(trajectRef, 'limit=1000')),
+    // Resolve the small id sets the sidebar actually needs: the user's
+    // personal favorites and (in a traject) the laws edited on the traject
+    // branch. Both `loadFavorites` and `fetchChangedLawIds` are id-only.
+    const [, changedIds] = await Promise.all([
       loadFavorites(),
       fetchChangedLawIds(trajectRef),
     ]);
-    if (!corpusRes.ok) throw new Error(`Failed to load corpus: ${corpusRes.status}`);
+    if (gen !== loadIndexGeneration) return;
+    changedLawIds.value = changedIds;
+
+    // Fetch metadata for just those ids via `?ids=` — never the whole corpus.
+    // The central corpus is the full BWB corpus (thousands of laws); loading
+    // it here only to filter out a handful would be wasteful and would miss
+    // any favorite/edit that sorts past a page cap. Full browse lives in the
+    // search popover instead.
+    const ids = new Set([...(favorites.value || []), ...(changedIds || [])]);
+    if (ids.size === 0) {
+      laws.value = [];
+      return;
+    }
+    const query = `ids=${encodeURIComponent([...ids].join(','))}&limit=1000`;
+    const res = await fetch(lawsListUrl(trajectRef, query));
+    if (!res.ok) throw new Error(`Failed to load corpus: ${res.status}`);
     // Gate before and after json(): skip parsing for stale 200s, and catch races during it.
     if (gen !== loadIndexGeneration) return;
-    const corpusLaws = await corpusRes.json();
+    const corpusLaws = await res.json();
     if (gen !== loadIndexGeneration) return;
     laws.value = corpusLaws.sort((a, b) => a.law_id.localeCompare(b.law_id));
-    changedLawIds.value = changedIds;
   } catch (e) {
     if (gen !== loadIndexGeneration) return;
     indexError.value = e;
@@ -705,6 +726,15 @@ watch(activeTrajectRef, () => {
                 <nldd-title id="home-titel" size="3"><h3>{{ LIBRARY_HOME_TITLE }}</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
                 <nldd-inline-dialog v-if="loading" text="Laden..."></nldd-inline-dialog>
+                <!-- Nothing curated yet (no favorites, no traject edits): point
+                     the user at search rather than dumping the whole corpus. -->
+                <nldd-inline-dialog
+                  v-else-if="sidebarSections.length === 0"
+                  text="Nog niets in je bibliotheek"
+                  supporting-text="Zoek een wet om te openen, of markeer wetten als favoriet."
+                >
+                  <nldd-button slot="actions" variant="primary" start-icon="search" text="Zoeken" @click="openSearch"></nldd-button>
+                </nldd-inline-dialog>
                 <template v-else>
                   <template
                     v-for="(section, sectionIndex) in sidebarSections"
@@ -945,7 +975,6 @@ watch(activeTrajectRef, () => {
   <ActionSheet :action="activeAction" :article="selectedArticle" :editable="false" @close="activeAction = null" @save="activeAction = null" @edit="editInEditor" />
   <SearchPopover
     ref="searchPopoverRef"
-    :laws="laws"
     @select-law="(lawId) => selectLaw(lawId, true)"
     @harvest-available="onHarvestAvailable"
   />

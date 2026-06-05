@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -35,10 +35,6 @@ pub struct AppState {
     /// traject in the session, save handlers route through this cache
     /// instead of [`AppState::corpus`].
     pub trajects: Arc<TrajectCorpusCache>,
-    /// Favorites set used to limit which laws are loaded from GitHub
-    /// sources. Shared between the global corpus init and per-traject
-    /// corpus builds so trajects see the same law set.
-    pub favorites: Arc<HashSet<String>>,
 }
 
 impl OidcAppState for AppState {
