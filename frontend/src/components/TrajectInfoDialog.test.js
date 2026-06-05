@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
-import { mount } from '@vue/test-utils';
-import { nextTick } from 'vue';
+import { mount, flushPromises } from '@vue/test-utils';
 import TrajectInfoDialog from './TrajectInfoDialog.vue';
 
 // nldd-* tags compile to raw HTML (vite.config.js isCustomElement), so the
@@ -65,8 +64,7 @@ describe('TrajectInfoDialog', () => {
     const wrapper = mountDialog();
 
     await wrapper.setProps({ modelValue: true });
-    await nextTick();
-    await nextTick(); // let load() settle
+    await flushPromises();
 
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/trajects/abc');
     const text = wrapper.text();
@@ -81,8 +79,7 @@ describe('TrajectInfoDialog', () => {
     globalThis.fetch = vi.fn().mockResolvedValue(res(DETAIL));
     const wrapper = mountDialog();
     await wrapper.setProps({ modelValue: true });
-    await nextTick();
-    await nextTick();
+    await flushPromises();
 
     // nldd-link compiles to a raw custom element in the test env (vite
     // isCustomElement), so assert on its attributes — the underlying <a>,
@@ -102,8 +99,7 @@ describe('TrajectInfoDialog', () => {
     globalThis.fetch = vi.fn().mockResolvedValue(res(DETAIL));
     const wrapper = mountDialog();
     await wrapper.setProps({ modelValue: true });
-    await nextTick();
-    await nextTick();
+    await flushPromises();
 
     const text = wrapper.text();
     expect(text).toContain('traject/tariefswijziging-2026'); // branch
@@ -116,8 +112,7 @@ describe('TrajectInfoDialog', () => {
     globalThis.fetch = vi.fn().mockResolvedValue(res(detail));
     const wrapper = mountDialog();
     await wrapper.setProps({ modelValue: true });
-    await nextTick();
-    await nextTick();
+    await flushPromises();
 
     expect(wrapper.text()).toContain('repo-root');
   });
@@ -126,8 +121,7 @@ describe('TrajectInfoDialog', () => {
     globalThis.fetch = vi.fn().mockResolvedValue(res(null, false, 404));
     const wrapper = mountDialog();
     await wrapper.setProps({ modelValue: true });
-    await nextTick();
-    await nextTick();
+    await flushPromises();
 
     expect(wrapper.text()).toMatch(/niet laden|404/i);
   });
@@ -136,9 +130,21 @@ describe('TrajectInfoDialog', () => {
     globalThis.fetch = vi.fn().mockResolvedValue(res(DETAIL));
     const wrapper = mountDialog();
     await wrapper.setProps({ modelValue: true });
-    await nextTick();
+    await flushPromises();
 
     wrapper.vm.close();
     expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([false]);
+  });
+
+  it('shows "onbekend" for repo/branch when there is no writable source', async () => {
+    const detail = { ...DETAIL, sources: [] };
+    globalThis.fetch = vi.fn().mockResolvedValue(res(detail));
+    const wrapper = mountDialog();
+    await wrapper.setProps({ modelValue: true });
+    await flushPromises();
+
+    // No writable source → no repo link, and the value cells read "onbekend".
+    expect(wrapper.find('nldd-link.traject-info-repo-link').exists()).toBe(false);
+    expect(wrapper.text()).toContain('onbekend');
   });
 });

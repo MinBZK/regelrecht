@@ -23,9 +23,11 @@ const { detail, loading, error: loadError, load } = useTrajectDetail();
 // Repo/branch come from the writable-own source; null-safe so an unexpected
 // shape renders "onbekend" instead of crashing.
 const source = computed(() => writableSource(detail.value));
-const repoLabel = computed(() =>
-  source.value ? `${source.value.gh_owner}/${source.value.gh_repo}` : null,
-);
+const repoLabel = computed(() => {
+  const s = source.value;
+  if (!s || !s.gh_owner || !s.gh_repo) return null;
+  return `${s.gh_owner}/${s.gh_repo}`;
+});
 const repoUrl = computed(() => branchTreeUrl(source.value));
 const subpath = computed(() => {
   const p = source.value?.gh_path;
@@ -58,6 +60,8 @@ function close() {
   emit('update:modelValue', false);
 }
 
+// Exposed so the unit test can invoke close() directly; in the app the
+// dialog is v-model driven and closes via the template handlers.
 defineExpose({ close });
 </script>
 
