@@ -284,7 +284,7 @@ function isConnectionActive(conn) {
 }
 
 .flow-diagram__branch-label {
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-family: var(--font-family-mono);
   transition: opacity 0.5s ease;
 }
 
@@ -295,7 +295,7 @@ function isConnectionActive(conn) {
 }
 
 .flow-diagram__timeline-label {
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-family: var(--font-family-mono);
   font-variant-numeric: tabular-nums;
 }
 </style>

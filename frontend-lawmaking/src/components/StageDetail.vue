@@ -142,7 +142,7 @@ const badgeColor = computed(() => {
 }
 
 .stage-detail__mapping-value--git {
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-family: var(--font-family-mono);
   font-weight: 400;
 }
 

@@ -31,6 +31,7 @@
 
   /* Typography - aligned with @nldd/design-system design tokens */
   --font-family: var(--primitives-font-family-body, var(--rr-font-family-sans, 'RijksSansVF', system-ui, sans-serif));
+  --font-family-mono: var(--primitives-font-family-monospace, var(--rr-font-family-mono, 'JetBrains Mono', monospace));
 
   --font-size-xs: 12px;
   --font-size-sm: 14px;

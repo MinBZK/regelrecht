@@ -139,7 +139,7 @@ const fillColor = computed(() =>
 }
 
 .flow-node__git-label {
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-family: var(--font-family-mono);
   letter-spacing: 0.02em;
 }
 
@@ -152,12 +152,12 @@ const fillColor = computed(() =>
 }
 
 .flow-node__date {
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-family: var(--font-family-mono);
   font-variant-numeric: tabular-nums;
 }
 
 .flow-node__tag-label {
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-family: var(--font-family-mono);
   letter-spacing: 0.02em;
 }
 
