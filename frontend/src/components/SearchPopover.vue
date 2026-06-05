@@ -59,6 +59,10 @@ const serverLaws = ref([]);
 // of briefly flashing "no results" (which would wrongly trigger the external
 // fallback) before the response lands.
 const searching = ref(false);
+// True when the last corpus query failed (HTTP error or network error). Kept
+// distinct from "0 results" so a backend failure surfaces an error instead of
+// silently masquerading as "no match" and cascading to the external fallback.
+const searchFailed = ref(false);
 
 /**
  * Group the matched laws by their providing source, ordered by source
@@ -98,6 +102,7 @@ let debounceTimer = null;
 
 watch(search, (q) => {
   clearBwb();
+  searchFailed.value = false;
   if (debounceTimer) clearTimeout(debounceTimer);
   const term = q.trim();
   if (term.length < MIN_QUERY_LENGTH) {
@@ -119,14 +124,26 @@ async function runCorpusSearch(term) {
     const url = lawsListUrl(activeTrajectRef.value, `q=${encodeURIComponent(term)}&limit=60`);
     const res = await fetch(url);
     if (seq !== searchSeq) return; // a newer query superseded this one
-    const laws = res.ok ? await res.json() : [];
+    if (!res.ok) {
+      // Backend error (500/503/…). Surface it rather than letting the empty
+      // result cascade to the external wetten.overheid.nl fallback, which
+      // would mask the failure with unrelated results.
+      serverLaws.value = [];
+      searchFailed.value = true;
+      return;
+    }
+    const laws = await res.json();
     if (seq !== searchSeq) return;
     serverLaws.value = laws;
+    searchFailed.value = false;
     // No match anywhere in the corpus → offer the external wetten.overheid.nl
     // search (unless the user must log in first to reach it).
     if (laws.length === 0 && !needsLogin.value) searchBwb(term);
   } catch {
-    if (seq === searchSeq) serverLaws.value = [];
+    if (seq === searchSeq) {
+      serverLaws.value = [];
+      searchFailed.value = true;
+    }
   } finally {
     if (seq === searchSeq) searching.value = false;
   }
@@ -272,6 +289,14 @@ defineExpose({ show });
         <!-- Corpus query in flight: show a spinner instead of briefly
              flashing "no results" and wrongly tripping the external fallback. -->
         <nldd-inline-dialog v-if="searching" text="Zoeken in de wetten…"></nldd-inline-dialog>
+        <!-- Corpus query failed: surface the error instead of masking it as
+             "no results" (which would cascade to the external fallback). -->
+        <nldd-inline-dialog
+          v-else-if="searchFailed"
+          variant="alert"
+          text="Zoeken is mislukt"
+          supporting-text="De wetten konden niet worden doorzocht. Probeer het opnieuw."
+        ></nldd-inline-dialog>
         <!-- Internal corpus matches: one labelled section per source, private
              repo first (priority 0), then the central corpus. The source name
              doubles as the group header, so the per-item supporting-text is

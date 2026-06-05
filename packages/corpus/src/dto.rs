@@ -34,6 +34,9 @@ pub struct PaginationParams {
     /// those laws are returned — so the library sidebar can resolve metadata
     /// for just the user's favorites and traject edits instead of fetching the
     /// whole corpus and filtering client-side.
+    ///
+    /// Takes precedence over [`q`](Self::q): if both are sent, `ids` wins and
+    /// `q` is ignored (they're not combined). Callers pick one or the other.
     #[serde(default)]
     pub ids: Option<String>,
 }

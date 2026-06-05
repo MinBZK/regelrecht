@@ -496,11 +496,15 @@ async fn build_traject_corpus(
     // bibliotheek search can surface any law without fetching every law's body
     // up front (which meant N per-file GitHub Contents API calls per traject
     // build — slow and rate-limited). Bodies are fetched lazily on first read
-    // (see `TrajectCorpus::law_yaml`). Per-source failures are tolerated
+    // (see `TrajectCorpus::law_yaml`). Per-source index failures are tolerated
     // inside `index_all_sources_async` (a bad seed source is skipped, not
-    // fatal), but a failure on the writable-own source is escalated below: its
-    // laws are the whole point of the traject, so a silent drop would
-    // reintroduce exactly the "my laws aren't searchable" bug this path fixes.
+    // fatal). A failure to enumerate the writable-own source is the one we care
+    // about most — its laws are the point of the traject — so it's logged at
+    // error level for operators. The traject still opens, though: it degrades
+    // (those laws missing from search until the next rebuild) rather than
+    // failing entirely on what is usually a transient GitHub hiccup. The hard
+    // failure path is the writable-own *backend* init above, which returns
+    // `Err` so a broken write target never opens silently.
     let source_map = match registry.index_all_sources_async(auth_file).await {
         Ok((map, failed)) => {
             if failed.iter().any(|id| id == &writable_own_source_id) {

@@ -124,4 +124,28 @@ describe('SearchPopover server-side search', () => {
       .filter((u) => u.includes('/harvest/search'));
     expect(bwbCalls).toHaveLength(0);
   });
+
+  it('a backend error surfaces as failed, not a cascade to the external fallback', async () => {
+    fetch.mockImplementation((url) => {
+      const u = String(url);
+      if (u.includes('/auth/status')) return Promise.resolve({ ok: false, json: async () => ({}) });
+      if (u.includes('/corpus/laws') && u.includes('q=')) {
+        return Promise.resolve({ ok: false, status: 500, json: async () => [] });
+      }
+      return Promise.resolve({ ok: true, json: async () => [] });
+    });
+
+    const wrapper = mount(SearchPopover);
+    wrapper.vm.search = 'zorg';
+    await nextTick();
+    await settle();
+    await nextTick();
+
+    expect(wrapper.vm.searchFailed).toBe(true);
+    expect(wrapper.vm.groupedLaws).toEqual([]);
+    const bwbCalls = fetch.mock.calls
+      .map((c) => String(c[0]))
+      .filter((u) => u.includes('/harvest/search'));
+    expect(bwbCalls).toHaveLength(0);
+  });
 });
