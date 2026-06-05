@@ -165,8 +165,10 @@ const debouncedLawYaml = ref(props.lawYaml);
 let lawYamlDebounce = null;
 
 watch(() => props.lawYaml, (val, prev) => {
-  // First population or cleared→set (opening an article): apply immediately so
-  // initial load isn't delayed by 300ms. Subsequent edits debounce.
+  // First population or cleared→set (no prior law loaded): apply immediately so
+  // the initial dependency load isn't delayed by 300ms. Any change from an
+  // existing value — keystroke edits, but also switching to another article of
+  // the already-open law — debounces.
   clearTimeout(lawYamlDebounce);
   if (!prev) {
     debouncedLawYaml.value = val;

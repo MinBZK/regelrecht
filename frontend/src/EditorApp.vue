@@ -885,8 +885,9 @@ const currentLawYaml = computed(() => {
 // refetch on a traject switch.
 // `currentLawYaml` re-dumps on every keystroke, so reacting directly would
 // reload the WASM engine per keystroke. Debounce the reload ~300ms after the
-// last edit; keep the first load (no previous yaml) synchronous so opening an
-// article isn't delayed.
+// last edit; keep the first load (no previous yaml) synchronous so the initial
+// load isn't delayed. Subsequent transitions from an existing yaml — keystroke
+// edits, article switches, traject switches — debounce.
 let engineLoadDebounce = null;
 
 async function reloadEngineLaw(lawYaml, isReady) {
@@ -903,7 +904,7 @@ watch(
   ([lawYaml, isReady], prev) => {
     clearTimeout(engineLoadDebounce);
     // First load (no previous yaml): run immediately so scenarios see the law
-    // without delay. Subsequent in-memory edits debounce.
+    // without delay. Any change from an existing yaml debounces.
     if (!prev || !prev[0]) {
       reloadEngineLaw(lawYaml, isReady);
       return;
