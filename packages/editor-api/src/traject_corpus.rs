@@ -47,13 +47,15 @@ pub struct TrajectCorpus {
     /// endpoints) to address the traject's own branch directly without
     /// having to reverse-engineer it out of `write_target_for_source`.
     pub writable_own_source_id: String,
-    /// Read-your-writes overlay for law YAML content. After a successful
-    /// `save_law` we mirror the persisted body here so subsequent reads
-    /// in the same traject (any session, any user) see the new content
-    /// without forcing a full source_map rebuild against GitHub. The
-    /// overlay is content-only — `LoadedLaw` metadata
-    /// (source_id/relative_path) doesn't change with a content edit, so
-    /// backend resolution keeps using `corpus.source_map`.
+    /// Read-your-writes overlay + lazy-read cache for law YAML content. After
+    /// a successful `save_law` we mirror the persisted body here so subsequent
+    /// reads in the same traject (any session, any user) see the new content
+    /// without forcing a full source_map rebuild against GitHub. It also caches
+    /// bodies fetched lazily on first read (see `law_yaml`), so a re-read of an
+    /// unloaded law (read-only article view, reload, another tab) doesn't spend
+    /// another Contents API call. The overlay is content-only — `LoadedLaw`
+    /// metadata (source_id/relative_path) doesn't change with a content edit,
+    /// so backend resolution keeps using `corpus.source_map`.
     ///
     /// Unbounded growth is intentional: in practice the size is bounded
     /// by the number of distinct laws edited in this traject, with a
@@ -115,13 +117,28 @@ impl TrajectCorpus {
             (law.source_id.clone(), law.relative_path.clone())
         };
 
-        let entry = self.corpus.backends.get(&source_id)?;
-        let backend = entry.backend.lock().await;
-        backend
-            .read_file(std::path::Path::new(&relative_path))
+        let content = {
+            let entry = self.corpus.backends.get(&source_id)?;
+            let backend = entry.backend.lock().await;
+            backend
+                .read_file(std::path::Path::new(&relative_path))
+                .await
+                .ok()
+                .flatten()?
+        };
+
+        // Cache the lazily-fetched body so re-reads of this unloaded law don't
+        // each spend another Contents API call (read-only views, reloads, a
+        // second tab). Same staleness model as the post-save mirror: cleared
+        // when the traject's cache entry is invalidated. Also makes a
+        // genuinely-empty body a one-shot fetch rather than re-fetching every
+        // call (the empty-`yaml_content` "unloaded" sentinel can't tell them
+        // apart, but the overlay short-circuits before that check).
+        self.overlay
+            .write()
             .await
-            .ok()
-            .flatten()
+            .insert(law_id.to_string(), content.clone());
+        Some(content)
     }
 
     /// Mirror a freshly-saved law's content into the read-your-writes

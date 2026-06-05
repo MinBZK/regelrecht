@@ -89,4 +89,39 @@ describe('SearchPopover server-side search', () => {
     expect(corpusCalls).toHaveLength(1);
     expect(corpusCalls[0]).toContain('q=zorg');
   });
+
+  it('clearing the query discards an in-flight corpus fetch (no stale results)', async () => {
+    // Make the corpus fetch hang so we can clear the input mid-flight.
+    let resolveCorpus;
+    fetch.mockImplementation((url) => {
+      const u = String(url);
+      if (u.includes('/auth/status')) return Promise.resolve({ ok: false, json: async () => ({}) });
+      if (u.includes('/corpus/laws') && u.includes('q=')) {
+        return new Promise((r) => {
+          resolveCorpus = () => r({ ok: true, json: async () => LAWS });
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => [] });
+    });
+
+    const wrapper = mount(SearchPopover);
+    wrapper.vm.search = 'zorg';
+    await nextTick();
+    await settle(); // debounce fires; the corpus fetch is now pending
+
+    // Clear before the fetch resolves, then let the stale fetch settle.
+    wrapper.vm.search = '';
+    await nextTick();
+    resolveCorpus();
+    await settle();
+    await nextTick();
+
+    // The cleared term's response must not repopulate the list, and no
+    // wetten.overheid.nl search should have been fired for it.
+    expect(wrapper.vm.groupedLaws).toEqual([]);
+    const bwbCalls = fetch.mock.calls
+      .map((c) => String(c[0]))
+      .filter((u) => u.includes('/harvest/search'));
+    expect(bwbCalls).toHaveLength(0);
+  });
 });

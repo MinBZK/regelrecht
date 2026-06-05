@@ -101,6 +101,10 @@ watch(search, (q) => {
   if (debounceTimer) clearTimeout(debounceTimer);
   const term = q.trim();
   if (term.length < MIN_QUERY_LENGTH) {
+    // Bump the sequence so any fetch already in flight (debounce fired before
+    // this clear) is discarded when it resolves — otherwise it would repopulate
+    // serverLaws for the cleared term and fire a spurious BWB search.
+    ++searchSeq;
     serverLaws.value = [];
     searching.value = false;
     return;
