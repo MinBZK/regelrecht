@@ -26,7 +26,7 @@ articles:
     machine_readable:
       execution:
         input:
-          - name: standaardpremie
+          - name: dekking
             source:
               regulation: zorgverzekeringswet
               output: dekking
@@ -44,8 +44,7 @@ beforeEach(() => {
 
 describe('extractRegulationRefs', () => {
   it('collects source.regulation refs and skips self-references', () => {
-    const law = yamlMain();
-    expect(extractRegulationRefs(law)).toEqual(['zorgverzekeringswet']);
+    expect(extractRegulationRefs(yamlMain())).toEqual(['zorgverzekeringswet']);
   });
   it('returns [] for a law with no machine_readable inputs', () => {
     expect(extractRegulationRefs({ $id: 'x', articles: [{ number: '1' }] })).toEqual([]);
@@ -53,51 +52,69 @@ describe('extractRegulationRefs', () => {
 });
 
 describe('useDependencies.loadAllDependencies', () => {
-  it('resolves implementors via a single implementors request (no per-law corpus scan)', async () => {
+  it('loads source.regulation deps, returns the $id, and does NOT scan the corpus', async () => {
+    // The implementor scan is off the critical path, so loading the law's own
+    // deps must make no network call at all (only fetchLawYaml is used).
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy;
+    const engine = fakeEngine();
+    const fetchLawYaml = vi.fn(async (id) => DEP_YAML[id]);
+
+    const { loadAllDependencies, loading } = useDependencies();
+    const mainLawId = await loadAllDependencies(MAIN_LAW, engine, fetchLawYaml);
+
+    expect(mainLawId).toBe('zorgtoeslagwet');
+    expect(engine.loaded.has('zorgverzekeringswet')).toBe(true);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(loading.value).toBe(false);
+  });
+});
+
+describe('useDependencies.loadImplementors', () => {
+  it('resolves implementors with a single request and loads them', async () => {
     const fetchSpy = vi.fn().mockImplementation(async (url) => {
       if (url.endsWith('/implementors')) return res(['regeling_standaardpremie']);
       return res([], false, 404);
     });
     globalThis.fetch = fetchSpy;
-
     const engine = fakeEngine();
     const fetchLawYaml = vi.fn(async (id) => DEP_YAML[id]);
 
-    const { loading, loadedDeps, loadAllDependencies } = useDependencies();
-    await loadAllDependencies(MAIN_LAW, engine, fetchLawYaml, 'mig-1a2b3c4d');
+    const { loadImplementors } = useDependencies();
+    await loadImplementors('zorgtoeslagwet', engine, fetchLawYaml, 'mig-1a2b3c4d');
 
-    // Exactly one network request, and it's the implementors endpoint for the
-    // main law under the active traject — NOT a `?limit=1000` corpus listing.
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(fetchSpy.mock.calls[0][0]).toBe(
       '/api/trajects/mig-1a2b3c4d/corpus/laws/zorgtoeslagwet/implementors',
     );
     expect(fetchSpy.mock.calls.some((c) => String(c[0]).includes('limit=1000'))).toBe(false);
-
-    // Both the source.regulation dep and the implementor are loaded.
-    expect(engine.loaded.has('zorgverzekeringswet')).toBe(true);
     expect(engine.loaded.has('regeling_standaardpremie')).toBe(true);
-    expect(loadedDeps.value).toContain('zorgverzekeringswet');
-    expect(loadedDeps.value).toContain('regeling_standaardpremie');
-    expect(loading.value).toBe(false);
   });
 
-  it('treats implementor-discovery failure as best-effort', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(res(null, false, 500));
+  it('runs at most once per (trajectRef, lawId)', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(res(['regeling_standaardpremie']));
+    globalThis.fetch = fetchSpy;
     const engine = fakeEngine();
     const fetchLawYaml = vi.fn(async (id) => DEP_YAML[id]);
 
-    const { error, loadAllDependencies } = useDependencies();
-    await loadAllDependencies(MAIN_LAW, engine, fetchLawYaml, null);
+    const { loadImplementors } = useDependencies();
+    await loadImplementors('zorgtoeslagwet', engine, fetchLawYaml, 'mig-1a2b3c4d');
+    await loadImplementors('zorgtoeslagwet', engine, fetchLawYaml, 'mig-1a2b3c4d');
 
-    // The source.regulation dep still loads; the failed implementors call
-    // does not surface as an error.
-    expect(engine.loaded.has('zorgverzekeringswet')).toBe(true);
-    expect(error.value).toBe(null);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('is best-effort: a failed scan resolves without throwing', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(res(null, false, 500));
+    const engine = fakeEngine();
+    const { loadImplementors } = useDependencies();
+    await expect(
+      loadImplementors('zorgtoeslagwet', engine, vi.fn(), null),
+    ).resolves.toBeUndefined();
   });
 });
 
-// Parse MAIN_LAW once for the pure-function test.
+// Parsed equivalent of MAIN_LAW (plus a self-reference) for the pure test.
 function yamlMain() {
   return {
     $id: 'zorgtoeslagwet',
@@ -107,7 +124,7 @@ function yamlMain() {
         machine_readable: {
           execution: {
             input: [
-              { name: 'standaardpremie', source: { regulation: 'zorgverzekeringswet', output: 'dekking' } },
+              { name: 'dekking', source: { regulation: 'zorgverzekeringswet', output: 'dekking' } },
               { name: 'self', source: { regulation: 'zorgtoeslagwet', output: 'x' } },
             ],
           },

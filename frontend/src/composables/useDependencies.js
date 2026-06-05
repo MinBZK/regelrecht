@@ -3,9 +3,10 @@
  *
  * Parses a law's YAML structure to find all `source.regulation` references,
  * fetches each dependency via the API, loads it into the engine, and recurses.
- * Also pulls in implementing regulations (the IoC reverse link) via the
- * backend `implementors` endpoint, which scans the in-memory corpus
- * server-side — one request instead of fetching and parsing every law.
+ * Implementing regulations (the IoC reverse link) are loaded separately via
+ * `loadImplementors`, which calls the backend `implementors` endpoint — kept
+ * OFF the critical path because that corpus scan can be slow on a large
+ * federated corpus and scenarios already declare the regulations they need.
  */
 import { ref } from 'vue';
 import yaml from 'js-yaml';
@@ -46,54 +47,41 @@ export function useDependencies() {
   const error = ref(null);
   const { requestHarvestBatch } = useBwbHarvest();
 
+  // Guards `loadImplementors` so a re-render / re-trigger of the scenario
+  // panel doesn't restart the corpus-wide implementor scan for a law it
+  // already scanned. Keyed on `{trajectRef}::{lawId}`.
+  let implementorsKey = null;
+
   /**
-   * Load all dependencies for a law, recursively.
+   * Load a law's direct + transitive `source.regulation` dependencies into
+   * the engine. Returns the law's `$id` (or null) so the caller can kick off
+   * the off-critical-path `loadImplementors` scan.
+   *
+   * `fetchLawYaml` already resolves through the active traject, so no traject
+   * ref is needed here.
    *
    * @param {string} lawYamlText - Raw YAML text of the main law
    * @param {object} engine - WasmEngine instance
    * @param {(lawId: string) => Promise<string>} fetchLawYaml - Fetch law YAML by ID
-   * @param {string|null} trajectRef - Active traject reference. Drives
-   *   which corpus list is scanned for implementing regulations so
-   *   in-progress trajects pick up their own implementors.
+   * @returns {Promise<string|null>} The main law's `$id`.
    */
-  async function loadAllDependencies(lawYamlText, engine, fetchLawYaml, trajectRef = null) {
+  async function loadAllDependencies(lawYamlText, engine, fetchLawYaml) {
     loading.value = true;
     error.value = null;
     loadedDeps.value = [];
     progress.value = 'Afhankelijkheden analyseren...';
 
+    let mainLawId = null;
     try {
       const mainLaw = yaml.load(lawYamlText);
+      mainLawId = mainLaw.$id || null;
       const visited = new Set();
       const toLoad = [];
 
       // Phase 1: Collect all transitive regulation references
       collectDeps(mainLaw, visited, toLoad);
 
-      // Phase 2: Discover implementing regulations (IoC reverse link).
-      // The backend scans the in-memory corpus and returns just the
-      // implementing law ids, so this is a single request — not a
-      // fetch-and-parse of every law in the (possibly federated, hundreds
-      // strong) corpus. Best-effort: a failure here only means implementing
-      // regulations aren't auto-loaded, the rest of the scan still runs.
-      if (mainLaw.$id) {
-        try {
-          const res = await fetch(implementorsUrl(trajectRef, mainLaw.$id));
-          if (res.ok) {
-            const implementors = await res.json();
-            for (const implId of implementors) {
-              if (!visited.has(implId)) {
-                visited.add(implId);
-                toLoad.push(implId);
-              }
-            }
-          }
-        } catch {
-          // Implementor discovery is best-effort.
-        }
-      }
-
-      // Phase 3: Load all collected dependencies
+      // Phase 2: Load all collected dependencies
       let total = toLoad.length;
       let loaded = 0;
       const missingDeps = [];
@@ -150,9 +138,51 @@ export function useDependencies() {
     } finally {
       loading.value = false;
     }
+    return mainLawId;
   }
 
-  return { loading, loadedDeps, progress, error, loadAllDependencies };
+  /**
+   * Load implementing regulations (the IoC reverse link) into the engine.
+   *
+   * Deliberately OFF the critical path: the backend implementors scan can be
+   * slow on a large federated corpus, and scenarios declare the regulations
+   * they need explicitly (their `Given law "x" is loaded` background), so the
+   * scenario panel must not block on this. The caller fires it without
+   * awaiting, after the panel is already usable. Runs at most once per
+   * `(trajectRef, lawId)` so re-renders don't restart the scan.
+   *
+   * @param {string|null} lawId - The `$id` of the law to find implementors of.
+   * @param {object} engine - WasmEngine instance.
+   * @param {(lawId: string) => Promise<string>} fetchLawYaml - Fetch law YAML.
+   * @param {string|null} trajectRef - Active traject reference.
+   */
+  async function loadImplementors(lawId, engine, fetchLawYaml, trajectRef = null) {
+    if (!lawId) return;
+    const key = `${trajectRef || ''}::${lawId}`;
+    if (implementorsKey === key) return;
+    implementorsKey = key;
+    try {
+      const res = await fetch(implementorsUrl(trajectRef, lawId));
+      if (!res.ok) return;
+      const implementors = await res.json();
+      for (const implId of implementors) {
+        try {
+          if (!engine.hasLaw(implId)) {
+            const yamlText = await fetchLawYaml(implId);
+            engine.loadLaw(yamlText);
+            loadedDeps.value = [...loadedDeps.value, implId];
+          }
+        } catch (e) {
+          console.warn(`Failed to load implementing regulation '${implId}':`, e);
+        }
+      }
+    } catch {
+      // Best-effort: if the scan fails, explicitly-declared deps still cover
+      // the common case.
+    }
+  }
+
+  return { loading, loadedDeps, progress, error, loadAllDependencies, loadImplementors };
 }
 
 /**

@@ -33,6 +33,7 @@ const {
   progress: depsProgress,
   error: depsError,
   loadAllDependencies,
+  loadImplementors,
 } = useDependencies();
 
 // --- Scenario loading ---
@@ -190,7 +191,7 @@ async function runDependencyLoad() {
   const version = ++watchVersion;
   depsReady.value = false;
 
-  await loadAllDependencies(lawYaml, props.engine, fetchLawYaml, props.trajectRef);
+  const mainLawId = await loadAllDependencies(lawYaml, props.engine, fetchLawYaml);
   if (version !== watchVersion) return;
 
   // Also load dependencies from scenario background + per-scenario steps
@@ -213,7 +214,15 @@ async function runDependencyLoad() {
   }
 
   if (version === watchVersion) {
+    // The explicitly-declared deps are loaded — the panel is usable now, so
+    // mark ready and let scenarios auto-execute. Implementing regulations
+    // (IoC) load in the background: their corpus scan can be slow and is
+    // best-effort, so it must not gate the panel. `loadImplementors` is
+    // guarded to run at most once per law.
     depsReady.value = true;
+    if (mainLawId) {
+      loadImplementors(mainLawId, props.engine, fetchLawYaml, props.trajectRef);
+    }
   }
 }
 
