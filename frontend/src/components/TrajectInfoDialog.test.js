@@ -1,0 +1,140 @@
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { mount } from '@vue/test-utils';
+import { nextTick } from 'vue';
+import TrajectInfoDialog from './TrajectInfoDialog.vue';
+
+// nldd-* tags compile to raw HTML (vite.config.js isCustomElement), so the
+// `nldd-sheet` template ref is a real HTMLElement with no show()/hide().
+// Register a no-op stub so the modelValue watcher doesn't throw on mount.
+// (Same approach as EditSheet.test.js.)
+beforeAll(() => {
+  if (typeof customElements !== 'undefined' && !customElements.get('nldd-sheet')) {
+    class NddSheetTestStub extends HTMLElement {
+      show() {}
+      hide() {}
+    }
+    customElements.define('nldd-sheet', NddSheetTestStub);
+  }
+});
+
+const OWN_SOURCE = {
+  source_id: 'own',
+  source_type: 'github',
+  gh_owner: 'MinBZK',
+  gh_repo: 'regelrecht-corpus',
+  gh_branch: 'traject/tariefswijziging-2026',
+  gh_base_branch: 'development',
+  gh_path: 'regulation/nl',
+  is_writable_own: true,
+};
+
+const DETAIL = {
+  id: 'abc',
+  name: 'Tariefswijziging 2026',
+  description: 'Waarom dit traject',
+  scope: 'zorgtoeslag',
+  status: 'bezig',
+  role: 'owner',
+  members: [],
+  pending_invites: [],
+  sources: [OWN_SOURCE],
+};
+
+function res(json, ok = true, status = 200) {
+  return { ok, status, async json() { return json; }, async text() { return ''; } };
+}
+
+beforeEach(() => {
+  vi.restoreAllMocks();
+});
+
+function mountDialog() {
+  return mount(TrajectInfoDialog, {
+    attachTo: document.body,
+    props: { modelValue: false, trajectId: 'abc', trajectName: 'Tariefswijziging 2026' },
+  });
+}
+
+describe('TrajectInfoDialog', () => {
+  it('loads detail when opened and renders the create-screen fields', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(res(DETAIL));
+    const wrapper = mountDialog();
+
+    await wrapper.setProps({ modelValue: true });
+    await nextTick();
+    await nextTick(); // let load() settle
+
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/trajects/abc');
+    const text = wrapper.text();
+    expect(text).toContain('Tariefswijziging 2026');
+    expect(text).toContain('Waarom dit traject');
+    expect(text).toContain('zorgtoeslag');
+    expect(text).toContain('bezig');
+    expect(text).toContain('owner');
+  });
+
+  it('renders the repo as a new-tab nldd-link to the traject branch', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(res(DETAIL));
+    const wrapper = mountDialog();
+    await wrapper.setProps({ modelValue: true });
+    await nextTick();
+    await nextTick();
+
+    // nldd-link compiles to a raw custom element in the test env (vite
+    // isCustomElement), so assert on its attributes — the underlying <a>,
+    // slot text, and auto-rel only exist once the real Lit component
+    // upgrades in the browser. We bind href/target/text/rel explicitly so
+    // they are present as attributes here.
+    const link = wrapper.get('nldd-link.traject-info-repo-link');
+    expect(link.attributes('href')).toBe(
+      'https://github.com/MinBZK/regelrecht-corpus/tree/traject/tariefswijziging-2026',
+    );
+    expect(link.attributes('target')).toBe('_blank');
+    expect(link.attributes('rel')).toContain('noopener');
+    expect(link.attributes('text')).toBe('MinBZK/regelrecht-corpus');
+  });
+
+  it('shows the branch, base branch and subpath', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(res(DETAIL));
+    const wrapper = mountDialog();
+    await wrapper.setProps({ modelValue: true });
+    await nextTick();
+    await nextTick();
+
+    const text = wrapper.text();
+    expect(text).toContain('traject/tariefswijziging-2026'); // branch
+    expect(text).toContain('development'); // base branch
+    expect(text).toContain('regulation/nl'); // subpath
+  });
+
+  it('falls back to "repo-root" when the subpath is empty', async () => {
+    const detail = { ...DETAIL, sources: [{ ...OWN_SOURCE, gh_path: '' }] };
+    globalThis.fetch = vi.fn().mockResolvedValue(res(detail));
+    const wrapper = mountDialog();
+    await wrapper.setProps({ modelValue: true });
+    await nextTick();
+    await nextTick();
+
+    expect(wrapper.text()).toContain('repo-root');
+  });
+
+  it('shows an error message when the load fails', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(res(null, false, 404));
+    const wrapper = mountDialog();
+    await wrapper.setProps({ modelValue: true });
+    await nextTick();
+    await nextTick();
+
+    expect(wrapper.text()).toMatch(/niet laden|404/i);
+  });
+
+  it('emits update:modelValue=false when dismissed', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(res(DETAIL));
+    const wrapper = mountDialog();
+    await wrapper.setProps({ modelValue: true });
+    await nextTick();
+
+    wrapper.vm.close();
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([false]);
+  });
+});
