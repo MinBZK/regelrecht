@@ -1,0 +1,38 @@
+flowchart LR
+  classDef bron_in fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#000;
+  classDef bron_uit fill:#f5f5f5,stroke:#999,stroke-dasharray: 5 5,color:#666;
+  classDef kern fill:#ffe5e5,stroke:#c0392b,stroke-width:2px,color:#000;
+
+  subgraph STATUSSEN["Statussen / gronden (alle routes)"]
+    direction TB
+    WAJ["<b>Wajong-status</b><br/>Wajong 1a:1<br/><i>UWV</i>"]:::bron_in
+    PW["<b>Pwet-LKS-doelgroep</b><br/>Pwet 6.e + 10c<br/><i>gemeente</i>"]:::bron_in
+    BAN["<b>Banenafspraak-register</b><br/>Wfsv 38b.1.d/e/f + 38b.2<br/><i>UWV</i>"]:::bron_in
+    P10B["<b>Beschut werk</b><br/>Pwet 10b lid 1<br/><i>gemeente</i>"]:::bron_in
+    WIA["Wet WIA-status<br/>WIA-uitkering of &lt;35% AO<br/><i>UWV</i>"]:::bron_uit
+    WSW["Wsw-indicatie<br/>Wsw art. 11<br/><i>UWV</i>"]:::bron_uit
+    SCH["Scholingsbelemmerd<br/>ziekte/gebrek bij onderwijs<br/><i>UWV via doelgroepverklaring</i>"]:::bron_uit
+  end
+
+  subgraph REGELINGEN["Regelingen voor de werkgever"]
+    direction TB
+    LDP["<b>LDP</b><br/>Wajong 2:20 lid 1<br/><i>UWV</i>"]:::kern
+    NRP["<b>NRP</b><br/>Ziektewet 29b<br/><i>UWV</i>"]:::kern
+    LKS["<b>LKS</b><br/>Pwet 10c+10d<br/><i>gemeente</i>"]:::kern
+    LKV["<b>LKV-banenafspraak</b><br/>Wtl 2.10.1.a<br/><i>Belastingdienst</i>"]:::kern
+  end
+
+  WAJ ==> LDP
+  WAJ -- "lid 2.a" --> NRP
+  WAJ -- "sub 1&deg;" --> LKV
+  PW ==> LKS
+  PW -- "lid 2.e" --> NRP
+  PW -- "sub 3&deg;" --> LKV
+  BAN -- "lid 11" --> NRP
+  BAN -- "sub 4&deg;-6&deg;" --> LKV
+  P10B -- "lid 2.f" --> NRP
+  WIA -. "lid 1.a/b" .-> NRP
+  WSW -. "lid 2.b/d" .-> NRP
+  WSW -. "sub 2&deg;" .-> LKV
+  SCH -. "lid 1.c/d" .-> NRP
+  SCH -. "sub 7&deg;" .-> LKV
