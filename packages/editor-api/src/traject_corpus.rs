@@ -94,14 +94,34 @@ impl TrajectCorpus {
     /// Resolve the YAML content for a law in this traject, preferring the
     /// post-save overlay over the source_map snapshot built at traject
     /// activation time.
+    ///
+    /// The source_map is a lightweight **index** — for GitHub-backed sources
+    /// its entries carry only metadata (no body). When a metadata-only law is
+    /// read for the first time, its body is fetched lazily from the law's own
+    /// source backend (one Contents API call), rather than every law's content
+    /// being fetched up front at traject-activation time.
     pub async fn law_yaml(&self, law_id: &str) -> Option<String> {
         if let Some(text) = self.overlay.read().await.get(law_id) {
             return Some(text.clone());
         }
-        self.corpus
-            .source_map
-            .get_law(law_id)
-            .map(|l| l.yaml_content.clone())
+
+        // Pull the bits we need out of the index entry, then drop the borrow
+        // before the await below.
+        let (source_id, relative_path) = {
+            let law = self.corpus.source_map.get_law(law_id)?;
+            if law.is_loaded() {
+                return Some(law.yaml_content.clone());
+            }
+            (law.source_id.clone(), law.relative_path.clone())
+        };
+
+        let entry = self.corpus.backends.get(&source_id)?;
+        let backend = entry.backend.lock().await;
+        backend
+            .read_file(std::path::Path::new(&relative_path))
+            .await
+            .ok()
+            .flatten()
     }
 
     /// Mirror a freshly-saved law's content into the read-your-writes
@@ -454,16 +474,17 @@ async fn build_traject_corpus(
         }
     }
 
-    // Load every law from all of the traject's sources — the private
-    // writable-own repo and the seeded central corpus — not just the
-    // favorites set. The bibliotheek search must be able to surface any law
-    // in the traject's corpus, so it needs the full set indexed. Per-source
-    // failures are tolerated inside `load_all_sources_async` (a bad seed
-    // source is skipped, not fatal), but a failure on the writable-own source
-    // is escalated below: its laws are the whole point of the traject, so a
-    // silent drop would reintroduce exactly the "my laws aren't searchable"
-    // bug this load path fixes.
-    let source_map = match registry.load_all_sources_async(auth_file).await {
+    // Build a lightweight INDEX of every law across the traject's sources —
+    // the private writable-own repo and the seeded central corpus — so the
+    // bibliotheek search can surface any law without fetching every law's body
+    // up front (which meant N per-file GitHub Contents API calls per traject
+    // build — slow and rate-limited). Bodies are fetched lazily on first read
+    // (see `TrajectCorpus::law_yaml`). Per-source failures are tolerated
+    // inside `index_all_sources_async` (a bad seed source is skipped, not
+    // fatal), but a failure on the writable-own source is escalated below: its
+    // laws are the whole point of the traject, so a silent drop would
+    // reintroduce exactly the "my laws aren't searchable" bug this path fixes.
+    let source_map = match registry.index_all_sources_async(auth_file).await {
         Ok((map, failed)) => {
             if failed.iter().any(|id| id == &writable_own_source_id) {
                 tracing::error!(

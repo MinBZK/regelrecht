@@ -35,6 +35,15 @@ pub struct LoadedLaw {
     pub source_priority: u32,
 }
 
+impl LoadedLaw {
+    /// Whether this law's body has been fetched. Metadata-only index entries
+    /// (from path enumeration) carry an empty `yaml_content` until the law is
+    /// opened and its content lazily fetched.
+    pub fn is_loaded(&self) -> bool {
+        !self.yaml_content.is_empty()
+    }
+}
+
 /// Aggregates laws from multiple sources with priority-based conflict resolution.
 ///
 /// When multiple sources provide a law with the same `$id`, the source with the
@@ -275,6 +284,47 @@ impl SourceMap {
 
         self.insert(loaded)?;
         Ok(true)
+    }
+
+    /// Insert a metadata-only entry for a law discovered by path enumeration,
+    /// without fetching its content. `yaml_content` is left empty as the
+    /// "not yet loaded" sentinel — callers lazily fetch the body on first read
+    /// via the source's backend, using the `relative_path` stored here.
+    ///
+    /// `law_id` comes from the directory name (the corpus convention is
+    /// `{base}/{layer}/{law_id}/{date}.yaml`, and the directory name equals
+    /// the law's `$id`). `file_path` is the in-repo path; `source_subpath` is
+    /// stripped to produce the source-root-relative path the backend reads.
+    pub fn load_metadata_entry(
+        &mut self,
+        law_id: &str,
+        file_path: &str,
+        source_subpath: Option<&str>,
+        source_id: &str,
+        source_name: &str,
+        source_priority: u32,
+    ) -> Result<()> {
+        let relative_path = match source_subpath {
+            Some(sub) if !sub.is_empty() => {
+                let trimmed = sub.trim_end_matches('/');
+                file_path
+                    .strip_prefix(&format!("{trimmed}/"))
+                    .unwrap_or(file_path)
+                    .to_string()
+            }
+            _ => file_path.to_string(),
+        };
+
+        self.insert(LoadedLaw {
+            law_id: law_id.to_string(),
+            name: None,
+            yaml_content: String::new(),
+            file_path: file_path.to_string(),
+            relative_path,
+            source_id: source_id.to_string(),
+            source_name: source_name.to_string(),
+            source_priority,
+        })
     }
 
     /// Get all loaded laws.
@@ -772,6 +822,34 @@ mod tests {
         let law = map.get_law("test_wet").unwrap();
         assert_eq!(law.source_id, "central");
         assert_eq!(law.source_priority, 1);
+        assert!(law.is_loaded(), "a content-loaded law reports loaded");
+    }
+
+    #[test]
+    fn test_metadata_entry_is_unloaded_with_stripped_path() {
+        let mut map = SourceMap::new();
+        // `file_path` is the in-repo path; the source is rooted at
+        // `regulation/nl`, so the stored relative_path drops that prefix.
+        map.load_metadata_entry(
+            "besluit_zorgverzekering_bes",
+            "regulation/nl/amvb/besluit_zorgverzekering_bes/2024-01-01.yaml",
+            Some("regulation/nl"),
+            "traject-own-abc",
+            "MinBZK/regelrecht-corpus-BES",
+            0,
+        )
+        .unwrap();
+
+        let law = map.get_law("besluit_zorgverzekering_bes").unwrap();
+        assert!(!law.is_loaded(), "metadata-only entry has no body yet");
+        assert_eq!(law.yaml_content, "");
+        assert_eq!(law.name, None);
+        assert_eq!(
+            law.relative_path,
+            "amvb/besluit_zorgverzekering_bes/2024-01-01.yaml"
+        );
+        assert_eq!(law.source_id, "traject-own-abc");
+        assert_eq!(law.source_priority, 0);
     }
 
     #[test]

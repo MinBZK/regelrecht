@@ -106,7 +106,8 @@ impl CorpusRegistry {
 
     /// Load all local sources into a SourceMap.
     ///
-    /// GitHub sources are skipped — use [`load_all_sources_async`] to include them.
+    /// GitHub sources are skipped — use [`index_all_sources_async`] or
+    /// [`load_favorites_async`] to include them.
     pub fn load_local_sources(&self) -> Result<SourceMap> {
         let mut map = SourceMap::new();
         for source in &self.sources {
@@ -210,21 +211,23 @@ impl CorpusRegistry {
         Ok(map)
     }
 
-    /// Load all sources (local + GitHub) into a SourceMap.
+    /// Build a lightweight **index** of every law across all sources without
+    /// fetching law bodies. Local sources are loaded eagerly (disk is cheap
+    /// and gives real names); GitHub sources are enumerated via the Trees API
+    /// (1 call per source) into metadata-only entries — `law_id`, source, and
+    /// `relative_path`, but no content. Bodies are fetched lazily on first
+    /// read via the source's backend.
     ///
-    /// Fetches GitHub sources using the provided auth file for token lookup.
-    /// Returns the populated map together with the ids of any sources that
-    /// failed to load. A single source failing is non-fatal (it's logged and
-    /// skipped), but the failed-id list lets callers escalate when a source
-    /// they care about — e.g. a traject's writable-own repo — is among them.
+    /// This replaces the eager [`load_all_sources_async`] on the traject path:
+    /// loading every law's full YAML up front meant N per-file Contents API
+    /// calls per traject build, which is slow and trips GitHub's secondary
+    /// rate limit. The library/search only needs the index; content is only
+    /// needed when a specific law is opened.
     ///
-    /// **Note:** A fresh `GitHubFetcher` is created on each call, so the
-    /// `NotModified` branch is currently unreachable (no prior ETag exists).
-    /// If caching is added later, callers must ensure that `NotModified`
-    /// sources are merged from a previous `SourceMap` instead of silently
-    /// dropped.
+    /// Returns the index plus the ids of any sources that failed to enumerate
+    /// (non-fatal, mirroring [`load_all_sources_async`]).
     #[cfg(feature = "github")]
-    pub async fn load_all_sources_async(
+    pub async fn index_all_sources_async(
         &self,
         auth_file: Option<&Path>,
     ) -> Result<(SourceMap, Vec<String>)> {
@@ -233,16 +236,12 @@ impl CorpusRegistry {
         let mut failed: Vec<String> = Vec::new();
 
         for source in &self.sources {
-            // A single source failing — a missing per-repo token, a
-            // writable-own branch that hasn't been created yet, a transient
-            // GitHub error — must NOT wipe the whole corpus. Log it, record
-            // the id, and move on so the remaining sources still populate the
-            // map.
-            if let Err(e) = Self::load_one_source(&mut map, &mut fetcher, source, auth_file).await {
+            if let Err(e) = Self::index_one_source(&mut map, &mut fetcher, source, auth_file).await
+            {
                 tracing::warn!(
                     source_id = %source.id,
                     error = %e,
-                    "failed to load corpus source, skipping"
+                    "failed to index corpus source, skipping"
                 );
                 failed.push(source.id.clone());
             }
@@ -251,13 +250,11 @@ impl CorpusRegistry {
         if !failed.is_empty() {
             tracing::warn!(
                 failed = ?failed,
-                loaded = map.len(),
-                "some corpus sources failed to load"
+                indexed = map.len(),
+                "some corpus sources failed to index"
             );
         }
 
-        // Validate scopes for parity with `load_local_sources` and
-        // `load_favorites_async`, which both surface scope warnings.
         for w in crate::validation::validate_scopes(&map, &self.sources) {
             tracing::warn!(
                 law_id = %w.law_id,
@@ -270,11 +267,11 @@ impl CorpusRegistry {
         Ok((map, failed))
     }
 
-    /// Load a single source into `map`. Factored out of
-    /// [`load_all_sources_async`] so one source's failure can be caught and
-    /// skipped without aborting the whole load.
+    /// Index a single source: load local content eagerly, but enumerate a
+    /// GitHub source's laws by path only (no body fetch). Factored out so one
+    /// source's failure is skipped, not fatal.
     #[cfg(feature = "github")]
-    async fn load_one_source(
+    async fn index_one_source(
         map: &mut SourceMap,
         fetcher: &mut crate::github::GitHubFetcher,
         source: &Source,
@@ -290,29 +287,18 @@ impl CorpusRegistry {
                     source.auth_ref.as_deref(),
                     auth_file,
                 )?;
-                match fetcher.fetch_source(github, token.as_deref()).await? {
-                    crate::github::FetchResult::Fetched(files) => {
-                        for file in &files {
-                            map.load_fetched_file(
-                                &file.content,
-                                &file.path,
-                                github.path.as_deref(),
-                                &source.id,
-                                &source.name,
-                                source.priority,
-                            )?;
-                        }
-                    }
-                    crate::github::FetchResult::NotModified => {
-                        // INVARIANT: currently unreachable because GitHubFetcher
-                        // is created fresh (no prior ETag). When ETag persistence
-                        // is added, this branch must merge laws from the previous
-                        // SourceMap — otherwise unchanged sources lose their laws.
-                        tracing::debug!(
-                            source_id = %source.id,
-                            "GitHub source unchanged, skipping"
-                        );
-                    }
+                for (law_id, path) in fetcher
+                    .list_source_law_paths(github, token.as_deref())
+                    .await?
+                {
+                    map.load_metadata_entry(
+                        &law_id,
+                        &path,
+                        github.path.as_deref(),
+                        &source.id,
+                        &source.name,
+                        source.priority,
+                    )?;
                 }
             }
         }
