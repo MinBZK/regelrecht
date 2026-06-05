@@ -3,12 +3,14 @@
  *
  * Parses a law's YAML structure to find all `source.regulation` references,
  * fetches each dependency via the API, loads it into the engine, and recurses.
- * Also discovers implementing regulations via corpus scan.
+ * Also pulls in implementing regulations (the IoC reverse link) via the
+ * backend `implementors` endpoint, which scans the in-memory corpus
+ * server-side — one request instead of fetching and parsing every law.
  */
 import { ref } from 'vue';
 import yaml from 'js-yaml';
 import { useBwbHarvest } from './useBwbHarvest.js';
-import { lawsListUrl } from './corpusUrls.js';
+import { implementorsUrl } from './corpusUrls.js';
 
 /**
  * Extract all unique `source.regulation` references from a parsed law object.
@@ -32,54 +34,6 @@ export function extractRegulationRefs(law) {
   }
 
   return [...refs];
-}
-
-/**
- * Find laws in the corpus that implement open_terms of the given law.
- *
- * @param {string} lawId - The law ID to find implementors for
- * @param {object[]} allLaws - Full corpus law list (from /api/corpus/laws)
- * @returns {Promise<string[]>} Law IDs that implement open_terms of lawId
- */
-async function discoverImplementors(lawId, allLaws, fetchLawYaml) {
-  const candidates = allLaws.filter((entry) => entry.law_id !== lawId);
-
-  // Fetch all candidate laws in parallel (batched)
-  const BATCH_SIZE = 10;
-  const implementors = [];
-
-  for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
-    const batch = candidates.slice(i, i + BATCH_SIZE);
-    const results = await Promise.allSettled(
-      batch.map(async (entry) => {
-        let text;
-        try {
-          text = await fetchLawYaml(entry.law_id);
-        } catch {
-          return null;
-        }
-        const law = yaml.load(text);
-
-        for (const article of law.articles || []) {
-          const impls = article.machine_readable?.implements || [];
-          for (const impl of impls) {
-            if (impl.law === lawId) {
-              return law.$id || entry.law_id;
-            }
-          }
-        }
-        return null;
-      }),
-    );
-
-    for (const result of results) {
-      if (result.status === 'fulfilled' && result.value) {
-        implementors.push(result.value);
-      }
-    }
-  }
-
-  return implementors;
 }
 
 /**
@@ -116,27 +70,27 @@ export function useDependencies() {
       // Phase 1: Collect all transitive regulation references
       collectDeps(mainLaw, visited, toLoad);
 
-      // Phase 2: Discover implementing regulations
-      try {
-        const corpusRes = await fetch(lawsListUrl(trajectRef, 'limit=1000'));
-        if (corpusRes.ok) {
-          const allLaws = await corpusRes.json();
-
-          // Check for implementors of the main law
-          const implementors = await discoverImplementors(
-            mainLaw.$id,
-            allLaws,
-            fetchLawYaml,
-          );
-          for (const implId of implementors) {
-            if (!visited.has(implId)) {
-              visited.add(implId);
-              toLoad.push(implId);
+      // Phase 2: Discover implementing regulations (IoC reverse link).
+      // The backend scans the in-memory corpus and returns just the
+      // implementing law ids, so this is a single request — not a
+      // fetch-and-parse of every law in the (possibly federated, hundreds
+      // strong) corpus. Best-effort: a failure here only means implementing
+      // regulations aren't auto-loaded, the rest of the scan still runs.
+      if (mainLaw.$id) {
+        try {
+          const res = await fetch(implementorsUrl(trajectRef, mainLaw.$id));
+          if (res.ok) {
+            const implementors = await res.json();
+            for (const implId of implementors) {
+              if (!visited.has(implId)) {
+                visited.add(implId);
+                toLoad.push(implId);
+              }
             }
           }
+        } catch {
+          // Implementor discovery is best-effort.
         }
-      } catch {
-        // Corpus scan is best-effort
       }
 
       // Phase 3: Load all collected dependencies
