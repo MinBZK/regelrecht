@@ -143,6 +143,21 @@ impl GitHubApiBackend {
         })
     }
 
+    /// Inverse of [`api_path`]: strip the `sub_path` prefix from an in-repo
+    /// path to recover the source-relative path used by `SourceMap` /
+    /// `LoadedLaw`. Returns `None` for paths outside `sub_path` (files that
+    /// aren't part of this source's corpus subtree — e.g. repo-root config
+    /// when the corpus lives under `regulation/nl`).
+    fn to_source_relative(&self, in_repo_path: &str) -> Option<String> {
+        match &self.sub_path {
+            Some(sub) if !sub.is_empty() => {
+                let prefix = format!("{}/", sub.trim_end_matches('/'));
+                in_repo_path.strip_prefix(&prefix).map(str::to_string)
+            }
+            _ => Some(in_repo_path.to_string()),
+        }
+    }
+
     /// Fetch the current SHA for a path on the target branch. Used by
     /// `persist` when the caller never read the file first (blind write
     /// to an existing file). Returns `Ok(None)` on 404 — the caller can
@@ -527,6 +542,31 @@ impl RepoBackend for GitHubApiBackend {
 
     fn is_writable(&self) -> bool {
         self.token.is_some()
+    }
+
+    async fn changed_files(&self) -> Result<Vec<String>> {
+        // The diff is branch-against-base. Without a base to compare to,
+        // or a token to read the (typically private) repo, there's nothing
+        // meaningful to report — return empty rather than erroring.
+        let Some(base) = self.base_branch.as_deref() else {
+            return Ok(Vec::new());
+        };
+        if self.token.is_none() {
+            return Ok(Vec::new());
+        }
+        let in_repo_paths = {
+            let mut inner = self.inner.lock().await;
+            inner
+                .fetcher
+                .compare_files(&self.full_repo(), base, &self.branch, self.token.as_deref())
+                .await?
+        };
+        // Map in-repo paths back to source-relative paths, dropping any
+        // that fall outside this source's `sub_path` subtree.
+        Ok(in_repo_paths
+            .into_iter()
+            .filter_map(|p| self.to_source_relative(&p))
+            .collect())
     }
 }
 

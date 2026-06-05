@@ -14,7 +14,7 @@ import { lawFetchError } from './composables/useLaw.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import { useTrajects } from './composables/useTrajects.js';
-import { lawsListUrl, lawUrl } from './composables/corpusUrls.js';
+import { lawsListUrl, lawUrl, changedLawsUrl } from './composables/corpusUrls.js';
 import { SUPPORT_EMAIL } from './constants.js';
 import { lastEditorPath, sectionTarget } from './composables/useLastVisitedRoute.js';
 
@@ -83,6 +83,9 @@ const editorTabHref = computed(() => router.resolve(editorTabTarget.value).href)
 
 const laws = ref([]);
 const favorites = ref(null);
+// Law ids edited in the active traject (branch-vs-base diff). `null` until
+// loaded / when no traject is active; a Set once the endpoint resolves.
+const changedLawIds = ref(null);
 const loading = ref(true);
 const indexError = ref(null);
 const searchPopoverRef = ref(null);
@@ -140,13 +143,41 @@ const detailView = computed({
 });
 const activeAction = ref(null);
 
-const sidebarLaws = computed(() => {
+// Curated sidebar sections (in render order). Each entry is
+// `{ key, title, laws }`; a `null` title renders a headerless list (the
+// no-favorites fallback). Empty sections are never pushed, so the template
+// can iterate without per-section emptiness checks.
+//
+//   - "Bewerkt in dit traject" comes first: it's the small, high-signal,
+//     context-specific set, so it sits above the larger favorites/full list.
+//     Only present when a traject is active and the diff is non-empty.
+//   - "Favorieten": the user's personal favorites. When the user has none we
+//     fall back to the full corpus (today's behavior) under no heading,
+//     rather than showing an empty panel — full browse otherwise lives in
+//     the search popover.
+const sidebarSections = computed(() => {
   const list = laws.value;
+  const sections = [];
+
+  if (activeTrajectRef.value && changedLawIds.value?.size) {
+    const changed = list.filter(law => changedLawIds.value.has(law.law_id));
+    if (changed.length > 0) {
+      sections.push({ key: 'changed', title: 'Bewerkt in dit traject', laws: changed });
+    }
+  }
+
   if (favorites.value) {
     const favList = list.filter(law => favorites.value.has(law.law_id));
-    if (favList.length > 0) return favList;
+    if (favList.length > 0) {
+      sections.push({ key: 'favorites', title: 'Favorieten', laws: favList });
+      return sections;
+    }
   }
-  return list;
+
+  // No personal favorites: fall back to the full corpus (headerless),
+  // matching the pre-sections behavior. The curated sections layer on top.
+  sections.push({ key: 'all', title: null, laws: list });
+  return sections;
 });
 
 const articles = computed(() => selectedLaw.value?.articles ?? []);
@@ -258,6 +289,23 @@ async function loadFavorites() {
   }
 }
 
+// Fetch the set of law ids edited in the active traject. Returns `null`
+// when there's no traject (global browse has no "changed" notion) or on
+// any failure — the "Bewerkt in dit traject" section then simply stays
+// hidden instead of surfacing an error in the sidebar. The backend returns
+// an empty array (not an error) when nothing has been saved yet, which maps
+// to an empty Set and a hidden section all the same.
+async function fetchChangedLawIds(trajectRef) {
+  if (!trajectRef) return null;
+  try {
+    const res = await fetch(changedLawsUrl(trajectRef));
+    if (!res.ok) return null;
+    return new Set(await res.json());
+  } catch {
+    return null;
+  }
+}
+
 const togglingFavorites = ref(new Set());
 
 async function toggleFavorite(lawId) {
@@ -295,10 +343,14 @@ let loadIndexGeneration = 0;
 
 async function loadIndex() {
   const gen = ++loadIndexGeneration;
+  // Snapshot the traject so the changed-laws fetch and its assignment below
+  // both refer to the scope this run started in.
+  const trajectRef = activeTrajectRef.value;
   try {
-    const [corpusRes] = await Promise.all([
-      fetch(lawsListUrl(activeTrajectRef.value, 'limit=1000')),
+    const [corpusRes, , changedIds] = await Promise.all([
+      fetch(lawsListUrl(trajectRef, 'limit=1000')),
       loadFavorites(),
+      fetchChangedLawIds(trajectRef),
     ]);
     if (!corpusRes.ok) throw new Error(`Failed to load corpus: ${corpusRes.status}`);
     // Gate before and after json(): skip parsing for stale 200s, and catch races during it.
@@ -306,6 +358,7 @@ async function loadIndex() {
     const corpusLaws = await corpusRes.json();
     if (gen !== loadIndexGeneration) return;
     laws.value = corpusLaws.sort((a, b) => a.law_id.localeCompare(b.law_id));
+    changedLawIds.value = changedIds;
   } catch (e) {
     if (gen !== loadIndexGeneration) return;
     indexError.value = e;
@@ -519,6 +572,12 @@ loadIndex();
 // stays mounted — so refetch the index and the open law through the new
 // scope. Mirrors EditorApp's `watch(activeTrajectRef)`.
 watch(activeTrajectRef, () => {
+  // Drop the previous traject's changed-set immediately so the
+  // "Bewerkt in dit traject" section doesn't briefly show stale entries
+  // (filtered against the also-stale corpus) while the new index loads.
+  // `loadIndex` repopulates it for the new scope, or leaves it null in
+  // global browse.
+  changedLawIds.value = null;
   loadIndex();
   if (selectedLawId.value) {
     lawError.value = null;
@@ -646,24 +705,38 @@ watch(activeTrajectRef, () => {
                 <nldd-title id="home-titel" size="3"><h3>{{ LIBRARY_HOME_TITLE }}</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
                 <nldd-inline-dialog v-if="loading" text="Laden..."></nldd-inline-dialog>
-                <nldd-list v-else variant="simple">
-                  <nldd-list-item
-                    v-for="law in sidebarLaws"
-                    :key="law.law_id"
-                    size="md"
-                    type="button"
-                    :data-law-id="law.law_id"
-                    :selected="law.law_id === selectedLawId || undefined"
-                    @click="selectLaw(law.law_id)"
+                <template v-else>
+                  <template
+                    v-for="(section, sectionIndex) in sidebarSections"
+                    :key="section.key"
                   >
-                    <nldd-text-cell :text="displayName(law)" :supporting-text="law.source_name">
-                    </nldd-text-cell>
-                    <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                    <nldd-icon-cell size="20">
-                      <nldd-icon name="chevron-right"></nldd-icon>
-                    </nldd-icon-cell>
-                  </nldd-list-item>
-                </nldd-list>
+                    <!-- Gap above every section after the first, so the
+                         curated groups read as distinct blocks. -->
+                    <nldd-spacer v-if="sectionIndex > 0" size="24"></nldd-spacer>
+                    <template v-if="section.title">
+                      <nldd-title size="5"><h4>{{ section.title }}</h4></nldd-title>
+                      <nldd-spacer size="8"></nldd-spacer>
+                    </template>
+                    <nldd-list variant="simple">
+                      <nldd-list-item
+                        v-for="law in section.laws"
+                        :key="`${section.key}-${law.law_id}`"
+                        size="md"
+                        type="button"
+                        :data-law-id="law.law_id"
+                        :selected="law.law_id === selectedLawId || undefined"
+                        @click="selectLaw(law.law_id)"
+                      >
+                        <nldd-text-cell :text="displayName(law)" :supporting-text="law.source_name">
+                        </nldd-text-cell>
+                        <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                        <nldd-icon-cell size="20">
+                          <nldd-icon name="chevron-right"></nldd-icon>
+                        </nldd-icon-cell>
+                      </nldd-list-item>
+                    </nldd-list>
+                  </template>
+                </template>
               </nldd-simple-section>
             </nldd-page>
           </nldd-split-view-pane>

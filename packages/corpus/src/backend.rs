@@ -143,6 +143,18 @@ pub trait RepoBackend: Send + Sync {
 
     /// Whether this backend supports write operations.
     fn is_writable(&self) -> bool;
+
+    /// Source-relative paths of files that differ between this backend's
+    /// branch and its configured base branch.
+    ///
+    /// Only meaningful for backends that track a branch against a base
+    /// (the GitHub API backend used by the traject flow). The default
+    /// returns an empty list, so local- and clone-based backends — which
+    /// have no "base vs head" notion in this context — simply report
+    /// "nothing changed".
+    async fn changed_files(&self) -> Result<Vec<String>> {
+        Ok(Vec::new())
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -25,6 +25,16 @@ export function lawsListUrl(trajectRef, query = '') {
   return `${corpusBase(trajectRef)}/laws${q}`;
 }
 
+// Law ids edited in a traject (branch-vs-base diff). Only exists under the
+// traject prefix — there is no global "changed laws" notion — so this is
+// traject-only, like the documents builders. Callers already short-circuit
+// the no-traject case (see `fetchChangedLawIds`); the guard here documents
+// that contract and fails loudly if a future caller forgets it.
+export function changedLawsUrl(trajectRef) {
+  requireTraject(trajectRef, 'changed-laws listing');
+  return `${corpusBase(trajectRef)}/changed-laws`;
+}
+
 export function scenariosListUrl(trajectRef, lawId) {
   return `${lawUrl(trajectRef, lawId)}/scenarios`;
 }
