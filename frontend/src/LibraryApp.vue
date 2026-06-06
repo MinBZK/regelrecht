@@ -8,12 +8,15 @@ import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
 import TrajectMenu from './components/TrajectMenu.vue';
+import TrajectDocuments from './components/TrajectDocuments.vue';
 import { useAuth } from './composables/useAuth.js';
 import { lawFetchError } from './composables/useLaw.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
+import { useTrajects } from './composables/useTrajects.js';
+import { lawsListUrl, lawUrl, changedLawsUrl } from './composables/corpusUrls.js';
 import { SUPPORT_EMAIL } from './constants.js';
-import { lastEditorPath } from './composables/useLastVisitedRoute.js';
+import { lastEditorPath, sectionTarget } from './composables/useLastVisitedRoute.js';
 
 const { authenticated, loading: authLoading, oidcConfigured, person, login, logout } = useAuth();
 const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
@@ -44,8 +47,45 @@ const editorPanelFlags = [
 const route = useRoute();
 const router = useRouter();
 
+// Active traject (null = global browse). Derived from the URL via
+// `route.params.trajectRef`, so the new `library-traject` route makes the
+// bibliotheek traject-aware without any extra plumbing.
+const { activeTrajectRef } = useTrajects();
+
+// Keep the user's traject scope across in-app navigations. With a traject
+// in the URL we stay on `library-traject` / `editor-traject`; without one
+// on the plain `library` / `editor`. Mirrors EditorApp.editorRouteFor.
+function libraryRouteFor(params = {}) {
+  return activeTrajectRef.value
+    ? { name: 'library-traject', params: { ...params, trajectRef: activeTrajectRef.value } }
+    : { name: 'library', params };
+}
+function editorRouteFor(lawIdVal, articleNumber) {
+  return activeTrajectRef.value
+    ? { name: 'editor-traject', params: { trajectRef: activeTrajectRef.value, lawId: lawIdVal, articleNumber } }
+    : { name: 'editor', params: { lawId: lawIdVal, articleNumber } };
+}
+
+// Tab-bar state + cross-section navigation. The Bibliotheek/Editor tabs
+// must light up for both the plain and traject-scoped route variants, and
+// switching to the Editor tab must carry the active traject across (see
+// sectionTarget).
+const isLibraryRoute = computed(
+  () => route.name === 'library' || route.name === 'library-traject',
+);
+// The Editor tab is never the active tab while LibraryApp is mounted
+// (this component only serves the library routes), so it needs no
+// `:selected` binding — only the cross-section target/href below.
+const editorTabTarget = computed(() =>
+  sectionTarget(router, lastEditorPath.value, activeTrajectRef.value),
+);
+const editorTabHref = computed(() => router.resolve(editorTabTarget.value).href);
+
 const laws = ref([]);
 const favorites = ref(null);
+// Law ids edited in the active traject (branch-vs-base diff). `null` until
+// loaded / when no traject is active; a Set once the endpoint resolves.
+const changedLawIds = ref(null);
 const loading = ref(true);
 const indexError = ref(null);
 const searchPopoverRef = ref(null);
@@ -103,13 +143,39 @@ const detailView = computed({
 });
 const activeAction = ref(null);
 
-const sidebarLaws = computed(() => {
+// Curated sidebar sections (in render order). Each entry is
+// `{ key, title, laws }`. Empty sections are never pushed, so the template
+// can iterate without per-section emptiness checks.
+//
+//   - "Bewerkt in dit traject" comes first: it's the small, high-signal,
+//     context-specific set, so it sits above favorites.
+//     Only present when a traject is active and the diff is non-empty.
+//   - "Favorieten": the user's personal favorites.
+//
+// There is deliberately NO full-corpus fallback: the central corpus is the
+// full BWB corpus (thousands of laws), so dumping it into the sidebar isn't
+// useful and is exactly the "huge pile" we don't want loaded here. When
+// nothing is curated yet, the template shows a search CTA instead — full
+// browse lives in the search popover.
+const sidebarSections = computed(() => {
   const list = laws.value;
+  const sections = [];
+
+  if (activeTrajectRef.value && changedLawIds.value?.size) {
+    const changed = list.filter(law => changedLawIds.value.has(law.law_id));
+    if (changed.length > 0) {
+      sections.push({ key: 'changed', title: 'Bewerkt in dit traject', laws: changed });
+    }
+  }
+
   if (favorites.value) {
     const favList = list.filter(law => favorites.value.has(law.law_id));
-    if (favList.length > 0) return favList;
+    if (favList.length > 0) {
+      sections.push({ key: 'favorites', title: 'Favorieten', laws: favList });
+    }
   }
-  return list;
+
+  return sections;
 });
 
 const articles = computed(() => selectedLaw.value?.articles ?? []);
@@ -221,6 +287,23 @@ async function loadFavorites() {
   }
 }
 
+// Fetch the set of law ids edited in the active traject. Returns `null`
+// when there's no traject (global browse has no "changed" notion) or on
+// any failure — the "Bewerkt in dit traject" section then simply stays
+// hidden instead of surfacing an error in the sidebar. The backend returns
+// an empty array (not an error) when nothing has been saved yet, which maps
+// to an empty Set and a hidden section all the same.
+async function fetchChangedLawIds(trajectRef) {
+  if (!trajectRef) return null;
+  try {
+    const res = await fetch(changedLawsUrl(trajectRef));
+    if (!res.ok) return null;
+    return new Set(await res.json());
+  } catch {
+    return null;
+  }
+}
+
 const togglingFavorites = ref(new Set());
 
 async function toggleFavorite(lawId) {
@@ -246,7 +329,14 @@ async function toggleFavorite(lawId) {
   try {
     const method = isFav ? 'DELETE' : 'PUT';
     const res = await fetch(`/api/favorites/${encodeURIComponent(lawId)}`, { method });
-    if (!res.ok) revert();
+    if (!res.ok) {
+      revert();
+    } else {
+      // Re-resolve the sidebar's id-set so a newly-favorited law (whose
+      // metadata isn't loaded yet, since we only fetch favorites + edits by
+      // id) appears in the Favorieten section without a manual reload.
+      loadIndex();
+    }
   } catch {
     revert();
   } finally {
@@ -258,15 +348,36 @@ let loadIndexGeneration = 0;
 
 async function loadIndex() {
   const gen = ++loadIndexGeneration;
+  // Snapshot the traject so the changed-laws fetch and its assignment below
+  // both refer to the scope this run started in.
+  const trajectRef = activeTrajectRef.value;
   try {
-    const [corpusRes] = await Promise.all([
-      fetch('/api/corpus/laws?limit=1000'),
+    // Resolve the small id sets the sidebar actually needs: the user's
+    // personal favorites and (in a traject) the laws edited on the traject
+    // branch. Both `loadFavorites` and `fetchChangedLawIds` are id-only.
+    const [, changedIds] = await Promise.all([
       loadFavorites(),
+      fetchChangedLawIds(trajectRef),
     ]);
-    if (!corpusRes.ok) throw new Error(`Failed to load corpus: ${corpusRes.status}`);
+    if (gen !== loadIndexGeneration) return;
+    changedLawIds.value = changedIds;
+
+    // Fetch metadata for just those ids via `?ids=` — never the whole corpus.
+    // The central corpus is the full BWB corpus (thousands of laws); loading
+    // it here only to filter out a handful would be wasteful and would miss
+    // any favorite/edit that sorts past a page cap. Full browse lives in the
+    // search popover instead.
+    const ids = new Set([...(favorites.value || []), ...(changedIds || [])]);
+    if (ids.size === 0) {
+      laws.value = [];
+      return;
+    }
+    const query = `ids=${encodeURIComponent([...ids].join(','))}&limit=1000`;
+    const res = await fetch(lawsListUrl(trajectRef, query));
+    if (!res.ok) throw new Error(`Failed to load corpus: ${res.status}`);
     // Gate before and after json(): skip parsing for stale 200s, and catch races during it.
     if (gen !== loadIndexGeneration) return;
-    const corpusLaws = await corpusRes.json();
+    const corpusLaws = await res.json();
     if (gen !== loadIndexGeneration) return;
     laws.value = corpusLaws.sort((a, b) => a.law_id.localeCompare(b.law_id));
   } catch (e) {
@@ -285,7 +396,7 @@ async function loadLaw(lawId) {
   const gen = ++loadLawGeneration;
   try {
     selectedLawLoading.value = true;
-    const res = await fetch(`/api/corpus/laws/${encodeURIComponent(lawId)}`);
+    const res = await fetch(lawUrl(activeTrajectRef.value, lawId));
     if (!res.ok) throw lawFetchError(res.status);
     // Gate before and after `res.text()`: skip the body read for stale 200s, and catch races during it.
     if (gen !== loadLawGeneration) return;
@@ -334,8 +445,18 @@ function retryLoadCorpus() {
 function editInEditor() {
   if (!selectedLawId.value || !selectedArticleNumber.value) return;
   activeAction.value = null;
-  router.push(`/editor/${encodeURIComponent(selectedLawId.value)}/${encodeURIComponent(selectedArticleNumber.value)}`);
+  // Carry the active traject so "Bewerken" opens the editable
+  // editor-traject view instead of the read-only editor.
+  router.push(editorRouteFor(selectedLawId.value, selectedArticleNumber.value));
 }
+
+// "Bewerken" button in the detail pane: same traject-aware target as
+// editInEditor, exposed as a location + href so the anchor is real (and
+// middle-click / open-in-new-tab works) while the click stays SPA.
+const editLawTarget = computed(() =>
+  editorRouteFor(selectedLawId.value, selectedArticleNumber.value || undefined),
+);
+const editLawHref = computed(() => router.resolve(editLawTarget.value).href);
 
 function selectLaw(lawId, focusAfter = false) {
   if (lawId !== selectedLawId.value || lawError.value) {
@@ -343,7 +464,7 @@ function selectLaw(lawId, focusAfter = false) {
     selectedArticleNumber.value = null;
     activeAction.value = null;
     lawError.value = null;
-    router.push({ name: 'library', params: { lawId } });
+    router.push(libraryRouteFor({ lawId }));
     loadLaw(lawId);
   }
 
@@ -367,7 +488,10 @@ function selectArticle(number) {
   if (articleStr === selectedArticleNumber.value) return;
   selectedArticleNumber.value = articleStr;
   activeAction.value = null;
-  router.replace({ name: 'library', params: { lawId: selectedLawId.value, articleNumber: articleStr }, hash: route.hash });
+  router.replace({
+    ...libraryRouteFor({ lawId: selectedLawId.value, articleNumber: articleStr }),
+    hash: route.hash,
+  });
 }
 
 /**
@@ -399,12 +523,12 @@ function onPaneBack(e) {
 
 function goToLawRoot() {
   if (selectedLawId.value) {
-    router.push({ name: 'library', params: { lawId: selectedLawId.value } });
+    router.push(libraryRouteFor({ lawId: selectedLawId.value }));
   }
 }
 
 function goToLibraryRoot() {
-  router.push({ name: 'library' });
+  router.push(libraryRouteFor());
 }
 
 // Handle browser back/forward navigation
@@ -461,10 +585,26 @@ if (route.params.lawId) {
 }
 loadIndex();
 
-// LibraryApp is the global, no-traject view: it always reads through
-// `/api/corpus/...`. Switching trajects in the TrajectMenu is a route
-// change to `/editor/{ref}/...`, which leaves LibraryApp behind — no
-// in-place refetch needed here.
+// The bibliotheek reads through the active traject's corpus
+// (`/api/trajects/{ref}/corpus/...`) or the global corpus (`/api/corpus/...`)
+// depending on `activeTrajectRef`. When the user switches traject in-place
+// (e.g. picking another traject from the TrajectMenu while staying in the
+// library, or "Geen traject"), the route param changes but the component
+// stays mounted — so refetch the index and the open law through the new
+// scope. Mirrors EditorApp's `watch(activeTrajectRef)`.
+watch(activeTrajectRef, () => {
+  // Drop the previous traject's changed-set immediately so the
+  // "Bewerkt in dit traject" section doesn't briefly show stale entries
+  // (filtered against the also-stale corpus) while the new index loads.
+  // `loadIndex` repopulates it for the new scope, or leaves it null in
+  // global browse.
+  changedLawIds.value = null;
+  loadIndex();
+  if (selectedLawId.value) {
+    lawError.value = null;
+    loadLaw(selectedLawId.value);
+  }
+});
 </script>
 
 <template>
@@ -476,8 +616,8 @@ loadIndex();
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar size="md" navigation>
-                <nldd-tab-bar-item :selected="route.name === 'library' || undefined" text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :selected="route.name === 'editor' || undefined" :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="isLibraryRoute || undefined" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :href="editorTabHref" @click.prevent="router.push(editorTabTarget)" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
@@ -525,8 +665,8 @@ loadIndex();
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar size="md" navigation>
-                <nldd-tab-bar-item :selected="route.name === 'library' || undefined" text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :selected="route.name === 'editor' || undefined" :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="isLibraryRoute || undefined" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :href="editorTabHref" @click.prevent="router.push(editorTabTarget)" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="center" min-width="240px" width="33%">
@@ -586,24 +726,47 @@ loadIndex();
                 <nldd-title id="home-titel" size="3"><h3>{{ LIBRARY_HOME_TITLE }}</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
                 <nldd-inline-dialog v-if="loading" text="Laden..."></nldd-inline-dialog>
-                <nldd-list v-else variant="simple">
-                  <nldd-list-item
-                    v-for="law in sidebarLaws"
-                    :key="law.law_id"
-                    size="md"
-                    type="button"
-                    :data-law-id="law.law_id"
-                    :selected="law.law_id === selectedLawId || undefined"
-                    @click="selectLaw(law.law_id)"
+                <!-- Nothing curated yet (no favorites, no traject edits): point
+                     the user at search rather than dumping the whole corpus. -->
+                <nldd-inline-dialog
+                  v-else-if="sidebarSections.length === 0"
+                  text="Nog niets in je bibliotheek"
+                  supporting-text="Zoek een wet om te openen, of markeer wetten als favoriet."
+                >
+                  <nldd-button slot="actions" variant="primary" start-icon="search" text="Zoeken" @click="openSearch"></nldd-button>
+                </nldd-inline-dialog>
+                <template v-else>
+                  <template
+                    v-for="(section, sectionIndex) in sidebarSections"
+                    :key="section.key"
                   >
-                    <nldd-text-cell :text="displayName(law)" :supporting-text="law.source_name">
-                    </nldd-text-cell>
-                    <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                    <nldd-icon-cell size="20">
-                      <nldd-icon name="chevron-right"></nldd-icon>
-                    </nldd-icon-cell>
-                  </nldd-list-item>
-                </nldd-list>
+                    <!-- Gap above every section after the first, so the
+                         curated groups read as distinct blocks. -->
+                    <nldd-spacer v-if="sectionIndex > 0" size="24"></nldd-spacer>
+                    <template v-if="section.title">
+                      <nldd-title size="5"><h4>{{ section.title }}</h4></nldd-title>
+                      <nldd-spacer size="8"></nldd-spacer>
+                    </template>
+                    <nldd-list variant="simple">
+                      <nldd-list-item
+                        v-for="law in section.laws"
+                        :key="`${section.key}-${law.law_id}`"
+                        size="md"
+                        type="button"
+                        :data-law-id="law.law_id"
+                        :selected="law.law_id === selectedLawId || undefined"
+                        @click="selectLaw(law.law_id)"
+                      >
+                        <nldd-text-cell :text="displayName(law)" :supporting-text="law.source_name">
+                        </nldd-text-cell>
+                        <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                        <nldd-icon-cell size="20">
+                          <nldd-icon name="chevron-right"></nldd-icon>
+                        </nldd-icon-cell>
+                      </nldd-list-item>
+                    </nldd-list>
+                  </template>
+                </template>
               </nldd-simple-section>
             </nldd-page>
           </nldd-split-view-pane>
@@ -624,6 +787,16 @@ loadIndex();
               <nldd-simple-section width="full">
                 <nldd-title id="wet-titel" size="3"><h3>{{ lawName || 'Selecteer een wet' }}</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
+                <nldd-toolbar v-if="authenticated && selectedLaw" label="Favorieten">
+                  <nldd-toolbar-item slot="start">
+                    <nldd-icon-button
+                      :icon="favorites?.has(selectedLawId) ? 'heart-filled' : 'heart'"
+                      :text="favorites?.has(selectedLawId) ? 'Verwijder uit favorieten' : 'Voeg toe aan favorieten'"
+                      @click="toggleFavorite(selectedLawId)"
+                    ></nldd-icon-button>
+                  </nldd-toolbar-item>
+                </nldd-toolbar>
+                <nldd-spacer v-if="authenticated && selectedLaw" size="16"></nldd-spacer>
                 <nldd-inline-dialog v-if="selectedLawLoading" text="Laden..."></nldd-inline-dialog>
                 <nldd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een wet"></nldd-inline-dialog>
                 <nldd-list v-else variant="simple">
@@ -725,7 +898,7 @@ loadIndex();
                       </nldd-tab-bar>
                     </nldd-toolbar-item>
                     <nldd-toolbar-item slot="end">
-                      <nldd-button v-if="selectedLawId" variant="secondary" text="Bewerken" :href="`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`" @click.prevent="router.push(`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`)"></nldd-button>
+                      <nldd-button v-if="selectedLawId" variant="secondary" text="Bewerken" :href="editLawHref" @click.prevent="router.push(editLawTarget)"></nldd-button>
                     </nldd-toolbar-item>
                   </nldd-toolbar>
                   <nldd-spacer size="24"></nldd-spacer>
@@ -748,8 +921,8 @@ loadIndex();
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar variant="compact" navigation>
-                <nldd-tab-bar-item :selected="route.name === 'library' || undefined" icon="books" text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :selected="route.name === 'editor' || undefined" :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" icon="edit" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="isLibraryRoute || undefined" icon="books" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :href="editorTabHref" @click.prevent="router.push(editorTabTarget)" icon="edit" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
@@ -802,10 +975,11 @@ loadIndex();
   <ActionSheet :action="activeAction" :article="selectedArticle" :editable="false" @close="activeAction = null" @save="activeAction = null" @edit="editInEditor" />
   <SearchPopover
     ref="searchPopoverRef"
-    :laws="laws"
     @select-law="(lawId) => selectLaw(lawId, true)"
     @harvest-available="onHarvestAvailable"
   />
+  <!-- Traject-documents browser sheet + edit window, opened from TrajectMenu. -->
+  <TrajectDocuments />
 </template>
 
 <style>

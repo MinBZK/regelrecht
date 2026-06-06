@@ -43,7 +43,7 @@ Machine-readable Dutch law execution. regelrecht takes legal texts, encodes them
 | Directory | Description |
 |-----------|-------------|
 | [corpus/regulation/](corpus/regulation/) | Dutch regulations in machine-readable YAML |
-| [schema/](schema/) | Versioned JSON schema for the law format (current: v0.5.1) |
+| [schema/](schema/) | Versioned JSON schema for the law format (current: v0.5.2) |
 | [features/](features/) | Gherkin BDD scenarios for law execution |
 | [packages/grafana/](packages/grafana/) | Grafana monitoring dashboards |
 

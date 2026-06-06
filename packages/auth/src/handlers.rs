@@ -34,6 +34,15 @@ pub const SESSION_KEY_EMAIL_VERIFIED: &str = "person_email_verified";
 pub const SESSION_KEY_NAME: &str = "person_name";
 pub const SESSION_KEY_ID_TOKEN: &str = "id_token_hint";
 pub const SESSION_KEY_ROLES: &str = "person_roles";
+/// OIDC refresh token, kept server-side so the refresh middleware can
+/// re-validate with the IdP (and pick up role/revocation changes) without the
+/// browser ever holding a token. Rotated in place when the IdP issues a new
+/// refresh token. See [`crate::middleware::refresh_session_token`].
+pub const SESSION_KEY_REFRESH_TOKEN: &str = "oidc_refresh_token";
+/// Absolute access-token expiry (unix seconds, `i64`). Drives *when* the
+/// refresh middleware re-validates with the IdP; it does not gate requests on
+/// its own (the session's own inactivity window does that).
+pub const SESSION_KEY_TOKEN_EXPIRES_AT: &str = "oidc_token_expires_at";
 const SESSION_KEY_BASE_URL: &str = "oidc_base_url";
 const SESSION_KEY_RETURN_URL: &str = "oidc_return_url";
 
@@ -365,6 +374,27 @@ pub async fn callback<S: OidcAppState>(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
+    // Persist refresh material so the refresh middleware can re-validate with
+    // the IdP before the access token's lifetime elapses. The refresh token is
+    // optional (only stored when the IdP returns one); without it the session
+    // simply never re-validates and falls back to its own inactivity window.
+    if let Some(refresh_token) = token_response.refresh_token() {
+        session_insert(
+            &session,
+            SESSION_KEY_REFRESH_TOKEN,
+            refresh_token.secret().clone(),
+        )
+        .await?;
+    }
+    let expires_at = unix_now() + access_token_ttl_secs(token_response.expires_in());
+    session
+        .insert(SESSION_KEY_TOKEN_EXPIRES_AT, expires_at)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to insert token expiry into session");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
     tracing::debug!(email = %email, "OIDC login successful");
 
     let return_url: Option<String> = session.get(SESSION_KEY_RETURN_URL).await.ok().flatten();
@@ -475,6 +505,24 @@ struct JwtPayload {
 
 fn get_access_token_secret(resp: &impl OAuth2TokenResponse) -> &str {
     resp.access_token().secret()
+}
+
+/// Current wall-clock time in unix seconds. Saturates to 0 if the clock is
+/// before the epoch (never in practice) so callers get a monotonic-ish `i64`.
+pub(crate) fn unix_now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// Access-token lifetime in seconds. Falls back to 300s when the IdP omits
+/// `expires_in` — comfortably above the refresh middleware's skew window so a
+/// missing `expires_in` doesn't put the session straight back into the
+/// refresh-now band (which would refresh on every request). Keycloak always
+/// sends `expires_in`, so the fallback is belt-and-braces.
+pub(crate) fn access_token_ttl_secs(expires_in: Option<std::time::Duration>) -> i64 {
+    expires_in.map(|d| d.as_secs() as i64).unwrap_or(300)
 }
 
 /// Decode `realm_access.roles` from a JWT payload.

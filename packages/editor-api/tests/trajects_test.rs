@@ -15,7 +15,6 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
@@ -57,7 +56,6 @@ fn empty_state(pool: PgPool) -> AppState {
         pipeline_api_url: None,
         reload_lock: Arc::new(Mutex::new(())),
         trajects: Arc::new(TrajectCorpusCache::new()),
-        favorites: Arc::new(HashSet::new()),
     }
 }
 

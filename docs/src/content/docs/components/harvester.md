@@ -1,14 +1,15 @@
 ---
 title: "Harvester"
+description: "Downloads Dutch legislation from BWB and CVDR and converts it into the corpus YAML format."
 ---
 
-The harvester downloads Dutch legislation from the BWB (Basiswettenbestand) repository and converts it to the RegelRecht YAML format.
+The harvester downloads Dutch legislation and converts it to the RegelRecht YAML format. It handles two sources: national law from the BWB (Basiswettenbestand / wetten.nl) and decentralized regulations from the CVDR (Centrale Voorziening Decentrale Regelgeving). The CLI picks the right source from the identifier, so `BWBR…` IDs are fetched from BWB and `CVDR…` IDs from the CVDR.
 
 ## Overview
 
 - **Language**: Rust
 - **Location**: `packages/harvester/`
-- **Source**: BWB / wetten.nl (official Dutch law repository)
+- **Sources**: BWB / wetten.nl (national law) and CVDR (local/decentralized regulations)
 - **Output**: YAML law files with textual content (no `machine_readable` yet)
 
 ## How It Works
@@ -75,6 +76,9 @@ regelrecht-harvester download BWBR0018451 --date 2022-03-15 --output ./laws
 
 # Large law with increased size limit
 regelrecht-harvester download BWBR0020368 --max-size 200
+
+# Download a decentralized regulation by CVDR ID (source detected automatically)
+regelrecht-harvester download CVDR681386
 ```
 
 ### As Library
@@ -89,6 +93,8 @@ let law = download_law("BWBR0018451", "2025-01-01")?;
 println!("Title: {}", law.metadata.title);
 println!("Articles: {}", law.articles.len());
 ```
+
+For CVDR regulations use `download_cvdr_law`; `detect_source` returns the right source for either kind of identifier.
 
 ## Output Path Convention
 

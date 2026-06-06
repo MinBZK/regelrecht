@@ -1,5 +1,6 @@
 ---
 title: "Authentication & Roles"
+description: "The layered role model that gates the editor and harvester-admin services, and how it maps to Keycloak."
 ---
 
 This page describes the role model that gates the editor and harvester-admin
@@ -9,7 +10,7 @@ configuration each service needs.
 ## The four-layer model
 
 Access is governed by a layered set of realm roles. The hierarchy is encoded
-in Keycloak as **composite roles** — a higher role contains the lower one, so
+in Keycloak as **composite roles**, a higher role contains the lower one, so
 a user holding a higher role automatically holds all lower roles in their
 token. The application code never has to check `role-A OR role-B`; each
 protected route asks for exactly one role.
@@ -29,8 +30,8 @@ Keycloak composite role).
 
 There are two applications today:
 
-- **editor** — `packages/editor-api` + `frontend/` (law and scenario editor)
-- **harvester** — `packages/admin` (harvester job queue & corpus sync dashboard)
+- **editor**: `packages/editor-api` + `frontend/` (law and scenario editor)
+- **harvester**: `packages/admin` (harvester job queue & corpus sync dashboard)
 
 ### Role reference
 
@@ -68,7 +69,7 @@ To add a new specific right:
 4. In the application code: `route_layer(require_role("<app>-<verb>"))` on the
    protected route.
 
-No changes are needed to existing routes — the pattern is composable.
+No changes are needed to existing routes; the pattern is composable.
 
 ## JWT shape
 
@@ -130,7 +131,7 @@ role (`editor-reader` / `harvester-reader`) once the migration completes.
 The `zad-actions/deploy@v4` GitHub action used in `.github/workflows/deploy.yml`
 takes only `image` and `clone-from`; env vars are set out-of-band per
 component via the ZAD CLI or dashboard. For preview deploys, `clone-from:
-regelrecht` carries the value from the production deployment automatically —
+regelrecht` carries the value from the production deployment automatically,
 you only need to set it once per environment.
 
 ```bash
@@ -147,7 +148,7 @@ Sessions created before this code shipped carry `authenticated = true` but no
 `SESSION_KEY_ROLES` key. The per-route role check distinguishes "key absent"
 (pre-RBAC session) from "key present but empty list" (a legitimately
 mis-configured Keycloak): the former returns 401, which triggers the OIDC
-re-login redirect — the callback then populates `SESSION_KEY_ROLES` from the
+re-login redirect, the callback then populates `SESSION_KEY_ROLES` from the
 JWT and the session self-heals. **No session flush is required at deploy.**
 
 ## Migration from the legacy `allowed-user` role
@@ -158,12 +159,12 @@ with no per-route gating. To migrate without locking anyone out:
 1. **Keycloak (hard prerequisite)**: create the seven new roles, set up
    composites, attach the ID-token mapper, and grant every existing user an
    appropriate new role (most editor users → `editor-writer`). This must be
-   fully rolled out before Step 2 — any user without one of the new roles
+   fully rolled out before Step 2, any user without one of the new roles
    will get **403 on every API request** once the new code is live, because
    the per-route middleware checks for `editor-reader` / `harvester-reader`
    etc., not `allowed-user`.
 2. **Deploy the new code**. If `OIDC_REQUIRED_ROLE` is unset on the existing
-   deployment, the new code falls back to `allowed-user` and logs a warning —
+   deployment, the new code falls back to `allowed-user` and logs a warning,
    so the login redirect keeps working during the rolling deploy (provided
    step 1 is complete). Per-route checks gate on the new roles immediately,
    so users without one of the new roles will see 403 on every protected
@@ -187,7 +188,7 @@ reads this cached list rather than re-parsing the token, which means:
   the user to log out and back in before the new role is honoured by the
   application.
 - **Role revocation has the same delay.** Removing a role in Keycloak does
-  *not* immediately revoke access — the live session continues to carry the
+  *not* immediately revoke access; the live session continues to carry the
   expanded role list until it expires.
 
 For emergency revocation (compromised account, immediate downgrade) the
@@ -213,7 +214,7 @@ OIDC login again, which re-reads roles from Keycloak.
 
 When the OIDC environment variables are not configured (`OIDC_CLIENT_ID`
 unset), each service starts with **all per-route auth checks bypassed**.
-Every tier — reader, writer, *and* admin — is reachable without a session.
+Every tier (reader, writer, *and* admin) is reachable without a session.
 This mode exists for local development convenience (no Keycloak required)
 and emits a `warn!` line at startup:
 
@@ -224,24 +225,116 @@ Do NOT run this configuration in production.
 ```
 
 The same applies to the harvester-admin service. **Never deploy a service
-without OIDC configured** — the warning is the only safeguard, and the
+without OIDC configured**: the warning is the only safeguard, and the
 admin-tier routes (corpus reload, feature-flag toggles, job deletion, source
 sync) are fully open in this mode.
+
+### Local SSO login (dev/local, real Keycloak)
+
+To test the *real* login + RBAC flow locally — instead of the auth-disabled
+bypass above — you can point the editor at a Keycloak realm and log in with a
+real account over `http://localhost`. No code change is required; the auth
+layer is driven entirely by environment variables.
+
+**How the local flow fits together**
+
+- The editor frontend runs on Vite (started with `--port 7300`) and proxies
+  `/api`, `/auth`, `/health` to the editor-api on `:8000`. The browser talks
+  only to `http://localhost:7300`. (Vite's config default is `:3000`; we use a
+  host-mapped port — see *Ports and DB host* below.)
+- The redirect URI is built as `${BASE_URL}/auth/callback`. With
+  `BASE_URL=http://localhost:7300` it becomes
+  `http://localhost:7300/auth/callback`, which Vite proxies to the backend.
+- When OIDC is enabled the session uses a **PostgreSQL** store, so
+  `DATABASE_URL` is required (the `just dev` Postgres works; from a dev
+  container reach it via `host.docker.internal`).
+
+**Keycloak configuration (one-time, realm admin)**
+
+Configure the OIDC client the editor will use. Re-using the production client
+and adding a `localhost` redirect to it is a minor token-leakage footgun, so the
+cleaner choice is a single dedicated dev client — `regelrecht-local`, shared
+across all local apps (editor, harvester-admin, …), with a `localhost` redirect
+URI per app port:
+
+1. **Client type / capability**: *Client authentication* = **On** (a
+   confidential client — the editor sends a client secret, and startup fails if
+   `OIDC_CLIENT_SECRET` is empty). Enable *Standard flow* (Authorization Code).
+   PKCE (S256) is sent by the app and accepted by Keycloak out of the box; you
+   may optionally enforce it under *Advanced → Proof Key for Code Exchange*.
+2. **Valid redirect URIs**: add exactly `http://localhost:7300/auth/callback`
+   for the editor — and one per other local app, e.g.
+   `http://localhost:7400/auth/callback` for harvester-admin. Scheme + host +
+   port + path must match the value the app sends.
+3. **Web origins**: add `http://localhost:7300` (and `http://localhost:7400`),
+   or `+` to derive from the redirect URIs, so the browser's CORS checks pass.
+4. **Client scopes**: ensure `openid`, `email`, and `profile` are granted — the
+   app requests these three scopes.
+5. **Realm-roles ID-token mapper**: add a *User Realm Role* mapper on the client
+   (or its dedicated scope) with *Add to ID token* = On. Keycloak only puts
+   `realm_access.roles` in the access token by default; without this mapper the
+   app falls back to parsing the access token (noisier, but still works).
+6. **Roles on your account**: grant your user at least `editor-reader` (the
+   login gate set by `OIDC_REQUIRED_ROLE`). Without it you can authenticate but
+   get **403** on every API call. See the role hierarchy above for higher tiers.
+7. Note the **discovery URL**
+   (`https://<host>/realms/<realm>/.well-known/openid-configuration`), the
+   **client ID**, and the **client secret** (Credentials tab) for the env file.
+
+**Run it**
+
+Copy `.env.sso-local.example` to `.env.sso-local`, fill in the Keycloak
+values, then:
+
+```bash
+# 1. Postgres only. (Don't use `just dev` here — it also starts the admin API
+#    on :8000, which collides with editor-api below.)
+docker compose -f docker-compose.dev.yml -f dev/compose.native.yaml up -d postgres
+# 2. editor-api on :8000 with .env.sso-local loaded:
+just editor-sso
+# 3. in another shell — editor frontend on the host-mapped port 7300:
+cd frontend && npx vite --port 7300
+```
+
+Open `http://localhost:7300` in **Chrome or Firefox** and log in. The session
+cookie is marked `Secure`; Chrome 89+/Firefox send Secure cookies over
+`http://localhost`, but **Safari does not** — there the OIDC callback fails with
+a CSRF/nonce mismatch. For Safari, front the editor with an `https://localhost`
+TLS proxy instead.
+
+On a successful start the editor-api log shows
+`using OIDC_DISCOVERY_URL for issuer: …` and
+`session store ready (PostgreSQL-backed)` (not the "OIDC is DISABLED" warning).
+
+**Ports and DB host.** The values above assume a dev container backed by Docker
+Desktop (the common setup here):
+
+- `DATABASE_URL` uses `host.docker.internal` — published container ports live on
+  the Docker host, not the container's `localhost` (the same reason
+  `TESTCONTAINERS_HOST_OVERRIDE` is needed for tests).
+- The frontend uses a **host-mapped port** in the 7100–7300 range (`7300`)
+  because only mapped ports are reachable from the browser; `3000`/`8000` are
+  not forwarded. The editor-api stays on `:8000` (container-internal; only Vite
+  needs to be reachable).
+
+On a plain Linux host neither applies: use `localhost` for the DB and any free
+port (e.g. `3000`) for `BASE_URL` and Vite, with a matching redirect URI in
+Keycloak.
 
 ## Programmatic access (admin API key)
 
 The harvester-admin service accepts a bearer API key on **GET** and **DELETE**
-requests (`ADMIN_API_KEY` env var). This is an out-of-band trust path — the holder
+requests (`ADMIN_API_KEY` env var). This is an out-of-band trust path, the holder
 is treated as a `regelrecht-admin`-equivalent for those methods. POST is never
 allowed via the API key path; use a user session with `harvester-writer` or
 `harvester-admin` for mutations. The editor service has no API key path.
 
 ## Implementation pointers
 
-- Shared crate: `packages/auth/` — `require_role(role)` middleware factory.
-- Editor routes: `packages/editor-api/src/main.rs` — router split into
+- Shared crate: `packages/auth/`, `require_role(role)` middleware factory.
+- Editor routes: `packages/editor-api/src/main.rs`, router split into
   public / reader / writer / admin groups.
-- Harvester-admin routes: `packages/admin/src/main.rs` — router split into
+- Harvester-admin routes: `packages/admin/src/main.rs`, router split into
   reader / writer / admin groups; `require_auth(role)` in
   `packages/admin/src/middleware.rs` keeps the API-key bypass.
 - Roles are persisted in the session at login (`SESSION_KEY_ROLES`) so

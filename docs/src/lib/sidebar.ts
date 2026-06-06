@@ -1,7 +1,6 @@
 /*
- * Documentation sidebar structure, ported verbatim from the former
- * VitePress themeConfig.sidebar object literal. Single source of truth for
- * the per-section navigation; the /rfcs/ group items come from rfcs.ts so
+ * Documentation sidebar structure. Single source of truth for the
+ * per-section navigation; the /rfcs/ group items come from rfcs.ts so
  * the RFC list cannot drift from the actual rfc-*.md files.
  */
 import { rfcSidebarItems } from './rfcs';
@@ -177,6 +176,10 @@ export interface DocsCategory {
   prefix: string;
   /** Display title, from the matching docsNav item. */
   title: string;
+  /** One-line summary, from the matching docsNav item. */
+  summary?: string;
+  /** Intro paragraph for the category page, from the matching docsNav item. */
+  intro?: string;
 }
 
 /**
@@ -185,10 +188,15 @@ export interface DocsCategory {
  * which has its own hand-built index page under src/pages/rfcs/.
  */
 export const docsCategories: DocsCategory[] = Object.keys(sidebar).map(
-  (prefix) => ({
-    prefix,
-    title: docsNav.find((n) => n.match === prefix)?.text ?? prefix,
-  }),
+  (prefix) => {
+    const nav = docsNav.find((n) => n.match === prefix);
+    return {
+      prefix,
+      title: nav?.text ?? prefix,
+      summary: nav?.summary,
+      intro: nav?.intro,
+    };
+  },
 );
 
 /** The category that owns a pathname (article or category page), or null. */

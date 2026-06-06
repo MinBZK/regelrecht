@@ -1,5 +1,6 @@
 ---
 title: "Issue: Article ID Collision (420bis.1)"
+description: "When article numbering produces the same identifier for two different articles, and the proposed fix."
 ---
 
 **Status**: Open
@@ -27,7 +28,7 @@ Same collision occurs with:
 ### Current Implementation
 
 ```rust
-// splitting/types.rs:208
+// splitting/types.rs:218
 pub fn to_number(&self) -> String {
     let base = self.number_parts.join(".");  // ← Collision point
     match &self.bijlage_prefix {
@@ -273,6 +274,6 @@ Until the structural solution is implemented:
 
 ## References
 
-- **Current location**: `packages/harvester/src/splitting/types.rs:206-213`
+- **Current location**: `packages/harvester/src/splitting/types.rs:218-224`
 - **Affected laws**: Wetboek van Strafrecht (BWBR0001854)
 - **Colliding articles**: 420bis/420bis.1, 420quater/420quater.1

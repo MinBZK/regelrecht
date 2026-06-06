@@ -1,5 +1,6 @@
 ---
 title: "CI/CD Pipeline"
+description: "What runs on every push and pull request, and how only the checks relevant to changed files run."
 ---
 
 Continuous integration runs on every push to `main` and every pull request via `.github/workflows/ci.yml`. Only checks relevant to changed files run, keeping CI fast.
@@ -15,10 +16,13 @@ Continuous integration runs on every push to `main` and every pull request via `
 
 ### Tests (on Rust changes)
 
+CI runs `just test-all`, which covers:
+
 - **Unit tests** - `just test`
-- **BDD tests** - `just bdd` (cucumber-rs with Gherkin scenarios)
 - **Harvester tests** - `just harvester-test`
-- **Pipeline integration tests** - `just pipeline-integration-test` (uses testcontainers for PostgreSQL)
+- **Pipeline tests** - `just pipeline-test` and `just pipeline-integration-test` (the latter uses testcontainers for PostgreSQL)
+
+The BDD suite (`just bdd`, cucumber-rs with Gherkin scenarios) is **not** part of `test-all` and does not run in CI; run it locally.
 
 ### WASM build (on engine changes)
 
@@ -48,11 +52,12 @@ CI uses path filters to determine which checks to run:
 
 | Change group | Triggers on changes to |
 |---|---|
-| `ci` | `packages/corpus/`, `packages/engine/`, `packages/harvester/`, `packages/pipeline/`, `corpus/regulation/`, `features/`, `schema/` |
+| `ci` | `packages/corpus/`, `packages/engine/`, `packages/harvester/`, `packages/pipeline/`, `frontend/`, `corpus/regulation/`, `features/`, `schema/`, `script/` |
 | `admin` | `packages/admin/` |
-| `editor-api` | `packages/editor-api/` |
+| `editor-api` | `packages/editor-api/`, `packages/corpus/`, `packages/pipeline/`, `packages/harvester/` |
+| `docs` | `docs/` |
 
-Unrelated changes (docs-only, frontend-only) skip Rust checks entirely.
+The `ci` group includes `frontend/`, so frontend changes also trigger the Rust checks (the editor is shipped as one image built from `frontend/` plus the `editor-api` Rust binary that serves it). Docs-only changes skip the Rust checks and run just the docs accessibility gate (`just docs-a11y`).
 
 ## Further reading
 

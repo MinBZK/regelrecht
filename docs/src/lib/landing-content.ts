@@ -272,7 +272,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           title: 'Execution engine',
           meta: 'Rust + WebAssembly',
-          link: { label: 'Documentatie', href: '/docs/components/engine' },
+          link: { label: 'Documentatie', href: '/components/engine' },
           text: 'Een deterministische execution engine die de YAML-regels uitvoert. Werkt in Rust en compileert naar WebAssembly zodat dezelfde regels in de browser en op de server hetzelfde resultaat geven.',
         },
         {
@@ -283,7 +283,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           title: 'Editor',
           meta: 'Werk in uitvoering',
-          link: { label: 'Documentatie', href: '/docs/components/editor-api' },
+          link: { label: 'Documentatie', href: '/components/editor-api' },
           text: 'Een werkomgeving waarin juristen wetten machine-uitvoerbaar kunnen maken. We zijn aan het ontdekken hoe deze editor er precies uit moet zien.',
         },
         {
@@ -294,7 +294,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           title: 'Corpus',
           meta: 'Git-gebaseerd',
-          link: { label: 'Documentatie', href: '/docs/components/corpus' },
+          link: { label: 'Documentatie', href: '/components/corpus' },
           text: 'De bibliotheek van machine-uitvoerbare regels. Git verzorgt de versiegeschiedenis; een registry verbindt verschillende bronnen tot één geheel.',
         },
         {
@@ -460,23 +460,21 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     faq: {
       title: 'Vragen bij deze verkenning',
+      // Item order is tuned so the two-column masonry layout (see
+      // LandingSections.astro) ends up with roughly equal column heights:
+      // the long answers are spread across both columns instead of stacking
+      // in the left one. The cards read column-by-column, not row-by-row, so
+      // this is a visual ordering, not a content priority. Reordering, adding
+      // or shortening an answer changes the balance — re-check the layout if
+      // you touch this list.
       items: [
-        {
-          q: 'Wat zou een digitaal rechtsstelsel kunnen betekenen?',
-          a: 'Juridische regels worden dan geschreven als uitvoerbare code die computers direct kunnen draaien en toepassen, zonder tussenkomst van menselijke interpretatie of programmeurs. Is dat realiseerbaar? En hoe verhoudt het zich tot traditioneel analoog recht?',
-        },
-        {
-          q: 'Betekent dit één centrale interpretatie?',
-          a: 'Nee. RegelRecht verkent of de manier waarop een wet wordt uitgevoerd publiek gepubliceerd kan worden, niet of er één partij is die bepaalt wat de waarheid is. Het bevoegd gezag publiceert zijn lezing als gezaghebbende interpretatie, maar andere organisaties, juristen en burgers kunnen hun lezing daarnaast publiceren. De executie wordt bovendien niet aan één engine opgehangen: meerdere onafhankelijke implementaties moeten op dezelfde regels en data dezelfde uitkomst geven. Wat centraal wordt is de publicatie en controleerbaarheid, niet de interpretatie zelf.',
-        },
         {
           q: 'Wat gebeurt er met open normen?',
           a: 'Wetten bevatten bewust ruimte voor interpretatie: termen die "bij ministeriële regeling" worden ingevuld, of begrippen die een afweging aan de uitvoerder laten. Bij gewone automatisering verdwijnt die ruimte stilzwijgend in code: de keuze die een programmeur maakt wordt feitelijk recht, zonder publicatie of toetsing. RegelRecht maakt zo\'n keuze juist expliciet: de hogere wet markeert een open norm, de lagere regeling vult hem in, en juristen kunnen aantekenen of een begrip volledig, deels of nog niet is ingevuld. Zo wordt zichtbaar waar de wet eindigt en de interpretatie begint. Echte menselijke beoordelingen in een besluitproces, zoals een hardheidsclausule of een individuele afweging door een ambtenaar, blijven gewoon menselijk werk; die proberen we niet weg te automatiseren.',
         },
         {
-          q: 'Waarom een eigen regelformaat?',
-          a: 'Het formaat is YAML met wettekst en machine-uitvoerbare regels naast elkaar in één bestand. Een versioned JSON Schema bewaakt de structuur, BDD-scenario’s leggen de bedoelde uitkomsten vast. Zo kunnen juristen meelezen, ontwikkelaars meebouwen, en verschillende overheidssystemen dezelfde regels gebruiken.',
-          link: { label: 'Lees RFC-011', href: '/rfcs/rfc-011' },
+          q: 'Wat zou een digitaal rechtsstelsel kunnen betekenen?',
+          a: 'Juridische regels worden dan geschreven als uitvoerbare code die computers direct kunnen draaien en toepassen, zonder tussenkomst van menselijke interpretatie of programmeurs. Is dat realiseerbaar? En hoe verhoudt het zich tot traditioneel analoog recht?',
         },
         {
           q: 'Hoe zou dit zich kunnen verhouden tot bestaande systemen?',
@@ -485,6 +483,19 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           q: 'Zou RegelRecht juridisch bindend kunnen zijn?',
           a: 'RegelRecht is een technisch hulpmiddel. De juridische geldigheid blijft bij de oorspronkelijke wetgeving. De vraag is of het kan helpen bij consistente interpretatie en toepassing.',
+        },
+        {
+          q: 'Betekent dit één centrale interpretatie?',
+          a: 'Nee. RegelRecht verkent of de manier waarop een wet wordt uitgevoerd publiek gepubliceerd kan worden, niet of er één partij is die bepaalt wat de waarheid is. Het bevoegd gezag publiceert zijn lezing als gezaghebbende interpretatie, maar andere organisaties, juristen en burgers kunnen hun lezing daarnaast publiceren. De executie wordt bovendien niet aan één engine opgehangen: meerdere onafhankelijke implementaties moeten op dezelfde regels en data dezelfde uitkomst geven. Wat centraal wordt is de publicatie en controleerbaarheid, niet de interpretatie zelf.',
+        },
+        {
+          q: 'Moet ik dan jullie Rust-engine in mijn landschap draaien?',
+          a: 'Nee. RegelRecht legt het regelformaat en de bedoelde uitkomsten vast, niet de implementatie. De Rust-engine is de referentie-implementatie: hij laat zien wat de regels horen te doen en dient als ijkpunt waartegen andere implementaties zich kunnen meten. Een engine kan ook anders geïmplementeerd worden, in een andere taal of architectuur, zodat hij in jouw landschap past. Wat telt is dat elke implementatie op dezelfde regels en data dezelfde uitkomst geeft als de referentie.',
+        },
+        {
+          q: 'Waarom een eigen regelformaat?',
+          a: 'Het formaat is YAML met wettekst en machine-uitvoerbare regels naast elkaar in één bestand. Een versioned JSON Schema bewaakt de structuur, BDD-scenario’s leggen de bedoelde uitkomsten vast. Zo kunnen juristen meelezen, ontwikkelaars meebouwen, en verschillende overheidssystemen dezelfde regels gebruiken.',
+          link: { label: 'Lees RFC-011', href: '/rfcs/rfc-011' },
         },
         {
           q: 'Hoe draagt dit bij aan transparantie?',
@@ -718,7 +729,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           title: 'Execution engine',
           meta: 'Rust + WebAssembly',
-          link: { label: 'Documentation', href: '/docs/components/engine' },
+          link: { label: 'Documentation', href: '/components/engine' },
           text: 'A deterministic execution engine that runs the YAML rules. Written in Rust and compiled to WebAssembly so the same rules give the same result in the browser and on the server.',
         },
         {
@@ -729,7 +740,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           title: 'Editor',
           meta: 'Work in progress',
-          link: { label: 'Documentation', href: '/docs/components/editor-api' },
+          link: { label: 'Documentation', href: '/components/editor-api' },
           text: 'A working environment for legal experts to make laws machine-executable. We are still discovering what this editor should look like.',
         },
         {
@@ -740,7 +751,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           title: 'Corpus',
           meta: 'Git-based',
-          link: { label: 'Documentation', href: '/docs/components/corpus' },
+          link: { label: 'Documentation', href: '/components/corpus' },
           text: 'The library of machine-executable rules. Git handles the version history; a registry ties different sources into a single whole.',
         },
         {
@@ -906,23 +917,20 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     faq: {
       title: 'Questions about this exploration',
+      // Item order is tuned for the two-column masonry layout (see
+      // LandingSections.astro) so the columns end up roughly equal in height;
+      // the long answers are spread across both columns. Cards read
+      // column-by-column, not row-by-row, so this is a visual ordering, not a
+      // content priority. Mirrors the Dutch list; re-check the layout if you
+      // reorder, add or shorten an answer. Keep both lists in sync.
       items: [
-        {
-          q: 'What could a digital legal system mean?',
-          a: 'Legal rules are written as executable code that computers can run and apply directly, without human interpretation or programmers in between. Is that achievable? And how does it relate to traditional analogue law?',
-        },
-        {
-          q: 'Does this mean one central interpretation?',
-          a: 'No. RegelRecht explores whether the way a law is executed can be published, not whether one party decides what is true. The competent authority publishes its reading as the authoritative interpretation, but other organisations, lawyers and citizens can publish their reading alongside it. Execution is not tied to a single engine either: multiple independent implementations must produce the same outcome on the same rules and data. What becomes central is publication and verifiability, not interpretation itself.',
-        },
         {
           q: 'What happens to open norms?',
           a: 'Laws deliberately leave room for interpretation: terms that are filled in "by ministerial regulation", or concepts that leave a judgement to the implementing body. In ordinary automation that room quietly disappears into code: the choice the programmer makes effectively becomes law, with no publication or scrutiny. RegelRecht turns that choice into something explicit instead: the higher law marks an open norm, the lower regulation fills it in, and lawyers can record whether a concept is fully, partly or not yet filled in. That makes visible where the statute ends and interpretation begins. Genuinely human judgements inside a decision process, such as a hardship clause or a case-by-case assessment by an official, stay human work; we are not trying to automate those away.',
         },
         {
-          q: 'Why a dedicated rule format?',
-          a: 'The format is YAML, with legal text and machine-executable rules side by side in a single file. A versioned JSON Schema guards the structure, and BDD scenarios capture the intended outcomes. Legal experts can read along, developers can contribute, and different government systems can use the same rules.',
-          link: { label: 'Read RFC-011', href: '/rfcs/rfc-011' },
+          q: 'What could a digital legal system mean?',
+          a: 'Legal rules are written as executable code that computers can run and apply directly, without human interpretation or programmers in between. Is that achievable? And how does it relate to traditional analogue law?',
         },
         {
           q: 'How could this relate to existing systems?',
@@ -931,6 +939,19 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           q: 'Could RegelRecht be legally binding?',
           a: 'RegelRecht is a technical aid. Legal validity remains with the original legislation. The open question is whether it can help with consistent interpretation and application.',
+        },
+        {
+          q: 'Does this mean one central interpretation?',
+          a: 'No. RegelRecht explores whether the way a law is executed can be published, not whether one party decides what is true. The competent authority publishes its reading as the authoritative interpretation, but other organisations, lawyers and citizens can publish their reading alongside it. Execution is not tied to a single engine either: multiple independent implementations must produce the same outcome on the same rules and data. What becomes central is publication and verifiability, not interpretation itself.',
+        },
+        {
+          q: 'Do I have to run your Rust engine in my own landscape?',
+          a: 'No. RegelRecht fixes the rule format and the intended outcomes, not the implementation. The Rust engine is the reference implementation: it shows what the rules are meant to do and serves as the benchmark other implementations can measure themselves against. An engine can also be implemented differently, in another language or architecture, so that it fits your landscape. What matters is that every implementation produces the same outcome on the same rules and data as the reference.',
+        },
+        {
+          q: 'Why a dedicated rule format?',
+          a: 'The format is YAML, with legal text and machine-executable rules side by side in a single file. A versioned JSON Schema guards the structure, and BDD scenarios capture the intended outcomes. Legal experts can read along, developers can contribute, and different government systems can use the same rules.',
+          link: { label: 'Read RFC-011', href: '/rfcs/rfc-011' },
         },
         {
           q: 'How does this contribute to transparency?',

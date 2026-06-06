@@ -49,8 +49,9 @@ corpus-registry.local-only.yaml
 corpus-auth.yaml
 corpus-financieel-cv-demo/
 
-# Environment
-.env
+# Environment — ignore all .env files, keep the committed *.example templates
+.env*
+!.env*.example
 
 # Gemini CLI
 .gemini/*

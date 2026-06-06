@@ -8,6 +8,26 @@ const router = createRouter({
   routes: [
     { path: '/', redirect: '/library' },
     {
+      // Traject-scoped bibliotheek: the same library UI, but reading
+      // through `/api/trajects/{trajectRef}/corpus/...` so the active
+      // traject survives a Bibliotheek↔Editor tab switch. Mirrors the
+      // `editor-traject` route below — the active traject lives in the
+      // URL (per-tab state), never a server session.
+      //
+      // The `:trajectRef` regex pins the param to `{slug}-{8hex}` so a
+      // plain law-id slug like `zorgtoeslagwet` does NOT match here — it
+      // falls through to the no-traject library below. Same invariant as
+      // `editor-traject`: law `$id` slugs must not end in `-{8hex}`.
+      //
+      // Reads of a traject's corpus require auth (the traject is tied to
+      // the user's repo), so this route is gated like `editor-traject`.
+      // The user only ever reaches it from an authenticated session.
+      path: '/library/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:lawId?/:articleNumber?',
+      name: 'library-traject',
+      component: LibraryApp,
+      meta: { title: 'Bibliotheek', requiresAuth: true },
+    },
+    {
       path: '/library/:lawId?/:articleNumber?',
       name: 'library',
       component: LibraryApp,

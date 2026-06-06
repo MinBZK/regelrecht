@@ -1,5 +1,6 @@
 ---
 title: "Lawmaking Frontend"
+description: "Visualizes the Dutch legislative process as an interactive, step-through flow diagram."
 ---
 
 The lawmaking frontend visualizes the Dutch legislative process as an interactive flow diagram.
@@ -16,7 +17,7 @@ The app presents the legislative process as an animated, step-through diagram. U
 
 - **Simple** - the basic legislative path
 - **Advanced** - detailed stages and decision points
-- **Wet open overheid (WOO)** - the process through the lens of open government law
+- **Wet open overheid (Woo)** - the process through the lens of open government law
 
 No backend is needed. Flow data is defined as static JavaScript modules in `src/data/`.
 

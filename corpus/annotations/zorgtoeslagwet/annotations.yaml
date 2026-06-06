@@ -1,7 +1,7 @@
 ---
 # Stand-off notes on the Healthcare Allowance Act (Wet op de zorgtoeslag).
 # Format: RFC-005. Infrastructure: RFC-018. Validated by `just validate-annotations`.
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.2/annotation-schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.2/schema/v0.5.2/annotation-schema.json
 annotations:
   # Linking note: connects the text granting the allowance to the
   # machine_readable element that computes its amount. This makes the
@@ -18,7 +18,7 @@ annotations:
         suffix: ' ter grootte van dat verschil'
     body:
       type: SpecificResource
-      source: regelrecht://zorgtoeslagwet/hoogte_zorgtoeslag#hoogte_zorgtoeslag
+      source: regelrecht://zorgtoeslagwet/hoogte_zorgtoeslag
       purpose: linking
     resolution: found
     workflow: resolved

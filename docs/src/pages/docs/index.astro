@@ -24,7 +24,11 @@ const title = 'Documentation · RegelRecht';
         {
           categories.map((c) => (
             <nldd-list-item href={c.match ?? c.link}>
-              <nldd-text-cell text={c.text} width="full" />
+              <nldd-text-cell
+                text={c.text}
+                supporting-text={c.summary}
+                width="full"
+              />
               <nldd-spacer-cell />
               <nldd-icon-cell icon="chevron-right" />
             </nldd-list-item>

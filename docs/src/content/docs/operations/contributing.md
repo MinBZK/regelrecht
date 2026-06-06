@@ -1,5 +1,6 @@
 ---
 title: "Contributing"
+description: "The branching model, quality checks, and workflow for contributing to RegelRecht."
 ---
 
 RegelRecht is open source and welcomes contributions. This page covers the workflow.
@@ -23,7 +24,7 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/):
 type(scope): description
 ```
 
-Types: `feat`, `fix`, `docs`, `style`, `test`, `chore`, `refactor`
+Types: `feat`, `fix`, `docs`, `style`, `test`, `chore`, `refactor`, `perf`, `build`, `ci`
 
 Subject line should be 72 characters or less and explain *why*, not *what*.
 

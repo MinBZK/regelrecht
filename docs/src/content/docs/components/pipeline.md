@@ -1,5 +1,6 @@
 ---
 title: "Pipeline"
+description: "A PostgreSQL-backed job queue that orchestrates and tracks the law-processing workflow."
 ---
 
 The pipeline is a PostgreSQL-backed job queue and law status tracking system that orchestrates the law processing workflow.
@@ -39,7 +40,7 @@ flowchart LR
 | Module | Purpose |
 |--------|---------|
 | `job_queue.rs` | Job creation, claiming (`FOR UPDATE SKIP LOCKED`), completion, failure with auto-retry |
-| `law_status.rs` | Per-law status tracking through 8 states |
+| `law_status.rs` | Per-law status tracking through 10 states |
 | `harvest.rs` | Harvest execution - download XML from BWB, convert to YAML |
 | `enrich.rs` | Enrichment execution - call LLM to add `machine_readable` sections |
 | `worker.rs` | Polling loops for harvest and enrich workers |
@@ -81,10 +82,14 @@ stateDiagram-v2
     Unknown --> Queued: harvest job created
     Queued --> Harvesting: worker claims job
     Harvesting --> Harvested: harvest succeeds
-    Harvesting --> HarvestFailed: retries exhausted
+    Harvesting --> HarvestFailed: job retries exhausted
+    HarvestFailed --> Harvesting: re-queued (fail count below threshold)
+    HarvestFailed --> HarvestExhausted: fail count reaches threshold
     Harvested --> Enriching: enrich job claimed
     Enriching --> Enriched: enrichment succeeds
-    Enriching --> EnrichFailed: retries exhausted
+    Enriching --> EnrichFailed: job retries exhausted
+    EnrichFailed --> Enriching: re-queued (fail count below threshold)
+    EnrichFailed --> EnrichExhausted: fail count reaches threshold
 ```
 
 ## Harvest Worker

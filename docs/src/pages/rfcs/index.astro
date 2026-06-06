@@ -4,6 +4,7 @@
  * listed as a boxed navigation list; getRfcs() runs at build time.
  */
 import Base from '~/layouts/Base.astro';
+import EditLink from '~/components/EditLink.astro';
 import { getRfcs } from '~/lib/rfcs';
 
 const pathname = '/rfcs/';
@@ -46,6 +47,8 @@ const statusColor = (s: string) => {
           See <a href="/rfcs/rfc-000">RFC-000</a> for the process and template.
         </p>
       </nldd-rich-text>
+      <nldd-spacer size="24" sm-size="16" />
+      <EditLink filePath="src/content/rfcs/index.md" />
     </div>
     <div slot="right">
       <nldd-list type="navigation" variant="box">

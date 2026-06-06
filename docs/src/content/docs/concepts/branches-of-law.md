@@ -1,12 +1,11 @@
 ---
 title: "Branches of Law"
+description: "How well the major branches of Dutch law map to rule-based execution, and the research questions they raise."
 ---
 
 RegelRecht makes Dutch law machine-readable and executable. Some branches of law lend themselves to this better than others. This page surveys the major branches, how well they map to rule-based execution, and what research questions they raise.
 
-::: info Current Focus
-RegelRecht currently focuses on **bestuursrecht** and **procesrecht**. The corpus contains regulations from administrative law, social security, healthcare, and tax law. Other branches are under research to understand where machine-readable law can and can't go.
-:::
+> **Current focus.** RegelRecht currently focuses on **bestuursrecht** and **procesrecht**. The corpus contains regulations from administrative law, social security, healthcare, and tax law. Other branches are under research to understand where machine-readable law can and can't go.
 
 ## Overview
 
@@ -31,11 +30,11 @@ RegelRecht currently focuses on **bestuursrecht** and **procesrecht**. The corpu
 
 ### Bestuursrecht (Administrative Law)
 
-Bestuursrecht is the natural home for machine-readable law. Government bodies apply structured rules to individual cases and produce formal decisions (*beschikkingen*). The AWB provides a uniform procedural framework; sector-specific laws define the substance.
+Bestuursrecht is the natural home for machine-readable law. Government bodies apply structured rules to individual cases and produce formal decisions (*beschikkingen*). The Awb provides a uniform procedural framework; sector-specific laws define the substance.
 
 Eligibility checks, benefit calculations, permit conditions: these follow deterministic if/then logic with defined inputs and outputs. The engine's cross-law reference mechanism maps directly to how administrative law works, where higher laws delegate to lower regulations and ministeriële regelingen fill in concrete values.
 
-The corpus already contains the AWB, Participatiewet, Zorgtoeslag, WLZ, and Zorgverzekeringswet. The sheer number of laws, regulations, and policy rules that interact is what makes scaling hard.
+The corpus already contains the Awb, Participatiewet, Zorgtoeslag, Wlz, and Zorgverzekeringswet. The sheer number of laws, regulations, and policy rules that interact is what makes scaling hard.
 
 ### Belastingrecht (Tax Law)
 
@@ -55,7 +54,7 @@ This doesn't raise new modeling questions. It does provide a rich set of cross-l
 
 The Kieswet is already in the corpus. Seat allocation algorithms, quorum requirements, voting procedures, electoral deadlines: all highly structured. The Gemeentewet and Provinciewet contain similar procedural rules for local government.
 
-Beyond electoral mechanics, constitutional law gets into principle territory — see Grondrechten below.
+Beyond electoral mechanics, constitutional law gets into principle territory, see Grondrechten below.
 
 ### Grondrechten (Constitutional Rights)
 
@@ -93,7 +92,7 @@ The law on paper is only part of the story. IND *werkinstructies* and policy rul
 
 Procedural law is workflow-oriented rather than calculation-oriented. It defines sequences of steps, deadlines, competence rules, and conditions for procedural actions.
 
-Deadline calculation is highly computable. Appeal periods, service requirements, and time limits follow strict rules from the AWB and the Wetboek van Burgerlijke Rechtsvordering. Court competence, which court handles which case type, is determined by subject matter, claim amount, and location: a structured decision tree.
+Deadline calculation is highly computable. Appeal periods, service requirements, and time limits follow strict rules from the Awb and the Wetboek van Burgerlijke Rechtsvordering. Court competence, which court handles which case type, is determined by subject matter, claim amount, and location: a structured decision tree.
 
 The modeling question: procedural law is about sequencing and state transitions, not computing a single output value. This may need a different execution model, or it may fit as a series of connected regulations where each step's output feeds the next step's conditions.
 

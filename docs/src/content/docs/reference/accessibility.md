@@ -79,12 +79,12 @@ team measured the real ratio in the browser and excluded these elements from the
 automated check, with a note in the configuration:
 
 - **Diagrams (Mermaid).** Diagrams render as inline SVG, with text on transparent
-  layers where axe cannot read the colour behind it. The measured ratio is 14.4:1
+  layers where axe cannot read the color behind it. The measured ratio is 14.4:1
   for text in flow and state diagrams (dark blue on light blue) and well above the
-  requirement for the C4 diagrams (white on dark blue). The diagram colours come
+  requirement for the C4 diagrams (white on dark blue). The diagram colors come
   from the NLDD palette.
 - **Code samples.** Code blocks carry a light and a dark theme on the same
-  element; the test mixes the two colour sets and measures a blend that never
+  element; the test mixes the two color sets and measures a blend that never
   appears on screen. The text that does appear clears the 4.5:1 that AA asks for
   in both modes.
 
@@ -102,9 +102,6 @@ contrast measurement.
   still varies (NVDA and JAWS handle it well, VoiceOver on iOS is inconsistent);
   accessibility there depends on the design system and was not verified per
   screen reader by this team.
-- The `nldd-page-footer-legal-bar-item` (the copyright text at the bottom of
-  the footer) falls just short of AA contrast because of its token colour. That
-  sits with the design system and is being addressed there.
 
 ## Reporting a problem
 
@@ -114,6 +111,8 @@ on which page, and we will pick it up.
 
 ## Drawn up
 
-This draft statement was drawn up on 21 May 2026 and updated on 27 May 2026
-after a re-check. RegelRecht is an exploration and still under development;
-the statement is updated when the site changes or after a formal audit.
+This draft statement was drawn up on 21 May 2026, updated on 27 May 2026 after a
+re-check, and updated again on 29 May 2026 after the footer copyright text was
+brought up to AA contrast in the NLDD design system. RegelRecht is an
+exploration and still under development; the statement is updated when the site
+changes or after a formal audit.

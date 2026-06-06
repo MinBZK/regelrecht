@@ -77,6 +77,19 @@ mod inner {
         sha: String,
     }
 
+    /// Compare-API response for `GET /repos/{repo}/compare/{base}...{head}`.
+    /// We only need the per-file `filename`s to map changed files back to
+    /// law ids.
+    #[derive(Debug, Deserialize)]
+    struct CompareResponse {
+        #[serde(default)]
+        files: Vec<CompareFile>,
+    }
+    #[derive(Debug, Deserialize)]
+    struct CompareFile {
+        filename: String,
+    }
+
     /// Result of fetching a GitHub source.
     #[derive(Debug)]
     pub enum FetchResult {
@@ -235,55 +248,7 @@ mod inner {
                 None => return Ok(FetchResult::NotModified),
             };
 
-            // Group paths by law_id, keeping only those in the filter set.
-            // Path format: {base_path}/{layer}/{law_id}/{date}.yaml
-            let prefix = if base_path.is_empty() {
-                String::new()
-            } else {
-                format!("{}/", base_path)
-            };
-
-            let today = crate::source_map::today_str();
-            let mut best_per_law: HashMap<String, String> = HashMap::new();
-
-            for path in &all_paths {
-                let rel = if prefix.is_empty() {
-                    path.as_str()
-                } else {
-                    match path.strip_prefix(&prefix) {
-                        Some(r) => r,
-                        None => continue,
-                    }
-                };
-
-                let parts: Vec<&str> = rel.split('/').collect();
-                if parts.len() < 3 {
-                    continue;
-                }
-
-                let law_id = parts[parts.len() - 2];
-                if !law_ids.contains(law_id) {
-                    continue;
-                }
-
-                // Extract date from filename (YYYY-MM-DD.yaml)
-                let filename = parts[parts.len() - 1];
-                let new_date = filename.strip_suffix(".yaml");
-
-                if let Some(existing_path) = best_per_law.get(law_id) {
-                    let existing_filename = existing_path.rsplit('/').next().unwrap_or("");
-                    let existing_date = existing_filename.strip_suffix(".yaml");
-
-                    let new_wins =
-                        crate::source_map::pick_best_version(existing_date, new_date, &today);
-
-                    if new_wins {
-                        best_per_law.insert(law_id.to_string(), path.clone());
-                    }
-                } else {
-                    best_per_law.insert(law_id.to_string(), path.clone());
-                }
-            }
+            let best_per_law = Self::group_best_versions(&all_paths, base_path, Some(law_ids));
 
             tracing::info!(
                 matched = best_per_law.len(),
@@ -310,6 +275,96 @@ mod inner {
             }
 
             Ok(FetchResult::Fetched(files))
+        }
+
+        /// Enumerate every law in a source via the Trees API (1 call),
+        /// selecting the best version per law — WITHOUT fetching any file
+        /// content. Returns `(law_id, repo_path)` pairs. This is the cheap
+        /// enumeration the lightweight corpus index is built from: opening a
+        /// law fetches just that one file lazily via the backend.
+        pub async fn list_source_law_paths(
+            &mut self,
+            source: &GitHubSource,
+            token: Option<&str>,
+        ) -> Result<Vec<(String, String)>> {
+            let base_path = source.path.as_deref().unwrap_or("");
+            let all_paths = match self
+                .list_yaml_files(
+                    &source.full_repo(),
+                    source.effective_ref(),
+                    base_path,
+                    token,
+                )
+                .await?
+            {
+                Some(paths) => paths,
+                None => return Ok(Vec::new()),
+            };
+            Ok(Self::group_best_versions(&all_paths, base_path, None)
+                .into_iter()
+                .collect())
+        }
+
+        /// Group repo-relative YAML paths by `law_id` (the directory name),
+        /// keeping the best version per law (closest valid date ≤ today, else
+        /// latest). `filter`, when set, restricts to those law_ids. Path
+        /// format: `{base_path}/{layer}/{law_id}/{date}.yaml`. Returns a map
+        /// of `law_id → repo_path`.
+        fn group_best_versions(
+            all_paths: &[String],
+            base_path: &str,
+            filter: Option<&HashSet<String>>,
+        ) -> HashMap<String, String> {
+            let prefix = if base_path.is_empty() {
+                String::new()
+            } else {
+                format!("{}/", base_path)
+            };
+            let today = crate::source_map::today_str();
+            let mut best_per_law: HashMap<String, String> = HashMap::new();
+
+            for path in all_paths {
+                let rel = if prefix.is_empty() {
+                    path.as_str()
+                } else {
+                    match path.strip_prefix(&prefix) {
+                        Some(r) => r,
+                        None => continue,
+                    }
+                };
+
+                let parts: Vec<&str> = rel.split('/').collect();
+                if parts.len() < 3 {
+                    continue;
+                }
+
+                let law_id = parts[parts.len() - 2];
+                if let Some(f) = filter {
+                    if !f.contains(law_id) {
+                        continue;
+                    }
+                }
+
+                // Extract date from filename (YYYY-MM-DD.yaml)
+                let filename = parts[parts.len() - 1];
+                let new_date = filename.strip_suffix(".yaml");
+
+                if let Some(existing_path) = best_per_law.get(law_id) {
+                    let existing_filename = existing_path.rsplit('/').next().unwrap_or("");
+                    let existing_date = existing_filename.strip_suffix(".yaml");
+
+                    let new_wins =
+                        crate::source_map::pick_best_version(existing_date, new_date, &today);
+
+                    if new_wins {
+                        best_per_law.insert(law_id.to_string(), path.clone());
+                    }
+                } else {
+                    best_per_law.insert(law_id.to_string(), path.clone());
+                }
+            }
+
+            best_per_law
         }
 
         /// List all YAML files in a repo path using the Trees API.
@@ -834,6 +889,61 @@ mod inner {
                 )));
             }
             Ok(())
+        }
+
+        /// In-repo paths of files that differ between `base` and `head`,
+        /// via the Compare API (`{base}...{head}` — three-dot, so the
+        /// result is the set of changes `head` introduced since the merge
+        /// base, which is exactly "what this branch changed").
+        ///
+        /// A 404 (base or head ref missing — e.g. the traject branch was
+        /// never created because no edits have been saved yet) maps to an
+        /// empty list rather than an error: "no branch yet" is the normal
+        /// pre-edit state and the caller treats it as "nothing changed".
+        ///
+        /// NOTE: the Compare API caps `files` at 300 entries and paginates
+        /// beyond that. A traject realistically edits a handful of laws, so
+        /// we read the first page only; a diff larger than 300 files would
+        /// be under-reported (acceptable for the curated-sidebar use case).
+        pub async fn compare_files(
+            &mut self,
+            repo: &str,
+            base: &str,
+            head: &str,
+            token: Option<&str>,
+        ) -> Result<Vec<String>> {
+            let url = format!(
+                "{}/repos/{}/compare/{}...{}",
+                self.api_base, repo, base, head
+            );
+            let headers = self.default_headers(token);
+            let response = self
+                .client
+                .get(&url)
+                .headers(headers)
+                .send()
+                .await
+                .map_err(|e| CorpusError::Git(format!("GitHub API request failed: {}", e)))?;
+            self.track_rate_limit(&response);
+
+            let status = response.status();
+            if status == reqwest::StatusCode::NOT_FOUND {
+                return Ok(Vec::new());
+            }
+            if !status.is_success() {
+                return Err(CorpusError::Git(format!(
+                    "GitHub Compare API {}...{} on {} returned {}: {}",
+                    base,
+                    head,
+                    repo,
+                    status,
+                    response.text().await.unwrap_or_default()
+                )));
+            }
+            let parsed: CompareResponse = response.json().await.map_err(|e| {
+                CorpusError::Git(format!("Failed to parse compare response: {}", e))
+            })?;
+            Ok(parsed.files.into_iter().map(|f| f.filename).collect())
         }
     }
 

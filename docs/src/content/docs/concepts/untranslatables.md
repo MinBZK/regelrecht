@@ -1,10 +1,11 @@
 ---
 title: "Untranslatables"
+description: "The legal constructs that cannot be faithfully expressed with the engine's operations, and how they are handled."
 ---
 
 The engine's operation set is deliberately small: arithmetic, comparison, conditional logic, date operations. Dutch law regularly uses constructs that fall outside this set. When a legal construct cannot be faithfully expressed with available operations, it is an **untranslatable**.
 
-The term comes from translation theory. The law-generate process *is* translation — from legal Dutch to machine-readable YAML — and some things do not cross that boundary.
+The term comes from translation theory. The law-generate process *is* translation, from legal Dutch to machine-readable YAML, and some things do not cross that boundary.
 
 ## What makes something untranslatable
 

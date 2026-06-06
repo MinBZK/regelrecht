@@ -1,8 +1,9 @@
 ---
 title: "Grafana Monitoring"
+description: "Provisioned monitoring dashboards and alerting for the RegelRecht platform."
 ---
 
-Grafana provides monitoring dashboards and alerting for the regelrecht platform.
+Grafana provides monitoring dashboards and alerting for the RegelRecht platform.
 
 ## Overview
 

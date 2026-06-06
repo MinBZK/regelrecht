@@ -1,5 +1,6 @@
 ---
 title: "Admin Dashboard"
+description: "The web dashboard operators use to monitor and control the harvester pipeline."
 ---
 
 The admin dashboard is a web application for operators to monitor and control the harvester pipeline.

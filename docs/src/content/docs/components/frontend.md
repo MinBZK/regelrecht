@@ -1,5 +1,6 @@
 ---
 title: "Frontend"
+description: "The Vue 3 law editor and library browser for working with machine-readable law."
 ---
 
 The frontend is a law editor and library browser built with Vue 3 and Vite.
@@ -53,66 +54,40 @@ Edit law articles with a split-pane interface:
 
 ## Design System
 
-The frontend uses the **RegelRecht Design System** (`@nldd/design-system`), which provides Lit-based web components:
+The frontend is built almost entirely from `@nldd/design-system` web components (custom-element prefix `nldd-`), imported in the JS entry point (`src/main.js` imports `@nldd/design-system` and its styles). A representative slice of the components in use:
 
-| Category | Components Used |
+| Category | Components used |
 |----------|----------------|
-| **Layout** | `rr-page`, `rr-side-by-side-split-view`, `rr-toolbar`, `rr-box`, `rr-spacer` |
-| **Navigation** | `rr-top-navigation-bar`, `rr-tab-bar`, `rr-document-tab-bar` |
-| **Inputs** | `rr-search-field`, `rr-text-field`, `rr-drop-down-field`, `rr-segmented-control` |
-| **Lists** | `rr-list`, `rr-list-item`, `rr-text-cell`, `rr-label-cell` |
-| **Actions** | `rr-button`, `rr-icon-button`, `rr-button-bar` |
+| **Layout** | `nldd-page`, `nldd-side-by-side-split-view`, `nldd-navigation-split-view`, `nldd-toolbar`, `nldd-spacer`, `nldd-container` |
+| **Navigation** | `nldd-top-title-bar`, `nldd-tab-bar`, `nldd-document-tab-bar`, `nldd-menu` |
+| **Inputs** | `nldd-search-field`, `nldd-text-field`, `nldd-multi-line-text-field`, `nldd-dropdown`, `nldd-combo-box`, `nldd-segmented-control` |
+| **Lists & cells** | `nldd-list`, `nldd-list-item`, `nldd-text-cell`, `nldd-icon-cell`, `nldd-collection` |
+| **Actions & overlays** | `nldd-button`, `nldd-icon-button`, `nldd-button-group`, `nldd-inline-dialog`, `nldd-modal-dialog`, `nldd-sheet` |
+| **Content** | `nldd-rich-text`, `nldd-code-viewer`, `nldd-code-editor`, `nldd-title`, `nldd-tag` |
 
-Components are registered as custom elements (prefix `rr-`) and work in any HTML context.
+The Rijksoverheid brand color (`#154273`) and typography come from the design system; the only app-level stylesheet is `frontend/css/main.css`, which holds a handful of resets and one `--color-primary` token (the design system provides everything else through its own styles).
 
-### Design Tokens
+## Vue components
 
-Design tokens extracted from Figma in `css/variables.css`:
-
-- **Brand color**: `#154273` (Dutch Government blue)
-- **Font**: Rijksoverheid Sans (official Dutch government typeface)
-- **Spacing**: 8px base unit system
-- **Shadows**: Two levels (sm, md)
-- **Border radius**: 4px / 6px / 8px
-
-## CSS Architecture
-
-```
-css/
-├── main.css          # Entry point (imports all)
-├── reset.css         # Modern CSS reset
-├── variables.css     # Design tokens from Figma
-├── layout.css        # Page layout and navigation
-└── components/
-    ├── list.css      # Lists with selections and badges
-    ├── tabs.css      # Tab navigation (CSS-only + rr-toggle-button)
-    ├── collapsible.css  # Native <details> accordions
-    ├── panes.css     # Split-pane layout, YAML display
-    └── editor.css    # Editor-specific components
-```
-
-Uses BEM-inspired naming, all colors via CSS variables, modern CSS features (`:has()`, Grid, custom properties).
-
-## Vue Components
+The app is split into two top-level shells, `LibraryApp.vue` (the law browser) and `EditorApp.vue` (the split-pane editor), plus ~30 components under `src/components/`. Notable ones:
 
 | Component | Purpose |
 |-----------|---------|
-| `LibraryApp.vue` | Library page - 3-pane law browser |
-| `EditorApp.vue` | Editor page - split-pane law editor |
-| `ArticleText.vue` | Formatted article text rendering |
+| `ArticleText.vue` / `ArticleTextEditor.vue` | Render and edit article text |
 | `MachineReadable.vue` | Machine-readable visualization |
-| `YamlView.vue` | Raw YAML syntax display |
-| `ActionSheet.vue` | Modal panel for editing operations |
-| `OperationSettings.vue` | Operation parameter configuration |
+| `YamlView.vue` | Raw YAML view |
+| `EditSheet.vue` / `ActionSheet.vue` / `OperationSettings.vue` | Editing operations and conditions |
+| `LawGraphView.vue` (+ `graph/`) | Cross-law dependency graph |
+| `ExecutionTraceView.vue` | Execution trace tree |
+| `ScenarioBuilder/Form/Gherkin/Visual/Panel.vue` | BDD scenario authoring |
+| `AnnotatedText.vue` / `NoteCreator.vue` | Stand-off notes (RFC-018) |
+| `TrajectMenu.vue` / `TrajectMembersDialog.vue` | Traject collaboration |
 
-Shared logic via `useLaw.js` composable (loads YAML, manages article selection).
+Shared logic lives in composables (`useLaw.js` for loading and article selection, plus others for settings and corpus URLs).
 
 ## Data Loading
 
-Laws are served as **static YAML files** - no backend API for law content:
-- `scripts/copy-laws.js` copies laws from `corpus/regulation/` to `public/data/`
-- Index at `/data/index.json` (generated from corpus metadata)
-- Individual laws at `/data/wet/{law_id}/{date}.yaml`
+Law content comes from the **editor-api** over HTTP, not from static files. `useLaw.js` fetches and saves laws via `lawUrl(...)` (a `GET` to load, a `PUT` to save), with traject-scoped variants for private-repo collaboration. A `scripts/copy-laws.js` prebuild step still exists, but the runtime data flow goes through the API, so the editor can read and write the corpus.
 
 ## Development
 
@@ -130,17 +105,17 @@ just dev             # Starts everything with hot reload
 
 ## Deployment
 
-Deployed as a static site via Docker (nginx) to RIG:
+The editor ships as a single Docker image (`regelrecht-editor`) that bundles the built Vue frontend together with the [editor-api](./editor-api) Rust binary, which serves the static assets and the REST API. It is deployed to RIG/ZAD:
 
-- **Production**: https://editor-regelrecht-regel-k4c.rig.prd1.gn2.quattro.rijksapps.nl
-- **PR Previews**: Automatically deployed for each pull request
+- **Production**: `editor.regelrecht.rijks.app`
+- **PR previews**: automatically deployed for each pull request
 
 ## Admin Dashboard
 
 A separate admin UI exists at `packages/admin/` for pipeline management:
 
 - **Backend**: Rust (Axum) with PostgreSQL
-- **Frontend**: Vanilla JS + Storybook web components
+- **Frontend**: Vue 3 + Vite + `@nldd/design-system` (same stack as the editor)
 - **Features**: Law status overview, job management, harvest/enrich triggers
 - **Auth**: Optional OIDC integration
 

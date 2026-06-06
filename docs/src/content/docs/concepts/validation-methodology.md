@@ -1,5 +1,6 @@
 ---
 title: "RegelRecht Validation: From Analysis-First to Execution-First"
+description: "The full research background for RegelRecht's execution-first validation method, fifteen years in the making."
 ---
 
 ## Problem statement
@@ -32,9 +33,9 @@ flowchart TD
 
 Three characteristics define it:
 
-1. **People do everything** — annotation, definition, modeling, and validation are all human work
-2. **Validation checks your own work** — the multidisciplinary team reviews models it built itself
-3. **Traceability is built in** — every element in the knowledge model points back to the source text in the law
+1. **People do everything**: annotation, definition, modeling, and validation are all human work
+2. **Validation checks your own work**: the multidisciplinary team reviews models it built itself
+3. **Traceability is built in**: every element in the knowledge model points back to the source text in the law
 
 The output is a knowledge model consisting of a data model (FBM/ER), rule model (DMN decision tables), and process model (BPMN). This model serves as the basis for building an IT system.
 
@@ -42,12 +43,12 @@ The output is a knowledge model consisting of a data model (FBM/ER), rule model 
 
 Despite differences in terminology, existing methods follow the same pattern:
 
-1. **Decomposition** — break the legal text into manageable units
-2. **Identification** — recognize key concepts (who, what, when, what consequence)
-3. **Interpretation** — explicitly record what the law means
-4. **Modeling** — organize into data, rule, and process models
-5. **Validation** — test against concrete scenarios and test cases
-6. **Traceability** — trace every rule back to the source
+1. **Decomposition**: break the legal text into manageable units
+2. **Identification**: recognize key concepts (who, what, when, what consequence)
+3. **Interpretation**: explicitly record what the law means
+4. **Modeling**: organize into data, rule, and process models
+5. **Validation**: test against concrete scenarios and test cases
+6. **Traceability**: trace every rule back to the source
 
 All these methods are *analysis-first*: they start from the law and work toward a model or rule set. The translation is done entirely by people.
 
@@ -59,7 +60,7 @@ RegelRecht is not just a method or a DSL. It is a broad execution ecosystem for 
 
 Where existing methods share an analysis-first approach, RegelRecht aims to create a coherent system of machine-executable legislation. Laws interact across boundaries and citizens are not burdened with complexity.
 
-The rule specification gets *single source of truth* status for how the law works. It is not an analysis layer that leads to a translation — the output of the analysis **is** the law in executable form.
+The rule specification gets *single source of truth* status for how the law works. It is not an analysis layer that leads to a translation, the output of the analysis **is** the law in executable form.
 
 ### Principle 2: Transparent and simple
 
@@ -107,10 +108,10 @@ The bottleneck moves from *creation* to *validation*. That makes validation the 
 
 The shift introduces specific risks that do not exist in analysis-first:
 
-- **Automation bias** — the tendency to accept AI output as correct
-- **Anchoring** — the AI's proposal influences the expert's judgment
-- **Blind spots** — the AI does not know what it does not know; neither does a reviewer who is not actively searching
-- **Implicit interpretation choices** — where the law is ambiguous, the AI makes a choice without documenting it
+- **Automation bias**: the tendency to accept AI output as correct
+- **Anchoring**: the AI's proposal influences the expert's judgment
+- **Blind spots**: the AI does not know what it does not know; neither does a reviewer who is not actively searching
+- **Implicit interpretation choices**: where the law is ambiguous, the AI makes a choice without documenting it
 
 ## Problem identification: the missing link
 
@@ -128,15 +129,15 @@ flowchart TD
 ```
 
 The automated steps cover:
-- **Structural correctness** — schema validation
-- **Behavioral correctness** — BDD tests based on MvT examples
-- **Traceability** — reverse validation checks whether every element points to the legal text
+- **Structural correctness**: schema validation
+- **Behavioral correctness**: BDD tests based on MvT examples
+- **Traceability**: reverse validation checks whether every element points to the legal text
 
 What is missing: a **structured process for legal experts to systematically assess the AI proposals**. This differs from the Wetsanalyse validation step (step 4), because:
 
-1. The expert did not build the proposal — the mental model is absent
-2. The AI does not document its interpretation choices — they must be uncovered
-3. The scale demands an efficient process — not every law can take weeks
+1. The expert did not build the proposal, the mental model is absent
+2. The AI does not document its interpretation choices; they must be uncovered
+3. The scale demands an efficient process, not every law can take weeks
 
 ## Proposal: validation method in three phases
 
@@ -186,39 +187,39 @@ flowchart TD
 
 This is the current pipeline. The AI generates a candidate rule specification and automated checks filter structural errors and untraceable elements. The output is not a finished product but a *proposal with documentation*:
 
-- **Traceability report** — which elements are grounded in the legal text, which are assumptions
-- **BDD results** — which MvT scenarios pass and fail
-- **List of assumptions** — elements that do not follow directly from the text but are needed for execution
+- **Traceability report**: which elements are grounded in the legal text, which are assumptions
+- **BDD results**: which MvT scenarios pass and fail
+- **List of assumptions**: elements that do not follow directly from the text but are needed for execution
 
 ### Phase B: Expert preparation
 
 The expert reviews the proposal *before* scenarios are run. This is the phase missing from the current pipeline and it draws on insights from Wetsanalyse:
 
-**B1. Completeness check** — Are all articles covered? Did the AI skip articles that contain executable logic? This is analogous to the scope step (step 1) of Wetsanalyse, but after the fact: not "what will we analyze" but "has everything been analyzed."
+**B1. Completeness check**: Are all articles covered? Did the AI skip articles that contain executable logic? This is analogous to the scope step (step 1) of Wetsanalyse, but after the fact: not "what will we analyze" but "has everything been analyzed."
 
-**B2. Assumption assessment** — Reverse validation has flagged assumptions. The expert assesses each one: is this a defensible choice, or does it need to change? This addresses the risk of implicit interpretation choices.
+**B2. Assumption assessment**: Reverse validation has flagged assumptions. The expert assesses each one: is this a defensible choice, or does it need to change? This addresses the risk of implicit interpretation choices.
 
-**B3. Interpretation inventory** — Where does the law allow multiple readings? Which reading did the AI pick? Is it defensible? This is analogous to the meaning step (step 3) of Wetsanalyse, but reactive: not "what does this mean" but "is the AI's reading correct." This step counters automation bias.
+**B3. Interpretation inventory**: Where does the law allow multiple readings? Which reading did the AI pick? Is it defensible? This is analogous to the meaning step (step 3) of Wetsanalyse, but reactive: not "what does this mean" but "is the AI's reading correct." This step counters automation bias.
 
 ### Phase C: Scenario validation (workshop)
 
 The expert validates the *behavior* of the specification, not the YAML itself. This is the heart of the method:
 
-**C1. Walk through MvT scenarios** — The engine runs scenarios from parliamentary documents. The expert checks whether outcomes match legislative intent.
+**C1. Walk through MvT scenarios**: The engine runs scenarios from parliamentary documents. The expert checks whether outcomes match legislative intent.
 
-**C2. Build adversarial scenarios** — This is where the expert is irreplaceable. The AI has no access to case law, implementation practice, or political context. The expert builds scenarios that stress-test the specification:
+**C2. Build adversarial scenarios**: This is where the expert is irreplaceable. The AI has no access to case law, implementation practice, or political context. The expert builds scenarios that stress-test the specification:
 - Edge cases from practice and case law
 - Exception paths ("unless" clauses)
 - Boundary values (just above/below thresholds)
 - Concurrence situations (interaction between laws)
 
-**C3. Run adversarial scenarios** — The engine runs them. The expert checks the outcomes. Errors lead to iteration.
+**C3. Run adversarial scenarios**: The engine runs them. The expert checks the outcomes. Errors lead to iteration.
 
 ### Phase D: Wrap-up
 
 Analogous to the policy-gap step (step 5) of Wetsanalyse:
 
-- **Policy gaps** are noted — where the law underspecifies and a choice was made
+- **Policy gaps** are noted, where the law underspecifies and a choice was made
 - **Assumptions** are formally accepted or rejected
 - **Expert sign-off** is recorded
 
@@ -237,7 +238,7 @@ The difference with Wetsanalyse validation matters: the expert did not build the
 
 ### MvT examples are ground truth
 
-Worked examples from the Memorie van Toelichting represent the legislature's intent. If the engine produces a different result than the MvT example, the specification is wrong — not the example.
+Worked examples from the Memorie van Toelichting represent the legislature's intent. If the engine produces a different result than the MvT example, the specification is wrong, not the example.
 
 ### The method is iterative
 
