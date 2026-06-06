@@ -160,10 +160,17 @@ export function useDependencies() {
     if (!lawId) return;
     const key = `${trajectRef || ''}::${lawId}`;
     if (implementorsKey === key) return;
+    // Claim the key up front so a concurrent re-trigger doesn't start a second
+    // scan; reset it on failure so a transient error (network blip, throttled
+    // backend) can be retried on the next trigger rather than suppressed for
+    // the component's lifetime.
     implementorsKey = key;
     try {
       const res = await fetch(implementorsUrl(trajectRef, lawId));
-      if (!res.ok) return;
+      if (!res.ok) {
+        implementorsKey = null;
+        return;
+      }
       const implementors = await res.json();
       for (const implId of implementors) {
         try {
@@ -178,7 +185,8 @@ export function useDependencies() {
       }
     } catch {
       // Best-effort: if the scan fails, explicitly-declared deps still cover
-      // the common case.
+      // the common case. Allow a retry on the next trigger.
+      implementorsKey = null;
     }
   }
 

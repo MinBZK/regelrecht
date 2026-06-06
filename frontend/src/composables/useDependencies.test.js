@@ -104,13 +104,18 @@ describe('useDependencies.loadImplementors', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('is best-effort: a failed scan resolves without throwing', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(res(null, false, 500));
+  it('is best-effort: a failed scan resolves without throwing and can be retried', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(res(null, false, 500));
+    globalThis.fetch = fetchSpy;
     const engine = fakeEngine();
     const { loadImplementors } = useDependencies();
     await expect(
       loadImplementors('zorgtoeslagwet', engine, vi.fn(), null),
     ).resolves.toBeUndefined();
+    // A transient failure must not permanently suppress the scan: a second
+    // call retries (the guard key was reset on failure).
+    await loadImplementors('zorgtoeslagwet', engine, vi.fn(), null);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 });
 
