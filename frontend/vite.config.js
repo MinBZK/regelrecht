@@ -42,9 +42,9 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      '/api': 'http://localhost:8000',
-      '/auth': 'http://localhost:8000',
-      '/health': 'http://localhost:8000',
+      '/api': 'http://localhost:8008',
+      '/auth': 'http://localhost:8008',
+      '/health': 'http://localhost:8008',
     },
   },
 });

@@ -359,11 +359,15 @@ impl RepoBackend for LocalBackend {
 
     async fn list_files(&self, dir: &Path, extension: Option<&str>) -> Result<Vec<FileEntry>> {
         let abs = self.resolve(dir)?;
+        tracing::info!(abs = %abs.display(), ext = ?extension, "DEBUG list_files");
         let mut entries = Vec::new();
 
         let mut read_dir = match tokio::fs::read_dir(&abs).await {
             Ok(rd) => rd,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(entries),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                tracing::info!(abs = %abs.display(), "DEBUG dir NotFound");
+                return Ok(entries);
+            }
             Err(e) => return Err(e.into()),
         };
 
@@ -600,11 +604,15 @@ impl RepoBackend for GitBackend {
 
     async fn list_files(&self, dir: &Path, extension: Option<&str>) -> Result<Vec<FileEntry>> {
         let abs = self.resolve(dir)?;
+        tracing::info!(abs = %abs.display(), ext = ?extension, "DEBUG list_files");
         let mut entries = Vec::new();
 
         let mut read_dir = match tokio::fs::read_dir(&abs).await {
             Ok(rd) => rd,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(entries),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                tracing::info!(abs = %abs.display(), "DEBUG dir NotFound");
+                return Ok(entries);
+            }
             Err(e) => return Err(e.into()),
         };
 
@@ -906,11 +914,15 @@ impl RepoBackend for SessionGitBackend {
 
     async fn list_files(&self, dir: &Path, extension: Option<&str>) -> Result<Vec<FileEntry>> {
         let abs = self.resolve(dir)?;
+        tracing::info!(abs = %abs.display(), ext = ?extension, "DEBUG list_files");
         let mut entries = Vec::new();
 
         let mut read_dir = match tokio::fs::read_dir(&abs).await {
             Ok(rd) => rd,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(entries),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                tracing::info!(abs = %abs.display(), "DEBUG dir NotFound");
+                return Ok(entries);
+            }
             Err(e) => return Err(e.into()),
         };
 
