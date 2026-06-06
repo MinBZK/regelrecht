@@ -219,6 +219,11 @@ async function runDependencyLoad() {
     // (IoC) load in the background: their corpus scan can be slow and is
     // best-effort, so it must not gate the panel. `loadImplementors` is
     // guarded to run at most once per law.
+    //
+    // Deliberately fire-and-forget — there is no AbortController. If this
+    // component unmounts mid-scan the promise keeps running, which is safe:
+    // Vue ignores ref writes after unmount, the shared WASM engine outlives
+    // the component, and the guard resets on error so a fresh mount retries.
     depsReady.value = true;
     if (mainLawId) {
       loadImplementors(mainLawId, props.engine, fetchLawYaml, props.trajectRef);
