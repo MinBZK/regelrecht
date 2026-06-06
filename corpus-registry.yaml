@@ -9,6 +9,14 @@ sources:
     scopes: []
     priority: 1  # 1 = highest priority
 
+  - id: local-eu
+    name: Local EU Corpus
+    type: local
+    local:
+      path: corpus/regulation/eu
+    scopes: []
+    priority: 1  # EU regulations; no $id overlap with the national corpus
+
   - id: minbzk-central
     name: Centrale Regelrecht Corpus
     type: github
