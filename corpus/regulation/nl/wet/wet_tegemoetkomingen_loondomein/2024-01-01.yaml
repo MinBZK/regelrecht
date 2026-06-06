@@ -1,0 +1,2205 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.1/schema.json
+$id: wet_tegemoetkomingen_loondomein
+regulatory_layer: WET
+publication_date: '2026-02-12'
+valid_from: '2024-01-01'
+bwb_id: BWBR0037522
+url: https://wetten.overheid.nl/BWBR0037522/2024-01-01
+preamble:
+  text: |-
+    Wij Willem-Alexander, bij de gratie Gods, Koning der Nederlanden, Prins van Oranje-Nassau, enz. enz. enz.
+
+    Allen, die deze zullen zien of horen lezen, saluut! doen te weten:
+
+    Alzo Wij in overweging genomen hebben, dat het wenselijk is in het kader van de vereenvoudiging van de processen
+    van de Belastingdienst en het terugdringen van administratieve lasten van werkgevers een instrument te introduceren
+    dat het mogelijk maakt om op basis van reeds bij de overheid beschikbare gegevens geautomatiseerd en zonder de
+    loonaangifteketen te belasten een tegemoetkoming in de loonkosten aan werkgevers te verstrekken en de bestaande
+    premiekortingen voor ouderen en arbeidsgehandicapten te vervangen, mede om de bestaande verzilveringsproblematiek
+    weg te nemen, en voorts een lage-inkomensvoordeel in te voeren voor werkgevers met werknemers aan de onderkant van
+    de arbeidsmarkt;
+
+    Zo is het, dat Wij, de Afdeling advisering van de Raad van State gehoord, en met gemeen overleg der Staten-
+    Generaal, hebben goedgevonden en verstaan, gelijk Wij goedvinden en verstaan bij deze:
+  url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#ArtikelAanhef
+articles:
+  - number: '1.1'
+    text: |-
+      In deze wet en de daarop berustende bepalingen wordt verstaan onder: - *werkgever:* de
+      inhoudingsplichtige in de zin van de [Wet op de loonbelasting 1964][ref1] of de werkgever in de zin van de
+      [Wet financiering sociale verzekeringen][ref2];
+        - *werknemer:* de werknemer in de zin van de [Werkloosheidswet][ref3], de [Ziektewet][ref4], de
+      [Wet werk en inkomen naar arbeidsvermogen][ref5] of de [Wet op de arbeidsongeschiktheidsverzekering][ref6];
+        - *loonaangifte:* de aangifte voor de loonbelasting, de premie voor de volksverzekeringen, de premies
+      voor de werknemersverzekeringen en de ingevolge de [Zorgverzekeringswet][ref7] over het loon verschuldigde
+      inkomensafhankelijke bijdrage;
+        - *aangiftetijdvak:* het tijdvak waarover de loonbelasting moet worden betaald;
+        - *polisadministratie:* hetgeen daaronder wordt verstaan in
+      [artikel 33 van de Wet structuur uitvoeringsorganisatie werk en inkomen][ref8];
+        - *loonadministratie:* de loonadministratie, bedoeld in
+      artikel[ 28, eerste lid, onderdeel c, van de Wet op de loonbelasting 1964][ref9];
+        - *verloonde uren:* de uren waarover loon is betaald en waarvan door de werkgever ingevolge
+      [artikel 28, eerste lid, onderdeel d, van de Wet op de loonbelasting 1964][ref10] opgave aan de inspecteur is
+      gedaan;
+        - *jaarloon:* het door een werknemer in een dienstbetrekking als bedoeld in
+      [artikel 3 tot en met 6 van de Ziektewet][ref11] in een kalenderjaar genoten loon uit
+      tegenwoordige dienstbetrekking overeenkomstig het loon waarvan door de werkgever ingevolge
+      [artikel 28, eerste lid, onderdeel e, van de Wet op de loonbelasting 1964][ref12] opgave aan de werknemer is
+      gedaan;
+        - *correctiebericht:* het correctiebericht, bedoeld in [artikel 28a van de Wet op de loonbelasting 1964][ref13];
+        - *inspecteur of ontvanger:* de functionaris van de rijksbelastingdienst die als zodanig bij wet van Onze Minister
+      van Financiën is aangewezen;
+        - *Uitvoeringsinstituut werknemersverzekeringen:* het Uitvoeringsinstituut werknemersverzekeringen, genoemd in
+      [hoofdstuk 5 van de Wet structuur uitvoeringsorganisatie werk en inkomen][ref14].
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0002471
+      [ref2]: https://wetten.overheid.nl/BWBR0017745
+      [ref3]: https://wetten.overheid.nl/BWBR0004045
+      [ref4]: https://wetten.overheid.nl/BWBR0001888
+      [ref5]: https://wetten.overheid.nl/BWBR0019057
+      [ref6]: https://wetten.overheid.nl/BWBR0002524
+      [ref7]: https://wetten.overheid.nl/BWBR0018450
+      [ref8]: https://wetten.overheid.nl/BWBR0013060#Artikel33
+      [ref9]: https://wetten.overheid.nl/BWBR0002471#Artikel28
+      [ref10]: https://wetten.overheid.nl/BWBR0002471#Artikel28
+      [ref11]: https://wetten.overheid.nl/BWBR0001888#Artikel3
+      [ref12]: https://wetten.overheid.nl/BWBR0002471#Artikel28
+      [ref13]: https://wetten.overheid.nl/BWBR0002471#Artikel28a
+      [ref14]: https://wetten.overheid.nl/BWBR0013060#Hoofdstuk5
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel1.1
+    references:
+      - id: ref1
+        bwb_id: BWBR0002471
+      - id: ref2
+        bwb_id: BWBR0017745
+      - id: ref3
+        bwb_id: BWBR0004045
+      - id: ref4
+        bwb_id: BWBR0001888
+      - id: ref5
+        bwb_id: BWBR0019057
+      - id: ref6
+        bwb_id: BWBR0002524
+      - id: ref7
+        bwb_id: BWBR0018450
+      - id: ref8
+        bwb_id: BWBR0013060
+        artikel: '33'
+      - id: ref9
+        bwb_id: BWBR0002471
+        artikel: '28'
+      - id: ref10
+        bwb_id: BWBR0002471
+        artikel: '28'
+      - id: ref11
+        bwb_id: BWBR0001888
+        artikel: '3'
+      - id: ref12
+        bwb_id: BWBR0002471
+        artikel: '28'
+      - id: ref13
+        bwb_id: BWBR0002471
+        artikel: 28a
+      - id: ref14
+        bwb_id: BWBR0013060
+        hoofdstuk: '5'
+  - number: '2.1'
+    text: 'Een werkgever kan in de loonaangifte een verzoek doen voor de volgende tegemoetkomingen:'
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.1
+    # LKV — Loonkostenvoordelen, Wtl artikel 2.1 (verzoek) +
+    # 4 categorieën uit hoofdstuk 2 Wtl:
+    #   a. oudere werknemer (art. 2.2 voorwaarden, art. 2.5 hoogte
+    #      € 3,05/uur, max € 6.000/jaar)
+    #   b. arbeidsgehandicapte werknemer (art. 2.6 voorwaarden,
+    #      art. 2.9 hoogte € 3,05/uur, max € 6.000/jaar)
+    #   c. doelgroep banenafspraak / scholingsbelemmerden
+    #      (art. 2.10 voorwaarden, art. 2.13 hoogte € 1,01/uur,
+    #      max € 2.000/jaar)
+    #   d. herplaatsen arbeidsgehandicapte werknemer (art. 2.14
+    #      voorwaarden, art. 2.17 hoogte € 3,05/uur, max € 6.000/jaar)
+    #
+    # Gemodelleerde aanname: per werknemer kwalificeert hoogstens één
+    # categorie. Bij meerdere doelgroep-statussen wordt de eerst-
+    # passende categorie volgens IF-volgorde toegepast.
+    # Doelgroepverklaring (a, b, d) komt van UWV; banenafspraak (c)
+    # uit doelgroepregister Pwet.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            description: BSN van de werknemer.
+          - name: verloonde_uren
+            type: number
+            required: true
+            description: Verloonde uren in kalenderjaar (loonaangifte).
+          - name: is_oudere_werknemer
+            type: boolean
+            required: true
+            description: |-
+              Categorie a (art. 2.2): werknemer ≥ 56 jaar bij begin
+              dienstbetrekking, voorafgaand met uitkering, doelgroep­
+              verklaring oudere werknemer afgegeven door UWV.
+          - name: is_arbeidsgehandicapte_werknemer
+            type: boolean
+            required: true
+            description: |-
+              Categorie b (art. 2.6): doelgroepverklaring arbeids­
+              gehandicapte werknemer afgegeven door UWV (na re-integratie
+              uit WIA / WAO / Wajong / WAZ etc.).
+          - name: is_herplaatsen_arbeidsgehandicapte
+            type: boolean
+            required: true
+            description: |-
+              Categorie d (art. 2.14): werknemer is na arbeidsongeschikt­
+              heid bij dezelfde werkgever herplaatst en voldoet aan
+              voorwaarden art. 2.14.
+          - name: is_doelgroep_banenafspraak
+            type: boolean
+            required: true
+            description: |-
+              Categorie c (art. 2.10): doelgroep banenafspraak en
+              scholingsbelemmerden. Doelgroepregister UWV.
+              In een latere iteratie te koppelen aan participatiewet
+              cross-law source (art. 1 doelgroepstub).
+          - name: heeft_pensioengerechtigde_leeftijd_bereikt
+            type: boolean
+            required: true
+            description: |-
+              Uitsluitingsgrond voor alle vier categorieën
+              (art. 2.2 lid 2.a, 2.6 lid 3.a, 2.10 lid 2.a, 2.14 lid 2.a):
+              werknemer heeft pensioengerechtigde leeftijd bereikt
+              (artikel 7a lid 1 AOW).
+          - name: heeft_loonaangifte_verzoek_ingediend
+            type: boolean
+            required: true
+            description: |-
+              Art. 2.1: werkgever heeft in de loonaangifte verzoek
+              gedaan voor het loonkostenvoordeel.
+        output:
+          - name: categorie_lkv
+            type: string
+            description: |-
+              Categorie die van toepassing is. Volgorde: oudere →
+              arbeidsgehandicapte → herplaatsing → banenafspraak.
+              'geen' als geen enkele categorie kwalificeert.
+          - name: heeft_recht_op_lkv
+            type: boolean
+          - name: bedrag_per_uur_eurocent
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: 'Per categorie € 3,05 (305) of € 1,01 (101).'
+          - name: maximum_per_jaar_eurocent
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: 'Per categorie € 6.000 (600000) of € 2.000 (200000).'
+          - name: hoogte_lkv_per_jaar_eurocent
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: 'MIN(bedrag_per_uur × verloonde_uren, maximum).'
+        actions:
+          - output: categorie_lkv
+            value:
+              operation: IF
+              cases:
+                - when: $is_oudere_werknemer
+                  then: oudere_werknemer
+                - when: $is_arbeidsgehandicapte_werknemer
+                  then: arbeidsgehandicapte_werknemer
+                - when: $is_herplaatsen_arbeidsgehandicapte
+                  then: herplaatsen_arbeidsgehandicapte
+                - when: $is_doelgroep_banenafspraak
+                  then: banenafspraak
+              default: geen
+              legal_basis:
+                law: Wet tegemoetkomingen loondomein
+                bwb_id: BWBR0037522
+                article: '2.1'
+          - output: heeft_recht_op_lkv
+            value:
+              operation: AND
+              conditions:
+                - $heeft_loonaangifte_verzoek_ingediend
+                - operation: NOT
+                  value: $heeft_pensioengerechtigde_leeftijd_bereikt
+                - operation: OR
+                  conditions:
+                    - $is_oudere_werknemer
+                    - $is_arbeidsgehandicapte_werknemer
+                    - $is_herplaatsen_arbeidsgehandicapte
+                    - $is_doelgroep_banenafspraak
+              legal_basis:
+                law: Wet tegemoetkomingen loondomein
+                bwb_id: BWBR0037522
+                article: '2.1, 2.2, 2.6, 2.10, 2.14'
+                explanation: |-
+                  Verzoek (art. 2.1) + minstens één categorie (a/b/c/d)
+                  + niet pensioengerechtigd (art. 2.2 lid 2.a, 2.6 lid 3.a,
+                  2.10 lid 2.a, 2.14 lid 2.a).
+          - output: bedrag_per_uur_eurocent
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $categorie_lkv
+                    value: banenafspraak
+                  then: 101
+              default: 305
+              legal_basis:
+                law: Wet tegemoetkomingen loondomein
+                bwb_id: BWBR0037522
+                article: '2.5, 2.9, 2.13, 2.17'
+                explanation: |-
+                  € 3,05 per uur voor oudere/arbeidsgehandicapte/
+                  herplaatsing; € 1,01 per uur voor banenafspraak.
+          - output: maximum_per_jaar_eurocent
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $categorie_lkv
+                    value: banenafspraak
+                  then: 200000
+              default: 600000
+              legal_basis:
+                law: Wet tegemoetkomingen loondomein
+                bwb_id: BWBR0037522
+                article: '2.5, 2.9, 2.13, 2.17'
+                explanation: |-
+                  € 6.000 per werknemer per jaar voor oudere/
+                  arbeidsgehandicapte/herplaatsing; € 2.000 voor
+                  banenafspraak.
+          - output: hoogte_lkv_per_jaar_eurocent
+            value:
+              operation: IF
+              cases:
+                - when: $heeft_recht_op_lkv
+                  then:
+                    operation: MIN
+                    values:
+                      - operation: MULTIPLY
+                        values:
+                          - $bedrag_per_uur_eurocent
+                          - $verloonde_uren
+                      - $maximum_per_jaar_eurocent
+              default: 0
+      untranslatables:
+        - construct: 'doelgroepverklaring-vereiste binnen 3 maanden (art. 2.3, 2.6)'
+          reason: |-
+            Het LKV vereist een doelgroepverklaring die binnen drie
+            maanden na aanvang dienstbetrekking moet zijn aangevraagd.
+            Deze procedure-toets staat los van de inhoudelijke
+            voorwaarden en valt onder uitvoeringsbeleid.
+          accepted: true
+        - construct: 'aanvang dienstbetrekking-toets — 12-maanden uitsluiting'
+          reason: |-
+            Categorieën a en b sluiten werknemers uit die in de
+            6 maanden voorafgaand aan dienstbetrekking al bij dezelfde
+            werkgever in dienst waren (anti-misbruik). Deze tijdgebonden
+            herhalingstoets is niet faithful te modelleren met de
+            huidige operatie-set.
+          accepted: true
+        - construct: 'samenloop met LKS (art. 10d Pwet)'
+          reason: |-
+            Voor categorie c (banenafspraak) was er tot 2024 samenloop
+            mogelijk met LKS; sinds 2025 is de banenafspraak-LKV
+            structureel gemaakt en is doelgroepverklaring afgeschaft.
+            Cumulatieregels staan niet in deze artikelen.
+          accepted: true
+  - number: 2.1.a
+    text: loonkostenvoordeel oudere werknemer;
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.1
+  - number: 2.1.b
+    text: loonkostenvoordeel arbeidsgehandicapte werknemer;
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.1
+  - number: 2.1.c
+    text: loonkostenvoordeel doelgroep banenafspraak en scholingsbelemmerden;
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.1
+  - number: 2.1.d
+    text: loonkostenvoordeel herplaatsen arbeidsgehandicapte werknemer;
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.1
+  - number: 2.2.1
+    text: |-
+      Een werkgever die een verzoek als bedoeld in [artikel 2.1][ref1] heeft gedaan, heeft recht op een
+      loonkostenvoordeel oudere werknemer indien bij deze werkgever een werknemer in een of meerdere dienstbetrekkingen
+      is die:
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.2
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.1'
+  - number: 2.2.1.a
+    text: 'in de maand voorafgaand aan de aanvang van de dienstbetrekking:'
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.2
+  - number: 2.2.1.a.1°
+    text: |-
+      recht had op een uitkering op grond van de [Werkloosheidswet][ref1], de
+      [Wet op de arbeidsongeschiktheidsverzekering][ref2], de [Wet werk en inkomen naar arbeidsvermogen][ref3],
+      de [Wet arbeidsongeschiktheidsvoorziening jonggehandicapten][ref4],
+      de [Wet arbeidsongeschiktheidsverzekering zelfstandigen][ref5],
+      de [Wet arbeidsongeschiktheidsvoorziening militairen][ref6], de
+      [Participatiewet][ref7], de [Wet inkomensvoorziening oudere werklozen][ref8], de
+      [Wet inkomensvoorziening oudere en gedeeltelijk arbeidsongeschikte werkloze werknemers][ref9] of de
+      [Wet inkomensvoorziening oudere en gedeeltelijk arbeidsongeschikte gewezen zelfstandigen][ref10]; of
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0004045
+      [ref2]: https://wetten.overheid.nl/BWBR0002524
+      [ref3]: https://wetten.overheid.nl/BWBR0019057
+      [ref4]: https://wetten.overheid.nl/BWBR0008657
+      [ref5]: https://wetten.overheid.nl/BWBR0008656
+      [ref6]: https://wetten.overheid.nl/BWBR0002822
+      [ref7]: https://wetten.overheid.nl/BWBR0015703
+      [ref8]: https://wetten.overheid.nl/BWBR0024394
+      [ref9]: https://wetten.overheid.nl/BWBR0004044
+      [ref10]: https://wetten.overheid.nl/BWBR0004163
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.2
+    references:
+      - id: ref1
+        bwb_id: BWBR0004045
+      - id: ref2
+        bwb_id: BWBR0002524
+      - id: ref3
+        bwb_id: BWBR0019057
+      - id: ref4
+        bwb_id: BWBR0008657
+      - id: ref5
+        bwb_id: BWBR0008656
+      - id: ref6
+        bwb_id: BWBR0002822
+      - id: ref7
+        bwb_id: BWBR0015703
+      - id: ref8
+        bwb_id: BWBR0024394
+      - id: ref9
+        bwb_id: BWBR0004044
+      - id: ref10
+        bwb_id: BWBR0004163
+  - number: 2.2.1.a.2°
+    text: |-
+      recht had op arbeidsondersteuning op grond van de [Wet arbeidsongeschiktheidsvoorziening jonggehandicapten][ref1];
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0008657
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.2
+    references:
+      - id: ref1
+        bwb_id: BWBR0008657
+  - number: 2.2.1.b
+    text: op het moment van aanvang van de dienstbetrekking 56 jaar of ouder was;
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.2
+  - number: 2.2.1.c
+    text: |-
+      niet op enig moment in de periode van zes maanden voorafgaand aan de datum van indiensttreding bij deze werkgever
+      in dienstbetrekking is geweest; en
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.2
+  - number: 2.2.1.d
+    text: |-
+      een geldige doelgroepverklaring als bedoeld in [artikel 2.3][ref1] aan de werkgever heeft verstrekt.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.2
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.2'
+  - number: 2.2.2
+    text: 'Het eerste lid is niet of niet langer van toepassing indien:'
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.2
+  - number: 2.2.2.a
+    text: |-
+      de werknemer de pensioengerechtigde leeftijd, bedoeld in
+      [artikel 7a, eerste lid, van de Algemene Ouderdomswet][ref1], heeft bereikt;
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0002221#Artikel7a
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.2
+    references:
+      - id: ref1
+        bwb_id: BWBR0002221
+        artikel: 7a
+  - number: 2.2.2.b
+    text: |-
+      de werknemer arbeid verricht in een dienstbetrekking als bedoeld in
+      [artikel 2 van de Wet sociale werkvoorziening][ref1] of als bedoeld in
+      [artikel 10b, derde lid, van de Participatiewet][ref2]; of
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0008903#Artikel2
+      [ref2]: https://wetten.overheid.nl/BWBR0015703#Artikel10b
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.2
+    references:
+      - id: ref1
+        bwb_id: BWBR0008903
+        artikel: '2'
+      - id: ref2
+        bwb_id: BWBR0015703
+        artikel: 10b
+  - number: 2.2.2.c
+    text: |-
+      de periode, bedoeld in [artikel 2.4][ref1], voor deze werknemer is verstreken.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.2
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.2'
+  - number: 2.2.3
+    text: |-
+      Met een uitkering als bedoeld in het eerste lid, onderdeel a, wordt gelijkgesteld een naar aard en strekking
+      daarmee overeenkomende uitkering op grond van een wettelijk stelsel inzake sociale zekerheid van een andere
+      lidstaat van de Europese Unie, een andere staat die partij is bij de Overeenkomst betreffende de Europese
+      Economische Ruimte dan wel Zwitserland.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.2
+  - number: 2.2.4
+    text: |-
+      Voor de toepassing van dit artikel worden onderbrekingen van een dienstbetrekking tussen dezelfde werkgever en
+      werknemer binnen de periode, bedoeld in [artikel 2.4, eerste lid][ref1], geacht niet te hebben plaatsgevonden.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.2
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.2'
+  - number: 2.3.1
+    text: |-
+      Het Uitvoeringsinstituut werknemersverzekeringen of, indien het een oudere werknemer betreft die in de maand
+      voorafgaand aan zijn dienstbetrekking recht had op een uitkering op grond van de [Participatiewet][ref1],
+      de [Wet inkomensvoorziening oudere en gedeeltelijk arbeidsongeschikte werkloze werknemers][ref2] of de
+      [Wet inkomensvoorziening oudere en gedeeltelijk arbeidsongeschikte gewezen zelfstandigen][ref3], het college van
+      burgemeester en wethouders, verstrekt uitsluitend aan degene die een dienstbetrekking met een werkgever aangaat
+      en, met inachtneming van [artikel 2.2, tweede tot en met vierde lid][ref4], voldoet aan de voorwaarden, bedoeld
+      in artikel 2.2, eerste lid, onderdelen a tot en met c, op diens verzoek een verklaring dat deze werknemer aan
+      de genoemde voorwaarden voldoet. Indien de doelgroepverklaring niet kan worden verstrekt, wordt het besluit
+      tot weigering uitsluitend verstrekt aan de aanvrager van de doelgroepverklaring. De doelgroepverklaring wordt
+      aangevraagd binnen drie maanden na aanvang van de dienstbetrekking. Bij regeling van Onze Minister van Financiën
+      kunnen, in overeenstemming met Onze Minister van Sociale Zaken en Werkgelegenheid, nadere regels worden gesteld met
+      betrekking tot de geldigheid van de doelgroepverklaring, bedoeld in de eerste volzin.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0015703
+      [ref2]: https://wetten.overheid.nl/BWBR0004044
+      [ref3]: https://wetten.overheid.nl/BWBR0004163
+      [ref4]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.3
+    references:
+      - id: ref1
+        bwb_id: BWBR0015703
+      - id: ref2
+        bwb_id: BWBR0004044
+      - id: ref3
+        bwb_id: BWBR0004163
+      - id: ref4
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.2'
+  - number: 2.3.2
+    text: |-
+      Indien [artikel 2.2, derde lid][ref1], van toepassing is, overlegt degene die het Uitvoeringsinstituut
+      werknemersverzekeringen verzoekt om een doelgroepverklaring als bedoeld in het eerste lid gelijktijdig met
+      dit verzoek een bewijs dat hij in de maand voorafgaand aan de aanvang van de dienstbetrekking recht had op een
+      uitkering als bedoeld in [artikel 2.2, derde lid][ref2]. Bij regeling van Onze Minister van Financiën kunnen, in
+      overeenstemming met Onze Minister van Sociale Zaken en Werkgelegenheid, nadere voorwaarden worden gesteld aan dit
+      bewijs.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref2]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.3
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.2'
+      - id: ref2
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.2'
+  - number: 2.3.3
+    text: De werkgever bewaart de doelgroepverklaring, bedoeld in het eerste lid, bij de loonadministratie.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.3
+  - number: 2.4.1
+    text: |-
+      Een loonkostenvoordeel oudere werknemer wordt ten hoogste verstrekt over een aaneengesloten periode van drie jaar
+      vanaf de aanvang van de eerste dienstbetrekking tussen de werkgever en de werknemer waarbij aan de voorwaarden,
+      bedoeld in [artikel 2.2][ref1], wordt voldaan.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.4
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.2'
+  - number: 2.4.2
+    text: |-
+      Ingeval de periode waarin het loonkostenvoordeel oudere werknemer van toepassing is, in de loop van een
+      aangiftetijdvak begint of eindigt, wordt die periode verlengd met het buiten die periode vallende deel van het
+      aangiftetijdvak waarin die periode begint, onderscheidenlijk eindigt.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.4
+  - number: '2.5'
+    text: |-
+      Een loonkostenvoordeel oudere werknemer bedraagt € 3,05 per verloond uur van de werknemers die voldoen aan de
+      voorwaarden, bedoeld in [artikel 2.2][ref1], doch ten hoogste € 6.000 per werknemer per kalenderjaar.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.5
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.2'
+  - number: 2.6.1
+    text: |-
+      Een werkgever die een verzoek als bedoeld in [artikel 2.1][ref1] heeft gedaan, heeft recht op een
+      loonkostenvoordeel arbeidsgehandicapte werknemer indien bij deze werkgever een werknemer in een of meerdere
+      dienstbetrekkingen is die:
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.6
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.1'
+  - number: 2.6.1.a
+    text: 'in de maand voorafgaand aan de aanvang van de dienstbetrekking:'
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.6
+  - number: 2.6.1.a.1°
+    text: |-
+      recht had op een uitkering op grond van de [Wet werk en inkomen naar arbeidsvermogen][ref1]; of
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0019057
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.6
+    references:
+      - id: ref1
+        bwb_id: BWBR0019057
+  - number: 2.6.1.a.2°
+    text: |-
+      arbeidsgehandicapte als bedoeld in [artikel 2 van de Wet op de (re)integratie arbeidsgehandicapten][ref1]
+      zou zijn geweest in verband met het recht op een arbeidsongeschiktheidsuitkering
+      op grond van de [Wet op de arbeidsongeschiktheidsverzekering][ref2] of de
+      [Wet arbeidsongeschiktheidsverzekering zelfstandigen ][ref3]indien dat artikel niet zou zijn ingetrokken en tevens
+      voor 1 januari 2006 arbeidsgehandicapte was op grond van dat artikel;
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0009565#Artikel2
+      [ref2]: https://wetten.overheid.nl/BWBR0002524
+      [ref3]: https://wetten.overheid.nl/BWBR0008656
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.6
+    references:
+      - id: ref1
+        bwb_id: BWBR0009565
+        artikel: '2'
+      - id: ref2
+        bwb_id: BWBR0002524
+      - id: ref3
+        bwb_id: BWBR0008656
+  - number: 2.6.1.b
+    text: |-
+      niet op enig moment in de periode van zes maanden voorafgaand aan de datum van indiensttreding in dienstbetrekking
+      bij de werkgever is geweest; en
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.6
+  - number: 2.6.1.c
+    text: |-
+      een geldige doelgroepverklaring als bedoeld in [artikel 2.7][ref1] aan de werkgever heeft verstrekt.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.6
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.3'
+  - number: 2.6.2
+    text: |-
+      Bij de toepassing van het eerste lid met betrekking tot een werknemer die binnen vijf jaar na de eerste dag na
+      afloop van de wachttijd, bedoeld in [artikel 23 van de Wet werk en inkomen naar arbeidsvermogen][ref1], of na
+      afloop van het tijdvak, bedoeld in [artikel 24][ref2] of [25, negende lid, van die wet][ref3] of na afloop van
+      het tijdvak, bedoeld in [artikel 629, elfde lid, onderdeel a, van Boek 7 van het Burgerlijk Wetboek][ref4] dan
+      wel van het tijdvak, bedoeld in [artikel 76a, zesde lid, onderdeel a, van de Ziektewet][ref5], in dienstbetrekking
+      werkzaamheden gaat verrichten bij een werkgever en die:
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0019057#Artikel23
+      [ref2]: https://wetten.overheid.nl/BWBR0019057#Artikel24
+      [ref3]: https://wetten.overheid.nl/BWBR0019057#Artikel25
+      [ref4]: https://wetten.overheid.nl/BWBR0005290#Artikel629
+      [ref5]: https://wetten.overheid.nl/BWBR0001888#Artikel76a
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.6
+    references:
+      - id: ref1
+        bwb_id: BWBR0019057
+        artikel: '23'
+      - id: ref2
+        bwb_id: BWBR0019057
+        artikel: '24'
+      - id: ref3
+        bwb_id: BWBR0019057
+        artikel: '25'
+      - id: ref4
+        bwb_id: BWBR0005290
+        artikel: '629'
+      - id: ref5
+        bwb_id: BWBR0001888
+        artikel: 76a
+  - number: 2.6.2.a
+    text: |-
+      volgens een arbeidskundig onderzoek op de dag, bedoeld in de aanhef, minder dan 35% arbeidsongeschikt is en niet in
+      staat is tot het verrichten van arbeid bij de werkgever waarbij de werknemer op die dag in dienstbetrekking was; en
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.6
+  - number: 2.6.2.b
+    text: |-
+      op de eerste dag van elf weken voorafgaand aan de dag, bedoeld in onderdeel a, geen dienstbetrekking had met een
+      andere werkgever dan de werkgever, bedoeld in onderdeel a, en nog bij die werkgever in dienstbetrekking is, tenzij
+      de dienstbetrekking met die andere werkgever reeds bestond op de eerste dag van de wachttijd, bedoeld in de aanhef;
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.6
+  - number: 2.6.3
+    text: 'Het eerste lid is niet of niet langer van toepassing indien:'
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.6
+  - number: 2.6.3.a
+    text: |-
+      de werknemer de pensioengerechtigde leeftijd, bedoeld in
+      [artikel 7a, eerste lid, van de Algemene Ouderdomswet][ref1], heeft bereikt;
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0002221#Artikel7a
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.6
+    references:
+      - id: ref1
+        bwb_id: BWBR0002221
+        artikel: 7a
+  - number: 2.6.3.b
+    text: |-
+      de werknemer arbeid verricht in een dienstbetrekking als bedoeld in
+      [artikel 2 van de Wet sociale werkvoorziening][ref1] of als bedoeld in
+      [artikel 10b, derde lid, van de Participatiewet][ref2]; of
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0008903#Artikel2
+      [ref2]: https://wetten.overheid.nl/BWBR0015703#Artikel10b
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.6
+    references:
+      - id: ref1
+        bwb_id: BWBR0008903
+        artikel: '2'
+      - id: ref2
+        bwb_id: BWBR0015703
+        artikel: 10b
+  - number: 2.6.3.c
+    text: |-
+      de periode, bedoeld in [artikel 2.8][ref1], voor deze werknemer is verstreken.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.6
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.3'
+  - number: 2.6.4
+    text: |-
+      Met een uitkering als bedoeld in het eerste lid, onderdeel a, wordt gelijkgesteld een naar aard en strekking
+      daarmee overeenkomende uitkering op grond van een wettelijk stelsel inzake sociale zekerheid van een andere
+      lidstaat van de Europese Unie, een andere staat die partij is bij de Overeenkomst betreffende de Europese
+      Economische Ruimte dan wel Zwitserland.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.6
+  - number: 2.6.5
+    text: |-
+      Voor de toepassing van dit artikel worden onderbrekingen van een dienstbetrekking tussen dezelfde werkgever en
+      werknemer binnen de periode, bedoeld in [artikel 2.8, eerste lid][ref1], geacht niet te hebben plaatsgevonden.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.6
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.3'
+  - number: 2.7.1
+    text: |-
+      Het Uitvoeringsinstituut werknemersverzekeringen verstrekt uitsluitend aan degene die een dienstbetrekking met
+      een werkgever aangaat en, met inachtneming van [artikel 2.6, derde tot en met vijfde lid][ref1], voldoet aan
+      de voorwaarden, bedoeld in artikel 2.6, eerste lid, onderdelen a en b, of aan de voorwaarden, bedoel in artikel
+      2.6, tweede lid, op diens verzoek een verklaring dat de aanvrager aan de genoemde voorwaarden voldoet. Indien
+      de doelgroepverklaring niet kan worden verstrekt, wordt het besluit tot weigering uitsluitend verstrekt aan de
+      aanvrager van de doelgroepverklaring. De doelgroepverklaring wordt aangevraagd binnen drie maanden na aanvang van
+      de dienstbetrekking. Bij regeling van Onze Minister van Financiën kunnen, in overeenstemming met Onze Minister
+      van Sociale Zaken en Werkgelegenheid, nadere regels worden gesteld met betrekking tot de geldigheid van de
+      doelgroepverklaring, bedoeld in de eerste volzin.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.7
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.3'
+  - number: 2.7.2
+    text: |-
+      Indien [artikel 2.6, vierde lid][ref1], van toepassing is, overlegt degene die het Uitvoeringsinstituut
+      werknemersverzekeringen verzoekt om een doelgroepverklaring als bedoeld in het eerste lid gelijktijdig met
+      dit verzoek een bewijs dat hij in de maand voorafgaand aan de aanvang van de dienstbetrekking recht had op
+      een uitkering als bedoeld in artikel 2.6, vierde lid. Bij regeling van Onze Minister van Financiën kunnen, in
+      overeenstemming met Onze Minister van Sociale Zaken en Werkgelegenheid, nadere voorwaarden worden gesteld aan dit
+      bewijs.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.7
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.3'
+  - number: 2.7.3
+    text: De werkgever bewaart de doelgroepverklaring, bedoeld in het eerste lid, bij de loonadministratie.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.7
+  - number: 2.8.1
+    text: |-
+      Een loonkostenvoordeel arbeidsgehandicapte werknemer wordt ten hoogste verstrekt over een aaneengesloten periode
+      van drie jaar vanaf de aanvang van de eerste dienstbetrekking tussen de werkgever en de werknemer waarbij aan de
+      voorwaarden, bedoeld in [artikel 2.6][ref1], wordt voldaan.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.8
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.3'
+  - number: 2.8.2
+    text: |-
+      Ingeval de periode waarin het loonkostenvoordeel arbeidsgehandicapte werknemer van toepassing is in de loop van
+      een aangiftetijdvak begint of eindigt, wordt die periode verlengd met het buiten die periode vallende deel van het
+      aangiftetijdvak waarin die periode begint, onderscheidenlijk eindigt.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.8
+  - number: '2.9'
+    text: |-
+      Een loonkostenvoordeel arbeidsgehandicapte werknemer bedraagt € 3,05 per verloond uur van de werknemers die voldoen
+      aan de voorwaarden, bedoeld in [artikel 2.6][ref1], doch ten hoogste € 6.000 per werknemer per kalenderjaar.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.9
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.3'
+  - number: 2.10.1
+    text: |-
+      Een werkgever die een verzoek als bedoeld in [artikel 2.1][ref1] heeft gedaan, heeft recht op een
+      loonkostenvoordeel doelgroep banenafspraak en scholingsbelemmerden indien bij deze werkgever een werknemer in een
+      of meerdere dienstbetrekkingen is die:
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.10
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.1'
+  - number: 2.10.1.a
+    text: 'in de maand voorafgaand aan de aanvang van de dienstbetrekking of op de eerste dag van de dienstbetrekking:'
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.10
+  - number: 2.10.1.a.1°
+    text: |-
+      recht had op arbeidsondersteuning of een arbeidsongeschiktheidsuitkering op grond van de
+      [Wet arbeidsongeschiktheidsvoorziening jonggehandicapten][ref1];
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0008657
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.10
+    references:
+      - id: ref1
+        bwb_id: BWBR0008657
+  - number: 2.10.1.a.2°
+    text: |-
+      geïndiceerd was als bedoeld in de [Wet sociale werkvoorziening][ref1] of een nog geldende indicatiebeschikking had
+      op grond van [artikel 11 van die wet][ref2], zoals dat artikel luidde op 31 december 2014;
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0008903
+      [ref2]: https://wetten.overheid.nl/BWBR0008903#Artikel11
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.10
+    references:
+      - id: ref1
+        bwb_id: BWBR0008903
+      - id: ref2
+        bwb_id: BWBR0008903
+        artikel: '11'
+  - number: 2.10.1.a.3°
+    text: |-
+      met ondersteuning bij de arbeidsinschakeling van het college van burgemeester en wethouders op grond van
+      [artikel 7, eerste lid, onderdeel a, van de Participatiewet][ref1] naar een dienstbetrekking is of wordt toegeleid
+      en van wie door het Uitvoeringsinstituut werknemersverzekeringen is vastgesteld dat hij niet in staat is tot
+      het verdienen van het wettelijk minimumloon, bedoeld in [artikel 2, onderdeel c, van de Participatiewet][ref2],
+      dan wel van wie door het college van burgemeester en wethouders in overeenstemming met de eisen gesteld aan
+      een loonwaardevaststelling op grond van [artikel 10d, eerste of tweede lid, van de Participatiewet][ref3] een
+      loonwaarde is vastgesteld die bij voltijdse arbeid minder bedraagt dan het wettelijk minimumloon, bedoeld in
+      artikel 2, onderdeel c, van de Participatiewet, tenzij de dienstbetrekking is aangegaan voor 1 januari 2016;
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0015703#Artikel7
+      [ref2]: https://wetten.overheid.nl/BWBR0015703#Artikel2
+      [ref3]: https://wetten.overheid.nl/BWBR0015703#Artikel10d
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.10
+    references:
+      - id: ref1
+        bwb_id: BWBR0015703
+        artikel: '7'
+      - id: ref2
+        bwb_id: BWBR0015703
+        artikel: '2'
+      - id: ref3
+        bwb_id: BWBR0015703
+        artikel: 10d
+  - number: 2.10.1.a.4°
+    text: |-
+      voldeed aan een indicatie als bedoeld in
+      [artikel 38b, eerste lid, onderdeel d, van de Wet financiering sociale verzekeringen][ref1]
+      of werkzaam was in een dienstbetrekking die is aangewezen op grond van
+      [artikel 38f, vijfde lid, van de Wet financiering sociale verzekeringen][ref2];
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0017745#Artikel38b
+      [ref2]: https://wetten.overheid.nl/BWBR0017745#Artikel38f
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.10
+    references:
+      - id: ref1
+        bwb_id: BWBR0017745
+        artikel: 38b
+      - id: ref2
+        bwb_id: BWBR0017745
+        artikel: 38f
+  - number: 2.10.1.a.5°
+    text: |-
+      een arbeidsbeperkte is als bedoeld in
+      [artikel 38b, eerste lid, onderdeel f, van de Wet financiering sociale verzekeringen][ref1];
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0017745#Artikel38b
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.10
+    references:
+      - id: ref1
+        bwb_id: BWBR0017745
+        artikel: 38b
+  - number: 2.10.1.a.6°
+    text: |-
+      een arbeidsbeperkte was als bedoeld in
+      [artikel 38b, tweede lid, van de Wet financiering sociale verzekeringen][ref1]; of
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0017745#Artikel38b
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.10
+    references:
+      - id: ref1
+        bwb_id: BWBR0017745
+        artikel: 38b
+  - number: 2.10.1.a.7°
+    text: |-
+      geen werknemer was als bedoeld in het eerste tot en met vijfde subonderdeel, in verband met ziekte of gebrek een
+      belemmering heeft ondervonden bij het volgen van onderwijs en binnen vijf jaar na afronding van dat onderwijs
+      arbeid in dienstbetrekking is gaan verrichten;
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.10
+  - number: 2.10.1.b
+    text: |-
+      niet in de periode van zes maanden voorafgaand aan de datum van indiensttreding in dienstbetrekking bij de
+      werkgever is geweest; en
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.10
+  - number: 2.10.1.c
+    text: |-
+      een geldige doelgroepverklaring als bedoeld in [artikel 2.11][ref1] aan de werkgever heeft verstrekt.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.10
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.4'
+  - number: 2.10.2
+    text: 'Het eerste lid is niet of niet langer van toepassing indien:'
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.10
+  - number: 2.10.2.a
+    text: |-
+      de werknemer de pensioengerechtigde leeftijd, bedoeld in
+      [artikel 7a, eerste lid, van de Algemene Ouderdomswet][ref1], heeft bereikt;
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0002221#Artikel7a
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.10
+    references:
+      - id: ref1
+        bwb_id: BWBR0002221
+        artikel: 7a
+  - number: 2.10.2.b
+    text: |-
+      de werknemer arbeid verricht in een dienstbetrekking als bedoeld in
+      [artikel 2 van de Wet sociale werkvoorziening][ref1] of als bedoeld in
+      [artikel 10b, derde lid, van de Participatiewet][ref2]; of
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0008903#Artikel2
+      [ref2]: https://wetten.overheid.nl/BWBR0015703#Artikel10b
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.10
+    references:
+      - id: ref1
+        bwb_id: BWBR0008903
+        artikel: '2'
+      - id: ref2
+        bwb_id: BWBR0015703
+        artikel: 10b
+  - number: 2.10.2.c
+    text: |-
+      de periode, bedoeld in [artikel 2.12][ref1], voor deze werknemer is verstreken.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.10
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.4'
+  - number: 2.10.3
+    text: |-
+      Voor de toepassing van dit artikel worden onderbrekingen van een dienstbetrekking tussen dezelfde werkgever en
+      werknemer binnen de periode, bedoeld in [artikel 2.12, eerste lid][ref1], geacht niet te hebben plaatsgevonden.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.10
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.4'
+  - number: 2.10.4
+    text: |-
+      Voor de toepassing van dit artikel wordt onder een werknemer als bedoeld in het eerste lid, onderdeel a, tevens
+      verstaan de persoon die in de kalendermaand voorafgaand aan de aanvang van de dienstbetrekking niet langer aan de
+      voorwaarden op grond van het eerste lid, onderdeel a, voldoet en als arbeidsbeperkte wordt beschouwd op grond van
+      [artikel 38b, zesde lid, van de Wet financiering sociale verzekeringen][ref1].
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0017745#Artikel38b
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.10
+    references:
+      - id: ref1
+        bwb_id: BWBR0017745
+        artikel: 38b
+  - number: 2.11.1
+    text: |-
+      Het Uitvoeringsinstituut werknemersverzekeringen verstrekt uitsluitend aan degene die een dienstbetrekking met een
+      werkgever aangaat en, met inachtneming van [artikel 2.10, tweede en derde lid][ref1], voldoet aan de voorwaarden,
+      bedoeld in artikel 2.10, eerste lid, onderdelen a en b, op diens verzoek een verklaring dat de aanvrager aan
+      de genoemde voorwaarden voldoet. Indien de doelgroepverklaring niet kan worden verstrekt, wordt het besluit
+      tot weigering uitsluitend verstrekt aan de aanvrager van de doelgroepverklaring. De doelgroepverklaring wordt
+      aangevraagd binnen drie maanden na aanvang van de dienstbetrekking. Bij regeling van Onze Minister van Financiën
+      kunnen, in overeenstemming met Onze Minister van Sociale Zaken en Werkgelegenheid, nadere regels worden gesteld met
+      betrekking tot de geldigheid van de doelgroepverklaring, bedoeld in de eerste volzin.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.11
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.4'
+  - number: 2.11.2
+    text: De werkgever bewaart de doelgroepverklaring, bedoeld in het eerste lid, bij de loonadministratie.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.11
+  - number: 2.12.1
+    text: |-
+      Een loonkostenvoordeel doelgroep banenafspraak en scholingsbelemmerden wordt ten hoogste verstrekt over een
+      aaneengesloten periode van drie jaar vanaf de aanvang van de eerste dienstbetrekking tussen de werkgever en de
+      werknemer waarbij aan de voorwaarden, bedoeld in [artikel 2.10][ref1], wordt voldaan.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.12
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.4'
+  - number: 2.12.2
+    text: |-
+      Ingeval de periode waarin het loonkostenvoordeel doelgroep banenafspraak en scholingsbelemmerden van toepassing
+      is in de loop van een aangiftetijdvak begint of eindigt, wordt die periode verlengd met het buiten die periode
+      vallende deel van het aangiftetijdvak waarin die periode begint, onderscheidenlijk eindigt.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.12
+  - number: '2.13'
+    text: |-
+      Een loonkostenvoordeel doelgroep banenafspraak en scholingsbelemmerden bedraagt € 1,01 per verloond uur van de
+      werknemers die voldoen aan de voorwaarden, bedoeld in [artikel 2.10][ref1], doch ten hoogste € 2.000 per werknemer
+      per kalenderjaar.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.13
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.4'
+  - number: 2.14.1
+    text: |-
+      Een werkgever die een verzoek als bedoeld in [artikel 2.1][ref1] heeft gedaan, heeft recht op een
+      loonkostenvoordeel herplaatsen arbeidsgehandicapte werknemer indien bij deze werkgever een werknemer in een of
+      meerdere dienstbetrekkingen is die:
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.14
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.1'
+  - number: 2.14.1.a
+    text: |-
+      zijn eigen arbeid geheel of gedeeltelijk hervat of een andere functie bij dezelfde werkgever gaat bekleden en in de
+      maand voorafgaand aan de hervatting van zijn eigen arbeid of het gaan bekleden van een andere functie bij dezelfde
+      werkgever:
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.14
+  - number: 2.14.1.a.1°
+    text: |-
+      recht had op een uitkering op grond van de [Wet werk en inkomen naar arbeidsvermogen][ref1]; of
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0019057
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.14
+    references:
+      - id: ref1
+        bwb_id: BWBR0019057
+  - number: 2.14.1.a.2°
+    text: |-
+      een persoon is die voor 1 januari 2006 arbeidsgehandicapte is geworden als bedoeld in
+      [artikel 2 van de Wet op de (re)integratie arbeidsgehandicapten][ref1] in verband met het recht op een
+      arbeidsongeschiktheidsuitkering op grond van de [Wet op de arbeidsongeschiktheidsverzekering][ref2] of de
+      [Wet arbeidsongeschiktheidsverzekering zelfstandigen][ref3], en arbeidsgehandicapte zou zijn geweest als bedoeld in
+      dat artikel indien dat artikel niet zou zijn ingetrokken; en
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0009565#Artikel2
+      [ref2]: https://wetten.overheid.nl/BWBR0002524
+      [ref3]: https://wetten.overheid.nl/BWBR0008656
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.14
+    references:
+      - id: ref1
+        bwb_id: BWBR0009565
+        artikel: '2'
+      - id: ref2
+        bwb_id: BWBR0002524
+      - id: ref3
+        bwb_id: BWBR0008656
+  - number: 2.14.1.b
+    text: |-
+      een geldige doelgroepverklaring als bedoeld in [artikel 2.15][ref1] aan de werkgever heeft verstrekt.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.14
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.5'
+  - number: 2.14.2
+    text: 'Het eerste lid is niet of niet langer van toepassing indien:'
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.14
+  - number: 2.14.2.a
+    text: |-
+      de werknemer de pensioengerechtigde leeftijd, bedoeld in
+      [artikel 7a, eerste lid, van de Algemene Ouderdomswet][ref1], heeft bereikt;
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0002221#Artikel7a
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.14
+    references:
+      - id: ref1
+        bwb_id: BWBR0002221
+        artikel: 7a
+  - number: 2.14.2.b
+    text: |-
+      de werknemer arbeid verricht in een dienstbetrekking als bedoeld in
+      [artikel 2 van de Wet sociale werkvoorziening][ref1] of als bedoeld in
+      [artikel 10b, derde lid, van de Participatiewet][ref2]; of
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0008903#Artikel2
+      [ref2]: https://wetten.overheid.nl/BWBR0015703#Artikel10b
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.14
+    references:
+      - id: ref1
+        bwb_id: BWBR0008903
+        artikel: '2'
+      - id: ref2
+        bwb_id: BWBR0015703
+        artikel: 10b
+  - number: 2.14.2.c
+    text: |-
+      de periode, bedoeld in [artikel 2.16][ref1], voor deze werknemer is verstreken.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.14
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.5'
+  - number: 2.14.3
+    text: |-
+      Met een uitkering als bedoeld in het eerste lid, onderdeel a, wordt gelijkgesteld een naar aard en strekking
+      daarmee overeenkomende uitkering op grond van een wettelijk stelsel inzake sociale zekerheid van een andere
+      lidstaat van de Europese Unie, een andere staat die partij is bij de Overeenkomst betreffende de Europese
+      Economische Ruimte dan wel Zwitserland.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.14
+  - number: 2.14.4
+    text: |-
+      Voor de toepassing van dit artikel worden onderbrekingen van een dienstbetrekking tussen dezelfde werkgever en
+      werknemer binnen de periode, bedoeld in [artikel 2.16, eerste lid][ref1], geacht niet te hebben plaatsgevonden.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.14
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.5'
+  - number: 2.15.1
+    text: |-
+      Het Uitvoeringsinstituut werknemersverzekeringen verstrekt uitsluitend aan degene die zijn eigen arbeid geheel
+      of gedeeltelijk hervat of een andere functie bij dezelfde werkgever gaat bekleden en, met inachtneming van
+      [artikel 2.14, tweede tot en met vierde lid][ref1], voldoet aan de voorwaarden, bedoeld in artikel 2.14, eerste
+      lid, onderdeel a, op diens verzoek een verklaring dat de aanvrager aan de genoemde voorwaarden voldoet. Indien
+      de doelgroepverklaring niet kan worden verstrekt, wordt het besluit tot weigering uitsluitend verstrekt aan de
+      aanvrager van de doelgroepverklaring. De doelgroepverklaring wordt aangevraagd binnen drie maanden na de gehele of
+      gedeeltelijke hervatting van zijn eigen arbeid of het gaan bekleden van een andere functie. Bij regeling van Onze
+      Minister van Financiën kunnen, in overeenstemming met Onze Minister van Sociale Zaken en Werkgelegenheid, nadere
+      regels worden gesteld met betrekking tot de geldigheid van de doelgroepverklaring, bedoeld in de eerste volzin.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.15
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.5'
+  - number: 2.15.2
+    text: |-
+      Indien [artikel 2.14, derde lid][ref1], van toepassing is, overlegt degene die het Uitvoeringsinstituut
+      werknemersverzekeringen verzoekt om een doelgroepverklaring als bedoeld in het eerste lid gelijktijdig met dit
+      verzoek een bewijs dat hij in de maand voorafgaand aan de hervatting van zijn eigen arbeid of het gaan bekleden
+      van een andere functie bij dezelfde werkgever recht had op een uitkering als bedoeld in artikel 2.14, derde lid.
+      Bij regeling van Onze Minister van Financiën kunnen, in overeenstemming met Onze Minister van Sociale Zaken en
+      Werkgelegenheid, nadere voorwaarden worden gesteld aan dit bewijs.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.15
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.5'
+  - number: 2.15.3
+    text: De werkgever bewaart de doelgroepverklaring, bedoeld in het eerste lid, bij de loonadministratie.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.15
+  - number: 2.16.1
+    text: |-
+      Een loonkostenvoordeel herplaatsen arbeidsgehandicapte werknemer wordt ten hoogste verstrekt over een
+      aaneengesloten periode van een jaar vanaf het moment waarop de werknemer zijn eigen arbeid geheel of gedeeltelijk
+      heeft hervat of een andere functie bij dezelfde werkgever is gaan bekleden, waarbij aan de voorwaarden, bedoeld in
+      [artikel 2.14][ref1], wordt voldaan.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.16
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.5'
+  - number: 2.16.2
+    text: |-
+      Ingeval de periode waarin het loonkostenvoordeel herplaatsen arbeidsgehandicapte werknemer van toepassing is in de
+      loop van een aangiftetijdvak begint of eindigt, wordt die periode verlengd met het buiten die periode vallende deel
+      van het aangiftetijdvak waarin die periode begint, onderscheidenlijk eindigt.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.16
+  - number: '2.17'
+    text: |-
+      Een loonkostenvoordeel herplaatsen arbeidsgehandicapte werknemer bedraagt € 3,05 per verloond uur van de werknemers
+      die voldoen aan de voorwaarden, bedoeld in [artikel 2.14][ref1], doch ten hoogste € 6.000 per werknemer per
+      kalenderjaar.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.17
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.5'
+  - number: 3.1.1
+    text: |-
+      Een werkgever heeft recht op een lage-inkomensvoordeel indien bij deze werkgever een werknemer in een of meerdere
+      dienstbetrekkingen is waarvan:
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel3.1
+    # LIV — Lage-inkomensvoordeel, Wtl artikel 3.1 (recht) + 3.2 (hoogte).
+    # Geldend op peildatum 2024-01-01. Per 2025-01-01 afgeschaft door
+    # Wet 36458 (afschaffing LIV).
+    #
+    # Lid 1 — werkgever heeft recht als werknemer in dienstbetrekking is
+    #         met (a) gemiddeld uurloon binnen LIV-grenzen en
+    #         (b) ten minste 1248 verloonde uren.
+    # Lid 2 — uitsluiting bij pensioengerechtigde leeftijd.
+    # Lid 3 — gemiddeld uurloon = jaarloon / verloonde uren.
+    # Lid 4 — uurloongrenzen worden jaarlijks aangepast (open_term).
+    # Lid 5 — afwijking 2024: bovengrens = 104% van ondergrens
+    #         (volgt uit ministeriële regeling, hier hardgecodeerd).
+    # Hoogte (artikel 3.2.1): € 0,49 per verloond uur, max € 960 per
+    #         werknemer per kalenderjaar.
+    machine_readable:
+      # 2024-specifieke bedragen (uit Regeling lage-inkomensvoordeel,
+      # bij wijziging via art. 3.1 lid 4 + lid 5) zijn als literals
+      # in de actions opgenomen — definitions-block werkt momenteel
+      # niet vanuit een tweede machine_readable in dezelfde wet
+      # (zie #TODO definitions-loading).
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            description: BSN van de werknemer.
+          - name: jaarloon_eurocent
+            type: amount
+            required: true
+            type_spec:
+              unit: eurocent
+            description: |-
+              Lid 3: jaarloon van de werknemer in eurocent
+              (loonaangifte, Belastingdienst).
+          - name: verloonde_uren
+            type: number
+            required: true
+            description: |-
+              Verloonde uren in het kalenderjaar (loonaangifte).
+              Lid 1 onderdeel b drempel: 1248.
+          - name: heeft_pensioengerechtigde_leeftijd_bereikt
+            type: boolean
+            required: true
+            description: |-
+              Lid 2: uitsluitingsgrond. Werknemer heeft de
+              pensioengerechtigde leeftijd bereikt (artikel 7a lid 1 AOW).
+        output:
+          - name: gemiddeld_uurloon_eurocent
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: |-
+              Lid 3: jaarloon / verloonde uren (alleen zinvol bij
+              verloonde_uren > 0).
+          - name: voldoet_aan_uurloongrens
+            type: boolean
+            description: Lid 1 onderdeel a — gemiddeld uurloon binnen LIV-grenzen.
+          - name: voldoet_aan_minimum_verloonde_uren
+            type: boolean
+            description: Lid 1 onderdeel b — ≥ 1248 verloonde uren.
+          - name: heeft_recht_op_liv
+            type: boolean
+          - name: hoogte_liv_per_jaar_eurocent
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: |-
+              Artikel 3.2.1: € 0,49 × verloonde uren, met maximum € 960.
+              Bij geen recht = 0.
+        actions:
+          - output: gemiddeld_uurloon_eurocent
+            value:
+              operation: DIVIDE
+              values:
+                - $jaarloon_eurocent
+                - $verloonde_uren
+              legal_basis:
+                law: Wet tegemoetkomingen loondomein
+                bwb_id: BWBR0037522
+                article: '3.1'
+                paragraph: '3'
+                explanation: 'Gemiddeld uurloon = jaarloon / verloonde uren.'
+          - output: voldoet_aan_uurloongrens
+            value:
+              operation: AND
+              conditions:
+                - operation: GREATER_THAN_OR_EQUAL
+                  subject: $gemiddeld_uurloon_eurocent
+                  value: 1433
+                - operation: LESS_THAN_OR_EQUAL
+                  subject: $gemiddeld_uurloon_eurocent
+                  value: 1491
+              legal_basis:
+                law: Wet tegemoetkomingen loondomein
+                bwb_id: BWBR0037522
+                article: '3.1'
+                paragraph: '1'
+                sentence: 'a'
+                explanation: |-
+                  2024-grenzen: € 14,33 ondergrens, € 14,91 bovengrens
+                  (= 104% van ondergrens, lid 5).
+          - output: voldoet_aan_minimum_verloonde_uren
+            value:
+              operation: GREATER_THAN_OR_EQUAL
+              subject: $verloonde_uren
+              value: 1248
+              legal_basis:
+                law: Wet tegemoetkomingen loondomein
+                bwb_id: BWBR0037522
+                article: '3.1'
+                paragraph: '1'
+                sentence: 'b'
+          - output: heeft_recht_op_liv
+            value:
+              operation: AND
+              conditions:
+                - $voldoet_aan_uurloongrens
+                - $voldoet_aan_minimum_verloonde_uren
+                - operation: NOT
+                  value: $heeft_pensioengerechtigde_leeftijd_bereikt
+              legal_basis:
+                law: Wet tegemoetkomingen loondomein
+                bwb_id: BWBR0037522
+                article: '3.1'
+                explanation: |-
+                  Lid 1 (a + b cumulatief) en lid 2 (uitsluiting
+                  pensioengerechtigden).
+          - output: hoogte_liv_per_jaar_eurocent
+            value:
+              operation: IF
+              cases:
+                - when: $heeft_recht_op_liv
+                  then:
+                    operation: MIN
+                    values:
+                      - operation: MULTIPLY
+                        values:
+                          - 49
+                          - $verloonde_uren
+                      - 96000
+              default: 0
+              legal_basis:
+                law: Wet tegemoetkomingen loondomein
+                bwb_id: BWBR0037522
+                article: '3.2'
+                paragraph: '1'
+                explanation: |-
+                  € 0,49 per verloond uur, met een maximum van € 960
+                  per werknemer per kalenderjaar.
+      open_terms:
+        - id: liv_uurloongrenzen_per_jaar
+          type: amount
+          required: false
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+          legal_basis: artikel 3.1 lid 4 Wet tegemoetkomingen loondomein
+          description: |-
+            Lid 4 — bedragen worden jaarlijks gewijzigd via Regeling
+            van Minister van SZW na overleg met Minister van Financiën,
+            in lijn met aanpassingen artikel 8 lid 1 Wml. In deze
+            machine_readable hardgecodeerd voor 2024 als definitions.
+          default:
+            actions:
+              - output: liv_uurloongrenzen_per_jaar
+                value: 1433
+      untranslatables:
+        - construct: dienstbetrekking-aggregatie ('in een of meerdere dienstbetrekkingen')
+          reason: |-
+            Lid 1 staat toe dat verloonde uren over meerdere
+            dienstbetrekkingen bij dezelfde werkgever worden opgeteld.
+            Deze machine_readable rekent op één geaggregeerd jaarloon
+            en uren-totaal en delegeert de aggregatie naar de
+            invoerende laag (loonaangifte / Belastingdienst).
+          legal_text_excerpt: 'in een of meerdere dienstbetrekkingen'
+          accepted: true
+        - construct: aangiftetijdvak-verlenging bij pensioenleeftijd
+          reason: |-
+            Lid 2 verlengt het LIV-recht binnen het lopende
+            aangiftetijdvak waarin de werknemer pensioengerechtigd
+            wordt. Een dergelijke partial-period berekening is met de
+            huidige operatie-set niet faithful te modelleren; de engine
+            beoordeelt enkel de bool-status op peildatum.
+          legal_text_excerpt: |-
+            Ingeval de periode waarin het lage-inkomensvoordeel van
+            toepassing is, in de loop van een aangiftetijdvak eindigt,
+            wordt die periode verlengd...
+          accepted: true
+  - number: 3.1.1.a
+    text: |-
+      het gemiddelde uurloon in het kalenderjaar gelijk is aan of meer bedraagt dan € 14,33 maar niet meer dan € 14,91;
+      en
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel3.1
+  - number: 3.1.1.b
+    text: in het kalenderjaar ten minste 1248 verloonde uren zijn opgenomen in de loonaangifte.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel3.1
+  - number: 3.1.2
+    text: |-
+      Het eerste lid is niet of niet langer van toepassing indien de werknemer de pensioengerechtigde leeftijd, bedoeld
+      in [artikel 7a, eerste lid, van de Algemene Ouderdomswet][ref1], heeft bereikt. Ingeval de periode waarin het lage-
+      inkomensvoordeel van toepassing is, in de loop van een aangiftetijdvak eindigt, wordt die periode verlengd met het
+      buiten die periode vallende deel van het aangiftetijdvak waarin die periode eindigt.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0002221#Artikel7a
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel3.1
+    references:
+      - id: ref1
+        bwb_id: BWBR0002221
+        artikel: 7a
+  - number: 3.1.3
+    text: |-
+      Het gemiddelde uurloon, bedoeld in het eerste lid, onderdeel a, wordt vastgesteld door het jaarloon te delen door
+      de verloonde uren.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel3.1
+  - number: 3.1.4
+    text: |-
+      Bij het begin van het kalenderjaar worden de bedragen, genoemd in het eerste lid, bij regeling van Onze Minister
+      van Sociale Zaken en Werkgelegenheid, na overleg met Onze Minister van Financiën, gewijzigd in andere bedragen
+      waarbij de te wijzigen bedragen worden verhoogd of verlaagd overeenkomstig de wijzigingen van de bedragen, genoemd
+      in [artikel 8, eerste lid, van de Wet minimumloon en minimumvakantiebijslag][ref1].
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0002638#Artikel8
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel3.1
+    references:
+      - id: ref1
+        bwb_id: BWBR0002638
+        artikel: '8'
+  - number: 3.1.5
+    text: |-
+      In afwijking van het vierde lid wordt de bovengrens van het uurloon, bedoeld in het eerste lid, onderdeel a, bij
+      het begin van het kalenderjaar 2024 bij regeling van Onze Minister van Sociale Zaken en Werkgelegenheid, na overleg
+      met Onze Minister van Financiën, gewijzigd zodat deze gelijk is aan 104% van de ondergrens van het uurloon, bedoeld
+      in het eerste lid, onderdeel a.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel3.1
+  - number: 3.2.1
+    text: |-
+      Een lage-inkomensvoordeel bedraagt € 0,49 per verloond uur van de werknemers die voldoen aan de voorwaarde, bedoeld
+      in [artikel 3.1, eerste lid, onderdeel a][ref1], doch ten hoogste € 960 per werknemer per kalenderjaar.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel3
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel3.2
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '3'
+        hoofdstuk: III
+  - number: 3.2.2
+    text: |-
+      In afwijking van het eerste lid bedraagt een lage-inkomensvoordeel over het kalenderjaar 2022 € 0,78 per verloond
+      uur van de werknemers die voldoen aan de voorwaarde, bedoeld in [artikel 3.1, eerste lid, onderdeel a][ref1], doch
+      ten hoogste € 1.520 per werknemer.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel3
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel3.2
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '3'
+        hoofdstuk: III
+  - number: 4.1.1
+    text: |-
+      Het Uitvoeringsinstituut werknemersverzekeringen beoordeelt alle door een werkgever in het kalenderjaar gedane
+      verzoeken om een of meer tegemoetkomingen als bedoeld in de [artikelen 2.1][ref1] en [3.1][ref2] gezamenlijk,
+      berekent de hoogte van de tegemoetkomingen en stelt de uitkomst beschikbaar aan de inspecteur, waarbij:
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref2]: https://wetten.overheid.nl/BWBR0037522#Artikel3
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.1
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.1'
+      - id: ref2
+        bwb_id: BWBR0037522
+        artikel: '3'
+        hoofdstuk: III
+  - number: 4.1.1.a
+    text: |-
+      het recht op de tegemoetkomingen wordt beoordeeld op basis van de beschikbare gegevens bij het Uitvoeringsinstituut
+      werknemersverzekeringen of het college van burgemeester en wethouders omtrent de doelgroep en de gegevens in de
+      polisadministratie omtrent de overige voorwaarden; en
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.1
+  - number: 4.1.1.b
+    text: de hoogte van de tegemoetkomingen wordt berekend op basis van de gegevens in de polisadministratie.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.1
+  - number: 4.1.2
+    text: |-
+      De in aanmerking te nemen gegevens uit de loonaangifte van de werkgever worden beoordeeld op grond van de
+      loonaangiften over een kalenderjaar zoals die uiterlijk op 1 mei van het daaropvolgende kalenderjaar zijn ingediend
+      alsmede de aanvullingen daarop die uiterlijk op die datum hebben plaatsgevonden.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.1
+  - number: 4.1.3
+    text: |-
+      In afwijking in zoverre van het eerste lid wordt, indien voor een werknemer recht bestaat op meer dan
+      een tegemoetkoming als bedoeld in de [artikelen 2.1][ref1] en [3.1][ref2] het totaal berekende bedrag aan
+      tegemoetkomingen voor deze werknemer gemaximeerd op het bedrag van de berekende hoogste tegemoetkoming voor deze
+      werknemer in het desbetreffende kalenderjaar, met dien verstande dat bij gelijke hoogte van alle tegemoetkomingen
+      waar recht op bestaat voor de werknemer uitsluitend de tegemoetkoming wordt verstrekt die als eerste in deze wet
+      wordt genoemd.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref2]: https://wetten.overheid.nl/BWBR0037522#Artikel3
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.1
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.1'
+      - id: ref2
+        bwb_id: BWBR0037522
+        artikel: '3'
+        hoofdstuk: III
+  - number: 4.1.4
+    text: |-
+      De inspecteur verstrekt aan werkgevers een overzicht van de werknemers waarvoor de werkgever een verzoek
+      heeft gedaan en de voorgenomen beoordeling en berekening, bedoeld in het eerste lid, met betrekking tot deze
+      werknemers. De verstrekking van dit overzicht vindt plaats vóór 15 maart volgend op het kalenderjaar waarover de
+      tegemoetkomingen zijn aangevraagd waarbij rekening gehouden wordt met verzoeken die uiterlijk op 31 januari van het
+      jaar volgend op het kalenderjaar waarover de tegemoetkomingen zijn aangevraagd zijn ingediend.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.1
+  - number: 4.1.5
+    text: |-
+      Voor de toepassing van dit artikel en [artikel 4.2][ref1] wordt de werkgever geacht een verzoek om een
+      tegemoetkoming als bedoeld in [artikel 3.1][ref2] te hebben gedaan indien uit de loonaangifte blijkt dat aan de
+      voorwaarden, bedoeld in artikel 3.1, is voldaan.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel4
+      [ref2]: https://wetten.overheid.nl/BWBR0037522#Artikel3
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.1
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '4'
+        hoofdstuk: IV
+      - id: ref2
+        bwb_id: BWBR0037522
+        artikel: '3'
+        hoofdstuk: III
+  - number: 4.2.1
+    text: |-
+      Op alle door de werkgever in het kalenderjaar gedane verzoeken om een of meer tegemoetkomingen als bedoeld in
+      de [artikelen 2.1][ref1] en [3.1][ref2] gezamenlijk beslist de inspecteur. Bij regeling van Onze Minister van
+      Financiën kunnen, in overeenstemming met Onze Minister van Sociale Zaken en Werkgelegenheid, nadere regels gesteld
+      worden met betrekking tot de gegevens die op de beschikking vermeld worden.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref2]: https://wetten.overheid.nl/BWBR0037522#Artikel3
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.2
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.1'
+      - id: ref2
+        bwb_id: BWBR0037522
+        artikel: '3'
+        hoofdstuk: III
+  - number: 4.2.2
+    text: |-
+      De beschikking van de inspecteur, bedoeld in het eerste lid, wordt gegeven overeenkomstig de beoordeling en
+      berekening, bedoeld in [artikel 4.1, eerste lid][ref1].
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel4
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.2
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '4'
+        hoofdstuk: IV
+  - number: 4.2.3
+    text: |-
+      De beschikking van de inspecteur, bedoeld in het eerste lid, wordt gegeven vóór 1 augustus volgend op het
+      kalenderjaar waarover de tegemoetkoming wordt aangevraagd.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.2
+  - number: 4.3.1
+    text: |-
+      De inspecteur is bevoegd de op de voet van [artikel 4.2][ref1] gegeven beschikking tot vaststelling van een
+      tegemoetkoming te herzien ten nadele van de werkgever of gewezen werkgever indien enig feit grond oplevert voor
+      het vermoeden dat de beschikking is gegeven op grond van onjuiste of onvolledige gegevens. Een herziening is
+      uitsluitend mogelijk indien de onjuistheid van de beschikking een gevolg is van een feit dat aan de werkgever of
+      de gewezen werkgever kan worden toegerekend of de werkgever of de gewezen werkgever redelijkerwijs kenbaar had
+      kunnen zijn. De inspecteur stelt de herziening bij beschikking vast. De bevoegdheid tot herziening vervalt door
+      verloop van 5 jaren na het einde van het kalenderjaar waarop de beschikking tot vaststelling van een tegemoetkoming
+      betrekking heeft.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel4
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.3
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '4'
+        hoofdstuk: IV
+  - number: 4.3.2
+    text: |-
+      Beschikkingen van de inspecteur op grond van dit artikel worden gegeven in overeenstemming met het
+      Uitvoeringsinstituut werknemersverzekeringen.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.3
+  - number: 4.4.1
+    text: |-
+      De uitbetaling van een tegemoetkoming geschiedt door de ontvanger met toepassing van de
+      [Invorderingswet 1990][ref1] en de [Kostenwet invordering rijksbelastingen][ref2] als ware die tegemoetkoming een
+      terug te geven bedrag aan rijksbelastingen.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0004770
+      [ref2]: https://wetten.overheid.nl/BWBR0002645
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.4
+    references:
+      - id: ref1
+        bwb_id: BWBR0004770
+      - id: ref2
+        bwb_id: BWBR0002645
+  - number: 4.4.2
+    text: |-
+      Een tegemoetkoming wordt uitbetaald binnen zes weken na de dagtekening van de beschikking, bedoeld in
+      [artikel 4.2][ref1].
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel4
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.4
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '4'
+        hoofdstuk: IV
+  - number: 4.4.3
+    text: |-
+      Invordering van een terug te vorderen bedrag geschiedt door de ontvanger met toepassing van de
+      [Invorderingswet 1990][ref1] en de [Kostenwet invordering rijksbelastingen][ref2] als ware die terugvordering een
+      te betalen bedrag aan rijksbelastingen.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0004770
+      [ref2]: https://wetten.overheid.nl/BWBR0002645
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.4
+    references:
+      - id: ref1
+        bwb_id: BWBR0004770
+      - id: ref2
+        bwb_id: BWBR0002645
+  - number: 4.4.4
+    text: |-
+      Een terug te vorderen bedrag is invorderbaar zes weken na dagtekening van de herzieningsbeschikking, bedoeld in
+      [artikel 4.3][ref1].
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel4
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.4
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '4'
+        hoofdstuk: IV
+  - number: 4.5.1
+    text: |-
+      Op het bezwaar, beroep, hoger beroep en beroep in cassatie inzake de
+      beschikkingen, bedoeld in de [artikelen 4.2][ref1], [4.3][ref2] en [4.7][ref3], is
+      [hoofdstuk V van de Algemene wet inzake rijksbelastingen][ref4] van overeenkomstige toepassing.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel4
+      [ref2]: https://wetten.overheid.nl/BWBR0037522#Artikel4
+      [ref3]: https://wetten.overheid.nl/BWBR0037522#Artikel4
+      [ref4]: https://wetten.overheid.nl/BWBR0002320#HoofdstukV
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.5
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '4'
+        hoofdstuk: IV
+      - id: ref2
+        bwb_id: BWBR0037522
+        artikel: '4'
+        hoofdstuk: IV
+      - id: ref3
+        bwb_id: BWBR0037522
+        artikel: '4'
+        hoofdstuk: IV
+      - id: ref4
+        bwb_id: BWBR0002320
+        hoofdstuk: V
+  - number: 4.5.2
+    text: |-
+      In afwijking van [artikel 7:10, eerste lid, van de Algemene wet bestuursrecht][ref1] beslist de inspecteur
+      op het bezwaarschrift binnen 26 weken gerekend vanaf de dag na die waarop de termijn voor het indienen van
+      het bezwaarschrift is verstreken. De inspecteur beslist op het bezwaarschrift inzake de verstrekking van een
+      tegemoetkoming als bedoeld in de [artikelen 2.1][ref2] en [3.1][ref3] na overleg met het Uitvoeringsinstituut
+      werknemersverzekeringen.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0005537#Artikel7
+      [ref2]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref3]: https://wetten.overheid.nl/BWBR0037522#Artikel3
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.5
+    references:
+      - id: ref1
+        bwb_id: BWBR0005537
+        artikel: '7'
+      - id: ref2
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.1'
+      - id: ref3
+        bwb_id: BWBR0037522
+        artikel: '3'
+        hoofdstuk: III
+  - number: 4.6.1
+    text: |-
+      De rijksbelastingdienst en het college van burgemeester en wethouders zijn verplicht aan het Uitvoeringsinstituut
+      werknemersverzekeringen kosteloos de opgaven en inlichtingen te verstrekken die noodzakelijk zijn voor de
+      uitvoering van deze wet.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.6
+  - number: 4.6.2
+    text: |-
+      Het Uitvoeringsinstituut werknemersverzekeringen is verplicht aan de rijksbelastingdienst kosteloos de opgaven en
+      inlichtingen te verstrekken die noodzakelijk zijn voor de uitvoering van deze wet.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.6
+  - number: 4.6.3
+    text: |-
+      Het Uitvoeringsinstituut werknemersverzekeringen en de rijksbelastingdienst zijn bevoegd de gegevens die zij
+      op grond van [artikel 33 van de Wet structuur uitvoeringsorganisatie werk en inkomen][ref1] verwerken in de
+      polisadministratie voor zover noodzakelijk tevens te verwerken voor de vaststelling van de tegemoetkomingen,
+      bedoeld in de [artikelen 2.1][ref2] en [3.1][ref3].
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0013060#Artikel33
+      [ref2]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref3]: https://wetten.overheid.nl/BWBR0037522#Artikel3
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.6
+    references:
+      - id: ref1
+        bwb_id: BWBR0013060
+        artikel: '33'
+      - id: ref2
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.1'
+      - id: ref3
+        bwb_id: BWBR0037522
+        artikel: '3'
+        hoofdstuk: III
+  - number: 4.7.1
+    text: |-
+      Indien de werkgever een verzoek als bedoeld in [artikel 2.1][ref1] heeft gedaan met betrekking tot een
+      werknemer die niet voldoet aan de voorwaarden, bedoeld in de [artikelen 2.2][ref2], [2.6][ref3], [2.10][ref4] of
+      [2.14][ref5], vormt dit een verzuim waarvoor de inspecteur hem een bestuurlijke boete van ten hoogste € 1.319 per
+      verzoek per jaar kan opleggen.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref2]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref3]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref4]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref5]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.7
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.1'
+      - id: ref2
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.2'
+      - id: ref3
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.3'
+      - id: ref4
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.4'
+      - id: ref5
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.5'
+  - number: 4.7.2
+    text: |-
+      Indien de werkgever in de loonaangifte onjuiste gegevens heeft opgenomen waarvan de juistheid voor de toepassing
+      van deze wet van belang is, vormt dit een verzuim waarvoor de inspecteur hem een bestuurlijke boete van ten hoogste
+      € 1.319 per gegeven per werknemer per jaar kan opleggen.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.7
+  - number: 4.7.3
+    text: |-
+      [Artikel 67cb van de Algemene wet inzake rijksbelastingen][ref1] is van overeenkomstige toepassing op het in
+      het eerste lid en tweede lid genoemde bedrag, met dien verstande dat de wijziging van het bedrag voor het eerst
+      plaatsvindt per 1 januari 2020.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0002320#Artikel67cb
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.7
+    references:
+      - id: ref1
+        bwb_id: BWBR0002320
+        artikel: 67cb
+  - number: 4.7.4
+    text: |-
+      Wanneer de werkgever die een verzoek als bedoeld in [artikel 2.1][ref1] heeft gedaan met betrekking tot een
+      werknemer die niet voldoet aan de voorwaarden, bedoeld in de [artikelen 2.2][ref2], [2.6][ref3], [2.10][ref4] of
+      [2.14][ref5], dit verzoek door middel van een correctiebericht intrekt na de in [artikel 4.1, tweede lid][ref6],
+      bedoelde datum volgend op het kalenderjaar waarop het verzoek betrekking heeft, maar voordat hij weet of
+      redelijkerwijs moet vermoeden dat de inspecteur met de onjuistheid bekend is of bekend zal worden, is dit een
+      omstandigheid die aanleiding geeft tot matiging van de boete.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref2]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref3]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref4]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref5]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref6]: https://wetten.overheid.nl/BWBR0037522#Artikel4
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.7
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.1'
+      - id: ref2
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.2'
+      - id: ref3
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.3'
+      - id: ref4
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.4'
+      - id: ref5
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.5'
+      - id: ref6
+        bwb_id: BWBR0037522
+        artikel: '4'
+        hoofdstuk: IV
+  - number: 4.7.5
+    text: |-
+      De inspecteur stelt de bestuurlijke boete bij beschikking vast. De bevoegdheid tot het opleggen van een boete
+      vervalt door verloop van 5 jaren na het einde van het kalenderjaar waarop het verzoek, bedoeld in het eerste lid,
+      betrekking heeft.
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.7
+  - number: 4.7.6
+    text: |-
+      Op dit artikel zijn de [artikelen 67pa][ref1] en [67pb van de Algemene wet inzake rijksbelastingen][ref2] van
+      overeenkomstige toepassing.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0002320#Artikel67pa
+      [ref2]: https://wetten.overheid.nl/BWBR0002320#Artikel67pb
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel4.7
+    references:
+      - id: ref1
+        bwb_id: BWBR0002320
+        artikel: 67pa
+      - id: ref2
+        bwb_id: BWBR0002320
+        artikel: 67pb
+  - number: '6.1'
+    text: |-
+      Teneinde zo veel mogelijk evenwicht te bereiken tussen de tegemoetkomingen, bedoeld in de [artikelen 2.2][ref1],
+      [2.6][ref2], [2.10][ref3], [2.14][ref4] en [3.1][ref5], en de hiervoor in de rijksbegroting opgenomen bedragen,
+      kunnen bij regeling van Onze Minister van Sociale Zaken en Werkgelegenheid met ingang van 1 januari van enig jaar
+      de in de [artikelen 2.5][ref6], [2.9][ref7], [2.13][ref8], [2.17][ref9] en [3.2][ref10] opgenomen bedragen worden
+      verlaagd dan wel verhoogd.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref2]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref3]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref4]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref5]: https://wetten.overheid.nl/BWBR0037522#Artikel3
+      [ref6]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref7]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref8]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref9]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref10]: https://wetten.overheid.nl/BWBR0037522#Artikel3
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel6.1
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.2'
+      - id: ref2
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.3'
+      - id: ref3
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.4'
+      - id: ref4
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.5'
+      - id: ref5
+        bwb_id: BWBR0037522
+        artikel: '3'
+        hoofdstuk: III
+      - id: ref6
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.2'
+      - id: ref7
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.3'
+      - id: ref8
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.4'
+      - id: ref9
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.5'
+      - id: ref10
+        bwb_id: BWBR0037522
+        artikel: '3'
+        hoofdstuk: III
+  - number: '6.2'
+    text: 'Een werkgever die:'
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel6.2
+  - number: 6.2.a
+    text: |-
+      voor een werknemer een verzoek doet als bedoeld in [artikel 2.1][ref1];
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel6.2
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.1'
+  - number: 6.2.b
+    text: |-
+      over het voor de werkgever van toepassing zijnde aangiftetijdvak direct voorafgaand aan
+      de inwerkingtreding van [artikel 5.1][ref1] voor de werknemer, bedoeld in onderdeel a, een
+      premiekorting op grond van de [artikelen 47][ref2], [49][ref3], [122a][ref4], [122b][ref5] of
+      [122l van de Wet financiering sociale verzekeringen][ref6], zoals die luidden op de dag voor inwerkingtreding van
+      artikel 5.1 heeft toegepast in de aangifte over dat tijdvak of uiterlijk op de in [artikel 4.1, tweede lid][ref7],
+      bedoelde datum van het jaar waarin artikel 5.1 in werking is getreden in een correctiebericht als bedoeld in
+      [artikel 28a van de Wet op de loonbelasting 1964][ref8] met betrekking tot die aangifte; en
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel5
+      [ref2]: https://wetten.overheid.nl/BWBR0017745#Artikel47
+      [ref3]: https://wetten.overheid.nl/BWBR0017745#Artikel49
+      [ref4]: https://wetten.overheid.nl/BWBR0017745#Artikel122a
+      [ref5]: https://wetten.overheid.nl/BWBR0017745#Artikel122b
+      [ref6]: https://wetten.overheid.nl/BWBR0017745#Artikel122l
+      [ref7]: https://wetten.overheid.nl/BWBR0037522#Artikel4
+      [ref8]: https://wetten.overheid.nl/BWBR0002471#Artikel28a
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel6.2
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '5'
+        hoofdstuk: V
+      - id: ref2
+        bwb_id: BWBR0017745
+        artikel: '47'
+      - id: ref3
+        bwb_id: BWBR0017745
+        artikel: '49'
+      - id: ref4
+        bwb_id: BWBR0017745
+        artikel: 122a
+      - id: ref5
+        bwb_id: BWBR0017745
+        artikel: 122b
+      - id: ref6
+        bwb_id: BWBR0017745
+        artikel: 122l
+      - id: ref7
+        bwb_id: BWBR0037522
+        artikel: '4'
+        hoofdstuk: IV
+      - id: ref8
+        bwb_id: BWBR0002471
+        artikel: 28a
+  - number: 6.2.c
+    text: |-
+      in de loonaangifte over het laatste aangiftetijdvak van het jaar voorafgaand aan de dag van inwerkingtreding
+      van [artikel 5.1][ref1] de indicatie voor de premiekorting, bedoeld in onderdeel b, heeft aangegeven, dan
+      wel uiterlijk op de in [artikel 4.1, tweede lid][ref2], bedoelde datum van het jaar waarin artikel 5.1 in
+      werking is getreden, de aangifte over dat aangiftetijdvak door middel van een correctiebericht als bedoeld in
+      [artikel 28a van de Wet op de loonbelasting 1964][ref3] heeft aangevuld met een indicatie voor de premiekorting,
+      bedoeld in onderdeel b;
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel5
+      [ref2]: https://wetten.overheid.nl/BWBR0037522#Artikel4
+      [ref3]: https://wetten.overheid.nl/BWBR0002471#Artikel28a
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel6.2
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '5'
+        hoofdstuk: V
+      - id: ref2
+        bwb_id: BWBR0037522
+        artikel: '4'
+        hoofdstuk: IV
+      - id: ref3
+        bwb_id: BWBR0002471
+        artikel: 28a
+  - number: '6.3'
+    text: |-
+      Onze Minister van Sociale Zaken en Werkgelegenheid zendt binnen vier jaar na de inwerkingtreding van deze wet of
+      onderdelen daarvan, en vervolgens telkens na vijf jaar, aan de Staten-Generaal een verslag over de doeltreffendheid
+      en de effecten van de tegemoetkomingen, bedoeld in de [artikelen 2.1][ref1] en [3.1][ref2], in de praktijk.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037522#Artikel2
+      [ref2]: https://wetten.overheid.nl/BWBR0037522#Artikel3
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel6.3
+    references:
+      - id: ref1
+        bwb_id: BWBR0037522
+        artikel: '2'
+        hoofdstuk: II
+        paragraaf: '2.1'
+      - id: ref2
+        bwb_id: BWBR0037522
+        artikel: '3'
+        hoofdstuk: III
+  - number: '6.4'
+    text: |-
+      De artikelen van deze wet treden in werking op een bij koninklijk besluit te bepalen tijdstip, dat voor de
+      verschillende artikelen of onderdelen daarvan verschillend kan worden vastgesteld. In dat besluit wordt zo nodig
+      toepassing gegeven aan [artikel 12 van de Wet raadgevend referendum][ref1].
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0036443#Artikel12
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel6.4
+    references:
+      - id: ref1
+        bwb_id: BWBR0036443
+        artikel: '12'
+  - number: 6.5.1
+    text: 'Deze wet wordt aangehaald als: Wet tegemoetkomingen loondomein.'
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel6.5
+  - number: 6.5.2
+    text: 'De citeertitel kan worden afgekort tot: Wtl.'
+    url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel6.5

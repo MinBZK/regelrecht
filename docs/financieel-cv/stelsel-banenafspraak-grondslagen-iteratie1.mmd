@@ -1,0 +1,54 @@
+flowchart TB
+  classDef wet fill:#c8e6c9,stroke:#388e3c,stroke-width:3px,color:#000;
+  classDef amvb fill:#ffcc80,stroke:#e65100,stroke-width:2px,color:#000;
+  classDef mr fill:#fff59d,stroke:#f9a825,stroke-width:2px,color:#000;
+  classDef beleid fill:#e1bee7,stroke:#7b1fa2,stroke-width:2px,color:#000;
+  classDef gem fill:#bbdefb,stroke:#1976d2,stroke-width:2px,color:#000;
+  classDef awb fill:#cfd8dc,stroke:#37474f,stroke-width:3px,color:#000;
+  classDef ontbreekt fill:#fafafa,stroke:#9e9e9e,stroke-width:2px,stroke-dasharray: 6 4,color:#616161;
+
+  subgraph RIJK["<b>RIJK</b>"]
+    direction TB
+
+    subgraph WET_LVL["<b>WET</b> &mdash; formele wet"]
+      direction LR
+      ZW["<b>Ziektewet</b> 29b<br/>NRP<br/><i>BWBR0001888</i>"]:::wet
+      WAJ["<b>Wajong</b> 2:20<br/>LDP<br/><i>BWBR0008657</i>"]:::wet
+      PWET["<b>Pwet</b> 10c + 10d<br/>LKS<br/><i>BWBR0015703</i>"]:::wet
+      WTL["<b>Wtl</b> 2.10&ndash;2.13<br/>LKV-banenafspraak<br/><i>BWBR0037522</i>"]:::wet
+      WFSV["<b>Wfsv</b> 38b + 38f<br/>doelgroepregister + quotum<br/><i>BWBR0017745</i>"]:::wet
+    end
+
+    subgraph AMVB_LVL["<b>AMvB / MIN. REGELING</b> &mdash; gedelegeerd"]
+      direction LR
+      AMVB_38B["AMvB-indicatie<br/>Wfsv 38b.1.d<br/><i>YAML ontbreekt</i>"]:::ontbreekt
+      AMVB_38B3["AMvB jonggehandicapt-<br/>beoordeling Wfsv 38b.3<br/><i>YAML ontbreekt</i>"]:::ontbreekt
+      AMVB_38F["AMvB quotumvariabelen<br/>Wfsv 38f.3 + 38f.4<br/><i>YAML ontbreekt</i>"]:::ontbreekt
+      MR_WGL["Min. regeling werkgevers-<br/>lastenvergoeding<br/><i>onder Pwet 10d.4</i>"]:::mr
+    end
+
+    subgraph BR_LVL["<b>BELEIDSREGEL</b> &mdash; uitvoeringsbeleid"]
+      direction LR
+      BR_LDP["UWV-Beleidsregels<br/>Loondispensatie<br/><i>onder Wajong 2:20 lid 1</i>"]:::beleid
+    end
+  end
+
+  subgraph ONDER[" "]
+    direction LR
+    subgraph GEM["<b>GEMEENTE</b>"]
+      direction LR
+      GEM_VOR["<b>Verordening</b><br/>arbeidsinschakeling<br/>(per gemeente)<br/><i>Pwet 8a + 10b.5</i>"]:::gem
+      GEM_BEL["<b>Uitvoeringsbeleid</b><br/>LKS-loonwaardevaststelling<br/><i>onder Pwet 10d</i>"]:::gem
+    end
+    AWB["<b>AWB</b> &mdash; procesrecht<br/>bezwaar / motiveringsplicht / beslistermijn<br/><i>overkoepelend bij elke beschikking &mdash; BWBR0005537</i>"]:::awb
+  end
+
+  RIJK ~~~ ONDER
+
+  WAJ -. "lid 1 'naar evenredigheid'" .-> BR_LDP
+  PWET -. "10d.4 werkgeverslasten" .-> MR_WGL
+  WFSV -. "38b.1.d AMvB-indicatie" .-> AMVB_38B
+  WFSV -. "38b.3 AMvB jonggehandicapt" .-> AMVB_38B3
+  WFSV -. "38f.3 + 38f.4 AMvB" .-> AMVB_38F
+  PWET -. "10c + 8a verordeningsplicht" .-> GEM_VOR
+  PWET -. "10d loonwaardevaststelling" .-> GEM_BEL

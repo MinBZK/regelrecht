@@ -1,0 +1,21 @@
+flowchart TB
+  classDef bron fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#000;
+  classDef kern fill:#ffe5e5,stroke:#c0392b,stroke-width:2px,color:#000;
+
+  WAJ["<b>Wajong-status</b><br/>Wajong art. 1a:1<br/><i>UWV stelt vast</i>"]:::bron
+  PW["<b>Pwet-LKS-doelgroep</b><br/>Pwet art. 6.e + 10c<br/><i>gemeente stelt vast</i>"]:::bron
+  REG["<b>Banenafspraak-register</b><br/>Wfsv art. 38b.1.d/e/f + 38b.2<br/><i>UWV (via Wfsv 38d)</i>"]:::bron
+
+  LDP["<b>LDP</b><br/>Wajong art. 2:20 lid 1<br/>━━━━━━━<br/>loondispensatie<br/><i>UWV</i>"]:::kern
+  NRP["<b>NRP</b><br/>Ziektewet art. 29b<br/>━━━━━━━<br/>no-risk polis<br/><i>UWV</i>"]:::kern
+  LKS["<b>LKS</b><br/>Pwet art. 10c + 10d<br/>━━━━━━━<br/>loonkostensubsidie<br/><i>gemeente</i>"]:::kern
+  LKV["<b>LKV-banenafspraak</b><br/>Wtl art. 2.10.1.a<br/>━━━━━━━<br/>loonkostenvoordeel<br/><i>Belastingdienst</i>"]:::kern
+
+  WAJ ==> LDP
+  WAJ -- "lid 2.a" --> NRP
+  WAJ -- "sub 1&deg;" --> LKV
+  PW ==> LKS
+  PW -- "lid 2.e / 2.f" --> NRP
+  PW -- "sub 3&deg;" --> LKV
+  REG -- "lid 11 -&gt; 2" --> NRP
+  REG -- "sub 4-6&deg;" --> LKV

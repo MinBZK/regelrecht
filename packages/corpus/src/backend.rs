@@ -368,11 +368,16 @@ impl RepoBackend for LocalBackend {
         };
 
         while let Some(entry) = read_dir.next_entry().await? {
-            let ft = entry.file_type().await?;
-            if !ft.is_file() {
+            let path = entry.path();
+            // tokio::fs::metadata follows symlinks; entry.metadata() does not.
+            // Scenario `.feature` files in the corpus are checked-in symlinks
+            // into the top-level `features/` directory, so we must follow.
+            let Ok(md) = tokio::fs::metadata(&path).await else {
+                continue;
+            };
+            if !md.is_file() {
                 continue;
             }
-            let path = entry.path();
             if let Some(ext) = extension {
                 if path.extension().is_none_or(|e| e != ext) {
                     continue;
@@ -604,11 +609,16 @@ impl RepoBackend for GitBackend {
         };
 
         while let Some(entry) = read_dir.next_entry().await? {
-            let ft = entry.file_type().await?;
-            if !ft.is_file() {
+            let path = entry.path();
+            // tokio::fs::metadata follows symlinks; entry.metadata() does not.
+            // Scenario `.feature` files in the corpus are checked-in symlinks
+            // into the top-level `features/` directory, so we must follow.
+            let Ok(md) = tokio::fs::metadata(&path).await else {
+                continue;
+            };
+            if !md.is_file() {
                 continue;
             }
-            let path = entry.path();
             if let Some(ext) = extension {
                 if path.extension().is_none_or(|e| e != ext) {
                     continue;
@@ -905,11 +915,16 @@ impl RepoBackend for SessionGitBackend {
         };
 
         while let Some(entry) = read_dir.next_entry().await? {
-            let ft = entry.file_type().await?;
-            if !ft.is_file() {
+            let path = entry.path();
+            // tokio::fs::metadata follows symlinks; entry.metadata() does not.
+            // Scenario `.feature` files in the corpus are checked-in symlinks
+            // into the top-level `features/` directory, so we must follow.
+            let Ok(md) = tokio::fs::metadata(&path).await else {
+                continue;
+            };
+            if !md.is_file() {
                 continue;
             }
-            let path = entry.path();
             if let Some(ext) = extension {
                 if path.extension().is_none_or(|e| e != ext) {
                     continue;

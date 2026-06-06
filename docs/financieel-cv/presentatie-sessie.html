@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RegelRecht voor het Financieel CV-team</title>
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  background: #152a55;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.deck {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.slide {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 6vw 9vw;
+  background: radial-gradient(ellipse at 50% 50%, #2e5599 0%, #1c3468 45%, #152a55 100%);
+  color: #fff;
+}
+
+.slide.active { display: flex; }
+.slide.warn { background: radial-gradient(ellipse at 50% 50%, #2b4475 0%, #182d58 45%, #101e3d 100%); }
+
+/* Title slide */
+.title-main {
+  font-size: clamp(56px, 11vw, 140px);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  margin-bottom: 0.35em;
+}
+.title-sub {
+  font-size: clamp(18px, 3vw, 42px);
+  font-weight: 300;
+  font-style: italic;
+  opacity: 0.88;
+}
+.title-footer {
+  position: absolute;
+  bottom: 6%;
+  left: 6%;
+  right: 6%;
+  display: flex;
+  justify-content: space-between;
+  font-size: clamp(13px, 1.5vw, 20px);
+}
+.title-footer .right { font-weight: 700; }
+
+/* Content */
+.h {
+  font-size: clamp(24px, 4.2vw, 60px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.65em;
+}
+.p {
+  font-size: clamp(17px, 2.6vw, 38px);
+  font-weight: 300;
+  line-height: 1.7;
+}
+.p b { font-weight: 700; }
+.p.dim {
+  font-size: clamp(13px, 1.7vw, 24px);
+  opacity: 0.72;
+  margin-top: 0.7em;
+  line-height: 1.5;
+}
+
+/* Grid */
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.2vw;
+  width: 100%;
+  margin-top: 0.6em;
+  text-align: left;
+}
+.cell {
+  background: rgba(255,255,255,0.09);
+  border-radius: 10px;
+  padding: 1.6vw 1.8vw;
+}
+.cell-label {
+  font-size: clamp(10px, 1vw, 15px);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  opacity: 0.55;
+  margin-bottom: 0.5em;
+}
+.cell-body {
+  font-size: clamp(13px, 1.6vw, 22px);
+  font-weight: 300;
+  line-height: 1.55;
+}
+.cell-body b { font-weight: 700; }
+
+/* Image slide */
+.image-slide {
+  padding: 4vw 4vw 8vw 4vw;
+  justify-content: flex-start;
+}
+.image-slide .h {
+  font-size: clamp(20px, 3.2vw, 44px);
+  margin-bottom: 0.4em;
+}
+.image-slide .image-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 0;
+}
+.image-slide img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  background: rgba(255,255,255,0.96);
+  border-radius: 8px;
+  padding: 1.5vw;
+}
+.image-caption {
+  font-size: clamp(12px, 1.5vw, 20px);
+  opacity: 0.65;
+  margin-top: 0.8em;
+  font-style: italic;
+}
+
+/* Nav */
+#nav {
+  position: fixed;
+  bottom: 4%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  z-index: 99;
+}
+#nav button {
+  background: rgba(255,255,255,0.14);
+  border: 1px solid rgba(255,255,255,0.22);
+  color: #fff;
+  padding: 7px 18px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+}
+#nav button:hover { background: rgba(255,255,255,0.26); }
+#counter { color: rgba(255,255,255,0.45); font-size: 13px; min-width: 52px; text-align: center; }
+
+#dots {
+  position: fixed;
+  bottom: 4.2%;
+  right: 3%;
+  display: flex;
+  gap: 5px;
+  z-index: 99;
+}
+.dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.22);
+  cursor: pointer;
+}
+.dot.on { background: rgba(255,255,255,0.85); }
+</style>
+</head>
+<body>
+
+<div class="deck" id="deck">
+
+  <!-- 1. Title -->
+  <div class="slide active">
+    <div class="title-main">RegelRecht</div>
+    <div class="title-sub">voor het Financieel CV-team</div>
+    <div class="title-footer">
+      <span>mei 2026</span>
+      <span class="right">Bureau Architectuur, BZK</span>
+    </div>
+  </div>
+
+  <!-- 2. Vandaag -->
+  <div class="slide">
+    <div class="h">Onderwerp van deze sessie</div>
+    <div class="p">Zeven regelingen, één werknemerprofiel</div>
+    <div class="p">Doorlopen van de wetten met traceerbare uitkomsten</div>
+    <div class="p dim">De regelingen NRP, LDP, JC, WPA, LKV, PP en LKS komen uit zes wetten: Ziektewet, Wajong, Wet WIA, Wtl, WW en Participatiewet. Het lage-inkomensvoordeel (LIV) is afgeschaft per 1 januari 2025 op grond van Wet 36458.</div>
+  </div>
+
+  <!-- 3. Het stelsel -->
+  <div class="slide">
+    <div class="h">Het stelsel</div>
+    <div class="grid">
+      <div class="cell">
+        <div class="cell-label">Wet (Rijk)</div>
+        <div class="cell-body">Ziektewet, Wajong, Wet WIA, Wtl, Participatiewet, WW. <b>Zes formele wetten</b> die de regelingen dragen.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Lagere regelgeving</div>
+        <div class="cell-body">Reïntegratiebesluit (AMvB), Regeling werkgeverslastenvergoeding (MR), UWV-Beleidsregels Loondispensatie. <b>Vier delegaties.</b></div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Procesrecht</div>
+        <div class="cell-body">Awb artikelen 3:46 en 6:7. Motivering en bezwaartermijn als <b>overkoepelende schil</b>.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Uitvoering</div>
+        <div class="cell-body">UWV (NRP, JC, WPA, LDP, PP), Belastingdienst (LKV), gemeente (LKS). <b>Drie uitvoeringsorganisaties.</b></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Het stelsel in beeld -->
+  <div class="slide image-slide">
+    <div class="h">Het stelsel in beeld</div>
+    <div class="image-wrap">
+      <img src="financieel-cv-stelsel.png" alt="Stelsel-diagram van de Financieel CV met regulatory_layer-niveaus en uitvoeringsorganisaties">
+    </div>
+    <div class="image-caption">Regelgevingslagen en uitvoeringsorganisaties van de zeven regelingen</div>
+  </div>
+
+  <!-- 5. De graph -->
+  <div class="slide">
+    <div class="h">Verwijzingen tussen wetten</div>
+    <div class="p">Wetten verwijzen onderling via <b>source.regulation</b></div>
+    <div class="p">De cross-law structuur staat in de YAML zelf</div>
+    <div class="p dim">De Ziektewet bevraagt de Wet WIA voor de status "WIA-gerechtigd". De uitkomst komt direct uit de bron-wet. De engine evalueert recursief; de trace toont elke stap terug naar het oorspronkelijke artikel. Een aparte aggregator-laag is daarmee niet nodig.</div>
+  </div>
+
+  <!-- 6. Cross-law in beeld -->
+  <div class="slide image-slide">
+    <div class="h">Cross-law structuur in beeld</div>
+    <div class="image-wrap">
+      <img src="financieel-cv-graph-detail-alle-7.png" alt="Detail-graph van alle zeven Financieel CV-regelingen met cross-law verwijzingen en untranslatables">
+    </div>
+    <div class="image-caption">Alle zeven regelingen met onderlinge verwijzingen en untranslatables-annotaties</div>
+  </div>
+
+  <!-- 5. Eén regeling grondig -->
+  <div class="slide">
+    <div class="h">NRP als blauwdruk</div>
+    <div class="grid">
+      <div class="cell">
+        <div class="cell-label">Wettekst naar formule</div>
+        <div class="cell-body">Ziektewet artikel 29b lid 1, 2 en 4. Per lid een boolean die in een <b>OR</b> samenkomt.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Duur</div>
+        <div class="cell-body">Vijf jaar (lid 1) of <b>onbeperkt</b> bij banenafspraak (lid 2; gemodelleerd als sentinel −1).</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Untranslatables</div>
+        <div class="cell-body">Drie expliciet gemarkeerd. <b>Plekken waar de wettekst de engine te boven gaat.</b></div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Awb-hooks</div>
+        <div class="cell-body">Motivering en bezwaartermijn worden <b>automatisch toegevoegd</b> aan elke beschikking.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. Twee personae -->
+  <div class="slide">
+    <div class="h">Twee personae door alle wetten</div>
+    <div class="grid">
+      <div class="cell">
+        <div class="cell-label">Sadee (werkgeversperspectief)</div>
+        <div class="cell-body">28 jaar, Wajong, banenafspraak, loonwaarde 70%, €14,50 per uur. Recht op <b>NRP, LDP en LKV</b>. Geen JC of WPA via de Wet WIA wegens uitsluiting Wajong-gerechtigden in artikel 35 lid 4.a.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Koen (werknemersperspectief)</div>
+        <div class="cell-body">42 jaar, Participatiewet, banenafspraak, loonwaarde 60%. Recht op <b>NRP, JC, WPA, LKV en LKS</b>. Geen LDP wegens ontbreken Wajong-status.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">14 BDD-scenarios</div>
+        <div class="cell-body">Beide personae doorlopen alle zeven outputs. <b>Assertions per wet</b>, trace per stap.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Geautomatiseerd uitvoerbaar</div>
+        <div class="cell-body"><b>103 van 103 scenarios geslaagd</b> via <code>just bdd</code>.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. LIV-afschaffing -->
+  <div class="slide warn">
+    <div class="h">Casus: afschaffing LIV</div>
+    <div class="p">Wet 36458 heeft het lage-inkomensvoordeel afgeschaft per 1 januari 2025</div>
+    <div class="p">Verwerking in de tool in drie stappen</div>
+    <div class="grid">
+      <div class="cell">
+        <div class="cell-label">Stap 1. Harvester</div>
+        <div class="cell-body">Ophalen van de nieuwe Wtl-consolidatie via wetten.overheid.nl. Hoofdstuk 3 (artikelen 3.1.1 tot en met 3.2.2) is daar reeds verwijderd.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Stap 2. Machine_readable</div>
+        <div class="cell-body">Overzetten van de LKV-logica naar de nieuwe YAML. De LIV-output vervalt daarmee eveneens.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Stap 3. BDD</div>
+        <div class="cell-body">De scenarios bevestigen nu dat de LIV-output niet meer bestaat. <b>Geen stille fout</b>, geen verzonnen recht.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Resultaat</div>
+        <div class="cell-body">Op de peildatum van vandaag retourneert de engine: <b>"Output not found"</b>. Het signaal dat de werkgever behoort te ontvangen.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 8. Open vragen -->
+  <div class="slide">
+    <div class="h">Openstaande vragen voor de jurist</div>
+    <div class="grid">
+      <div class="cell">
+        <div class="cell-label">Memorie van Toelichting</div>
+        <div class="cell-body">Per regeling: welke passages bevatten rekenvoorbeelden? <b>De engine dient dezelfde uitkomst te leveren.</b></div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Untranslatables</div>
+        <div class="cell-body">De vijfjaarstermijn-onderbreking bij NRP, de evenredigheidsregel bij LKS. <b>Welke onderdelen behoren tot beleid?</b></div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Dataminimalisatie</div>
+        <div class="cell-body">Mag een werkgever vragen of een werknemer Wajong-gerechtigd is? Op grond van AVG artikel 9 betreft het <b>bijzondere persoonsgegevens</b>.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Doelgroepverklaring</div>
+        <div class="cell-body">Verifieerbaar bewijs van UWV als minimaal onthullende grondslag. <b>Wtl artikelen 2.3 en 2.7 voorzien hier reeds in.</b></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 9. Wat nu al -->
+  <div class="slide">
+    <div class="h">Concrete mogelijkheden voor deze sessie</div>
+    <div class="grid">
+      <div class="cell">
+        <div class="cell-label">Persona-traces</div>
+        <div class="cell-body">Voor elke werknemer uit de doelgroep. De engine doorloopt de casus <b>per wet en per artikel</b>.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Scope bepalen</div>
+        <div class="cell-body">Welke artikelen behoren tot de scope van de regelhulp, en welke vallen daarbuiten? Het werkblad <code>scope-bepaling.md</code> is hiervoor beschikbaar.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Samenloop toetsen</div>
+        <div class="cell-body">Cumulatieregel LIV en LKV (na afschaffing niet meer relevant). Samenloop LKS en LKV (geregeld vanaf 2025). <b>Beide modelleerbaar via de graph.</b></div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Vragenboom-ontwerp</div>
+        <div class="cell-body">Drie inleidende vragen (Wsw, pensioenleeftijd, uitkering) sluiten voor het merendeel van de gevallen <b>de helft van de outputs</b> reeds uit.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 10. Volgende stap -->
+  <div class="slide">
+    <div class="h">Volgende stap</div>
+    <div class="grid">
+      <div class="cell">
+        <div class="cell-label">In deze sessie</div>
+        <div class="cell-body">Het doorlopen van de Sadee- en Koen-scenarios. <b>Klopt elke uitkomst?</b> Welke leden van de wet zijn niet meegenomen?</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Aansluitend</div>
+        <div class="cell-body">Vervolgsessie met jurist en functionaris voor gegevensbescherming. <b>Per parameter</b> wordt vastgesteld wie deze aanlevert.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Op termijn</div>
+        <div class="cell-body">Koppeling van de RegelRecht-engine aan de regelhulp via API. <b>Onderhoud op één plek</b>, presentatielaag in de eigen tooling.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">IJkpunt</div>
+        <div class="cell-body">De doorlooptijd van de laatste regelhulp-update vormt de baseline. <b>Te vergelijken met een enkele YAML-aanpassing.</b></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 11. Closing -->
+  <div class="slide">
+    <div class="title-main">RegelRecht</div>
+    <div class="title-sub">van wet naar digitale werking</div>
+    <div class="title-footer">
+      <span>regelrecht.rijks.app</span>
+      <span class="right">Bureau Architectuur, BZK</span>
+    </div>
+  </div>
+
+</div>
+
+<div id="nav">
+  <button id="bp">← Vorige</button>
+  <span id="counter">1 / 13</span>
+  <button id="bn">Volgende →</button>
+</div>
+<div id="dots"></div>
+
+<script>
+(function () {
+  var slides = document.querySelectorAll('.slide');
+  var dotsEl = document.getElementById('dots');
+  var counterEl = document.getElementById('counter');
+  var cur = 0;
+  var total = slides.length;
+
+  for (var i = 0; i < total; i++) {
+    var d = document.createElement('div');
+    d.className = i === 0 ? 'dot on' : 'dot';
+    (function(idx){ d.addEventListener('click', function(){ go(idx); }); })(i);
+    dotsEl.appendChild(d);
+  }
+
+  function go(n) {
+    slides[cur].classList.remove('active');
+    dotsEl.children[cur].classList.remove('on');
+    cur = (n % total + total) % total;
+    slides[cur].classList.add('active');
+    dotsEl.children[cur].classList.add('on');
+    counterEl.textContent = (cur + 1) + ' / ' + total;
+  }
+
+  document.getElementById('bn').addEventListener('click', function(){ go(cur + 1); });
+  document.getElementById('bp').addEventListener('click', function(){ go(cur - 1); });
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(cur + 1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); go(cur - 1); }
+    else if (e.key === 'Home') { e.preventDefault(); go(0); }
+    else if (e.key === 'End') { e.preventDefault(); go(total - 1); }
+  });
+})();
+</script>
+
+</body>
+</html>
