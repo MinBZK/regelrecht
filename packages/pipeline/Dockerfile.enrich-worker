@@ -45,8 +45,12 @@ RUN find . -name '*.rs' -exec touch {} + && \
     cargo build --release --bin regelrecht-enrich-worker
 
 # Stage 4: Runtime
+# tini runs as PID 1 so reparented subprocesses are reaped instead of leaking as
+# zombies. The enrich worker kills the LLM CLI (claude/opencode) on timeout,
+# which orphans its child processes — without an init those accumulate against
+# the container's low pids limit and eventually cause fork()/EAGAIN failures.
 FROM alpine:3.23@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659
-RUN apk add --no-cache ca-certificates git nodejs npm && \
+RUN apk add --no-cache ca-certificates git nodejs npm tini && \
     addgroup -S app && adduser -S app -G app
 
 # Install opencode and claude CLI globally (pinned versions for reproducibility)
@@ -79,4 +83,4 @@ EXPOSE 8000
 ENV REGULATION_REPO_PATH=/tmp/regulation-repo
 ENV REGULATION_OUTPUT_BASE=regulation/nl
 
-ENTRYPOINT ["entrypoint-enrich.sh"]
+ENTRYPOINT ["/sbin/tini", "--", "entrypoint-enrich.sh"]
