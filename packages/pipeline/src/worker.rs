@@ -468,7 +468,16 @@ async fn process_next_job(
             );
 
             let error_json = serde_json::json!({ "error": e.to_string() });
-            let failed_job = job_queue::fail_job(pool, job.id, Some(error_json)).await?;
+            // Don't `?` here: a failure while recording the failure must still
+            // report `outcome` so the breaker counts a resource-exhaustion fault
+            // (matches how the enrich paths handle fail_job errors).
+            let failed_job = match job_queue::fail_job(pool, job.id, Some(error_json)).await {
+                Ok(j) => j,
+                Err(fail_err) => {
+                    tracing::error!(job_id = %job.id, error = %fail_err, "failed to mark harvest job as failed");
+                    return Ok(outcome);
+                }
+            };
 
             // Only mark law as failed when retries are exhausted
             if failed_job.status == crate::models::JobStatus::Failed {
