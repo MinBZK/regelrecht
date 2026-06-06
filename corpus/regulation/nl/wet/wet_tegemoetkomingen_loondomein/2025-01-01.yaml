@@ -149,12 +149,18 @@ articles:
               voorwaarden art. 2.14.
           - name: is_doelgroep_banenafspraak
             type: boolean
-            required: true
-            description: |-
-              Categorie c (art. 2.10): doelgroep banenafspraak en
-              scholingsbelemmerden. Doelgroepregister UWV.
-              In een latere iteratie te koppelen aan participatiewet
-              cross-law source (art. 1 doelgroepstub).
+            source:
+              regulation: participatiewet
+              output: is_banenafspraak_doelgroep
+              parameters:
+                bsn: $bsn
+              description: |-
+                Categorie c (art. 2.10): doelgroep banenafspraak en
+                scholingsbelemmerden. Eén bron van waarheid met de
+                no-riskpolis (Ziektewet 29b lid 2 onderdeel e): het
+                UWV-doelgroepregister, ontsloten via de participatiewet-
+                doelgroepstub (artikel 1). Onderliggende vaststelling op
+                grond van Wfsv 38b/38f (BWBR0017745, niet in corpus).
           - name: heeft_pensioengerechtigde_leeftijd_bereikt
             type: boolean
             required: true
@@ -297,12 +303,21 @@ articles:
             herhalingstoets is niet faithful te modelleren met de
             huidige operatie-set.
           accepted: true
-        - construct: 'samenloop met LKS (art. 10d Pwet)'
+        - construct: 'samenloop met no-riskpolis, LKS en loondispensatie'
           reason: |-
             Voor categorie c (banenafspraak) was er tot 2024 samenloop
             mogelijk met LKS; sinds 2025 is de banenafspraak-LKV
-            structureel gemaakt en is doelgroepverklaring afgeschaft.
+            structureel gemaakt en is de doelgroepverklaring afgeschaft.
             Cumulatieregels staan niet in deze artikelen.
+
+            Juristvalidatie (juni 2026): LKV en de no-riskpolis
+            (Ziektewet 29b) gaan altijd samen op — beide hangen aan
+            dezelfde doelgroep-status, sinds deze iteratie via één bron
+            (is_doelgroep_banenafspraak ← participatiewet
+            is_banenafspraak_doelgroep). LKS (Pwet 10d) of
+            loondispensatie (Wajong 2:20) komen daar bóvenop bij
+            loonwaarde < minimumloon. Zie de uitgebreide samenloop-
+            notitie bij Ziektewet 29b.
           accepted: true
   - number: 2.1.a
     text: loonkostenvoordeel oudere werknemer;

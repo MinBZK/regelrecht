@@ -3153,14 +3153,40 @@ articles:
             Downstream consumers moeten -1 als 'onbeperkt' interpreteren
             (niet als negatieve looptijd).
           accepted: true
-        - construct: samenloop met loonkostenvoordelen (LKV)
+        - construct: samenloop met LKV, LKS en loondispensatie (stelsel-eigenschap)
           reason: |-
-            Het artikel zelf regelt geen samenloop met LKV
-            (Wet tegemoetkomingen loondomein) of LKS (Pwet 10d).
-            In de praktijk kunnen deze cumulatief gelden, gedeeltelijk
-            of niet, afhankelijk van overlappende doelgroepen. Dit valt
-            buiten artikel 29b.
-          suggestion: Apart artikel/regel modelleren voor cumulatieregels.
+            Artikel 29b regelt zelf geen samenloop met LKV (Wet
+            tegemoetkomingen loondomein), LKS (Pwet 10d) of
+            loondispensatie (Wajong 2:20). De samenloop is een
+            eigenschap van het stelsel, geen regel binnen dit artikel.
+
+            Juristvalidatie (juni 2026) bevestigt dat cumulatie kan:
+            - No-riskpolis en LKV gaan altijd samen op. Beide hangen
+              aan dezelfde doelgroep-status (banenafspraakregister,
+              Wajong-status of Pwet-LKS-doelgroep). Wie de no-riskpolis
+              via lid 2 opent, opent via diezelfde status ook LKV; het
+              banenafspraakregister wordt sinds deze iteratie uit één
+              bron gelezen (participatiewet is_banenafspraak_doelgroep,
+              gebruikt door zowel 29b lid 2.e als Wtl 2.10). De
+              tijdelijke samenloop binnen de WIA valt buiten deze
+              iteratie (volgende iteratie).
+            - LKS (Pwet 10d) of loondispensatie (Wajong 2:20) komen
+              hier bóvenop wanneer uit de loonwaardemeting blijkt dat de
+              werknemer niet zelfstandig het minimumloon kan verdienen.
+              Die voorwaarde is per regeling al een knock-out:
+              kan_minimumloon_niet_verdienen (LKS) respectievelijk
+              arbeidsprestatie_duidelijk_minder_dan_minimumloon (LD).
+          accepted: true
+        - construct: doelgroepverklaring-procedure — geen lagere regelgeving
+          reason: |-
+            De no-riskpolis kent geen gedelegeerde lagere regelgeving
+            (AMvB of ministeriële regeling) die de inhoudelijke
+            voorwaarden invult; daarom bevat dit artikel geen open_terms.
+            De doelgroep-vaststelling loopt via doelgroepverklaring of
+            registratie door UWV, gemeente of college (uitvoeringsbeleid).
+            Bevestigd bij juristvalidatie (juni 2026): onder de Ziektewet
+            is geen relevante lagere regelgeving rond de no-riskpolis
+            gevonden.
           accepted: true
   - number: 29b.1.a
     text: >-

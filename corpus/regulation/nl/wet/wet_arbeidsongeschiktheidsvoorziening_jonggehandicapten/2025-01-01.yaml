@@ -2242,6 +2242,17 @@ articles:
             zelf produceert geen hoogte-output.
           legal_text_excerpt: 'vermindert het Uitvoeringsinstituut werknemersverzekeringen ... de hoogte van de aanspraak op een geldelijke beloning voor de verrichte arbeid naar evenredigheid'
           accepted: true
+        - construct: 'samenloop met no-riskpolis en LKV'
+          reason: |-
+            Loondispensatie regelt zelf geen samenloop met de
+            no-riskpolis (Ziektewet 29b) of LKV (Wtl). Juristvalidatie
+            (juni 2026): loondispensatie komt — als Wajong-variant van
+            de loonwaarde-aanvulling — bóvenop no-risk + LKV wanneer de
+            arbeidsprestatie duidelijk minder is dan het minimumloon
+            (knock-out arbeidsprestatie_duidelijk_minder_dan_minimumloon,
+            lid 1). Zie de uitgebreide samenloop-notitie bij
+            Ziektewet 29b.
+          accepted: true
   - number: 2:20.2
     text: |-
       Elk beding waarbij een geldelijke beloning voor de verrichte arbeid wordt overeengekomen die lager is dan de

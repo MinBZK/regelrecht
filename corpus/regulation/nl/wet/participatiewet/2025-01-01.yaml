@@ -2054,6 +2054,16 @@ articles:
             oorspronkelijke college bevoegd. Geen logische berekening,
             wel een uitvoeringsregel.
           accepted: true
+        - construct: 'samenloop met no-riskpolis en LKV'
+          reason: |-
+            LKS regelt zelf geen samenloop met de no-riskpolis
+            (Ziektewet 29b) of LKV (Wtl). Juristvalidatie (juni 2026):
+            LKS komt bóvenop no-risk + LKV wanneer de loonwaardemeting
+            uitwijst dat de werknemer niet zelfstandig het minimumloon
+            kan verdienen — in dit model de knock-out
+            kan_minimumloon_niet_verdienen (lid 2). Zie de uitgebreide
+            samenloop-notitie bij Ziektewet 29b.
+          accepted: true
   - number: 10c.1.a
     text: |-
       op schriftelijke aanvraag van een persoon als bedoeld in [artikel 7, eerste lid, onderdeel a][ref1], vaststellen of
