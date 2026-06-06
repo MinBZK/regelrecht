@@ -18,6 +18,58 @@ use crate::job_queue::{self, CreateJobRequest};
 use crate::law_status;
 use crate::models::{JobType, LawStatusValue, Priority};
 
+/// Outcome of attempting to process a single job, used to drive the
+/// resource-exhaustion circuit breaker in the worker loops.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JobOutcome {
+    /// A job was claimed and handled — either completed, or failed for a
+    /// reason specific to that job/law (bad data, LLM error, etc.).
+    Processed,
+    /// No job was available to claim.
+    Idle,
+    /// The job failed because the container ran out of the OS resources needed
+    /// to spawn processes/threads (fork() EAGAIN / OOM). This is environmental,
+    /// not the job's fault, and only clears on restart. The job is failed and
+    /// requeued through the normal failure path (so its law status is reset and
+    /// it isn't left dangling); the loop additionally counts these and exits the
+    /// process once too many happen in a row, so the orchestrator restarts the
+    /// worker with a clean process table.
+    ResourceExhausted,
+}
+
+/// Map a job error to the [`JobOutcome`] reported after normal failure handling:
+/// `ResourceExhausted` for environmental fork()/EAGAIN/OOM faults (drives the
+/// breaker), `Processed` for ordinary per-law failures.
+fn outcome_for_error(err: &str) -> JobOutcome {
+    if is_resource_exhaustion(err) {
+        JobOutcome::ResourceExhausted
+    } else {
+        JobOutcome::Processed
+    }
+}
+
+/// Returns true when an error indicates the container has exhausted the OS
+/// resources needed to spawn processes or threads — `fork()` returning EAGAIN
+/// ("cannot fork() ... Resource temporarily unavailable"), thread-create
+/// failures, or OOM. These faults are environmental: a long-running worker can
+/// accumulate them (e.g. un-reaped child processes against a low pids limit)
+/// and they only clear when the process restarts. Distinguishing them from
+/// per-law failures lets the worker bail out for a restart instead of
+/// fast-failing every queued job in a tight loop.
+fn is_resource_exhaustion(err: &str) -> bool {
+    let e = err.to_ascii_lowercase();
+    const MARKERS: &[&str] = &[
+        "cannot fork",
+        "resource temporarily unavailable", // EAGAIN, human-readable form
+        "os error 11",                      // EAGAIN
+        "cannot allocate memory",
+        "os error 12", // ENOMEM
+        "unable to create thread",
+        "event loop thread panicked",
+    ];
+    MARKERS.iter().any(|m| e.contains(m))
+}
+
 /// Run the harvest worker loop.
 ///
 /// Polls the job queue for harvest jobs and executes them.
@@ -61,6 +113,7 @@ pub async fn run_harvest_worker(config: WorkerConfig) -> Result<()> {
     })?;
 
     let mut current_interval = std::time::Duration::ZERO; // poll immediately on startup
+    let mut consecutive_resource_failures: u32 = 0;
 
     loop {
         // Check for shutdown signals between jobs
@@ -87,14 +140,24 @@ pub async fn run_harvest_worker(config: WorkerConfig) -> Result<()> {
 
         // Process job outside of select! — runs to completion without cancellation
         match process_next_job(&pool, &config, &output_dir, corpus.as_ref(), &http_client).await {
-            Ok(true) => {
+            Ok(JobOutcome::Processed) => {
+                consecutive_resource_failures = 0;
                 current_interval = config.poll_interval;
             }
-            Ok(false) => {
+            Ok(JobOutcome::Idle) => {
+                consecutive_resource_failures = 0;
                 current_interval = (current_interval * 2)
                     .max(config.poll_interval)
                     .min(config.max_poll_interval);
                 tracing::info!(next_poll = ?current_interval, "no jobs available, backing off");
+            }
+            Ok(JobOutcome::ResourceExhausted) => {
+                handle_resource_exhaustion(
+                    &mut consecutive_resource_failures,
+                    config.max_consecutive_resource_failures,
+                    "harvest",
+                );
+                current_interval = config.poll_interval;
             }
             Err(e) => {
                 tracing::error!(error = %e, "error processing job");
@@ -108,19 +171,44 @@ pub async fn run_harvest_worker(config: WorkerConfig) -> Result<()> {
     Ok(())
 }
 
+/// Increment the consecutive resource-exhaustion counter and, once it crosses
+/// the configured threshold, exit the process so the orchestrator (RIG) restarts
+/// the worker with a fresh process table. fork()/EAGAIN faults are environmental
+/// and only clear on restart, so bailing out beats fast-failing the whole queue.
+fn handle_resource_exhaustion(counter: &mut u32, threshold: u32, worker: &str) {
+    *counter += 1;
+    tracing::error!(
+        worker,
+        consecutive = *counter,
+        threshold,
+        "resource exhaustion (cannot fork / EAGAIN) while processing job"
+    );
+    if *counter >= threshold {
+        tracing::error!(
+            worker,
+            threshold,
+            "resource-exhaustion breaker tripped; exiting so the orchestrator \
+             restarts the worker with a clean process table"
+        );
+        std::process::exit(1);
+    }
+}
+
 /// Process the next available harvest job.
 ///
-/// Returns `Ok(true)` if a job was processed, `Ok(false)` if no job was available.
+/// Returns the [`JobOutcome`]: `Processed` when a job was handled, `Idle` when
+/// none was available, or `ResourceExhausted` when the job failed because the
+/// container could not spawn processes/threads (fork()/EAGAIN).
 async fn process_next_job(
     pool: &PgPool,
     config: &WorkerConfig,
     output_dir: &Path,
     corpus: Option<&CorpusClient>,
     http_client: &Client,
-) -> Result<bool> {
+) -> Result<JobOutcome> {
     let job = match job_queue::claim_job(pool, Some(JobType::Harvest)).await? {
         Some(job) => job,
-        None => return Ok(false),
+        None => return Ok(JobOutcome::Idle),
     };
 
     tracing::info!(
@@ -141,7 +229,7 @@ async fn process_next_job(
                 if let Err(fail_err) = job_queue::fail_job(pool, job.id, Some(error_json)).await {
                     tracing::error!(job_id = %job.id, error = %fail_err, "failed to mark job as failed");
                 }
-                return Ok(true);
+                return Ok(JobOutcome::Processed);
             }
         },
         None => {
@@ -361,9 +449,17 @@ async fn process_next_job(
                 );
             }
 
-            Ok(true)
+            Ok(JobOutcome::Processed)
         }
         Err(e) => {
+            // Container resource exhaustion (fork()/EAGAIN) is environmental, not
+            // the law's fault, but the attempt was already spent at claim time, so
+            // we still run the normal failure/requeue path (which resets law
+            // status). We additionally report it via the outcome so the loop's
+            // breaker can exit the worker for a clean restart — the only thing
+            // that actually clears the condition.
+            let outcome = outcome_for_error(&e.to_string());
+
             tracing::error!(
                 job_id = %job.id,
                 law_id = %job.law_id,
@@ -372,7 +468,19 @@ async fn process_next_job(
             );
 
             let error_json = serde_json::json!({ "error": e.to_string() });
-            let failed_job = job_queue::fail_job(pool, job.id, Some(error_json)).await?;
+            // Don't `?` here: a failure while recording the failure must still
+            // report `outcome` so the breaker counts a resource-exhaustion fault
+            // (matches how the enrich paths handle fail_job errors). For a
+            // non-resource error `outcome` is `Processed`, so the loop just moves
+            // on — a genuine DB outage resurfaces at the next claim_job and backs
+            // off there, so this can't tight-loop.
+            let failed_job = match job_queue::fail_job(pool, job.id, Some(error_json)).await {
+                Ok(j) => j,
+                Err(fail_err) => {
+                    tracing::error!(job_id = %job.id, error = %fail_err, "failed to mark harvest job as failed");
+                    return Ok(outcome);
+                }
+            };
 
             // Only mark law as failed when retries are exhausted
             if failed_job.status == crate::models::JobStatus::Failed {
@@ -454,7 +562,7 @@ async fn process_next_job(
                 }
             }
 
-            Ok(true)
+            Ok(outcome)
         }
     }
 }
@@ -502,6 +610,7 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
     })?;
 
     let mut current_interval = std::time::Duration::ZERO;
+    let mut consecutive_resource_failures: u32 = 0;
 
     loop {
         tokio::select! {
@@ -534,15 +643,25 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
         )
         .await
         {
-            Ok(true) => {
+            Ok(JobOutcome::Processed) => {
+                consecutive_resource_failures = 0;
                 // Use poll_interval (not zero) to avoid tight-looping reap_orphaned_jobs.
                 current_interval = config.poll_interval;
             }
-            Ok(false) => {
+            Ok(JobOutcome::Idle) => {
+                consecutive_resource_failures = 0;
                 current_interval = (current_interval * 2)
                     .max(config.poll_interval)
                     .min(config.max_poll_interval);
                 tracing::info!(next_poll = ?current_interval, "no enrich jobs available, backing off");
+            }
+            Ok(JobOutcome::ResourceExhausted) => {
+                handle_resource_exhaustion(
+                    &mut consecutive_resource_failures,
+                    config.max_consecutive_resource_failures,
+                    "enrich",
+                );
+                current_interval = config.poll_interval;
             }
             Err(e) => {
                 tracing::error!(error = %e, "error processing enrich job");
@@ -558,7 +677,9 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
 
 /// Process the next available enrich job.
 ///
-/// Returns `Ok(true)` if a job was processed, `Ok(false)` if no job was available.
+/// Returns the [`JobOutcome`]: `Processed` when a job was handled, `Idle` when
+/// none was available, or `ResourceExhausted` when the job failed because the
+/// container could not spawn processes/threads (fork()/EAGAIN).
 ///
 /// Each enrichment creates a separate branch (`enrich/{provider}`)
 /// so results can be reviewed before merging. A dedicated `CorpusClient` is
@@ -570,10 +691,10 @@ async fn process_next_enrich_job(
     corpus_config: Option<&CorpusConfig>,
     job_timeout: Duration,
     exhausted_threshold: i32,
-) -> Result<bool> {
+) -> Result<JobOutcome> {
     let job = match job_queue::claim_job(pool, Some(JobType::Enrich)).await? {
         Some(job) => job,
-        None => return Ok(false),
+        None => return Ok(JobOutcome::Idle),
     };
 
     let payload: EnrichPayload = match &job.payload {
@@ -586,7 +707,7 @@ async fn process_next_enrich_job(
                 if let Err(fail_err) = job_queue::fail_job(pool, job.id, Some(error_json)).await {
                     tracing::error!(job_id = %job.id, error = %fail_err, "failed to mark job as failed");
                 }
-                return Ok(true);
+                return Ok(JobOutcome::Processed);
             }
         },
         None => {
@@ -595,7 +716,7 @@ async fn process_next_enrich_job(
             if let Err(fail_err) = job_queue::fail_job(pool, job.id, Some(error_json)).await {
                 tracing::error!(job_id = %job.id, error = %fail_err, "failed to mark job as failed");
             }
-            return Ok(true);
+            return Ok(JobOutcome::Processed);
         }
     };
 
@@ -752,7 +873,7 @@ async fn process_next_enrich_job(
                 }
             }
 
-            Ok(true)
+            Ok(JobOutcome::Processed)
         }
         Ok(Ok((result, written_files))) => {
             tracing::info!(
@@ -798,6 +919,7 @@ async fn process_next_enrich_job(
 
             match commit_result {
                 Err(e) => {
+                    let outcome = outcome_for_error(&e.to_string());
                     tracing::error!(
                         job_id = %job.id,
                         error = %e,
@@ -843,6 +965,7 @@ async fn process_next_enrich_job(
                             tracing::error!(job_id = %job.id, error = %fail_err, "failed to mark job as failed");
                         }
                     }
+                    Ok(outcome)
                 }
                 Ok(()) => {
                     if let Err(e) =
@@ -866,12 +989,12 @@ async fn process_next_enrich_job(
                             "coverage score updated"
                         );
                     }
+                    Ok(JobOutcome::Processed)
                 }
             }
-
-            Ok(true)
         }
         Ok(Err(e)) => {
+            let outcome = outcome_for_error(&e.to_string());
             tracing::error!(
                 job_id = %job.id,
                 law_id = %job.law_id,
@@ -923,7 +1046,7 @@ async fn process_next_enrich_job(
                 }
             }
 
-            Ok(true)
+            Ok(outcome)
         }
     };
 
@@ -1092,5 +1215,61 @@ async fn handle_enrich_exhausted_or_retry(
         Err(e) => {
             tracing::warn!(error = %e, law_id = %law_id, "failed to increment enrich fail count");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classifies_fork_eagain_errors_as_resource_exhaustion() {
+        // Real strings observed from failed harvest jobs.
+        assert!(is_resource_exhaustion(
+            "corpus error: git command failed: git pull failed: error: cannot fork() for \
+             merge-base: Resource temporarily unavailable"
+        ));
+        assert!(is_resource_exhaustion(
+            "corpus error: IO error: Resource temporarily unavailable (os error 11)"
+        ));
+        assert!(is_resource_exhaustion(
+            "task join error: task 5 panicked with message \"event loop thread panicked\""
+        ));
+        assert!(is_resource_exhaustion(
+            "Cannot allocate memory (os error 12)"
+        ));
+        assert!(is_resource_exhaustion(
+            "fatal: unable to create thread: Resource temporarily unavailable"
+        ));
+    }
+
+    #[test]
+    fn does_not_classify_per_law_failures_as_resource_exhaustion() {
+        // These are real per-law failures that must still burn the retry budget.
+        assert!(!is_resource_exhaustion(
+            "harvester error: Missing required XML element: _latestItem attribute in manifest"
+        ));
+        assert!(!is_resource_exhaustion(
+            "harvester error: CVDR SRU search failed for CVDR756485: No records found"
+        ));
+        assert!(!is_resource_exhaustion(
+            "enrichment error: claude exited with exit status: 1"
+        ));
+        assert!(!is_resource_exhaustion(
+            "enrichment error: opencode timed out after 600s"
+        ));
+        assert!(!is_resource_exhaustion(
+            "YAML error: did not find expected key at line 5 column 3"
+        ));
+    }
+
+    #[test]
+    fn handle_resource_exhaustion_increments_until_threshold() {
+        // Below the threshold it must not exit (test would abort if it did).
+        let mut counter = 0u32;
+        handle_resource_exhaustion(&mut counter, 3, "test");
+        assert_eq!(counter, 1);
+        handle_resource_exhaustion(&mut counter, 3, "test");
+        assert_eq!(counter, 2);
     }
 }
