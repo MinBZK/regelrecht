@@ -22,11 +22,12 @@ const home = lang === 'en' ? '/en/' : '/';
 
 // The example screenshots live in src/assets so Astro's <Image> generates
 // responsive, optimised variants (the originals are ~3390px wide for a ~600px
-// column) and sets intrinsic width/height to avoid layout shift. They are
-// browser-window mockups with their own drop shadow baked into a transparent
-// PNG, so they render as a plain <img> flush in the figure, not wrapped in
-// nldd-image (whose surface background and rounded corners would show through
-// the transparent margins). landing-content keys them by their old public-path
+// column) and sets intrinsic width/height to avoid layout shift. They render
+// inside <nldd-image> (for its figure/caption + design-system structure) with
+// the optimised <Image> slotted in. The mockups are transparent PNGs with a
+// baked-in drop shadow; nldd-image's surface background still shows through
+// those transparent margins — accepted for now, to be refined in the
+// nldd-image component. landing-content keys them by their old public-path
 // string; map those keys to the processed assets here.
 const screenshots = import.meta.glob<{ default: ImageMetadata }>(
   '~/assets/*-screenshot.png',
@@ -437,19 +438,16 @@ const toc = [
                 lg-gap="32"
                 vertical-alignment="center"
               >
-                <nldd-rich-text>
-                  <figure>
-                    <Image
-                      src={exampleImage(ex.img)}
-                      alt={ex.alt}
-                      widths={[600, 900, 1200, 1800]}
-                      sizes={sizes}
-                      format="webp"
-                      loading="lazy"
-                    />
-                    <figcaption>{ex.caption}</figcaption>
-                  </figure>
-                </nldd-rich-text>
+                <nldd-image alt={ex.alt} caption={ex.caption}>
+                  <Image
+                    src={exampleImage(ex.img)}
+                    alt={ex.alt}
+                    widths={[600, 900, 1200, 1800]}
+                    sizes={sizes}
+                    format="webp"
+                    loading="lazy"
+                  />
+                </nldd-image>
                 <nldd-rich-text
                   lg-order={ex.reverse ? '-1' : undefined}
                 >

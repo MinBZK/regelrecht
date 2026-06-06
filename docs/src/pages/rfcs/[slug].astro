@@ -4,6 +4,7 @@ import Base from '~/layouts/Base.astro';
 import DocsOutline from '~/components/DocsOutline.astro';
 import EditLink from '~/components/EditLink.astro';
 import DocsFooter from '~/components/DocsFooter.astro';
+import { statusColor, statusLabel } from '~/lib/rfc-status';
 
 export async function getStaticPaths() {
   const rfcs = await getCollection('rfcs');
@@ -32,6 +33,46 @@ const pageTitle =
   headings.find((h) => h.depth === 1)?.text ??
   entry.id;
 const title = pageTitle + ' · RegelRecht';
+
+// RFC preamble: the body opens with `**Status:** … **Date:** … **Authors:** …`.
+// Surface Status as a coloured tag and the rest as a line in the section header
+// (under the title); rehype-rfc-meta strips it from the body so it isn't shown
+// twice.
+function parseRfcPreamble(body: string): { status: string; line: string } | null {
+  const fields: Record<string, string> = {};
+  for (const raw of body.split('\n')) {
+    const line = raw.trim();
+    if (!line) {
+      if (Object.keys(fields).length) break;
+      continue;
+    }
+    if (line.startsWith('#')) break;
+    const m = line.match(/^\*\*\s*([^:*]+?)\s*:\*\*\s*(.+?)\s*$/);
+    if (m) {
+      fields[m[1]] = m[2];
+      continue;
+    }
+    if (Object.keys(fields).length) break;
+  }
+  if (!fields.Status) return null;
+  const rest = Object.entries(fields)
+    .filter(([k]) => k !== 'Status' && k !== 'Short title')
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('  ·  ');
+  return { status: fields.Status, line: rest };
+}
+// `entry.body` isn't populated by the glob loader here, so pull the raw RFC
+// source via Vite (?raw) and parse the preamble from it (frontmatter stripped).
+const rfcRawFiles = import.meta.glob('/src/content/rfcs/*.md', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+}) as Record<string, string>;
+const rfcRawBody = (rfcRawFiles['/' + entry.filePath] ?? '').replace(
+  /^---\r?\n[\s\S]*?\r?\n---\r?\n/,
+  '',
+);
+const rfcMeta = parseRfcPreamble(rfcRawBody);
 ---
 
 <Base lang="en" kind="docs" pathname={pathname} title={title}>
@@ -43,6 +84,16 @@ const title = pageTitle + ' · RegelRecht';
     <nldd-title slot="header" size="1">
       <h1>{pageTitle}</h1>
     </nldd-title>
+    {rfcMeta && <nldd-spacer slot="header" size="8"></nldd-spacer>}
+    {rfcMeta && (
+      <nldd-tag slot="header" color={statusColor(rfcMeta.status)} size="md">{statusLabel(rfcMeta.status)}</nldd-tag>
+    )}
+    {rfcMeta?.line && <nldd-spacer slot="header" size="8"></nldd-spacer>}
+    {rfcMeta?.line && (
+      <nldd-rich-text slot="header">
+        <p>{rfcMeta.line}</p>
+      </nldd-rich-text>
+    )}
     <div slot="left">
       <DocsOutline headings={headings} />
       <nldd-spacer size="24" sm-size="16" />

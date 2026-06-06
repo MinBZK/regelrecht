@@ -3,6 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTrajects } from '../composables/useTrajects.js';
 import { useDocumentsSheet } from '../composables/useDocumentsSheet.js';
+import { useAuth } from '../composables/useAuth.js';
 import TrajectMembersDialog from './TrajectMembersDialog.vue';
 import TrajectInfoDialog from './TrajectInfoDialog.vue';
 
@@ -21,6 +22,9 @@ const {
   loading,
   createTraject,
 } = useTrajects();
+// Auth gates the menu: logged-in users get the traject switcher; everyone
+// else gets a popover explaining that trajecten unlock after login.
+const { authenticated, login } = useAuth();
 const route = useRoute();
 const router = useRouter();
 const documentsSheet = useDocumentsSheet();
@@ -43,29 +47,15 @@ async function goToTraject(trajectRef) {
   });
 }
 
-/**
- * Leave traject scope. Stays in the editor (read-only view) when the
- * user is currently editing; goes to the library when they were
- * browsing. Either way the open law is preserved.
- */
-async function leaveTraject() {
-  const lawId = route.params.lawId || undefined;
-  const articleNumber = route.params.articleNumber || undefined;
-  const inEditor =
-    route.name === 'editor' || route.name === 'editor-traject';
-  await router.push({
-    name: inEditor ? 'editor' : 'library',
-    params: { lawId, articleNumber },
-  });
-}
-
 const menuBtnId = computed(() => `traject-menu-btn-${props.idSuffix}`);
 const menuId = computed(() => `traject-menu-${props.idSuffix}`);
 
 const activeLabel = computed(() => {
-  if (loading.value) return 'Traject…';
-  if (!activeTraject.value) return 'Geen traject';
-  return activeTraject.value.name;
+  if (activeTraject.value) return activeTraject.value.name;
+  // No traject selected → the button invites you to pick one. While the
+  // list is still loading for a logged-in user, show a placeholder.
+  if (loading.value && authenticated.value) return 'Traject…';
+  return 'Trajecten';
 });
 
 // --- Create-sheet state ---
@@ -138,11 +128,6 @@ function openInfoForActive() {
 function closeCreate() {
   if (createBusy.value) return;
   showCreate.value = false;
-}
-
-async function selectNoTraject() {
-  await leaveTraject();
-  emit('switched', null);
 }
 
 async function selectTraject(t) {
@@ -239,14 +224,9 @@ function bind(field) {
     :text="activeLabel"
     :popovertarget="menuId"
   ></nldd-button>
-  <nldd-menu :id="menuId" :anchor="menuBtnId">
-    <nldd-menu-item
-      type="radio"
-      :selected="activeTrajectRef === null || undefined"
-      text="Geen traject"
-      @select="selectNoTraject"
-    ></nldd-menu-item>
-    <nldd-menu-divider v-if="trajects.length > 0"></nldd-menu-divider>
+  <!-- Logged in: the traject switcher + create. "Geen traject" is not an
+       option — you leave traject scope by navigating, not from this menu. -->
+  <nldd-menu v-if="authenticated" :id="menuId" :anchor="menuBtnId">
     <nldd-menu-item
       v-for="t in trajects"
       :key="t.id"
@@ -255,7 +235,7 @@ function bind(field) {
       :text="`${t.name}${t.status === 'afgerond' ? ' (afgerond)' : ''}`"
       @select="selectTraject(t)"
     ></nldd-menu-item>
-    <nldd-menu-divider></nldd-menu-divider>
+    <nldd-menu-divider v-if="trajects.length > 0"></nldd-menu-divider>
     <nldd-menu-item
       v-if="activeTraject"
       text="Documenten…"
@@ -280,6 +260,31 @@ function bind(field) {
       @click="openCreate"
     ></nldd-menu-item>
   </nldd-menu>
+
+  <!-- Not logged in: no menu — a popover explaining that trajecten unlock
+       once you sign in. -->
+  <nldd-popover
+    v-else
+    :id="menuId"
+    :anchor="menuBtnId"
+    accessible-label="Trajecten"
+    width="320px"
+  >
+    <nldd-container padding="16">
+      <nldd-inline-dialog
+        icon="traject"
+        text="Log in om een traject te kiezen of aan te maken"
+        supporting-text="Zodra je bent ingelogd zie je hier je lopende trajecten en kun je gemakkelijk wisselen."
+      >
+        <nldd-button
+          slot="actions"
+          variant="primary"
+          text="Inloggen"
+          @click="login()"
+        ></nldd-button>
+      </nldd-inline-dialog>
+    </nldd-container>
+  </nldd-popover>
 
   <TrajectMembersDialog
     v-model="showMembers"

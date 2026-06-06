@@ -136,18 +136,3 @@ svg[id^='mermaid-'] .labelBkg {
   fill: transparent !important;
   background: transparent !important;
 }
-
-/* RFC preamble metadata header (rehype-rfc-meta).
-   Status renders as an <nldd-tag>; the remaining fields sit beneath it as a
-   muted line. Spacing matches the gap rich-text leaves between blocks. */
-.rr-rfc-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.5rem;
-  margin-block: 0 1.5rem;
-}
-.rr-rfc-meta-fields {
-  color: var(--semantics-content-secondary-color);
-  font-size: 0.875rem;
-}

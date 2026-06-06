@@ -1,7 +1,7 @@
-import type { Root, Element, RootContent, ElementContent, Text } from 'hast';
+import type { Root, Element, RootContent } from 'hast';
 
 /**
- * RFC preamble styling.
+ * Strip the RFC preamble paragraph from the body.
  *
  * Every RFC body opens with a paragraph of bold-labelled metadata:
  *
@@ -9,73 +9,19 @@ import type { Root, Element, RootContent, ElementContent, Text } from 'hast';
  *      <strong>Date:</strong> 2026-05-29
  *      <strong>Authors:</strong> regelrecht team</p>
  *
- * Rendered as-is that is one grey run-on line. This plugin recognises that
- * first paragraph and rebuilds it as a small metadata header: the Status
- * value becomes an <nldd-tag> coloured by status (same mapping as the RFC
- * index), and the remaining fields render as a muted line beneath it.
- *
- * It only fires on a paragraph whose first child is <strong>Status:</strong>,
- * so ordinary prose is never touched. RFCs that omit the preamble render
- * unchanged.
+ * The RFC page template (pages/rfcs/[slug].astro) renders this metadata in the
+ * section header — Status as a coloured <nldd-tag>, the rest as a line beneath
+ * the title — so this plugin removes the paragraph from the body to avoid
+ * showing it twice. It only fires on a first paragraph whose first child is
+ * <strong>Status:…</strong>, so ordinary prose is untouched and RFCs that omit
+ * the preamble render unchanged.
  */
-
-const STATUS_COLOR: Record<string, string> = {
-  accept: 'success',
-  propos: 'accent',
-  reject: 'critical',
-  supersed: 'warning',
-};
-
-function statusColor(status: string): string {
-  const k = status.toLowerCase();
-  for (const key of Object.keys(STATUS_COLOR)) {
-    if (k.includes(key)) return STATUS_COLOR[key];
-  }
-  return 'neutral';
-}
-
 function textOf(node: RootContent): string {
   if (node.type === 'text') return node.value;
   if ('children' in node) {
     return (node.children as RootContent[]).map(textOf).join('');
   }
   return '';
-}
-
-/** Read a paragraph of `<strong>Label:</strong> value` pairs into a map. */
-function parseFields(p: Element): Record<string, string> | null {
-  const fields: Record<string, string> = {};
-  let currentLabel: string | null = null;
-  for (const child of p.children) {
-    if (child.type === 'element' && child.tagName === 'strong') {
-      currentLabel = textOf(child).replace(/:\s*$/, '').trim();
-    } else if (child.type === 'text' && currentLabel) {
-      const value = child.value.trim();
-      if (value) {
-        fields[currentLabel] = value;
-        currentLabel = null;
-      }
-    }
-  }
-  return Object.keys(fields).length ? fields : null;
-}
-
-function tag(color: string, label: string): Element {
-  return {
-    type: 'element',
-    tagName: 'nldd-tag',
-    properties: { color, size: 'md' },
-    children: [{ type: 'text', value: label } as Text],
-  };
-}
-
-function mutedLine(text: string): Element {
-  return {
-    type: 'element',
-    tagName: 'span',
-    properties: { className: ['rr-rfc-meta-fields'] },
-    children: [{ type: 'text', value: text } as Text],
-  };
 }
 
 export function rehypeRfcMeta() {
@@ -91,28 +37,7 @@ export function rehypeRfcMeta() {
       /^Status:/.test(textOf(first));
     if (!startsWithStatus) return;
 
-    const fields = parseFields(firstP);
-    if (!fields || !fields.Status) return;
-
-    // Status as a coloured tag; the rest (Date, Authors, …) as a muted line,
-    // skipping Short title which is sidebar-only metadata.
-    const rest = Object.entries(fields)
-      .filter(([k]) => k !== 'Status' && k !== 'Short title')
-      .map(([k, v]) => `${k}: ${v}`)
-      .join('  ·  ');
-
-    const children: ElementContent[] = [tag(statusColor(fields.Status), fields.Status)];
-    if (rest) children.push(mutedLine(rest));
-
-    const replacement: Element = {
-      type: 'element',
-      tagName: 'div',
-      properties: { className: ['rr-rfc-meta'] },
-      children,
-    };
-
-    const idx = tree.children.indexOf(firstP);
-    tree.children[idx] = replacement;
+    tree.children.splice(tree.children.indexOf(firstP), 1);
   };
 }
 
