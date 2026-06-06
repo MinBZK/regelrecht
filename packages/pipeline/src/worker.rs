@@ -470,7 +470,10 @@ async fn process_next_job(
             let error_json = serde_json::json!({ "error": e.to_string() });
             // Don't `?` here: a failure while recording the failure must still
             // report `outcome` so the breaker counts a resource-exhaustion fault
-            // (matches how the enrich paths handle fail_job errors).
+            // (matches how the enrich paths handle fail_job errors). For a
+            // non-resource error `outcome` is `Processed`, so the loop just moves
+            // on — a genuine DB outage resurfaces at the next claim_job and backs
+            // off there, so this can't tight-loop.
             let failed_job = match job_queue::fail_job(pool, job.id, Some(error_json)).await {
                 Ok(j) => j,
                 Err(fail_err) => {
