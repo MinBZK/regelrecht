@@ -107,6 +107,11 @@ static SLUG_NON_WORD: LazyLock<Regex> =
 static SLUG_SPACE_DASH: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[-\s]+").expect("valid regex"));
 
+/// Maximum byte length for a slug used as a path component. Linux caps a single
+/// path component at 255 bytes; we stay well under that to leave headroom for
+/// the temp-file prefix/suffix written alongside (`.{date}.yaml.tmp`).
+const MAX_SLUG_BYTES: usize = 200;
+
 impl LawMetadata {
     /// Generate a URL-friendly slug from the title.
     ///
@@ -141,7 +146,44 @@ impl LawMetadata {
             .collect();
         let text = SLUG_NON_WORD.replace_all(&text, "");
         let text = SLUG_SPACE_DASH.replace_all(&text, "_");
-        text.trim_matches('_').to_string()
+        let slug = text.trim_matches('_').to_string();
+        self.cap_slug(slug)
+    }
+
+    /// Cap an over-long slug so it stays a valid path component.
+    ///
+    /// The slug is used as the per-law directory name, which on Linux is
+    /// limited to 255 bytes; some official titles produce slugs well over that
+    /// (e.g. long "Wijzigingswet …" titles), which previously failed harvesting
+    /// with `Filename too long (os error 36)`. When a slug exceeds
+    /// [`MAX_SLUG_BYTES`] it is truncated on a `_` word boundary and suffixed
+    /// with the law's unique id (BWB or CVDR) so distinct long-titled laws can
+    /// never collide and the directory stays traceable to its source. Slugs
+    /// within the limit are returned unchanged, so normal laws are unaffected.
+    fn cap_slug(&self, slug: String) -> String {
+        // The slug is pure ASCII (see `to_slug`), so byte length == char count
+        // and byte-index truncation never splits a multi-byte char.
+        if slug.len() <= MAX_SLUG_BYTES {
+            return slug;
+        }
+
+        let id = if !self.bwb_id.is_empty() {
+            self.bwb_id.as_str()
+        } else {
+            self.cvdr_id.as_deref().unwrap_or_default()
+        };
+        let suffix = format!("_{}", id.to_lowercase());
+        let budget = MAX_SLUG_BYTES.saturating_sub(suffix.len());
+
+        let mut head = slug;
+        head.truncate(budget);
+        // Prefer cutting on a word boundary; fall back to the hard cut when the
+        // truncated head is a single unbroken word.
+        if let Some(i) = head.rfind('_') {
+            head.truncate(i);
+        }
+        let head = head.trim_end_matches('_');
+        format!("{head}{suffix}")
     }
 }
 
@@ -421,6 +463,77 @@ mod tests {
             scope_code: None,
         };
         assert_eq!(metadata.to_slug(), "wet_op_de_zorgtoeslag");
+    }
+
+    #[test]
+    fn test_law_metadata_to_slug_long_title_is_capped() {
+        // A real-world over-long title (BWBR0049301 produced a 267-char slug),
+        // which used to fail harvesting with "Filename too long (os error 36)".
+        let title = "Besluit vaststelling aantal tijdstippen waarvan in de \
+            Omgevingswet en daarmee verband houdende wet- en regelgeving is \
+            aangegeven dat deze bij koninklijk besluit worden bepaald en \
+            vaststelling tijdstip inwerkingtreding van diverse onderdelen \
+            daarvan alsmede van enkele samenhangende wetten en besluiten";
+        let metadata = LawMetadata {
+            bwb_id: "BWBR0049301".to_string(),
+            cvdr_id: None,
+            title: title.to_string(),
+            regulatory_layer: RegulatoryLayer::Wet,
+            publication_date: None,
+            effective_date: None,
+            creator: None,
+            scope_code: None,
+        };
+        let slug = metadata.to_slug();
+        assert!(
+            slug.len() <= MAX_SLUG_BYTES,
+            "slug too long: {}",
+            slug.len()
+        );
+        assert!(
+            slug.ends_with("_bwbr0049301"),
+            "slug must carry the unique id suffix: {slug}"
+        );
+        assert!(!slug.contains("__"), "no empty boundary segments: {slug}");
+        assert!(slug.starts_with("besluit_vaststelling_aantal_tijdstippen"));
+    }
+
+    #[test]
+    fn test_law_metadata_to_slug_long_titles_dont_collide() {
+        // Two distinct laws sharing a long common prefix must get distinct slugs.
+        let prefix = "wijzigingswet ".repeat(30); // ~420 chars, well over the cap
+        let make = |bwb: &str| LawMetadata {
+            bwb_id: bwb.to_string(),
+            cvdr_id: None,
+            title: format!("{prefix} {bwb}"),
+            regulatory_layer: RegulatoryLayer::Wet,
+            publication_date: None,
+            effective_date: None,
+            creator: None,
+            scope_code: None,
+        };
+        let a = make("BWBR0009790").to_slug();
+        let b = make("BWBR0027415").to_slug();
+        assert_ne!(a, b);
+        assert!(a.len() <= MAX_SLUG_BYTES && b.len() <= MAX_SLUG_BYTES);
+        assert!(a.ends_with("_bwbr0009790") && b.ends_with("_bwbr0027415"));
+    }
+
+    #[test]
+    fn test_law_metadata_to_slug_cap_uses_cvdr_id_when_no_bwb() {
+        let metadata = LawMetadata {
+            bwb_id: String::new(),
+            cvdr_id: Some("CVDR123456".to_string()),
+            title: "x ".repeat(200), // forces the cap
+            regulatory_layer: RegulatoryLayer::GemeentelijkeVerordening,
+            publication_date: None,
+            effective_date: None,
+            creator: None,
+            scope_code: None,
+        };
+        let slug = metadata.to_slug();
+        assert!(slug.len() <= MAX_SLUG_BYTES);
+        assert!(slug.ends_with("_cvdr123456"), "got: {slug}");
     }
 
     #[test]
