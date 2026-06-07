@@ -452,6 +452,38 @@ async fn process_next_job(
             Ok(JobOutcome::Processed)
         }
         Err(e) => {
+            // The work has no consolidated text to harvest (withdrawn / not yet
+            // in force / only announced). This is expected, not a failure: record
+            // the reason as a terminal law status and complete the job so it is
+            // never retried, instead of burning the retry budget.
+            if let PipelineError::Harvester(
+                regelrecht_harvester::HarvesterError::NoConsolidatedText { reason, .. },
+            ) = &e
+            {
+                let status = match reason {
+                    regelrecht_harvester::NoTextReason::Withdrawn { .. } => {
+                        LawStatusValue::Withdrawn
+                    }
+                    regelrecht_harvester::NoTextReason::NotYetInForce { .. } => {
+                        LawStatusValue::NotYetInForce
+                    }
+                    regelrecht_harvester::NoTextReason::Announced => LawStatusValue::Announced,
+                };
+                tracing::info!(
+                    job_id = %job.id,
+                    law_id = %job.law_id,
+                    ?reason,
+                    %status,
+                    "no consolidated text to harvest; skipping (terminal)"
+                );
+                let result_json = serde_json::json!({ "skipped": reason });
+                let mut tx = pool.begin().await?;
+                job_queue::complete_job(&mut *tx, job.id, Some(result_json)).await?;
+                law_status::update_status(&mut *tx, &job.law_id, status).await?;
+                tx.commit().await?;
+                return Ok(JobOutcome::Processed);
+            }
+
             // Container resource exhaustion (fork()/EAGAIN) is environmental, not
             // the law's fault, but the attempt was already spent at claim time, so
             // we still run the normal failure/requeue path (which resets law

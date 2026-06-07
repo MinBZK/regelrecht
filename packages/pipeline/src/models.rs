@@ -66,6 +66,19 @@ pub enum LawStatusValue {
     #[sqlx(rename = "enrich_exhausted")]
     #[serde(rename = "enrich_exhausted")]
     EnrichExhausted,
+    /// Withdrawn (`datum_intrekking`): no consolidated text to harvest. Terminal.
+    #[sqlx(rename = "withdrawn")]
+    #[serde(rename = "withdrawn")]
+    Withdrawn,
+    /// Adopted but not yet in force (future `datum_inwerkingtreding`): no
+    /// consolidated text yet. Terminal until manually re-queued.
+    #[sqlx(rename = "not_yet_in_force")]
+    #[serde(rename = "not_yet_in_force")]
+    NotYetInForce,
+    /// Only registered (WTI metadata), no dates or text yet. Terminal.
+    #[sqlx(rename = "announced")]
+    #[serde(rename = "announced")]
+    Announced,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

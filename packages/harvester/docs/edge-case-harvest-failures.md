@@ -91,9 +91,17 @@ Detection is the same in all options — in `parse_manifest`, when there are no 
 - **Option 2 — Option 1 + automatic future revisit.** Same, but for `not_yet_in_force` store the `datum_inwerkingtreding` and have a scheduled job re-queue the harvest on/after that date, so future laws self-harvest when they come into force. More moving parts (needs a scheduler/cron).
 - **Option 3 — silent skip.** Complete the job as a no-op without recording a status. Simplest, but loses the "why" and the coverage signal.
 
-Recommendation: **Option 1 now** (small, correct, unblocks the queue and records meaningful status), with Option 2's future-revisit as a fast follow-up if we want future laws to self-harvest rather than be manually re-queued.
+**Decided: Option 1, without an automatic future-revisit** (a generic re-harvest date can be added later if needed; not needed for now). Future/announced laws can be re-harvested manually from the admin.
 
-Once the status semantics are agreed, the implementation is: typed outcome in `manifest.rs` → map to status in the pipeline worker → unit tests for each category.
+### Implemented (this PR)
+
+- `manifest.rs::parse_manifest`: when a `<work>` has no `_latestItem` and no `<expression>`s, classify from metadata and return `HarvesterError::NoConsolidatedText { bwb_id, reason }` (`NoTextReason::Withdrawn{date}` / `NotYetInForce{date}` / `Announced`) instead of `MissingElement`. `datum_intrekking` takes precedence over `datum_inwerkingtreding` so a law withdrawn on its own in-force date is `Withdrawn`.
+- `LawStatusValue`: new terminal statuses `withdrawn`, `not_yet_in_force`, `announced` (+ migration `0018_no_consolidation_statuses.sql`).
+- Harvest worker: maps `NoConsolidatedText` to the matching status, **completes** the job (no retry, no burned attempts), and records the reason in the job result.
+- Admin frontend: the three statuses are added to `LAW_STATUSES`, badge map (neutral), and `RE_HARVESTABLE_STATUSES` (so they can be manually re-harvested).
+- Tests: manifest classification for withdrawn / future / intrekking-precedence / announced.
+
+The 8 affected laws will land in these statuses on their next harvest instead of failing. No automatic revisit is scheduled (per the decision above).
 
 ---
 
