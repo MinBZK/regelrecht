@@ -62,19 +62,38 @@ Example manifest (`BWBR0004339`):
 </work>
 ```
 
-These are **not** harvester defects in parsing — there is genuinely no consolidated text to harvest. Treating them as a hard error is wrong: it burns retries and pollutes the failed queue with laws that can never succeed.
+### Confirmed root cause (empirical, all 8 laws)
 
-### Proposed fix
-Distinguish "manifest is malformed" (real error) from "manifest has no consolidation" (expected, skippable):
+`_latestItem` is an attribute on `<work>` that points at the latest **consolidated expression**. It is absent exactly when the work has **zero expressions** — i.e. BWB has no consolidated text item for it at all. Every one of the 8 failing laws has **0 expressions** (so the question "is there only one version?" → there are **none**):
 
-1. Add a typed outcome, e.g. `HarvesterError::NoConsolidation { bwb_id, reason }` where `reason` is derived from the metadata:
-   - `withdrawn(datum_intrekking)` when `datum_intrekking` is present,
-   - `not_yet_in_force(datum_inwerkingtreding)` when a future `datum_inwerkingtreding` is present,
-   - `no_consolidation` otherwise (only WTI metadata).
-2. In `parse_manifest`, when `_latestItem` and `<expression>` are both absent, read `<metadata>` and return `NoConsolidation` instead of `MissingElement`.
-3. In the pipeline worker, map `NoConsolidation` to a **terminal non-failure** law status (e.g. `harvest_skipped` / reuse `harvest_exhausted` with a clear reason) so the job is completed-as-skipped rather than retried. This keeps these laws out of the failed queue.
+| law | versions | datum_intrekking | datum_inwerkingtreding | category | title |
+|-----|:--:|:--:|:--:|---|---|
+| BWBR0004339 | 0 | 2004-01-03 | – | withdrawn | Wet verstrekking gegevens CBS voor statistische doeleinden |
+| BWBR0022977 | 0 | 2010-10-01 | – | withdrawn | Wijzigingswet Brandweerwet 1985 |
+| BWBR0023074 | 0 | 2021-04-21 | – | withdrawn | Besluit waardevaststelling bij dierziektebestrijding |
+| BWBR0025304 | 0 | 2013-01-01 | – | withdrawn | Wet ambulancezorg |
+| BWBR0045723 | 0 | 2022-01-01 | 2022-01-01 | withdrawn on its in-force date (never in force) | Regeling declaratievoorschriften … Wlz |
+| BWBR0051108 | 0 | – | 2027-01-01 | future / not yet in force | Wijzigingswet Boek 7 BW (modernisering …) |
+| BWBR0051692 | 0 | – | 2027-01-01 | future / not yet in force | Regeling openbare jaarverantwoording Jeugdwet |
+| BWBR0051671 | 0 | – | – | announced (WTI only, no dates) | Besluit erkenningen wegverkeer |
 
-Open question for the team: do we want withdrawn laws recorded with a `withdrawn` status in `law_entries` (useful for coverage reporting), or simply skipped silently? Recommendation: record the status — it is meaningful corpus metadata.
+So there are two reasons a work has no consolidated text, both legitimate:
+- **Withdrawn** (5×): `datum_intrekking` set — no current text exists (BWB does not serve consolidated text for these).
+- **Future / announced** (3×): consolidated text only appears at/after `datum_inwerkingtreding`; for these it is still in the future (2027-01-01) or not yet dated.
+
+These are **not** harvester parse defects — there is genuinely nothing to harvest *today*. Treating them as a hard error is wrong: it burns retries and pollutes the failed queue with laws that can never succeed (withdrawn) or cannot succeed yet (future).
+
+### Decision needed: what should the harvester do?
+
+Detection is the same in all options — in `parse_manifest`, when there are no expressions / no `_latestItem`, read `<metadata>` and classify the reason (`withdrawn` / `not_yet_in_force` / `announced`) instead of returning `MissingElement`. The open question is **what to record and whether future laws are revisited**:
+
+- **Option 1 — graceful skip + recorded reason (recommended baseline).** Return a typed `NoConsolidation { reason }`; the worker completes the job as a terminal **non-failure** with a status that captures the reason (e.g. `withdrawn` / `not_yet_in_force`). Keeps them out of the failed queue, preserves useful coverage metadata, never retries. Future laws are revisited only when manually re-queued.
+- **Option 2 — Option 1 + automatic future revisit.** Same, but for `not_yet_in_force` store the `datum_inwerkingtreding` and have a scheduled job re-queue the harvest on/after that date, so future laws self-harvest when they come into force. More moving parts (needs a scheduler/cron).
+- **Option 3 — silent skip.** Complete the job as a no-op without recording a status. Simplest, but loses the "why" and the coverage signal.
+
+Recommendation: **Option 1 now** (small, correct, unblocks the queue and records meaningful status), with Option 2's future-revisit as a fast follow-up if we want future laws to self-harvest rather than be manually re-queued.
+
+Once the status semantics are agreed, the implementation is: typed outcome in `manifest.rs` → map to status in the pipeline worker → unit tests for each category.
 
 ---
 
