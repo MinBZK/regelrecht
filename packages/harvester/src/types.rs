@@ -108,8 +108,8 @@ static SLUG_SPACE_DASH: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[-\s]+").expect("valid regex"));
 
 /// Maximum byte length for a slug used as a path component. Linux caps a single
-/// path component at 255 bytes; we stay well under that to leave headroom for
-/// the temp-file prefix/suffix written alongside (`.{date}.yaml.tmp`).
+/// path component at 255 bytes; we stay well under that as a conservative margin
+/// below the per-component limit.
 const MAX_SLUG_BYTES: usize = 200;
 
 impl LawMetadata {
