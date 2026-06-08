@@ -226,6 +226,34 @@ pub fn resolve_consolidation_date(manifest: &BwbManifest, date: Option<&str>) ->
     }
 }
 
+/// Determine the law's instrument end date (`valid_to`) for the consolidation at
+/// `version_date`, per RFC-019.
+///
+/// Returns `Some(einddatum)` only when that consolidation is the **final** one
+/// (no later `datum_inwerkingtreding` among non-deleted consolidations) and its
+/// `einddatum` is finite — i.e. not the `9999-12-31` "still in force" sentinel.
+/// An intermediate consolidation's `einddatum` is merely the day before the next
+/// version begins and does **not** mean the law ended, so it yields `None`.
+pub fn resolve_valid_to(manifest: &BwbManifest, version_date: &str) -> Option<String> {
+    let consolidation = manifest
+        .expressions
+        .iter()
+        .filter(|c| !c.deleted)
+        .find(|c| c.datum_inwerkingtreding == version_date)?;
+
+    let is_final = !manifest
+        .expressions
+        .iter()
+        .filter(|c| !c.deleted)
+        .any(|c| c.datum_inwerkingtreding.as_str() > version_date);
+
+    if is_final && consolidation.einddatum != "9999-12-31" && !consolidation.einddatum.is_empty() {
+        Some(consolidation.einddatum.clone())
+    } else {
+        None
+    }
+}
+
 /// Extract BWB ID from the `_latestItem` path for error messages.
 #[allow(clippy::expect_used)]
 fn extract_bwb_id_from_latest(latest_item: &str) -> String {
@@ -288,6 +316,37 @@ mod tests {
 
         assert_eq!(manifest.expressions[2].label, "2026-02-04_0");
         assert_eq!(manifest.expressions[2].einddatum, "9999-12-31");
+    }
+
+    #[test]
+    fn test_resolve_valid_to_in_force_law_has_none() {
+        let manifest = parse_manifest(SAMPLE_MANIFEST, "BWBR0015703").unwrap();
+        // Final consolidation is still in force (9999-12-31) → no end date.
+        assert_eq!(resolve_valid_to(&manifest, "2026-02-04"), None);
+        // An intermediate consolidation's einddatum is mere succession → no end date.
+        assert_eq!(resolve_valid_to(&manifest, "2024-01-01"), None);
+    }
+
+    #[test]
+    fn test_resolve_valid_to_repealed_law_has_end_date() {
+        // A law whose final consolidation carries a finite einddatum: repealed, no successor.
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<repository>
+  <work _latestItem="2005-01-01_0/xml/BWBR0001234_2005-01-01_0.xml">
+    <expression label="2005-01-01_0">
+      <metadata>
+        <datum_inwerkingtreding>2005-01-01</datum_inwerkingtreding>
+        <einddatum>2007-06-30</einddatum>
+      </metadata>
+      <manifestation label="xml"><item label="BWBR0001234_2005-01-01_0.xml" _deleted="false" /></manifestation>
+    </expression>
+  </work>
+</repository>"#;
+        let manifest = parse_manifest(xml, "BWBR0001234").unwrap();
+        assert_eq!(
+            resolve_valid_to(&manifest, "2005-01-01"),
+            Some("2007-06-30".to_string())
+        );
     }
 
     #[test]

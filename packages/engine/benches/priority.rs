@@ -9,6 +9,7 @@ fn make_law(id: &str, layer: RegulatoryLayer, valid_from: &str) -> ArticleBasedL
         name: Some(id.to_string()),
         regulatory_layer: layer,
         valid_from: Some(valid_from.to_string()),
+        valid_to: None,
         publication_date: valid_from.to_string(),
         uuid: None,
         schema: None,

@@ -90,6 +90,10 @@ pub struct LawMetadata {
     /// Effective date (optional, usually set from request).
     pub effective_date: Option<String>,
 
+    /// Last date on which the law is in force (inclusive, einddatum). Set only when the
+    /// law genuinely ends with no successor; `None` means valid until superseded. RFC-019.
+    pub valid_to: Option<String>,
+
     /// Organisation name (e.g., "Gemeente Amsterdam"), for CVDR laws.
     pub creator: Option<String>,
 
@@ -459,6 +463,7 @@ mod tests {
             regulatory_layer: RegulatoryLayer::Wet,
             publication_date: None,
             effective_date: None,
+            valid_to: None,
             creator: None,
             scope_code: None,
         };
@@ -481,6 +486,7 @@ mod tests {
             regulatory_layer: RegulatoryLayer::Wet,
             publication_date: None,
             effective_date: None,
+            valid_to: None,
             creator: None,
             scope_code: None,
         };
@@ -509,6 +515,7 @@ mod tests {
             regulatory_layer: RegulatoryLayer::Wet,
             publication_date: None,
             effective_date: None,
+            valid_to: None,
             creator: None,
             scope_code: None,
         };
@@ -528,6 +535,7 @@ mod tests {
             regulatory_layer: RegulatoryLayer::GemeentelijkeVerordening,
             publication_date: None,
             effective_date: None,
+            valid_to: None,
             creator: None,
             scope_code: None,
         };
@@ -545,6 +553,7 @@ mod tests {
             regulatory_layer: RegulatoryLayer::Wet,
             publication_date: None,
             effective_date: None,
+            valid_to: None,
             creator: None,
             scope_code: None,
         };
@@ -560,6 +569,7 @@ mod tests {
             regulatory_layer: RegulatoryLayer::MinisterieleRegeling,
             publication_date: None,
             effective_date: None,
+            valid_to: None,
             creator: None,
             scope_code: None,
         };
@@ -576,6 +586,7 @@ mod tests {
             regulatory_layer: RegulatoryLayer::Wet,
             publication_date: None,
             effective_date: None,
+            valid_to: None,
             creator: None,
             scope_code: None,
         };
@@ -719,6 +730,7 @@ mod tests {
             regulatory_layer: RegulatoryLayer::Wet,
             publication_date: None,
             effective_date: None,
+            valid_to: None,
             creator: None,
             scope_code: None,
         };

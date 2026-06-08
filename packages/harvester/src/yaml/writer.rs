@@ -90,6 +90,10 @@ struct YamlLaw {
     regulatory_layer: String,
     publication_date: String,
     valid_from: String,
+    /// Instrument end date (inclusive). Emitted only when the law genuinely ends
+    /// with no successor (RFC-019); otherwise omitted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    valid_to: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     bwb_id: Option<String>,
     // NOTE: cvdr_id is not yet in the schema; emitted as an extension for traceability.
@@ -182,6 +186,7 @@ fn generate_yaml_struct(law: &Law, effective_date: &str) -> YamlLaw {
             .clone()
             .unwrap_or_else(|| effective_date.to_string()),
         valid_from: effective_date.to_string(),
+        valid_to: law.metadata.valid_to.clone(),
         bwb_id,
         cvdr_id,
         officiele_titel,
@@ -426,6 +431,7 @@ mod tests {
             regulatory_layer: RegulatoryLayer::Wet,
             publication_date: Some("2005-12-29".to_string()),
             effective_date: None,
+            valid_to: None,
             creator: None,
             scope_code: None,
         };

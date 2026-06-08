@@ -57,6 +57,7 @@ impl CvdrMetadata {
             regulatory_layer: self.regulatory_layer,
             publication_date: self.publication_date.clone(),
             effective_date: Some(effective_date.to_string()),
+            valid_to: None,
             creator: Some(self.creator.clone()),
             scope_code: None, // Could be extracted from SRU if available
         }

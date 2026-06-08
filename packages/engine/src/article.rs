@@ -707,6 +707,11 @@ pub struct ArticleBasedLaw {
     /// Date from which law is valid
     #[serde(default)]
     pub valid_from: Option<String>,
+    /// Last date on which the law is in force (inclusive). Set only when the law
+    /// genuinely ends with no successor (horizonbepaling or repeal); absent means
+    /// valid indefinitely until superseded by a newer version. See RFC-019.
+    #[serde(default)]
+    pub valid_to: Option<String>,
     /// Law name (can be a reference like "#wet_naam")
     #[serde(default)]
     pub name: Option<String>,
