@@ -133,6 +133,7 @@ impl LawMetadata {
     ///     regulatory_layer: RegulatoryLayer::Wet,
     ///     publication_date: None,
     ///     effective_date: None,
+    ///     valid_to: None,
     ///     creator: None,
     ///     scope_code: None,
     /// };
