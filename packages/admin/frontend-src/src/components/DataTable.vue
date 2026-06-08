@@ -14,6 +14,7 @@ const props = defineProps({
   filters: { type: Object, default: () => ({}) },
   clickableRows: { type: Boolean, default: false },
   emptyText: { type: String, default: 'No data found' },
+  emptySupportingText: { type: String, default: '' },
   sortOptions: { type: Array, default: null },
 });
 
@@ -50,7 +51,7 @@ function formatCellValue(value, key) {
     </template>
 
     <nldd-inline-dialog v-if="loading && data.length === 0" text="Loading…"></nldd-inline-dialog>
-    <nldd-inline-dialog v-else-if="error && data.length === 0" :text="'Failed to load data: ' + error"></nldd-inline-dialog>
+    <nldd-inline-dialog variant="alert" v-else-if="error && data.length === 0" :text="'Failed to load data: ' + error"></nldd-inline-dialog>
     <nldd-inline-dialog
       v-else-if="data.length === 0 && hasActiveFilters"
       text="No results match the current filters."
@@ -62,7 +63,7 @@ function formatCellValue(value, key) {
         @click="clearFilters"
       />
     </nldd-inline-dialog>
-    <nldd-inline-dialog v-else-if="data.length === 0" :text="emptyText">
+    <nldd-inline-dialog v-else-if="data.length === 0" :text="emptyText" :supporting-text="emptySupportingText">
       <slot name="empty-action" />
     </nldd-inline-dialog>
 
