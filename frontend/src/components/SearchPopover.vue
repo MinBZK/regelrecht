@@ -8,6 +8,11 @@ import { lawsListUrl } from '../composables/corpusUrls.js';
 
 const emit = defineEmits(['select-law', 'harvest-available']);
 
+// Set to the just-picked law id so onPopoverClose can move focus from the
+// popover trigger (restored by the popover's _returnFocus) onto that law's
+// sidebar list-item — the user's new context after choosing a result.
+const pendingFocusLawId = ref(null);
+
 const { activeTrajectRef } = useTrajects();
 
 const { results: bwbResults, loading: bwbLoading, search: searchBwb, clear: clearBwb } = useBwbSearch();
@@ -158,6 +163,7 @@ function bwbItemClick(result) {
   if (status === 'loading') return;
   const slug = harvestSlugs.value[result.bwb_id];
   if (isAvailable(status) && slug) {
+    pendingFocusLawId.value = slug;
     emit('harvest-available', slug);
     close();
   } else if (!status || isTerminal(status)) {
@@ -190,9 +196,22 @@ function onSearchKeydown(e) {
 function onPopoverClose() {
   search.value = '';
   clearBwb();
+  // The popover restores focus to its trigger (_returnFocus runs synchronously
+  // just before this 'close' fires). If the close came from picking a law, move
+  // focus onto that law's sidebar list-item instead. nextTick lets the parent
+  // render the item (it's added to "Recent bekeken" on selection) first.
+  const lawId = pendingFocusLawId.value;
+  pendingFocusLawId.value = null;
+  if (lawId) {
+    nextTick(() => {
+      const item = document.querySelector(`[data-law-id="${CSS.escape(lawId)}"]`);
+      item?.shadowRoot?.querySelector('.list-item__action')?.focus?.();
+    });
+  }
 }
 
 function selectLaw(lawId) {
+  pendingFocusLawId.value = lawId;
   emit('select-law', lawId);
   close();
 }

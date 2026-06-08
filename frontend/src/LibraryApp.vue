@@ -113,6 +113,29 @@ const selectedLaw = shallowRef(null);
 const selectedLawLoading = ref(false);
 const lawError = ref(null);
 const selectedArticleNumber = ref(null);
+
+// Recently-viewed laws (most-recent-first), persisted across sessions. Stored
+// as { law_id, name } so a law that fails to load in the active traject — and
+// therefore never enters the corpus index — still stays reachable + labelled.
+const RECENT_LAWS_KEY = 'regelrecht-recent-laws';
+const MAX_RECENT_LAWS = 12;
+function loadRecentLaws() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RECENT_LAWS_KEY) || '[]');
+    return Array.isArray(raw) ? raw.filter(r => r && r.law_id) : [];
+  } catch {
+    return [];
+  }
+}
+const recentLaws = ref(loadRecentLaws());
+function recordRecentLaw(lawId, name) {
+  if (!lawId) return;
+  const entry = { law_id: lawId, name: name || humanizeLawId(lawId) };
+  recentLaws.value = [entry, ...recentLaws.value.filter(r => r.law_id !== lawId)].slice(0, MAX_RECENT_LAWS);
+  try {
+    localStorage.setItem(RECENT_LAWS_KEY, JSON.stringify(recentLaws.value));
+  } catch { /* storage unavailable — keep the in-memory list */ }
+}
 // Detail view (tekst/machine/yaml) is reflected in the URL hash so the
 // state is bookmarkable and shareable. English keys in the hash because
 // they're stable identifiers, not labels.
@@ -175,8 +198,34 @@ const sidebarSections = computed(() => {
     }
   }
 
+  // "Recent bekeken" sits below the curated groups. Each id resolves to its
+  // richer index entry when available, otherwise to the stored { law_id, name }
+  // (e.g. a law not present in the active traject). Laws already shown above
+  // are skipped so nothing appears twice.
+  if (recentLaws.value.length > 0) {
+    const shown = new Set(sections.flatMap(s => s.laws.map(l => l.law_id)));
+    const recent = recentLaws.value
+      .filter(r => !shown.has(r.law_id))
+      .map(r => list.find(law => law.law_id === r.law_id) || r);
+    if (recent.length > 0) {
+      sections.push({ key: 'recent', title: 'Recent bekeken', laws: recent });
+    }
+  }
+
   return sections;
 });
+
+// Empty landing state: nothing curated, no law open, no error, and not still
+// loading. We then hide the sidebar and let the "Nog niets" CTA fill the main
+// pane full-width (mirrors the indexError pattern) instead of a cramped sidebar
+// + "Selecteer een wet".
+const libraryEmpty = computed(
+  () =>
+    !loading.value &&
+    !indexError.value &&
+    !selectedLawId.value &&
+    sidebarSections.value.length === 0,
+);
 
 const articles = computed(() => selectedLaw.value?.articles ?? []);
 
@@ -218,6 +267,15 @@ const indexedLawName = computed(() => {
   const law = laws.value.find(l => l.law_id === selectedLawId.value);
   return law ? displayName(law) : humanizeLawId(selectedLawId.value);
 });
+
+// Track the active law in "Recent bekeken" — including one that fails to load,
+// so the sidebar reflects what the user is looking at. Re-runs as the name
+// resolves to upgrade the label from the humanized id to the real name.
+watch([selectedLawId, lawName, indexedLawName], () => {
+  if (selectedLawId.value) {
+    recordRecentLaw(selectedLawId.value, lawName.value || indexedLawName.value);
+  }
+}, { immediate: true });
 
 const selectedArticle = computed(() => {
   if (!selectedArticleNumber.value) return null;
@@ -531,6 +589,20 @@ function goToLibraryRoot() {
   router.push(libraryRouteFor());
 }
 
+function clearRecent() {
+  // Deselect only if the open law was reachable *solely* via "Recent bekeken"
+  // (not also a favorite / traject edit), so clearing the list doesn't leave a
+  // selected-but-invisible law. Then return to the library home.
+  const sel = selectedLawId.value;
+  const stillShown =
+    !!sel && ((favorites.value && favorites.value.has(sel)) ||
+              (changedLawIds.value && changedLawIds.value.has(sel)));
+  const deselect = !!sel && recentLaws.value.some(r => r.law_id === sel) && !stillShown;
+  recentLaws.value = [];
+  try { localStorage.removeItem(RECENT_LAWS_KEY); } catch { /* ignore */ }
+  if (deselect) goToLibraryRoot();
+}
+
 // Handle browser back/forward navigation
 onBeforeRouteUpdate((to) => {
   const newLawId = to.params.lawId;
@@ -630,6 +702,10 @@ watch(activeTrajectRef, () => {
               <nldd-icon-button id="settings-menu-btn-md" size="md" icon="account" text="Account" expandable tooltip-timing="never" popovertarget="settings-menu-md"></nldd-icon-button>
               <nldd-menu id="settings-menu-md" anchor="settings-menu-btn-md">
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <template v-else-if="!authLoading && !authenticated">
+                  <nldd-menu-item text="Inloggen" icon="login" @click="login"></nldd-menu-item>
+                  <nldd-menu-divider></nldd-menu-divider>
+                </template>
                 <nldd-menu-group text="Functies">
                 <nldd-menu-item
                   v-for="[key, label] in editorPanelFlags"
@@ -650,9 +726,8 @@ watch(activeTrajectRef, () => {
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
                 </nldd-menu-group>
-                <nldd-menu-divider></nldd-menu-divider>
+                <nldd-menu-divider v-if="!authLoading && authenticated"></nldd-menu-divider>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
-                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
               </nldd-menu>
             </nldd-toolbar-item>
           </nldd-toolbar>
@@ -684,6 +759,10 @@ watch(activeTrajectRef, () => {
               <nldd-icon-button id="settings-menu-btn-lg" size="md" icon="account" text="Account" expandable tooltip-timing="never" popovertarget="settings-menu-lg"></nldd-icon-button>
               <nldd-menu id="settings-menu-lg" anchor="settings-menu-btn-lg">
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <template v-else-if="!authLoading && !authenticated">
+                  <nldd-menu-item text="Inloggen" icon="login" @click="login"></nldd-menu-item>
+                  <nldd-menu-divider></nldd-menu-divider>
+                </template>
                 <nldd-menu-group text="Functies">
                 <nldd-menu-item
                   v-for="[key, label] in editorPanelFlags"
@@ -704,9 +783,8 @@ watch(activeTrajectRef, () => {
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
                 </nldd-menu-group>
-                <nldd-menu-divider></nldd-menu-divider>
+                <nldd-menu-divider v-if="!authLoading && authenticated"></nldd-menu-divider>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
-                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
               </nldd-menu>
             </nldd-toolbar-item>
           </nldd-toolbar>
@@ -718,7 +796,7 @@ watch(activeTrajectRef, () => {
         <nldd-navigation-split-view @back="onPaneBack">
 
           <!-- Sidebar hidden on corpus load failure so the main pane carries the error alone (mirrors law-load failure pattern). -->
-          <nldd-split-view-pane v-if="!indexError" slot="sidebar" has-content>
+          <nldd-split-view-pane v-if="!indexError && !libraryEmpty" slot="sidebar" has-content>
             <nldd-page sticky-header>
               <nldd-top-title-bar slot="header" :text="LIBRARY_HOME_TITLE" collapse-anchor="home-titel"></nldd-top-title-bar>
 
@@ -744,7 +822,17 @@ watch(activeTrajectRef, () => {
                          curated groups read as distinct blocks. -->
                     <nldd-spacer v-if="sectionIndex > 0" size="24"></nldd-spacer>
                     <template v-if="section.title">
-                      <nldd-title size="5"><h4>{{ section.title }}</h4></nldd-title>
+                      <nldd-title size="5">
+                        <h4>{{ section.title }}</h4>
+                        <nldd-button
+                          v-if="section.key === 'recent'"
+                          slot="actions"
+                          size="xs"
+                          variant="accent-transparent"
+                          text="Wis"
+                          @click="clearRecent"
+                        ></nldd-button>
+                      </nldd-title>
                       <nldd-spacer size="8"></nldd-spacer>
                     </template>
                     <nldd-list variant="simple">
@@ -755,7 +843,7 @@ watch(activeTrajectRef, () => {
                         type="button"
                         :data-law-id="law.law_id"
                         :selected="law.law_id === selectedLawId || undefined"
-                        @click="selectLaw(law.law_id)"
+                        @click="selectLaw(law.law_id, section.key === 'recent')"
                       >
                         <nldd-text-cell :text="displayName(law)" :supporting-text="law.source_name">
                         </nldd-text-cell>
@@ -821,13 +909,13 @@ watch(activeTrajectRef, () => {
           </nldd-split-view-pane>
 
           <!-- Main: Artikel Detail -->
-          <nldd-split-view-pane slot="main" :has-content="selectedArticle || lawError || articleNotFound || indexError ? true : undefined">
+          <nldd-split-view-pane slot="main" :has-content="selectedArticle || lawError || articleNotFound || indexError || libraryEmpty ? true : undefined">
             <nldd-page sticky-header>
               <nldd-top-title-bar
                 slot="header"
                 :text="selectedArticle ? `Artikel ${selectedArticle.number}` : undefined"
                 :supporting-text="selectedArticle ? lawName : undefined"
-                :back-text="indexError ? undefined : (lawError ? LIBRARY_HOME_BACK_TEXT : (lawName || 'Terug'))"
+                :back-text="indexError || libraryEmpty ? undefined : (lawError ? LIBRARY_HOME_BACK_TEXT : (lawName || 'Terug'))"
                 :collapse-anchor="selectedArticle ? 'article-titel' : undefined"
               ></nldd-top-title-bar>
 
@@ -839,6 +927,14 @@ watch(activeTrajectRef, () => {
                 >
                   <nldd-button slot="actions" variant="primary" text="Probeer opnieuw" @click="retryLoadCorpus"></nldd-button>
                   <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
+                </nldd-inline-dialog>
+              </nldd-simple-section>
+              <nldd-simple-section width="full" v-else-if="libraryEmpty">
+                <nldd-inline-dialog
+                  text="Nog niets in je bibliotheek"
+                  supporting-text="Zoek een wet om te openen, of markeer wetten als favoriet."
+                >
+                  <nldd-button slot="actions" variant="primary" start-icon="search" text="Zoeken" @click="openSearch"></nldd-button>
                 </nldd-inline-dialog>
               </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="!selectedLawId">
@@ -917,28 +1013,32 @@ watch(activeTrajectRef, () => {
 
       <!-- Mobile Bar (sm only): tab bar + icon-buttons for search and settings -->
       <nldd-split-view-pane slot="mobile-bar" only="sm">
-        <nldd-container padding="8">
+        <nldd-container padding="8" padding-bottom="0">
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
-              <nldd-tab-bar variant="compact" navigation>
+              <TrajectMenu id-suffix="lib-sm" />
+            </nldd-toolbar-item>
+          </nldd-toolbar>
+        </nldd-container>
+        <nldd-container padding="8">
+          <nldd-toolbar size="lg">
+            <nldd-toolbar-item slot="start">
+              <nldd-tab-bar navigation>
                 <nldd-tab-bar-item :selected="isLibraryRoute || undefined" icon="books" text="Bibliotheek"></nldd-tab-bar-item>
                 <nldd-tab-bar-item :href="editorTabHref" @click.prevent="router.push(editorTabTarget)" icon="edit" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <span>
-                <nldd-icon-button size="lg" icon="search" text="Zoeken" @click="openSearch"></nldd-icon-button>
-              </span>
+              <nldd-icon-button icon="search" text="Zoeken" @click="openSearch"></nldd-icon-button>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <TrajectMenu id-suffix="lib-sm" />
-            </nldd-toolbar-item>
-            <nldd-toolbar-item slot="end">
-              <span>
-                <nldd-icon-button id="settings-menu-btn-sm" size="lg" icon="account" text="Account" popovertarget="settings-menu-sm"></nldd-icon-button>
-              </span>
+              <nldd-icon-button id="settings-menu-btn-sm" icon="account" text="Account" popovertarget="settings-menu-sm"></nldd-icon-button>
               <nldd-menu id="settings-menu-sm" anchor="settings-menu-btn-sm">
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <template v-else-if="!authLoading && !authenticated">
+                  <nldd-menu-item text="Inloggen" icon="login" @click="login"></nldd-menu-item>
+                  <nldd-menu-divider></nldd-menu-divider>
+                </template>
                 <nldd-menu-group text="Functies">
                 <nldd-menu-item
                   v-for="[key, label] in editorPanelFlags"
@@ -959,9 +1059,8 @@ watch(activeTrajectRef, () => {
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
                 </nldd-menu-group>
-                <nldd-menu-divider></nldd-menu-divider>
+                <nldd-menu-divider v-if="!authLoading && authenticated"></nldd-menu-divider>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
-                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
               </nldd-menu>
             </nldd-toolbar-item>
           </nldd-toolbar>

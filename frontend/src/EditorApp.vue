@@ -601,6 +601,16 @@ async function selectTab(tab) {
   router.replace(editorRouteFor(tab.lawId, tab.articleNumber));
 }
 
+// Fallback: once a load settles with no tab active while the user still has
+// open tabs (e.g. the URL points to an article that no longer resolves),
+// open the first tab instead of stranding them on the empty state.
+watch(loading, async (isLoading) => {
+  if (isLoading) return;
+  await nextTick();
+  if (activeTab.value || openTabs.value.length === 0) return;
+  selectTab(openTabs.value[0]).catch(console.warn);
+});
+
 // Browser back/forward (or any external navigation) — pull state from
 // URL. Local mutations from selectTab already match the destination,
 // so the guards below short-circuit; the work only happens for true
@@ -1331,6 +1341,10 @@ async function handleActionSave() {
               <nldd-icon-button id="settings-menu-btn-md" size="md" icon="account" text="Account" expandable tooltip-timing="never" popovertarget="settings-menu-md"></nldd-icon-button>
               <nldd-menu id="settings-menu-md" anchor="settings-menu-btn-md">
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <template v-else-if="!authLoading && !authenticated">
+                  <nldd-menu-item text="Inloggen" icon="login" @click="login"></nldd-menu-item>
+                  <nldd-menu-divider></nldd-menu-divider>
+                </template>
                 <nldd-menu-group text="Functies">
                 <nldd-menu-item
                   v-for="[key, label] in editorPanelFlags"
@@ -1351,9 +1365,8 @@ async function handleActionSave() {
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
                 </nldd-menu-group>
-                <nldd-menu-divider></nldd-menu-divider>
+                <nldd-menu-divider v-if="!authLoading && authenticated"></nldd-menu-divider>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
-                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
               </nldd-menu>
             </nldd-toolbar-item>
           </nldd-toolbar>
@@ -1396,6 +1409,10 @@ async function handleActionSave() {
               <nldd-icon-button id="settings-menu-btn-lg" size="md" icon="account" text="Account" expandable tooltip-timing="never" popovertarget="settings-menu-lg"></nldd-icon-button>
               <nldd-menu id="settings-menu-lg" anchor="settings-menu-btn-lg">
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <template v-else-if="!authLoading && !authenticated">
+                  <nldd-menu-item text="Inloggen" icon="login" @click="login"></nldd-menu-item>
+                  <nldd-menu-divider></nldd-menu-divider>
+                </template>
                 <nldd-menu-group text="Functies">
                 <nldd-menu-item
                   v-for="[key, label] in editorPanelFlags"
@@ -1416,9 +1433,8 @@ async function handleActionSave() {
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
                 </nldd-menu-group>
-                <nldd-menu-divider></nldd-menu-divider>
+                <nldd-menu-divider v-if="!authLoading && authenticated"></nldd-menu-divider>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
-                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
               </nldd-menu>
             </nldd-toolbar-item>
           </nldd-toolbar>
@@ -1823,28 +1839,32 @@ async function handleActionSave() {
 
       <!-- Mobile Bar (sm only): tab bar + icon-buttons for search and settings -->
       <nldd-split-view-pane slot="mobile-bar" only="sm">
-        <nldd-container padding="8">
+        <nldd-container padding="8" padding-bottom="0">
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
-              <nldd-tab-bar variant="compact">
+              <TrajectMenu id-suffix="sm" />
+            </nldd-toolbar-item>
+          </nldd-toolbar>
+        </nldd-container>
+        <nldd-container padding="8">
+          <nldd-toolbar size="lg">
+            <nldd-toolbar-item slot="start">
+              <nldd-tab-bar>
                 <nldd-tab-bar-item :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)" icon="books" text="Bibliotheek"></nldd-tab-bar-item>
                 <nldd-tab-bar-item selected icon="edit" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <span>
-                <nldd-icon-button size="lg" icon="search" text="Zoeken" @click="openSearch"></nldd-icon-button>
-              </span>
+              <nldd-icon-button icon="search" text="Zoeken" @click="openSearch"></nldd-icon-button>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <TrajectMenu id-suffix="sm" />
-            </nldd-toolbar-item>
-            <nldd-toolbar-item slot="end">
-              <span>
-                <nldd-icon-button id="settings-menu-btn-sm" size="lg" icon="account" text="Account" popovertarget="settings-menu-sm"></nldd-icon-button>
-              </span>
+              <nldd-icon-button id="settings-menu-btn-sm" icon="account" text="Account" popovertarget="settings-menu-sm"></nldd-icon-button>
               <nldd-menu id="settings-menu-sm" anchor="settings-menu-btn-sm">
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <template v-else-if="!authLoading && !authenticated">
+                  <nldd-menu-item text="Inloggen" icon="login" @click="login"></nldd-menu-item>
+                  <nldd-menu-divider></nldd-menu-divider>
+                </template>
                 <nldd-menu-group text="Functies">
                 <nldd-menu-item
                   v-for="[key, label] in editorPanelFlags"
@@ -1865,9 +1885,8 @@ async function handleActionSave() {
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
                 </nldd-menu-group>
-                <nldd-menu-divider></nldd-menu-divider>
+                <nldd-menu-divider v-if="!authLoading && authenticated"></nldd-menu-divider>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
-                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
               </nldd-menu>
             </nldd-toolbar-item>
           </nldd-toolbar>
