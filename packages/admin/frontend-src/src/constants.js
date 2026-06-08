@@ -3,7 +3,7 @@ import { formatCoverageScore, formatDate, jobSubtitle } from './formatters.js';
 export const LAW_STATUSES = [
   'unknown', 'queued', 'harvesting', 'harvested', 'harvest_failed', 'harvest_exhausted',
   'enriching', 'enriched', 'enrich_failed', 'enrich_exhausted',
-  'withdrawn', 'not_yet_in_force', 'announced',
+  'not_harvestable',
 ];
 
 export const JOB_STATUSES = ['pending', 'processing', 'completed', 'failed'];
@@ -11,7 +11,7 @@ export const JOB_STATUSES = ['pending', 'processing', 'completed', 'failed'];
 export const JOB_TYPES = ['harvest', 'enrich'];
 
 export const ENRICHABLE_STATUSES = ['harvested', 'enriched', 'enrich_failed'];
-export const RE_HARVESTABLE_STATUSES = ['unknown', 'queued', 'harvest_failed', 'harvested', 'enriched', 'enrich_failed', 'withdrawn', 'not_yet_in_force', 'announced'];
+export const RE_HARVESTABLE_STATUSES = ['unknown', 'queued', 'harvest_failed', 'harvested', 'enriched', 'enrich_failed', 'not_harvestable'];
 
 export const LAW_ENTRY_COLUMNS = [
   {
@@ -134,9 +134,7 @@ export const STATUS_BADGE_MAP = {
   unknown: 'neutral',
   queued: 'neutral',
   // No consolidated text to harvest — informational, terminal, not a failure.
-  withdrawn: 'neutral',
-  not_yet_in_force: 'neutral',
-  announced: 'neutral',
+  not_harvestable: 'neutral',
 };
 
 export const DATE_FORMATTER = new Intl.DateTimeFormat('nl-NL', {

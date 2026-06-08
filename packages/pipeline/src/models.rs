@@ -66,19 +66,13 @@ pub enum LawStatusValue {
     #[sqlx(rename = "enrich_exhausted")]
     #[serde(rename = "enrich_exhausted")]
     EnrichExhausted,
-    /// Withdrawn (`datum_intrekking`): no consolidated text to harvest. Terminal.
-    #[sqlx(rename = "withdrawn")]
-    #[serde(rename = "withdrawn")]
-    Withdrawn,
-    /// Adopted but not yet in force (future `datum_inwerkingtreding`): no
-    /// consolidated text yet. Terminal until manually re-queued.
-    #[sqlx(rename = "not_yet_in_force")]
-    #[serde(rename = "not_yet_in_force")]
-    NotYetInForce,
-    /// Only registered (WTI metadata), no dates or text yet. Terminal.
-    #[sqlx(rename = "announced")]
-    #[serde(rename = "announced")]
-    Announced,
+    /// No consolidated text is available to harvest (the work is withdrawn, not
+    /// yet in force, or only announced). Terminal — the precise reason and date
+    /// are recorded in the harvest job's result. Future laws can be re-harvested
+    /// manually once their text appears.
+    #[sqlx(rename = "not_harvestable")]
+    #[serde(rename = "not_harvestable")]
+    NotHarvestable,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
