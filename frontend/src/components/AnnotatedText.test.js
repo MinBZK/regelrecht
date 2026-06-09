@@ -8,6 +8,11 @@
 // real Chromium, and under jsdom, that the same DOMPurify output keeps the
 // list intact, so this is purely a happy-dom quirk, not a production bug. Pin
 // this file to jsdom (a spec-faithful NodeIterator) until happy-dom fixes it.
+//
+// TODO(happy-dom NodeIterator): once a happy-dom release sanitizes DOMPurify's
+// <ol>/<ul> output without stripping the wrapper, drop this docblock so the
+// file returns to the default happy-dom environment. Re-check by temporarily
+// removing the line and running this file's "ol li" assertions.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
