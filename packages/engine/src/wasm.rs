@@ -17,7 +17,7 @@
 //!
 //! ```javascript
 //! const engine = new WasmEngine();
-//! engine.loadLaw(wet_op_de_zorgtoeslagYaml);
+//! engine.loadLaw(wetOpDeZorgtoeslagYaml);
 //! engine.loadLaw(regelingStandaardpremieYaml);
 //! engine.loadLaw(awirYaml);
 //!

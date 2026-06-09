@@ -14,7 +14,7 @@ export function loadFixture(name) {
 /**
  * Intercept the law API and serve a local YAML fixture instead.
  * @param {import('@playwright/test').Page} page
- * @param {string} lawId - e.g. 'wet_op_de_zorgtoeslag' or 'wet_op_de_zorgtoeslag'
+ * @param {string} lawId - e.g. 'wet_op_de_zorgtoeslag'
  * @param {string} fixtureName - e.g. 'zorgtoeslag-stripped.yaml'
  */
 export async function interceptLaw(page, lawId, fixtureName) {
