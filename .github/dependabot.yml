@@ -39,6 +39,9 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # Our own design package — bump manually, not via Dependabot
+      - dependency-name: '@nldd/design-system'
 
   - package-ecosystem: docker
     directory: /frontend
@@ -71,6 +74,9 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # Our own design package — bump manually, not via Dependabot
+      - dependency-name: '@nldd/design-system'
 
   - package-ecosystem: docker
     directory: /packages/admin
@@ -102,6 +108,9 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # Our own design package — bump manually, not via Dependabot
+      - dependency-name: '@nldd/design-system'
 
   - package-ecosystem: npm
     directory: /frontend-lawmaking
@@ -116,6 +125,9 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # Our own design package — bump manually, not via Dependabot
+      - dependency-name: '@nldd/design-system'
 
   - package-ecosystem: github-actions
     directory: /
