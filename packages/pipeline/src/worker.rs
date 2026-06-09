@@ -1178,7 +1178,7 @@ async fn execute_harvest_job(
     corpus: Option<&CorpusClient>,
     http_client: &Client,
 ) -> Result<HarvestResult> {
-    let (mut result, written_files) = execute_harvest(
+    let (mut result, files) = execute_harvest(
         payload,
         output_dir,
         &config.regulation_output_base,
@@ -1188,12 +1188,14 @@ async fn execute_harvest_job(
 
     if let Some(corpus) = corpus {
         let message = format!("harvest: {} ({})", result.law_name, result.slug);
-        // written_files is [law_yaml (content), status.yaml (metadata)]. Only a
-        // change to the law YAML counts as a real change; the status timestamp
-        // alone must not produce a new version. See harvest::execute_harvest.
-        let (content, metadata) = written_files.split_at(1);
+        // Only a change to the law YAML (content) counts as a real change; the
+        // status.yaml timestamp (metadata) alone must not produce a new version.
         result.changed = corpus
-            .commit_and_push_content(content, metadata, &message)
+            .commit_and_push_content(
+                std::slice::from_ref(&files.content),
+                std::slice::from_ref(&files.metadata),
+                &message,
+            )
             .await?;
     }
 

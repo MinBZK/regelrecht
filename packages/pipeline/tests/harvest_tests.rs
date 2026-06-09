@@ -217,7 +217,7 @@ async fn test_execute_harvest_real_law() {
     };
 
     let client = regelrecht_harvester::http::create_client().unwrap();
-    let (result, written_files) = execute_harvest(&payload, repo_path, "regulation/nl", &client)
+    let (result, files) = execute_harvest(&payload, repo_path, "regulation/nl", &client)
         .await
         .unwrap();
 
@@ -225,8 +225,14 @@ async fn test_execute_harvest_real_law() {
     assert!(!result.slug.is_empty());
     assert!(result.article_count > 0);
     assert_eq!(result.source_type, "bwb");
-    assert_eq!(written_files.len(), 2);
-    for f in &written_files {
-        assert!(f.exists(), "expected file to exist: {}", f.display());
-    }
+    assert!(
+        files.content.exists(),
+        "expected content file to exist: {}",
+        files.content.display()
+    );
+    assert!(
+        files.metadata.exists(),
+        "expected metadata file to exist: {}",
+        files.metadata.display()
+    );
 }

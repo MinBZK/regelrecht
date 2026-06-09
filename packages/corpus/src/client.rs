@@ -234,8 +234,13 @@ impl CorpusClient {
             .collect()
     }
 
-    /// Stage the given paths (`git add -- <paths>`). No-op when `paths` is empty.
+    /// Stage the given paths (`git add -- <paths>`). No-op when `paths` is
+    /// empty — running `git add --` with no pathspecs is a no-op on some git
+    /// versions but errors on others, so guard it.
     async fn stage_paths(&self, paths: &[PathBuf]) -> Result<()> {
+        if paths.is_empty() {
+            return Ok(());
+        }
         let path_strings = Self::path_strings(paths);
         let mut add_args = vec!["add", "--"];
         add_args.extend(path_strings.iter().map(String::as_str));

@@ -103,6 +103,21 @@ fn default_changed() -> bool {
     true
 }
 
+/// The files a harvest writes to disk, split by their role in the commit.
+///
+/// `content` (the law YAML) is what gates the commit: a re-harvest only
+/// produces a new version when this file changes. `metadata` (`status.yaml`)
+/// is committed alongside content but carries a `last_harvested` timestamp
+/// that churns every run, so it must never trigger a commit on its own. The
+/// split is a typed contract so the worker can pass the two roles to
+/// `CorpusClient::commit_and_push_content` without relying on positional
+/// ordering.
+#[derive(Debug, Clone)]
+pub struct HarvestFiles {
+    pub content: PathBuf,
+    pub metadata: PathBuf,
+}
+
 /// Status file written alongside the law YAML.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LawStatusFile {
@@ -129,14 +144,14 @@ pub struct LawStatusFile {
 /// depends on pipeline-level logic (manifest resolution) that lives outside
 /// the harvester crate.
 ///
-/// Returns the harvest result and a list of file paths that were written
-/// (for git staging).
+/// Returns the harvest result and the files that were written, split into the
+/// content (law YAML) and metadata (`status.yaml`) roles for git staging.
 pub async fn execute_harvest(
     payload: &HarvestPayload,
     repo_path: &Path,
     output_base: &str,
     http_client: &Client,
-) -> Result<(HarvestResult, Vec<PathBuf>)> {
+) -> Result<(HarvestResult, HarvestFiles)> {
     let law_id = payload.law_id().ok_or_else(|| {
         crate::error::PipelineError::InvalidInput(
             "harvest payload must have either bwb_id or cvdr_id".into(),
@@ -250,11 +265,11 @@ pub async fn execute_harvest(
         changed: true,
     };
 
-    // Order matters: [0] is the law YAML (content), [1] is status.yaml
-    // (metadata). The worker relies on this so it can gate the commit on
-    // content changes while ignoring the always-churning status timestamp.
-    let written_files = vec![yaml_path, status_file_path];
-    Ok((result, written_files))
+    let files = HarvestFiles {
+        content: yaml_path,
+        metadata: status_file_path,
+    };
+    Ok((result, files))
 }
 
 #[cfg(test)]
