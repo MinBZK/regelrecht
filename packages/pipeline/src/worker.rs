@@ -300,6 +300,20 @@ async fn process_next_job(
                 tracing::warn!(error = %e, law_id = %job.law_id, "failed to upsert law name/slug");
             }
 
+            // When the re-harvest was byte-identical to the existing version
+            // (only the harvest timestamp differed), no new version was
+            // committed — skip the follow-up work that only makes sense for an
+            // actual content change (re-enriching identical content wastes LLM
+            // budget; referenced-law harvests were already queued on the run
+            // that first produced this content).
+            if !result.changed {
+                tracing::info!(
+                    law_id = %job.law_id,
+                    "no changes detected — law content unchanged; skipped commit, enrich, and follow-up harvests"
+                );
+                return Ok(JobOutcome::Processed);
+            }
+
             // Auto-create enrich jobs after successful harvest — one per provider.
             // Each provider writes to its own branch (`enrich/{provider}`)
             // so results can be compared side-by-side.
@@ -1149,9 +1163,14 @@ async fn poll_progress_file(
 ///
 /// The corpus push happens before the DB transaction that marks the job as
 /// completed. If the process crashes after a successful push but before the
-/// DB commit, the job will be retried on restart. This is safe because
-/// `commit_and_push` is idempotent: re-harvesting produces identical files,
-/// and git detects "no changes to commit" when the content matches.
+/// DB commit, the job will be retried on restart. This is safe because the
+/// commit is content-gated: re-harvesting unchanged law content produces no
+/// new commit (`commit_and_push_content` returns `false`), so retries are
+/// idempotent even though the `status.yaml` timestamp churns every run.
+///
+/// Sets `result.changed` to reflect whether a commit was actually made, so the
+/// caller can skip follow-up work (enrich, referenced-law harvests) when the
+/// re-harvest was a no-op.
 async fn execute_harvest_job(
     output_dir: &Path,
     config: &WorkerConfig,
@@ -1159,7 +1178,7 @@ async fn execute_harvest_job(
     corpus: Option<&CorpusClient>,
     http_client: &Client,
 ) -> Result<HarvestResult> {
-    let (result, written_files) = execute_harvest(
+    let (mut result, written_files) = execute_harvest(
         payload,
         output_dir,
         &config.regulation_output_base,
@@ -1169,7 +1188,13 @@ async fn execute_harvest_job(
 
     if let Some(corpus) = corpus {
         let message = format!("harvest: {} ({})", result.law_name, result.slug);
-        corpus.commit_and_push(&written_files, &message).await?;
+        // written_files is [law_yaml (content), status.yaml (metadata)]. Only a
+        // change to the law YAML counts as a real change; the status timestamp
+        // alone must not produce a new version. See harvest::execute_harvest.
+        let (content, metadata) = written_files.split_at(1);
+        result.changed = corpus
+            .commit_and_push_content(content, metadata, &message)
+            .await?;
     }
 
     Ok(result)

@@ -162,6 +162,7 @@ fn test_harvest_result_serialization() {
         referenced_bwb_ids: vec!["BWBR0002629".to_string()],
         harvest_date: "2025-01-01".to_string(),
         source_type: "bwb".to_string(),
+        changed: true,
     };
 
     let json = serde_json::to_value(&result).unwrap();
@@ -189,6 +190,7 @@ fn test_harvest_result_cvdr_source_type() {
         referenced_bwb_ids: vec![],
         harvest_date: "2025-01-01".to_string(),
         source_type: "cvdr".to_string(),
+        changed: true,
     };
 
     let json = serde_json::to_value(&result).unwrap();

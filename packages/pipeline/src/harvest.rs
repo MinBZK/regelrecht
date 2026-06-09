@@ -86,10 +86,21 @@ pub struct HarvestResult {
     /// Source type: "bwb" or "cvdr".
     #[serde(default = "default_source_type")]
     pub source_type: String,
+    /// Whether this harvest actually changed the law content (and thus produced
+    /// a corpus commit). `false` means the re-harvest was byte-identical to the
+    /// existing version and only the harvest timestamp differed — no new version
+    /// was committed. Set by the worker after the corpus commit; defaults to
+    /// `true` so older serialized results deserialize unchanged.
+    #[serde(default = "default_changed")]
+    pub changed: bool,
 }
 
 fn default_source_type() -> String {
     "bwb".to_string()
+}
+
+fn default_changed() -> bool {
+    true
 }
 
 /// Status file written alongside the law YAML.
@@ -234,8 +245,14 @@ pub async fn execute_harvest(
         referenced_bwb_ids,
         harvest_date: effective_date,
         source_type,
+        // Optimistic default; the worker overwrites this based on whether the
+        // corpus commit actually changed the law content.
+        changed: true,
     };
 
+    // Order matters: [0] is the law YAML (content), [1] is status.yaml
+    // (metadata). The worker relies on this so it can gate the commit on
+    // content changes while ignoring the always-churning status timestamp.
     let written_files = vec![yaml_path, status_file_path];
     Ok((result, written_files))
 }
@@ -337,6 +354,7 @@ mod tests {
             referenced_bwb_ids: vec!["BWBR0002629".to_string(), "BWBR0018450".to_string()],
             harvest_date: "2025-01-01".to_string(),
             source_type: "bwb".to_string(),
+            changed: true,
         };
 
         let json = serde_json::to_value(&result).unwrap();
@@ -344,6 +362,7 @@ mod tests {
         assert_eq!(json["article_count"], 10);
         assert_eq!(json["harvest_date"], "2025-01-01");
         assert_eq!(json["source_type"], "bwb");
+        assert_eq!(json["changed"], true);
 
         let refs = json["referenced_bwb_ids"].as_array().unwrap();
         assert_eq!(refs.len(), 2);
@@ -357,6 +376,15 @@ mod tests {
         let json = r#"{"law_name":"test","slug":"test","layer":"WET","file_path":"test.yaml","article_count":0,"warning_count":0,"warnings":[],"referenced_bwb_ids":[],"harvest_date":"2025-01-01"}"#;
         let result: HarvestResult = serde_json::from_str(json).unwrap();
         assert_eq!(result.source_type, "bwb");
+    }
+
+    /// Backward compatibility: HarvestResult without `changed` defaults to true,
+    /// so job results stored before this field existed deserialize unchanged.
+    #[test]
+    fn test_harvest_result_default_changed() {
+        let json = r#"{"law_name":"test","slug":"test","layer":"WET","file_path":"test.yaml","article_count":0,"warning_count":0,"warnings":[],"referenced_bwb_ids":[],"harvest_date":"2025-01-01"}"#;
+        let result: HarvestResult = serde_json::from_str(json).unwrap();
+        assert!(result.changed);
     }
 
     #[test]
