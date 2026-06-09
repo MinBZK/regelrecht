@@ -42,10 +42,10 @@ test.describe('Operation binding', () => {
   test('changing operation type updates YAML', async ({ page }) => {
     const fixtureYaml = createFixtureWithAction();
 
-    await page.route('**/api/corpus/laws/zorgtoeslagwet', route =>
+    await page.route('**/api/corpus/laws/wet_op_de_zorgtoeslag', route =>
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fixtureYaml })
     );
-    await page.goto('/editor/zorgtoeslagwet');
+    await page.goto('/editor/wet_op_de_zorgtoeslag');
     await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
 
     await selectArticle(page, '2');
@@ -84,10 +84,10 @@ test.describe('Operation binding', () => {
   test('changing literal value updates YAML', async ({ page }) => {
     const fixtureYaml = createFixtureWithAction();
 
-    await page.route('**/api/corpus/laws/zorgtoeslagwet', route =>
+    await page.route('**/api/corpus/laws/wet_op_de_zorgtoeslag', route =>
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fixtureYaml })
     );
-    await page.goto('/editor/zorgtoeslagwet');
+    await page.goto('/editor/wet_op_de_zorgtoeslag');
     await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
 
     await selectArticle(page, '2');
@@ -121,10 +121,10 @@ test.describe('Operation binding', () => {
   test('adding a value via button updates YAML', async ({ page }) => {
     const fixtureYaml = createFixtureWithAction();
 
-    await page.route('**/api/corpus/laws/zorgtoeslagwet', route =>
+    await page.route('**/api/corpus/laws/wet_op_de_zorgtoeslag', route =>
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fixtureYaml })
     );
-    await page.goto('/editor/zorgtoeslagwet');
+    await page.goto('/editor/wet_op_de_zorgtoeslag');
     await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
 
     await selectArticle(page, '2');
@@ -154,10 +154,10 @@ test.describe('Operation binding', () => {
   test('removing a value via minus button updates YAML', async ({ page }) => {
     const fixtureYaml = createFixtureWithAction();
 
-    await page.route('**/api/corpus/laws/zorgtoeslagwet', route =>
+    await page.route('**/api/corpus/laws/wet_op_de_zorgtoeslag', route =>
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fixtureYaml })
     );
-    await page.goto('/editor/zorgtoeslagwet');
+    await page.goto('/editor/wet_op_de_zorgtoeslag');
     await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
 
     await selectArticle(page, '2');

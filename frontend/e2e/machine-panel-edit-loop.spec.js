@@ -59,7 +59,7 @@ test.describe('Edit → re-execute loop via Machine panel', () => {
 
   test('add leeftijd input + AND condition via Machine panel turns scenario green', async ({ page }) => {
     const corpus = loadCorpus();
-    const zorgtoeslag = corpus.get('zorgtoeslagwet');
+    const zorgtoeslag = corpus.get('wet_op_de_zorgtoeslag');
     expect(zorgtoeslag).toBeTruthy();
 
     const scenarioFilename = 'eligibility.feature';
@@ -69,13 +69,13 @@ test.describe('Edit → re-execute loop via Machine panel', () => {
     await mockCorpusApi(
       page,
       corpus,
-      { id: 'zorgtoeslagwet', scenarioFilename },
+      { id: 'wet_op_de_zorgtoeslag', scenarioFilename },
       scenarioText,
     );
 
     // Open article 2 directly via the route param (avoids the
     // selectArticle helper bug noted in the previous PR).
-    await page.goto('/editor/zorgtoeslagwet/2');
+    await page.goto('/editor/wet_op_de_zorgtoeslag/2');
     await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 15_000 });
 
     // --- Initial state: Minderjarige scenario is red ---

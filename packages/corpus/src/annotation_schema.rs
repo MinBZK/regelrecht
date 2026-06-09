@@ -424,7 +424,7 @@ annotations:
     motivation: commenting
     creator: tester
     target:
-      source: "regelrecht://zorgtoeslagwet"
+      source: "regelrecht://wet_op_de_zorgtoeslag"
       selector:
         type: TextQuoteSelector
         exact: zorgtoeslag
@@ -462,12 +462,12 @@ annotations:
     #[test]
     fn law_id_from_source_takes_the_host_segment() {
         assert_eq!(
-            law_id_from_source("regelrecht://zorgtoeslagwet"),
-            Some("zorgtoeslagwet")
+            law_id_from_source("regelrecht://wet_op_de_zorgtoeslag"),
+            Some("wet_op_de_zorgtoeslag")
         );
         assert_eq!(
-            law_id_from_source("regelrecht://zorgtoeslagwet/hoogte#out"),
-            Some("zorgtoeslagwet")
+            law_id_from_source("regelrecht://wet_op_de_zorgtoeslag/hoogte#out"),
+            Some("wet_op_de_zorgtoeslag")
         );
         assert_eq!(law_id_from_source("https://example.com/x"), None);
     }
@@ -475,16 +475,16 @@ annotations:
     #[test]
     fn parse_regelrecht_uri_recognises_laws() {
         assert_eq!(
-            parse_regelrecht_uri("regelrecht://zorgtoeslagwet"),
+            parse_regelrecht_uri("regelrecht://wet_op_de_zorgtoeslag"),
             Some(RegelrechtRef::Law {
-                law_id: "zorgtoeslagwet".to_string(),
+                law_id: "wet_op_de_zorgtoeslag".to_string(),
                 rest: "".to_string(),
             })
         );
         assert_eq!(
-            parse_regelrecht_uri("regelrecht://zorgtoeslagwet/hoogte#out"),
+            parse_regelrecht_uri("regelrecht://wet_op_de_zorgtoeslag/hoogte#out"),
             Some(RegelrechtRef::Law {
-                law_id: "zorgtoeslagwet".to_string(),
+                law_id: "wet_op_de_zorgtoeslag".to_string(),
                 rest: "hoogte#out".to_string(),
             })
         );
@@ -543,35 +543,38 @@ annotations:
     fn first_note_not_targeting_law_is_an_allowlist() {
         // All on-law → None.
         let ok = serde_json::json!({"annotations": [
-            {"target": {"source": "regelrecht://zorgtoeslagwet"}},
-            {"target": {"source": "regelrecht://zorgtoeslagwet/hoogte#x"}},
+            {"target": {"source": "regelrecht://wet_op_de_zorgtoeslag"}},
+            {"target": {"source": "regelrecht://wet_op_de_zorgtoeslag/hoogte#x"}},
         ]});
-        assert_eq!(first_note_not_targeting_law(&ok, "zorgtoeslagwet"), None);
+        assert_eq!(
+            first_note_not_targeting_law(&ok, "wet_op_de_zorgtoeslag"),
+            None
+        );
 
         // A different law → WrongLaw at its index.
         let wrong = serde_json::json!({"annotations": [
-            {"target": {"source": "regelrecht://zorgtoeslagwet"}},
+            {"target": {"source": "regelrecht://wet_op_de_zorgtoeslag"}},
             {"target": {"source": "regelrecht://andere_wet"}},
         ]});
         assert_eq!(
-            first_note_not_targeting_law(&wrong, "zorgtoeslagwet"),
+            first_note_not_targeting_law(&wrong, "wet_op_de_zorgtoeslag"),
             Some((1, NoteTargetError::WrongLaw("andere_wet".to_string())))
         );
 
         // Non-regelrecht:// source must be REJECTED, not silently skipped
         // (the bypass the hostile review found).
         let evil = serde_json::json!({"annotations": [
-            {"target": {"source": "https://evil/zorgtoeslagwet"}},
+            {"target": {"source": "https://evil/wet_op_de_zorgtoeslag"}},
         ]});
         assert_eq!(
-            first_note_not_targeting_law(&evil, "zorgtoeslagwet"),
+            first_note_not_targeting_law(&evil, "wet_op_de_zorgtoeslag"),
             Some((0, NoteTargetError::NotRegelrechtUri))
         );
 
         // Absent target.source → Unparseable, also rejected.
         let bare = serde_json::json!({"annotations": [{"target": {}}]});
         assert_eq!(
-            first_note_not_targeting_law(&bare, "zorgtoeslagwet"),
+            first_note_not_targeting_law(&bare, "wet_op_de_zorgtoeslag"),
             Some((0, NoteTargetError::Unparseable))
         );
 
@@ -601,13 +604,13 @@ annotations:
     motivation: linking
     creator: Dienst Toeslagen
     target:
-      source: regelrecht://zorgtoeslagwet
+      source: regelrecht://wet_op_de_zorgtoeslag
       selector:
         type: TextQuoteSelector
         exact: zorgtoeslag
     body:
       type: SpecificResource
-      source: regelrecht://zorgtoeslagwet/x#y
+      source: regelrecht://wet_op_de_zorgtoeslag/x#y
       purpose: linking
 ";
 
@@ -617,7 +620,7 @@ annotations:
             "motivation": "commenting",
             "creator": "tester",
             "target": {
-                "source": "regelrecht://zorgtoeslagwet",
+                "source": "regelrecht://wet_op_de_zorgtoeslag",
                 "selector": { "type": "TextQuoteSelector", "exact": exact }
             },
             "body": { "type": "TextualBody", "value": "x", "purpose": "commenting" }

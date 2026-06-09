@@ -19,7 +19,7 @@
 //! params.insert("BSN".to_string(), Value::String("123456789".to_string()));
 //!
 //! let result = service.evaluate_law_output(
-//!     "zorgtoeslagwet",
+//!     "wet_op_de_zorgtoeslag",
 //!     "heeft_recht_op_zorgtoeslag",
 //!     params,
 //!     "2024-01-01",

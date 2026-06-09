@@ -27,7 +27,7 @@ const router = createRouter({
           // URL (per-tab state), never a server session.
           //
           // The `:trajectRef` regex pins the param to `{slug}-{8hex}` so a
-          // plain law-id slug like `zorgtoeslagwet` does NOT match here — it
+          // plain law-id slug like `wet_op_de_zorgtoeslag` does NOT match here — it
           // falls through to the no-traject library below. Same invariant as
           // `editor-traject`: law `$id` slugs must not end in `-{8hex}`.
           //
@@ -52,7 +52,7 @@ const router = createRouter({
           // `/api/trajects/{trajectRef}/corpus/...`.
           //
           // The `:trajectRef` regex pins the param to `{slug}-{8hex}` so a
-          // plain law-id slug like `zorgtoeslagwet` does NOT match this
+          // plain law-id slug like `wet_op_de_zorgtoeslag` does NOT match this
           // route — it falls through to the no-traject editor below.
           //
           // **Invariant**: law `$id` slugs must not match this regex (i.e.

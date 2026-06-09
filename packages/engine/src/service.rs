@@ -10,7 +10,7 @@
 //! use std::collections::BTreeMap;
 //!
 //! let mut service = LawExecutionService::new();
-//! service.load_law(zorgtoeslagwet_yaml)?;
+//! service.load_law(wet_op_de_zorgtoeslag_yaml)?;
 //! service.load_law(regeling_standaardpremie_yaml)?;
 //!
 //! let mut params = BTreeMap::new();
@@ -2737,27 +2737,27 @@ articles:
 
         #[test]
         fn test_service_resolve_with_real_files() {
-            // Integration test: load real zorgtoeslagwet + regeling_standaardpremie
+            // Integration test: load real wet_op_de_zorgtoeslag + regeling_standaardpremie
             // and verify resolve action works end-to-end
             let regulation_path = get_regulation_path();
 
-            let zorgtoeslagwet_path =
+            let wet_op_de_zorgtoeslag_path =
                 regulation_path.join("nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml");
             let regeling_path = regulation_path
                 .join("nl/ministeriele_regeling/regeling_standaardpremie/2025-01-01.yaml");
 
-            let zt_law = ArticleBasedLaw::from_yaml_file(&zorgtoeslagwet_path).unwrap();
+            let zt_law = ArticleBasedLaw::from_yaml_file(&wet_op_de_zorgtoeslag_path).unwrap();
             let rsp_law = ArticleBasedLaw::from_yaml_file(&regeling_path).unwrap();
 
             let mut service = LawExecutionService::new();
             service.load_law_struct(zt_law).unwrap();
             service.load_law_struct(rsp_law).unwrap();
 
-            // Execute zorgtoeslagwet standaardpremie output
+            // Execute wet_op_de_zorgtoeslag standaardpremie output
             // This should resolve the regeling_standaardpremie via legal_basis
             let result = service
                 .evaluate_law_output(
-                    "zorgtoeslagwet",
+                    "wet_op_de_zorgtoeslag",
                     "standaardpremie",
                     BTreeMap::new(),
                     "2025-01-01",
@@ -2787,7 +2787,7 @@ articles:
             );
 
             // Verify known laws are loaded
-            assert!(resolver.has_law("zorgtoeslagwet"));
+            assert!(resolver.has_law("wet_op_de_zorgtoeslag"));
             assert!(resolver.has_law("regeling_standaardpremie"));
             assert!(resolver.has_law("participatiewet"));
         }
@@ -2801,8 +2801,8 @@ articles:
             let mut service = LawExecutionService::new();
             service.load_law_struct(law).unwrap();
 
-            let info = service.get_law_info("zorgtoeslagwet").unwrap();
-            assert_eq!(info.id, "zorgtoeslagwet");
+            let info = service.get_law_info("wet_op_de_zorgtoeslag").unwrap();
+            assert_eq!(info.id, "wet_op_de_zorgtoeslag");
             assert_eq!(info.regulatory_layer, RegulatoryLayer::Wet);
             assert!(info.article_count > 0);
             assert!(!info.outputs.is_empty());

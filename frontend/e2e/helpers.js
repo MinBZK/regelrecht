@@ -14,7 +14,7 @@ export function loadFixture(name) {
 /**
  * Intercept the law API and serve a local YAML fixture instead.
  * @param {import('@playwright/test').Page} page
- * @param {string} lawId - e.g. 'wet_op_de_zorgtoeslag' or 'zorgtoeslagwet'
+ * @param {string} lawId - e.g. 'wet_op_de_zorgtoeslag' or 'wet_op_de_zorgtoeslag'
  * @param {string} fixtureName - e.g. 'zorgtoeslag-stripped.yaml'
  */
 export async function interceptLaw(page, lawId, fixtureName) {
@@ -27,8 +27,8 @@ export async function interceptLaw(page, lawId, fixtureName) {
     }),
   );
   // Also intercept the default law id from the fixture itself
-  if (lawId !== 'zorgtoeslagwet') {
-    await page.route('**/api/corpus/laws/zorgtoeslagwet', (route) =>
+  if (lawId !== 'wet_op_de_zorgtoeslag') {
+    await page.route('**/api/corpus/laws/wet_op_de_zorgtoeslag', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'text/yaml',
@@ -43,7 +43,7 @@ export async function interceptLaw(page, lawId, fixtureName) {
  * @param {import('@playwright/test').Page} page
  * @param {string} [lawId] - law query param
  */
-export async function gotoEditor(page, lawId = 'zorgtoeslagwet') {
+export async function gotoEditor(page, lawId = 'wet_op_de_zorgtoeslag') {
   await page.goto(`/editor/${lawId}`);
   // Wait for the document tab bar to appear (articles loaded)
   await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });

@@ -20,7 +20,7 @@ function fakeEngine() {
 }
 
 const MAIN_LAW = `\
-$id: zorgtoeslagwet
+$id: wet_op_de_zorgtoeslag
 articles:
   - number: '2'
     machine_readable:
@@ -63,7 +63,7 @@ describe('useDependencies.loadAllDependencies', () => {
     const { loadAllDependencies, loading } = useDependencies();
     const mainLawId = await loadAllDependencies(MAIN_LAW, engine, fetchLawYaml);
 
-    expect(mainLawId).toBe('zorgtoeslagwet');
+    expect(mainLawId).toBe('wet_op_de_zorgtoeslag');
     expect(engine.loaded.has('zorgverzekeringswet')).toBe(true);
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(loading.value).toBe(false);
@@ -81,11 +81,11 @@ describe('useDependencies.loadImplementors', () => {
     const fetchLawYaml = vi.fn(async (id) => DEP_YAML[id]);
 
     const { loadImplementors } = useDependencies();
-    await loadImplementors('zorgtoeslagwet', engine, fetchLawYaml, 'mig-1a2b3c4d');
+    await loadImplementors('wet_op_de_zorgtoeslag', engine, fetchLawYaml, 'mig-1a2b3c4d');
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(fetchSpy.mock.calls[0][0]).toBe(
-      '/api/trajects/mig-1a2b3c4d/corpus/laws/zorgtoeslagwet/implementors',
+      '/api/trajects/mig-1a2b3c4d/corpus/laws/wet_op_de_zorgtoeslag/implementors',
     );
     expect(fetchSpy.mock.calls.some((c) => String(c[0]).includes('limit=1000'))).toBe(false);
     expect(engine.loaded.has('regeling_standaardpremie')).toBe(true);
@@ -98,8 +98,8 @@ describe('useDependencies.loadImplementors', () => {
     const fetchLawYaml = vi.fn(async (id) => DEP_YAML[id]);
 
     const { loadImplementors } = useDependencies();
-    await loadImplementors('zorgtoeslagwet', engine, fetchLawYaml, 'mig-1a2b3c4d');
-    await loadImplementors('zorgtoeslagwet', engine, fetchLawYaml, 'mig-1a2b3c4d');
+    await loadImplementors('wet_op_de_zorgtoeslag', engine, fetchLawYaml, 'mig-1a2b3c4d');
+    await loadImplementors('wet_op_de_zorgtoeslag', engine, fetchLawYaml, 'mig-1a2b3c4d');
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
@@ -110,11 +110,11 @@ describe('useDependencies.loadImplementors', () => {
     const engine = fakeEngine();
     const { loadImplementors } = useDependencies();
     await expect(
-      loadImplementors('zorgtoeslagwet', engine, vi.fn(), null),
+      loadImplementors('wet_op_de_zorgtoeslag', engine, vi.fn(), null),
     ).resolves.toBeUndefined();
     // A transient failure must not permanently suppress the scan: a second
     // call retries (the guard key was reset on failure).
-    await loadImplementors('zorgtoeslagwet', engine, vi.fn(), null);
+    await loadImplementors('wet_op_de_zorgtoeslag', engine, vi.fn(), null);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 });
@@ -122,7 +122,7 @@ describe('useDependencies.loadImplementors', () => {
 // Parsed equivalent of MAIN_LAW (plus a self-reference) for the pure test.
 function yamlMain() {
   return {
-    $id: 'zorgtoeslagwet',
+    $id: 'wet_op_de_zorgtoeslag',
     articles: [
       {
         number: '2',
@@ -130,7 +130,7 @@ function yamlMain() {
           execution: {
             input: [
               { name: 'dekking', source: { regulation: 'zorgverzekeringswet', output: 'dekking' } },
-              { name: 'self', source: { regulation: 'zorgtoeslagwet', output: 'x' } },
+              { name: 'self', source: { regulation: 'wet_op_de_zorgtoeslag', output: 'x' } },
             ],
           },
         },

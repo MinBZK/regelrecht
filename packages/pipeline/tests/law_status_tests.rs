@@ -9,19 +9,28 @@ use regelrecht_pipeline::test_utils::TestDb;
 async fn test_upsert_law() {
     let db = TestDb::new().await;
 
-    let entry = law_status::upsert_law(&db.pool, "zorgtoeslagwet", Some("Zorgtoeslagwet"), None)
-        .await
-        .unwrap();
+    let entry = law_status::upsert_law(
+        &db.pool,
+        "wet_op_de_zorgtoeslag",
+        Some("Zorgtoeslagwet"),
+        None,
+    )
+    .await
+    .unwrap();
 
-    assert_eq!(entry.law_id, "zorgtoeslagwet");
+    assert_eq!(entry.law_id, "wet_op_de_zorgtoeslag");
     assert_eq!(entry.law_name, Some("Zorgtoeslagwet".to_string()));
     assert_eq!(entry.status, LawStatusValue::Unknown);
     assert!(entry.coverage_score.is_none());
 
-    let updated =
-        law_status::upsert_law(&db.pool, "zorgtoeslagwet", Some("Zorgtoeslagwet v2"), None)
-            .await
-            .unwrap();
+    let updated = law_status::upsert_law(
+        &db.pool,
+        "wet_op_de_zorgtoeslag",
+        Some("Zorgtoeslagwet v2"),
+        None,
+    )
+    .await
+    .unwrap();
     assert_eq!(updated.law_name, Some("Zorgtoeslagwet v2".to_string()));
 }
 
@@ -171,14 +180,19 @@ async fn test_set_coverage_score_validation() {
 async fn test_get_law() {
     let db = TestDb::new().await;
 
-    law_status::upsert_law(&db.pool, "zorgtoeslagwet", Some("Zorgtoeslagwet"), None)
-        .await
-        .unwrap();
+    law_status::upsert_law(
+        &db.pool,
+        "wet_op_de_zorgtoeslag",
+        Some("Zorgtoeslagwet"),
+        None,
+    )
+    .await
+    .unwrap();
 
-    let entry = law_status::get_law(&db.pool, "zorgtoeslagwet")
+    let entry = law_status::get_law(&db.pool, "wet_op_de_zorgtoeslag")
         .await
         .unwrap();
-    assert_eq!(entry.law_id, "zorgtoeslagwet");
+    assert_eq!(entry.law_id, "wet_op_de_zorgtoeslag");
 }
 
 #[tokio::test]

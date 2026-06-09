@@ -129,7 +129,7 @@ fn test_zorgtoeslag_trace_output_format() {
 
     let result = service
         .evaluate_law_output_with_trace(
-            "zorgtoeslagwet",
+            "wet_op_de_zorgtoeslag",
             "hoogte_zorgtoeslag",
             params,
             "2025-01-01",
@@ -173,7 +173,7 @@ fn test_zorgtoeslag_trace_result_matches_non_trace() {
     // Execute with trace
     let traced_result = service
         .evaluate_law_output_with_trace(
-            "zorgtoeslagwet",
+            "wet_op_de_zorgtoeslag",
             "hoogte_zorgtoeslag",
             params.clone(),
             "2025-01-01",
@@ -182,7 +182,12 @@ fn test_zorgtoeslag_trace_result_matches_non_trace() {
 
     // Execute without trace
     let normal_result = service
-        .evaluate_law_output("zorgtoeslagwet", "hoogte_zorgtoeslag", params, "2025-01-01")
+        .evaluate_law_output(
+            "wet_op_de_zorgtoeslag",
+            "hoogte_zorgtoeslag",
+            params,
+            "2025-01-01",
+        )
         .expect("Normal evaluation should succeed");
 
     // Results should be identical
@@ -201,7 +206,12 @@ fn test_trace_disabled_by_default() {
 
     // Normal evaluation should not have a trace
     let result = service
-        .evaluate_law_output("zorgtoeslagwet", "hoogte_zorgtoeslag", params, "2025-01-01")
+        .evaluate_law_output(
+            "wet_op_de_zorgtoeslag",
+            "hoogte_zorgtoeslag",
+            params,
+            "2025-01-01",
+        )
         .expect("Evaluation should succeed");
 
     assert!(

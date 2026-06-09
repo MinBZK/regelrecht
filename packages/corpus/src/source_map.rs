@@ -1050,7 +1050,7 @@ mod tests {
 
     #[test]
     fn test_resolve_display_name_output_reference() {
-        let yaml = r#"$id: zorgtoeslagwet
+        let yaml = r#"$id: wet_op_de_zorgtoeslag
 name: '#wet_naam'
 articles:
   - number: '8'
@@ -1167,10 +1167,10 @@ articles:
   - number: '1'
     machine_readable:
       implements:
-        - law: zorgtoeslagwet
+        - law: wet_op_de_zorgtoeslag
           article: '4'
           open_term: standaardpremie
-        - law: zorgtoeslagwet
+        - law: wet_op_de_zorgtoeslag
           article: '5'
           open_term: iets_anders
   - number: '2'
@@ -1184,7 +1184,7 @@ articles:
         assert_eq!(
             collect_law_implements(yaml),
             vec![
-                "zorgtoeslagwet".to_string(),
+                "wet_op_de_zorgtoeslag".to_string(),
                 "zorgverzekeringswet".to_string()
             ]
         );

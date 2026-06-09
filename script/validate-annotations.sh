@@ -6,7 +6,7 @@
 #
 # Usage:
 #   script/validate-annotations.sh                       # all note files
-#   script/validate-annotations.sh corpus/annotations/zorgtoeslagwet/annotations.yaml
+#   script/validate-annotations.sh corpus/annotations/wet_op_de_zorgtoeslag/annotations.yaml
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"

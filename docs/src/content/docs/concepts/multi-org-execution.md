@@ -21,7 +21,7 @@ This distinction determines the execution boundary. A calculation can be run by 
 A law that produces a formal decision declares `competent_authority`. The engine reads it from the top level of the law (or from a `machine_readable` section); it is **not** a field of `execution.produces`. The JSON schema defines `competent_authority` on the `machine_readable` section, but the top-level form is accepted too (the top-level object does not reject extra keys), and that is what the corpus uses, often as a `#`-reference into the law's definitions (see `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`):
 
 ```yaml
-$id: zorgtoeslagwet
+$id: wet_op_de_zorgtoeslag
 competent_authority: '#bevoegd_gezag'   # top-level, resolved from definitions
 # ...
 

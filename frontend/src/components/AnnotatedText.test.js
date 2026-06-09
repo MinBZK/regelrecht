@@ -272,7 +272,7 @@ describe('AnnotatedText markdown highlighting', () => {
   it('mounts the authoring path without disturbing the highlight render', async () => {
     const wrapper = mountWith(ART, [{ note: noteVerzekerde, spans: [] }], {
       canCreate: true,
-      lawId: 'zorgtoeslagwet',
+      lawId: 'wet_op_de_zorgtoeslag',
       engine: { resolveNote: () => ({ status: 'orphaned', matches: [] }) },
     });
     await nextTick();
@@ -286,7 +286,7 @@ describe('AnnotatedText markdown highlighting', () => {
   it('tears down an open creator when the article changes', async () => {
     const wrapper = mountWith(ART, [], {
       canCreate: true,
-      lawId: 'zorgtoeslagwet',
+      lawId: 'wet_op_de_zorgtoeslag',
       engine: { resolveNote: () => ({ status: 'found', matches: [] }) },
     });
     await nextTick();

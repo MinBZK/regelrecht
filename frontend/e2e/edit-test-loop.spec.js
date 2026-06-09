@@ -2,7 +2,7 @@
  * Edit → re-execute loop end-to-end.
  *
  * Verifies the demo flow the editor was built for:
- *   1. Open zorgtoeslagwet in the editor.
+ *   1. Open wet_op_de_zorgtoeslag in the editor.
  *   2. Observe the *Minderjarige heeft geen recht op zorgtoeslag* scenario is
  *      red (badge = ✗) — age check isn't in the law's machine_readable.
  *   3. Edit article 2's machine_readable via the middle-pane YAML editor to
@@ -35,8 +35,8 @@ test.describe('Edit → re-execute loop', () => {
 
   test('Minderjarige scenario goes red → green after adding age check', async ({ page }) => {
     const corpus = loadCorpus();
-    const zorgtoeslag = corpus.get('zorgtoeslagwet');
-    expect(zorgtoeslag, 'zorgtoeslagwet must exist in the test corpus').toBeTruthy();
+    const zorgtoeslag = corpus.get('wet_op_de_zorgtoeslag');
+    expect(zorgtoeslag, 'wet_op_de_zorgtoeslag must exist in the test corpus').toBeTruthy();
 
     const scenarioFilename = 'eligibility.feature';
     const scenarioText = loadScenario(zorgtoeslag.path, scenarioFilename);
@@ -45,13 +45,13 @@ test.describe('Edit → re-execute loop', () => {
     await mockCorpusApi(
       page,
       corpus,
-      { id: 'zorgtoeslagwet', scenarioFilename },
+      { id: 'wet_op_de_zorgtoeslag', scenarioFilename },
       scenarioText,
     );
 
     // Navigate directly to article 2 via the route param — that's where
     // heeft_recht_op_zorgtoeslag lives and where we need to edit.
-    await page.goto('/editor/zorgtoeslagwet/2');
+    await page.goto('/editor/wet_op_de_zorgtoeslag/2');
 
     // Wait for the document tab bar to render — articles loaded.
     await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 15_000 });

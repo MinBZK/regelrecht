@@ -51,7 +51,7 @@ let source_map = registry
     .load_all_sources_async(Some(Path::new("corpus-auth.yaml")))
     .await?;
 
-let law = source_map.get_law("zorgtoeslagwet");
+let law = source_map.get_law("wet_op_de_zorgtoeslag");
 ```
 
 The `github` feature flag enables remote fetching from GitHub repositories. Without it, only local filesystem sources are available.

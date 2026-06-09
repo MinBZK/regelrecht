@@ -47,7 +47,7 @@ function mountCreator(extraProps = {}, extraStubs = {}) {
     props: {
       range: { start: 10, end: 20 }, // "normpremie"
       rawText: RAW,
-      lawId: 'zorgtoeslagwet',
+      lawId: 'wet_op_de_zorgtoeslag',
       article: {
         number: '1',
         machine_readable: {
@@ -93,7 +93,7 @@ describe('NoteCreator', () => {
     expect(note.motivation).toBe('linking');
     expect(note.body).toEqual({
       type: 'SpecificResource',
-      source: 'regelrecht://zorgtoeslagwet/hoogte_zorgtoeslag#hoogte_zorgtoeslag',
+      source: 'regelrecht://wet_op_de_zorgtoeslag/hoogte_zorgtoeslag#hoogte_zorgtoeslag',
       purpose: 'linking',
     });
   });

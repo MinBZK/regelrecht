@@ -1,5 +1,5 @@
-zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
-╟──Evaluating rules for zorgtoeslagwet (hoogte_zorgtoeslag)
+wet_op_de_zorgtoeslag (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
+╟──Evaluating rules for wet_op_de_zorgtoeslag (hoogte_zorgtoeslag)
 ║   ╟──Reference: zorgverzekeringswet#is_verzekerd
 ║   ║   ╟──Resolving from PARAMETERS: $BSN = '999993653'
 ║   ║   ╟──Resolving from DATA_SOURCE: $POLIS_STATUS = 'ACTIEF'
@@ -57,7 +57,7 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║       │   ├──Resolving from PARAMETERS: $VERZAMELINKOMEN = 79547
 ║   ║       │   └──Resolving from PARAMETERS: $BUITENLANDS_INKOMEN = 0
 ║   ║       └──Result: toetsingsinkomen = 79547
-║   ╟──Resolving $ZORGTOESLAGWET#STANDAARDPREMIE
+║   ╟──Resolving $WET_OP_DE_ZORGTOESLAG#STANDAARDPREMIE
 ║   ║   ├──Resolving from RESOLVED_INPUT: 211200
 ║   ║   ├──Delegation: Open term 'standaardpremie' implemented by regeling_standaardpremie article 1: 211200
 ║   ║   │   ╟──Computing standaardpremie
@@ -67,7 +67,7 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   └──Computing standaardpremie
 ║   ║       ├──Resolving from PARAMETERS: $STANDAARDPREMIE = 211200
 ║   ║       └──Result: standaardpremie = 211200
-║   ╟──Resolving $ZORGTOESLAGWET#VERMOGEN_ONDER_GRENS
+║   ╟──Resolving $WET_OP_DE_ZORGTOESLAG#VERMOGEN_ONDER_GRENS
 ║   ║   ├──Resolving from RESOLVED_INPUT: True
 ║   ║   ├──Reference: wet_inkomstenbelasting_2001#rendementsgrondslag
 ║   ║   │   ╟──Resolving from PARAMETERS: $BSN = '999993653'

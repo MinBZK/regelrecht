@@ -1363,7 +1363,7 @@ articles:
         use super::*;
 
         #[test]
-        fn test_execute_zorgtoeslagwet_vermogen_check() {
+        fn test_execute_wet_op_de_zorgtoeslag_vermogen_check() {
             let path = get_regulation_path().join("nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml");
             let law = ArticleBasedLaw::from_yaml_file(&path).unwrap();
 

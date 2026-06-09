@@ -35,7 +35,7 @@ corpus/regulation/nl/
 
 ```yaml
 $schema: https://raw.githubusercontent.com/.../refs/tags/schema-v0.5.2/schema/v0.5.2/schema.json
-$id: zorgtoeslagwet
+$id: wet_op_de_zorgtoeslag
 regulatory_layer: WET
 publication_date: '2025-01-01'
 valid_from: '2025-01-01'
@@ -171,7 +171,7 @@ open_terms:
 
 # In the ministerial regulation (lower law)
 implements:
-  - law: zorgtoeslagwet
+  - law: wet_op_de_zorgtoeslag
     article: '4'
     open_term: standaardpremie
     gelet_op: Gelet op artikel 4 van de Wet op de zorgtoeslag

@@ -123,7 +123,7 @@ fn execute_healthcare_allowance(world: &mut RegelrechtWorld) {
 
     // Execute — engine resolves through cross-law references automatically.
     // BSN stays in parameters (set by set_rvig_personal_data in given.rs).
-    world.execute_law("zorgtoeslagwet", "hoogte_zorgtoeslag");
+    world.execute_law("wet_op_de_zorgtoeslag", "hoogte_zorgtoeslag");
 }
 
 fn register_if_present(

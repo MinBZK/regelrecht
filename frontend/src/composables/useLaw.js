@@ -84,7 +84,7 @@ export async function fetchLaw(trajectRef, lawId) {
 export function useLaw(lawParam, articleParam, trajectRefParam) {
   if (!lawParam) {
     const params = new URLSearchParams(window.location.search);
-    lawParam = params.get('law') || 'zorgtoeslagwet';
+    lawParam = params.get('law') || 'wet_op_de_zorgtoeslag';
   }
   const initialArticle = articleParam || null;
   // Current traject id for this composable instance. `switchLaw` may
