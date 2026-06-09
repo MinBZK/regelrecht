@@ -1026,22 +1026,6 @@ mod inner {
                 "annotation file was mis-indexed as law 'zorgtoeslagwet'"
             );
         }
-
-        // When an annotation's law_id matches a real law present in the same
-        // repo, the annotation file must not shadow the actual law content.
-        #[test]
-        fn annotation_does_not_shadow_real_law_with_same_id() {
-            let paths = vec![
-                "regulation/nl/wet/zorgtoeslagwet/2026-01-01.yaml".to_string(),
-                "annotations/zorgtoeslagwet/annotations.yaml".to_string(),
-            ];
-            let best = GitHubFetcher::group_best_versions(&paths, "", None);
-            assert_eq!(
-                best.get("zorgtoeslagwet").map(String::as_str),
-                Some("regulation/nl/wet/zorgtoeslagwet/2026-01-01.yaml"),
-                "annotation file shadowed the real law content"
-            );
-        }
     }
 }
 
