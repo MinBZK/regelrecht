@@ -1,0 +1,1308 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.3/schema.json
+$id: subsidieregeling_bekostiging_plafond_energietarieven_kleinverbruikers_2023
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2022-12-14'
+valid_from: '2022-12-15'
+valid_to: '2026-12-31'
+bwb_id: BWBR0047628
+url: https://wetten.overheid.nl/BWBR0047628/2022-12-15
+preamble:
+  text: |-
+    Gelet op Verordening (EU) 2022/1854 van de Raad van 6 oktober 2022 betreffende een noodinterventie in verband met
+    de hoge energieprijzen (PbEU 2022 LI 261/1)
+
+    Handelende in overeenstemming met de mededeling van de Europese Commissie van 9 oktober 2022 betreffende het
+    Tijdelijk crisiskader voor staatssteunmaatregelen ter ondersteuning van de economie na de Russische agressie tegen
+    Oekraïne (PbEU 2022, C 426/01);
+
+    Gelet op de artikelen 2, eerste en tweede lid, en 3 van de Kaderwet EZK- en LNV-subsidies;
+
+    Besluit:
+  url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#ArtikelAanhef
+articles:
+  - number: '1.1'
+    text: |-
+      1 In deze regeling wordt verstaan onder:
+
+        - *accountant:* accountant of accountant-administratieconsulent als bedoeld in
+      [artikel 393, eerste lid, van Boek 2 van het Burgerlijk Wetboek][ref1];
+        - *btw:* omzetbelasting als bedoeld in [artikel 1 van de Wet op de omzetbelasting 1968][ref2];
+        - *centraal aansluitingenregister:* centraal aansluitingenregister, genoemd in
+      [artikel 2.1.2 van de Informatiecode elektriciteit en gas][ref3];
+        - *contractueel leveringstarief:* leveringstarief voor elektriciteit, gas of warmte dat volgt uit een
+      leveringsovereenkomst;
+        - *eindfactuur:* factuur als bedoeld in
+      [artikel 2 van het Besluit factuur, verbruiks- en indicatief kostenoverzicht energie][ref4];
+        - *energiebelasting:* energiebelasting als bedoeld in
+      [artikel 48, eerste lid, van de Wet belastingen op milieugrondslag][ref5];
+        - *handelsregister:* handelsregister als bedoeld in [artikel 2 van de Handelsregisterwet 2007][ref6];
+        - *gas:* gas als bedoeld in [artikel 1, eerste lid, onderdeel b, subonderdeel 1°, van de Gaswet][ref7];
+        - *groep:* groep als bedoeld in [artikel 24b van Boek 2 van het Burgerlijk Wetboek][ref8];
+        - *kleinverbruiker:* afnemer van elektriciteit, gas of warmte met een kleinverbruikaansluiting;
+        - *kleinverbruikaansluiting:* a. primair allocatiepunt als bedoeld in
+      [artikel 1.1 van de Begrippencode elektriciteit][ref9] van een aansluiting op een net met een totale maximale
+      doorlaatwaarde van ten hoogste 3*80A als bedoeld in [artikel 95a, eerste lid, van de Elektriciteitswet 1998][ref10]
+      in een onroerende zaak ter zake waarvan op de levering van elektriciteit
+      [artikel 63, eerste lid, van de Wet belastingen op milieugrondslag][ref11] van toepassing is, die is geregistreerd
+      in het centraal aansluitingenregister en in bedrijf is; b. aansluiting op een net met een totale capaciteit van ten
+      hoogste 40 m3(n) per uur als bedoeld in [artikel 43, eerste lid, van de Gaswet][ref12], die is geregistreerd in het
+      centraal aansluitingenregister en in bedrijf is; c. aansluiting als bedoeld in [artikel 1 van de Warmtewet][ref13]
+      met een vermogen van maximaal 100 kilowatt, die in bedrijf is.
+        - *leverancier:* a. houder van een vergunning als bedoeld in
+      [artikel 95a, eerste lid, van de Elektriciteitswet 1998][ref14]; b. leverancier die een overeenkomst heeft tot het
+      leveren van elektriciteit aan een groep afnemers als bedoeld in [artikel 95n van de Elektriciteitswet 1998][ref15];
+      c. buiten Nederland gevestigde leverancier van elektriciteit aan ten hoogste 500 afnemers als bedoeld in
+      [artikel 95a, tweede lid, onderdeel b, van de Elektriciteitswet 1998][ref16]; d. houder van een vergunning
+      als bedoeld in [artikel 43, eerste lid, van de Gaswet][ref17]; e. leverancier die een overeenkomst
+      heeft tot het leveren van gas aan een groep afnemers als bedoeld in [artikel 52c van de Gaswet][ref18];
+      f. buiten Nederland gevestigde leverancier van gas aan ten hoogste 500 afnemers als bedoeld in
+      [artikel 43, tweede lid, onderdeel a, van de Gaswet][ref19]; g. leverancier die zorgdraagt voor een betrouwbare
+      levering van warmte als bedoeld in [artikel 2 van de Warmtewet][ref20], met uitzondering van een leverancier als
+      bedoeld in [artikel 1a van de Warmtewet][ref21];
+        - *leveringsovereenkomst:* overeenkomst voor de levering van elektriciteit, gas of warmte tussen een leverancier en
+      een kleinverbruiker;
+        - *Minister:* Minister voor Klimaat en Energie;
+        - *ODE:* opslag duurzame energie- en klimaattransitie als bedoeld in
+      [artikel 1, eerste lid, van de Wet opslag duurzame energie- en klimaattransitie][ref22];
+        - *plafondtarief:* plafondtarief als bedoeld in [artikel 2.2][ref23];
+        - *standaardjaarafname:* standaardjaarafname (SJA) als bedoeld in
+      [artikel 1.1 van de Begrippencode elektriciteit][ref24];
+        - *standaardjaarinvoeding:* standaardjaarinvoeding (SJI) als bedoeld in
+      [artikel 1.1 van de Begrippencode elektriciteit][ref25];
+        - *standaardjaarverbruik:* standaardjaarverbruik (SJV) als bedoeld in [artikel 1.1 van de Begrippencode gas][ref26];
+        - *tariefcohort:* in [bijlage I][ref27] opgenomen categorie van contractuele leveringstarieven met een specifieke
+      bandbreedte van contractuele leveringstarieven voor elektriciteit of gas;
+        - *termijnbedrag:* door een kleinverbruiker te betalen voorschotbedrag aan een leverancier voor de in een periode
+      te leveren elektriciteit, gas of warmte aan een kleinverbruikaansluiting;
+        - *toepassing van het prijsplafond:* toepassen van het prijsplafond als bedoeld in
+      [artikel 2.1, tweede lid][ref28];
+        - *volumeplafond:* volumeplafond als bedoeld in [artikel 2.3][ref29];
+        - *warmte:* warmte als bedoeld in [artikel 1 van de Warmtewet][ref30];
+        - *warmtenet:* warmtenet als bedoeld in [artikel 1 van de Warmtewet][ref31].
+
+      2 Voor de toepassing van deze regeling wordt het contractueel leveringstarief bepaald met de formule:
+
+      *VL + O – K*
+
+      waarbij *VL*, O en K achtereenvolgens staan voor:
+
+      *VL*: de variabele leveringskosten, exclusief energiebelasting en ODE, inclusief 21% btw:
+
+      ○ voor elektriciteit per kWh, uitgedrukt in € in vijf decimalen;
+
+      ○ voor gas in € in vijf decimalen per m3(n);
+
+      ○ voor warmte per GJ, uitgedrukt in € in twee decimalen;
+
+      *O*: de direct aan de variabele leveringskosten te relateren opslagen, inclusief 21% btw;
+
+      *K*: de direct aan de variabele leveringskosten te relateren kortingen, inclusief 21% btw.
+
+      3 Voor de toepassing van deze regeling wordt voor gas onder één m3(n) verstaan: één kubieke meter gas onder
+      normaalcondities met een calorische bovenwaarde van 35,17 MJ.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0003045#Artikel393
+      [ref2]: https://wetten.overheid.nl/BWBR0002629#Artikel1
+      [ref3]: https://wetten.overheid.nl/BWBR0037934#Artikel2.1.2
+      [ref4]: https://wetten.overheid.nl/BWBR0036646#Artikel2
+      [ref5]: https://wetten.overheid.nl/BWBR0007168#Artikel48
+      [ref6]: https://wetten.overheid.nl/BWBR0021777#Artikel2
+      [ref7]: https://wetten.overheid.nl/BWBR0011440#Artikel1
+      [ref8]: https://wetten.overheid.nl/BWBR0003045#Artikel24b
+      [ref9]: https://wetten.overheid.nl/BWBR0037938#Artikel1.1
+      [ref10]: https://wetten.overheid.nl/BWBR0009755#Artikel95a
+      [ref11]: https://wetten.overheid.nl/BWBR0007168#Artikel63
+      [ref12]: https://wetten.overheid.nl/BWBR0011440#Artikel43
+      [ref13]: https://wetten.overheid.nl/BWBR0033729#Artikel1
+      [ref14]: https://wetten.overheid.nl/BWBR0009755#Artikel95a
+      [ref15]: https://wetten.overheid.nl/BWBR0009755#Artikel95n
+      [ref16]: https://wetten.overheid.nl/BWBR0009755#Artikel95a
+      [ref17]: https://wetten.overheid.nl/BWBR0011440#Artikel43
+      [ref18]: https://wetten.overheid.nl/BWBR0011440#Artikel52c
+      [ref19]: https://wetten.overheid.nl/BWBR0011440#Artikel43
+      [ref20]: https://wetten.overheid.nl/BWBR0033729#Artikel2
+      [ref21]: https://wetten.overheid.nl/BWBR0033729#Artikel1a
+      [ref22]: https://wetten.overheid.nl/BWBR0032660#Artikel1
+      [ref23]: https://wetten.overheid.nl/BWBR0047628#Artikel2.2
+      [ref24]: https://wetten.overheid.nl/BWBR0037938#Artikel1.1
+      [ref25]: https://wetten.overheid.nl/BWBR0037938#Artikel1.1
+      [ref26]: https://wetten.overheid.nl/BWBR0037923#Artikel1.1
+      [ref27]: https://wetten.overheid.nl/BWBR0047628
+      [ref28]: https://wetten.overheid.nl/BWBR0047628#Artikel2.1
+      [ref29]: https://wetten.overheid.nl/BWBR0047628#Artikel2.3
+      [ref30]: https://wetten.overheid.nl/BWBR0033729#Artikel1a
+      [ref31]: https://wetten.overheid.nl/BWBR0033729#Artikel1a
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel1.1
+    references:
+      - id: ref1
+        bwb_id: BWBR0003045
+        artikel: '393'
+      - id: ref2
+        bwb_id: BWBR0002629
+        artikel: '1'
+      - id: ref3
+        bwb_id: BWBR0037934
+        artikel: 2.1.2
+      - id: ref4
+        bwb_id: BWBR0036646
+        artikel: '2'
+      - id: ref5
+        bwb_id: BWBR0007168
+        artikel: '48'
+      - id: ref6
+        bwb_id: BWBR0021777
+        artikel: '2'
+      - id: ref7
+        bwb_id: BWBR0011440
+        artikel: '1'
+      - id: ref8
+        bwb_id: BWBR0003045
+        artikel: 24b
+      - id: ref9
+        bwb_id: BWBR0037938
+        artikel: '1.1'
+      - id: ref10
+        bwb_id: BWBR0009755
+        artikel: 95a
+      - id: ref11
+        bwb_id: BWBR0007168
+        artikel: '63'
+      - id: ref12
+        bwb_id: BWBR0011440
+        artikel: '43'
+      - id: ref13
+        bwb_id: BWBR0033729
+        artikel: '1'
+      - id: ref14
+        bwb_id: BWBR0009755
+        artikel: 95a
+      - id: ref15
+        bwb_id: BWBR0009755
+        artikel: 95n
+      - id: ref16
+        bwb_id: BWBR0009755
+        artikel: 95a
+      - id: ref17
+        bwb_id: BWBR0011440
+        artikel: '43'
+      - id: ref18
+        bwb_id: BWBR0011440
+        artikel: 52c
+      - id: ref19
+        bwb_id: BWBR0011440
+        artikel: '43'
+      - id: ref20
+        bwb_id: BWBR0033729
+        artikel: '2'
+      - id: ref21
+        bwb_id: BWBR0033729
+        artikel: 1a
+      - id: ref22
+        bwb_id: BWBR0032660
+        artikel: '1'
+      - id: ref23
+        bwb_id: BWBR0047628
+        artikel: '2.2'
+        hoofdstuk: '2'
+      - id: ref24
+        bwb_id: BWBR0037938
+        artikel: '1.1'
+      - id: ref25
+        bwb_id: BWBR0037938
+        artikel: '1.1'
+      - id: ref26
+        bwb_id: BWBR0037923
+        artikel: '1.1'
+      - id: ref27
+        bwb_id: BWBR0047628
+      - id: ref28
+        bwb_id: BWBR0047628
+        artikel: '2.1'
+        hoofdstuk: '2'
+      - id: ref29
+        bwb_id: BWBR0047628
+        artikel: '2.3'
+        hoofdstuk: '2'
+      - id: ref30
+        bwb_id: BWBR0033729
+        artikel: 1a
+      - id: ref31
+        bwb_id: BWBR0033729
+        artikel: 1a
+  - number: '2.1'
+    text: |-
+      1 De Minister kan op aanvraag subsidie verstrekken aan een leverancier voor het in 2023 toepassen van
+      een prijsplafond overeenkomstig deze regeling bij het leveren van elektriciteit, gas of warmte aan
+      kleinverbruikaansluitingen.
+
+      2 Bij toepassing van het prijsplafond hanteert de subsidieontvanger in 2023 het plafondtarief voor gas,
+      elektriciteit of warmte in plaats van het contractuele leveringstarief bij de levering van elektriciteit, gas of
+      warmte aan kleinverbruikaansluitingen tot het bijbehorende volumeplafond.
+
+      3 De leverancier kan de toepassing van het prijsplafond op de levering van gas, elektriciteit of warmte aan een
+      kleinverbruikaansluiting achterwege laten, indien de betreffende kleinverbruiker hierom verzoekt.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel2.1
+  - number: '2.2'
+    text: |-
+      1 Het plafondtarief voor elektriciteit wordt vastgesteld op: € 0,24755 per kWh.
+
+      2 Het plafondtarief voor gas wordt vastgesteld op: € 0,85734 per m3(n).
+
+      3 Het plafondtarief voor warmte wordt vastgesteld op: € 47,38 per GJ.
+
+      4 De plafondtarieven, bedoeld in de voorgaande leden, zijn exclusief energiebelasting en ODE en inclusief 21% btw.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel2.2
+    machine_readable:
+      execution:
+        output:
+          - name: plafondtarief_elektriciteit
+            type: amount
+          - name: plafondtarief_gas
+            type: amount
+          - name: plafondtarief_warmte
+            type: amount
+        actions:
+          # Lid 1: "Het plafondtarief voor elektriciteit wordt vastgesteld op: € 0,24755 per kWh."
+          - output: plafondtarief_elektriciteit
+            value: 0.24755
+          # Lid 2: "... voor gas ... € 0,85734 per m3(n)."
+          - output: plafondtarief_gas
+            value: 0.85734
+          # Lid 3: "... voor warmte ... € 47,38 per GJ."
+          - output: plafondtarief_warmte
+            value: 47.38
+  - number: '2.3'
+    text: |-
+      1 Het volumeplafond voor elektriciteit wordt vastgesteld op: 2.900 kWh elektriciteit per kleinverbruikaansluiting
+      per jaar.
+
+      2 Het volumeplafond voor gas wordt vastgesteld op: 1.200 m3(n) gas per kleinverbruikaansluiting per jaar.
+
+      3 Het volumeplafond voor warmte wordt vastgesteld op: 37,0 GJ warmte per kleinverbruikaansluiting per
+      leveringsovereenkomst per jaar.
+
+      4 Het volumeplafond voor warmte, bedoeld in het derde lid, is niet van toepassing op de hoeveelheid warmte
+      die is geleverd voor de opwarming van tapwater, indien die hoeveelheid warmte afzonderlijk wordt bemeten en de
+      leveringskosten daarvoor afzonderlijk worden gefactureerd.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel2.3
+    machine_readable:
+      execution:
+        output:
+          - name: volumeplafond_elektriciteit
+            type: number
+          - name: volumeplafond_gas
+            type: number
+          - name: volumeplafond_warmte
+            type: number
+        actions:
+          # Lid 1: "Het volumeplafond voor elektriciteit wordt vastgesteld op: 2.900 kWh ... per jaar."
+          - output: volumeplafond_elektriciteit
+            value: 2900
+          # Lid 2: "... voor gas ... 1.200 m3(n) ... per jaar."
+          - output: volumeplafond_gas
+            value: 1200
+          # Lid 3: "... voor warmte ... 37,0 GJ ... per jaar."
+          - output: volumeplafond_warmte
+            value: 37.0
+  - number: '2.4'
+    text: |-
+      Indien aan een kleinverbruikaansluiting in 2023 elektriciteit wordt ingevoed op het elektriciteitsnet,
+      vindt voor de toepassing van het volumeplafond bij het verstrekken van de eindfactuur de
+      berekening van de hoeveelheid elektriciteit die in 2023 aan de kleinverbruikaansluiting is geleverd
+      plaats met overeenkomstige toepassing van de wijze van berekening van het verbruik, bedoeld in
+      [artikel 31c, eerste of tweede lid, van de Elektriciteitswet 1998][ref1].
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0009755#Artikel31c
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel2.4
+    references:
+      - id: ref1
+        bwb_id: BWBR0009755
+        artikel: 31c
+  - number: '2.5'
+    text: |-
+      Indien voor de levering van elektriciteit of gas een eindfactuur wordt verstrekt die betrekking heeft
+      op een periode in 2023, bedraagt het deel van het volumeplafond over die periode de som van de van de in
+      [bijlage II][ref1] opgenomen standaardvolumefracties per dag in 2023 voor elektriciteit of gas die van toepassing
+      zijn op die periode.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0047628
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel2.5
+    references:
+      - id: ref1
+        bwb_id: BWBR0047628
+  - number: '2.6'
+    text: |-
+      De subsidie wordt verleend onder de volgende opschortende voorwaarden:
+
+      a. goedkeuring van de Europese Commissie in een procedure als bedoeld in artikel 108, derde lid, van het Verdrag
+      betreffende de werking van de Europese Unie met betrekking tot deze regeling;
+
+      b. instemming van de Staten-Generaal met het bij brief van de Minister van Economische Zaken en Klimaat van
+      17 november 2022 ingediende voorstel van wet tot wijziging van de begrotingsstaat van het Ministerie van
+      Economische Zaken en Klimaat (XIII) voor het jaar 2022 (Tiende incidentele suppletoire begroting inzake regelingen
+      in verband met hoge energieprijzen), Kamerstukken II, vergaderjaar 2022/23, 36252.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel2.6
+  - number: '2.7'
+    text: |-
+      1 De Minister maakt na de datum van subsidieverlening de gegevens bekend, bedoeld in paragraaf 3, onderdeel 76, van
+      het Tijdelijk crisiskader voor staatssteunmaatregelen ter ondersteuning van de economie na de Russische agressie
+      tegen Oekraïne (PbEU 2022, C 426/01).
+
+      2 De gegevens, bedoeld in het tweede lid, blijven ten minste tien jaar openbaar beschikbaar.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel2.7
+  - number: '3.1'
+    text: |-
+      Indien subsidie wordt verstrekt voor de toepassing van het prijsplafond voor elektriciteit maar niet voor gas,
+      wordt de hoogte van de subsidie berekend volgens de formule:
+
+      waarbij *kva, THE, CLE, PTE, TUK en OBE* achtereenvolgens staan voor:
+
+      *kva*: kleinverbruikaansluiting;
+
+      *THE*: de totale hoeveelheid elektriciteit in kWh die de subsidieontvanger in 2023 per kleinverbruikaansluiting
+      heeft geleverd, waarvoor de toepassing van het prijsplafond heeft plaatsgevonden en een eindfactuur is verstrekt.
+      Hierbij wordt gerekend met een maximale bovengrens van het volumeplafond voor elektriciteit en een ondergrens van
+      nul;
+
+      *CLE*: het gemiddelde contractuele leveringstarief voor elektriciteit in € per kWh per kleinverbruikaansluiting,
+      op basis van de leveringstarieven in € per kWh die in 2023 door de subsidieontvanger in rekening zijn gebracht
+      aan de kleinverbruikaansluiting gewogen naar de hoeveelheid elektriciteit die in 2023 is geleverd aan deze
+      kleinverbruikaansluiting, waarvoor de toepassing van het prijsplafond heeft plaatsgevonden en een eindfactuur is
+      verstrekt;
+
+      *PTE*: het plafondtarief voor elektriciteit;
+
+      *TUK*: een tegemoetkoming in de uitvoeringskosten voor de toepassing van het prijsplafond, berekend overeenkomstig
+      [artikel 3.6][ref1];
+
+      *OBE*: de overschrijding van de in 2023 gerealiseerde brutomarge voor elektriciteit ten opzichte van de historische
+      referentiewaarde van de brutomarge voor elektriciteit in €, bepaald overeenkomstig [bijlage III][ref2].
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0047628#Artikel3.6
+      [ref2]: https://wetten.overheid.nl/BWBR0047628
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel3.1
+    references:
+      - id: ref1
+        bwb_id: BWBR0047628
+        artikel: '3.6'
+        hoofdstuk: '3'
+      - id: ref2
+        bwb_id: BWBR0047628
+  - number: '3.2'
+    text: |-
+      Indien subsidie wordt verstrekt voor de toepassing van het prijsplafond voor gas maar niet voor elektriciteit,
+      wordt de hoogte van de subsidie berekend volgens de formule:
+
+      waarbij *kva, THG, CLG, PTG, TUK* en *OBG,* achtereenvolgens staan voor:
+
+      *kva*: kleinverbruikaansluiting;
+
+      *THG*: de totale hoeveelheid gas in m3(n) die de subsidieontvanger in 2023 per kleinverbruikaansluiting heeft
+      geleverd, waarvoor de toepassing van het prijsplafond heeft plaatsgevonden en een eindfactuur is verstrekt. Hierbij
+      wordt gerekend met een maximale bovengrens van het volumeplafond voor gas en een ondergrens van nul;
+
+      *CLG*: het gemiddelde contractuele leveringstarief voor gas in € per m3(n) per kleinverbruikaansluiting, op basis
+      van de leveringstarieven in € per m3(n) die in 2023 door de subsidieontvanger in rekening zijn gebracht aan de
+      kleinverbruikaansluiting gewogen naar de hoeveelheid gas die in 2023 is geleverd aan deze kleinverbruikaansluiting,
+      waarvoor de toepassing van het prijsplafond heeft plaatsgevonden en een eindfactuur is verstrekt;
+
+      *PTG*: het plafondtarief voor gas;
+
+      *TUK*: een tegemoetkoming in de uitvoeringskosten voor de toepassing van het prijsplafond, berekend overeenkomstig
+      [artikel 3.6][ref1];
+
+      *OBG*: de overschrijding van de in 2023 gerealiseerde brutomarge voor gas ten opzichte van de historische
+      referentiewaarde van de brutomarge voor gas in €, bepaald overeenkomstig [bijlage III][ref2].
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0047628#Artikel3.6
+      [ref2]: https://wetten.overheid.nl/BWBR0047628
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel3.2
+    references:
+      - id: ref1
+        bwb_id: BWBR0047628
+        artikel: '3.6'
+        hoofdstuk: '3'
+      - id: ref2
+        bwb_id: BWBR0047628
+  - number: '3.3'
+    text: |-
+      Indien subsidie wordt verstrekt voor de toepassing van het prijsplafond voor zowel elektriciteit als gas, wordt de
+      hoogte van de subsidie berekend volgens de formule:
+
+      waarbij kva, THE, CLE, PTE, TUK, THG, CLG, PTG en OBEG achtereenvolgens staan voor:
+
+      *kva*: kleinverbruikaansluiting;
+
+      *THE*: de totale hoeveelheid elektriciteit in kWh die de subsidieontvanger in 2023 per kleinverbruikaansluiting
+      heeft geleverd, waarvoor de toepassing van het prijsplafond heeft plaatsgevonden en een eindfactuur is verstrekt.
+      Hierbij wordt gerekend met een maximale bovengrens van het volumeplafond voor elektriciteit en een ondergrens van
+      nul;
+
+      *CLE*: het gemiddelde contractuele leveringstarief voor elektriciteit in € per kWh per kleinverbruikaansluiting,
+      op basis van de leveringstarieven in € per kWh die in 2023 door de subsidieontvanger in rekening zijn gebracht
+      aan de kleinverbruikaansluiting gewogen naar de hoeveelheid elektriciteit die in 2023 is geleverd aan deze
+      kleinverbruikaansluiting, waarvoor de toepassing van het prijsplafond heeft plaatsgevonden en een eindfactuur is
+      verstrekt;
+
+      *PTE*: het plafondtarief voor elektriciteit;
+
+      *TUK*: een tegemoetkoming in de uitvoeringskosten voor de toepassing van het prijsplafond, berekend overeenkomstig
+      [artikel 3.6][ref1];
+
+      *THG*: de totale hoeveelheid gas in m3(n) die de subsidieontvanger in 2023 per kleinverbruikaansluiting heeft
+      geleverd, waarvoor de toepassing van het prijsplafond heeft plaatsgevonden en een eindfactuur is verstrekt. Hierbij
+      wordt gerekend met een maximale bovengrens van het volumeplafond voor gas en een ondergrens van nul;
+
+      *CLG*: het gemiddelde contractuele leveringstarief voor gas in € per m3(n) per kleinverbruikaansluiting, op basis
+      van de leveringstarieven in € per m3(n) die in 2023 door de subsidieontvanger in rekening zijn gebracht aan de
+      kleinverbruikaansluiting gewogen naar de hoeveelheid gas die in 2023 is geleverd aan deze kleinverbruikaansluiting,
+      waarvoor de toepassing van het prijsplafond heeft plaatsgevonden en een eindfactuur is verstrekt;
+
+      *PTG*: het plafondtarief voor gas;
+
+      *OBEG*: de overschrijdingen van de in 2023 gerealiseerde brutomarge voor elektriciteit en gas ten opzichte van de
+      historische referentiewaardes voor elektriciteit en gas in €, bepaald overeenkomstig [bijlage III][ref2].
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0047628#Artikel3.6
+      [ref2]: https://wetten.overheid.nl/BWBR0047628
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel3.3
+    references:
+      - id: ref1
+        bwb_id: BWBR0047628
+        artikel: '3.6'
+        hoofdstuk: '3'
+      - id: ref2
+        bwb_id: BWBR0047628
+  - number: '3.4'
+    text: |-
+      Indien subsidie is verstrekt voor de toepassing van het prijsplafond voor elektriciteit of gas aan een
+      subsidieontvanger die deel uitmaakt van een groep, wordt, indien dit door de subsidieontvanger bij de aanvraag
+      is aangegeven, voor het berekenen van de overschrijding van de brutomarge, bedoeld in de [artikelen 3.1][ref1],
+      [3.2][ref2] of [3.3][ref3], de over- of onderschrijding van de historische benchmark van de subsidieontvanger
+      overeenkomstig [bijlage III][ref4] verrekend:
+
+      a. indien sprake is van één andere subsidieontvanger die deel uitmaakt van de groep: de onder- of overschrijdingen
+      van de historische benchmark van dat lid;
+
+      b. indien sprake is van meer dan één andere subsidieontvanger die deel uitmaakt van de groep: de onder- of
+      overschrijdingen van de historische benchmark van elk van de andere leden van de groep.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0047628#Artikel3.1
+      [ref2]: https://wetten.overheid.nl/BWBR0047628#Artikel3.2
+      [ref3]: https://wetten.overheid.nl/BWBR0047628#Artikel3.3
+      [ref4]: https://wetten.overheid.nl/BWBR0047628
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel3.4
+    references:
+      - id: ref1
+        bwb_id: BWBR0047628
+        artikel: '3.1'
+        hoofdstuk: '3'
+      - id: ref2
+        bwb_id: BWBR0047628
+        artikel: '3.2'
+        hoofdstuk: '3'
+      - id: ref3
+        bwb_id: BWBR0047628
+        artikel: '3.3'
+        hoofdstuk: '3'
+      - id: ref4
+        bwb_id: BWBR0047628
+  - number: '3.5'
+    text: |-
+      Indien subsidie wordt verstrekt voor de toepassing van het prijsplafond voor warmte, wordt de hoogte van de
+      subsidie berekend volgens de formule:
+
+      waarbij *kva, THW, CLW, PTW TUK en NRW* achtereenvolgens staan voor:
+
+      *kva*: kleinverbruikaansluiting;
+
+      *THW*: de totale hoeveelheid warmte in GJ die de subsidieontvanger in 2023 per kleinverbruikaansluiting heeft
+      geleverd, waarvoor de toepassing van het prijsplafond heeft plaatsgevonden en een eindfactuur is verstrekt. Hierbij
+      wordt gerekend met een maximale bovengrens van het volumeplafond voor warmte en een ondergrens van nul;
+
+      *CLW*: het gemiddelde contractuele leveringstarief voor warmte in € per GJ per kleinverbruikaansluiting,
+      op basis van de leveringstarieven in € per GJ die in 2023 door de subsidieontvanger in rekening zijn
+      gebracht aan de kleinverbruikaansluiting gewogen naar de hoeveelheid warmte die in 2023 is geleverd aan deze
+      kleinverbruikaansluiting, waarvoor de toepassing van het prijsplafond heeft plaatsgevonden en een eindfactuur is
+      verstrekt;
+
+      *PTW*: het plafondtarief voor warmte;
+
+      *TUK*: een tegemoetkoming in de uitvoeringskosten voor de toepassing van het prijsplafond, berekend overeenkomstig
+      [artikel 3.6][ref1];
+
+      *NRW*: de overschrijding van het in 2023 gerealiseerde rendement in € ten opzichte van het normrendement voor
+      warmte in €, bepaald overeenkomstig [bijlage III][ref2].
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0047628#Artikel3.6
+      [ref2]: https://wetten.overheid.nl/BWBR0047628
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel3.5
+    references:
+      - id: ref1
+        bwb_id: BWBR0047628
+        artikel: '3.6'
+        hoofdstuk: '3'
+      - id: ref2
+        bwb_id: BWBR0047628
+  - number: '3.6'
+    text: |-
+      De hoogte van de tegemoetkoming in de uitvoeringskosten, bedoeld in de [artikelen 3.1][ref1], [3.2][ref2],
+      [3.3][ref3] en [3.5][ref4], wordt berekend volgens de formule:
+
+      waarbij *DLOkva, kva* en
+
+      achtereenvolgens staan voor:
+
+      *DLOkva*: het aantal dagen in 2023 dat er een leveringsovereenkomst voor de levering van elektriciteit, gas of
+      warmte is gesloten met de kleinverbruikaansluiting;
+
+      *kva*: kleinverbruikaansluiting;
+
+      : de som van het bedrag per kleinverbruikaansluiting voor alle kleinverbruikaansluitingen.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0047628#Artikel3.1
+      [ref2]: https://wetten.overheid.nl/BWBR0047628#Artikel3.2
+      [ref3]: https://wetten.overheid.nl/BWBR0047628#Artikel3.3
+      [ref4]: https://wetten.overheid.nl/BWBR0047628#Artikel3.5
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel3.6
+    references:
+      - id: ref1
+        bwb_id: BWBR0047628
+        artikel: '3.1'
+        hoofdstuk: '3'
+      - id: ref2
+        bwb_id: BWBR0047628
+        artikel: '3.2'
+        hoofdstuk: '3'
+      - id: ref3
+        bwb_id: BWBR0047628
+        artikel: '3.3'
+        hoofdstuk: '3'
+      - id: ref4
+        bwb_id: BWBR0047628
+        artikel: '3.5'
+        hoofdstuk: '3'
+  - number: '4.1'
+    text: |-
+      1 Een aanvraag voor subsidieverlening kan worden ingediend in de periode van 12 december 2022, 09:00 uur, tot
+      16 januari 2023, 17.00 uur.
+
+      2 De aanvraag kan ook na de periode, genoemd in het eerste lid, binnen de volgende termijnen maar uiterlijk
+      15 november 2023, 17.00 uur, worden ingediend indien:
+
+      a. aan de aanvrager een vergunning is verleend als bedoeld in [artikel 95a van de Elektriciteitswet 1998][ref1]:
+      binnen twee maanden na verlening van die vergunning;
+
+      b. de aanvrager een overeenkomst tot het leveren van elektriciteit aan een groep afnemers heeft afgesloten als
+      bedoeld in [95n van de Elektriciteitswet 1998][ref2]: binnen twee maanden na ondertekening van die overeenkomst
+      door alle partijen;
+
+      c. de aanvrager een buiten Nederland gevestigde leverancier van elektriciteit is aan ten hoogste 500 afnemers als
+      bedoeld in [artikel 95a, tweede lid, onderdeel b, van de Elektriciteitswet 1998][ref3]: binnen twee maanden na het
+      beginnen met het leveren van elektriciteit aan die afnemers;
+
+      d. aan de aanvrager een vergunning is verleend als bedoeld in [artikel 43, eerste lid, van de Gaswet][ref4]: binnen
+      twee maanden na verlening van die vergunning;
+
+      e. de aanvrager een buiten Nederland gevestigde leverancier van gas is aan ten hoogste 500 afnemers als bedoeld in
+      [artikel 43, tweede lid, onderdeel a, van de Gaswet][ref5]: binnen twee maanden na het beginnen met leveren van gas
+      aan die afnemers;
+
+      f. de aanvrager een leverancier is die een overeenkomst heeft tot het leveren van gas aan een groep afnemers als
+      bedoeld in [artikel 52c van de Gaswet][ref6]: binnen twee maanden na ondertekening van de overeenkomst door alle
+      partijen;
+
+      g. de aanvrager is begonnen met de levering van warmte als bedoeld in [artikel 2 van de Warmtewet][ref7]: binnen
+      twee maanden na het begin van die levering.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0009755#Artikel95a
+      [ref2]: https://wetten.overheid.nl/BWBR0009755#Artikel95n
+      [ref3]: https://wetten.overheid.nl/BWBR0009755#Artikel95a
+      [ref4]: https://wetten.overheid.nl/BWBR0011440#Artikel43
+      [ref5]: https://wetten.overheid.nl/BWBR0011440#Artikel43
+      [ref6]: https://wetten.overheid.nl/BWBR0011440#Artikel52c
+      [ref7]: https://wetten.overheid.nl/BWBR0033729#Artikel2
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel4.1
+    references:
+      - id: ref1
+        bwb_id: BWBR0009755
+        artikel: 95a
+      - id: ref2
+        bwb_id: BWBR0009755
+        artikel: 95n
+      - id: ref3
+        bwb_id: BWBR0009755
+        artikel: 95a
+      - id: ref4
+        bwb_id: BWBR0011440
+        artikel: '43'
+      - id: ref5
+        bwb_id: BWBR0011440
+        artikel: '43'
+      - id: ref6
+        bwb_id: BWBR0011440
+        artikel: 52c
+      - id: ref7
+        bwb_id: BWBR0033729
+        artikel: '2'
+  - number: '4.2'
+    text: |-
+      1 Een aanvraag voor subsidieverlening wordt ingediend met gebruikmaking van een middel dat door de Minister
+      beschikbaar wordt gesteld.
+
+      2 De aanvraag omvat in ieder geval:
+
+      a. gegevens over de subsidieaanvrager waaronder het nummer van registratie in het handelsregister, het post- en
+      bezoekadres, en het rekeningnummer;
+
+      b. gegevens over de contactpersoon bij de subsidieaanvrager, waaronder de naam, het telefoonnummer en het e-
+      mailadres;
+
+      c. een beschrijving van de methode van data-extractie uit de eigen administratie van de gegevens die gevraagd
+      worden bij een aanvraag voor een voorschot;
+
+      d. een beschrijving van de wijze van toepassing van prijsplafond;
+
+      e. een verklaring over de juistheid van de bij de aanvraag overlegde gegevens die is ondertekend door de bestuurder
+      van de subsidieaanvrager;
+
+      f. indien de subsidieaanvrager lid is van een groep: een opgave van de samenstelling van de groep.
+
+      3 Indien de aanvraag de toepassing van het prijsplafond voor elektriciteit of
+      gas betreft, gaat de aanvraag vergezeld van de bedrijfs-EAN-code, bedoeld in
+      [artikel 2.8.2, onderdeel a, van de Informatiecode elektriciteit en gas][ref1].
+
+      4 Indien de aanvraag warmte betreft, gaat de aanvraag vergezeld van:
+
+      a. indien de subsidieaanvrager houder is van een vergunning op grond van
+      [artikel 9, eerste lid, van de Warmtewet][ref2]: een afschrift van de vergunning;
+
+      b. indien gevallen anders dan bedoeld in onderdeel a:
+
+      i. representatieve voorbeelden van de gehanteerde leveringsovereenkomsten voor warmte, in geanonimiseerde vorm;
+
+      ii. een beschrijving van het warmtenet met in ieder geval de locatie van het net op postcodeniveau en het aantal
+      bemeten kleinverbruikaansluitingen voor warmte waarvoor de subsidieaanvrager leveringsovereenkomsten heeft
+      afgesloten.
+
+      5 De aanvraag gaat vergezeld van een verklaring waarmee de subsidieaanvrager ermee instemt dat een netbeheerder
+      als bedoeld in [artikel 79, eerste lid, van de Elektriciteitswet 1998][ref3] of een netbeheerder als bedoeld in
+      [artikel 37, eerste lid, van de Gaswet][ref4] op verzoek van de Minister voor de uitvoering van deze regeling
+      periodiek in ieder geval gegevens verstrekt uit het centraal aansluitingenregister per bedrijfs-EAN over het:
+
+      a. het aantal kleinverbruikaansluitingen;
+
+      b. het aantal kleinverbruikaansluitingen die wel in het centraal aansluitingenregister zijn opgenomen maar waarvoor
+      nog geen standaardjaarafname, standaardjaarinvoeding of standaardjaarverbruik in het centraal aansluitingenregister
+      is opgenomen;
+
+      c. het aantal kleinverbruikaansluitingen waarvoor de standaardjaarafname, verminderd met de standaarjaarinvoeding,
+      of het standaardjaarverbruik hoger is dan 2.900 kWh of 1.200 m3(n);
+
+      d. het aantal kleinverbruikaansluitingen waarvoor de standaardjaarafname, verminderd met de standaardjaarinvoeding,
+      of het standaardjaarverbruik gelijk aan of lager is dan 2.900 kWh of, respectievelijk 1.200 m3(n);
+
+      e. het gemiddelde van de standaardjaarafname, verminderd met de standaardjaarinvoeding, of het
+      standaardjaarverbruik van de in onderdeel d bedoelde kleinverbruikaansluitingen.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0037934#Artikel2.8.2
+      [ref2]: https://wetten.overheid.nl/BWBR0033729#Artikel9
+      [ref3]: https://wetten.overheid.nl/BWBR0009755#Artikel79
+      [ref4]: https://wetten.overheid.nl/BWBR0011440#Artikel37
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel4.2
+    references:
+      - id: ref1
+        bwb_id: BWBR0037934
+        artikel: 2.8.2
+      - id: ref2
+        bwb_id: BWBR0033729
+        artikel: '9'
+      - id: ref3
+        bwb_id: BWBR0009755
+        artikel: '79'
+      - id: ref4
+        bwb_id: BWBR0011440
+        artikel: '37'
+  - number: '4.4'
+    text: |-
+      1 De Minister beslist op een aanvraag voor subsidieverlening binnen twee weken na ontvangst van de aanvraag.
+
+      2 Deze termijn kan eenmaal met ten hoogste twee weken worden verlengd.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel4.4
+  - number: '4.5'
+    text: |-
+      In de beschikking tot subsidieverlening wordt geen bedrag opgenomen waarop de subsidie ten hoogste kan worden
+      vastgesteld.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel4.5
+  - number: '4.6'
+    text: |-
+      De Minister beslist afwijzend op een aanvraag voor subsidie indien:
+
+      a. de aanvraag niet voldoet aan de bij deze regeling gestelde regels;
+
+      b. de subsidieaanvrager failliet is verklaard of hem surséance van betaling is verleend, dan wel een verzoek
+      daartoe bij de rechtbank is ingediend.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel4.6
+  - number: '4.7'
+    text: |-
+      De Minister maakt zo spoedig mogelijk na een besluit tot subsidieverlening de naam van de subsidieontvanger en het
+      inschrijvingsnummer in het handelsregister bekend.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel4.7
+  - number: '5.1'
+    text: |-
+      1 Bij aanvang van de toepassing van het prijsplafond in een kalendermaand van 2023 verwerkt de subsidieontvanger
+      dit in het voorstel voor het met ingang van die kalendermaand door de kleinverbruiker te betalen termijnbedrag,
+      en stelt het termijnbedrag overeenkomstig bij indien toepassing van het prijsplafond leidt tot verlaging van het
+      termijnbedrag, tenzij de kleinverbruiker aangeeft daar niet mee in te stemmen.
+
+      2 In afwijking van het eerste lid kan de subsidieontvanger het voorstel tot bijstelling van het termijnbedrag ten
+      hoogste één kalendermaand later doen dan bedoeld in het eerste lid, indien de subsidieontvanger kan aantonen dat
+      eerdere bijstelling redelijkerwijs niet mogelijk is.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel5.1
+  - number: '5.2'
+    text: |-
+      1 Indien het plafondtarief in een periode in 2023 lager was dan het gemiddelde contractuele leveringstarief voor
+      elektriciteit, gas of warmte, bedoeld [artikel 3.1][ref1], [3.2][ref2], [3.3][ref3] of [3.5][ref4], in die periode,
+      past de subsidieontvanger het prijsplafond toe bij de elektriciteit, gas of warmte die in die periode is geleverd
+      aan een kleinverbruikaansluiting en waarvoor een eindfactuur is verstrekt.
+
+      2 Bij toepassing van het eerste lid neemt de subsidieontvanger in de eindfactuur het bedrag op waarmee de
+      eindfactuur is aangepast vanwege de toepassing van het prijsplafond, indien toepassing van het prijsplafond aan de
+      orde was in de periode waar de eindfactuur op ziet.
+
+      3 De periode waar een eindfactuur voor de levering van elektriciteit, gas of warmte aan een
+      kleinverbruikaansluiting op ziet, bedraagt ten minste één kalendermaand, tenzij de subsidieontvanger gedurende
+      minder dan één kalendermaand, gerekend vanaf de vorige eindfactuur, elektriciteit, gas of warmte heeft geleverd aan
+      de kleinverbruikaansluiting.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0047628#Artikel3.1
+      [ref2]: https://wetten.overheid.nl/BWBR0047628#Artikel3.2
+      [ref3]: https://wetten.overheid.nl/BWBR0047628#Artikel3.3
+      [ref4]: https://wetten.overheid.nl/BWBR0047628#Artikel3.5
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel5.2
+    references:
+      - id: ref1
+        bwb_id: BWBR0047628
+        artikel: '3.1'
+        hoofdstuk: '3'
+      - id: ref2
+        bwb_id: BWBR0047628
+        artikel: '3.2'
+        hoofdstuk: '3'
+      - id: ref3
+        bwb_id: BWBR0047628
+        artikel: '3.3'
+        hoofdstuk: '3'
+      - id: ref4
+        bwb_id: BWBR0047628
+        artikel: '3.5'
+        hoofdstuk: '3'
+  - number: '5.3'
+    text: |-
+      1 De subsidieontvanger voert een zodanige administratie dat daaruit op elk moment op een eenvoudige en duidelijke
+      wijze is af te leiden dat hij voldoet aan de bij deze regeling gestelde eisen.
+
+      2 De subsidieontvanger bewaart de administratie tot tien jaar na de datum van de beschikking tot de
+      subsidievaststelling.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel5.3
+  - number: '5.4'
+    text: |-
+      De subsidieontvanger verleent gedurende vijf jaar na de datum van de beschikking tot subsidievaststelling
+      medewerking aan een evaluatie door de Minister van de doeltreffendheid en de effecten van de aan hem verleende
+      subsidie, voor zover medewerking redelijkerwijs van hem kan worden verlangd.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel5.4
+  - number: '5.5'
+    text: |-
+      Voor het maandelijks corrigeren van het cumulatieve voorschot, bedoeld in [artikel 6.1.2, eerste lid][ref1],
+      verstrekt de subsidieontvanger na afloop van een kalendermaand waarvoor hij een voorschot heeft ontvangen, aan de
+      Minister gegevens over:
+
+      a. het aantal kleinverbruikaansluitingen waaraan in die voorgaande kalendermaand elektriciteit of gas is geleverd;
+
+      b. de hoeveelheid elektriciteit in kWh of gas in m3(n) die in die voorgaande kalendermaand is geleverd aan
+      kleinverbruikaansluitingen, waarvoor de toepassing van het prijsplafond heeft plaatsgevonden en een eindfactuur
+      is verstrekt;
+
+      c. voor elektriciteit: het gemiddelde contractuele leveringstarief voor elektriciteit in € per kWh per
+      kleinverbruikaansluiting, op basis van de leveringstarieven in € per kWh die in de voorgaande kalendermaand of
+      kalendermaanden in 2023 door de subsidieontvanger in rekening zijn gebracht aan de kleinverbruikaansluiting,
+      gewogen naar de hoeveelheid elektriciteit die in de voorgaande kalendermaand of kalendermaanden in 2023 is
+      geleverd aan deze kleinverbruikaansluiting, waarvoor de toepassing van het prijsplafond heeft plaatsgevonden en een
+      eindfactuur is verstrekt;
+
+      d. voor gas: het gemiddelde contractuele leveringstarief voor gas in € per m3(n) per kleinverbruikaansluiting, op
+      basis van de leveringstarieven in € per m3(n) die in de voorgaande kalendermaand of kalendermaanden in 2023 door de
+      subsidieontvanger in rekening zijn gebracht aan de kleinverbruikaansluiting gewogen naar de hoeveelheid gas die in
+      de voorgaande kalendermaand of kalendermaanden in 2023 is geleverd aan deze kleinverbruikaansluiting, waarvoor de
+      toepassing van het prijsplafond heeft plaatsgevonden en een eindfactuur is verstrekt;
+
+      e. voor alle kleinverbruikaansluitingen waarvoor in die voorgaande maand eindfactuur is verstrekt, opgeteld het
+      voorschot dat is verstrekt in de periode waar de eindfactuur op ziet.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0047628#Artikel6.1.2
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel5.5
+    references:
+      - id: ref1
+        bwb_id: BWBR0047628
+        artikel: 6.1.2
+        hoofdstuk: '6'
+        paragraaf: '6.1'
+  - number: '5.6'
+    text: |-
+      1 De subsidieontvanger verstrekt aan de Minister een rapport van feitelijke bevindingen van een accountant over de
+      getrouwheid van:
+
+      a. voor elektriciteit of gas: de gegevens van de eerste aanvraag voor een voorschot, binnen vier maanden na
+      indiening van die aanvraag, indien het totaalbedrag aan te verstrekken voorschotten naar verwachting € 125.000 of
+      meer zal bedragen;
+
+      b. voor warmte: de gegevens van de aanvraag voor het voorschot binnen vier maanden na de indiening van die aanvraag
+      indien het bedrag aan te verstrekken voorschotten naar verwachting € 125.000 of meer zal bedragen.
+
+      2 De subsidieontvanger verstrekt aan de Minister een verklaring van een onafhankelijk en ter zake kundig persoon
+      over de getrouwheid van:
+
+      a. voor elektriciteit of gas: de gegevens van de eerste aanvraag voor een voorschot, binnen vier maanden na
+      indiening van die aanvraag, indien het totaalbedrag aan te verstrekken voorschotten naar verwachting minder dan
+      € 125.000 zal bedragen;
+
+      b. voor warmte: de gegevens van de aanvraag voor het voorschot, binnen vier maanden na de indiening van die
+      aanvraag, indien het bedrag aan te verstrekken voorschotten naar verwachting minder dan € 125.000 zal bedragen.
+
+      3 Voor het verstrekken van het rapport van feitelijke bevindingen, bedoeld in het eerste lid, of de verklaring
+      van een onafhankelijk en ter zake kundig persoon, bedoeld in het tweede lid, wordt gebruikgemaakt van een door de
+      Minister ter beschikking gesteld model of een door de Minister geaccepteerd vergelijkbaar document.
+
+      4 Indien bij de controle op de naleving van de aan de subsidieverstrekking verbonden voorwaarden en verplichtingen
+      onregelmatigheden worden geconstateerd, kan de Minister van de subsidieontvanger een rapport van feitelijke
+      bevindingen van een accountant verlangen, opgesteld volgens de door de Minister gegeven aanwijzingen.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel5.6
+  - number: '5.7'
+    text: |-
+      1 De subsidieontvanger deelt onverwijld de indiening bij de rechtbank van een verzoek tot faillietverklaring van
+      hem, tot verlening van surseance van betaling aan hem of tot toepassing van de schuldsaneringsregeling natuurlijke
+      personen over hem schriftelijk mee aan de Minister.
+
+      2 De subsidieontvanger verstrekt op verzoek aan de Minister alle overige bescheiden, gegevens of inlichtingen die
+      nodig zijn voor een beslissing over de subsidie.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel5.7
+  - number: '5.8'
+    text: |-
+      De subsidieontvanger is aangesloten bij een instantie voor buitengerechtelijke geschilbeslechting die bevoegd is
+      klachten te behandelen van kleinverbruikers tegen leveranciers over de toepassing van deze regeling.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel5.8
+  - number: '5.9'
+    text: |-
+      Voor de toepassing van deze regeling dienen de door de subsidieontvanger gehanteerde contractuele
+      leveringstarieven voor elektriciteit, gas of warmte te voldoen aan het bepaalde bij of
+      krachtens [artikel 95b van de Elektriciteitswet 1998][ref1], [artikel 44 van de Gaswet][ref2] of
+      [artikel 5 van de Warmtewet][ref3].
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0009755#Artikel95b
+      [ref2]: https://wetten.overheid.nl/BWBR0011440#Artikel44
+      [ref3]: https://wetten.overheid.nl/BWBR0033729#Artikel5
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel5.9
+    references:
+      - id: ref1
+        bwb_id: BWBR0009755
+        artikel: 95b
+      - id: ref2
+        bwb_id: BWBR0011440
+        artikel: '44'
+      - id: ref3
+        bwb_id: BWBR0033729
+        artikel: '5'
+  - number: 6.1.1
+    text: |-
+      De Minister verstrekt in 2023 maandelijks een voorschot voor de toepassing van het prijsplafond voor elektriciteit
+      of gas op maandelijks in te dienen aanvragen.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.1.1
+  - number: 6.1.2
+    text: |-
+      1 Het cumulatieve voorschot van alle reeds verstrekte voorschotten wordt maandelijks ambtshalve gecorrigeerd aan de
+      hand van de eindfacturen die in die kalendermaand zijn verstrekt, totdat het cumulatieve voorschot is gecorrigeerd
+      voor alle eindfacturen waarbij toepassing van het prijsplafond aan orde was in de periode waar de eindfactuur op
+      ziet.
+
+      2 Een reeds verstrekt voorschot kan op verzoek van de subsidieontvanger achteraf eenmalig worden gecorrigeerd:
+
+      a. aan kleinverbruikaansluitingen waarvoor op het moment van indiening van de aanvraag voor dat voorschot nog geen
+      sprake was van een leveringsovereenkomst; of
+
+      b. indien sprake is van andere wijzigingen die substantiële invloed kunnen hebben op de hoogte van dat voorschot,
+      met uitzondering van de in het eerste lid bedoelde correcties aan de hand van de eindfacturen.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.1.2
+  - number: 6.1.3
+    text: |-
+      De hoogte van het maandelijkse voorschot voor de toepassing van het prijsplafond voor elektriciteit wordt berekend
+      volgens de formule:
+
+      waarbij *TC, kva, VHE, VLE, PTE, TUKv,*
+
+      achtereenvolgens staan voor:
+
+      *TC*: tariefcohort, waarbinnen de subsidieontvanger alle kleinverbruikaansluitingen plaatst met een contractueel
+      leveringstarief dat binnen deze bandbreedte valt en waartegen naar verwachting elektriciteit zal worden geleverd in
+      de kalendermaand waarvoor de aanvraag voor een voorschot is ingediend;
+
+      *kva*: kleinverbruikaansluiting;
+
+      *VHE*: de verwachte hoeveelheid te leveren elektriciteit in kWh per kleinverbruikaansluiting, op basis van de
+      in het centraal aansluitingenregister geregistreerde standaardjaarafname, bepaald per kleinverbruikaansluiting,
+      verminderd met de in het centraal aansluitingenregister geregistreerde standaardjaarinvoeding voor die
+      kleinverbruikaansluiting. Hierbij wordt gerekend met een maximale bovengrens van 1/12e van het volumeplafond voor
+      elektriciteit en een ondergrens van nul. Voor de standaardjaarafname en standaardjaarinvoeding wordt uitgegaan van
+      de meest recente gegevens uit het centraal aansluitingenregister die de subsidieontvanger van de netbeheerder heeft
+      ontvangen.
+
+      *VLE*: het verwachte gemiddelde contractuele leveringstarief voor elektriciteit in € per kleinverbruikaansluiting
+      in de betreffende kalendermaand, gewogen naar de hoeveelheid elektriciteit die naar verwachting aan de betreffende
+      kleinverbruikaansluitingen zal worden geleverd, waarvoor de toepassing van het prijsplafond zal plaatsvinden;
+
+      *PTE*: het plafondtarief voor elektriciteit;
+
+      *TUKv*: een bedrag als voorschot voor een tegemoetkoming in de te maken uitvoeringskosten voor de toepassing van
+      het prijsplafond, berekend overeenkomstig [artikel 6.1.5][ref1];
+
+      : de som van het bedrag per kleinverbruikaansluiting binnen een tariefcohort voor alle kleinverbruikaansluitingen
+      binnen dat tariefcohort;
+
+      : de som van het bedrag per tariefcohort voor alle tariefcohorten.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0047628#Artikel6.1.5
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.1.3
+    references:
+      - id: ref1
+        bwb_id: BWBR0047628
+        artikel: 6.1.5
+        hoofdstuk: '6'
+        paragraaf: '6.1'
+  - number: 6.1.4
+    text: |-
+      De hoogte van het maandelijkse voorschot voor de toepassing van het prijsplafond voor gas wordt berekend volgens
+      de formule:
+
+      waarbij *TC, kva, VHG, VLG, PTG, TUKv,*
+
+      achtereenvolgens staan voor:
+
+      *TC*: tariefcohort waarbinnen de subsidieontvanger alle kleinverbruikaansluitingen plaatst met een contractueel
+      leveringstarief dat binnen deze bandbreedte valt en waartegen naar verwachting gas zal worden geleverd in de
+      kalendermaand waarvoor de aanvraag voor een voorschot is ingediend;
+
+      *kva*: kleinverbruikaansluiting;
+
+      *VHG*: de verwachte hoeveelheid te leveren gas in m3(n) per kleinverbruiker, op basis van het
+      standaardjaarverbruik, op basis van het in het centraal aansluitingenregister geregistreerde standaardjaarverbruik,
+      bepaald per kleinverbruikaansluiting. Hierbij wordt gerekend met een maximale bovengrens van 1/12e van het
+      volumeplafond voor gas en een ondergrens van nul. Voor het standaardjaarverbruik wordt uitgegaan van de meest
+      recente gegevens uit het centraal aansluitingenregister die de subsidieontvanger van de netbeheerder heeft
+      ontvangen;
+
+      *VLG*: het verwachte gemiddelde contractuele leveringstarief voor gas in € per m3(n) per kleinverbruikaansluiting
+      in de kalendermaand waarvoor een voorschot is ingediend, gewogen naar de hoeveelheid gas die naar verwachting aan
+      de betreffende kleinverbruikaansluitingen zal worden geleverd, waarvoor de toepassing van het prijsplafond zal
+      plaatsvinden;
+
+      *PTG*: het plafondtarief voor gas;
+
+      *TUKv*: een bedrag als voorschot voor een tegemoetkoming in de te maken uitvoeringskosten voor de toepassing van
+      het prijsplafond, berekend overeenkomstig [artikel 6.1.5][ref1];
+
+      : de som van het bedrag per kleinverbruikaansluiting binnen een tariefcohort voor alle kleinverbruikaansluitingen
+      binnen dat tariefcohort.
+
+      : de som van het bedrag per tariefcohort voor alle tariefcohorten.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0047628#Artikel6.1.5
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.1.4
+    references:
+      - id: ref1
+        bwb_id: BWBR0047628
+        artikel: 6.1.5
+        hoofdstuk: '6'
+        paragraaf: '6.1'
+  - number: 6.1.5
+    text: |-
+      De hoogte van het bedrag als voorschot voor een tegemoetkoming in de uitvoeringskosten, bedoeld in de
+      [artikelen 6.1.3][ref1] en [6.1.4][ref2], wordt berekend volgens de formule:
+
+      waarbij *kva* en
+
+      achtereenvolgens staan voor:
+
+      *kva*: kleinverbruikaansluiting;
+
+      : de som van het bedrag per kleinverbruikaansluiting voor alle kleinverbruikaansluitingen.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0047628#Artikel6.1.3
+      [ref2]: https://wetten.overheid.nl/BWBR0047628#Artikel6.1.4
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.1.5
+    references:
+      - id: ref1
+        bwb_id: BWBR0047628
+        artikel: 6.1.3
+        hoofdstuk: '6'
+        paragraaf: '6.1'
+      - id: ref2
+        bwb_id: BWBR0047628
+        artikel: 6.1.4
+        hoofdstuk: '6'
+        paragraaf: '6.1'
+  - number: 6.1.6
+    text: |-
+      Indien een contractueel leveringstarief voor de kalendermaand waarvoor een aanvraag voor een voorschot wordt
+      ingediend, niet bekend is op moment van indienen van de aanvraag, wordt het contractuele leveringstarief voor
+      die kleinverbruikaansluiting berekend aan de hand van de op dag, voorafgaand aan indiening van de aanvraag,
+      gepubliceerde:
+
+      a. voor elektriciteit: NLB-Dutch Power Financial Base Futures settlement prijzen, month ahead, end of day, voor de
+      kalendermaand waar de aanvraag voor een voorschot op ziet, omgerekend naar kWh elektriciteit;
+
+      b. voor gas: TFM-Dutch TTF Natural Gas Base Load Dutch settlement prijzen, month ahead, end of day, voor de
+      kalendermaand waar de aanvraag voor een voorschot op ziet, omgerekend naar m3(n) gas.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.1.6
+  - number: 6.1.7
+    text: |-
+      1 De aanvraag voor eerste voorschot wordt gelijktijdig ingediend met de aanvraag voor subsidieverlening.
+
+      2 De aanvraag voor het tweede en het daaropvolgende voorschot wordt ingediend uiterlijk op de vijftiende dag, om
+      17:00 uur, van de kalendermaand die voorafgaat aan de kalendermaand waarop het voorschot betrekking heeft.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.1.7
+  - number: 6.1.8
+    text: |-
+      1 Een aanvraag voor een voorschot wordt ingediend met gebruikmaking van een middel dat door de Minister beschikbaar
+      wordt gesteld.
+
+      2 De aanvraag bevat in ieder geval:
+
+      a. het aantal kleinverbruikaansluitingen waarvoor volgens de meest recente gegevens uit het centraal
+      aansluitingenregister die de subsidieontvanger van de netbeheerder heeft ontvangen;
+
+      b. het aantal kleinverbruikaansluitingen per tariefcohort waarvoor de toepassing van het prijsplafond aan de orde
+      is in de kalendermaand waarvoor het voorschot wordt aangevraagd;
+
+      c. voor elektriciteit: de verwachte hoeveelheid elektriciteit in kWh per kleinverbruikaansluiting, verminderd met
+      de in standaardjaarinvoeding voor die kleinverbruikaansluiting, waarbij wordt gerekend met een maximale bovengrens
+      van 1/12e van het volumeplafond voor elektriciteit en een ondergrens van nul en waarbij voor de standaardjaarafname
+      en standaardjaarinvoeding wordt uitgegaan van de meest recente gegevens uit het centraal aansluitingenregister die
+      de subsidieontvanger van de netbeheerder heeft ontvangen;
+
+      d. voor elektriciteit: het verwachte gemiddelde contractuele leveringstarief voor elektriciteit in € per
+      kleinverbruikaansluiting in de kalendermaand waarvoor het voorschot wordt aangevraagd, gewogen naar de hoeveelheid
+      elektriciteit die naar verwachting aan de betreffende kleinverbruikaansluitingen zal worden geleverd, waarvoor de
+      toepassing van het prijsplafond zal plaatsvinden;
+
+      e. voor gas: de verwachte hoeveelheid gas in m3(n) per kleinverbruikaansluiting, waarbij wordt gerekend met
+      een maximale bovengrens van 1/12e van het volumeplafond voor gas en een ondergrens van nul en waarbij voor het
+      standaardjaarverbruik wordt uitgegaan van de meest recente gegevens uit het centraal aansluitingenregister die de
+      subsidieontvanger van de netbeheerder heeft ontvangen;
+
+      f. voor gas: het verwachte gemiddelde contractuele leveringstarief voor gas in € per m3(n) per
+      kleinverbruikaansluiting in de kalendermaand waarvoor een voorschot is ingediend, gewogen naar de hoeveelheid gas
+      die naar verwachting aan de betreffende kleinverbruikaansluitingen zal worden geleverd, waarvoor de toepassing van
+      het prijsplafond zal plaatsvinden.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.1.8
+  - number: 6.1.9
+    text: |-
+      1 De Minister geeft een beschikking op een aanvraag voor een voorschot binnen twee weken na ontvangst van de
+      aanvraag.
+
+      2 Deze termijn kan eenmaal met ten hoogste twee weken worden verlengd.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.1.9
+  - number: 6.2.1
+    text: |-
+      De Minister verstrekt op aanvraag één keer in 2023 een voorschot voor de toepassing van het prijsplafond voor
+      warmte.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.2.1
+  - number: 6.2.2
+    text: |-
+      Het jaarlijkse voorschot kan op verzoek van de subsidieontvanger worden gecorrigeerd bij wijzigingen van het aantal
+      kleinverbruikaansluitingen of een contractueel leveringstarief.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.2.2
+  - number: 6.2.3
+    text: |-
+      De hoogte van het jaarlijkse voorschot wordt berekend volgens de formule:
+
+      Waarbij *KVA, VHW, VLW, PTW, TUKv* en
+
+      achtereenvolgens staan voor:
+
+      *kva: kleinverbruikaansluiting;*
+
+      *VHW*: de verwachte hoeveelheid te leveren warmte in GJ per kleinverbruikaansluiting. Hierbij wordt gerekend met
+      een maximale bovengrens van het volumeplafond voor warmte en een ondergrens van nul;
+
+      *VLW*: het verwachte gemiddelde contractuele leveringstarief voor warmte in € per GJ per kleinverbruikaansluiting
+      in 2023, gewogen naar de hoeveelheid warmte die naar verwachting aan de betreffende kleinverbruikaansluiting zal
+      worden geleverd in 2023, waarvoor de toepassing van het prijsplafond zal plaatsvinden;
+
+      *PTW*: het plafondtarief voor warmte;
+
+      *TUKv*: een bedrag als voorschot voor een tegemoetkoming in de te maken uitvoeringskosten voor de toepassing van
+      het prijsplafond, berekend overeenkomstig [artikel 6.2.4][ref1];
+
+      : de som van het bedrag per kleinverbruikaansluiting voor alle kleinverbruikaansluitingen.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0047628#Artikel6.2.4
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.2.3
+    references:
+      - id: ref1
+        bwb_id: BWBR0047628
+        artikel: 6.2.4
+        hoofdstuk: '6'
+        paragraaf: '6.2'
+  - number: 6.2.4
+    text: |-
+      De hoogte van het bedrag als voorschot voor een tegemoetkoming in de uitvoeringskosten, bedoeld in
+      [artikel 6.2.3][ref1], wordt berekend volgens de formule:
+
+      waarbij *kva* en
+
+      achtereenvolgens staan voor:
+
+      *kva*: kleinverbruikaansluiting;
+
+      : de som van het bedrag per kleinverbruikaansluiting voor alle kleinverbruikaansluitingen.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0047628#Artikel6.2.3
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.2.4
+    references:
+      - id: ref1
+        bwb_id: BWBR0047628
+        artikel: 6.2.3
+        hoofdstuk: '6'
+        paragraaf: '6.2'
+  - number: 6.2.5
+    text: |-
+      1 Het voorschot wordt per kwartaal in 2023 uitbetaald.
+
+      2 Het kwartaalbedrag wordt in gelijke delen uitbetaald op basis van de volgens [artikel 6.2.2][ref1] berekende
+      hoogte van het voorschot.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0047628#Artikel6.2.2
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.2.5
+    references:
+      - id: ref1
+        bwb_id: BWBR0047628
+        artikel: 6.2.2
+        hoofdstuk: '6'
+        paragraaf: '6.2'
+  - number: 6.2.6
+    text: |-
+      1 De aanvraag voor een voorschot wordt gelijktijdig ingediend met de aanvraag voor subsidieverlening.
+
+      2 De aanvraag voor een voorschot wordt ingediend met gebruikmaking van een middel dat door de Minister beschikbaar
+      wordt gesteld.
+
+      3 De aanvraag omvat in ieder geval een raming van:
+
+      a. het aantal kleinverbruikaansluitingen;
+
+      b. de hoeveelheid naar verwachting te leveren warmte binnen het volumeplafond voor warmte;
+
+      c. het verwachte gemiddelde contractuele leveringstarief voor warmte in € per GJ per kleinverbruikaansluiting
+      in 2023, gewogen naar de hoeveelheid warmte die naar verwachting aan de betreffende kleinverbruikaansluiting zal
+      worden geleverd in 2023, waarvoor de toepassing van het prijsplafond zal plaatsvinden.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.2.6
+  - number: 6.2.7
+    text: |-
+      1 De Minister geeft een beschikking op een aanvraag voor een voorschot binnen twee weken na ontvangst van de
+      aanvraag.
+
+      2 Deze termijn kan eenmaal met ten hoogste twee weken worden verlengd.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.2.7
+  - number: '7.1'
+    text: |-
+      Een subsidieontvanger dient uiterlijk 30 juni 2025, 17:00 uur, een aanvraag in voor subsidievaststelling voor de
+      toepassing van het prijsplafond voor elektriciteit, gas of warmte.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel7.1
+  - number: '7.2'
+    text: |-
+      1 De aanvraag wordt ingediend met gebruikmaking van een middel dat door de Minister beschikbaar wordt gesteld.
+
+      2 De aanvraag bevat in ieder geval:
+
+      a. de hoeveelheid elektriciteit, gas of warmte in kWh, m3(n) of GJ die in 2023 aan kleinverbruikaansluitingen is
+      geleverd, waarvoor de toepassing van het prijsplafond heeft plaatsgevonden en een eindfactuur is verstrekt;
+
+      b. het gemiddelde contractuele leveringstarief voor elektriciteit of gas in € per kWh of m3(n), gewogen naar
+      de totale hoeveelheid elektriciteit of gas die in 2023 aan kleinverbruikaansluitingen is geleverd, waarvoor de
+      toepassing van het prijsplafond heeft plaatsgevonden en waarvoor een eindfactuur is verstrekt;
+
+      c. voor warmte: het contractuele leveringstarief voor warmte in € per GJ, gewogen naar de hoeveelheid warmte die in
+      2023 aan kleinverbruikaansluitingen is geleverd, waarvoor de toepassing van het prijsplafond heeft plaatsgevonden
+      en een eindfactuur is verstrekt;
+
+      d. voor elektriciteit of gas: de in 2023 gerealiseerde brutomarge voor elektriciteit of gas per
+      kleinverbruikaansluiting in €, bepaald overeenkomstig [bijlage III][ref1];
+
+      e. voor elektriciteit of gas: de historische referentiewaarde voor elektriciteit of gas in €, bepaald
+      overeenkomstig [bijlage III][ref2];
+
+      f. voor warmte: het in 2023 gerealiseerde rendement per kleinverbruikaansluiting in €, bepaald overeenkomstig
+      [bijlage III][ref3];
+
+      g. voor warmte: het normrendement in €, bepaald overeenkomstig [bijlage III][ref4];
+
+      h. het aantal kleinverbruikaansluitingen waaraan in 2023 elektriciteit, gas of warmte is geleverd, waarvoor de
+      toepassing van het prijsplafond heeft plaatsgevonden en een eindfactuur is verstrekt, gewogen naar het aantal dagen
+      waarvoor een leveringsovereenkomst was;
+
+      i. een beschrijving van de methode van data-extractie uit de eigen administratie van de gegevens die gevraagd
+      worden bij de subsidievaststelling.
+
+      3 De aanvraag gaat vergezeld van een product van een accountant over de getrouwheid van de gegevens in de aanvraag,
+      met gebruikmaking van een door de Minister ter beschikking gesteld model of een door de Minister geaccepteerd
+      vergelijkbaar document, indien het totaal aan verstrekte voorschotten € 125.000 of meer bedraagt.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0047628
+      [ref2]: https://wetten.overheid.nl/BWBR0047628
+      [ref3]: https://wetten.overheid.nl/BWBR0047628
+      [ref4]: https://wetten.overheid.nl/BWBR0047628
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel7.2
+    references:
+      - id: ref1
+        bwb_id: BWBR0047628
+      - id: ref2
+        bwb_id: BWBR0047628
+      - id: ref3
+        bwb_id: BWBR0047628
+      - id: ref4
+        bwb_id: BWBR0047628
+  - number: '7.3'
+    text: De Minister beslist op een aanvraag voor subsidievaststelling binnen dertien weken na ontvangst van de aanvraag.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel7.3
+  - number: '8.1'
+    text: |-
+      1 Deze regeling treedt in werking met ingang van de dag na de datum van uitgifte van de Staatscourant waarin zij
+      wordt geplaatst.
+
+      2 Deze regeling vervalt met ingang van 1 januari 2027, met dien verstande dat zij van toepassing blijft op
+      subsidies die voor die datum zijn verstrekt.
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel8.1
+  - number: '8.2'
+    text: 'Deze regeling wordt aangehaald als: Subsidieregeling bekostiging plafond energietarieven kleinverbruikers 2023.'
+    url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel8.2
