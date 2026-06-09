@@ -86,10 +86,36 @@ pub struct HarvestResult {
     /// Source type: "bwb" or "cvdr".
     #[serde(default = "default_source_type")]
     pub source_type: String,
+    /// Whether this harvest actually changed the law content (and thus produced
+    /// a corpus commit). `false` means the re-harvest was byte-identical to the
+    /// existing version and only the harvest timestamp differed — no new version
+    /// was committed. Set by the worker after the corpus commit; defaults to
+    /// `true` so older serialized results deserialize unchanged.
+    #[serde(default = "default_changed")]
+    pub changed: bool,
 }
 
 fn default_source_type() -> String {
     "bwb".to_string()
+}
+
+fn default_changed() -> bool {
+    true
+}
+
+/// The files a harvest writes to disk, split by their role in the commit.
+///
+/// `content` (the law YAML) is what gates the commit: a re-harvest only
+/// produces a new version when this file changes. `metadata` (`status.yaml`)
+/// is committed alongside content but carries a `last_harvested` timestamp
+/// that churns every run, so it must never trigger a commit on its own. The
+/// split is a typed contract so the worker can pass the two roles to
+/// `CorpusClient::commit_and_push_content` without relying on positional
+/// ordering.
+#[derive(Debug, Clone)]
+pub struct HarvestFiles {
+    pub content: PathBuf,
+    pub metadata: PathBuf,
 }
 
 /// Status file written alongside the law YAML.
@@ -118,14 +144,14 @@ pub struct LawStatusFile {
 /// depends on pipeline-level logic (manifest resolution) that lives outside
 /// the harvester crate.
 ///
-/// Returns the harvest result and a list of file paths that were written
-/// (for git staging).
+/// Returns the harvest result and the files that were written, split into the
+/// content (law YAML) and metadata (`status.yaml`) roles for git staging.
 pub async fn execute_harvest(
     payload: &HarvestPayload,
     repo_path: &Path,
     output_base: &str,
     http_client: &Client,
-) -> Result<(HarvestResult, Vec<PathBuf>)> {
+) -> Result<(HarvestResult, HarvestFiles)> {
     let law_id = payload.law_id().ok_or_else(|| {
         crate::error::PipelineError::InvalidInput(
             "harvest payload must have either bwb_id or cvdr_id".into(),
@@ -234,10 +260,16 @@ pub async fn execute_harvest(
         referenced_bwb_ids,
         harvest_date: effective_date,
         source_type,
+        // Optimistic default; the worker overwrites this based on whether the
+        // corpus commit actually changed the law content.
+        changed: true,
     };
 
-    let written_files = vec![yaml_path, status_file_path];
-    Ok((result, written_files))
+    let files = HarvestFiles {
+        content: yaml_path,
+        metadata: status_file_path,
+    };
+    Ok((result, files))
 }
 
 #[cfg(test)]
@@ -337,6 +369,7 @@ mod tests {
             referenced_bwb_ids: vec!["BWBR0002629".to_string(), "BWBR0018450".to_string()],
             harvest_date: "2025-01-01".to_string(),
             source_type: "bwb".to_string(),
+            changed: true,
         };
 
         let json = serde_json::to_value(&result).unwrap();
@@ -344,6 +377,7 @@ mod tests {
         assert_eq!(json["article_count"], 10);
         assert_eq!(json["harvest_date"], "2025-01-01");
         assert_eq!(json["source_type"], "bwb");
+        assert_eq!(json["changed"], true);
 
         let refs = json["referenced_bwb_ids"].as_array().unwrap();
         assert_eq!(refs.len(), 2);
@@ -357,6 +391,15 @@ mod tests {
         let json = r#"{"law_name":"test","slug":"test","layer":"WET","file_path":"test.yaml","article_count":0,"warning_count":0,"warnings":[],"referenced_bwb_ids":[],"harvest_date":"2025-01-01"}"#;
         let result: HarvestResult = serde_json::from_str(json).unwrap();
         assert_eq!(result.source_type, "bwb");
+    }
+
+    /// Backward compatibility: HarvestResult without `changed` defaults to true,
+    /// so job results stored before this field existed deserialize unchanged.
+    #[test]
+    fn test_harvest_result_default_changed() {
+        let json = r#"{"law_name":"test","slug":"test","layer":"WET","file_path":"test.yaml","article_count":0,"warning_count":0,"warnings":[],"referenced_bwb_ids":[],"harvest_date":"2025-01-01"}"#;
+        let result: HarvestResult = serde_json::from_str(json).unwrap();
+        assert!(result.changed);
     }
 
     #[test]

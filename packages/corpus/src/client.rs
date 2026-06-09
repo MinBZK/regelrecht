@@ -140,16 +140,7 @@ impl CorpusClient {
     /// Uses a retry loop around rebase+push to handle concurrent push race
     /// conditions where multiple workers push to the same branch.
     pub async fn commit_and_push(&self, paths: &[PathBuf], message: &str) -> Result<()> {
-        // Stage the specific files
-        let mut add_args = vec!["add", "--"];
-        let path_strings: Vec<String> = paths
-            .iter()
-            .map(|p| p.to_string_lossy().to_string())
-            .collect();
-        for p in &path_strings {
-            add_args.push(p);
-        }
-        self.run_git(&add_args).await?;
+        self.stage_paths(paths).await?;
 
         // Check if there's anything to commit
         let status_output = self.run_git_output(&["status", "--porcelain"]).await?;
@@ -162,15 +153,110 @@ impl CorpusClient {
         // Commit
         self.run_git(&["commit", "-m", message]).await?;
 
-        // Retry loop: rebase on remote, then push. If push fails due to a
-        // concurrent update, fetch+rebase again and retry with backoff.
+        self.rebase_and_push(message).await
+    }
+
+    /// Commit and push, but treat `content_paths` as the only thing that
+    /// counts as a "real change". `metadata_paths` (e.g. a `status.yaml`
+    /// carrying a `last_harvested` timestamp that churns on every run) are
+    /// committed *alongside* content when content changed, but never *trigger*
+    /// a commit on their own.
+    ///
+    /// Returns `Ok(true)` if a commit was made and pushed, `Ok(false)` if the
+    /// content was unchanged (in which case the metadata files are restored to
+    /// HEAD so the working tree stays clean for the next run — this matters for
+    /// the long-lived corpus clone the harvest worker reuses).
+    pub async fn commit_and_push_content(
+        &self,
+        content_paths: &[PathBuf],
+        metadata_paths: &[PathBuf],
+        message: &str,
+    ) -> Result<bool> {
+        // Stage only the content so the porcelain check below reflects content
+        // changes alone, not the always-churning metadata files.
+        self.stage_paths(content_paths).await?;
+
+        let content_path_strings = Self::path_strings(content_paths);
+        let mut status_args = vec!["status", "--porcelain", "--"];
+        status_args.extend(content_path_strings.iter().map(String::as_str));
+        let status_output = self.run_git_output(&status_args).await?;
+
+        if status_output.trim().is_empty() {
+            tracing::debug!("no content changes, skipping commit");
+            // Discard the churned metadata (e.g. status.yaml timestamp) so the
+            // working tree matches HEAD again — critical for the long-lived
+            // corpus clone, where a leftover dirty/untracked file would break
+            // the next `pull --rebase`.
+            self.restore_metadata(metadata_paths).await;
+            return Ok(false);
+        }
+
+        // Content changed — stage the metadata files alongside it and commit both.
+        self.stage_paths(metadata_paths).await?;
+        self.run_git(&["commit", "-m", message]).await?;
+        self.rebase_and_push(message).await?;
+        Ok(true)
+    }
+
+    /// Reset the given metadata paths back to HEAD: restore tracked files and
+    /// remove any still-untracked ones, so the working tree is clean afterward.
+    /// Best-effort — failures are logged but not propagated, since the caller
+    /// is already returning the "no changes" success path.
+    async fn restore_metadata(&self, metadata_paths: &[PathBuf]) {
+        let path_strings = Self::path_strings(metadata_paths);
+        if path_strings.is_empty() {
+            return;
+        }
+        let pathspecs: Vec<&str> = path_strings.iter().map(String::as_str).collect();
+
+        // Tracked metadata: restore the committed contents (drops the churn).
+        let mut checkout_args = vec!["checkout", "--"];
+        checkout_args.extend(pathspecs.iter().copied());
+        if let Err(e) = self.run_git(&checkout_args).await {
+            // Expected when a metadata file was never tracked (nothing to
+            // restore); the `git clean` below removes those instead.
+            tracing::debug!(error = %e, "metadata checkout had nothing to restore");
+        }
+
+        // Untracked metadata: remove it so the tree is clean for the next run.
+        let mut clean_args = vec!["clean", "-fq", "--"];
+        clean_args.extend(pathspecs.iter().copied());
+        if let Err(e) = self.run_git(&clean_args).await {
+            tracing::warn!(error = %e, "failed to clean untracked metadata; working tree may be dirty");
+        }
+    }
+
+    /// Lossy UTF-8 path strings for use as git pathspec arguments.
+    fn path_strings(paths: &[PathBuf]) -> Vec<String> {
+        paths
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect()
+    }
+
+    /// Stage the given paths (`git add -- <paths>`). No-op when `paths` is
+    /// empty — running `git add --` with no pathspecs is a no-op on some git
+    /// versions but errors on others, so guard it.
+    async fn stage_paths(&self, paths: &[PathBuf]) -> Result<()> {
+        if paths.is_empty() {
+            return Ok(());
+        }
+        let path_strings = Self::path_strings(paths);
+        let mut add_args = vec!["add", "--"];
+        add_args.extend(path_strings.iter().map(String::as_str));
+        self.run_git(&add_args).await
+    }
+
+    /// Rebase on the remote branch then push the local commit, retrying with
+    /// backoff to absorb concurrent pushes from other workers.
+    async fn rebase_and_push(&self, message: &str) -> Result<()> {
         let mut last_error = None;
         for attempt in 1..=Self::MAX_PUSH_ATTEMPTS {
             // Pull --rebase to incorporate any concurrent remote changes.
             // On shallow clones (--depth 1), rebase may fail if the remote
             // advanced by many commits. The error-recovery path below
             // restores the working tree (abort rebase + hard-reset to remote)
-            // and propagates the error for job-level retry. The enriched
+            // and propagates the error for job-level retry. The committed
             // files remain on disk so the next attempt can re-stage them.
             if let Err(e) = self
                 .run_git(&["pull", "--rebase", "origin", &self.config.branch])
@@ -820,6 +906,157 @@ mod tests {
             .unwrap();
         let log_str = String::from_utf8_lossy(&log.stdout);
         assert!(log_str.contains("add test file"));
+    }
+
+    #[tokio::test]
+    async fn test_commit_and_push_content_skips_metadata_only_change() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+        let repo_path = dir.path().join("corpus");
+        clone_with_config(&bare_path, &repo_path).await;
+
+        let law = repo_path.join("law.yaml");
+        let status = repo_path.join("status.yaml");
+        tokio::fs::write(&law, "articles: 1\n").await.unwrap();
+        tokio::fs::write(&status, "last_harvested: T1\n")
+            .await
+            .unwrap();
+
+        let config = CorpusConfig::new(&bare_url, &repo_path);
+        let client = CorpusClient::new(config);
+
+        // First harvest: content is new → commit made.
+        let committed = client
+            .commit_and_push_content(
+                std::slice::from_ref(&law),
+                std::slice::from_ref(&status),
+                "harvest: initial",
+            )
+            .await
+            .unwrap();
+        assert!(committed, "first harvest should commit new content");
+
+        let count_commits = |path: PathBuf| async move {
+            let out = Command::new("git")
+                .args(["rev-list", "--count", "HEAD"])
+                .current_dir(&path)
+                .output()
+                .await
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        let commits_after_first = count_commits(bare_path.clone()).await;
+
+        // Re-harvest: identical law content, only the status timestamp churns.
+        tokio::fs::write(&status, "last_harvested: T2\n")
+            .await
+            .unwrap();
+        let committed = client
+            .commit_and_push_content(
+                std::slice::from_ref(&law),
+                std::slice::from_ref(&status),
+                "harvest: no change",
+            )
+            .await
+            .unwrap();
+        assert!(!committed, "metadata-only change must not commit");
+
+        // No new commit on the remote.
+        assert_eq!(
+            commits_after_first,
+            count_commits(bare_path.clone()).await,
+            "no new commit should be pushed for a metadata-only change"
+        );
+        // The churned metadata file was restored to HEAD (T1), keeping the
+        // working tree clean for the next run.
+        let restored = tokio::fs::read_to_string(&status).await.unwrap();
+        assert_eq!(restored, "last_harvested: T1\n");
+
+        // Real content change → commit again.
+        tokio::fs::write(&law, "articles: 2\n").await.unwrap();
+        tokio::fs::write(&status, "last_harvested: T3\n")
+            .await
+            .unwrap();
+        let committed = client
+            .commit_and_push_content(
+                std::slice::from_ref(&law),
+                std::slice::from_ref(&status),
+                "harvest: real change",
+            )
+            .await
+            .unwrap();
+        assert!(committed, "content change should commit");
+
+        let log = Command::new("git")
+            .args(["log", "--oneline"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let log_str = String::from_utf8_lossy(&log.stdout);
+        assert!(log_str.contains("harvest: initial"));
+        assert!(log_str.contains("harvest: real change"));
+        assert!(
+            !log_str.contains("harvest: no change"),
+            "no-change harvest must not appear in history: {log_str}"
+        );
+    }
+
+    /// When law content is unchanged (tracked) but the metadata file is
+    /// untracked, the no-change path must leave the working tree clean —
+    /// otherwise a leftover untracked status.yaml breaks the next pull --rebase.
+    #[tokio::test]
+    async fn test_commit_and_push_content_cleans_untracked_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+        let repo_path = dir.path().join("corpus");
+        clone_with_config(&bare_path, &repo_path).await;
+
+        let law = repo_path.join("law.yaml");
+        let status = repo_path.join("status.yaml");
+        tokio::fs::write(&law, "articles: 1\n").await.unwrap();
+
+        let config = CorpusConfig::new(&bare_url, &repo_path);
+        let client = CorpusClient::new(config);
+
+        // Commit only the law YAML — status.yaml never gets tracked.
+        let committed = client
+            .commit_and_push_content(std::slice::from_ref(&law), &[], "harvest: law only")
+            .await
+            .unwrap();
+        assert!(committed);
+
+        // Now an untracked status.yaml appears next to unchanged law content.
+        tokio::fs::write(&status, "last_harvested: T1\n")
+            .await
+            .unwrap();
+        let committed = client
+            .commit_and_push_content(
+                std::slice::from_ref(&law),
+                std::slice::from_ref(&status),
+                "harvest: untracked metadata",
+            )
+            .await
+            .unwrap();
+        assert!(!committed, "unchanged content must not commit");
+
+        // The untracked metadata was cleaned and the tree is clean.
+        assert!(
+            !status.exists(),
+            "untracked status.yaml should have been removed"
+        );
+        let porcelain = Command::new("git")
+            .args(["status", "--porcelain"])
+            .current_dir(&repo_path)
+            .output()
+            .await
+            .unwrap();
+        assert!(
+            String::from_utf8_lossy(&porcelain.stdout).trim().is_empty(),
+            "working tree must be clean after no-change harvest"
+        );
     }
 
     /// Verify that a worker whose local repo is behind the remote can
