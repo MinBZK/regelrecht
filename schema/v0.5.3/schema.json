@@ -28,7 +28,7 @@
     "valid_to": {
       "type": "string",
       "pattern": "^([0-9]{4}-[0-9]{2}-[0-9]{2}|#.+)$",
-      "description": "Last calendar day on which the law/regulation is in force, inclusive (einddatum). Set ONLY when the law genuinely ends with no successor (horizonbepaling or repeal); omit when a newer version simply takes over. A statutory 'vervalt met ingang van D' maps to valid_to = D minus one day. See RFC-019."
+      "description": "Last calendar day on which the law/regulation is in force, inclusive (einddatum). Set ONLY when the law is terminated - it vervalt or wordt ingetrokken (a horizonbepaling/vervalbepaling, or repeal by another instrument); omit when a newer version of the same law simply takes over. A statutory 'vervalt met ingang van D' maps to valid_to = D minus one day. See RFC-019."
     },
     "regulatory_layer": {
       "type": "string",

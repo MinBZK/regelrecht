@@ -90,8 +90,8 @@ struct YamlLaw {
     regulatory_layer: String,
     publication_date: String,
     valid_from: String,
-    /// Instrument end date (inclusive). Emitted only when the law genuinely ends
-    /// with no successor (RFC-019); otherwise omitted.
+    /// Instrument end date (inclusive). Emitted only when the law is terminated
+    /// (vervalt/ingetrokken — RFC-019); otherwise omitted.
     #[serde(skip_serializing_if = "Option::is_none")]
     valid_to: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -4,6 +4,8 @@ $id: subsidieregeling_bekostiging_plafond_energietarieven_kleinverbruikers_2023
 regulatory_layer: MINISTERIELE_REGELING
 publication_date: '2022-12-14'
 valid_from: '2022-12-15'
+# Inclusive last day in force, derived from art. 8.1 lid 2 (vervaldatum 2027-01-01, exclusive)
+# minus one day. art. 8.1 outputs `vervaldatum` as the grounded source. See RFC-019.
 valid_to: '2026-12-31'
 bwb_id: BWBR0047628
 url: https://wetten.overheid.nl/BWBR0047628/2022-12-15
@@ -1303,6 +1305,18 @@ articles:
       2 Deze regeling vervalt met ingang van 1 januari 2027, met dien verstande dat zij van toepassing blijft op
       subsidies die voor die datum zijn verstrekt.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel8.1
+    machine_readable:
+      execution:
+        output:
+          # Lid 2: "Deze regeling vervalt met ingang van 1 januari 2027, ..."
+          # Grounded source of the law's end date. The top-level valid_to
+          # ('2026-12-31') is the inclusive last-day-in-force derived from it
+          # (vervaldatum minus one day). See RFC-019.
+          - name: vervaldatum
+            type: date
+        actions:
+          - output: vervaldatum
+            value: '2027-01-01'
   - number: '8.2'
     text: 'Deze regeling wordt aangehaald als: Subsidieregeling bekostiging plafond energietarieven kleinverbruikers 2023.'
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel8.2

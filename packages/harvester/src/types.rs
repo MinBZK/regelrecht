@@ -91,7 +91,7 @@ pub struct LawMetadata {
     pub effective_date: Option<String>,
 
     /// Last date on which the law is in force (inclusive, einddatum). Set only when the
-    /// law genuinely ends with no successor; `None` means valid until superseded. RFC-019.
+    /// law is terminated (vervalt/ingetrokken); `None` means valid until superseded. RFC-019.
     pub valid_to: Option<String>,
 
     /// Organisation name (e.g., "Gemeente Amsterdam"), for CVDR laws.
