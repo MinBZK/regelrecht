@@ -338,6 +338,18 @@ mod inner {
                     continue;
                 }
 
+                // Annotations are persisted at the reserved
+                // `annotations/{law_id}/annotations.yaml` path in a traject's
+                // own repo (see editor-api `save_annotations`). That shape
+                // collides with the law-file convention
+                // `{layer}/{law_id}/{date}.yaml`, so without this guard the
+                // annotation file is indexed as a phantom law whose body is
+                // the annotation YAML — the law then opens to an empty editor
+                // ("Geen items"). Skip the annotations subtree entirely.
+                if parts[0] == "annotations" {
+                    continue;
+                }
+
                 let law_id = parts[parts.len() - 2];
                 if let Some(f) = filter {
                     if !f.contains(law_id) {
@@ -981,6 +993,55 @@ mod inner {
             })?;
         String::from_utf8(bytes)
             .map_err(|e| CorpusError::Git(format!("UTF-8 decode failed for {}: {}", item.path, e)))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::GitHubFetcher;
+        use std::collections::HashMap;
+
+        fn sorted_ids(map: &HashMap<String, String>) -> Vec<String> {
+            let mut ids: Vec<String> = map.keys().cloned().collect();
+            ids.sort();
+            ids
+        }
+
+        // A saved annotation lives at `annotations/{law_id}/annotations.yaml`
+        // in the traject's own repo. That path shape collides with the
+        // law-file convention `{layer}/{law_id}/{date}.yaml`, so without an
+        // explicit guard the indexer registers the annotation file as a
+        // phantom law whose "content" is the annotation YAML — the law then
+        // opens to an empty editor ("Geen items"). Annotations must never be
+        // indexed as laws.
+        #[test]
+        fn annotation_files_are_not_indexed_as_laws() {
+            let paths = vec![
+                "regulation/nl/wet/wet_op_de_zorgtoeslag/2026-01-01.yaml".to_string(),
+                "annotations/zorgtoeslagwet/annotations.yaml".to_string(),
+            ];
+            let best = GitHubFetcher::group_best_versions(&paths, "", None);
+            assert_eq!(sorted_ids(&best), vec!["wet_op_de_zorgtoeslag".to_string()]);
+            assert!(
+                !best.contains_key("zorgtoeslagwet"),
+                "annotation file was mis-indexed as law 'zorgtoeslagwet'"
+            );
+        }
+
+        // When an annotation's law_id matches a real law present in the same
+        // repo, the annotation file must not shadow the actual law content.
+        #[test]
+        fn annotation_does_not_shadow_real_law_with_same_id() {
+            let paths = vec![
+                "regulation/nl/wet/zorgtoeslagwet/2026-01-01.yaml".to_string(),
+                "annotations/zorgtoeslagwet/annotations.yaml".to_string(),
+            ];
+            let best = GitHubFetcher::group_best_versions(&paths, "", None);
+            assert_eq!(
+                best.get("zorgtoeslagwet").map(String::as_str),
+                Some("regulation/nl/wet/zorgtoeslagwet/2026-01-01.yaml"),
+                "annotation file shadowed the real law content"
+            );
+        }
     }
 }
 
