@@ -25,9 +25,13 @@ export const OPERATION_LABELS = {
   DATE_ADD: 'datum optellen',
   DATE: 'datum',
   DAY_OF_WEEK: 'dag van de week',
+  DATE_DIFF: 'datumverschil',
   // Verzameling
   LIST: 'lijst',
 };
+
+// DATE_DIFF units are English in the YAML (schema enum); subtitles read in Dutch.
+const DATE_DIFF_UNIT_LABELS = { days: 'dagen', months: 'maanden', years: 'jaren' };
 
 export function collectAvailableVariables(article) {
   // Engine built-in context variables — always available regardless of
@@ -152,6 +156,10 @@ function getChildOperations(node) {
   if (isOperationNode(node.then)) children.push(node.then);
   if (isOperationNode(node.else)) children.push(node.else);
 
+  // DATE_DIFF holds its operands in from/to (the `in` unit is never an operation)
+  if (isOperationNode(node.from)) children.push(node.from);
+  if (isOperationNode(node.to)) children.push(node.to);
+
   if (Array.isArray(node.cases)) {
     for (const c of node.cases) {
       if (isOperationNode(c.when)) children.push(c.when);
@@ -264,6 +272,11 @@ export function describeSubtitle(node) {
   if (op === 'DATE_ADD') return `${formatArgName(node.subject ?? node.value)} + offset`;
   if (op === 'DATE') return formatArgName(node.value ?? node.subject);
   if (op === 'DAY_OF_WEEK') return `dag van ${formatArgName(node.subject ?? node.value)}`;
+
+  if (op === 'DATE_DIFF') {
+    const unit = DATE_DIFF_UNIT_LABELS[node.in] || formatArgName(node.in);
+    return `${formatArgName(node.from)} tot ${formatArgName(node.to)} in ${unit}`;
+  }
 
   if (op === 'LIST') {
     const values = Array.isArray(node.values) ? node.values : [];
