@@ -875,16 +875,49 @@ watch(activeTrajectRef, () => {
               <nldd-simple-section width="full">
                 <nldd-title id="wet-titel" size="3"><h3>{{ lawName || 'Selecteer een wet' }}</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
-                <nldd-toolbar v-if="authenticated && selectedLaw" label="Favorieten">
+                <nldd-toolbar v-if="selectedLaw" label="Favorieten">
                   <nldd-toolbar-item slot="start">
                     <nldd-icon-button
+                      v-if="authenticated"
                       :icon="favorites?.has(selectedLawId) ? 'heart-filled' : 'heart'"
                       :text="favorites?.has(selectedLawId) ? 'Verwijder uit favorieten' : 'Voeg toe aan favorieten'"
                       @click="toggleFavorite(selectedLawId)"
                     ></nldd-icon-button>
+                    <!-- Not logged in: the heart stays visible, but opens a
+                         popover explaining that favorites unlock once you sign
+                         in. Mirrors the TrajectMenu login popover. -->
+                    <template v-else>
+                      <nldd-icon-button
+                        id="favorite-login-btn"
+                        icon="heart"
+                        text="Voeg toe aan favorieten"
+                        popovertarget="favorite-login-popover"
+                      ></nldd-icon-button>
+                      <nldd-popover
+                        id="favorite-login-popover"
+                        anchor="favorite-login-btn"
+                        accessible-label="Favorieten"
+                        width="320px"
+                      >
+                        <nldd-container padding="16">
+                          <nldd-inline-dialog
+                            icon="heart"
+                            text="Log in om wetten als favoriet te markeren"
+                            supporting-text="Zodra je bent ingelogd kun je wetten markeren als favoriet en vind je ze terug in je bibliotheek onder Favorieten."
+                          >
+                            <nldd-button
+                              slot="actions"
+                              variant="primary"
+                              text="Inloggen"
+                              @click="login()"
+                            ></nldd-button>
+                          </nldd-inline-dialog>
+                        </nldd-container>
+                      </nldd-popover>
+                    </template>
                   </nldd-toolbar-item>
                 </nldd-toolbar>
-                <nldd-spacer v-if="authenticated && selectedLaw" size="16"></nldd-spacer>
+                <nldd-spacer v-if="selectedLaw" size="16"></nldd-spacer>
                 <nldd-inline-dialog v-if="selectedLawLoading" text="Laden..."></nldd-inline-dialog>
                 <nldd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een wet"></nldd-inline-dialog>
                 <nldd-list v-else variant="simple">
