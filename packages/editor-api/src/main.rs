@@ -402,14 +402,9 @@ async fn main() {
                 .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
         );
 
-        // Secure cookies require HTTPS in the browser — except production,
-        // which always serves the editor over an https BASE_URL, so the
-        // default is `Secure`. The one exception is local SSO dev
-        // (`just editor-sso`), which serves over http://localhost: Chrome and
-        // Firefox send Secure cookies over http://localhost as a special case,
-        // but Safari does not, so the OIDC handshake (CSRF/PKCE live in the
-        // session cookie) never completes there. Drop Secure only when BASE_URL
-        // is an http localhost origin, which Safari then accepts.
+        // Drop Secure only for http localhost origins so Safari completes the
+        // OIDC handshake; production (https BASE_URL) keeps it. See
+        // `is_http_localhost` for the full reasoning.
         let secure_cookie = !is_http_localhost(app_state.config.base_url.as_deref());
         if !secure_cookie {
             tracing::warn!(
