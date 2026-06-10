@@ -73,3 +73,13 @@ html {
 .rr-faq-card {
   margin-bottom: 40px;
 }
+
+/* --- Tag row ---
+   NLDD has no wrap-row layout component (nldd-container only does padding),
+   so a row of nldd-tags renders inline with bare word-spacing between them.
+   Gap uses the design-system space token so it tracks the token scale. */
+.rr-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--primitives-space-8);
+}

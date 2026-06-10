@@ -215,10 +215,10 @@ const toc = [
             {t.jobs.items.map((job) => (
               <nldd-card accessible-label={`${t.jobs.vacancyTag}: ${job.title}`}>
                 <nldd-container padding="20">
-                  <nldd-container layout="wrap" gap="8" horizontal-alignment="left">
+                  <div class="rr-tag-row">
                     <nldd-tag color="accent" size="md">{t.jobs.vacancyTag}</nldd-tag>
                     <nldd-tag color="brand" size="md">{job.organisation}</nldd-tag>
-                  </nldd-container>
+                  </div>
                   <nldd-spacer size="16" />
                   <nldd-title size="3">
                     <h3>{job.title}</h3>
@@ -228,7 +228,7 @@ const toc = [
                     <p>{job.pitch}</p>
                   </nldd-rich-text>
                   <nldd-spacer size="20" />
-                  <nldd-container layout="wrap" gap="8" horizontal-alignment="left">
+                  <div class="rr-tag-row">
                     {job.meta.map((m) => (
                       <nldd-tag color="neutral" size="md">{m}</nldd-tag>
                     ))}
@@ -239,7 +239,7 @@ const toc = [
                       data-closes-open={t.jobs.closesLabel.open}
                       data-closes-closed={t.jobs.closesLabel.closed}
                     >{t.jobs.closesLabel.open} {closesDate.format(parseIsoDate(job.closes))}</nldd-tag>
-                  </nldd-container>
+                  </div>
                   <nldd-spacer size="24" />
                   <nldd-button-group orientation="horizontal">
                     <nldd-button
@@ -399,17 +399,13 @@ const toc = [
                   {tool.meta && (
                     <Fragment>
                       <nldd-spacer size="8" />
-                      <nldd-container
-                        layout="wrap"
-                        gap="6"
-                        horizontal-alignment="left"
-                      >
+                      <div class="rr-tag-row">
                         {tool.meta.split('•').map((tag) => (
                           <nldd-tag color="accent" size="md">
                             {tag.trim()}
                           </nldd-tag>
                         ))}
-                      </nldd-container>
+                      </div>
                     </Fragment>
                   )}
                   <nldd-spacer size="8" />
@@ -638,7 +634,9 @@ const toc = [
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     for (const tag of closesTags) {
-      const [y, m, d] = (tag.dataset.closes ?? '').split('-').map(Number);
+      const raw = tag.dataset.closes;
+      if (!raw) continue;
+      const [y, m, d] = raw.split('-').map(Number);
       const days = Math.round(
         (new Date(y, m - 1, d).getTime() - today.getTime()) / 86_400_000,
       );
