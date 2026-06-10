@@ -798,10 +798,10 @@ watch(activeTrajectRef, () => {
           <!-- Sidebar hidden on corpus load failure so the main pane carries the error alone (mirrors law-load failure pattern). -->
           <nldd-split-view-pane v-if="!indexError && !libraryEmpty" slot="sidebar" has-content>
             <nldd-page sticky-header>
-              <nldd-top-title-bar slot="header" :text="LIBRARY_HOME_TITLE" collapse-anchor="home-titel"></nldd-top-title-bar>
+              <nldd-top-title-bar slot="header" :text="loading ? undefined : LIBRARY_HOME_TITLE" collapse-anchor="home-titel"></nldd-top-title-bar>
 
               <nldd-simple-section width="full">
-                <nldd-title id="home-titel" size="3"><h3>{{ LIBRARY_HOME_TITLE }}</h3></nldd-title>
+                <nldd-title id="home-titel" size="3"><h3>{{ loading ? '' : LIBRARY_HOME_TITLE }}</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
                 <nldd-activity-indicator v-if="loading" text="Bibliotheek laden" show-text></nldd-activity-indicator>
                 <!-- Nothing curated yet (no favorites, no traject edits): point
@@ -867,13 +867,13 @@ watch(activeTrajectRef, () => {
             <nldd-page sticky-header>
               <nldd-top-title-bar
                 slot="header"
-                :text="lawName || indexedLawName || 'Selecteer een wet'"
+                :text="lawName || indexedLawName || (selectedLawLoading ? undefined : 'Selecteer een wet')"
                 :back-text="LIBRARY_HOME_BACK_TEXT"
                 collapse-anchor="wet-titel"
               ></nldd-top-title-bar>
 
               <nldd-simple-section width="full">
-                <nldd-title id="wet-titel" size="3"><h3>{{ lawName || 'Selecteer een wet' }}</h3></nldd-title>
+                <nldd-title id="wet-titel" size="3"><h3>{{ lawName || (selectedLawLoading ? '' : 'Selecteer een wet') }}</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
                 <nldd-toolbar v-if="selectedLaw" label="Favorieten">
                   <nldd-toolbar-item slot="start">
