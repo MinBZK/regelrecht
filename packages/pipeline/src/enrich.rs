@@ -162,7 +162,12 @@ impl LlmRunner for ProcessLlmRunner {
 async fn terminate(child: &mut tokio::process::Child, pid: Option<u32>) {
     kill_process_group(pid);
     if let Err(e) = child.kill().await {
-        tracing::warn!(error = %e, "failed to kill LLM process");
+        // After the group SIGKILL above the direct child is usually already
+        // gone, so `ESRCH` here is the expected benign race — only a different
+        // error is worth flagging.
+        if e.raw_os_error() != Some(libc::ESRCH) {
+            tracing::warn!(error = %e, "failed to kill LLM process");
+        }
     }
     let _ = child.wait().await;
 }
@@ -201,7 +206,7 @@ async fn watch_memory(pid: Option<u32>, max_rss_mb: u64) -> u64 {
     let pid = match pid {
         Some(p) if max_rss_mb > 0 => p,
         _ => {
-            tracing::warn!("enrich memory watchdog disabled (no pid or zero limit)");
+            tracing::debug!("enrich memory watchdog disabled (no pid or zero limit)");
             std::future::pending::<()>().await;
             unreachable!("pending future never resolves");
         }
