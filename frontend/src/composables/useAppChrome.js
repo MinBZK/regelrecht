@@ -1,4 +1,4 @@
-import { shallowRef } from 'vue';
+import { shallowRef, onBeforeUnmount } from 'vue';
 
 // Shared chrome store for the persistent AppShell.
 //
@@ -22,6 +22,13 @@ let popoverRef = null;
 
 export function registerSearchPopover(ref_) {
   popoverRef = ref_;
+  // Clear on unmount, but only if this view still owns the registration. The
+  // entering view registers in its setup before the leaving view unmounts, so
+  // guarding on identity avoids nulling a registration that already moved on —
+  // making the cleanup safe even if the route topology changes that ordering.
+  onBeforeUnmount(() => {
+    if (popoverRef === ref_) popoverRef = null;
+  });
 }
 
 export function openSearch(e, initialSearch = '') {

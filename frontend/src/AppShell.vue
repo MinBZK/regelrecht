@@ -192,7 +192,7 @@ const { lastSavedPr, documentTabs, activeDocumentTab, tabActions } = useAppChrom
 
       <!-- Document Tab Bar (editor only, md+). Rendered only while the active
            view publishes open tabs, so the library never shows an empty bar. -->
-      <nldd-split-view-pane v-if="documentTabs.length > 0" slot="document-tabs" sm-order="2">
+      <nldd-split-view-pane v-if="documentTabs.length > 0 && tabActions" slot="document-tabs" sm-order="2">
         <nldd-container padding-inline="8" padding-top="4" padding-bottom="8" sm-padding-top="8" sm-padding-bottom="0">
           <nldd-document-tab-bar>
             <nldd-document-tab-bar-item
