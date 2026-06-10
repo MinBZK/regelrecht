@@ -9,7 +9,15 @@ set dotenv-load := true
 # target.rustflags in packages/.cargo/config.toml, so without it these recipes
 # would fall back to the slow default linker. (dev has no RUSTFLAGS, so it picks
 # up mold straight from .cargo/config.toml.)
-ci_flags := "RUSTFLAGS='-Dwarnings -C link-arg=-fuse-ld=mold'"
+#
+# The mold link-arg is Linux-only, mirroring the [target.x86_64-unknown-linux-gnu]
+# scoping in packages/.cargo/config.toml — otherwise quality/test recipes would
+# force `-fuse-ld=mold` on macOS where mold typically isn't installed.
+ci_flags := if os() == "linux" {
+    "RUSTFLAGS='-Dwarnings -C link-arg=-fuse-ld=mold'"
+} else {
+    "RUSTFLAGS=-Dwarnings"
+}
 
 # Default task - toon beschikbare tasks
 default:
@@ -25,7 +33,7 @@ wasm-build:
     # Ask cargo where it actually put the artifact. This honors a shared
     # target-dir from `just dev-setup` (root .cargo/config.toml), CARGO_TARGET_DIR,
     # or the default packages/target — so wasm-build works with or without dev-setup.
-    target_dir="$(cargo metadata --format-version=1 --no-deps --manifest-path packages/engine/Cargo.toml | jq -r .target_directory)"
+    target_dir="$(cargo metadata --format-version=1 --no-deps --manifest-path packages/engine/Cargo.toml | python3 -c 'import sys, json; print(json.load(sys.stdin)["target_directory"])')"
     wasm-bindgen --target web --out-dir frontend/public/wasm/pkg "$target_dir/wasm32-unknown-unknown/release/regelrecht_engine.wasm"
 
 # --- Quality checks ---
