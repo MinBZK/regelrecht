@@ -700,26 +700,27 @@ fn resolve_pipeline_api_url(hostname: Option<&str>, env_url: Option<String>) -> 
 /// (`just editor-sso` over http://localhost) so Safari — which, unlike Chrome
 /// and Firefox, refuses Secure cookies over http://localhost — completes the
 /// OIDC handshake. Production always serves over an https BASE_URL, so this is
-/// false there and cookies stay Secure. A missing BASE_URL is treated as
-/// non-local (Secure stays on) — the safe default.
+/// false there and cookies stay Secure. A missing or unparseable BASE_URL is
+/// treated as non-local (Secure stays on) — the safe default.
+///
+/// Parses with `url::Url` (the same crate that validates `BASE_URL` at startup)
+/// so the scheme/host extraction matches WHATWG rules: the host is exact (a
+/// look-alike like `http://localhost.attacker.example` or userinfo like
+/// `http://localhost@evil.com` resolves to a non-loopback host and is rejected)
+/// and IPv6 loopback is handled via the typed `Host` enum.
 fn is_http_localhost(base_url: Option<&str>) -> bool {
-    let Some(url) = base_url else {
+    let Some(url) = base_url.and_then(|u| url::Url::parse(u).ok()) else {
         return false;
     };
-    let Some(rest) = url.strip_prefix("http://") else {
+    if url.scheme() != "http" {
         return false;
-    };
-    // Drop the path, then the `:port`, so we match the host exactly and don't
-    // treat e.g. `http://localhost.attacker.example` as local. A bracketed
-    // IPv6 host (`[::1]`) keeps its inner colons, so strip the port only after
-    // any closing bracket.
-    let authority = rest.split('/').next().unwrap_or("");
-    let host = match authority.rsplit_once(']') {
-        Some((bracketed, _port)) => format!("{bracketed}]"), // `[::1]:7300` -> `[::1]`
-        None => authority.split(':').next().unwrap_or("").to_string(),
     }
-    .to_ascii_lowercase();
-    host == "localhost" || host == "127.0.0.1" || host == "[::1]"
+    matches!(
+        url.host(),
+        Some(url::Host::Domain("localhost"))
+            | Some(url::Host::Ipv4(std::net::Ipv4Addr::LOCALHOST))
+            | Some(url::Host::Ipv6(std::net::Ipv6Addr::LOCALHOST))
+    )
 }
 
 #[cfg(test)]
@@ -833,5 +834,18 @@ mod http_localhost_tests {
         assert!(!is_http_localhost(Some(
             "http://localhost.attacker.example"
         )));
+    }
+
+    /// `localhost` in the userinfo position is not the host — the real host is
+    /// `evil.com`, so this must not be treated as local.
+    #[test]
+    fn localhost_in_userinfo_is_not_local() {
+        assert!(!is_http_localhost(Some("http://localhost@evil.com:7300")));
+    }
+
+    /// An unparseable BASE_URL fails closed (Secure stays on).
+    #[test]
+    fn unparseable_base_url_defaults_to_secure() {
+        assert!(!is_http_localhost(Some("not a url")));
     }
 }
