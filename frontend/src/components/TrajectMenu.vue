@@ -200,29 +200,29 @@ async function submitCreate() {
       :text="`${t.name}${t.status === 'afgerond' ? ' (afgerond)' : ''}`"
       @select="selectTraject(t)"
     ></nldd-menu-item>
-    <nldd-menu-divider v-if="trajects.length > 0"></nldd-menu-divider>
+    <nldd-menu-item
+      text="Nieuw traject…"
+      icon="plus"
+      @click="openCreate"
+    ></nldd-menu-item>
+    <nldd-menu-divider v-if="activeTraject"></nldd-menu-divider>
     <nldd-menu-item
       v-if="activeTraject"
-      text="Documenten…"
-      start-icon="file-text"
+      text="Documenten"
+      icon="file-text"
       @click="documentsSheet.open()"
     ></nldd-menu-item>
     <nldd-menu-item
       v-if="activeTraject"
-      text="Traject-info…"
-      start-icon="info"
-      @click="openInfoForActive"
-    ></nldd-menu-item>
-    <nldd-menu-item
-      v-if="activeTraject"
-      text="Beheer leden…"
-      start-icon="users"
+      text="Leden"
+      icon="person-2"
       @click="openMembersForActive"
     ></nldd-menu-item>
     <nldd-menu-item
-      text="Nieuw traject…"
-      start-icon="plus"
-      @click="openCreate"
+      v-if="activeTraject"
+      text="Traject details"
+      icon="point-bottom-left-to-point-top-right-s-curve-path"
+      @click="openInfoForActive"
     ></nldd-menu-item>
   </nldd-menu>
 
@@ -237,7 +237,7 @@ async function submitCreate() {
   >
     <nldd-container padding="16">
       <nldd-inline-dialog
-        icon="traject"
+        icon="point-bottom-left-to-point-top-right-s-curve-path"
         text="Log in om een traject te kiezen of aan te maken"
         supporting-text="Zodra je bent ingelogd zie je hier je lopende trajecten en kun je gemakkelijk wisselen."
       >

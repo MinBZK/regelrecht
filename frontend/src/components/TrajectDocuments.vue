@@ -226,7 +226,7 @@ function handleKeydown(e) {
         <nldd-top-title-bar
           slot="header"
           text="Documenten"
-          dismiss-text="Sluiten"
+          dismiss-text="Sluit"
           @dismiss="closeBrowser"
         ></nldd-top-title-bar>
 
@@ -267,7 +267,10 @@ function handleKeydown(e) {
           </nldd-list>
         </nldd-simple-section>
 
-        <nldd-container slot="footer" padding="16">
+        <!-- Geen aanmaakformulier zolang de lijst zelf niet laadt (bijv.
+             403 zonder corpus-token): aanmaken zou op dezelfde fout
+             stranden. -->
+        <nldd-container v-if="!listError" slot="footer" padding="16">
           <nldd-inline-dialog
             v-if="createError"
             variant="alert"
@@ -316,7 +319,7 @@ function handleKeydown(e) {
           slot="header"
           window-drag-handle
           :text="currentPath || 'Document'"
-          dismiss-text="Sluiten"
+          dismiss-text="Sluit"
           @dismiss="closeWindow"
         ></nldd-top-title-bar>
 
