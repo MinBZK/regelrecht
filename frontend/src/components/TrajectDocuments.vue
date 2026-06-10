@@ -73,6 +73,14 @@ watch(windowOpen, async (open) => {
   else windowEl.value?.hide();
 });
 
+// Editor/preview-wissel in het venster; elke nieuw geopende document start
+// in de editor.
+const viewMode = ref('editor');
+
+function onViewModeChange(e) {
+  viewMode.value = e.detail?.value ?? viewMode.value;
+}
+
 // Switching traject clears the loaded document in the composable; close both
 // overlays so neither shows stale content for the new traject.
 watch(activeTrajectRef, () => {
@@ -86,12 +94,13 @@ function onBodyInput(e) {
   currentBody.value = e.detail?.value ?? e.target?.value ?? currentBody.value;
 }
 
-// Open a document: close the browser sheet and show it in the window
-// (mirrors the "Nieuw traject" flow where the sheet closes on action).
+// Open a document: show the window immediately (the activity indicator
+// covers the load) and fetch the content in the background.
 async function openInWindow(path) {
-  await openDocument(path);
   closeBrowser();
+  viewMode.value = 'editor';
   windowOpen.value = true;
+  await openDocument(path);
 }
 
 // --- Titels ---
@@ -129,11 +138,12 @@ function validatePath(value) {
 }
 
 // --- Nieuw document ---
-// Eén klik maakt direct een 'untitled'-document aan (kleine letters: de
-// backend staat alleen [a-z0-9._-] toe in paden) en opent het venster; de
-// naam is daar vervolgens te bewerken.
+// Eén klik opent direct het venster (met activity-indicator) en maakt op
+// de achtergrond een 'untitled'-document aan (kleine letters: de backend
+// staat alleen [a-z0-9._-] toe in paden); de naam is in het venster te
+// bewerken. Mislukt het aanmaken, dan blijft het venster open met de
+// foutmelding — Opslaan probeert het dan opnieuw.
 const creating = ref(false);
-const createError = ref(null);
 
 function nextUntitledPath() {
   let path = 'untitled.md';
@@ -145,16 +155,12 @@ function nextUntitledPath() {
 
 async function startNewDocument() {
   if (creating.value) return;
-  createError.value = null;
   creating.value = true;
+  closeBrowser();
+  viewMode.value = 'editor';
+  windowOpen.value = true;
   try {
-    const result = await createDocument(nextUntitledPath());
-    if (!result.ok) {
-      createError.value = saveError.value?.message || 'Aanmaken mislukt.';
-      return;
-    }
-    closeBrowser();
-    windowOpen.value = true;
+    await createDocument(nextUntitledPath());
   } finally {
     creating.value = false;
   }
@@ -174,16 +180,17 @@ function onTitleInput(e) {
 }
 
 async function handleSave() {
+  if (saving.value) return false;
   titleError.value = null;
   const finalPath = pathFromTitle(titleDraft.value);
   const err = validatePath(finalPath);
   if (err) {
     titleError.value = err;
-    return;
+    return false;
   }
   if (finalPath === currentPath.value) {
-    await saveCurrent();
-    return;
+    const result = await saveCurrent();
+    return !!result?.ok;
   }
   // Hernoemen: er is geen rename-API, dus schrijf de inhoud eerst onder het
   // nieuwe pad (blind create) en verwijder daarna het oude pad. In die
@@ -191,7 +198,7 @@ async function handleSave() {
   // document tijdelijk onder beide namen.
   if (documents.value.some((d) => d.path === finalPath)) {
     titleError.value = 'Een document met deze naam bestaat al.';
-    return;
+    return false;
   }
   const oldPath = currentPath.value;
   const oldEtag = currentEtag.value;
@@ -203,12 +210,29 @@ async function handleSave() {
     // het nieuwe (mislukte) pad aanloopt.
     currentPath.value = oldPath;
     currentEtag.value = oldEtag;
-    return;
+    return false;
   }
   await deleteDocument(oldPath);
   // deleteDocument wist currentPath wanneer het het open document betrof —
   // hier verwijderden we bewust het OUDE pad terwijl het nieuwe open is,
   // dus die guard matcht niet en de state blijft op het nieuwe pad staan.
+  return true;
+}
+
+// Titelbalk-actie: opslaan en bij succes sluiten. Bij een validatie- of
+// save-fout blijft het venster open met de melding in beeld.
+async function saveAndClose() {
+  const ok = await handleSave();
+  if (ok) windowOpen.value = false;
+}
+
+// "Maak wijzigingen ongedaan": gooi de lokale draft weg en laad de
+// server-versie. De titel reist niet mee via openDocument (zelfde pad, dus
+// de currentPath-watch vuurt niet) — expliciet terugzetten.
+function undoChanges() {
+  titleDraft.value = displayTitle(currentPath.value);
+  titleError.value = null;
+  return reloadCurrent();
 }
 
 // Resolve a 412 conflict by force-overwriting with `If-Match: *` (the stale
@@ -293,12 +317,6 @@ function handleKeydown(e) {
             variant="warning"
             :text="deleteNotice"
           ></nldd-inline-dialog>
-          <nldd-inline-dialog
-            v-if="createError"
-            variant="alert"
-            :text="createError"
-          ></nldd-inline-dialog>
-
           <nldd-activity-indicator v-if="listLoading" text="Documenten laden" show-text></nldd-activity-indicator>
           <nldd-inline-dialog
             v-else-if="listError"
@@ -326,14 +344,13 @@ function handleKeydown(e) {
             ></nldd-inline-dialog>
             <nldd-list-item size="md"
               type="button"
-              :disabled="creating || undefined"
               @click="startNewDocument"
             >
               <nldd-icon-cell size="20">
                 <nldd-icon name="plus"></nldd-icon>
               </nldd-icon-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
-              <nldd-text-cell :text="creating ? 'Bezig…' : 'Nieuw document'"></nldd-text-cell>
+              <nldd-text-cell text="Nieuw document"></nldd-text-cell>
             </nldd-list-item>
           </nldd-list>
         </nldd-simple-section>
@@ -349,6 +366,8 @@ function handleKeydown(e) {
        below the fold. Pinning it to the top-right corner opens it in view;
        being movable, the user can reposition from there. -->
   <Teleport to="body">
+    <!-- Expliciete hoogte: de bar-split-view binnenin is height:100% en
+         klapt dicht in een window met content-hoogte (de default). -->
     <nldd-window
       ref="windowEl"
       modeless
@@ -356,109 +375,127 @@ function handleKeydown(e) {
       top="72px"
       right="24px"
       width="max(280px, 40vw)"
+      height="min(80vh, 720px)"
       accessible-label="Document bewerken"
       @close="closeWindow"
     >
-      <nldd-page sticky-header sticky-footer @keydown="handleKeydown">
-        <nldd-top-title-bar
-          slot="header"
-          window-drag-handle
-          :text="titleDraft || 'Document'"
-          dismiss-text="Sluit"
-          @dismiss="closeWindow"
-        ></nldd-top-title-bar>
+      <nldd-bar-split-view>
+        <nldd-split-view-pane slot="main">
+          <nldd-page sticky-header @keydown="handleKeydown">
+            <nldd-top-title-bar
+              slot="header"
+              window-drag-handle
+              :text="titleDraft || 'Document'"
+              :dismiss-text="saving ? 'Opslaan…' : 'Opslaan'"
+              @dismiss="saveAndClose"
+            ></nldd-top-title-bar>
 
-        <nldd-simple-section>
-          <nldd-activity-indicator v-if="docLoading" text="Document laden" show-text></nldd-activity-indicator>
-          <template v-else>
-            <!-- Ook hier: een delete kan nu vanuit dit venster starten, dus
-                 de uitkomst moet hier zichtbaar zijn (de sheet is dicht). -->
-            <nldd-inline-dialog
-              v-if="deleteNotice"
-              variant="warning"
-              :text="deleteNotice"
-            ></nldd-inline-dialog>
-            <nldd-inline-dialog v-if="conflict" variant="warning" :text="conflict">
-              <nldd-button slot="actions" size="md" text="Server-versie laden" @click="reloadCurrent"></nldd-button>
-              <nldd-button slot="actions" size="md" text="Lokaal overschrijven" @click="overwriteServer"></nldd-button>
-            </nldd-inline-dialog>
+            <nldd-container padding="16" padding-top="8">
+              <nldd-activity-indicator v-if="docLoading || creating" text="Document laden" show-text></nldd-activity-indicator>
+              <template v-else>
+                <!-- Ook hier: een delete kan vanuit dit venster starten, dus
+                     de uitkomst moet hier zichtbaar zijn (de sheet is dicht). -->
+                <nldd-inline-dialog
+                  v-if="deleteNotice"
+                  variant="warning"
+                  :text="deleteNotice"
+                ></nldd-inline-dialog>
+                <nldd-inline-dialog v-if="conflict" variant="warning" :text="conflict">
+                  <nldd-button slot="actions" size="md" text="Server-versie laden" @click="reloadCurrent"></nldd-button>
+                  <nldd-button slot="actions" size="md" text="Lokaal overschrijven" @click="overwriteServer"></nldd-button>
+                </nldd-inline-dialog>
 
-            <nldd-inline-dialog
-              v-if="deletedRemotely"
-              variant="warning"
-              :text="deletedRemotely"
-            ></nldd-inline-dialog>
+                <nldd-inline-dialog
+                  v-if="deletedRemotely"
+                  variant="warning"
+                  :text="deletedRemotely"
+                ></nldd-inline-dialog>
 
-            <nldd-inline-dialog
-              v-if="docError && docError.kind === 'draft-present'"
-              :text="docError.message"
-            >
-              <nldd-button slot="actions" size="md" text="Draft verwerpen" @click="dropDraft"></nldd-button>
-            </nldd-inline-dialog>
+                <nldd-inline-dialog
+                  v-if="docError && docError.kind === 'draft-present'"
+                  :text="docError.message"
+                >
+                  <nldd-button slot="actions" size="md" text="Draft verwerpen" @click="dropDraft"></nldd-button>
+                </nldd-inline-dialog>
 
-            <nldd-inline-dialog
-              v-if="docError && docError.kind !== 'draft-present'"
-              variant="alert"
-              :text="docError.message"
-            ></nldd-inline-dialog>
+                <nldd-inline-dialog
+                  v-if="docError && docError.kind !== 'draft-present'"
+                  variant="alert"
+                  :text="docError.message"
+                ></nldd-inline-dialog>
 
-            <nldd-inline-dialog
-              v-if="saveError"
-              variant="alert"
-              text="Actie mislukt"
-              :supporting-text="saveError.message"
-            ></nldd-inline-dialog>
+                <nldd-inline-dialog
+                  v-if="saveError"
+                  variant="alert"
+                  text="Actie mislukt"
+                  :supporting-text="saveError.message"
+                ></nldd-inline-dialog>
 
-            <nldd-inline-dialog
-              v-if="titleError"
-              variant="alert"
-              :text="titleError"
-            ></nldd-inline-dialog>
+                <nldd-inline-dialog
+                  v-if="titleError"
+                  variant="alert"
+                  :text="titleError"
+                ></nldd-inline-dialog>
 
-            <nldd-text-field
-              :value="titleDraft"
-              accessible-label="Documentnaam"
-              placeholder="documentnaam"
-              @input="onTitleInput"
-            ></nldd-text-field>
-            <nldd-spacer size="8"></nldd-spacer>
-            <nldd-multi-line-text-field
-              :value="currentBody"
-              rows="14"
-              resize="vertical"
-              no-spellcheck
-              accessible-label="Document-inhoud (markdown)"
-              placeholder="# Titel"
-              @input="onBodyInput"
-            ></nldd-multi-line-text-field>
-            <nldd-divider></nldd-divider>
-            <!-- v-html is safe: renderArticleHtml runs DOMPurify over the
-                 marked output, identical to the law-text path. nldd-rich-text
-                 applies the design-system typography to the slotted HTML. -->
-            <nldd-rich-text spacing="snug" v-html="previewHtml"></nldd-rich-text>
-          </template>
-        </nldd-simple-section>
+                <template v-if="viewMode === 'editor'">
+                  <nldd-text-field
+                    :value="titleDraft"
+                    accessible-label="Documentnaam"
+                    placeholder="documentnaam"
+                    @input="onTitleInput"
+                  ></nldd-text-field>
+                  <nldd-spacer size="8"></nldd-spacer>
+                  <nldd-multi-line-text-field
+                    :value="currentBody"
+                    rows="14"
+                    resize="vertical"
+                    no-spellcheck
+                    accessible-label="Document-inhoud (markdown)"
+                    placeholder="# Titel"
+                    @input="onBodyInput"
+                  ></nldd-multi-line-text-field>
+                </template>
+                <!-- v-html is safe: renderArticleHtml runs DOMPurify over the
+                     marked output, identical to the law-text path. nldd-rich-text
+                     applies the design-system typography to the slotted HTML. -->
+                <nldd-rich-text v-else spacing="snug" v-html="previewHtml"></nldd-rich-text>
+              </template>
+            </nldd-container>
+          </nldd-page>
+        </nldd-split-view-pane>
 
-        <nldd-container slot="footer" padding="16">
-          <nldd-button
-            variant="primary"
-            size="md"
-            width="full"
-            :text="saving ? 'Opslaan…' : 'Opslaan'"
-            :disabled="saving || !currentPath || undefined"
-            @click="handleSave"
-          ></nldd-button>
-          <nldd-spacer size="8"></nldd-spacer>
-          <nldd-button
-            variant="destructive"
-            size="md"
-            width="full"
-            text="Verwijder"
-            :disabled="saving || !currentPath || undefined"
-            @click="askDelete(currentPath)"
-          ></nldd-button>
-        </nldd-container>
-      </nldd-page>
+        <!-- Onderbalk: editor/preview-wissel links, meer-menu rechts
+             (opslaan zit in de titelbalk). -->
+        <nldd-split-view-pane slot="bottom-bar">
+          <nldd-container padding="8">
+            <nldd-toolbar size="md">
+              <nldd-toolbar-item slot="start">
+                <nldd-segmented-control size="md" width="fit-content" :value="viewMode" @change="onViewModeChange">
+                  <nldd-segmented-control-item value="editor" text="Bewerken"></nldd-segmented-control-item>
+                  <nldd-segmented-control-item value="preview" text="Voorbeeld"></nldd-segmented-control-item>
+                </nldd-segmented-control>
+              </nldd-toolbar-item>
+              <nldd-toolbar-item slot="end">
+                <nldd-icon-button id="document-more-btn" size="md" icon="more" text="Meer" tooltip-timing="never" popovertarget="document-more-menu"></nldd-icon-button>
+                <nldd-menu id="document-more-menu" anchor="document-more-btn">
+                  <nldd-menu-item
+                    text="Maak wijzigingen ongedaan"
+                    icon="undo"
+                    @click="undoChanges"
+                  ></nldd-menu-item>
+                  <nldd-menu-divider></nldd-menu-divider>
+                  <nldd-menu-item
+                    text="Verwijder document"
+                    icon="delete"
+                    destructive
+                    @click="askDelete(currentPath)"
+                  ></nldd-menu-item>
+                </nldd-menu>
+              </nldd-toolbar-item>
+            </nldd-toolbar>
+          </nldd-container>
+        </nldd-split-view-pane>
+      </nldd-bar-split-view>
     </nldd-window>
   </Teleport>
 
