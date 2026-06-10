@@ -52,8 +52,7 @@
         "AGE",
         "DATE_ADD",
         "DATE",
-        "DAY_OF_WEEK",
-        "DATE_DIFF"
+        "DAY_OF_WEEK"
       ]
     },
     "advanced": {
