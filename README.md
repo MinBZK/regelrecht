@@ -70,6 +70,59 @@ just test     # unit tests only
 just bdd      # BDD tests only
 ```
 
+### Faster builds (recommended)
+
+Run `just dev-setup` once. It does three things:
+
+1. **Points every worktree at one shared target dir** — a new worktree reuses
+   the already-built dependency graph instead of cold-building ~600 crates.
+2. **Puts that target on fast local storage when the repo lives on a slow mount.**
+   A Rust build writes tens of thousands of small files; on a 9p/NFS/SMB mount
+   (e.g. a WSL2 or Docker-Desktop dev container where the repo is a Windows
+   drive) that I/O dominates build time — often more than everything else
+   combined. `dev-setup` detects this and relocates the target to
+   `~/.cache/regelrecht/` (local disk). This is usually the single biggest win.
+3. **Installs [mold](https://github.com/rui314/mold) + `sccache`.** mold (wired
+   into `packages/.cargo/config.toml`) speeds up linking and is a hard
+   requirement for the dev recipes; `sccache` is installed but left off locally.
+
+`sccache` is disabled locally because it requires `CARGO_INCREMENTAL=0` and so
+disables incremental compilation — which hurts the `just dev` edit-rebuild loop.
+Enable it only for cold or flag-varying builds:
+
+```bash
+export RUSTC_WRAPPER=sccache CARGO_INCREMENTAL=0
+```
+
+CI uses both mold and sccache (see `.github/workflows/ci.yml`).
+
+### Running a dev stack
+
+```bash
+just dev               # full native dev stack (admin + both frontends + grafana/prometheus)
+just dev-frontend            # all frontends (editor 7300, admin 7400, lawmaking 7500), no observability
+just dev-frontend editor     # just the editor (editor-api + editor UI + DB)
+just dev-frontend admin      # just the admin API + admin UI + DB
+just dev-frontend lawmaking  # just the lawmaking UI (no backend)
+just dev-down          # stop whichever of the above is running
+```
+
+`dev-frontend` with no argument starts every frontend; pass `editor`, `admin`,
+or `lawmaking` to start just one. Either way it starts only the components those
+frontends need — no grafana, prometheus, or workers. The editor runs with real
+SSO against the central
+Keycloak, so it needs `.env.sso-local` (copy `.env.sso-local.example`). It and
+`just dev` are mutually exclusive (they share `.dev-pids` and ports) — run one at
+a time.
+
+Vite ports default to `7300/7400/7500` (overridable via `EDITOR_PORT` /
+`ADMIN_FE_PORT` / `LAWMAKING_PORT`). When a native backend can't reach Postgres
+on `localhost` (e.g. a WSL2/Docker-Desktop dev container, where Postgres is
+published on the Docker host), point it at `host.docker.internal`: for the
+admin / `just dev` paths set `DB_HOST=host.docker.internal` in `.env`; for the
+editor that host comes from `DATABASE_URL` in `.env.sso-local` (the
+`.env.sso-local.example` already uses `host.docker.internal`).
+
 See the [docs site](https://docs.regelrecht.rijks.app) for full development instructions.
 
 ## License

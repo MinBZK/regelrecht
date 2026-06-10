@@ -1,0 +1,11 @@
+# Cargo configuration for the regelrecht workspace.
+#
+# Use the mold linker on x86_64 Linux — linking dominates incremental dev
+# rebuilds (e.g. `just dev` hot-reload) and mold is dramatically faster than
+# the default GNU ld. Requires `mold` on PATH: run `just dev-setup` once, or
+# install it via your package manager. CI installs it too (see ci.yml).
+#
+# Note: an explicit `RUSTFLAGS` env var (as set by `just`'s ci_flags and by CI)
+# overrides this `rustflags`, so the mold link-arg is also passed there.
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]

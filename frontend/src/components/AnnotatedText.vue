@@ -811,10 +811,10 @@ onBeforeUnmount(() => {
 }
 
 /* Popover card content. nldd-popover does not pad slotted content, nor
-   inherit the editor UI font, so the card sets both (RijksSansVF is the
-   design-system UI face). Border-left echoes the highlight colour. */
+   inherit the editor UI font, so the card sets both (the design-system body
+   token resolves to RijksSans). Border-left echoes the highlight colour. */
 .note-pop {
-  font-family: 'RijksSansVF', system-ui, sans-serif;
+  font-family: var(--primitives-font-family-body);
   padding: 14px 16px;
   border-left: 3px solid transparent;
 }

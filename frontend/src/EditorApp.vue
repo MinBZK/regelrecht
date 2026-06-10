@@ -2026,7 +2026,7 @@ async function handleActionSave() {
   margin-top: 8px;
   background: #fef2f2;
   color: #b91c1c;
-  font-family: 'SF Mono', monospace;
+  font-family: var(--primitives-font-family-monospace);
   font-size: 12px;
   padding: 8px 12px;
   border: 1px solid #fecaca;

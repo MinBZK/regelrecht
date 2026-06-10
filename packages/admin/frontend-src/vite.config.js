@@ -1,6 +1,11 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 
+// Backend port the dev proxy forwards /api, /auth and /health to. Defaults to
+// 8000 (admin API); `just dev-frontend all` sets API_PORT=8001 so the admin API
+// can move aside for editor-api on :8000.
+const apiTarget = `http://localhost:${process.env.API_PORT || '8000'}`;
+
 export default defineConfig({
   root: '.',
   // Vite's built-in SPA history-fallback (the default for appType 'spa')
@@ -28,9 +33,9 @@ export default defineConfig({
   server: {
     port: 3001,
     proxy: {
-      '/api': 'http://localhost:8000',
-      '/auth': 'http://localhost:8000',
-      '/health': 'http://localhost:8000',
+      '/api': apiTarget,
+      '/auth': apiTarget,
+      '/health': apiTarget,
     },
   },
 });

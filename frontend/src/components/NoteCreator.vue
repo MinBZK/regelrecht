@@ -432,7 +432,7 @@ const statusInfo = computed(() => {
 
 <style scoped>
 .note-creator {
-  font-family: 'RijksSansVF', system-ui, sans-serif;
+  font-family: var(--primitives-font-family-body);
   padding: 16px;
   /* The popover host owns the width (set via the `width="480px"` attribute on
      <nldd-popover>, which it reflects to --components-popover-default-width;

@@ -15,6 +15,11 @@ body {
 
 body {
   margin: 0;
+  /* Base UI font for plain text not rendered inside an nldd component (e.g.
+     slotted spans in sheets/lists). @nldd/design-system only defines the
+     token + @font-face; it does not set a global body font, so without this
+     such text falls back to the browser default instead of RijksSans. */
+  font-family: var(--primitives-font-family-body);
 }
 
 *,

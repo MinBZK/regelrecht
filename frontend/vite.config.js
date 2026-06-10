@@ -1,6 +1,11 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 
+// Backend port the dev proxy forwards /api, /auth and /health to. Defaults to
+// 8000 (editor-api); `just dev-frontend` sets API_PORT so multiple backends can
+// coexist on distinct ports.
+const apiTarget = `http://localhost:${process.env.API_PORT || '8000'}`;
+
 export default defineConfig({
   root: '.',
   plugins: [
@@ -42,9 +47,9 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      '/api': 'http://localhost:8008',
-      '/auth': 'http://localhost:8008',
-      '/health': 'http://localhost:8008',
+      '/api': apiTarget,
+      '/auth': apiTarget,
+      '/health': apiTarget,
     },
   },
 });

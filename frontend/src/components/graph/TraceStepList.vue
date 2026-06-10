@@ -84,7 +84,7 @@ watch(
 <style scoped>
 .step-list {
   overflow-y: auto;
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-family: var(--primitives-font-family-monospace);
 }
 
 .step-row {

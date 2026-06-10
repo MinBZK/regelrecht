@@ -33,6 +33,7 @@ const {
   progress: depsProgress,
   error: depsError,
   loadAllDependencies,
+  loadImplementors,
 } = useDependencies();
 
 // --- Scenario loading ---
@@ -181,39 +182,70 @@ watch(() => props.lawYaml, (val, prev) => {
 
 onBeforeUnmount(() => clearTimeout(lawYamlDebounce));
 
+// Run the dependency cascade for the current law + scenarios. Reads the
+// latest prop/state values at call time (not captured watch args) so a
+// debounced run always uses the freshest inputs.
+async function runDependencyLoad() {
+  const lawYaml = debouncedLawYaml.value;
+  if (!lawYaml || !props.ready || !props.engine) return;
+  const version = ++watchVersion;
+  depsReady.value = false;
+
+  const mainLawId = await loadAllDependencies(lawYaml, props.engine, fetchLawYaml);
+  if (version !== watchVersion) return;
+
+  // Also load dependencies from scenario background + per-scenario steps
+  if (formState.value) {
+    const allDeps = new Set();
+    for (const dep of formState.value.background?.dependencies || []) allDeps.add(dep);
+    for (const sc of formState.value.scenarios || []) {
+      for (const dep of sc.setup?.dependencies || []) allDeps.add(dep);
+    }
+    for (const depId of allDeps) {
+      try {
+        if (!props.engine.hasLaw(depId)) {
+          const yaml = await fetchLawYaml(depId);
+          props.engine.loadLaw(yaml);
+        }
+      } catch (e) {
+        console.warn(`Failed to load scenario dependency '${depId}':`, e);
+      }
+    }
+  }
+
+  if (version === watchVersion) {
+    // The explicitly-declared deps are loaded — the panel is usable now, so
+    // mark ready and let scenarios auto-execute. Implementing regulations
+    // (IoC) load in the background: their corpus scan can be slow and is
+    // best-effort, so it must not gate the panel. `loadImplementors` is
+    // guarded to run at most once per law.
+    //
+    // Deliberately fire-and-forget — there is no AbortController. If this
+    // component unmounts mid-scan the promise keeps running, which is safe:
+    // Vue ignores ref writes after unmount, the shared WASM engine outlives
+    // the component, and the guard resets on error so a fresh mount retries.
+    depsReady.value = true;
+    if (mainLawId) {
+      loadImplementors(mainLawId, props.engine, fetchLawYaml, props.trajectRef);
+    }
+  }
+}
+
+// `debouncedLawYaml`, `props.ready` and `formState` settle on separate ticks
+// during the initial load. Without coalescing, each settle fires this watch
+// and starts (then abandons, via `watchVersion`) a full dependency scan — up
+// to four overlapping corpus-wide reloads per open. A short debounce collapses
+// the burst into a single run after the inputs have settled.
+let depsScheduleTimer = null;
+function scheduleDependencyLoad() {
+  clearTimeout(depsScheduleTimer);
+  depsScheduleTimer = setTimeout(runDependencyLoad, 30);
+}
+onBeforeUnmount(() => clearTimeout(depsScheduleTimer));
+
 watch(
   [debouncedLawYaml, () => props.ready, formState],
-  async ([lawYaml, isReady]) => {
-    if (!lawYaml || !isReady || !props.engine) return;
-    const version = ++watchVersion;
-    depsReady.value = false;
-
-    await loadAllDependencies(lawYaml, props.engine, fetchLawYaml, props.trajectRef);
-    if (version !== watchVersion) return;
-
-    // Also load dependencies from scenario background + per-scenario steps
-    if (formState.value) {
-      const allDeps = new Set();
-      for (const dep of formState.value.background?.dependencies || []) allDeps.add(dep);
-      for (const sc of formState.value.scenarios || []) {
-        for (const dep of sc.setup?.dependencies || []) allDeps.add(dep);
-      }
-      for (const depId of allDeps) {
-        try {
-          if (!props.engine.hasLaw(depId)) {
-            const yaml = await fetchLawYaml(depId);
-            props.engine.loadLaw(yaml);
-          }
-        } catch (e) {
-          console.warn(`Failed to load scenario dependency '${depId}':`, e);
-        }
-      }
-    }
-
-    if (version === watchVersion) {
-      depsReady.value = true;
-    }
-  },
+  scheduleDependencyLoad,
   { immediate: true },
 );
 
@@ -478,15 +510,19 @@ defineExpose({ save: onSave });
               </template>
             </nldd-container>
             <nldd-container slot="footer" padding-inline="16" padding-bottom="16">
+              <!-- Not gated on a cached result: onShowDetails always emits and
+                   the result sheet handles its own loading / empty / error
+                   (with reload) states. Disabling here turned the buttons into
+                   a dead end while dependencies were still loading (or after a
+                   save reset the cached result), so the user could never open
+                   the trace/graph to retry. -->
               <nldd-button-group orientation="horizontal">
                 <nldd-button
-                  :disabled="!scenarioResults.get(i) || undefined"
                   text="Resultaat"
                   @click="onShowDetails(i, 'trace')"
                 ></nldd-button>
                 <nldd-button
                   variant="secondary"
-                  :disabled="!scenarioResults.get(i) || undefined"
                   text="Graaf"
                   @click="onShowDetails(i, 'graph')"
                 ></nldd-button>

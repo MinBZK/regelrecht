@@ -3,7 +3,26 @@
 //! Uses the dual-error pattern: `HarvesterError` for library consumers
 //! with detailed error context, and specific error types for internal use.
 
+use serde::Serialize;
 use thiserror::Error;
+
+/// Why a BWB *work* has no consolidated text available to harvest.
+///
+/// A work only carries a `_latestItem` (and consolidated `<expression>`s) once
+/// it has at least one consolidated version. Some works legitimately have none:
+/// they were withdrawn, are not yet in force, or are only registered. This
+/// distinguishes those expected cases from a genuinely malformed manifest.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum NoTextReason {
+    /// Withdrawn (`datum_intrekking` set): no current consolidated text exists.
+    Withdrawn { date: String },
+    /// Adopted but not yet in force (`datum_inwerkingtreding` in the future):
+    /// consolidated text appears on/after that date.
+    NotYetInForce { date: String },
+    /// Only registered (WTI metadata), with no dates or text yet.
+    Announced,
+}
 
 /// Main error type for the harvester library.
 #[derive(Debug, Error)]
@@ -83,6 +102,16 @@ pub enum HarvesterError {
     /// No consolidation found for the given date.
     #[error("No consolidation found for {bwb_id} at date {date}")]
     NoConsolidation { bwb_id: String, date: String },
+
+    /// The work has no consolidated text at all (withdrawn / not yet in force /
+    /// only announced). This is an expected outcome, not a malformed manifest:
+    /// the pipeline maps it to a terminal "skipped" law status rather than a
+    /// retryable failure.
+    #[error("No consolidated text for {bwb_id} ({reason:?})")]
+    NoConsolidatedText {
+        bwb_id: String,
+        reason: NoTextReason,
+    },
 
     /// Invalid CVDR ID format.
     #[error("Invalid CVDR ID format: '{0}'. Expected CVDR followed by 3 or more digits (e.g., CVDR681386)")]

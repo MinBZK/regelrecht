@@ -72,6 +72,12 @@ pub struct WorkerConfig {
     /// Number of consecutive failures before a law is marked as exhausted.
     /// Default: 10. Configurable via `EXHAUSTED_THRESHOLD`.
     pub exhausted_threshold: i32,
+    /// Number of consecutive *resource-exhaustion* failures (fork()/EAGAIN/OOM)
+    /// before the worker exits so the orchestrator restarts it with a clean
+    /// process table. These faults are environmental and only clear on restart,
+    /// so retrying in-process just burns job retry budget in a tight loop.
+    /// Default: 5. Configurable via `WORKER_MAX_CONSECUTIVE_RESOURCE_FAILURES`.
+    pub max_consecutive_resource_failures: u32,
 }
 
 impl std::fmt::Debug for WorkerConfig {
@@ -87,6 +93,10 @@ impl std::fmt::Debug for WorkerConfig {
             .field("job_timeout", &self.job_timeout)
             .field("orphan_timeout", &self.orphan_timeout)
             .field("exhausted_threshold", &self.exhausted_threshold)
+            .field(
+                "max_consecutive_resource_failures",
+                &self.max_consecutive_resource_failures,
+            )
             .finish()
     }
 }
@@ -131,6 +141,13 @@ impl WorkerConfig {
             .unwrap_or(10)
             .max(1);
 
+        let max_consecutive_resource_failures: u32 =
+            std::env::var("WORKER_MAX_CONSECUTIVE_RESOURCE_FAILURES")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(5)
+                .max(1);
+
         Ok(Self {
             database_url,
             max_connections,
@@ -142,6 +159,7 @@ impl WorkerConfig {
             job_timeout: Duration::from_secs(job_timeout_secs),
             orphan_timeout: Duration::from_secs(orphan_timeout_secs),
             exhausted_threshold,
+            max_consecutive_resource_failures,
         })
     }
 

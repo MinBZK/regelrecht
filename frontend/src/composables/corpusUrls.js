@@ -35,6 +35,14 @@ export function changedLawsUrl(trajectRef) {
   return `${corpusBase(trajectRef)}/changed-laws`;
 }
 
+// Law ids whose articles `implements` an open_term of `lawId` (the IoC
+// reverse link). Computed server-side over the in-memory corpus, so the
+// scenario dependency loader resolves implementing regulations with a
+// single request instead of fetching and parsing every law in the corpus.
+export function implementorsUrl(trajectRef, lawId) {
+  return `${lawUrl(trajectRef, lawId)}/implementors`;
+}
+
 export function scenariosListUrl(trajectRef, lawId) {
   return `${lawUrl(trajectRef, lawId)}/scenarios`;
 }

@@ -537,6 +537,18 @@ struct LawArticle {
 struct LawMr {
     #[serde(default)]
     execution: Option<LawExec>,
+    #[serde(default)]
+    implements: Vec<LawImplements>,
+}
+
+/// One `machine_readable.implements` entry — the IoC link from a lower
+/// regulation to the higher law whose `open_term` it fills. Only `law`
+/// (the higher law's `$id`) is needed to build the reverse "who implements
+/// me" lookup.
+#[derive(Deserialize, Default)]
+struct LawImplements {
+    #[serde(default)]
+    law: String,
 }
 
 #[derive(Deserialize, Default)]
@@ -673,6 +685,34 @@ pub fn collect_law_outputs(yaml: &str) -> Vec<CollectedOutput> {
 
     results.sort_by(|a, b| a.name.cmp(&b.name));
     results
+}
+
+/// Collect the `$id`s of the higher laws that this law's articles declare
+/// they `implements` (the IoC reverse link: a lower regulation filling a
+/// higher law's `open_term`). Each referenced law id appears at most once.
+///
+/// Used to answer "which laws implement law X" server-side, so the editor's
+/// scenario dependency loader doesn't have to fetch and parse every law in
+/// the corpus over HTTP just to find the handful of implementing regulations.
+pub fn collect_law_implements(yaml: &str) -> Vec<String> {
+    let doc: LawDoc = match serde_yaml_ng::from_str(yaml) {
+        Ok(d) => d,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for article in &doc.articles {
+        let Some(mr) = &article.machine_readable else {
+            continue;
+        };
+        for decl in &mr.implements {
+            if !decl.law.is_empty() && seen.insert(decl.law.clone()) {
+                out.push(decl.law.clone());
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -1117,5 +1157,44 @@ articles:
         let yaml = "$id: test\narticles: []\n";
         let outputs = collect_law_outputs(yaml);
         assert!(outputs.is_empty());
+    }
+
+    #[test]
+    fn test_collect_law_implements() {
+        let yaml = "\
+$id: regeling_standaardpremie
+articles:
+  - number: '1'
+    machine_readable:
+      implements:
+        - law: zorgtoeslagwet
+          article: '4'
+          open_term: standaardpremie
+        - law: zorgtoeslagwet
+          article: '5'
+          open_term: iets_anders
+  - number: '2'
+    machine_readable:
+      implements:
+        - law: zorgverzekeringswet
+          article: '1'
+          open_term: dekking
+";
+        // Deduplicated across articles, preserves first-seen order.
+        assert_eq!(
+            collect_law_implements(yaml),
+            vec![
+                "zorgtoeslagwet".to_string(),
+                "zorgverzekeringswet".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_collect_law_implements_none() {
+        let yaml = "$id: x\narticles:\n  - number: '1'\n    machine_readable:\n      execution:\n        output: []\n";
+        assert!(collect_law_implements(yaml).is_empty());
+        // Malformed YAML is tolerated as "no implements".
+        assert!(collect_law_implements("not: [valid").is_empty());
     }
 }

@@ -120,7 +120,7 @@ Sometimes a specific law overrides a general rule. The Aliens Act (*Vreemdelinge
 
 ### Untranslatables
 
-The engine's operation set is deliberately small. When a legal construct cannot be faithfully expressed, rounding rules, complex table lookups, discretionary assessments, it is flagged as an **untranslatable** rather than approximated. The engine can error, warn, or propagate taint through downstream outputs, depending on the mode. This prevents silent divergence between law text and machine-readable interpretation. See [Untranslatables](./untranslatables).
+The engine's operation set is deliberately small. When a legal construct cannot yet be faithfully expressed, rounding rules, complex table lookups, discretionary assessments, it is flagged as an **untranslatable** rather than approximated. "Untranslatable" means "not yet", not "never": each flag is a named gap in the engine and a tracked signal for what operation to build next. The engine can error, warn, or propagate taint through downstream outputs, depending on the mode. This prevents silent divergence between law text and machine-readable interpretation. See [Untranslatables](./untranslatables).
 
 ### Execution provenance
 
