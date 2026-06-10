@@ -195,6 +195,13 @@ async fn terminate(child: &mut tokio::process::Child, pid: Option<u32>) {
 /// already exited and is ignored.
 fn kill_process_group(pid: Option<u32>) {
     if let Some(pid) = pid {
+        // Guard against pid 0: `kill(-0, …)` collapses to `kill(0, …)`, which
+        // POSIX routes to the *caller's own* process group — it would SIGKILL
+        // the worker itself. `child.id()` never yields 0 in practice, but the
+        // consequence is catastrophic enough to refuse it defensively.
+        if pid == 0 {
+            return;
+        }
         // SAFETY: `kill(2)` with a negative pid targets a process group and has
         // no memory-safety implications; the return value is intentionally
         // ignored (the group may already be gone). Linux PIDs are capped well
@@ -246,7 +253,7 @@ async fn watch_memory(pid: Option<u32>, max_rss_mb: u64) -> u64 {
         tokio::time::sleep(interval).await;
         // A missing/unparsable status file means the process is gone; keep
         // looping (harmless) and let `child.wait()` win the select.
-        if let Some(rss_kb) = read_vmrss_kb(pid) {
+        if let Some(rss_kb) = read_vmrss_kb(pid).await {
             let rss_mb = rss_kb / 1024;
             if rss_mb > max_rss_mb {
                 return rss_mb;
@@ -265,8 +272,10 @@ async fn watch_memory(pid: Option<u32>, max_rss_mb: u64) -> u64 {
 /// signal that matters. If a future agent moved that growth into a forked
 /// subprocess, this would need to sum the group's RSS (e.g. walk
 /// `/proc/<pid>/task` / children) to stay accurate.
-fn read_vmrss_kb(pid: u32) -> Option<u64> {
-    let status = std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+async fn read_vmrss_kb(pid: u32) -> Option<u64> {
+    let status = tokio::fs::read_to_string(format!("/proc/{pid}/status"))
+        .await
+        .ok()?;
     parse_vmrss_kb(&status)
 }
 
