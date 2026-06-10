@@ -1383,7 +1383,7 @@ async function handleActionSave() {
                 <nldd-tab-bar-item selected text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
-            <nldd-toolbar-item slot="center" min-width="240px" width="33%">
+            <nldd-toolbar-item slot="center" min-width="240px" width="33%" max-width="480px">
               <nldd-search-field
                 size="md"
                 placeholder="Zoeken"
