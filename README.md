@@ -72,15 +72,23 @@ just bdd      # BDD tests only
 
 ### Faster builds (recommended)
 
-Run `just dev-setup` once. It installs the [mold](https://github.com/rui314/mold)
-linker (configured in `packages/.cargo/config.toml` and a hard requirement for
-the dev recipes) and `sccache`, and points every worktree at a single shared
-target dir — so a new worktree no longer triggers a full cold build of the
-dependency graph. mold also makes each `just dev` hot-reload relink much faster.
+Run `just dev-setup` once. It does three things:
 
-`sccache` is installed but left disabled locally, because it requires
-`CARGO_INCREMENTAL=0` and so disables incremental compilation — which hurts the
-`just dev` edit-rebuild loop. Enable it only for cold or flag-varying builds:
+1. **Points every worktree at one shared target dir** — a new worktree reuses
+   the already-built dependency graph instead of cold-building ~600 crates.
+2. **Puts that target on fast local storage when the repo lives on a slow mount.**
+   A Rust build writes tens of thousands of small files; on a 9p/NFS/SMB mount
+   (e.g. a WSL2 or Docker-Desktop dev container where the repo is a Windows
+   drive) that I/O dominates build time — often more than everything else
+   combined. `dev-setup` detects this and relocates the target to
+   `~/.cache/regelrecht/` (local disk). This is usually the single biggest win.
+3. **Installs [mold](https://github.com/rui314/mold) + `sccache`.** mold (wired
+   into `packages/.cargo/config.toml`) speeds up linking and is a hard
+   requirement for the dev recipes; `sccache` is installed but left off locally.
+
+`sccache` is disabled locally because it requires `CARGO_INCREMENTAL=0` and so
+disables incremental compilation — which hurts the `just dev` edit-rebuild loop.
+Enable it only for cold or flag-varying builds:
 
 ```bash
 export RUSTC_WRAPPER=sccache CARGO_INCREMENTAL=0
