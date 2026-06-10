@@ -597,6 +597,7 @@ function addValue() {
                 v-if="canRemoveValue(val)"
                 text="Verwijder"
                 icon="delete"
+                destructive
                 @click.stop="removeValue(val)"
               ></nldd-menu-item>
             </nldd-menu>
