@@ -1,7 +1,7 @@
 # Shared editor/library shell — design
 
 **Date:** 2026-06-09
-**Status:** Approved (design); plan pending
+**Status:** Implemented (chrome-store mechanism; see "Injection mechanism")
 **Component:** `frontend/` (Vue editor SPA)
 
 ## Problem
@@ -51,11 +51,19 @@ Each of the three toolbars (md/lg/sm — required by the design system's
 breakpoint slots) currently repeats the same chrome inline:
 
 - **Shared across both apps** (~identical markup today): the section
-  `nldd-tab-bar` (Bibliotheek/Editor), `TrajectMenu`, the settings
-  `nldd-menu` (feature flags / colour scheme / auth person / login-logout).
+  `nldd-tab-bar` (Bibliotheek/Editor), the search trigger (a `nldd-search-field`
+  in the toolbar `slot="center"` at lg, a "Zoeken" button at md/sm),
+  `TrajectMenu`, the settings `nldd-menu` (feature flags / colour scheme / auth
+  person / login-logout), and the `TrajectDocuments` sheet.
 - **Editor-specific**: `nldd-document-tab-bar` in `slot="document-tabs"`, and a
   federated write-back "PR #N" indicator button in the toolbar `slot="end"`.
-- **Library-specific**: an `nldd-search-field` in the toolbar `slot="center"`.
+
+> **Note (impl):** the original "as-is" snapshot listed the search field as
+> library-only. Since PR #746 (full-corpus search) the editor carries the same
+> search field, so search is treated as shared chrome. The settings menu also
+> differed — the editor listed 7 feature-flag toggles, the library only 4; the
+> shell now lists the full editor set (the extra flags only affect editor panes,
+> so exposing them from the library is harmless).
 
 Shared state already lives in module-level composables: `useAuth`,
 `useColorScheme`, `useFeatureFlags`, `useTrajects`, `useLastVisitedRoute`. The
@@ -77,20 +85,22 @@ traject-aware tab targets are computed via `sectionTarget(...)` /
    The shell owns the shared composables for this chrome (`useAuth`,
    `useColorScheme`, `useFeatureFlags`, `useTrajects`, `useLastVisitedRoute`).
 
-   The shell renders a nested `<router-view />` into `slot="main"`, and defines
-   **teleport target anchors** for the per-view injections (see below): one in
-   the `document-tabs` pane, and one `center` anchor per breakpoint toolbar.
+   The shell renders a nested `<router-view />` into `slot="main"`, and renders
+   the per-view toolbar extras itself, reading them from a shared chrome store
+   (see "Injection mechanism" below).
 
 2. **`EditorView.vue`** (renamed from `EditorApp.vue`) — loses its
    `nldd-app-view` / `bar-split-view` / `primary-bar` toolbars. Keeps its body
    (rendered through the shell's `<router-view>` into `slot="main"`). Its
-   editor-specific toolbar/pane bits are pushed into the shell via `<Teleport>`:
-   the `nldd-document-tab-bar` and the "PR #N" write-back indicator. Editor tab
-   state (`openTabs` / `selectTab` / `closeTab` / `activeTab`) stays inside this
-   component — no extraction needed.
+   editor-specific toolbar/pane bits — the `nldd-document-tab-bar` and the
+   "PR #N" write-back indicator — are published to the shell through the chrome
+   store. Editor tab state (`openTabs` / `selectTab` / `closeTab` / `activeTab`)
+   stays inside this component; only references (the open-tabs list, the active
+   tab, and the four tab callbacks) are handed to the store.
 
-3. **`LibraryView.vue`** (renamed from `LibraryApp.vue`) — same treatment;
-   teleports its `nldd-search-field` into the shell's `center` anchor.
+3. **`LibraryView.vue`** (renamed from `LibraryApp.vue`) — same treatment; it has
+   no editor-specific extras, so it only registers its `SearchPopover` with the
+   store so the shell's search control can open it.
 
 ### Routing
 
@@ -110,24 +120,30 @@ flash.
 The existing route paths, params, and redirects are preserved exactly, so all
 deep links and the `sectionTarget`/`lastLibraryPath` logic keep working.
 
-### Injection mechanism: Teleport (chosen)
+### Injection mechanism: shared chrome store (chosen)
 
-The per-view toolbar/pane extras live in slots the shell owns. The shell places
-empty target anchors there; each routed view teleports its specifics in:
+The shell renders **all** toolbar items itself; the active view publishes its
+per-view extras into a module-level reactive store (`useAppChrome.js`, matching
+the existing `useColorScheme` / `useFeatureFlags` singletons):
 
-- `LibraryView`: `<Teleport to="#shell-toolbar-center-{md,lg}">` for the search
-  field (one per breakpoint anchor that needs it).
-- `EditorView`: `<Teleport to="#shell-document-tabs">` for the document tab bar,
-  and `<Teleport to="#shell-toolbar-end-{md,lg,sm}">` for the PR indicator.
+- search trigger — each view registers its `SearchPopover` ref
+  (`registerSearchPopover`); the shell's search button/field calls the store's
+  `openSearch` / `onBarSearchKeydown`, which forward to the registered popover
+  (the popover, with its differing `@select-law` handling, stays in each view).
+- `EditorView` publishes the federated "PR #N" indicator (`lastSavedPr`) and the
+  open document tabs + their callbacks (`setEditorChrome` / `registerTabActions`)
+  and clears them on unmount (`clearEditorChrome`), so the library never shows a
+  stale PR badge or tab bar. The shell renders the `document-tabs` pane only
+  while the store reports open tabs.
 
-Teleport was chosen over named router-views because it keeps editor tab state
-(`openTabs` et al.) co-located in `EditorView` with no composable extraction,
-giving the smallest, most mechanical diff on the large `EditorView` file.
-
-**Risk to watch:** teleporting into anchors that sit inside `nldd-*` web
-component light-DOM slots. Targets must be plain elements in the shell's
-light DOM placed into the correct `nldd-bar-split-view` / `nldd-toolbar` slots;
-verify they render in the right place at each breakpoint during implementation.
+**Why not `<Teleport>` (the earlier choice):** `nldd-toolbar` only projects
+slotted items that are its *direct* children, and a teleport target placed
+inside the toolbar breaks that projection; teleporting into the `nldd-toolbar`
+host instead appends the items *after* the shell's own `slot="end"` items,
+reordering the bar (search/PR would land after the settings menu). The store
+lets the shell render every item in the original order, guaranteeing visual
+parity, at the cost of handing a few editor references to the store — a small,
+contained extraction rather than the "zero extraction" teleport promised.
 
 ### Data flow & state
 

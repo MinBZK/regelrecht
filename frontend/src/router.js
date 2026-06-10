@@ -1,70 +1,84 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import LibraryApp from './LibraryApp.vue';
+import AppShell from './AppShell.vue';
+import LibraryView from './LibraryView.vue';
 import { ensureAuthReady, useAuth } from './composables/useAuth.js';
 import { recordLastVisited } from './composables/useLastVisitedRoute.js';
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', redirect: '/library' },
     {
-      // Traject-scoped bibliotheek: the same library UI, but reading
-      // through `/api/trajects/{trajectRef}/corpus/...` so the active
-      // traject survives a Bibliotheek↔Editor tab switch. Mirrors the
-      // `editor-traject` route below — the active traject lives in the
-      // URL (per-tab state), never a server session.
-      //
-      // The `:trajectRef` regex pins the param to `{slug}-{8hex}` so a
-      // plain law-id slug like `zorgtoeslagwet` does NOT match here — it
-      // falls through to the no-traject library below. Same invariant as
-      // `editor-traject`: law `$id` slugs must not end in `-{8hex}`.
-      //
-      // Reads of a traject's corpus require auth (the traject is tied to
-      // the user's repo), so this route is gated like `editor-traject`.
-      // The user only ever reaches it from an authenticated session.
-      path: '/library/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:lawId?/:articleNumber?',
-      name: 'library-traject',
-      component: LibraryApp,
-      meta: { title: 'Bibliotheek', requiresAuth: true },
-    },
-    {
-      path: '/library/:lawId?/:articleNumber?',
-      name: 'library',
-      component: LibraryApp,
-      meta: { title: 'Bibliotheek' },
-    },
-    {
-      // Traject-scoped editor: full read + write. Per-tab active
-      // traject lives in the URL; switching in one tab no longer
-      // leaks into another tab's saves. API hangs under
-      // `/api/trajects/{trajectRef}/corpus/...`.
-      //
-      // The `:trajectRef` regex pins the param to `{slug}-{8hex}` so a
-      // plain law-id slug like `zorgtoeslagwet` does NOT match this
-      // route — it falls through to the no-traject editor below.
-      //
-      // **Invariant**: law `$id` slugs must not match this regex (i.e.
-      // they must not end in `-{8hex}`). Today every harvested $id uses
-      // underscores (e.g. `wet_op_de_zorgtoeslag`) which are excluded
-      // from the character class, so the collision is structurally
-      // impossible. If a future harvester ever emits hyphenated ids, a
-      // schema check (or this regex tightened to require a leading
-      // word from the slug, not just hex chars) must be added.
-      path: '/editor/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:lawId?/:articleNumber?',
-      name: 'editor-traject',
-      component: () => import('./EditorApp.vue'),
-      meta: { title: 'Editor', requiresAuth: true },
-    },
-    {
-      // Editor without a traject: read-only view. Useful for browsing
-      // a law's editor UI (machine_readable, YAML, scenarios) without
-      // committing to a traject. Save actions are disabled (`canEdit`
-      // gates them); the user picks a traject via the TrajectMenu to
-      // unlock edits, which navigates to `editor-traject`.
-      path: '/editor/:lawId?/:articleNumber?',
-      name: 'editor',
-      component: () => import('./EditorApp.vue'),
-      meta: { title: 'Editor', requiresAuth: true },
+      // Persistent shell: holds the shared chrome (toolbars, tab-bar,
+      // settings menu) and a nested <router-view> for the section bodies.
+      // Because the editor and library are children of this one record,
+      // switching between them reuses the shell instance — only the nested
+      // router-view swaps — so the chrome never rebuilds on a tab switch.
+      // Child paths are relative; route names + full paths stay unchanged,
+      // so deep links and sectionTarget keep working.
+      path: '/',
+      component: AppShell,
+      children: [
+        { path: '', redirect: '/library' },
+        {
+          // Traject-scoped bibliotheek: the same library UI, but reading
+          // through `/api/trajects/{trajectRef}/corpus/...` so the active
+          // traject survives a Bibliotheek↔Editor tab switch. Mirrors the
+          // `editor-traject` route below — the active traject lives in the
+          // URL (per-tab state), never a server session.
+          //
+          // The `:trajectRef` regex pins the param to `{slug}-{8hex}` so a
+          // plain law-id slug like `zorgtoeslagwet` does NOT match here — it
+          // falls through to the no-traject library below. Same invariant as
+          // `editor-traject`: law `$id` slugs must not end in `-{8hex}`.
+          //
+          // Reads of a traject's corpus require auth (the traject is tied to
+          // the user's repo), so this route is gated like `editor-traject`.
+          // The user only ever reaches it from an authenticated session.
+          path: 'library/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:lawId?/:articleNumber?',
+          name: 'library-traject',
+          component: LibraryView,
+          meta: { title: 'Bibliotheek', requiresAuth: true },
+        },
+        {
+          path: 'library/:lawId?/:articleNumber?',
+          name: 'library',
+          component: LibraryView,
+          meta: { title: 'Bibliotheek' },
+        },
+        {
+          // Traject-scoped editor: full read + write. Per-tab active
+          // traject lives in the URL; switching in one tab no longer
+          // leaks into another tab's saves. API hangs under
+          // `/api/trajects/{trajectRef}/corpus/...`.
+          //
+          // The `:trajectRef` regex pins the param to `{slug}-{8hex}` so a
+          // plain law-id slug like `zorgtoeslagwet` does NOT match this
+          // route — it falls through to the no-traject editor below.
+          //
+          // **Invariant**: law `$id` slugs must not match this regex (i.e.
+          // they must not end in `-{8hex}`). Today every harvested $id uses
+          // underscores (e.g. `wet_op_de_zorgtoeslag`) which are excluded
+          // from the character class, so the collision is structurally
+          // impossible. If a future harvester ever emits hyphenated ids, a
+          // schema check (or this regex tightened to require a leading
+          // word from the slug, not just hex chars) must be added.
+          path: 'editor/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:lawId?/:articleNumber?',
+          name: 'editor-traject',
+          component: () => import('./EditorView.vue'),
+          meta: { title: 'Editor', requiresAuth: true },
+        },
+        {
+          // Editor without a traject: read-only view. Useful for browsing
+          // a law's editor UI (machine_readable, YAML, scenarios) without
+          // committing to a traject. Save actions are disabled (`canEdit`
+          // gates them); the user picks a traject via the TrajectMenu to
+          // unlock edits, which navigates to `editor-traject`.
+          path: 'editor/:lawId?/:articleNumber?',
+          name: 'editor',
+          component: () => import('./EditorView.vue'),
+          meta: { title: 'Editor', requiresAuth: true },
+        },
+      ],
     },
     {
       path: '/editor.html',
@@ -108,7 +122,7 @@ router.afterEach((to) => {
   recordLastVisited(to.name, to.fullPath);
 });
 
-// Note: document.title is owned by the route components (LibraryApp, EditorApp)
+// Note: document.title is owned by the route components (LibraryView, EditorView)
 // via watchEffect \u2014 they reflect law + article state. router.afterEach used to
 // set a static title here, but it ran AFTER the component's reactive update
 // (vue's effect flush is sync; afterEach is one microtask later), so a
