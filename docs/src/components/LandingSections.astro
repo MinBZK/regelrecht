@@ -211,36 +211,36 @@ const toc = [
             <p>{t.jobs.lede}</p>
           </nldd-rich-text>
           <nldd-spacer size="24" />
-          <nldd-collection layout="grid" item-width="720px">
+          <nldd-collection layout="horizontal-scroll" item-width="480px">
             {t.jobs.items.map((job) => (
               <nldd-card accessible-label={`${t.jobs.vacancyTag}: ${job.title}`}>
                 <nldd-container padding="20">
-                  <nldd-container layout="wrap" gap="6" horizontal-alignment="left">
+                  <nldd-container layout="wrap" gap="8" horizontal-alignment="left">
                     <nldd-tag color="accent" size="md">{t.jobs.vacancyTag}</nldd-tag>
                     <nldd-tag color="brand" size="md">{job.organisation}</nldd-tag>
                   </nldd-container>
-                  <nldd-spacer size="12" />
+                  <nldd-spacer size="16" />
                   <nldd-title size="3">
                     <h3>{job.title}</h3>
                   </nldd-title>
-                  <nldd-spacer size="12" />
+                  <nldd-spacer size="16" />
                   <nldd-rich-text>
                     <p>{job.pitch}</p>
                   </nldd-rich-text>
-                  <nldd-spacer size="16" />
-                  <nldd-container layout="wrap" gap="6" horizontal-alignment="left">
+                  <nldd-spacer size="20" />
+                  <nldd-container layout="wrap" gap="8" horizontal-alignment="left">
                     {job.meta.map((m) => (
                       <nldd-tag color="neutral" size="md">{m}</nldd-tag>
                     ))}
                     <nldd-tag
-                      color="neutral"
+                      color="warning"
                       size="md"
                       data-closes={job.closes}
                       data-closes-open={t.jobs.closesLabel.open}
                       data-closes-closed={t.jobs.closesLabel.closed}
                     >{t.jobs.closesLabel.open} {closesDate.format(parseIsoDate(job.closes))}</nldd-tag>
                   </nldd-container>
-                  <nldd-spacer size="20" />
+                  <nldd-spacer size="24" />
                   <nldd-button-group orientation="horizontal">
                     <nldd-button
                       variant="primary"
@@ -251,7 +251,7 @@ const toc = [
                   </nldd-button-group>
                   {job.contacts.length > 0 && (
                     <Fragment>
-                      <nldd-spacer size="16" />
+                      <nldd-spacer size="20" />
                       <nldd-rich-text>
                         <p>
                           {t.jobs.contactsLabel}{' '}
@@ -645,6 +645,7 @@ const toc = [
       const label =
         days >= 0 ? tag.dataset.closesOpen : tag.dataset.closesClosed;
       tag.textContent = `${label} ${rtf.format(days, 'day')}`;
+      if (days < 0) tag.setAttribute('color', 'critical');
     }
   }
 </script>
