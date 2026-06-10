@@ -27,14 +27,12 @@ default:
 
 # Build WASM module for browser use
 wasm-build:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cargo build --manifest-path packages/engine/Cargo.toml --target wasm32-unknown-unknown --release --features wasm
-    # Ask cargo where it actually put the artifact. This honors a shared
-    # target-dir from `just dev-setup` (root .cargo/config.toml), CARGO_TARGET_DIR,
-    # or the default packages/target — so wasm-build works with or without dev-setup.
-    target_dir="$(cargo metadata --format-version=1 --no-deps --manifest-path packages/engine/Cargo.toml | python3 -c 'import sys, json; print(json.load(sys.stdin)["target_directory"])')"
-    wasm-bindgen --target web --out-dir frontend/public/wasm/pkg "$target_dir/wasm32-unknown-unknown/release/regelrecht_engine.wasm"
+    # Pin the target dir explicitly. A CLI --target-dir overrides any shared
+    # [build] target-dir from `just dev-setup` (root .cargo/config.toml), so the
+    # artifact always lands at packages/target — no metadata lookup (and no jq/
+    # python3 dependency) needed, and it works with or without dev-setup.
+    cargo build --manifest-path packages/engine/Cargo.toml --target wasm32-unknown-unknown --release --features wasm --target-dir packages/target
+    wasm-bindgen --target web --out-dir frontend/public/wasm/pkg packages/target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
 
 # --- Quality checks ---
 
