@@ -70,6 +70,24 @@ just test     # unit tests only
 just bdd      # BDD tests only
 ```
 
+### Faster builds (recommended)
+
+Run `just dev-setup` once. It installs the [mold](https://github.com/rui314/mold)
+linker (configured in `packages/.cargo/config.toml` and a hard requirement for
+the dev recipes) and `sccache`, and points every worktree at a single shared
+target dir — so a new worktree no longer triggers a full cold build of the
+dependency graph. mold also makes each `just dev` hot-reload relink much faster.
+
+`sccache` is installed but left disabled locally, because it requires
+`CARGO_INCREMENTAL=0` and so disables incremental compilation — which hurts the
+`just dev` edit-rebuild loop. Enable it only for cold or flag-varying builds:
+
+```bash
+export RUSTC_WRAPPER=sccache CARGO_INCREMENTAL=0
+```
+
+CI uses both mold and sccache (see `.github/workflows/ci.yml`).
+
 See the [docs site](https://docs.regelrecht.rijks.app) for full development instructions.
 
 ## License

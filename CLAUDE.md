@@ -26,6 +26,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Prerequisites
 - [Rust](https://rustup.rs/) (stable toolchain)
 - [just](https://github.com/casey/just) command runner
+- [mold](https://github.com/rui314/mold) linker — required by `packages/.cargo/config.toml`; the dev recipes will not link without it
+
+### Build speed (run once)
+
+Run `just dev-setup` to install `mold` + `sccache` and point all worktrees at a
+single shared `CARGO_TARGET_DIR` (avoids a cold build per worktree). `sccache`
+is left off locally because it disables incremental compilation
+(`CARGO_INCREMENTAL=0`), which slows the `just dev` hot-reload loop; enable it
+manually only for cold/flag-varying builds. CI uses mold + sccache.
 
 ### Just Commands
 
