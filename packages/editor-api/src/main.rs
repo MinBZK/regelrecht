@@ -117,7 +117,6 @@ async fn main() {
         pipeline_api_url,
         reload_lock: Arc::new(tokio::sync::Mutex::new(())),
         trajects: Arc::new(traject_corpus::TrajectCorpusCache::new()),
-        favorites,
     };
 
     let index_file = PathBuf::from(&static_dir).join("index.html");
@@ -141,6 +140,10 @@ async fn main() {
             get(corpus_handlers::list_law_outputs),
         )
         .route(
+            "/api/corpus/laws/{law_id}/implementors",
+            get(corpus_handlers::list_law_implementors),
+        )
+        .route(
             "/api/corpus/laws/{law_id}/scenarios",
             get(corpus_handlers::list_scenarios),
         )
@@ -162,9 +165,12 @@ async fn main() {
     // Body-size caps for write routes. The 1 MiB scenario cap is generous for
     // a single Gherkin file (real-world scenarios are a few KiB) and the 5 MiB
     // law cap leaves headroom for federated regulations that can reach a few
-    // hundred KiB.
+    // hundred KiB. Documents are markdown/text working notes — 1 MiB matches
+    // the scenario cap so a paste of a kamerstuk's full text fits without
+    // accidentally accepting a multi-megabyte binary blob.
     const MAX_SCENARIO_BODY: usize = 1024 * 1024;
     const MAX_LAW_BODY: usize = 5 * 1024 * 1024;
+    const MAX_DOCUMENT_BODY: usize = 1024 * 1024;
 
     // Reader routes — `editor-reader` covers user-scoped reads (favorites,
     // settings) and harvest search (search is behind auth because it triggers
@@ -256,12 +262,20 @@ async fn main() {
             get(corpus_handlers::list_traject_corpus_laws),
         )
         .route(
+            "/api/trajects/{traject_ref}/corpus/changed-laws",
+            get(corpus_handlers::list_traject_changed_laws),
+        )
+        .route(
             "/api/trajects/{traject_ref}/corpus/laws/{law_id}",
             get(corpus_handlers::get_traject_corpus_law),
         )
         .route(
             "/api/trajects/{traject_ref}/corpus/laws/{law_id}/outputs",
             get(corpus_handlers::list_traject_law_outputs),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}/implementors",
+            get(corpus_handlers::list_traject_law_implementors),
         )
         .route(
             "/api/trajects/{traject_ref}/corpus/laws/{law_id}/scenarios",
@@ -274,6 +288,14 @@ async fn main() {
         .route(
             "/api/trajects/{traject_ref}/corpus/laws/{law_id}/annotations",
             get(corpus_handlers::get_traject_annotations),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/documents",
+            get(corpus_handlers::list_traject_documents),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/documents/{*doc_path}",
+            get(corpus_handlers::get_traject_document),
         )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
@@ -329,6 +351,12 @@ async fn main() {
             axum::routing::put(corpus_handlers::save_law)
                 .layer(axum::extract::DefaultBodyLimit::max(MAX_LAW_BODY)),
         )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/documents/{*doc_path}",
+            axum::routing::put(corpus_handlers::save_traject_document)
+                .delete(corpus_handlers::delete_traject_document)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_DOCUMENT_BODY)),
+        )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
             accounts::account_middleware,
@@ -380,6 +408,9 @@ async fn main() {
             .with_http_only(true)
             .with_secure(true);
 
+        // Clone for the refresh layer: `with_state` below consumes app_state,
+        // and from_fn_with_state needs its own copy of the OIDC client/config.
+        let refresh_state = app_state.clone();
         let app = Router::new()
             .route("/health", get(|| async { "OK" }))
             .merge(auth_routes)
@@ -390,6 +421,13 @@ async fn main() {
             .merge(traject_reader_routes)
             .merge(traject_writer_routes)
             .with_state(app_state)
+            // Inside the session layer (session loaded) and outside the route
+            // role gates (fresh roles / a dropped auth marker are seen by the
+            // gate). Innermost .layer() so session_layer wraps it.
+            .layer(axum_middleware::from_fn_with_state(
+                refresh_state,
+                middleware::refresh_session_token::<AppState>,
+            ))
             .layer(session_layer)
             .layer(axum_middleware::from_fn(middleware::security_headers))
             .layer(TraceLayer::new_for_http())

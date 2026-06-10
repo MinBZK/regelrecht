@@ -3,12 +3,12 @@ import { ref, computed, watch, nextTick } from 'vue';
 import { useBwbSearch, MIN_QUERY_LENGTH } from '../composables/useBwbSearch.js';
 import { useBwbHarvest } from '../composables/useBwbHarvest.js';
 import { useAuth } from '../composables/useAuth.js';
-
-const props = defineProps({
-  laws: { type: Array, default: () => [] },
-});
+import { useTrajects } from '../composables/useTrajects.js';
+import { lawsListUrl } from '../composables/corpusUrls.js';
 
 const emit = defineEmits(['select-law', 'harvest-available']);
+
+const { activeTrajectRef } = useTrajects();
 
 const { results: bwbResults, loading: bwbLoading, search: searchBwb, clear: clearBwb } = useBwbSearch();
 const {
@@ -49,23 +49,105 @@ function displayName(law) {
   return law.law_id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
-const filteredLaws = computed(() => {
-  const q = search.value.toLowerCase();
-  if (!q) return props.laws;
-  return props.laws.filter(law =>
-    law.law_id.toLowerCase().includes(q) ||
-    displayName(law).toLowerCase().includes(q)
+// Results of the server-side corpus search (`?q=`). The corpus index can
+// hold thousands of laws, so the popover queries the backend rather than
+// filtering a preloaded client-side list — that's the only way the search
+// can reach every law, not just the first page. Ordered private-repo-first
+// by the backend; `groupedLaws` sections them by source.
+const serverLaws = ref([]);
+// True while a corpus query is in flight, so the UI shows a spinner instead
+// of briefly flashing "no results" (which would wrongly trigger the external
+// fallback) before the response lands.
+const searching = ref(false);
+// True when the last corpus query failed (HTTP error or network error). Kept
+// distinct from "0 results" so a backend failure surfaces an error instead of
+// silently masquerading as "no match" and cascading to the external fallback.
+const searchFailed = ref(false);
+
+/**
+ * Group the matched laws by their providing source, ordered by source
+ * priority (lower = higher priority, so the traject's own writable repo at
+ * priority 0 sorts above the seeded central corpus) and then alphabetically.
+ * The popover renders one labelled section per group so a search surfaces
+ * matches from the private repo and the central corpus under their own
+ * headers — the external wetten.overheid.nl fallback only kicks in when the
+ * corpus has no match (see `serverLaws` handling below).
+ */
+const groupedLaws = computed(() => {
+  const groups = new Map();
+  for (const law of serverLaws.value) {
+    let group = groups.get(law.source_id);
+    if (!group) {
+      group = {
+        source_id: law.source_id,
+        source_name: law.source_name || '',
+        priority: law.source_priority ?? Number.MAX_SAFE_INTEGER,
+        laws: [],
+      };
+      groups.set(law.source_id, group);
+    }
+    group.laws.push(law);
+  }
+  return [...groups.values()].sort(
+    (a, b) => a.priority - b.priority || a.source_name.localeCompare(b.source_name),
   );
 });
 
 const hasSearch = computed(() => search.value.length > 0);
 
-watch([search, filteredLaws], ([q, filtered]) => {
+// Debounce the corpus query so we don't fire a request per keystroke, and
+// guard against out-of-order responses with a sequence number.
+let searchSeq = 0;
+let debounceTimer = null;
+
+watch(search, (q) => {
   clearBwb();
-  if (!q || q.length < MIN_QUERY_LENGTH || filtered.length > 0) return;
-  if (needsLogin.value) return;
-  searchBwb(q);
+  searchFailed.value = false;
+  if (debounceTimer) clearTimeout(debounceTimer);
+  const term = q.trim();
+  if (term.length < MIN_QUERY_LENGTH) {
+    // Bump the sequence so any fetch already in flight (debounce fired before
+    // this clear) is discarded when it resolves — otherwise it would repopulate
+    // serverLaws for the cleared term and fire a spurious BWB search.
+    ++searchSeq;
+    serverLaws.value = [];
+    searching.value = false;
+    return;
+  }
+  searching.value = true;
+  debounceTimer = setTimeout(() => runCorpusSearch(term), 200);
 });
+
+async function runCorpusSearch(term) {
+  const seq = ++searchSeq;
+  try {
+    const url = lawsListUrl(activeTrajectRef.value, `q=${encodeURIComponent(term)}&limit=60`);
+    const res = await fetch(url);
+    if (seq !== searchSeq) return; // a newer query superseded this one
+    if (!res.ok) {
+      // Backend error (500/503/…). Surface it rather than letting the empty
+      // result cascade to the external wetten.overheid.nl fallback, which
+      // would mask the failure with unrelated results.
+      serverLaws.value = [];
+      searchFailed.value = true;
+      return;
+    }
+    const laws = await res.json();
+    if (seq !== searchSeq) return;
+    serverLaws.value = laws;
+    searchFailed.value = false;
+    // No match anywhere in the corpus → offer the external wetten.overheid.nl
+    // search (unless the user must log in first to reach it).
+    if (laws.length === 0 && !needsLogin.value) searchBwb(term);
+  } catch {
+    if (seq === searchSeq) {
+      serverLaws.value = [];
+      searchFailed.value = true;
+    }
+  } finally {
+    if (seq === searchSeq) searching.value = false;
+  }
+}
 
 function bwbItemClick(result) {
   if (needsLogin.value) {
@@ -204,14 +286,48 @@ defineExpose({ show });
 
       <template v-if="hasSearch">
         <nldd-spacer size="16"></nldd-spacer>
-        <div v-if="filteredLaws.length === 0 && needsLogin && search.length >= MIN_QUERY_LENGTH" class="search-popover-login-prompt">
+        <!-- Corpus query in flight: show a spinner instead of briefly
+             flashing "no results" and wrongly tripping the external fallback. -->
+        <nldd-inline-dialog v-if="searching" text="Zoeken in de wetten…"></nldd-inline-dialog>
+        <!-- Corpus query failed: surface the error instead of masking it as
+             "no results" (which would cascade to the external fallback). -->
+        <nldd-inline-dialog
+          v-else-if="searchFailed"
+          variant="alert"
+          text="Zoeken is mislukt"
+          supporting-text="De wetten konden niet worden doorzocht. Probeer het opnieuw."
+        ></nldd-inline-dialog>
+        <!-- Internal corpus matches: one labelled section per source, private
+             repo first (priority 0), then the central corpus. The source name
+             doubles as the group header, so the per-item supporting-text is
+             dropped to avoid repeating it on every row. -->
+        <template v-else-if="groupedLaws.length > 0">
+          <template v-for="(group, groupIndex) in groupedLaws" :key="group.source_id">
+            <nldd-spacer v-if="groupIndex > 0" size="16"></nldd-spacer>
+            <nldd-title size="5"><h5>{{ group.source_name }}</h5></nldd-title>
+            <nldd-spacer size="8"></nldd-spacer>
+            <nldd-list variant="simple">
+              <nldd-list-item
+                v-for="law in group.laws"
+                :key="law.law_id"
+                size="md"
+                type="button"
+                @click="selectLaw(law.law_id)"
+              >
+                <nldd-text-cell :text="displayName(law)"></nldd-text-cell>
+              </nldd-list-item>
+            </nldd-list>
+          </template>
+        </template>
+        <!-- No corpus match → log in / search wetten.overheid.nl / empty. -->
+        <div v-else-if="needsLogin && search.length >= MIN_QUERY_LENGTH" class="search-popover-login-prompt">
           <div class="search-popover-empty-title">Log in om externe bronnen te doorzoeken</div>
           <div class="search-popover-empty-subtitle">Inloggen is vereist om wetten op te halen van wetten.overheid.nl</div>
           <nldd-spacer size="12"></nldd-spacer>
           <nldd-button size="md" text="Inloggen" @click="login"></nldd-button>
         </div>
-        <nldd-inline-dialog v-else-if="filteredLaws.length === 0 && bwbLoading" text="Zoeken op wetten.overheid.nl..."></nldd-inline-dialog>
-        <template v-else-if="filteredLaws.length === 0 && bwbResults.length > 0">
+        <nldd-inline-dialog v-else-if="bwbLoading" text="Zoeken op wetten.overheid.nl..."></nldd-inline-dialog>
+        <template v-else-if="bwbResults.length > 0">
           <nldd-title size="5"><h5>Resultaten van wetten.overheid.nl</h5></nldd-title>
           <nldd-spacer size="8"></nldd-spacer>
           <nldd-list variant="simple">
@@ -238,22 +354,11 @@ defineExpose({ show });
           </nldd-list>
         </template>
         <nldd-list
-          v-else-if="filteredLaws.length > 0 || search.length >= MIN_QUERY_LENGTH"
+          v-else-if="search.length >= MIN_QUERY_LENGTH"
           variant="simple"
           empty-text="Geen resultaten gevonden"
           empty-supporting-text="Pas je zoektermen of voorkeuren aan"
-        >
-          <nldd-list-item
-            v-for="law in filteredLaws"
-            :key="law.law_id"
-            size="md"
-            type="button"
-            @click="selectLaw(law.law_id)"
-          >
-            <nldd-text-cell :text="displayName(law)" :supporting-text="law.source_name">
-            </nldd-text-cell>
-          </nldd-list-item>
-        </nldd-list>
+        ></nldd-list>
       </template>
     </nldd-container>
   </nldd-popover>

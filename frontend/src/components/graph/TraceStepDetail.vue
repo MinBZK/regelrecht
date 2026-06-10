@@ -118,7 +118,7 @@ const expectationEntries = computed(() => Object.entries(props.expectations || {
   letter-spacing: 0.04em;
 }
 .step-detail__name {
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-family: var(--primitives-font-family-monospace);
   font-size: 12px;
   font-weight: 600;
 }
@@ -128,7 +128,7 @@ const expectationEntries = computed(() => Object.entries(props.expectations || {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-family: var(--primitives-font-family-monospace);
   font-size: 11px;
   margin: 0;
 }
@@ -149,7 +149,7 @@ const expectationEntries = computed(() => Object.entries(props.expectations || {
   word-break: break-word;
 }
 
-.mono { font-family: 'SF Mono', 'Fira Code', monospace; }
+.mono { font-family: var(--primitives-font-family-monospace); }
 .indigo { color: var(--primitives-color-paars-700); }
 .emerald { color: var(--primitives-color-mintgroen-700); }
 .italic { font-style: italic; color: var(--semantics-content-secondary-color); }
@@ -171,7 +171,7 @@ const expectationEntries = computed(() => Object.entries(props.expectations || {
   list-style: none;
   padding: 0;
   margin: 0;
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-family: var(--primitives-font-family-monospace);
   font-size: 11px;
   display: flex;
   flex-direction: column;

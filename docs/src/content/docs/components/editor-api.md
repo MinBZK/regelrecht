@@ -1,5 +1,6 @@
 ---
 title: "Editor API"
+description: "The Rust backend behind the law editor, serving the frontend and corpus REST endpoints."
 ---
 
 The editor API is a lightweight HTTP server that backs the law editor frontend. It serves the compiled frontend and provides REST endpoints for corpus access.

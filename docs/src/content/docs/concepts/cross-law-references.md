@@ -1,5 +1,6 @@
 ---
 title: "Cross-Law References"
+description: "How a law declares what it needs from other laws, and how the engine resolves those references automatically."
 ---
 
 Dutch laws reference each other constantly. The Healthcare Allowance Act (*Zorgtoeslagwet*) needs your income, which is defined by the Awir. It needs your insurance status, which comes from the Zorgverzekeringswet. It needs to know whether you have an allowance partner, which the Awir determines.

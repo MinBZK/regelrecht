@@ -14,6 +14,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use regelrecht_corpus::backend::create_backend;
 use regelrecht_corpus::models::{GitHubSource, LocalSource, Source, SourceType};
@@ -41,13 +42,20 @@ pub struct TrajectCorpus {
     /// routed through the traject's own branch on the same upstream
     /// repo.
     pub write_target_for_source: HashMap<String, String>,
-    /// Read-your-writes overlay for law YAML content. After a successful
-    /// `save_law` we mirror the persisted body here so subsequent reads
-    /// in the same traject (any session, any user) see the new content
-    /// without forcing a full source_map rebuild against GitHub. The
-    /// overlay is content-only — `LoadedLaw` metadata
-    /// (source_id/relative_path) doesn't change with a content edit, so
-    /// backend resolution keeps using `corpus.source_map`.
+    /// Source id of the writable-own backend in this traject. Used by
+    /// handlers that have no per-law context (e.g. the documents CRUD
+    /// endpoints) to address the traject's own branch directly without
+    /// having to reverse-engineer it out of `write_target_for_source`.
+    pub writable_own_source_id: String,
+    /// Read-your-writes overlay + lazy-read cache for law YAML content. After
+    /// a successful `save_law` we mirror the persisted body here so subsequent
+    /// reads in the same traject (any session, any user) see the new content
+    /// without forcing a full source_map rebuild against GitHub. It also caches
+    /// bodies fetched lazily on first read (see `law_yaml`), so a re-read of an
+    /// unloaded law (read-only article view, reload, another tab) doesn't spend
+    /// another Contents API call. The overlay is content-only — `LoadedLaw`
+    /// metadata (source_id/relative_path) doesn't change with a content edit,
+    /// so backend resolution keeps using `corpus.source_map`.
     ///
     /// Unbounded growth is intentional: in practice the size is bounded
     /// by the number of distinct laws edited in this traject, with a
@@ -57,20 +65,98 @@ pub struct TrajectCorpus {
     /// added that touches many laws per traject, revisit with an LRU
     /// cap.
     overlay: RwLock<HashMap<String, String>>,
+    /// Short-lived cache of the "edited in this traject" diff
+    /// ([`changed_law_ids`]). Each `changed-laws` request would otherwise
+    /// fire a GitHub Compare API call, and the library sidebar re-requests
+    /// it on every load / traject switch — on a shared, rate-limited token
+    /// that adds up fast. The cache collapses a burst of library loads into
+    /// one Compare call per [`CHANGED_LAWS_TTL`] window. `save_law`
+    /// invalidates it so the saving user sees their own edit appear
+    /// immediately (read-your-writes, like `overlay`); other members /
+    /// replicas converge within the TTL. A stale entry is also served as a
+    /// fallback when a fresh Compare call fails (e.g. token throttled), so
+    /// the section degrades to slightly-stale rather than vanishing.
+    changed_cache: RwLock<Option<ChangedLawsCache>>,
 }
+
+/// Cached result of [`TrajectCorpus::changed_law_ids`] with the instant it
+/// was computed, for TTL expiry.
+struct ChangedLawsCache {
+    computed_at: Instant,
+    law_ids: Vec<String>,
+}
+
+/// How long a cached changed-laws diff is served before a fresh GitHub
+/// Compare call is made. Short enough that another member's save shows up
+/// promptly in the sidebar, long enough to collapse a burst of library
+/// loads (mount + tab switches + retries) into a single Compare call.
+const CHANGED_LAWS_TTL: Duration = Duration::from_secs(60);
 
 impl TrajectCorpus {
     /// Resolve the YAML content for a law in this traject, preferring the
     /// post-save overlay over the source_map snapshot built at traject
     /// activation time.
-    pub async fn law_yaml(&self, law_id: &str) -> Option<String> {
+    ///
+    /// The source_map is a lightweight **index** — for GitHub-backed sources
+    /// its entries carry only metadata (no body). When a metadata-only law is
+    /// read for the first time, its body is fetched lazily from the law's own
+    /// source backend (one Contents API call), rather than every law's content
+    /// being fetched up front at traject-activation time.
+    ///
+    /// `Ok(None)` is a genuine miss (the law isn't in this traject's corpus, or
+    /// its source's backend never initialised). A lazy-fetch failure (GitHub
+    /// throttling, token expiry, a network blip) is returned as `Err` so the
+    /// caller can answer "failed to load" instead of masking a transient error
+    /// as a 404 "not found".
+    pub async fn law_yaml(
+        &self,
+        law_id: &str,
+    ) -> Result<Option<String>, regelrecht_corpus::error::CorpusError> {
         if let Some(text) = self.overlay.read().await.get(law_id) {
-            return Some(text.clone());
+            return Ok(Some(text.clone()));
         }
-        self.corpus
-            .source_map
-            .get_law(law_id)
-            .map(|l| l.yaml_content.clone())
+
+        // Pull the bits we need out of the index entry, then drop the borrow
+        // before the await below.
+        let (source_id, relative_path) = {
+            let Some(law) = self.corpus.source_map.get_law(law_id) else {
+                return Ok(None);
+            };
+            if law.is_loaded() {
+                return Ok(Some(law.yaml_content.clone()));
+            }
+            (law.source_id.clone(), law.relative_path.clone())
+        };
+
+        // The source is indexed but its backend was skipped at build time
+        // (already logged then) — the law isn't readable. Treat as a miss.
+        let Some(entry) = self.corpus.backends.get(&source_id) else {
+            return Ok(None);
+        };
+
+        let content = {
+            let backend = entry.backend.lock().await;
+            // `?` propagates a read error rather than collapsing it to None.
+            backend
+                .read_file(std::path::Path::new(&relative_path))
+                .await?
+        };
+        let Some(content) = content else {
+            return Ok(None);
+        };
+
+        // Cache the lazily-fetched body so re-reads of this unloaded law don't
+        // each spend another Contents API call (read-only views, reloads, a
+        // second tab). Same staleness model as the post-save mirror: cleared
+        // when the traject's cache entry is invalidated. Also makes a
+        // genuinely-empty body a one-shot fetch rather than re-fetching every
+        // call (the empty-`yaml_content` "unloaded" sentinel can't tell them
+        // apart, but the overlay short-circuits before that check).
+        self.overlay
+            .write()
+            .await
+            .insert(law_id.to_string(), content.clone());
+        Ok(Some(content))
     }
 
     /// Mirror a freshly-saved law's content into the read-your-writes
@@ -78,6 +164,98 @@ impl TrajectCorpus {
     /// so the next GET on the same law (or a refresh) sees the new body.
     pub async fn record_save(&self, law_id: String, body: String) {
         self.overlay.write().await.insert(law_id, body);
+    }
+
+    /// Law ids that have been edited in this traject: the diff between the
+    /// writable-own source's traject branch and its base branch, mapped
+    /// back to law ids via the source map.
+    ///
+    /// This is the durable source of truth for "what changed in this
+    /// traject" — every save commits to the branch, so the branch-vs-base
+    /// diff survives process restarts and is shared across all members
+    /// (unlike the in-memory `overlay`, which is only a read-your-writes
+    /// cache). Returns an empty list when nothing has been saved yet (the
+    /// traject branch doesn't exist → the Compare API 404s → empty) or the
+    /// writable-own backend isn't initialised.
+    ///
+    /// Cached for [`CHANGED_LAWS_TTL`] (see `changed_cache`) so the library
+    /// sidebar's repeated loads don't each spend a GitHub Compare call. On a
+    /// fresh-compute failure (e.g. token throttled) a stale cached value, if
+    /// any, is served rather than propagating the error — the sidebar keeps
+    /// showing the last-known edit set instead of dropping the section.
+    pub async fn changed_law_ids(
+        &self,
+    ) -> Result<Vec<String>, regelrecht_corpus::error::CorpusError> {
+        // Fast path: a fresh cache entry serves without any GitHub call.
+        if let Some(cached) = self.changed_cache.read().await.as_ref() {
+            if cached.computed_at.elapsed() < CHANGED_LAWS_TTL {
+                return Ok(cached.law_ids.clone());
+            }
+        }
+
+        match self.compute_changed_law_ids().await {
+            Ok(ids) => {
+                *self.changed_cache.write().await = Some(ChangedLawsCache {
+                    computed_at: Instant::now(),
+                    law_ids: ids.clone(),
+                });
+                Ok(ids)
+            }
+            Err(e) => {
+                // Serve a stale entry (if we have one) rather than dropping
+                // the section when GitHub is momentarily unavailable /
+                // rate-limited. Only propagate when there's nothing cached.
+                if let Some(cached) = self.changed_cache.read().await.as_ref() {
+                    tracing::warn!(
+                        error = %e,
+                        "changed-laws compute failed; serving stale cached value"
+                    );
+                    return Ok(cached.law_ids.clone());
+                }
+                Err(e)
+            }
+        }
+    }
+
+    /// Drop the cached changed-laws diff so the next [`changed_law_ids`]
+    /// call recomputes against GitHub. Called by `save_law` so the saving
+    /// user's new edit shows up in the sidebar immediately instead of after
+    /// the TTL — the changed-laws analogue of [`record_save`].
+    pub async fn invalidate_changed_cache(&self) {
+        *self.changed_cache.write().await = None;
+    }
+
+    /// Uncached computation behind [`changed_law_ids`]: ask the writable-own
+    /// backend for its branch-vs-base diff and map the changed paths to law
+    /// ids via the source map.
+    async fn compute_changed_law_ids(
+        &self,
+    ) -> Result<Vec<String>, regelrecht_corpus::error::CorpusError> {
+        let Some(entry) = self.corpus.backends.get(&self.writable_own_source_id) else {
+            return Ok(Vec::new());
+        };
+        let changed = {
+            let backend = entry.backend.lock().await;
+            backend.changed_files().await?
+        };
+        if changed.is_empty() {
+            return Ok(Vec::new());
+        }
+        // Match changed source-relative paths against loaded laws. Normalise
+        // separators so a relative_path computed on a non-Unix host still
+        // matches the forward-slash paths GitHub returns.
+        let changed: std::collections::HashSet<String> =
+            changed.into_iter().map(|p| p.replace('\\', "/")).collect();
+        let mut ids: Vec<String> = self
+            .corpus
+            .source_map
+            .laws()
+            .filter(|law| changed.contains(&law.relative_path.replace('\\', "/")))
+            .map(|law| law.law_id.clone())
+            .collect();
+        ids.sort();
+        ids.dedup();
+        Ok(ids)
     }
 }
 
@@ -104,7 +282,6 @@ impl TrajectCorpusCache {
         pool: &PgPool,
         traject_id: Uuid,
         auth_file: Option<PathBuf>,
-        favorites: &std::collections::HashSet<String>,
     ) -> Result<Arc<TrajectCorpus>, TrajectCorpusError> {
         let cell = {
             let mut map = self.cells.write().await;
@@ -115,7 +292,7 @@ impl TrajectCorpusCache {
 
         let built = cell
             .get_or_try_init(|| async {
-                build_traject_corpus(pool, traject_id, auth_file.as_deref(), favorites).await
+                build_traject_corpus(pool, traject_id, auth_file.as_deref()).await
             })
             .await?;
         Ok(built.clone())
@@ -168,7 +345,6 @@ async fn build_traject_corpus(
     pool: &PgPool,
     traject_id: Uuid,
     auth_file: Option<&std::path::Path>,
-    favorites: &std::collections::HashSet<String>,
 ) -> Result<Arc<TrajectCorpus>, TrajectCorpusError> {
     let rows = sqlx::query_as::<_, TrajectSourceRow>(
         "SELECT source_id, name, source_type::text AS source_type,
@@ -333,16 +509,37 @@ async fn build_traject_corpus(
         }
     }
 
-    // Load laws from the same favorites set the global corpus uses, so the
-    // traject sees the same law set (minus any laws the traject's sources
-    // don't contain).
-    let source_map = match registry.load_favorites_async(favorites, auth_file).await {
-        Ok(map) => map,
+    // Build a lightweight INDEX of every law across the traject's sources —
+    // the private writable-own repo and the seeded central corpus — so the
+    // bibliotheek search can surface any law without fetching every law's body
+    // up front (which meant N per-file GitHub Contents API calls per traject
+    // build — slow and rate-limited). Bodies are fetched lazily on first read
+    // (see `TrajectCorpus::law_yaml`). Per-source index failures are tolerated
+    // inside `index_all_sources_async` (a bad seed source is skipped, not
+    // fatal). A failure to enumerate the writable-own source is the one we care
+    // about most — its laws are the point of the traject — so it's logged at
+    // error level for operators. The traject still opens, though: it degrades
+    // (those laws missing from search until the next rebuild) rather than
+    // failing entirely on what is usually a transient GitHub hiccup. The hard
+    // failure path is the writable-own *backend* init above, which returns
+    // `Err` so a broken write target never opens silently.
+    let source_map = match registry.index_all_sources_async(auth_file).await {
+        Ok((map, failed)) => {
+            if failed.iter().any(|id| id == &writable_own_source_id) {
+                tracing::error!(
+                    traject = %traject_id,
+                    source_id = %writable_own_source_id,
+                    "traject writable-own source failed to load — the traject's own laws \
+                     will be missing from the bibliotheek until the corpus is rebuilt"
+                );
+            }
+            map
+        }
         Err(e) => {
             tracing::warn!(
                 traject = %traject_id,
                 error = %e,
-                "traject favorites load failed, falling back to local-only"
+                "traject corpus load failed, falling back to local-only"
             );
             registry
                 .load_local_sources()
@@ -358,7 +555,9 @@ async fn build_traject_corpus(
             auth_file: auth_file.map(|p| p.to_path_buf()),
         },
         write_target_for_source,
+        writable_own_source_id,
         overlay: RwLock::new(HashMap::new()),
+        changed_cache: RwLock::new(None),
     }))
 }
 

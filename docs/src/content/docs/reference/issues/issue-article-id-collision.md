@@ -1,5 +1,6 @@
 ---
 title: "Issue: Article ID Collision (420bis.1)"
+description: "When article numbering produces the same identifier for two different articles, and the proposed fix."
 ---
 
 **Status**: Open

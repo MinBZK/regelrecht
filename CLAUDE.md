@@ -26,6 +26,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Prerequisites
 - [Rust](https://rustup.rs/) (stable toolchain)
 - [just](https://github.com/casey/just) command runner
+- [mold](https://github.com/rui314/mold) linker — required by `packages/.cargo/config.toml`; the dev recipes will not link without it
+
+### Build speed (run once)
+
+Run `just dev-setup`. It points all worktrees at one shared target dir (no cold
+build per worktree) and, when the repo is on a slow mount (9p/NFS/SMB — e.g. a
+WSL2/Docker-Desktop dev container with the repo on a Windows drive), relocates
+that target to fast local storage under `~/.cache/regelrecht/`. The slow-mount
+I/O is usually the dominant cost — bigger than mold or debuginfo. It also
+installs `mold` (required by `packages/.cargo/config.toml`) + `sccache`.
+`sccache` is left off locally because it disables incremental compilation
+(`CARGO_INCREMENTAL=0`), which slows the `just dev` hot-reload loop. CI uses
+mold + sccache.
 
 ### Just Commands
 
@@ -90,6 +103,21 @@ source:
 For delegated values (e.g., "bij ministeriële regeling"), laws use the IoC pattern:
 higher laws declare `open_terms`, lower regulations declare `implements`.
 See `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` for a working example.
+
+## Frontend / UI Components
+
+**All user interface MUST be built with components from the MinBZK design system: https://github.com/MinBZK/storybook** (the NDD `ndd-*` web components). Do not hand-roll custom UI elements when a design-system component exists. For the required component hierarchy, nesting rules, and layout patterns, use the `storybook-component-hierarchy` skill.
+
+### When you can't build what you want with these components
+
+Do **not** silently improvise. Follow these steps in order:
+
+1. **Reconsider the design choice.** Investigate whether the design should be different. Try to conform to existing choices already made elsewhere in regelrecht (look at how other views/components in `frontend/` and `frontend-lawmaking/` solved similar problems) before introducing anything new.
+2. **If you still can't proceed: stop and ask.** Tell the user explicitly that you need to take a shortcut, describe what's missing, and ask for permission. The user can then say whether it should be done differently or whether they will request a new feature/component from the design system. Do not take the shortcut without approval.
+
+### Reporting additional CSS
+
+If you needed **any additional CSS styling** on top of the design-system components (overrides, custom spacing, layout hacks, etc.), you **must report this explicitly** to the user — list exactly what custom CSS you added and why. Custom styling on top of the design system is a signal that may need a design-system change, so it must never be hidden.
 
 ## RFC Process
 

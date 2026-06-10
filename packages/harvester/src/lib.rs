@@ -63,5 +63,5 @@ pub use source::{detect_source, BwbSource, CvdrSource, LawSource, LawSourceType}
 
 // Re-export commonly used items
 pub use config::{validate_bwb_id, validate_cvdr_id, validate_date};
-pub use error::{HarvesterError, Result};
+pub use error::{HarvesterError, NoTextReason, Result};
 pub use types::{Article, Law, LawMetadata, Preamble, Reference, RegulatoryLayer};

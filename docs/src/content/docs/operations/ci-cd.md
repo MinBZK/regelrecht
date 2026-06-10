@@ -1,5 +1,6 @@
 ---
 title: "CI/CD Pipeline"
+description: "What runs on every push and pull request, and how only the checks relevant to changed files run."
 ---
 
 Continuous integration runs on every push to `main` and every pull request via `.github/workflows/ci.yml`. Only checks relevant to changed files run, keeping CI fast.

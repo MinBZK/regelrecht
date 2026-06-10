@@ -48,7 +48,7 @@
 }
 
 html {
-  background: var(--semantics-surfaces-background-color);
+  background: var(--semantics-surfaces-base-background-color);
   /* Sticky top nav offsets anchored scrolling (#anchor links land under the
      nav otherwise). Applies site-wide — landing + docs. */
   scroll-padding-top: 5rem;

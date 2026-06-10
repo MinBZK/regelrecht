@@ -35,6 +35,22 @@ pub struct LoadedLaw {
     pub source_priority: u32,
 }
 
+impl LoadedLaw {
+    /// Whether this law's body has been fetched. Metadata-only index entries
+    /// (from path enumeration) carry an empty `yaml_content` until the law is
+    /// opened and its content lazily fetched.
+    ///
+    /// Empty `yaml_content` is a safe "not yet fetched" sentinel only because a
+    /// corpus YAML file is never legitimately empty — it always carries at
+    /// least a `$id`. A genuinely-empty file would report `false` here and be
+    /// re-fetched on each open until the read-your-writes overlay caches it
+    /// (one extra read per pod, then the overlay short-circuits — see
+    /// `TrajectCorpus::law_yaml`), so the contract is "non-empty == loaded".
+    pub fn is_loaded(&self) -> bool {
+        !self.yaml_content.is_empty()
+    }
+}
+
 /// Aggregates laws from multiple sources with priority-based conflict resolution.
 ///
 /// When multiple sources provide a law with the same `$id`, the source with the
@@ -277,6 +293,47 @@ impl SourceMap {
         Ok(true)
     }
 
+    /// Insert a metadata-only entry for a law discovered by path enumeration,
+    /// without fetching its content. `yaml_content` is left empty as the
+    /// "not yet loaded" sentinel — callers lazily fetch the body on first read
+    /// via the source's backend, using the `relative_path` stored here.
+    ///
+    /// `law_id` comes from the directory name (the corpus convention is
+    /// `{base}/{layer}/{law_id}/{date}.yaml`, and the directory name equals
+    /// the law's `$id`). `file_path` is the in-repo path; `source_subpath` is
+    /// stripped to produce the source-root-relative path the backend reads.
+    pub fn load_metadata_entry(
+        &mut self,
+        law_id: &str,
+        file_path: &str,
+        source_subpath: Option<&str>,
+        source_id: &str,
+        source_name: &str,
+        source_priority: u32,
+    ) -> Result<()> {
+        let relative_path = match source_subpath {
+            Some(sub) if !sub.is_empty() => {
+                let trimmed = sub.trim_end_matches('/');
+                file_path
+                    .strip_prefix(&format!("{trimmed}/"))
+                    .unwrap_or(file_path)
+                    .to_string()
+            }
+            _ => file_path.to_string(),
+        };
+
+        self.insert(LoadedLaw {
+            law_id: law_id.to_string(),
+            name: None,
+            yaml_content: String::new(),
+            file_path: file_path.to_string(),
+            relative_path,
+            source_id: source_id.to_string(),
+            source_name: source_name.to_string(),
+            source_priority,
+        })
+    }
+
     /// Get all loaded laws.
     pub fn laws(&self) -> impl Iterator<Item = &LoadedLaw> {
         self.laws.values()
@@ -480,6 +537,18 @@ struct LawArticle {
 struct LawMr {
     #[serde(default)]
     execution: Option<LawExec>,
+    #[serde(default)]
+    implements: Vec<LawImplements>,
+}
+
+/// One `machine_readable.implements` entry — the IoC link from a lower
+/// regulation to the higher law whose `open_term` it fills. Only `law`
+/// (the higher law's `$id`) is needed to build the reverse "who implements
+/// me" lookup.
+#[derive(Deserialize, Default)]
+struct LawImplements {
+    #[serde(default)]
+    law: String,
 }
 
 #[derive(Deserialize, Default)]
@@ -616,6 +685,34 @@ pub fn collect_law_outputs(yaml: &str) -> Vec<CollectedOutput> {
 
     results.sort_by(|a, b| a.name.cmp(&b.name));
     results
+}
+
+/// Collect the `$id`s of the higher laws that this law's articles declare
+/// they `implements` (the IoC reverse link: a lower regulation filling a
+/// higher law's `open_term`). Each referenced law id appears at most once.
+///
+/// Used to answer "which laws implement law X" server-side, so the editor's
+/// scenario dependency loader doesn't have to fetch and parse every law in
+/// the corpus over HTTP just to find the handful of implementing regulations.
+pub fn collect_law_implements(yaml: &str) -> Vec<String> {
+    let doc: LawDoc = match serde_yaml_ng::from_str(yaml) {
+        Ok(d) => d,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for article in &doc.articles {
+        let Some(mr) = &article.machine_readable else {
+            continue;
+        };
+        for decl in &mr.implements {
+            if !decl.law.is_empty() && seen.insert(decl.law.clone()) {
+                out.push(decl.law.clone());
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -772,6 +869,34 @@ mod tests {
         let law = map.get_law("test_wet").unwrap();
         assert_eq!(law.source_id, "central");
         assert_eq!(law.source_priority, 1);
+        assert!(law.is_loaded(), "a content-loaded law reports loaded");
+    }
+
+    #[test]
+    fn test_metadata_entry_is_unloaded_with_stripped_path() {
+        let mut map = SourceMap::new();
+        // `file_path` is the in-repo path; the source is rooted at
+        // `regulation/nl`, so the stored relative_path drops that prefix.
+        map.load_metadata_entry(
+            "besluit_zorgverzekering_bes",
+            "regulation/nl/amvb/besluit_zorgverzekering_bes/2024-01-01.yaml",
+            Some("regulation/nl"),
+            "traject-own-abc",
+            "MinBZK/regelrecht-corpus-BES",
+            0,
+        )
+        .unwrap();
+
+        let law = map.get_law("besluit_zorgverzekering_bes").unwrap();
+        assert!(!law.is_loaded(), "metadata-only entry has no body yet");
+        assert_eq!(law.yaml_content, "");
+        assert_eq!(law.name, None);
+        assert_eq!(
+            law.relative_path,
+            "amvb/besluit_zorgverzekering_bes/2024-01-01.yaml"
+        );
+        assert_eq!(law.source_id, "traject-own-abc");
+        assert_eq!(law.source_priority, 0);
     }
 
     #[test]
@@ -1032,5 +1157,44 @@ articles:
         let yaml = "$id: test\narticles: []\n";
         let outputs = collect_law_outputs(yaml);
         assert!(outputs.is_empty());
+    }
+
+    #[test]
+    fn test_collect_law_implements() {
+        let yaml = "\
+$id: regeling_standaardpremie
+articles:
+  - number: '1'
+    machine_readable:
+      implements:
+        - law: zorgtoeslagwet
+          article: '4'
+          open_term: standaardpremie
+        - law: zorgtoeslagwet
+          article: '5'
+          open_term: iets_anders
+  - number: '2'
+    machine_readable:
+      implements:
+        - law: zorgverzekeringswet
+          article: '1'
+          open_term: dekking
+";
+        // Deduplicated across articles, preserves first-seen order.
+        assert_eq!(
+            collect_law_implements(yaml),
+            vec![
+                "zorgtoeslagwet".to_string(),
+                "zorgverzekeringswet".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_collect_law_implements_none() {
+        let yaml = "$id: x\narticles:\n  - number: '1'\n    machine_readable:\n      execution:\n        output: []\n";
+        assert!(collect_law_implements(yaml).is_empty());
+        // Malformed YAML is tolerated as "no implements".
+        assert!(collect_law_implements("not: [valid").is_empty());
     }
 }

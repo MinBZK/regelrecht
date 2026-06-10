@@ -8,11 +8,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@nldd/design-system": "^0.8.52",
+    "@nldd/design-system": "^0.8.56",
     "vue": "^3.5.35"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.7",
-    "vite": "^8.0.14"
+    "vite": "^8.0.16"
   }
 }

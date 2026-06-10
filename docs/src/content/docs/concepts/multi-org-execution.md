@@ -1,5 +1,6 @@
 ---
 title: "Multi-Organization Execution"
+description: "How the engine handles organizational boundaries, distinguishing formal decisions from calculations."
 ---
 
 In practice, different government organizations handle different parts of the law chain. The Tax Authority determines your income. The Allowances Service determines your healthcare allowance. A municipality determines your social assistance.

@@ -1,5 +1,6 @@
 ---
 title: "Frontend"
+description: "The Vue 3 law editor and library browser for working with machine-readable law."
 ---
 
 The frontend is a law editor and library browser built with Vue 3 and Vite.

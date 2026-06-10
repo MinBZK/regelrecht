@@ -92,9 +92,11 @@ fn parse_articles(xml: &str, bwb_id: &str, date: &str) -> Result<ParsedContent> 
     // Extract aanhef (preamble)
     let preamble = extract_aanhef(&doc, bwb_id, date);
 
-    // Create split engine
+    // Create split engine. Article-level granularity is the harvester default:
+    // one entry per artikel with leden/onderdelen folded inline (enumerators kept).
+    // Finer splitting stays an explicit author choice made later in the editor.
     let hierarchy = create_dutch_law_hierarchy();
-    let engine = SplitEngine::new(hierarchy, LeafSplitStrategy);
+    let engine = SplitEngine::new(hierarchy, LeafSplitStrategy).with_article_level(true);
 
     // Find all artikel elements
     for artikel in doc

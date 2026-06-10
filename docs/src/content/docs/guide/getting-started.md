@@ -1,5 +1,6 @@
 ---
 title: "Getting Started"
+description: "From a fresh clone to a built engine and a passing test suite."
 ---
 
 ## Prerequisites

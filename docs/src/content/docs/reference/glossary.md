@@ -1,5 +1,6 @@
 ---
 title: "Glossary"
+description: "Dutch legal and technical terms used across RegelRecht, with English translations."
 ---
 
 Dutch legal terminology used throughout RegelRecht, with English translations.

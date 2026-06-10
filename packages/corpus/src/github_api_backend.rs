@@ -32,7 +32,7 @@ use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 
-use crate::backend::{FileEntry, PersistOutcome, RepoBackend, WriteContext};
+use crate::backend::{FileEntry, PersistOutcome, RecursiveFileEntry, RepoBackend, WriteContext};
 use crate::error::{CorpusError, Result};
 use crate::github::{Committer, GitHubFetcher};
 use crate::models::GitHubSource;
@@ -141,6 +141,21 @@ impl GitHubApiBackend {
             Some(sub) if !sub.is_empty() => format!("{}/{}", sub.trim_end_matches('/'), rel),
             _ => rel,
         })
+    }
+
+    /// Inverse of [`api_path`]: strip the `sub_path` prefix from an in-repo
+    /// path to recover the source-relative path used by `SourceMap` /
+    /// `LoadedLaw`. Returns `None` for paths outside `sub_path` (files that
+    /// aren't part of this source's corpus subtree — e.g. repo-root config
+    /// when the corpus lives under `regulation/nl`).
+    fn to_source_relative(&self, in_repo_path: &str) -> Option<String> {
+        match &self.sub_path {
+            Some(sub) if !sub.is_empty() => {
+                let prefix = format!("{}/", sub.trim_end_matches('/'));
+                in_repo_path.strip_prefix(&prefix).map(str::to_string)
+            }
+            _ => Some(in_repo_path.to_string()),
+        }
     }
 
     /// Fetch the current SHA for a path on the target branch. Used by
@@ -274,6 +289,90 @@ impl RepoBackend for GitHubApiBackend {
             .map(|e| FileEntry { name: e.name })
             .collect();
         out.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(out)
+    }
+
+    async fn list_files_recursive(
+        &self,
+        dir: &Path,
+        extension: Option<&str>,
+    ) -> Result<Vec<RecursiveFileEntry>> {
+        let api_root = self.api_path(dir)?;
+        let mut inner = self.inner.lock().await;
+
+        // Iterative DFS (LIFO `Vec` used as a stack) over Contents-API
+        // directory pages. Traversal order doesn't matter — the result is
+        // sorted afterwards. Each tuple is
+        // (`relative path under the listing root`, `full API path`); the
+        // empty prefix on the seed means the seed directory's direct
+        // children appear with bare filenames in the output.
+        //
+        // **GitHub limit**: the Contents API caps each directory listing
+        // at 1000 entries with no pagination. A `documents/<traject>/`
+        // folder is extremely unlikely to hit that, but if it ever does
+        // the listing truncates silently. Switching to the Git Trees API
+        // (`/git/trees/{sha}?recursive=1`) is the proper fix when the
+        // need arises — it returns the entire subtree in one call.
+        let mut queue: Vec<(String, String)> = vec![(String::new(), api_root)];
+        let mut out: Vec<RecursiveFileEntry> = Vec::new();
+
+        while let Some((rel_prefix, api_dir)) = queue.pop() {
+            let entries = inner
+                .fetcher
+                .list_directory(
+                    &self.full_repo(),
+                    &self.branch,
+                    &api_dir,
+                    self.token.as_deref(),
+                )
+                .await?;
+            // The Contents API caps a single directory listing at 1000
+            // entries with no pagination (see the note above). Hitting the
+            // cap means the listing was almost certainly truncated and some
+            // documents are silently missing — surface it in logs so it is
+            // diagnosable before it becomes a support incident.
+            if entries.len() >= 1000 {
+                tracing::warn!(
+                    api_dir = %api_dir,
+                    count = entries.len(),
+                    "GitHub Contents API directory listing hit the 1000-entry cap; results may be truncated"
+                );
+            }
+            for e in entries {
+                let child_rel = if rel_prefix.is_empty() {
+                    e.name.clone()
+                } else {
+                    format!("{}/{}", rel_prefix, e.name)
+                };
+                match e.entry_type.as_str() {
+                    "file" => {
+                        if let Some(ext) = extension {
+                            let matches = Path::new(&e.name)
+                                .extension()
+                                .and_then(|s| s.to_str())
+                                .is_some_and(|s| s == ext);
+                            if !matches {
+                                continue;
+                            }
+                        }
+                        out.push(RecursiveFileEntry {
+                            relative_path: child_rel,
+                        });
+                    }
+                    "dir" => {
+                        let child_api = if api_dir.is_empty() {
+                            e.name
+                        } else {
+                            format!("{}/{}", api_dir.trim_end_matches('/'), e.name)
+                        };
+                        queue.push((child_rel, child_api));
+                    }
+                    _ => continue,
+                }
+            }
+        }
+
+        out.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
         Ok(out)
     }
 
@@ -443,6 +542,31 @@ impl RepoBackend for GitHubApiBackend {
 
     fn is_writable(&self) -> bool {
         self.token.is_some()
+    }
+
+    async fn changed_files(&self) -> Result<Vec<String>> {
+        // The diff is branch-against-base. Without a base to compare to,
+        // or a token to read the (typically private) repo, there's nothing
+        // meaningful to report — return empty rather than erroring.
+        let Some(base) = self.base_branch.as_deref() else {
+            return Ok(Vec::new());
+        };
+        if self.token.is_none() {
+            return Ok(Vec::new());
+        }
+        let in_repo_paths = {
+            let mut inner = self.inner.lock().await;
+            inner
+                .fetcher
+                .compare_files(&self.full_repo(), base, &self.branch, self.token.as_deref())
+                .await?
+        };
+        // Map in-repo paths back to source-relative paths, dropping any
+        // that fall outside this source's `sub_path` subtree.
+        Ok(in_repo_paths
+            .into_iter()
+            .filter_map(|p| self.to_source_relative(&p))
+            .collect())
     }
 }
 

@@ -62,6 +62,15 @@ tower = "0.5"
 tower-sessions-memory-store = "0.14"
 wiremock = "0.6"
 
+# Dev builds: trim debuginfo to speed up codegen and (especially) linking.
+# line-tables-only keeps usable backtraces; dependencies rarely need to be
+# stepped into, so strip their debuginfo entirely.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.bench]
 opt-level = 3
 lto = false

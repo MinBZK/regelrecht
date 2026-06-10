@@ -80,11 +80,13 @@ export interface LandingContent {
     lede: string
     vacancyTag: string
     contactsLabel: string
+    closesLabel: { open: string; closed: string }
     items: {
       title: string
       organisation: string
       pitch: string
       meta: string[]
+      closes: string
       ctaLabel: string
       ctaHref: string
       contacts: { label: string; href: string }[]
@@ -460,23 +462,21 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     faq: {
       title: 'Vragen bij deze verkenning',
+      // Item order is tuned so the two-column masonry layout (see
+      // LandingSections.astro) ends up with roughly equal column heights:
+      // the long answers are spread across both columns instead of stacking
+      // in the left one. The cards read column-by-column, not row-by-row, so
+      // this is a visual ordering, not a content priority. Reordering, adding
+      // or shortening an answer changes the balance — re-check the layout if
+      // you touch this list.
       items: [
-        {
-          q: 'Wat zou een digitaal rechtsstelsel kunnen betekenen?',
-          a: 'Juridische regels worden dan geschreven als uitvoerbare code die computers direct kunnen draaien en toepassen, zonder tussenkomst van menselijke interpretatie of programmeurs. Is dat realiseerbaar? En hoe verhoudt het zich tot traditioneel analoog recht?',
-        },
-        {
-          q: 'Betekent dit één centrale interpretatie?',
-          a: 'Nee. RegelRecht verkent of de manier waarop een wet wordt uitgevoerd publiek gepubliceerd kan worden, niet of er één partij is die bepaalt wat de waarheid is. Het bevoegd gezag publiceert zijn lezing als gezaghebbende interpretatie, maar andere organisaties, juristen en burgers kunnen hun lezing daarnaast publiceren. De executie wordt bovendien niet aan één engine opgehangen: meerdere onafhankelijke implementaties moeten op dezelfde regels en data dezelfde uitkomst geven. Wat centraal wordt is de publicatie en controleerbaarheid, niet de interpretatie zelf.',
-        },
         {
           q: 'Wat gebeurt er met open normen?',
           a: 'Wetten bevatten bewust ruimte voor interpretatie: termen die "bij ministeriële regeling" worden ingevuld, of begrippen die een afweging aan de uitvoerder laten. Bij gewone automatisering verdwijnt die ruimte stilzwijgend in code: de keuze die een programmeur maakt wordt feitelijk recht, zonder publicatie of toetsing. RegelRecht maakt zo\'n keuze juist expliciet: de hogere wet markeert een open norm, de lagere regeling vult hem in, en juristen kunnen aantekenen of een begrip volledig, deels of nog niet is ingevuld. Zo wordt zichtbaar waar de wet eindigt en de interpretatie begint. Echte menselijke beoordelingen in een besluitproces, zoals een hardheidsclausule of een individuele afweging door een ambtenaar, blijven gewoon menselijk werk; die proberen we niet weg te automatiseren.',
         },
         {
-          q: 'Waarom een eigen regelformaat?',
-          a: 'Het formaat is YAML met wettekst en machine-uitvoerbare regels naast elkaar in één bestand. Een versioned JSON Schema bewaakt de structuur, BDD-scenario’s leggen de bedoelde uitkomsten vast. Zo kunnen juristen meelezen, ontwikkelaars meebouwen, en verschillende overheidssystemen dezelfde regels gebruiken.',
-          link: { label: 'Lees RFC-011', href: '/rfcs/rfc-011' },
+          q: 'Wat zou een digitaal rechtsstelsel kunnen betekenen?',
+          a: 'Juridische regels worden dan geschreven als uitvoerbare code die computers direct kunnen draaien en toepassen, zonder tussenkomst van menselijke interpretatie of programmeurs. Is dat realiseerbaar? En hoe verhoudt het zich tot traditioneel analoog recht?',
         },
         {
           q: 'Hoe zou dit zich kunnen verhouden tot bestaande systemen?',
@@ -485,6 +485,19 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           q: 'Zou RegelRecht juridisch bindend kunnen zijn?',
           a: 'RegelRecht is een technisch hulpmiddel. De juridische geldigheid blijft bij de oorspronkelijke wetgeving. De vraag is of het kan helpen bij consistente interpretatie en toepassing.',
+        },
+        {
+          q: 'Betekent dit één centrale interpretatie?',
+          a: 'Nee. RegelRecht verkent of de manier waarop een wet wordt uitgevoerd publiek gepubliceerd kan worden, niet of er één partij is die bepaalt wat de waarheid is. Het bevoegd gezag publiceert zijn lezing als gezaghebbende interpretatie, maar andere organisaties, juristen en burgers kunnen hun lezing daarnaast publiceren. De executie wordt bovendien niet aan één engine opgehangen: meerdere onafhankelijke implementaties moeten op dezelfde regels en data dezelfde uitkomst geven. Wat centraal wordt is de publicatie en controleerbaarheid, niet de interpretatie zelf.',
+        },
+        {
+          q: 'Moet ik dan jullie Rust-engine in mijn landschap draaien?',
+          a: 'Nee. RegelRecht legt het regelformaat en de bedoelde uitkomsten vast, niet de implementatie. De Rust-engine is de referentie-implementatie: hij laat zien wat de regels horen te doen en dient als ijkpunt waartegen andere implementaties zich kunnen meten. Een engine kan ook anders geïmplementeerd worden, in een andere taal of architectuur, zodat hij in jouw landschap past. Wat telt is dat elke implementatie op dezelfde regels en data dezelfde uitkomst geeft als de referentie.',
+        },
+        {
+          q: 'Waarom een eigen regelformaat?',
+          a: 'Het formaat is YAML met wettekst en machine-uitvoerbare regels naast elkaar in één bestand. Een versioned JSON Schema bewaakt de structuur, BDD-scenario’s leggen de bedoelde uitkomsten vast. Zo kunnen juristen meelezen, ontwikkelaars meebouwen, en verschillende overheidssystemen dezelfde regels gebruiken.',
+          link: { label: 'Lees RFC-011', href: '/rfcs/rfc-011' },
         },
         {
           q: 'Hoe draagt dit bij aan transparantie?',
@@ -497,25 +510,39 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       lede: 'Het team rond RegelRecht groeit. Bouw mee aan een open infrastructuur waarin Nederlandse wetgeving machine-uitvoerbaar wordt, en zie je werk landen bij uitvoeringsorganisaties die er dagelijks beslissingen op nemen.',
       vacancyTag: 'Vacature',
       contactsLabel: 'Vragen? Neem contact op met',
+      closesLabel: { open: 'Sluit', closed: 'Gesloten' },
       items: [
         {
           title: 'Software Engineer',
           organisation: 'Rijksorganisatie ODI · Ministerie van BZK',
           pitch:
             'Werk aan de Rust-engine en de tooling waarmee wetten machine-uitvoerbaar worden. Je adviseert opdrachtgevers binnen het Rijk, ontwerpt en programmeert, en werkt naast juristen die de regels in machineleesbare vorm gieten.',
-          meta: [
-            'Schaal 13',
-            '€5.212 – €7.747',
-            '32 – 36 uur',
-            'Den Haag',
-            'Sluit 11 juni 2026',
-          ],
+          meta: ['Schaal 13', '€5.212 – €7.747', '32 – 36 uur', 'Den Haag'],
+          closes: '2026-06-11',
           ctaLabel: 'Bekijk de vacature',
           ctaHref:
             'https://www.werkenvoornederland.nl/vacatures/software-engineer-BZK-2026-8544',
           contacts: [
             { label: 'Abram Klop (opgavemanager)', href: 'tel:+31650035732' },
             { label: 'Dian Hoppen (recruiter)', href: 'tel:+31650062738' },
+          ],
+        },
+        {
+          title: 'Redesign Analist',
+          organisation: 'Rijksorganisatie ODI · Ministerie van BZK',
+          pitch:
+            'Analyseer wet- en regelgeving en vertaal die naar machine-uitvoerbare specificaties. Je ontleedt complexe uitvoeringsprocessen en werkt in multidisciplinaire teams samen met engineers die de regels in code omzetten.',
+          meta: ['Schaal 12', '€4.691 – €6.907', '32 – 36 uur', 'Den Haag'],
+          closes: '2026-06-24',
+          ctaLabel: 'Bekijk de vacature',
+          ctaHref:
+            'https://www.werkenvoornederland.nl/vacatures/redesign-analist-BZK-2026-9806',
+          contacts: [
+            { label: 'Abram Klop (opgavemanager)', href: 'tel:+31650035732' },
+            {
+              label: 'Suzanne de Jager (recruiter)',
+              href: 'tel:+31627295317',
+            },
           ],
         },
       ],
@@ -906,23 +933,20 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     faq: {
       title: 'Questions about this exploration',
+      // Item order is tuned for the two-column masonry layout (see
+      // LandingSections.astro) so the columns end up roughly equal in height;
+      // the long answers are spread across both columns. Cards read
+      // column-by-column, not row-by-row, so this is a visual ordering, not a
+      // content priority. Mirrors the Dutch list; re-check the layout if you
+      // reorder, add or shorten an answer. Keep both lists in sync.
       items: [
-        {
-          q: 'What could a digital legal system mean?',
-          a: 'Legal rules are written as executable code that computers can run and apply directly, without human interpretation or programmers in between. Is that achievable? And how does it relate to traditional analogue law?',
-        },
-        {
-          q: 'Does this mean one central interpretation?',
-          a: 'No. RegelRecht explores whether the way a law is executed can be published, not whether one party decides what is true. The competent authority publishes its reading as the authoritative interpretation, but other organisations, lawyers and citizens can publish their reading alongside it. Execution is not tied to a single engine either: multiple independent implementations must produce the same outcome on the same rules and data. What becomes central is publication and verifiability, not interpretation itself.',
-        },
         {
           q: 'What happens to open norms?',
           a: 'Laws deliberately leave room for interpretation: terms that are filled in "by ministerial regulation", or concepts that leave a judgement to the implementing body. In ordinary automation that room quietly disappears into code: the choice the programmer makes effectively becomes law, with no publication or scrutiny. RegelRecht turns that choice into something explicit instead: the higher law marks an open norm, the lower regulation fills it in, and lawyers can record whether a concept is fully, partly or not yet filled in. That makes visible where the statute ends and interpretation begins. Genuinely human judgements inside a decision process, such as a hardship clause or a case-by-case assessment by an official, stay human work; we are not trying to automate those away.',
         },
         {
-          q: 'Why a dedicated rule format?',
-          a: 'The format is YAML, with legal text and machine-executable rules side by side in a single file. A versioned JSON Schema guards the structure, and BDD scenarios capture the intended outcomes. Legal experts can read along, developers can contribute, and different government systems can use the same rules.',
-          link: { label: 'Read RFC-011', href: '/rfcs/rfc-011' },
+          q: 'What could a digital legal system mean?',
+          a: 'Legal rules are written as executable code that computers can run and apply directly, without human interpretation or programmers in between. Is that achievable? And how does it relate to traditional analogue law?',
         },
         {
           q: 'How could this relate to existing systems?',
@@ -931,6 +955,19 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           q: 'Could RegelRecht be legally binding?',
           a: 'RegelRecht is a technical aid. Legal validity remains with the original legislation. The open question is whether it can help with consistent interpretation and application.',
+        },
+        {
+          q: 'Does this mean one central interpretation?',
+          a: 'No. RegelRecht explores whether the way a law is executed can be published, not whether one party decides what is true. The competent authority publishes its reading as the authoritative interpretation, but other organisations, lawyers and citizens can publish their reading alongside it. Execution is not tied to a single engine either: multiple independent implementations must produce the same outcome on the same rules and data. What becomes central is publication and verifiability, not interpretation itself.',
+        },
+        {
+          q: 'Do I have to run your Rust engine in my own landscape?',
+          a: 'No. RegelRecht fixes the rule format and the intended outcomes, not the implementation. The Rust engine is the reference implementation: it shows what the rules are meant to do and serves as the benchmark other implementations can measure themselves against. An engine can also be implemented differently, in another language or architecture, so that it fits your landscape. What matters is that every implementation produces the same outcome on the same rules and data as the reference.',
+        },
+        {
+          q: 'Why a dedicated rule format?',
+          a: 'The format is YAML, with legal text and machine-executable rules side by side in a single file. A versioned JSON Schema guards the structure, and BDD scenarios capture the intended outcomes. Legal experts can read along, developers can contribute, and different government systems can use the same rules.',
+          link: { label: 'Read RFC-011', href: '/rfcs/rfc-011' },
         },
         {
           q: 'How does this contribute to transparency?',
@@ -943,25 +980,39 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       lede: 'The team behind RegelRecht is growing. Help build an open infrastructure that turns Dutch legislation into something computers can execute, and see your work land at the public-sector organisations that act on it every day.',
       vacancyTag: 'Vacancy',
       contactsLabel: 'Questions? Get in touch with',
+      closesLabel: { open: 'Closes', closed: 'Closed' },
       items: [
         {
           title: 'Software Engineer',
           organisation: 'Rijksorganisatie ODI · Ministry of the Interior',
           pitch:
             'Work on the Rust engine and the tooling that turns Dutch statutes into something computers can run. You advise teams across the Dutch government, design and write code, and work side by side with lawyers who translate rules into machine-readable form. Senior role, in Dutch (fluency required).',
-          meta: [
-            'Scale 13',
-            '€5,212 – €7,747',
-            '32 – 36 hours',
-            'The Hague',
-            'Closes 11 June 2026',
-          ],
+          meta: ['Scale 13', '€5,212 – €7,747', '32 – 36 hours', 'The Hague'],
+          closes: '2026-06-11',
           ctaLabel: 'View the vacancy (Dutch)',
           ctaHref:
             'https://www.werkenvoornederland.nl/vacatures/software-engineer-BZK-2026-8544',
           contacts: [
             { label: 'Abram Klop (opgavemanager)', href: 'tel:+31650035732' },
             { label: 'Dian Hoppen (recruiter)', href: 'tel:+31650062738' },
+          ],
+        },
+        {
+          title: 'Redesign Analyst',
+          organisation: 'Rijksorganisatie ODI · Ministry of the Interior',
+          pitch:
+            'Analyse Dutch legislation and translate it into machine-executable specifications. You dissect complex government processes and work in multidisciplinary teams alongside the engineers who turn the rules into code. In Dutch (fluency required).',
+          meta: ['Scale 12', '€4,691 – €6,907', '32 – 36 hours', 'The Hague'],
+          closes: '2026-06-24',
+          ctaLabel: 'View the vacancy (Dutch)',
+          ctaHref:
+            'https://www.werkenvoornederland.nl/vacatures/redesign-analist-BZK-2026-9806',
+          contacts: [
+            { label: 'Abram Klop (opgavemanager)', href: 'tel:+31650035732' },
+            {
+              label: 'Suzanne de Jager (recruiter)',
+              href: 'tel:+31627295317',
+            },
           ],
         },
       ],

@@ -19,6 +19,9 @@ const props = defineProps({
   lawId: { type: String, default: '' },
   // Loaded WASM engine, for selector uniqueness validation in NoteCreator.
   engine: { type: Object, default: null },
+  // Active traject ref, threaded through to NoteCreator so a note can
+  // link to a document in this traject's documents tree.
+  trajectRef: { type: String, default: '' },
 });
 
 const emit = defineEmits(['create-note']);
@@ -672,6 +675,7 @@ onBeforeUnmount(() => {
         :article="article"
         :engine="engine"
         :anchor="selAnchorEl"
+        :traject-ref="trajectRef"
         @create="onNoteCreated"
         @cancel="onCreatorCancel"
       />
@@ -807,10 +811,10 @@ onBeforeUnmount(() => {
 }
 
 /* Popover card content. nldd-popover does not pad slotted content, nor
-   inherit the editor UI font, so the card sets both (RijksSansVF is the
-   design-system UI face). Border-left echoes the highlight colour. */
+   inherit the editor UI font, so the card sets both (the design-system body
+   token resolves to RijksSans). Border-left echoes the highlight colour. */
 .note-pop {
-  font-family: 'RijksSansVF', system-ui, sans-serif;
+  font-family: var(--primitives-font-family-body);
   padding: 14px 16px;
   border-left: 3px solid transparent;
 }

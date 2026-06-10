@@ -8,7 +8,7 @@ use reqwest::Client;
 use roxmltree::Document;
 
 use crate::config::{manifest_url, DEFAULT_MAX_RESPONSE_SIZE};
-use crate::error::{HarvesterError, Result};
+use crate::error::{HarvesterError, NoTextReason, Result};
 use crate::http::{bytes_to_string, download_bytes};
 
 /// Parsed BWB manifest containing available consolidations.
@@ -72,14 +72,6 @@ fn parse_manifest(xml: &str, bwb_id: &str) -> Result<BwbManifest> {
             context: format!("manifest for {bwb_id}"),
         })?;
 
-    let latest_item = work
-        .attribute("_latestItem")
-        .ok_or_else(|| HarvesterError::MissingElement {
-            element: "_latestItem attribute".to_string(),
-            context: format!("manifest for {bwb_id}"),
-        })?
-        .to_string();
-
     let mut expressions = Vec::new();
     for expr in work.descendants().filter(|n| n.has_tag_name("expression")) {
         let label = expr.attribute("label").unwrap_or_default().to_string();
@@ -114,6 +106,45 @@ fn parse_manifest(xml: &str, bwb_id: &str) -> Result<BwbManifest> {
             });
         }
     }
+
+    // `_latestItem` only exists once the work has at least one consolidated
+    // version. When it is absent and there are no expressions, the work has no
+    // consolidated text at all — classify why (withdrawn / not yet in force /
+    // announced) so the pipeline can skip it terminally instead of treating it
+    // as a retryable error.
+    let latest_item = match work.attribute("_latestItem") {
+        Some(value) => value.to_string(),
+        None if expressions.is_empty() => {
+            let metadata_date = |tag: &str| {
+                work.descendants()
+                    .find(|n| n.has_tag_name(tag))
+                    .and_then(|n| n.text())
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+            };
+            // Intrekking takes precedence: a law withdrawn on its own
+            // in-force date (intrekking == inwerkingtreding) never applied.
+            let reason = if let Some(date) = metadata_date("datum_intrekking") {
+                NoTextReason::Withdrawn { date }
+            } else if let Some(date) = metadata_date("datum_inwerkingtreding") {
+                NoTextReason::NotYetInForce { date }
+            } else {
+                NoTextReason::Announced
+            };
+            return Err(HarvesterError::NoConsolidatedText {
+                bwb_id: bwb_id.to_string(),
+                reason,
+            });
+        }
+        // Has consolidated expressions but no latest pointer — unexpected/malformed.
+        None => {
+            return Err(HarvesterError::MissingElement {
+                element: "_latestItem attribute".to_string(),
+                context: format!("manifest for {bwb_id}"),
+            });
+        }
+    };
 
     Ok(BwbManifest {
         latest_item,
@@ -257,6 +288,85 @@ mod tests {
 
         assert_eq!(manifest.expressions[2].label, "2026-02-04_0");
         assert_eq!(manifest.expressions[2].einddatum, "9999-12-31");
+    }
+
+    #[test]
+    fn test_parse_manifest_withdrawn_law_classified() {
+        // BWBR0025304 (Wet ambulancezorg): withdrawn, no consolidated text.
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?><work label="BWBR0025304">
+            <metadata><datum_intrekking>2013-01-01</datum_intrekking></metadata></work>"#;
+        match parse_manifest(xml, "BWBR0025304") {
+            Err(HarvesterError::NoConsolidatedText { bwb_id, reason }) => {
+                assert_eq!(bwb_id, "BWBR0025304");
+                assert_eq!(
+                    reason,
+                    NoTextReason::Withdrawn {
+                        date: "2013-01-01".to_string()
+                    }
+                );
+            }
+            other => panic!("expected NoConsolidatedText/Withdrawn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_manifest_future_law_classified() {
+        // BWBR0051692: adopted, in force 2027-01-01, no text yet.
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?><work label="BWBR0051692">
+            <metadata><datum_inwerkingtreding>2027-01-01</datum_inwerkingtreding></metadata></work>"#;
+        match parse_manifest(xml, "BWBR0051692") {
+            Err(HarvesterError::NoConsolidatedText {
+                reason: NoTextReason::NotYetInForce { date },
+                ..
+            }) => assert_eq!(date, "2027-01-01"),
+            other => panic!("expected NotYetInForce, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_manifest_intrekking_takes_precedence_over_inwerkingtreding() {
+        // BWBR0045723: withdrawn on its own in-force date → never applied.
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?><work label="BWBR0045723"><metadata>
+            <datum_intrekking>2022-01-01</datum_intrekking>
+            <datum_inwerkingtreding>2022-01-01</datum_inwerkingtreding></metadata></work>"#;
+        match parse_manifest(xml, "BWBR0045723") {
+            Err(HarvesterError::NoConsolidatedText {
+                reason: NoTextReason::Withdrawn { date },
+                ..
+            }) => assert_eq!(date, "2022-01-01"),
+            other => panic!("expected Withdrawn (precedence), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_manifest_announced_law_classified() {
+        // BWBR0051671: only WTI metadata, no dates.
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?><work label="BWBR0051671">
+            <metadata><wti_locatie>BWBR0051671.WTI</wti_locatie></metadata></work>"#;
+        match parse_manifest(xml, "BWBR0051671") {
+            Err(HarvesterError::NoConsolidatedText {
+                reason: NoTextReason::Announced,
+                ..
+            }) => {}
+            other => panic!("expected Announced, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_manifest_expressions_without_latest_item_is_malformed() {
+        // Has a consolidated expression but no `_latestItem` pointer — treated as
+        // a malformed manifest (retryable), NOT a no-text classification.
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?><work label="BWBR0000001">
+            <expression label="2024-01-01_0">
+                <datum_inwerkingtreding>2024-01-01</datum_inwerkingtreding>
+                <manifestation label="xml"><item label="x.xml" _deleted="false" /></manifestation>
+            </expression></work>"#;
+        match parse_manifest(xml, "BWBR0000001") {
+            Err(HarvesterError::MissingElement { element, .. }) => {
+                assert_eq!(element, "_latestItem attribute");
+            }
+            other => panic!("expected MissingElement, got {other:?}"),
+        }
     }
 
     #[test]

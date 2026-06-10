@@ -19,7 +19,8 @@ pub use handlers::{
     SESSION_KEY_EMAIL_VERIFIED, SESSION_KEY_NAME, SESSION_KEY_ROLES, SESSION_KEY_SUB,
 };
 pub use middleware::{
-    check_session_role, require_role, require_session_auth, security_headers, RoleCheck,
+    check_session_role, refresh_session_token, require_role, require_session_auth,
+    security_headers, RoleCheck,
 };
 pub use oidc::{discover_client, ConfiguredClient, DiscoveryResult};
 

@@ -45,8 +45,13 @@ RUN find . -name '*.rs' -exec touch {} + && \
     cargo build --release --bin regelrecht-harvest-worker
 
 # Stage 4: Runtime
+# tini runs as PID 1 so reparented git grandchildren (merge-base,
+# git-remote-https, the askpass helper) get reaped instead of piling up as
+# zombies against the container's low pids limit — the accumulation that wedges
+# the worker into a "cannot fork() / Resource temporarily unavailable" loop on
+# long harvest runs.
 FROM alpine:3.23@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659
-RUN apk add --no-cache ca-certificates git && \
+RUN apk add --no-cache ca-certificates git tini && \
     addgroup -S app && adduser -S app -G app
 
 COPY --from=builder /build/target/release/regelrecht-harvest-worker /usr/local/bin/
@@ -59,4 +64,4 @@ EXPOSE 8000
 ENV REGULATION_REPO_PATH=/tmp/regulation-repo
 ENV REGULATION_OUTPUT_BASE=regulation/nl
 
-ENTRYPOINT ["entrypoint.sh"]
+ENTRYPOINT ["/sbin/tini", "--", "entrypoint.sh"]

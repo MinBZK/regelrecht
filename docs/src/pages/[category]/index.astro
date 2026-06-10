@@ -1,4 +1,5 @@
 ---
+import { getCollection } from 'astro:content';
 import Base from '~/layouts/Base.astro';
 import { docsCategories, sidebarForPath } from '~/lib/sidebar';
 
@@ -16,6 +17,13 @@ export function getStaticPaths() {
 const { category } = Astro.props;
 const groups = sidebarForPath(category.prefix) ?? [];
 const title = category.title + ' · RegelRecht';
+
+// Per-article descriptions come from each page's frontmatter (the same field
+// shown as the page subtitle), keyed by URL so we can look one up per item.
+// '/' + entry.id matches the link format used throughout the sidebar.
+const descByLink = new Map(
+  (await getCollection('docs')).map((e) => ['/' + e.id, e.data.description]),
+);
 ---
 
 <Base lang="en" kind="docs" pathname={category.prefix} title={title}>
@@ -28,6 +36,16 @@ const title = category.title + ' · RegelRecht';
       <nldd-title size="2">
         <h1>{category.title}</h1>
       </nldd-title>
+      {
+        category.intro && (
+          <Fragment>
+            <nldd-spacer />
+            <nldd-rich-text>
+              <p>{category.intro}</p>
+            </nldd-rich-text>
+          </Fragment>
+        )
+      }
     </div>
     <div slot="right">
       {
@@ -47,7 +65,11 @@ const title = category.title + ' · RegelRecht';
                 .filter((it) => it.link)
                 .map((it) => (
                   <nldd-list-item href={it.link}>
-                    <nldd-text-cell text={it.text} width="full" />
+                    <nldd-text-cell
+                      text={it.text}
+                      supporting-text={descByLink.get(it.link)}
+                      width="full"
+                    />
                     <nldd-spacer-cell />
                     <nldd-icon-cell icon="chevron-right" />
                   </nldd-list-item>

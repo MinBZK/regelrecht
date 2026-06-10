@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 use tower_sessions::Session;
 
-pub use regelrecht_auth::middleware::security_headers;
+pub use regelrecht_auth::middleware::{refresh_session_token, security_headers};
 use regelrecht_auth::{check_session_role, RoleCheck};
 
 use crate::error::ApiError;

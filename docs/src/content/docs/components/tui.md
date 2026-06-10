@@ -1,5 +1,6 @@
 ---
 title: "Terminal UI (TUI)"
+description: "An interactive terminal dashboard for browsing the corpus and running the engine."
 ---
 
 The TUI is an interactive terminal dashboard for developers working with the regulation corpus and engine.

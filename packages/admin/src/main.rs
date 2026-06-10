@@ -207,6 +207,8 @@ async fn main() {
             middleware::require_metrics_auth,
         ));
 
+    // Clone for the refresh layer: with_state below consumes app_state.
+    let refresh_state = app_state.clone();
     let app = Router::new()
         .route("/health", get(health))
         .merge(metrics_route)
@@ -215,6 +217,12 @@ async fn main() {
         .merge(writer_routes)
         .merge(admin_routes)
         .with_state(app_state)
+        // Inside the session layer, outside the route role gates. No-op for
+        // API-key-authenticated requests (no session auth marker).
+        .layer(axum_middleware::from_fn_with_state(
+            refresh_state,
+            middleware::refresh_session_token::<AppState>,
+        ))
         .layer(session_layer)
         .layer(axum_middleware::from_fn(middleware::security_headers))
         .layer(TraceLayer::new_for_http())

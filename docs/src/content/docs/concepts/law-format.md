@@ -1,5 +1,6 @@
 ---
 title: "Law Format"
+description: "The article-based YAML format for machine-readable law, conforming to the official JSON schema."
 ---
 
 Laws in RegelRecht are stored as YAML files conforming to the [law schema](/reference/schema). Each file represents one law at a specific point in time.

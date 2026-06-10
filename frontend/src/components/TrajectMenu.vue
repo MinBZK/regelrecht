@@ -2,7 +2,9 @@
 import { computed, nextTick, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTrajects } from '../composables/useTrajects.js';
+import { useDocumentsSheet } from '../composables/useDocumentsSheet.js';
 import TrajectMembersDialog from './TrajectMembersDialog.vue';
+import TrajectInfoDialog from './TrajectInfoDialog.vue';
 
 const props = defineProps({
   // Suffix to keep ids unique when this component is mounted in multiple
@@ -21,17 +23,22 @@ const {
 } = useTrajects();
 const route = useRoute();
 const router = useRouter();
+const documentsSheet = useDocumentsSheet();
 
 /**
- * Navigate to a traject — push the user into the traject-scoped
- * editor at the same law they were viewing. Per-tab state: a switch
- * here only affects this tab, never other open editors.
+ * Navigate to a traject — push the user into the traject-scoped view of
+ * the section they are currently in (bibliotheek or editor), at the same
+ * law they were viewing. Picking a traject from the bibliotheek keeps you
+ * in the bibliotheek; from the editor it keeps you in the editor. Per-tab
+ * state: a switch here only affects this tab, never other open tabs.
  */
 async function goToTraject(trajectRef) {
   const lawId = route.params.lawId || undefined;
   const articleNumber = route.params.articleNumber || undefined;
+  const inLibrary =
+    route.name === 'library' || route.name === 'library-traject';
   await router.push({
-    name: 'editor-traject',
+    name: inLibrary ? 'library-traject' : 'editor-traject',
     params: { trajectRef, lawId, articleNumber },
   });
 }
@@ -114,6 +121,18 @@ function openMembersForActive() {
   membersTrajectId.value = activeTraject.value.id;
   membersTrajectName.value = activeTraject.value.name;
   showMembers.value = true;
+}
+
+// --- Info dialog state ---
+const showInfo = ref(false);
+const infoTrajectId = ref(null);
+const infoTrajectName = ref('');
+
+function openInfoForActive() {
+  if (!activeTraject.value) return;
+  infoTrajectId.value = activeTraject.value.id;
+  infoTrajectName.value = activeTraject.value.name;
+  showInfo.value = true;
 }
 
 function closeCreate() {
@@ -239,6 +258,18 @@ function bind(field) {
     <nldd-menu-divider></nldd-menu-divider>
     <nldd-menu-item
       v-if="activeTraject"
+      text="Documenten…"
+      start-icon="file-text"
+      @click="documentsSheet.open()"
+    ></nldd-menu-item>
+    <nldd-menu-item
+      v-if="activeTraject"
+      text="Traject-info…"
+      start-icon="info"
+      @click="openInfoForActive"
+    ></nldd-menu-item>
+    <nldd-menu-item
+      v-if="activeTraject"
       text="Beheer leden…"
       start-icon="users"
       @click="openMembersForActive"
@@ -254,6 +285,12 @@ function bind(field) {
     v-model="showMembers"
     :traject-id="membersTrajectId"
     :traject-name="membersTrajectName"
+  />
+
+  <TrajectInfoDialog
+    v-model="showInfo"
+    :traject-id="infoTrajectId"
+    :traject-name="infoTrajectName"
   />
 
   <!-- Teleport the sheet out of the toolbar so it doesn't inherit the

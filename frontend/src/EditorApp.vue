@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, reactive, watch, watchEffect, nextTick } from 'vue';
+import { ref, computed, reactive, watch, watchEffect, nextTick, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
 import yaml from 'js-yaml';
 import { useLaw, fetchLaw } from './composables/useLaw.js';
@@ -12,7 +12,7 @@ import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useNotes, useResolvedDraftNotes } from './composables/useNotes.js';
 import { useDraftNotes } from './composables/useDraftNotes.js';
 import { useColorScheme } from './composables/useColorScheme.js';
-import { lastLibraryPath } from './composables/useLastVisitedRoute.js';
+import { lastLibraryPath, sectionTarget } from './composables/useLastVisitedRoute.js';
 import { SUPPORT_EMAIL } from './constants.js';
 import ArticleText from './components/ArticleText.vue';
 import AnnotatedText from './components/AnnotatedText.vue';
@@ -22,6 +22,7 @@ import EditSheet from './components/EditSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
 import MachineReadable from './components/MachineReadable.vue';
 import ScenarioBuilder from './components/ScenarioBuilder.vue';
+import TrajectDocuments from './components/TrajectDocuments.vue';
 import ExecutionTraceView from './components/ExecutionTraceView.vue';
 import LawGraphView from './components/LawGraphView.vue';
 
@@ -163,6 +164,14 @@ const canEditArticleText = computed(() => canEdit.value && isEnabled('editor.art
 
 const route = useRoute();
 const router = useRouter();
+
+// Bibliotheek tab / "naar bibliotheek" buttons: restore the last library
+// position but re-stamp it with the currently active traject, so the
+// traject survives the Editor→Bibliotheek switch (it lives in the URL).
+const libraryTabTarget = computed(() =>
+  sectionTarget(router, lastLibraryPath.value, activeTrajectRef.value),
+);
+const libraryTabHref = computed(() => router.resolve(libraryTabTarget.value).href);
 
 // --- Initial law load (from route params) ---
 const {
@@ -433,7 +442,7 @@ function onSearchSelectLaw(lawIdVal) {
   // Open in the library — search currently only matches law names. As
   // soon as article-level search lands, we can route directly into the
   // editor (with the chosen article as the active tab).
-  router.push(`/library/${encodeURIComponent(lawIdVal)}`);
+  router.push(libraryRouteFor(lawIdVal));
 }
 
 async function onSearchHarvestAvailable(slug) {
@@ -443,7 +452,7 @@ async function onSearchHarvestAvailable(slug) {
     body: JSON.stringify({ law_ids: [slug] }),
   }).catch(() => {});
   await loadCorpusLaws();
-  router.push(`/library/${encodeURIComponent(slug)}`);
+  router.push(libraryRouteFor(slug));
 }
 const resultSheetEl = ref(null);
 watch(resultSheetOpen, async (open) => {
@@ -506,6 +515,19 @@ function editorRouteFor(lawIdVal, articleNumber) {
     name: 'editor',
     params: { lawId: lawIdVal, articleNumber },
   };
+}
+
+/**
+ * Build a router target for the bibliotheek that preserves the current
+ * traject scope, mirroring editorRouteFor. Used when leaving the editor
+ * for the library (e.g. opening a search result) so the active traject
+ * follows the user instead of being dropped.
+ */
+function libraryRouteFor(lawIdVal) {
+  const trajectRef = route.params.trajectRef;
+  return trajectRef
+    ? { name: 'library-traject', params: { trajectRef, lawId: lawIdVal } }
+    : { name: 'library', params: { lawId: lawIdVal } };
 }
 
 // If the user lands on the editor without a lawId, restore the last
@@ -861,18 +883,38 @@ const currentLawYaml = computed(() => {
 // load under the right traject — otherwise a later loadDependency call
 // for the same law id would treat it as already-current and skip the
 // refetch on a traject switch.
+// `currentLawYaml` re-dumps on every keystroke, so reacting directly would
+// reload the WASM engine per keystroke. Debounce the reload ~300ms after the
+// last edit; keep the first load (no previous yaml) synchronous so the initial
+// load isn't delayed. Subsequent transitions from an existing yaml — keystroke
+// edits, article switches, traject switches — debounce.
+let engineLoadDebounce = null;
+
+async function reloadEngineLaw(lawYaml, isReady) {
+  if (!isReady || !lawYaml) return;
+  try {
+    await loadLawYaml(lawYaml, lawId.value, activeTrajectRef.value);
+  } catch (e) {
+    console.warn(`Failed to load law '${lawId.value}' into engine:`, e);
+  }
+}
+
 watch(
   [currentLawYaml, engineReady],
-  async ([lawYaml, isReady]) => {
-    if (!isReady || !lawYaml) return;
-    try {
-      await loadLawYaml(lawYaml, lawId.value, activeTrajectRef.value);
-    } catch (e) {
-      console.warn(`Failed to load law '${lawId.value}' into engine:`, e);
+  ([lawYaml, isReady], prev) => {
+    clearTimeout(engineLoadDebounce);
+    // First load (no previous yaml): run immediately so scenarios see the law
+    // without delay. Any change from an existing yaml debounces.
+    if (!prev || !prev[0]) {
+      reloadEngineLaw(lawYaml, isReady);
+      return;
     }
+    engineLoadDebounce = setTimeout(() => reloadEngineLaw(lawYaml, isReady), 300);
   },
   { immediate: true },
 );
+
+onBeforeUnmount(() => clearTimeout(engineLoadDebounce));
 
 // Dirty state: the selected article's in-memory machine_readable differs
 // from the article's saved copy. `machineReadable.value` starts as a deep
@@ -1262,7 +1304,7 @@ async function handleActionSave() {
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar size="md">
-                <nldd-tab-bar-item :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)" text="Bibliotheek"></nldd-tab-bar-item>
                 <nldd-tab-bar-item selected text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
@@ -1324,7 +1366,7 @@ async function handleActionSave() {
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar size="md">
-                <nldd-tab-bar-item :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)" text="Bibliotheek"></nldd-tab-bar-item>
                 <nldd-tab-bar-item selected text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
@@ -1413,7 +1455,7 @@ async function handleActionSave() {
         <nldd-page v-if="!activeTab">
           <nldd-simple-section width="full">
             <nldd-inline-dialog text="Open een artikel vanuit de tabbalk of de bibliotheek om te bewerken.">
-              <nldd-button slot="actions" variant="secondary" text="Ga naar bibliotheek" :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)"></nldd-button>
+              <nldd-button slot="actions" variant="secondary" text="Ga naar bibliotheek" :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)"></nldd-button>
             </nldd-inline-dialog>
           </nldd-simple-section>
         </nldd-page>
@@ -1438,7 +1480,7 @@ async function handleActionSave() {
               :text="`${failedLawName} is niet beschikbaar in dit traject`"
               supporting-text="Wissel van traject via het menu rechtsboven of ga terug naar het overzicht."
             >
-              <nldd-button slot="actions" variant="primary" text="Naar bibliotheek" :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)"></nldd-button>
+              <nldd-button slot="actions" variant="primary" text="Naar bibliotheek" :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)"></nldd-button>
               <nldd-button slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryLoadLaw"></nldd-button>
             </nldd-inline-dialog>
             <nldd-inline-dialog
@@ -1613,6 +1655,7 @@ async function handleActionSave() {
                       :can-create="canCreateNotes"
                       :law-id="lawId"
                       :engine="noteEngine"
+                      :traject-ref="$route.params.trajectRef || ''"
                       @create-note="onCreateNote"
                     />
                     <nldd-inline-dialog
@@ -1784,7 +1827,7 @@ async function handleActionSave() {
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar variant="compact">
-                <nldd-tab-bar-item :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)" icon="books" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)" icon="books" text="Bibliotheek"></nldd-tab-bar-item>
                 <nldd-tab-bar-item selected icon="edit" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
@@ -1835,9 +1878,10 @@ async function handleActionSave() {
 
   <ActionSheet :action="activeAction" :article="editedArticle" :editable="canEdit" :is-new="activeActionIsNew" @close="handleActionClose" @save="handleActionSave" />
   <EditSheet :item="activeEditItem" :article="editedArticle" :traject-ref="activeTrajectRef" @save="handleSave" @close="activeEditItem = null" />
+  <!-- Traject-documents browser sheet + edit window, opened from TrajectMenu. -->
+  <TrajectDocuments />
   <SearchPopover
     ref="searchPopoverRef"
-    :laws="corpusLaws"
     @select-law="onSearchSelectLaw"
     @harvest-available="onSearchHarvestAvailable"
   />
@@ -1982,7 +2026,7 @@ async function handleActionSave() {
   margin-top: 8px;
   background: #fef2f2;
   color: #b91c1c;
-  font-family: 'SF Mono', monospace;
+  font-family: var(--primitives-font-family-monospace);
   font-size: 12px;
   padding: 8px 12px;
   border: 1px solid #fecaca;

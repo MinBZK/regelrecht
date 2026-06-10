@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
 import { useDependencies } from '../composables/useDependencies.js';
 import { useScenarios } from '../composables/useScenarios.js';
 import { lawUrl } from '../composables/corpusUrls.js';
@@ -33,6 +33,7 @@ const {
   progress: depsProgress,
   error: depsError,
   loadAllDependencies,
+  loadImplementors,
 } = useDependencies();
 
 // --- Scenario loading ---
@@ -155,39 +156,96 @@ const depsReady = ref(false);
 // --- Load dependencies when law YAML changes ---
 let watchVersion = 0;
 
-watch(
-  [() => props.lawYaml, () => props.ready, formState],
-  async ([lawYaml, isReady]) => {
-    if (!lawYaml || !isReady || !props.engine) return;
-    const version = ++watchVersion;
-    depsReady.value = false;
+// Debounced mirror of props.lawYaml. While the user types in the text or
+// machine pane, `lawYaml` changes on every keystroke (currentLawYaml re-dumps
+// the whole doc), which would re-run the expensive dependency reload + corpus
+// scan and toggle depsReady — making the scenario panel flicker. We only let
+// the cascade below fire ~300ms after the last edit. Same setTimeout debounce
+// pattern as ScenarioForm.vue's execute.
+const debouncedLawYaml = ref(props.lawYaml);
+let lawYamlDebounce = null;
 
-    await loadAllDependencies(lawYaml, props.engine, fetchLawYaml, props.trajectRef);
-    if (version !== watchVersion) return;
+watch(() => props.lawYaml, (val, prev) => {
+  // First population or cleared→set (no prior law loaded): apply immediately so
+  // the initial dependency load isn't delayed by 300ms. Any change from an
+  // existing value — keystroke edits, but also switching to another article of
+  // the already-open law — debounces.
+  clearTimeout(lawYamlDebounce);
+  if (!prev) {
+    debouncedLawYaml.value = val;
+    return;
+  }
+  lawYamlDebounce = setTimeout(() => {
+    debouncedLawYaml.value = val;
+  }, 300);
+});
 
-    // Also load dependencies from scenario background + per-scenario steps
-    if (formState.value) {
-      const allDeps = new Set();
-      for (const dep of formState.value.background?.dependencies || []) allDeps.add(dep);
-      for (const sc of formState.value.scenarios || []) {
-        for (const dep of sc.setup?.dependencies || []) allDeps.add(dep);
-      }
-      for (const depId of allDeps) {
-        try {
-          if (!props.engine.hasLaw(depId)) {
-            const yaml = await fetchLawYaml(depId);
-            props.engine.loadLaw(yaml);
-          }
-        } catch (e) {
-          console.warn(`Failed to load scenario dependency '${depId}':`, e);
+onBeforeUnmount(() => clearTimeout(lawYamlDebounce));
+
+// Run the dependency cascade for the current law + scenarios. Reads the
+// latest prop/state values at call time (not captured watch args) so a
+// debounced run always uses the freshest inputs.
+async function runDependencyLoad() {
+  const lawYaml = debouncedLawYaml.value;
+  if (!lawYaml || !props.ready || !props.engine) return;
+  const version = ++watchVersion;
+  depsReady.value = false;
+
+  const mainLawId = await loadAllDependencies(lawYaml, props.engine, fetchLawYaml);
+  if (version !== watchVersion) return;
+
+  // Also load dependencies from scenario background + per-scenario steps
+  if (formState.value) {
+    const allDeps = new Set();
+    for (const dep of formState.value.background?.dependencies || []) allDeps.add(dep);
+    for (const sc of formState.value.scenarios || []) {
+      for (const dep of sc.setup?.dependencies || []) allDeps.add(dep);
+    }
+    for (const depId of allDeps) {
+      try {
+        if (!props.engine.hasLaw(depId)) {
+          const yaml = await fetchLawYaml(depId);
+          props.engine.loadLaw(yaml);
         }
+      } catch (e) {
+        console.warn(`Failed to load scenario dependency '${depId}':`, e);
       }
     }
+  }
 
-    if (version === watchVersion) {
-      depsReady.value = true;
+  if (version === watchVersion) {
+    // The explicitly-declared deps are loaded — the panel is usable now, so
+    // mark ready and let scenarios auto-execute. Implementing regulations
+    // (IoC) load in the background: their corpus scan can be slow and is
+    // best-effort, so it must not gate the panel. `loadImplementors` is
+    // guarded to run at most once per law.
+    //
+    // Deliberately fire-and-forget — there is no AbortController. If this
+    // component unmounts mid-scan the promise keeps running, which is safe:
+    // Vue ignores ref writes after unmount, the shared WASM engine outlives
+    // the component, and the guard resets on error so a fresh mount retries.
+    depsReady.value = true;
+    if (mainLawId) {
+      loadImplementors(mainLawId, props.engine, fetchLawYaml, props.trajectRef);
     }
-  },
+  }
+}
+
+// `debouncedLawYaml`, `props.ready` and `formState` settle on separate ticks
+// during the initial load. Without coalescing, each settle fires this watch
+// and starts (then abandons, via `watchVersion`) a full dependency scan — up
+// to four overlapping corpus-wide reloads per open. A short debounce collapses
+// the burst into a single run after the inputs have settled.
+let depsScheduleTimer = null;
+function scheduleDependencyLoad() {
+  clearTimeout(depsScheduleTimer);
+  depsScheduleTimer = setTimeout(runDependencyLoad, 30);
+}
+onBeforeUnmount(() => clearTimeout(depsScheduleTimer));
+
+watch(
+  [debouncedLawYaml, () => props.ready, formState],
+  scheduleDependencyLoad,
   { immediate: true },
 );
 
@@ -409,16 +467,16 @@ defineExpose({ save: onSave });
   <!-- Overview -->
   <nldd-simple-section>
       <div v-if="scenariosLoading" class="sb-loading">Scenario's laden...</div>
-      <select
-        v-else-if="scenarioFiles.length > 1"
-        class="sb-select"
-        :value="selectedScenarioFile"
-        @change="onScenarioFileSelect"
-      >
-        <option v-for="sf in scenarioFiles" :key="sf.filename" :value="sf.filename">
-          {{ sf.filename }}
-        </option>
-      </select>
+      <nldd-dropdown v-else-if="scenarioFiles.length > 1" size="md">
+        <select
+          :value="selectedScenarioFile"
+          @change="onScenarioFileSelect"
+        >
+          <option v-for="sf in scenarioFiles" :key="sf.filename" :value="sf.filename">
+            {{ sf.filename }}
+          </option>
+        </select>
+      </nldd-dropdown>
 
       <nldd-inline-dialog v-if="saveSuccess" text="Opgeslagen"></nldd-inline-dialog>
       <nldd-inline-dialog v-if="saveError" variant="alert" text="Opslaan mislukt" :supporting-text="saveError.message || String(saveError)"></nldd-inline-dialog>
@@ -452,15 +510,19 @@ defineExpose({ save: onSave });
               </template>
             </nldd-container>
             <nldd-container slot="footer" padding-inline="16" padding-bottom="16">
+              <!-- Not gated on a cached result: onShowDetails always emits and
+                   the result sheet handles its own loading / empty / error
+                   (with reload) states. Disabling here turned the buttons into
+                   a dead end while dependencies were still loading (or after a
+                   save reset the cached result), so the user could never open
+                   the trace/graph to retry. -->
               <nldd-button-group orientation="horizontal">
                 <nldd-button
-                  :disabled="!scenarioResults.get(i) || undefined"
                   text="Resultaat"
                   @click="onShowDetails(i, 'trace')"
                 ></nldd-button>
                 <nldd-button
                   variant="secondary"
-                  :disabled="!scenarioResults.get(i) || undefined"
                   text="Graaf"
                   @click="onShowDetails(i, 'graph')"
                 ></nldd-button>
@@ -562,15 +624,6 @@ defineExpose({ save: onSave });
   font-size: 13px;
   margin-bottom: 4px;
   color: var(--semantics-text-color-primary, #1C2029);
-}
-
-.sb-select {
-  padding: 6px 8px;
-  border: 1px solid var(--semantics-dividers-color, #E0E3E8);
-  border-radius: 6px;
-  font-size: 13px;
-  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
-  background: white;
 }
 
 .sb-loading {
