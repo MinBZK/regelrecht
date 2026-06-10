@@ -11,7 +11,7 @@
 
 # ANSI colors. Stored as literal escapes and expanded by printf's format string.
 bold="\033[1m"  dim="\033[2m"  reset="\033[0m"
-green="\033[32m"  red="\033[31m"  cyan="\033[36m"  yellow="\033[33m"
+green="\033[32m"  red="\033[31m"  yellow="\033[33m"
 
 # dev_preflight [--rust] [--node] [--watch]
 # Verify the tools the recipe needs. Always checks docker. --node also checks
