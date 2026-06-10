@@ -79,7 +79,10 @@ De grens tussen (2) en (4) is de subtielste en belangrijkste: een open norm is
 
 **Meta-check, altijd uitvoeren**: maken de features en de YAML dezelfde fout? Zo ja,
 dan valideert de BDD-suite de YAML en niet de wet — groene tests bewijzen dan niets
-over juridische correctheid.
+over juridische correctheid. Het concrete wapen hiertegen is de techniek-skill
+**`regelrecht-scenario-traces`**: keten-checkpoints (assert elke knoop op het kritieke
+pad, niet alleen de endpoint) + golden-trace-snapshots maken elke ketenschakel los
+toetsbaar tegen de wettekst i.p.v. alleen de endpoint.
 
 ## Werkstroom
 
@@ -190,6 +193,9 @@ alleen naar private repos). Draai als preflight vóór elke push; PUBLIC/INTERNA
   tracker als 4-weg klasse 1 (modellering-fout), fixes → `modellering-fixes-plan`.
 - `regelrecht-audit-products` — live expert-validatie (workshop-laag); ontvangt de
   judgment-untranslatables en scope-analyse uit deze desk-laag.
+- `regelrecht-scenario-traces` — techniek-skill voor keten-checkpoints + golden-trace-
+  snapshots (zie de *Meta-check*): maakt elke ketenschakel los toetsbaar tegen de wettekst,
+  niet alleen de endpoint.
 - `regelrecht-dossier` — front-door router (`references/routing.md` = canonieke flow).
 
 ## Belangrijke regels

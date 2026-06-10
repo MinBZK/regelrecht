@@ -30,3 +30,7 @@ corpus-fout.}
 
 {Valideren deze scenario's de wet of de YAML? Als ze uit dezelfde (mogelijk foute)
 interpretatie komen als de YAML, bewijzen ze geen juridische correctheid.}
+
+{Assert je de keten of alleen de endpoint? Gebruik de keten-checkpoints + golden-traces
+uit `regelrecht-scenario-traces` zodat elke tussen-knoop los toetsbaar is tegen de
+wettekst — een groene endpoint met een ongeteste keten bewijst de tussenstappen niet.}
