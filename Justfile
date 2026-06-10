@@ -19,8 +19,14 @@ default:
 
 # Build WASM module for browser use
 wasm-build:
+    #!/usr/bin/env bash
+    set -euo pipefail
     cargo build --manifest-path packages/engine/Cargo.toml --target wasm32-unknown-unknown --release --features wasm
-    wasm-bindgen --target web --out-dir frontend/public/wasm/pkg packages/target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
+    # Ask cargo where it actually put the artifact. This honors a shared
+    # target-dir from `just dev-setup` (root .cargo/config.toml), CARGO_TARGET_DIR,
+    # or the default packages/target — so wasm-build works with or without dev-setup.
+    target_dir="$(cargo metadata --format-version=1 --no-deps --manifest-path packages/engine/Cargo.toml | jq -r .target_directory)"
+    wasm-bindgen --target web --out-dir frontend/public/wasm/pkg "$target_dir/wasm32-unknown-unknown/release/regelrecht_engine.wasm"
 
 # --- Quality checks ---
 
@@ -190,24 +196,30 @@ dev-setup:
         local bin="$1"; shift
         command -v "$bin" >/dev/null 2>&1 && { printf "${green}%s already installed${reset}\n" "$bin"; return 0; }
         printf "${bold}=> Installing %s…${reset} " "$bin"
-        if "$@" >/dev/null 2>&1; then printf "${green}done${reset}\n"; else printf "${red}failed${reset} (install %s manually)\n" "$bin"; fi
+        if "$@" >/dev/null 2>&1; then printf "${green}done${reset}\n"; return 0; else printf "${red}failed${reset} (install %s manually)\n" "$bin"; return 1; fi
     }
 
+    # Track whether mold ended up available — the shared-target setup is harmless
+    # without it, but mold linking (the headline feature) needs it on PATH.
+    mold_ok=false
     if command -v apt-get >/dev/null 2>&1; then
         sudo_if_needed apt-get update -qq || true
-        install_one mold    sudo_if_needed apt-get install -y mold
-        install_one sccache sudo_if_needed apt-get install -y sccache
+        if install_one mold sudo_if_needed apt-get install -y mold; then mold_ok=true; fi
+        install_one sccache sudo_if_needed apt-get install -y sccache || true
     elif command -v dnf >/dev/null 2>&1; then
-        install_one mold    sudo_if_needed dnf install -y mold
-        install_one sccache sudo_if_needed dnf install -y sccache
+        if install_one mold sudo_if_needed dnf install -y mold; then mold_ok=true; fi
+        install_one sccache sudo_if_needed dnf install -y sccache || true
     elif command -v brew >/dev/null 2>&1; then
-        install_one mold    brew install mold
-        install_one sccache brew install sccache
+        if install_one mold brew install mold; then mold_ok=true; fi
+        install_one sccache brew install sccache || true
     else
         printf "${yellow}No supported package manager found.${reset}\n"
         printf "  Install mold:    https://github.com/rui314/mold\n"
         printf "  Install sccache: cargo install sccache --locked\n"
     fi
+    # `install_one` returns 0 when the binary is already present, so a pre-existing
+    # mold also counts as OK regardless of which package-manager branch ran.
+    command -v mold >/dev/null 2>&1 && mold_ok=true
     # sccache may not be packaged everywhere — fall back to cargo install.
     command -v sccache >/dev/null 2>&1 || install_one sccache cargo install sccache --locked
 
@@ -225,7 +237,13 @@ dev-setup:
     } > "$root/.cargo/config.toml"
     printf "${green}=> Shared target dir:${reset} %s\n" "$shared"
 
-    printf "\n${bold}${green}Done.${reset} Mold linking + shared target are active for all worktrees.\n"
+    printf "\n"
+    if [ "$mold_ok" = true ]; then
+        printf "${bold}${green}Done.${reset} Mold linking + shared target are active for all worktrees.\n"
+    else
+        printf "${bold}${yellow}Partly done.${reset} Shared target is set up, but ${red}mold is missing${reset} — dev builds will fail to link.\n"
+        printf "${dim}Install mold manually (https://github.com/rui314/mold), then re-run 'just dev-setup'.${reset}\n"
+    fi
     printf "${dim}Old per-worktree packages/target dirs can now be removed to reclaim disk.${reset}\n"
     printf "${dim}Optional: enable sccache locally (disables incremental, best for cold/flag-varying builds):${reset}\n"
     printf "  export RUSTC_WRAPPER=sccache CARGO_INCREMENTAL=0\n"
