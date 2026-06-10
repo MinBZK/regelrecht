@@ -641,7 +641,7 @@
     },
     "comparisonOperation": {
       "type": "object",
-      "description": "Comparison operations that compare values. Operands may be numbers or ISO 8601 dates (YYYY-MM-DD); when both operands are dates they are compared chronologically (RFC-016).",
+      "description": "Comparison operations that compare values. Operands may be numbers or ISO 8601 dates (YYYY-MM-DD); when both operands are dates they are compared chronologically (RFC-020).",
       "required": [
         "operation",
         "subject"
@@ -916,7 +916,7 @@
     },
     "dateDiffOperation": {
       "type": "object",
-      "description": "Signed difference between two dates, expressed in a chosen unit. Positive when 'to' is on or after 'from'. Months and years count complete calendar units (RFC-016).",
+      "description": "Signed difference between two dates, expressed in a chosen unit. Positive when 'to' is on or after 'from'. Months and years count complete calendar units (RFC-020).",
       "required": [
         "operation",
         "from",
