@@ -271,9 +271,13 @@ async function confirmDelete() {
   pendingDeletePath.value = null;
   if (!path) return;
   deleteNotice.value = null;
+  // Vóór de delete vastleggen of dit het open document is: deleteDocument
+  // wist currentPath zelf al bij succes, dus ná de await klopt die
+  // vergelijking nooit meer en bleef het venster (leeg) openstaan.
+  const wasOpenDocument = path === currentPath.value;
   const result = await deleteDocument(path);
   if (result?.ok) {
-    if (path === currentPath.value) windowOpen.value = false;
+    if (wasOpenDocument) windowOpen.value = false;
   } else if (result?.conflict) {
     deleteNotice.value =
       `"${displayTitle(path)}" is intussen door iemand anders gewijzigd; de lijst is ververst. ` +
