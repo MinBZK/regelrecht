@@ -402,11 +402,27 @@ async fn main() {
                 .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
         );
 
+        // Secure cookies require HTTPS in the browser — except production,
+        // which always serves the editor over an https BASE_URL, so the
+        // default is `Secure`. The one exception is local SSO dev
+        // (`just editor-sso`), which serves over http://localhost: Chrome and
+        // Firefox send Secure cookies over http://localhost as a special case,
+        // but Safari does not, so the OIDC handshake (CSRF/PKCE live in the
+        // session cookie) never completes there. Drop Secure only when BASE_URL
+        // is an http localhost origin, which Safari then accepts.
+        let secure_cookie = !is_http_localhost(app_state.config.base_url.as_deref());
+        if !secure_cookie {
+            tracing::warn!(
+                "session cookie Secure flag is OFF — BASE_URL is an http localhost origin \
+                 (local SSO dev). This must never happen in production."
+            );
+        }
+
         let session_layer = SessionManagerLayer::new(session_store)
             .with_expiry(Expiry::OnInactivity(time::Duration::hours(8)))
             .with_same_site(tower_sessions::cookie::SameSite::Lax)
             .with_http_only(true)
-            .with_secure(true);
+            .with_secure(secure_cookie);
 
         // Clone for the refresh layer: `with_state` below consumes app_state,
         // and from_fn_with_state needs its own copy of the OIDC client/config.
@@ -679,6 +695,33 @@ fn resolve_pipeline_api_url(hostname: Option<&str>, env_url: Option<String>) -> 
         .or(env_url)
 }
 
+/// True when `base_url` is an http (not https) origin pointing at the local
+/// machine. Used to drop the session cookie's `Secure` flag for local SSO dev
+/// (`just editor-sso` over http://localhost) so Safari — which, unlike Chrome
+/// and Firefox, refuses Secure cookies over http://localhost — completes the
+/// OIDC handshake. Production always serves over an https BASE_URL, so this is
+/// false there and cookies stay Secure. A missing BASE_URL is treated as
+/// non-local (Secure stays on) — the safe default.
+fn is_http_localhost(base_url: Option<&str>) -> bool {
+    let Some(url) = base_url else {
+        return false;
+    };
+    let Some(rest) = url.strip_prefix("http://") else {
+        return false;
+    };
+    // Drop the path, then the `:port`, so we match the host exactly and don't
+    // treat e.g. `http://localhost.attacker.example` as local. A bracketed
+    // IPv6 host (`[::1]`) keeps its inner colons, so strip the port only after
+    // any closing bracket.
+    let authority = rest.split('/').next().unwrap_or("");
+    let host = match authority.rsplit_once(']') {
+        Some((bracketed, _port)) => format!("{bracketed}]"), // `[::1]:7300` -> `[::1]`
+        None => authority.split(':').next().unwrap_or("").to_string(),
+    }
+    .to_ascii_lowercase();
+    host == "localhost" || host == "127.0.0.1" || host == "[::1]"
+}
+
 #[cfg(test)]
 mod pipeline_api_url_tests {
     use super::resolve_pipeline_api_url;
@@ -738,5 +781,57 @@ mod pipeline_api_url_tests {
     fn no_hostname_uses_env_override() {
         let url = resolve_pipeline_api_url(None, Some("http://localhost:8001".to_string()));
         assert_eq!(url.as_deref(), Some("http://localhost:8001"));
+    }
+}
+
+#[cfg(test)]
+mod http_localhost_tests {
+    use super::is_http_localhost;
+
+    #[test]
+    fn http_localhost_with_port_is_local() {
+        assert!(is_http_localhost(Some("http://localhost:7300")));
+    }
+
+    #[test]
+    fn http_localhost_bare_is_local() {
+        assert!(is_http_localhost(Some("http://localhost")));
+    }
+
+    #[test]
+    fn http_loopback_ipv4_is_local() {
+        assert!(is_http_localhost(Some("http://127.0.0.1:7300")));
+    }
+
+    #[test]
+    fn http_loopback_ipv6_is_local() {
+        assert!(is_http_localhost(Some("http://[::1]:7300")));
+    }
+
+    #[test]
+    fn https_localhost_is_not_local() {
+        // https already lets Safari accept Secure cookies — keep them Secure.
+        assert!(!is_http_localhost(Some("https://localhost:7300")));
+    }
+
+    #[test]
+    fn production_https_origin_is_not_local() {
+        assert!(!is_http_localhost(Some(
+            "https://editor.regelrecht.rijks.app"
+        )));
+    }
+
+    #[test]
+    fn missing_base_url_defaults_to_secure() {
+        assert!(!is_http_localhost(None));
+    }
+
+    /// A hostname that merely starts with `localhost` must not be treated as
+    /// local — the host is matched exactly, not by prefix.
+    #[test]
+    fn localhost_lookalike_host_is_not_local() {
+        assert!(!is_http_localhost(Some(
+            "http://localhost.attacker.example"
+        )));
     }
 }
