@@ -481,24 +481,22 @@ async fn serve(
             std::process::exit(1);
         });
 
+    // The periodic session cleanup must not take the API down with it: a
+    // single DB hiccup ("pool timed out while waiting for an open
+    // connection", seen roughly hourly in dev) used to exit(1) the whole
+    // process via a tokio::select! here. Log and keep serving instead —
+    // sessions expire by timestamp regardless, and deletion of expired
+    // rows resumes on the next process start.
     if let Some(deletion_handle) = deletion_handle {
-        tokio::select! {
-            result = axum::serve(listener, app) => {
-                if let Err(e) = result {
-                    tracing::error!(error = %e, "server error");
-                    std::process::exit(1);
-                }
+        tokio::spawn(async move {
+            match deletion_handle.await {
+                Ok(Ok(())) => tracing::warn!("session deletion task exited unexpectedly"),
+                Ok(Err(e)) => tracing::warn!(error = %e, "session deletion task failed; continuing without periodic cleanup"),
+                Err(e) => tracing::warn!(error = %e, "session deletion task panicked; continuing without periodic cleanup"),
             }
-            result = deletion_handle => {
-                match result {
-                    Ok(Ok(())) => tracing::error!("session deletion task exited unexpectedly"),
-                    Ok(Err(e)) => tracing::error!(error = %e, "session deletion task failed"),
-                    Err(e) => tracing::error!(error = %e, "session deletion task panicked"),
-                }
-                std::process::exit(1);
-            }
-        }
-    } else if let Err(e) = axum::serve(listener, app).await {
+        });
+    }
+    if let Err(e) = axum::serve(listener, app).await {
         tracing::error!(error = %e, "server error");
         std::process::exit(1);
     }
