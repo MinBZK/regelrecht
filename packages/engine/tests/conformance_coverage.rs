@@ -8,7 +8,10 @@ use regelrecht_engine::types::Operation;
 use std::collections::HashSet;
 
 /// Path to the latest conformance manifest, relative to the engine crate root.
-const MANIFEST: &str = include_str!("../../../conformance/v0.5.0/manifest.json");
+/// Bump this path when a new schema version adds operations: per RFC-014 each
+/// schema version carries its own manifest, so the version in the path and the
+/// `schema_version` field inside the manifest must stay in lockstep.
+const MANIFEST: &str = include_str!("../../../conformance/v0.5.3/manifest.json");
 
 #[test]
 fn every_schema_operation_has_a_conformance_level() {
