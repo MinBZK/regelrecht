@@ -529,6 +529,29 @@ export const content: Record<'nl' | 'en', LandingContent> = {
             { label: 'Dian Hoppen (recruiter)', href: 'tel:+31650062738' },
           ],
         },
+        {
+          title: 'Redesign Analist',
+          organisation: 'Rijksorganisatie ODI · Ministerie van BZK',
+          pitch:
+            'Analyseer wet- en regelgeving en vertaal die naar machine-uitvoerbare specificaties. Je ontleedt complexe uitvoeringsprocessen en werkt in multidisciplinaire teams samen met engineers die de regels in code omzetten.',
+          meta: [
+            'Schaal 12',
+            '€4.691 – €6.907',
+            '32 – 36 uur',
+            'Den Haag',
+            'Sluit 24 juni 2026',
+          ],
+          ctaLabel: 'Bekijk de vacature',
+          ctaHref:
+            'https://www.werkenvoornederland.nl/vacatures/redesign-analist-BZK-2026-9806',
+          contacts: [
+            { label: 'Abram Klop (opgavemanager)', href: 'tel:+31650035732' },
+            {
+              label: 'Suzanne de Jager (recruiter)',
+              href: 'tel:+31627295317',
+            },
+          ],
+        },
       ],
     },
     feedback: {
@@ -983,6 +1006,29 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           contacts: [
             { label: 'Abram Klop (opgavemanager)', href: 'tel:+31650035732' },
             { label: 'Dian Hoppen (recruiter)', href: 'tel:+31650062738' },
+          ],
+        },
+        {
+          title: 'Redesign Analyst',
+          organisation: 'Rijksorganisatie ODI · Ministry of the Interior',
+          pitch:
+            'Analyse Dutch legislation and translate it into machine-executable specifications. You dissect complex government processes and work in multidisciplinary teams alongside the engineers who turn the rules into code. In Dutch (fluency required).',
+          meta: [
+            'Scale 12',
+            '€4,691 – €6,907',
+            '32 – 36 hours',
+            'The Hague',
+            'Closes 24 June 2026',
+          ],
+          ctaLabel: 'View the vacancy (Dutch)',
+          ctaHref:
+            'https://www.werkenvoornederland.nl/vacatures/redesign-analist-BZK-2026-9806',
+          contacts: [
+            { label: 'Abram Klop (opgavemanager)', href: 'tel:+31650035732' },
+            {
+              label: 'Suzanne de Jager (recruiter)',
+              href: 'tel:+31627295317',
+            },
           ],
         },
       ],
