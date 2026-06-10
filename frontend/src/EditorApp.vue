@@ -1342,7 +1342,7 @@ async function handleActionSave() {
               <nldd-menu id="settings-menu-md" anchor="settings-menu-btn-md">
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
                 <template v-else-if="!authLoading && !authenticated">
-                  <nldd-menu-item text="Inloggen" icon="login" @click="login"></nldd-menu-item>
+                  <nldd-menu-item text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                   <nldd-menu-divider></nldd-menu-divider>
                 </template>
                 <nldd-menu-group text="Functies">
@@ -1410,7 +1410,7 @@ async function handleActionSave() {
               <nldd-menu id="settings-menu-lg" anchor="settings-menu-btn-lg">
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
                 <template v-else-if="!authLoading && !authenticated">
-                  <nldd-menu-item text="Inloggen" icon="login" @click="login"></nldd-menu-item>
+                  <nldd-menu-item text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                   <nldd-menu-divider></nldd-menu-divider>
                 </template>
                 <nldd-menu-group text="Functies">
@@ -1863,7 +1863,7 @@ async function handleActionSave() {
               <nldd-menu id="settings-menu-sm" anchor="settings-menu-btn-sm">
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
                 <template v-else-if="!authLoading && !authenticated">
-                  <nldd-menu-item text="Inloggen" icon="login" @click="login"></nldd-menu-item>
+                  <nldd-menu-item text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                   <nldd-menu-divider></nldd-menu-divider>
                 </template>
                 <nldd-menu-group text="Functies">

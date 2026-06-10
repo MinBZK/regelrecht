@@ -40,8 +40,12 @@ export function useAuth() {
   // `window.location` still points at the source route) can forward it to
   // SSO. Falls back to the current location for the common case.
   function login(returnUrl) {
-    const url = returnUrl
-      ?? window.location.pathname + window.location.search + window.location.hash;
+    // Only accept an explicit string: a template that passes `login` as a
+    // bare event handler (`@click="login"`) hands us a PointerEvent, which
+    // would otherwise stringify into return_url=[object PointerEvent].
+    const url = typeof returnUrl === 'string' && returnUrl
+      ? returnUrl
+      : window.location.pathname + window.location.search + window.location.hash;
     window.location.href = '/auth/login?return_url=' + encodeURIComponent(url);
   }
 
