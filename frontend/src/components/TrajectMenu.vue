@@ -112,6 +112,18 @@ function openInfoForActive() {
   showInfo.value = true;
 }
 
+// Na een verwijderd traject: stond je erin (de actieve ref eindigt op de
+// laatste 8 hex-tekens van het uuid), navigeer dan naar de sectie-root —
+// editor → trajectkeuze, bibliotheek → gewone bibliotheek. De trajectlijst
+// zelf is al ververst door deleteTraject.
+function onTrajectDeleted(deletedId) {
+  const ref = activeTrajectRef.value;
+  const tail = String(deletedId).replace(/-/g, '').slice(-8);
+  if (!ref || !ref.endsWith(`-${tail}`)) return;
+  const inLibrary = route.name === 'library' || route.name === 'library-traject';
+  router.push(inLibrary ? { name: 'library' } : { name: 'editor' });
+}
+
 function closeCreate() {
   if (createBusy.value) return;
   showCreate.value = false;
@@ -249,6 +261,7 @@ async function submitCreate() {
     v-model="showInfo"
     :traject-id="infoTrajectId"
     :traject-name="infoTrajectName"
+    @deleted="onTrajectDeleted"
   />
 
   <!-- Teleport the sheet out of the toolbar so it doesn't inherit the

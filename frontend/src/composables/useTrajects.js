@@ -52,6 +52,19 @@ export async function createTraject(payload) {
   return created;
 }
 
+// Owner-only hard delete (backend: DELETE /api/trajects/:id → 204). The
+// upstream branch on GitHub is deliberately left untouched by the backend.
+export async function deleteTraject(trajectId) {
+  const resp = await fetch(`/api/trajects/${encodeURIComponent(trajectId)}`, {
+    method: 'DELETE',
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(text || `Delete failed: ${resp.status}`);
+  }
+  await refreshTrajects();
+}
+
 // Active traject lives in `route.params.trajectRef` (per-tab state),
 // derived here so consumers do not each repeat the lookup. Returns
 // `null` for any route without a traject param — that's the "global

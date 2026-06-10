@@ -51,11 +51,18 @@ function mountDialog() {
   return mount(TrajectInfoDialog, {
     attachTo: document.body,
     // Render <Teleport> content inline so the assertions can reach it via
-    // wrapper.text()/wrapper.get(); the component teleports to <body> in
+    // wrapper.get()/wrapper.findAll(); the component teleports to <body> in
     // production to escape the toolbar's clipping (like TrajectMembersDialog).
     global: { stubs: { teleport: true } },
     props: { modelValue: false, trajectId: 'abc', trajectName: 'Tariefswijziging 2026' },
   });
+}
+
+// Values render as `text` attributes on nldd-text-cell (custom elements
+// don't expand their shadow templates in this env), so assertions read
+// the attribute values instead of wrapper.text().
+function cellTexts(wrapper) {
+  return wrapper.findAll('nldd-text-cell').map((c) => c.attributes('text'));
 }
 
 describe('TrajectInfoDialog', () => {
@@ -67,12 +74,12 @@ describe('TrajectInfoDialog', () => {
     await flushPromises();
 
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/trajects/abc');
-    const text = wrapper.text();
-    expect(text).toContain('Tariefswijziging 2026');
-    expect(text).toContain('Waarom dit traject');
-    expect(text).toContain('zorgtoeslag');
-    expect(text).toContain('bezig');
-    expect(text).toContain('owner');
+    const texts = cellTexts(wrapper);
+    expect(texts).toContain('Tariefswijziging 2026');
+    expect(texts).toContain('Waarom dit traject');
+    expect(texts).toContain('zorgtoeslag');
+    expect(texts).toContain('bezig');
+    expect(texts).toContain('owner');
   });
 
   it('renders the repo as a new-tab nldd-link to the traject branch', async () => {
@@ -86,7 +93,7 @@ describe('TrajectInfoDialog', () => {
     // slot text, and auto-rel only exist once the real Lit component
     // upgrades in the browser. We bind href/target/text/rel explicitly so
     // they are present as attributes here.
-    const link = wrapper.get('nldd-link.traject-info-repo-link');
+    const link = wrapper.get('nldd-link');
     expect(link.attributes('href')).toBe(
       'https://github.com/MinBZK/regelrecht-corpus/tree/traject/tariefswijziging-2026',
     );
@@ -101,10 +108,10 @@ describe('TrajectInfoDialog', () => {
     await wrapper.setProps({ modelValue: true });
     await flushPromises();
 
-    const text = wrapper.text();
-    expect(text).toContain('traject/tariefswijziging-2026'); // branch
-    expect(text).toContain('development'); // base branch
-    expect(text).toContain('regulation/nl'); // subpath
+    const texts = cellTexts(wrapper);
+    expect(texts).toContain('traject/tariefswijziging-2026'); // branch
+    expect(texts).toContain('development'); // base branch
+    expect(texts).toContain('regulation/nl'); // subpath
   });
 
   it('falls back to "repo-root" when the subpath is empty', async () => {
@@ -114,7 +121,7 @@ describe('TrajectInfoDialog', () => {
     await wrapper.setProps({ modelValue: true });
     await flushPromises();
 
-    expect(wrapper.text()).toContain('repo-root');
+    expect(cellTexts(wrapper)).toContain('repo-root');
   });
 
   it('shows an error message when the load fails', async () => {
@@ -123,7 +130,7 @@ describe('TrajectInfoDialog', () => {
     await wrapper.setProps({ modelValue: true });
     await flushPromises();
 
-    expect(wrapper.text()).toMatch(/niet laden|404/i);
+    expect(wrapper.get('nldd-inline-dialog').attributes('text')).toMatch(/niet laden|404/i);
   });
 
   it('emits update:modelValue=false when dismissed', async () => {
@@ -146,8 +153,8 @@ describe('TrajectInfoDialog', () => {
     // No writable source → no repo link, and the value cells read "onbekend".
     // Subpath must NOT fall back to "repo-root" here (that implies a real
     // source whose path is empty); it should read "onbekend" like the others.
-    expect(wrapper.find('nldd-link.traject-info-repo-link').exists()).toBe(false);
-    expect(wrapper.text()).toContain('onbekend');
-    expect(wrapper.text()).not.toContain('repo-root');
+    expect(wrapper.find('nldd-link').exists()).toBe(false);
+    expect(cellTexts(wrapper)).toContain('onbekend');
+    expect(cellTexts(wrapper)).not.toContain('repo-root');
   });
 });
