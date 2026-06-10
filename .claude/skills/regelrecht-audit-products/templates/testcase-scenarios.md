@@ -8,6 +8,12 @@ de engine? En hoe rekenen jullie eigenlijk?"*
 > casussen — **nooit echte persoonsgegevens**. De BDD-versie kan in een
 > `features/`-feature-file staan.
 
+> **Methode**: bouw de scenario's met `regelrecht-scenario-traces` — geef elke casus een
+> naam (persona op casus-assen, niet een losse leaf-bundel) zodat experts 'm herkennen, en
+> kies personas die samen verschillende keten-paden raken. Bij verschil met de praktijk
+> wijzen de keten-checkpoints aan wélke schakel afwijkt, niet alleen dát de uitkomst
+> verschilt.
+
 ---
 
 ## 1. {Scenario-titel — kort beoordelings-pad}

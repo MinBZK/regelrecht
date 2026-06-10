@@ -85,3 +85,9 @@ wat eigenlijk onze modelleerfout is. Voor kennis-ontginning is een ruw corpus pr
 | Untranslatables | factual vs judgment geclassificeerd | judgment-set = beslispunten |
 | Scenario's | `engine-tests` (regressie) | `testcase-scenarios` (expert-validatie) |
 | Verslag/rapport | `eindrapport` (per cyclus) | `verslag-intern`/`-extern` (per sessie) |
+
+Beide scenario-bruggen zijn gebouwd met de techniek-skill **`regelrecht-scenario-traces`**
+(casus vindbaar via persona's/assen; keten leesbaar/geassert via keten-checkpoints +
+golden-traces). Het is geen vierde laag in de flow maar een gedeelde methode die desk
+(`engine-tests`, de features-vs-YAML meta-check) en workshop (`testcase-scenarios`) allebei
+gebruiken.

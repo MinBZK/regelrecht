@@ -15,6 +15,10 @@ eigenlijke werk gebeurt in de twee skills waarnaar het routeert.
   bevindingen.
 - **`regelrecht-audit-products`** — de menselijke validatielaag (live): valideert met
   domein-experts. Levert consensus + correctiepunten + testcases.
+- **`regelrecht-scenario-traces`** — gedeelde techniek-laag (geen aparte fase): maakt
+  casuïstiek vindbaar (persona's/assen) en norm-ketens leesbaar/geassert (keten-checkpoints
+  + golden-traces). Wordt door beide werk-skills gebruikt bij het schrijven van scenario's
+  en het reviewen van traces.
 
 De volledige flow, het gate-criterium en de handoff-lus staan in `references/routing.md`
 (de canonieke bron; beide werk-skills verwijzen hierheen). Voor het inwerken van nieuwe
