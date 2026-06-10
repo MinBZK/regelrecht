@@ -509,13 +509,11 @@ function handleKeydown(e) {
     <nldd-modal-dialog
       ref="deleteModalEl"
       variant="alert"
-      text="Document verwijderen?"
-      :supporting-text="pendingDeletePath
-        ? `${displayTitle(pendingDeletePath)} wordt definitief uit het traject verwijderd.`
-        : ''"
+      :text="pendingDeletePath ? `${displayTitle(pendingDeletePath)} verwijderen?` : 'Document verwijderen?'"
+      supporting-text="Het document wordt definitief uit het traject verwijderd. Dit kan niet ongedaan worden gemaakt."
       @close="cancelDelete"
     >
-      <nldd-button slot="actions" text="Annuleer" @click="cancelDelete"></nldd-button>
+      <nldd-button slot="actions" variant="primary" text="Behoud document" @click="cancelDelete"></nldd-button>
       <nldd-button
         slot="actions"
         variant="destructive"
