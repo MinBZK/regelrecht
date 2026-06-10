@@ -296,11 +296,12 @@ just editor-sso
 cd frontend && npx vite --port 7300
 ```
 
-Open `http://localhost:7300` in **Chrome or Firefox** and log in. The session
-cookie is marked `Secure`; Chrome 89+/Firefox send Secure cookies over
-`http://localhost`, but **Safari does not** — there the OIDC callback fails with
-a CSRF/nonce mismatch. For Safari, front the editor with an `https://localhost`
-TLS proxy instead.
+Open `http://localhost:7300` in any browser and log in. When `BASE_URL` is an
+http localhost origin the editor drops the session cookie's `Secure` flag, so
+Safari — which, unlike Chrome and Firefox, refuses Secure cookies over
+`http://localhost` — completes the OIDC handshake too. Outside localhost
+(production always serves over an `https://` `BASE_URL`) the cookie stays
+`Secure`.
 
 On a successful start the editor-api log shows
 `using OIDC_DISCOVERY_URL for issuer: …` and
