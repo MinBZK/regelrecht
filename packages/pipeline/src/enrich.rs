@@ -223,6 +223,14 @@ async fn watch_memory(pid: Option<u32>, max_rss_mb: u64) -> u64 {
 
 /// Read a process's resident set size (RSS) from `/proc/<pid>/status`, in kB.
 /// Returns `None` if the file is missing or unparsable (e.g. the process exited).
+///
+/// This measures only the direct child PID, not the whole process group that
+/// `kill_process_group` SIGKILLs. That asymmetry is intentional: for the current
+/// opencode/Claude agent topology the runaway memory is the accumulated
+/// fetched-page bodies held in the main node process we spawn, so its RSS is the
+/// signal that matters. If a future agent moved that growth into a forked
+/// subprocess, this would need to sum the group's RSS (e.g. walk
+/// `/proc/<pid>/task` / children) to stay accurate.
 fn read_vmrss_kb(pid: u32) -> Option<u64> {
     let status = std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
     parse_vmrss_kb(&status)
