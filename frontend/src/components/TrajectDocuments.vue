@@ -237,7 +237,7 @@ function handleKeydown(e) {
             :text="deleteNotice"
           ></nldd-inline-dialog>
 
-          <nldd-inline-dialog v-if="listLoading" text="Documenten laden…"></nldd-inline-dialog>
+          <nldd-activity-indicator v-if="listLoading" text="Documenten laden" show-text></nldd-activity-indicator>
           <nldd-inline-dialog
             v-else-if="listError"
             variant="alert"
@@ -321,7 +321,7 @@ function handleKeydown(e) {
         ></nldd-top-title-bar>
 
         <nldd-simple-section>
-          <nldd-inline-dialog v-if="docLoading" text="Document laden…"></nldd-inline-dialog>
+          <nldd-activity-indicator v-if="docLoading" text="Document laden" show-text></nldd-activity-indicator>
           <template v-else>
             <nldd-inline-dialog v-if="conflict" variant="warning" :text="conflict">
               <nldd-button slot="actions" size="md" text="Server-versie laden" @click="reloadCurrent"></nldd-button>

@@ -803,7 +803,7 @@ watch(activeTrajectRef, () => {
               <nldd-simple-section width="full">
                 <nldd-title id="home-titel" size="3"><h3>{{ LIBRARY_HOME_TITLE }}</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
-                <nldd-inline-dialog v-if="loading" text="Laden..."></nldd-inline-dialog>
+                <nldd-activity-indicator v-if="loading" text="Bibliotheek laden" show-text></nldd-activity-indicator>
                 <!-- Nothing curated yet (no favorites, no traject edits): point
                      the user at search rather than dumping the whole corpus. -->
                 <nldd-inline-dialog
@@ -918,7 +918,7 @@ watch(activeTrajectRef, () => {
                   </nldd-toolbar-item>
                 </nldd-toolbar>
                 <nldd-spacer v-if="selectedLaw" size="16"></nldd-spacer>
-                <nldd-inline-dialog v-if="selectedLawLoading" text="Laden..."></nldd-inline-dialog>
+                <nldd-activity-indicator v-if="selectedLawLoading" text="Artikelen laden" show-text></nldd-activity-indicator>
                 <nldd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een wet"></nldd-inline-dialog>
                 <nldd-list v-else variant="simple">
                   <nldd-list-item
@@ -975,7 +975,7 @@ watch(activeTrajectRef, () => {
               </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="selectedLawLoading">
                 <!-- Loading takes precedence over `lawError` to avoid flashing a stale error during a refetch. -->
-                <nldd-inline-dialog text="Wet laden…"></nldd-inline-dialog>
+                <nldd-activity-indicator text="Artikel laden" show-text></nldd-activity-indicator>
               </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="lawError">
                 <!-- 404 = law not in active traject; give the user an exit instead of a generic error. -->

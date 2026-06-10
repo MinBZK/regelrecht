@@ -1479,7 +1479,7 @@ async function handleActionSave() {
         <!-- Loading takes precedence over `error` to avoid flashing a stale error during a refetch. -->
         <nldd-page v-else-if="loading">
           <nldd-simple-section width="full">
-            <nldd-inline-dialog text="Wet laden…"></nldd-inline-dialog>
+            <nldd-activity-indicator text="Wet laden" show-text></nldd-activity-indicator>
           </nldd-simple-section>
         </nldd-page>
 
@@ -1660,10 +1660,11 @@ async function handleActionSave() {
                     text="Notities niet geladen"
                     :supporting-text="notesError.message"
                   ></nldd-inline-dialog>
-                  <nldd-inline-dialog
+                  <nldd-activity-indicator
                     v-else-if="notesLoading"
-                    text="Notities laden…"
-                  ></nldd-inline-dialog>
+                    text="Notities laden"
+                    show-text
+                  ></nldd-activity-indicator>
                   <template v-else>
                     <AnnotatedText
                       :article="selectedArticle"
