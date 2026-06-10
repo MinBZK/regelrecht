@@ -100,15 +100,17 @@ CI uses both mold and sccache (see `.github/workflows/ci.yml`).
 
 ```bash
 just dev               # full native dev stack (admin + both frontends + grafana/prometheus)
-just dev-frontend      # frontend-focused: editor only (editor-api + editor UI + DB), no observability
-just dev-frontend admin      # admin API + admin UI + DB
-just dev-frontend lawmaking  # lawmaking UI only (no backend)
-just dev-frontend all        # all frontends on distinct ports (editor 7300, admin 7400, lawmaking 7500)
+just dev-frontend            # all frontends (editor 7300, admin 7400, lawmaking 7500), no observability
+just dev-frontend editor     # just the editor (editor-api + editor UI + DB)
+just dev-frontend admin      # just the admin API + admin UI + DB
+just dev-frontend lawmaking  # just the lawmaking UI (no backend)
 just dev-down          # stop whichever of the above is running
 ```
 
-`dev-frontend` starts only the components a given frontend needs — no grafana,
-prometheus, or workers. The editor runs with real SSO against the central
+`dev-frontend` with no argument starts every frontend; pass `editor`, `admin`,
+or `lawmaking` to start just one. Either way it starts only the components those
+frontends need — no grafana, prometheus, or workers. The editor runs with real
+SSO against the central
 Keycloak, so it needs `.env.sso-local` (copy `.env.sso-local.example`). It and
 `just dev` are mutually exclusive (they share `.dev-pids` and ports) — run one at
 a time.
