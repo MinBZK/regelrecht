@@ -44,6 +44,12 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Install mold linker (Linux)
+        # x86_64-linux builds use the mold linker from packages/.cargo/config.toml.
+        # The macOS targets fall outside that target-scoped config, so no mold there.
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y mold
+
       - name: Cache cargo registry
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
         with:

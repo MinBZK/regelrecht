@@ -448,6 +448,10 @@ jobs:
     permissions:
       contents: read
       packages: read
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
         if: needs.changes.outputs.admin == 'true'
@@ -468,13 +472,13 @@ jobs:
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-registry-
 
-      - name: Cache cargo target
+      - name: Install mold linker
         if: needs.changes.outputs.admin == 'true'
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
-        with:
-          path: packages/target
-          key: ${{ runner.os }}-cargo-target-admin-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-target-admin-
+        run: sudo apt-get update && sudo apt-get install -y mold
+
+      - name: Run sccache
+        if: needs.changes.outputs.admin == 'true'
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696  # v0.0.10
 
       - name: Install just
         if: needs.changes.outputs.admin == 'true'
@@ -524,6 +528,10 @@ jobs:
     needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
         if: needs.changes.outputs.editor-api == 'true'
@@ -544,13 +552,13 @@ jobs:
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-registry-
 
-      - name: Cache cargo target
+      - name: Install mold linker
         if: needs.changes.outputs.editor-api == 'true'
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
-        with:
-          path: packages/target
-          key: ${{ runner.os }}-cargo-target-editor-api-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-target-editor-api-
+        run: sudo apt-get update && sudo apt-get install -y mold
+
+      - name: Run sccache
+        if: needs.changes.outputs.editor-api == 'true'
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696  # v0.0.10
 
       - name: Install just
         if: needs.changes.outputs.editor-api == 'true'
