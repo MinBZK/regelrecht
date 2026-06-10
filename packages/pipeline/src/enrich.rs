@@ -120,7 +120,7 @@ impl LlmRunner for ProcessLlmRunner {
                             let preview = String::from_utf8_lossy(&buf[..n.min(200)]);
                             let preview = preview.trim_end();
                             if !preview.is_empty() {
-                                tracing::debug!(provider = %drain_provider, "agent stdout: {preview}");
+                                tracing::debug!(provider = %drain_provider, %preview, "agent stdout");
                             }
                         }
                     }
