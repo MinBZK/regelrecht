@@ -20,6 +20,20 @@ const { lang, showSignup } = Astro.props;
 const t = content[lang];
 const home = lang === 'en' ? '/en/' : '/';
 
+// Vacancy closing dates render as an absolute date at build time (also the
+// no-JS text); the script at the bottom rewrites them relative to the
+// visitor's clock ("Sluit vandaag", "Gesloten gisteren"), which a static
+// build can't know.
+const closesDate = new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : 'nl-NL', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
+function parseIsoDate(iso: string): Date {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
 // The example screenshots live in src/assets so Astro's <Image> generates
 // responsive, optimised variants (the originals are ~3390px wide for a ~600px
 // column) and sets intrinsic width/height to avoid layout shift. They are
@@ -197,29 +211,36 @@ const toc = [
             <p>{t.jobs.lede}</p>
           </nldd-rich-text>
           <nldd-spacer size="24" />
-          <nldd-collection layout="grid" item-width="720px">
+          <nldd-collection layout="horizontal-scroll" item-width="480px">
             {t.jobs.items.map((job) => (
               <nldd-card accessible-label={`${t.jobs.vacancyTag}: ${job.title}`}>
                 <nldd-container padding="20">
-                  <nldd-container layout="wrap" gap="6" horizontal-alignment="left">
+                  <div class="rr-tag-row">
                     <nldd-tag color="accent" size="md">{t.jobs.vacancyTag}</nldd-tag>
                     <nldd-tag color="brand" size="md">{job.organisation}</nldd-tag>
-                  </nldd-container>
-                  <nldd-spacer size="12" />
+                  </div>
+                  <nldd-spacer size="16" />
                   <nldd-title size="3">
                     <h3>{job.title}</h3>
                   </nldd-title>
-                  <nldd-spacer size="12" />
+                  <nldd-spacer size="16" />
                   <nldd-rich-text>
                     <p>{job.pitch}</p>
                   </nldd-rich-text>
-                  <nldd-spacer size="16" />
-                  <nldd-container layout="wrap" gap="6" horizontal-alignment="left">
+                  <nldd-spacer size="20" />
+                  <div class="rr-tag-row">
                     {job.meta.map((m) => (
                       <nldd-tag color="neutral" size="md">{m}</nldd-tag>
                     ))}
-                  </nldd-container>
-                  <nldd-spacer size="20" />
+                    <nldd-tag
+                      color="warning"
+                      size="md"
+                      data-closes={job.closes}
+                      data-closes-open={t.jobs.closesLabel.open}
+                      data-closes-closed={t.jobs.closesLabel.closed}
+                    >{t.jobs.closesLabel.open} {closesDate.format(parseIsoDate(job.closes))}</nldd-tag>
+                  </div>
+                  <nldd-spacer size="24" />
                   <nldd-button-group orientation="horizontal">
                     <nldd-button
                       variant="primary"
@@ -230,7 +251,7 @@ const toc = [
                   </nldd-button-group>
                   {job.contacts.length > 0 && (
                     <Fragment>
-                      <nldd-spacer size="16" />
+                      <nldd-spacer size="20" />
                       <nldd-rich-text>
                         <p>
                           {t.jobs.contactsLabel}{' '}
@@ -378,17 +399,13 @@ const toc = [
                   {tool.meta && (
                     <Fragment>
                       <nldd-spacer size="8" />
-                      <nldd-container
-                        layout="wrap"
-                        gap="6"
-                        horizontal-alignment="left"
-                      >
+                      <div class="rr-tag-row">
                         {tool.meta.split('•').map((tag) => (
                           <nldd-tag color="accent" size="md">
                             {tag.trim()}
                           </nldd-tag>
                         ))}
-                      </nldd-container>
+                      </div>
                     </Fragment>
                   )}
                   <nldd-spacer size="8" />
@@ -603,3 +620,30 @@ const toc = [
       </Fragment>
     )
   }
+
+<script>
+  // The build bakes in absolute closing dates; the visitor's "today" is only
+  // known here. A closing date is inclusive: on the date itself the vacancy
+  // is still open ("sluit vandaag").
+  const closesTags = document.querySelectorAll<HTMLElement>('[data-closes]');
+  if (closesTags.length > 0) {
+    const rtf = new Intl.RelativeTimeFormat(
+      document.documentElement.lang || 'nl',
+      { numeric: 'auto' },
+    );
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    for (const tag of closesTags) {
+      const raw = tag.dataset.closes;
+      if (!raw) continue;
+      const [y, m, d] = raw.split('-').map(Number);
+      const days = Math.round(
+        (new Date(y, m - 1, d).getTime() - today.getTime()) / 86_400_000,
+      );
+      const label =
+        days >= 0 ? tag.dataset.closesOpen : tag.dataset.closesClosed;
+      tag.textContent = `${label} ${rtf.format(days, 'day')}`;
+      if (days < 0) tag.setAttribute('color', 'critical');
+    }
+  }
+</script>
