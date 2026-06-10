@@ -24,7 +24,11 @@ describe('route disambiguation (traject vs no-traject)', () => {
 
   it('mirrors the same split for the editor routes', () => {
     expect(router.resolve(`/editor/${REF}/foo`).name).toBe('editor-traject');
-    expect(router.resolve('/editor/wet_op_de_zorgtoeslag').name).toBe('editor');
+    // The bare /editor is the traject chooser; a law URL without a
+    // traject redirects onto it (the law travels along as query).
+    expect(router.resolve('/editor').name).toBe('editor');
+    expect(router.resolve('/editor/nieuw-traject').name).toBe('editor-nieuw-traject');
+    expect(router.resolve('/editor/wet_op_de_zorgtoeslag').matched[0].redirect).toBeTruthy();
   });
 });
 
@@ -47,6 +51,22 @@ describe('sectionTarget — traject preserved across tab switches', () => {
     const t = sectionTarget(router, `/library/${REF}/foo`, null);
     expect(t.name).toBe('library');
     expect(t.params.trajectRef).toBeUndefined();
+    expect(t.params.lawId).toBe('foo');
+  });
+
+  it('sends the Editor tab to the chooser when no traject is active', () => {
+    // The editor requires a traject: with none active, the stored editor
+    // path collapses to the chooser and the law travels along as query.
+    const t = sectionTarget(router, `/editor/${REF}/foo/3`, null);
+    expect(t.name).toBe('editor');
+    expect(t.params.trajectRef).toBeUndefined();
+    expect(t.query).toEqual({ law: 'foo', article: '3' });
+  });
+
+  it('upgrades a stored chooser path to the active traject editor', () => {
+    const t = sectionTarget(router, '/editor?law=foo', REF);
+    expect(t.name).toBe('editor-traject');
+    expect(t.params.trajectRef).toBe(REF);
     expect(t.params.lawId).toBe('foo');
   });
 

@@ -56,23 +56,45 @@ const router = createRouter({
       meta: { title: 'Editor', requiresAuth: true },
     },
     {
-      // Editor without a traject: read-only view. Useful for browsing
-      // a law's editor UI (machine_readable, YAML, scenarios) without
-      // committing to a traject. Save actions are disabled (`canEdit`
-      // gates them); the user picks a traject via the TrajectMenu to
-      // unlock edits, which navigates to `editor-traject`.
-      path: '/editor/:lawId?/:articleNumber?',
+      // Nieuw traject aanmaken — eigen pagina met het gedeelde
+      // aanmaakformulier (TrajectCreateForm). Statisch segment, dus
+      // vue-router rankt dit boven de param-routes hieronder.
+      path: '/editor/nieuw-traject',
+      name: 'editor-nieuw-traject',
+      component: () => import('./TrajectCreateApp.vue'),
+      meta: { title: 'Nieuw traject', requiresAuth: true },
+    },
+    {
+      // De editor vereist een traject. De kale /editor is de
+      // trajectkeuze-pagina: kies een bestaand traject of maak er een
+      // aan; daarna ga je door naar `editor-traject`. Een eventueel
+      // meegegeven wet (query `law`/`article`, gezet door de redirect
+      // hieronder) opent na de keuze direct in de editor.
+      path: '/editor',
       name: 'editor',
-      component: () => import('./EditorApp.vue'),
-      meta: { title: 'Editor', requiresAuth: true },
+      component: () => import('./TrajectChooserApp.vue'),
+      meta: { title: 'Kies een traject', requiresAuth: true },
+    },
+    {
+      // Editor-links zonder traject (de vroegere read-only editor):
+      // er is geen editor zonder traject meer. Door naar de
+      // keuzepagina, met de wet als query zodat die na de keuze opent.
+      path: '/editor/:lawId/:articleNumber?',
+      redirect: (to) => ({
+        name: 'editor',
+        query: {
+          law: to.params.lawId,
+          article: to.params.articleNumber || undefined,
+        },
+      }),
     },
     {
       path: '/editor.html',
       redirect: (to) => ({
         name: 'editor',
-        params: {
-          lawId: to.query.law || undefined,
-          articleNumber: to.query.article || undefined,
+        query: {
+          law: to.query.law || undefined,
+          article: to.query.article || undefined,
         },
       }),
     },
@@ -82,15 +104,18 @@ const router = createRouter({
 // Gate any route marked `meta.requiresAuth` on the auth-status check. We
 // block the client-side navigation until `/auth/status` has resolved, so
 // the target component never mounts until we know the user may enter.
-// When OIDC is configured and the user is not authenticated, we trigger
-// the SSO redirect here and cancel the navigation \u2014 the previous route
-// stays visible until the browser leaves for `/auth/login`, instead of
-// flashing the protected UI.
+// Unauthenticated users are always sent to `/auth/login` and the
+// navigation is cancelled \u2014 the previous route stays visible until the
+// browser leaves, instead of flashing the protected UI. Deliberately NOT
+// conditional on `oidcConfigured`: the editor must never open without
+// login, including environments without OIDC (there `/auth/login` either
+// serves the dev login or surfaces a backend error). A failed
+// /auth/status check leaves `authenticated` false and thus fails closed.
 router.beforeEach(async (to) => {
   if (!to.meta.requiresAuth) return true;
   await ensureAuthReady();
-  const { authenticated, oidcConfigured, login } = useAuth();
-  if (oidcConfigured.value && !authenticated.value) {
+  const { authenticated, login } = useAuth();
+  if (!authenticated.value) {
     // Pass the intended destination explicitly: inside beforeEach, the
     // client-side navigation has not committed yet, so window.location
     // still reflects the source route (e.g. /library). Without this, the

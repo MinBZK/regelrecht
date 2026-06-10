@@ -54,7 +54,9 @@ const { activeTrajectRef } = useTrajects();
 
 // Keep the user's traject scope across in-app navigations. With a traject
 // in the URL we stay on `library-traject` / `editor-traject`; without one
-// on the plain `library` / `editor`. Mirrors EditorApp.editorRouteFor.
+// the library stays plain, but the editor target becomes the traject
+// chooser (the editor requires a traject) with the law carried as query
+// so it opens right after a traject is picked.
 function libraryRouteFor(params = {}) {
   return activeTrajectRef.value
     ? { name: 'library-traject', params: { ...params, trajectRef: activeTrajectRef.value } }
@@ -63,7 +65,7 @@ function libraryRouteFor(params = {}) {
 function editorRouteFor(lawIdVal, articleNumber) {
   return activeTrajectRef.value
     ? { name: 'editor-traject', params: { trajectRef: activeTrajectRef.value, lawId: lawIdVal, articleNumber } }
-    : { name: 'editor', params: { lawId: lawIdVal, articleNumber } };
+    : { name: 'editor', query: { law: lawIdVal || undefined, article: articleNumber || undefined } };
 }
 
 // Tab-bar state + cross-section navigation. The Bibliotheek/Editor tabs
