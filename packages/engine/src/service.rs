@@ -2746,11 +2746,12 @@ articles:
             let regeling_path = regulation_path
                 .join("nl/ministeriele_regeling/regeling_standaardpremie/2025-01-01.yaml");
 
-            let zt_law = ArticleBasedLaw::from_yaml_file(&wet_op_de_zorgtoeslag_path).unwrap();
+            let wet_op_de_zorgtoeslag_law =
+                ArticleBasedLaw::from_yaml_file(&wet_op_de_zorgtoeslag_path).unwrap();
             let rsp_law = ArticleBasedLaw::from_yaml_file(&regeling_path).unwrap();
 
             let mut service = LawExecutionService::new();
-            service.load_law_struct(zt_law).unwrap();
+            service.load_law_struct(wet_op_de_zorgtoeslag_law).unwrap();
             service.load_law_struct(rsp_law).unwrap();
 
             // Execute wet_op_de_zorgtoeslag standaardpremie output
