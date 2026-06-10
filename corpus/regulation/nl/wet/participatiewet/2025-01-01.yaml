@@ -24,23 +24,19 @@ articles:
   - number: '1'
     text: 'In deze wet en de daarop berustende bepalingen wordt verstaan onder:'
     url: https://wetten.overheid.nl/BWBR0015703/2025-01-01#Artikel1
-    # Stub voor doelgroepvaststelling banenafspraak en loonkostensubsidie.
-    # De feitelijke vaststelling gebeurt door het college (artikel 7, 10c, 10d)
-    # en het UWV-doelgroepregister. Hier pass-through stub voor NRP-, LKS- en
-    # LDP-graphconnecties.
+    # Stub voor de Pwet-gronden die de no-riskpolis (Ziektewet 29b) en de
+    # loonkostensubsidie raken: LKS (artikel 10d), beschut werk (10b) en de
+    # loonwaarde-vaststelling. De feitelijke vaststelling gebeurt door het
+    # college (artikel 7, 10c, 10d). Het doelgroepregister banenafspraak zelf
+    # is GEEN Pwet-output: dat is de kapstok Wfsv artikel 38b. Deze stub
+    # levert dus alleen de Pwet-feiten; de register-opname wordt in Wfsv 38b
+    # beoordeeld (mede op grond van o.a. Pwet 7 lid 1.a / 10d).
     machine_readable:
       execution:
         parameters:
           - name: bsn
             type: string
             required: true
-          - name: is_banenafspraak_doelgroep
-            type: boolean
-            required: true
-            description: |-
-              Is persoon ingeschreven in doelgroepregister banenafspraak
-              (Pwet artikel 7, 10c, 10d). Bron: UWV-doelgroepregister.
-              Voor doelgroepbepaling Ziektewet 29b lid 2 onderdeel e.
           - name: is_pwet_loonkostensubsidie
             type: boolean
             required: true
@@ -64,8 +60,6 @@ articles:
               of college. Voor doelgroepbepaling Ziektewet 29b lid 2
               onderdeel e en LKS-recht (Pwet 10d).
         output:
-          - name: is_banenafspraak_doelgroep
-            type: boolean
           - name: is_pwet_loonkostensubsidie
             type: boolean
           - name: is_beschut_werk
@@ -73,8 +67,6 @@ articles:
           - name: loonwaarde_lager_dan_minimumloon
             type: boolean
         actions:
-          - output: is_banenafspraak_doelgroep
-            value: $is_banenafspraak_doelgroep
           - output: is_pwet_loonkostensubsidie
             value: $is_pwet_loonkostensubsidie
           - output: is_beschut_werk

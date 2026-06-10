@@ -111,7 +111,7 @@ articles:
     # categorie. Bij meerdere doelgroep-statussen wordt de eerst-
     # passende categorie volgens IF-volgorde toegepast.
     # Doelgroepverklaring (a, b, d) komt van UWV; banenafspraak (c)
-    # uit doelgroepregister Pwet.
+    # uit het doelgroepregister banenafspraak (kapstok Wfsv 38b).
     machine_readable:
       execution:
         produces:
@@ -150,17 +150,18 @@ articles:
           - name: is_doelgroep_banenafspraak
             type: boolean
             source:
-              regulation: participatiewet
-              output: is_banenafspraak_doelgroep
+              regulation: wet_financiering_sociale_verzekeringen
+              output: behoort_tot_doelgroepregister_banenafspraak
               parameters:
                 bsn: $bsn
               description: |-
                 Categorie c (art. 2.10): doelgroep banenafspraak en
                 scholingsbelemmerden. Eén bron van waarheid met de
-                no-riskpolis (Ziektewet 29b lid 2 onderdeel e): het
-                UWV-doelgroepregister, ontsloten via de participatiewet-
-                doelgroepstub (artikel 1). Onderliggende vaststelling op
-                grond van Wfsv 38b/38f (BWBR0017745, niet in corpus).
+                no-riskpolis (Ziektewet 29b lid 2 onderdeel e): de
+                kapstok Wfsv artikel 38b (BWBR0017745), die het
+                doelgroepregister banenafspraak definieert. De
+                onderliggende grond (o.a. Pwet 7 lid 1.a / 10d) wordt
+                daar als 38b.1.a beoordeeld.
           - name: heeft_pensioengerechtigde_leeftijd_bereikt
             type: boolean
             required: true
@@ -312,9 +313,9 @@ articles:
 
             Juristvalidatie (juni 2026): LKV en de no-riskpolis
             (Ziektewet 29b) gaan altijd samen op — beide hangen aan
-            dezelfde doelgroep-status, sinds deze iteratie via één bron
-            (is_doelgroep_banenafspraak ← participatiewet
-            is_banenafspraak_doelgroep). LKS (Pwet 10d) of
+            dezelfde doelgroep-status, via één bron: de kapstok
+            (is_doelgroep_banenafspraak ← Wfsv 38b
+            behoort_tot_doelgroepregister_banenafspraak). LKS (Pwet 10d) of
             loondispensatie (Wajong 2:20) komen daar bóvenop bij
             loonwaarde < minimumloon. Zie de uitgebreide samenloop-
             notitie bij Ziektewet 29b.

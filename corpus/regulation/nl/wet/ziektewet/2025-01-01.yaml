@@ -3012,13 +3012,16 @@ articles:
           - name: is_banenafspraak_doelgroep
             type: boolean
             source:
-              regulation: participatiewet
-              output: is_banenafspraak_doelgroep
+              regulation: wet_financiering_sociale_verzekeringen
+              output: behoort_tot_doelgroepregister_banenafspraak
               parameters:
                 bsn: $bsn
               description: |-
-                Lid 2 onderdeel e: doelgroep banenafspraak
-                (Pwet 7 lid 1 a, 10d).
+                Lid 2 onderdeel e: opname in het doelgroepregister
+                banenafspraak. Kapstok is Wfsv artikel 38b (BWBR0017745):
+                dat artikel bepaalt wie arbeidsbeperkte is en dus in het
+                register hoort. De onderliggende grond (o.a. Pwet 7 lid
+                1.a / 10d) wordt daar als 38b.1.a beoordeeld.
           - name: is_pwet_loonkostensubsidie
             type: boolean
             source:
@@ -3165,9 +3168,10 @@ articles:
               aan dezelfde doelgroep-status (banenafspraakregister,
               Wajong-status of Pwet-LKS-doelgroep). Wie de no-riskpolis
               via lid 2 opent, opent via diezelfde status ook LKV; het
-              banenafspraakregister wordt sinds deze iteratie uit één
-              bron gelezen (participatiewet is_banenafspraak_doelgroep,
-              gebruikt door zowel 29b lid 2.e als Wtl 2.10). De
+              banenafspraakregister wordt uit één bron gelezen: de
+              kapstok Wfsv artikel 38b
+              (behoort_tot_doelgroepregister_banenafspraak), gebruikt
+              door zowel 29b lid 2.e als Wtl 2.10. De
               tijdelijke samenloop binnen de WIA valt buiten deze
               iteratie (volgende iteratie).
             - LKS (Pwet 10d) of loondispensatie (Wajong 2:20) komen
