@@ -235,6 +235,12 @@ jobs:
     name: Pre-commit
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # sccache caches compilations across runs; the GHA backend is wired up by
+      # the sccache-action step below. Incremental must be off for sccache.
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
 
@@ -250,6 +256,12 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Install mold linker
+        run: sudo apt-get update && sudo apt-get install -y mold
+
+      - name: Run sccache
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696  # v0.0.10
+
       - name: Cache cargo registry (shared)
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
         with:
@@ -259,13 +271,6 @@ jobs:
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-registry-
 
-      - name: Cache cargo target
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
-        with:
-          path: packages/target
-          key: ${{ runner.os }}-cargo-target-precommit-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-target-precommit-
-
       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd  # v3.0.1
 
   test:
@@ -273,6 +278,10 @@ jobs:
     needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
         if: needs.changes.outputs.ci == 'true'
@@ -285,6 +294,14 @@ jobs:
         if: needs.changes.outputs.ci == 'true'
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
 
+      - name: Install mold linker
+        if: needs.changes.outputs.ci == 'true'
+        run: sudo apt-get update && sudo apt-get install -y mold
+
+      - name: Run sccache
+        if: needs.changes.outputs.ci == 'true'
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696  # v0.0.10
+
       - name: Cache cargo registry (shared)
         if: needs.changes.outputs.ci == 'true'
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
@@ -294,14 +311,6 @@ jobs:
             ~/.cargo/git
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-registry-
-
-      - name: Cache cargo target
-        if: needs.changes.outputs.ci == 'true'
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
-        with:
-          path: packages/target
-          key: ${{ runner.os }}-cargo-target-test-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-target-test-
 
       - name: Run all tests
         if: needs.changes.outputs.ci == 'true'
@@ -335,6 +344,10 @@ jobs:
     needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
         if: needs.changes.outputs.ci == 'true'
@@ -344,6 +357,10 @@ jobs:
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
         with:
           targets: wasm32-unknown-unknown
+
+      - name: Run sccache
+        if: needs.changes.outputs.ci == 'true'
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696  # v0.0.10
 
       - name: Cache cargo registry (shared)
         if: needs.changes.outputs.ci == 'true'
@@ -355,14 +372,8 @@ jobs:
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-registry-
 
-      - name: Cache cargo target
-        if: needs.changes.outputs.ci == 'true'
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
-        with:
-          path: packages/target
-          key: ${{ runner.os }}-cargo-target-wasm-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-target-wasm-
-
+      # wasm32 links with rust-lld, not mold — so no mold here; the default
+      # RUSTFLAGS (-Dwarnings, no mold link-arg) is correct for this target.
       - name: Build for WASM
         if: needs.changes.outputs.ci == 'true'
         run: cd packages/engine && cargo build --target wasm32-unknown-unknown --features wasm
@@ -437,6 +448,10 @@ jobs:
     permissions:
       contents: read
       packages: read
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
         if: needs.changes.outputs.admin == 'true'
@@ -457,13 +472,13 @@ jobs:
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-registry-
 
-      - name: Cache cargo target
+      - name: Install mold linker
         if: needs.changes.outputs.admin == 'true'
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
-        with:
-          path: packages/target
-          key: ${{ runner.os }}-cargo-target-admin-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-target-admin-
+        run: sudo apt-get update && sudo apt-get install -y mold
+
+      - name: Run sccache
+        if: needs.changes.outputs.admin == 'true'
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696  # v0.0.10
 
       - name: Install just
         if: needs.changes.outputs.admin == 'true'
@@ -513,6 +528,10 @@ jobs:
     needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
         if: needs.changes.outputs.editor-api == 'true'
@@ -533,13 +552,13 @@ jobs:
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-registry-
 
-      - name: Cache cargo target
+      - name: Install mold linker
         if: needs.changes.outputs.editor-api == 'true'
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
-        with:
-          path: packages/target
-          key: ${{ runner.os }}-cargo-target-editor-api-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-target-editor-api-
+        run: sudo apt-get update && sudo apt-get install -y mold
+
+      - name: Run sccache
+        if: needs.changes.outputs.editor-api == 'true'
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696  # v0.0.10
 
       - name: Install just
         if: needs.changes.outputs.editor-api == 'true'

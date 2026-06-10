@@ -5,7 +5,19 @@ set dotenv-load := true
 
 # CI uses RUSTFLAGS=-Dwarnings; ci_flags mirrors that for quality/test recipes
 # but not for dev (hot-reload), where in-flight warnings would kill cargo watch.
-ci_flags := "RUSTFLAGS=-Dwarnings"
+# We also pass the mold link-arg here: an explicit RUSTFLAGS overrides the
+# target.rustflags in packages/.cargo/config.toml, so without it these recipes
+# would fall back to the slow default linker. (dev has no RUSTFLAGS, so it picks
+# up mold straight from .cargo/config.toml.)
+#
+# The mold link-arg is Linux-only, mirroring the [target.x86_64-unknown-linux-gnu]
+# scoping in packages/.cargo/config.toml — otherwise quality/test recipes would
+# force `-fuse-ld=mold` on macOS where mold typically isn't installed.
+ci_flags := if os() == "linux" {
+    "RUSTFLAGS='-Dwarnings -C link-arg=-fuse-ld=mold'"
+} else {
+    "RUSTFLAGS=-Dwarnings"
+}
 
 # Default task - toon beschikbare tasks
 default:
@@ -15,7 +27,11 @@ default:
 
 # Build WASM module for browser use
 wasm-build:
-    cargo build --manifest-path packages/engine/Cargo.toml --target wasm32-unknown-unknown --release --features wasm
+    # Pin the target dir explicitly. A CLI --target-dir overrides any shared
+    # [build] target-dir from `just dev-setup` (root .cargo/config.toml), so the
+    # artifact always lands at packages/target — no metadata lookup (and no jq/
+    # python3 dependency) needed, and it works with or without dev-setup.
+    cargo build --manifest-path packages/engine/Cargo.toml --target wasm32-unknown-unknown --release --features wasm --target-dir packages/target
     wasm-bindgen --target web --out-dir frontend/public/wasm/pkg packages/target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
 
 # --- Quality checks ---
@@ -173,6 +189,86 @@ compose-local := compose + " -f dev/compose.local.yaml"
 compose-native := compose + " -f dev/compose.native.yaml"
 pidfile := ".dev-pids"
 
+# One-time build-speed setup: install mold + sccache, share one target dir across worktrees
+dev-setup:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    bold="\033[1m"  dim="\033[2m"  reset="\033[0m"
+    green="\033[32m"  yellow="\033[33m"  red="\033[31m"
+
+    sudo_if_needed() { if [ "$(id -u)" = 0 ]; then "$@"; else sudo "$@"; fi; }
+
+    install_one() {
+        local bin="$1"; shift
+        command -v "$bin" >/dev/null 2>&1 && { printf "${green}%s already installed${reset}\n" "$bin"; return 0; }
+        printf "${bold}=> Installing %s…${reset} " "$bin"
+        if "$@" >/dev/null 2>&1; then printf "${green}done${reset}\n"; return 0; else printf "${red}failed${reset} (install %s manually)\n" "$bin"; return 1; fi
+    }
+
+    # Track whether mold ended up available — the shared-target setup is harmless
+    # without it, but mold linking (the headline feature) needs it on PATH.
+    mold_ok=false
+    if command -v apt-get >/dev/null 2>&1; then
+        sudo_if_needed apt-get update -qq || true
+        if install_one mold sudo_if_needed apt-get install -y mold; then mold_ok=true; fi
+        install_one sccache sudo_if_needed apt-get install -y sccache || true
+    elif command -v dnf >/dev/null 2>&1; then
+        if install_one mold sudo_if_needed dnf install -y mold; then mold_ok=true; fi
+        install_one sccache sudo_if_needed dnf install -y sccache || true
+    elif command -v brew >/dev/null 2>&1; then
+        if install_one mold brew install mold; then mold_ok=true; fi
+        install_one sccache brew install sccache || true
+    else
+        printf "${yellow}No supported package manager found.${reset}\n"
+        printf "  Install mold:    https://github.com/rui314/mold\n"
+        printf "  Install sccache: cargo install sccache --locked\n"
+    fi
+    # `install_one` returns 0 when the binary is already present, so a pre-existing
+    # mold also counts as OK regardless of which package-manager branch ran.
+    command -v mold >/dev/null 2>&1 && mold_ok=true
+    # sccache may not be packaged everywhere — fall back to cargo install.
+    command -v sccache >/dev/null 2>&1 || install_one sccache cargo install sccache --locked
+
+    # Shared target dir across all worktrees. .worktrees/ lives inside the main
+    # checkout, so cargo's upward config search finds this root .cargo/config.toml
+    # from every worktree. It is gitignored (machine-specific absolute path), so
+    # CI keeps its own packages/target.
+    root="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+
+    # A Rust build writes tens of thousands of small files. On a slow/remote
+    # mount (9p in WSL2/Docker-Desktop dev containers, NFS, SMB, …) that I/O
+    # dominates build time — far more than the linker does. Detect that and put
+    # the shared target on fast local storage instead of inside the repo.
+    fstype="$(stat -f -c %T "$root" 2>/dev/null || echo unknown)"
+    case "$fstype" in
+        9p|v9fs|nfs|nfs4|cifs|smb*|smb2|fuseblk|fuse.*|vboxsf|virtiofs|prl_fs)
+            cache="${XDG_CACHE_HOME:-$HOME/.cache}/regelrecht"
+            shared="$cache/target-$(printf '%s' "$root" | cksum | cut -d' ' -f1)"
+            printf "${yellow}=> Repo is on a slow filesystem (%s); using fast local target dir.${reset}\n" "$fstype"
+            ;;
+        *)
+            shared="$root/.cargo/target"
+            ;;
+    esac
+    mkdir -p "$root/.cargo" "$shared"
+    {
+        echo "# Generated by 'just dev-setup'. Gitignored — machine-local, do not commit."
+        echo "[build]"
+        echo "target-dir = \"$shared\""
+    } > "$root/.cargo/config.toml"
+    printf "${green}=> Shared target dir:${reset} %s\n" "$shared"
+
+    printf "\n"
+    if [ "$mold_ok" = true ]; then
+        printf "${bold}${green}Done.${reset} Mold linking + shared target are active for all worktrees.\n"
+    else
+        printf "${bold}${yellow}Partly done.${reset} Shared target is set up, but ${red}mold is missing${reset} — dev builds will fail to link.\n"
+        printf "${dim}Install mold manually (https://github.com/rui314/mold), then re-run 'just dev-setup'.${reset}\n"
+    fi
+    printf "${dim}Old per-worktree packages/target dirs can now be removed to reclaim disk.${reset}\n"
+    printf "${dim}Optional: enable sccache locally (disables incremental, best for cold/flag-varying builds):${reset}\n"
+    printf "  export RUSTC_WRAPPER=sccache CARGO_INCREMENTAL=0\n"
+
 # Start development: infra in Docker, services native with hot reload
 dev:
     #!/usr/bin/env bash
@@ -194,6 +290,9 @@ dev:
             missing+=("cargo-watch (cargo install cargo-watch)")
         fi
     fi
+    # mold is the linker configured in packages/.cargo/config.toml; without it
+    # dev builds fail to link.
+    command -v mold >/dev/null 2>&1 || missing+=("mold (run 'just dev-setup')")
     if [ ${#missing[@]} -gt 0 ]; then
         printf "${red}Missing dependencies:${reset}\n"
         for dep in "${missing[@]}"; do echo "  - $dep"; done
