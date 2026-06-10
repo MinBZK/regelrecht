@@ -902,7 +902,7 @@ watch(activeTrajectRef, () => {
                         <nldd-container padding="16">
                           <nldd-inline-dialog
                             icon="heart"
-                            text="Log in om wetten als favoriet te markeren"
+                            text="Log in om deze wet als favoriet te markeren"
                             supporting-text="Zodra je bent ingelogd kun je wetten markeren als favoriet en vind je ze terug in je bibliotheek onder Favorieten."
                           >
                             <nldd-button
