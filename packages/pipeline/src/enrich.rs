@@ -6,7 +6,7 @@ use std::time::Duration;
 use regelrecht_corpus::{CorpusClient, CorpusConfig};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tokio::io::AsyncBufReadExt;
+use tokio::io::AsyncReadExt;
 use uuid::Uuid;
 
 use crate::error::{PipelineError, Result};
@@ -99,16 +99,31 @@ impl LlmRunner for ProcessLlmRunner {
         // keep reading it: if the OS pipe buffer (64 KB) fills, the child blocks
         // indefinitely — the same deadlock the stderr comment above warns about.
         // The task ends on EOF when the process exits or is killed.
-        if let Some(stdout) = child.stdout.take() {
+        if let Some(mut stdout) = child.stdout.take() {
             let drain_provider = provider_name.clone();
             tokio::spawn(async move {
-                let mut lines = tokio::io::BufReader::new(stdout).lines();
-                while let Ok(Some(line)) = lines.next_line().await {
-                    // Log a bounded preview at debug only (off under the default
-                    // "info" subscriber). The leading chars carry the event type
-                    // and ids, not the large inlined bodies.
-                    let preview: String = line.chars().take(200).collect();
-                    tracing::debug!(provider = %drain_provider, "agent stdout: {preview}");
+                // Drain in fixed-size chunks rather than whole lines: opencode
+                // inlines multi-MB page bodies as a single JSON line, so a
+                // line reader would allocate the entire body just to log a
+                // 200-char preview — a heap spike on the very worker this
+                // watchdog exists to protect. Reading into a fixed buffer keeps
+                // the pipe empty without ever holding more than `buf`.
+                let mut buf = [0u8; 8192];
+                loop {
+                    match stdout.read(&mut buf).await {
+                        Ok(0) | Err(_) => break, // EOF or pipe gone (process exited/killed)
+                        Ok(n) => {
+                            // Bounded preview at debug only (off under the
+                            // default "info" subscriber). The leading bytes of a
+                            // read carry the event type and ids, not the large
+                            // inlined bodies; lossy is fine for a log preview.
+                            let preview = String::from_utf8_lossy(&buf[..n.min(200)]);
+                            let preview = preview.trim_end();
+                            if !preview.is_empty() {
+                                tracing::debug!(provider = %drain_provider, "agent stdout: {preview}");
+                            }
+                        }
+                    }
                 }
             });
         }
@@ -211,6 +226,20 @@ async fn watch_memory(pid: Option<u32>, max_rss_mb: u64) -> u64 {
             unreachable!("pending future never resolves");
         }
     };
+
+    // RSS polling reads `/proc/<pid>/status`, which only exists on Linux (the
+    // deploy target). On a non-Linux dev machine `read_vmrss_kb` would return
+    // `None` every poll and the watchdog would never fire — silently. Make that
+    // degradation explicit and skip the pointless poll loop rather than letting
+    // a developer believe a ceiling is enforced when it is not.
+    if !cfg!(target_os = "linux") {
+        tracing::debug!(
+            "enrich memory watchdog inactive: RSS polling needs /proc (Linux only); \
+             agent runs without a memory ceiling on this platform"
+        );
+        std::future::pending::<()>().await;
+        unreachable!("pending future never resolves");
+    }
 
     let interval = Duration::from_secs(5);
     loop {
