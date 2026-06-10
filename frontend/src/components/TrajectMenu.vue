@@ -209,7 +209,7 @@ async function submitCreate() {
     <nldd-menu-item
       v-if="activeTraject"
       text="Documenten"
-      icon="file-text"
+      icon="documents"
       @click="documentsSheet.open()"
     ></nldd-menu-item>
     <nldd-menu-item
@@ -221,7 +221,7 @@ async function submitCreate() {
     <nldd-menu-item
       v-if="activeTraject"
       text="Traject details"
-      icon="point-bottom-left-to-point-top-right-s-curve-path"
+      icon="traject"
       @click="openInfoForActive"
     ></nldd-menu-item>
   </nldd-menu>
@@ -237,7 +237,7 @@ async function submitCreate() {
   >
     <nldd-container padding="16">
       <nldd-inline-dialog
-        icon="point-bottom-left-to-point-top-right-s-curve-path"
+        icon="traject"
         text="Log in om een traject te kiezen of aan te maken"
         supporting-text="Zodra je bent ingelogd zie je hier je lopende trajecten en kun je gemakkelijk wisselen."
       >
