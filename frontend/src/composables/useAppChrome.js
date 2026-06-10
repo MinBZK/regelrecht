@@ -64,8 +64,6 @@ export function useAppChrome() {
     documentTabs,
     activeDocumentTab,
     tabActions,
-    openSearch,
-    onBarSearchKeydown,
   };
 }
 
