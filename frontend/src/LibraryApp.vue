@@ -273,18 +273,34 @@ function articleDescription(article) {
   return firstLine.length > 80 ? firstLine.slice(0, 80) + '...' : firstLine;
 }
 
+// Financieel CV — TIJDELIJKE seed (alleen deze branch, lokale dev).
+// Zonder auth/DB geeft /api/favorites niets terug, dus zou de bibliotheek
+// leeg zijn. Tot favorieten via auth lopen tonen we hier standaard de
+// financieel CV-wetten zodat ze meteen in de zijbalk staan.
+// Verwijderen zodra dit via echte favorieten (auth + DB) gaat.
+const FINANCIEEL_CV_FALLBACK_LAWS = [
+  'ziektewet',                                              // NRP
+  'wet_tegemoetkomingen_loondomein',                       // LKV / LIV
+  'participatiewet',                                        // LKS
+  'wet_arbeidsongeschiktheidsvoorziening_jonggehandicapten', // LDP
+  'wet_werk_en_inkomen_naar_arbeidsvermogen',              // bron: WIA (JC/WPA)
+  'werkloosheidswet',                                      // bron: WW (PP)
+];
+
 async function loadFavorites() {
+  let favIds = null;
   try {
     const res = await fetch('/api/favorites');
     if (res.ok) {
-      const favIds = await res.json();
-      favorites.value = new Set(favIds);
+      favIds = await res.json();
     } else if (res.status >= 500) {
       console.warn(`Failed to load favorites: ${res.status}`);
     }
   } catch {
     // Not authenticated or endpoint unavailable — no favorites
   }
+  // Seed de financieel CV-wetten als er geen server-side favorieten zijn.
+  favorites.value = new Set(favIds && favIds.length ? favIds : FINANCIEEL_CV_FALLBACK_LAWS);
 }
 
 // Fetch the set of law ids edited in the active traject. Returns `null`
