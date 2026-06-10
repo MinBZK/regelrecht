@@ -36,7 +36,7 @@ const stubs = {
 
 const RAW = 'Indien de normpremie voor een verzekerde';
 
-function mountCreator(extraProps = {}) {
+function mountCreator(extraProps = {}, extraStubs = {}) {
   const engine = {
     resolveNote: () => ({
       status: 'found',
@@ -58,7 +58,7 @@ function mountCreator(extraProps = {}) {
       anchor: document.createElement('span'),
       ...extraProps,
     },
-    global: { stubs },
+    global: { stubs: { ...stubs, ...extraStubs } },
   });
 }
 
@@ -165,6 +165,66 @@ describe('NoteCreator', () => {
     await nextTick();
     expect(w.find('[data-testid="note-creator-status"]').exists()).toBe(false);
     expect(w.find('[data-testid="note-save"]').exists()).toBe(true);
+  });
+
+  // nldd-popover is popover="auto": clicking outside (or Esc) light-dismisses
+  // it in the browser without going through cancel(). The component fires
+  // `close` on every dismissal; NoteCreator must treat a close while the form
+  // is still open as a cancel, or the parent keeps creatorOpen=true and the
+  // "Notitie" button never reappears on a new selection.
+  it('emits cancel when the popover closes via light-dismiss', async () => {
+    const w = mountCreator();
+    await nextTick();
+    // Same shape as the real nldd close event (bubbles + composed).
+    w.element.dispatchEvent(new Event('close', { bubbles: true, composed: true }));
+    await nextTick();
+    expect(w.emitted('cancel')).toHaveLength(1);
+  });
+
+  it('does not emit cancel for the close that follows its own teardown', async () => {
+    const w = mountCreator();
+    await nextTick();
+    await w.setProps({ range: null }); // parent already tore the flow down
+    w.element.dispatchEvent(new Event('close', { bubbles: true, composed: true }));
+    await nextTick();
+    expect(w.emitted('cancel')).toBeUndefined();
+  });
+
+  // A future nested nldd component in the form slot would dispatch its own
+  // bubbling `close`; that must not cancel the half-filled form.
+  it('ignores a close event bubbling up from inside the form', async () => {
+    const w = mountCreator();
+    await nextTick();
+    w.find('[data-testid="note-creator"]').element.dispatchEvent(
+      new Event('close', { bubbles: true, composed: true }),
+    );
+    await nextTick();
+    expect(w.emitted('cancel')).toBeUndefined();
+  });
+
+  // If an nldd-popover implementation ever dispatched close synchronously
+  // from hidePopover() (instead of the spec's queued toggle task), save()
+  // must still not read as a cancel. The stub simulates that regime.
+  it('does not emit cancel when save() itself hides the popover', async () => {
+    const w = mountCreator({}, {
+      'nldd-popover': {
+        template: '<div><slot/></div>',
+        methods: {
+          showPopover() {},
+          hidePopover() {
+            this.$el.dispatchEvent(new Event('close', { bubbles: true, composed: true }));
+          },
+          matches() { return false; },
+        },
+      },
+    });
+    await nextTick();
+    w.vm.commentText = 'uitleg';
+    await nextTick();
+    w.vm.save();
+    await nextTick();
+    expect(w.emitted('cancel')).toBeUndefined();
+    expect(w.emitted('create')).toHaveLength(1);
   });
 
   it('remembers the creator across mounts via localStorage', async () => {
