@@ -6,6 +6,7 @@ use std::time::Duration;
 use regelrecht_corpus::{CorpusClient, CorpusConfig};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tokio::io::AsyncReadExt;
 use uuid::Uuid;
 
 use crate::error::{PipelineError, Result};
@@ -78,13 +79,54 @@ impl LlmRunner for ProcessLlmRunner {
 
         let mut cmd = build_command(&config.provider, &prompt, yaml_abs, repo_path);
 
-        // stderr is inherited so the LLM's logging goes to the worker's stderr.
-        // This avoids a deadlock: if stderr were piped, a verbose LLM (e.g. Claude CLI)
-        // could fill the OS pipe buffer (64 KB) and block indefinitely.
+        // stderr is inherited so the LLM's own errors/stack traces stay visible
+        // in the worker's logs. stdout is piped and drained (see below) instead
+        // of inherited: a verbose agent (e.g. opencode `--format json`) inlines
+        // the full body of every fetched page into its event stream, which
+        // would otherwise flood container logs and bury the worker's own
+        // tracing lines.
         cmd.stderr(std::process::Stdio::inherit());
+        cmd.stdout(std::process::Stdio::piped());
         let mut child = cmd.spawn().map_err(|e| {
             PipelineError::Enrich(format!("failed to spawn {}: {e}", provider_name))
         })?;
+
+        // Capture the PID before any wait reaps the child; the memory watchdog
+        // and process-group kill both need it.
+        let pid = child.id();
+
+        // Drain the agent's stdout so it never reaches container logs. We MUST
+        // keep reading it: if the OS pipe buffer (64 KB) fills, the child blocks
+        // indefinitely — the same deadlock the stderr comment above warns about.
+        // The task ends on EOF when the process exits or is killed.
+        if let Some(mut stdout) = child.stdout.take() {
+            let drain_provider = provider_name.clone();
+            tokio::spawn(async move {
+                // Drain in fixed-size chunks rather than whole lines: opencode
+                // inlines multi-MB page bodies as a single JSON line, so a
+                // line reader would allocate the entire body just to log a
+                // 200-char preview — a heap spike on the very worker this
+                // watchdog exists to protect. Reading into a fixed buffer keeps
+                // the pipe empty without ever holding more than `buf`.
+                let mut buf = [0u8; 8192];
+                loop {
+                    match stdout.read(&mut buf).await {
+                        Ok(0) | Err(_) => break, // EOF or pipe gone (process exited/killed)
+                        Ok(n) => {
+                            // Bounded preview at debug only (off under the
+                            // default "info" subscriber). The leading bytes of a
+                            // read carry the event type and ids, not the large
+                            // inlined bodies; lossy is fine for a log preview.
+                            let preview = String::from_utf8_lossy(&buf[..n.min(200)]);
+                            let preview = preview.trim_end();
+                            if !preview.is_empty() {
+                                tracing::debug!(provider = %drain_provider, %preview, "agent stdout");
+                            }
+                        }
+                    }
+                }
+            });
+        }
 
         let status = tokio::select! {
             result = child.wait() => {
@@ -93,13 +135,24 @@ impl LlmRunner for ProcessLlmRunner {
                 })?
             }
             _ = tokio::time::sleep(config.timeout) => {
-                if let Err(e) = child.kill().await {
-                    tracing::warn!(error = %e, "failed to kill timed-out LLM process");
-                }
-                let _ = child.wait().await;
+                terminate(&mut child, pid).await;
                 return Err(PipelineError::Enrich(format!(
                     "{} timed out after {:?}",
                     provider_name, config.timeout
+                )));
+            }
+            observed_mb = watch_memory(pid, config.max_rss_mb) => {
+                tracing::error!(
+                    provider = %provider_name,
+                    pid = ?pid,
+                    observed_mb,
+                    limit_mb = config.max_rss_mb,
+                    "LLM subprocess exceeded memory limit, killing to protect the container"
+                );
+                terminate(&mut child, pid).await;
+                return Err(PipelineError::Enrich(format!(
+                    "{provider_name} exceeded memory limit of {} MB (RSS {observed_mb} MB), killed",
+                    config.max_rss_mb
                 )));
             }
         };
@@ -113,6 +166,126 @@ impl LlmRunner for ProcessLlmRunner {
 
         Ok(())
     }
+}
+
+/// Kill the LLM subprocess and reap it.
+///
+/// Signals the whole process group (negative pid) so any helpers the agent
+/// forked (node workers, git) die too — not just the direct child — then
+/// falls back to `child.kill()` (covers a missing pid) and waits to avoid a
+/// zombie.
+async fn terminate(child: &mut tokio::process::Child, pid: Option<u32>) {
+    kill_process_group(pid);
+    if let Err(e) = child.kill().await {
+        // After the group SIGKILL above the direct child is usually already
+        // gone, so `ESRCH` here is the expected benign race — only a different
+        // error is worth flagging.
+        if e.raw_os_error() != Some(libc::ESRCH) {
+            tracing::warn!(error = %e, "failed to kill LLM process");
+        }
+    }
+    let _ = child.wait().await;
+}
+
+/// Send `SIGKILL` to the entire process group led by `pid`.
+///
+/// The subprocess is spawned as its own process-group leader
+/// (`process_group(0)` in `build_command`), so `kill(-pid, …)` reaps the agent
+/// and everything it forked. A failure (e.g. `ESRCH`) just means the group has
+/// already exited and is ignored.
+fn kill_process_group(pid: Option<u32>) {
+    if let Some(pid) = pid {
+        // Guard against pid 0: `kill(-0, …)` collapses to `kill(0, …)`, which
+        // POSIX routes to the *caller's own* process group — it would SIGKILL
+        // the worker itself. `child.id()` never yields 0 in practice, but the
+        // consequence is catastrophic enough to refuse it defensively.
+        if pid == 0 {
+            return;
+        }
+        // SAFETY: `kill(2)` with a negative pid targets a process group and has
+        // no memory-safety implications; the return value is intentionally
+        // ignored (the group may already be gone). Linux PIDs are capped well
+        // below `i32::MAX` (`pid_max` <= 2^22), so `pid as i32` cannot overflow.
+        unsafe {
+            libc::kill(-(pid as i32), libc::SIGKILL);
+        }
+    }
+}
+
+/// Memory watchdog: resolve with the observed RSS (in MB) once the subprocess
+/// exceeds `max_rss_mb`.
+///
+/// The LLM agent accumulates fetched-page bodies in memory across a run; left
+/// unchecked it climbs to the container's cgroup limit and triggers an OOM kill
+/// of the whole pod. Polling RSS and killing the offender instead turns that
+/// into a clean, retryable job failure.
+///
+/// Disabled (never resolves, letting the `child.wait()`/timeout branches win)
+/// when `pid` is `None` or `max_rss_mb` is 0. We poll `/proc` directly rather
+/// than capping virtual memory with `RLIMIT_AS`: V8 reserves a huge virtual
+/// address space, so a virtual-memory ceiling would crash Node outright.
+async fn watch_memory(pid: Option<u32>, max_rss_mb: u64) -> u64 {
+    let pid = match pid {
+        Some(p) if max_rss_mb > 0 => p,
+        _ => {
+            tracing::debug!("enrich memory watchdog disabled (no pid or zero limit)");
+            std::future::pending::<()>().await;
+            unreachable!("pending future never resolves");
+        }
+    };
+
+    // RSS polling reads `/proc/<pid>/status`, which only exists on Linux (the
+    // deploy target). On a non-Linux dev machine `read_vmrss_kb` would return
+    // `None` every poll and the watchdog would never fire — silently. Make that
+    // degradation explicit and skip the pointless poll loop rather than letting
+    // a developer believe a ceiling is enforced when it is not.
+    if !cfg!(target_os = "linux") {
+        tracing::debug!(
+            "enrich memory watchdog inactive: RSS polling needs /proc (Linux only); \
+             agent runs without a memory ceiling on this platform"
+        );
+        std::future::pending::<()>().await;
+        unreachable!("pending future never resolves");
+    }
+
+    let interval = Duration::from_secs(5);
+    loop {
+        tokio::time::sleep(interval).await;
+        // A missing/unparsable status file means the process is gone; keep
+        // looping (harmless) and let `child.wait()` win the select.
+        if let Some(rss_kb) = read_vmrss_kb(pid).await {
+            let rss_mb = rss_kb / 1024;
+            if rss_mb > max_rss_mb {
+                return rss_mb;
+            }
+        }
+    }
+}
+
+/// Read a process's resident set size (RSS) from `/proc/<pid>/status`, in kB.
+/// Returns `None` if the file is missing or unparsable (e.g. the process exited).
+///
+/// This measures only the direct child PID, not the whole process group that
+/// `kill_process_group` SIGKILLs. That asymmetry is intentional: for the current
+/// opencode/Claude agent topology the runaway memory is the accumulated
+/// fetched-page bodies held in the main node process we spawn, so its RSS is the
+/// signal that matters. If a future agent moved that growth into a forked
+/// subprocess, this would need to sum the group's RSS (e.g. walk
+/// `/proc/<pid>/task` / children) to stay accurate.
+async fn read_vmrss_kb(pid: u32) -> Option<u64> {
+    let status = tokio::fs::read_to_string(format!("/proc/{pid}/status"))
+        .await
+        .ok()?;
+    parse_vmrss_kb(&status)
+}
+
+/// Parse the `VmRSS` value (in kB) out of `/proc/<pid>/status` contents.
+fn parse_vmrss_kb(status: &str) -> Option<u64> {
+    status
+        .lines()
+        .find_map(|line| line.strip_prefix("VmRSS:"))
+        .and_then(|rest| rest.split_whitespace().next())
+        .and_then(|kb| kb.parse::<u64>().ok())
 }
 
 /// Payload for an enrich job, stored as JSON in the job queue.
@@ -211,6 +384,10 @@ pub struct EnrichConfig {
     pub provider: LlmProvider,
     pub timeout: Duration,
     pub code_commit: String,
+    /// RSS ceiling (MB) for the LLM subprocess. When it is exceeded the worker
+    /// kills the process and fails the job instead of letting the agent OOM the
+    /// whole container. 0 disables the watchdog.
+    pub max_rss_mb: u64,
     /// Pre-built provider configs keyed by name, populated at startup.
     provider_configs: std::collections::HashMap<String, LlmProvider>,
 }
@@ -225,6 +402,14 @@ impl EnrichConfig {
             .unwrap_or(600);
 
         let code_commit = std::env::var("CODE_COMMIT").unwrap_or_default();
+
+        // RSS ceiling for the LLM subprocess. Default 3500 MB leaves headroom
+        // under the 4096Mi container limit for the worker, git, and node's
+        // baseline plus the ~5s watchdog poll lag.
+        let max_rss_mb = std::env::var("ENRICH_MAX_RSS_MB")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(3500);
 
         // Build all provider configs once from env vars
         let opencode_provider = LlmProvider::OpenCode {
@@ -259,6 +444,7 @@ impl EnrichConfig {
             provider,
             timeout: Duration::from_secs(timeout),
             code_commit,
+            max_rss_mb,
             provider_configs,
         }
     }
@@ -282,6 +468,7 @@ impl EnrichConfig {
             provider,
             timeout: self.timeout,
             code_commit: self.code_commit.clone(),
+            max_rss_mb: self.max_rss_mb,
             provider_configs: self.provider_configs.clone(),
         }
     }
@@ -386,7 +573,7 @@ fn build_command(
     let safe_env: Vec<(String, String)> =
         std::env::vars().filter(|(k, _)| env_allowed(k)).collect();
 
-    match provider {
+    let mut cmd = match provider {
         LlmProvider::OpenCode { path, model } => {
             let mut cmd = tokio::process::Command::new(path);
             cmd.env_clear();
@@ -420,7 +607,15 @@ fn build_command(
             }
             cmd
         }
-    }
+    };
+
+    // Run the agent as its own process-group leader so a timeout/memory kill can
+    // signal the whole tree (the CLI plus any node workers or git it forks), not
+    // just the direct child. `kill_on_drop` is a backstop: if the worker future
+    // is dropped (panic, early return) the child is reaped rather than orphaned.
+    cmd.process_group(0);
+    cmd.kill_on_drop(true);
+    cmd
 }
 
 /// Create a `CorpusClient` for the enrichment branch.
@@ -945,6 +1140,7 @@ mod tests {
             provider,
             timeout: Duration::from_secs(600),
             code_commit: "abc123".to_string(),
+            max_rss_mb: 3500,
             provider_configs,
         }
     }
@@ -960,6 +1156,8 @@ mod tests {
         assert_eq!(claude_config.provider.name(), "claude");
         assert_eq!(claude_config.timeout, Duration::from_secs(600));
         assert_eq!(claude_config.code_commit, "abc123");
+        // The memory ceiling must survive a provider override.
+        assert_eq!(claude_config.max_rss_mb, 3500);
 
         let opencode_config = base_config.with_provider_override("opencode");
         assert_eq!(opencode_config.provider.name(), "opencode");
@@ -974,6 +1172,22 @@ mod tests {
         assert!(ENRICH_PROVIDERS.contains(&"opencode"));
         assert!(ENRICH_PROVIDERS.contains(&"claude"));
         assert_eq!(ENRICH_PROVIDERS.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_vmrss_kb_extracts_value() {
+        let status = "Name:\tnode\nVmPeak:\t 4194304 kB\nVmRSS:\t  2097152 kB\nThreads:\t12\n";
+        assert_eq!(parse_vmrss_kb(status), Some(2_097_152));
+    }
+
+    #[test]
+    fn test_parse_vmrss_kb_missing_or_malformed() {
+        // No VmRSS line.
+        assert_eq!(parse_vmrss_kb("Name:\tnode\nThreads:\t12\n"), None);
+        // VmRSS present but value not numeric.
+        assert_eq!(parse_vmrss_kb("VmRSS:\t  notanumber kB\n"), None);
+        // Empty input.
+        assert_eq!(parse_vmrss_kb(""), None);
     }
 
     #[test]

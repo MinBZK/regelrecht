@@ -96,6 +96,33 @@ export RUSTC_WRAPPER=sccache CARGO_INCREMENTAL=0
 
 CI uses both mold and sccache (see `.github/workflows/ci.yml`).
 
+### Running a dev stack
+
+```bash
+just dev               # full native dev stack (admin + both frontends + grafana/prometheus)
+just dev-frontend            # all frontends (editor 7300, admin 7400, lawmaking 7500), no observability
+just dev-frontend editor     # just the editor (editor-api + editor UI + DB)
+just dev-frontend admin      # just the admin API + admin UI + DB
+just dev-frontend lawmaking  # just the lawmaking UI (no backend)
+just dev-down          # stop whichever of the above is running
+```
+
+`dev-frontend` with no argument starts every frontend; pass `editor`, `admin`,
+or `lawmaking` to start just one. Either way it starts only the components those
+frontends need — no grafana, prometheus, or workers. The editor runs with real
+SSO against the central
+Keycloak, so it needs `.env.sso-local` (copy `.env.sso-local.example`). It and
+`just dev` are mutually exclusive (they share `.dev-pids` and ports) — run one at
+a time.
+
+Vite ports default to `7300/7400/7500` (overridable via `EDITOR_PORT` /
+`ADMIN_FE_PORT` / `LAWMAKING_PORT`). When a native backend can't reach Postgres
+on `localhost` (e.g. a WSL2/Docker-Desktop dev container, where Postgres is
+published on the Docker host), point it at `host.docker.internal`: for the
+admin / `just dev` paths set `DB_HOST=host.docker.internal` in `.env`; for the
+editor that host comes from `DATABASE_URL` in `.env.sso-local` (the
+`.env.sso-local.example` already uses `host.docker.internal`).
+
 See the [docs site](https://docs.regelrecht.rijks.app) for full development instructions.
 
 ## License
