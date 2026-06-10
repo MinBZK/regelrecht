@@ -8,7 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@nldd/design-system": "file:../../../../../nldd-design-system-0.8.56.tgz",
+    "@nldd/design-system": "file:../../../../../nldd-design-system-0.8.57.tgz",
     "vue": "^3.5.35"
   },
   "devDependencies": {
