@@ -80,11 +80,13 @@ export interface LandingContent {
     lede: string
     vacancyTag: string
     contactsLabel: string
+    closesLabel: { open: string; closed: string }
     items: {
       title: string
       organisation: string
       pitch: string
       meta: string[]
+      closes: string
       ctaLabel: string
       ctaHref: string
       contacts: { label: string; href: string }[]
@@ -508,19 +510,15 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       lede: 'Het team rond RegelRecht groeit. Bouw mee aan een open infrastructuur waarin Nederlandse wetgeving machine-uitvoerbaar wordt, en zie je werk landen bij uitvoeringsorganisaties die er dagelijks beslissingen op nemen.',
       vacancyTag: 'Vacature',
       contactsLabel: 'Vragen? Neem contact op met',
+      closesLabel: { open: 'Sluit', closed: 'Gesloten' },
       items: [
         {
           title: 'Software Engineer',
           organisation: 'Rijksorganisatie ODI · Ministerie van BZK',
           pitch:
             'Werk aan de Rust-engine en de tooling waarmee wetten machine-uitvoerbaar worden. Je adviseert opdrachtgevers binnen het Rijk, ontwerpt en programmeert, en werkt naast juristen die de regels in machineleesbare vorm gieten.',
-          meta: [
-            'Schaal 13',
-            '€5.212 – €7.747',
-            '32 – 36 uur',
-            'Den Haag',
-            'Sluit 11 juni 2026',
-          ],
+          meta: ['Schaal 13', '€5.212 – €7.747', '32 – 36 uur', 'Den Haag'],
+          closes: '2026-06-11',
           ctaLabel: 'Bekijk de vacature',
           ctaHref:
             'https://www.werkenvoornederland.nl/vacatures/software-engineer-BZK-2026-8544',
@@ -534,13 +532,8 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           organisation: 'Rijksorganisatie ODI · Ministerie van BZK',
           pitch:
             'Analyseer wet- en regelgeving en vertaal die naar machine-uitvoerbare specificaties. Je ontleedt complexe uitvoeringsprocessen en werkt in multidisciplinaire teams samen met engineers die de regels in code omzetten.',
-          meta: [
-            'Schaal 12',
-            '€4.691 – €6.907',
-            '32 – 36 uur',
-            'Den Haag',
-            'Sluit 24 juni 2026',
-          ],
+          meta: ['Schaal 12', '€4.691 – €6.907', '32 – 36 uur', 'Den Haag'],
+          closes: '2026-06-24',
           ctaLabel: 'Bekijk de vacature',
           ctaHref:
             'https://www.werkenvoornederland.nl/vacatures/redesign-analist-BZK-2026-9806',
@@ -987,19 +980,15 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       lede: 'The team behind RegelRecht is growing. Help build an open infrastructure that turns Dutch legislation into something computers can execute, and see your work land at the public-sector organisations that act on it every day.',
       vacancyTag: 'Vacancy',
       contactsLabel: 'Questions? Get in touch with',
+      closesLabel: { open: 'Closes', closed: 'Closed' },
       items: [
         {
           title: 'Software Engineer',
           organisation: 'Rijksorganisatie ODI · Ministry of the Interior',
           pitch:
             'Work on the Rust engine and the tooling that turns Dutch statutes into something computers can run. You advise teams across the Dutch government, design and write code, and work side by side with lawyers who translate rules into machine-readable form. Senior role, in Dutch (fluency required).',
-          meta: [
-            'Scale 13',
-            '€5,212 – €7,747',
-            '32 – 36 hours',
-            'The Hague',
-            'Closes 11 June 2026',
-          ],
+          meta: ['Scale 13', '€5,212 – €7,747', '32 – 36 hours', 'The Hague'],
+          closes: '2026-06-11',
           ctaLabel: 'View the vacancy (Dutch)',
           ctaHref:
             'https://www.werkenvoornederland.nl/vacatures/software-engineer-BZK-2026-8544',
@@ -1013,13 +1002,8 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           organisation: 'Rijksorganisatie ODI · Ministry of the Interior',
           pitch:
             'Analyse Dutch legislation and translate it into machine-executable specifications. You dissect complex government processes and work in multidisciplinary teams alongside the engineers who turn the rules into code. In Dutch (fluency required).',
-          meta: [
-            'Scale 12',
-            '€4,691 – €6,907',
-            '32 – 36 hours',
-            'The Hague',
-            'Closes 24 June 2026',
-          ],
+          meta: ['Scale 12', '€4,691 – €6,907', '32 – 36 hours', 'The Hague'],
+          closes: '2026-06-24',
           ctaLabel: 'View the vacancy (Dutch)',
           ctaHref:
             'https://www.werkenvoornederland.nl/vacatures/redesign-analist-BZK-2026-9806',

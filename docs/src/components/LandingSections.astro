@@ -20,6 +20,20 @@ const { lang, showSignup } = Astro.props;
 const t = content[lang];
 const home = lang === 'en' ? '/en/' : '/';
 
+// Vacancy closing dates render as an absolute date at build time (also the
+// no-JS text); the script at the bottom rewrites them relative to the
+// visitor's clock ("Sluit vandaag", "Gesloten gisteren"), which a static
+// build can't know.
+const closesDate = new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : 'nl-NL', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
+function parseIsoDate(iso: string): Date {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
 // The example screenshots live in src/assets so Astro's <Image> generates
 // responsive, optimised variants (the originals are ~3390px wide for a ~600px
 // column) and sets intrinsic width/height to avoid layout shift. They are
@@ -218,6 +232,13 @@ const toc = [
                     {job.meta.map((m) => (
                       <nldd-tag color="neutral" size="md">{m}</nldd-tag>
                     ))}
+                    <nldd-tag
+                      color="neutral"
+                      size="md"
+                      data-closes={job.closes}
+                      data-closes-open={t.jobs.closesLabel.open}
+                      data-closes-closed={t.jobs.closesLabel.closed}
+                    >{t.jobs.closesLabel.open} {closesDate.format(parseIsoDate(job.closes))}</nldd-tag>
                   </nldd-container>
                   <nldd-spacer size="20" />
                   <nldd-button-group orientation="horizontal">
@@ -603,3 +624,27 @@ const toc = [
       </Fragment>
     )
   }
+
+<script>
+  // The build bakes in absolute closing dates; the visitor's "today" is only
+  // known here. A closing date is inclusive: on the date itself the vacancy
+  // is still open ("sluit vandaag").
+  const closesTags = document.querySelectorAll<HTMLElement>('[data-closes]');
+  if (closesTags.length > 0) {
+    const rtf = new Intl.RelativeTimeFormat(
+      document.documentElement.lang || 'nl',
+      { numeric: 'auto' },
+    );
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    for (const tag of closesTags) {
+      const [y, m, d] = (tag.dataset.closes ?? '').split('-').map(Number);
+      const days = Math.round(
+        (new Date(y, m - 1, d).getTime() - today.getTime()) / 86_400_000,
+      );
+      const label =
+        days >= 0 ? tag.dataset.closesOpen : tag.dataset.closesClosed;
+      tag.textContent = `${label} ${rtf.format(days, 'day')}`;
+    }
+  }
+</script>
