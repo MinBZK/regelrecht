@@ -273,102 +273,32 @@ dev-setup:
 dev:
     #!/usr/bin/env bash
     set -euo pipefail
+    export COMPOSE="{{ compose-native }}"  PIDFILE="{{ pidfile }}"
+    source script/dev-lib.sh
 
-    bold="\033[1m"  dim="\033[2m"  reset="\033[0m"
-    green="\033[32m"  red="\033[31m"  cyan="\033[36m"  yellow="\033[33m"
+    dev_preflight --rust --node --watch
 
-    # -- preflight checks --
-    missing=()
-    command -v cargo >/dev/null || missing+=("cargo (rustup.rs)")
-    command -v node >/dev/null  || missing+=("node")
-    command -v docker >/dev/null || missing+=("docker")
-    if ! cargo watch --version >/dev/null 2>&1; then
-        printf "${yellow}=> Installing cargo-watch…${reset} "
-        if cargo install cargo-watch --quiet 2>/dev/null; then
-            printf "${green}done${reset}\n"
-        else
-            missing+=("cargo-watch (cargo install cargo-watch)")
-        fi
-    fi
-    # mold is the linker configured in packages/.cargo/config.toml; without it
-    # dev builds fail to link.
-    command -v mold >/dev/null 2>&1 || missing+=("mold (run 'just dev-setup')")
-    if [ ${#missing[@]} -gt 0 ]; then
-        printf "${red}Missing dependencies:${reset}\n"
-        for dep in "${missing[@]}"; do echo "  - $dep"; done
-        exit 1
-    fi
+    dev_compose_up postgres prometheus grafana
+    dev_wait_postgres
 
-    # -- start infra --
-    logfile=$(mktemp)
-    printf "${bold}=> Starting infra (postgres, prometheus, grafana)…${reset} "
-    if {{ compose-native }} up -d postgres prometheus grafana > "$logfile" 2>&1; then
-        printf "${green}done${reset}\n"
-    else
-        printf "${red}failed${reset}\n"
-        cat "$logfile"; rm -f "$logfile"; exit 1
-    fi
-    rm -f "$logfile"
+    if dev_ensure_deps packages/admin/frontend-src "admin frontend"; then admin_fe=true; else admin_fe=false; fi
+    if dev_ensure_deps frontend "editor frontend"; then editor_fe=true; else editor_fe=false; fi
 
-    # -- wait for postgres --
-    printf "${bold}=> Waiting for postgres…${reset} "
-    for i in $(seq 1 30); do
-        if {{ compose-native }} exec -T postgres pg_isready -U regelrecht -d regelrecht_pipeline >/dev/null 2>&1; then
-            printf "${green}ready${reset}\n"
-            break
-        fi
-        if [ "$i" -eq 30 ]; then
-            printf "${red}timeout${reset}\n"; exit 1
-        fi
-        sleep 1
-    done
+    rm -f "$PIDFILE"
 
-    # -- install frontend deps if needed --
-    admin_fe=true
-    editor_fe=true
-
-    if [ ! -d packages/admin/frontend-src/node_modules ]; then
-        printf "${bold}=> Installing admin frontend deps…${reset} "
-        if (cd packages/admin/frontend-src && npm ci --silent) > /dev/null 2>&1; then
-            printf "${green}done${reset}\n"
-        else
-            printf "${yellow}skipped${reset} (npm ci failed)\n"
-            admin_fe=false
-        fi
-    fi
-    if [ ! -d frontend/node_modules ]; then
-        printf "${bold}=> Installing editor frontend deps…${reset} "
-        if (cd frontend && npm ci --silent) > /dev/null 2>&1; then
-            printf "${green}done${reset}\n"
-        else
-            printf "${yellow}skipped${reset} (npm ci failed)\n"
-            editor_fe=false
-        fi
-    fi
-
-    # -- start native services in background --
-    rm -f {{ pidfile }}
-
-    printf "${bold}=> Starting admin API (cargo watch on :8000)…${reset}\n"
-    DATABASE_URL="postgres://regelrecht:regelrecht_dev@localhost:${POSTGRES_PORT:-5433}/regelrecht_pipeline" \
-    RUST_LOG="${RUST_LOG:-info}" \
-      cargo watch -C packages -x 'run --package regelrecht-admin' \
-      > .dev-admin.log 2>&1 &
-    echo "$!" >> {{ pidfile }}
+    db_url="postgres://regelrecht:regelrecht_dev@${DB_HOST:-localhost}:${POSTGRES_PORT:-5433}/regelrecht_pipeline"
+    dev_start "admin API (cargo watch on :8000)" .dev-admin.log \
+      "DATABASE_URL='$db_url' RUST_LOG='${RUST_LOG:-info}' cargo watch -C packages -x 'run --package regelrecht-admin'"
 
     if [ "$admin_fe" = true ]; then
-        printf "${bold}=> Starting admin frontend (vite on :3001)…${reset}\n"
-        (cd packages/admin/frontend-src && npx vite) > .dev-admin-frontend.log 2>&1 &
-        echo "$!" >> {{ pidfile }}
+        dev_start "admin frontend (vite on :3001)" .dev-admin-frontend.log \
+          "cd packages/admin/frontend-src && npx vite"
     fi
-
     if [ "$editor_fe" = true ]; then
-        printf "${bold}=> Starting editor frontend (vite on :3000)…${reset}\n"
-        (cd frontend && npx vite) > .dev-editor.log 2>&1 &
-        echo "$!" >> {{ pidfile }}
+        dev_start "editor frontend (vite on :3000)" .dev-editor.log \
+          "cd frontend && npx vite"
     fi
 
-    # -- wait for services to come up --
     printf "${bold}=> Waiting for services…${reset} "
     sleep 4
     printf "${green}done${reset}\n"
@@ -397,28 +327,120 @@ dev:
     printf "  ${dim}Database:${reset}           just dev-psql\n"
     printf "  ${dim}Stop everything:${reset}    just dev-down\n"
 
-# Stop dev: kill native processes and stop infra
+# Vite ports default to 7300/7400/7500 (the redirect URIs already registered on
+# the regelrecht-local Keycloak client); override via EDITOR_PORT / ADMIN_FE_PORT
+# / LAWMAKING_PORT. No grafana / prometheus / workers are started.
+#
+# Frontend-focused dev: start only what a frontend needs (backend, DB, WASM, vite). APP = editor (default) | admin | lawmaking | all
+dev-frontend APP="editor":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export COMPOSE="{{ compose-native }}"  PIDFILE="{{ pidfile }}"
+    source script/dev-lib.sh
+
+    app="{{ APP }}"
+    case "$app" in
+        editor|admin|lawmaking|all) ;;
+        *) printf "${red}Unknown app '%s'${reset} — use: editor | admin | lawmaking | all\n" "$app"; exit 1 ;;
+    esac
+
+    run_editor=false; run_admin=false; run_lawmaking=false
+    case "$app" in
+        editor)    run_editor=true ;;
+        admin)     run_admin=true ;;
+        lawmaking) run_lawmaking=true ;;
+        all)       run_editor=true; run_admin=true; run_lawmaking=true ;;
+    esac
+
+    # Vite (browser-facing) ports — overridable. Editor stays 7300 unless you
+    # also update BASE_URL in .env.sso-local and the Keycloak redirect URI.
+    editor_port="${EDITOR_PORT:-7300}"
+    admin_fe_port="${ADMIN_FE_PORT:-7400}"
+    lawmaking_port="${LAWMAKING_PORT:-7500}"
+    # In 'all', editor-api keeps :8000 and admin moves to :8001 to avoid the clash.
+    admin_api_port=8000
+    if [ "$app" = all ]; then admin_api_port=8001; fi
+
+    if [ "$run_editor" = true ] || [ "$run_admin" = true ]; then
+        dev_preflight --rust --node
+    else
+        dev_preflight --node
+    fi
+
+    # editor / all run editor-api with OIDC against the central Keycloak.
+    if [ "$run_editor" = true ] && [ ! -f .env.sso-local ]; then
+        printf "${red}Missing .env.sso-local${reset} — copy .env.sso-local.example and fill in the Keycloak values (see auth-and-roles.md).\n"
+        exit 1
+    fi
+
+    # DB is needed by editor (session store) and admin; lawmaking has no backend.
+    if [ "$run_editor" = true ] || [ "$run_admin" = true ]; then
+        dev_compose_up postgres
+        dev_wait_postgres
+    fi
+
+    rm -f "$PIDFILE"
+
+    if [ "$run_editor" = true ]; then
+        dev_ensure_wasm
+        if dev_ensure_deps frontend "editor frontend"; then
+            # Plain `cargo run` (not cargo-watch): a frontend-dev loop doesn't
+            # rebuild the backend, and cargo-watch's recursive watch hangs on a
+            # 9p-mounted worktree. Matches the `editor-sso` recipe. Source
+            # .env.sso-local inside the backgrounded shell so the OIDC /
+            # DATABASE_URL / BASE_URL it sets scope to editor-api only.
+            dev_start "editor-api (:8000, OIDC)" .dev-editor-api.log \
+              "set -a; . ./.env.sso-local; set +a; cd packages && cargo run --package regelrecht-editor-api"
+            dev_start "editor vite (:${editor_port})" .dev-editor.log \
+              "cd frontend && API_PORT=8000 npx vite --port ${editor_port} --strictPort --host 0.0.0.0"
+        fi
+    fi
+
+    if [ "$run_admin" = true ]; then
+        if dev_ensure_deps packages/admin/frontend-src "admin frontend"; then
+            db_url="postgres://regelrecht:regelrecht_dev@${DB_HOST:-localhost}:${POSTGRES_PORT:-5433}/regelrecht_pipeline"
+            dev_start "admin API (:${admin_api_port})" .dev-admin.log \
+              "cd packages && DATABASE_URL='$db_url' RUST_LOG='${RUST_LOG:-info}' ADMIN_PORT=${admin_api_port} cargo run --package regelrecht-admin"
+            dev_start "admin vite (:${admin_fe_port})" .dev-admin-frontend.log \
+              "cd packages/admin/frontend-src && API_PORT=${admin_api_port} npx vite --port ${admin_fe_port} --strictPort --host 0.0.0.0"
+        fi
+    fi
+
+    if [ "$run_lawmaking" = true ]; then
+        if dev_ensure_deps frontend-lawmaking "lawmaking frontend"; then
+            dev_start "lawmaking vite (:${lawmaking_port})" .dev-lawmaking.log \
+              "cd frontend-lawmaking && npx vite --port ${lawmaking_port} --strictPort --host 0.0.0.0"
+        fi
+    fi
+
+    printf "${bold}=> Waiting for services…${reset} "
+    sleep 4
+    printf "${green}done${reset}\n\n"
+
+    printf "${bold}${green}  Frontend dev stack (%s) is running (vite HMR; backends run-once)${reset}\n\n" "$app"
+    if [ "$run_editor" = true ]; then
+        echo "  Editor:     http://localhost:${editor_port}     (vite HMR → editor-api :8000, SSO)"
+    fi
+    if [ "$run_admin" = true ]; then
+        echo "  Admin UI:   http://localhost:${admin_fe_port}     (vite HMR → admin API :${admin_api_port})"
+    fi
+    if [ "$run_lawmaking" = true ]; then
+        echo "  Lawmaking:  http://localhost:${lawmaking_port}     (vite HMR, no backend)"
+    fi
+    if [ "$run_editor" = true ] || [ "$run_admin" = true ]; then
+        echo "  PostgreSQL: localhost:${POSTGRES_PORT:-5433}"
+    fi
+    printf "\n"
+    printf "  ${dim}Logs:${reset}            tail -f .dev-*.log\n"
+    printf "  ${dim}Stop everything:${reset} just dev-down\n"
+
+# Stop dev: kill native processes and stop infra (works for dev and dev-frontend)
 dev-down:
     #!/usr/bin/env bash
     set -euo pipefail
-    bold="\033[1m"  reset="\033[0m"  green="\033[32m"
-
-    printf "${bold}=> Stopping native services…${reset} "
-    if [ -f {{ pidfile }} ]; then
-        while read -r pid; do
-            # Kill children first (node, cargo, etc.), then the parent
-            pkill -P "$pid" 2>/dev/null || true
-            kill "$pid" 2>/dev/null || true
-        done < {{ pidfile }}
-        rm -f {{ pidfile }}
-        sleep 1
-    fi
-    rm -f .dev-admin.log .dev-admin-frontend.log .dev-editor.log
-    printf "${green}done${reset}\n"
-
-    printf "${bold}=> Stopping infra…${reset} "
-    {{ compose-native }} down > /dev/null 2>&1
-    printf "${green}done${reset}\n"
+    export COMPOSE="{{ compose-native }}"  PIDFILE="{{ pidfile }}"
+    source script/dev-lib.sh
+    dev_stop
 
 # Follow infra logs in dev mode
 dev-logs *ARGS:
