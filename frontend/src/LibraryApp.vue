@@ -1048,8 +1048,8 @@ watch(activeTrajectRef, () => {
       <nldd-split-view-pane slot="mobile-bar" only="sm">
         <nldd-container padding="8" padding-bottom="0">
           <nldd-toolbar size="md">
-            <nldd-toolbar-item slot="start">
-              <TrajectMenu id-suffix="lib-sm" />
+            <nldd-toolbar-item slot="start" width="100%">
+              <TrajectMenu id-suffix="lib-sm" full-width />
             </nldd-toolbar-item>
           </nldd-toolbar>
         </nldd-container>

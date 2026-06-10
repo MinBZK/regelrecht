@@ -11,6 +11,9 @@ const props = defineProps({
   // Suffix to keep ids unique when this component is mounted in multiple
   // responsive headers (md/lg/sm) at the same time.
   idSuffix: { type: String, default: '' },
+  // Mobile presentation: stretch the trigger button to the full toolbar
+  // width with left-aligned content.
+  fullWidth: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['switched']);
@@ -223,6 +226,8 @@ function bind(field) {
     expandable
     :text="activeLabel"
     :popovertarget="menuId"
+    :width="fullWidth ? 'full' : undefined"
+    :horizontal-alignment="fullWidth ? 'left' : undefined"
   ></nldd-button>
   <!-- Logged in: the traject switcher + create. "Geen traject" is not an
        option — you leave traject scope by navigating, not from this menu. -->
