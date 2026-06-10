@@ -331,8 +331,8 @@ dev:
 # the regelrecht-local Keycloak client); override via EDITOR_PORT / ADMIN_FE_PORT
 # / LAWMAKING_PORT. No grafana / prometheus / workers are started.
 #
-# Frontend-focused dev: start only what a frontend needs (backend, DB, WASM, vite). APP = editor (default) | admin | lawmaking | all
-dev-frontend APP="editor":
+# Frontend-focused dev: start only what a frontend needs (backend, DB, WASM, vite). No arg = all frontends; APP = editor | admin | lawmaking | all
+dev-frontend APP="all":
     #!/usr/bin/env bash
     set -euo pipefail
     export COMPOSE="{{ compose-native }}"  PIDFILE="{{ pidfile }}"
