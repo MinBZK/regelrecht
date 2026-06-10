@@ -172,6 +172,19 @@ function cancel() {
   emit('cancel');
 }
 
+// nldd-popover is popover="auto": the browser light-dismisses it on an
+// outside click or Esc without going through cancel(). The component fires
+// `close` on every dismissal, so a close that arrives while the form is
+// still open (range set) is an external dismiss and must cancel — otherwise
+// the parent keeps creatorOpen=true and suppresses the "Notitie" button for
+// every later selection. Closes from our own save()/cancel()/teardown land
+// after the parent already nulled the range, so the guard skips those.
+function onPopoverClose() {
+  if (!props.range) return;
+  reset();
+  emit('cancel');
+}
+
 function save() {
   if (!canSave.value) return;
   const note = {
@@ -272,6 +285,7 @@ const statusInfo = computed(() => {
     accessible-label="Notitie aanmaken"
     placement="bottom-start"
     width="480px"
+    @close="onPopoverClose"
   >
     <div v-if="range" class="note-creator" data-testid="note-creator">
       <div class="nc-quote">

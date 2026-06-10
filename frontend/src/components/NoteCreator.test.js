@@ -167,6 +167,28 @@ describe('NoteCreator', () => {
     expect(w.find('[data-testid="note-save"]').exists()).toBe(true);
   });
 
+  // nldd-popover is popover="auto": clicking outside (or Esc) light-dismisses
+  // it in the browser without going through cancel(). The component fires
+  // `close` on every dismissal; NoteCreator must treat a close while the form
+  // is still open as a cancel, or the parent keeps creatorOpen=true and the
+  // "Notitie" button never reappears on a new selection.
+  it('emits cancel when the popover closes via light-dismiss', async () => {
+    const w = mountCreator();
+    await nextTick();
+    w.element.dispatchEvent(new Event('close'));
+    await nextTick();
+    expect(w.emitted('cancel')).toHaveLength(1);
+  });
+
+  it('does not emit cancel for the close that follows its own teardown', async () => {
+    const w = mountCreator();
+    await nextTick();
+    await w.setProps({ range: null }); // parent already tore the flow down
+    w.element.dispatchEvent(new Event('close'));
+    await nextTick();
+    expect(w.emitted('cancel')).toBeUndefined();
+  });
+
   it('remembers the creator across mounts via localStorage', async () => {
     const w = mountCreator();
     await nextTick();
