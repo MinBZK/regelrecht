@@ -179,7 +179,11 @@ function cancel() {
 // the parent keeps creatorOpen=true and suppresses the "Notitie" button for
 // every later selection. Closes from our own save()/cancel()/teardown land
 // after the parent already nulled the range, so the guard skips those.
-function onPopoverClose() {
+function onPopoverClose(event) {
+  // Only the popover's own close counts: nldd close events bubble+composed,
+  // so a future nested sheet/dialog in the form slot would land here too and
+  // silently cancel a half-filled form.
+  if (event.target !== event.currentTarget) return;
   if (!props.range) return;
   reset();
   emit('cancel');
