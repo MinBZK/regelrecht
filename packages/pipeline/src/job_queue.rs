@@ -1,7 +1,40 @@
+use std::time::Duration;
+
+use sqlx::postgres::types::PgInterval;
 use uuid::Uuid;
 
 use crate::error::{PipelineError, Result};
 use crate::models::{Job, JobStatus, JobType, Priority};
+
+/// Base delay before the first retry of a failed job. Effective retry latency
+/// is this backoff plus up to the worker's max poll interval (the poll loop
+/// only discovers due jobs on its next tick) — by design, not a bug.
+pub const RETRY_BACKOFF_BASE: Duration = Duration::from_secs(30);
+
+/// Maximum delay between retries of a failed job.
+pub const RETRY_BACKOFF_CAP: Duration = Duration::from_secs(15 * 60);
+
+/// Exponential backoff for retry `attempts`: `30s * 2^(attempts-1)`, capped
+/// at 15 minutes. `attempts` is the number of attempts already spent (>= 1
+/// when a job fails); values below 1 are treated as 1. The exponent is
+/// clamped at 30 so the multiplication cannot overflow before the cap
+/// applies.
+///
+/// `fail_job` applies the same formula in SQL (with [`RETRY_BACKOFF_BASE`] and
+/// [`RETRY_BACKOFF_CAP`] bound as parameters, and the same exponent clamp) —
+/// keep the two in sync.
+pub fn retry_backoff(attempts: i32) -> Duration {
+    let exponent = attempts.saturating_sub(1).clamp(0, 30) as u32;
+    RETRY_BACKOFF_BASE
+        .saturating_mul(2u32.saturating_pow(exponent))
+        .min(RETRY_BACKOFF_CAP)
+}
+
+/// Convert a `Duration` to a Postgres interval bind parameter.
+fn to_pg_interval(duration: Duration) -> Result<PgInterval> {
+    PgInterval::try_from(duration)
+        .map_err(|_| PipelineError::InvalidInput(format!("invalid interval: {duration:?}")))
+}
 
 /// Internal row type for the reaper CTE result.
 #[derive(sqlx::FromRow)]
@@ -22,6 +55,9 @@ pub struct CreateJobRequest {
     pub priority: Priority,
     pub payload: Option<serde_json::Value>,
     pub max_attempts: i32,
+    /// Delay before the job becomes claimable (sets `scheduled_at` to
+    /// `now() + delay`). `None` means claimable immediately.
+    pub initial_delay: Option<Duration>,
 }
 
 impl CreateJobRequest {
@@ -32,6 +68,7 @@ impl CreateJobRequest {
             priority: Priority::default(),
             payload: None,
             max_attempts: 3,
+            initial_delay: None,
         }
     }
 
@@ -49,6 +86,11 @@ impl CreateJobRequest {
         self.max_attempts = max_attempts.max(1);
         self
     }
+
+    pub fn with_initial_delay(mut self, delay: Duration) -> Self {
+        self.initial_delay = Some(delay);
+        self
+    }
 }
 
 /// Create a new job in the queue.
@@ -57,10 +99,11 @@ pub async fn create_job<'e, E>(executor: E, req: CreateJobRequest) -> Result<Job
 where
     E: sqlx::PgExecutor<'e>,
 {
+    let initial_delay = req.initial_delay.map(to_pg_interval).transpose()?;
     let job = sqlx::query_as::<_, Job>(
         r#"
-        INSERT INTO jobs (job_type, law_id, priority, payload, max_attempts)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO jobs (job_type, law_id, priority, payload, max_attempts, scheduled_at)
+        VALUES ($1, $2, $3, $4, $5, now() + $6::interval)
         RETURNING *
         "#,
     )
@@ -69,6 +112,7 @@ where
     .bind(req.priority.value())
     .bind(&req.payload)
     .bind(req.max_attempts)
+    .bind(initial_delay)
     .fetch_one(executor)
     .await?;
 
@@ -77,6 +121,8 @@ where
 }
 
 /// Claim the highest-priority pending job using FOR UPDATE SKIP LOCKED.
+/// Jobs scheduled in the future (`scheduled_at > now()`, set by the retry
+/// backoff) are skipped until they become due.
 /// Returns None if no jobs are available.
 #[tracing::instrument(skip(executor))]
 pub async fn claim_job<'e, E>(executor: E, job_type: Option<JobType>) -> Result<Option<Job>>
@@ -92,7 +138,9 @@ where
         SET status = 'processing', started_at = now(), attempts = attempts + 1
         WHERE id = (
             SELECT id FROM jobs
-            WHERE status = 'pending' AND ($1::job_type IS NULL OR job_type = $1)
+            WHERE status = 'pending'
+              AND ($1::job_type IS NULL OR job_type = $1)
+              AND (scheduled_at IS NULL OR scheduled_at <= now())
             ORDER BY priority DESC, created_at ASC
             LIMIT 1
             FOR UPDATE SKIP LOCKED
@@ -138,7 +186,11 @@ where
     Ok(job)
 }
 
-/// Mark a job as failed. If attempts < max_attempts, reset to pending for retry.
+/// Mark a job as failed. If attempts < max_attempts, reset to pending for
+/// retry with an exponential backoff: `scheduled_at` is set to
+/// `now() + 30s * 2^(attempts-1)`, capped at 15 minutes (see
+/// [`retry_backoff`] — the SQL below implements the same formula), so a
+/// transient outage doesn't burn all attempts within one poll interval.
 #[tracing::instrument(skip(executor, error_result))]
 pub async fn fail_job<'e, E>(
     executor: E,
@@ -159,6 +211,18 @@ where
             completed_at = CASE
                 WHEN attempts >= max_attempts THEN now()
                 ELSE NULL
+            END,
+            scheduled_at = CASE
+                WHEN attempts < max_attempts THEN
+                    -- Clamp the exponent at 30 (like retry_backoff in Rust):
+                    -- the product is computed BEFORE the LEAST cap, so an
+                    -- unclamped exponent overflows the interval for large
+                    -- attempt counts and the whole UPDATE errors.
+                    now() + LEAST(
+                        $3::interval * power(2, LEAST(GREATEST(attempts - 1, 0), 30)),
+                        $4::interval
+                    )
+                ELSE NULL
             END
         WHERE id = $1 AND status = 'processing'
         RETURNING *
@@ -166,13 +230,21 @@ where
     )
     .bind(job_id)
     .bind(&error_result)
+    .bind(to_pg_interval(RETRY_BACKOFF_BASE)?)
+    .bind(to_pg_interval(RETRY_BACKOFF_CAP)?)
     .fetch_optional(executor)
     .await?
     .ok_or(PipelineError::JobNotProcessing(job_id))?;
 
     match job.status {
         JobStatus::Pending => {
-            tracing::info!(job_id = %job.id, attempt = job.attempts, max = job.max_attempts, "job failed, will retry");
+            tracing::info!(
+                job_id = %job.id,
+                attempt = job.attempts,
+                max = job.max_attempts,
+                retry_at = ?job.scheduled_at,
+                "job failed, will retry after backoff"
+            );
         }
         JobStatus::Failed => {
             tracing::warn!(job_id = %job.id, attempts = job.attempts, "job permanently failed after exhausting retries");
@@ -250,10 +322,11 @@ pub async fn create_harvest_job_if_not_exists<'e, E>(
 where
     E: sqlx::PgExecutor<'e>,
 {
+    let initial_delay = req.initial_delay.map(to_pg_interval).transpose()?;
     let result = sqlx::query_as::<_, Job>(
         r#"
-        INSERT INTO jobs (job_type, law_id, priority, payload, max_attempts)
-        SELECT $1, $2, $3, $4, $5
+        INSERT INTO jobs (job_type, law_id, priority, payload, max_attempts, scheduled_at)
+        SELECT $1, $2, $3, $4, $5, now() + $7::interval
         WHERE NOT EXISTS (
             SELECT 1 FROM jobs
             WHERE job_type = 'harvest'
@@ -270,6 +343,7 @@ where
     .bind(&req.payload)
     .bind(req.max_attempts)
     .bind(date)
+    .bind(initial_delay)
     .fetch_optional(executor)
     .await;
 
@@ -337,10 +411,11 @@ pub async fn create_enrich_job_if_not_exists<'e, E>(
 where
     E: sqlx::PgExecutor<'e>,
 {
+    let initial_delay = req.initial_delay.map(to_pg_interval).transpose()?;
     let job = sqlx::query_as::<_, Job>(
         r#"
-        INSERT INTO jobs (job_type, law_id, priority, payload, max_attempts)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO jobs (job_type, law_id, priority, payload, max_attempts, scheduled_at)
+        VALUES ($1, $2, $3, $4, $5, now() + $6::interval)
         ON CONFLICT (law_id, job_type, (payload->>'provider'))
             WHERE job_type = 'enrich' AND status IN ('pending', 'processing')
         DO NOTHING
@@ -352,6 +427,7 @@ where
     .bind(req.priority.value())
     .bind(&req.payload)
     .bind(req.max_attempts)
+    .bind(initial_delay)
     .fetch_optional(executor)
     .await?;
 
@@ -383,4 +459,30 @@ where
     };
 
     Ok(jobs)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retry_backoff_doubles_per_attempt() {
+        assert_eq!(retry_backoff(1), Duration::from_secs(30));
+        assert_eq!(retry_backoff(2), Duration::from_secs(60));
+        assert_eq!(retry_backoff(3), Duration::from_secs(120));
+        assert_eq!(retry_backoff(4), Duration::from_secs(240));
+    }
+
+    #[test]
+    fn retry_backoff_is_capped_at_fifteen_minutes() {
+        assert_eq!(retry_backoff(6), Duration::from_secs(15 * 60));
+        assert_eq!(retry_backoff(10), RETRY_BACKOFF_CAP);
+        assert_eq!(retry_backoff(i32::MAX), RETRY_BACKOFF_CAP);
+    }
+
+    #[test]
+    fn retry_backoff_treats_non_positive_attempts_as_first() {
+        assert_eq!(retry_backoff(0), RETRY_BACKOFF_BASE);
+        assert_eq!(retry_backoff(-5), RETRY_BACKOFF_BASE);
+    }
 }

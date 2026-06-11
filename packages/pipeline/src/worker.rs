@@ -70,6 +70,36 @@ fn is_resource_exhaustion(err: &str) -> bool {
     MARKERS.iter().any(|m| e.contains(m))
 }
 
+/// Interval between orphaned-job reaper runs.
+const REAPER_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Spawn the orphaned-job reaper as an independent interval task.
+///
+/// Running the reaper inside the worker loop meant a wedged job stopped
+/// reaping too, freezing the whole queue until a pod restart. As its own
+/// task (with its own pool handle) it keeps resetting jobs stuck in
+/// 'processing' even when the main loop is blocked on a job. The reaper
+/// query is idempotent, so multiple workers running it concurrently is safe.
+///
+/// The task runs until the cancellation token fires (on worker shutdown).
+fn spawn_reaper(
+    pool: PgPool,
+    orphan_timeout: Duration,
+    cancel: tokio_util::sync::CancellationToken,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        loop {
+            if let Err(e) = job_queue::reap_orphaned_jobs(&pool, orphan_timeout).await {
+                tracing::warn!(error = %e, "failed to reap orphaned jobs");
+            }
+            tokio::select! {
+                _ = cancel.cancelled() => break,
+                _ = tokio::time::sleep(REAPER_INTERVAL) => {}
+            }
+        }
+    })
+}
+
 /// Run the harvest worker loop.
 ///
 /// Polls the job queue for harvest jobs and executes them.
@@ -105,12 +135,19 @@ pub async fn run_harvest_worker(config: WorkerConfig) -> Result<()> {
         output_dir = %output_dir.display(),
         output_base = %config.regulation_output_base,
         poll_interval = ?config.poll_interval,
+        job_timeout = ?config.job_timeout,
+        orphan_timeout = ?config.orphan_timeout,
         "starting harvest worker"
     );
 
     let mut sigterm = signal(SignalKind::terminate()).map_err(|e| {
         crate::error::PipelineError::Worker(format!("failed to register SIGTERM handler: {e}"))
     })?;
+
+    // Reap orphaned jobs on an independent task so a wedged job in the main
+    // loop can't also stop the reaper (which would freeze the whole queue).
+    let reaper_cancel = tokio_util::sync::CancellationToken::new();
+    let reaper_handle = spawn_reaper(pool.clone(), config.orphan_timeout, reaper_cancel.clone());
 
     let mut current_interval = std::time::Duration::ZERO; // poll immediately on startup
     let mut consecutive_resource_failures: u32 = 0;
@@ -131,11 +168,6 @@ pub async fn run_harvest_worker(config: WorkerConfig) -> Result<()> {
             _ = tokio::time::sleep(current_interval) => {
                 // Ready to process next job
             }
-        }
-
-        // Reap orphaned jobs stuck in 'processing' (cheap single-query check)
-        if let Err(e) = job_queue::reap_orphaned_jobs(&pool, config.orphan_timeout).await {
-            tracing::warn!(error = %e, "failed to reap orphaned jobs");
         }
 
         // Process job outside of select! — runs to completion without cancellation
@@ -166,6 +198,11 @@ pub async fn run_harvest_worker(config: WorkerConfig) -> Result<()> {
                     .min(config.max_poll_interval);
             }
         }
+    }
+
+    reaper_cancel.cancel();
+    if let Err(e) = reaper_handle.await {
+        tracing::error!(error = %e, "reaper task panicked");
     }
 
     Ok(())
@@ -256,7 +293,33 @@ async fn process_next_job(
         tracing::warn!(error = %e, law_id = %job.law_id, "failed to set status to harvesting");
     }
 
-    match execute_harvest_job(output_dir, config, &payload, corpus, http_client).await {
+    // Bound the harvest with the job timeout (mirrors the enrich path): the
+    // BWB HTTP fetches and corpus git operations (fetch/pull/push) have no
+    // internal deadline, so a hung remote would otherwise stall this
+    // sequential worker loop forever. On timeout the error feeds the normal
+    // failure path below (retry with backoff / exhausted threshold).
+    let harvest_outcome = match tokio::time::timeout(
+        config.job_timeout,
+        execute_harvest_job(output_dir, config, &payload, corpus, http_client),
+    )
+    .await
+    {
+        Ok(outcome) => outcome,
+        Err(_elapsed) => {
+            tracing::error!(
+                job_id = %job.id,
+                law_id = %job.law_id,
+                timeout = ?config.job_timeout,
+                "harvest job timed out"
+            );
+            Err(PipelineError::Worker(format!(
+                "harvest job timed out after {}s",
+                config.job_timeout.as_secs()
+            )))
+        }
+    };
+
+    match harvest_outcome {
         Ok(result) => {
             tracing::info!(
                 job_id = %job.id,
@@ -540,11 +603,16 @@ async fn process_next_job(
                     }
                     Ok(count) => {
                         // Not yet exhausted — queue a new harvest job so the
-                        // fail_count can accumulate toward the threshold.
+                        // fail_count can accumulate toward the threshold. The
+                        // job starts with a backoff delay that grows with the
+                        // law's fail count, so a transient BWB outage doesn't
+                        // mass-exhaust laws within minutes.
+                        let retry_delay = job_queue::retry_backoff(count);
                         tracing::info!(
                             law_id = %job.law_id,
                             fail_count = count,
                             threshold = config.exhausted_threshold,
+                            delay = ?retry_delay,
                             "scheduling auto-retry harvest job"
                         );
                         match serde_json::to_value(&payload) {
@@ -552,7 +620,8 @@ async fn process_next_job(
                                 let date = payload.date.as_deref().unwrap_or("");
                                 let req = CreateJobRequest::new(JobType::Harvest, &job.law_id)
                                     .with_priority(Priority::new(job.priority))
-                                    .with_payload(payload_json);
+                                    .with_payload(payload_json)
+                                    .with_initial_delay(retry_delay);
                                 match job_queue::create_harvest_job_if_not_exists(pool, req, date)
                                     .await
                                 {
@@ -647,6 +716,11 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
         crate::error::PipelineError::Worker(format!("failed to register SIGTERM handler: {e}"))
     })?;
 
+    // Reap orphaned jobs on an independent task so a wedged job in the main
+    // loop can't also stop the reaper (which would freeze the whole queue).
+    let reaper_cancel = tokio_util::sync::CancellationToken::new();
+    let reaper_handle = spawn_reaper(pool.clone(), config.orphan_timeout, reaper_cancel.clone());
+
     let mut current_interval = std::time::Duration::ZERO;
     let mut consecutive_resource_failures: u32 = 0;
 
@@ -667,10 +741,6 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
             }
         }
 
-        if let Err(e) = job_queue::reap_orphaned_jobs(&pool, config.orphan_timeout).await {
-            tracing::warn!(error = %e, "failed to reap orphaned jobs");
-        }
-
         match process_next_enrich_job(
             &pool,
             &repo_path,
@@ -683,7 +753,6 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
         {
             Ok(JobOutcome::Processed) => {
                 consecutive_resource_failures = 0;
-                // Use poll_interval (not zero) to avoid tight-looping reap_orphaned_jobs.
                 current_interval = config.poll_interval;
             }
             Ok(JobOutcome::Idle) => {
@@ -708,6 +777,11 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
                     .min(config.max_poll_interval);
             }
         }
+    }
+
+    reaper_cancel.cancel();
+    if let Err(e) = reaper_handle.await {
+        tracing::error!(error = %e, "reaper task panicked");
     }
 
     Ok(())
@@ -1219,18 +1293,22 @@ async fn handle_enrich_exhausted_or_retry(
         }
         Ok(count) => {
             // Not yet exhausted — queue a new enrich job so the
-            // fail_count can accumulate toward the threshold.
+            // fail_count can accumulate toward the threshold. The job starts
+            // with a backoff delay that grows with the law's fail count.
+            let retry_delay = job_queue::retry_backoff(count);
             tracing::info!(
                 law_id = %law_id,
                 fail_count = count,
                 threshold = exhausted_threshold,
+                delay = ?retry_delay,
                 "scheduling auto-retry enrich job"
             );
             match serde_json::to_value(payload) {
                 Ok(payload_json) => {
                     let req = CreateJobRequest::new(JobType::Enrich, law_id)
                         .with_priority(Priority::new(priority))
-                        .with_payload(payload_json);
+                        .with_payload(payload_json)
+                        .with_initial_delay(retry_delay);
                     match job_queue::create_enrich_job_if_not_exists(pool, req).await {
                         Ok(Some(new_job)) => {
                             tracing::info!(

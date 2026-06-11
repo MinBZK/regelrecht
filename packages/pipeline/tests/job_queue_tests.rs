@@ -136,6 +136,16 @@ async fn test_complete_job_not_processing() {
     assert!(matches!(result, Err(PipelineError::JobNotProcessing(_))));
 }
 
+/// Backdate a job's scheduled_at so it becomes claimable immediately
+/// (simulates the retry backoff having elapsed).
+async fn make_due(pool: &sqlx::PgPool, job_id: uuid::Uuid) {
+    sqlx::query("UPDATE jobs SET scheduled_at = now() - interval '1 second' WHERE id = $1")
+        .bind(job_id)
+        .execute(pool)
+        .await
+        .unwrap();
+}
+
 #[tokio::test]
 async fn test_fail_job_with_retry() {
     let db = TestDb::new().await;
@@ -150,12 +160,18 @@ async fn test_fail_job_with_retry() {
         .unwrap();
     assert_eq!(failed.status, JobStatus::Pending);
 
+    // The retry backoff makes the job not immediately claimable.
+    let none = job_queue::claim_job(&db.pool, None).await.unwrap();
+    assert!(none.is_none(), "job must not be claimable during backoff");
+    make_due(&db.pool, job.id).await;
+
     let claimed = job_queue::claim_job(&db.pool, None).await.unwrap().unwrap();
     assert_eq!(claimed.attempts, 2);
     let failed = job_queue::fail_job(&db.pool, job.id, Some(json!({"error": "timeout again"})))
         .await
         .unwrap();
     assert_eq!(failed.status, JobStatus::Pending);
+    make_due(&db.pool, job.id).await;
 
     let claimed = job_queue::claim_job(&db.pool, None).await.unwrap().unwrap();
     assert_eq!(claimed.attempts, 3);
@@ -164,9 +180,80 @@ async fn test_fail_job_with_retry() {
         .unwrap();
     assert_eq!(failed.status, JobStatus::Failed);
     assert!(failed.completed_at.is_some());
+    assert!(
+        failed.scheduled_at.is_none(),
+        "permanently failed job must not carry a retry schedule"
+    );
 
     let none = job_queue::claim_job(&db.pool, None).await.unwrap();
     assert!(none.is_none());
+}
+
+#[tokio::test]
+async fn test_fail_job_sets_exponential_backoff_schedule() {
+    let db = TestDb::new().await;
+
+    let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840").with_max_attempts(5);
+    let job = job_queue::create_job(&db.pool, req).await.unwrap();
+    assert!(
+        job.scheduled_at.is_none(),
+        "new job is claimable immediately"
+    );
+
+    // First failure: backoff = 30s * 2^0 = 30s.
+    job_queue::claim_job(&db.pool, None).await.unwrap().unwrap();
+    let failed = job_queue::fail_job(&db.pool, job.id, None).await.unwrap();
+    let now = chrono::Utc::now();
+    let scheduled = failed.scheduled_at.expect("retrying job has scheduled_at");
+    let delay = (scheduled - now).num_seconds();
+    assert!(
+        (20..=40).contains(&delay),
+        "first retry should be ~30s out, got {delay}s"
+    );
+
+    // Second failure: backoff = 30s * 2^1 = 60s.
+    make_due(&db.pool, job.id).await;
+    job_queue::claim_job(&db.pool, None).await.unwrap().unwrap();
+    let failed = job_queue::fail_job(&db.pool, job.id, None).await.unwrap();
+    let now = chrono::Utc::now();
+    let delay = (failed.scheduled_at.unwrap() - now).num_seconds();
+    assert!(
+        (50..=70).contains(&delay),
+        "second retry should be ~60s out, got {delay}s"
+    );
+
+    // SQL formula must match the Rust reference implementation.
+    assert_eq!(job_queue::retry_backoff(1).as_secs(), 30);
+    assert_eq!(job_queue::retry_backoff(2).as_secs(), 60);
+}
+
+#[tokio::test]
+async fn test_claim_job_skips_future_scheduled_and_claims_due() {
+    let db = TestDb::new().await;
+
+    let future = CreateJobRequest::new(JobType::Harvest, "future")
+        .with_priority(Priority::new(90))
+        .with_initial_delay(Duration::from_secs(3600));
+    let due = CreateJobRequest::new(JobType::Harvest, "due").with_priority(Priority::new(10));
+    let future_job = job_queue::create_job(&db.pool, future).await.unwrap();
+    job_queue::create_job(&db.pool, due).await.unwrap();
+
+    assert!(
+        future_job.scheduled_at.is_some(),
+        "initial delay must set scheduled_at"
+    );
+
+    // Despite its higher priority, the future-scheduled job is skipped.
+    let claimed = job_queue::claim_job(&db.pool, None).await.unwrap().unwrap();
+    assert_eq!(claimed.law_id, "due");
+
+    let none = job_queue::claim_job(&db.pool, None).await.unwrap();
+    assert!(none.is_none(), "future job must not be claimable yet");
+
+    // Once due, the job becomes claimable.
+    make_due(&db.pool, future_job.id).await;
+    let claimed = job_queue::claim_job(&db.pool, None).await.unwrap().unwrap();
+    assert_eq!(claimed.law_id, "future");
 }
 
 #[tokio::test]
