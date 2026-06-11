@@ -43,6 +43,13 @@ pub struct SaveResponse {
     /// finding NEW-2). Always `false` for law/scenario saves; those
     /// clients ignore it.
     pub no_change: bool,
+    /// The new ETag after a law/scenario save — clients keep it for the
+    /// next PUT's `If-Match` header (same optimistic-concurrency chain
+    /// as [`SaveDocumentResponse::etag`]). `None` for handlers that
+    /// don't participate in If-Match concurrency (annotations, deletes),
+    /// and omitted from the JSON in that case.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub etag: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -335,11 +342,31 @@ type YamlResponse = (
     String,
 );
 
+/// Raw-content response carrying an `ETag` next to the `Content-Type`.
+/// Used by the law and scenario GETs so clients can echo the ETag back
+/// as `If-Match` on the corresponding save (same optimistic-concurrency
+/// chain as the document endpoints).
+type EtaggedContentResponse = (StatusCode, [(axum::http::HeaderName, String); 2], String);
+
+/// Build a `200 OK` raw-content response with `Content-Type` and an
+/// `ETag` computed over the body (see [`document_etag`]).
+fn etagged_content_response(content_type: &'static str, content: String) -> EtaggedContentResponse {
+    let etag = document_etag(&content);
+    (
+        StatusCode::OK,
+        [
+            (axum::http::header::CONTENT_TYPE, content_type.to_string()),
+            (axum::http::header::ETAG, etag),
+        ],
+        content,
+    )
+}
+
 /// GET /api/corpus/laws/{law_id} — return raw YAML content for a specific law (global view).
 pub async fn get_corpus_law(
     State(state): State<AppState>,
     Path(law_id): Path<String>,
-) -> Result<YamlResponse, (StatusCode, String)> {
+) -> Result<EtaggedContentResponse, (StatusCode, String)> {
     let scope = global_scope(&state).await;
     get_corpus_law_in_scope(&scope, &law_id).await
 }
@@ -350,7 +377,7 @@ pub async fn get_traject_corpus_law(
     State(state): State<AppState>,
     session: Session,
     Path((traject_ref, law_id)): Path<(String, String)>,
-) -> Result<YamlResponse, (StatusCode, String)> {
+) -> Result<EtaggedContentResponse, (StatusCode, String)> {
     let scope = require_traject_scope(&state, &session, &traject_ref).await?;
     get_corpus_law_in_scope(&scope, &law_id).await
 }
@@ -358,13 +385,9 @@ pub async fn get_traject_corpus_law(
 async fn get_corpus_law_in_scope(
     scope: &ReadScope,
     law_id: &str,
-) -> Result<YamlResponse, (StatusCode, String)> {
+) -> Result<EtaggedContentResponse, (StatusCode, String)> {
     let yaml = read_law_yaml(scope, law_id).await?;
-    Ok((
-        StatusCode::OK,
-        [(axum::http::header::CONTENT_TYPE, "text/yaml; charset=utf-8")],
-        yaml,
-    ))
+    Ok(etagged_content_response("text/yaml; charset=utf-8", yaml))
 }
 
 /// GET /api/corpus/laws/{law_id}/outputs — list all outputs declared across articles (global view).
@@ -536,7 +559,7 @@ async fn list_scenarios_in_scope(
 pub async fn get_scenario(
     State(state): State<AppState>,
     Path((law_id, filename)): Path<(String, String)>,
-) -> Result<YamlResponse, (StatusCode, String)> {
+) -> Result<EtaggedContentResponse, (StatusCode, String)> {
     let scope = global_scope(&state).await;
     get_scenario_in_scope(&scope, &law_id, &filename).await
 }
@@ -547,7 +570,7 @@ pub async fn get_traject_scenario(
     State(state): State<AppState>,
     session: Session,
     Path((traject_ref, law_id, filename)): Path<(String, String, String)>,
-) -> Result<YamlResponse, (StatusCode, String)> {
+) -> Result<EtaggedContentResponse, (StatusCode, String)> {
     let scope = require_traject_scope(&state, &session, &traject_ref).await?;
     get_scenario_in_scope(&scope, &law_id, &filename).await
 }
@@ -556,7 +579,7 @@ async fn get_scenario_in_scope(
     scope: &ReadScope,
     law_id: &str,
     filename: &str,
-) -> Result<YamlResponse, (StatusCode, String)> {
+) -> Result<EtaggedContentResponse, (StatusCode, String)> {
     validate_scenario_filename(filename)?;
 
     let resolved = resolve_backend_for_law(scope.corpus(), law_id).await?;
@@ -577,12 +600,8 @@ async fn get_scenario_in_scope(
         })?;
     drop(backend);
 
-    Ok((
-        StatusCode::OK,
-        [(
-            axum::http::header::CONTENT_TYPE,
-            "text/plain; charset=utf-8",
-        )],
+    Ok(etagged_content_response(
+        "text/plain; charset=utf-8",
         content,
     ))
 }
@@ -1085,19 +1104,26 @@ fn traject_corpus_error(e: TrajectCorpusError) -> (StatusCode, String) {
     }
 }
 
+/// Resolved write routing for a law in a traject: the law's index
+/// entry, the id of the source whose backend the write goes to, and an
+/// owned guard over that backend.
+struct TrajectLawWrite {
+    law: LoadedLaw,
+    /// Source id of the backend behind `backend`. Differs from
+    /// `law.source_id` when the law comes from a federated read-only
+    /// source and its writes are routed to the traject's writable-own
+    /// backend (see `write_target_for_source`).
+    write_source_id: String,
+    backend: tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>,
+}
+
 /// Resolve the writable-own backend within a traject's corpus. Returns
-/// the looked-up law (for its `relative_path`) and an owned guard over
-/// the traject's writable backend.
+/// the looked-up law (for its `relative_path`), the write-target source
+/// id, and an owned guard over the traject's writable backend.
 async fn resolve_traject_law_write(
     traject: &Arc<TrajectCorpus>,
     law_id: &str,
-) -> Result<
-    (
-        LoadedLaw,
-        tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>,
-    ),
-    (StatusCode, String),
-> {
+) -> Result<TrajectLawWrite, (StatusCode, String)> {
     let law = traject
         .corpus
         .source_map
@@ -1128,18 +1154,64 @@ async fn resolve_traject_law_write(
         return Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()));
     }
     let backend = entry.backend.clone().lock_owned().await;
-    Ok((law, backend))
-}
-
-async fn resolve_traject_law_target(
-    traject: &Arc<TrajectCorpus>,
-    law_id: &str,
-) -> Result<EditorWriteTarget, (StatusCode, String)> {
-    let (law, backend) = resolve_traject_law_write(traject, law_id).await?;
-    Ok(EditorWriteTarget {
-        relative_path: PathBuf::from(&law.relative_path),
+    Ok(TrajectLawWrite {
+        law,
+        write_source_id: write_target_source_id,
         backend,
     })
+}
+
+/// Source-relative path of a law's scenario file.
+fn scenario_relative_path(
+    law: &LoadedLaw,
+    filename: &str,
+) -> Result<PathBuf, (StatusCode, String)> {
+    Ok(law_relative_dir(law)?.join("scenarios").join(filename))
+}
+
+/// Read the bytes an `If-Match` check on a law/scenario save compares
+/// against, coherently with the write that follows.
+///
+/// The write-target file (the traject branch) is authoritative: it is
+/// read through the same mutex guard the caller holds for the upcoming
+/// write, so a concurrent save of the same law cannot slip in between
+/// the check and the write (saves of one law serialise on that mutex,
+/// and the loser then sees the winner's bytes — a stale `If-Match`
+/// 412s instead of silently overwriting).
+///
+/// When that file does not exist yet AND the law is routed from a
+/// *different* source (a federated law whose first traject edit hasn't
+/// landed on the writable-own branch), the client's ETag was computed
+/// from the upstream body the GET served — so fall back to reading the
+/// law's own source backend. The `law.source_id != write_source_id`
+/// guard guarantees the fallback locks a different mutex than the one
+/// the caller already holds; tokio's `Mutex` is not reentrant, so
+/// re-locking the held guard would deadlock.
+async fn current_content_for_write(
+    traject: &Arc<TrajectCorpus>,
+    write: &TrajectLawWrite,
+    relative_path: &std::path::Path,
+    kind: &'static str,
+) -> Result<Option<String>, (StatusCode, String)> {
+    if let Some(text) = write
+        .backend
+        .read_file(relative_path)
+        .await
+        .map_err(corpus_write_error(kind))?
+    {
+        return Ok(Some(text));
+    }
+    if write.law.source_id == write.write_source_id {
+        return Ok(None);
+    }
+    let Some(entry) = traject.corpus.backends.get(&write.law.source_id) else {
+        return Ok(None);
+    };
+    let backend = entry.backend.lock().await;
+    backend
+        .read_file(relative_path)
+        .await
+        .map_err(corpus_write_error(kind))
 }
 
 async fn resolve_traject_scenario_target(
@@ -1147,11 +1219,10 @@ async fn resolve_traject_scenario_target(
     law_id: &str,
     filename: &str,
 ) -> Result<EditorWriteTarget, (StatusCode, String)> {
-    let (law, backend) = resolve_traject_law_write(traject, law_id).await?;
-    let rel_dir = law_relative_dir(&law)?;
+    let write = resolve_traject_law_write(traject, law_id).await?;
     Ok(EditorWriteTarget {
-        relative_path: rel_dir.join("scenarios").join(filename),
-        backend,
+        relative_path: scenario_relative_path(&write.law, filename)?,
+        backend: write.backend,
     })
 }
 
@@ -1167,12 +1238,12 @@ async fn resolve_traject_annotation_target(
     traject: &Arc<TrajectCorpus>,
     law_id: &str,
 ) -> Result<EditorWriteTarget, (StatusCode, String)> {
-    let (_law, backend) = resolve_traject_law_write(traject, law_id).await?;
+    let write = resolve_traject_law_write(traject, law_id).await?;
     Ok(EditorWriteTarget {
         relative_path: PathBuf::from("annotations")
             .join(law_id)
             .join("annotations.yaml"),
-        backend,
+        backend: write.backend,
     })
 }
 
@@ -1188,6 +1259,7 @@ fn save_response_from_traject(outcome: PersistOutcome) -> SaveResponse {
             number: pr.number,
         }),
         no_change: false,
+        etag: None,
     }
 }
 
@@ -1197,28 +1269,44 @@ fn save_response_from_traject(outcome: PersistOutcome) -> SaveResponse {
 /// The traject id comes from the URL (per-tab SPA route), and the
 /// caller's membership is re-checked on every request. No traject id =
 /// no route, so this handler is unreachable without one.
+///
+/// Honors an optional `If-Match` header for optimistic concurrency
+/// (412 on mismatch; an absent header stays a permissive blind write
+/// for backward compatibility — same semantics as the document PUT).
+/// The new ETag is returned in both the `ETag` header and the response
+/// body's `etag` field.
 pub async fn save_scenario(
     State(state): State<AppState>,
     session: Session,
     Path((traject_ref, law_id, filename)): Path<(String, String, String)>,
+    headers: axum::http::HeaderMap,
     body: String,
-) -> Result<Json<SaveResponse>, (StatusCode, String)> {
+) -> Result<axum::response::Response, (StatusCode, String)> {
+    use axum::response::IntoResponse;
     validate_scenario_filename(&filename)?;
     let author = Some(require_editor_user(&session).await?);
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let target = resolve_traject_scenario_target(&traject, &law_id, &filename).await?;
-    let EditorWriteTarget {
-        relative_path,
-        backend,
-    } = target;
+    let write = resolve_traject_law_write(&traject, &law_id).await?;
+    let relative_path = scenario_relative_path(&write.law, &filename)?;
 
-    backend
+    // Optimistic concurrency, same semantics as documents. Only read the
+    // current content when the client actually sent a precondition — a
+    // header-less save stays a single write, no extra backend read.
+    if let Some(if_match) = extract_if_match(&headers) {
+        let current =
+            current_content_for_write(&traject, &write, &relative_path, "scenario").await?;
+        check_if_match(current.as_deref(), Some(&if_match), "Scenario")?;
+    }
+
+    write
+        .backend
         .write_file(&relative_path, &body)
         .await
         .map_err(corpus_write_error("scenario"))?;
 
-    let outcome = backend
+    let outcome = write
+        .backend
         .persist(&WriteContext {
             message: format!("Update scenario {} for {}", filename, law_id),
             author,
@@ -1226,7 +1314,10 @@ pub async fn save_scenario(
         .await
         .map_err(corpus_write_error("scenario"))?;
 
-    Ok(Json(save_response_from_traject(outcome)))
+    let new_etag = document_etag(&body);
+    let mut response = save_response_from_traject(outcome);
+    response.etag = Some(new_etag.clone());
+    Ok(([(axum::http::header::ETAG, new_etag)], Json(response)).into_response())
 }
 
 /// Schema the produced notes document is validated against before it is
@@ -1340,6 +1431,7 @@ pub async fn save_annotations(
                 return Ok(Json(SaveResponse {
                     pr: None,
                     no_change: true,
+                    etag: None,
                 }));
             }
             AppendOutcome::Write(text) => text,
@@ -1422,8 +1514,10 @@ pub async fn save_law(
     State(state): State<AppState>,
     session: Session,
     Path((traject_ref, law_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
     body: String,
-) -> Result<Json<SaveResponse>, (StatusCode, String)> {
+) -> Result<axum::response::Response, (StatusCode, String)> {
+    use axum::response::IntoResponse;
     let author = Some(require_editor_user(&session).await?);
 
     // Validation:
@@ -1472,18 +1566,28 @@ pub async fn save_law(
     // corpus so we can mirror the saved body into its read-your-writes
     // overlay after `persist` succeeds.
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let target = resolve_traject_law_target(&traject, &law_id).await?;
-    let EditorWriteTarget {
-        relative_path,
-        backend,
-    } = target;
+    let write = resolve_traject_law_write(&traject, &law_id).await?;
+    let relative_path = PathBuf::from(&write.law.relative_path);
+
+    // Optimistic concurrency, same semantics as the document PUT: a
+    // present `If-Match` must equal the current content's ETag (412 on
+    // mismatch), an absent header stays a permissive blind write for
+    // backward compatibility. Checked while holding the write backend's
+    // mutex (acquired by `resolve_traject_law_write` above), so a
+    // concurrent save cannot slip between the check and the write.
+    if let Some(if_match) = extract_if_match(&headers) {
+        let current = current_content_for_write(&traject, &write, &relative_path, "law").await?;
+        check_if_match(current.as_deref(), Some(&if_match), "Wet")?;
+    }
 
     let outcome = {
-        backend
+        write
+            .backend
             .write_file(&relative_path, &body)
             .await
             .map_err(corpus_write_error("law"))?;
-        backend
+        write
+            .backend
             .persist(&WriteContext {
                 message: format!("Update law {}", law_id),
                 author,
@@ -1491,6 +1595,10 @@ pub async fn save_law(
             .await
             .map_err(corpus_write_error("law"))?
     };
+
+    // ETag of what we just wrote — the client chains it into the next
+    // save's `If-Match`. Computed before `record_save` consumes `body`.
+    let new_etag = document_etag(&body);
 
     // The global `state.corpus.source_map` is still NOT touched here:
     // it feeds GET handlers when no traject is active, so writing a
@@ -1508,7 +1616,9 @@ pub async fn save_law(
     // instead of waiting out the TTL.
     traject.invalidate_changed_cache().await;
 
-    Ok(Json(save_response_from_traject(outcome)))
+    let mut response = save_response_from_traject(outcome);
+    response.etag = Some(new_etag.clone());
+    Ok(([(axum::http::header::ETAG, new_etag)], Json(response)).into_response())
 }
 
 /// DELETE /api/trajects/{traject_id}/corpus/laws/{law_id}/scenarios/{filename}
@@ -1808,21 +1918,37 @@ async fn enforce_if_match(
         .read_file(relative_path)
         .await
         .map_err(corpus_write_error("document"))?;
-    let current_etag = current.as_deref().map(document_etag);
+    check_if_match(current.as_deref(), if_match, "Document")
+}
+
+/// Pure core of the `If-Match` precondition shared by the document,
+/// law, and scenario save paths: compare a client-supplied `If-Match`
+/// against the ETag of the current content and return that ETag (or
+/// `None` when there is no current content). `noun` names the resource
+/// in the Dutch 412 messages ("Document", "Wet", "Scenario").
+///
+/// `if_match = None` is intentionally a no-op — see [`enforce_if_match`]
+/// for the backward-compatibility reasoning.
+fn check_if_match(
+    current: Option<&str>,
+    if_match: Option<&str>,
+    noun: &'static str,
+) -> Result<Option<String>, (StatusCode, String)> {
+    let current_etag = current.map(document_etag);
     if let Some(client) = if_match {
         match (client, &current_etag) {
             ("*", Some(_)) => {}
             ("*", None) => {
                 return Err((
                     StatusCode::PRECONDITION_FAILED,
-                    "Document bestaat (nog) niet".to_string(),
+                    format!("{noun} bestaat (nog) niet"),
                 ))
             }
             (val, Some(etag)) if val == etag.as_str() => {}
             _ => {
                 return Err((
                     StatusCode::PRECONDITION_FAILED,
-                    "Document is intussen door iemand anders gewijzigd".to_string(),
+                    format!("{noun} is intussen door iemand anders gewijzigd"),
                 ))
             }
         }
@@ -2066,6 +2192,8 @@ mod tests {
         assert!(body.pr.is_none());
         // Law/scenario saves are never a notes no-op.
         assert!(!body.no_change);
+        // The etag is filled in by the law/scenario handlers themselves.
+        assert!(body.etag.is_none());
     }
 
     // ---- editor_user_from_session: attribution invariants ----
@@ -2161,6 +2289,7 @@ mod tests {
             axum::extract::State<crate::state::AppState>,
             Session,
             axum::extract::Path<(String, String, String)>,
+            axum::http::HeaderMap,
             String,
         ) -> _ = save_scenario;
         let _: fn(
@@ -2173,6 +2302,7 @@ mod tests {
             axum::extract::State<crate::state::AppState>,
             Session,
             axum::extract::Path<(String, String)>,
+            axum::http::HeaderMap,
             String,
         ) -> _ = save_law;
         // delete_scenario takes no body at all — even stronger guarantee.
@@ -2403,5 +2533,55 @@ mod tests {
             returned.as_deref(),
             Some(document_etag("anything").as_str())
         );
+    }
+
+    // ---- check_if_match: the law/scenario save precondition ----
+    //
+    // `save_law` / `save_scenario` resolve the current bytes through the
+    // traject's write routing and run this pure check against them; the
+    // three cases below pin the contract those handlers rely on.
+
+    #[test]
+    fn law_save_absent_if_match_is_permissive() {
+        // Backward compatibility: a client that never sent an `If-Match`
+        // (older frontend, curl) keeps the blind last-write-wins save.
+        let current = "$id: wet\nname: v1\n";
+        let etag = check_if_match(Some(current), None, "Wet").unwrap();
+        assert_eq!(etag.as_deref(), Some(document_etag(current).as_str()));
+    }
+
+    #[test]
+    fn law_save_stale_if_match_is_412() {
+        // Someone else saved between this client's GET and PUT: the
+        // client's ETag no longer matches the stored YAML → 412, and the
+        // message names the law (not "Document").
+        let current = "$id: wet\nname: v2-van-iemand-anders\n";
+        let stale = document_etag("$id: wet\nname: v1\n");
+        let err = check_if_match(Some(current), Some(&stale), "Wet")
+            .expect_err("stale etag must be refused");
+        assert_eq!(err.0, StatusCode::PRECONDITION_FAILED);
+        assert!(
+            err.1.contains("Wet"),
+            "message should name the noun: {}",
+            err.1
+        );
+    }
+
+    #[test]
+    fn scenario_save_matching_if_match_passes() {
+        let current = "Feature: bestaand scenario\n";
+        let etag = document_etag(current);
+        let returned = check_if_match(Some(current), Some(&etag), "Scenario").unwrap();
+        assert_eq!(returned.as_deref(), Some(etag.as_str()));
+    }
+
+    #[test]
+    fn scenario_save_if_match_against_missing_file_is_412() {
+        // The scenario was deleted between the client's GET and PUT —
+        // a precondition can never match absent content.
+        let stale = document_etag("Feature: weg\n");
+        let err = check_if_match(None, Some(&stale), "Scenario")
+            .expect_err("etag against missing file must be refused");
+        assert_eq!(err.0, StatusCode::PRECONDITION_FAILED);
     }
 }

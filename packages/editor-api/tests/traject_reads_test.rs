@@ -1,18 +1,21 @@
 //! Integration tests for the traject-aware read path
-//! (`corpus_handlers::get_corpus_law` and friends).
+//! (`corpus_handlers::get_corpus_law` and friends) and the optimistic
+//! concurrency (`ETag`/`If-Match`) on law and scenario saves.
 //!
 //! These tests exist to pin the cross-traject read isolation introduced
-//! alongside `GitHubApiBackend`. Each test uses local writable-own
-//! sources so the runs are hermetic — no GitHub, no network — and the
-//! handler is invoked directly with inline `axum` extractors, mirroring
-//! the pattern in `save_annotations_test.rs` and `trajects_test.rs`.
+//! alongside `GitHubApiBackend`, and the 412 semantics that stop two
+//! traject members from silently overwriting each other's law edits.
+//! Each test uses local writable-own sources so the runs are hermetic —
+//! no GitHub, no network — and the handlers are invoked directly with
+//! inline `axum` extractors, mirroring the pattern in
+//! `save_annotations_test.rs` and `trajects_test.rs`.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use pretty_assertions::assert_eq;
 use sqlx::PgPool;
 use tokio::sync::{Mutex, RwLock};
@@ -20,12 +23,15 @@ use tower_sessions::Session;
 use tower_sessions_memory_store::MemoryStore;
 use uuid::Uuid;
 
-use regelrecht_auth::handlers::SESSION_KEY_SUB;
+use regelrecht_auth::handlers::{
+    SESSION_KEY_EMAIL, SESSION_KEY_EMAIL_VERIFIED, SESSION_KEY_NAME, SESSION_KEY_SUB,
+};
 use regelrecht_editor_api::config::AppConfig;
-use regelrecht_editor_api::corpus_handlers::{get_corpus_law, save_law};
+use regelrecht_editor_api::corpus_handlers::{
+    get_corpus_law, get_traject_corpus_law, get_traject_scenario, save_law, save_scenario,
+};
 use regelrecht_editor_api::state::{AppState, CorpusState};
 use regelrecht_editor_api::traject_corpus::TrajectCorpusCache;
-use regelrecht_editor_api::trajects::SESSION_KEY_ACTIVE_TRAJECT;
 
 use regelrecht_pipeline::test_utils::TestDb;
 
@@ -75,6 +81,14 @@ fn write_law(corpus_dir: &std::path::Path, name_marker: &str) {
     .unwrap();
 }
 
+/// Write a scenario file next to the law (the path `save_scenario`
+/// writes to / `get_traject_scenario` reads from).
+fn write_scenario(corpus_dir: &std::path::Path, filename: &str, content: &str) {
+    let dir = corpus_dir.join("wet").join(LAW_ID).join("scenarios");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join(filename), content).unwrap();
+}
+
 /// Create a traject with one local writable-own source pointing at
 /// `corpus_dir`. Returns the traject id. `owner_id` is added as an
 /// `owner` so the membership re-check on reads/writes passes.
@@ -111,33 +125,85 @@ async fn local_traject(pool: &PgPool, owner_id: Uuid, corpus_dir: &std::path::Pa
     traject_id
 }
 
-async fn session_for(sub: &str, traject_id: Option<Uuid>) -> Session {
+/// URL form of a traject reference: `{slug}-{first 8 hex of the UUID}`
+/// (see `trajects::resolve_traject_ref`).
+fn traject_ref(traject_id: Uuid) -> String {
+    format!("test-{}", &traject_id.to_string()[..8])
+}
+
+/// A session with a verified editor identity — the save handlers
+/// require name + email + `email_verified=true` for commit attribution.
+async fn session_for(sub: &str) -> Session {
     let session = Session::new(None, Arc::new(MemoryStore::default()), None);
     session.insert(SESSION_KEY_SUB, sub).await.unwrap();
-    if let Some(id) = traject_id {
-        session
-            .insert(SESSION_KEY_ACTIVE_TRAJECT, id)
-            .await
-            .unwrap();
-    }
+    session.insert(SESSION_KEY_NAME, "Test User").await.unwrap();
+    session
+        .insert(SESSION_KEY_EMAIL, "alice@test.local")
+        .await
+        .unwrap();
+    session
+        .insert(SESSION_KEY_EMAIL_VERIFIED, true)
+        .await
+        .unwrap();
     session
 }
 
-/// Helper: call `get_corpus_law` and return the response body text.
-async fn read_law(state: AppState, session: Session) -> String {
-    let (status, _headers, body) = get_corpus_law(State(state), session, Path(LAW_ID.to_string()))
-        .await
-        .expect("get_corpus_law must succeed");
+fn if_match_headers(etag: &str) -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        axum::http::header::IF_MATCH,
+        HeaderValue::from_str(etag).unwrap(),
+    );
+    headers
+}
+
+/// Helper: call the traject-scoped law GET and return `(etag, body)`.
+async fn read_law(state: AppState, session: Session, tref: &str) -> (String, String) {
+    let (status, headers, body) = get_traject_corpus_law(
+        State(state),
+        session,
+        Path((tref.to_string(), LAW_ID.to_string())),
+    )
+    .await
+    .expect("get_traject_corpus_law must succeed");
     assert_eq!(status, StatusCode::OK);
-    body
+    let etag = headers
+        .iter()
+        .find(|(name, _)| name == axum::http::header::ETAG)
+        .map(|(_, value)| value.clone())
+        .expect("law GET must carry an ETag header");
+    (etag, body)
+}
+
+/// Helper: call `save_law` and return the response (status + new ETag).
+async fn save_law_with(
+    state: AppState,
+    session: Session,
+    tref: &str,
+    headers: HeaderMap,
+    body: String,
+) -> Result<(StatusCode, Option<String>), (StatusCode, String)> {
+    let response = save_law(
+        State(state),
+        session,
+        Path((tref.to_string(), LAW_ID.to_string())),
+        headers,
+        body,
+    )
+    .await?;
+    let etag = response
+        .headers()
+        .get(axum::http::header::ETAG)
+        .map(|v| v.to_str().unwrap().to_string());
+    Ok((response.status(), etag))
 }
 
 // ---------------------------------------------------------------------------
-// Tests
+// Read-isolation tests
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn get_corpus_law_serves_active_trajects_content() {
+async fn get_corpus_law_serves_the_trajects_content() {
     let db = TestDb::new().await;
     let state = empty_state(db.pool.clone());
     let (owner, sub) = seed_account(&db.pool, "alice@test.local").await;
@@ -152,16 +218,26 @@ async fn get_corpus_law_serves_active_trajects_content() {
     write_law(corpus_b.path(), "TRAJECT_B");
     let traject_b = local_traject(&db.pool, owner, corpus_b.path()).await;
 
-    // Reading with traject A active returns A's copy.
-    let body_a = read_law(state.clone(), session_for(&sub, Some(traject_a)).await).await;
+    // Reading through traject A's URL returns A's copy.
+    let (_etag_a, body_a) = read_law(
+        state.clone(),
+        session_for(&sub).await,
+        &traject_ref(traject_a),
+    )
+    .await;
     assert!(
         body_a.contains("TRAJECT_A"),
         "expected A's content, got: {body_a}"
     );
     assert!(!body_a.contains("TRAJECT_B"));
 
-    // Reading with traject B active returns B's copy.
-    let body_b = read_law(state.clone(), session_for(&sub, Some(traject_b)).await).await;
+    // Reading through traject B's URL returns B's copy.
+    let (_etag_b, body_b) = read_law(
+        state.clone(),
+        session_for(&sub).await,
+        &traject_ref(traject_b),
+    )
+    .await;
     assert!(
         body_b.contains("TRAJECT_B"),
         "expected B's content, got: {body_b}"
@@ -178,25 +254,30 @@ async fn save_then_read_returns_the_just_saved_content() {
     let corpus = tempfile::tempdir().unwrap();
     write_law(corpus.path(), "ORIGINAL");
     let traject_id = local_traject(&db.pool, owner, corpus.path()).await;
+    let tref = traject_ref(traject_id);
 
     // Verify the pre-save read returns the on-disk content.
-    let before = read_law(state.clone(), session_for(&sub, Some(traject_id)).await).await;
+    let (_etag, before) = read_law(state.clone(), session_for(&sub).await, &tref).await;
     assert!(before.contains("ORIGINAL"));
 
-    // Save a new body via the actual handler.
+    // Save a new body via the actual handler — WITHOUT `If-Match`, so
+    // this also pins the backward-compatible permissive save (older
+    // clients that never send the precondition keep working).
     let new_body = format!("$id: {LAW_ID}\nname: UPDATED\n");
-    let _ = save_law(
-        State(state.clone()),
-        session_for(&sub, Some(traject_id)).await,
-        Path(LAW_ID.to_string()),
+    let (status, _etag) = save_law_with(
+        state.clone(),
+        session_for(&sub).await,
+        &tref,
+        HeaderMap::new(),
         new_body,
     )
     .await
-    .expect("save should succeed");
+    .expect("save without If-Match should succeed");
+    assert_eq!(status, StatusCode::OK);
 
     // The next read must reflect the save — overlay populated by
     // `save_law` short-circuits the source_map snapshot.
-    let after = read_law(state, session_for(&sub, Some(traject_id)).await).await;
+    let (_etag, after) = read_law(state, session_for(&sub).await, &tref).await;
     assert!(
         after.contains("UPDATED"),
         "expected the saved content; got: {after}"
@@ -205,27 +286,21 @@ async fn save_then_read_returns_the_just_saved_content() {
 }
 
 #[tokio::test]
-async fn no_active_traject_falls_back_to_global_corpus() {
+async fn global_get_404s_when_law_not_in_global_corpus() {
     let db = TestDb::new().await;
     let state = empty_state(db.pool.clone());
-    let (_owner, sub) = seed_account(&db.pool, "alice@test.local").await;
 
-    // No active traject in the session. The global `state.corpus` is
-    // CorpusState::empty(), so `get_corpus_law` should 404 — but
-    // crucially without erroring out on the missing-traject path.
-    let err = get_corpus_law(
-        State(state),
-        session_for(&sub, None).await,
-        Path(LAW_ID.to_string()),
-    )
-    .await
-    .expect_err("law is not in the global corpus; expect 404");
+    // The global `state.corpus` is `CorpusState::empty()`, so the
+    // non-traject GET should 404.
+    let err = get_corpus_law(State(state), Path(LAW_ID.to_string()))
+        .await
+        .expect_err("law is not in the global corpus; expect 404");
 
     assert_eq!(err.0, StatusCode::NOT_FOUND, "{}", err.1);
 }
 
 #[tokio::test]
-async fn revoked_membership_falls_back_to_global_instead_of_403() {
+async fn revoked_membership_is_403_on_traject_read() {
     let db = TestDb::new().await;
     let state = empty_state(db.pool.clone());
     let (owner, sub) = seed_account(&db.pool, "alice@test.local").await;
@@ -234,30 +309,27 @@ async fn revoked_membership_falls_back_to_global_instead_of_403() {
     write_law(corpus.path(), "TRAJECT_CONTENT");
     let traject_id = local_traject(&db.pool, owner, corpus.path()).await;
 
-    // Yank the membership AFTER the session was issued — the stale
-    // session still carries the active traject id.
+    // Yank the membership AFTER the account got the traject URL — the
+    // per-request membership re-check must refuse the read.
     sqlx::query("DELETE FROM traject_members WHERE traject_id = $1")
         .bind(traject_id)
         .execute(&db.pool)
         .await
         .unwrap();
 
-    // Read should *not* 403; it should silently degrade to the global
-    // corpus (empty here, hence 404 — but the contract is "no 403").
-    let err = get_corpus_law(
+    let err = get_traject_corpus_law(
         State(state),
-        session_for(&sub, Some(traject_id)).await,
-        Path(LAW_ID.to_string()),
+        session_for(&sub).await,
+        Path((traject_ref(traject_id), LAW_ID.to_string())),
     )
     .await
-    .expect_err("global corpus is empty so the law isn't found");
-    assert_eq!(
-        err.0,
-        StatusCode::NOT_FOUND,
-        "revoked membership must degrade to global, not 403; got: {}",
-        err.1
-    );
+    .expect_err("revoked membership must refuse the traject read");
+    assert_eq!(err.0, StatusCode::FORBIDDEN, "{}", err.1);
 }
+
+// ---------------------------------------------------------------------------
+// Write-routing tests
+// ---------------------------------------------------------------------------
 
 /// Provision a traject with TWO local sources — a `seed` source at low
 /// priority that carries the existing law file, and a `writable_own`
@@ -342,6 +414,7 @@ async fn save_on_seed_loaded_law_lands_on_writable_own_backend() {
     // Seed has the law; writable_own starts empty.
     write_law(seed.path(), "SEED_VERSION");
     let traject_id = seeded_traject(&db.pool, owner, seed.path(), writable_own.path()).await;
+    let tref = traject_ref(traject_id);
 
     // Sanity check: pre-save, the writable_own dir does NOT have the
     // law file. The read falls through priority order and lands on
@@ -353,15 +426,22 @@ async fn save_on_seed_loaded_law_lands_on_writable_own_backend() {
         .join("2025-01-01.yaml");
     assert!(!writable_own_law_path.exists());
 
+    // The first edit of a federated law sends the ETag the GET served
+    // (computed from the SEED copy — the file doesn't exist on the
+    // writable_own yet). The If-Match check must fall back to the
+    // law's own source and pass, NOT 412 on the absent branch file.
+    let (etag, _body) = read_law(state.clone(), session_for(&sub).await, &tref).await;
     let new_body = format!("$id: {LAW_ID}\nname: SAVED_TO_WRITABLE_OWN\n");
-    let _ = save_law(
-        State(state.clone()),
-        session_for(&sub, Some(traject_id)).await,
-        Path(LAW_ID.to_string()),
+    let (status, _new_etag) = save_law_with(
+        state.clone(),
+        session_for(&sub).await,
+        &tref,
+        if_match_headers(&etag),
         new_body.clone(),
     )
     .await
-    .expect("save should succeed");
+    .expect("first If-Match save of a federated law should succeed");
+    assert_eq!(status, StatusCode::OK);
 
     // The file must now exist on the writable_own's backend root.
     // Before the fix the save silently landed on the seed source
@@ -381,4 +461,170 @@ async fn save_on_seed_loaded_law_lands_on_writable_own_backend() {
     let seed_text = std::fs::read_to_string(&seed_law_path).unwrap();
     assert!(seed_text.contains("SEED_VERSION"));
     assert!(!seed_text.contains("SAVED_TO_WRITABLE_OWN"));
+}
+
+// ---------------------------------------------------------------------------
+// Optimistic concurrency (ETag / If-Match) on law and scenario saves
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn law_save_with_matching_if_match_succeeds_and_chains_etag() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let (owner, sub) = seed_account(&db.pool, "alice@test.local").await;
+
+    let corpus = tempfile::tempdir().unwrap();
+    write_law(corpus.path(), "V1");
+    let traject_id = local_traject(&db.pool, owner, corpus.path()).await;
+    let tref = traject_ref(traject_id);
+
+    // GET → ETag of the current content.
+    let (etag, _body) = read_law(state.clone(), session_for(&sub).await, &tref).await;
+
+    // PUT with that ETag as If-Match → success, response carries the
+    // NEW etag (of the saved body) for the next save to chain on.
+    let new_body = format!("$id: {LAW_ID}\nname: V2\n");
+    let (status, new_etag) = save_law_with(
+        state.clone(),
+        session_for(&sub).await,
+        &tref,
+        if_match_headers(&etag),
+        new_body.clone(),
+    )
+    .await
+    .expect("matching If-Match must succeed");
+    assert_eq!(status, StatusCode::OK);
+    let new_etag = new_etag.expect("save response must carry an ETag header");
+    assert_ne!(new_etag, etag);
+
+    // The new ETag matches what a fresh GET serves, so the chain holds.
+    let (get_etag, _body) = read_law(state, session_for(&sub).await, &tref).await;
+    assert_eq!(get_etag, new_etag);
+}
+
+#[tokio::test]
+async fn law_save_with_stale_if_match_is_412() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let (owner, sub) = seed_account(&db.pool, "alice@test.local").await;
+
+    let corpus = tempfile::tempdir().unwrap();
+    write_law(corpus.path(), "V1");
+    let traject_id = local_traject(&db.pool, owner, corpus.path()).await;
+    let tref = traject_ref(traject_id);
+
+    // Member A loads the law…
+    let (stale_etag, _body) = read_law(state.clone(), session_for(&sub).await, &tref).await;
+
+    // …member B saves a new version in the meantime…
+    let b_body = format!("$id: {LAW_ID}\nname: B_WAS_HERE\n");
+    save_law_with(
+        state.clone(),
+        session_for(&sub).await,
+        &tref,
+        HeaderMap::new(),
+        b_body,
+    )
+    .await
+    .expect("B's save should succeed");
+
+    // …and A's save with the now-stale ETag must be refused with 412
+    // instead of silently overwriting B's work (the old last-write-wins).
+    let a_body = format!("$id: {LAW_ID}\nname: A_OVERWRITES\n");
+    let err = save_law_with(
+        state.clone(),
+        session_for(&sub).await,
+        &tref,
+        if_match_headers(&stale_etag),
+        a_body,
+    )
+    .await
+    .expect_err("stale If-Match must be refused");
+    assert_eq!(err.0, StatusCode::PRECONDITION_FAILED, "{}", err.1);
+
+    // B's version is still what a read returns.
+    let (_etag, body) = read_law(state, session_for(&sub).await, &tref).await;
+    assert!(body.contains("B_WAS_HERE"), "got: {body}");
+}
+
+#[tokio::test]
+async fn scenario_save_if_match_matrix() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let (owner, sub) = seed_account(&db.pool, "alice@test.local").await;
+
+    let corpus = tempfile::tempdir().unwrap();
+    write_law(corpus.path(), "V1");
+    write_scenario(corpus.path(), "basis.feature", "Feature: v1\n");
+    let traject_id = local_traject(&db.pool, owner, corpus.path()).await;
+    let tref = traject_ref(traject_id);
+
+    // GET the scenario → ETag.
+    let (status, headers, body) = get_traject_scenario(
+        State(state.clone()),
+        session_for(&sub).await,
+        Path((
+            tref.clone(),
+            LAW_ID.to_string(),
+            "basis.feature".to_string(),
+        )),
+    )
+    .await
+    .expect("scenario GET must succeed");
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, "Feature: v1\n");
+    let etag = headers
+        .iter()
+        .find(|(name, _)| name == axum::http::header::ETAG)
+        .map(|(_, value)| value.clone())
+        .expect("scenario GET must carry an ETag header");
+
+    // Matching If-Match → success.
+    let response = save_scenario(
+        State(state.clone()),
+        session_for(&sub).await,
+        Path((
+            tref.clone(),
+            LAW_ID.to_string(),
+            "basis.feature".to_string(),
+        )),
+        if_match_headers(&etag),
+        "Feature: v2\n".to_string(),
+    )
+    .await
+    .expect("matching If-Match must succeed");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // The same (now stale) ETag again → 412.
+    let err = save_scenario(
+        State(state.clone()),
+        session_for(&sub).await,
+        Path((
+            tref.clone(),
+            LAW_ID.to_string(),
+            "basis.feature".to_string(),
+        )),
+        if_match_headers(&etag),
+        "Feature: v3-overschrijft\n".to_string(),
+    )
+    .await
+    .expect_err("stale If-Match must be refused");
+    assert_eq!(err.0, StatusCode::PRECONDITION_FAILED, "{}", err.1);
+
+    // No If-Match at all → permissive (backward compatibility, and the
+    // create path for brand-new scenario files).
+    let response = save_scenario(
+        State(state.clone()),
+        session_for(&sub).await,
+        Path((
+            tref.clone(),
+            LAW_ID.to_string(),
+            "nieuw.feature".to_string(),
+        )),
+        HeaderMap::new(),
+        "Feature: nieuw\n".to_string(),
+    )
+    .await
+    .expect("save without If-Match must stay permissive");
+    assert_eq!(response.status(), StatusCode::OK);
 }
