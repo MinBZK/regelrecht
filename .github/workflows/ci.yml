@@ -440,30 +440,44 @@ jobs:
       - name: Run security audit
         run: just audit
 
-  admin:
-    name: Admin
+  # One matrixed job for the per-package fmt/lint/check pipelines that only
+  # differ in the `just <package>-*` recipe names. The job runs when either
+  # package changed; per-step guards on the package's own changes filter make
+  # the matrix leg of an unchanged package a no-op (every step skips), so an
+  # admin-only change does not actually build editor-api and vice versa.
+  package-checks:
+    name: Package checks (${{ matrix.package }})
     needs: changes
+    if: >-
+      needs.changes.outputs.admin == 'true' ||
+      needs.changes.outputs.editor-api == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
+      # Needed by the admin leg to install @nldd packages from
+      # npm.pkg.github.com; harmless (read-only) for editor-api.
       packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [admin, editor-api]
     env:
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: "true"
       CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
-        if: needs.changes.outputs.admin == 'true'
+        if: needs.changes.outputs[matrix.package] == 'true'
 
       - name: Install Rust toolchain
-        if: needs.changes.outputs.admin == 'true'
+        if: needs.changes.outputs[matrix.package] == 'true'
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
         with:
           components: rustfmt, clippy
 
       - name: Cache cargo registry (shared)
-        if: needs.changes.outputs.admin == 'true'
+        if: needs.changes.outputs[matrix.package] == 'true'
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
         with:
           path: |
@@ -473,35 +487,37 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-registry-
 
       - name: Install mold linker
-        if: needs.changes.outputs.admin == 'true'
+        if: needs.changes.outputs[matrix.package] == 'true'
         run: sudo apt-get update && sudo apt-get install -y mold
 
       - name: Run sccache
-        if: needs.changes.outputs.admin == 'true'
+        if: needs.changes.outputs[matrix.package] == 'true'
         uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696  # v0.0.10
 
       - name: Install just
-        if: needs.changes.outputs.admin == 'true'
+        if: needs.changes.outputs[matrix.package] == 'true'
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
 
       - name: Check formatting
-        if: needs.changes.outputs.admin == 'true'
-        run: just admin-fmt
+        if: needs.changes.outputs[matrix.package] == 'true'
+        run: just ${{ matrix.package }}-fmt
 
       - name: Run clippy
-        if: needs.changes.outputs.admin == 'true'
-        run: just admin-lint
+        if: needs.changes.outputs[matrix.package] == 'true'
+        run: just ${{ matrix.package }}-lint
 
       - name: Run cargo check
-        if: needs.changes.outputs.admin == 'true'
-        run: just admin-check
+        if: needs.changes.outputs[matrix.package] == 'true'
+        run: just ${{ matrix.package }}-check
 
+      # The remaining steps are admin-only: editor-api has no `just
+      # editor-api-test` recipe and no frontend build of its own.
       - name: Run tests
-        if: needs.changes.outputs.admin == 'true'
+        if: matrix.package == 'admin' && needs.changes.outputs.admin == 'true'
         run: just admin-test
 
       - name: Setup Node.js
-        if: needs.changes.outputs.admin == 'true'
+        if: matrix.package == 'admin' && needs.changes.outputs.admin == 'true'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
         with:
           node-version: '22'
@@ -510,75 +526,18 @@ jobs:
           cache-dependency-path: packages/admin/frontend-src/package-lock.json
 
       - name: Install admin frontend dependencies
-        if: needs.changes.outputs.admin == 'true'
+        if: matrix.package == 'admin' && needs.changes.outputs.admin == 'true'
         working-directory: packages/admin/frontend-src
         run: npm ci
 
       - name: Build admin frontend
-        if: needs.changes.outputs.admin == 'true'
+        if: matrix.package == 'admin' && needs.changes.outputs.admin == 'true'
         working-directory: packages/admin/frontend-src
         run: npm run build
 
       - name: Skip (no relevant changes)
-        if: needs.changes.outputs.admin != 'true'
-        run: echo "No admin changes, skipping"
-
-  editor-api:
-    name: Editor API
-    needs: changes
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      RUSTC_WRAPPER: sccache
-      SCCACHE_GHA_ENABLED: "true"
-      CARGO_INCREMENTAL: "0"
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
-        if: needs.changes.outputs.editor-api == 'true'
-
-      - name: Install Rust toolchain
-        if: needs.changes.outputs.editor-api == 'true'
-        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Cache cargo registry (shared)
-        if: needs.changes.outputs.editor-api == 'true'
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-registry-
-
-      - name: Install mold linker
-        if: needs.changes.outputs.editor-api == 'true'
-        run: sudo apt-get update && sudo apt-get install -y mold
-
-      - name: Run sccache
-        if: needs.changes.outputs.editor-api == 'true'
-        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696  # v0.0.10
-
-      - name: Install just
-        if: needs.changes.outputs.editor-api == 'true'
-        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
-
-      - name: Check formatting
-        if: needs.changes.outputs.editor-api == 'true'
-        run: just editor-api-fmt
-
-      - name: Run clippy
-        if: needs.changes.outputs.editor-api == 'true'
-        run: just editor-api-lint
-
-      - name: Run cargo check
-        if: needs.changes.outputs.editor-api == 'true'
-        run: just editor-api-check
-
-      - name: Skip (no relevant changes)
-        if: needs.changes.outputs.editor-api != 'true'
-        run: echo "No editor-api changes, skipping"
+        if: needs.changes.outputs[matrix.package] != 'true'
+        run: echo "No ${{ matrix.package }} changes, skipping"
 
   docs-a11y:
     name: Docs accessibility gate
