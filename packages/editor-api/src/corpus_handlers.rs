@@ -615,7 +615,11 @@ async fn list_scenarios_in_scope(
             }
             // Content goes through the same write-target-with-seed-fallback
             // per-file routing as the scenario GET, so the extracted targets
-            // reflect exactly the bytes the editor serves.
+            // reflect exactly the bytes the editor serves. Cost: one
+            // sequential read per file in this law's `scenarios/` dir —
+            // O(folder), typically 1-3 files, NOT the O(corpus) scan that
+            // hung federated trajects before (#762). Revisit with a batch
+            // read or index only if per-law scenario counts grow.
             let mut out = Vec::with_capacity(names.len());
             for filename in names {
                 let relative_path = scenarios_dir.join(&filename);
