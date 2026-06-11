@@ -333,6 +333,35 @@ async fn test_create_harvest_job_if_not_exists_skips_dateless_job() {
 }
 
 #[tokio::test]
+async fn test_create_harvest_job_if_not_exists_ignores_completed_job() {
+    let db = TestDb::new().await;
+
+    // A previous harvest of this law ran to completion (editor-style payload
+    // without a date key).
+    let payload = json!({"bwb_id": "BWBR0001840"});
+    let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840").with_payload(payload.clone());
+    job_queue::create_job(&db.pool, req).await.unwrap();
+    let claimed = job_queue::claim_job(&db.pool, None).await.unwrap().unwrap();
+    job_queue::complete_job(&db.pool, claimed.id, None)
+        .await
+        .unwrap();
+
+    // A re-harvest request (editor uses an empty date) must create a new job:
+    // only pending/processing jobs may block, never completed ones.
+    let req2 = CreateJobRequest::new(JobType::Harvest, "BWBR0001840")
+        .with_priority(Priority::new(30))
+        .with_payload(payload);
+    let result = job_queue::create_harvest_job_if_not_exists(&db.pool, req2, "")
+        .await
+        .unwrap();
+    assert!(
+        result.is_some(),
+        "completed harvest job must not block a re-harvest"
+    );
+    assert_eq!(result.unwrap().status, JobStatus::Pending);
+}
+
+#[tokio::test]
 async fn test_concurrent_claim_safety() {
     let db = TestDb::new().await;
 
