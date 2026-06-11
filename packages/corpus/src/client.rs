@@ -162,10 +162,12 @@ impl CorpusClient {
     /// committed *alongside* content when content changed, but never *trigger*
     /// a commit on their own.
     ///
-    /// Returns `Ok(true)` if a commit was made and pushed, `Ok(false)` if the
-    /// content was unchanged (in which case the metadata files are restored to
-    /// HEAD so the working tree stays clean for the next run — this matters for
-    /// the long-lived corpus clone the harvest worker reuses).
+    /// Returns `Ok(true)` if a commit was pushed (either freshly made, or a
+    /// stranded local commit from an interrupted earlier attempt), `Ok(false)`
+    /// if the content was unchanged and the remote already has it (in which
+    /// case the metadata files are restored to HEAD so the working tree stays
+    /// clean for the next run — this matters for the long-lived corpus clone
+    /// the harvest worker reuses).
     pub async fn commit_and_push_content(
         &self,
         content_paths: &[PathBuf],
@@ -188,6 +190,22 @@ impl CorpusClient {
             // corpus clone, where a leftover dirty/untracked file would break
             // the next `pull --rebase`.
             self.restore_metadata(metadata_paths).await;
+
+            // The porcelain check above compares against the LOCAL HEAD. A
+            // previous attempt may have committed this exact content and then
+            // been interrupted (e.g. the worker's job timeout) before its push
+            // completed — the stranded commit makes the re-harvest look like
+            // "no change" even though the remote never received the content.
+            // If we returned `Ok(false)` here, the job would complete while
+            // the next `reset --hard origin/<branch>` (or pod restart)
+            // silently discards the commit. Push it instead.
+            if self.local_commits_ahead_of_remote().await? > 0 {
+                tracing::info!(
+                    "local HEAD ahead of remote tracking branch, pushing stranded commit(s)"
+                );
+                self.rebase_and_push(message).await?;
+                return Ok(true);
+            }
             return Ok(false);
         }
 
@@ -224,6 +242,20 @@ impl CorpusClient {
         if let Err(e) = self.run_git(&clean_args).await {
             tracing::warn!(error = %e, "failed to clean untracked metadata; working tree may be dirty");
         }
+    }
+
+    /// Number of commits the local HEAD is ahead of the remote tracking
+    /// branch (`origin/<branch>..HEAD`). Non-zero means an earlier
+    /// commit-and-push was interrupted between the commit and the push.
+    async fn local_commits_ahead_of_remote(&self) -> Result<u64> {
+        let range = format!("origin/{}..HEAD", self.config.branch);
+        let output = self
+            .run_git_output(&["rev-list", "--count", &range])
+            .await?;
+        let count = output.trim();
+        count
+            .parse::<u64>()
+            .map_err(|e| CorpusError::Git(format!("could not parse rev-list count {count:?}: {e}")))
     }
 
     /// Lossy UTF-8 path strings for use as git pathspec arguments.
@@ -491,11 +523,7 @@ impl CorpusClient {
         args.push(&url);
         args.push(&path_str);
 
-        let output = Command::new("git")
-            .args(&args)
-            .envs(self.git_env())
-            .output()
-            .await?;
+        let output = self.git_command(&args).output().await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -544,11 +572,7 @@ impl CorpusClient {
         args.push(&url);
         args.push(&path_str);
 
-        let output = Command::new("git")
-            .args(&args)
-            .envs(self.git_env())
-            .output()
-            .await?;
+        let output = self.git_command(&args).output().await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -667,12 +691,24 @@ impl CorpusClient {
         Ok(!output.trim().is_empty())
     }
 
+    /// Build a git `Command` with the shared environment and `kill_on_drop`.
+    ///
+    /// `kill_on_drop` matters because callers may be wrapped in a timeout
+    /// (e.g. the harvest worker's job timeout): when the timed-out future is
+    /// dropped, the subprocess must be killed too — otherwise a hung
+    /// `git pull --rebase` keeps running and races the next job in the same
+    /// checkout (index.lock contention).
+    fn git_command(&self, args: &[&str]) -> Command {
+        let mut cmd = Command::new("git");
+        cmd.args(args).envs(self.git_env()).kill_on_drop(true);
+        cmd
+    }
+
     /// Run a git command in the repo directory and check for success.
     async fn run_git(&self, args: &[&str]) -> Result<()> {
-        let output = Command::new("git")
-            .args(args)
+        let output = self
+            .git_command(args)
             .current_dir(&self.config.repo_path)
-            .envs(self.git_env())
             .output()
             .await?;
 
@@ -691,10 +727,9 @@ impl CorpusClient {
 
     /// Run a git command and return stdout.
     async fn run_git_output(&self, args: &[&str]) -> Result<String> {
-        let output = Command::new("git")
-            .args(args)
+        let output = self
+            .git_command(args)
             .current_dir(&self.config.repo_path)
-            .envs(self.git_env())
             .output()
             .await?;
 
@@ -1056,6 +1091,101 @@ mod tests {
         assert!(
             String::from_utf8_lossy(&porcelain.stdout).trim().is_empty(),
             "working tree must be clean after no-change harvest"
+        );
+    }
+
+    /// Regression: a harvest job can be interrupted (worker job timeout, pod
+    /// restart) after `git commit` but before the push completes. The retry
+    /// then re-harvests identical content, the porcelain check against the
+    /// LOCAL HEAD (which already contains the stranded commit) is empty, and
+    /// the old code returned `Ok(false)` without ever pushing — the law was
+    /// marked harvested while the remote corpus lacked the commit, and the
+    /// next `reset --hard origin/<branch>` discarded it permanently.
+    /// `commit_and_push_content` must detect the stranded commit and push it.
+    #[tokio::test]
+    async fn test_commit_and_push_content_pushes_stranded_local_commit() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+        let repo_path = dir.path().join("corpus");
+        clone_with_config(&bare_path, &repo_path).await;
+
+        // Simulate the interrupted first attempt: the harvested content was
+        // committed locally but the push never happened (timeout fired
+        // mid-push and the future was dropped).
+        let law = repo_path.join("law.yaml");
+        tokio::fs::write(&law, "articles: 1\n").await.unwrap();
+        for args in [
+            vec!["add", "--", "law.yaml"],
+            vec!["commit", "-m", "harvest: interrupted before push"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&repo_path)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        // Sanity-check the precondition: the remote does NOT have the commit.
+        let remote_log = Command::new("git")
+            .args(["log", "--oneline", "--all"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        assert!(
+            !String::from_utf8_lossy(&remote_log.stdout).contains("interrupted before push"),
+            "precondition: stranded commit must not be on the remote yet"
+        );
+
+        let config = CorpusConfig::new(&bare_url, &repo_path);
+        let client = CorpusClient::new(config);
+
+        // The retry re-harvests identical content: the working tree already
+        // matches the (stranded) local HEAD, only the metadata churns.
+        let status = repo_path.join("status.yaml");
+        tokio::fs::write(&law, "articles: 1\n").await.unwrap();
+        tokio::fs::write(&status, "last_harvested: T2\n")
+            .await
+            .unwrap();
+        let committed = client
+            .commit_and_push_content(
+                std::slice::from_ref(&law),
+                std::slice::from_ref(&status),
+                "harvest: retry",
+            )
+            .await
+            .unwrap();
+        assert!(
+            committed,
+            "retry must report a change when it pushes a stranded commit"
+        );
+
+        // The stranded commit is now on the remote.
+        let remote_log = Command::new("git")
+            .args(["log", "--oneline", "--all"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let log_str = String::from_utf8_lossy(&remote_log.stdout);
+        assert!(
+            log_str.contains("interrupted before push"),
+            "stranded local commit must have been pushed to the remote: {log_str}"
+        );
+
+        // And the working tree is clean (metadata churn restored), so the
+        // next run's `pull --rebase` won't trip over a dirty file.
+        let porcelain = Command::new("git")
+            .args(["status", "--porcelain"])
+            .current_dir(&repo_path)
+            .output()
+            .await
+            .unwrap();
+        assert!(
+            String::from_utf8_lossy(&porcelain.stdout).trim().is_empty(),
+            "working tree must be clean after pushing the stranded commit"
         );
     }
 
