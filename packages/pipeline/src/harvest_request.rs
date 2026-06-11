@@ -148,7 +148,42 @@ pub async fn request_harvest(
             PipelineError::InvalidInput(format!("failed to serialize harvest payload: {e}"))
         })?);
 
-    let job = job_queue::create_job(&mut *tx, req).await?;
+    let job = match job_queue::create_job(&mut *tx, req).await {
+        Ok(job) => job,
+        // The worker's follow-up path deliberately skips the advisory lock,
+        // so its insert can land between our dedup SELECT and this one; the
+        // partial unique index then rejects ours (23505). Report that as
+        // AlreadyQueued — the translation `create_harvest_job_if_not_exists`
+        // already applies — instead of surfacing an error.
+        Err(PipelineError::Database(sqlx::Error::Database(ref db_err)))
+            if db_err.code().as_deref() == Some("23505") =>
+        {
+            // The transaction is aborted after the constraint violation; drop
+            // it (rollback) to release the advisory lock, then look up the
+            // winning job outside the transaction.
+            drop(tx);
+            let existing: Option<(Uuid,)> = sqlx::query_as(
+                "SELECT id FROM jobs \
+                 WHERE law_id = $1 AND job_type = 'harvest' AND status IN ('pending', 'processing') \
+                 LIMIT 1",
+            )
+            .bind(law_id)
+            .fetch_optional(pool)
+            .await?;
+            return match existing {
+                Some((existing_job_id,)) => {
+                    tracing::info!(law_id = %law_id, existing_job_id = %existing_job_id, "harvest request lost insert race: active job exists");
+                    Ok(HarvestRequestOutcome::AlreadyQueued { existing_job_id })
+                }
+                // The racing job left pending/processing in the same instant —
+                // vanishingly rare; surface as a retryable error.
+                None => Err(PipelineError::Worker(format!(
+                    "harvest job insert for {law_id} lost a race and the winning job is already gone; retry"
+                ))),
+            };
+        }
+        Err(e) => return Err(e),
+    };
 
     law_status::set_harvest_job(&mut *tx, law_id, job.id).await?;
 

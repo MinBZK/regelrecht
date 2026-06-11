@@ -25,5 +25,8 @@ pub use enrich::{
 };
 pub use error::PipelineError;
 pub use harvest::{HarvestPayload, HarvestResult, MAX_HARVEST_DEPTH};
-pub use harvest_request::{request_harvest, HarvestRequestOptions, HarvestRequestOutcome};
+// Deliberately no crate-root re-export of the `request_harvest` fn: the axum
+// handler `api::harvest::request_harvest` shares that name, so callers import
+// it path-qualified via the module.
+pub use harvest_request::{HarvestRequestOptions, HarvestRequestOutcome};
 pub use models::{FeatureFlag, Job, JobStatus, JobType, LawEntry, LawStatusValue, Priority};
