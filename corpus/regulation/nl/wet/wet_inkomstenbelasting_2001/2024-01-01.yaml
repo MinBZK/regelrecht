@@ -25,18 +25,28 @@ articles:
         input:
           - name: loon_uit_dienstbetrekking
             type: number
+            type_spec:
+              unit: eurocent
             source: {}
           - name: uitkeringen_en_pensioenen
             type: number
+            type_spec:
+              unit: eurocent
             source: {}
           - name: winst_uit_onderneming
             type: number
+            type_spec:
+              unit: eurocent
             source: {}
           - name: resultaat_overige_werkzaamheden
             type: number
+            type_spec:
+              unit: eurocent
             source: {}
           - name: eigen_woning
             type: number
+            type_spec:
+              unit: eurocent
             source: {}
         output:
           - name: box1_inkomen
@@ -68,9 +78,13 @@ articles:
         input:
           - name: reguliere_voordelen
             type: number
+            type_spec:
+              unit: eurocent
             source: {}
           - name: vervreemdingsvoordelen
             type: number
+            type_spec:
+              unit: eurocent
             source: {}
         output:
           - name: box2_inkomen
@@ -99,15 +113,23 @@ articles:
         input:
           - name: spaargeld
             type: number
+            type_spec:
+              unit: eurocent
             source: {}
           - name: beleggingen
             type: number
+            type_spec:
+              unit: eurocent
             source: {}
           - name: onroerend_goed
             type: number
+            type_spec:
+              unit: eurocent
             source: {}
           - name: schulden
             type: number
+            type_spec:
+              unit: eurocent
             source: {}
         output:
           - name: rendementsgrondslag

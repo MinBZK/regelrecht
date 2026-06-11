@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.0/schema/v0.5.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.3/schema.json
 $id: burgerlijk_wetboek_boek_5
 uuid: 5a42b000-5a42-5a42-5a42-5a42b0000042
 regulatory_layer: WET
@@ -58,12 +58,18 @@ articles:
         output:
           - name: wettelijke_afstand_cm
             type: number
+            type_spec:
+              unit: centimeter
             description: Wettelijke default afstand (lid 2) — intern tussenresultaat
           - name: minimale_afstand_cm
             type: number
+            type_spec:
+              unit: centimeter
             description: De geldende minimale afstand tot de erfgrens in centimeters
           - name: minimale_afstand_m
             type: number
+            type_spec:
+              unit: meter
             description: De geldende minimale afstand tot de erfgrens in meters
 
         actions:

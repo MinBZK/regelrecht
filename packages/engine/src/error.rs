@@ -115,6 +115,14 @@ pub enum EngineError {
         output: String,
     },
 
+    /// Two values with incompatible units were combined in an operation.
+    #[error("Unit mismatch in {operation}: {left} vs {right}")]
+    UnitMismatch {
+        operation: String,
+        left: String,
+        right: String,
+    },
+
     /// Wraps an error that occurred during traced execution, carrying the partial trace.
     ///
     /// This variant is returned by `evaluate_law_output_with_trace` when execution
@@ -225,6 +233,14 @@ pub enum ExternalError {
     /// Article contains untranslatable constructs (RFC-012)
     #[error("Untranslatable construct: {0}")]
     Untranslatable(String),
+
+    /// Two values with incompatible units were combined in an operation.
+    #[error("Unit mismatch in {operation}: {left} vs {right}")]
+    UnitMismatch {
+        operation: String,
+        left: String,
+        right: String,
+    },
 }
 
 impl From<EngineError> for ExternalError {
@@ -258,6 +274,15 @@ impl From<EngineError> for ExternalError {
             EngineError::Untranslatable { construct, .. } => {
                 ExternalError::Untranslatable(construct)
             }
+            EngineError::UnitMismatch {
+                operation,
+                left,
+                right,
+            } => ExternalError::UnitMismatch {
+                operation,
+                left,
+                right,
+            },
             EngineError::TracedError { source, .. } => ExternalError::from(*source),
         }
     }

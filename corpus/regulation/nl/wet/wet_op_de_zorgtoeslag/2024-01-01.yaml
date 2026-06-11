@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.0/schema/v0.5.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.3/schema.json
 $id: zorgtoeslagwet
 regulatory_layer: WET
 publication_date: '2023-12-20'
@@ -56,14 +56,29 @@ articles:
       definitions:
         drempelinkomen_alleenstaande:
           value: 3749600
+          type: amount
+          type_spec:
+            unit: eurocent
         drempelinkomen_aanvrager_met_toeslagpartner:
           value: 4821800
+          type: amount
+          type_spec:
+            unit: eurocent
         percentage_drempelinkomen_alleenstaande:
           value: 0.01879
+          type: number
+          type_spec:
+            unit: ratio
         percentage_drempelinkomen_partner:
           value: 0.04256
+          type: number
+          type_spec:
+            unit: ratio
         percentage_toetsingsinkomen:
           value: 0.1367
+          type: number
+          type_spec:
+            unit: ratio
       execution:
         produces:
           legal_character: BESCHIKKING
@@ -214,8 +229,14 @@ articles:
       definitions:
         vermogensgrens_alleenstaand:
           value: 12758200
+          type: amount
+          type_spec:
+            unit: eurocent
         vermogensgrens_aanvrager_met_toeslagpartner:
           value: 16132900
+          type: amount
+          type_spec:
+            unit: eurocent
       execution:
         produces:
           legal_character: TOETS

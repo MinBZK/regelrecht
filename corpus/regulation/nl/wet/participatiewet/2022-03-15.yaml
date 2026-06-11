@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.0/schema/v0.5.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.3/schema.json
 $id: participatiewet
 regulatory_layer: WET
 publication_date: '2014-07-15'
@@ -97,9 +97,13 @@ articles:
         output:
           - name: verlaging_percentage
             type: number
+            type_spec:
+              unit: percentage
             description: Verlagingspercentage uit gemeentelijke afstemmingsverordening
           - name: duur_maanden
             type: number
+            type_spec:
+              unit: months
             description: Duur van de verlaging in maanden uit gemeentelijke afstemmingsverordening
         actions:
           - output: verlaging_percentage
@@ -203,10 +207,15 @@ articles:
       definitions:
         PERCENTAGE_LID_5:
           value: 100
+          type: number
+          type_spec:
+            unit: percentage
       execution:
         output:
           - name: verlaging_percentage_lid_5
             type: number
+            type_spec:
+              unit: percentage
             description: Verlagingspercentage conform art. 18 lid 5 (altijd 100%)
         actions:
           - output: verlaging_percentage_lid_5
@@ -228,8 +237,14 @@ articles:
       definitions:
         norm_alleenstaande:
           value: 109171
+          type: amount
+          type_spec:
+            unit: eurocent
         norm_gehuwden:
           value: 155958
+          type: amount
+          type_spec:
+            unit: eurocent
       execution:
         produces:
           legal_character: WAARDEBEPALING
@@ -406,6 +421,8 @@ articles:
           # Verlaging from the verordening via Art. 8's open_term
           - name: verlaging_percentage
             type: number
+            type_spec:
+              unit: percentage
             description: Verlagingspercentage uit gemeentelijke afstemmingsverordening (art. 8)
             source:
               output: verlaging_percentage

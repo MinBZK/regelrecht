@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.0/schema/v0.5.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.3/schema.json
 $id: afstemmingsverordening_participatiewet_diemen
 regulatory_layer: GEMEENTELIJKE_VERORDENING
 publication_date: '2014-12-18'
@@ -70,11 +70,20 @@ articles:
         # Categorie 1 en 2: gemeente bepaalt percentage
         PERCENTAGE_CATEGORIE_1:
           value: 5
+          type: number
+          type_spec:
+            unit: percentage
         PERCENTAGE_CATEGORIE_2:
           value: 30
+          type: number
+          type_spec:
+            unit: percentage
         # Categorie 3: percentage komt uit Participatiewet art. 18 lid 5 (zie input)
         DUUR_MAANDEN:
           value: 1
+          type: number
+          type_spec:
+            unit: months
       execution:
         produces:
           legal_character: WAARDEBEPALING
@@ -92,6 +101,8 @@ articles:
           # Dit is GEEN gemeentelijke bevoegdheid - de rijkswet schrijft 100% voor
           - name: percentage_categorie_3
             type: number
+            type_spec:
+              unit: percentage
             description: Verlagingspercentage voor categorie 3 uit Participatiewet art. 18 lid 5
             source:
               regulation: participatiewet
@@ -100,9 +111,13 @@ articles:
         output:
           - name: verlaging_percentage
             type: number
+            type_spec:
+              unit: percentage
             description: Verlagingspercentage conform art. 9 lid 1
           - name: duur_maanden
             type: number
+            type_spec:
+              unit: months
             description: Aantal maanden dat de verlaging duurt
         actions:
           - output: verlaging_percentage
