@@ -2084,6 +2084,12 @@ impl LawExecutionService {
                 // internal chain could still overflow the stack.
                 if res_ctx.depth > config::MAX_CROSS_LAW_DEPTH {
                     res_ctx.leave(&internal_key);
+                    tracing::warn!(
+                        law_id = %law.id,
+                        output = %output_name,
+                        depth = res_ctx.depth,
+                        "Cross-law resolution depth exceeded (internal reference)"
+                    );
                     res_ctx.trace_set_message(format!(
                         "Cross-law resolution depth exceeded {} levels ({}:{})",
                         config::MAX_CROSS_LAW_DEPTH,
