@@ -61,6 +61,11 @@ impl OidcAppState for AppState {
 /// A registered backend along with its writability flag, captured at init
 /// time after [`RepoBackend::ensure_ready`] (so a local source on a
 /// read-only filesystem is recorded as `writable: false`).
+///
+/// `Clone` is shallow: the clone shares the same backend mutex, which is
+/// exactly what the traject index refresh needs (in-flight saves keep
+/// serialising on the same lock across a snapshot swap).
+#[derive(Clone)]
 pub struct BackendEntry {
     pub backend: Arc<Mutex<Box<dyn RepoBackend>>>,
     pub writable: bool,

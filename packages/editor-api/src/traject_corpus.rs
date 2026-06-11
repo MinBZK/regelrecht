@@ -6,21 +6,30 @@
 //! routes reads and writes through that traject's [`TrajectCorpus`] instead
 //! of the globally configured [`crate::state::CorpusState`].
 //!
-//! Construction is lazy: the cache holds a [`OnceCell`] per traject, and
-//! the first request that needs the traject pays the clone cost. The cell
-//! pattern means concurrent first-touches on the same traject share one
-//! clone; first-touches on *different* trajects never block each other.
+//! Construction is lazy: the cache holds a slot per traject, and the
+//! first request that needs the traject pays the clone cost. The slot's
+//! build lock means concurrent first-touches on the same traject share
+//! one clone; first-touches on *different* trajects never block each
+//! other.
+//!
+//! The cached index snapshot expires after [`TRAJECT_INDEX_TTL`]: the
+//! first request past the TTL re-enumerates the sources and swaps in a
+//! fresh [`SourceMap`] (new laws merged upstream, re-harvests, saves on
+//! another replica become visible without a process restart), while the
+//! backends, the post-save overlay and the changed-laws cache carry over
+//! so in-flight saves and read-your-writes semantics are unaffected.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use regelrecht_corpus::backend::create_backend;
 use regelrecht_corpus::models::{GitHubSource, LocalSource, Source, SourceType};
+use regelrecht_corpus::source_map::collect_law_implements;
 use regelrecht_corpus::{CorpusRegistry, SourceMap};
 use sqlx::PgPool;
-use tokio::sync::{Mutex, OnceCell, RwLock};
+use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;
 
 use crate::state::{BackendEntry, CorpusState};
@@ -47,24 +56,51 @@ pub struct TrajectCorpus {
     /// endpoints) to address the traject's own branch directly without
     /// having to reverse-engineer it out of `write_target_for_source`.
     pub writable_own_source_id: String,
-    /// Read-your-writes overlay + lazy-read cache for law YAML content. After
-    /// a successful `save_law` we mirror the persisted body here so subsequent
-    /// reads in the same traject (any session, any user) see the new content
-    /// without forcing a full source_map rebuild against GitHub. It also caches
-    /// bodies fetched lazily on first read (see `law_yaml`), so a re-read of an
-    /// unloaded law (read-only article view, reload, another tab) doesn't spend
-    /// another Contents API call. The overlay is content-only — `LoadedLaw`
-    /// metadata (source_id/relative_path) doesn't change with a content edit,
-    /// so backend resolution keeps using `corpus.source_map`.
+    /// Read-your-writes overlay for law YAML content: only bodies that
+    /// went through a successful `save_law` (see [`record_save`]). After a
+    /// save we mirror the persisted body here so subsequent reads in the
+    /// same traject (any session, any user) see the new content without
+    /// forcing a full source_map rebuild against GitHub. The overlay is
+    /// content-only — `LoadedLaw` metadata (source_id/relative_path)
+    /// doesn't change with a content edit, so backend resolution keeps
+    /// using `corpus.source_map`.
+    ///
+    /// Shared (via the `Arc`) across TTL index refreshes: a refreshed
+    /// snapshot must never resurrect pre-save content, and an in-flight
+    /// save that calls `record_save` on the pre-refresh instance must be
+    /// visible on the post-refresh one. It is only dropped when the whole
+    /// traject cache entry is invalidated (source config change).
     ///
     /// Unbounded growth is intentional: in practice the size is bounded
     /// by the number of distinct laws edited in this traject, with a
-    /// memory budget of roughly N laws × YAML size (KBs). The overlay
-    /// is cleared when the `TrajectCorpus` cache entry is invalidated
-    /// (e.g. on source config change). If a bulk-edit flow is ever
-    /// added that touches many laws per traject, revisit with an LRU
-    /// cap.
-    overlay: RwLock<HashMap<String, String>>,
+    /// memory budget of roughly N laws × YAML size (KBs). If a bulk-edit
+    /// flow is ever added that touches many laws per traject, revisit
+    /// with an LRU cap. (Lazily-fetched read bodies live in the bounded
+    /// `body_cache` below, not here.)
+    overlay: Arc<RwLock<HashMap<String, String>>>,
+    /// Cache of law bodies fetched lazily on first read (see `law_yaml`),
+    /// so a re-read of an unloaded law (read-only article view, reload,
+    /// another tab) doesn't spend another Contents API call.
+    ///
+    /// Unlike `overlay` this is per-snapshot: a TTL index refresh starts
+    /// with an empty cache, so upstream content changes become visible
+    /// within [`TRAJECT_INDEX_TTL`] instead of being served stale until
+    /// process restart. Bounded at [`BODY_CACHE_MAX_ENTRIES`] with FIFO
+    /// eviction so a crawl across a large federated corpus can't grow it
+    /// without limit.
+    body_cache: RwLock<BoundedBodyCache>,
+    /// Per-snapshot "law → laws it `implements`" index, built on demand by
+    /// [`implementors_of`] and discarded with the snapshot (a TTL refresh
+    /// or invalidation starts from `None`). Building it is the one
+    /// O(corpus) body scan; afterwards every implementors lookup is an
+    /// in-memory reverse scan over the parsed lists.
+    implements_index: RwLock<Option<Arc<ImplementsIndex>>>,
+    /// Single-flight gate for building `implements_index`. Held across
+    /// the (potentially long) body-fetching scan WITHOUT holding
+    /// `implements_index` itself, so `record_save` — which runs while the
+    /// writable-own backend mutex is held — can update the index without
+    /// any lock cycle against the scan's backend fetches.
+    implements_build_lock: Mutex<()>,
     /// Short-lived cache of the "edited in this traject" diff
     /// ([`changed_law_ids`]). Each `changed-laws` request would otherwise
     /// fire a GitHub Compare API call, and the library sidebar re-requests
@@ -76,7 +112,9 @@ pub struct TrajectCorpus {
     /// replicas converge within the TTL. A stale entry is also served as a
     /// fallback when a fresh Compare call fails (e.g. token throttled), so
     /// the section degrades to slightly-stale rather than vanishing.
-    changed_cache: RwLock<Option<ChangedLawsCache>>,
+    /// Shared (via the `Arc`) across TTL index refreshes, like `overlay`:
+    /// a refresh must not undo `save_law`'s invalidation of this cache.
+    changed_cache: Arc<RwLock<Option<ChangedLawsCache>>>,
 }
 
 /// Cached result of [`TrajectCorpus::changed_law_ids`] with the instant it
@@ -91,6 +129,82 @@ struct ChangedLawsCache {
 /// promptly in the sidebar, long enough to collapse a burst of library
 /// loads (mount + tab switches + retries) into a single Compare call.
 const CHANGED_LAWS_TTL: Duration = Duration::from_secs(60);
+
+/// How long a traject's cached index snapshot (its [`SourceMap`] plus the
+/// derived body / implements caches) is served before the first request
+/// past the deadline re-enumerates the sources. Same convergence target
+/// as [`CHANGED_LAWS_TTL`]: upstream changes (new laws merged, re-harvests,
+/// saves on another replica) show up within a minute instead of requiring
+/// a process restart, while a burst of library loads still hits the
+/// snapshot. The refresh keeps backends, the post-save overlay and the
+/// changed-laws cache (see [`TrajectCorpusCache::get_or_build`]).
+const TRAJECT_INDEX_TTL: Duration = Duration::from_secs(60);
+
+/// Upper bound on lazily-fetched law bodies cached per traject snapshot
+/// (see [`TrajectCorpus::body_cache`]). At a typical body size of a few
+/// tens of KB this caps the cache at low tens of MB per traject — enough
+/// to cover an implements-index scan over a mid-sized federated corpus
+/// without refetching, while a full-corpus crawl merely evicts FIFO
+/// instead of growing without bound.
+const BODY_CACHE_MAX_ENTRIES: usize = 1024;
+
+/// Lazily-fetched law bodies with a FIFO size cap. FIFO (not LRU) keeps
+/// reads lock-cheap: a cache hit only needs the outer `RwLock`'s read
+/// guard, no per-hit reordering under a write lock. Eviction order only
+/// matters once a traject's read set exceeds [`BODY_CACHE_MAX_ENTRIES`],
+/// which is already crawl territory.
+#[derive(Default)]
+struct BoundedBodyCache {
+    map: HashMap<String, String>,
+    /// Insertion order of the keys in `map`, oldest first.
+    order: VecDeque<String>,
+}
+
+impl BoundedBodyCache {
+    fn get(&self, law_id: &str) -> Option<&String> {
+        self.map.get(law_id)
+    }
+
+    fn insert(&mut self, law_id: String, body: String) {
+        if !self.map.contains_key(&law_id) {
+            while self.map.len() >= BODY_CACHE_MAX_ENTRIES {
+                let Some(oldest) = self.order.pop_front() else {
+                    break;
+                };
+                self.map.remove(&oldest);
+            }
+            self.order.push_back(law_id.clone());
+        }
+        self.map.insert(law_id, body);
+    }
+}
+
+/// Per-snapshot forward index: each law's parsed `implements` list, plus
+/// the laws whose body couldn't be fetched during the scan (throttling,
+/// token expiry, …) and therefore couldn't be checked.
+///
+/// `Clone` exists for `Arc::make_mut` in [`TrajectCorpus::record_save`]:
+/// a post-save entry update copy-on-writes when a lookup still holds the
+/// previous `Arc`.
+#[derive(Clone)]
+struct ImplementsIndex {
+    /// `law_id` → `$id`s of the higher laws it declares it implements.
+    /// Laws with an empty list are omitted.
+    implements_by_law: HashMap<String, Vec<String>>,
+    /// Laws skipped because their body fetch failed. Kept so lookups can
+    /// report partiality instead of silently passing off an incomplete
+    /// scan as "no implementors". Self-heals at the next snapshot
+    /// (TTL refresh / invalidation), which rebuilds the index.
+    failed_law_ids: Vec<String>,
+}
+
+/// Result of [`TrajectCorpus::implementors_of`]: the implementing law ids
+/// plus the ids that could not be checked because their body fetch failed
+/// when the index was built.
+pub struct ImplementorsResult {
+    pub implementors: Vec<String>,
+    pub skipped_law_ids: Vec<String>,
+}
 
 impl TrajectCorpus {
     /// Resolve the YAML content for a law in this traject, preferring the
@@ -113,6 +227,9 @@ impl TrajectCorpus {
         law_id: &str,
     ) -> Result<Option<String>, regelrecht_corpus::error::CorpusError> {
         if let Some(text) = self.overlay.read().await.get(law_id) {
+            return Ok(Some(text.clone()));
+        }
+        if let Some(text) = self.body_cache.read().await.get(law_id) {
             return Ok(Some(text.clone()));
         }
 
@@ -147,12 +264,13 @@ impl TrajectCorpus {
 
         // Cache the lazily-fetched body so re-reads of this unloaded law don't
         // each spend another Contents API call (read-only views, reloads, a
-        // second tab). Same staleness model as the post-save mirror: cleared
-        // when the traject's cache entry is invalidated. Also makes a
-        // genuinely-empty body a one-shot fetch rather than re-fetching every
-        // call (the empty-`yaml_content` "unloaded" sentinel can't tell them
-        // apart, but the overlay short-circuits before that check).
-        self.overlay
+        // second tab). Per-snapshot: discarded on a TTL index refresh so
+        // upstream content changes converge, and bounded so a corpus-wide
+        // crawl can't grow it without limit. Also makes a genuinely-empty
+        // body a one-shot fetch rather than re-fetching every call (the
+        // empty-`yaml_content` "unloaded" sentinel can't tell them apart,
+        // but this cache short-circuits before that check).
+        self.body_cache
             .write()
             .await
             .insert(law_id.to_string(), content.clone());
@@ -162,8 +280,119 @@ impl TrajectCorpus {
     /// Mirror a freshly-saved law's content into the read-your-writes
     /// overlay. Called by `save_law` after a successful `backend.persist`,
     /// so the next GET on the same law (or a refresh) sees the new body.
+    ///
+    /// Also keeps the per-snapshot implements index coherent: a save can
+    /// add or drop `implements` declarations, so when the index has been
+    /// built its entry for this law is replaced with the new body's list.
+    /// (When a save races an in-flight index build the scan may have read
+    /// the pre-save body after this update ran; the entry is then stale
+    /// until the next snapshot — bounded by [`TRAJECT_INDEX_TTL`].)
     pub async fn record_save(&self, law_id: String, body: String) {
-        self.overlay.write().await.insert(law_id, body);
+        let implements = collect_law_implements(&body);
+        self.overlay.write().await.insert(law_id.clone(), body);
+        if let Some(index) = self.implements_index.write().await.as_mut() {
+            let index = Arc::make_mut(index);
+            // The law's body is now known, so it can no longer count as
+            // "skipped due to fetch failure" from an earlier scan.
+            index.failed_law_ids.retain(|id| id != &law_id);
+            if implements.is_empty() {
+                index.implements_by_law.remove(&law_id);
+            } else {
+                index.implements_by_law.insert(law_id, implements);
+            }
+        }
+    }
+
+    /// Law ids whose articles declare `implements` for `law_id` (the IoC
+    /// reverse link), resolved against this snapshot's federated corpus.
+    ///
+    /// The first call builds the per-snapshot [`ImplementsIndex`] — the
+    /// one O(corpus) scan that lazily fetches the body of every
+    /// metadata-only law — and every later call (any target law) is an
+    /// in-memory reverse lookup. Bodies fetched by the scan land in
+    /// `body_cache`, so opening one of the scanned laws afterwards is
+    /// also free. Laws whose body fetch failed are reported in
+    /// [`ImplementorsResult::skipped_law_ids`] instead of being silently
+    /// indistinguishable from "doesn't implement anything"; the failed
+    /// set is retried when the snapshot rolls over (TTL refresh).
+    pub async fn implementors_of(&self, law_id: &str) -> ImplementorsResult {
+        let index = self.implements_index_get_or_build().await;
+        let mut implementors: Vec<String> = index
+            .implements_by_law
+            .iter()
+            .filter(|(id, implemented)| {
+                id.as_str() != law_id && implemented.iter().any(|i| i == law_id)
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        implementors.sort();
+        ImplementorsResult {
+            implementors,
+            skipped_law_ids: index.failed_law_ids.clone(),
+        }
+    }
+
+    /// Get the snapshot's implements index, building it on first use.
+    ///
+    /// Single-flighted on `implements_build_lock`; the (long, fetching)
+    /// build never holds the `implements_index` RwLock itself, so a
+    /// concurrent `record_save` — which runs under the writable-own
+    /// backend mutex that the scan may also need — can always complete.
+    async fn implements_index_get_or_build(&self) -> Arc<ImplementsIndex> {
+        if let Some(index) = self.implements_index.read().await.as_ref() {
+            return index.clone();
+        }
+        let _build = self.implements_build_lock.lock().await;
+        // Re-check: another task may have built it while we waited.
+        if let Some(index) = self.implements_index.read().await.as_ref() {
+            return index.clone();
+        }
+
+        let mut implements_by_law = HashMap::new();
+        let mut failed_law_ids = Vec::new();
+        // Collect ids first so the source_map borrow doesn't live across
+        // the awaits below.
+        let law_ids: Vec<String> = self
+            .corpus
+            .source_map
+            .laws()
+            .map(|law| law.law_id.clone())
+            .collect();
+        for law_id in law_ids {
+            // Resolve through `law_yaml`, NOT `LoadedLaw::yaml_content`:
+            // federated laws are metadata-only until first read. The
+            // overlay/body_cache make repeat scans cheap.
+            match self.law_yaml(&law_id).await {
+                Ok(Some(yaml)) => {
+                    let implements = collect_law_implements(&yaml);
+                    if !implements.is_empty() {
+                        implements_by_law.insert(law_id, implements);
+                    }
+                }
+                // A genuine miss (no backend / file vanished) has nothing
+                // to index and nothing to retry.
+                Ok(None) => {}
+                Err(e) => {
+                    tracing::debug!(law_id = %law_id, error = %e, "implements scan: body fetch failed");
+                    failed_law_ids.push(law_id);
+                }
+            }
+        }
+        if !failed_law_ids.is_empty() {
+            tracing::warn!(
+                failed = failed_law_ids.len(),
+                indexed = implements_by_law.len(),
+                "implements index built with fetch failures; implementor lists may be incomplete until the next snapshot"
+            );
+        }
+        failed_law_ids.sort();
+
+        let index = Arc::new(ImplementsIndex {
+            implements_by_law,
+            failed_law_ids,
+        });
+        *self.implements_index.write().await = Some(index.clone());
+        index
     }
 
     /// Law ids that have been edited in this traject: the diff between the
@@ -259,17 +488,61 @@ impl TrajectCorpus {
     }
 }
 
-/// Lazy registry of per-traject corpora, mirroring the
-/// `CorpusState`-per-traject design. Each cell is initialised exactly
-/// once; concurrent first-touches on the same traject share the clone.
+/// A built traject corpus plus the instant its index snapshot was
+/// (re)built, for TTL expiry.
+struct CachedCorpus {
+    corpus: Arc<TrajectCorpus>,
+    built_at: Instant,
+}
+
+impl CachedCorpus {
+    fn is_fresh(&self, ttl: Duration) -> bool {
+        self.built_at.elapsed() < ttl
+    }
+}
+
+/// Per-traject cache slot. `state` holds the current snapshot (None until
+/// first build); `build_lock` single-flights both the initial build and
+/// TTL refreshes so concurrent first-touches share one clone and a
+/// refresh herd collapses to one source enumeration.
 #[derive(Default)]
+struct TrajectSlot {
+    state: RwLock<Option<CachedCorpus>>,
+    build_lock: Mutex<()>,
+}
+
+/// Lazy registry of per-traject corpora, mirroring the
+/// `CorpusState`-per-traject design. Concurrent first-touches on the same
+/// traject share one build; first-touches on *different* trajects never
+/// block each other. A built snapshot is served for `index_ttl` and then
+/// refreshed in place (see [`Self::get_or_build`]).
 pub struct TrajectCorpusCache {
-    cells: RwLock<HashMap<Uuid, Arc<OnceCell<Arc<TrajectCorpus>>>>>,
+    cells: RwLock<HashMap<Uuid, Arc<TrajectSlot>>>,
+    /// How long an index snapshot is served before it is refreshed.
+    /// [`TRAJECT_INDEX_TTL`] in production; tests inject shorter values
+    /// via [`Self::with_index_ttl`].
+    index_ttl: Duration,
+}
+
+impl Default for TrajectCorpusCache {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TrajectCorpusCache {
     pub fn new() -> Self {
-        Self::default()
+        Self::with_index_ttl(TRAJECT_INDEX_TTL)
+    }
+
+    /// Cache with a caller-chosen snapshot TTL — the injection point for
+    /// tests that need to force (or rule out) a refresh without waiting
+    /// out the production TTL.
+    pub fn with_index_ttl(index_ttl: Duration) -> Self {
+        Self {
+            cells: RwLock::new(HashMap::new()),
+            index_ttl,
+        }
     }
 
     /// Get-or-build the corpus state for a traject.
@@ -277,25 +550,94 @@ impl TrajectCorpusCache {
     /// On a cache miss the slow path queries `traject_corpus_sources`,
     /// instantiates a backend per source (cloning when needed via
     /// `ensure_ready`), and stitches them into a [`CorpusState`].
+    ///
+    /// When the cached snapshot is older than the index TTL, the first
+    /// request past the deadline re-enumerates the sources and swaps in a
+    /// refreshed [`TrajectCorpus`] (see [`refresh_traject_corpus`] for
+    /// what carries over); concurrent requests keep being served the
+    /// stale snapshot while one refresh is in flight, and a failed
+    /// refresh extends the stale snapshot for another TTL window instead
+    /// of erroring reads (same degrade-to-stale stance as
+    /// [`TrajectCorpus::changed_law_ids`]).
     pub async fn get_or_build(
         &self,
         pool: &PgPool,
         traject_id: Uuid,
         auth_file: Option<PathBuf>,
     ) -> Result<Arc<TrajectCorpus>, TrajectCorpusError> {
-        let cell = {
+        let slot = {
             let mut map = self.cells.write().await;
             map.entry(traject_id)
-                .or_insert_with(|| Arc::new(OnceCell::new()))
+                .or_insert_with(|| Arc::new(TrajectSlot::default()))
                 .clone()
         };
 
-        let built = cell
-            .get_or_try_init(|| async {
-                build_traject_corpus(pool, traject_id, auth_file.as_deref()).await
-            })
-            .await?;
-        Ok(built.clone())
+        // Fast path: a fresh snapshot serves without touching the build
+        // lock. A stale-but-present snapshot is remembered so it can be
+        // served when another task is already refreshing.
+        let stale = {
+            let state = slot.state.read().await;
+            match state.as_ref() {
+                Some(cached) if cached.is_fresh(self.index_ttl) => {
+                    return Ok(cached.corpus.clone())
+                }
+                Some(cached) => Some(cached.corpus.clone()),
+                None => None,
+            }
+        };
+
+        let _build = match &stale {
+            // Nothing cached: every caller must wait for the one build.
+            None => slot.build_lock.lock().await,
+            // Stale: only one task refreshes; the rest serve stale rather
+            // than queueing up behind a network round-trip.
+            Some(stale_corpus) => match slot.build_lock.try_lock() {
+                Ok(guard) => guard,
+                Err(_) => return Ok(stale_corpus.clone()),
+            },
+        };
+
+        // Re-check under the build lock: the previous holder may have
+        // built/refreshed while we waited.
+        let stale = {
+            let state = slot.state.read().await;
+            match state.as_ref() {
+                Some(cached) if cached.is_fresh(self.index_ttl) => {
+                    return Ok(cached.corpus.clone())
+                }
+                Some(cached) => Some(cached.corpus.clone()),
+                None => None,
+            }
+        };
+
+        let corpus = match stale {
+            None => build_traject_corpus(pool, traject_id, auth_file.as_deref()).await?,
+            Some(old) => match refresh_traject_corpus(&old, traject_id).await {
+                Ok(refreshed) => refreshed,
+                Err(e) => {
+                    // Serve (and re-arm) the stale snapshot rather than
+                    // failing reads on a transient enumeration error; the
+                    // re-armed `built_at` stops every subsequent request
+                    // from re-attempting against a throttled upstream.
+                    tracing::warn!(
+                        traject = %traject_id,
+                        error = %e,
+                        "traject index refresh failed; serving stale snapshot for another TTL"
+                    );
+                    *slot.state.write().await = Some(CachedCorpus {
+                        corpus: old.clone(),
+                        built_at: Instant::now(),
+                    });
+                    return Ok(old);
+                }
+            },
+        };
+
+        *slot.state.write().await = Some(CachedCorpus {
+            corpus: corpus.clone(),
+            built_at: Instant::now(),
+        });
+        Ok(corpus)
     }
 
     /// Drop the cached entry for a traject so the next request rebuilds.
@@ -556,8 +898,70 @@ async fn build_traject_corpus(
         },
         write_target_for_source,
         writable_own_source_id,
-        overlay: RwLock::new(HashMap::new()),
-        changed_cache: RwLock::new(None),
+        overlay: Arc::new(RwLock::new(HashMap::new())),
+        body_cache: RwLock::new(BoundedBodyCache::default()),
+        implements_index: RwLock::new(None),
+        implements_build_lock: Mutex::new(()),
+        changed_cache: Arc::new(RwLock::new(None)),
+    }))
+}
+
+/// Build a TTL-refreshed [`TrajectCorpus`] from an existing one: a fresh
+/// index snapshot over the *same* sources and backends.
+///
+/// Carried over from `old` (so a refresh can never break in-flight save
+/// semantics):
+/// - the **backends map** — the same `Arc<Mutex<…>>` instances, so a save
+///   holding a backend mutex across the refresh keeps excluding writers
+///   and the writable-own → seed lock-ordering invariant is unaffected;
+/// - the **post-save `overlay`** (shared `Arc`) — refreshed reads keep
+///   seeing saved bodies (never resurrect pre-save content), and a save
+///   that lands on the pre-refresh instance is visible post-refresh;
+/// - the **changed-laws cache** (shared `Arc`) — same reasoning for
+///   `save_law`'s invalidation;
+/// - the **write routing** (`write_target_for_source`,
+///   `writable_own_source_id`) and the registry/auth config, which only
+///   change through traject create/delete → [`TrajectCorpusCache::invalidate`].
+///
+/// Fresh in the new instance:
+/// - the **`source_map` index snapshot** — the point of the refresh;
+/// - the **`body_cache`** — so upstream body changes become visible;
+/// - the **implements index** — rebuilt on demand against the new snapshot.
+///
+/// Any source failing to enumerate fails the whole refresh: the caller
+/// then serves the previous (complete) snapshot for another TTL, which
+/// strictly beats swapping in a snapshot with thousands of laws missing.
+async fn refresh_traject_corpus(
+    old: &Arc<TrajectCorpus>,
+    traject_id: Uuid,
+) -> Result<Arc<TrajectCorpus>, TrajectCorpusError> {
+    let registry = old.corpus.registry.clone();
+    let auth_file = old.corpus.auth_file.clone();
+    let (source_map, failed) = registry
+        .index_all_sources_async(auth_file.as_deref())
+        .await?;
+    if !failed.is_empty() {
+        return Err(TrajectCorpusError::Corpus(
+            regelrecht_corpus::error::CorpusError::Config(format!(
+                "index refresh for traject {traject_id} failed to enumerate sources: {failed:?}"
+            )),
+        ));
+    }
+
+    Ok(Arc::new(TrajectCorpus {
+        corpus: CorpusState {
+            registry,
+            source_map,
+            backends: old.corpus.backends.clone(),
+            auth_file,
+        },
+        write_target_for_source: old.write_target_for_source.clone(),
+        writable_own_source_id: old.writable_own_source_id.clone(),
+        overlay: old.overlay.clone(),
+        body_cache: RwLock::new(BoundedBodyCache::default()),
+        implements_index: RwLock::new(None),
+        implements_build_lock: Mutex::new(()),
+        changed_cache: old.changed_cache.clone(),
     }))
 }
 
@@ -608,6 +1012,456 @@ struct TrajectSourceRow {
     auth_ref: Option<String>,
     scopes: serde_json::Value,
     is_writable_own: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    //! Unit tests for the snapshot caches: the bounded lazy-body cache,
+    //! the TTL freshness rule, the per-snapshot implements index (incl.
+    //! the fetch-failure path) and the carry-over semantics of a TTL
+    //! index refresh. The DB-backed `get_or_build` flow is covered by
+    //! the `traject_reads_test` integration tests.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
+    use super::*;
+
+    use std::path::Path;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use async_trait::async_trait;
+    use regelrecht_corpus::backend::{
+        FileEntry, PersistOutcome, RepoBackend, WriteContext as CorpusWriteContext,
+    };
+    use regelrecht_corpus::error::{CorpusError, Result as CorpusResult};
+
+    /// In-memory backend stub: serves a fixed file set, optionally
+    /// failing every read (the throttled-fetch path), and counts reads
+    /// so tests can assert a cache hit skipped the backend.
+    struct StubBackend {
+        files: HashMap<String, String>,
+        fail_reads: bool,
+        reads: Arc<AtomicUsize>,
+    }
+
+    impl StubBackend {
+        fn with_files(files: &[(&str, &str)]) -> Self {
+            Self {
+                files: files
+                    .iter()
+                    .map(|(p, c)| (p.to_string(), c.to_string()))
+                    .collect(),
+                fail_reads: false,
+                reads: Arc::new(AtomicUsize::new(0)),
+            }
+        }
+
+        fn failing() -> Self {
+            Self {
+                files: HashMap::new(),
+                fail_reads: true,
+                reads: Arc::new(AtomicUsize::new(0)),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl RepoBackend for StubBackend {
+        async fn read_file(&self, path: &Path) -> CorpusResult<Option<String>> {
+            self.reads.fetch_add(1, Ordering::SeqCst);
+            if self.fail_reads {
+                return Err(CorpusError::Git("simulated throttle".to_string()));
+            }
+            Ok(self.files.get(path.to_str().unwrap()).cloned())
+        }
+        async fn write_file(&self, _: &Path, _: &str) -> CorpusResult<()> {
+            Ok(())
+        }
+        async fn delete_file(&self, _: &Path) -> CorpusResult<()> {
+            Ok(())
+        }
+        async fn list_files(&self, _: &Path, _: Option<&str>) -> CorpusResult<Vec<FileEntry>> {
+            Ok(Vec::new())
+        }
+        async fn persist(&self, _: &CorpusWriteContext) -> CorpusResult<PersistOutcome> {
+            Ok(PersistOutcome::default())
+        }
+        async fn ensure_ready(&mut self) -> CorpusResult<()> {
+            Ok(())
+        }
+        fn is_writable(&self) -> bool {
+            true
+        }
+    }
+
+    fn backend_entry(backend: StubBackend) -> BackendEntry {
+        BackendEntry {
+            backend: Arc::new(Mutex::new(Box::new(backend) as Box<dyn RepoBackend>)),
+            writable: true,
+        }
+    }
+
+    /// Bare `TrajectCorpus` over the given index + backends; no DB, no
+    /// network.
+    fn test_corpus(
+        source_map: SourceMap,
+        backends: HashMap<String, BackendEntry>,
+    ) -> TrajectCorpus {
+        TrajectCorpus {
+            corpus: CorpusState {
+                registry: CorpusRegistry::empty(),
+                source_map,
+                backends,
+                auth_file: None,
+            },
+            write_target_for_source: HashMap::new(),
+            writable_own_source_id: "own".to_string(),
+            overlay: Arc::new(RwLock::new(HashMap::new())),
+            body_cache: RwLock::new(BoundedBodyCache::default()),
+            implements_index: RwLock::new(None),
+            implements_build_lock: Mutex::new(()),
+            changed_cache: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    fn metadata_entry(map: &mut SourceMap, law_id: &str, source_id: &str) {
+        map.load_metadata_entry(
+            law_id,
+            &format!("wet/{law_id}/2025-01-01.yaml"),
+            None,
+            source_id,
+            source_id,
+            // Distinct priorities per source: equal-priority conflicts
+            // across sources are a hard SourceMap error.
+            if source_id == "own" { 0 } else { 1 },
+        )
+        .unwrap();
+    }
+
+    fn law_body(law_id: &str, implements: Option<&str>) -> String {
+        match implements {
+            Some(higher) => format!(
+                "$id: {law_id}\narticles:\n  - number: '1'\n    machine_readable:\n      implements:\n        - law: {higher}\n"
+            ),
+            None => format!("$id: {law_id}\narticles: []\n"),
+        }
+    }
+
+    // ---- BoundedBodyCache ----
+
+    #[test]
+    fn body_cache_evicts_oldest_at_cap() {
+        let mut cache = BoundedBodyCache::default();
+        for i in 0..BODY_CACHE_MAX_ENTRIES + 10 {
+            cache.insert(format!("law_{i}"), "body".to_string());
+        }
+        assert_eq!(cache.map.len(), BODY_CACHE_MAX_ENTRIES);
+        // The 10 oldest entries were evicted FIFO; the newest survive.
+        assert!(cache.get("law_0").is_none());
+        assert!(cache.get("law_9").is_none());
+        assert!(cache.get("law_10").is_some());
+        assert!(cache
+            .get(&format!("law_{}", BODY_CACHE_MAX_ENTRIES + 9))
+            .is_some());
+    }
+
+    #[test]
+    fn body_cache_overwrite_does_not_grow_or_evict() {
+        let mut cache = BoundedBodyCache::default();
+        cache.insert("a".to_string(), "v1".to_string());
+        cache.insert("b".to_string(), "v1".to_string());
+        cache.insert("a".to_string(), "v2".to_string());
+        assert_eq!(cache.map.len(), 2);
+        assert_eq!(cache.order.len(), 2);
+        assert_eq!(cache.get("a").map(String::as_str), Some("v2"));
+    }
+
+    // ---- TTL freshness ----
+
+    #[test]
+    fn cached_corpus_freshness_respects_ttl() {
+        let cached = CachedCorpus {
+            corpus: Arc::new(test_corpus(SourceMap::new(), HashMap::new())),
+            built_at: Instant::now(),
+        };
+        // A just-built snapshot is fresh under the production TTL…
+        assert!(cached.is_fresh(TRAJECT_INDEX_TTL));
+        // …and stale under a zero TTL (the injection tests use).
+        assert!(!cached.is_fresh(Duration::ZERO));
+    }
+
+    // ---- law_yaml / body cache interplay ----
+
+    #[tokio::test]
+    async fn law_yaml_caches_lazy_fetch_and_prefers_overlay() {
+        let mut map = SourceMap::new();
+        metadata_entry(&mut map, "wet_a", "seed");
+        let stub = StubBackend::with_files(&[("wet/wet_a/2025-01-01.yaml", "$id: wet_a\n")]);
+        let reads = stub.reads.clone();
+        let corpus = test_corpus(
+            map,
+            HashMap::from([("seed".to_string(), backend_entry(stub))]),
+        );
+
+        // First read fetches and caches…
+        assert_eq!(
+            corpus.law_yaml("wet_a").await.unwrap().as_deref(),
+            Some("$id: wet_a\n")
+        );
+        assert_eq!(reads.load(Ordering::SeqCst), 1);
+        // …second read is a body-cache hit, no backend round-trip.
+        assert_eq!(
+            corpus.law_yaml("wet_a").await.unwrap().as_deref(),
+            Some("$id: wet_a\n")
+        );
+        assert_eq!(reads.load(Ordering::SeqCst), 1);
+
+        // A save wins over the cached body (read-your-writes).
+        corpus
+            .record_save("wet_a".to_string(), "$id: wet_a\nname: saved\n".to_string())
+            .await;
+        assert_eq!(
+            corpus.law_yaml("wet_a").await.unwrap().as_deref(),
+            Some("$id: wet_a\nname: saved\n")
+        );
+    }
+
+    // ---- implements index ----
+
+    #[tokio::test]
+    async fn implementors_of_builds_index_once_and_reverse_looks_up() {
+        let mut map = SourceMap::new();
+        metadata_entry(&mut map, "regeling_a", "seed");
+        metadata_entry(&mut map, "wet_hoger", "seed");
+        let stub = StubBackend::with_files(&[
+            (
+                "wet/regeling_a/2025-01-01.yaml",
+                &law_body("regeling_a", Some("wet_hoger")),
+            ),
+            (
+                "wet/wet_hoger/2025-01-01.yaml",
+                &law_body("wet_hoger", None),
+            ),
+        ]);
+        let reads = stub.reads.clone();
+        let corpus = test_corpus(
+            map,
+            HashMap::from([("seed".to_string(), backend_entry(stub))]),
+        );
+
+        let result = corpus.implementors_of("wet_hoger").await;
+        assert_eq!(result.implementors, vec!["regeling_a".to_string()]);
+        assert!(result.skipped_law_ids.is_empty());
+        let reads_after_build = reads.load(Ordering::SeqCst);
+        assert_eq!(reads_after_build, 2, "index build fetches each body once");
+
+        // A second lookup — different target — reuses the index without
+        // re-fetching anything.
+        let result = corpus.implementors_of("regeling_a").await;
+        assert!(result.implementors.is_empty());
+        assert_eq!(reads.load(Ordering::SeqCst), reads_after_build);
+    }
+
+    #[tokio::test]
+    async fn implementors_of_reports_fetch_failures_as_skipped() {
+        let mut map = SourceMap::new();
+        metadata_entry(&mut map, "regeling_a", "seed");
+        metadata_entry(&mut map, "wet_kapot", "broken");
+        let stub = StubBackend::with_files(&[(
+            "wet/regeling_a/2025-01-01.yaml",
+            &law_body("regeling_a", Some("wet_hoger")),
+        )]);
+        let corpus = test_corpus(
+            map,
+            HashMap::from([
+                ("seed".to_string(), backend_entry(stub)),
+                ("broken".to_string(), backend_entry(StubBackend::failing())),
+            ]),
+        );
+
+        let result = corpus.implementors_of("wet_hoger").await;
+        // The throttled law is reported as skipped — distinguishable from
+        // "checked and implements nothing" — while the healthy law is
+        // still found.
+        assert_eq!(result.implementors, vec!["regeling_a".to_string()]);
+        assert_eq!(result.skipped_law_ids, vec!["wet_kapot".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn record_save_updates_built_implements_index_in_place() {
+        let mut map = SourceMap::new();
+        metadata_entry(&mut map, "regeling_a", "seed");
+        let stub = StubBackend::with_files(&[(
+            "wet/regeling_a/2025-01-01.yaml",
+            &law_body("regeling_a", None),
+        )]);
+        let corpus = test_corpus(
+            map,
+            HashMap::from([("seed".to_string(), backend_entry(stub))]),
+        );
+
+        // Build the index against the pre-save body: no implementors.
+        assert!(corpus
+            .implementors_of("wet_hoger")
+            .await
+            .implementors
+            .is_empty());
+
+        // The save adds an `implements` declaration; the lookup must see
+        // it immediately — no snapshot rollover needed.
+        corpus
+            .record_save(
+                "regeling_a".to_string(),
+                law_body("regeling_a", Some("wet_hoger")),
+            )
+            .await;
+        assert_eq!(
+            corpus.implementors_of("wet_hoger").await.implementors,
+            vec!["regeling_a".to_string()]
+        );
+
+        // And the reverse: a save dropping the declaration removes it.
+        corpus
+            .record_save("regeling_a".to_string(), law_body("regeling_a", None))
+            .await;
+        assert!(corpus
+            .implementors_of("wet_hoger")
+            .await
+            .implementors
+            .is_empty());
+    }
+
+    // ---- TTL index refresh ----
+
+    /// Build a real local-source `TrajectCorpus` over `dir`, the manual
+    /// equivalent of `build_traject_corpus` without the DB round-trip.
+    async fn local_corpus(dir: &Path) -> Arc<TrajectCorpus> {
+        let source = Source {
+            id: "own".to_string(),
+            name: "Own".to_string(),
+            source_type: SourceType::Local {
+                local: LocalSource {
+                    path: dir.to_path_buf(),
+                },
+            },
+            scopes: vec![],
+            priority: 0,
+            auth_ref: None,
+        };
+        let registry = CorpusRegistry::from_sources(vec![source.clone()]);
+        let source_map = registry.load_local_sources().unwrap();
+        let mut backend = create_backend(&source, None).unwrap();
+        backend.ensure_ready().await.unwrap();
+        let writable = backend.is_writable();
+        let backends = HashMap::from([(
+            "own".to_string(),
+            BackendEntry {
+                backend: Arc::new(Mutex::new(backend)),
+                writable,
+            },
+        )]);
+        Arc::new(TrajectCorpus {
+            corpus: CorpusState {
+                registry,
+                source_map,
+                backends,
+                auth_file: None,
+            },
+            write_target_for_source: HashMap::new(),
+            writable_own_source_id: "own".to_string(),
+            overlay: Arc::new(RwLock::new(HashMap::new())),
+            body_cache: RwLock::new(BoundedBodyCache::default()),
+            implements_index: RwLock::new(None),
+            implements_build_lock: Mutex::new(()),
+            changed_cache: Arc::new(RwLock::new(None)),
+        })
+    }
+
+    fn write_law_file(dir: &Path, law_id: &str, body: &str) {
+        let law_dir = dir.join("wet").join(law_id);
+        std::fs::create_dir_all(&law_dir).unwrap();
+        std::fs::write(law_dir.join("2025-01-01.yaml"), body).unwrap();
+    }
+
+    #[tokio::test]
+    async fn refresh_swaps_index_but_carries_backends_overlay_and_changed_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        write_law_file(dir.path(), "wet_a", "$id: wet_a\nname: v1\n");
+        let old = local_corpus(dir.path()).await;
+
+        // A save lands in the overlay before the refresh…
+        old.record_save("wet_a".to_string(), "$id: wet_a\nname: saved\n".to_string())
+            .await;
+        // …and upstream gains a brand-new law the old snapshot misses.
+        write_law_file(dir.path(), "wet_b", "$id: wet_b\nname: nieuw\n");
+        assert!(old.corpus.source_map.get_law("wet_b").is_none());
+
+        let refreshed = refresh_traject_corpus(&old, Uuid::new_v4())
+            .await
+            .expect("local refresh must succeed");
+
+        // Fresh snapshot: the new upstream law is now indexed.
+        assert!(refreshed.corpus.source_map.get_law("wet_b").is_some());
+        // The backends are the *same* mutexes — an in-flight save keeps
+        // excluding writers across the swap.
+        assert!(Arc::ptr_eq(
+            &old.corpus.backends["own"].backend,
+            &refreshed.corpus.backends["own"].backend
+        ));
+        // The overlay carried over: the refresh must never resurrect
+        // pre-save content.
+        assert_eq!(
+            refreshed.law_yaml("wet_a").await.unwrap().as_deref(),
+            Some("$id: wet_a\nname: saved\n")
+        );
+        // A save recorded on the OLD instance after the swap is visible
+        // through the refreshed one (shared overlay, not a copy).
+        old.record_save(
+            "wet_a".to_string(),
+            "$id: wet_a\nname: saved2\n".to_string(),
+        )
+        .await;
+        assert_eq!(
+            refreshed.law_yaml("wet_a").await.unwrap().as_deref(),
+            Some("$id: wet_a\nname: saved2\n")
+        );
+        // The changed-laws cache is shared for the same reason.
+        assert!(Arc::ptr_eq(&old.changed_cache, &refreshed.changed_cache));
+    }
+
+    #[tokio::test]
+    async fn refresh_resets_the_implements_index_with_the_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        write_law_file(dir.path(), "wet_hoger", &law_body("wet_hoger", None));
+        let old = local_corpus(dir.path()).await;
+        assert!(old
+            .implementors_of("wet_hoger")
+            .await
+            .implementors
+            .is_empty());
+
+        // A new implementing regulation lands upstream (e.g. merged on
+        // the central corpus / saved on another replica).
+        write_law_file(
+            dir.path(),
+            "regeling_a",
+            &law_body("regeling_a", Some("wet_hoger")),
+        );
+        let refreshed = refresh_traject_corpus(&old, Uuid::new_v4())
+            .await
+            .expect("local refresh must succeed");
+
+        // The refreshed snapshot rebuilds its own index and finds it; the
+        // old instance's cached index is untouched (per-snapshot).
+        assert_eq!(
+            refreshed.implementors_of("wet_hoger").await.implementors,
+            vec!["regeling_a".to_string()]
+        );
+        assert!(old
+            .implementors_of("wet_hoger")
+            .await
+            .implementors
+            .is_empty());
+    }
 }
 
 impl TrajectSourceRow {
