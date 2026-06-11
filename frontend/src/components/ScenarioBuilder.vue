@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
 import { useDependencies } from '../composables/useDependencies.js';
-import { useScenarios } from '../composables/useScenarios.js';
+import { useScenarios, isScenarioMismatch } from '../composables/useScenarios.js';
 import { lawUrl } from '../composables/corpusUrls.js';
 import { parseFeature } from '../gherkin/parser.js';
 import { mapFeatureToForm, getEffectiveSetup, formStateToGherkin, syncEditedValues } from '../gherkin/formMapper.js';
@@ -49,6 +49,23 @@ const {
   selectScenario: selectScenarioFile,
   saveScenario,
 } = useScenarios(lawIdRef, trajectRefRef);
+
+// Mismatch warning: the selected scenario file declares execution targets
+// that do not include the opened law. Running it would evaluate that other
+// law — surface this instead of letting the run fail confusingly.
+const selectedScenarioEntry = computed(
+  () => scenarioFiles.value.find((sf) => sf.filename === selectedScenarioFile.value) || null,
+);
+const selectedScenarioMismatchTargets = computed(() =>
+  selectedScenarioEntry.value && isScenarioMismatch(selectedScenarioEntry.value, props.lawId)
+    ? selectedScenarioEntry.value.target_law_ids
+    : null,
+);
+const mismatchSupportingText = computed(() =>
+  selectedScenarioMismatchTargets.value
+    ? `Dit scenario evalueert '${selectedScenarioMismatchTargets.value.join("', '")}', niet deze wet ('${props.lawId}'). Uitvoeren gebruikt die andere wet.`
+    : '',
+);
 
 const formState = ref(null);
 const saveSuccess = ref(false);
@@ -473,10 +490,17 @@ defineExpose({ save: onSave });
           @change="onScenarioFileSelect"
         >
           <option v-for="sf in scenarioFiles" :key="sf.filename" :value="sf.filename">
-            {{ sf.filename }}
+            {{ isScenarioMismatch(sf, lawId) ? '⚠ ' + sf.filename : sf.filename }}
           </option>
         </select>
       </nldd-dropdown>
+
+      <nldd-inline-dialog
+        v-if="selectedScenarioMismatchTargets"
+        variant="alert"
+        text="Scenario hoort bij een andere wet"
+        :supporting-text="mismatchSupportingText"
+      ></nldd-inline-dialog>
 
       <nldd-inline-dialog v-if="saveSuccess" text="Opgeslagen"></nldd-inline-dialog>
       <nldd-inline-dialog v-if="saveError" variant="alert" text="Opslaan mislukt" :supporting-text="saveError.message || String(saveError)"></nldd-inline-dialog>
