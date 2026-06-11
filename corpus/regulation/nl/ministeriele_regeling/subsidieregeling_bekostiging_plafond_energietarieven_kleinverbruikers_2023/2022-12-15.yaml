@@ -258,13 +258,17 @@ articles:
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel2.2
     machine_readable:
       execution:
+        # Tariffs are euro-per-unit rates with up to five decimals (lid 4: excl.
+        # energiebelasting/ODE, incl. 21% btw). Typed `number` because the corpus
+        # `amount` convention is whole eurocents and the schema's type_spec has no
+        # per-unit tariff unit (EUR/kWh, EUR/m3(n), EUR/GJ) yet.
         output:
-          - name: plafondtarief_elektriciteit
-            type: amount
-          - name: plafondtarief_gas
-            type: amount
-          - name: plafondtarief_warmte
-            type: amount
+          - name: plafondtarief_elektriciteit  # EUR per kWh
+            type: number
+          - name: plafondtarief_gas  # EUR per m3(n)
+            type: number
+          - name: plafondtarief_warmte  # EUR per GJ
+            type: number
         actions:
           # Lid 1: "Het plafondtarief voor elektriciteit wordt vastgesteld op: € 0,24755 per kWh."
           - output: plafondtarief_elektriciteit
