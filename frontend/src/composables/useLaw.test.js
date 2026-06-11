@@ -76,7 +76,7 @@ describe('useLaw optimistic concurrency', () => {
   });
 
   it('surfaces a 412 as a Dutch conflict error instead of overwriting silently', async () => {
-    globalThis.fetch = vi.fn().mockImplementation(async (url, opts) => {
+    globalThis.fetch = vi.fn().mockImplementation(async (_url, opts) => {
       if (opts?.method === 'PUT') return res({ ok: false, status: 412 });
       return res({ body: '$id: wet_conflict\nname: V1\n', etag: '"v1"' });
     });
