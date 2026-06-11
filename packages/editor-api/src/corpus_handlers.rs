@@ -492,6 +492,46 @@ async fn implementors_in_scope(scope: &ReadScope, law_id: &str) -> Vec<String> {
     out
 }
 
+/// Law ids a scenario file evaluates, extracted from its execution steps.
+///
+/// A target is the law named in an `I evaluate "<output>" of "<law_id>"`
+/// step. The Gherkin keyword may be `When`, `And` or `But` — the frontend
+/// step matcher (`frontend/src/gherkin/steps.js`) matches step text without
+/// its keyword, so continuations are valid execution steps too.
+/// `Given law "…" is loaded` lines are dependencies, not targets.
+/// Deduplicated, order of first occurrence preserved.
+// wired into list_scenarios in the next commit
+#[allow(dead_code)]
+fn extract_target_law_ids(content: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        let Some(step) = ["When ", "And ", "But "]
+            .iter()
+            .find_map(|kw| trimmed.strip_prefix(kw))
+        else {
+            continue;
+        };
+        let Some(rest) = step.trim_start().strip_prefix("I evaluate \"") else {
+            continue;
+        };
+        // rest = `<output>" of "<law_id>"…`
+        let Some((_, after_output)) = rest.split_once('"') else {
+            continue;
+        };
+        let Some(rest) = after_output.strip_prefix(" of \"") else {
+            continue;
+        };
+        let Some((law_id, _)) = rest.split_once('"') else {
+            continue;
+        };
+        if !law_id.is_empty() && !out.iter().any(|l| l == law_id) {
+            out.push(law_id.to_string());
+        }
+    }
+    out
+}
+
 /// A scenario file entry.
 #[derive(Debug, Serialize)]
 pub struct ScenarioEntry {
@@ -2713,5 +2753,74 @@ mod tests {
         let err = check_if_match(None, Some(&stale), "Scenario")
             .expect_err("etag against missing file must be refused");
         assert_eq!(err.0, StatusCode::PRECONDITION_FAILED);
+    }
+
+    // --- extract_target_law_ids ---
+
+    #[test]
+    fn extract_targets_single_when_step() {
+        let content = r#"Feature: X
+  Scenario: a
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
+"#;
+        assert_eq!(
+            extract_target_law_ids(content),
+            vec!["wet_op_de_zorgtoeslag".to_string()]
+        );
+    }
+
+    #[test]
+    fn extract_targets_dedups_and_preserves_order() {
+        let content = r#"
+    When I evaluate "a" of "law_b"
+    When I evaluate "b" of "law_a"
+    When I evaluate "c" of "law_b"
+"#;
+        assert_eq!(extract_target_law_ids(content), vec!["law_b", "law_a"]);
+    }
+
+    #[test]
+    fn extract_targets_accepts_and_but_continuations() {
+        // The frontend step matcher strips the Gherkin keyword before
+        // matching, so And/But continuations are valid execution steps.
+        let content = r#"
+    When I evaluate "a" of "law_a"
+    And I evaluate "b" of "law_b"
+    But I evaluate "c" of "law_c"
+"#;
+        assert_eq!(
+            extract_target_law_ids(content),
+            vec!["law_a", "law_b", "law_c"]
+        );
+    }
+
+    #[test]
+    fn extract_targets_ignores_given_law_loaded_dependencies() {
+        let content = r#"
+    Given law "zorgverzekeringswet" is loaded
+    Given law "wet_inkomstenbelasting_2001" is loaded
+    When I evaluate "x" of "wet_op_de_zorgtoeslag"
+"#;
+        assert_eq!(
+            extract_target_law_ids(content),
+            vec!["wet_op_de_zorgtoeslag"]
+        );
+    }
+
+    #[test]
+    fn extract_targets_empty_for_file_without_execution_step() {
+        let content =
+            "Feature: WIP\n  Scenario: later\n    Given the calculation date is \"2025-01-01\"\n";
+        assert_eq!(extract_target_law_ids(content), Vec::<String>::new());
+    }
+
+    #[test]
+    fn extract_targets_ignores_malformed_lines() {
+        let content = r#"
+    When I evaluate "no closing quote of "x
+    When I evaluate "a" of ""
+    When something else entirely
+"#;
+        assert_eq!(extract_target_law_ids(content), Vec::<String>::new());
     }
 }
