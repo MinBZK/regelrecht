@@ -75,7 +75,15 @@ export async function fetchLaw(trajectRef, lawId) {
   if (!res.ok) throw lawFetchError(res.status);
   const text = await res.text();
   const law = yaml.load(text);
-  const entry = { law, rawYaml: text, lawName: resolveLawName(law) };
+  const entry = {
+    law,
+    rawYaml: text,
+    lawName: resolveLawName(law),
+    // Echoed back as `If-Match` on the next save so a concurrent edit
+    // by another traject member surfaces as a 412 instead of a silent
+    // overwrite (same chain as useTrajectDocuments).
+    etag: res.headers.get('ETag'),
+  };
   lawCache.set(key, entry);
   touchLawCache(key);
   return entry;
@@ -102,6 +110,9 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
   const error = ref(null);
   const saving = ref(false);
   const saveError = ref(null);
+  // ETag of the last loaded/saved law content; sent as `If-Match` on
+  // save so the backend can 412 when someone else edited in between.
+  const currentEtag = ref(null);
 
   const articles = computed(() => law.value?.articles ?? []);
 
@@ -129,10 +140,16 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
       if (version !== switchVersion) return;
       rawYaml.value = text;
       law.value = yaml.load(text);
+      currentEtag.value = res.headers.get('ETag');
       const resolvedId = law.value?.$id || lawParam;
       const key = lawCacheKey(currentTrajectRef, resolvedId);
       if (!lawCache.has(key)) {
-        lawCache.set(key, { law: law.value, rawYaml: text, lawName: resolveLawName(law.value) });
+        lawCache.set(key, {
+          law: law.value,
+          rawYaml: text,
+          lawName: resolveLawName(law.value),
+          etag: currentEtag.value,
+        });
       }
       touchLawCache(key);
       if (articles.value.length > 0 && !selectedArticleNumber.value) {
@@ -177,6 +194,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
       if (version !== switchVersion) return;
       law.value = entry.law;
       rawYaml.value = entry.rawYaml;
+      currentEtag.value = entry.etag ?? null;
       if (articleNumber) {
         selectedArticleNumber.value = String(articleNumber);
       } else if (articles.value.length > 0) {
@@ -221,16 +239,29 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
     saving.value = true;
     saveError.value = null;
     try {
+      const headers = {
+        'Content-Type': 'text/yaml; charset=utf-8',
+        // Required by editor-api on every write — scopes this save to
+        // a per-(session, source) feature branch + PR upstream.
+        'X-Editor-Session': getEditorSessionId(),
+      };
+      // Optimistic concurrency: echo the ETag of the version we loaded
+      // so a concurrent edit by another traject member 412s instead of
+      // being silently overwritten. Absent (older deployments, direct
+      // URLs without ETag) the save stays a permissive blind write.
+      if (currentEtag.value) headers['If-Match'] = currentEtag.value;
       const res = await fetch(lawUrl(savedTrajectRef, savedLawId), {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'text/yaml; charset=utf-8',
-          // Required by editor-api on every write — scopes this save to
-          // a per-(session, source) feature branch + PR upstream.
-          'X-Editor-Session': getEditorSessionId(),
-        },
+        headers,
         body: yamlText,
       });
+      if (res.status === 412) {
+        throw new Error(
+          'De wet is intussen door iemand anders gewijzigd. ' +
+          'Herlaad de pagina om de nieuwste versie te zien en voer je ' +
+          'wijziging daarna opnieuw door.',
+        );
+      }
       if (!res.ok) {
         // Only surface the body when it's our editor-api speaking. The
         // editor-api returns plain `text/plain; charset=utf-8` for its
@@ -249,19 +280,25 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
         }
         throw new Error(text);
       }
-      // Backend returns `{ pr: { url, number, branch } | null }` on 200.
+      // Backend returns `{ pr: { url, number, branch } | null, etag }` on 200.
+      let json = null;
       try {
-        const json = await res.json();
+        json = await res.json();
         lastSavedPr.value = sanitizeSavedPr(json?.pr);
       } catch {
         // Older deployments return a bare 200 without JSON — keep the
         // existing PR (if any) and treat the save as successful.
       }
+      // Chain the new ETag for the next save. The header is
+      // authoritative; the body echo is the fallback (mirrors
+      // useTrajectDocuments).
+      const newEtag = res.headers.get('ETag') ?? json?.etag ?? null;
       const parsed = yaml.load(yamlText);
       // Bail on the success path if the user navigated away mid-flight.
       if (lawId.value === savedLawId && currentTrajectRef === savedTrajectRef) {
         rawYaml.value = yamlText;
         law.value = parsed;
+        currentEtag.value = newEtag;
       }
       const resolvedId = parsed?.$id || savedLawId;
       const savedKey = lawCacheKey(savedTrajectRef, resolvedId);
@@ -269,6 +306,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
         law: parsed,
         rawYaml: yamlText,
         lawName: resolveLawName(parsed),
+        etag: newEtag,
       });
       touchLawCache(savedKey);
     } catch (e) {
@@ -297,6 +335,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
     saving,
     saveError,
     saveLaw,
+    currentEtag,
     lastSavedPr,
   };
 }
