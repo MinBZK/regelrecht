@@ -468,12 +468,15 @@ async fn implementors_in_scope(scope: &ReadScope, law_id: &str) -> Vec<String> {
         // Laws whose body fetch failed during the scan are *reported*
         // rather than silently passed off as "no implementors"; the
         // response shape (a bare id array) has no room for a non-breaking
-        // partiality flag, so the signal is a warn for operators and the
-        // failed set self-heals at the next snapshot.
+        // partiality flag. The index build already warns once (with the
+        // skipped/indexed counts) when it records fetch failures, so the
+        // per-request signal here is debug-only — a warn per lookup would
+        // re-log the same incident on every panel open until the next
+        // rebuild self-heals it.
         ReadScope::Traject(traject) => {
             let result = traject.implementors_of(law_id).await;
             if !result.skipped_law_ids.is_empty() {
-                tracing::warn!(
+                tracing::debug!(
                     law_id = %law_id,
                     skipped = result.skipped_law_ids.len(),
                     found = result.implementors.len(),

@@ -335,7 +335,7 @@ async fn save_then_read_returns_the_just_saved_content() {
 }
 
 #[tokio::test]
-async fn ttl_refresh_picks_up_upstream_laws_and_keeps_saves() {
+async fn ttl_refresh_picks_up_upstream_laws_and_reconciles_saves() {
     use axum::extract::Query;
     use regelrecht_corpus::dto::PaginationParams;
 
@@ -371,9 +371,19 @@ async fn ttl_refresh_picks_up_upstream_laws_and_keeps_saves() {
     .expect("save must succeed");
     assert_eq!(status, StatusCode::OK);
 
+    // A fresh local save survives a refresh: the branch still holds
+    // exactly the saved body, so the reconcile pass keeps the overlay
+    // entry and reads keep returning the save (read-your-writes).
+    let (_etag, after_save) = read_law(state.clone(), session_for(&sub).await, &tref).await;
+    assert!(
+        after_save.contains("SAVED"),
+        "a fresh save must survive the TTL refresh; got: {after_save}"
+    );
+
     // Upstream changes behind the snapshot's back: a brand-new law lands
     // in the source (think: merged on the central corpus, a re-harvest)
-    // and the just-saved law's file is clobbered by an external writer.
+    // and the just-saved law's file is overwritten by an external writer
+    // (another replica, a direct push to the branch).
     let other_dir = corpus.path().join("wet").join("andere_wet");
     std::fs::create_dir_all(&other_dir).unwrap();
     std::fs::write(
@@ -403,15 +413,18 @@ async fn ttl_refresh_picks_up_upstream_laws_and_keeps_saves() {
         "refreshed snapshot must index the upstream-added law"
     );
 
-    // …while the law saved through the editor keeps serving the saved
-    // body: the refresh carries the read-your-writes overlay over and
-    // must never resurrect pre-save (or externally clobbered) content.
+    // …and the externally overwritten law CONVERGES to the branch
+    // content: the refresh's reconcile pass sees the branch no longer
+    // matches the overlaid save and drops the entry, so this process
+    // stops pinning its own stale save (which would otherwise turn every
+    // cross-replica edit into a permanent 412 loop — the user could
+    // never fetch the conflicting content their If-Match fails against).
     let (_etag, after) = read_law(state, session_for(&sub).await, &tref).await;
     assert!(
-        after.contains("SAVED"),
-        "expected the saved content to survive the TTL refresh; got: {after}"
+        after.contains("EXTERNAL"),
+        "expected reads to converge to the externally written content; got: {after}"
     );
-    assert!(!after.contains("EXTERNAL"));
+    assert!(!after.contains("SAVED"));
 }
 
 #[tokio::test]
