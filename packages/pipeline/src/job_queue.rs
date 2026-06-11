@@ -228,7 +228,11 @@ where
     Ok(count)
 }
 
-/// Create a harvest job only if no active harvest job exists for this law.
+/// Create a harvest job only if no active (pending/processing) harvest job
+/// exists for this law.
+///
+/// Completed and failed jobs never block: a law that was harvested before
+/// must remain re-harvestable (e.g. via the editor's `POST /harvest`).
 ///
 /// The fast path uses `INSERT ... WHERE NOT EXISTS` (filtered by date) to
 /// avoid a round-trip for the common non-racing case. When two requests race
@@ -255,7 +259,7 @@ where
             WHERE job_type = 'harvest'
               AND law_id = $2
               AND (payload->>'date' = $6 OR payload->>'date' IS NULL)
-              AND status != 'failed'
+              AND status IN ('pending', 'processing')
         )
         RETURNING *
         "#,
