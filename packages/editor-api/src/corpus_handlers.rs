@@ -523,35 +523,75 @@ async fn list_scenarios_in_scope(
     scope: &ReadScope,
     law_id: &str,
 ) -> Result<Json<Vec<ScenarioEntry>>, (StatusCode, String)> {
-    let resolved = resolve_backend_for_law(scope.corpus(), law_id).await?;
-
-    let scenarios_dir = match law_relative_dir(&resolved.law) {
-        Ok(dir) => dir.join("scenarios"),
-        Err(_) => return Ok(Json(Vec::new())),
-    };
-
-    let backend = resolved.backend.lock().await;
     // Surface real backend errors (permissions, broken git checkout, …) as
     // 500 instead of swallowing them as "no scenarios". `list_files` itself
     // already returns `Ok(vec![])` for a missing directory, so anything that
     // does reach the error arm is a genuine fault worth telling the client.
-    let entries = backend
-        .list_files(&scenarios_dir, Some("feature"))
-        .await
-        .map_err(|e| {
-            tracing::warn!(law_id = %law_id, error = %e, "list_scenarios backend failure");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to list scenarios".to_string(),
-            )
-        })?;
-    drop(backend);
+    let list_error = |e: CorpusError| {
+        tracing::warn!(law_id = %law_id, error = %e, "list_scenarios backend failure");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to list scenarios".to_string(),
+        )
+    };
 
-    let mut out: Vec<ScenarioEntry> = entries
+    let filenames: std::collections::BTreeSet<String> = match scope {
+        // Traject-scoped: the union of the write target's listing and
+        // the seed's, mirroring the per-file routing of the scenario GET
+        // / `If-Match` check (`read_traject_file_via_write_target`): a
+        // scenario saved on the traject branch is listed even when the
+        // law file itself was never saved there, AND seed scenarios that
+        // were never copied to the branch keep showing up (their GET
+        // falls back to the seed the same way).
+        ReadScope::Traject(traject) => {
+            let law = traject_law(traject, law_id)?;
+            let scenarios_dir = match law_relative_dir(law) {
+                Ok(dir) => dir.join("scenarios"),
+                Err(_) => return Ok(Json(Vec::new())),
+            };
+            let write_source_id = traject_write_source_id(traject, law);
+            let mut names = std::collections::BTreeSet::new();
+            // Lock order: write target first, released before the seed
+            // backend is touched (writable-own → seed, never the
+            // reverse — same invariant as the per-file reads).
+            let seed_source_id =
+                (law.source_id != write_source_id).then_some(law.source_id.as_str());
+            for source_id in std::iter::once(write_source_id.as_str()).chain(seed_source_id) {
+                let Some(entry) = traject.corpus.backends.get(source_id) else {
+                    continue;
+                };
+                let backend = entry.backend.lock().await;
+                let entries = backend
+                    .list_files(&scenarios_dir, Some("feature"))
+                    .await
+                    .map_err(list_error)?;
+                drop(backend);
+                names.extend(entries.into_iter().map(|e| e.name));
+            }
+            names
+        }
+        // Global: no write target exists; keep the read-only resolution.
+        ReadScope::Global(_) => {
+            let resolved = resolve_backend_for_law(scope.corpus(), law_id).await?;
+            let scenarios_dir = match law_relative_dir(&resolved.law) {
+                Ok(dir) => dir.join("scenarios"),
+                Err(_) => return Ok(Json(Vec::new())),
+            };
+            let backend = resolved.backend.lock().await;
+            let entries = backend
+                .list_files(&scenarios_dir, Some("feature"))
+                .await
+                .map_err(list_error)?;
+            drop(backend);
+            entries.into_iter().map(|e| e.name).collect()
+        }
+    };
+
+    // BTreeSet iteration is already sorted by filename.
+    let out: Vec<ScenarioEntry> = filenames
         .into_iter()
-        .map(|e| ScenarioEntry { filename: e.name })
+        .map(|filename| ScenarioEntry { filename })
         .collect();
-    out.sort_by(|a, b| a.filename.cmp(&b.filename));
     Ok(Json(out))
 }
 
@@ -582,23 +622,35 @@ async fn get_scenario_in_scope(
 ) -> Result<EtaggedContentResponse, (StatusCode, String)> {
     validate_scenario_filename(filename)?;
 
-    let resolved = resolve_backend_for_law(scope.corpus(), law_id).await?;
+    let content = match scope {
+        // Traject-scoped: read through the same write-target-with-seed-
+        // fallback routing the save's `If-Match` check uses, so the GET
+        // serves (and ETags) exactly the bytes a subsequent save is
+        // checked against. See `read_traject_file_via_write_target` for
+        // the 412-loop this prevents.
+        ReadScope::Traject(traject) => {
+            let law = traject_law(traject, law_id)?;
+            let relative_path = scenario_relative_path(law, filename)?;
+            read_traject_file_via_write_target(traject, law, &relative_path, "scenario").await?
+        }
+        // Global: no write target exists; keep the read-only resolution.
+        ReadScope::Global(_) => {
+            let resolved = resolve_backend_for_law(scope.corpus(), law_id).await?;
+            let relative_path = scenario_relative_path(&resolved.law, filename)?;
+            let backend = resolved.backend.lock().await;
+            backend
+                .read_file(&relative_path)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        }
+    };
 
-    let scenarios_dir = law_relative_dir(&resolved.law)?.join("scenarios");
-    let relative_path = scenarios_dir.join(filename);
-
-    let backend = resolved.backend.lock().await;
-    let content = backend
-        .read_file(&relative_path)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                format!("Scenario '{}' not found", filename),
-            )
-        })?;
-    drop(backend);
+    let content = content.ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("Scenario '{}' not found", filename),
+        )
+    })?;
 
     Ok(etagged_content_response(
         "text/plain; charset=utf-8",
@@ -632,19 +684,12 @@ fn resolve_annotation_read_backend(
 ) -> Result<SharedBackend, (StatusCode, String)> {
     match scope {
         ReadScope::Traject(traject) => {
-            let law =
-                traject.corpus.source_map.get_law(law_id).ok_or_else(|| {
-                    (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id))
-                })?;
+            let law = traject_law(traject, law_id)?;
             // Mirror `resolve_traject_law_write`: a law from a
             // non-writable_own source is routed to the writable_own
             // backend via `write_target_for_source`; a law from a
             // writable source goes to its own.
-            let target_source_id = traject
-                .write_target_for_source
-                .get(&law.source_id)
-                .cloned()
-                .unwrap_or_else(|| law.source_id.clone());
+            let target_source_id = traject_write_source_id(traject, law);
             let entry = traject
                 .corpus
                 .backends
@@ -1104,6 +1149,36 @@ fn traject_corpus_error(e: TrajectCorpusError) -> (StatusCode, String) {
     }
 }
 
+/// Look up a law in a traject's federated source map; 404 when absent.
+fn traject_law<'a>(
+    traject: &'a TrajectCorpus,
+    law_id: &str,
+) -> Result<&'a LoadedLaw, (StatusCode, String)> {
+    traject
+        .corpus
+        .source_map
+        .get_law(law_id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))
+}
+
+/// Write-target source id for a law in a traject — the single routing
+/// rule shared by the write path (`resolve_traject_law_write`), the
+/// annotation read path and the traject-scoped scenario reads.
+///
+/// "Save back where the law came from": laws from a source that has an
+/// entry in `write_target_for_source` get routed through that mapped
+/// backend (typically the writable_own's traject-branched backend on
+/// the same upstream repo). Laws from a source without an entry — e.g.
+/// the local source, which is natively writable on its scratch dir —
+/// stay on their own source's backend.
+fn traject_write_source_id(traject: &TrajectCorpus, law: &LoadedLaw) -> String {
+    traject
+        .write_target_for_source
+        .get(&law.source_id)
+        .cloned()
+        .unwrap_or_else(|| law.source_id.clone())
+}
+
 /// Resolved write routing for a law in a traject: the law's index
 /// entry, the id of the source whose backend the write goes to, and an
 /// owned guard over that backend.
@@ -1124,24 +1199,9 @@ async fn resolve_traject_law_write(
     traject: &Arc<TrajectCorpus>,
     law_id: &str,
 ) -> Result<TrajectLawWrite, (StatusCode, String)> {
-    let law = traject
-        .corpus
-        .source_map
-        .get_law(law_id)
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?
-        .clone();
+    let law = traject_law(traject, law_id)?.clone();
 
-    // "Save back where the law came from": laws from a source that has
-    // an entry in `write_target_for_source` get routed through that
-    // mapped backend (typically the writable_own's traject-branched
-    // backend on the same upstream repo). Laws from a source without an
-    // entry — e.g. the local source, which is natively writable on its
-    // scratch dir — write directly through their own source's backend.
-    let write_target_source_id = traject
-        .write_target_for_source
-        .get(&law.source_id)
-        .cloned()
-        .unwrap_or_else(|| law.source_id.clone());
+    let write_target_source_id = traject_write_source_id(traject, &law);
     let entry = traject
         .corpus
         .backends
@@ -1183,10 +1243,7 @@ fn scenario_relative_path(
 /// *different* source (a federated law whose first traject edit hasn't
 /// landed on the writable-own branch), the client's ETag was computed
 /// from the upstream body the GET served — so fall back to reading the
-/// law's own source backend. The `law.source_id != write_source_id`
-/// guard guarantees the fallback locks a different mutex than the one
-/// the caller already holds; tokio's `Mutex` is not reentrant, so
-/// re-locking the held guard would deadlock.
+/// law's own source backend (see [`read_seed_fallback`]).
 async fn current_content_for_write(
     traject: &Arc<TrajectCorpus>,
     write: &TrajectLawWrite,
@@ -1201,10 +1258,39 @@ async fn current_content_for_write(
     {
         return Ok(Some(text));
     }
-    if write.law.source_id == write.write_source_id {
+    read_seed_fallback(
+        traject,
+        &write.law,
+        &write.write_source_id,
+        relative_path,
+        kind,
+    )
+    .await
+}
+
+/// Read `relative_path` from the law's own (seed) source backend — the
+/// fallback leg of the write-target routing, for laws federated from a
+/// non-writable source whose file was never saved on the writable-own
+/// branch. Returns `Ok(None)` when the law already writes to its own
+/// source (nothing to fall back to) or the seed backend is missing.
+///
+/// Lock-ordering invariant: callers must NOT hold the seed backend's
+/// lock. Holding the write-target lock while calling this is allowed —
+/// writable-own → seed is the one legal two-backend lock order (the
+/// `law.source_id != write_source_id` guard guarantees the fallback
+/// locks a *different* mutex than the write target's; tokio's `Mutex`
+/// is not reentrant, so re-locking a held guard would deadlock).
+async fn read_seed_fallback(
+    traject: &Arc<TrajectCorpus>,
+    law: &LoadedLaw,
+    write_source_id: &str,
+    relative_path: &std::path::Path,
+    kind: &'static str,
+) -> Result<Option<String>, (StatusCode, String)> {
+    if law.source_id == write_source_id {
         return Ok(None);
     }
-    let Some(entry) = traject.corpus.backends.get(&write.law.source_id) else {
+    let Some(entry) = traject.corpus.backends.get(&law.source_id) else {
         return Ok(None);
     };
     let backend = entry.backend.lock().await;
@@ -1212,6 +1298,47 @@ async fn current_content_for_write(
         .read_file(relative_path)
         .await
         .map_err(corpus_write_error(kind))
+}
+
+/// Read a law-scoped file for a traject GET through the **same routing
+/// the write path's `If-Match` check uses** ([`current_content_for_write`]):
+/// the write-target backend first, then the law's own seed source when
+/// the file doesn't exist on the target yet. GET, precondition check
+/// and write thereby agree on the authoritative replica.
+///
+/// Without this, a scenario saved before the law itself was ever saved
+/// in the traject (law file still absent on the writable-own branch)
+/// kept being served from the seed by `resolve_backend_for_law` —
+/// whose fallback rule verifies the *law* file — while the check
+/// compared against the writable-own copy: the user could never see
+/// their save and every If-Match retry 412'd against an ETag the GET
+/// never served (a permanent conflict loop).
+///
+/// Lock order: the write-target lock is released before the seed
+/// backend is locked (writable-own → seed, never the reverse — the
+/// same invariant `current_content_for_write` relies on).
+async fn read_traject_file_via_write_target(
+    traject: &Arc<TrajectCorpus>,
+    law: &LoadedLaw,
+    relative_path: &std::path::Path,
+    kind: &'static str,
+) -> Result<Option<String>, (StatusCode, String)> {
+    let write_source_id = traject_write_source_id(traject, law);
+    let entry = traject.corpus.backends.get(&write_source_id).ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "Writable backend not initialised".to_string(),
+    ))?;
+    {
+        let backend = entry.backend.lock().await;
+        if let Some(text) = backend
+            .read_file(relative_path)
+            .await
+            .map_err(corpus_write_error(kind))?
+        {
+            return Ok(Some(text));
+        }
+    }
+    read_seed_fallback(traject, law, &write_source_id, relative_path, kind).await
 }
 
 async fn resolve_traject_scenario_target(

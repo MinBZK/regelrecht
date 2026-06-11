@@ -16,6 +16,7 @@ use std::sync::Arc;
 
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
+use axum::Json;
 use pretty_assertions::assert_eq;
 use sqlx::PgPool;
 use tokio::sync::{Mutex, RwLock};
@@ -28,7 +29,8 @@ use regelrecht_auth::handlers::{
 };
 use regelrecht_editor_api::config::AppConfig;
 use regelrecht_editor_api::corpus_handlers::{
-    get_corpus_law, get_traject_corpus_law, get_traject_scenario, save_law, save_scenario,
+    get_corpus_law, get_traject_corpus_law, get_traject_scenario, list_traject_scenarios, save_law,
+    save_scenario,
 };
 use regelrecht_editor_api::state::{AppState, CorpusState};
 use regelrecht_editor_api::traject_corpus::TrajectCorpusCache;
@@ -189,6 +191,53 @@ async fn save_law_with(
         Path((tref.to_string(), LAW_ID.to_string())),
         headers,
         body,
+    )
+    .await?;
+    let etag = response
+        .headers()
+        .get(axum::http::header::ETAG)
+        .map(|v| v.to_str().unwrap().to_string());
+    Ok((response.status(), etag))
+}
+
+/// Helper: call the traject-scoped scenario GET and return `(etag, body)`.
+async fn read_scenario(
+    state: AppState,
+    session: Session,
+    tref: &str,
+    filename: &str,
+) -> (String, String) {
+    let (status, headers, body) = get_traject_scenario(
+        State(state),
+        session,
+        Path((tref.to_string(), LAW_ID.to_string(), filename.to_string())),
+    )
+    .await
+    .expect("scenario GET must succeed");
+    assert_eq!(status, StatusCode::OK);
+    let etag = headers
+        .iter()
+        .find(|(name, _)| name == axum::http::header::ETAG)
+        .map(|(_, value)| value.clone())
+        .expect("scenario GET must carry an ETag header");
+    (etag, body)
+}
+
+/// Helper: call `save_scenario` and return the response (status + new ETag).
+async fn save_scenario_with(
+    state: AppState,
+    session: Session,
+    tref: &str,
+    filename: &str,
+    headers: HeaderMap,
+    body: &str,
+) -> Result<(StatusCode, Option<String>), (StatusCode, String)> {
+    let response = save_scenario(
+        State(state),
+        session,
+        Path((tref.to_string(), LAW_ID.to_string(), filename.to_string())),
+        headers,
+        body.to_string(),
     )
     .await?;
     let etag = response
@@ -560,52 +609,36 @@ async fn scenario_save_if_match_matrix() {
     let tref = traject_ref(traject_id);
 
     // GET the scenario → ETag.
-    let (status, headers, body) = get_traject_scenario(
-        State(state.clone()),
+    let (etag, body) = read_scenario(
+        state.clone(),
         session_for(&sub).await,
-        Path((
-            tref.clone(),
-            LAW_ID.to_string(),
-            "basis.feature".to_string(),
-        )),
+        &tref,
+        "basis.feature",
     )
-    .await
-    .expect("scenario GET must succeed");
-    assert_eq!(status, StatusCode::OK);
+    .await;
     assert_eq!(body, "Feature: v1\n");
-    let etag = headers
-        .iter()
-        .find(|(name, _)| name == axum::http::header::ETAG)
-        .map(|(_, value)| value.clone())
-        .expect("scenario GET must carry an ETag header");
 
     // Matching If-Match → success.
-    let response = save_scenario(
-        State(state.clone()),
+    let (status, _etag) = save_scenario_with(
+        state.clone(),
         session_for(&sub).await,
-        Path((
-            tref.clone(),
-            LAW_ID.to_string(),
-            "basis.feature".to_string(),
-        )),
+        &tref,
+        "basis.feature",
         if_match_headers(&etag),
-        "Feature: v2\n".to_string(),
+        "Feature: v2\n",
     )
     .await
     .expect("matching If-Match must succeed");
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(status, StatusCode::OK);
 
     // The same (now stale) ETag again → 412.
-    let err = save_scenario(
-        State(state.clone()),
+    let err = save_scenario_with(
+        state.clone(),
         session_for(&sub).await,
-        Path((
-            tref.clone(),
-            LAW_ID.to_string(),
-            "basis.feature".to_string(),
-        )),
+        &tref,
+        "basis.feature",
         if_match_headers(&etag),
-        "Feature: v3-overschrijft\n".to_string(),
+        "Feature: v3-overschrijft\n",
     )
     .await
     .expect_err("stale If-Match must be refused");
@@ -613,18 +646,150 @@ async fn scenario_save_if_match_matrix() {
 
     // No If-Match at all → permissive (backward compatibility, and the
     // create path for brand-new scenario files).
-    let response = save_scenario(
-        State(state.clone()),
+    let (status, _etag) = save_scenario_with(
+        state.clone(),
         session_for(&sub).await,
-        Path((
-            tref.clone(),
-            LAW_ID.to_string(),
-            "nieuw.feature".to_string(),
-        )),
+        &tref,
+        "nieuw.feature",
         HeaderMap::new(),
-        "Feature: nieuw\n".to_string(),
+        "Feature: nieuw\n",
     )
     .await
     .expect("save without If-Match must stay permissive");
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn scenario_saved_before_law_is_readable_and_chains_etag() {
+    // Regression test for the permanent 412 loop on federated laws:
+    // the scenario GET used to route via `resolve_backend_for_law`,
+    // which only picks the writable backend when the *law* file exists
+    // there. For a seed-loaded law whose law file was never saved in
+    // the traject, a scenario save landed on the writable-own backend
+    // but subsequent GETs kept serving the seed's old copy + old ETag —
+    // while the save's If-Match check compared against the writable-own
+    // copy. The user could never see their save and every retry 412'd.
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let (owner, sub) = seed_account(&db.pool, "alice@test.local").await;
+
+    let seed = tempfile::tempdir().unwrap();
+    let writable_own = tempfile::tempdir().unwrap();
+    // Seed has the law AND an existing scenario; writable_own starts empty.
+    write_law(seed.path(), "SEED_VERSION");
+    write_scenario(seed.path(), "basis.feature", "Feature: seed-versie\n");
+    let traject_id = seeded_traject(&db.pool, owner, seed.path(), writable_own.path()).await;
+    let tref = traject_ref(traject_id);
+
+    // Pre-save GET serves the seed copy (nothing on the branch yet).
+    let (etag, body) = read_scenario(
+        state.clone(),
+        session_for(&sub).await,
+        &tref,
+        "basis.feature",
+    )
+    .await;
+    assert_eq!(body, "Feature: seed-versie\n");
+
+    // First If-Match save succeeds (check falls back to the seed copy)
+    // and lands on the writable-own backend.
+    let (status, saved_etag) = save_scenario_with(
+        state.clone(),
+        session_for(&sub).await,
+        &tref,
+        "basis.feature",
+        if_match_headers(&etag),
+        "Feature: traject-versie\n",
+    )
+    .await
+    .expect("first If-Match save of a federated scenario must succeed");
+    assert_eq!(status, StatusCode::OK);
+    let saved_etag = saved_etag.expect("save response must carry an ETag header");
+
+    // The LAW file still does not exist on the writable-own backend —
+    // only the scenario does. This is the exact state that used to
+    // flip the GET back to the seed.
+    assert!(!writable_own
+        .path()
+        .join("wet")
+        .join(LAW_ID)
+        .join("2025-01-01.yaml")
+        .exists());
+
+    // GET now returns the just-saved content and its ETag.
+    let (get_etag, body) = read_scenario(
+        state.clone(),
+        session_for(&sub).await,
+        &tref,
+        "basis.feature",
+    )
+    .await;
+    assert_eq!(
+        body, "Feature: traject-versie\n",
+        "GET after save must serve the saved content, not the seed copy"
+    );
+    assert_eq!(
+        get_etag, saved_etag,
+        "GET must serve the ETag the save returned, or the chain breaks"
+    );
+
+    // And a follow-up If-Match save with that ETag succeeds — no 412 loop.
+    let (status, _etag) = save_scenario_with(
+        state.clone(),
+        session_for(&sub).await,
+        &tref,
+        "basis.feature",
+        if_match_headers(&get_etag),
+        "Feature: traject-versie-2\n",
+    )
+    .await
+    .expect("second If-Match save must succeed (no 412 loop)");
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn scenario_list_unions_write_target_and_seed() {
+    // The list must mirror the per-file routing: a scenario saved on the
+    // traject branch shows up even though the law file was never saved
+    // there, AND seed scenarios never copied to the branch keep showing
+    // up (their GET falls back to the seed the same way).
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let (owner, sub) = seed_account(&db.pool, "alice@test.local").await;
+
+    let seed = tempfile::tempdir().unwrap();
+    let writable_own = tempfile::tempdir().unwrap();
+    write_law(seed.path(), "SEED_VERSION");
+    write_scenario(seed.path(), "basis.feature", "Feature: seed-versie\n");
+    write_scenario(seed.path(), "extra.feature", "Feature: extra\n");
+    let traject_id = seeded_traject(&db.pool, owner, seed.path(), writable_own.path()).await;
+    let tref = traject_ref(traject_id);
+
+    // Save only `basis.feature` — it lands on the writable-own backend;
+    // `extra.feature` stays seed-only.
+    let (status, _etag) = save_scenario_with(
+        state.clone(),
+        session_for(&sub).await,
+        &tref,
+        "basis.feature",
+        HeaderMap::new(),
+        "Feature: traject-versie\n",
+    )
+    .await
+    .expect("save must succeed");
+    assert_eq!(status, StatusCode::OK);
+
+    let Json(entries) = list_traject_scenarios(
+        State(state),
+        session_for(&sub).await,
+        Path((tref, LAW_ID.to_string())),
+    )
+    .await
+    .expect("list must succeed");
+    let filenames: Vec<&str> = entries.iter().map(|e| e.filename.as_str()).collect();
+    assert_eq!(
+        filenames,
+        vec!["basis.feature", "extra.feature"],
+        "list must union the branch's saves with the seed's remaining scenarios"
+    );
 }
