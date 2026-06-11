@@ -495,18 +495,16 @@ async fn implementors_in_scope(scope: &ReadScope, law_id: &str) -> Vec<String> {
 /// Law ids a scenario file evaluates, extracted from its execution steps.
 ///
 /// A target is the law named in an `I evaluate "<output>" of "<law_id>"`
-/// step. The Gherkin keyword may be `When`, `And` or `But` — the frontend
-/// step matcher (`frontend/src/gherkin/steps.js`) matches step text without
-/// its keyword, so continuations are valid execution steps too.
+/// step. The Gherkin keyword may be `When`, `And`, `But` or `*` — the
+/// frontend step matcher (`frontend/src/gherkin/steps.js`) matches step text
+/// without its keyword, so continuations are valid execution steps too.
 /// `Given law "…" is loaded` lines are dependencies, not targets.
 /// Deduplicated, order of first occurrence preserved.
-// wired into list_scenarios in the next commit
-#[allow(dead_code)]
 fn extract_target_law_ids(content: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for line in content.lines() {
         let trimmed = line.trim_start();
-        let Some(step) = ["When ", "And ", "But "]
+        let Some(step) = ["When ", "And ", "But ", "* "]
             .iter()
             .find_map(|kw| trimmed.strip_prefix(kw))
         else {
@@ -536,6 +534,10 @@ fn extract_target_law_ids(content: &str) -> Vec<String> {
 #[derive(Debug, Serialize)]
 pub struct ScenarioEntry {
     pub filename: String,
+    /// Law ids this scenario file evaluates (from its
+    /// `I evaluate … of "…"` steps). Empty when the file has no parseable
+    /// execution step yet (work in progress) or could not be read.
+    pub target_law_ids: Vec<String>,
 }
 
 /// GET /api/corpus/laws/{law_id}/scenarios — list available scenario files (global view).
@@ -575,7 +577,10 @@ async fn list_scenarios_in_scope(
         )
     };
 
-    let filenames: std::collections::BTreeSet<String> = match scope {
+    // Each listed file is also read to extract which law ids it evaluates
+    // (`target_law_ids`). One failed read must not take down the whole
+    // listing: that entry stays listed with unknown (empty) targets.
+    let out: Vec<ScenarioEntry> = match scope {
         // Traject-scoped: the union of the write target's listing and
         // the seed's, mirroring the per-file routing of the scenario GET
         // / `If-Match` check (`read_traject_file_via_write_target`): a
@@ -608,7 +613,39 @@ async fn list_scenarios_in_scope(
                 drop(backend);
                 names.extend(entries.into_iter().map(|e| e.name));
             }
-            names
+            // Content goes through the same write-target-with-seed-fallback
+            // per-file routing as the scenario GET, so the extracted targets
+            // reflect exactly the bytes the editor serves.
+            let mut out = Vec::with_capacity(names.len());
+            for filename in names {
+                let relative_path = scenarios_dir.join(&filename);
+                let target_law_ids = match read_traject_file_via_write_target(
+                    traject,
+                    law,
+                    &relative_path,
+                    "scenario",
+                )
+                .await
+                {
+                    Ok(Some(content)) => extract_target_law_ids(&content),
+                    Ok(None) => Vec::new(),
+                    Err((_, err)) => {
+                        tracing::warn!(
+                            law_id = %law_id,
+                            file = %filename,
+                            error = %err,
+                            "scenario read failed during listing"
+                        );
+                        Vec::new()
+                    }
+                };
+                out.push(ScenarioEntry {
+                    filename,
+                    target_law_ids,
+                });
+            }
+            // BTreeSet iteration is already sorted by filename.
+            out
         }
         // Global: no write target exists; keep the read-only resolution.
         ReadScope::Global(_) => {
@@ -622,16 +659,31 @@ async fn list_scenarios_in_scope(
                 .list_files(&scenarios_dir, Some("feature"))
                 .await
                 .map_err(list_error)?;
+            let mut out = Vec::with_capacity(entries.len());
+            for e in entries {
+                let target_law_ids = match backend.read_file(&scenarios_dir.join(&e.name)).await {
+                    Ok(Some(content)) => extract_target_law_ids(&content),
+                    Ok(None) => Vec::new(),
+                    Err(err) => {
+                        tracing::warn!(
+                            law_id = %law_id,
+                            file = %e.name,
+                            error = %err,
+                            "scenario read failed during listing"
+                        );
+                        Vec::new()
+                    }
+                };
+                out.push(ScenarioEntry {
+                    filename: e.name,
+                    target_law_ids,
+                });
+            }
             drop(backend);
-            entries.into_iter().map(|e| e.name).collect()
+            out.sort_by(|a, b| a.filename.cmp(&b.filename));
+            out
         }
     };
-
-    // BTreeSet iteration is already sorted by filename.
-    let out: Vec<ScenarioEntry> = filenames
-        .into_iter()
-        .map(|filename| ScenarioEntry { filename })
-        .collect();
     Ok(Json(out))
 }
 
@@ -2782,15 +2834,16 @@ mod tests {
     #[test]
     fn extract_targets_accepts_and_but_continuations() {
         // The frontend step matcher strips the Gherkin keyword before
-        // matching, so And/But continuations are valid execution steps.
+        // matching, so And/But/`*` continuations are valid execution steps.
         let content = r#"
     When I evaluate "a" of "law_a"
     And I evaluate "b" of "law_b"
     But I evaluate "c" of "law_c"
+    * I evaluate "d" of "law_d"
 "#;
         assert_eq!(
             extract_target_law_ids(content),
-            vec!["law_a", "law_b", "law_c"]
+            vec!["law_a", "law_b", "law_c", "law_d"]
         );
     }
 
