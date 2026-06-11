@@ -5,9 +5,11 @@
 -- attempts within seconds.
 ALTER TABLE jobs ADD COLUMN scheduled_at TIMESTAMPTZ;
 
--- Recreate the claim index with scheduled_at as a trailing key so the claim
--- query's due-filter (scheduled_at IS NULL OR scheduled_at <= now()) can be
--- evaluated from the index without heap fetches.
-DROP INDEX idx_jobs_queue;
+-- Recreate the claim index with scheduled_at as a trailing key. The claim
+-- query's due-filter (scheduled_at IS NULL OR scheduled_at <= now()) is an
+-- OR on a non-leading column, so it is applied as a heap filter rather than
+-- an index qual (and FOR UPDATE visits the heap regardless); the partial
+-- predicate and the (priority, created_at) ordering are still index-served.
+DROP INDEX IF EXISTS idx_jobs_queue;
 CREATE INDEX idx_jobs_queue ON jobs (priority DESC, created_at ASC, scheduled_at)
     WHERE status = 'pending';

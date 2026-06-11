@@ -203,7 +203,14 @@ impl CorpusClient {
                 tracing::info!(
                     "local HEAD ahead of remote tracking branch, pushing stranded commit(s)"
                 );
-                self.rebase_and_push(message).await?;
+                // Log the stranded commit's own subject, not this retry's
+                // `message` — the stranded commit is what lands on the remote.
+                let stranded_subject = self
+                    .run_git_output(&["log", "-1", "--format=%s"])
+                    .await
+                    .map(|s| s.trim().to_string())
+                    .unwrap_or_else(|_| "<unknown stranded commit>".to_string());
+                self.rebase_and_push(&stranded_subject).await?;
                 return Ok(true);
             }
             return Ok(false);

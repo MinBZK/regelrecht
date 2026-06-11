@@ -201,7 +201,9 @@ pub async fn run_harvest_worker(config: WorkerConfig) -> Result<()> {
     }
 
     reaper_cancel.cancel();
-    let _ = reaper_handle.await;
+    if let Err(e) = reaper_handle.await {
+        tracing::error!(error = %e, "reaper task panicked");
+    }
 
     Ok(())
 }
@@ -778,7 +780,9 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
     }
 
     reaper_cancel.cancel();
-    let _ = reaper_handle.await;
+    if let Err(e) = reaper_handle.await {
+        tracing::error!(error = %e, "reaper task panicked");
+    }
 
     Ok(())
 }
