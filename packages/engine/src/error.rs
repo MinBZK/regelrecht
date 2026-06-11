@@ -58,6 +58,27 @@ pub enum EngineError {
     #[error("Law not found: {0}")]
     LawNotFound(String),
 
+    /// Law exists but no version is in force yet on the reference date (RFC-019 §3).
+    /// States the data fact only — never a legal verdict.
+    #[error("No version of law '{law_id}' in force on {reference_date} (not yet in force)")]
+    LawNotYetInForce {
+        law_id: String,
+        reference_date: String,
+    },
+
+    /// The law's most recent version ended before the reference date (RFC-019 §3).
+    /// States the data fact only — never a verdict like "geen grondslag" or
+    /// "vervallen zonder opvolger": eerbiedigende werking, a statische verwijzing,
+    /// or an alternative grondslag may keep the law applicable (RFC-020).
+    #[error(
+        "No version of law '{law_id}' in force on {reference_date}; last in force until {valid_to}"
+    )]
+    LawEnded {
+        law_id: String,
+        reference_date: String,
+        valid_to: String,
+    },
+
     /// Article not found
     #[error("Article not found: {law_id}#{article}")]
     ArticleNotFound { law_id: String, article: String },
@@ -182,6 +203,10 @@ pub enum ExternalError {
     #[error("Law not found: {0}")]
     LawNotFound(String),
 
+    /// No version of the law is in force on the reference date (RFC-019)
+    #[error("No version of law in force on the reference date: {0}")]
+    LawNotInForce(String),
+
     /// Article not found
     #[error("Article not found in law")]
     ArticleNotFound,
@@ -243,6 +268,9 @@ impl From<EngineError> for ExternalError {
             EngineError::DivisionByZero => ExternalError::DivisionByZero,
             EngineError::InvalidUri(_) => ExternalError::InvalidUri,
             EngineError::LawNotFound(id) => ExternalError::LawNotFound(id),
+            EngineError::LawNotYetInForce { law_id, .. } | EngineError::LawEnded { law_id, .. } => {
+                ExternalError::LawNotInForce(law_id)
+            }
             EngineError::ArticleNotFound { .. } => ExternalError::ArticleNotFound,
             EngineError::OutputNotFound { output, .. } => ExternalError::OutputNotFound(output),
             EngineError::CircularReference(_) => ExternalError::CircularReference,

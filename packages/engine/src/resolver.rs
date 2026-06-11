@@ -41,7 +41,7 @@ pub enum SelectionReason {
     NotYetInForce,
     /// The most recent applicable version ended before the reference date.
     /// Carries the `valid_to` date that was last in force.
-    EndedOn(String),
+    EndedOn(NaiveDate),
 }
 
 /// A reference to a law article, used in implements and overrides indexes.
@@ -277,6 +277,27 @@ impl RuleResolver {
         Self::select_in(versions, reference_date)
     }
 
+    /// Version-aware lookup reporting *why* selection failed, tolerating an
+    /// absent reference date.
+    ///
+    /// With `Some(date)` this is [`Self::get_law_for_date_result`]; with `None`
+    /// it keeps the "no date → latest version" behaviour of
+    /// [`Self::get_law_for_date`], failing only when the law id is unknown.
+    pub fn get_law_for_date_reported(
+        &self,
+        law_id: &str,
+        reference_date: Option<NaiveDate>,
+    ) -> std::result::Result<&ArticleBasedLaw, SelectionReason> {
+        match reference_date {
+            Some(date) => self.get_law_for_date_result(law_id, date),
+            None => self
+                .law_versions
+                .get(law_id)
+                .and_then(|versions| versions.first())
+                .ok_or(SelectionReason::NotFound),
+        }
+    }
+
     /// Select the appropriate version for a reference date.
     ///
     /// # Selection Logic
@@ -312,9 +333,7 @@ impl RuleResolver {
         // Upper bound (inclusive): in force iff reference_date <= valid_to.
         if let Some(valid_to) = candidate.valid_to.as_ref().and_then(|s| parse_date(s).ok()) {
             if reference_date > valid_to {
-                return Err(SelectionReason::EndedOn(
-                    candidate.valid_to.clone().unwrap_or_default(),
-                ));
+                return Err(SelectionReason::EndedOn(valid_to));
             }
         }
         Ok(candidate)
@@ -1313,7 +1332,9 @@ articles:
         assert_eq!(
             resolver
                 .get_law_for_date_result("test_law", NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()),
-            Err(SelectionReason::EndedOn("2023-12-31".to_string()))
+            Err(SelectionReason::EndedOn(
+                NaiveDate::from_ymd_opt(2023, 12, 31).unwrap()
+            ))
         );
         // In force.
         assert!(resolver

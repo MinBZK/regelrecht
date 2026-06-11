@@ -79,6 +79,9 @@ pub struct LoadedRegulation {
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub valid_from: Option<String>,
+    /// Instrument end date (inclusive), recording the full validity window (RFC-019 §4).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub valid_to: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hash: Option<String>,
 }
