@@ -69,7 +69,7 @@ pub enum EngineError {
     /// The law's most recent version ended before the reference date (RFC-019 §3).
     /// States the data fact only — never a verdict like "geen grondslag" or
     /// "vervallen zonder opvolger": eerbiedigende werking, a statische verwijzing,
-    /// or an alternative grondslag may keep the law applicable (RFC-022).
+    /// or an alternative grondslag may keep the law applicable (RFC-020).
     #[error(
         "No version of law '{law_id}' in force on {reference_date}; last in force until {valid_to}"
     )]
