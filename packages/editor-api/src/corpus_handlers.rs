@@ -1450,7 +1450,7 @@ pub async fn save_scenario(
 /// Schema the produced notes document is validated against before it is
 /// written. Must match the version embedded in `regelrecht-corpus`'
 /// annotation validator (kept in lockstep with the engine's resolver).
-const ANNOTATION_SCHEMA_URL: &str = "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.2/annotation-schema.json";
+const ANNOTATION_SCHEMA_URL: &str = "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.3/annotation-schema.json";
 
 /// Upper bound on notes accepted in a single save. The body limit on the
 /// route already caps raw size; this caps the *count* so a single request
