@@ -6,7 +6,9 @@ use uuid::Uuid;
 use crate::error::{PipelineError, Result};
 use crate::models::{Job, JobStatus, JobType, Priority};
 
-/// Base delay before the first retry of a failed job.
+/// Base delay before the first retry of a failed job. Effective retry latency
+/// is this backoff plus up to the worker's max poll interval (the poll loop
+/// only discovers due jobs on its next tick) — by design, not a bug.
 pub const RETRY_BACKOFF_BASE: Duration = Duration::from_secs(30);
 
 /// Maximum delay between retries of a failed job.
@@ -14,10 +16,13 @@ pub const RETRY_BACKOFF_CAP: Duration = Duration::from_secs(15 * 60);
 
 /// Exponential backoff for retry `attempts`: `30s * 2^(attempts-1)`, capped
 /// at 15 minutes. `attempts` is the number of attempts already spent (>= 1
-/// when a job fails); values below 1 are treated as 1.
+/// when a job fails); values below 1 are treated as 1. The exponent is
+/// clamped at 30 so the multiplication cannot overflow before the cap
+/// applies.
 ///
 /// `fail_job` applies the same formula in SQL (with [`RETRY_BACKOFF_BASE`] and
-/// [`RETRY_BACKOFF_CAP`] bound as parameters) — keep the two in sync.
+/// [`RETRY_BACKOFF_CAP`] bound as parameters, and the same exponent clamp) —
+/// keep the two in sync.
 pub fn retry_backoff(attempts: i32) -> Duration {
     let exponent = attempts.saturating_sub(1).clamp(0, 30) as u32;
     RETRY_BACKOFF_BASE
@@ -209,8 +214,12 @@ where
             END,
             scheduled_at = CASE
                 WHEN attempts < max_attempts THEN
+                    -- Clamp the exponent at 30 (like retry_backoff in Rust):
+                    -- the product is computed BEFORE the LEAST cap, so an
+                    -- unclamped exponent overflows the interval for large
+                    -- attempt counts and the whole UPDATE errors.
                     now() + LEAST(
-                        $3::interval * power(2, GREATEST(attempts - 1, 0)),
+                        $3::interval * power(2, LEAST(GREATEST(attempts - 1, 0), 30)),
                         $4::interval
                     )
                 ELSE NULL
