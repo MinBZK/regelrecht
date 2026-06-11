@@ -337,7 +337,7 @@ pub struct StageState {
     ///
     /// Needed so an output produced in an *earlier* stage (e.g. a Reactive
     /// hook output from another law) still carries its provenance when the
-    /// final stage completes and `round_eurocent_outputs` runs.
+    /// final stage completes and `round_typed_outputs` runs.
     /// `#[serde(default)]` keeps previously-serialized states loadable; for
     /// those, outputs fall back to the requested law's output index at the
     /// rounding boundary.
@@ -726,7 +726,7 @@ impl LawExecutionService {
             self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx)?;
         // This is a public API boundary (stage fall-through), so enforce
         // eurocent TypeSpec rounding here.
-        self.round_eurocent_outputs(law_id, &mut result, res_ctx.reference_date())?;
+        self.round_typed_outputs(law_id, &mut result, res_ctx.reference_date())?;
         Ok(result)
     }
 
@@ -1005,7 +1005,7 @@ impl LawExecutionService {
         final_result.output_provenance = stage_state.accumulated_provenance;
         // Public API boundary: round eurocent outputs once, on the final
         // accumulated result (intermediate stage outputs flow unrounded).
-        self.round_eurocent_outputs(law_id, &mut final_result, ref_date)?;
+        self.round_typed_outputs(law_id, &mut final_result, ref_date)?;
         Ok(ExecutionOutcome::Complete(Box::new(final_result)))
     }
 
@@ -1091,18 +1091,27 @@ impl LawExecutionService {
 
         // Enforce TypeSpec at the public API boundary (rounding happens once,
         // here — never on nested article executions).
-        self.round_eurocent_outputs(law_id, &mut result, res_ctx.reference_date())?;
+        self.round_typed_outputs(law_id, &mut result, res_ctx.reference_date())?;
 
         Ok(result)
     }
 
-    /// Enforce TypeSpec: round eurocent outputs to integer.
+    /// Enforce TypeSpec: round outputs to their declared `precision`.
+    ///
+    /// Generic per-datatype boundary rounding: an output whose TypeSpec
+    /// carries `precision: N` is rounded (half away from zero) to N decimal
+    /// places; `precision: 0` converts to an integer. `unit: eurocent`
+    /// defaults to precision 0 when no explicit precision is declared —
+    /// beschikkingen luiden in whole cents. Outputs without a precision (and
+    /// without the eurocent default) are left untouched. Rounding that a law
+    /// TEXT prescribes at an intermediate step is deliberately NOT expressed
+    /// here — that will be an explicit ROUND operation in the op set.
     ///
     /// This must run ONLY at the outermost requested-output boundary (the
     /// public API edge), never on nested article executions: same-law internal
     /// references, cross-law resolutions, open terms, hooks and overrides all
     /// feed intermediate values into further calculation. Rounding an
-    /// intermediate eurocent value at a sub-law boundary and then rounding the
+    /// intermediate value at a sub-law boundary and then rounding the
     /// combined result again at the outer boundary (double rounding) can shift
     /// a legally binding amount by a cent. Intermediate values therefore flow
     /// unrounded (as Float); rounding happens exactly once, here.
@@ -1112,7 +1121,7 @@ impl LawExecutionService {
     /// to `law_id`'s own output index for outputs without provenance (e.g.
     /// stage states serialized before provenance accumulation existed) or
     /// whose provenance no longer resolves to a loaded law/article.
-    fn round_eurocent_outputs(
+    fn round_typed_outputs(
         &self,
         law_id: &str,
         result: &mut ArticleResult,
@@ -1145,20 +1154,36 @@ impl LawExecutionService {
                     .or_else(|| self.resolver.get_article_by_output(law_id, &name, ref_date)),
                 None => self.resolver.get_article_by_output(law_id, &name, ref_date),
             };
-            let is_eurocent = article
+            let type_spec = article
                 .and_then(|a| a.get_execution_spec())
                 .and_then(|exec| exec.output.as_ref())
-                .is_some_and(|outputs| {
-                    outputs.iter().any(|spec| {
-                        spec.name == name
-                            && spec.type_spec.as_ref().and_then(|ts| ts.unit.as_deref())
-                                == Some("eurocent")
-                    })
+                .and_then(|outputs| {
+                    outputs
+                        .iter()
+                        .find(|spec| spec.name == name)
+                        .and_then(|spec| spec.type_spec.clone())
                 });
-            if is_eurocent {
+            // Effective precision: explicit `precision`, or 0 for eurocent
+            // (whole cents) when none is declared.
+            let precision = type_spec.as_ref().and_then(|ts| {
+                ts.precision
+                    .or_else(|| (ts.unit.as_deref() == Some("eurocent")).then_some(0))
+            });
+            if let Some(precision) = precision {
                 if let Some(Value::Float(f)) = result.outputs.get(&name) {
-                    let rounded = crate::operations::f64_to_i64_safe(f.round())?;
-                    result.outputs.insert(name, Value::Int(rounded));
+                    if precision == 0 {
+                        let rounded = crate::operations::f64_to_i64_safe(f.round())?;
+                        result.outputs.insert(name, Value::Int(rounded));
+                    } else {
+                        // Scale, round half away from zero, scale back. Going
+                        // through f64_to_i64_safe keeps the NaN/infinity/
+                        // overflow guards on the scaled value.
+                        let scale = 10f64.powi(precision.min(15) as i32);
+                        let scaled = crate::operations::f64_to_i64_safe((f * scale).round())?;
+                        result
+                            .outputs
+                            .insert(name, Value::Float(scaled as f64 / scale));
+                    }
                 }
             }
         }
@@ -1777,7 +1802,7 @@ impl LawExecutionService {
         // law combines further, and the outer rounding would then round again
         // (double rounding can shift a legally binding amount by a cent).
         // Rounding happens once, at the outermost requested-output boundary:
-        // see `round_eurocent_outputs`.
+        // see `round_typed_outputs`.
 
         // RFC-012 Propagate mode: taint all outputs from articles with untranslatables
         if !taints.is_empty() {
@@ -3869,6 +3894,106 @@ articles:
               - $deel
               - 2
 "#
+    }
+
+    /// Generic precision rounding: `type_spec.precision` drives boundary
+    /// rounding for any output, independent of unit. 27 * 0.125 = 3.375
+    /// (exact in binary) rounds half-away-from-zero to 3.38 at precision 2;
+    /// `precision: 0` without a unit converts to an integer just like the
+    /// eurocent default.
+    #[test]
+    fn test_precision_rounds_outputs_at_boundary() {
+        let law = r#"
+$id: precision_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Produces 27 * 0.125 = 3.375, declared with two decimal places.
+    machine_readable:
+      execution:
+        output:
+          - name: factor
+            type: number
+            type_spec:
+              precision: 2
+        actions:
+          - output: factor
+            operation: MULTIPLY
+            values:
+              - 27
+              - 0.125
+  - number: '2'
+    text: Produces 199 * 0.5 = 99.5, declared as a whole number.
+    machine_readable:
+      execution:
+        output:
+          - name: heel
+            type: number
+            type_spec:
+              precision: 0
+        actions:
+          - output: heel
+            operation: MULTIPLY
+            values:
+              - 199
+              - 0.5
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service
+            .evaluate_law_output("precision_law", "factor", BTreeMap::new(), "2025-06-01")
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("factor"),
+            Some(&Value::Float(3.38)),
+            "precision 2 must round 3.375 half away from zero to 3.38"
+        );
+
+        let result = service
+            .evaluate_law_output("precision_law", "heel", BTreeMap::new(), "2025-06-01")
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("heel"),
+            Some(&Value::Int(100)),
+            "precision 0 must convert 99.5 to the integer 100"
+        );
+    }
+
+    /// Outputs without a precision (and without the eurocent default) must
+    /// flow through the boundary untouched.
+    #[test]
+    fn test_no_precision_leaves_output_unrounded() {
+        let law = r#"
+$id: unrounded_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Produces 199 * 0.5 = 99.5 with no precision declared.
+    machine_readable:
+      execution:
+        output:
+          - name: ruw
+            type: number
+        actions:
+          - output: ruw
+            operation: MULTIPLY
+            values:
+              - 199
+              - 0.5
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+        let result = service
+            .evaluate_law_output("unrounded_law", "ruw", BTreeMap::new(), "2025-06-01")
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("ruw"),
+            Some(&Value::Float(99.5)),
+            "no precision and no eurocent unit: value must stay unrounded"
+        );
     }
 
     /// Regression test: eurocent rounding must happen exactly ONCE, at the

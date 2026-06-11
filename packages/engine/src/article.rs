@@ -39,14 +39,16 @@ pub struct LegalBasis {
 }
 
 /// Type specification for input/output fields.
-///
-/// Currently only contains unit specification, but may be extended
-/// with additional type metadata (precision, range, format) as the schema evolves.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct TypeSpec {
     /// Unit of measurement (e.g., "eurocent", "days", "percentage")
     #[serde(default)]
     pub unit: Option<String>,
+    /// Number of decimal places for numeric values (schema:
+    /// `type_spec.precision`). Drives boundary rounding of outputs;
+    /// `unit: eurocent` defaults to a precision of 0 when absent.
+    #[serde(default)]
+    pub precision: Option<u32>,
 }
 
 /// Source specification for input fields
