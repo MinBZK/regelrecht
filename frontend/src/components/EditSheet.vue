@@ -2,6 +2,7 @@
 import { ref, computed, watch, watchEffect, nextTick } from 'vue';
 import { collectAvailableVariables } from '../utils/operationTree.js';
 import { lawsListUrl } from '../composables/corpusUrls.js';
+import { apiFetchJson } from '../lib/apiFetch.js';
 
 const props = defineProps({
   item: { type: Object, default: null },
@@ -67,10 +68,10 @@ async function fetchLawsList() {
   }
   if (lawsCache) return lawsCache;
   try {
-    const res = await fetch(lawsListUrl(props.trajectRef, 'limit=1000'));
-    if (!res.ok) return [];
-    lawsCache = await res.json();
+    lawsCache = await apiFetchJson(lawsListUrl(props.trajectRef, 'limit=1000'));
   } catch {
+    // HTTP or network failure — the law combobox just offers no
+    // suggestions; nothing is cached so the next open retries.
     return [];
   }
   return lawsCache;
@@ -97,13 +98,11 @@ async function fetchOutputsForLaw(lawId) {
   }
   outputsLoading.value = true;
   try {
-    const res = await fetch(`/api/corpus/laws/${encodeURIComponent(lawId)}/outputs`);
-    if (res.ok) {
-      availableOutputs.value = await res.json();
-    } else {
-      availableOutputs.value = [];
-    }
+    availableOutputs.value = await apiFetchJson(
+      `/api/corpus/laws/${encodeURIComponent(lawId)}/outputs`,
+    );
   } catch {
+    // HTTP or network failure — no output suggestions for this law.
     availableOutputs.value = [];
   } finally {
     outputsLoading.value = false;

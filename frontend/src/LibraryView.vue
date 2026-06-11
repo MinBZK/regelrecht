@@ -8,11 +8,13 @@ import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
 import { useAuth } from './composables/useAuth.js';
-import { lawFetchError } from './composables/useLaw.js';
+import { lawFetchInit } from './composables/useLaw.js';
 import { useTrajects } from './composables/useTrajects.js';
 import { lawsListUrl, lawUrl, changedLawsUrl } from './composables/corpusUrls.js';
 import { SUPPORT_EMAIL } from './constants.js';
 import { openSearch, registerSearchPopover } from './composables/useAppChrome.js';
+import { apiFetch, apiFetchJson, ApiError } from './lib/apiFetch.js';
+import { useLatest } from './lib/useLatest.js';
 
 const { authenticated } = useAuth();
 
@@ -225,15 +227,14 @@ function articleDescription(article) {
 
 async function loadFavorites() {
   try {
-    const res = await fetch('/api/favorites');
-    if (res.ok) {
-      const favIds = await res.json();
-      favorites.value = new Set(favIds);
-    } else if (res.status >= 500) {
-      console.warn(`Failed to load favorites: ${res.status}`);
-    }
-  } catch {
-    // Not authenticated or endpoint unavailable — no favorites
+    const favIds = await apiFetchJson('/api/favorites', {
+      errorMessage: (status) => `Failed to load favorites: ${status}`,
+    });
+    favorites.value = new Set(favIds);
+  } catch (e) {
+    // Not authenticated (401/403) or endpoint unavailable — no favorites.
+    // Only server errors are worth a console trace.
+    if (e instanceof ApiError && e.status >= 500) console.warn(e.message);
   }
 }
 
@@ -246,10 +247,9 @@ async function loadFavorites() {
 async function fetchChangedLawIds(trajectRef) {
   if (!trajectRef) return null;
   try {
-    const res = await fetch(changedLawsUrl(trajectRef));
-    if (!res.ok) return null;
-    return new Set(await res.json());
+    return new Set(await apiFetchJson(changedLawsUrl(trajectRef)));
   } catch {
+    // Any failure (HTTP or network) just hides the section — see above.
     return null;
   }
 }
@@ -278,26 +278,23 @@ async function toggleFavorite(lawId) {
 
   try {
     const method = isFav ? 'DELETE' : 'PUT';
-    const res = await fetch(`/api/favorites/${encodeURIComponent(lawId)}`, { method });
-    if (!res.ok) {
-      revert();
-    } else {
-      // Re-resolve the sidebar's id-set so a newly-favorited law (whose
-      // metadata isn't loaded yet, since we only fetch favorites + edits by
-      // id) appears in the Favorieten section without a manual reload.
-      loadIndex();
-    }
+    await apiFetch(`/api/favorites/${encodeURIComponent(lawId)}`, { method });
+    // Re-resolve the sidebar's id-set so a newly-favorited law (whose
+    // metadata isn't loaded yet, since we only fetch favorites + edits by
+    // id) appears in the Favorieten section without a manual reload.
+    loadIndex();
   } catch {
+    // HTTP or network failure — roll the optimistic toggle back.
     revert();
   } finally {
     togglingFavorites.value.delete(lawId);
   }
 }
 
-let loadIndexGeneration = 0;
+const claimLoadIndex = useLatest();
 
 async function loadIndex() {
-  const gen = ++loadIndexGeneration;
+  const isCurrent = claimLoadIndex();
   // Snapshot the traject so the changed-laws fetch and its assignment below
   // both refer to the scope this run started in.
   const trajectRef = activeTrajectRef.value;
@@ -309,7 +306,7 @@ async function loadIndex() {
       loadFavorites(),
       fetchChangedLawIds(trajectRef),
     ]);
-    if (gen !== loadIndexGeneration) return;
+    if (!isCurrent()) return;
     changedLawIds.value = changedIds;
 
     // Fetch metadata for just those ids via `?ids=` — never the whole corpus.
@@ -323,46 +320,46 @@ async function loadIndex() {
       return;
     }
     const query = `ids=${encodeURIComponent([...ids].join(','))}&limit=1000`;
-    const res = await fetch(lawsListUrl(trajectRef, query));
-    if (!res.ok) throw new Error(`Failed to load corpus: ${res.status}`);
+    const res = await apiFetch(lawsListUrl(trajectRef, query), {
+      errorMessage: (status) => `Failed to load corpus: ${status}`,
+    });
     // Gate before and after json(): skip parsing for stale 200s, and catch races during it.
-    if (gen !== loadIndexGeneration) return;
+    if (!isCurrent()) return;
     const corpusLaws = await res.json();
-    if (gen !== loadIndexGeneration) return;
+    if (!isCurrent()) return;
     laws.value = corpusLaws.sort((a, b) => a.law_id.localeCompare(b.law_id));
   } catch (e) {
-    if (gen !== loadIndexGeneration) return;
+    if (!isCurrent()) return;
     indexError.value = e;
   } finally {
-    if (gen === loadIndexGeneration) {
+    if (isCurrent()) {
       loading.value = false;
     }
   }
 }
 
-let loadLawGeneration = 0;
+const claimLoadLaw = useLatest();
 
 async function loadLaw(lawId) {
-  const gen = ++loadLawGeneration;
+  const isCurrent = claimLoadLaw();
   try {
     selectedLawLoading.value = true;
-    const res = await fetch(lawUrl(activeTrajectRef.value, lawId));
-    if (!res.ok) throw lawFetchError(res.status);
+    const res = await apiFetch(lawUrl(activeTrajectRef.value, lawId), lawFetchInit);
     // Gate before and after `res.text()`: skip the body read for stale 200s, and catch races during it.
-    if (gen !== loadLawGeneration) return;
+    if (!isCurrent()) return;
     const text = await res.text();
-    if (gen !== loadLawGeneration) return;
+    if (!isCurrent()) return;
     selectedLaw.value = yaml.load(text);
     // selectedArticleNumber is set from the route on initial mount and via
     // onBeforeRouteUpdate; we don't validate here so an invalid number
     // surfaces as the articleNotFound error state instead of being silently
     // stripped from the URL.
   } catch (e) {
-    if (gen !== loadLawGeneration) return;
+    if (!isCurrent()) return;
     selectedLaw.value = null;
     lawError.value = e;
   } finally {
-    if (gen === loadLawGeneration) {
+    if (isCurrent()) {
       selectedLawLoading.value = false;
     }
   }
@@ -516,7 +513,9 @@ onBeforeRouteUpdate((to) => {
 
 // When a harvested law becomes available, reload the corpus and select it.
 async function onHarvestAvailable(slug) {
-  await fetch('/api/corpus/reload', {
+  // Best-effort reload — a failure just means the index below may not
+  // include the fresh law yet.
+  await apiFetch('/api/corpus/reload', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ law_ids: [slug] }),

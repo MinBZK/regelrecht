@@ -19,6 +19,7 @@ import { useTraceStepping } from '../composables/useTraceStepping.js';
 import { useColorScheme } from '../composables/useColorScheme.js';
 import { stepHasHighlights } from '../lib/traceEdges.js';
 import { lawUrl } from '../composables/corpusUrls.js';
+import { apiFetchText } from '../lib/apiFetch.js';
 
 const props = defineProps({
   lawId: { type: String, default: null },
@@ -36,9 +37,9 @@ const props = defineProps({
 });
 
 async function fetchLawYaml(lawId) {
-  const res = await fetch(lawUrl(props.trajectRef, lawId));
-  if (!res.ok) throw new Error(`Law '${lawId}' niet gevonden (${res.status})`);
-  return await res.text();
+  return apiFetchText(lawUrl(props.trajectRef, lawId), {
+    errorMessage: (status) => `Law '${lawId}' niet gevonden (${status})`,
+  });
 }
 
 const nodeTypes = markRaw({

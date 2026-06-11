@@ -5,6 +5,7 @@
  * hardcoded defaults when the API is unavailable (e.g. no database).
  */
 import { ref, readonly } from 'vue';
+import { apiFetch, apiFetchJson } from '../lib/apiFetch.js';
 
 const DEFAULTS = {
   'panel.article_text': true,
@@ -47,11 +48,12 @@ async function loadFlags() {
   if (fetchPromise) return fetchPromise;
   fetchPromise = (async () => {
     try {
-      const res = await fetch('/api/feature-flags');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const server = await apiFetchJson('/api/feature-flags', {
+        errorMessage: (status) => `HTTP ${status}`,
+      });
       // Server values are the base; local overrides win so user toggles
       // survive refreshes when the backend can't persist (503 path below).
-      flags.value = { ...DEFAULTS, ...(await res.json()), ...loadLocal() };
+      flags.value = { ...DEFAULTS, ...server, ...loadLocal() };
     } catch (e) {
       console.warn('Failed to load feature flags, using defaults:', e.message);
       flags.value = { ...DEFAULTS, ...loadLocal() };
@@ -71,17 +73,18 @@ async function toggle(key) {
   flags.value = { ...flags.value, [key]: newValue };
 
   try {
-    const res = await fetch(`/api/feature-flags/${encodeURIComponent(key)}`, {
+    const res = await apiFetch(`/api/feature-flags/${encodeURIComponent(key)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enabled: newValue }),
+      allowStatuses: [503],
+      errorMessage: (status) => `HTTP ${status}`,
     });
     if (res.status === 503) {
       // Backend has no DB; keep the change local so it survives refresh.
       saveLocal({ ...loadLocal(), [key]: newValue });
       return;
     }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     // Clear any stale local override for this key — server is now authoritative.
     const local = loadLocal();
     if (key in local) {

@@ -12,6 +12,7 @@ import { ref } from 'vue';
 import yaml from 'js-yaml';
 import { useBwbHarvest } from './useBwbHarvest.js';
 import { implementorsUrl } from './corpusUrls.js';
+import { apiFetchJson } from '../lib/apiFetch.js';
 
 /**
  * Extract all unique `source.regulation` references from a parsed law object.
@@ -165,28 +166,26 @@ export function useDependencies() {
     // backend) can be retried on the next trigger rather than suppressed for
     // the component's lifetime.
     implementorsKey = key;
+    let implementors;
     try {
-      const res = await fetch(implementorsUrl(trajectRef, lawId));
-      if (!res.ok) {
-        implementorsKey = null;
-        return;
-      }
-      const implementors = await res.json();
-      for (const implId of implementors) {
-        try {
-          if (!engine.hasLaw(implId)) {
-            const yamlText = await fetchLawYaml(implId);
-            engine.loadLaw(yamlText);
-            loadedDeps.value = [...loadedDeps.value, implId];
-          }
-        } catch (e) {
-          console.warn(`Failed to load implementing regulation '${implId}':`, e);
-        }
-      }
+      implementors = await apiFetchJson(implementorsUrl(trajectRef, lawId));
     } catch {
-      // Best-effort: if the scan fails, explicitly-declared deps still cover
-      // the common case. Allow a retry on the next trigger.
+      // Best-effort: if the scan fails (HTTP error or network), explicitly-
+      // declared deps still cover the common case. Allow a retry on the
+      // next trigger.
       implementorsKey = null;
+      return;
+    }
+    for (const implId of implementors) {
+      try {
+        if (!engine.hasLaw(implId)) {
+          const yamlText = await fetchLawYaml(implId);
+          engine.loadLaw(yamlText);
+          loadedDeps.value = [...loadedDeps.value, implId];
+        }
+      } catch (e) {
+        console.warn(`Failed to load implementing regulation '${implId}':`, e);
+      }
     }
   }
 

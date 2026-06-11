@@ -5,6 +5,7 @@
  * pipeline-api (proxied through editor-api at /api/harvest/search).
  */
 import { ref } from 'vue';
+import { apiFetchJson } from '../lib/apiFetch.js';
 
 const DEBOUNCE_MS = 400;
 export const MIN_QUERY_LENGTH = 3;
@@ -31,14 +32,12 @@ export function useBwbSearch() {
     debounceTimer = setTimeout(async () => {
       loading.value = true;
       try {
-        const res = await fetch(`/api/harvest/search?q=${encodeURIComponent(q)}`);
-        if (res.ok) {
-          results.value = await res.json();
-        } else {
-          results.value = [];
-        }
+        results.value = await apiFetchJson(
+          `/api/harvest/search?q=${encodeURIComponent(q)}`,
+        );
       } catch {
-        // BWB search is best-effort — clear stale results on failure
+        // BWB search is best-effort — clear stale results on any failure
+        // (HTTP error or network).
         results.value = [];
       } finally {
         loading.value = false;

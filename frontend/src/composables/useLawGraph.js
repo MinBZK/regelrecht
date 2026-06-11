@@ -24,6 +24,7 @@ import { ref, watch } from 'vue';
 import yaml from 'js-yaml';
 import { MarkerType, Position } from '@vue-flow/core';
 import { extractRegulationRefs } from './useDependencies.js';
+import { useLatest } from '../lib/useLatest.js';
 
 const LAYER_COLOR_INDEX = {
   WET: 0,
@@ -715,14 +716,15 @@ export function useLawGraph({ rootLawId, fetchLawYaml }) {
   // complete and silently omits connections.
   const missingDeps = ref([]);
 
-  let generation = 0;
+  const claimRebuild = useLatest();
 
   async function rebuild(lawId) {
     if (!lawId) {
-      // Bump generation so any in-flight fetch cancels its own finally
-      // branch, and clear loading so the composable's public contract
-      // doesn't stay stuck at true after a lawId → null transition.
-      generation++;
+      // Claim (and discard) a generation so any in-flight fetch cancels
+      // its own finally branch, and clear loading so the composable's
+      // public contract doesn't stay stuck at true after a lawId → null
+      // transition.
+      claimRebuild();
       nodes.value = [];
       edges.value = [];
       loading.value = false;
@@ -730,25 +732,25 @@ export function useLawGraph({ rootLawId, fetchLawYaml }) {
       missingDeps.value = [];
       return;
     }
-    const gen = ++generation;
+    const isCurrent = claimRebuild();
     loading.value = true;
     error.value = null;
     missingDeps.value = [];
     try {
       const { laws, missing } = await loadLawGraph(lawId, fetchLawYaml);
-      if (gen !== generation) return; // superseded
+      if (!isCurrent()) return; // superseded
       const { nodes: ns, edges: es } = buildGraph(laws);
       const laidOut = applyLayeredLayout(ns, es);
       nodes.value = laidOut;
       edges.value = es;
       missingDeps.value = missing;
     } catch (e) {
-      if (gen !== generation) return;
+      if (!isCurrent()) return;
       error.value = e.message || String(e);
       nodes.value = [];
       edges.value = [];
     } finally {
-      if (gen === generation) loading.value = false;
+      if (isCurrent()) loading.value = false;
     }
   }
 

@@ -1,4 +1,5 @@
 import { ref } from 'vue';
+import { apiFetchJson } from '../lib/apiFetch.js';
 
 const authenticated = ref(false);
 const oidcConfigured = ref(false);
@@ -9,14 +10,12 @@ let readyPromise = null;
 
 async function checkAuth() {
   try {
-    const response = await fetch('/auth/status');
-    if (!response.ok) return;
-    const status = await response.json();
+    const status = await apiFetchJson('/auth/status');
     authenticated.value = status.authenticated;
     oidcConfigured.value = status.oidc_configured;
     person.value = status.person || null;
   } catch {
-    // Auth endpoint not available — treat as no auth configured
+    // Auth endpoint not available or errored — treat as no auth configured
   } finally {
     loading.value = false;
   }

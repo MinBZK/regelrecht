@@ -39,7 +39,7 @@ describe('useTrajectDocuments', () => {
     const { documents, fetchList } = useTrajectDocuments(trajectRef);
     await fetchList();
 
-    expect(fetchSpy).toHaveBeenCalledWith('/api/trajects/mig-1a2b3c4d/corpus/documents');
+    expect(fetchSpy).toHaveBeenCalledWith('/api/trajects/mig-1a2b3c4d/corpus/documents', {});
     expect(documents.value.map((d) => d.path)).toEqual([
       'notes.md',
       'mvt/concept.md',

@@ -90,6 +90,7 @@ describe('useTrajectDetail', () => {
 
     expect(fetchSpy).toHaveBeenCalledWith(
       '/api/trajects/11111111-2222-3333-4444-555566667777',
+      {},
     );
     expect(detail.value.name).toBe('Tariefswijziging 2026');
     expect(error.value).toBe(null);
