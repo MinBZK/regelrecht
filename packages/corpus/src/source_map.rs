@@ -14,6 +14,20 @@ pub struct LoadedLaw {
     pub law_id: String,
     /// The law's `name` field (human-readable title), if present.
     pub name: Option<String>,
+    /// Resolved human-readable display name, computed once at load time.
+    /// Equals [`name`](Self::name) for laws with a literal `name:` field;
+    /// for `name: '#output_ref'` laws this is the referenced action's
+    /// scalar value (see [`resolve_display_name`]). `None` when nothing
+    /// resolves, or for metadata-only entries whose body hasn't been
+    /// fetched. Precomputed so list endpoints don't re-scan (or fully
+    /// re-parse) every law body on every request.
+    pub display_name: Option<String>,
+    /// `$id`s of the higher laws this law's articles declare they
+    /// `implements` (the IoC link), computed once at load time (see
+    /// [`collect_law_implements`]). Empty for metadata-only entries.
+    /// Precomputed so "who implements law X" reverse lookups don't
+    /// re-parse every law body per request.
+    pub implements: Vec<String>,
     /// The raw YAML content.
     pub yaml_content: String,
     /// Path to the source file. For local sources this is the absolute path
@@ -142,6 +156,7 @@ impl SourceMap {
             };
 
             let name = extract_law_name(&content);
+            let (display_name, implements) = derive_loaded_fields(&content);
 
             // Compute the path relative to the source root so that writes
             // can address the file via the backend without re-deriving the
@@ -154,6 +169,8 @@ impl SourceMap {
             let loaded = LoadedLaw {
                 law_id: law_id.clone(),
                 name,
+                display_name,
+                implements,
                 yaml_content: content,
                 file_path: path.display().to_string(),
                 relative_path,
@@ -263,6 +280,7 @@ impl SourceMap {
         };
 
         let name = extract_law_name(content);
+        let (display_name, implements) = derive_loaded_fields(content);
 
         // Strip the source's in-repo subpath so the stored relative path is
         // relative to the source root, matching the on-disk layout the
@@ -281,6 +299,8 @@ impl SourceMap {
         let loaded = LoadedLaw {
             law_id: law_id.clone(),
             name,
+            display_name,
+            implements,
             yaml_content: content.to_string(),
             file_path: file_path.to_string(),
             relative_path,
@@ -325,6 +345,8 @@ impl SourceMap {
         self.insert(LoadedLaw {
             law_id: law_id.to_string(),
             name: None,
+            display_name: None,
+            implements: Vec::new(),
             yaml_content: String::new(),
             file_path: file_path.to_string(),
             relative_path,
@@ -350,16 +372,19 @@ impl SourceMap {
     /// waiting for a full corpus reload. Returns `true` if the law was
     /// present and updated, `false` otherwise.
     ///
-    /// Only `yaml_content` (and the optional human-readable `name`, which is
-    /// derived from the YAML) is updated — `$id`, `file_path`, source
-    /// provenance, and priority are stable across an edit and are left
-    /// untouched. If the caller writes a new file under a different `$id`
-    /// that's a different operation (unsupported via this hook).
+    /// Only `yaml_content` (and the content-derived fields `name`,
+    /// `display_name` and `implements`) is updated — `$id`, `file_path`,
+    /// source provenance, and priority are stable across an edit and are
+    /// left untouched. If the caller writes a new file under a different
+    /// `$id` that's a different operation (unsupported via this hook).
     pub fn update_yaml_content(&mut self, law_id: &str, new_content: String) -> bool {
         let Some(law) = self.laws.get_mut(law_id) else {
             return false;
         };
         law.name = extract_law_name(&new_content);
+        let (display_name, implements) = derive_loaded_fields(&new_content);
+        law.display_name = display_name;
+        law.implements = implements;
         law.yaml_content = new_content;
         true
     }
@@ -605,6 +630,12 @@ pub fn resolve_display_name(yaml: &str) -> Option<String> {
 
     // Parse YAML to find the action that resolves this reference
     let doc: LawDoc = serde_yaml_ng::from_str(yaml).ok()?;
+    resolve_name_reference(&doc, reference)
+}
+
+/// Find the action whose `output` matches `reference` and return its
+/// scalar string value — the resolution behind `name: '#output_ref'`.
+fn resolve_name_reference(doc: &LawDoc, reference: &str) -> Option<String> {
     for article in &doc.articles {
         let Some(mr) = &article.machine_readable else {
             continue;
@@ -622,6 +653,27 @@ pub fn resolve_display_name(yaml: &str) -> Option<String> {
     }
 
     None
+}
+
+/// Compute the content-derived [`LoadedLaw`] fields (`display_name`,
+/// `implements`) with a single YAML parse. Called once per law at load /
+/// update time so the read paths never have to re-parse bodies per
+/// request. Returns `(None, vec![])` for unparseable content — the same
+/// degraded result the per-request resolvers used to produce.
+fn derive_loaded_fields(yaml: &str) -> (Option<String>, Vec<String>) {
+    // `implements` always needs the parsed doc; the display name only
+    // does for `name: '#ref'` laws, but sharing one parse keeps this a
+    // single pass either way.
+    let doc: LawDoc = match serde_yaml_ng::from_str(yaml) {
+        Ok(d) => d,
+        Err(_) => return (extract_law_name(yaml), Vec::new()),
+    };
+    let display_name = extract_law_name(yaml).or_else(|| {
+        let raw = extract_raw_name(yaml)?;
+        let reference = raw.strip_prefix('#')?;
+        resolve_name_reference(&doc, reference)
+    });
+    (display_name, collect_implements_from_doc(&doc))
 }
 
 /// A collected output with the parameters required by its article's execution block.
@@ -699,7 +751,12 @@ pub fn collect_law_implements(yaml: &str) -> Vec<String> {
         Ok(d) => d,
         Err(_) => return Vec::new(),
     };
+    collect_implements_from_doc(&doc)
+}
 
+/// Doc-based core of [`collect_law_implements`], shared with the
+/// parse-once load path ([`derive_loaded_fields`]).
+fn collect_implements_from_doc(doc: &LawDoc) -> Vec<String> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();
     for article in &doc.articles {
@@ -1076,6 +1133,125 @@ articles:
     fn test_resolve_display_name_no_name_field() {
         let yaml = "$id: test\narticles: []\n";
         assert_eq!(resolve_display_name(yaml), None);
+    }
+
+    /// A law body with a `name: '#ref'` display name and an `implements`
+    /// declaration, for the precompute tests below.
+    const DERIVED_FIELDS_YAML: &str = r#"$id: regeling_zorgtoeslag
+name: '#regeling_naam'
+articles:
+  - number: '1'
+    machine_readable:
+      execution:
+        actions:
+          - output: regeling_naam
+            value: Regeling zorgtoeslag
+      implements:
+        - law: wet_op_de_zorgtoeslag
+          open_term: standaardpremie
+"#;
+
+    #[test]
+    fn test_load_precomputes_display_name_and_implements() {
+        // The list/implementors endpoints read these fields straight off
+        // the loaded law instead of re-parsing every body per request, so
+        // load time MUST populate them.
+        let dir = TempDir::new().unwrap();
+        let path = dir
+            .path()
+            .join("regeling/regeling_zorgtoeslag/2025-01-01.yaml");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, DERIVED_FIELDS_YAML).unwrap();
+
+        let source = make_source("central", "Central", dir.path(), 1);
+        let mut map = SourceMap::new();
+        map.load_source(&source).unwrap();
+
+        let law = map.get_law("regeling_zorgtoeslag").unwrap();
+        // `name` only carries literal names; the resolved `#ref` lands in
+        // `display_name`.
+        assert_eq!(law.name, None);
+        assert_eq!(law.display_name.as_deref(), Some("Regeling zorgtoeslag"));
+        assert_eq!(law.implements, vec!["wet_op_de_zorgtoeslag".to_string()]);
+    }
+
+    #[test]
+    fn test_load_fetched_file_precomputes_display_name_and_implements() {
+        let mut map = SourceMap::new();
+        map.load_fetched_file(
+            DERIVED_FIELDS_YAML,
+            "regulation/nl/regeling/regeling_zorgtoeslag/2025-01-01.yaml",
+            Some("regulation/nl"),
+            "central",
+            "Central",
+            1,
+        )
+        .unwrap();
+
+        let law = map.get_law("regeling_zorgtoeslag").unwrap();
+        assert_eq!(law.display_name.as_deref(), Some("Regeling zorgtoeslag"));
+        assert_eq!(law.implements, vec!["wet_op_de_zorgtoeslag".to_string()]);
+    }
+
+    #[test]
+    fn test_load_literal_name_display_name_matches_name() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("wet/kieswet/2025-01-01.yaml");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, "$id: kieswet\nname: Kieswet\narticles: []\n").unwrap();
+
+        let source = make_source("central", "Central", dir.path(), 1);
+        let mut map = SourceMap::new();
+        map.load_source(&source).unwrap();
+
+        let law = map.get_law("kieswet").unwrap();
+        assert_eq!(law.name.as_deref(), Some("Kieswet"));
+        assert_eq!(law.display_name.as_deref(), Some("Kieswet"));
+        assert!(law.implements.is_empty());
+    }
+
+    #[test]
+    fn test_metadata_entry_has_no_derived_fields() {
+        // Metadata-only entries have no body to derive from — the fields
+        // stay empty until the body is fetched and (in the editor flow)
+        // a snapshot rebuild or `update_yaml_content` recomputes them.
+        let mut map = SourceMap::new();
+        map.load_metadata_entry(
+            "some_wet",
+            "regulation/nl/wet/some_wet/2025-01-01.yaml",
+            Some("regulation/nl"),
+            "central",
+            "Central",
+            1,
+        )
+        .unwrap();
+        let law = map.get_law("some_wet").unwrap();
+        assert_eq!(law.display_name, None);
+        assert!(law.implements.is_empty());
+    }
+
+    #[test]
+    fn test_update_yaml_content_recomputes_derived_fields() {
+        let dir = TempDir::new().unwrap();
+        let path = dir
+            .path()
+            .join("regeling/regeling_zorgtoeslag/2025-01-01.yaml");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, DERIVED_FIELDS_YAML).unwrap();
+
+        let source = make_source("central", "Central", dir.path(), 1);
+        let mut map = SourceMap::new();
+        map.load_source(&source).unwrap();
+
+        // Edit drops the implements block and switches to a literal name:
+        // both derived fields must follow the new content.
+        let new_content =
+            "$id: regeling_zorgtoeslag\nname: Nieuwe naam\narticles: []\n".to_string();
+        assert!(map.update_yaml_content("regeling_zorgtoeslag", new_content));
+
+        let law = map.get_law("regeling_zorgtoeslag").unwrap();
+        assert_eq!(law.display_name.as_deref(), Some("Nieuwe naam"));
+        assert!(law.implements.is_empty());
     }
 
     #[test]
