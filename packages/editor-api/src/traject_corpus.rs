@@ -16,11 +16,14 @@
 //! first request past the TTL re-enumerates the sources and swaps in a
 //! fresh [`SourceMap`] (new laws merged upstream, re-harvests, saves on
 //! another replica become visible without a process restart), while the
-//! backends, the post-save overlay and the changed-laws cache carry over
-//! so in-flight saves and read-your-writes semantics are unaffected.
+//! backends, the post-save overlay (reconciled against the branch — see
+//! [`reconcile_overlay`]), the implements index/memo and the
+//! changed-laws cache carry over so in-flight saves, read-your-writes
+//! semantics and implementor lookups are unaffected.
 
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -68,8 +71,14 @@ pub struct TrajectCorpus {
     /// Shared (via the `Arc`) across TTL index refreshes: a refreshed
     /// snapshot must never resurrect pre-save content, and an in-flight
     /// save that calls `record_save` on the pre-refresh instance must be
-    /// visible on the post-refresh one. It is only dropped when the whole
-    /// traject cache entry is invalidated (source config change).
+    /// visible on the post-refresh one. Each refresh *reconciles* the
+    /// entries against the write-target branch (see [`reconcile_overlay`]):
+    /// an entry whose branch file no longer matches the saved body was
+    /// overwritten by someone else (another replica, a direct push) and is
+    /// dropped, so reads converge to the branch instead of pinning this
+    /// process's save forever — read-your-writes-or-newer, not
+    /// read-your-writes-forever. The whole map is dropped when the traject
+    /// cache entry is invalidated (source config change).
     ///
     /// Unbounded growth is intentional: in practice the size is bounded
     /// by the number of distinct laws edited in this traject, with a
@@ -89,18 +98,38 @@ pub struct TrajectCorpus {
     /// eviction so a crawl across a large federated corpus can't grow it
     /// without limit.
     body_cache: RwLock<BoundedBodyCache>,
-    /// Per-snapshot "law → laws it `implements`" index, built on demand by
-    /// [`implementors_of`] and discarded with the snapshot (a TTL refresh
-    /// or invalidation starts from `None`). Building it is the one
-    /// O(corpus) body scan; afterwards every implementors lookup is an
-    /// in-memory reverse scan over the parsed lists.
+    /// "Law → laws it `implements`" index, built on demand by
+    /// [`implementors_of`]. A TTL refresh carries the previous snapshot's
+    /// index over as a *stale* value (see `implements_index_stale`) and
+    /// rebuilds it lazily against the new snapshot — stale-while-
+    /// revalidate, like the snapshot itself: a lookup is never blocked on
+    /// a corpus rescan when a previous index exists. The rebuild itself
+    /// is cheap thanks to `implements_memo`.
     implements_index: RwLock<Option<Arc<ImplementsIndex>>>,
+    /// Whether the value in `implements_index` was built against a
+    /// *previous* snapshot (carried over by a TTL refresh). While true,
+    /// the first lookup to win `implements_build_lock` rebuilds against
+    /// this snapshot; concurrent lookups keep serving the carried index.
+    implements_index_stale: AtomicBool,
     /// Single-flight gate for building `implements_index`. Held across
-    /// the (potentially long) body-fetching scan WITHOUT holding
-    /// `implements_index` itself, so `record_save` — which runs while the
-    /// writable-own backend mutex is held — can update the index without
-    /// any lock cycle against the scan's backend fetches.
+    /// the (potentially fetching) scan WITHOUT holding `implements_index`
+    /// itself, so `record_save` — which runs while the writable-own
+    /// backend mutex is held — can update the index without any lock
+    /// cycle against the scan's backend fetches.
     implements_build_lock: Mutex<()>,
+    /// Cross-snapshot content-addressed memo for the implements scan:
+    /// `(source_id, blob sha) → parsed implements list`. The blob sha
+    /// comes from the Trees enumeration that built the index snapshot
+    /// ([`regelrecht_corpus::source_map::LoadedLaw::content_sha`]), so a
+    /// rebuild after a TTL refresh only fetches/parses bodies whose
+    /// content actually changed — without it the first implementors
+    /// lookup after EVERY refresh would re-fetch the entire federated
+    /// corpus over the Contents API (the scan cost PR #762 removed from
+    /// the request path). Shared (via the `Arc`) across refreshes like
+    /// the overlay; each rebuild swaps in a map containing only the
+    /// entries of the current snapshot, so it cannot grow beyond
+    /// O(corpus) across content churn.
+    implements_memo: Arc<RwLock<ImplementsMemo>>,
     /// Short-lived cache of the "edited in this traject" diff
     /// ([`changed_law_ids`]). Each `changed-laws` request would otherwise
     /// fire a GitHub Compare API call, and the library sidebar re-requests
@@ -178,6 +207,10 @@ impl BoundedBodyCache {
         self.map.insert(law_id, body);
     }
 }
+
+/// Content-addressed memo behind [`TrajectCorpus::implements_memo`]:
+/// `(source_id, blob sha) → parsed implements list`.
+type ImplementsMemo = HashMap<(String, String), Vec<String>>;
 
 /// Per-snapshot forward index: each law's parsed `implements` list, plus
 /// the laws whose body couldn't be fetched during the scan (throttling,
@@ -306,15 +339,20 @@ impl TrajectCorpus {
     /// Law ids whose articles declare `implements` for `law_id` (the IoC
     /// reverse link), resolved against this snapshot's federated corpus.
     ///
-    /// The first call builds the per-snapshot [`ImplementsIndex`] — the
+    /// The first call of the process builds the [`ImplementsIndex`] — the
     /// one O(corpus) scan that lazily fetches the body of every
     /// metadata-only law — and every later call (any target law) is an
-    /// in-memory reverse lookup. Bodies fetched by the scan land in
-    /// `body_cache`, so opening one of the scanned laws afterwards is
-    /// also free. Laws whose body fetch failed are reported in
-    /// [`ImplementorsResult::skipped_law_ids`] instead of being silently
-    /// indistinguishable from "doesn't implement anything"; the failed
-    /// set is retried when the snapshot rolls over (TTL refresh).
+    /// in-memory reverse lookup. A TTL refresh does NOT repeat that scan:
+    /// the previous index is served stale while the first post-refresh
+    /// lookup rebuilds it, and the rebuild resolves unchanged bodies
+    /// through the content-addressed `implements_memo` (blob shas from
+    /// the Trees enumeration), fetching only what actually changed.
+    /// Bodies fetched by a scan land in `body_cache`, so opening one of
+    /// the scanned laws afterwards is also free. Laws whose body fetch
+    /// failed are reported in [`ImplementorsResult::skipped_law_ids`]
+    /// instead of being silently indistinguishable from "doesn't
+    /// implement anything"; the failed set is retried at the next
+    /// rebuild.
     pub async fn implementors_of(&self, law_id: &str) -> ImplementorsResult {
         let index = self.implements_index_get_or_build().await;
         let mut implementors: Vec<String> = index
@@ -334,48 +372,142 @@ impl TrajectCorpus {
 
     /// Get the snapshot's implements index, building it on first use.
     ///
-    /// Single-flighted on `implements_build_lock`; the (long, fetching)
-    /// build never holds the `implements_index` RwLock itself, so a
-    /// concurrent `record_save` — which runs under the writable-own
+    /// Single-flighted on `implements_build_lock`; the (potentially
+    /// fetching) build never holds the `implements_index` RwLock itself,
+    /// so a concurrent `record_save` — which runs under the writable-own
     /// backend mutex that the scan may also need — can always complete.
+    ///
+    /// Stale-while-revalidate across snapshots: a TTL refresh carries the
+    /// previous index over flagged stale. The first lookup to win the
+    /// build lock rebuilds against this snapshot (cheap — the
+    /// content-addressed `implements_memo` means only *changed* bodies
+    /// are fetched/parsed); every other lookup keeps serving the carried
+    /// index instead of queueing behind the rebuild. Only a traject that
+    /// has never built an index at all (first lookup of the process)
+    /// blocks all callers on the one initial scan.
     async fn implements_index_get_or_build(&self) -> Arc<ImplementsIndex> {
-        if let Some(index) = self.implements_index.read().await.as_ref() {
-            return index.clone();
-        }
-        let _build = self.implements_build_lock.lock().await;
-        // Re-check: another task may have built it while we waited.
-        if let Some(index) = self.implements_index.read().await.as_ref() {
-            return index.clone();
+        let carried = {
+            let guard = self.implements_index.read().await;
+            match guard.as_ref() {
+                Some(index) if !self.implements_index_stale.load(Ordering::SeqCst) => {
+                    return index.clone();
+                }
+                other => other.cloned(),
+            }
+        };
+
+        let _build = match &carried {
+            // Nothing to serve: every caller waits for the one build.
+            None => self.implements_build_lock.lock().await,
+            // Stale index available: only one task rebuilds; the rest
+            // serve the carried index rather than queueing up.
+            Some(stale) => match self.implements_build_lock.try_lock() {
+                Ok(guard) => guard,
+                Err(_) => return stale.clone(),
+            },
+        };
+
+        // Re-check under the build lock: the previous holder may have
+        // (re)built while we waited.
+        {
+            let guard = self.implements_index.read().await;
+            if let Some(index) = guard.as_ref() {
+                if !self.implements_index_stale.load(Ordering::SeqCst) {
+                    return index.clone();
+                }
+            }
         }
 
-        let mut implements_by_law = HashMap::new();
-        let mut failed_law_ids = Vec::new();
-        // Collect ids first so the source_map borrow doesn't live across
-        // the awaits below.
-        let law_ids: Vec<String> = self
+        let index = self.build_implements_index().await;
+        *self.implements_index.write().await = Some(index.clone());
+        self.implements_index_stale.store(false, Ordering::SeqCst);
+        index
+    }
+
+    /// One pass over the snapshot's laws producing the implements index.
+    /// Per law, in cost order:
+    /// - **overlay** entries (saved in this traject) are parsed from the
+    ///   overlay body — no fetch, O(locally saved laws);
+    /// - **loaded** entries (local sources) reuse the `implements` list
+    ///   the corpus parsed at load time — no fetch, no parse;
+    /// - **metadata-only** entries hit the cross-snapshot
+    ///   `implements_memo` by `(source_id, blob sha)` — only bodies whose
+    ///   sha changed since the last build (or were never seen) are
+    ///   fetched via [`law_yaml`] (which also feeds the body cache) and
+    ///   parsed.
+    ///
+    /// The memo is swapped wholesale at the end so it only ever holds the
+    /// current snapshot's entries (bounded by corpus size, and a build
+    /// cancelled mid-flight — client disconnect — leaves the old memo
+    /// intact).
+    async fn build_implements_index(&self) -> Arc<ImplementsIndex> {
+        let overlay = self.overlay.read().await.clone();
+        let memo = self.implements_memo.read().await.clone();
+        let mut new_memo: ImplementsMemo = HashMap::new();
+
+        // Collect what we need first so the source_map borrow doesn't
+        // live across the awaits below.
+        struct ScanEntry {
+            law_id: String,
+            source_id: String,
+            content_sha: Option<String>,
+            loaded_implements: Option<Vec<String>>,
+        }
+        let entries: Vec<ScanEntry> = self
             .corpus
             .source_map
             .laws()
-            .map(|law| law.law_id.clone())
+            .map(|law| ScanEntry {
+                law_id: law.law_id.clone(),
+                source_id: law.source_id.clone(),
+                content_sha: law.content_sha.clone(),
+                loaded_implements: law.is_loaded().then(|| law.implements.clone()),
+            })
             .collect();
-        for law_id in law_ids {
-            // Resolve through `law_yaml`, NOT `LoadedLaw::yaml_content`:
-            // federated laws are metadata-only until first read. The
-            // overlay/body_cache make repeat scans cheap.
-            match self.law_yaml(&law_id).await {
-                Ok(Some(yaml)) => {
-                    let implements = collect_law_implements(&yaml);
-                    if !implements.is_empty() {
-                        implements_by_law.insert(law_id, implements);
+
+        let mut implements_by_law = HashMap::new();
+        let mut failed_law_ids = Vec::new();
+        for entry in entries {
+            let implements = if let Some(body) = overlay.get(&entry.law_id) {
+                // A body saved in this traject supersedes both the loaded
+                // content and the enumerated blob; never memo it under the
+                // (pre-save) snapshot sha.
+                collect_law_implements(body)
+            } else if let Some(implements) = entry.loaded_implements {
+                implements
+            } else {
+                let memo_key = entry.content_sha.map(|sha| (entry.source_id.clone(), sha));
+                if let Some(hit) = memo_key.as_ref().and_then(|key| memo.get(key)) {
+                    let implements = hit.clone();
+                    if let Some(key) = memo_key {
+                        new_memo.insert(key, implements.clone());
+                    }
+                    implements
+                } else {
+                    // Resolve through `law_yaml`, NOT `LoadedLaw::yaml_content`:
+                    // metadata-only bodies are fetched lazily (and cached in
+                    // `body_cache` for subsequent opens).
+                    match self.law_yaml(&entry.law_id).await {
+                        Ok(Some(yaml)) => {
+                            let implements = collect_law_implements(&yaml);
+                            if let Some(key) = memo_key {
+                                new_memo.insert(key, implements.clone());
+                            }
+                            implements
+                        }
+                        // A genuine miss (no backend / file vanished) has
+                        // nothing to index and nothing to retry.
+                        Ok(None) => continue,
+                        Err(e) => {
+                            tracing::debug!(law_id = %entry.law_id, error = %e, "implements scan: body fetch failed");
+                            failed_law_ids.push(entry.law_id);
+                            continue;
+                        }
                     }
                 }
-                // A genuine miss (no backend / file vanished) has nothing
-                // to index and nothing to retry.
-                Ok(None) => {}
-                Err(e) => {
-                    tracing::debug!(law_id = %law_id, error = %e, "implements scan: body fetch failed");
-                    failed_law_ids.push(law_id);
-                }
+            };
+            if !implements.is_empty() {
+                implements_by_law.insert(entry.law_id, implements);
             }
         }
         if !failed_law_ids.is_empty() {
@@ -387,12 +519,11 @@ impl TrajectCorpus {
         }
         failed_law_ids.sort();
 
-        let index = Arc::new(ImplementsIndex {
+        *self.implements_memo.write().await = new_memo;
+        Arc::new(ImplementsIndex {
             implements_by_law,
             failed_law_ids,
-        });
-        *self.implements_index.write().await = Some(index.clone());
-        index
+        })
     }
 
     /// Law ids that have been edited in this traject: the diff between the
@@ -509,7 +640,19 @@ impl CachedCorpus {
 struct TrajectSlot {
     state: RwLock<Option<CachedCorpus>>,
     build_lock: Mutex<()>,
+    /// Consecutive failed TTL refreshes. Serving stale stays correct
+    /// indefinitely, but a permanently broken source would otherwise
+    /// re-warn every TTL window — the count rate-limits the warn to the
+    /// first failure and every [`FAILED_REFRESH_WARN_EVERY`]th after
+    /// that (the rest log at debug). Reset on any successful
+    /// build/refresh.
+    refresh_failures: AtomicU32,
 }
+
+/// Every how many consecutive refresh failures the full warn is repeated
+/// (between repeats the failure logs at debug). At the 60s TTL this is
+/// one warn per ~10 minutes for a permanently broken source.
+const FAILED_REFRESH_WARN_EVERY: u32 = 10;
 
 /// Lazy registry of per-traject corpora, mirroring the
 /// `CorpusState`-per-traject design. Concurrent first-touches on the same
@@ -619,11 +762,25 @@ impl TrajectCorpusCache {
                     // failing reads on a transient enumeration error; the
                     // re-armed `built_at` stops every subsequent request
                     // from re-attempting against a throttled upstream.
-                    tracing::warn!(
-                        traject = %traject_id,
-                        error = %e,
-                        "traject index refresh failed; serving stale snapshot for another TTL"
-                    );
+                    // Rate-limit the warn: a permanently broken source
+                    // fails every TTL window, and repeating the same warn
+                    // each minute drowns the log without new signal.
+                    let failures = slot.refresh_failures.fetch_add(1, Ordering::SeqCst) + 1;
+                    if failures == 1 || failures % FAILED_REFRESH_WARN_EVERY == 0 {
+                        tracing::warn!(
+                            traject = %traject_id,
+                            error = %e,
+                            consecutive_failures = failures,
+                            "traject index refresh failed; serving stale snapshot for another TTL"
+                        );
+                    } else {
+                        tracing::debug!(
+                            traject = %traject_id,
+                            error = %e,
+                            consecutive_failures = failures,
+                            "traject index refresh failed again; serving stale snapshot for another TTL"
+                        );
+                    }
                     *slot.state.write().await = Some(CachedCorpus {
                         corpus: old.clone(),
                         built_at: Instant::now(),
@@ -633,6 +790,7 @@ impl TrajectCorpusCache {
             },
         };
 
+        slot.refresh_failures.store(0, Ordering::SeqCst);
         *slot.state.write().await = Some(CachedCorpus {
             corpus: corpus.clone(),
             built_at: Instant::now(),
@@ -901,7 +1059,9 @@ async fn build_traject_corpus(
         overlay: Arc::new(RwLock::new(HashMap::new())),
         body_cache: RwLock::new(BoundedBodyCache::default()),
         implements_index: RwLock::new(None),
+        implements_index_stale: AtomicBool::new(false),
         implements_build_lock: Mutex::new(()),
+        implements_memo: Arc::new(RwLock::new(HashMap::new())),
         changed_cache: Arc::new(RwLock::new(None)),
     }))
 }
@@ -916,17 +1076,23 @@ async fn build_traject_corpus(
 ///   and the writable-own → seed lock-ordering invariant is unaffected;
 /// - the **post-save `overlay`** (shared `Arc`) — refreshed reads keep
 ///   seeing saved bodies (never resurrect pre-save content), and a save
-///   that lands on the pre-refresh instance is visible post-refresh;
+///   that lands on the pre-refresh instance is visible post-refresh. The
+///   entries are *reconciled* against the write-target branch first (see
+///   [`reconcile_overlay`]) so a save overwritten externally stops being
+///   pinned by this process;
 /// - the **changed-laws cache** (shared `Arc`) — same reasoning for
 ///   `save_law`'s invalidation;
+/// - the **implements index** (flagged stale) and the content-addressed
+///   **implements memo** (shared `Arc`) — lookups keep serving the
+///   previous index while the first post-refresh lookup rebuilds it, and
+///   the rebuild only fetches bodies whose blob sha changed;
 /// - the **write routing** (`write_target_for_source`,
 ///   `writable_own_source_id`) and the registry/auth config, which only
 ///   change through traject create/delete → [`TrajectCorpusCache::invalidate`].
 ///
 /// Fresh in the new instance:
 /// - the **`source_map` index snapshot** — the point of the refresh;
-/// - the **`body_cache`** — so upstream body changes become visible;
-/// - the **implements index** — rebuilt on demand against the new snapshot.
+/// - the **`body_cache`** — so upstream body changes become visible.
 ///
 /// Any source failing to enumerate fails the whole refresh: the caller
 /// then serves the previous (complete) snapshot for another TTL, which
@@ -948,21 +1114,122 @@ async fn refresh_traject_corpus(
         ));
     }
 
-    Ok(Arc::new(TrajectCorpus {
+    // Only after a *successful* enumeration: a failed refresh must not
+    // touch the overlay either.
+    reconcile_overlay(old, &source_map).await;
+
+    Ok(next_snapshot(old, source_map).await)
+}
+
+/// Assemble the next-snapshot [`TrajectCorpus`] over `source_map`,
+/// carrying over everything [`refresh_traject_corpus`] documents.
+/// Factored out of the refresh so tests can drive the carry-over
+/// semantics with a hand-built source map (no registry enumeration).
+async fn next_snapshot(old: &Arc<TrajectCorpus>, source_map: SourceMap) -> Arc<TrajectCorpus> {
+    // Carry the previous implements index (even one this snapshot itself
+    // inherited and never rebuilt) so implementor lookups keep being
+    // served during the post-refresh rebuild.
+    let carried_index = old.implements_index.read().await.clone();
+    Arc::new(TrajectCorpus {
         corpus: CorpusState {
-            registry,
+            registry: old.corpus.registry.clone(),
             source_map,
             backends: old.corpus.backends.clone(),
-            auth_file,
+            auth_file: old.corpus.auth_file.clone(),
         },
         write_target_for_source: old.write_target_for_source.clone(),
         writable_own_source_id: old.writable_own_source_id.clone(),
         overlay: old.overlay.clone(),
         body_cache: RwLock::new(BoundedBodyCache::default()),
-        implements_index: RwLock::new(None),
+        implements_index: RwLock::new(carried_index),
+        implements_index_stale: AtomicBool::new(true),
         implements_build_lock: Mutex::new(()),
+        implements_memo: old.implements_memo.clone(),
         changed_cache: old.changed_cache.clone(),
-    }))
+    })
+}
+
+/// Reconcile the read-your-writes overlay against the write-target
+/// branch at refresh time: for every overlaid law, read the file the
+/// save wrote (the writable-own branch for federated laws, the law's own
+/// backend otherwise) and DROP the entry when the branch content no
+/// longer equals the saved body — someone else (another replica, a
+/// direct push) wrote after us, and serving their newer content restores
+/// convergence. Without this, a law once saved on this process would
+/// serve this process's body forever and every cross-replica save would
+/// 412 against content the loser can never see.
+///
+/// Cost: O(locally saved laws), one backend read per entry, every TTL
+/// window. Each backend lock is taken per entry — never across the loop
+/// — and only the write-target backend is locked (no seed lock), so the
+/// writable-own → seed lock-order invariant cannot be violated and an
+/// in-flight save is never starved.
+///
+/// Failure stance: a read error keeps the entry (can't tell whether the
+/// branch moved — keeping read-your-writes beats dropping a save on a
+/// network blip). The removal itself is compare-and-remove: an entry
+/// replaced by a concurrent `record_save` after this pass snapshotted it
+/// is left alone.
+async fn reconcile_overlay(old: &Arc<TrajectCorpus>, source_map: &SourceMap) {
+    let entries: Vec<(String, String)> = old
+        .overlay
+        .read()
+        .await
+        .iter()
+        .map(|(law_id, body)| (law_id.clone(), body.clone()))
+        .collect();
+
+    for (law_id, overlay_body) in entries {
+        // Resolve the write-target file in the NEW snapshot. A law that
+        // vanished from the index entirely gets its entry dropped too:
+        // the overlay is checked before the index, so a stale entry
+        // would otherwise keep serving a law that no longer exists.
+        let branch_body = match source_map.get_law(&law_id) {
+            None => None,
+            Some(law) => {
+                let write_source_id = old
+                    .write_target_for_source
+                    .get(&law.source_id)
+                    .cloned()
+                    .unwrap_or_else(|| law.source_id.clone());
+                let Some(entry) = old.corpus.backends.get(&write_source_id) else {
+                    // Write backend gone (shouldn't happen outside config
+                    // churn): nothing to compare against, keep the entry.
+                    continue;
+                };
+                let read = {
+                    let backend = entry.backend.lock().await;
+                    backend
+                        .read_file(std::path::Path::new(&law.relative_path))
+                        .await
+                };
+                match read {
+                    Ok(body) => body,
+                    Err(e) => {
+                        tracing::debug!(
+                            law_id = %law_id,
+                            error = %e,
+                            "overlay reconcile: branch read failed; keeping overlay entry"
+                        );
+                        continue;
+                    }
+                }
+            }
+        };
+
+        if branch_body.as_deref() == Some(overlay_body.as_str()) {
+            // Our save is still what the branch holds — keep serving it.
+            continue;
+        }
+        let mut overlay = old.overlay.write().await;
+        if overlay.get(&law_id).map(String::as_str) == Some(overlay_body.as_str()) {
+            overlay.remove(&law_id);
+            tracing::info!(
+                law_id = %law_id,
+                "overlay entry superseded by branch content; dropping so reads converge"
+            );
+        }
+    }
 }
 
 /// Build a [`GitHubApiBackend`] for a traject source — no clone, no
@@ -1118,12 +1385,23 @@ mod tests {
             overlay: Arc::new(RwLock::new(HashMap::new())),
             body_cache: RwLock::new(BoundedBodyCache::default()),
             implements_index: RwLock::new(None),
+            implements_index_stale: AtomicBool::new(false),
             implements_build_lock: Mutex::new(()),
+            implements_memo: Arc::new(RwLock::new(HashMap::new())),
             changed_cache: Arc::new(RwLock::new(None)),
         }
     }
 
     fn metadata_entry(map: &mut SourceMap, law_id: &str, source_id: &str) {
+        metadata_entry_with_sha(map, law_id, source_id, Some(&format!("sha-{law_id}-v1")));
+    }
+
+    fn metadata_entry_with_sha(
+        map: &mut SourceMap,
+        law_id: &str,
+        source_id: &str,
+        sha: Option<&str>,
+    ) {
         map.load_metadata_entry(
             law_id,
             &format!("wet/{law_id}/2025-01-01.yaml"),
@@ -1133,6 +1411,7 @@ mod tests {
             // Distinct priorities per source: equal-priority conflicts
             // across sources are a hard SourceMap error.
             if source_id == "own" { 0 } else { 1 },
+            sha,
         )
         .unwrap();
     }
@@ -1371,7 +1650,9 @@ mod tests {
             overlay: Arc::new(RwLock::new(HashMap::new())),
             body_cache: RwLock::new(BoundedBodyCache::default()),
             implements_index: RwLock::new(None),
+            implements_index_stale: AtomicBool::new(false),
             implements_build_lock: Mutex::new(()),
+            implements_memo: Arc::new(RwLock::new(HashMap::new())),
             changed_cache: Arc::new(RwLock::new(None)),
         })
     }
@@ -1388,7 +1669,11 @@ mod tests {
         write_law_file(dir.path(), "wet_a", "$id: wet_a\nname: v1\n");
         let old = local_corpus(dir.path()).await;
 
-        // A save lands in the overlay before the refresh…
+        // A save lands before the refresh: like the real `save_law`, the
+        // body is persisted to the backend AND mirrored into the overlay
+        // (the refresh's reconcile pass keeps an entry only while the
+        // branch still holds the saved body).
+        write_law_file(dir.path(), "wet_a", "$id: wet_a\nname: saved\n");
         old.record_save("wet_a".to_string(), "$id: wet_a\nname: saved\n".to_string())
             .await;
         // …and upstream gains a brand-new law the old snapshot misses.
@@ -1429,7 +1714,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn refresh_resets_the_implements_index_with_the_snapshot() {
+    async fn refresh_marks_implements_index_stale_and_rebuild_sees_new_laws() {
         let dir = tempfile::tempdir().unwrap();
         write_law_file(dir.path(), "wet_hoger", &law_body("wet_hoger", None));
         let old = local_corpus(dir.path()).await;
@@ -1450,17 +1735,187 @@ mod tests {
             .await
             .expect("local refresh must succeed");
 
-        // The refreshed snapshot rebuilds its own index and finds it; the
-        // old instance's cached index is untouched (per-snapshot).
+        // The refreshed snapshot carries the old index as stale; the
+        // first lookup rebuilds against the new snapshot and finds the
+        // new regulation. The old instance's own (fresh) index is
+        // untouched.
+        assert!(refreshed.implements_index_stale.load(Ordering::SeqCst));
         assert_eq!(
             refreshed.implementors_of("wet_hoger").await.implementors,
             vec!["regeling_a".to_string()]
         );
+        assert!(!refreshed.implements_index_stale.load(Ordering::SeqCst));
         assert!(old
             .implementors_of("wet_hoger")
             .await
             .implementors
             .is_empty());
+    }
+
+    // ---- stale-while-revalidate on the implements index ----
+
+    #[tokio::test]
+    async fn carried_stale_index_is_served_while_a_rebuild_is_in_flight() {
+        // A snapshot whose (carried) index is stale must keep answering
+        // implementor lookups from it while another task holds the build
+        // lock — the post-refresh lookup herd must never queue behind the
+        // rescan (the federated-panel hang of PR #762).
+        let mut map = SourceMap::new();
+        metadata_entry(&mut map, "regeling_a", "seed");
+        let corpus = Arc::new(test_corpus(
+            map,
+            HashMap::from([(
+                "seed".to_string(),
+                backend_entry(StubBackend::with_files(&[(
+                    "wet/regeling_a/2025-01-01.yaml",
+                    &law_body("regeling_a", Some("wet_hoger")),
+                )])),
+            )]),
+        ));
+        // Simulate the carried-over state a TTL refresh produces.
+        *corpus.implements_index.write().await = Some(Arc::new(ImplementsIndex {
+            implements_by_law: HashMap::from([(
+                "carried_regeling".to_string(),
+                vec!["wet_hoger".to_string()],
+            )]),
+            failed_law_ids: Vec::new(),
+        }));
+        corpus.implements_index_stale.store(true, Ordering::SeqCst);
+
+        // Another task is rebuilding (holds the build lock)…
+        let build_guard = corpus.implements_build_lock.lock().await;
+        // …so the lookup must serve the carried index immediately, not
+        // block on the lock.
+        let result = corpus.implementors_of("wet_hoger").await;
+        assert_eq!(result.implementors, vec!["carried_regeling".to_string()]);
+        drop(build_guard);
+
+        // With the lock free, the next lookup rebuilds from the snapshot.
+        let result = corpus.implementors_of("wet_hoger").await;
+        assert_eq!(result.implementors, vec!["regeling_a".to_string()]);
+    }
+
+    // ---- cross-snapshot implements memo ----
+
+    #[tokio::test]
+    async fn rebuild_after_refresh_skips_unchanged_bodies_via_memo() {
+        let mut map = SourceMap::new();
+        metadata_entry(&mut map, "regeling_a", "seed");
+        metadata_entry(&mut map, "wet_hoger", "seed");
+        let stub = StubBackend::with_files(&[
+            (
+                "wet/regeling_a/2025-01-01.yaml",
+                &law_body("regeling_a", Some("wet_hoger")),
+            ),
+            (
+                "wet/wet_hoger/2025-01-01.yaml",
+                &law_body("wet_hoger", None),
+            ),
+        ]);
+        let reads = stub.reads.clone();
+        let old = Arc::new(test_corpus(
+            map,
+            HashMap::from([("seed".to_string(), backend_entry(stub))]),
+        ));
+
+        // First build of the process: every body is fetched once.
+        assert_eq!(
+            old.implementors_of("wet_hoger").await.implementors,
+            vec!["regeling_a".to_string()]
+        );
+        assert_eq!(reads.load(Ordering::SeqCst), 2);
+
+        // TTL refresh with an UNCHANGED enumeration (same blob shas):
+        // the post-refresh rebuild must answer entirely from the memo —
+        // zero body fetches.
+        let mut same_map = SourceMap::new();
+        metadata_entry(&mut same_map, "regeling_a", "seed");
+        metadata_entry(&mut same_map, "wet_hoger", "seed");
+        let refreshed = next_snapshot(&old, same_map).await;
+        assert_eq!(
+            refreshed.implementors_of("wet_hoger").await.implementors,
+            vec!["regeling_a".to_string()]
+        );
+        assert_eq!(
+            reads.load(Ordering::SeqCst),
+            2,
+            "an unchanged corpus must rebuild without refetching any body"
+        );
+
+        // Next refresh where ONE law's sha moved: only that body is
+        // refetched.
+        let mut changed_map = SourceMap::new();
+        metadata_entry_with_sha(
+            &mut changed_map,
+            "regeling_a",
+            "seed",
+            Some("sha-regeling_a-v2"),
+        );
+        metadata_entry(&mut changed_map, "wet_hoger", "seed");
+        let refreshed2 = next_snapshot(&refreshed, changed_map).await;
+        assert_eq!(
+            refreshed2.implementors_of("wet_hoger").await.implementors,
+            vec!["regeling_a".to_string()]
+        );
+        assert_eq!(
+            reads.load(Ordering::SeqCst),
+            3,
+            "only the changed body may be refetched"
+        );
+    }
+
+    // ---- overlay reconciliation at refresh ----
+
+    #[tokio::test]
+    async fn refresh_drops_overlay_entry_when_branch_moved_past_the_save() {
+        let dir = tempfile::tempdir().unwrap();
+        write_law_file(dir.path(), "wet_a", "$id: wet_a\nname: v1\n");
+        let old = local_corpus(dir.path()).await;
+
+        // Save through this process: persisted + overlaid.
+        write_law_file(dir.path(), "wet_a", "$id: wet_a\nname: saved\n");
+        old.record_save("wet_a".to_string(), "$id: wet_a\nname: saved\n".to_string())
+            .await;
+
+        // Another replica / a direct push moves the branch past our save.
+        write_law_file(dir.path(), "wet_a", "$id: wet_a\nname: extern\n");
+
+        let refreshed = refresh_traject_corpus(&old, Uuid::new_v4())
+            .await
+            .expect("local refresh must succeed");
+
+        // The overlay entry was dropped (branch content differs from the
+        // saved body), so reads converge to the external content instead
+        // of pinning our stale save forever — and the next If-Match save
+        // can 412 against bytes the user can actually see.
+        assert!(!refreshed.overlay.read().await.contains_key("wet_a"));
+        assert_eq!(
+            refreshed.law_yaml("wet_a").await.unwrap().as_deref(),
+            Some("$id: wet_a\nname: extern\n")
+        );
+    }
+
+    #[tokio::test]
+    async fn refresh_keeps_overlay_entry_while_branch_matches_the_save() {
+        let dir = tempfile::tempdir().unwrap();
+        write_law_file(dir.path(), "wet_a", "$id: wet_a\nname: v1\n");
+        let old = local_corpus(dir.path()).await;
+
+        // A fresh local save: branch == overlay.
+        write_law_file(dir.path(), "wet_a", "$id: wet_a\nname: saved\n");
+        old.record_save("wet_a".to_string(), "$id: wet_a\nname: saved\n".to_string())
+            .await;
+
+        let refreshed = refresh_traject_corpus(&old, Uuid::new_v4())
+            .await
+            .expect("local refresh must succeed");
+
+        // No external write happened: read-your-writes keeps holding.
+        assert!(refreshed.overlay.read().await.contains_key("wet_a"));
+        assert_eq!(
+            refreshed.law_yaml("wet_a").await.unwrap().as_deref(),
+            Some("$id: wet_a\nname: saved\n")
+        );
     }
 }
 

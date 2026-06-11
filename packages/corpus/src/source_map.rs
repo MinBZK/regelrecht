@@ -41,6 +41,16 @@ pub struct LoadedLaw {
     /// and friends, and avoids the structural-depth heuristic that breaks
     /// when a source root is configured at an unusual location.
     pub relative_path: String,
+    /// Blob sha of the law file as reported by the source's enumeration
+    /// (the GitHub Trees API listing), for metadata-only entries. This is
+    /// the file's content identity: two enumerations reporting the same
+    /// sha are guaranteed to have byte-identical content, so callers can
+    /// reuse content-derived data across index snapshots without
+    /// re-fetching the body. `None` for eagerly-loaded entries (local
+    /// sources — the content is already present and parsed) and after
+    /// [`SourceMap::update_yaml_content`] (the in-memory content no
+    /// longer matches the enumerated blob).
+    pub content_sha: Option<String>,
     /// ID of the source that provided this law.
     pub source_id: String,
     /// Name of the source that provided this law.
@@ -174,6 +184,7 @@ impl SourceMap {
                 yaml_content: content,
                 file_path: path.display().to_string(),
                 relative_path,
+                content_sha: None,
                 source_id: source.id.clone(),
                 source_name: source.name.clone(),
                 source_priority: source.priority,
@@ -304,6 +315,7 @@ impl SourceMap {
             yaml_content: content.to_string(),
             file_path: file_path.to_string(),
             relative_path,
+            content_sha: None,
             source_id: source_id.to_string(),
             source_name: source_name.to_string(),
             source_priority,
@@ -322,6 +334,9 @@ impl SourceMap {
     /// `{base}/{layer}/{law_id}/{date}.yaml`, and the directory name equals
     /// the law's `$id`). `file_path` is the in-repo path; `source_subpath` is
     /// stripped to produce the source-root-relative path the backend reads.
+    /// `content_sha` is the blob sha the enumeration reported for the file
+    /// (see [`LoadedLaw::content_sha`]), when available.
+    #[allow(clippy::too_many_arguments)]
     pub fn load_metadata_entry(
         &mut self,
         law_id: &str,
@@ -330,6 +345,7 @@ impl SourceMap {
         source_id: &str,
         source_name: &str,
         source_priority: u32,
+        content_sha: Option<&str>,
     ) -> Result<()> {
         let relative_path = match source_subpath {
             Some(sub) if !sub.is_empty() => {
@@ -350,6 +366,7 @@ impl SourceMap {
             yaml_content: String::new(),
             file_path: file_path.to_string(),
             relative_path,
+            content_sha: content_sha.map(|s| s.to_string()),
             source_id: source_id.to_string(),
             source_name: source_name.to_string(),
             source_priority,
@@ -386,6 +403,9 @@ impl SourceMap {
         law.display_name = display_name;
         law.implements = implements;
         law.yaml_content = new_content;
+        // The in-memory content no longer matches the blob the source
+        // enumeration reported — drop the stale content identity.
+        law.content_sha = None;
         true
     }
 
@@ -941,6 +961,7 @@ mod tests {
             "traject-own-abc",
             "MinBZK/regelrecht-corpus-BES",
             0,
+            Some("blob-sha-1"),
         )
         .unwrap();
 
@@ -954,6 +975,7 @@ mod tests {
         );
         assert_eq!(law.source_id, "traject-own-abc");
         assert_eq!(law.source_priority, 0);
+        assert_eq!(law.content_sha.as_deref(), Some("blob-sha-1"));
     }
 
     #[test]
@@ -1223,6 +1245,7 @@ articles:
             "central",
             "Central",
             1,
+            None,
         )
         .unwrap();
         let law = map.get_law("some_wet").unwrap();
