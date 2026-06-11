@@ -2079,6 +2079,26 @@ impl LawExecutionService {
                 // Enter internal resolution scope for cycle detection
                 res_ctx.enter(internal_key.clone());
 
+                // Check depth limit (mirrors evaluate_law_output_internal): the
+                // visited set bounds distinct outputs, but a long non-cyclic
+                // internal chain could still overflow the stack.
+                if res_ctx.depth > config::MAX_CROSS_LAW_DEPTH {
+                    res_ctx.leave(&internal_key);
+                    res_ctx.trace_set_message(format!(
+                        "Cross-law resolution depth exceeded {} levels ({}:{})",
+                        config::MAX_CROSS_LAW_DEPTH,
+                        law.id,
+                        output_name
+                    ));
+                    return Err(EngineError::CircularReference(format!(
+                        "Cross-law resolution depth exceeded {} levels. \
+                         Possible circular reference involving {}:{}",
+                        config::MAX_CROSS_LAW_DEPTH,
+                        law.id,
+                        output_name
+                    )));
+                }
+
                 let eval_result = self.evaluate_article_with_service(
                     ref_article,
                     law,
@@ -2771,6 +2791,137 @@ articles:
             "Expected CircularReference error, got: {:?}",
             result
         );
+    }
+
+    #[test]
+    fn test_service_internal_diamond_reference_succeeds() {
+        // Legitimate diamond, no cycle: two inputs of article 1 both source
+        // the SAME output of article 2. The cycle guard must not produce a
+        // false positive here (the visited key is released between siblings).
+        let law = r#"
+$id: internal_diamond_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Sums the same output of article 2 twice
+    machine_readable:
+      execution:
+        input:
+          - name: left
+            type: number
+            source:
+              output: shared_value
+          - name: right
+            type: number
+            source:
+              output: shared_value
+        output:
+          - name: combined
+            type: number
+        actions:
+          - output: combined
+            operation: ADD
+            values:
+              - $left
+              - $right
+  - number: '2'
+    text: Provides a shared value
+    machine_readable:
+      execution:
+        output:
+          - name: shared_value
+            type: number
+        actions:
+          - output: shared_value
+            value: 21
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "internal_diamond_law",
+                "combined",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .expect("diamond-shaped internal references must not be flagged as circular");
+
+        assert_eq!(result.outputs.get("combined"), Some(&Value::Int(42)));
+    }
+
+    #[test]
+    fn test_service_internal_deep_chain_depth_limit() {
+        // A linear (non-cyclic) chain of internal references longer than
+        // MAX_CROSS_LAW_DEPTH must hit the depth limit instead of recursing
+        // until the stack overflows.
+        let chain_len = config::MAX_CROSS_LAW_DEPTH + 5;
+        let mut yaml = String::from(
+            "$id: internal_deep_chain_law\n\
+             regulatory_layer: WET\n\
+             publication_date: '2025-01-01'\n\
+             articles:\n",
+        );
+        for i in 0..chain_len {
+            yaml.push_str(&format!(
+                r#"  - number: '{num}'
+    text: Chain link {num}
+    machine_readable:
+      execution:
+        input:
+          - name: from_next
+            type: number
+            source:
+              output: value_{next}
+        output:
+          - name: value_{num}
+            type: number
+        actions:
+          - output: value_{num}
+            value: $from_next
+"#,
+                num = i,
+                next = i + 1
+            ));
+        }
+        // Terminal article: a literal value, no further references.
+        yaml.push_str(&format!(
+            r#"  - number: '{num}'
+    text: Chain terminal
+    machine_readable:
+      execution:
+        output:
+          - name: value_{num}
+            type: number
+        actions:
+          - output: value_{num}
+            value: 1
+"#,
+            num = chain_len
+        ));
+
+        let mut service = LawExecutionService::new();
+        service.load_law(&yaml).unwrap();
+
+        let result = service.evaluate_law_output(
+            "internal_deep_chain_law",
+            "value_0",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
+
+        match result {
+            Err(EngineError::CircularReference(msg)) => {
+                assert!(
+                    msg.contains("depth exceeded"),
+                    "Expected depth-exceeded error, got: {}",
+                    msg
+                );
+            }
+            other => panic!("Expected CircularReference depth error, got: {:?}", other),
+        }
     }
 
     // -------------------------------------------------------------------------
