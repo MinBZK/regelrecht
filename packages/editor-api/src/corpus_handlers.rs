@@ -2670,8 +2670,11 @@ mod tests {
 
     #[test]
     fn law_save_absent_if_match_is_permissive() {
-        // Backward compatibility: a client that never sent an `If-Match`
-        // (older frontend, curl) keeps the blind last-write-wins save.
+        // `check_if_match` with `if_match = None` is a no-op (that path is
+        // exercised in production by `enforce_if_match` on the document
+        // route); `save_law`/`save_scenario` skip the call entirely when the
+        // header is absent, which is what keeps older clients (frontend
+        // without etag plumbing, curl) on the blind last-write-wins save.
         let current = "$id: wet\nname: v1\n";
         let etag = check_if_match(Some(current), None, "Wet").unwrap();
         assert_eq!(etag.as_deref(), Some(document_etag(current).as_str()));
