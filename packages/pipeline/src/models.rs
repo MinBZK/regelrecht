@@ -110,6 +110,9 @@ pub struct Job {
     pub updated_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
+    /// Earliest moment the job may be claimed. `None` means claimable
+    /// immediately; set by the retry-backoff logic in `fail_job`.
+    pub scheduled_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
