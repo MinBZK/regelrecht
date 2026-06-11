@@ -21,8 +21,11 @@ pub const HTTP_TIMEOUT_SECS: u64 = 30;
 pub const DEFAULT_MAX_RESPONSE_SIZE: u64 = 100 * 1024 * 1024;
 
 /// Schema URL for regelrecht YAML files.
+///
+/// Uses the immutable tag form (RFC-013), matching the convention in
+/// `corpus/regulation/`, so harvested files never point at a moving target.
 pub const SCHEMA_URL: &str =
-    "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.2/schema.json";
+    "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.3/schema/v0.5.3/schema.json";
 
 /// Text wrap width for YAML output.
 /// Accounts for up to 6 spaces of YAML block scalar indent (125 - 6 = 119, with margin).

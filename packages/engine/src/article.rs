@@ -271,6 +271,16 @@ pub enum ActionOperation {
     },
     #[serde(rename = "DAY_OF_WEEK")]
     DayOfWeek { date: ActionValue },
+    #[serde(rename = "DATE_DIFF")]
+    DateDiff {
+        from: ActionValue,
+        to: ActionValue,
+        /// Unit the difference is expressed in: "days", "months", or "years".
+        /// Named `in` in YAML so the operation reads as one clause
+        /// ("date diff from X to Y in days").
+        #[serde(rename = "in")]
+        unit: ActionValue,
+    },
 }
 
 impl ActionOperation {
@@ -302,6 +312,7 @@ impl ActionOperation {
             ActionOperation::DateAdd { .. } => "DATE_ADD",
             ActionOperation::Date { .. } => "DATE",
             ActionOperation::DayOfWeek { .. } => "DAY_OF_WEEK",
+            ActionOperation::DateDiff { .. } => "DATE_DIFF",
         }
     }
 }

@@ -1,0 +1,72 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.3/schema/v0.5.3/schema.json
+$id: test_date_operations
+name: Testwet datumoperaties
+regulatory_layer: WET
+bwb_id: BWBR9999902
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/test_date_operations
+
+articles:
+  - number: '1'
+    url: https://example.com/test_date_operations/1
+    text: >-
+      Een verzoek is tijdig ingediend wanneer de indieningsdatum op of voor de
+      peildatum valt, en is op de peildatum ingediend wanneer de
+      indieningsdatum gelijk is aan de peildatum. De doorlooptijd is het
+      aantal dagen, dan wel het aantal gehele maanden of jaren, tussen de
+      indieningsdatum en de peildatum.
+    machine_readable:
+      execution:
+        parameters:
+          - name: indieningsdatum
+            type: date
+            required: true
+            description: Datum waarop het verzoek is ingediend
+        output:
+          - name: tijdig_ingediend
+            type: boolean
+          - name: op_peildatum_ingediend
+            type: boolean
+          - name: doorlooptijd_dagen
+            type: number
+          - name: doorlooptijd_maanden
+            type: number
+          - name: doorlooptijd_jaren
+            type: number
+        actions:
+          # RFC-020 route A: type-safe comparison of two dates.
+          # $referencedate.iso is the peildatum (calculation date).
+          - output: tijdig_ingediend
+            value:
+              operation: LESS_THAN_OR_EQUAL
+              subject: $indieningsdatum
+              value: $referencedate.iso
+          # RFC-020 route A: date-aware EQUALS in the mixed form — a date
+          # string against the $referencedate object (no .iso suffix).
+          - output: op_peildatum_ingediend
+            value:
+              operation: EQUALS
+              subject: $indieningsdatum
+              value: $referencedate
+          # RFC-020 route B: DATE_DIFF with an explicit unit.
+          - output: doorlooptijd_dagen
+            value:
+              operation: DATE_DIFF
+              from: $indieningsdatum
+              to: $referencedate.iso
+              in: days
+          - output: doorlooptijd_maanden
+            value:
+              operation: DATE_DIFF
+              from: $indieningsdatum
+              to: $referencedate.iso
+              in: months
+          - output: doorlooptijd_jaren
+            value:
+              operation: DATE_DIFF
+              from: $indieningsdatum
+              to: $referencedate.iso
+              in: years
