@@ -176,6 +176,12 @@ export function useDependencies() {
       implementorsKey = null;
       return;
     }
+    if (!Array.isArray(implementors)) {
+      // A 200 with a non-array body (proxy error page parsed as JSON, null)
+      // must stay retryable, like any other failed scan.
+      implementorsKey = null;
+      return;
+    }
     for (const implId of implementors) {
       try {
         if (!engine.hasLaw(implId)) {
