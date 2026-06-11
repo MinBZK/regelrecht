@@ -98,4 +98,56 @@ describe('useScenarios optimistic concurrency', () => {
     ).rejects.toThrow(/door iemand anders gewijzigd/i);
     expect(sc.saveError.value?.message).toMatch(/herlaad/i);
   });
+
+  it('does not chain the etag or content across a law switch mid-save', async () => {
+    // Scenario filenames recur across laws (`basis.feature` exists for
+    // both wet_a and wet_b). An in-flight save of wet_a's copy must not
+    // re-insert its ETag into the map after the watch cleared it for
+    // wet_b, or wet_b's next save carries a foreign If-Match → 412.
+    let resolvePut;
+    const putGate = new Promise((resolve) => { resolvePut = resolve; });
+    const calls = [];
+    globalThis.fetch = vi.fn().mockImplementation(async (url, opts) => {
+      calls.push({ url, opts: opts ?? {} });
+      if (opts?.method === 'PUT') {
+        await putGate;
+        return res({ etag: '"a2"', json: { pr: null, etag: '"a2"' } });
+      }
+      if (url.endsWith('/scenarios')) {
+        return res({ json: [{ filename: 'basis.feature' }] });
+      }
+      if (url.includes('/laws/wet_b/')) {
+        return res({ body: 'Feature: b1\n', etag: '"b1"' });
+      }
+      return res({ body: 'Feature: a1\n', etag: '"a1"' });
+    });
+
+    const lawId = ref('wet_a');
+    const sc = useScenarios(lawId, ref('tr-12345678'));
+    await waitForScenario(sc, 'basis.feature');
+    expect(sc.featureText.value).toBe('Feature: a1\n');
+
+    // Kick off the save, then switch laws while the PUT is in flight.
+    const save = sc.saveScenario('basis.feature', 'Feature: a2\n');
+    lawId.value = 'wet_b';
+    await vi.waitFor(() => {
+      expect(sc.featureText.value).toBe('Feature: b1\n');
+    });
+
+    resolvePut();
+    await save;
+
+    // The stale completion must not overwrite the new law's content…
+    expect(sc.featureText.value).toBe('Feature: b1\n');
+
+    // …nor poison the new law's etag map: saving wet_b's same-named
+    // scenario sends the ETag wet_b's read returned, not the old
+    // save's chained one.
+    await sc.saveScenario('basis.feature', 'Feature: b2\n');
+    const puts = calls.filter((c) => c.opts?.method === 'PUT');
+    expect(puts[1].url).toBe(
+      '/api/trajects/tr-12345678/corpus/laws/wet_b/scenarios/basis.feature',
+    );
+    expect(puts[1].opts.headers['If-Match']).toBe('"b1"');
+  });
 });

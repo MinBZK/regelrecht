@@ -143,14 +143,16 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
       currentEtag.value = res.headers.get('ETag');
       const resolvedId = law.value?.$id || lawParam;
       const key = lawCacheKey(currentTrajectRef, resolvedId);
-      if (!lawCache.has(key)) {
-        lawCache.set(key, {
-          law: law.value,
-          rawYaml: text,
-          lawName: resolveLawName(law.value),
-          etag: currentEtag.value,
-        });
-      }
+      // Always overwrite: `load()` just fetched fresh content, so any
+      // pre-existing entry is by definition stale (older body and/or
+      // ETag) — keeping it would hand `fetchLaw`/`switchLaw` callers
+      // outdated YAML and a precondition doomed to 412.
+      lawCache.set(key, {
+        law: law.value,
+        rawYaml: text,
+        lawName: resolveLawName(law.value),
+        etag: currentEtag.value,
+      });
       touchLawCache(key);
       if (articles.value.length > 0 && !selectedArticleNumber.value) {
         if (initialArticle && articles.value.some(a => String(a.number) === initialArticle)) {
