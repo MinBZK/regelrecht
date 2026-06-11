@@ -2045,6 +2045,21 @@ impl LawExecutionService {
                 res_ctx
                     .trace_set_message(format!("Internal reference: {}#{}", law.id, output_name));
 
+                // Cycle detection: check if this internal output is already being
+                // resolved. Use \0 as separator to prevent key collisions, and an
+                // "internal:" prefix to keep keys distinct from external references.
+                let internal_key = format!("internal:{}\0{}", law.id, output_name);
+                if res_ctx.is_visited(&internal_key) {
+                    res_ctx.trace_set_message(format!(
+                        "Circular internal reference detected: {}#{} is already being resolved",
+                        law.id, output_name
+                    ));
+                    return Err(EngineError::CircularReference(format!(
+                        "Circular internal reference: output '{}' in {} is already being resolved",
+                        output_name, law.id
+                    )));
+                }
+
                 let ref_article = match law.find_article_by_output(output_name) {
                     Some(a) => a,
                     None => {
@@ -2060,14 +2075,23 @@ impl LawExecutionService {
                 };
 
                 let ref_params = parameters.clone();
-                let result = match self.evaluate_article_with_service(
+
+                // Enter internal resolution scope for cycle detection
+                res_ctx.enter(internal_key.clone());
+
+                let eval_result = self.evaluate_article_with_service(
                     ref_article,
                     law,
                     ref_params,
                     Some(output_name),
                     "BESLUIT",
                     res_ctx,
-                ) {
+                );
+
+                // Leave scope (even on error, for correct cycle tracking)
+                res_ctx.leave(&internal_key);
+
+                let result = match eval_result {
                     Ok(r) => r,
                     Err(e) => {
                         res_ctx.trace_set_message(format!("Internal reference failed: {}", e));
@@ -2609,6 +2633,138 @@ articles:
 
         let result =
             service.evaluate_law_output("law_a", "output_a", BTreeMap::new(), "2025-01-01");
+
+        assert!(
+            matches!(result, Err(EngineError::CircularReference(_))),
+            "Expected CircularReference error, got: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_service_internal_circular_reference() {
+        // Same-law cycle: article 1's input sources article 2's output,
+        // and article 2's input sources article 1's output.
+        // Previously this recursed unbounded and crashed with a stack overflow.
+        let law = r#"
+$id: internal_cycle_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: References output of article 2
+    machine_readable:
+      execution:
+        input:
+          - name: from_b
+            type: number
+            source:
+              output: output_b
+        output:
+          - name: output_a
+            type: number
+        actions:
+          - output: output_a
+            value: $from_b
+  - number: '2'
+    text: References output of article 1
+    machine_readable:
+      execution:
+        input:
+          - name: from_a
+            type: number
+            source:
+              output: output_a
+        output:
+          - name: output_b
+            type: number
+        actions:
+          - output: output_b
+            value: $from_a
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service.evaluate_law_output(
+            "internal_cycle_law",
+            "output_a",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
+
+        assert!(
+            matches!(result, Err(EngineError::CircularReference(_))),
+            "Expected CircularReference error, got: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_service_internal_circular_reference_indirect() {
+        // Indirect same-law cycle across three articles:
+        // article 1 -> article 2 -> article 3 -> article 1.
+        let law = r#"
+$id: internal_cycle_law_3
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: References output of article 2
+    machine_readable:
+      execution:
+        input:
+          - name: from_b
+            type: number
+            source:
+              output: output_b
+        output:
+          - name: output_a
+            type: number
+        actions:
+          - output: output_a
+            value: $from_b
+  - number: '2'
+    text: References output of article 3
+    machine_readable:
+      execution:
+        input:
+          - name: from_c
+            type: number
+            source:
+              output: output_c
+        output:
+          - name: output_b
+            type: number
+        actions:
+          - output: output_b
+            value: $from_c
+  - number: '3'
+    text: References output of article 1
+    machine_readable:
+      execution:
+        input:
+          - name: from_a
+            type: number
+            source:
+              output: output_a
+        output:
+          - name: output_c
+            type: number
+        actions:
+          - output: output_c
+            value: $from_a
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service.evaluate_law_output(
+            "internal_cycle_law_3",
+            "output_a",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
 
         assert!(
             matches!(result, Err(EngineError::CircularReference(_))),
