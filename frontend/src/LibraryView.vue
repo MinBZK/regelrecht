@@ -7,20 +7,14 @@ import MachineReadable from './components/MachineReadable.vue';
 import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
-import TrajectMenu from './components/TrajectMenu.vue';
-import TrajectDocuments from './components/TrajectDocuments.vue';
 import { useAuth } from './composables/useAuth.js';
 import { lawFetchError } from './composables/useLaw.js';
-import { useFeatureFlags } from './composables/useFeatureFlags.js';
-import { useColorScheme } from './composables/useColorScheme.js';
 import { useTrajects } from './composables/useTrajects.js';
 import { lawsListUrl, lawUrl, changedLawsUrl } from './composables/corpusUrls.js';
 import { SUPPORT_EMAIL } from './constants.js';
-import { lastEditorPath, sectionTarget } from './composables/useLastVisitedRoute.js';
+import { openSearch, registerSearchPopover } from './composables/useAppChrome.js';
 
-const { authenticated, loading: authLoading, oidcConfigured, person, login, logout } = useAuth();
-const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
-const { colorScheme, setColorScheme } = useColorScheme();
+const { authenticated } = useAuth();
 
 // Library home title (sidebar header + home heading) and the label of
 // the back-button that returns to it from underlying pages. They differ
@@ -28,21 +22,6 @@ const { colorScheme, setColorScheme } = useColorScheme();
 // reads more naturally as "Home".
 const LIBRARY_HOME_TITLE = 'RegelRecht';
 const LIBRARY_HOME_BACK_TEXT = 'Home';
-
-const colorSchemeOptions = [
-  ['auto', 'Systeem'],
-  ['light', 'Licht'],
-  ['dark', 'Donker'],
-];
-
-// Kept in sync with EditorApp.editorPanelFlags so toggling from the library
-// affects the editor the next time it mounts.
-const editorPanelFlags = [
-  ['panel.article_text', 'Tekst editor'],
-  ['panel.machine_readable', 'Machine editor'],
-  ['panel.scenario_form', 'Scenario editor'],
-  ['panel.yaml_editor', 'YAML editor'],
-];
 
 const route = useRoute();
 const router = useRouter();
@@ -66,21 +45,6 @@ function editorRouteFor(lawIdVal, articleNumber) {
     : { name: 'editor', params: { lawId: lawIdVal, articleNumber } };
 }
 
-// Tab-bar state + cross-section navigation. The Bibliotheek/Editor tabs
-// must light up for both the plain and traject-scoped route variants, and
-// switching to the Editor tab must carry the active traject across (see
-// sectionTarget).
-const isLibraryRoute = computed(
-  () => route.name === 'library' || route.name === 'library-traject',
-);
-// The Editor tab is never the active tab while LibraryApp is mounted
-// (this component only serves the library routes), so it needs no
-// `:selected` binding — only the cross-section target/href below.
-const editorTabTarget = computed(() =>
-  sectionTarget(router, lastEditorPath.value, activeTrajectRef.value),
-);
-const editorTabHref = computed(() => router.resolve(editorTabTarget.value).href);
-
 const laws = ref([]);
 const favorites = ref(null);
 // Law ids edited in the active traject (branch-vs-base diff). `null` until
@@ -89,24 +53,10 @@ const changedLawIds = ref(null);
 const loading = ref(true);
 const indexError = ref(null);
 const searchPopoverRef = ref(null);
-
-function openSearch(e, initialSearch = '') {
-  searchPopoverRef.value?.show(e?.currentTarget, initialSearch);
-}
-
-/**
- * Spotlight-style: any printable single-character keystroke on the bar's
- * search-field opens the popover with that character as the initial query.
- * preventDefault keeps the character out of the bar's own input — popover
- * shows it instead. Modifier-combos (Ctrl-A, Cmd-V, etc.), Tab, Enter,
- * arrows etc. fall through (length !== 1).
- */
-function onBarSearchKeydown(e) {
-  if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-    e.preventDefault();
-    openSearch(e, e.key);
-  }
-}
+// The toolbar search control lives in the AppShell; register our popover so
+// the shell's search button/field opens it. `openSearch` is imported from the
+// chrome store for the in-body "Zoeken" button below.
+registerSearchPopover(searchPopoverRef);
 
 const selectedLawId = ref(null);
 const selectedLaw = shallowRef(null);
@@ -608,113 +558,6 @@ watch(activeTrajectRef, () => {
 </script>
 
 <template>
-  <nldd-app-view>
-    <nldd-bar-split-view>
-      <!-- Primary Bar: md only — search and settings as buttons -->
-      <nldd-split-view-pane slot="primary-bar-md" only="md">
-        <nldd-container padding="8">
-          <nldd-toolbar size="md">
-            <nldd-toolbar-item slot="start">
-              <nldd-tab-bar size="md" navigation>
-                <nldd-tab-bar-item :selected="isLibraryRoute || undefined" text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :href="editorTabHref" @click.prevent="router.push(editorTabTarget)" text="Editor"></nldd-tab-bar-item>
-              </nldd-tab-bar>
-            </nldd-toolbar-item>
-            <nldd-toolbar-item slot="end">
-              <nldd-button size="md" start-icon="search" text="Zoeken" @click="openSearch"></nldd-button>
-            </nldd-toolbar-item>
-            <nldd-toolbar-item slot="end">
-              <TrajectMenu id-suffix="lib-md" />
-            </nldd-toolbar-item>
-            <nldd-toolbar-item slot="end">
-              <nldd-button id="settings-menu-btn-md" size="md" start-icon="global-settings" text="Instellingen" expandable popovertarget="settings-menu-md"></nldd-button>
-              <nldd-menu id="settings-menu-md" anchor="settings-menu-btn-md">
-                <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
-                <nldd-menu-group text="Functies">
-                <nldd-menu-item
-                  v-for="[key, label] in editorPanelFlags"
-                  :key="key"
-                  type="checkbox"
-                  :selected="isEnabled(key) || undefined"
-                  :text="label"
-                  @select="toggleFlag(key)"
-                ></nldd-menu-item>
-                </nldd-menu-group>
-                <nldd-menu-group text="Thema">
-                <nldd-menu-item
-                  v-for="[value, label] in colorSchemeOptions"
-                  :key="`scheme-md-${value}`"
-                  type="radio"
-                  :selected="colorScheme === value || undefined"
-                  :text="label"
-                  @select="setColorScheme(value)"
-                ></nldd-menu-item>
-                </nldd-menu-group>
-                <nldd-menu-divider></nldd-menu-divider>
-                <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
-                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
-              </nldd-menu>
-            </nldd-toolbar-item>
-          </nldd-toolbar>
-        </nldd-container>
-      </nldd-split-view-pane>
-
-      <!-- Primary Bar: lg+ — search as input field in center slot -->
-      <nldd-split-view-pane slot="primary-bar-lg" above="lg">
-        <nldd-container padding="8">
-          <nldd-toolbar size="md">
-            <nldd-toolbar-item slot="start">
-              <nldd-tab-bar size="md" navigation>
-                <nldd-tab-bar-item :selected="isLibraryRoute || undefined" text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :href="editorTabHref" @click.prevent="router.push(editorTabTarget)" text="Editor"></nldd-tab-bar-item>
-              </nldd-tab-bar>
-            </nldd-toolbar-item>
-            <nldd-toolbar-item slot="center" min-width="240px" width="33%">
-              <nldd-search-field
-                size="md"
-                placeholder="Zoeken"
-                @click="openSearch"
-                @keydown="onBarSearchKeydown"
-              ></nldd-search-field>
-            </nldd-toolbar-item>
-            <nldd-toolbar-item slot="end">
-              <TrajectMenu id-suffix="lib-lg" />
-            </nldd-toolbar-item>
-            <nldd-toolbar-item slot="end">
-              <nldd-button id="settings-menu-btn-lg" size="md" start-icon="global-settings" text="Instellingen" expandable popovertarget="settings-menu-lg"></nldd-button>
-              <nldd-menu id="settings-menu-lg" anchor="settings-menu-btn-lg">
-                <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
-                <nldd-menu-group text="Functies">
-                <nldd-menu-item
-                  v-for="[key, label] in editorPanelFlags"
-                  :key="key"
-                  type="checkbox"
-                  :selected="isEnabled(key) || undefined"
-                  :text="label"
-                  @select="toggleFlag(key)"
-                ></nldd-menu-item>
-                </nldd-menu-group>
-                <nldd-menu-group text="Thema">
-                <nldd-menu-item
-                  v-for="[value, label] in colorSchemeOptions"
-                  :key="`scheme-lg-${value}`"
-                  type="radio"
-                  :selected="colorScheme === value || undefined"
-                  :text="label"
-                  @select="setColorScheme(value)"
-                ></nldd-menu-item>
-                </nldd-menu-group>
-                <nldd-menu-divider></nldd-menu-divider>
-                <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
-                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
-              </nldd-menu>
-            </nldd-toolbar-item>
-          </nldd-toolbar>
-        </nldd-container>
-      </nldd-split-view-pane>
-
-      <!-- Main: Navigation Split View -->
-      <nldd-split-view-pane slot="main">
         <nldd-navigation-split-view @back="onPaneBack">
 
           <!-- Sidebar hidden on corpus load failure so the main pane carries the error alone (mirrors law-load failure pattern). -->
@@ -913,63 +756,6 @@ watch(activeTrajectRef, () => {
           </nldd-split-view-pane>
 
         </nldd-navigation-split-view>
-      </nldd-split-view-pane>
-
-      <!-- Mobile Bar (sm only): tab bar + icon-buttons for search and settings -->
-      <nldd-split-view-pane slot="mobile-bar" only="sm">
-        <nldd-container padding="8">
-          <nldd-toolbar size="md">
-            <nldd-toolbar-item slot="start">
-              <nldd-tab-bar variant="compact" navigation>
-                <nldd-tab-bar-item :selected="isLibraryRoute || undefined" icon="books" text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :href="editorTabHref" @click.prevent="router.push(editorTabTarget)" icon="edit" text="Editor"></nldd-tab-bar-item>
-              </nldd-tab-bar>
-            </nldd-toolbar-item>
-            <nldd-toolbar-item slot="end">
-              <span>
-                <nldd-icon-button size="lg" icon="search" text="Zoeken" @click="openSearch"></nldd-icon-button>
-              </span>
-            </nldd-toolbar-item>
-            <nldd-toolbar-item slot="end">
-              <TrajectMenu id-suffix="lib-sm" />
-            </nldd-toolbar-item>
-            <nldd-toolbar-item slot="end">
-              <span>
-                <nldd-icon-button id="settings-menu-btn-sm" size="lg" icon="global-settings" text="Instellingen" popovertarget="settings-menu-sm"></nldd-icon-button>
-              </span>
-              <nldd-menu id="settings-menu-sm" anchor="settings-menu-btn-sm">
-                <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
-                <nldd-menu-group text="Functies">
-                <nldd-menu-item
-                  v-for="[key, label] in editorPanelFlags"
-                  :key="key"
-                  type="checkbox"
-                  :selected="isEnabled(key) || undefined"
-                  :text="label"
-                  @select="toggleFlag(key)"
-                ></nldd-menu-item>
-                </nldd-menu-group>
-                <nldd-menu-group text="Thema">
-                <nldd-menu-item
-                  v-for="[value, label] in colorSchemeOptions"
-                  :key="`scheme-sm-${value}`"
-                  type="radio"
-                  :selected="colorScheme === value || undefined"
-                  :text="label"
-                  @select="setColorScheme(value)"
-                ></nldd-menu-item>
-                </nldd-menu-group>
-                <nldd-menu-divider></nldd-menu-divider>
-                <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
-                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
-              </nldd-menu>
-            </nldd-toolbar-item>
-          </nldd-toolbar>
-        </nldd-container>
-      </nldd-split-view-pane>
-    </nldd-bar-split-view>
-  </nldd-app-view>
-
   <!-- LibraryApp is a read-only browser; ActionSheet is mounted without editable
        so the output field is hidden and the footer button just closes the sheet. -->
   <ActionSheet :action="activeAction" :article="selectedArticle" :editable="false" @close="activeAction = null" @save="activeAction = null" @edit="editInEditor" />
@@ -978,8 +764,6 @@ watch(activeTrajectRef, () => {
     @select-law="(lawId) => selectLaw(lawId, true)"
     @harvest-available="onHarvestAvailable"
   />
-  <!-- Traject-documents browser sheet + edit window, opened from TrajectMenu. -->
-  <TrajectDocuments />
 </template>
 
 <style>
