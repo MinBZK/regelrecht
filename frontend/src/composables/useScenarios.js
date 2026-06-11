@@ -15,6 +15,17 @@ import { ref, watch } from 'vue';
 import { getEditorSessionId, lastSavedPr, sanitizeSavedPr } from './useEditorSession.js';
 import { requireTraject, scenarioFileUrl, scenariosListUrl } from './corpusUrls.js';
 
+/**
+ * True when the scenario file declares execution targets and none of
+ * them is the opened law — running it would evaluate a different law.
+ * Files without a parseable execution step (`target_law_ids` empty)
+ * count as "unknown", not as a mismatch.
+ */
+export function isScenarioMismatch(entry, lawId) {
+  const targets = entry?.target_law_ids || [];
+  return targets.length > 0 && !targets.includes(lawId);
+}
+
 export function useScenarios(lawId, trajectRef = ref(null)) {
   const scenarios = ref([]);
   const selectedScenario = ref(null);
@@ -50,9 +61,15 @@ export function useScenarios(lawId, trajectRef = ref(null)) {
       }
       scenarios.value = await res.json();
 
-      // Auto-select first scenario
+      // Auto-select the first scenario that actually targets this law;
+      // fall back to the first file when none match (or targets are
+      // unknown). Folder placement is no longer the source of truth for
+      // the law↔scenario binding — the file's execution steps are.
       if (scenarios.value.length > 0 && !selectedScenario.value) {
-        await selectScenario(scenarios.value[0].filename);
+        const preferred =
+          scenarios.value.find((s) => !isScenarioMismatch(s, lawId.value)) ||
+          scenarios.value[0];
+        await selectScenario(preferred.filename);
       }
     } catch (e) {
       error.value = e;
