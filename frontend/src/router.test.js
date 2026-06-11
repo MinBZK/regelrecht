@@ -8,10 +8,10 @@ const REF = 'mijn-traject-1a2b3c4d';
 
 describe('route disambiguation (traject vs no-traject)', () => {
   it('routes a {slug}-{8hex} library URL to library-traject', () => {
-    const r = router.resolve(`/library/${REF}/zorgtoeslagwet/3`);
+    const r = router.resolve(`/library/${REF}/wet_op_de_zorgtoeslag/3`);
     expect(r.name).toBe('library-traject');
     expect(r.params.trajectRef).toBe(REF);
-    expect(r.params.lawId).toBe('zorgtoeslagwet');
+    expect(r.params.lawId).toBe('wet_op_de_zorgtoeslag');
     expect(r.params.articleNumber).toBe('3');
   });
 

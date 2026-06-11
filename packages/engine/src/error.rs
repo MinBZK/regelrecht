@@ -316,9 +316,9 @@ mod tests {
         assert_eq!(external.to_string(), "Variable not found: user_age");
 
         // Law IDs are safe to expose
-        let internal = EngineError::LawNotFound("zorgtoeslagwet".to_string());
+        let internal = EngineError::LawNotFound("wet_op_de_zorgtoeslag".to_string());
         let external: ExternalError = internal.into();
-        assert_eq!(external.to_string(), "Law not found: zorgtoeslagwet");
+        assert_eq!(external.to_string(), "Law not found: wet_op_de_zorgtoeslag");
     }
 
     #[test]

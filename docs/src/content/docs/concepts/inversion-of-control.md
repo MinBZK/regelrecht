@@ -43,7 +43,7 @@ This says: "I need a value called `standaardpremie`. The minister should set it 
 # valid_from: 2025-01-01
 machine_readable:
   implements:
-    - law: zorgtoeslagwet
+    - law: wet_op_de_zorgtoeslag
       article: '4'
       open_term: standaardpremie
       gelet_op: Gelet op artikel 4 van de Wet op de zorgtoeslag

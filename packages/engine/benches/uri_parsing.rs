@@ -11,7 +11,7 @@ fn bench_parse_regelrecht_uri(c: &mut Criterion) {
     group.bench_function("regelrecht_uri_with_field", |b| {
         b.iter(|| {
             RegelrechtUri::parse(black_box(
-                "regelrecht://zorgtoeslagwet/bereken_zorgtoeslag#heeft_recht_op_zorgtoeslag",
+                "regelrecht://wet_op_de_zorgtoeslag/bereken_zorgtoeslag#heeft_recht_op_zorgtoeslag",
             ))
         })
     });
@@ -36,7 +36,7 @@ fn bench_uri_builder(c: &mut Criterion) {
 
     group.bench_function("build_string", |b| {
         b.iter(|| {
-            RegelrechtUriBuilder::new("zorgtoeslagwet", "bereken_zorgtoeslag")
+            RegelrechtUriBuilder::new("wet_op_de_zorgtoeslag", "bereken_zorgtoeslag")
                 .with_field("heeft_recht_op_zorgtoeslag")
                 .build()
         })
@@ -44,7 +44,7 @@ fn bench_uri_builder(c: &mut Criterion) {
 
     group.bench_function("build_parsed", |b| {
         b.iter(|| {
-            RegelrechtUriBuilder::new("zorgtoeslagwet", "bereken_zorgtoeslag")
+            RegelrechtUriBuilder::new("wet_op_de_zorgtoeslag", "bereken_zorgtoeslag")
                 .with_field("heeft_recht_op_zorgtoeslag")
                 .build_parsed()
         })

@@ -10,7 +10,7 @@ annotations:
     motivation: linking
     creator: Dienst Toeslagen
     target:
-      source: regelrecht://zorgtoeslagwet
+      source: regelrecht://wet_op_de_zorgtoeslag
       selector:
         type: TextQuoteSelector
         exact: zorgtoeslag
@@ -18,7 +18,7 @@ annotations:
         suffix: ' ter grootte van dat verschil'
     body:
       type: SpecificResource
-      source: regelrecht://zorgtoeslagwet/hoogte_zorgtoeslag
+      source: regelrecht://wet_op_de_zorgtoeslag/hoogte_zorgtoeslag
       purpose: linking
     resolution: found
     workflow: resolved
@@ -28,7 +28,7 @@ annotations:
     motivation: commenting
     creator: J. de Vries
     target:
-      source: regelrecht://zorgtoeslagwet
+      source: regelrecht://wet_op_de_zorgtoeslag
       selector:
         type: TextQuoteSelector
         exact: normpremie
@@ -52,7 +52,7 @@ annotations:
     motivation: questioning
     creator: interpreter-team
     target:
-      source: regelrecht://zorgtoeslagwet
+      source: regelrecht://wet_op_de_zorgtoeslag
       selector:
         type: TextQuoteSelector
         exact: ministeriële regeling
@@ -81,7 +81,7 @@ annotations:
     motivation: questioning
     creator: interpreter-team
     target:
-      source: regelrecht://zorgtoeslagwet
+      source: regelrecht://wet_op_de_zorgtoeslag
       selector:
         type: TextQuoteSelector
         exact: 4,273 procent

@@ -80,7 +80,7 @@ Callers must explicitly list the outputs they need. There's no "return all" mode
 ```rust
 // Request multiple outputs
 let result = service.evaluate_law(
-    "zorgtoeslagwet",
+    "wet_op_de_zorgtoeslag",
     &["heeft_recht_op_zorgtoeslag", "hoogte_zorgtoeslag"],
     params,
     "2025-01-01",
@@ -90,7 +90,7 @@ let result = service.evaluate_law(
 
 // Single-output convenience (equivalent to evaluate_law with one output)
 let result = service.evaluate_law_output(
-    "zorgtoeslagwet", "hoogte_zorgtoeslag", params, "2025-01-01",
+    "wet_op_de_zorgtoeslag", "hoogte_zorgtoeslag", params, "2025-01-01",
 )?;
 ```
 
@@ -113,7 +113,7 @@ The `output_provenance` field appears in `ArticleResult`, WASM results, CLI outp
 ```javascript
 // Multiple outputs
 const result = engine.executeMultiple(
-    'zorgtoeslagwet',
+    'wet_op_de_zorgtoeslag',
     ['heeft_recht_op_zorgtoeslag', 'hoogte_zorgtoeslag'],
     { bsn: '999993653' },
     '2025-01-01'
@@ -121,7 +121,7 @@ const result = engine.executeMultiple(
 
 // Single output (unchanged)
 const result = engine.execute(
-    'zorgtoeslagwet', 'hoogte_zorgtoeslag', params, '2025-01-01'
+    'wet_op_de_zorgtoeslag', 'hoogte_zorgtoeslag', params, '2025-01-01'
 );
 ```
 
@@ -190,7 +190,7 @@ Every execution can produce a full trace tree showing how each value was compute
 
 ```rust
 let result = service.evaluate_law_with_trace(
-    "zorgtoeslagwet",
+    "wet_op_de_zorgtoeslag",
     &["hoogte_zorgtoeslag"],
     params,
     "2025-01-01",
@@ -287,21 +287,21 @@ See [RFC-013](/rfcs/rfc-013) for the design rationale.
 ```bash
 # Execute a law
 cargo run --bin evaluate -- \
-    corpus/regulation/nl/wet/zorgtoeslagwet/2025-01-01.yaml \
+    corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml \
     heeft_recht_op_zorgtoeslag \
     --param bsn 999993653 \
     --param vermogen 50000
 
 # Execute and output a full Execution Receipt as JSON
 cargo run --bin evaluate -- \
-    corpus/regulation/nl/wet/zorgtoeslagwet/2025-01-01.yaml \
+    corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml \
     heeft_recht_op_zorgtoeslag \
     --param bsn 999993653 \
     --receipt
 
 # Validate a YAML file against schema
 cargo run --bin validate --features validate -- \
-    corpus/regulation/nl/wet/zorgtoeslagwet/2025-01-01.yaml
+    corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml
 ```
 
 ## Performance

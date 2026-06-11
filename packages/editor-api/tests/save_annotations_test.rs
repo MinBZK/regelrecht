@@ -42,7 +42,7 @@ use regelrecht_pipeline::test_utils::TestDb;
 // Helpers
 // ---------------------------------------------------------------------------
 
-const LAW_ID: &str = "zorgtoeslagwet";
+const LAW_ID: &str = "wet_op_de_zorgtoeslag";
 
 fn empty_state(pool: PgPool) -> AppState {
     AppState {

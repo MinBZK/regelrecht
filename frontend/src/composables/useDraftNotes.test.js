@@ -25,7 +25,7 @@ const NOTE = {
   type: 'Annotation',
   motivation: 'commenting',
   target: {
-    source: 'regelrecht://zorgtoeslagwet',
+    source: 'regelrecht://wet_op_de_zorgtoeslag',
     selector: { type: 'TextQuoteSelector', exact: 'normpremie' },
   },
   body: { type: 'TextualBody', value: 'uitleg', purpose: 'commenting' },
@@ -37,11 +37,11 @@ beforeEach(() => {
 
 describe('useDraftNotes', () => {
   it('appends a draft and persists it under a per-law key', () => {
-    const lawId = ref('zorgtoeslagwet');
+    const lawId = ref('wet_op_de_zorgtoeslag');
     const { addDraft, drafts } = useDraftNotes(lawId);
     addDraft(NOTE);
     expect(drafts.value).toHaveLength(1);
-    const raw = localStorage.getItem('regelrecht-draft-notes:zorgtoeslagwet');
+    const raw = localStorage.getItem('regelrecht-draft-notes:wet_op_de_zorgtoeslag');
     expect(JSON.parse(raw)).toHaveLength(1);
   });
 
@@ -155,7 +155,7 @@ describe('useDraftNotes.saveToRepo', () => {
       }),
     });
     const { addDraft, saveToRepo, drafts } = useDraftNotes(
-      ref('zorgtoeslagwet'),
+      ref('wet_op_de_zorgtoeslag'),
       ref(TRAJECT_REF),
     );
     addDraft({ ...NOTE, __draft: true });
@@ -164,7 +164,7 @@ describe('useDraftNotes.saveToRepo', () => {
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     const [url, opts] = globalThis.fetch.mock.calls[0];
-    expect(url).toBe(`${TRAJECT_ROUTE}/corpus/laws/zorgtoeslagwet/annotations`);
+    expect(url).toBe(`${TRAJECT_ROUTE}/corpus/laws/wet_op_de_zorgtoeslag/annotations`);
     expect(opts.method).toBe('PUT');
     expect(opts.headers['Content-Type']).toBe('application/json');
     // No X-Editor-Session: the traject is explicit in the URL path, not
@@ -186,7 +186,7 @@ describe('useDraftNotes.saveToRepo', () => {
   it('uses the traject path; ignores any spurious source argument', async () => {
     stubSave({ ok: true, json: async () => ({ pr: null }) });
     const { addDraft, saveToRepo } = useDraftNotes(
-      ref('zorgtoeslagwet'),
+      ref('wet_op_de_zorgtoeslag'),
       ref(TRAJECT_REF),
     );
     addDraft({ ...NOTE, __draft: true });
@@ -196,7 +196,7 @@ describe('useDraftNotes.saveToRepo', () => {
     await saveToRepo('amsterdam');
 
     expect(globalThis.fetch.mock.calls[0][0]).toBe(
-      `${TRAJECT_ROUTE}/corpus/laws/zorgtoeslagwet/annotations`,
+      `${TRAJECT_ROUTE}/corpus/laws/wet_op_de_zorgtoeslag/annotations`,
     );
   });
 
@@ -206,7 +206,7 @@ describe('useDraftNotes.saveToRepo', () => {
     // requireTraject helper so the editor surfaces a clear error.
     stubSave({ ok: true, json: async () => ({ pr: null }) });
     const { addDraft, saveToRepo, drafts } = useDraftNotes(
-      ref('zorgtoeslagwet'),
+      ref('wet_op_de_zorgtoeslag'),
       ref(null),
     );
     addDraft({ ...NOTE, __draft: true });

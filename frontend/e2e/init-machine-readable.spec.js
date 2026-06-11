@@ -3,7 +3,7 @@ import { interceptLaw, gotoEditor, selectArticle, readYamlPane } from './helpers
 
 test.describe('Init machine_readable', () => {
   test.beforeEach(async ({ page }) => {
-    await interceptLaw(page, 'zorgtoeslagwet', 'zorgtoeslag-stripped.yaml');
+    await interceptLaw(page, 'wet_op_de_zorgtoeslag', 'zorgtoeslag-stripped.yaml');
     await gotoEditor(page);
   });
 

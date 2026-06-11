@@ -3,7 +3,7 @@ import { interceptLaw, gotoEditor, selectArticle, readYamlPane, waitForSheet, fi
 
 test.describe('Inputs with sources', () => {
   test.beforeEach(async ({ page }) => {
-    await interceptLaw(page, 'zorgtoeslagwet', 'zorgtoeslag-stripped.yaml');
+    await interceptLaw(page, 'wet_op_de_zorgtoeslag', 'zorgtoeslag-stripped.yaml');
     await gotoEditor(page);
   });
 

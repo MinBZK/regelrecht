@@ -149,9 +149,9 @@ fn test_harvest_payload_empty_json() {
 fn test_harvest_result_serialization() {
     let result = HarvestResult {
         law_name: "Zorgtoeslagwet".to_string(),
-        slug: "zorgtoeslagwet".to_string(),
+        slug: "wet_op_de_zorgtoeslag".to_string(),
         layer: "WET".to_string(),
-        file_path: "/tmp/regulation/nl/wet/zorgtoeslagwet/2025-01-01.yaml".to_string(),
+        file_path: "/tmp/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
         article_count: 15,
         warning_count: 3,
         warnings: vec![
@@ -167,7 +167,7 @@ fn test_harvest_result_serialization() {
 
     let json = serde_json::to_value(&result).unwrap();
     assert_eq!(json["law_name"], "Zorgtoeslagwet");
-    assert_eq!(json["slug"], "zorgtoeslagwet");
+    assert_eq!(json["slug"], "wet_op_de_zorgtoeslag");
     assert_eq!(json["layer"], "WET");
     assert_eq!(json["article_count"], 15);
     assert_eq!(json["warning_count"], 3);

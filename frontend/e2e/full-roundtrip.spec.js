@@ -16,10 +16,10 @@ test.describe('Full round-trip', () => {
     const original = loadOriginal();
     const fullYaml = loadFixture('zorgtoeslag-full.yaml');
 
-    await page.route('**/api/corpus/laws/zorgtoeslagwet', route =>
+    await page.route('**/api/corpus/laws/wet_op_de_zorgtoeslag', route =>
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fullYaml })
     );
-    await page.goto('/editor/zorgtoeslagwet');
+    await page.goto('/editor/wet_op_de_zorgtoeslag');
     await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
 
     // Article 1a: simple definition
@@ -86,7 +86,7 @@ test.describe('Full round-trip', () => {
   });
 
   test('YAML editing creates valid structure that displays correctly', async ({ page }) => {
-    await interceptLaw(page, 'zorgtoeslagwet', 'zorgtoeslag-stripped.yaml');
+    await interceptLaw(page, 'wet_op_de_zorgtoeslag', 'zorgtoeslag-stripped.yaml');
     await gotoEditor(page);
 
     await selectArticle(page, '2');

@@ -73,7 +73,7 @@ pub(crate) struct HookEntry {
 /// resolver.load_from_yaml(yaml_str)?;
 ///
 /// // Find article by output
-/// let article = resolver.get_article_by_output("zorgtoeslagwet", "standaardpremie", None);
+/// let article = resolver.get_article_by_output("wet_op_de_zorgtoeslag", "standaardpremie", None);
 /// ```
 pub struct RuleResolver {
     /// Registry of loaded laws by ID, supporting multiple versions per law ID.
@@ -1295,7 +1295,7 @@ articles:
 
     fn make_law_with_open_term() -> &'static str {
         r#"
-$id: zorgtoeslagwet
+$id: wet_op_de_zorgtoeslag
 regulatory_layer: WET
 publication_date: '2025-01-01'
 articles:
@@ -1329,7 +1329,7 @@ articles:
     text: De standaardpremie bedraagt 1928
     machine_readable:
       implements:
-        - law: zorgtoeslagwet
+        - law: wet_op_de_zorgtoeslag
           article: '4'
           open_term: standaardpremie
           gelet_op: "Gelet op artikel 4 van de Wet op de zorgtoeslag"
@@ -1354,7 +1354,7 @@ articles:
     text: De standaardpremie bedraagt 1889
     machine_readable:
       implements:
-        - law: zorgtoeslagwet
+        - law: wet_op_de_zorgtoeslag
           article: '4'
           open_term: standaardpremie
           gelet_op: "Gelet op artikel 4 van de Wet op de zorgtoeslag"
@@ -1383,7 +1383,7 @@ articles:
         // Look up
         let results = resolver
             .find_implementations(
-                "zorgtoeslagwet",
+                "wet_op_de_zorgtoeslag",
                 "4",
                 "standaardpremie",
                 None,
@@ -1404,7 +1404,7 @@ articles:
 
         let results = resolver
             .find_implementations(
-                "zorgtoeslagwet",
+                "wet_op_de_zorgtoeslag",
                 "4",
                 "standaardpremie",
                 None,
@@ -1430,7 +1430,7 @@ articles:
 
         let results = resolver
             .find_implementations(
-                "zorgtoeslagwet",
+                "wet_op_de_zorgtoeslag",
                 "4",
                 "standaardpremie",
                 None,
@@ -1459,7 +1459,7 @@ articles:
 
         let results = resolver
             .find_implementations(
-                "zorgtoeslagwet",
+                "wet_op_de_zorgtoeslag",
                 "4",
                 "standaardpremie",
                 None,
@@ -1504,7 +1504,7 @@ articles:
             "Expected at least 10 laws from corpus/regulation/nl, got {}",
             count
         );
-        assert!(resolver.has_law("zorgtoeslagwet"));
+        assert!(resolver.has_law("wet_op_de_zorgtoeslag"));
         assert!(resolver.has_law("regeling_standaardpremie"));
         assert!(resolver.has_law("participatiewet"));
     }

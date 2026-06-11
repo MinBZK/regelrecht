@@ -29,7 +29,7 @@ use regelrecht_editor_api::trajects::SESSION_KEY_ACTIVE_TRAJECT;
 
 use regelrecht_pipeline::test_utils::TestDb;
 
-const LAW_ID: &str = "zorgtoeslagwet";
+const LAW_ID: &str = "wet_op_de_zorgtoeslag";
 
 fn empty_state(pool: PgPool) -> AppState {
     AppState {

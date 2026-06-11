@@ -10,7 +10,7 @@ name: '#wet_naam'
 competent_authority:
   name: Minister van Volksgezondheid, Welzijn en Sport
 legal_basis:
-  - law_id: zorgtoeslagwet
+  - law_id: wet_op_de_zorgtoeslag
     article: '4'
   - law_id: zorgverzekeringswet
     article: 18d
@@ -25,7 +25,7 @@ articles:
     url: https://wetten.overheid.nl/BWBR0049005/2024-01-01#Artikel1
     machine_readable:
       implements:
-        - law: zorgtoeslagwet
+        - law: wet_op_de_zorgtoeslag
           article: '4'
           open_term: standaardpremie
           gelet_op: Gelet op artikel 4 van de Wet op de zorgtoeslag

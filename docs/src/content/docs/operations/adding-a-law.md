@@ -59,7 +59,7 @@ Feature: Wet op de zorgtoeslag
 
   Scenario: MvT example - single person, output present
     Given the calculation date is "2025-01-01"
-    When the law "zorgtoeslagwet" is executed for outputs "hoogte_zorgtoeslag"
+    When the law "wet_op_de_zorgtoeslag" is executed for outputs "hoogte_zorgtoeslag"
     Then the execution succeeds
     And the output "hoogte_zorgtoeslag" is "123400"
 ```

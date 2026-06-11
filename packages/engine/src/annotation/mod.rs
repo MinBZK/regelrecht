@@ -15,9 +15,9 @@ pub use types::{MatchResult, MatchStatus, SelectorHint, TextMatch, TextQuoteSele
 
 /// Extract the law `$id` from a note's `target.source` URI.
 ///
-/// `regelrecht://zorgtoeslagwet` and
-/// `regelrecht://zorgtoeslagwet/hoogte_zorgtoeslag#field` both yield
-/// `"zorgtoeslagwet"`. Returns `None` if the URI is not a `regelrecht://`
+/// `regelrecht://wet_op_de_zorgtoeslag` and
+/// `regelrecht://wet_op_de_zorgtoeslag/hoogte_zorgtoeslag#field` both yield
+/// `"wet_op_de_zorgtoeslag"`. Returns `None` if the URI is not a `regelrecht://`
 /// reference. Shared by the WASM bindings and `validate-annotations` so the
 /// two cannot drift.
 pub fn law_id_from_source(source: &str) -> Option<&str> {

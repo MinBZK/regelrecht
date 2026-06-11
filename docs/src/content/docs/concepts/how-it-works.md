@@ -22,7 +22,7 @@ The YAML specification *is* the law in executable form. Every article in the fil
 Each Dutch law is stored as a YAML file. The file mirrors the legal structure:
 
 ```yaml
-$id: zorgtoeslagwet
+$id: wet_op_de_zorgtoeslag
 name: Wet op de zorgtoeslag
 regulatory_layer: WET
 valid_from: '2025-01-01'
