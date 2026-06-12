@@ -14,7 +14,7 @@ COPY packages/Cargo.lock packages/Cargo.toml ./
 # When adding a new workspace member that this image does NOT build, add it
 # to this exclusion list as well; otherwise chef will fail to find its source.
 RUN grep -qE '^members = \[$' Cargo.toml && \
-    sed -i '/"admin"/d; /"auth"/d; /"corpus"/d; /"editor-api"/d; /"harvester"/d; /"pipeline"/d; /"tui"/d' Cargo.toml
+    sed -i '/"admin"/d; /"auth"/d; /"corpus"/d; /"demo-api"/d; /"demo-profile"/d; /"editor-api"/d; /"harvester"/d; /"pipeline"/d; /"tui"/d' Cargo.toml
 COPY packages/engine/ engine/
 COPY packages/shared/ shared/
 RUN cargo build --target wasm32-unknown-unknown --release --features wasm -p regelrecht-engine && \
@@ -46,7 +46,7 @@ COPY packages/Cargo.lock packages/Cargo.toml ./
 # When adding a new workspace member that this image does NOT build, add it
 # to this exclusion list as well; otherwise chef will fail to find its source.
 RUN grep -qE '^members = \[$' Cargo.toml && \
-    sed -i '/"admin"/d; /"tui"/d' Cargo.toml
+    sed -i '/"admin"/d; /"demo-api"/d; /"demo-profile"/d; /"tui"/d' Cargo.toml
 COPY packages/auth/ auth/
 COPY packages/editor-api/ editor-api/
 COPY packages/corpus/ corpus/

@@ -24,7 +24,7 @@ COPY packages/Cargo.lock packages/Cargo.toml ./
 # When adding a new workspace member that this image does NOT build, add it
 # to this exclusion list as well; otherwise chef will fail to find its source.
 RUN grep -qE '^members = \[$' Cargo.toml && \
-    sed -i '/"editor-api"/d; /"tui"/d' Cargo.toml
+    sed -i '/"demo-api"/d; /"demo-profile"/d; /"editor-api"/d; /"tui"/d' Cargo.toml
 COPY packages/admin/ admin/
 COPY packages/auth/ auth/
 COPY packages/corpus/ corpus/
