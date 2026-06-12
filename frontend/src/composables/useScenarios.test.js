@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ref } from 'vue';
-import { useScenarios } from './useScenarios.js';
+import { useScenarios, isScenarioMismatch } from './useScenarios.js';
 
 // Helper: shape a Response-like object with headers + body + status.
 // Mirrors the harness in useTrajectDocuments.test.js.
@@ -149,5 +149,71 @@ describe('useScenarios optimistic concurrency', () => {
       '/api/trajects/tr-12345678/corpus/laws/wet_b/scenarios/basis.feature',
     );
     expect(puts[1].opts.headers['If-Match']).toBe('"b1"');
+  });
+});
+
+describe('isScenarioMismatch', () => {
+  it('is false when the file targets the opened law', () => {
+    expect(isScenarioMismatch({ target_law_ids: ['wet_a'] }, 'wet_a')).toBe(false);
+  });
+  it('is false when targets are unknown (no execution step yet)', () => {
+    expect(isScenarioMismatch({ target_law_ids: [] }, 'wet_a')).toBe(false);
+    expect(isScenarioMismatch({}, 'wet_a')).toBe(false);
+  });
+  it('is true when the file only targets other laws', () => {
+    expect(isScenarioMismatch({ target_law_ids: ['wet_b', 'wet_c'] }, 'wet_a')).toBe(true);
+  });
+});
+
+describe('useScenarios auto-select', () => {
+  function mockList(entries) {
+    globalThis.fetch = vi.fn().mockImplementation(async (url) => {
+      if (String(url).endsWith('/scenarios')) return res({ json: entries });
+      return res({ body: 'Feature: x\n', etag: '"v1"' });
+    });
+  }
+
+  it('prefers the first file that targets the opened law', async () => {
+    mockList([
+      { filename: 'other.feature', target_law_ids: ['andere_wet'] },
+      { filename: 'matching.feature', target_law_ids: ['wet_a'] },
+    ]);
+
+    const s = useScenarios(ref('wet_a'));
+    await s.fetchScenarios();
+    expect(s.selectedScenario.value).toBe('matching.feature');
+  });
+
+  it('prefers an explicit match over a file with unknown targets', async () => {
+    mockList([
+      { filename: 'wip.feature', target_law_ids: [] },
+      { filename: 'matching.feature', target_law_ids: ['wet_a'] },
+    ]);
+
+    const s = useScenarios(ref('wet_a'));
+    await s.fetchScenarios();
+    expect(s.selectedScenario.value).toBe('matching.feature');
+  });
+
+  it('prefers unknown targets over a known mismatch', async () => {
+    mockList([
+      { filename: 'other.feature', target_law_ids: ['andere_wet'] },
+      { filename: 'wip.feature', target_law_ids: [] },
+    ]);
+
+    const s = useScenarios(ref('wet_a'));
+    await s.fetchScenarios();
+    expect(s.selectedScenario.value).toBe('wip.feature');
+  });
+
+  it('falls back to the first file when none match', async () => {
+    mockList([
+      { filename: 'a.feature', target_law_ids: ['andere_wet'] },
+      { filename: 'b.feature', target_law_ids: ['nog_een_wet'] },
+    ]);
+
+    const s = useScenarios(ref('wet_a'));
+    await s.fetchScenarios();
+    expect(s.selectedScenario.value).toBe('a.feature');
   });
 });

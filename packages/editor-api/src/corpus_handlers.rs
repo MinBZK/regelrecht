@@ -492,10 +492,52 @@ async fn implementors_in_scope(scope: &ReadScope, law_id: &str) -> Vec<String> {
     out
 }
 
+/// Law ids a scenario file evaluates, extracted from its execution steps.
+///
+/// A target is the law named in an `I evaluate "<output>" of "<law_id>"`
+/// step. The Gherkin keyword may be `When`, `Then`, `And`, `But` or `*` —
+/// the frontend step matcher (`frontend/src/gherkin/steps.js`) matches step
+/// text without its keyword, so all of these run as execution steps.
+/// `Given law "…" is loaded` lines are dependencies, not targets.
+/// Deduplicated, order of first occurrence preserved.
+fn extract_target_law_ids(content: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        let Some(step) = ["When ", "Then ", "And ", "But ", "* "]
+            .iter()
+            .find_map(|kw| trimmed.strip_prefix(kw))
+        else {
+            continue;
+        };
+        let Some(rest) = step.trim_start().strip_prefix("I evaluate \"") else {
+            continue;
+        };
+        // rest = `<output>" of "<law_id>"…`
+        let Some((_, after_output)) = rest.split_once('"') else {
+            continue;
+        };
+        let Some(rest) = after_output.strip_prefix(" of \"") else {
+            continue;
+        };
+        let Some((law_id, _)) = rest.split_once('"') else {
+            continue;
+        };
+        if !law_id.is_empty() && !out.iter().any(|l| l == law_id) {
+            out.push(law_id.to_string());
+        }
+    }
+    out
+}
+
 /// A scenario file entry.
 #[derive(Debug, Serialize)]
 pub struct ScenarioEntry {
     pub filename: String,
+    /// Law ids this scenario file evaluates (from its
+    /// `I evaluate … of "…"` steps). Empty when the file has no parseable
+    /// execution step yet (work in progress) or could not be read.
+    pub target_law_ids: Vec<String>,
 }
 
 /// GET /api/corpus/laws/{law_id}/scenarios — list available scenario files (global view).
@@ -535,7 +577,10 @@ async fn list_scenarios_in_scope(
         )
     };
 
-    let filenames: std::collections::BTreeSet<String> = match scope {
+    // Each listed file is also read to extract which law ids it evaluates
+    // (`target_law_ids`). One failed read must not take down the whole
+    // listing: that entry stays listed with unknown (empty) targets.
+    let out: Vec<ScenarioEntry> = match scope {
         // Traject-scoped: the union of the write target's listing and
         // the seed's, mirroring the per-file routing of the scenario GET
         // / `If-Match` check (`read_traject_file_via_write_target`): a
@@ -568,7 +613,43 @@ async fn list_scenarios_in_scope(
                 drop(backend);
                 names.extend(entries.into_iter().map(|e| e.name));
             }
-            names
+            // Content goes through the same write-target-with-seed-fallback
+            // per-file routing as the scenario GET, so the extracted targets
+            // reflect exactly the bytes the editor serves. Cost: one
+            // sequential read per file in this law's `scenarios/` dir —
+            // O(folder), typically 1-3 files, NOT the O(corpus) scan that
+            // hung federated trajects before (#762). Revisit with a batch
+            // read or index only if per-law scenario counts grow.
+            let mut out = Vec::with_capacity(names.len());
+            for filename in names {
+                let relative_path = scenarios_dir.join(&filename);
+                let target_law_ids = match read_traject_file_via_write_target(
+                    traject,
+                    law,
+                    &relative_path,
+                    "scenario",
+                )
+                .await
+                {
+                    Ok(Some(content)) => extract_target_law_ids(&content),
+                    Ok(None) => Vec::new(),
+                    Err((_, err)) => {
+                        tracing::warn!(
+                            law_id = %law_id,
+                            file = %filename,
+                            error = %err,
+                            "scenario read failed during listing"
+                        );
+                        Vec::new()
+                    }
+                };
+                out.push(ScenarioEntry {
+                    filename,
+                    target_law_ids,
+                });
+            }
+            // BTreeSet iteration is already sorted by filename.
+            out
         }
         // Global: no write target exists; keep the read-only resolution.
         ReadScope::Global(_) => {
@@ -577,21 +658,40 @@ async fn list_scenarios_in_scope(
                 Ok(dir) => dir.join("scenarios"),
                 Err(_) => return Ok(Json(Vec::new())),
             };
+            // Unlike the Traject branch there is only one backend here, so
+            // holding its lock across the listing and the per-file reads is
+            // fine: no second lock is ever taken (no ordering hazard) and
+            // re-acquiring per file would only add churn.
             let backend = resolved.backend.lock().await;
             let entries = backend
                 .list_files(&scenarios_dir, Some("feature"))
                 .await
                 .map_err(list_error)?;
+            let mut out = Vec::with_capacity(entries.len());
+            for e in entries {
+                let target_law_ids = match backend.read_file(&scenarios_dir.join(&e.name)).await {
+                    Ok(Some(content)) => extract_target_law_ids(&content),
+                    Ok(None) => Vec::new(),
+                    Err(err) => {
+                        tracing::warn!(
+                            law_id = %law_id,
+                            file = %e.name,
+                            error = %err,
+                            "scenario read failed during listing"
+                        );
+                        Vec::new()
+                    }
+                };
+                out.push(ScenarioEntry {
+                    filename: e.name,
+                    target_law_ids,
+                });
+            }
             drop(backend);
-            entries.into_iter().map(|e| e.name).collect()
+            out.sort_by(|a, b| a.filename.cmp(&b.filename));
+            out
         }
     };
-
-    // BTreeSet iteration is already sorted by filename.
-    let out: Vec<ScenarioEntry> = filenames
-        .into_iter()
-        .map(|filename| ScenarioEntry { filename })
-        .collect();
     Ok(Json(out))
 }
 
@@ -2713,5 +2813,76 @@ mod tests {
         let err = check_if_match(None, Some(&stale), "Scenario")
             .expect_err("etag against missing file must be refused");
         assert_eq!(err.0, StatusCode::PRECONDITION_FAILED);
+    }
+
+    // --- extract_target_law_ids ---
+
+    #[test]
+    fn extract_targets_single_when_step() {
+        let content = r#"Feature: X
+  Scenario: a
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
+"#;
+        assert_eq!(
+            extract_target_law_ids(content),
+            vec!["wet_op_de_zorgtoeslag".to_string()]
+        );
+    }
+
+    #[test]
+    fn extract_targets_dedups_and_preserves_order() {
+        let content = r#"
+    When I evaluate "a" of "law_b"
+    When I evaluate "b" of "law_a"
+    When I evaluate "c" of "law_b"
+"#;
+        assert_eq!(extract_target_law_ids(content), vec!["law_b", "law_a"]);
+    }
+
+    #[test]
+    fn extract_targets_accepts_then_and_but_continuations() {
+        // The frontend step matcher strips the Gherkin keyword before
+        // matching, so Then/And/But/`*` lines are valid execution steps.
+        let content = r#"
+    When I evaluate "a" of "law_a"
+    Then I evaluate "b" of "law_b"
+    And I evaluate "c" of "law_c"
+    But I evaluate "d" of "law_d"
+    * I evaluate "e" of "law_e"
+"#;
+        assert_eq!(
+            extract_target_law_ids(content),
+            vec!["law_a", "law_b", "law_c", "law_d", "law_e"]
+        );
+    }
+
+    #[test]
+    fn extract_targets_ignores_given_law_loaded_dependencies() {
+        let content = r#"
+    Given law "zorgverzekeringswet" is loaded
+    Given law "wet_inkomstenbelasting_2001" is loaded
+    When I evaluate "x" of "wet_op_de_zorgtoeslag"
+"#;
+        assert_eq!(
+            extract_target_law_ids(content),
+            vec!["wet_op_de_zorgtoeslag"]
+        );
+    }
+
+    #[test]
+    fn extract_targets_empty_for_file_without_execution_step() {
+        let content =
+            "Feature: WIP\n  Scenario: later\n    Given the calculation date is \"2025-01-01\"\n";
+        assert_eq!(extract_target_law_ids(content), Vec::<String>::new());
+    }
+
+    #[test]
+    fn extract_targets_ignores_malformed_lines() {
+        let content = r#"
+    When I evaluate "no closing quote of "x
+    When I evaluate "a" of ""
+    When something else entirely
+"#;
+        assert_eq!(extract_target_law_ids(content), Vec::<String>::new());
     }
 }
