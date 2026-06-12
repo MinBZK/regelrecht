@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.2/annotation-schema.json",
-  "title": "RegelRecht Note Sidecar Schema v0.5.2",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.3/annotation-schema.json",
+  "title": "RegelRecht Note Sidecar Schema v0.5.3",
   "description": "Stand-off notes on legal texts (RFC-005, RFC-018). A note file holds a list of W3C Web Annotation objects anchored to law text via a TextQuoteSelector. The feature is called 'notes' (RFC-005 terminology); the W3C entity is named 'Annotation'.",
   "type": "object",
   "required": ["annotations"],

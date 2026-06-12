@@ -153,6 +153,19 @@ impl RuleResolver {
         let law_id = law.id.clone();
         let valid_from = law.valid_from.clone();
 
+        // RFC-019: valid_to is static version-selection metadata. An unparseable
+        // value (e.g. the format-valid but calendar-invalid '2023-02-30') would
+        // silently skip the expiry check in select_in and keep an ended law in
+        // force forever - reject it at load time instead. valid_from keeps its
+        // lenient behaviour (it may be a '#'-reference per RFC-001).
+        if let Some(valid_to) = &law.valid_to {
+            parse_date(valid_to).map_err(|_| {
+                EngineError::LoadError(format!(
+                    "law '{law_id}': valid_to '{valid_to}' is not a valid date (expected YYYY-MM-DD)"
+                ))
+            })?;
+        }
+
         // Count total laws across all versions
         let total_laws: usize = self.law_versions.values().map(|v| v.len()).sum();
 
@@ -283,6 +296,13 @@ impl RuleResolver {
     /// With `Some(date)` this is [`Self::get_law_for_date_result`]; with `None`
     /// it keeps the "no date → latest version" behaviour of
     /// [`Self::get_law_for_date`], failing only when the law id is unknown.
+    ///
+    /// NOTE: `None` deliberately means "latest version regardless of validity
+    /// window" - the `valid_to` upper bound is NOT applied, so an ended law's
+    /// final version is returned. Execution paths always pass `Some(date)`
+    /// (malformed calculation dates are rejected up front); only pass `None`
+    /// for display/listing-style lookups. Revisit when RFC-020 threads
+    /// `as_of` dates through every resolution.
     pub fn get_law_for_date_reported(
         &self,
         law_id: &str,
@@ -1340,6 +1360,20 @@ articles:
         assert!(resolver
             .get_law_for_date_result("test_law", NaiveDate::from_ymd_opt(2023, 6, 1).unwrap())
             .is_ok());
+    }
+
+    #[test]
+    fn test_resolver_rejects_calendar_invalid_valid_to() {
+        // Format-valid but calendar-invalid (passes the schema regex): without
+        // the load-time check this would silently skip the expiry check and
+        // keep the law in force forever (RFC-019).
+        let mut resolver = RuleResolver::new();
+        let result = resolver.load_from_yaml(&make_test_law_with_validity(
+            "2023-01-01",
+            "2023-02-30",
+            100,
+        ));
+        assert!(matches!(result, Err(EngineError::LoadError(_))));
     }
 
     #[test]
