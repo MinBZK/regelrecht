@@ -308,6 +308,37 @@ async fn create_harvest_job_rejects_impossible_date() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
+#[tokio::test]
+async fn create_harvest_job_rejects_exhausted_law() {
+    let db = TestDb::new().await;
+    let app = test_app(db.pool.clone());
+
+    regelrecht_pipeline::law_status::upsert_law(&db.pool, "BWBR0018451", None, None)
+        .await
+        .unwrap();
+    regelrecht_pipeline::law_status::update_status(
+        &db.pool,
+        "BWBR0018451",
+        regelrecht_pipeline::LawStatusValue::HarvestExhausted,
+    )
+    .await
+    .unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/harvest-jobs")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"bwb_id": "BWBR0018451"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+}
+
 // --- list endpoints ---
 
 #[tokio::test]

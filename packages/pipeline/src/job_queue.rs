@@ -303,8 +303,12 @@ where
 /// Create a harvest job only if no active (pending/processing) harvest job
 /// exists for this law.
 ///
+/// Used by the worker's follow-up path (re-harvesting referenced laws). HTTP
+/// harvest requests go through [`crate::harvest_request::request_harvest`]
+/// instead, which adds the exhausted check and law-status bookkeeping.
+///
 /// Completed and failed jobs never block: a law that was harvested before
-/// must remain re-harvestable (e.g. via the editor's `POST /harvest`).
+/// must remain re-harvestable.
 ///
 /// The fast path uses `INSERT ... WHERE NOT EXISTS` (filtered by date) to
 /// avoid a round-trip for the common non-racing case. When two requests race

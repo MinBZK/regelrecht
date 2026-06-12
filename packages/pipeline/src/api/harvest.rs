@@ -3,9 +3,8 @@ use axum::http::StatusCode;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
-use crate::job_queue::{self, CreateJobRequest};
-use crate::law_status;
-use crate::models::{JobType, LawStatusValue, Priority};
+use crate::harvest_request::{self, HarvestRequestOptions, HarvestRequestOutcome};
+use crate::models::Priority;
 
 use crate::ApiState;
 
@@ -169,19 +168,20 @@ async fn find_bwb_id_by_slug(
     Ok(row.map(|(law_id,)| law_id))
 }
 
-/// Create a high-priority harvest job, using the pipeline's existing job queue.
+/// Create a high-priority harvest job via the canonical pipeline entry point
+/// ([`harvest_request::request_harvest`]) and map the outcome onto the
+/// editor's status-string response shape.
 async fn create_harvest_job(state: &ApiState, bwb_id: &str, slug: Option<&str>) -> HarvestResponse {
-    let payload = serde_json::json!({ "bwb_id": bwb_id });
+    let opts = HarvestRequestOptions {
+        priority: Priority::new(EDITOR_HARVEST_PRIORITY),
+        // Editor harvests always want the latest consolidation.
+        date: None,
+        law_name: None,
+        slug: slug.map(|s| s.to_string()),
+    };
 
-    let req = CreateJobRequest::new(JobType::Harvest, bwb_id)
-        .with_priority(Priority::new(EDITOR_HARVEST_PRIORITY))
-        .with_payload(payload);
-
-    // Use the deduplicating variant — returns None if a pending/processing job
-    // already exists for this law. The `date` parameter is empty string to match
-    // any date (editor harvests always want the latest consolidation).
-    match job_queue::create_harvest_job_if_not_exists(&state.pool, req, "").await {
-        Ok(Some(job)) => {
+    let status = match harvest_request::request_harvest(&state.pool, bwb_id, opts).await {
+        Ok(HarvestRequestOutcome::Created(job)) => {
             tracing::info!(
                 job_id = %job.id,
                 bwb_id = %bwb_id,
@@ -189,48 +189,27 @@ async fn create_harvest_job(state: &ApiState, bwb_id: &str, slug: Option<&str>) 
                 priority = EDITOR_HARVEST_PRIORITY,
                 "created editor-requested harvest job"
             );
-
-            // Best-effort: upsert law_entry to 'queued' status and link job
-            let _ = law_status::upsert_law(&state.pool, bwb_id, None, slug).await;
-            // Don't downgrade a law that's already progressing or complete —
-            // protect in-progress states (Harvesting, Enriching) and finished
-            // states (Harvested, Enriched). Only Unknown / failed / queued
-            // laws get reset to Queued here.
-            let _ = law_status::update_status_unless_any(
-                &state.pool,
-                bwb_id,
-                &[
-                    LawStatusValue::Harvesting,
-                    LawStatusValue::Harvested,
-                    LawStatusValue::Enriching,
-                    LawStatusValue::Enriched,
-                ],
-                LawStatusValue::Queued,
-            )
-            .await;
-            let _ = law_status::set_harvest_job(&state.pool, bwb_id, job.id).await;
-
-            HarvestResponse {
-                bwb_id: bwb_id.to_string(),
-                status: "queued".to_string(),
-                slug: slug.map(|s| s.to_string()),
-            }
+            "queued"
         }
-        Ok(None) => {
-            // An active job already exists
-            HarvestResponse {
-                bwb_id: bwb_id.to_string(),
-                status: "already_queued".to_string(),
-                slug: slug.map(|s| s.to_string()),
-            }
+        Ok(HarvestRequestOutcome::AlreadyQueued { .. }) => "already_queued",
+        // The law is exhausted and must be reset via the admin UI first. The
+        // frontend already treats `harvest_exhausted` as a terminal status.
+        Ok(HarvestRequestOutcome::Exhausted) => "harvest_exhausted",
+        // Unreachable: the editor never sends a date. Treated as an error so
+        // it can't silently pass as "queued" if that ever changes.
+        Ok(HarvestRequestOutcome::InvalidDate { reason }) => {
+            tracing::error!(bwb_id = %bwb_id, reason = %reason, "unexpected invalid date on editor harvest path");
+            "error"
         }
         Err(e) => {
             tracing::error!(error = %e, bwb_id = %bwb_id, "failed to create harvest job");
-            HarvestResponse {
-                bwb_id: bwb_id.to_string(),
-                status: "error".to_string(),
-                slug: slug.map(|s| s.to_string()),
-            }
+            "error"
         }
+    };
+
+    HarvestResponse {
+        bwb_id: bwb_id.to_string(),
+        status: status.to_string(),
+        slug: slug.map(|s| s.to_string()),
     }
 }

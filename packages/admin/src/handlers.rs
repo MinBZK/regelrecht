@@ -1,11 +1,12 @@
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::Json;
-use regelrecht_pipeline::job_queue::{
-    create_enrich_job_if_not_exists, create_job, CreateJobRequest,
+use regelrecht_pipeline::harvest_request::{
+    request_harvest, HarvestRequestOptions, HarvestRequestOutcome,
 };
-use regelrecht_pipeline::law_status::{set_enrich_job, set_harvest_job};
-use regelrecht_pipeline::{EnrichPayload, HarvestPayload, JobType, Priority, ENRICH_PROVIDERS};
+use regelrecht_pipeline::job_queue::{create_enrich_job_if_not_exists, CreateJobRequest};
+use regelrecht_pipeline::law_status::set_enrich_job;
+use regelrecht_pipeline::{EnrichPayload, JobType, Priority, ENRICH_PROVIDERS};
 use serde::{Deserialize, Serialize};
 
 use crate::error::ApiError;
@@ -162,7 +163,7 @@ pub async fn list_law_entries(
     // interpolating it into the query string is safe.
     let query_str = if params.status.is_some() {
         format!(
-            "SELECT law_id, law_name, status, coverage_score, \
+            "SELECT law_id, law_name, slug, status, coverage_score, \
              harvest_job_id, enrich_job_id, harvest_fail_count, enrich_fail_count, \
              created_at, updated_at \
              FROM law_entries WHERE status::text = $1 \
@@ -170,7 +171,7 @@ pub async fn list_law_entries(
         )
     } else {
         format!(
-            "SELECT law_id, law_name, status, coverage_score, \
+            "SELECT law_id, law_name, slug, status, coverage_score, \
              harvest_job_id, enrich_job_id, harvest_fail_count, enrich_fail_count, \
              created_at, updated_at \
              FROM law_entries \
@@ -324,7 +325,7 @@ pub async fn list_jobs(
     let sort_expr = job_sort_expression(sort_column);
     let data_sql = format!(
         "SELECT id, job_type, law_id, status, \
-         priority, payload, result, progress, attempts, max_attempts, created_at, updated_at, started_at, completed_at \
+         priority, payload, result, progress, attempts, max_attempts, created_at, updated_at, started_at, completed_at, scheduled_at \
          FROM jobs {where_sql} \
          ORDER BY {sort_expr} {order} LIMIT ${limit_idx} OFFSET ${offset_idx}"
     );
@@ -513,122 +514,43 @@ pub async fn create_harvest_job(
 
     let law_id = raw_id;
 
-    if let Some(ref date) = body.date {
-        // Use harvester's validator so admin and harvester agree on what
-        // counts as valid: format check, real date, and not in the future.
-        // Previously admin only checked format, so it accepted dates the
-        // harvester would later reject.
-        regelrecht_harvester::validate_date(date).map_err(|e| {
-            tracing::debug!(date, error = %e, "rejected invalid date");
-            ApiError::BadRequest(format!("invalid date: {e}"))
-        })?;
-    }
+    // All harvest-request semantics (advisory lock, dedup, exhausted check,
+    // date validation, law upsert + status + job link) live in the canonical
+    // pipeline function; this handler only parses input and maps the outcome.
+    let opts = HarvestRequestOptions {
+        priority: Priority::new(body.priority.unwrap_or(50)),
+        date: body.date,
+        law_name: None,
+        slug: None,
+    };
 
-    let pool = &state.pool;
-
-    let mut tx = pool
-        .begin()
-        .await
-        .map_err(db_err("failed to begin transaction"))?;
-
-    // Acquire an advisory lock keyed on the law_id to serialize concurrent requests
-    // for the same law. This prevents the TOCTOU race where two requests both see
-    // no existing job and both create one. The lock is released when the transaction
-    // commits or rolls back.
-    sqlx::query("SELECT pg_advisory_xact_lock(hashtext($1))")
-        .bind(&law_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, law_id = %law_id, "failed to acquire advisory lock");
-            ApiError::Internal("internal server error".to_string())
-        })?;
-
-    // Check for existing pending or processing harvest job to prevent duplicates.
-    let existing: Option<(sqlx::types::Uuid,)> = sqlx::query_as(
-        "SELECT id FROM jobs \
-         WHERE law_id = $1 AND job_type = 'harvest' AND status IN ('pending', 'processing') \
-         LIMIT 1",
-    )
-    .bind(&law_id)
-    .fetch_optional(&mut *tx)
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, law_id = %law_id, "failed to check for existing jobs");
-        ApiError::Internal("failed to check for existing jobs".to_string())
-    })?;
-
-    if let Some((existing_id,)) = existing {
-        return Err(ApiError::Conflict(format!(
-            "a pending or processing harvest job already exists: {existing_id}"
-        )));
-    }
-
-    // Check if law is exhausted for harvest.
-    // RowNotFound is fine (new law, can't be exhausted); other errors should propagate.
-    match regelrecht_pipeline::law_status::get_law(&mut *tx, &law_id).await {
-        Ok(law) if law.status == regelrecht_pipeline::LawStatusValue::HarvestExhausted => {
-            return Err(ApiError::Conflict(format!("{law_id} is harvest_exhausted — reset via /api/law_entries/{law_id}/reset-exhausted first")));
+    match request_harvest(&state.pool, &law_id, opts).await {
+        Ok(HarvestRequestOutcome::Created(job)) => {
+            tracing::info!(job_id = %job.id, law_id = %law_id, "created harvest job");
+            Ok((
+                StatusCode::CREATED,
+                Json(CreateJobResponse {
+                    job_id: job.id.to_string(),
+                    law_id,
+                }),
+            ))
         }
-        Err(regelrecht_pipeline::PipelineError::LawNotFound(_)) => {}
+        Ok(HarvestRequestOutcome::AlreadyQueued { existing_job_id }) => {
+            Err(ApiError::Conflict(format!(
+                "a pending or processing harvest job already exists: {existing_job_id}"
+            )))
+        }
+        Ok(HarvestRequestOutcome::Exhausted) => Err(ApiError::Conflict(format!(
+            "{law_id} is harvest_exhausted — reset via /api/law_entries/{law_id}/reset-exhausted first"
+        ))),
+        Ok(HarvestRequestOutcome::InvalidDate { reason }) => {
+            Err(ApiError::BadRequest(format!("invalid date: {reason}")))
+        }
         Err(e) => {
-            tracing::error!(error = %e, "failed to check exhausted status");
-            return Err(ApiError::Internal(
-                "failed to check exhausted status".to_string(),
-            ));
+            tracing::error!(error = %e, law_id = %law_id, "failed to create harvest job");
+            Err(ApiError::Internal("failed to create harvest job".to_string()))
         }
-        Ok(_) => {}
     }
-
-    sqlx::query(
-        "INSERT INTO law_entries (law_id, status) \
-         VALUES ($1, 'queued') \
-         ON CONFLICT (law_id) DO UPDATE SET status = 'queued', updated_at = NOW() \
-         WHERE law_entries.status NOT IN ('harvesting', 'enriching')",
-    )
-    .bind(&law_id)
-    .execute(&mut *tx)
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, law_id = %law_id, "failed to upsert law entry");
-        ApiError::Internal("failed to upsert law entry".to_string())
-    })?;
-
-    let payload = HarvestPayload::for_law(&law_id, body.date);
-
-    let priority = Priority::new(body.priority.unwrap_or(50));
-
-    let req = CreateJobRequest::new(JobType::Harvest, &law_id)
-        .with_priority(priority)
-        .with_payload(serde_json::to_value(&payload).map_err(|e| {
-            tracing::error!(error = %e, "failed to serialize payload");
-            ApiError::Internal("failed to serialize payload".to_string())
-        })?);
-
-    let job = create_job(&mut *tx, req).await.map_err(|e| {
-        tracing::error!(error = %e, law_id = %law_id, "failed to create harvest job");
-        ApiError::Internal("failed to create harvest job".to_string())
-    })?;
-
-    // Link the harvest job to the law entry.
-    set_harvest_job(&mut *tx, &law_id, job.id).await.map_err(|e| {
-        tracing::error!(error = %e, law_id = %law_id, job_id = %job.id, "failed to link harvest job to law entry");
-        ApiError::Internal("failed to link harvest job to law entry".to_string())
-    })?;
-
-    tx.commit()
-        .await
-        .map_err(db_err("failed to commit transaction"))?;
-
-    tracing::info!(job_id = %job.id, law_id = %law_id, "created harvest job");
-
-    Ok((
-        StatusCode::CREATED,
-        Json(CreateJobResponse {
-            job_id: job.id.to_string(),
-            law_id,
-        }),
-    ))
 }
 
 // --- Enrich Jobs ---
@@ -805,7 +727,7 @@ pub async fn get_job(
     let job = sqlx::query_as::<_, Job>(
         "SELECT id, job_type, law_id, status, \
          priority, payload, result, progress, attempts, max_attempts, \
-         created_at, updated_at, started_at, completed_at \
+         created_at, updated_at, started_at, completed_at, scheduled_at \
          FROM jobs WHERE id = $1",
     )
     .bind(uuid)
