@@ -184,6 +184,28 @@ describe('useScenarios auto-select', () => {
     expect(s.selectedScenario.value).toBe('matching.feature');
   });
 
+  it('prefers an explicit match over a file with unknown targets', async () => {
+    mockList([
+      { filename: 'wip.feature', target_law_ids: [] },
+      { filename: 'matching.feature', target_law_ids: ['wet_a'] },
+    ]);
+
+    const s = useScenarios(ref('wet_a'));
+    await s.fetchScenarios();
+    expect(s.selectedScenario.value).toBe('matching.feature');
+  });
+
+  it('prefers unknown targets over a known mismatch', async () => {
+    mockList([
+      { filename: 'other.feature', target_law_ids: ['andere_wet'] },
+      { filename: 'wip.feature', target_law_ids: [] },
+    ]);
+
+    const s = useScenarios(ref('wet_a'));
+    await s.fetchScenarios();
+    expect(s.selectedScenario.value).toBe('wip.feature');
+  });
+
   it('falls back to the first file when none match', async () => {
     mockList([
       { filename: 'a.feature', target_law_ids: ['andere_wet'] },

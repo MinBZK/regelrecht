@@ -61,12 +61,14 @@ export function useScenarios(lawId, trajectRef = ref(null)) {
       }
       scenarios.value = await res.json();
 
-      // Auto-select the first scenario that actually targets this law;
-      // fall back to the first file when none match (or targets are
-      // unknown). Folder placement is no longer the source of truth for
-      // the law↔scenario binding — the file's execution steps are.
+      // Auto-select the first scenario that explicitly targets this law;
+      // then prefer files whose targets are unknown (no parseable
+      // execution step) over known mismatches; finally fall back to the
+      // first file. Folder placement is no longer the source of truth
+      // for the law↔scenario binding — the file's execution steps are.
       if (scenarios.value.length > 0 && !selectedScenario.value) {
         const preferred =
+          scenarios.value.find((s) => s.target_law_ids?.includes(lawId.value)) ||
           scenarios.value.find((s) => !isScenarioMismatch(s, lawId.value)) ||
           scenarios.value[0];
         await selectScenario(preferred.filename);
