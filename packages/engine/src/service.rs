@@ -33,7 +33,7 @@ use crate::engine::{ArticleEngine, ArticleResult, OutputProvenance};
 use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
 use crate::priority;
-use crate::resolver::RuleResolver;
+use crate::resolver::{RuleResolver, SelectionReason};
 use crate::trace::TraceBuilder;
 use crate::types::{
     Connectivity, LegalStatus, PathNodeType, RegulatoryLayer, ResolveType, UntranslatableMode,
@@ -87,11 +87,38 @@ struct ResolutionContext<'a> {
     contextual_law_id: Option<String>,
 }
 
+/// Parse the calculation date, rejecting malformed input: an unparseable date
+/// must not silently bypass `valid_from`/`valid_to` version selection (RFC-019).
+fn parse_calculation_date(calculation_date: &str) -> Result<NaiveDate> {
+    NaiveDate::parse_from_str(calculation_date, "%Y-%m-%d")
+        .map_err(|e| EngineError::InvalidDate(format!("{calculation_date}: {e}")))
+}
+
+/// Map a failed version selection to an honest engine error (RFC-019 §3):
+/// the message states the data fact for the reference date, never a verdict.
+fn selection_error(law_id: &str, calculation_date: &str, reason: SelectionReason) -> EngineError {
+    match reason {
+        SelectionReason::NotFound => EngineError::LawNotFound(law_id.to_string()),
+        SelectionReason::NotYetInForce => EngineError::LawNotYetInForce {
+            law_id: law_id.to_string(),
+            reference_date: calculation_date.to_string(),
+        },
+        SelectionReason::EndedOn(valid_to) => EngineError::LawEnded {
+            law_id: law_id.to_string(),
+            reference_date: calculation_date.to_string(),
+            valid_to: valid_to.format("%Y-%m-%d").to_string(),
+        },
+    }
+}
+
 impl<'a> ResolutionContext<'a> {
     /// Create a new resolution context.
-    fn new(calculation_date: &'a str) -> Self {
-        let reference_date = NaiveDate::parse_from_str(calculation_date, "%Y-%m-%d").ok();
-        Self {
+    ///
+    /// Rejects a malformed `calculation_date`: a date that fails to parse must
+    /// not silently bypass `valid_from`/`valid_to` version selection (RFC-019).
+    fn new(calculation_date: &'a str) -> Result<Self> {
+        let reference_date = Some(parse_calculation_date(calculation_date)?);
+        Ok(Self {
             calculation_date,
             reference_date,
             visited: HashSet::new(),
@@ -99,21 +126,14 @@ impl<'a> ResolutionContext<'a> {
             trace: None,
             cache: HashMap::new(),
             contextual_law_id: None,
-        }
+        })
     }
 
     /// Create a new resolution context with trace builder.
-    fn with_trace(calculation_date: &'a str, trace: Rc<RefCell<TraceBuilder>>) -> Self {
-        let reference_date = NaiveDate::parse_from_str(calculation_date, "%Y-%m-%d").ok();
-        Self {
-            calculation_date,
-            reference_date,
-            visited: HashSet::new(),
-            depth: 0,
-            trace: Some(trace),
-            cache: HashMap::new(),
-            contextual_law_id: None,
-        }
+    fn with_trace(calculation_date: &'a str, trace: Rc<RefCell<TraceBuilder>>) -> Result<Self> {
+        let mut ctx = Self::new(calculation_date)?;
+        ctx.trace = Some(trace);
+        Ok(ctx)
     }
 
     /// Return the cached parsed date for version selection.
@@ -465,6 +485,7 @@ impl LawExecutionService {
             .map(|law| LoadedRegulation {
                 id: law.id.clone(),
                 valid_from: law.valid_from.clone(),
+                valid_to: law.valid_to.clone(),
                 hash: law.content_hash.clone(),
             })
             .collect();
@@ -545,7 +566,7 @@ impl LawExecutionService {
                 "output_names must not be empty".to_string(),
             ));
         }
-        let mut res_ctx = ResolutionContext::new(calculation_date);
+        let mut res_ctx = ResolutionContext::new(calculation_date)?;
         res_ctx.contextual_law_id = Some(law_id.to_string());
         self.evaluate_law_multi_internal(law_id, output_names, parameters, &mut res_ctx)
     }
@@ -606,7 +627,7 @@ impl LawExecutionService {
             ));
         }
 
-        let mut res_ctx = ResolutionContext::with_trace(calculation_date, Rc::clone(&trace));
+        let mut res_ctx = ResolutionContext::with_trace(calculation_date, Rc::clone(&trace))?;
         res_ctx.contextual_law_id = Some(law_id.to_string());
 
         // Execute: group outputs by article, evaluate each once, merge + filter
@@ -705,7 +726,7 @@ impl LawExecutionService {
         calculation_date: &str,
         trace: Rc<RefCell<TraceBuilder>>,
     ) -> Result<ArticleResult> {
-        let mut res_ctx = ResolutionContext::with_trace(calculation_date, trace);
+        let mut res_ctx = ResolutionContext::with_trace(calculation_date, trace)?;
         res_ctx.contextual_law_id = Some(law_id.to_string());
         self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx)
     }
@@ -809,11 +830,11 @@ impl LawExecutionService {
         trace: Option<Rc<RefCell<TraceBuilder>>>,
     ) -> Result<ExecutionOutcome> {
         // Look up the law and article
-        let ref_date = NaiveDate::parse_from_str(calculation_date, "%Y-%m-%d").ok();
+        let ref_date = Some(parse_calculation_date(calculation_date)?);
         let law = self
             .resolver
-            .get_law_for_date(law_id, ref_date)
-            .ok_or_else(|| EngineError::LawNotFound(law_id.to_string()))?;
+            .get_law_for_date_reported(law_id, ref_date)
+            .map_err(|reason| selection_error(law_id, calculation_date, reason))?;
         let article = self
             .resolver
             .get_article_by_output(law_id, output_name, ref_date)
@@ -911,9 +932,9 @@ impl LawExecutionService {
 
         // Execute the article with stage-aware hook firing
         let mut res_ctx = if let Some(ref tb) = trace {
-            ResolutionContext::with_trace(calculation_date, Rc::clone(tb))
+            ResolutionContext::with_trace(calculation_date, Rc::clone(tb))?
         } else {
-            ResolutionContext::new(calculation_date)
+            ResolutionContext::new(calculation_date)?
         };
         res_ctx.contextual_law_id = Some(stage_state.contextual_law.clone());
 
@@ -987,11 +1008,11 @@ impl LawExecutionService {
         parameters: BTreeMap<String, Value>,
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<ArticleResult> {
-        // Validate that the law exists
+        // Validate that the law exists and is in force on the calculation date
         let _law = self
             .resolver
-            .get_law_for_date(law_id, res_ctx.reference_date())
-            .ok_or_else(|| EngineError::LawNotFound(law_id.to_string()))?;
+            .get_law_for_date_reported(law_id, res_ctx.reference_date())
+            .map_err(|reason| selection_error(law_id, res_ctx.calculation_date, reason))?;
 
         // Group outputs by their producing article number to avoid redundant evaluations
         let mut article_to_outputs: BTreeMap<String, Vec<&str>> = BTreeMap::new();
@@ -1145,8 +1166,8 @@ impl LawExecutionService {
         // Get the law (version-aware: use the same reference date as the article lookup)
         let law = self
             .resolver
-            .get_law_for_date(law_id, res_ctx.reference_date())
-            .ok_or_else(|| EngineError::LawNotFound(law_id.to_string()))?;
+            .get_law_for_date_reported(law_id, res_ctx.reference_date())
+            .map_err(|reason| selection_error(law_id, res_ctx.calculation_date, reason))?;
 
         // Find the article
         let article = self
@@ -2443,7 +2464,7 @@ impl ServiceProvider for LawExecutionService {
         context: &RuleContext,
         calculation_date: &str,
     ) -> Result<Value> {
-        let mut res_ctx = ResolutionContext::new(calculation_date);
+        let mut res_ctx = ResolutionContext::new(calculation_date)?;
         self.resolve_external_input_internal(
             regulation,
             output,

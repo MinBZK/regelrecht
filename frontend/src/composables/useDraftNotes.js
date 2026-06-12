@@ -143,7 +143,7 @@ export function useDraftNotes(lawId, trajectRef) {
     ];
     const doc = {
       $schema:
-        'https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.2/annotation-schema.json',
+        'https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.3/annotation-schema.json',
       annotations,
     };
     // lineWidth -1: never fold long body strings, so the YAML diff stays

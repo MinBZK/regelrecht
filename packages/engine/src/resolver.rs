@@ -27,6 +27,23 @@ use crate::types::Value;
 use chrono::NaiveDate;
 use std::collections::HashMap;
 
+/// Why a law version could not be selected for a reference date.
+///
+/// Used for honest diagnostics (RFC-019 §3): the engine states the *data fact*,
+/// never a legal verdict like "geen grondslag" — eerbiedigende werking, a
+/// statische verwijzing, or an alternative grondslag may keep the law alive.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SelectionReason {
+    /// No law with this id is loaded.
+    NotFound,
+    /// The law exists, but no version is in force yet on the reference date
+    /// (every version has `valid_from` after it).
+    NotYetInForce,
+    /// The most recent applicable version ended before the reference date.
+    /// Carries the `valid_to` date that was last in force.
+    EndedOn(NaiveDate),
+}
+
 /// A reference to a law article, used in implements and overrides indexes.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct LawArticleRef {
@@ -136,6 +153,19 @@ impl RuleResolver {
         let law_id = law.id.clone();
         let valid_from = law.valid_from.clone();
 
+        // RFC-019: valid_to is static version-selection metadata. An unparseable
+        // value (e.g. the format-valid but calendar-invalid '2023-02-30') would
+        // silently skip the expiry check in select_in and keep an ended law in
+        // force forever - reject it at load time instead. valid_from keeps its
+        // lenient behaviour (it may be a '#'-reference per RFC-001).
+        if let Some(valid_to) = &law.valid_to {
+            parse_date(valid_to).map_err(|_| {
+                EngineError::LoadError(format!(
+                    "law '{law_id}': valid_to '{valid_to}' is not a valid date (expected YYYY-MM-DD)"
+                ))
+            })?;
+        }
+
         // Count total laws across all versions
         let total_laws: usize = self.law_versions.values().map(|v| v.len()).sum();
 
@@ -242,24 +272,91 @@ impl RuleResolver {
         }
     }
 
+    /// Like [`Self::get_law_for_date`], but reports *why* selection failed.
+    ///
+    /// On failure returns a [`SelectionReason`] so callers can produce an honest
+    /// diagnostic (RFC-019 §3) without inventing a legal verdict. A required
+    /// `reference_date` is taken: the "no date → latest version" shortcut of
+    /// [`Self::get_law_for_date`] does not apply here.
+    pub fn get_law_for_date_result(
+        &self,
+        law_id: &str,
+        reference_date: NaiveDate,
+    ) -> std::result::Result<&ArticleBasedLaw, SelectionReason> {
+        let versions = self
+            .law_versions
+            .get(law_id)
+            .ok_or(SelectionReason::NotFound)?;
+        Self::select_in(versions, reference_date)
+    }
+
+    /// Version-aware lookup reporting *why* selection failed, tolerating an
+    /// absent reference date.
+    ///
+    /// With `Some(date)` this is [`Self::get_law_for_date_result`]; with `None`
+    /// it keeps the "no date → latest version" behaviour of
+    /// [`Self::get_law_for_date`], failing only when the law id is unknown.
+    ///
+    /// NOTE: `None` deliberately means "latest version regardless of validity
+    /// window" - the `valid_to` upper bound is NOT applied, so an ended law's
+    /// final version is returned. Execution paths always pass `Some(date)`
+    /// (malformed calculation dates are rejected up front); only pass `None`
+    /// for display/listing-style lookups. Revisit when RFC-020 threads
+    /// `as_of` dates through every resolution.
+    pub fn get_law_for_date_reported(
+        &self,
+        law_id: &str,
+        reference_date: Option<NaiveDate>,
+    ) -> std::result::Result<&ArticleBasedLaw, SelectionReason> {
+        match reference_date {
+            Some(date) => self.get_law_for_date_result(law_id, date),
+            None => self
+                .law_versions
+                .get(law_id)
+                .and_then(|versions| versions.first())
+                .ok_or(SelectionReason::NotFound),
+        }
+    }
+
     /// Select the appropriate version for a reference date.
     ///
     /// # Selection Logic
-    /// 1. Filter versions where `valid_from <= reference_date`
-    /// 2. Return the version with the most recent `valid_from`
-    /// 3. If no version has `valid_from`, return the most recent overall
+    /// 1. Among versions with `valid_from <= reference_date`, take the most recent
+    ///    (`valid_from`-less versions match any date). Versions are sorted newest-first.
+    /// 2. If that version has a `valid_to` and `reference_date > valid_to`, the law is
+    ///    no longer in force → return `None`. Do **not** fall through to an older
+    ///    version: a repealed law does not resurrect a prior version (RFC-019 §2).
     fn select_version_for_date<'a>(
         &self,
         versions: &'a [ArticleBasedLaw],
         reference_date: NaiveDate,
     ) -> Option<&'a ArticleBasedLaw> {
-        // Return the first valid version (already sorted newest first)
-        versions.iter().find(|v| {
-            v.valid_from
-                .as_ref()
-                .and_then(|s| parse_date(s).ok())
-                .is_none_or(|valid_from| valid_from <= reference_date)
-        })
+        Self::select_in(versions, reference_date).ok()
+    }
+
+    /// Shared selection core over a version slice (sorted newest-first), reporting
+    /// the reason on failure. See [`Self::select_version_for_date`] for the rule.
+    fn select_in(
+        versions: &[ArticleBasedLaw],
+        reference_date: NaiveDate,
+    ) -> std::result::Result<&ArticleBasedLaw, SelectionReason> {
+        let candidate = versions
+            .iter()
+            .find(|v| {
+                v.valid_from
+                    .as_ref()
+                    .and_then(|s| parse_date(s).ok())
+                    .is_none_or(|valid_from| valid_from <= reference_date)
+            })
+            .ok_or(SelectionReason::NotYetInForce)?;
+
+        // Upper bound (inclusive): in force iff reference_date <= valid_to.
+        if let Some(valid_to) = candidate.valid_to.as_ref().and_then(|s| parse_date(s).ok()) {
+            if reference_date > valid_to {
+                return Err(SelectionReason::EndedOn(valid_to));
+            }
+        }
+        Ok(candidate)
     }
 
     /// Get an article by law ID and output name.
@@ -915,6 +1012,29 @@ articles:
         )
     }
 
+    fn make_test_law_with_validity(valid_from: &str, valid_to: &str, value: i32) -> String {
+        format!(
+            r#"
+$id: test_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '{valid_from}'
+valid_to: '{valid_to}'
+articles:
+  - number: '1'
+    text: Test article {valid_from} t/m {valid_to}
+    machine_readable:
+      execution:
+        output:
+          - name: test_output
+            type: number
+        actions:
+          - output: test_output
+            value: {value}
+"#
+        )
+    }
+
     #[test]
     fn test_resolver_basic() {
         let mut resolver = RuleResolver::new();
@@ -1136,6 +1256,124 @@ articles:
         let date_2024 = NaiveDate::from_ymd_opt(2024, 6, 1).unwrap();
         let law = resolver.get_law_for_date("test_law", Some(date_2024));
         assert!(law.is_none());
+    }
+
+    #[test]
+    fn test_resolver_valid_to_upper_bound() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&make_test_law_with_validity(
+                "2023-01-01",
+                "2023-12-31",
+                100,
+            ))
+            .unwrap();
+
+        // In force before and on the (inclusive) end date.
+        assert!(resolver
+            .get_law_for_date(
+                "test_law",
+                Some(NaiveDate::from_ymd_opt(2023, 6, 1).unwrap())
+            )
+            .is_some());
+        assert!(resolver
+            .get_law_for_date(
+                "test_law",
+                Some(NaiveDate::from_ymd_opt(2023, 12, 31).unwrap())
+            )
+            .is_some());
+
+        // No longer in force the day after valid_to.
+        assert!(resolver
+            .get_law_for_date(
+                "test_law",
+                Some(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap())
+            )
+            .is_none());
+    }
+
+    #[test]
+    fn test_resolver_valid_to_no_fall_through() {
+        // An older open-ended version (100) and a newer version (200) that ends 2024-12-31.
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&make_test_law_with_valid_from("2023-01-01", 100))
+            .unwrap();
+        resolver
+            .load_from_yaml(&make_test_law_with_validity(
+                "2024-01-01",
+                "2024-12-31",
+                200,
+            ))
+            .unwrap();
+
+        // Before the newer version: the older one applies.
+        let law = resolver
+            .get_law_for_date(
+                "test_law",
+                Some(NaiveDate::from_ymd_opt(2023, 6, 1).unwrap()),
+            )
+            .unwrap();
+        assert_eq!(law.valid_from, Some("2023-01-01".to_string()));
+
+        // After the newer version has ended: the law is no longer in force.
+        // It must NOT resurrect the older open-ended version (RFC-019 §2).
+        assert!(resolver
+            .get_law_for_date(
+                "test_law",
+                Some(NaiveDate::from_ymd_opt(2025, 6, 1).unwrap())
+            )
+            .is_none());
+    }
+
+    #[test]
+    fn test_resolver_selection_reason() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&make_test_law_with_validity(
+                "2023-01-01",
+                "2023-12-31",
+                100,
+            ))
+            .unwrap();
+
+        // Unknown law id.
+        assert_eq!(
+            resolver.get_law_for_date_result("nope", NaiveDate::from_ymd_opt(2023, 6, 1).unwrap()),
+            Err(SelectionReason::NotFound)
+        );
+        // Before it is in force.
+        assert_eq!(
+            resolver
+                .get_law_for_date_result("test_law", NaiveDate::from_ymd_opt(2022, 1, 1).unwrap()),
+            Err(SelectionReason::NotYetInForce)
+        );
+        // After it has ended — states the data fact, not a verdict.
+        assert_eq!(
+            resolver
+                .get_law_for_date_result("test_law", NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()),
+            Err(SelectionReason::EndedOn(
+                NaiveDate::from_ymd_opt(2023, 12, 31).unwrap()
+            ))
+        );
+        // In force.
+        assert!(resolver
+            .get_law_for_date_result("test_law", NaiveDate::from_ymd_opt(2023, 6, 1).unwrap())
+            .is_ok());
+    }
+
+    #[test]
+    fn test_resolver_rejects_calendar_invalid_valid_to() {
+        // Format-valid but calendar-invalid (passes the schema regex): without
+        // the load-time check this would silently skip the expiry check and
+        // keep the law in force forever (RFC-019).
+        let mut resolver = RuleResolver::new();
+        let result = resolver.load_from_yaml(&make_test_law_with_validity(
+            "2023-01-01",
+            "2023-02-30",
+            100,
+        ));
+        assert!(matches!(result, Err(EngineError::LoadError(_))));
     }
 
     #[test]

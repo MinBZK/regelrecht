@@ -101,6 +101,7 @@ pub fn parse_wti_metadata(doc: &Document<'_>) -> WtiParseResult {
             regulatory_layer,
             publication_date,
             effective_date: None,
+            valid_to: None,
             creator: None,
             scope_code: None,
         },

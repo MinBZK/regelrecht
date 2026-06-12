@@ -20,7 +20,7 @@ use jsonschema::Validator;
 use regelrecht_engine::annotation::{law_id_from_source, resolve, TextQuoteSelector};
 use regelrecht_engine::article::ArticleBasedLaw;
 
-const ANNOTATION_SCHEMA: &str = include_str!("../../../../schema/v0.5.2/annotation-schema.json");
+const ANNOTATION_SCHEMA: &str = include_str!("../../../../schema/v0.5.3/annotation-schema.json");
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -81,7 +81,7 @@ fn main() {
             failed = true;
             continue;
         }
-        eprintln!("OK: {} (annotation schema v0.5.2)", path.display());
+        eprintln!("OK: {} (annotation schema v0.5.3)", path.display());
 
         warnings += check_notes(path, &doc, &vocabulary);
     }

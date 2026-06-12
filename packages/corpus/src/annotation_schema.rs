@@ -8,7 +8,7 @@
 //! stays a warning in `validate-annotations` per RFC-018 §8.
 //!
 //! NOTE: this is a *second* embedded copy of
-//! `schema/v0.5.2/annotation-schema.json`. The `validate-annotations`
+//! `schema/v0.5.3/annotation-schema.json`. The `validate-annotations`
 //! engine binary embeds the same file independently (it does not call this
 //! module), so editor-api need not depend on the engine crate. The JSON
 //! file is the single source of truth; the duplication is a known drift
@@ -21,8 +21,8 @@ use std::sync::LazyLock;
 use jsonschema::Validator;
 
 /// The note schema, embedded at build time. Path is relative to this
-/// source file: `packages/corpus/src/` → repo `schema/v0.5.2/`.
-const ANNOTATION_SCHEMA: &str = include_str!("../../../schema/v0.5.2/annotation-schema.json");
+/// source file: `packages/corpus/src/` → repo `schema/v0.5.3/`.
+const ANNOTATION_SCHEMA: &str = include_str!("../../../schema/v0.5.3/annotation-schema.json");
 
 /// Compiled once on first use. The embedded schema not compiling is a
 /// build/release fault, not a per-request one, but the workspace bans
@@ -36,7 +36,7 @@ static VALIDATOR: LazyLock<Result<Validator, String>> = LazyLock::new(|| {
 });
 
 /// Parse a note file's YAML and validate it against
-/// `schema/v0.5.2/annotation-schema.json`, returning the parsed document on
+/// `schema/v0.5.3/annotation-schema.json`, returning the parsed document on
 /// success.
 ///
 /// On failure returns a list of error strings (a YAML parse error, or the
@@ -404,7 +404,7 @@ pub fn first_note_not_targeting_law(
 mod tests {
     use super::*;
 
-    const SCHEMA_URL: &str = "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.2/annotation-schema.json";
+    const SCHEMA_URL: &str = "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.3/annotation-schema.json";
 
     #[test]
     fn schema_compiles() {
