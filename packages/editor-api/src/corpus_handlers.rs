@@ -495,16 +495,16 @@ async fn implementors_in_scope(scope: &ReadScope, law_id: &str) -> Vec<String> {
 /// Law ids a scenario file evaluates, extracted from its execution steps.
 ///
 /// A target is the law named in an `I evaluate "<output>" of "<law_id>"`
-/// step. The Gherkin keyword may be `When`, `And`, `But` or `*` — the
-/// frontend step matcher (`frontend/src/gherkin/steps.js`) matches step text
-/// without its keyword, so continuations are valid execution steps too.
+/// step. The Gherkin keyword may be `When`, `Then`, `And`, `But` or `*` —
+/// the frontend step matcher (`frontend/src/gherkin/steps.js`) matches step
+/// text without its keyword, so all of these run as execution steps.
 /// `Given law "…" is loaded` lines are dependencies, not targets.
 /// Deduplicated, order of first occurrence preserved.
 fn extract_target_law_ids(content: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for line in content.lines() {
         let trimmed = line.trim_start();
-        let Some(step) = ["When ", "And ", "But ", "* "]
+        let Some(step) = ["When ", "Then ", "And ", "But ", "* "]
             .iter()
             .find_map(|kw| trimmed.strip_prefix(kw))
         else {
@@ -658,6 +658,10 @@ async fn list_scenarios_in_scope(
                 Ok(dir) => dir.join("scenarios"),
                 Err(_) => return Ok(Json(Vec::new())),
             };
+            // Unlike the Traject branch there is only one backend here, so
+            // holding its lock across the listing and the per-file reads is
+            // fine: no second lock is ever taken (no ordering hazard) and
+            // re-acquiring per file would only add churn.
             let backend = resolved.backend.lock().await;
             let entries = backend
                 .list_files(&scenarios_dir, Some("feature"))
@@ -2836,18 +2840,19 @@ mod tests {
     }
 
     #[test]
-    fn extract_targets_accepts_and_but_continuations() {
+    fn extract_targets_accepts_then_and_but_continuations() {
         // The frontend step matcher strips the Gherkin keyword before
-        // matching, so And/But/`*` continuations are valid execution steps.
+        // matching, so Then/And/But/`*` lines are valid execution steps.
         let content = r#"
     When I evaluate "a" of "law_a"
-    And I evaluate "b" of "law_b"
-    But I evaluate "c" of "law_c"
-    * I evaluate "d" of "law_d"
+    Then I evaluate "b" of "law_b"
+    And I evaluate "c" of "law_c"
+    But I evaluate "d" of "law_d"
+    * I evaluate "e" of "law_e"
 "#;
         assert_eq!(
             extract_target_law_ids(content),
-            vec!["law_a", "law_b", "law_c", "law_d"]
+            vec!["law_a", "law_b", "law_c", "law_d", "law_e"]
         );
     }
 

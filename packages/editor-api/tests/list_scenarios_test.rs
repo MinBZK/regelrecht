@@ -1,9 +1,11 @@
-//! Integration test for `corpus_handlers::list_traject_scenarios` —
-//! verifies that `ScenarioEntry::target_law_ids` is populated from the
-//! feature file content.
+//! Integration tests for `corpus_handlers::list_traject_scenarios` and
+//! `corpus_handlers::list_scenarios` (global) — verify that
+//! `ScenarioEntry::target_law_ids` is populated from the feature file
+//! content on both read paths.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
@@ -15,8 +17,8 @@ use uuid::Uuid;
 
 use regelrecht_auth::handlers::SESSION_KEY_SUB;
 use regelrecht_editor_api::config::AppConfig;
-use regelrecht_editor_api::corpus_handlers::list_traject_scenarios;
-use regelrecht_editor_api::state::{AppState, CorpusState};
+use regelrecht_editor_api::corpus_handlers::{list_scenarios, list_traject_scenarios};
+use regelrecht_editor_api::state::{AppState, BackendEntry, CorpusState};
 use regelrecht_editor_api::traject_corpus::TrajectCorpusCache;
 
 use regelrecht_pipeline::test_utils::TestDb;
@@ -163,6 +165,80 @@ async fn list_traject_scenarios_returns_target_law_ids() {
     )
     .await
     .expect("list_traject_scenarios must succeed");
+
+    let summary: Vec<(String, Vec<String>)> = entries
+        .into_iter()
+        .map(|e| (e.filename, e.target_law_ids))
+        .collect();
+
+    assert_eq!(
+        summary,
+        vec![
+            ("matching.feature".to_string(), vec![LAW_ID.to_string()]),
+            ("other.feature".to_string(), vec!["andere_wet".to_string()]),
+            ("wip.feature".to_string(), Vec::new()),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn list_scenarios_global_returns_target_law_ids() {
+    let corpus = tempfile::tempdir().unwrap();
+    write_corpus(corpus.path());
+
+    // Registry with a single local source rooted at the temp corpus, the
+    // same shape `init_corpus` builds from corpus-registry.yaml.
+    let manifest_dir = tempfile::tempdir().unwrap();
+    let manifest = manifest_dir.path().join("corpus-registry.yaml");
+    std::fs::write(
+        &manifest,
+        format!(
+            "---\nschema_version: '1.0'\nsources:\n  - id: local\n    name: Local\n    \
+             type: local\n    local:\n      path: {}\n    scopes: []\n    priority: 1\n",
+            corpus.path().display()
+        ),
+    )
+    .unwrap();
+    let registry = regelrecht_corpus::CorpusRegistry::load(&manifest, None).unwrap();
+    let source_map = registry.load_local_sources().unwrap();
+
+    let mut backends = HashMap::new();
+    for source in registry.sources() {
+        let mut backend = regelrecht_corpus::backend::create_backend(source, None).unwrap();
+        backend.ensure_ready().await.unwrap();
+        let writable = backend.is_writable();
+        backends.insert(
+            source.id.clone(),
+            BackendEntry {
+                backend: Arc::new(Mutex::new(backend)),
+                writable,
+            },
+        );
+    }
+
+    let state = AppState {
+        corpus: Arc::new(RwLock::new(CorpusState {
+            registry,
+            source_map,
+            backends,
+            auth_file: None,
+        })),
+        oidc_client: None,
+        end_session_url: None,
+        config: Arc::new(AppConfig {
+            oidc: None,
+            base_url: None,
+        }),
+        http_client: reqwest::Client::new(),
+        pool: None,
+        pipeline_api_url: None,
+        reload_lock: Arc::new(Mutex::new(())),
+        trajects: Arc::new(TrajectCorpusCache::new()),
+    };
+
+    let axum::Json(entries) = list_scenarios(State(state), Path(LAW_ID.to_string()))
+        .await
+        .expect("list_scenarios must succeed");
 
     let summary: Vec<(String, Vec<String>)> = entries
         .into_iter()
