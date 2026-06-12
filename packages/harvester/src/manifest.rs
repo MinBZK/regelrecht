@@ -241,6 +241,8 @@ pub fn resolve_valid_to(manifest: &BwbManifest, version_date: &str) -> Option<St
         .filter(|c| !c.deleted)
         .find(|c| c.datum_inwerkingtreding == version_date)?;
 
+    // BWB dates are ISO 8601 (YYYY-MM-DD), so lexicographic order equals
+    // chronological order; no date parsing needed for the comparison.
     let is_final = !manifest
         .expressions
         .iter()
