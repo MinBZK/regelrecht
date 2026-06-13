@@ -41,6 +41,7 @@ jobs:
               - corpus/regulation/**
               - schema/**
               - script/**
+              - .claude/skills/regelrecht-stelselanalyse/references/cross-law-integriteit.py
               - Justfile
               - .pre-commit-config.yaml
               - .yamllint
@@ -230,6 +231,29 @@ jobs:
       - name: Skip (no relevant changes)
         if: needs.changes.outputs.ci != 'true'
         run: echo "No relevant changes, skipping provenance checks"
+
+  cross-law-integrity:
+    name: Cross-law integrity
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: needs.changes.outputs.ci == 'true'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: '3.x'
+
+      - name: Install pyyaml
+        run: pip install pyyaml
+
+      # Fail-closed gate over the corpus: MISPLACED / DANGLING / PLAIN-PARAM
+      # source bindings and IMPL-DANGLING / IMPL-NO-DATE implements declarations
+      # are all modelling errors. The script exits non-zero on any finding.
+      - name: Check cross-law binding integrity
+        run: |
+          python3 .claude/skills/regelrecht-stelselanalyse/references/cross-law-integriteit.py corpus/regulation
 
   pre-commit:
     name: Pre-commit

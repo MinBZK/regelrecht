@@ -60,3 +60,10 @@ repos:
         pass_filenames: true
         files: ^corpus/regulation/.*\.yaml$
         types: [yaml]
+
+      - id: skills-no-casus
+        name: Skills blijven dossier-agnostisch (geen casus-inhoud)
+        entry: script/check-skills-no-casus.sh
+        language: system
+        pass_filenames: false
+        files: ^\.claude/skills/

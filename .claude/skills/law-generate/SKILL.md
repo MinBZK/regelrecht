@@ -381,6 +381,55 @@ machine_readable:
         value: $verlaging_percentage
 ```
 
+#### Binding purity — NEVER leave a cross-law input as a plain-param placeholder
+
+Every `input` that references a concept owned by another legal provision MUST carry a
+real `source:` block. A description is documentation, not a binding — it does not make the
+engine resolve anything.
+
+**Forbidden pattern:** an `input` whose description names another regulation, or uses words
+like "conceptueel", "forward naar", or "tijdelijk als directe parameter", but has NO
+`source:` block. This is a *plain-param placeholder*: it silently turns a cross-law value
+into a free input the caller must supply by hand, and real cross-document resolution never
+happens. If the target law does not yet produce the needed output, FIRST add that output to
+the target law (a `machine_readable` action on the correct article), then bind to it — do
+not leave the reference stranded in a description.
+
+**Never** use "the engine cannot resolve multiple source bindings per article" as a reason
+to fall back to a plain param. That assumption is false: schema v0.5.2 supports multiple
+`source:` bindings per article, and they resolve fine. When in doubt, bind for real and
+prove it with a BDD scenario.
+
+**Section placement — a `source:` MUST live under `input:`, NEVER under `parameters:`.**
+This is the single most common way a binding looks real but silently does nothing. The
+engine has two distinct structs: `Parameter` (the items under `parameters:`) has **no
+`source` field**, while `Input` (the items under `input:`) is the only one that carries
+`source`. A `source:` block placed under `parameters:` is therefore **dropped at parse time**
+— the value degrades to a plain caller-supplied parameter and cross-law resolution never
+fires. It will still "pass" any BDD scenario that injects the value directly, which hides
+the defect. Rule of thumb:
+- The cross-law-resolved value (the thing the other law produces) → declare under `input:` with its `source:`.
+- The leaf parameters that FEED that binding's `source.parameters` mapping → stay under `parameters:` as direct inputs.
+
+A binding only truly resolves when its `input:` entry is reached AND no overriding parameter
+of the same name is supplied. Verify with a BDD scenario that loads the target law and sets
+the *leaf* inputs (not the bound value), then asserts the dependent output flips.
+
+**Name-mismatch rule:** if the local input name differs from the target output name, put
+the *target's* output name in `source.output` and the *local* name in `name`, and note the
+difference in the `description`:
+```yaml
+input:
+  - name: lokaal_inkomen           # local name used by this article's logic
+    type: amount
+    description: "bindt aan output 'toetsingsinkomen' van de andere regeling (naam wijkt af)"
+    source:
+      regulation: algemene_wet_inkomensafhankelijke_regelingen
+      output: toetsingsinkomen     # the name the TARGET law actually produces
+    type_spec:
+      unit: eurocent
+```
+
 ### Field Types
 
 | Context | Valid types |
