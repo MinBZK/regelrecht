@@ -310,7 +310,7 @@ function handleKeydown(e) {
       <nldd-page sticky-header>
         <nldd-top-title-bar
           slot="header"
-          text="Documenten"
+          text="Werkdocumenten"
           dismiss-text="Sluit"
           @dismiss="closeBrowser"
         ></nldd-top-title-bar>

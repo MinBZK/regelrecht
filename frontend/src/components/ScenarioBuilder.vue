@@ -485,7 +485,7 @@ defineExpose({ save: onSave });
 <template>
   <!-- Overview -->
   <nldd-simple-section>
-      <div v-if="scenariosLoading" class="sb-loading">Scenario's laden...</div>
+      <nldd-activity-indicator v-if="scenariosLoading" text="Scenario's laden" show-text></nldd-activity-indicator>
       <nldd-dropdown v-else-if="scenarioFiles.length > 1" size="md">
         <select
           :value="selectedScenarioFile"

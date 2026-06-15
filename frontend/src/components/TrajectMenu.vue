@@ -208,7 +208,7 @@ async function submitCreate() {
     <nldd-menu-divider v-if="activeTraject"></nldd-menu-divider>
     <nldd-menu-item
       v-if="activeTraject"
-      text="Documenten"
+      text="Werkdocumenten"
       icon="documents"
       @click="documentsSheet.open()"
     ></nldd-menu-item>

@@ -101,7 +101,7 @@ const { lastSavedPr, documentTabs, activeDocumentTab, tabActions } = useAppChrom
               <TrajectMenu id-suffix="md" />
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <nldd-button id="settings-menu-btn-md" size="md" start-icon="global-settings" text="Instellingen" expandable popovertarget="settings-menu-md"></nldd-button>
+              <nldd-button id="settings-menu-btn-md" size="md" start-icon="account" text="Account" expandable popovertarget="settings-menu-md"></nldd-button>
               <nldd-menu id="settings-menu-md" anchor="settings-menu-btn-md">
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
                 <nldd-menu-group text="Functies">
@@ -158,7 +158,7 @@ const { lastSavedPr, documentTabs, activeDocumentTab, tabActions } = useAppChrom
               <TrajectMenu id-suffix="lg" />
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <nldd-button id="settings-menu-btn-lg" size="md" start-icon="global-settings" text="Instellingen" expandable popovertarget="settings-menu-lg"></nldd-button>
+              <nldd-button id="settings-menu-btn-lg" size="md" start-icon="account" text="Account" expandable popovertarget="settings-menu-lg"></nldd-button>
               <nldd-menu id="settings-menu-lg" anchor="settings-menu-btn-lg">
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
                 <nldd-menu-group text="Functies">
@@ -193,7 +193,7 @@ const { lastSavedPr, documentTabs, activeDocumentTab, tabActions } = useAppChrom
       <!-- Document Tab Bar (editor only, md+). Rendered only while the active
            view publishes open tabs, so the library never shows an empty bar. -->
       <nldd-split-view-pane v-if="documentTabs.length > 0 && tabActions" slot="document-tabs" sm-order="2">
-        <nldd-container padding-inline="8" padding-top="4" padding-bottom="8" sm-padding-top="8" sm-padding-bottom="0">
+        <nldd-container padding-inline="8" padding-top="0" padding-bottom="8" sm-padding-top="8" sm-padding-bottom="0">
           <nldd-document-tab-bar>
             <nldd-document-tab-bar-item
               v-for="tab in documentTabs"
@@ -217,12 +217,20 @@ const { lastSavedPr, documentTabs, activeDocumentTab, tabActions } = useAppChrom
         <router-view />
       </nldd-split-view-pane>
 
-      <!-- Mobile Bar (sm only) -->
+      <!-- Mobile Bar (sm only): TrajectMenu on its own full-width row, then the
+           tab bar + search + account row below. -->
       <nldd-split-view-pane slot="mobile-bar" only="sm">
-        <nldd-container padding="8">
+        <nldd-container padding="8" padding-bottom="0">
           <nldd-toolbar size="md">
+            <nldd-toolbar-item slot="start" width="100%">
+              <TrajectMenu id-suffix="sm" full-width />
+            </nldd-toolbar-item>
+          </nldd-toolbar>
+        </nldd-container>
+        <nldd-container padding="8">
+          <nldd-toolbar size="lg">
             <nldd-toolbar-item slot="start">
-              <nldd-tab-bar variant="compact" navigation>
+              <nldd-tab-bar navigation>
                 <nldd-tab-bar-item :selected="isLibraryRoute || undefined" :href="isLibraryRoute ? undefined : libraryTabHref" @click.prevent="isLibraryRoute || router.push(libraryTabTarget)" icon="books" text="Bibliotheek"></nldd-tab-bar-item>
                 <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="isLibraryRoute ? editorTabHref : undefined" @click.prevent="isLibraryRoute && router.push(editorTabTarget)" icon="edit" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
@@ -233,11 +241,8 @@ const { lastSavedPr, documentTabs, activeDocumentTab, tabActions } = useAppChrom
               </span>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <TrajectMenu id-suffix="sm" />
-            </nldd-toolbar-item>
-            <nldd-toolbar-item slot="end">
               <span>
-                <nldd-icon-button id="settings-menu-btn-sm" size="lg" icon="global-settings" text="Instellingen" popovertarget="settings-menu-sm"></nldd-icon-button>
+                <nldd-icon-button id="settings-menu-btn-sm" size="lg" icon="account" text="Account" popovertarget="settings-menu-sm"></nldd-icon-button>
               </span>
               <nldd-menu id="settings-menu-sm" anchor="settings-menu-btn-sm">
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
