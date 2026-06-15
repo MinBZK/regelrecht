@@ -8,6 +8,7 @@
  * State is shared at module level so all callers see the same harvest status.
  */
 import { ref, computed } from 'vue';
+import { apiFetch, apiFetchJson } from '../lib/apiFetch.js';
 
 const TERMINAL_STATUSES = new Set([
   'harvest_failed', 'harvest_exhausted', 'enrich_failed', 'enrich_exhausted', 'error', 'timeout', 'unauthorized',
@@ -69,9 +70,7 @@ async function pollHarvestStatus() {
   }
 
   try {
-    const res = await fetch(`/api/harvest/status?ids=${activeIds.join(',')}`);
-    if (!res.ok) return;
-    const data = await res.json();
+    const data = await apiFetchJson(`/api/harvest/status?ids=${activeIds.join(',')}`);
 
     const updatedStatus = { ...harvestStatus.value };
     const updatedSlugs = { ...harvestSlugs.value };
@@ -88,7 +87,8 @@ async function pollHarvestStatus() {
     const stillActive = Object.values(updatedStatus).some(s => POLLING_STATUSES.has(s));
     if (!stillActive) stopPolling();
   } catch {
-    // Poll is best-effort
+    // Poll is best-effort — HTTP errors and network failures alike just
+    // wait for the next tick.
   }
 }
 
@@ -102,26 +102,27 @@ export function useBwbHarvest() {
   async function requestHarvest(bwbId) {
     harvestStatus.value = { ...harvestStatus.value, [bwbId]: 'loading' };
     try {
-      const res = await fetch('/api/harvest', {
+      const res = await apiFetch('/api/harvest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bwb_id: bwbId }),
+        allowStatuses: [401],
       });
-      if (res.ok) {
-        const data = await res.json();
-        harvestStatus.value = { ...harvestStatus.value, [bwbId]: data.status };
-        if (data.status === 'queued' || data.status === 'already_queued') {
-          startPolling();
-        }
-      } else if (res.status === 401) {
+      if (res.status === 401) {
         // The global apiAuthGuard (src/lib/apiAuthGuard.js) already redirects to
         // login on a 401, so this branch rarely renders before navigation; kept
         // as a graceful fallback for the brief window before the page unloads.
         harvestStatus.value = { ...harvestStatus.value, [bwbId]: 'unauthorized' };
-      } else {
-        harvestStatus.value = { ...harvestStatus.value, [bwbId]: 'error' };
+        return;
+      }
+      const data = await res.json();
+      harvestStatus.value = { ...harvestStatus.value, [bwbId]: data.status };
+      if (data.status === 'queued' || data.status === 'already_queued') {
+        startPolling();
       }
     } catch {
+      // Other HTTP errors and network failures collapse to one 'error'
+      // status the UI renders as "Fout bij aanvragen".
       harvestStatus.value = { ...harvestStatus.value, [bwbId]: 'error' };
     }
   }
@@ -133,13 +134,11 @@ export function useBwbHarvest() {
    */
   async function requestHarvestBatch(lawIds) {
     try {
-      const res = await fetch('/api/harvest/batch', {
+      const data = await apiFetchJson('/api/harvest/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ law_ids: lawIds }),
       });
-      if (!res.ok) return null;
-      const data = await res.json();
 
       // Populate shared harvestStatus / harvestSlugs and start polling so the
       // dependency walker picks up completion via the usual mechanism.

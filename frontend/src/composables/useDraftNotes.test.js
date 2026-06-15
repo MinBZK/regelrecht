@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ref } from 'vue';
 import yaml from 'js-yaml';
 import { useDraftNotes } from './useDraftNotes.js';
-import { lastSavedPr } from './useEditorSession.js';
+import { lastSavedPr } from './useSavedPr.js';
 
 /** Stub the sidecar fetch exportYaml does. `committed` is the file's notes. */
 function stubSidecar(committed) {

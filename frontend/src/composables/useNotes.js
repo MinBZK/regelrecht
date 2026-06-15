@@ -10,6 +10,8 @@
 import { ref, computed, watch } from 'vue';
 import { useEngine } from './useEngine.js';
 import { annotationsUrl } from './corpusUrls.js';
+import { apiFetch } from '../lib/apiFetch.js';
+import { useLatest } from '../lib/useLatest.js';
 
 // Cache resolved notes per `${trajectRef}::${lawId}` for the session.
 // The resolver result only changes when the law text or the sidecar
@@ -47,13 +49,13 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
   // overwrite the newer law's notes — and because article numbers collide
   // across laws ('1','2','3' everywhere) the stale offsets would silently
   // highlight wrong spans. useLaw guards the same race the same way.
-  let generation = 0;
+  const claimLoad = useLatest();
 
   async function load() {
     const id = lawId.value;
     const tr = trajectRef?.value ?? null;
-    const gen = ++generation;
-    const isStale = () => gen !== generation;
+    const isCurrent = claimLoad();
+    const isStale = () => !isCurrent();
 
     // These early returns resolve synchronously. They must clear `loading`
     // too: if a slow uncached load is in flight and the user navigates to a
@@ -83,15 +85,15 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
       // backend (where `save_annotations` writes) so a freshly-appended
       // note is visible immediately. Without a traject this falls back
       // to the global annotation route — the central source's main view.
-      const res = await fetch(annotationsUrl(tr, id));
+      const res = await apiFetch(annotationsUrl(tr, id), {
+        allowStatuses: [404],
+        errorMessage: (status) => `Kon notities niet laden: ${status}`,
+      });
       if (res.status === 404) {
         // A law without a sidecar is normal, not an error.
         cache.set(key, []);
         if (!isStale()) resolved.value = [];
         return;
-      }
-      if (!res.ok) {
-        throw new Error(`Kon notities niet laden: ${res.status}`);
       }
       const yamlText = await res.text();
 
@@ -209,14 +211,14 @@ export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle, trajec
   // data — and because draft selectors resolve per-law, that would highlight
   // the previous law's drafts on the new law. useNotes.load() guards the same
   // race the same way.
-  let generation = 0;
+  const claimResolve = useLatest();
 
   async function resolve() {
     const id = lawId.value;
     const notes = draftNotes.value;
     const tr = trajectRef?.value ?? null;
-    const gen = ++generation;
-    const isStale = () => gen !== generation;
+    const isCurrent = claimResolve();
+    const isStale = () => !isCurrent();
     if (!id || !notes || notes.length === 0) {
       resolvedDrafts.value = [];
       return;

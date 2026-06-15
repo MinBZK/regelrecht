@@ -18,6 +18,8 @@ import {
   clearEditorChrome,
 } from './composables/useAppChrome.js';
 import { SUPPORT_EMAIL } from './constants.js';
+import { apiFetch, apiFetchJson } from './lib/apiFetch.js';
+import { useLatest } from './lib/useLatest.js';
 import ArticleText from './components/ArticleText.vue';
 import AnnotatedText from './components/AnnotatedText.vue';
 import ArticleTextEditor from './components/ArticleTextEditor.vue';
@@ -363,19 +365,16 @@ const searchPopoverRef = ref(null);
 // the shell's search button/field opens it.
 registerSearchPopover(searchPopoverRef);
 
-// Generation counter to discard stale responses across rapid traject switches.
-let corpusLawsGeneration = 0;
+// Discards stale responses across rapid traject switches.
+const claimCorpusLaws = useLatest();
 
 async function loadCorpusLaws() {
-  const gen = ++corpusLawsGeneration;
+  const isCurrent = claimCorpusLaws();
   try {
-    const res = await fetch(lawsListUrl(activeTrajectRef.value, 'limit=1000'));
-    if (!res.ok) return;
-    if (gen !== corpusLawsGeneration) return; // stale response, discard
-    const list = await res.json();
-    if (gen !== corpusLawsGeneration) return; // stale response, discard
+    const list = await apiFetchJson(lawsListUrl(activeTrajectRef.value, 'limit=1000'));
+    if (!isCurrent()) return; // stale response, discard
     corpusLaws.value = list.sort((a, b) => a.law_id.localeCompare(b.law_id));
-  } catch { /* ignore — search is a convenience */ }
+  } catch { /* ignore HTTP and network failures alike — search is a convenience */ }
 }
 loadCorpusLaws();
 
@@ -411,7 +410,9 @@ function onSearchSelectLaw(lawIdVal) {
 }
 
 async function onSearchHarvestAvailable(slug) {
-  await fetch('/api/corpus/reload', {
+  // Best-effort reload — a failure just means the list below may not
+  // include the fresh law yet.
+  await apiFetch('/api/corpus/reload', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ law_ids: [slug] }),
@@ -543,10 +544,12 @@ watch(lawName, (name) => {
   }
 });
 
-let switchGeneration = 0;
+// Shared between selectTab and the route guard below: a tab switch and a
+// URL-driven switch supersede each other.
+const claimTabSwitch = useLatest();
 
 async function selectTab(tab) {
-  const gen = ++switchGeneration;
+  const isCurrent = claimTabSwitch();
   activeTab.value = tab;
   // Restore snapshot if the user is mid-edit, otherwise the partial mutations
   // would persist into the new tab's view.
@@ -557,7 +560,7 @@ async function selectTab(tab) {
     selectedArticleNumber.value = tab.articleNumber;
   } else {
     await switchLaw(tab.lawId, tab.articleNumber);
-    if (gen !== switchGeneration) return; // stale, another switch started
+    if (!isCurrent()) return; // stale, another switch started
     lawNames.value = { ...lawNames.value, [tab.lawId]: lawName.value };
   }
   // Sync the URL so deep-linking and browser back/forward stay in step.
@@ -574,17 +577,17 @@ async function selectTab(tab) {
 // trajectRef-only changes are intentionally NOT handled here: the
 // `watch(activeTrajectRef)` above already does `unloadAllLaws` +
 // `loadCorpusLaws` + `switchLaw`, and triggering switchLaw twice in
-// the same tick would burn an extra fetch (the first await loses the
-// switchVersion race, but still hits the network). This guard handles
-// the law / article portion only.
+// the same tick would burn an extra fetch (the first await loses
+// useLaw's stale-switch race, but still hits the network). This guard
+// handles the law / article portion only.
 onBeforeRouteUpdate(async (to) => {
   const newLawId = to.params.lawId;
   const newArticle = to.params.articleNumber;
   if (!newLawId) return;
   if (newLawId !== lawId.value) {
-    const gen = ++switchGeneration;
+    const isCurrent = claimTabSwitch();
     await switchLaw(newLawId, newArticle, to.params.trajectRef || null);
-    if (gen !== switchGeneration) return;
+    if (!isCurrent()) return;
     lawNames.value = { ...lawNames.value, [newLawId]: lawName.value };
   } else if (newArticle && String(newArticle) !== String(selectedArticleNumber.value)) {
     selectedArticleNumber.value = String(newArticle);

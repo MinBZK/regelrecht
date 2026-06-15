@@ -14,6 +14,7 @@ import { ref, computed, watch } from 'vue';
 import { buildSelector } from '../composables/useTextSelection.js';
 import { useAmbiguityVocabulary } from '../composables/useAmbiguityVocabulary.js';
 import { documentsListUrl } from '../composables/corpusUrls.js';
+import { apiFetchJson } from '../lib/apiFetch.js';
 
 const props = defineProps({
   // Raw char range from selectionToRawRange(), or null when closed.
@@ -64,13 +65,9 @@ async function fetchDocumentOptions() {
   if (!props.trajectRef) return;
   documentsLoadError.value = null;
   try {
-    const res = await fetch(documentsListUrl(props.trajectRef));
-    if (!res.ok) {
-      documentsLoadError.value = new Error(`HTTP ${res.status}`);
-      documentOptions.value = [];
-      return;
-    }
-    const json = await res.json();
+    const json = await apiFetchJson(documentsListUrl(props.trajectRef), {
+      errorMessage: (status) => `HTTP ${status}`,
+    });
     documentOptions.value = Array.isArray(json?.documents)
       ? json.documents.map((d) => d.path)
       : [];

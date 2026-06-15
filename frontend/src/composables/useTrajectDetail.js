@@ -9,6 +9,7 @@
  * URL `ref` form.
  */
 import { ref } from 'vue';
+import { apiFetchJson } from '../lib/apiFetch.js';
 
 /**
  * Pick the writable-own source from a `TrajectDetail`. That is the source the
@@ -47,11 +48,9 @@ export function useTrajectDetail() {
     error.value = null;
     detail.value = null;
     try {
-      const resp = await fetch(`/api/trajects/${trajectId}`);
-      if (!resp.ok) {
-        throw new Error(`Kon traject niet laden: ${resp.status}`);
-      }
-      detail.value = await resp.json();
+      detail.value = await apiFetchJson(`/api/trajects/${trajectId}`, {
+        errorMessage: (status) => `Kon traject niet laden: ${status}`,
+      });
     } catch (e) {
       error.value = e;
     } finally {

@@ -12,8 +12,9 @@
  *   properties of undefined` deep inside the fetch.
  */
 import { ref, watch } from 'vue';
-import { getEditorSessionId, lastSavedPr, sanitizeSavedPr } from './useEditorSession.js';
+import { lastSavedPr, sanitizeSavedPr } from './useSavedPr.js';
 import { requireTraject, scenarioFileUrl, scenariosListUrl } from './corpusUrls.js';
+import { apiFetch } from '../lib/apiFetch.js';
 
 /**
  * True when the scenario file declares execution targets and none of
@@ -39,7 +40,7 @@ export function useScenarios(lawId, trajectRef = ref(null)) {
   // surfaces as a 412 instead of a silent overwrite. A filename without
   // an entry (e.g. a brand-new scenario) saves without a precondition.
   const scenarioEtags = new Map();
-  // `lastSavedPr` is imported as a module-shared ref from useEditorSession
+  // `lastSavedPr` is imported as a module-shared ref from useSavedPr
   // so scenario saves and law-content saves both update the same value,
   // and EditorApp's "Bekijk op GitHub" badge stays in sync regardless of
   // which pane the user pressed Save in.
@@ -56,6 +57,9 @@ export function useScenarios(lawId, trajectRef = ref(null)) {
     try {
       const res = await fetch(scenariosListUrl(trajectRef.value, lawId.value));
       if (!res.ok) {
+        // Deliberately raw fetch + silent branch: a law without scenarios
+        // is normal, not an error — every non-ok status maps to an empty
+        // list without surfacing anything.
         scenarios.value = [];
         return;
       }
@@ -86,8 +90,10 @@ export function useScenarios(lawId, trajectRef = ref(null)) {
     saveError.value = null;
 
     try {
-      const res = await fetch(scenarioFileUrl(trajectRef.value, lawId.value, filename));
-      if (!res.ok) throw new Error(`Failed to fetch scenario: ${res.status}`);
+      const res = await apiFetch(
+        scenarioFileUrl(trajectRef.value, lawId.value, filename),
+        { errorMessage: (status) => `Failed to fetch scenario: ${status}` },
+      );
       featureText.value = await res.text();
       const etag = res.headers.get('ETag');
       if (etag) scenarioEtags.set(filename, etag);
@@ -125,18 +131,20 @@ export function useScenarios(lawId, trajectRef = ref(null)) {
     try {
       const headers = {
         'Content-Type': 'text/plain; charset=utf-8',
-        'X-Editor-Session': getEditorSessionId(),
       };
       // Echo the ETag we read so the backend can detect a concurrent
       // edit (412). New scenarios have no entry → permissive create.
       const ifMatch = scenarioEtags.get(filename);
       if (ifMatch) headers['If-Match'] = ifMatch;
-      const res = await fetch(
+      const res = await apiFetch(
         scenarioFileUrl(trajectRef.value, lawId.value, filename),
         {
           method: 'PUT',
           headers,
           body: content,
+          // 412 resolves (handled as a conflict below); other failures throw.
+          allowStatuses: [412],
+          errorMessage: (status, body) => body || `Save failed: ${status}`,
         },
       );
       if (res.status === 412) {
@@ -145,10 +153,6 @@ export function useScenarios(lawId, trajectRef = ref(null)) {
           'Herlaad het scenario om de nieuwste versie te zien en voer ' +
           'je wijziging daarna opnieuw door.',
         );
-      }
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `Save failed: ${res.status}`);
       }
       // Same `{ pr, etag }` shape as the law-content save; capture the
       // PR for the shared "Bekijk op GitHub" badge in EditorApp.vue.

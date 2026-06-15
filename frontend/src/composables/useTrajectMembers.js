@@ -1,4 +1,5 @@
 import { ref } from 'vue';
+import { apiFetch, apiFetchJson } from '../lib/apiFetch.js';
 
 /**
  * Per-traject member + pending-invite state.
@@ -25,11 +26,9 @@ export function useTrajectMembers() {
     pendingInvites.value = [];
     callerRole.value = null;
     try {
-      const resp = await fetch(`/api/trajects/${trajectId}`);
-      if (!resp.ok) {
-        throw new Error(`Kon traject niet laden: ${resp.status}`);
-      }
-      const body = await resp.json();
+      const body = await apiFetchJson(`/api/trajects/${trajectId}`, {
+        errorMessage: (status) => `Kon traject niet laden: ${status}`,
+      });
       members.value = body.members || [];
       pendingInvites.value = body.pending_invites || [];
       callerRole.value = body.role || null;
@@ -41,69 +40,54 @@ export function useTrajectMembers() {
   }
 
   async function invite(trajectId, email, role) {
-    const resp = await fetch(`/api/trajects/${trajectId}/members`, {
+    const body = await apiFetchJson(`/api/trajects/${trajectId}/members`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email, role }),
-    });
-    if (!resp.ok) {
-      const reason = await resp.text();
       // 400 from normalize_email/validate_role comes back with an empty
       // body; surface a specific message instead of "Uitnodigen mislukt: 400".
-      if (resp.status === 400) {
-        throw new Error(reason || 'Ongeldig e-mailadres of rol');
-      }
-      throw new Error(reason || `Uitnodigen mislukt: ${resp.status}`);
-    }
-    const body = await resp.json();
+      errorMessage: (status, reason) =>
+        reason ||
+        (status === 400 ? 'Ongeldig e-mailadres of rol' : `Uitnodigen mislukt: ${status}`),
+    });
     await load(trajectId);
     return body;
   }
 
   async function updateRole(trajectId, accountId, role) {
-    const resp = await fetch(
-      `/api/trajects/${trajectId}/members/${accountId}`,
-      {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ role }),
-      },
-    );
-    if (!resp.ok) {
-      throw new Error((await resp.text()) || `Rol wijzigen mislukt: ${resp.status}`);
-    }
+    await apiFetch(`/api/trajects/${trajectId}/members/${accountId}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ role }),
+      errorMessage: (status, body) => body || `Rol wijzigen mislukt: ${status}`,
+    });
     await load(trajectId);
   }
 
   async function removeMember(trajectId, accountId) {
-    const resp = await fetch(
-      `/api/trajects/${trajectId}/members/${accountId}`,
-      { method: 'DELETE' },
-    );
-    if (!resp.ok) {
-      throw new Error((await resp.text()) || `Verwijderen mislukt: ${resp.status}`);
-    }
+    await apiFetch(`/api/trajects/${trajectId}/members/${accountId}`, {
+      method: 'DELETE',
+      errorMessage: (status, body) => body || `Verwijderen mislukt: ${status}`,
+    });
     await load(trajectId);
   }
 
   async function removeInvite(trajectId, email) {
-    const resp = await fetch(
+    await apiFetch(
       `/api/trajects/${trajectId}/invites/${encodeURIComponent(email)}`,
-      { method: 'DELETE' },
+      {
+        method: 'DELETE',
+        errorMessage: (status, body) => body || `Uitnodiging intrekken mislukt: ${status}`,
+      },
     );
-    if (!resp.ok) {
-      throw new Error((await resp.text()) || `Uitnodiging intrekken mislukt: ${resp.status}`);
-    }
     await load(trajectId);
   }
 
   async function leaveTraject(trajectId) {
-    const resp = await fetch(`/api/trajects/${trajectId}/leave`, {
+    await apiFetch(`/api/trajects/${trajectId}/leave`, {
       method: 'POST',
+      errorMessage: (status, body) => body || `Verlaten mislukt: ${status}`,
     });
-    if (!resp.ok) {
-      throw new Error((await resp.text()) || `Verlaten mislukt: ${resp.status}`);
-    }
   }
 
   return {

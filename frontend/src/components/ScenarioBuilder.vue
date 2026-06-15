@@ -3,6 +3,8 @@ import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
 import { useDependencies } from '../composables/useDependencies.js';
 import { useScenarios, isScenarioMismatch } from '../composables/useScenarios.js';
 import { lawUrl } from '../composables/corpusUrls.js';
+import { apiFetchText } from '../lib/apiFetch.js';
+import { useLatest } from '../lib/useLatest.js';
 import { parseFeature } from '../gherkin/parser.js';
 import { mapFeatureToForm, getEffectiveSetup, formStateToGherkin, syncEditedValues } from '../gherkin/formMapper.js';
 import { matchStatus, humanize } from '../utils/outputFormat.js';
@@ -160,9 +162,9 @@ async function fetchLawYaml(lawId) {
     yamlCacheTrajectRef = props.trajectRef;
   }
   if (yamlCache[lawId]) return yamlCache[lawId];
-  const res = await fetch(lawUrl(props.trajectRef, lawId));
-  if (!res.ok) throw new Error(`Failed to fetch law '${lawId}': ${res.status}`);
-  const text = await res.text();
+  const text = await apiFetchText(lawUrl(props.trajectRef, lawId), {
+    errorMessage: (status) => `Failed to fetch law '${lawId}': ${status}`,
+  });
   yamlCache[lawId] = text;
   return text;
 }
@@ -171,7 +173,7 @@ async function fetchLawYaml(lawId) {
 const depsReady = ref(false);
 
 // --- Load dependencies when law YAML changes ---
-let watchVersion = 0;
+const claimDependencyLoad = useLatest();
 
 // Debounced mirror of props.lawYaml. While the user types in the text or
 // machine pane, `lawYaml` changes on every keystroke (currentLawYaml re-dumps
@@ -205,11 +207,11 @@ onBeforeUnmount(() => clearTimeout(lawYamlDebounce));
 async function runDependencyLoad() {
   const lawYaml = debouncedLawYaml.value;
   if (!lawYaml || !props.ready || !props.engine) return;
-  const version = ++watchVersion;
+  const isCurrent = claimDependencyLoad();
   depsReady.value = false;
 
   const mainLawId = await loadAllDependencies(lawYaml, props.engine, fetchLawYaml);
-  if (version !== watchVersion) return;
+  if (!isCurrent()) return;
 
   // Also load dependencies from scenario background + per-scenario steps
   if (formState.value) {
@@ -230,7 +232,7 @@ async function runDependencyLoad() {
     }
   }
 
-  if (version === watchVersion) {
+  if (isCurrent()) {
     // The explicitly-declared deps are loaded — the panel is usable now, so
     // mark ready and let scenarios auto-execute. Implementing regulations
     // (IoC) load in the background: their corpus scan can be slow and is
@@ -250,7 +252,7 @@ async function runDependencyLoad() {
 
 // `debouncedLawYaml`, `props.ready` and `formState` settle on separate ticks
 // during the initial load. Without coalescing, each settle fires this watch
-// and starts (then abandons, via `watchVersion`) a full dependency scan — up
+// and starts (then abandons, via the latest-guard) a full dependency scan — up
 // to four overlapping corpus-wide reloads per open. A short debounce collapses
 // the burst into a single run after the inputs have settled.
 let depsScheduleTimer = null;
@@ -310,20 +312,20 @@ watch(formState, () => {
 });
 
 // --- Auto-execute all scenarios sequentially when deps are ready ---
-let autoExecuteVersion = 0;
+const claimAutoExecute = useLatest();
 
 watch(
   [depsReady, formState],
   async ([ready, state]) => {
     if (!ready || !state || !state.scenarios?.length) return;
-    const version = ++autoExecuteVersion;
+    const isCurrent = claimAutoExecute();
 
     // Wait one tick so ScenarioForm refs are mounted
     await nextTick();
-    if (version !== autoExecuteVersion) return;
+    if (!isCurrent()) return;
 
     for (let i = 0; i < state.scenarios.length; i++) {
-      if (version !== autoExecuteVersion) return;
+      if (!isCurrent()) return;
       const formRef = scenarioRefs.value[i];
       if (formRef?.execute) {
         formRef.execute();

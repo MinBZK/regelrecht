@@ -1,5 +1,7 @@
 import { ref, computed, watch } from 'vue';
 import { lawsListUrl } from './corpusUrls.js';
+import { apiFetchJson } from '../lib/apiFetch.js';
+import { createLruMap } from '../lib/lruMap.js';
 
 /**
  * Shared corpus-laws list, scoped by the active traject. Each distinct
@@ -22,53 +24,34 @@ const FETCH_LIMIT = 1000;
 // LRU cap on the per-scope caches. Without one a long session that
 // hops between many trajects accumulates one entry per scope forever.
 // 5 is enough to cover the global view + a handful of recently-used
-// trajects without thrashing. `Map` preserves insertion order, so the
-// oldest key is always the first; touching a key (re-adding via
-// `delete` + `set`) bumps it to the most-recent position.
+// trajects without thrashing. The global scope (`''`) follows the same
+// rules — that's fine because it just gets re-fetched on demand. The
+// companion promise map is kept in sync via `onEvict`.
 const SCOPE_CACHE_MAX = 5;
 
-const lawsByScope = new Map(); // scopeKey -> Ref<Array>
 const fetchByScope = new Map(); // scopeKey -> Promise
+const lawsByScope = createLruMap(SCOPE_CACHE_MAX, {
+  onEvict: (key) => fetchByScope.delete(key), // scopeKey -> Ref<Array>
+});
 
 function scopeKey(trajectRef) {
   return trajectRef || '';
 }
 
-function touchScope(key) {
-  // Re-insert to mark as most recently used, then evict the oldest if
-  // the cap is exceeded. The global scope (`''`) follows the same
-  // rules — that's fine because it just gets re-fetched on demand.
-  if (lawsByScope.has(key)) {
-    const v = lawsByScope.get(key);
-    lawsByScope.delete(key);
-    lawsByScope.set(key, v);
-  }
-  while (lawsByScope.size > SCOPE_CACHE_MAX) {
-    const oldest = lawsByScope.keys().next().value;
-    lawsByScope.delete(oldest);
-    fetchByScope.delete(oldest);
-  }
-}
-
 function ensureFetched(trajectRef) {
   const key = scopeKey(trajectRef);
   if (fetchByScope.has(key)) {
-    // Cache hit: touch so the LRU treats this access as recent.
+    // Cache hit: `get` touches, so the LRU treats this access as recent.
     // Without this an often-accessed scope can be evicted before a
     // genuinely-stale one that happened to be added more recently —
     // the invariant "most recently used is kept" only holds if the
     // touch runs on every access, not just on miss.
-    touchScope(key);
+    lawsByScope.get(key);
     return fetchByScope.get(key);
   }
   if (!lawsByScope.has(key)) lawsByScope.set(key, ref([]));
-  touchScope(key);
   const lawsRef = lawsByScope.get(key);
-  const p = fetch(lawsListUrl(trajectRef, `limit=${FETCH_LIMIT}`))
-    .then(r => {
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.json();
-    })
+  const p = apiFetchJson(lawsListUrl(trajectRef, `limit=${FETCH_LIMIT}`))
     .then(list => {
       lawsRef.value = Array.isArray(list) ? list : [];
       if (lawsRef.value.length >= FETCH_LIMIT) {
@@ -80,6 +63,8 @@ function ensureFetched(trajectRef) {
       return lawsRef.value;
     })
     .catch(() => {
+      // Swallowed deliberately: the laws list is display-sugar (names in
+      // dropdowns); callers fall back to title-cased ids on an empty list.
       lawsRef.value = [];
       // Reset so the next consumer mount triggers a fresh fetch.
       fetchByScope.delete(key);
@@ -128,11 +113,13 @@ export function useCorpusLaws(trajectRef) {
       // Capture the underlying Ref BEFORE attaching the .then. If
       // the LRU evicts `key` while its fetch is still in flight
       // (6+ distinct scopes hit during the window), a later
-      // `lawsByScope.get(key)?.value` would return `undefined` and
+      // `lawsByScope.peek(key)?.value` would return `undefined` and
       // we'd silently set `laws.value = []` instead of the
       // fetched list. The closure over `capturedRef` keeps the
       // populated ref reachable even after the map entry is gone.
-      const capturedRef = lawsByScope.get(key);
+      // `peek` (not `get`): ensureFetched above already touched this
+      // scope; a second read here must not double-bump the LRU order.
+      const capturedRef = lawsByScope.peek(key);
       laws.value = capturedRef?.value ?? [];
       const p = fetchByScope.get(key);
       if (p && capturedRef) {
