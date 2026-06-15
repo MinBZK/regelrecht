@@ -179,12 +179,12 @@ const BODY_CACHE_MAX_ENTRIES: usize = 1024;
 
 /// When an implements-index build would otherwise fetch at least this many
 /// law bodies one-by-one from a *single* source, pull the whole source in
-/// one archive request instead (see [`RepoBackend::read_all_files`]). Below
-/// the threshold the per-law lazy fetch is cheaper than downloading the
-/// archive. This is what turns the cold build over a large GitHub-backed
+/// one archive request instead (see [`RepoBackend::read_all_implements`]).
+/// Below the threshold the per-law lazy fetch is cheaper than downloading
+/// the archive. This is what turns the cold build over a large GitHub-backed
 /// traject from O(corpus) Contents calls (a 504) into one download.
 ///
-/// [`RepoBackend::read_all_files`]: regelrecht_corpus::backend::RepoBackend::read_all_files
+/// [`RepoBackend::read_all_implements`]: regelrecht_corpus::backend::RepoBackend::read_all_implements
 const BULK_FETCH_THRESHOLD: usize = 16;
 
 /// Lazily-fetched law bodies with a FIFO size cap. FIFO (not LRU) keeps
@@ -484,10 +484,12 @@ impl TrajectCorpus {
         // call per law is O(corpus) and times out on large GitHub-backed
         // trajects, so when a single source has many bodies to fetch, pull
         // the whole source in one archive request and serve the scan from
-        // memory. Keyed by (source_id, source-relative path) to match the
-        // loop's per-entry lookup; deliberately NOT poured into the bounded
-        // body_cache, so a huge corpus can't thrash it.
-        let mut bulk: HashMap<(String, String), String> = HashMap::new();
+        // memory. Holds parsed `implements` lists (NOT bodies — the backend
+        // parses and discards bodies during the streamed archive extraction,
+        // so neither side ever materialises the whole corpus), keyed by
+        // (source_id, source-relative path) to match the loop's per-entry
+        // lookup.
+        let mut bulk: HashMap<(String, String), Vec<String>> = HashMap::new();
         {
             let mut misses: HashMap<&str, usize> = HashMap::new();
             for entry in &entries {
@@ -511,17 +513,17 @@ impl TrajectCorpus {
                 };
                 let result = {
                     let backend = backend_entry.backend.lock().await;
-                    backend.read_all_files(Some("yaml")).await
+                    backend.read_all_implements().await
                 };
                 match result {
                     Ok(files) => {
                         tracing::info!(
                             source_id,
                             files = files.len(),
-                            "implements scan: bulk-loaded source bodies in one request"
+                            "implements scan: bulk-loaded source in one request"
                         );
-                        for (rel_path, content) in files {
-                            bulk.insert((source_id.to_string(), rel_path), content);
+                        for (rel_path, implements) in files {
+                            bulk.insert((source_id.to_string(), rel_path), implements);
                         }
                     }
                     Err(e) => {
@@ -553,11 +555,12 @@ impl TrajectCorpus {
                         new_memo.insert(key, implements.clone());
                     }
                     implements
-                } else if let Some(yaml) =
+                } else if let Some(implements) =
                     bulk.get(&(entry.source_id.clone(), entry.relative_path.clone()))
                 {
-                    // Body came from the one-shot archive download above.
-                    let implements = collect_law_implements(yaml);
+                    // Implements list came (already parsed) from the one-shot
+                    // archive scan above.
+                    let implements = implements.clone();
                     if let Some(key) = memo_key {
                         new_memo.insert(key, implements.clone());
                     }
@@ -1451,20 +1454,15 @@ mod tests {
             }
             Ok(self.files.get(path.to_str().unwrap()).cloned())
         }
-        async fn read_all_files(
-            &self,
-            extension: Option<&str>,
-        ) -> CorpusResult<Vec<(String, String)>> {
+        async fn read_all_implements(&self) -> CorpusResult<Vec<(String, Vec<String>)>> {
             self.bulk_reads.fetch_add(1, Ordering::SeqCst);
             if self.fail_reads {
                 return Err(CorpusError::Git("simulated throttle".to_string()));
             }
-            let suffix = extension.map(|e| format!(".{e}"));
             Ok(self
                 .files
                 .iter()
-                .filter(|(p, _)| suffix.as_ref().is_none_or(|s| p.ends_with(s)))
-                .map(|(p, c)| (p.clone(), c.clone()))
+                .map(|(p, c)| (p.clone(), collect_law_implements(c)))
                 .collect())
         }
         async fn write_file(&self, _: &Path, _: &str) -> CorpusResult<()> {

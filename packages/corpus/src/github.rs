@@ -649,23 +649,28 @@ mod inner {
             Ok(Some((content, item.sha)))
         }
 
-        /// Download every YAML file in the repo at `git_ref` in a SINGLE
-        /// request via the archive (tarball) endpoint, instead of one
-        /// Contents call per file. Returns `(repo-relative path, content)`
-        /// pairs for `.yaml`/`.yml` files; the archive's top-level
-        /// `{owner}-{repo}-{sha}/` directory component is stripped so the
-        /// paths line up with the Trees/Contents APIs.
+        /// Download the repo at `git_ref` in a SINGLE request via the
+        /// archive (tarball) endpoint and return each YAML law's
+        /// `implements` list — `(repo-relative path, implements)` pairs for
+        /// `.yaml`/`.yml` files, the archive's top-level
+        /// `{owner}-{repo}-{sha}/` directory component stripped so the paths
+        /// line up with the Trees/Contents APIs.
+        ///
+        /// Crucially, bodies are parsed and DISCARDED one at a time during
+        /// extraction — only the (tiny) implements lists are kept — so a
+        /// large corpus archive does not materialise every law body in
+        /// memory at once (which would OOM the process).
         ///
         /// GitHub answers the tarball endpoint with a 302 to a short-lived
         /// codeload URL (carrying its own token), which reqwest follows
         /// automatically — so this works for private repos with just the
         /// Bearer token on the initial request.
-        pub async fn fetch_archive(
+        pub async fn fetch_archive_implements(
             &mut self,
             repo: &str,
             git_ref: &str,
             token: Option<&str>,
-        ) -> Result<Vec<(String, String)>> {
+        ) -> Result<Vec<(String, Vec<String>)>> {
             let url = format!("{}/repos/{}/tarball/{}", self.api_base, repo, git_ref);
             let headers = self.default_headers(token);
             let response = self
@@ -691,10 +696,10 @@ mod inner {
                 .await
                 .map_err(|e| CorpusError::Git(format!("Failed to read archive body: {}", e)))?;
 
-            // gunzip + untar are synchronous and CPU-bound: run them off the
-            // async runtime so a large corpus archive can't stall it.
+            // gunzip + untar + parse are synchronous and CPU-bound: run them
+            // off the async runtime so a large corpus archive can't stall it.
             let files =
-                tokio::task::spawn_blocking(move || extract_yaml_from_tar_gz(bytes.as_ref()))
+                tokio::task::spawn_blocking(move || extract_implements_from_tar_gz(bytes.as_ref()))
                     .await
                     .map_err(|e| {
                         CorpusError::Config(format!("archive extract task panicked: {e}"))
@@ -1083,13 +1088,19 @@ mod inner {
             .map_err(|e| CorpusError::Git(format!("UTF-8 decode failed for {}: {}", item.path, e)))
     }
 
-    /// Extract `(repo-relative path, content)` for every `.yaml`/`.yml`
-    /// file in a gzipped tar produced by GitHub's tarball endpoint. The
-    /// archive nests everything under a single top-level
-    /// `{owner}-{repo}-{sha}/` directory; that first component is stripped.
-    /// Directories, non-YAML files, and non-UTF-8 bodies are skipped rather
-    /// than failing the whole scan.
-    fn extract_yaml_from_tar_gz(bytes: &[u8]) -> Result<Vec<(String, String)>> {
+    /// Stream a gzipped tar produced by GitHub's tarball endpoint and
+    /// return `(repo-relative path, implements list)` for every
+    /// `.yaml`/`.yml` file. The archive nests everything under a single
+    /// top-level `{owner}-{repo}-{sha}/` directory; that first component is
+    /// stripped. Directories, non-YAML files, and non-UTF-8 bodies are
+    /// skipped rather than failing the whole scan.
+    ///
+    /// Each body is read into a scratch `String`, parsed for `implements`,
+    /// and dropped before the next entry — so peak memory is one law body
+    /// plus the (tiny) implements result, never the whole decompressed
+    /// corpus. This is what keeps the one-request bulk scan from OOMing on
+    /// a large corpus.
+    fn extract_implements_from_tar_gz(bytes: &[u8]) -> Result<Vec<(String, Vec<String>)>> {
         use std::io::Read;
         let gz = flate2::read::GzDecoder::new(bytes);
         let mut archive = tar::Archive::new(gz);
@@ -1120,7 +1131,9 @@ mod inner {
                 tracing::debug!(path = %rel, "archive entry is not valid UTF-8; skipping");
                 continue;
             }
-            out.push((rel.to_string(), content));
+            let implements = crate::source_map::collect_law_implements(&content);
+            out.push((rel.to_string(), implements));
+            // `content` dropped here — bodies never accumulate.
         }
         Ok(out)
     }

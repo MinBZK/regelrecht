@@ -226,10 +226,13 @@ impl RepoBackend for GitHubApiBackend {
         }
     }
 
-    /// Bulk read via the repo archive: one tarball download for the whole
-    /// source instead of a Contents call per file. Archive paths are
-    /// repo-relative; map them back through [`to_source_relative`] (drops
-    /// files outside `sub_path`) so they match the `SourceMap`.
+    /// Bulk implements scan via the repo archive: one tarball download for
+    /// the whole source instead of a Contents call per file. Bodies are
+    /// parsed for `implements` and discarded during extraction (see
+    /// [`fetch_archive_implements`]), so this never materialises the whole
+    /// corpus in memory. Archive paths are repo-relative; map them back
+    /// through [`to_source_relative`] (drops files outside `sub_path`) so
+    /// they match the `SourceMap`.
     ///
     /// Holds the `inner` lock for the whole archive download + extraction
     /// (seconds for a large corpus), same as [`read_file`] holds it for its
@@ -238,27 +241,22 @@ impl RepoBackend for GitHubApiBackend {
     /// backend stalls for the duration, but in practice this only fires on
     /// the cold implements-index build, which is single-flighted anyway.
     ///
+    /// [`fetch_archive_implements`]: crate::github::GitHubFetcher::fetch_archive_implements
     /// [`to_source_relative`]: GitHubApiBackend::to_source_relative
     /// [`read_file`]: GitHubApiBackend::read_file
-    async fn read_all_files(&self, extension: Option<&str>) -> Result<Vec<(String, String)>> {
+    async fn read_all_implements(&self) -> Result<Vec<(String, Vec<String>)>> {
         let files = {
             let mut inner = self.inner.lock().await;
             inner
                 .fetcher
-                .fetch_archive(&self.full_repo(), &self.branch, self.token.as_deref())
+                .fetch_archive_implements(&self.full_repo(), &self.branch, self.token.as_deref())
                 .await?
         };
-        let suffix = extension.map(|ext| format!(".{ext}"));
         Ok(files
             .into_iter()
-            .filter_map(|(repo_path, content)| {
+            .filter_map(|(repo_path, implements)| {
                 let rel = self.to_source_relative(&repo_path)?;
-                if let Some(suffix) = &suffix {
-                    if !rel.ends_with(suffix) {
-                        return None;
-                    }
-                }
-                Some((rel, content))
+                Some((rel, implements))
             })
             .collect())
     }
@@ -760,19 +758,31 @@ mod tests {
         builder.into_inner().unwrap().finish().unwrap()
     }
 
+    /// A law body whose `machine_readable.implements` references `higher`.
+    fn law_with_implements(id: &str, higher: &str) -> String {
+        format!(
+            "$id: {id}\narticles:\n  - number: '1'\n    machine_readable:\n      implements:\n        - law: {higher}\n"
+        )
+    }
+
     #[tokio::test]
-    async fn read_all_files_bulk_downloads_archive_and_maps_to_source_relative() {
+    async fn read_all_implements_bulk_downloads_archive_and_maps_to_source_relative() {
         let server = MockServer::start().await;
 
+        let foo = law_with_implements("foo", "wet_target");
         let tar_gz = make_repo_tar_gz(
             "acme-corpus-deadbeef",
             &[
-                ("regulation/nl/wet/foo/2025-01-01.yaml", "$id: foo\n"),
-                ("regulation/nl/wet/bar/2025-01-01.yaml", "$id: bar\n"),
+                ("regulation/nl/wet/foo/2025-01-01.yaml", foo.as_str()),
+                // No implements → empty list, but still reported.
+                (
+                    "regulation/nl/wet/bar/2025-01-01.yaml",
+                    "$id: bar\narticles: []\n",
+                ),
                 // Non-YAML under the corpus subtree: dropped by the extract.
                 ("regulation/nl/README.md", "docs\n"),
                 // YAML outside the source sub_path: dropped by to_source_relative.
-                ("tools/gen.yaml", "noise\n"),
+                ("tools/gen.yaml", "$id: noise\n"),
             ],
         );
 
@@ -796,18 +806,15 @@ mod tests {
                 .unwrap()
                 .with_api_base(server.uri());
 
-        let mut got = backend.read_all_files(Some("yaml")).await.unwrap();
+        let mut got = backend.read_all_implements().await.unwrap();
         got.sort();
         assert_eq!(
             got,
             vec![
-                (
-                    "wet/bar/2025-01-01.yaml".to_string(),
-                    "$id: bar\n".to_string()
-                ),
+                ("wet/bar/2025-01-01.yaml".to_string(), Vec::<String>::new()),
                 (
                     "wet/foo/2025-01-01.yaml".to_string(),
-                    "$id: foo\n".to_string()
+                    vec!["wet_target".to_string()]
                 ),
             ]
         );

@@ -130,24 +130,31 @@ pub trait RepoBackend: Send + Sync {
             .collect())
     }
 
-    /// Read every file under the source in as few requests as possible,
-    /// optionally filtered by extension (without the dot). Returns
-    /// `(source-relative path, content)` pairs, forward-slashed.
+    /// Return every YAML law's `implements` list as `(source-relative
+    /// path, implements)` pairs — the input the implements/“who implements
+    /// me” index is built from — reading bodies in as few requests as
+    /// possible.
     ///
-    /// The default implementation degrades to one [`list_files_recursive`]
-    /// plus a [`read_file`] per entry — correct, but one request per file.
-    /// A backend that can fetch in bulk (the GitHub API backend downloads
-    /// the repo archive in a single request) should override this so a
-    /// corpus-wide scan does not fan out into thousands of calls.
+    /// Returns parsed `implements` lists, NOT bodies, on purpose: a
+    /// corpus-wide scan must never hold every law body in memory at once
+    /// (that OOMs on a large corpus). The default implementation reads one
+    /// file at a time via [`list_files_recursive`] + [`read_file`], parsing
+    /// and dropping each body as it goes. A backend that can fetch in bulk
+    /// (the GitHub API backend downloads the repo archive in a single
+    /// request) overrides this — but still streams bodies through the
+    /// parser one at a time.
     ///
     /// [`list_files_recursive`]: RepoBackend::list_files_recursive
     /// [`read_file`]: RepoBackend::read_file
-    async fn read_all_files(&self, extension: Option<&str>) -> Result<Vec<(String, String)>> {
-        let entries = self.list_files_recursive(Path::new(""), extension).await?;
+    async fn read_all_implements(&self) -> Result<Vec<(String, Vec<String>)>> {
+        let entries = self
+            .list_files_recursive(Path::new(""), Some("yaml"))
+            .await?;
         let mut out = Vec::with_capacity(entries.len());
         for entry in entries {
             if let Some(content) = self.read_file(Path::new(&entry.relative_path)).await? {
-                out.push((entry.relative_path, content));
+                let implements = crate::source_map::collect_law_implements(&content);
+                out.push((entry.relative_path, implements));
             }
         }
         Ok(out)
