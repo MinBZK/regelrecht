@@ -77,17 +77,15 @@ impl ValidationView {
                     self.list_state.select(Some(self.files.len() - 1));
                 }
             }
-            KeyCode::Char('a') | KeyCode::Enter => {
-                if !self.running && !runner.is_running() {
-                    self.output.clear();
-                    self.output_scroll = 0;
-                    self.running = true;
-                    // Reset all statuses
-                    for f in &mut self.files {
-                        f.status = FileStatus::Unchecked;
-                    }
-                    runner.run_just("validate:all".to_string(), "validate");
+            KeyCode::Char('a') | KeyCode::Enter if !self.running && !runner.is_running() => {
+                self.output.clear();
+                self.output_scroll = 0;
+                self.running = true;
+                // Reset all statuses
+                for f in &mut self.files {
+                    f.status = FileStatus::Unchecked;
                 }
+                runner.run_just("validate:all".to_string(), "validate");
             }
             _ => {}
         }

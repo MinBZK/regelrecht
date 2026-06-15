@@ -190,10 +190,8 @@ impl EngineView {
                 }
             }
             KeyCode::Char('g') => self.law_list_state.select(Some(0)),
-            KeyCode::Char('G') => {
-                if !self.laws.is_empty() {
-                    self.law_list_state.select(Some(self.laws.len() - 1));
-                }
+            KeyCode::Char('G') if !self.laws.is_empty() => {
+                self.law_list_state.select(Some(self.laws.len() - 1));
             }
             _ => {}
         }
