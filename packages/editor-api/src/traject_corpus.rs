@@ -1249,6 +1249,14 @@ async fn next_snapshot(old: &Arc<TrajectCorpus>, source_map: SourceMap) -> Arc<T
 /// network blip). The removal itself is compare-and-remove: an entry
 /// replaced by a concurrent `record_save` after this pass snapshotted it
 /// is left alone.
+///
+/// Note the drop also fires on a *version rollover*, not just a direct
+/// push: the path comes from the new `source_map`, which already picked
+/// `best_per_law`. If a corpus update publishes a newer valid-from date
+/// file for the same `law_id` (e.g. `2026-01-01.yaml` superseding the
+/// user's `2025-01-01.yaml` save), the branch read returns the new
+/// version, it differs from the saved body, and the overlay entry is
+/// dropped — the newer version correctly supersedes the pinned save.
 async fn reconcile_overlay(old: &Arc<TrajectCorpus>, source_map: &SourceMap) {
     let entries: Vec<(String, String)> = old
         .overlay

@@ -566,6 +566,11 @@ fn extract_raw_name(yaml: &str) -> Option<String> {
 
 #[derive(Deserialize, Default)]
 struct LawDoc {
+    /// Top-level `name:` — a literal (`Kieswet`) or an output reference
+    /// (`#wet_naam`). Read straight off the shared parse so the loaded-field
+    /// derivation doesn't re-scan the raw string.
+    #[serde(default)]
+    name: Option<String>,
     #[serde(default)]
     articles: Vec<LawArticle>,
 }
@@ -688,10 +693,16 @@ fn derive_loaded_fields(yaml: &str) -> (Option<String>, Vec<String>) {
         Ok(d) => d,
         Err(_) => return (extract_law_name(yaml), Vec::new()),
     };
-    let display_name = extract_law_name(yaml).or_else(|| {
-        let raw = extract_raw_name(yaml)?;
-        let reference = raw.strip_prefix('#')?;
-        resolve_name_reference(&doc, reference)
+    // Resolve the display name from the already-parsed `name` field rather
+    // than re-scanning the raw string: a literal name is used as-is, a
+    // `#ref` is resolved against this doc's actions.
+    let display_name = doc.name.as_deref().and_then(|raw| {
+        let raw = raw.trim();
+        match raw.strip_prefix('#') {
+            Some(reference) => resolve_name_reference(&doc, reference),
+            None if !raw.is_empty() => Some(raw.to_string()),
+            None => None,
+        }
     });
     (display_name, collect_implements_from_doc(&doc))
 }

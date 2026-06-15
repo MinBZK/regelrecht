@@ -231,7 +231,15 @@ impl RepoBackend for GitHubApiBackend {
     /// repo-relative; map them back through [`to_source_relative`] (drops
     /// files outside `sub_path`) so they match the `SourceMap`.
     ///
+    /// Holds the `inner` lock for the whole archive download + extraction
+    /// (seconds for a large corpus), same as [`read_file`] holds it for its
+    /// Contents call — the fetcher's `&mut self` (ETag cache, rate-limit
+    /// tracking) requires exclusive access. A concurrent read on the same
+    /// backend stalls for the duration, but in practice this only fires on
+    /// the cold implements-index build, which is single-flighted anyway.
+    ///
     /// [`to_source_relative`]: GitHubApiBackend::to_source_relative
+    /// [`read_file`]: GitHubApiBackend::read_file
     async fn read_all_files(&self, extension: Option<&str>) -> Result<Vec<(String, String)>> {
         let files = {
             let mut inner = self.inner.lock().await;
