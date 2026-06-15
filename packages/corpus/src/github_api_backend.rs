@@ -226,6 +226,35 @@ impl RepoBackend for GitHubApiBackend {
         }
     }
 
+    /// Bulk read via the repo archive: one tarball download for the whole
+    /// source instead of a Contents call per file. Archive paths are
+    /// repo-relative; map them back through [`to_source_relative`] (drops
+    /// files outside `sub_path`) so they match the `SourceMap`.
+    ///
+    /// [`to_source_relative`]: GitHubApiBackend::to_source_relative
+    async fn read_all_files(&self, extension: Option<&str>) -> Result<Vec<(String, String)>> {
+        let files = {
+            let mut inner = self.inner.lock().await;
+            inner
+                .fetcher
+                .fetch_archive(&self.full_repo(), &self.branch, self.token.as_deref())
+                .await?
+        };
+        let suffix = extension.map(|ext| format!(".{ext}"));
+        Ok(files
+            .into_iter()
+            .filter_map(|(repo_path, content)| {
+                let rel = self.to_source_relative(&repo_path)?;
+                if let Some(suffix) = &suffix {
+                    if !rel.ends_with(suffix) {
+                        return None;
+                    }
+                }
+                Some((rel, content))
+            })
+            .collect())
+    }
+
     async fn write_file(&self, relative_path: &Path, content: &str) -> Result<()> {
         validate_relative(relative_path)?;
         if self.token.is_none() {
@@ -690,5 +719,89 @@ fn is_unsigned_existing_file(e: &CorpusError) -> bool {
     match e {
         CorpusError::Git(msg) => msg.contains(" 422") && msg.contains("sha"),
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use flate2::write::GzEncoder;
+    use flate2::Compression;
+    use wiremock::matchers::{method, path as path_matcher};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    use super::GitHubApiBackend;
+    use crate::backend::RepoBackend;
+    use crate::models::GitHubSource;
+
+    /// Build a gzipped tar laid out like GitHub's tarball endpoint: every
+    /// entry nested under a single top-level `{owner}-{repo}-{sha}/` dir.
+    fn make_repo_tar_gz(top: &str, files: &[(&str, &str)]) -> Vec<u8> {
+        let mut builder = tar::Builder::new(GzEncoder::new(Vec::new(), Compression::default()));
+        for (rel, content) in files {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(content.len() as u64);
+            header.set_entry_type(tar::EntryType::Regular);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, format!("{top}/{rel}"), content.as_bytes())
+                .unwrap();
+        }
+        builder.into_inner().unwrap().finish().unwrap()
+    }
+
+    #[tokio::test]
+    async fn read_all_files_bulk_downloads_archive_and_maps_to_source_relative() {
+        let server = MockServer::start().await;
+
+        let tar_gz = make_repo_tar_gz(
+            "acme-corpus-deadbeef",
+            &[
+                ("regulation/nl/wet/foo/2025-01-01.yaml", "$id: foo\n"),
+                ("regulation/nl/wet/bar/2025-01-01.yaml", "$id: bar\n"),
+                // Non-YAML under the corpus subtree: dropped by the extract.
+                ("regulation/nl/README.md", "docs\n"),
+                // YAML outside the source sub_path: dropped by to_source_relative.
+                ("tools/gen.yaml", "noise\n"),
+            ],
+        );
+
+        // One request to the tarball endpoint serves the whole source.
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus/tarball/main"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(tar_gz, "application/gzip"))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let src = GitHubSource {
+            owner: "acme".to_string(),
+            repo: "corpus".to_string(),
+            branch: "main".to_string(),
+            path: Some("regulation/nl".to_string()),
+            git_ref: None,
+        };
+        let backend =
+            GitHubApiBackend::new(&src, Some("main".to_string()), Some("tok".to_string()))
+                .unwrap()
+                .with_api_base(server.uri());
+
+        let mut got = backend.read_all_files(Some("yaml")).await.unwrap();
+        got.sort();
+        assert_eq!(
+            got,
+            vec![
+                (
+                    "wet/bar/2025-01-01.yaml".to_string(),
+                    "$id: bar\n".to_string()
+                ),
+                (
+                    "wet/foo/2025-01-01.yaml".to_string(),
+                    "$id: foo\n".to_string()
+                ),
+            ]
+        );
     }
 }

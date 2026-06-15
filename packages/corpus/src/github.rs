@@ -649,6 +649,59 @@ mod inner {
             Ok(Some((content, item.sha)))
         }
 
+        /// Download every YAML file in the repo at `git_ref` in a SINGLE
+        /// request via the archive (tarball) endpoint, instead of one
+        /// Contents call per file. Returns `(repo-relative path, content)`
+        /// pairs for `.yaml`/`.yml` files; the archive's top-level
+        /// `{owner}-{repo}-{sha}/` directory component is stripped so the
+        /// paths line up with the Trees/Contents APIs.
+        ///
+        /// GitHub answers the tarball endpoint with a 302 to a short-lived
+        /// codeload URL (carrying its own token), which reqwest follows
+        /// automatically — so this works for private repos with just the
+        /// Bearer token on the initial request.
+        pub async fn fetch_archive(
+            &mut self,
+            repo: &str,
+            git_ref: &str,
+            token: Option<&str>,
+        ) -> Result<Vec<(String, String)>> {
+            let url = format!("{}/repos/{}/tarball/{}", self.api_base, repo, git_ref);
+            let headers = self.default_headers(token);
+            let response = self
+                .client
+                .get(&url)
+                .headers(headers)
+                .send()
+                .await
+                .map_err(|e| CorpusError::Git(format!("GitHub archive request failed: {}", e)))?;
+            self.track_rate_limit(&response);
+
+            if !response.status().is_success() {
+                return Err(CorpusError::Git(format!(
+                    "GitHub archive API returned {} for {}: {}",
+                    response.status(),
+                    repo,
+                    response.text().await.unwrap_or_default()
+                )));
+            }
+
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|e| CorpusError::Git(format!("Failed to read archive body: {}", e)))?;
+
+            // gunzip + untar are synchronous and CPU-bound: run them off the
+            // async runtime so a large corpus archive can't stall it.
+            let files =
+                tokio::task::spawn_blocking(move || extract_yaml_from_tar_gz(bytes.as_ref()))
+                    .await
+                    .map_err(|e| {
+                        CorpusError::Config(format!("archive extract task panicked: {e}"))
+                    })??;
+            Ok(files)
+        }
+
         /// List a directory via the Contents API. For a directory the
         /// response is a JSON array of [`ContentsItem`]; for a missing
         /// directory we return an empty list (404). Files only — sub-
@@ -1028,6 +1081,48 @@ mod inner {
             })?;
         String::from_utf8(bytes)
             .map_err(|e| CorpusError::Git(format!("UTF-8 decode failed for {}: {}", item.path, e)))
+    }
+
+    /// Extract `(repo-relative path, content)` for every `.yaml`/`.yml`
+    /// file in a gzipped tar produced by GitHub's tarball endpoint. The
+    /// archive nests everything under a single top-level
+    /// `{owner}-{repo}-{sha}/` directory; that first component is stripped.
+    /// Directories, non-YAML files, and non-UTF-8 bodies are skipped rather
+    /// than failing the whole scan.
+    fn extract_yaml_from_tar_gz(bytes: &[u8]) -> Result<Vec<(String, String)>> {
+        use std::io::Read;
+        let gz = flate2::read::GzDecoder::new(bytes);
+        let mut archive = tar::Archive::new(gz);
+        let mut out = Vec::new();
+        let entries = archive
+            .entries()
+            .map_err(|e| CorpusError::Git(format!("failed to read archive entries: {e}")))?;
+        for entry in entries {
+            let mut entry = entry
+                .map_err(|e| CorpusError::Git(format!("failed to read archive entry: {e}")))?;
+            if entry.header().entry_type() != tar::EntryType::Regular {
+                continue;
+            }
+            let path = entry
+                .path()
+                .map_err(|e| CorpusError::Git(format!("archive entry has no path: {e}")))?
+                .to_string_lossy()
+                .replace('\\', "/");
+            // Strip the archive's single top-level directory component.
+            let Some((_, rel)) = path.split_once('/') else {
+                continue;
+            };
+            if !(rel.ends_with(".yaml") || rel.ends_with(".yml")) {
+                continue;
+            }
+            let mut content = String::new();
+            if entry.read_to_string(&mut content).is_err() {
+                tracing::debug!(path = %rel, "archive entry is not valid UTF-8; skipping");
+                continue;
+            }
+            out.push((rel.to_string(), content));
+        }
+        Ok(out)
     }
 
     #[cfg(test)]

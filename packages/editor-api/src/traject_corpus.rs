@@ -177,6 +177,16 @@ const TRAJECT_INDEX_TTL: Duration = Duration::from_secs(60);
 /// instead of growing without bound.
 const BODY_CACHE_MAX_ENTRIES: usize = 1024;
 
+/// When an implements-index build would otherwise fetch at least this many
+/// law bodies one-by-one from a *single* source, pull the whole source in
+/// one archive request instead (see [`RepoBackend::read_all_files`]). Below
+/// the threshold the per-law lazy fetch is cheaper than downloading the
+/// archive. This is what turns the cold build over a large GitHub-backed
+/// traject from O(corpus) Contents calls (a 504) into one download.
+///
+/// [`RepoBackend::read_all_files`]: regelrecht_corpus::backend::RepoBackend::read_all_files
+const BULK_FETCH_THRESHOLD: usize = 16;
+
 /// Lazily-fetched law bodies with a FIFO size cap. FIFO (not LRU) keeps
 /// reads lock-cheap: a cache hit only needs the outer `RwLock`'s read
 /// guard, no per-hit reordering under a write lock. Eviction order only
@@ -453,6 +463,7 @@ impl TrajectCorpus {
         struct ScanEntry {
             law_id: String,
             source_id: String,
+            relative_path: String,
             content_sha: Option<String>,
             loaded_implements: Option<Vec<String>>,
         }
@@ -463,10 +474,66 @@ impl TrajectCorpus {
             .map(|law| ScanEntry {
                 law_id: law.law_id.clone(),
                 source_id: law.source_id.clone(),
+                relative_path: law.relative_path.clone(),
                 content_sha: law.content_sha.clone(),
                 loaded_implements: law.is_loaded().then(|| law.implements.clone()),
             })
             .collect();
+
+        // Cold builds would fetch every metadata-only body. One Contents
+        // call per law is O(corpus) and times out on large GitHub-backed
+        // trajects, so when a single source has many bodies to fetch, pull
+        // the whole source in one archive request and serve the scan from
+        // memory. Keyed by (source_id, source-relative path) to match the
+        // loop's per-entry lookup; deliberately NOT poured into the bounded
+        // body_cache, so a huge corpus can't thrash it.
+        let mut bulk: HashMap<(String, String), String> = HashMap::new();
+        {
+            let mut misses: HashMap<&str, usize> = HashMap::new();
+            for entry in &entries {
+                if overlay.contains_key(&entry.law_id) || entry.loaded_implements.is_some() {
+                    continue;
+                }
+                let memo_hit = entry
+                    .content_sha
+                    .as_ref()
+                    .is_some_and(|sha| memo.contains_key(&(entry.source_id.clone(), sha.clone())));
+                if !memo_hit {
+                    *misses.entry(entry.source_id.as_str()).or_default() += 1;
+                }
+            }
+            for (source_id, count) in misses {
+                if count < BULK_FETCH_THRESHOLD {
+                    continue;
+                }
+                let Some(backend_entry) = self.corpus.backends.get(source_id) else {
+                    continue;
+                };
+                let result = {
+                    let backend = backend_entry.backend.lock().await;
+                    backend.read_all_files(Some("yaml")).await
+                };
+                match result {
+                    Ok(files) => {
+                        tracing::info!(
+                            source_id,
+                            files = files.len(),
+                            "implements scan: bulk-loaded source bodies in one request"
+                        );
+                        for (rel_path, content) in files {
+                            bulk.insert((source_id.to_string(), rel_path), content);
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            source_id,
+                            error = %e,
+                            "implements scan: bulk source load failed; falling back to per-law fetch"
+                        );
+                    }
+                }
+            }
+        }
 
         let mut implements_by_law = HashMap::new();
         let mut failed_law_ids = Vec::new();
@@ -482,6 +549,15 @@ impl TrajectCorpus {
                 let memo_key = entry.content_sha.map(|sha| (entry.source_id.clone(), sha));
                 if let Some(hit) = memo_key.as_ref().and_then(|key| memo.get(key)) {
                     let implements = hit.clone();
+                    if let Some(key) = memo_key {
+                        new_memo.insert(key, implements.clone());
+                    }
+                    implements
+                } else if let Some(yaml) =
+                    bulk.get(&(entry.source_id.clone(), entry.relative_path.clone()))
+                {
+                    // Body came from the one-shot archive download above.
+                    let implements = collect_law_implements(yaml);
                     if let Some(key) = memo_key {
                         new_memo.insert(key, implements.clone());
                     }
@@ -1330,6 +1406,9 @@ mod tests {
         files: HashMap<String, String>,
         fail_reads: bool,
         reads: Arc<AtomicUsize>,
+        /// Counts `read_all_files` (bulk) calls so a test can assert the
+        /// scan pulled a source in one request instead of per-law.
+        bulk_reads: Arc<AtomicUsize>,
     }
 
     impl StubBackend {
@@ -1341,6 +1420,7 @@ mod tests {
                     .collect(),
                 fail_reads: false,
                 reads: Arc::new(AtomicUsize::new(0)),
+                bulk_reads: Arc::new(AtomicUsize::new(0)),
             }
         }
 
@@ -1349,6 +1429,7 @@ mod tests {
                 files: HashMap::new(),
                 fail_reads: true,
                 reads: Arc::new(AtomicUsize::new(0)),
+                bulk_reads: Arc::new(AtomicUsize::new(0)),
             }
         }
     }
@@ -1361,6 +1442,22 @@ mod tests {
                 return Err(CorpusError::Git("simulated throttle".to_string()));
             }
             Ok(self.files.get(path.to_str().unwrap()).cloned())
+        }
+        async fn read_all_files(
+            &self,
+            extension: Option<&str>,
+        ) -> CorpusResult<Vec<(String, String)>> {
+            self.bulk_reads.fetch_add(1, Ordering::SeqCst);
+            if self.fail_reads {
+                return Err(CorpusError::Git("simulated throttle".to_string()));
+            }
+            let suffix = extension.map(|e| format!(".{e}"));
+            Ok(self
+                .files
+                .iter()
+                .filter(|(p, _)| suffix.as_ref().is_none_or(|s| p.ends_with(s)))
+                .map(|(p, c)| (p.clone(), c.clone()))
+                .collect())
         }
         async fn write_file(&self, _: &Path, _: &str) -> CorpusResult<()> {
             Ok(())
@@ -1605,6 +1702,46 @@ mod tests {
         // still found.
         assert_eq!(result.implementors, vec!["regeling_a".to_string()]);
         assert_eq!(result.skipped_count, 1);
+    }
+
+    #[tokio::test]
+    async fn implements_index_bulk_loads_large_source_in_one_request() {
+        // A source with many metadata-only laws (≥ BULK_FETCH_THRESHOLD)
+        // must be pulled in ONE bulk request, not one fetch per law — this
+        // is what stops the cold build 504-ing on large GitHub trajects.
+        let n = BULK_FETCH_THRESHOLD;
+        let mut map = SourceMap::new();
+        let mut files: Vec<(String, String)> = Vec::new();
+        for i in 0..n {
+            let law_id = format!("reg_{i}");
+            metadata_entry(&mut map, &law_id, "seed");
+            files.push((
+                format!("wet/{law_id}/2025-01-01.yaml"),
+                law_body(&law_id, Some("wet_target")),
+            ));
+        }
+        let file_refs: Vec<(&str, &str)> = files
+            .iter()
+            .map(|(p, c)| (p.as_str(), c.as_str()))
+            .collect();
+        let stub = StubBackend::with_files(&file_refs);
+        let reads = stub.reads.clone();
+        let bulk_reads = stub.bulk_reads.clone();
+        let corpus = test_corpus(
+            map,
+            HashMap::from([("seed".to_string(), backend_entry(stub))]),
+        );
+
+        let result = corpus.implementors_of("wet_target").await;
+
+        // Every law is found as an implementor…
+        let mut expected: Vec<String> = (0..n).map(|i| format!("reg_{i}")).collect();
+        expected.sort();
+        assert_eq!(result.implementors, expected);
+        assert_eq!(result.skipped_count, 0);
+        // …via exactly one bulk request and zero per-law fetches.
+        assert_eq!(bulk_reads.load(Ordering::SeqCst), 1);
+        assert_eq!(reads.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
