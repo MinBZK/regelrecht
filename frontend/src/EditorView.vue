@@ -742,8 +742,8 @@ const yamlSource = ref('');
 // panes reset in lockstep when the user tabs to a different article.
 const editedText = ref('');
 
-// Per-pane refs to the ArticleTextEditor instance so the pane-header can
-// render the formatting toolbar (Bold/Italic/lists) next to the existing
+// Per-pane refs to the ArticleTextEditor instance so the header toolbar can
+// render the formatting controls (Bold/Italic/lists) next to the existing
 // pane-view dropdown rather than the editor drawing its own duplicate
 // label dropdown inside the body. Functional ref keeps the map in sync as
 // panes mount/unmount.
@@ -756,6 +756,53 @@ function setTextEditorRef(idx) {
       delete textEditorRefs[idx];
     }
   };
+}
+
+// --- Tekst-opmaak (segmented controls in de header-toolbar) ---
+// De ArticleTextEditor (Tiptap) per pane is de bron van waarheid; deze helpers
+// vertalen activeFormats <-> de segmented-control-waardes en sturen de
+// toggle-commando's aan. Lezen van activeFormats in de template houdt de
+// controls reactief in sync met de selectie.
+
+// Vet/Schuin: checkbox-control — de geselecteerde waardes zijn de actieve
+// inline-formats (beide kunnen tegelijk aan staan).
+function boldItalicValues(idx) {
+  const refs = textEditorRefs[idx];
+  if (!refs) return [];
+  const values = [];
+  if (refs.activeFormats.bold) values.push('bold');
+  if (refs.activeFormats.italic) values.push('italic');
+  return values;
+}
+function onInlineFormatChange(idx, e) {
+  const refs = textEditorRefs[idx];
+  if (!refs) return;
+  if (e.detail.value === 'bold') refs.toggleBold();
+  else if (e.detail.value === 'italic') refs.toggleItalic();
+}
+
+// Lijst: radio-control met none/bullet/ordered. Tiptap's toggle-commando's
+// converteren tussen lijsttypes en heffen de actieve lijst op, dus elke
+// overgang is met één toggle te maken.
+function listValue(idx) {
+  const refs = textEditorRefs[idx];
+  if (!refs) return 'none';
+  if (refs.activeFormats.bulletList) return 'bullet';
+  if (refs.activeFormats.orderedList) return 'ordered';
+  return 'none';
+}
+function setList(idx, target) {
+  const refs = textEditorRefs[idx];
+  if (!refs) return;
+  const current = listValue(idx);
+  if (target === current) return;
+  if (target === 'bullet') refs.toggleBulletList();
+  else if (target === 'ordered') refs.toggleOrderedList();
+  else if (refs.activeFormats.bulletList) refs.toggleBulletList();
+  else if (refs.activeFormats.orderedList) refs.toggleOrderedList();
+}
+function onListChange(idx, e) {
+  setList(idx, e.detail.value);
 }
 
 const dumpOpts = { lineWidth: 80, noRefs: true };
@@ -1378,103 +1425,170 @@ async function handleActionSave() {
               :background="view === 'scenario' ? 'base' : undefined"
               :sticky-footer="(view === 'machine' && canEdit && !activeAction && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx) || (view === 'text' && canEditArticleText && (isArticleTextDirty || lawSaving) && paneViews.indexOf('text') === idx)"
             >
-              <div slot="header" class="pane-header">
-                <nldd-button
-                  :id="`pane-view-btn-${idx}`"
-                  size="md"
-                  expandable
-                  :text="viewLabel(view)"
-                  :popovertarget="`pane-view-menu-${idx}`"
-                ></nldd-button>
-                <nldd-menu :id="`pane-view-menu-${idx}`" :anchor="`pane-view-btn-${idx}`">
-                  <nldd-menu-item
-                    v-for="opt in availableViews"
-                    :key="opt.id"
-                    type="radio"
-                    :selected="view === opt.id || undefined"
-                    :text="opt.label"
-                    @select="setPaneView(idx, opt.id)"
-                  ></nldd-menu-item>
-                </nldd-menu>
-                <!-- Notes toggle: only on the Tekst pane, only when the
-                     panel.notes capability is enabled, and only in read mode
-                     (the overlay needs raw text — it can't align with the
-                     editable textarea). Notes are a layer over the text, not
-                     a separate pane. -->
-                <!-- No start-icon: the design-system has no note/comment
-                     glyph (its `comment` icon is an empty SVG). A misleading
-                     icon (edit/document) is worse than none; the "Notities"
-                     label is clear on its own. Tracked upstream:
-                     MinBZK/storybook icon-set request. -->
-                <nldd-button
-                  v-if="view === 'text' && isEnabled('panel.notes') && !canEditArticleText"
-                  size="md"
-                  :variant="showNotes ? 'primary' : 'default'"
-                  text="Notities"
-                  data-testid="notes-toggle"
-                  @click="showNotes = !showNotes"
-                ></nldd-button>
-                <!-- Formatting toolbar lives in the pane-header so it sits in
-                     line with the pane-view dropdown rather than below it.
-                     Wired to the ArticleTextEditor instance via textEditorRefs
-                     so the active-format chips update in lockstep with the
-                     editor's selection. -->
-                <div
-                  v-if="view === 'text' && selectedArticle && textEditorRefs[idx]"
-                  class="fmt-group"
-                  data-testid="article-text-fmt-group"
-                >
-                  <span class="fmt-btn" :class="{ 'is-active': textEditorRefs[idx].activeFormats.bold }">
-                    <nldd-icon-button
-                      icon="bold"
+              <nldd-container slot="header" padding-inline="16" padding-block="12">
+                <nldd-toolbar size="md" label="Paneelacties">
+                  <!-- Weergave-keuze (alle panes). Hoogste prioriteit zodat
+                       deze als laatste naar het overflow-menu verhuist. -->
+                  <nldd-toolbar-item slot="start" label="Weergave" :priority="3">
+                    <nldd-button
+                      :id="`pane-view-btn-${idx}`"
                       size="md"
-                      accessible-label="Vet"
-                      data-testid="fmt-bold"
-                      :disabled="!canEditArticleText || undefined"
-                      @click="textEditorRefs[idx].toggleBold()"
-                    ></nldd-icon-button>
-                  </span>
-                  <span class="fmt-btn" :class="{ 'is-active': textEditorRefs[idx].activeFormats.italic }">
-                    <nldd-icon-button
-                      icon="italic"
+                      expandable
+                      :text="viewLabel(view)"
+                      :popovertarget="`pane-view-menu-${idx}`"
+                    ></nldd-button>
+                    <nldd-menu :id="`pane-view-menu-${idx}`" :anchor="`pane-view-btn-${idx}`">
+                      <nldd-menu-item
+                        v-for="opt in availableViews"
+                        :key="opt.id"
+                        type="radio"
+                        :selected="view === opt.id || undefined"
+                        :text="opt.label"
+                        @select="setPaneView(idx, opt.id)"
+                      ></nldd-menu-item>
+                    </nldd-menu>
+                    <nldd-menu-group slot="overflow" text="Weergave">
+                      <nldd-menu-item
+                        v-for="opt in availableViews"
+                        :key="`ovf-view-${opt.id}`"
+                        type="radio"
+                        :selected="view === opt.id || undefined"
+                        :text="opt.label"
+                        @select="setPaneView(idx, opt.id)"
+                      ></nldd-menu-item>
+                    </nldd-menu-group>
+                  </nldd-toolbar-item>
+                  <!-- Notitie-toggle: alleen op de Tekst-pane in leesmodus
+                       (de overlay heeft ruwe tekst nodig, niet de editable
+                       textarea). Geen start-icon: de design-system heeft geen
+                       note/comment-glyph (`comment` is een lege SVG). -->
+                  <nldd-toolbar-item
+                    v-if="view === 'text' && isEnabled('panel.notes') && !canEditArticleText"
+                    slot="start"
+                    label="Notities"
+                    :priority="2"
+                  >
+                    <nldd-button
                       size="md"
-                      accessible-label="Schuin"
-                      data-testid="fmt-italic"
-                      :disabled="!canEditArticleText || undefined"
-                      @click="textEditorRefs[idx].toggleItalic()"
-                    ></nldd-icon-button>
-                  </span>
-                  <span class="fmt-divider" role="separator" aria-orientation="vertical"></span>
-                  <span class="fmt-btn" :class="{ 'is-active': textEditorRefs[idx].activeFormats.bulletList }">
-                    <nldd-icon-button
-                      icon="bullet-list"
+                      :variant="showNotes ? 'primary' : 'default'"
+                      text="Notities"
+                      data-testid="notes-toggle"
+                      @click="showNotes = !showNotes"
+                    ></nldd-button>
+                    <nldd-menu-item
+                      slot="overflow"
+                      type="checkbox"
+                      text="Notities"
+                      :selected="showNotes || undefined"
+                      @select="showNotes = !showNotes"
+                    ></nldd-menu-item>
+                  </nldd-toolbar-item>
+                  <!-- Vet/Schuin — checkbox segmented control (beide kunnen
+                       tegelijk actief zijn). Bron van waarheid: de Tiptap-
+                       editor; de control reflecteert de selectie. -->
+                  <nldd-toolbar-item
+                    v-if="view === 'text' && selectedArticle && textEditorRefs[idx]"
+                    slot="start"
+                    label="Tekststijl"
+                    :priority="1"
+                  >
+                    <nldd-segmented-control
+                      type="checkbox"
+                      variant="icon"
                       size="md"
-                      accessible-label="Opsomming"
-                      data-testid="fmt-bullet-list"
+                      accessible-label="Tekststijl"
                       :disabled="!canEditArticleText || undefined"
-                      @click="textEditorRefs[idx].toggleBulletList()"
-                    ></nldd-icon-button>
-                  </span>
-                  <span class="fmt-btn" :class="{ 'is-active': textEditorRefs[idx].activeFormats.orderedList }">
-                    <nldd-icon-button
-                      icon="numbered-list"
+                      :values.prop="boldItalicValues(idx)"
+                      @item-change="onInlineFormatChange(idx, $event)"
+                    >
+                      <nldd-segmented-control-item value="bold" icon="bold" text="Vet"></nldd-segmented-control-item>
+                      <nldd-segmented-control-item value="italic" icon="italic" text="Schuin"></nldd-segmented-control-item>
+                    </nldd-segmented-control>
+                    <nldd-menu-group slot="overflow" text="Tekststijl">
+                      <nldd-menu-item
+                        type="checkbox"
+                        icon="bold"
+                        text="Vet"
+                        :selected="textEditorRefs[idx].activeFormats.bold || undefined"
+                        :disabled="!canEditArticleText || undefined"
+                        @select="textEditorRefs[idx].toggleBold()"
+                      ></nldd-menu-item>
+                      <nldd-menu-item
+                        type="checkbox"
+                        icon="italic"
+                        text="Schuin"
+                        :selected="textEditorRefs[idx].activeFormats.italic || undefined"
+                        :disabled="!canEditArticleText || undefined"
+                        @select="textEditorRefs[idx].toggleItalic()"
+                      ></nldd-menu-item>
+                    </nldd-menu-group>
+                  </nldd-toolbar-item>
+                  <!-- Lijsttype — radio segmented control: geen / opsomming /
+                       genummerd. "Geen" (minus-small) heft de actieve lijst op. -->
+                  <nldd-toolbar-item
+                    v-if="view === 'text' && selectedArticle && textEditorRefs[idx]"
+                    slot="start"
+                    label="Lijst"
+                    :priority="1"
+                  >
+                    <nldd-segmented-control
+                      type="radio"
+                      variant="icon"
                       size="md"
-                      accessible-label="Genummerde lijst"
-                      data-testid="fmt-ordered-list"
+                      accessible-label="Lijst"
                       :disabled="!canEditArticleText || undefined"
-                      @click="textEditorRefs[idx].toggleOrderedList()"
-                    ></nldd-icon-button>
-                  </span>
-                </div>
-                <span v-if="view === 'yaml' && parseError" class="editor-parse-error">YAML parse error</span>
-              </div>
+                      :value="listValue(idx)"
+                      @change="onListChange(idx, $event)"
+                    >
+                      <nldd-segmented-control-item value="none" icon="minus-small" text="Geen lijst"></nldd-segmented-control-item>
+                      <nldd-segmented-control-item value="bullet" icon="bullet-list" text="Opsomming"></nldd-segmented-control-item>
+                      <nldd-segmented-control-item value="ordered" icon="numbered-list" text="Genummerde lijst"></nldd-segmented-control-item>
+                    </nldd-segmented-control>
+                    <nldd-menu-group slot="overflow" text="Lijst">
+                      <nldd-menu-item
+                        type="radio"
+                        icon="minus-small"
+                        text="Geen lijst"
+                        :selected="listValue(idx) === 'none' || undefined"
+                        :disabled="!canEditArticleText || undefined"
+                        @select="setList(idx, 'none')"
+                      ></nldd-menu-item>
+                      <nldd-menu-item
+                        type="radio"
+                        icon="bullet-list"
+                        text="Opsomming"
+                        :selected="listValue(idx) === 'bullet' || undefined"
+                        :disabled="!canEditArticleText || undefined"
+                        @select="setList(idx, 'bullet')"
+                      ></nldd-menu-item>
+                      <nldd-menu-item
+                        type="radio"
+                        icon="numbered-list"
+                        text="Genummerde lijst"
+                        :selected="listValue(idx) === 'ordered' || undefined"
+                        :disabled="!canEditArticleText || undefined"
+                        @select="setList(idx, 'ordered')"
+                      ></nldd-menu-item>
+                    </nldd-menu-group>
+                  </nldd-toolbar-item>
+                  <!-- YAML parse-status (Machine-readable pane). -->
+                  <nldd-toolbar-item v-if="view === 'yaml' && parseError" slot="end" label="YAML">
+                    <span class="editor-parse-error">YAML parse error</span>
+                    <nldd-menu-item
+                      slot="overflow"
+                      text="YAML parse error"
+                      disabled
+                    ></nldd-menu-item>
+                  </nldd-toolbar-item>
+                </nldd-toolbar>
+              </nldd-container>
 
               <!-- Tekst — WYSIWYG editor when the editor.article_text_edit
                    feature flag is on, otherwise the read-only ArticleText
-                   display (matches the pre-#589 look). The toolbar in the
-                   pane-header above guards on `textEditorRefs[idx]`, which
-                   is only populated by the WYSIWYG component, so it auto-
-                   hides when the flag is off. -->
+                   display (matches the pre-#589 look). The format controls in
+                   the header toolbar above guard on `textEditorRefs[idx]`,
+                   which is only populated by the WYSIWYG component, so they
+                   auto-hide when the flag is off. -->
               <nldd-simple-section v-if="view === 'text'" width="full">
                 <ArticleTextEditor
                   v-if="canEditArticleText"
@@ -1762,47 +1876,6 @@ async function handleActionSave() {
   background: #eee;
   padding: 1px 4px;
   border-radius: 3px;
-}
-
-/* Per-pane header: view-picker dropdown sits where the title would
-   normally be, with the YAML parse-error pill floating after it.
-   Mirrors nldd-top-title-bar's compact spacing so the row height
-   matches other panes' headers. */
-.pane-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  min-height: 56px;
-  box-sizing: border-box;
-}
-
-/* Formatting buttons embedded in the text-pane header. The nldd-icon-button
- * library doesn't carry a pressed state of its own, so the wrapper span
- * paints the active background locally — same approach the previous
- * in-component toolbar used. */
-.fmt-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.fmt-btn {
-  display: inline-flex;
-  border-radius: 8px;
-  transition: background-color 120ms ease;
-}
-
-.fmt-btn.is-active {
-  background-color: var(--semantics-surfaces-accent-tinted-background-color, rgba(0, 123, 199, 0.14));
-}
-
-.fmt-divider {
-  display: inline-block;
-  width: 1px;
-  height: 20px;
-  margin: 0 4px;
-  background-color: var(--semantics-borders-default-color, #DDE0E4);
 }
 
 .editor-parse-error {
