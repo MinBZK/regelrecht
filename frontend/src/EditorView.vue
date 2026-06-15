@@ -1425,7 +1425,7 @@ async function handleActionSave() {
               :background="view === 'scenario' ? 'base' : undefined"
               :sticky-footer="(view === 'machine' && canEdit && !activeAction && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx) || (view === 'text' && canEditArticleText && (isArticleTextDirty || lawSaving) && paneViews.indexOf('text') === idx)"
             >
-              <nldd-container slot="header" padding="8">
+              <nldd-container slot="header" padding="8" padding-bottom="0">
                 <nldd-toolbar size="md" label="Paneelacties">
                   <!-- Weergave-keuze (alle panes). Hoogste prioriteit zodat
                        deze als laatste naar het overflow-menu verhuist. -->
