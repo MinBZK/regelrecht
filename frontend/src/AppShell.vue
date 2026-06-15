@@ -243,6 +243,7 @@ const hasDocumentTabs = computed(
                 id="changes-more-btn"
                 icon="more"
                 text="Meer acties"
+                tooltip-timing="never"
                 popup-type="menu"
                 popovertarget="changes-more-menu"
               ></nldd-icon-button>
