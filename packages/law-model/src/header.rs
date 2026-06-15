@@ -32,7 +32,10 @@ pub struct LawHeader {
     pub bwb_id: Option<String>,
     /// The raw `name` field (may be a `#`-prefixed output reference).
     pub name: Option<String>,
-    /// Number of articles, counted by their `- number:` entries.
+    /// Approximate number of articles, counted by `- number:` list entries at
+    /// any indentation. This is a line-based heuristic (matching the historical
+    /// tui scanner), not a structural count: a stray `- number:` elsewhere in
+    /// the document would be included. Good enough for display/coverage hints.
     pub article_count: usize,
 }
 
