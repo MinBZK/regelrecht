@@ -118,4 +118,21 @@ describe('DocumentTabsSheet', () => {
     expect(wrapper.findAll('nldd-drag-handle-cell')).toHaveLength(TABS.length);
     expect(wrapper.get('nldd-list').attributes('reorderable')).toBeDefined();
   });
+
+  it('closes the sheet when the viewport grows past sm', () => {
+    let changeHandler = null;
+    const spy = vi.spyOn(window, 'matchMedia').mockReturnValue({
+      matches: false,
+      addEventListener: (event, handler) => { if (event === 'change') changeHandler = handler; },
+      removeEventListener: () => {},
+    });
+    try {
+      mountSheet();
+      // Crossing to md+ (min-width:641px now matches) hides the sheet.
+      changeHandler?.({ matches: true });
+      expect(hideSpy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });

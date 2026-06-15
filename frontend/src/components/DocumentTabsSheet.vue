@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useAppChrome } from '../composables/useAppChrome.js';
 
 // Mobiele vervanger van de document-tab-bar. Op mobiel staat in de editor-
@@ -66,6 +66,22 @@ function onReorder(e) {
     tabActions.value?.reorder?.(fromIndex, toIndex);
   }
 }
+
+// Sluit de sheet zodra het scherm groter wordt dan sm: op md+ neemt de
+// document-tab-bar het over en is deze mobiele sheet niet meer zichtbaar. De
+// mobile-bar-pane blijft in Vue gemount (de DS verbergt 'm alleen visueel),
+// dus de sheet sluit niet vanzelf. 641px = DS mdMin-breakpoint.
+let breakpointQuery = null;
+function onBreakpointChange(e) {
+  if (e.matches) closeSheet();
+}
+onMounted(() => {
+  breakpointQuery = window.matchMedia?.('(min-width: 641px)') || null;
+  breakpointQuery?.addEventListener?.('change', onBreakpointChange);
+});
+onBeforeUnmount(() => {
+  breakpointQuery?.removeEventListener?.('change', onBreakpointChange);
+});
 </script>
 
 <template>
