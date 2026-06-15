@@ -1425,7 +1425,7 @@ async function handleActionSave() {
               :background="view === 'scenario' ? 'base' : undefined"
               :sticky-footer="(view === 'machine' && canEdit && !activeAction && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx) || (view === 'text' && canEditArticleText && (isArticleTextDirty || lawSaving) && paneViews.indexOf('text') === idx)"
             >
-              <nldd-container slot="header" padding-inline="16" padding-block="12">
+              <nldd-container slot="header" padding="8">
                 <nldd-toolbar size="md" label="Paneelacties">
                   <!-- Weergave-keuze (alle panes). Hoogste prioriteit zodat
                        deze als laatste naar het overflow-menu verhuist. -->
@@ -1488,7 +1488,7 @@ async function handleActionSave() {
                        editor; de control reflecteert de selectie. -->
                   <nldd-toolbar-item
                     v-if="view === 'text' && selectedArticle && textEditorRefs[idx]"
-                    slot="start"
+                    slot="end"
                     label="Tekststijl"
                     :priority="1"
                   >
@@ -1527,7 +1527,7 @@ async function handleActionSave() {
                        genummerd. "Geen" (minus-small) heft de actieve lijst op. -->
                   <nldd-toolbar-item
                     v-if="view === 'text' && selectedArticle && textEditorRefs[idx]"
-                    slot="start"
+                    slot="end"
                     label="Lijst"
                     :priority="1"
                   >

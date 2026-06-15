@@ -171,10 +171,6 @@ defineExpose({
   min-height: 0;
 }
 
-.article-text-editor__body-wrap {
-  padding: 16px;
-}
-
 .article-text-editor__empty {
   padding: 32px 16px;
   text-align: center;
