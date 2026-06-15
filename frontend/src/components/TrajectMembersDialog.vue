@@ -36,6 +36,14 @@ function roleLabel(role) {
   return role === 'owner' ? 'Eigenaar' : 'Bijdrager';
 }
 
+// A traject must always keep at least one owner, so the sole owner can be
+// neither demoted nor removed — they get no actions menu at all. Promote
+// someone else first (or delete the traject).
+const ownerCount = computed(() => members.value.filter((m) => m.role === 'owner').length);
+function canManageMember(m) {
+  return isOwner.value && (m.role !== 'owner' || ownerCount.value > 1);
+}
+
 // Invite form
 const inviteEmail = ref('');
 const inviteRole = ref('contributor');
@@ -175,7 +183,7 @@ async function clickLeave() {
       <nldd-page sticky-header sticky-footer>
         <nldd-top-title-bar
           slot="header"
-          :text="`Leden — ${trajectName}`"
+          :text="trajectName ? `Leden · ${trajectName}` : 'Leden'"
           dismiss-text="Sluit"
           @dismiss="close"
         ></nldd-top-title-bar>
@@ -204,7 +212,7 @@ async function clickLeave() {
                     </span>
                   </nldd-text-cell>
                   <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                  <nldd-cell v-if="isOwner">
+                  <nldd-cell v-if="canManageMember(m)">
                     <nldd-icon-button
                       :id="`member-more-${m.account_id}`"
                       icon="more"
@@ -272,41 +280,59 @@ async function clickLeave() {
             </nldd-list>
           </nldd-simple-section>
 
-          <nldd-simple-section v-if="isOwner" heading="Iemand uitnodigen">
-            <nldd-form-field label="E-mail" supporting-label="Toegang wordt actief bij de eerste login als er nog geen account bestaat.">
-              <nldd-text-field
-                size="md"
-                type="email"
-                :value="inviteEmail"
-                :invalid="inviteError ? true : undefined"
-                :error-message="inviteError ? 'invite-email-error' : undefined"
-                @input="inviteEmail = $event.target?.value ?? $event.detail?.value ?? inviteEmail"
-              ></nldd-text-field>
-              <nldd-form-field-error-text id="invite-email-error">
-                {{ inviteError }}
-              </nldd-form-field-error-text>
-            </nldd-form-field>
+          <nldd-simple-section v-if="isOwner">
+            <nldd-title size="4"><h2>Lid uitnodigen</h2></nldd-title>
+            <nldd-spacer size="12"></nldd-spacer>
+            <!-- nldd-form renders a real light-DOM <form>; provide our own so it
+                 skips the MutationObserver child-migration (which would fight
+                 Vue's DOM). The inner form owns the submit. -->
+            <nldd-form>
+              <form novalidate @submit.prevent="submitInvite">
+                <nldd-form-field label="E-mail">
+                  <nldd-text-field
+                    size="md"
+                    type="email"
+                    name="email"
+                    :value="inviteEmail"
+                    :invalid="inviteError ? true : undefined"
+                    :error-message="inviteError ? 'invite-email-error' : undefined"
+                    @input="inviteEmail = $event.target?.value ?? $event.detail?.value ?? inviteEmail"
+                  ></nldd-text-field>
+                  <nldd-form-field-help-text>
+                    Toegang wordt actief bij de eerste login als er nog geen account bestaat.
+                  </nldd-form-field-help-text>
+                  <nldd-form-field-error-text id="invite-email-error">
+                    {{ inviteError }}
+                  </nldd-form-field-error-text>
+                </nldd-form-field>
 
-            <nldd-form-field label="Rol">
-              <nldd-dropdown
-                size="md"
-                @change="inviteRole = $event.detail?.value ?? $event.target?.value ?? inviteRole"
-              >
-                <select :value="inviteRole">
-                  <option value="contributor">Contributor</option>
-                  <option value="owner">Owner</option>
-                </select>
-              </nldd-dropdown>
-            </nldd-form-field>
+                <nldd-form-field label="Rol">
+                  <nldd-segmented-control
+                    type="radio"
+                    size="md"
+                    width="full"
+                    :value="inviteRole"
+                    @change="inviteRole = $event.detail?.value ?? inviteRole"
+                  >
+                    <nldd-segmented-control-item value="contributor" text="Bijdrager"></nldd-segmented-control-item>
+                    <nldd-segmented-control-item value="owner" text="Eigenaar"></nldd-segmented-control-item>
+                  </nldd-segmented-control>
+                </nldd-form-field>
 
-            <div v-if="inviteResult" class="members-info">{{ inviteResult }}</div>
-            <nldd-button
-              variant="primary"
-              size="md"
-              :text="inviteBusy ? 'Bezig…' : 'Uitnodigen'"
-              :disabled="inviteBusy || undefined"
-              @click="submitInvite"
-            ></nldd-button>
+                <div v-if="inviteResult" class="members-info">{{ inviteResult }}</div>
+
+                <nldd-form-actions>
+                  <nldd-button
+                    variant="primary"
+                    size="md"
+                    type="submit"
+                    width="full"
+                    :text="inviteBusy ? 'Bezig…' : 'Nodig uit'"
+                    :disabled="inviteBusy || undefined"
+                  ></nldd-button>
+                </nldd-form-actions>
+              </form>
+            </nldd-form>
           </nldd-simple-section>
 
           <nldd-simple-section v-if="!isOwner && callerRole" heading="Dit traject verlaten">

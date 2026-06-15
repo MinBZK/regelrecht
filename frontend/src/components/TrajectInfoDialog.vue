@@ -131,7 +131,7 @@ async function confirmDelete() {
       <nldd-page sticky-header>
         <nldd-top-title-bar
           slot="header"
-          text="Traject details"
+          :text="trajectName ? `Traject details · ${trajectName}` : 'Traject details'"
           dismiss-text="Sluit"
           @dismiss="close"
         ></nldd-top-title-bar>

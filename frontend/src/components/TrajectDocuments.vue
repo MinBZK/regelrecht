@@ -31,7 +31,7 @@ import { useDocumentsSheet } from '../composables/useDocumentsSheet.js';
 
 // Self-source the active traject so the component can be dropped into any
 // app (EditorApp / LibraryApp) with no props.
-const { activeTrajectRef } = useTrajects();
+const { activeTrajectRef, activeTraject } = useTrajects();
 const { isOpen: browserOpen, close: closeBrowser } = useDocumentsSheet();
 
 const {
@@ -310,7 +310,7 @@ function handleKeydown(e) {
       <nldd-page sticky-header>
         <nldd-top-title-bar
           slot="header"
-          text="Werkdocumenten"
+          :text="activeTraject ? `Werkdocumenten · ${activeTraject.name}` : 'Werkdocumenten'"
           dismiss-text="Sluit"
           @dismiss="closeBrowser"
         ></nldd-top-title-bar>
