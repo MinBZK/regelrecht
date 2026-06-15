@@ -14,7 +14,8 @@ use std::fmt;
 /// Note: `PartialEq` is implemented manually so that `Float(NaN) == Float(NaN)`
 /// returns `true`. In the law execution domain, NaN represents invalid/missing
 /// data and two missing values are considered equal for comparison purposes.
-/// This matches the behavior of [`crate::operations::values_equal`].
+/// This matches the value-equality semantics used by the engine's operations
+/// (`regelrecht_engine::operations`).
 ///
 /// The `Untranslatable` variant (RFC-012 Layer 3) represents a value that
 /// originates from an article with untranslatable constructs. It propagates
