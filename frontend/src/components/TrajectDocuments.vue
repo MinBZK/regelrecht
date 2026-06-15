@@ -342,10 +342,6 @@ function handleKeydown(e) {
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell :text="displayTitle(doc.path)"></nldd-text-cell>
             </nldd-list-item>
-            <nldd-inline-dialog
-              v-if="documents.length === 0"
-              text="Nog geen documenten in dit traject."
-            ></nldd-inline-dialog>
             <nldd-list-item size="md"
               button
               @click="startNewDocument"

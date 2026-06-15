@@ -134,7 +134,7 @@ const hasDocumentTabs = computed(
                 ></nldd-menu-item>
                 </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
-                <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
+                <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
                 <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login()"></nldd-menu-item>
               </nldd-menu>
             </nldd-toolbar-item>
@@ -191,7 +191,7 @@ const hasDocumentTabs = computed(
                 ></nldd-menu-item>
                 </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
-                <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
+                <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
                 <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login()"></nldd-menu-item>
               </nldd-menu>
             </nldd-toolbar-item>
@@ -287,7 +287,7 @@ const hasDocumentTabs = computed(
                 ></nldd-menu-item>
                 </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
-                <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
+                <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
                 <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login()"></nldd-menu-item>
               </nldd-menu>
             </nldd-toolbar-item>
