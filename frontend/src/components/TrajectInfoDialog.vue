@@ -182,11 +182,13 @@ async function confirmDelete() {
             <nldd-list-item size="md">
               <nldd-text-cell
                 text="Repo"
-                supporting-text="Opent de traject-branch op GitHub in een nieuw tabblad."
                 max-width="180px"
               ></nldd-text-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
-              <nldd-cell v-if="repoUrl">
+              <nldd-text-cell
+                v-if="repoUrl"
+                supporting-text="Opent de traject-branch op GitHub in een nieuw tabblad."
+              >
                 <!-- nldd-link is the design-system link component. It
                      auto-sets rel='noopener noreferrer' for target='_blank',
                      but we also pass rel explicitly so it is present even
@@ -200,7 +202,7 @@ async function confirmDelete() {
                   end-icon="external-link"
                   :text="repoLabel"
                 ></nldd-link>
-              </nldd-cell>
+              </nldd-text-cell>
               <nldd-text-cell v-else :text="repoLabel || 'onbekend'"></nldd-text-cell>
             </nldd-list-item>
             <nldd-list-item size="md">

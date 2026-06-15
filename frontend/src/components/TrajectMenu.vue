@@ -190,23 +190,10 @@ async function submitCreate() {
     :width="fullWidth ? 'full' : undefined"
     :horizontal-alignment="fullWidth ? 'left' : undefined"
   ></nldd-button>
-  <!-- Logged in: the traject switcher + create. "Geen traject" is not an
-       option — you leave traject scope by navigating, not from this menu. -->
+  <!-- Logged in: the active traject's actions first, then the traject switcher
+       + create below a divider. "Geen traject" is not an option — you leave
+       traject scope by navigating, not from this menu. -->
   <nldd-menu v-if="authenticated" :id="menuId" :anchor="menuBtnId">
-    <nldd-menu-item
-      v-for="t in trajects"
-      :key="t.id"
-      type="radio"
-      :selected="t.ref === activeTrajectRef || undefined"
-      :text="`${t.name}${t.status === 'afgerond' ? ' (afgerond)' : ''}`"
-      @select="selectTraject(t)"
-    ></nldd-menu-item>
-    <nldd-menu-item
-      text="Nieuw traject…"
-      icon="plus"
-      @click="openCreate"
-    ></nldd-menu-item>
-    <nldd-menu-divider v-if="activeTraject"></nldd-menu-divider>
     <nldd-menu-item
       v-if="activeTraject"
       text="Werkdocumenten"
@@ -224,6 +211,20 @@ async function submitCreate() {
       text="Traject details"
       icon="traject"
       @click="openInfoForActive"
+    ></nldd-menu-item>
+    <nldd-menu-divider v-if="activeTraject"></nldd-menu-divider>
+    <nldd-menu-item
+      v-for="t in trajects"
+      :key="t.id"
+      type="radio"
+      :selected="t.ref === activeTrajectRef || undefined"
+      :text="`${t.name}${t.status === 'afgerond' ? ' (afgerond)' : ''}`"
+      @select="selectTraject(t)"
+    ></nldd-menu-item>
+    <nldd-menu-item
+      text="Nieuw traject…"
+      icon="plus"
+      @click="openCreate"
     ></nldd-menu-item>
   </nldd-menu>
 
