@@ -184,7 +184,7 @@ async function submitCreate() {
     :id="menuBtnId"
     size="md"
     expandable
-    start-icon="traject"
+    :start-icon="fullWidth ? 'traject' : undefined"
     :text="activeLabel"
     :popovertarget="menuId"
     :width="fullWidth ? 'full' : undefined"
