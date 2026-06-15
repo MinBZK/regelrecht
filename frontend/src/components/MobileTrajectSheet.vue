@@ -167,12 +167,9 @@ function selectTab(tab) {
 function closeTab(tab) {
   tabActions.value?.close(tab);
 }
-function onReorder(e) {
-  const { fromIndex, toIndex } = e.detail || {};
-  if (typeof fromIndex === 'number' && typeof toIndex === 'number') {
-    tabActions.value?.reorder?.(fromIndex, toIndex);
-  }
-}
+// Reorder is tijdelijk uitgeschakeld op sm (drag-bugs). De editor exposeert
+// `tabActions.reorder` nog, dus opnieuw inschakelen = `reorderable`
+// @nldd-reorder + de drag-handle-cells terugzetten op de Artikelen-lijst.
 
 // Sluit de sheet zodra het scherm groter dan sm wordt (md+ heeft eigen chrome).
 let breakpointQuery = null;
@@ -236,27 +233,31 @@ onBeforeUnmount(() => {
 
         <!-- Lijsten -->
         <nldd-simple-section v-else>
-          <!-- Lijst 1: Traject. Titel alleen als er ook een Artikelen-lijst is. -->
-          <template v-if="hasArticles">
-            <nldd-title size="4"><h2>Traject</h2></nldd-title>
-            <nldd-spacer size="8"></nldd-spacer>
-          </template>
-          <nldd-list variant="simple">
-            <nldd-list-item v-if="activeTraject" size="md" button @click="openDocuments">
+          <!-- Acties van het actieve traject — bovenaan, zonder titel (de
+               sheet-titel dekt dit al). -->
+          <nldd-list v-if="activeTraject" variant="simple">
+            <nldd-list-item size="md" button @click="openDocuments">
               <nldd-icon-cell size="20"><nldd-icon name="documents"></nldd-icon></nldd-icon-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell text="Werkdocumenten"></nldd-text-cell>
             </nldd-list-item>
-            <nldd-list-item v-if="activeTraject" size="md" button @click="openMembers">
+            <nldd-list-item size="md" button @click="openMembers">
               <nldd-icon-cell size="20"><nldd-icon name="person-2"></nldd-icon></nldd-icon-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell text="Leden"></nldd-text-cell>
             </nldd-list-item>
-            <nldd-list-item v-if="activeTraject" size="md" button @click="openInfo">
+            <nldd-list-item size="md" button @click="openInfo">
               <nldd-icon-cell size="20"><nldd-icon name="traject"></nldd-icon></nldd-icon-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell text="Traject details"></nldd-text-cell>
             </nldd-list-item>
+          </nldd-list>
+
+          <!-- Trajecten-switcher + nieuw traject — eigen lijst met titel. -->
+          <nldd-spacer v-if="activeTraject" size="24"></nldd-spacer>
+          <nldd-title size="5"><h2>Trajecten</h2></nldd-title>
+          <nldd-spacer size="8"></nldd-spacer>
+          <nldd-list variant="simple">
             <nldd-list-item
               v-for="t in trajects"
               :key="t.id"
@@ -274,12 +275,13 @@ onBeforeUnmount(() => {
             </nldd-list-item>
           </nldd-list>
 
-          <!-- Lijst 2: Artikelen (editor met open tabbladen) -->
+          <!-- Lijst 2: Artikelen (editor met open tabbladen). Reorder staat
+               tijdelijk uit op sm — eerst nog wat drag-bugs oplossen. -->
           <template v-if="hasArticles">
             <nldd-spacer size="24"></nldd-spacer>
-            <nldd-title size="4"><h2>Artikelen</h2></nldd-title>
+            <nldd-title size="5"><h2>Artikelen</h2></nldd-title>
             <nldd-spacer size="8"></nldd-spacer>
-            <nldd-list variant="simple" reorderable @nldd-reorder="onReorder">
+            <nldd-list variant="simple">
               <nldd-list-item
                 v-for="tab in documentTabs"
                 :key="tabActions.key(tab)"
@@ -288,9 +290,6 @@ onBeforeUnmount(() => {
                 :selected="isActiveTab(tab) || undefined"
                 @click="selectTab(tab)"
               >
-                <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
-                <nldd-drag-handle-cell slot="start" size="sm" reorderable-only></nldd-drag-handle-cell>
-                <nldd-spacer-cell slot="start" size="8" reorderable-only></nldd-spacer-cell>
                 <nldd-text-cell :text="tabText(tab)" :supporting-text="tabSupporting(tab)"></nldd-text-cell>
                 <nldd-spacer-cell size="8"></nldd-spacer-cell>
                 <nldd-cell>
