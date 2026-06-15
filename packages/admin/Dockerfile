@@ -9,6 +9,7 @@ COPY packages/admin/frontend-src/ .
 RUN npm run build
 
 # Stage 2: Chef base
+# Rust version: keep in sync with rust-toolchain.toml (source of truth).
 FROM rust:1.96-alpine@sha256:2ea3db105d38fdfa4e31f366674287fcaa828087e2fe3973befdc537f2d443b1 AS chef
 RUN apk add --no-cache musl-dev
 RUN cargo install cargo-chef --locked

@@ -30,7 +30,10 @@ services:
   harvester-worker:
     build:
       context: .
-      dockerfile: packages/pipeline/Dockerfile.harvester-worker
+      dockerfile: packages/pipeline/Dockerfile
+      target: harvester-worker
+      args:
+        BIN: regelrecht-harvest-worker
     depends_on:
       postgres:
         condition: service_healthy
@@ -47,7 +50,10 @@ services:
   pipelineapi:
     build:
       context: .
-      dockerfile: packages/pipeline/Dockerfile.pipeline-api
+      dockerfile: packages/pipeline/Dockerfile
+      target: pipeline-api
+      args:
+        BIN: regelrecht-pipeline-api
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,7 +69,10 @@ services:
   enrich-worker:
     build:
       context: .
-      dockerfile: packages/pipeline/Dockerfile.enrich-worker
+      dockerfile: packages/pipeline/Dockerfile
+      target: enrich-worker
+      args:
+        BIN: regelrecht-enrich-worker
     depends_on:
       postgres:
         condition: service_healthy

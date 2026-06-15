@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 # Stage 1a: Build WASM module using cargo + wasm-bindgen-cli (no wasm-pack needed)
-FROM rust:1.96-alpine@sha256:66f48b19d6e88519e2e58bebe0d945779a6a4ca41c2db17db78c9569655b50ac AS wasm-builder
+# Rust version: keep in sync with rust-toolchain.toml (source of truth).
+FROM rust:1.96-alpine@sha256:2ea3db105d38fdfa4e31f366674287fcaa828087e2fe3973befdc537f2d443b1 AS wasm-builder
 RUN apk add --no-cache musl-dev
 RUN rustup target add wasm32-unknown-unknown
 RUN cargo install wasm-bindgen-cli@0.2.114 --locked
@@ -31,7 +32,8 @@ COPY --from=wasm-builder /wasm-pkg/ public/wasm/pkg/
 RUN npm run build
 
 # Stage 2: Chef base
-FROM rust:1.96-alpine@sha256:66f48b19d6e88519e2e58bebe0d945779a6a4ca41c2db17db78c9569655b50ac AS chef
+# Rust version: keep in sync with rust-toolchain.toml (source of truth).
+FROM rust:1.96-alpine@sha256:2ea3db105d38fdfa4e31f366674287fcaa828087e2fe3973befdc537f2d443b1 AS chef
 RUN apk add --no-cache musl-dev
 RUN cargo install cargo-chef --locked
 WORKDIR /build

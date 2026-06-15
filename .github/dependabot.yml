@@ -59,6 +59,12 @@ updates:
           - '27'
           - '29'
           - '31'
+      # The Rust image version must match rust-toolchain.toml (source of
+      # truth); bump it manually together with the toolchain.
+      - dependency-name: rust
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
 
 
   - package-ecosystem: npm
@@ -94,6 +100,28 @@ updates:
           - '27'
           - '29'
           - '31'
+      # The Rust image version must match rust-toolchain.toml (source of
+      # truth); bump it manually together with the toolchain.
+      - dependency-name: rust
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+
+  - package-ecosystem: docker
+    directory: /packages/pipeline
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - docker
+    ignore:
+      # The Rust image version must match rust-toolchain.toml (source of
+      # truth); bump it manually together with the toolchain.
+      - dependency-name: rust
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
 
   - package-ecosystem: npm
     directory: /docs

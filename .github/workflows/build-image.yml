@@ -18,6 +18,18 @@ on:
         required: false
         type: string
         default: ''
+      # Optional Dockerfile stage to build (--target); empty means the default
+      # (last) stage.
+      target:
+        required: false
+        type: string
+        default: ''
+      # Optional newline-separated list of build args (NAME=value); empty means
+      # none.
+      build-args:
+        required: false
+        type: string
+        default: ''
     outputs:
       image-tag:
         description: Docker image tags
@@ -68,6 +80,10 @@ jobs:
         with:
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
+          # Empty target/build-args are ignored by build-push-action, so
+          # callers that do not set them are unaffected.
+          target: ${{ inputs.target }}
+          build-args: ${{ inputs.build-args }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
