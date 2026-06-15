@@ -480,7 +480,7 @@ async fn implementors_in_scope(scope: &ReadScope, law_id: &str) -> Vec<String> {
                     law_id = %law_id,
                     skipped = result.skipped_count,
                     found = result.implementors.len(),
-                    "implementors lookup is incomplete: some law bodies could not be fetched when the implements index was built"
+                    "implements index was built with unreadable law bodies (index-wide count, not specific to this law); this lookup may therefore be incomplete"
                 );
             }
             result.implementors

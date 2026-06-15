@@ -220,6 +220,15 @@ impl BoundedBodyCache {
 
 /// Content-addressed memo behind [`TrajectCorpus::implements_memo`]:
 /// `(source_id, blob sha) → parsed implements list`.
+///
+/// The sha is the one the Trees enumeration reported at source-map build
+/// time, while the body is fetched separately (clone read or, for the
+/// writable-own API backend, the tarball). A branch push between those two
+/// steps can key an entry under sha A while the body parsed was sha B — a
+/// bounded staleness, the same TOCTOU the per-law fetch path has always
+/// had. It is harmless: the implements index only drives the editor's
+/// implementor panel (never legal calculations), and it self-heals once
+/// the law's sha changes again and a rebuild overwrites the memo wholesale.
 type ImplementsMemo = HashMap<(String, String), Vec<String>>;
 
 /// Per-snapshot forward index: each law's parsed `implements` list, plus
@@ -246,9 +255,13 @@ struct ImplementsIndex {
 /// when the index was built.
 pub struct ImplementorsResult {
     pub implementors: Vec<String>,
-    /// Count of laws skipped because their body fetch failed when the index
-    /// was built — reported so callers can surface partiality instead of
-    /// passing off an incomplete scan as "no implementors".
+    /// Number of laws whose body could not be read **anywhere in the index
+    /// build** — this is an index-wide count, NOT scoped to the queried
+    /// law. It signals that the index (and therefore *any* implementor
+    /// lookup against it) may be incomplete, not that these specific
+    /// failures implement the queried law. Reported so callers can surface
+    /// partiality instead of passing an incomplete scan off as "no
+    /// implementors". Self-heals at the next snapshot rebuild.
     pub skipped_count: usize,
 }
 
