@@ -215,11 +215,20 @@ async function clickLeave() {
                       :disabled="rowBusy.has(m.account_id) || undefined"
                     ></nldd-icon-button>
                     <nldd-menu :id="`member-menu-${m.account_id}`" :anchor="`member-more-${m.account_id}`">
-                      <template v-if="m.role !== 'owner'">
+                      <!-- Een eigenaar kun je niet rechtstreeks verwijderen (een
+                           traject houdt altijd minstens één eigenaar). Degradeer
+                           'm eerst naar bijdrager — dat kan pas als er nóg een
+                           eigenaar is — daarna verschijnt 'Verwijder lid'. -->
+                      <nldd-menu-item
+                        v-if="m.role === 'owner'"
+                        text="Maak bijdrager"
+                        @select="changeMemberRole(m, 'contributor')"
+                      ></nldd-menu-item>
+                      <template v-else>
                         <nldd-menu-item text="Maak eigenaar" @select="changeMemberRole(m, 'owner')"></nldd-menu-item>
                         <nldd-menu-divider></nldd-menu-divider>
+                        <nldd-menu-item text="Verwijder lid" destructive @select="clickRemoveMember(m)"></nldd-menu-item>
                       </template>
-                      <nldd-menu-item text="Verwijder lid" destructive @select="clickRemoveMember(m)"></nldd-menu-item>
                     </nldd-menu>
                   </nldd-cell>
                 </nldd-list-item>
