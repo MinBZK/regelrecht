@@ -13,7 +13,7 @@
 
 # Stage 1: Chef base
 # Rust version: keep in sync with rust-toolchain.toml (source of truth).
-FROM rust:1.94-alpine@sha256:77237dd363a0b127bb5ef532c2d64c0deb380b738e43a9c4bdac73398d6d0a08 AS chef
+FROM rust:1.96-alpine@sha256:2ea3db105d38fdfa4e31f366674287fcaa828087e2fe3973befdc537f2d443b1 AS chef
 RUN apk add --no-cache musl-dev
 RUN cargo install cargo-chef --locked
 WORKDIR /build
