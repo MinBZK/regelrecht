@@ -475,10 +475,10 @@ async fn implementors_in_scope(scope: &ReadScope, law_id: &str) -> Vec<String> {
         // rebuild self-heals it.
         ReadScope::Traject(traject) => {
             let result = traject.implementors_of(law_id).await;
-            if !result.skipped_law_ids.is_empty() {
+            if result.skipped_count > 0 {
                 tracing::debug!(
                     law_id = %law_id,
-                    skipped = result.skipped_law_ids.len(),
+                    skipped = result.skipped_count,
                     found = result.implementors.len(),
                     "implementors lookup is incomplete: some law bodies could not be fetched when the implements index was built"
                 );

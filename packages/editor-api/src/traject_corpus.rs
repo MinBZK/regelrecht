@@ -236,7 +236,10 @@ struct ImplementsIndex {
 /// when the index was built.
 pub struct ImplementorsResult {
     pub implementors: Vec<String>,
-    pub skipped_law_ids: Vec<String>,
+    /// Count of laws skipped because their body fetch failed when the index
+    /// was built — reported so callers can surface partiality instead of
+    /// passing off an incomplete scan as "no implementors".
+    pub skipped_count: usize,
 }
 
 impl TrajectCorpus {
@@ -349,7 +352,7 @@ impl TrajectCorpus {
     /// the Trees enumeration), fetching only what actually changed.
     /// Bodies fetched by a scan land in `body_cache`, so opening one of
     /// the scanned laws afterwards is also free. Laws whose body fetch
-    /// failed are reported in [`ImplementorsResult::skipped_law_ids`]
+    /// failed are counted in [`ImplementorsResult::skipped_count`]
     /// instead of being silently indistinguishable from "doesn't
     /// implement anything"; the failed set is retried at the next
     /// rebuild.
@@ -366,7 +369,7 @@ impl TrajectCorpus {
         implementors.sort();
         ImplementorsResult {
             implementors,
-            skipped_law_ids: index.failed_law_ids.clone(),
+            skipped_count: index.failed_law_ids.len(),
         }
     }
 
@@ -1180,12 +1183,19 @@ async fn reconcile_overlay(old: &Arc<TrajectCorpus>, source_map: &SourceMap) {
         .collect();
 
     for (law_id, overlay_body) in entries {
-        // Resolve the write-target file in the NEW snapshot. A law that
-        // vanished from the index entirely gets its entry dropped too:
-        // the overlay is checked before the index, so a stale entry
-        // would otherwise keep serving a law that no longer exists.
+        // Resolve the write-target file in the NEW snapshot. If the law is
+        // absent from this snapshot we KEEP the overlay entry rather than
+        // dropping it: absence is ambiguous. A just-saved law can be missing
+        // from a snapshot whose source enumeration ran between our branch
+        // push and `record_save` returning (the GitHub Trees listing
+        // predates the push) — dropping here would break read-your-writes for
+        // a TTL window even though the save is safely on the branch. This
+        // matches the read-error failure stance below: when we cannot read
+        // the branch to compare, keep serving our save. A law genuinely
+        // removed from the branch keeps its overlay entry until a later save
+        // overwrites it — the read-your-writes trade-off this function makes.
         let branch_body = match source_map.get_law(&law_id) {
-            None => None,
+            None => continue,
             Some(law) => {
                 let write_source_id = old
                     .write_target_for_source
@@ -1529,7 +1539,7 @@ mod tests {
 
         let result = corpus.implementors_of("wet_hoger").await;
         assert_eq!(result.implementors, vec!["regeling_a".to_string()]);
-        assert!(result.skipped_law_ids.is_empty());
+        assert_eq!(result.skipped_count, 0);
         let reads_after_build = reads.load(Ordering::SeqCst);
         assert_eq!(reads_after_build, 2, "index build fetches each body once");
 
@@ -1562,7 +1572,7 @@ mod tests {
         // "checked and implements nothing" — while the healthy law is
         // still found.
         assert_eq!(result.implementors, vec!["regeling_a".to_string()]);
-        assert_eq!(result.skipped_law_ids, vec!["wet_kapot".to_string()]);
+        assert_eq!(result.skipped_count, 1);
     }
 
     #[tokio::test]
