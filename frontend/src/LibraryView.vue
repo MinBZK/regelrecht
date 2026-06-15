@@ -42,9 +42,12 @@ function libraryRouteFor(params = {}) {
     : { name: 'library', params };
 }
 function editorRouteFor(lawIdVal, articleNumber) {
+  // Without an active traject the editor isn't reachable directly — the
+  // editor requires a traject. Send the user to the chooser, carrying the
+  // law as query so it opens right after a traject is picked.
   return activeTrajectRef.value
     ? { name: 'editor-traject', params: { trajectRef: activeTrajectRef.value, lawId: lawIdVal, articleNumber } }
-    : { name: 'editor', params: { lawId: lawIdVal, articleNumber } };
+    : { name: 'editor', query: { law: lawIdVal || undefined, article: articleNumber || undefined } };
 }
 
 const laws = ref([]);
@@ -594,7 +597,7 @@ watch(activeTrajectRef, () => {
                         v-for="law in section.laws"
                         :key="`${section.key}-${law.law_id}`"
                         size="md"
-                        type="button"
+                        button
                         :data-law-id="law.law_id"
                         :selected="law.law_id === selectedLawId || undefined"
                         @click="selectLaw(law.law_id)"
@@ -646,7 +649,7 @@ watch(activeTrajectRef, () => {
                     v-for="article in articles"
                     :key="article.number"
                     size="md"
-                    type="button"
+                    button
                     :selected="String(article.number) === String(selectedArticleNumber) || undefined"
                     @click="selectArticle(article.number)"
                   >

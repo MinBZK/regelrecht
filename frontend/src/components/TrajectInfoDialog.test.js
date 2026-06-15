@@ -73,7 +73,8 @@ describe('TrajectInfoDialog', () => {
     await wrapper.setProps({ modelValue: true });
     await flushPromises();
 
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api/trajects/abc');
+    // useTrajectDetail now goes through apiFetch, which calls fetch(url, init).
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/trajects/abc', expect.anything());
     const texts = cellTexts(wrapper);
     expect(texts).toContain('Tariefswijziging 2026');
     expect(texts).toContain('Waarom dit traject');

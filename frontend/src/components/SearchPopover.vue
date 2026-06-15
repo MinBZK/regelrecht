@@ -307,7 +307,7 @@ defineExpose({ show });
                 v-for="law in group.laws"
                 :key="law.law_id"
                 size="md"
-                type="button"
+                button
                 @click="selectLaw(law.law_id)"
               >
                 <nldd-text-cell :text="displayName(law)"></nldd-text-cell>
@@ -320,7 +320,7 @@ defineExpose({ show });
           <div class="search-popover-empty-title">Log in om externe bronnen te doorzoeken</div>
           <div class="search-popover-empty-subtitle">Inloggen is vereist om wetten op te halen van wetten.overheid.nl</div>
           <nldd-spacer size="12"></nldd-spacer>
-          <nldd-button size="md" text="Inloggen" @click="login"></nldd-button>
+          <nldd-button size="md" text="Inloggen" @click="login()"></nldd-button>
         </div>
         <nldd-inline-dialog v-else-if="bwbLoading" text="Zoeken op wetten.overheid.nl..."></nldd-inline-dialog>
         <template v-else-if="bwbResults.length > 0">
@@ -331,7 +331,7 @@ defineExpose({ show });
               v-for="result in bwbResults"
               :key="result.bwb_id"
               size="md"
-              type="button"
+              button
               :disabled="harvestStatus[result.bwb_id] === 'loading'
                 || isPolling(harvestStatus[result.bwb_id])
                 || undefined"

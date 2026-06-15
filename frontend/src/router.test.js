@@ -28,7 +28,16 @@ describe('route disambiguation (traject vs no-traject)', () => {
     // traject redirects onto it (the law travels along as query).
     expect(router.resolve('/editor').name).toBe('editor');
     expect(router.resolve('/editor/nieuw-traject').name).toBe('editor-nieuw-traject');
-    expect(router.resolve('/editor/wet_op_de_zorgtoeslag').matched[0].redirect).toBeTruthy();
+    // A no-traject law URL hits a redirect route (router.resolve returns the
+    // redirect record without following it). Assert it redirects onto the
+    // chooser, carrying the law as query.
+    const matched = router.resolve('/editor/wet_op_de_zorgtoeslag').matched;
+    const redirect = matched[matched.length - 1].redirect;
+    expect(redirect).toBeTruthy();
+    expect(redirect({ params: { lawId: 'wet_op_de_zorgtoeslag' } })).toMatchObject({
+      name: 'editor',
+      query: { law: 'wet_op_de_zorgtoeslag' },
+    });
   });
 });
 

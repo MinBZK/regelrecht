@@ -464,10 +464,10 @@ function saveActiveTab(tab) {
 /**
  * Build a router target for the editor that preserves the current
  * traject scope. With a traject in the URL the user stays in
- * `editor-traject` (full edit mode); without one they stay in `editor`
- * (read-only). Vue Router requires the route name to match the
- * presence/absence of the `:trajectRef` param, so a single literal
- * `name: 'editor'` won't survive a no-traject ↔ with-traject switch.
+ * `editor-traject` (full edit mode). EditorView only ever mounts under a
+ * traject (the editor requires one), so the no-traject branch should not
+ * fire here — but for safety it routes to the chooser with the law as
+ * query rather than the (now removed) no-traject editor.
  */
 function editorRouteFor(lawIdVal, articleNumber) {
   const trajectRef = route.params.trajectRef;
@@ -479,7 +479,7 @@ function editorRouteFor(lawIdVal, articleNumber) {
   }
   return {
     name: 'editor',
-    params: { lawId: lawIdVal, articleNumber },
+    query: { law: lawIdVal || undefined, article: articleNumber || undefined },
   };
 }
 

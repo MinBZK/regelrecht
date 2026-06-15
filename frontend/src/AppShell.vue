@@ -126,7 +126,7 @@ const { lastSavedPr, documentTabs, activeDocumentTab, tabActions } = useAppChrom
                 </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
-                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
+                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login()"></nldd-menu-item>
               </nldd-menu>
             </nldd-toolbar-item>
           </nldd-toolbar>
@@ -143,7 +143,7 @@ const { lastSavedPr, documentTabs, activeDocumentTab, tabActions } = useAppChrom
                 <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="isLibraryRoute ? editorTabHref : undefined" @click.prevent="isLibraryRoute && router.push(editorTabTarget)" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
-            <nldd-toolbar-item slot="center" min-width="240px" width="33%">
+            <nldd-toolbar-item slot="center" min-width="240px" width="33%" max-width="480px">
               <nldd-search-field
                 size="md"
                 placeholder="Zoeken"
@@ -183,7 +183,7 @@ const { lastSavedPr, documentTabs, activeDocumentTab, tabActions } = useAppChrom
                 </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
-                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
+                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login()"></nldd-menu-item>
               </nldd-menu>
             </nldd-toolbar-item>
           </nldd-toolbar>
@@ -263,7 +263,7 @@ const { lastSavedPr, documentTabs, activeDocumentTab, tabActions } = useAppChrom
                 </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
-                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
+                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login()"></nldd-menu-item>
               </nldd-menu>
             </nldd-toolbar-item>
           </nldd-toolbar>
