@@ -234,14 +234,24 @@ const hasDocumentTabs = computed(
            the article has unsaved changes. Sits after `main` in the DOM, so on
            sm it lands above the two mobile bars and on md+ it's the bottom bar. -->
       <nldd-split-view-pane v-if="editorChanges && editorChanges.dirty" slot="changes-bar">
-        <nldd-container padding="8">
+        <nldd-container padding="8" sm-padding-bottom="0">
           <nldd-toolbar size="md" label="Wijzigingen">
-            <nldd-toolbar-item slot="start" label="Wijzigingen ongedaan maken" :priority="1">
-              <nldd-button
-                size="md"
-                text="Wijzigingen ongedaan maken"
-                @click="editorActions?.discard?.()"
-              ></nldd-button>
+            <!-- Discard zit bewust achter een 'meer'-menu zodat deze
+                 destructieve actie niet per ongeluk gekozen wordt. -->
+            <nldd-toolbar-item slot="start" label="Meer acties" :priority="1">
+              <nldd-icon-button
+                id="changes-more-btn"
+                icon="more"
+                text="Meer acties"
+                popup-type="menu"
+                popovertarget="changes-more-menu"
+              ></nldd-icon-button>
+              <nldd-menu id="changes-more-menu" anchor="changes-more-btn">
+                <nldd-menu-item
+                  text="Wijzigingen ongedaan maken"
+                  @select="editorActions?.discard?.()"
+                ></nldd-menu-item>
+              </nldd-menu>
               <nldd-menu-item
                 slot="overflow"
                 text="Wijzigingen ongedaan maken"
@@ -279,10 +289,11 @@ const hasDocumentTabs = computed(
                 @select="editorActions?.redo?.()"
               ></nldd-menu-item>
             </nldd-toolbar-item>
-            <nldd-toolbar-item slot="end" label="Opslaan" :priority="3">
+            <nldd-toolbar-item slot="end" label="Opslaan" width="320px" :priority="3">
               <nldd-button
                 variant="primary"
                 size="md"
+                width="full"
                 :disabled="editorChanges.saving || undefined"
                 :text="editorChanges.saving ? 'Opslaan…' : 'Opslaan'"
                 @click="editorActions?.save?.()"
