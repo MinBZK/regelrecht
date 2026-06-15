@@ -248,13 +248,15 @@ const hasDocumentTabs = computed(
               ></nldd-icon-button>
               <nldd-menu id="changes-more-menu" anchor="changes-more-btn">
                 <nldd-menu-item
-                  text="Wijzigingen ongedaan maken"
+                  text="Maak alle wijzigingen ongedaan"
+                  destructive
                   @select="editorActions?.discard?.()"
                 ></nldd-menu-item>
               </nldd-menu>
               <nldd-menu-item
                 slot="overflow"
-                text="Wijzigingen ongedaan maken"
+                text="Maak alle wijzigingen ongedaan"
+                destructive
                 @select="editorActions?.discard?.()"
               ></nldd-menu-item>
             </nldd-toolbar-item>
