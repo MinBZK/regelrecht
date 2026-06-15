@@ -1214,7 +1214,19 @@ async fn reconcile_overlay(old: &Arc<TrajectCorpus>, source_map: &SourceMap) {
                         .await
                 };
                 match read {
-                    Ok(body) => body,
+                    Ok(Some(body)) => body,
+                    Ok(None) => {
+                        // Trees enumeration found the law but the Contents
+                        // read says it's gone — a TOCTOU gap symmetric with
+                        // the Err arm below. We cannot tell a genuine delete
+                        // from transient propagation lag, so keep the save
+                        // (same "can't tell → keep" stance).
+                        tracing::debug!(
+                            law_id = %law_id,
+                            "overlay reconcile: file not found on branch; keeping overlay entry"
+                        );
+                        continue;
+                    }
                     Err(e) => {
                         tracing::debug!(
                             law_id = %law_id,
@@ -1227,7 +1239,7 @@ async fn reconcile_overlay(old: &Arc<TrajectCorpus>, source_map: &SourceMap) {
             }
         };
 
-        if branch_body.as_deref() == Some(overlay_body.as_str()) {
+        if branch_body == overlay_body {
             // Our save is still what the branch holds — keep serving it.
             continue;
         }
@@ -1462,6 +1474,26 @@ mod tests {
         assert_eq!(cache.map.len(), 2);
         assert_eq!(cache.order.len(), 2);
         assert_eq!(cache.get("a").map(String::as_str), Some("v2"));
+    }
+
+    #[test]
+    fn body_cache_overwrite_at_cap_does_not_evict() {
+        let mut cache = BoundedBodyCache::default();
+        // Fill exactly to capacity.
+        for i in 0..BODY_CACHE_MAX_ENTRIES {
+            cache.insert(format!("law_{i}"), "v1".to_string());
+        }
+        assert_eq!(cache.map.len(), BODY_CACHE_MAX_ENTRIES);
+        // Re-inserting an existing key at cap must NOT evict: the
+        // `contains_key` guard skips the eviction loop and leaves `order`
+        // untouched, so the size invariant holds and no live entry is lost.
+        cache.insert("law_0".to_string(), "v2".to_string());
+        assert_eq!(cache.map.len(), BODY_CACHE_MAX_ENTRIES);
+        assert_eq!(cache.order.len(), BODY_CACHE_MAX_ENTRIES);
+        // The next-oldest, untouched entry survives (no spurious eviction)…
+        assert!(cache.get("law_1").is_some());
+        // …and the overwritten value is updated in place.
+        assert_eq!(cache.get("law_0").map(String::as_str), Some("v2"));
     }
 
     // ---- TTL freshness ----
