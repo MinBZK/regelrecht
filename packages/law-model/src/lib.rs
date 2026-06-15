@@ -2,8 +2,9 @@
 //!
 //! The canonical Rust representation of the law-YAML document model — the shape
 //! of the files under `corpus/regulation/`. This crate is a dependency-light
-//! leaf (serde only) that every consumer of the law format can depend on, so the
-//! model is defined **once** instead of being re-derived per crate.
+//! leaf (serde + serde_json, no engine/runtime deps) that every consumer of the
+//! law format can depend on, so the model is defined **once** instead of being
+//! re-derived per crate.
 //!
 //! Scope: document structs/enums plus allocation-free accessors. It deliberately
 //! contains no YAML loading, security limits or evaluation logic — the engine

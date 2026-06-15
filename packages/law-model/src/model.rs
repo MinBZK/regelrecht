@@ -776,6 +776,7 @@ impl ArticleBasedLaw {
         matches!((parts.next(), parts.next(), parts.next(), parts.next()),
             (Some(a), Some(b), Some(c), None) if valid(a) && valid(b) && valid(c))
     }
+
     /// Find article that produces the given output.
     ///
     /// Uses allocation-free search via `Article::has_output()`.
