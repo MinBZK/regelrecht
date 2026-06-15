@@ -257,7 +257,7 @@ onBeforeUnmount(() => {
           <nldd-spacer v-if="activeTraject" size="24"></nldd-spacer>
           <nldd-title size="5"><h2>Trajecten</h2></nldd-title>
           <nldd-spacer size="8"></nldd-spacer>
-          <nldd-list variant="simple">
+          <nldd-list variant="box">
             <nldd-list-item
               v-for="t in trajects"
               :key="t.id"
@@ -281,7 +281,7 @@ onBeforeUnmount(() => {
             <nldd-spacer size="24"></nldd-spacer>
             <nldd-title size="5"><h2>Artikelen</h2></nldd-title>
             <nldd-spacer size="8"></nldd-spacer>
-            <nldd-list variant="simple">
+            <nldd-list variant="box">
               <nldd-list-item
                 v-for="tab in documentTabs"
                 :key="tabActions.key(tab)"
