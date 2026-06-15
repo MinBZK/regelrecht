@@ -110,7 +110,7 @@ const hasDocumentTabs = computed(
               <TrajectMenu id-suffix="md" />
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <nldd-button id="settings-menu-btn-md" size="md" start-icon="account" text="Account" expandable popovertarget="settings-menu-md"></nldd-button>
+              <nldd-icon-button id="settings-menu-btn-md" size="md" icon="account" text="Account" expandable popovertarget="settings-menu-md"></nldd-icon-button>
               <nldd-menu id="settings-menu-md" anchor="settings-menu-btn-md">
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
                 <nldd-menu-group text="Functies">
@@ -167,7 +167,7 @@ const hasDocumentTabs = computed(
               <TrajectMenu id-suffix="lg" />
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <nldd-button id="settings-menu-btn-lg" size="md" start-icon="account" text="Account" expandable popovertarget="settings-menu-lg"></nldd-button>
+              <nldd-icon-button id="settings-menu-btn-lg" size="md" icon="account" text="Account" expandable popovertarget="settings-menu-lg"></nldd-icon-button>
               <nldd-menu id="settings-menu-lg" anchor="settings-menu-btn-lg">
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
                 <nldd-menu-group text="Functies">

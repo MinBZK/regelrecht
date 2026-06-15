@@ -66,6 +66,7 @@ function closeTab(tab) {
     width="full"
     horizontal-alignment="left"
     single-line
+    start-icon="document"
     :text="triggerText"
     :supporting-text="triggerSupporting"
     @click="openSheet"
