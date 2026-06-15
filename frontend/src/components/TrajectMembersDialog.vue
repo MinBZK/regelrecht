@@ -253,9 +253,9 @@ async function clickLeave() {
             </nldd-list>
 
             <template v-if="pendingInvites.length > 0">
-              <nldd-spacer size="32"></nldd-spacer>
+              <nldd-spacer size="24"></nldd-spacer>
               <nldd-title size="4"><h2>Openstaande uitnodigingen</h2></nldd-title>
-              <nldd-spacer size="12"></nldd-spacer>
+              <nldd-spacer size="8"></nldd-spacer>
               <nldd-list variant="box">
                 <template v-for="inv in pendingInvites" :key="inv.email">
                   <nldd-list-item size="md">
@@ -286,9 +286,9 @@ async function clickLeave() {
             </template>
 
             <template v-if="isOwner">
-              <nldd-spacer size="32"></nldd-spacer>
+              <nldd-spacer size="24"></nldd-spacer>
               <nldd-title size="4"><h2>Lid uitnodigen</h2></nldd-title>
-              <nldd-spacer size="12"></nldd-spacer>
+              <nldd-spacer size="8"></nldd-spacer>
               <!-- nldd-form renders a real light-DOM <form>; provide our own so
                    it skips the MutationObserver child-migration (which would
                    fight Vue's DOM). The inner form owns the submit. -->
@@ -341,9 +341,9 @@ async function clickLeave() {
             </template>
 
             <template v-if="!isOwner && callerRole">
-              <nldd-spacer size="32"></nldd-spacer>
+              <nldd-spacer size="24"></nldd-spacer>
               <nldd-title size="4"><h2>Dit traject verlaten</h2></nldd-title>
-              <nldd-spacer size="12"></nldd-spacer>
+              <nldd-spacer size="8"></nldd-spacer>
               <p class="members-leave-hint">
                 Je verliest direct toegang tot dit traject. Een owner kan je later
                 opnieuw uitnodigen.
