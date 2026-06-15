@@ -1,0 +1,36 @@
+$id: regeling_standaardpremie
+valid_from: '2024-01-01'
+source: corpus/regulation/nl/ministeriele_regeling/regeling_standaardpremie/2024-01-01.yaml
+articles:
+- number: '1'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: c44e6ef087096c9448f6ca8876aeee9334943543bae43b38cd570ccb39ee8256
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'De standaardpremie, bedoeld in [artikel 4 van de Wet op de zorgtoeslag](https://wetten.overheid.nl/BWBR0018451/2024-01-01#Artikel4), bedraagt voor het berekeningsjaar 2024: € 1.987,–.'
+- number: '2'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 88c538d9e0f65a903f118b0924750399ab6c2a700fcbea4b515bc6fe0fe11fdd
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '[Red: Wijzigt de Regeling zorgverzekering.]'
+- number: '3'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 60f22aafdfe56a4efdeafcefe557a31e0ebeb94f36e5622f493f41fda8238890
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Deze regeling treedt in werking met ingang van 1 januari 2024.
+- number: '4'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: a6b98918b51415da240173737034f14da397845aa05bd9691a8ccf58200fc775
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Deze regeling wordt aangehaald als: Regeling vaststelling standaardpremie en bestuursrechtelijke premies 2024.'

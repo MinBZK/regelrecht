@@ -1,0 +1,36 @@
+$id: regeling_standaardpremie
+valid_from: '2025-01-01'
+source: corpus/regulation/nl/ministeriele_regeling/regeling_standaardpremie/2025-01-01.yaml
+articles:
+- number: '1'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 0d3a5e42897fbba700841b0c4530d407dc5bf211858ee4ec3fb697b16004f579
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'De standaardpremie, bedoeld in [artikel 4 van de Wet op de zorgtoeslag](https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel4), bedraagt voor het berekeningsjaar 2025: € 2.112,–.'
+- number: '2'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 88c538d9e0f65a903f118b0924750399ab6c2a700fcbea4b515bc6fe0fe11fdd
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '[Red: Wijzigt de Regeling zorgverzekering.]'
+- number: '3'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 90333c4a3cce35c4dc3ce5e2f369bbcddefada0bb3bf9138155fe403785da291
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Deze regeling treedt in werking met ingang van 1 januari 2025.
+- number: '4'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 3657c7767c912430fe3e87aadc2d63170437dc701f3a0c9a3b68731a1077641a
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 'Deze regeling wordt aangehaald als: Regeling vaststelling standaardpremie en bestuursrechtelijke premies 2025.'
