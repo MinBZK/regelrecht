@@ -739,7 +739,14 @@ pub struct ArticleBasedLaw {
     /// Articles in the law
     #[serde(default)]
     pub articles: Vec<Article>,
-    /// SHA-256 hash of the YAML content (computed at load time, not serialized)
+    /// SHA-256 hash of the source YAML, for provenance (RFC-013).
+    ///
+    /// This is the one runtime-populated field on the document model: it is left
+    /// empty by plain deserialization and filled in by the engine's loader
+    /// (`regelrecht_engine::article::LawLoad`) at parse time. It lives on the
+    /// document (rather than an engine-side wrapper) so the hash travels with the
+    /// law value through every consumer, and is `#[serde(skip)]` so it never
+    /// round-trips into the YAML.
     #[serde(skip)]
     pub content_hash: Option<String>,
 }
