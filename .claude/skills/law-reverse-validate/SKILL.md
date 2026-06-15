@@ -59,6 +59,8 @@ circular, or inefficient. That is intentional — model it as the law writes it.
       - Every `action` and its `operation` — does the legal text describe this logic?
       - Every comparison value — does the legal text state this threshold/amount?
       - Every `source.regulation` reference — does the legal text reference that law?
+      - Every `source` binding — does the target law YAML exist in the corpus, and does
+        the named `output` actually occur in it? (see "Cross-Law Binding Check" below)
       - Every `endpoint` — is there a reason for external callability?
       - Every `hooks` entry — does the legal text describe a rule triggered by lifecycle events (e.g., "na bekendmaking", "bij bezwaar")?
       - Every `overrides` entry — does the legal text explicitly state "in afwijking van artikel X" or similar override language?
@@ -86,6 +88,26 @@ that look correct but cannot be traced back to the provision that claims to prod
    passes schema validation. Removing elements can break required field constraints
    or leave dangling `$variable` references. Fix any validation errors before
    completing the report.
+
+## Cross-Law Binding Check — dangling source detection
+
+A `source:` binding is a factual claim: "the target regulation produces this output." A
+binding to an output that does not exist is a hallucination of the same kind as a fabricated
+article reference — it just hides better, because the YAML is schema-valid and the binding
+looks plausible.
+
+For every `source: { regulation, output }` in the file:
+1. Confirm the **target law YAML exists** in the corpus (`corpus/regulation/nl/...`). A
+   binding to a regulation that has no file is a hallucinated dependency — flag it.
+2. Confirm the **named output actually occurs** in that target law (it appears as an
+   `- output:` in some article's `machine_readable`). A binding whose `output` is produced
+   nowhere in the target is a **dangling binding** — flag it.
+
+A dangling binding is a modelling error, never an "engine limitation". The fix is either to
+correct the `output` name to one the target law really produces, or to add that output to
+the target law first (on the article that should own it). Do not silently downgrade the
+binding to a plain `input` parameter to make the error disappear — that hides the gap, it
+does not close it.
 
 ## Operation Correctness Check
 
