@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import TrajectMenu from './components/TrajectMenu.vue';
 import TrajectDocuments from './components/TrajectDocuments.vue';
+import DocumentTabsSheet from './components/DocumentTabsSheet.vue';
 import { useAuth } from './composables/useAuth.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
@@ -72,6 +73,14 @@ const editorTabHref = computed(() => router.resolve(editorTabTarget.value).href)
 
 // View-specific toolbar bits published by the active view.
 const { lastSavedPr, documentTabs, activeDocumentTab, tabActions } = useAppChrome();
+
+// Editor with open tabs → the mobile traject row splits 50/50 to fit a tabs
+// button next to the traject menu, and the md+ document-tab-bar shows. The
+// library never publishes tabs, so its mobile row keeps the full-width traject
+// menu (the two sections are intentionally decoupled here).
+const hasDocumentTabs = computed(
+  () => documentTabs.value.length > 0 && !!tabActions.value,
+);
 </script>
 
 <template>
@@ -190,10 +199,12 @@ const { lastSavedPr, documentTabs, activeDocumentTab, tabActions } = useAppChrom
         </nldd-container>
       </nldd-split-view-pane>
 
-      <!-- Document Tab Bar (editor only, md+). Rendered only while the active
-           view publishes open tabs, so the library never shows an empty bar. -->
-      <nldd-split-view-pane v-if="documentTabs.length > 0 && tabActions" slot="document-tabs" sm-order="2">
-        <nldd-container padding-inline="8" padding-top="0" padding-bottom="8" sm-padding-top="8" sm-padding-bottom="0">
+      <!-- Document Tab Bar (editor only, md+). Hidden on sm — there the tabs
+           live in the DocumentTabsSheet opened from the traject row. Rendered
+           only while the active view publishes open tabs, so the library never
+           shows an empty bar. -->
+      <nldd-split-view-pane v-if="hasDocumentTabs" slot="document-tabs" above="md">
+        <nldd-container padding-inline="8" padding-top="0" padding-bottom="8">
           <nldd-document-tab-bar>
             <nldd-document-tab-bar-item
               v-for="tab in documentTabs"
@@ -217,12 +228,21 @@ const { lastSavedPr, documentTabs, activeDocumentTab, tabActions } = useAppChrom
         <router-view />
       </nldd-split-view-pane>
 
-      <!-- Mobile Bar (sm only): TrajectMenu on its own full-width row, then the
-           tab bar + search + account row below. -->
+      <!-- Mobile Bar (sm only): traject row on top (in the editor it splits
+           50/50 with the open-tabs button, replacing the document-tab-bar),
+           then the tab bar + search + account row below. -->
       <nldd-split-view-pane slot="mobile-bar" only="sm">
         <nldd-container padding="8" padding-bottom="0">
           <nldd-toolbar size="md">
-            <nldd-toolbar-item slot="start" width="100%">
+            <template v-if="hasDocumentTabs">
+              <nldd-toolbar-item slot="start" width="50%">
+                <TrajectMenu id-suffix="sm" full-width />
+              </nldd-toolbar-item>
+              <nldd-toolbar-item slot="end" width="50%">
+                <DocumentTabsSheet />
+              </nldd-toolbar-item>
+            </template>
+            <nldd-toolbar-item v-else slot="start" width="100%">
               <TrajectMenu id-suffix="sm" full-width />
             </nldd-toolbar-item>
           </nldd-toolbar>
