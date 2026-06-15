@@ -18,8 +18,7 @@ use regelrecht_corpus::annotation_schema::{
 use regelrecht_corpus::backend::{EditorUser, PersistOutcome, RepoBackend, WriteContext};
 use regelrecht_corpus::dto::{build_source_summaries, PaginationParams, SourceSummary};
 use regelrecht_corpus::source_map::{
-    collect_law_implements, collect_law_outputs, extract_law_id, resolve_display_name,
-    validate_yaml_syntax, LoadedLaw,
+    collect_law_outputs, extract_law_id, validate_yaml_syntax, LoadedLaw,
 };
 use regelrecht_corpus::CorpusError;
 
@@ -272,16 +271,16 @@ fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec
                 }
             }
         })
-        .map(|law| {
-            let display_name = resolve_display_name(&law.yaml_content);
-            CorpusLawEntry {
-                law_id: law.law_id.clone(),
-                name: law.name.clone(),
-                display_name,
-                source_id: law.source_id.clone(),
-                source_name: law.source_name.clone(),
-                source_priority: law.source_priority,
-            }
+        .map(|law| CorpusLawEntry {
+            law_id: law.law_id.clone(),
+            name: law.name.clone(),
+            // Precomputed at index/load time (see `LoadedLaw::display_name`)
+            // so the unfiltered list doesn't re-scan every law body — let
+            // alone fully re-parse the `name: '#ref'` ones — per page load.
+            display_name: law.display_name.clone(),
+            source_id: law.source_id.clone(),
+            source_name: law.source_name.clone(),
+            source_priority: law.source_priority,
         })
         .collect();
 
@@ -461,35 +460,45 @@ pub async fn list_traject_law_implementors(
 }
 
 async fn implementors_in_scope(scope: &ReadScope, law_id: &str) -> Vec<String> {
-    // The snapshot always carries the full federated law *list* (only bodies
-    // are lazy), so collect candidate ids first, then resolve each body.
-    let candidates: Vec<String> = scope
-        .corpus()
-        .source_map
-        .laws()
-        .map(|law| law.law_id.clone())
-        .filter(|id| id != law_id)
-        .collect();
-
-    let mut out = Vec::new();
-    for id in candidates {
-        // Resolve the body through the scope, NOT `LoadedLaw::yaml_content`
-        // directly: in a traject the federated central laws are metadata-only
-        // until first read, so the snapshot body is empty for them. `law_yaml`
-        // lazily fetches (and caches) the body and applies the read-your-writes
-        // overlay. A miss or fetch error just means this law can't be checked,
-        // so it's skipped rather than failing the whole scan.
-        if let Ok(Some(yaml)) = scope.law_yaml(&id).await {
-            if collect_law_implements(&yaml)
-                .iter()
-                .any(|implemented| implemented == law_id)
-            {
-                out.push(id);
+    match scope {
+        // Traject: federated laws are metadata-only until first read, so
+        // the lookup goes through the per-snapshot implements index
+        // (built once per snapshot — the only O(corpus) body scan — and
+        // invalidated with it; see `TrajectCorpus::implementors_of`).
+        // Laws whose body fetch failed during the scan are *reported*
+        // rather than silently passed off as "no implementors"; the
+        // response shape (a bare id array) has no room for a non-breaking
+        // partiality flag. The index build already warns once (with the
+        // skipped/indexed counts) when it records fetch failures, so the
+        // per-request signal here is debug-only — a warn per lookup would
+        // re-log the same incident on every panel open until the next
+        // rebuild self-heals it.
+        ReadScope::Traject(traject) => {
+            let result = traject.implementors_of(law_id).await;
+            if result.skipped_count > 0 {
+                tracing::debug!(
+                    law_id = %law_id,
+                    skipped = result.skipped_count,
+                    found = result.implementors.len(),
+                    "implementors lookup is incomplete: some law bodies could not be fetched when the implements index was built"
+                );
             }
+            result.implementors
+        }
+        // Global: bodies are fully loaded up front and each law's
+        // `implements` list was parsed once at load time, so this is an
+        // in-memory reverse scan — no per-request YAML parsing.
+        ReadScope::Global(corpus) => {
+            let mut out: Vec<String> = corpus
+                .source_map
+                .laws()
+                .filter(|law| law.law_id != law_id && law.implements.iter().any(|i| i == law_id))
+                .map(|law| law.law_id.clone())
+                .collect();
+            out.sort();
+            out
         }
     }
-    out.sort();
-    out
 }
 
 /// Law ids a scenario file evaluates, extracted from its execution steps.
@@ -738,10 +747,16 @@ async fn get_scenario_in_scope(
             let resolved = resolve_backend_for_law(scope.corpus(), law_id).await?;
             let relative_path = scenario_relative_path(&resolved.law, filename)?;
             let backend = resolved.backend.lock().await;
-            backend
-                .read_file(&relative_path)
-                .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            // Generic message + logged details, like `corpus_write_error`:
+            // the raw error can carry backend internals (paths, git/remote
+            // detail) that must not reach the client.
+            backend.read_file(&relative_path).await.map_err(|e| {
+                tracing::warn!(law_id = %law_id, filename = %filename, error = %e, "scenario read failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to read scenario".to_string(),
+                )
+            })?
         }
     };
 
