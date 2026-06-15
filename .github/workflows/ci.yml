@@ -450,7 +450,7 @@ jobs:
     needs: changes
     if: >-
       needs.changes.outputs.admin == 'true' ||
-      needs.changes.outputs.editor-api == 'true'
+      needs.changes.outputs['editor-api'] == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

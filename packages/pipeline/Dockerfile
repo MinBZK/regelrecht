@@ -7,6 +7,10 @@
 #   --target harvester-worker  --build-arg BIN=regelrecht-harvest-worker
 #   --target enrich-worker     --build-arg BIN=regelrecht-enrich-worker
 #
+# BIN must match the --target: each runtime stage copies a hardcoded binary
+# path, so a non-default --target without its matching BIN compiles the wrong
+# binary and then fails at `COPY --from=builder` (fail-loud, but confusing).
+#
 # Example:
 #   docker build -f packages/pipeline/Dockerfile \
 #     --build-arg BIN=regelrecht-harvest-worker --target harvester-worker .
