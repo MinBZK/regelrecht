@@ -30,18 +30,20 @@ const NAMES = { zorgtoeslagwet: 'Zorgtoeslagwet', awir: 'Algemene wet inkomensaf
 
 const tabKey = (t) => `${t.lawId}:${t.articleNumber}`;
 
-let selectSpy, closeSpy;
+let selectSpy, closeSpy, reorderSpy;
 
 beforeEach(() => {
   showSpy = vi.fn();
   hideSpy = vi.fn();
   selectSpy = vi.fn();
   closeSpy = vi.fn();
+  reorderSpy = vi.fn();
   registerTabActions({
     key: tabKey,
     displayName: (t) => NAMES[t.lawId] || t.lawId,
     select: selectSpy,
     close: closeSpy,
+    reorder: reorderSpy,
   });
   setEditorChrome({ pr: null, tabs: TABS, activeTab: TABS[0] });
 });
@@ -101,5 +103,19 @@ describe('DocumentTabsSheet', () => {
     const wrapper = mountSheet();
     await wrapper.get('nldd-button').trigger('click');
     expect(showSpy).toHaveBeenCalled();
+  });
+
+  it('forwards nldd-reorder indices to the editor reorder action', () => {
+    const wrapper = mountSheet();
+    wrapper.get('nldd-list').element.dispatchEvent(
+      new CustomEvent('nldd-reorder', { detail: { fromIndex: 0, toIndex: 1 }, bubbles: true }),
+    );
+    expect(reorderSpy).toHaveBeenCalledWith(0, 1);
+  });
+
+  it('renders a reorder drag handle per tab', () => {
+    const wrapper = mountSheet();
+    expect(wrapper.findAll('nldd-drag-handle-cell')).toHaveLength(TABS.length);
+    expect(wrapper.get('nldd-list').attributes('reorderable')).toBeDefined();
   });
 });

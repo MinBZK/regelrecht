@@ -615,11 +615,28 @@ function tabDisplayName(tab) {
 // tabs) to the AppShell, which can't own these statically. Tab actions are
 // registered once; the values stay in sync reactively while mounted and are
 // cleared on unmount so the library never shows a stale PR badge or tab bar.
+// Drag/keyboard reorder from the mobile tabs sheet. The nldd-list dispatches
+// nldd-reorder with array indices; mirror the move into openTabs so the new
+// order persists (and the md+ document-tab-bar follows it).
+function reorderTabs(fromIndex, toIndex) {
+  const tabs = [...openTabs.value];
+  if (
+    fromIndex < 0 || fromIndex >= tabs.length ||
+    toIndex < 0 || toIndex >= tabs.length ||
+    fromIndex === toIndex
+  ) return;
+  const [moved] = tabs.splice(fromIndex, 1);
+  tabs.splice(toIndex, 0, moved);
+  openTabs.value = tabs;
+  saveTabs(openTabs.value);
+}
+
 registerTabActions({
   key: tabKey,
   displayName: tabDisplayName,
   select: (tab) => { selectTab(tab).catch(console.warn); },
   close: closeTab,
+  reorder: reorderTabs,
 });
 watchEffect(() => {
   setEditorChrome({

@@ -57,6 +57,15 @@ function closeTab(tab) {
   // (en daarmee de sheet) omdat er geen tabbladen meer zijn.
   tabActions.value?.close(tab);
 }
+
+// De nldd-list dispatcht nldd-reorder met { fromIndex, toIndex }; de editor
+// muteert openTabs en de v-for hieronder rendert de nieuwe volgorde.
+function onReorder(e) {
+  const { fromIndex, toIndex } = e.detail || {};
+  if (typeof fromIndex === 'number' && typeof toIndex === 'number') {
+    tabActions.value?.reorder?.(fromIndex, toIndex);
+  }
+}
 </script>
 
 <template>
@@ -85,7 +94,7 @@ function closeTab(tab) {
         ></nldd-top-title-bar>
 
         <nldd-simple-section>
-          <nldd-list variant="simple">
+          <nldd-list variant="simple" reorderable @nldd-reorder="onReorder">
             <nldd-list-item
               v-for="tab in documentTabs"
               :key="tabActions.key(tab)"
@@ -94,6 +103,9 @@ function closeTab(tab) {
               :selected="isActive(tab) || undefined"
               @click="selectTab(tab)"
             >
+              <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+              <nldd-drag-handle-cell slot="start" size="sm" reorderable-only></nldd-drag-handle-cell>
+              <nldd-spacer-cell slot="start" size="8" reorderable-only></nldd-spacer-cell>
               <nldd-text-cell
                 :text="tabText(tab)"
                 :supporting-text="tabSupporting(tab)"
@@ -102,9 +114,8 @@ function closeTab(tab) {
               <nldd-cell>
                 <nldd-icon-button
                   size="sm"
-                  variant="neutral-transparent"
                   icon="dismiss"
-                  text="Tabblad sluiten"
+                  text="Sluit tabblad"
                   @click.stop="closeTab(tab)"
                 ></nldd-icon-button>
               </nldd-cell>

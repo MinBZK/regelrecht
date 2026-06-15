@@ -56,7 +56,7 @@ const lastSavedPr = shallowRef(null);
 // library never shows an empty tab bar.
 const documentTabs = shallowRef([]);
 const activeDocumentTab = shallowRef(null);
-const tabActions = shallowRef(null); // { key, displayName, select, close }
+const tabActions = shallowRef(null); // { key, displayName, select, close, reorder }
 
 export function useAppChrome() {
   return {
