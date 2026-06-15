@@ -76,42 +76,70 @@ function closeTab(tab) {
        valt (zelfde aanpak als TrajectDocuments). -->
   <Teleport to="body">
     <nldd-sheet ref="sheetEl" placement="bottom" height="fit-content">
-      <nldd-page sticky-header>
+      <!-- Bewust geen nldd-page: die is height:100% en heeft een parent met een
+           definitieve hoogte nodig. Onder height="fit-content" klapt dat tot 0
+           in (backdrop wel zichtbaar, sheet niet). We bouwen zelf een
+           content-hoge kolom. De inline `flex` overschrijft de sheet's
+           ::slotted(*){flex:1 1 0} — een inline style wint altijd — zodat de
+           sheet om de inhoud heen krimpt i.p.v. de slot te laten vullen. -->
+      <div class="tabs-sheet" style="flex: 0 1 auto">
         <nldd-top-title-bar
-          slot="header"
           text="Tabbladen"
           dismiss-text="Sluit"
           @dismiss="closeSheet"
         ></nldd-top-title-bar>
-
-        <nldd-simple-section>
-          <nldd-list variant="box">
-            <nldd-list-item
-              v-for="tab in documentTabs"
-              :key="tabActions.key(tab)"
-              size="md"
-              button
-              :selected="isActive(tab) || undefined"
-              @click="selectTab(tab)"
-            >
-              <nldd-text-cell
-                :text="tabText(tab)"
-                :supporting-text="tabSupporting(tab)"
-              ></nldd-text-cell>
-              <nldd-spacer-cell size="8"></nldd-spacer-cell>
-              <nldd-cell>
-                <nldd-icon-button
-                  size="sm"
-                  variant="neutral-transparent"
-                  icon="dismiss"
-                  text="Tabblad sluiten"
-                  @click.stop="closeTab(tab)"
-                ></nldd-icon-button>
-              </nldd-cell>
-            </nldd-list-item>
-          </nldd-list>
-        </nldd-simple-section>
-      </nldd-page>
+        <div class="tabs-sheet__scroll">
+          <nldd-simple-section>
+            <nldd-list variant="box">
+              <nldd-list-item
+                v-for="tab in documentTabs"
+                :key="tabActions.key(tab)"
+                size="md"
+                button
+                :selected="isActive(tab) || undefined"
+                @click="selectTab(tab)"
+              >
+                <nldd-text-cell
+                  :text="tabText(tab)"
+                  :supporting-text="tabSupporting(tab)"
+                ></nldd-text-cell>
+                <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                <nldd-cell>
+                  <nldd-icon-button
+                    size="sm"
+                    variant="neutral-transparent"
+                    icon="dismiss"
+                    text="Tabblad sluiten"
+                    @click.stop="closeTab(tab)"
+                  ></nldd-icon-button>
+                </nldd-cell>
+              </nldd-list-item>
+            </nldd-list>
+          </nldd-simple-section>
+        </div>
+      </div>
     </nldd-sheet>
   </Teleport>
 </template>
+
+<style scoped>
+.tabs-sheet {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
+/* De titelbalk blijft staan; de lijst eronder scrollt zodra er zoveel
+   tabbladen zijn dat de sheet tegen z'n max-hoogte (100dvh - top-inset) aan
+   loopt. */
+.tabs-sheet > nldd-top-title-bar {
+  flex-shrink: 0;
+}
+
+.tabs-sheet__scroll {
+  flex-grow: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+</style>
