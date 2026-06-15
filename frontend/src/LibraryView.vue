@@ -68,6 +68,29 @@ const selectedLaw = shallowRef(null);
 const selectedLawLoading = ref(false);
 const lawError = ref(null);
 const selectedArticleNumber = ref(null);
+
+// Recently-viewed laws (most-recent-first), persisted across sessions. Stored
+// as { law_id, name } so a law that fails to load in the active traject — and
+// therefore never enters the corpus index — still stays reachable + labelled.
+const RECENT_LAWS_KEY = 'regelrecht-recent-laws';
+const MAX_RECENT_LAWS = 12;
+function loadRecentLaws() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RECENT_LAWS_KEY) || '[]');
+    return Array.isArray(raw) ? raw.filter(r => r && r.law_id) : [];
+  } catch {
+    return [];
+  }
+}
+const recentLaws = ref(loadRecentLaws());
+function recordRecentLaw(lawId, name) {
+  if (!lawId) return;
+  const entry = { law_id: lawId, name: name || humanizeLawId(lawId) };
+  recentLaws.value = [entry, ...recentLaws.value.filter(r => r.law_id !== lawId)].slice(0, MAX_RECENT_LAWS);
+  try {
+    localStorage.setItem(RECENT_LAWS_KEY, JSON.stringify(recentLaws.value));
+  } catch { /* storage unavailable — keep the in-memory list */ }
+}
 // Detail view (tekst/machine/yaml) is reflected in the URL hash so the
 // state is bookmarkable and shareable. English keys in the hash because
 // they're stable identifiers, not labels.
@@ -130,6 +153,20 @@ const sidebarSections = computed(() => {
     }
   }
 
+  // "Recent bekeken" sits below the curated groups. Each id resolves to its
+  // richer index entry when available, otherwise to the stored { law_id, name }
+  // (e.g. a law not present in the active traject). Laws already shown above
+  // are skipped so nothing appears twice.
+  if (recentLaws.value.length > 0) {
+    const shown = new Set(sections.flatMap(s => s.laws.map(l => l.law_id)));
+    const recent = recentLaws.value
+      .filter(r => !shown.has(r.law_id))
+      .map(r => list.find(law => law.law_id === r.law_id) || r);
+    if (recent.length > 0) {
+      sections.push({ key: 'recent', title: 'Recent bekeken', laws: recent });
+    }
+  }
+
   return sections;
 });
 
@@ -173,6 +210,16 @@ const indexedLawName = computed(() => {
   const law = laws.value.find(l => l.law_id === selectedLawId.value);
   return law ? displayName(law) : humanizeLawId(selectedLawId.value);
 });
+
+// Track the active law in "Recent bekeken" — including one that fails to load,
+// so the sidebar reflects what the user is looking at even when nothing is
+// curated yet. Re-runs as the name resolves to upgrade the label from the
+// humanized id to the real name.
+watch([selectedLawId, lawName, indexedLawName], () => {
+  if (selectedLawId.value) {
+    recordRecentLaw(selectedLawId.value, lawName.value || indexedLawName.value);
+  }
+}, { immediate: true });
 
 const selectedArticle = computed(() => {
   if (!selectedArticleNumber.value) return null;
@@ -481,6 +528,20 @@ function goToLibraryRoot() {
   router.push(libraryRouteFor());
 }
 
+function clearRecent() {
+  // Deselect only if the open law was reachable *solely* via "Recent bekeken"
+  // (not also a favorite / traject edit), so clearing the list doesn't leave a
+  // selected-but-invisible law. Then return to the library home.
+  const sel = selectedLawId.value;
+  const stillShown =
+    !!sel && ((favorites.value && favorites.value.has(sel)) ||
+              (changedLawIds.value && changedLawIds.value.has(sel)));
+  const deselect = !!sel && recentLaws.value.some(r => r.law_id === sel) && !stillShown;
+  recentLaws.value = [];
+  try { localStorage.removeItem(RECENT_LAWS_KEY); } catch { /* ignore */ }
+  if (deselect) goToLibraryRoot();
+}
+
 // Handle browser back/forward navigation
 onBeforeRouteUpdate((to) => {
   const newLawId = to.params.lawId;
@@ -589,7 +650,17 @@ watch(activeTrajectRef, () => {
                          curated groups read as distinct blocks. -->
                     <nldd-spacer v-if="sectionIndex > 0" size="24"></nldd-spacer>
                     <template v-if="section.title">
-                      <nldd-title size="5"><h4>{{ section.title }}</h4></nldd-title>
+                      <nldd-title size="5">
+                        <h4>{{ section.title }}</h4>
+                        <nldd-button
+                          v-if="section.key === 'recent'"
+                          slot="actions"
+                          size="xs"
+                          variant="accent-transparent"
+                          text="Wis"
+                          @click="clearRecent"
+                        ></nldd-button>
+                      </nldd-title>
                       <nldd-spacer size="8"></nldd-spacer>
                     </template>
                     <nldd-list variant="simple">
@@ -600,7 +671,7 @@ watch(activeTrajectRef, () => {
                         button
                         :data-law-id="law.law_id"
                         :selected="law.law_id === selectedLawId || undefined"
-                        @click="selectLaw(law.law_id)"
+                        @click="selectLaw(law.law_id, section.key === 'recent')"
                       >
                         <nldd-text-cell :text="displayName(law)" :supporting-text="law.source_name">
                         </nldd-text-cell>
