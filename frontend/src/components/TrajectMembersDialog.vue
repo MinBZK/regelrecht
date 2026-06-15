@@ -32,6 +32,10 @@ const {
 
 const isOwner = computed(() => callerRole.value === 'owner');
 
+function roleLabel(role) {
+  return role === 'owner' ? 'Eigenaar' : 'Bijdrager';
+}
+
 // Invite form
 const inviteEmail = ref('');
 const inviteRole = ref('contributor');
@@ -189,34 +193,34 @@ async function clickLeave() {
             <nldd-list variant="box">
               <template v-for="m in members" :key="m.account_id">
                 <nldd-list-item size="md">
-                  <nldd-text-cell
-                    :text="m.name || m.email"
-                    :supporting-text="m.name ? m.email : null"
-                  ></nldd-text-cell>
-                  <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                  <nldd-cell>
-                    <nldd-dropdown
-                      size="md"
-                      @change="changeMemberRole(m, $event.detail?.value ?? $event.target?.value ?? m.role)"
-                    >
-                      <select
-                        :value="m.role"
-                        :disabled="!isOwner || rowBusy.has(m.account_id) || undefined"
-                      >
-                        <option value="owner">Owner</option>
-                        <option value="contributor">Contributor</option>
-                      </select>
-                    </nldd-dropdown>
-                  </nldd-cell>
+                  <nldd-text-cell :supporting-text="m.name ? m.email : null">
+                    <span class="member-name">
+                      <span>{{ m.name || m.email }}</span>
+                      <nldd-tag
+                        size="sm"
+                        :color="m.role === 'owner' ? 'accent' : 'neutral'"
+                        :text="roleLabel(m.role)"
+                      ></nldd-tag>
+                    </span>
+                  </nldd-text-cell>
                   <nldd-spacer-cell size="8"></nldd-spacer-cell>
                   <nldd-cell v-if="isOwner">
-                    <nldd-button
-                      variant="ghost"
-                      size="sm"
-                      text="Verwijder"
+                    <nldd-icon-button
+                      :id="`member-more-${m.account_id}`"
+                      icon="more"
+                      text="Meer acties"
+                      tooltip-timing="never"
+                      popup-type="menu"
+                      :popovertarget="`member-menu-${m.account_id}`"
                       :disabled="rowBusy.has(m.account_id) || undefined"
-                      @click="clickRemoveMember(m)"
-                    ></nldd-button>
+                    ></nldd-icon-button>
+                    <nldd-menu :id="`member-menu-${m.account_id}`" :anchor="`member-more-${m.account_id}`">
+                      <template v-if="m.role !== 'owner'">
+                        <nldd-menu-item text="Maak eigenaar" @select="changeMemberRole(m, 'owner')"></nldd-menu-item>
+                        <nldd-menu-divider></nldd-menu-divider>
+                      </template>
+                      <nldd-menu-item text="Verwijder lid" destructive @select="clickRemoveMember(m)"></nldd-menu-item>
+                    </nldd-menu>
                   </nldd-cell>
                 </nldd-list-item>
                 <div v-if="rowError.get(m.account_id)" class="members-row-error">
@@ -317,6 +321,12 @@ async function clickLeave() {
 </template>
 
 <style scoped>
+/* Name + role tag on one line, vertically centered. */
+.member-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 .members-status,
 .members-leave-hint {
   font-size: 13px;
