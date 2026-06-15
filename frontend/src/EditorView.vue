@@ -15,6 +15,8 @@ import {
   registerSearchPopover,
   setEditorChrome,
   registerTabActions,
+  setEditorChanges,
+  registerEditorActions,
   clearEditorChrome,
 } from './composables/useAppChrome.js';
 import { SUPPORT_EMAIL } from './constants.js';
@@ -1055,6 +1057,60 @@ const machineReadableSaveError = computed(() =>
 // same whole-law save.
 const handleMachineReadableSave = handleLawSave;
 
+// --- Wijzigingenbalk (article-level pending changes) -----------------------
+// Tekst + Machine edits share one whole-law save, so "dirty" is article-wide.
+// The AppShell renders the bar; the editor publishes the state and the
+// Opslaan / Wijzigingen-ongedaan / undo / redo actions via useAppChrome.
+const articleDirty = computed(
+  () => isArticleTextDirty.value || isMachineReadableDirty.value,
+);
+
+// Throw away every in-memory edit for the selected article — the same reset
+// the post-save cleanup performs, minus the PUT.
+function discardArticle() {
+  const fresh = selectedArticle.value;
+  if (!fresh) return;
+  const freshMr = fresh.machine_readable ?? null;
+  machineReadable.value = freshMr ? structuredClone(freshMr) : null;
+  yamlSource.value = freshMr ? yaml.dump(freshMr, dumpOpts) : '';
+  editedText.value = fresh.text ?? '';
+}
+
+// Undo/redo route to the last-focused Tekst editor (falling back to the first
+// mounted one). Tiptap owns the history; the Machine/YAML panes have none, so
+// the buttons simply stay disabled when no text editor can undo.
+const activeTextEditorIdx = ref(null);
+function onTextEditorFocus(idx) { activeTextEditorIdx.value = idx; }
+const targetTextEditor = computed(() => {
+  const active = activeTextEditorIdx.value != null
+    ? textEditorRefs[activeTextEditorIdx.value]
+    : null;
+  if (active) return active;
+  const firstKey = Object.keys(textEditorRefs)[0];
+  return firstKey != null ? textEditorRefs[firstKey] : null;
+});
+const canUndoText = computed(() => targetTextEditor.value?.canUndo ?? false);
+const canRedoText = computed(() => targetTextEditor.value?.canRedo ?? false);
+function undoText() { targetTextEditor.value?.undo?.(); }
+function redoText() { targetTextEditor.value?.redo?.(); }
+
+// Stable actions registered once; the reactive state re-publishes via the
+// watchEffect so the bar re-renders as dirty/saving/undo-availability shift.
+registerEditorActions({
+  save: handleLawSave,
+  discard: discardArticle,
+  undo: undoText,
+  redo: redoText,
+});
+watchEffect(() => {
+  setEditorChanges({
+    dirty: articleDirty.value,
+    saving: lawSaving.value,
+    canUndo: canUndoText.value,
+    canRedo: canRedoText.value,
+  });
+});
+
 function onYamlInput(event) {
   // nldd-code-editor dispatches a CustomEvent with the new value in
   // event.detail.value (see the design-system 0.8.41 component). The
@@ -1423,7 +1479,6 @@ async function handleActionSave() {
             <nldd-page
               sticky-header
               :background="view === 'scenario' ? 'base' : undefined"
-              :sticky-footer="(view === 'machine' && canEdit && !activeAction && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx) || (view === 'text' && canEditArticleText && (isArticleTextDirty || lawSaving) && paneViews.indexOf('text') === idx)"
             >
               <nldd-container slot="header" padding="8" padding-bottom="0">
                 <nldd-toolbar size="md" label="Paneelacties">
@@ -1598,6 +1653,7 @@ async function handleActionSave() {
                   :save-error="articleTextSaveError"
                   :model-value="editedText"
                   @update:model-value="editedText = $event"
+                  @focus="onTextEditorFocus(idx)"
                 />
                 <!-- Notes overlay (read mode only): same Tekst pane, plain
                      text with resolved highlights instead of the markdown
@@ -1693,22 +1749,6 @@ async function handleActionSave() {
                 </template>
                 <ArticleText v-else :article="selectedArticle" />
               </nldd-simple-section>
-              <!-- Footer + Save button only on the first text pane (mirrors the machine pattern). -->
-              <nldd-container
-                v-if="view === 'text' && canEditArticleText && (isArticleTextDirty || lawSaving) && paneViews.indexOf('text') === idx"
-                slot="footer"
-                padding="16"
-              >
-                <nldd-button
-                  variant="primary"
-                  size="md"
-                  width="full"
-                  data-testid="save-text-btn"
-                  :disabled="lawSaving || undefined"
-                  :text="lawSaving ? 'Opslaan…' : 'Opslaan'"
-                  @click="handleLawSave"
-                ></nldd-button>
-              </nldd-container>
 
               <!-- Machine readable -->
               <nldd-simple-section v-else-if="view === 'machine'" width="full">
@@ -1728,27 +1768,6 @@ async function handleActionSave() {
                   @delete="handleDelete"
                 />
               </nldd-simple-section>
-              <!-- Footer + Save button only on the first machine pane.
-                   Duplicates would render redundant Save buttons over
-                   the same shared dirty state — not broken, just noisy.
-                   Hidden while the action sheet is open: the sheet's
-                   "Opslaan" is the real save for those in-place edits, so a
-                   second Machine-pane Save button behind it just distracts. -->
-              <nldd-container
-                v-if="view === 'machine' && canEdit && !activeAction && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx"
-                slot="footer"
-                padding="16"
-              >
-                <nldd-button
-                  variant="primary"
-                  size="md"
-                  width="full"
-                  data-testid="save-mr-btn"
-                  :disabled="lawSaving || undefined"
-                  :text="lawSaving ? 'Opslaan…' : 'Opslaan'"
-                  @click="handleMachineReadableSave"
-                ></nldd-button>
-              </nldd-container>
 
               <!-- Scenario builder -->
               <template v-else-if="view === 'scenario'">

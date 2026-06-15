@@ -72,7 +72,7 @@ const libraryTabHref = computed(() => router.resolve(libraryTabTarget.value).hre
 const editorTabHref = computed(() => router.resolve(editorTabTarget.value).href);
 
 // View-specific toolbar bits published by the active view.
-const { lastSavedPr, documentTabs, activeDocumentTab, tabActions } = useAppChrome();
+const { lastSavedPr, documentTabs, activeDocumentTab, tabActions, editorChanges, editorActions } = useAppChrome();
 
 // Editor with open tabs → the mobile traject row splits 50/50 to fit a tabs
 // button next to the traject menu, and the md+ document-tab-bar shows. The
@@ -226,6 +226,77 @@ const hasDocumentTabs = computed(
       <!-- Main content area — the active section's body. -->
       <nldd-split-view-pane slot="main">
         <router-view />
+      </nldd-split-view-pane>
+
+      <!-- Wijzigingenbalk (editor only): one article-level bar with Opslaan +
+           Wijzigingen-ongedaan (+ text undo/redo), replacing the per-pane save
+           footers. Published by EditorView via useAppChrome; shown only while
+           the article has unsaved changes. Sits after `main` in the DOM, so on
+           sm it lands above the two mobile bars and on md+ it's the bottom bar. -->
+      <nldd-split-view-pane v-if="editorChanges && editorChanges.dirty" slot="changes-bar">
+        <nldd-container padding="8">
+          <nldd-toolbar size="md" label="Wijzigingen">
+            <nldd-toolbar-item slot="start" label="Wijzigingen ongedaan maken" :priority="1">
+              <nldd-button
+                size="md"
+                text="Wijzigingen ongedaan maken"
+                @click="editorActions?.discard?.()"
+              ></nldd-button>
+              <nldd-menu-item
+                slot="overflow"
+                text="Wijzigingen ongedaan maken"
+                @select="editorActions?.discard?.()"
+              ></nldd-menu-item>
+            </nldd-toolbar-item>
+            <nldd-toolbar-item slot="start" label="Ongedaan maken / Opnieuw" :priority="1">
+              <nldd-button-bar>
+                <nldd-icon-button
+                  icon="undo"
+                  text="Ongedaan maken"
+                  :disabled="!editorChanges.canUndo || undefined"
+                  @click="editorActions?.undo?.()"
+                ></nldd-icon-button>
+                <nldd-button-bar-divider></nldd-button-bar-divider>
+                <nldd-icon-button
+                  icon="redo"
+                  text="Opnieuw"
+                  :disabled="!editorChanges.canRedo || undefined"
+                  @click="editorActions?.redo?.()"
+                ></nldd-icon-button>
+              </nldd-button-bar>
+              <nldd-menu-item
+                slot="overflow"
+                icon="undo"
+                text="Ongedaan maken"
+                :disabled="!editorChanges.canUndo || undefined"
+                @select="editorActions?.undo?.()"
+              ></nldd-menu-item>
+              <nldd-menu-item
+                slot="overflow"
+                icon="redo"
+                text="Opnieuw"
+                :disabled="!editorChanges.canRedo || undefined"
+                @select="editorActions?.redo?.()"
+              ></nldd-menu-item>
+            </nldd-toolbar-item>
+            <nldd-toolbar-item slot="end" label="Opslaan" :priority="3">
+              <nldd-button
+                variant="primary"
+                size="md"
+                :disabled="editorChanges.saving || undefined"
+                :text="editorChanges.saving ? 'Opslaan…' : 'Opslaan'"
+                @click="editorActions?.save?.()"
+              ></nldd-button>
+              <nldd-menu-item
+                slot="overflow"
+                icon="save"
+                :text="editorChanges.saving ? 'Opslaan…' : 'Opslaan'"
+                :disabled="editorChanges.saving || undefined"
+                @select="editorActions?.save?.()"
+              ></nldd-menu-item>
+            </nldd-toolbar-item>
+          </nldd-toolbar>
+        </nldd-container>
       </nldd-split-view-pane>
 
       <!-- Mobile Bar (sm only): traject row on top (in the editor it splits

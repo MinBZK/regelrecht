@@ -24,7 +24,7 @@ const props = defineProps({
   modelValue: { type: String, default: '' },
 });
 
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits(['update:modelValue', 'focus']);
 
 const editor = useEditor({
   content: props.modelValue,
@@ -52,6 +52,9 @@ const editor = useEditor({
   onUpdate: ({ editor }) => {
     emit('update:modelValue', editor.storage.markdown.getMarkdown());
   },
+  // Let the parent track which text editor was last focused, so the
+  // article-level changes bar can route undo/redo to the right instance.
+  onFocus: () => { emit('focus'); },
 });
 
 // Reactive tick used to re-evaluate `editor.isActive(...)` in the template
@@ -130,16 +133,37 @@ function toggleItalic() { editor.value?.chain().focus().toggleItalic().run(); }
 function toggleBulletList() { editor.value?.chain().focus().toggleBulletList().run(); }
 function toggleOrderedList() { editor.value?.chain().focus().toggleOrderedList().run(); }
 
+// Undo/redo from Tiptap's StarterKit history. canUndo/canRedo read
+// `selectionTick` so they re-evaluate after every doc change (history depth
+// shifts), keeping the toolbar buttons enabled/disabled in lockstep.
+const canUndo = computed(() => {
+  selectionTick.value;
+  const inst = editor.value;
+  return inst ? inst.can().undo() : false;
+});
+const canRedo = computed(() => {
+  selectionTick.value;
+  const inst = editor.value;
+  return inst ? inst.can().redo() : false;
+});
+function undo() { editor.value?.chain().focus().undo().run(); }
+function redo() { editor.value?.chain().focus().redo().run(); }
+
 // Expose the active-format state and toggle handlers so the parent can
-// render the formatting buttons inside its own pane-header (next to the
+// render the formatting buttons inside its own header toolbar (next to the
 // existing pane-view dropdown) rather than this component re-drawing its
-// own toolbar with a duplicate label dropdown.
+// own toolbar with a duplicate label dropdown. undo/redo feed the
+// article-level changes bar in the AppShell.
 defineExpose({
   activeFormats,
   toggleBold,
   toggleItalic,
   toggleBulletList,
   toggleOrderedList,
+  canUndo,
+  canRedo,
+  undo,
+  redo,
 });
 </script>
 

@@ -57,6 +57,11 @@ const lastSavedPr = shallowRef(null);
 const documentTabs = shallowRef([]);
 const activeDocumentTab = shallowRef(null);
 const tabActions = shallowRef(null); // { key, displayName, select, close, reorder }
+// Article-level pending-changes bar (Wijzigingenbalk). The editor publishes
+// the dirty/saving/undo state reactively and registers the action callbacks;
+// the shell renders the bar while there are unsaved changes.
+const editorChanges = shallowRef(null); // { dirty, saving, canUndo, canRedo } | null
+const editorActions = shallowRef(null); // { save, discard, undo, redo } | null
 
 export function useAppChrome() {
   return {
@@ -64,6 +69,8 @@ export function useAppChrome() {
     documentTabs,
     activeDocumentTab,
     tabActions,
+    editorChanges,
+    editorActions,
   };
 }
 
@@ -77,11 +84,25 @@ export function registerTabActions(actions) {
   tabActions.value = actions;
 }
 
+// Reactive snapshot of the article's pending-changes state. Called from a
+// watchEffect in the editor so a new object is published whenever dirty,
+// saving or undo-availability changes, re-rendering the bar.
+export function setEditorChanges(state) {
+  editorChanges.value = state ?? null;
+}
+
+// Stable action callbacks for the changes bar; registered once.
+export function registerEditorActions(actions) {
+  editorActions.value = actions ?? null;
+}
+
 // Called when the editor view unmounts so the shell drops the editor-only
-// chrome (PR badge, document tabs) while the library is mounted.
+// chrome (PR badge, document tabs, changes bar) while the library is mounted.
 export function clearEditorChrome() {
   lastSavedPr.value = null;
   documentTabs.value = [];
   activeDocumentTab.value = null;
   tabActions.value = null;
+  editorChanges.value = null;
+  editorActions.value = null;
 }
