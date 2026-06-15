@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use regelrecht_engine::{ArticleBasedLaw, ArticleEngine, Value};
+use regelrecht_engine::{ArticleBasedLaw, ArticleEngine, LawLoad, Value};
 use std::collections::BTreeMap;
 
 const SIMPLE_LAW_YAML: &str = r#"

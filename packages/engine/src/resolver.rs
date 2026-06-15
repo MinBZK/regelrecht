@@ -19,7 +19,9 @@
 //! The resolver enforces a maximum number of loaded laws (see [`crate::config::MAX_LOADED_LAWS`])
 //! to prevent memory exhaustion attacks.
 
-use crate::article::{Article, ArticleBasedLaw, HookFilter, HookPoint, ProcedureDefinition};
+use crate::article::{
+    Article, ArticleBasedLaw, HookFilter, HookPoint, LawLoad, ProcedureDefinition,
+};
 use crate::config;
 use crate::error::{EngineError, Result};
 use crate::priority::{self, Candidate};

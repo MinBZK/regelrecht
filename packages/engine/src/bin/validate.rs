@@ -3,7 +3,7 @@ use std::path::Path;
 use std::process;
 
 use jsonschema::Validator;
-use regelrecht_engine::article::ArticleBasedLaw;
+use regelrecht_engine::article::{ArticleBasedLaw, LawLoad};
 
 /// Embedded schemas keyed by their `$id` URL suffix (version path).
 ///

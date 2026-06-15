@@ -633,7 +633,7 @@ impl<'a> ArticleEngine<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::article::ArticleBasedLaw;
+    use crate::article::{ArticleBasedLaw, LawLoad};
 
     fn make_simple_law() -> ArticleBasedLaw {
         let yaml = r#"

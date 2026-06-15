@@ -3810,6 +3810,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
+ "regelrecht-law-model",
  "regelrecht-shared",
  "serde",
  "serde-wasm-bindgen",
@@ -3849,6 +3850,15 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "unicode-normalization",
+]
+
+[[package]]
+name = "regelrecht-law-model"
+version = "0.1.0"
+dependencies = [
+ "regelrecht-shared",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
