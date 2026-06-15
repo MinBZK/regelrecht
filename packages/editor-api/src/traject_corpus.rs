@@ -1022,22 +1022,29 @@ async fn build_traject_corpus(
             );
         }
 
-        // GitHub sources go through the in-memory Contents-API backend
-        // (one isolated `GitHubApiBackend` per traject — no clone, no
-        // working tree on disk). Local sources keep their configured
-        // path — they're already isolated by definition.
+        let is_writable_own = source.id == writable_own_source_id;
+
+        // The writable-own GitHub source goes through the in-memory
+        // Contents-API backend (no clone, no working tree) so saves are
+        // committed via the API. Read-only base/seed GitHub sources
+        // (minbzk-central, …) instead read from a local git clone: body
+        // reads (`law_yaml`, the implements scan) then hit local disk
+        // rather than the REST Contents API, which avoids exhausting the
+        // GitHub REST quota on an O(corpus) implements scan and reuses the
+        // clone the global corpus already maintains (shared by source id).
+        // Local sources keep their configured path — already isolated.
         let backend_result = match &source.source_type {
-            SourceType::GitHub { github } => build_traject_github_backend(
+            SourceType::GitHub { github } if is_writable_own => build_traject_github_backend(
                 traject_id,
                 source,
                 github,
                 row.gh_base_branch.as_deref(),
                 token.as_deref(),
             ),
-            SourceType::Local { .. } => create_backend(source, token.as_deref()),
+            SourceType::GitHub { .. } | SourceType::Local { .. } => {
+                create_backend(source, token.as_deref())
+            }
         };
-
-        let is_writable_own = source.id == writable_own_source_id;
         match backend_result {
             Ok(mut backend) => {
                 if let Err(e) = backend.ensure_ready().await {
