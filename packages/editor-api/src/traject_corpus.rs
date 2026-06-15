@@ -1617,6 +1617,16 @@ mod tests {
         assert!(cache.get("law_1").is_some());
         // …and the overwritten value is updated in place.
         assert_eq!(cache.get("law_0").map(String::as_str), Some("v2"));
+
+        // FIFO, not LRU: the overwrite did NOT refresh law_0's age, so it's
+        // still the oldest. The next genuinely-new insert at cap evicts it.
+        cache.insert("law_new".to_string(), "v1".to_string());
+        assert_eq!(cache.map.len(), BODY_CACHE_MAX_ENTRIES);
+        assert!(
+            cache.get("law_0").is_none(),
+            "an overwrite must not refresh age — law_0 stays first out"
+        );
+        assert!(cache.get("law_new").is_some());
     }
 
     // ---- TTL freshness ----
