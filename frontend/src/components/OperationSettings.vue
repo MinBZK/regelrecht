@@ -559,7 +559,7 @@ function addValue() {
         :key="i"
         size="md"
         :data-testid="`op-value-${i}`"
-        :type="!editable && isNestedOperation(val._value) ? 'button' : undefined"
+        :button="!editable && isNestedOperation(val._value)"
         @click="!editable && isNestedOperation(val._value) && emit('select-operation', val._value)"
       >
         <nldd-text-cell :text="val._label" :width="editable ? '120px' : 'fit-content'"></nldd-text-cell>
@@ -653,6 +653,7 @@ function addValue() {
                 v-if="canRemoveValue(val)"
                 text="Verwijder"
                 icon="delete"
+                destructive
                 @click.stop="removeValue(val)"
               ></nldd-menu-item>
             </nldd-menu>

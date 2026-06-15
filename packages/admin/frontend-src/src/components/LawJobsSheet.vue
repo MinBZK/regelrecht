@@ -161,7 +161,7 @@ const codeSections = computed(() => {
               v-for="job in jobs"
               :key="job.id"
               size="md"
-              type="button"
+              button
               @click="selectedJob = job"
             >
               <nldd-text-cell

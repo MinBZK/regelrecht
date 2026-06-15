@@ -5,17 +5,18 @@ import {
   writableSource,
   branchTreeUrl,
 } from '../composables/useTrajectDetail.js';
+import { deleteTraject } from '../composables/useTrajects.js';
 
 const props = defineProps({
   /** Whether the sheet is currently open. */
   modelValue: { type: Boolean, default: false },
   /** Traject to show (UUID id, same value the members dialog takes). */
   trajectId: { type: String, default: null },
-  /** Traject display name, for the sheet header. */
+  /** Traject display name, for the delete confirmation. */
   trajectName: { type: String, default: '' },
 });
 
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits(['update:modelValue', 'deleted']);
 
 const sheetEl = ref(null);
 const { detail, loading, error: loadError, load } = useTrajectDetail();
@@ -47,6 +48,10 @@ watch(
   () => props.modelValue,
   async (v) => {
     if (v) {
+      // Fresh delete-state per open; a stale error from a previous
+      // attempt must not greet the user on reopen.
+      confirmingDelete.value = false;
+      deleteError.value = null;
       // Kick off the fetch before awaiting nextTick so the request settles
       // promptly (the test drives this with a couple of nextTick flushes).
       const loaded = props.trajectId ? load(props.trajectId) : Promise.resolve();
@@ -67,6 +72,49 @@ function close() {
 // Exposed so the unit test can invoke close() directly; in the app the
 // dialog is v-model driven and closes via the template handlers.
 defineExpose({ close });
+
+// --- Verwijderen (owner-only) ---
+const deleteModalEl = ref(null);
+const confirmingDelete = ref(false);
+const deleteBusy = ref(false);
+const deleteError = ref(null);
+
+// Same imperative modal show/hide mirroring as TrajectDocuments' delete
+// confirm.
+watch(confirmingDelete, async (open) => {
+  await nextTick();
+  const el = deleteModalEl.value;
+  if (!el) return;
+  if (open) el.show?.();
+  else el.hide?.();
+});
+
+function askDelete() {
+  deleteError.value = null;
+  confirmingDelete.value = true;
+}
+
+function cancelDelete() {
+  if (!confirmingDelete.value || deleteBusy.value) return; // idempotent: @close + button
+  confirmingDelete.value = false;
+}
+
+async function confirmDelete() {
+  if (deleteBusy.value) return;
+  deleteBusy.value = true;
+  deleteError.value = null;
+  try {
+    await deleteTraject(props.trajectId);
+    confirmingDelete.value = false;
+    emit('deleted', props.trajectId);
+    close();
+  } catch (e) {
+    confirmingDelete.value = false;
+    deleteError.value = e.message || 'Verwijderen mislukt';
+  } finally {
+    deleteBusy.value = false;
+  }
+}
 </script>
 
 <template>
@@ -80,136 +128,136 @@ defineExpose({ close });
       full-height
       @close="close"
     >
-      <nldd-page sticky-header sticky-footer>
+      <nldd-page sticky-header>
         <nldd-top-title-bar
           slot="header"
-          :text="`Traject-info — ${trajectName}`"
+          text="Traject details"
           dismiss-text="Sluit"
           @dismiss="close"
         ></nldd-top-title-bar>
 
         <nldd-simple-section v-if="loading">
-          <p class="traject-info-status">Laden…</p>
+          <nldd-activity-indicator text="Traject laden" show-text></nldd-activity-indicator>
         </nldd-simple-section>
 
         <nldd-simple-section v-else-if="loadError">
-          <p class="traject-info-error">
-            {{ loadError.message || 'Fout bij laden' }}
-          </p>
+          <nldd-inline-dialog
+            variant="alert"
+            :text="loadError.message || 'Fout bij laden'"
+          ></nldd-inline-dialog>
         </nldd-simple-section>
 
-        <template v-else-if="detail">
-          <nldd-simple-section heading="Gegevens">
-            <nldd-list variant="box" class="traject-info-list">
-              <nldd-list-item size="md">
-                <nldd-text-cell text="Naam" max-width="180px"></nldd-text-cell>
-                <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                <nldd-cell><span class="traject-info-value">{{ detail.name }}</span></nldd-cell>
-              </nldd-list-item>
-              <nldd-list-item size="md">
-                <nldd-text-cell text="Beschrijving" max-width="180px"></nldd-text-cell>
-                <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                <nldd-cell><span class="traject-info-value">{{ orDash(detail.description) }}</span></nldd-cell>
-              </nldd-list-item>
-              <nldd-list-item size="md">
-                <nldd-text-cell text="Scope" max-width="180px"></nldd-text-cell>
-                <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                <nldd-cell><span class="traject-info-value">{{ orDash(detail.scope) }}</span></nldd-cell>
-              </nldd-list-item>
-              <nldd-list-item size="md">
-                <nldd-text-cell text="Status" max-width="180px"></nldd-text-cell>
-                <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                <nldd-cell><span class="traject-info-value">{{ detail.status }}</span></nldd-cell>
-              </nldd-list-item>
-              <nldd-list-item size="md">
-                <nldd-text-cell text="Jouw rol" max-width="180px"></nldd-text-cell>
-                <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                <nldd-cell><span class="traject-info-value">{{ detail.role }}</span></nldd-cell>
-              </nldd-list-item>
-            </nldd-list>
-          </nldd-simple-section>
+        <nldd-simple-section v-else-if="detail">
+          <nldd-list variant="box">
+            <nldd-list-item size="md">
+              <nldd-text-cell text="Naam" max-width="180px"></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-text-cell :text="detail.name"></nldd-text-cell>
+            </nldd-list-item>
+            <nldd-list-item size="md">
+              <nldd-text-cell text="Beschrijving" max-width="180px"></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-text-cell :text="orDash(detail.description)"></nldd-text-cell>
+            </nldd-list-item>
+            <nldd-list-item size="md">
+              <nldd-text-cell text="Scope" max-width="180px"></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-text-cell :text="orDash(detail.scope)"></nldd-text-cell>
+            </nldd-list-item>
+            <nldd-list-item size="md">
+              <nldd-text-cell text="Status" max-width="180px"></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-text-cell :text="detail.status"></nldd-text-cell>
+            </nldd-list-item>
+            <nldd-list-item size="md">
+              <nldd-text-cell text="Jouw rol" max-width="180px"></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-text-cell :text="detail.role"></nldd-text-cell>
+            </nldd-list-item>
+          </nldd-list>
 
-          <nldd-simple-section heading="Repository">
-            <nldd-list variant="box" class="traject-info-list">
-              <nldd-list-item size="md">
-                <nldd-text-cell
-                  text="Repo"
-                  supporting-text="Opent de traject-branch op GitHub in een nieuw tabblad."
-                  max-width="180px"
-                ></nldd-text-cell>
-                <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                <nldd-cell>
-                  <!-- nldd-link is the design-system link component. It
-                       auto-sets rel='noopener noreferrer' for target='_blank',
-                       but we also pass rel explicitly so it is present even
-                       before the Lit component upgrades (and is unit-testable).
-                       end-icon hints the link leaves the app. -->
-                  <nldd-link
-                    v-if="repoUrl"
-                    class="traject-info-repo-link"
-                    size="md"
-                    :href="repoUrl"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    end-icon="external-link"
-                    :text="repoLabel"
-                  ></nldd-link>
-                  <span v-else class="traject-info-value">{{ repoLabel || 'onbekend' }}</span>
-                </nldd-cell>
-              </nldd-list-item>
-              <nldd-list-item size="md">
-                <nldd-text-cell text="Branch" max-width="180px"></nldd-text-cell>
-                <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                <nldd-cell><span class="traject-info-value">{{ source?.gh_branch || 'onbekend' }}</span></nldd-cell>
-              </nldd-list-item>
-              <nldd-list-item size="md">
-                <nldd-text-cell text="Base branch" max-width="180px"></nldd-text-cell>
-                <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                <nldd-cell><span class="traject-info-value">{{ source?.gh_base_branch || 'onbekend' }}</span></nldd-cell>
-              </nldd-list-item>
-              <nldd-list-item size="md">
-                <nldd-text-cell text="Subpath" max-width="180px"></nldd-text-cell>
-                <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                <nldd-cell><span class="traject-info-value">{{ subpath }}</span></nldd-cell>
-              </nldd-list-item>
-            </nldd-list>
-          </nldd-simple-section>
-        </template>
+          <nldd-spacer size="24"></nldd-spacer>
 
-        <nldd-container slot="footer" padding="16">
-          <nldd-button
-            variant="ghost"
-            size="md"
-            full-width
-            text="Sluiten"
-            @click="close"
-          ></nldd-button>
-        </nldd-container>
+          <nldd-list variant="box">
+            <nldd-list-item size="md">
+              <nldd-text-cell
+                text="Repo"
+                supporting-text="Opent de traject-branch op GitHub in een nieuw tabblad."
+                max-width="180px"
+              ></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-cell v-if="repoUrl">
+                <!-- nldd-link is the design-system link component. It
+                     auto-sets rel='noopener noreferrer' for target='_blank',
+                     but we also pass rel explicitly so it is present even
+                     before the Lit component upgrades (and is unit-testable).
+                     end-icon hints the link leaves the app. -->
+                <nldd-link
+                  size="md"
+                  :href="repoUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  end-icon="external-link"
+                  :text="repoLabel"
+                ></nldd-link>
+              </nldd-cell>
+              <nldd-text-cell v-else :text="repoLabel || 'onbekend'"></nldd-text-cell>
+            </nldd-list-item>
+            <nldd-list-item size="md">
+              <nldd-text-cell text="Branch" max-width="180px"></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-text-cell :text="source?.gh_branch || 'onbekend'"></nldd-text-cell>
+            </nldd-list-item>
+            <nldd-list-item size="md">
+              <nldd-text-cell text="Base branch" max-width="180px"></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-text-cell :text="source?.gh_base_branch || 'onbekend'"></nldd-text-cell>
+            </nldd-list-item>
+            <nldd-list-item size="md">
+              <nldd-text-cell text="Subpath" max-width="180px"></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-text-cell :text="subpath"></nldd-text-cell>
+            </nldd-list-item>
+          </nldd-list>
+
+          <!-- Owner-only: hard delete achter een bevestigingsmodal. -->
+          <template v-if="detail.role === 'owner'">
+            <nldd-spacer size="24"></nldd-spacer>
+            <nldd-button
+              variant="destructive"
+              size="md"
+              width="full"
+              text="Traject verwijderen"
+              @click="askDelete"
+            ></nldd-button>
+            <template v-if="deleteError">
+              <nldd-spacer size="16"></nldd-spacer>
+              <nldd-inline-dialog variant="alert" :text="deleteError"></nldd-inline-dialog>
+            </template>
+          </template>
+        </nldd-simple-section>
       </nldd-page>
     </nldd-sheet>
   </Teleport>
-</template>
 
-<style scoped>
-.traject-info-list nldd-cell {
-  flex: 1;
-  min-width: 0;
-}
-.traject-info-value {
-  font-size: 14px;
-  word-break: break-word;
-}
-.traject-info-status {
-  font-size: 13px;
-  color: var(--semantics-content-secondary-color, #555);
-  margin: 8px 0;
-}
-.traject-info-error {
-  color: var(--nldd-color-text-error, #c62828);
-  font-size: 13px;
-  margin-top: 8px;
-}
-.traject-info-repo-link {
-  word-break: break-word;
-}
-</style>
+  <!-- Delete confirmation — NLDD modal, consistent with TrajectDocuments'
+       delete dialog. -->
+  <Teleport to="body">
+    <nldd-modal-dialog
+      ref="deleteModalEl"
+      variant="alert"
+      :text="`Traject ${trajectName} verwijderen?`"
+      supporting-text="Het traject wordt definitief verwijderd, inclusief leden en uitnodigingen. De traject-branch op GitHub blijft bestaan. Dit kan niet ongedaan worden gemaakt."
+      @close="cancelDelete"
+    >
+      <nldd-button slot="actions" variant="primary" text="Behoud traject" @click="cancelDelete"></nldd-button>
+      <nldd-button
+        slot="actions"
+        variant="destructive"
+        :text="deleteBusy ? 'Bezig…' : 'Verwijder'"
+        :disabled="deleteBusy || undefined"
+        @click="confirmDelete"
+      ></nldd-button>
+    </nldd-modal-dialog>
+  </Teleport>
+</template>

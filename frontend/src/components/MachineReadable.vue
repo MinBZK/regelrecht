@@ -461,7 +461,7 @@ function addOutput() {
           v-for="(action, index) in actions"
           :key="index"
           size="md"
-          :type="editable ? undefined : 'button'"
+          :button="!editable"
           @click="!editable && emit('open-action', action)"
         >
           <nldd-text-cell :text="action.output"></nldd-text-cell>
