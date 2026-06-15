@@ -353,6 +353,16 @@ pub struct StageState {
     pub current_stage: String,
     /// Outputs accumulated from all completed stages
     pub accumulated_outputs: BTreeMap<String, Value>,
+    /// Per-output provenance accumulated from all completed stages.
+    ///
+    /// Needed so an output produced in an *earlier* stage (e.g. a Reactive
+    /// hook output from another law) still carries its provenance when the
+    /// final stage completes and `round_typed_outputs` runs.
+    /// `#[serde(default)]` keeps previously-serialized states loadable; for
+    /// those, outputs fall back to the requested law's output index at the
+    /// rounding boundary.
+    #[serde(default)]
+    pub accumulated_provenance: BTreeMap<String, OutputProvenance>,
     /// Original parameters from the initial execution
     pub parameters: BTreeMap<String, Value>,
 }
@@ -363,6 +373,11 @@ pub enum ExecutionOutcome {
     /// All stages completed — final result
     Complete(Box<ArticleResult>),
     /// Execution yielded — waiting for external input to advance
+    ///
+    /// The `outputs` here are intermediate, **unrounded** values: eurocent
+    /// outputs may still be fractional `Float`s because TypeSpec rounding
+    /// happens exactly once, on `Complete`. They feed the resumed
+    /// computation and are not suitable for display as binding amounts.
     Yielded {
         /// Updated decision state
         state: StageState,
@@ -728,7 +743,12 @@ impl LawExecutionService {
     ) -> Result<ArticleResult> {
         let mut res_ctx = ResolutionContext::with_trace(calculation_date, trace)?;
         res_ctx.contextual_law_id = Some(law_id.to_string());
-        self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx)
+        let mut result =
+            self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx)?;
+        // This is a public API boundary (stage fall-through), so enforce
+        // eurocent TypeSpec rounding here.
+        self.round_typed_outputs(law_id, &mut result, res_ctx.reference_date())?;
+        Ok(result)
     }
 
     /// Execute a single lifecycle stage of a procedure-aware law (RFC-008).
@@ -882,6 +902,7 @@ impl LawExecutionService {
                     contextual_law: law_id.to_string(),
                     current_stage: first_stage.name.clone(),
                     accumulated_outputs: BTreeMap::new(),
+                    accumulated_provenance: BTreeMap::new(),
                     parameters: parameters.clone(),
                 }
             }
@@ -952,6 +973,15 @@ impl LawExecutionService {
         for (k, v) in &result.outputs {
             stage_state.accumulated_outputs.insert(k.clone(), v.clone());
         }
+        // Provenance must be accumulated alongside the outputs: a hook
+        // output fired in an earlier stage would otherwise reach the final
+        // rounding boundary without provenance and miss (or mismatch) its
+        // eurocent TypeSpec.
+        for (k, p) in &result.output_provenance {
+            stage_state
+                .accumulated_provenance
+                .insert(k.clone(), p.clone());
+        }
 
         // Advance to next stage
         if stage_idx + 1 < procedure.stages.len() {
@@ -993,6 +1023,10 @@ impl LawExecutionService {
         // All stages complete
         let mut final_result = result;
         final_result.outputs = stage_state.accumulated_outputs;
+        final_result.output_provenance = stage_state.accumulated_provenance;
+        // Public API boundary: round eurocent outputs once, on the final
+        // accumulated result (intermediate stage outputs flow unrounded).
+        self.round_typed_outputs(law_id, &mut final_result, ref_date)?;
         Ok(ExecutionOutcome::Complete(Box::new(final_result)))
     }
 
@@ -1076,7 +1110,105 @@ impl LawExecutionService {
         // causally-entailed outputs (hooks, overrides). A beschikking is legally
         // indivisible per AWB 1:3 — its consequences cannot be stripped.
 
+        // Enforce TypeSpec at the public API boundary (rounding happens once,
+        // here — never on nested article executions).
+        self.round_typed_outputs(law_id, &mut result, res_ctx.reference_date())?;
+
         Ok(result)
+    }
+
+    /// Enforce TypeSpec: round outputs to their declared `precision`.
+    ///
+    /// Generic per-datatype boundary rounding: an output whose TypeSpec
+    /// carries `precision: N` is rounded (half away from zero) to N decimal
+    /// places; `precision: 0` converts to an integer. `unit: eurocent`
+    /// defaults to precision 0 when no explicit precision is declared —
+    /// beschikkingen luiden in whole cents. Outputs without a precision (and
+    /// without the eurocent default) are left untouched. Rounding that a law
+    /// TEXT prescribes at an intermediate step is deliberately NOT expressed
+    /// here — that will be an explicit ROUND operation in the op set.
+    ///
+    /// This must run ONLY at the outermost requested-output boundary (the
+    /// public API edge), never on nested article executions: same-law internal
+    /// references, cross-law resolutions, open terms, hooks and overrides all
+    /// feed intermediate values into further calculation. Rounding an
+    /// intermediate value at a sub-law boundary and then rounding the
+    /// combined result again at the outer boundary (double rounding) can shift
+    /// a legally binding amount by a cent. Intermediate values therefore flow
+    /// unrounded (as Float); rounding happens exactly once, here.
+    ///
+    /// The producing article for each output is looked up via its provenance
+    /// (which also covers hook/override outputs from other laws), falling back
+    /// to `law_id`'s own output index for outputs without provenance (e.g.
+    /// stage states serialized before provenance accumulation existed) or
+    /// whose provenance no longer resolves to a loaded law/article.
+    fn round_typed_outputs(
+        &self,
+        law_id: &str,
+        result: &mut ArticleResult,
+        ref_date: Option<NaiveDate>,
+    ) -> Result<()> {
+        let output_names: Vec<String> = result.outputs.keys().cloned().collect();
+        for name in output_names {
+            let article = match result.output_provenance.get(&name) {
+                Some(
+                    OutputProvenance::Direct {
+                        law_id: prov_law,
+                        article,
+                    }
+                    | OutputProvenance::Reactive {
+                        law_id: prov_law,
+                        article,
+                        ..
+                    }
+                    | OutputProvenance::Override {
+                        law_id: prov_law,
+                        article,
+                    },
+                ) => self
+                    .resolver
+                    .get_law_for_date(prov_law, ref_date)
+                    .and_then(|l| l.find_article_by_number(article))
+                    // If the provenance law/article can't be resolved (e.g.
+                    // a law was unloaded), fall back to the requested law's
+                    // output index rather than silently skipping rounding.
+                    .or_else(|| self.resolver.get_article_by_output(law_id, &name, ref_date)),
+                None => self.resolver.get_article_by_output(law_id, &name, ref_date),
+            };
+            let type_spec = article
+                .and_then(|a| a.get_execution_spec())
+                .and_then(|exec| exec.output.as_ref())
+                .and_then(|outputs| {
+                    outputs
+                        .iter()
+                        .find(|spec| spec.name == name)
+                        .and_then(|spec| spec.type_spec.clone())
+                });
+            // Effective precision: explicit `precision`, or 0 for eurocent
+            // (whole cents) when none is declared.
+            let precision = type_spec.as_ref().and_then(|ts| {
+                ts.precision
+                    .or_else(|| (ts.unit.as_deref() == Some("eurocent")).then_some(0))
+            });
+            if let Some(precision) = precision {
+                if let Some(Value::Float(f)) = result.outputs.get(&name) {
+                    if precision == 0 {
+                        let rounded = crate::operations::f64_to_i64_safe(f.round())?;
+                        result.outputs.insert(name, Value::Int(rounded));
+                    } else {
+                        // Scale, round half away from zero, scale back. Going
+                        // through f64_to_i64_safe keeps the NaN/infinity/
+                        // overflow guards on the scaled value.
+                        let scale = 10f64.powi(precision.min(15) as i32);
+                        let scaled = crate::operations::f64_to_i64_safe((f * scale).round())?;
+                        result
+                            .outputs
+                            .insert(name, Value::Float(scaled as f64 / scale));
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Internal method with cycle tracking (single-output).
@@ -1684,29 +1816,14 @@ impl LawExecutionService {
         // Apply lex specialis overrides
         self.apply_overrides(&mut result, article, law, &post_params, res_ctx)?;
 
-        // Enforce TypeSpec: round eurocent outputs to integer.
-        // This applies only to top-level article outputs (the API boundary).
-        // Intermediate values within article logic remain as Float to preserve
-        // precision during calculation; rounding happens here at the output edge.
-        if let Some(exec) = article.get_execution_spec() {
-            if let Some(outputs) = &exec.output {
-                for output_spec in outputs {
-                    let is_eurocent = output_spec
-                        .type_spec
-                        .as_ref()
-                        .and_then(|ts| ts.unit.as_deref())
-                        == Some("eurocent");
-                    if is_eurocent {
-                        if let Some(Value::Float(f)) = result.outputs.get(&output_spec.name) {
-                            let rounded = crate::operations::f64_to_i64_safe(f.round())?;
-                            result
-                                .outputs
-                                .insert(output_spec.name.clone(), Value::Int(rounded));
-                        }
-                    }
-                }
-            }
-        }
+        // NOTE: eurocent TypeSpec rounding deliberately does NOT happen here.
+        // This method runs at EVERY article boundary — same-law internal
+        // references, cross-law resolutions, open terms, hooks and overrides —
+        // so rounding here would round intermediate values that the calling
+        // law combines further, and the outer rounding would then round again
+        // (double rounding can shift a legally binding amount by a cent).
+        // Rounding happens once, at the outermost requested-output boundary:
+        // see `round_typed_outputs`.
 
         // RFC-012 Propagate mode: taint all outputs from articles with untranslatables
         if !taints.is_empty() {
@@ -3737,6 +3854,642 @@ articles:
             result.outputs.get("result"),
             Some(&Value::Int(220000)),
             "2026 calculation should use 2026 version"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Eurocent rounding boundary tests
+    // -------------------------------------------------------------------------
+
+    fn make_eurocent_sub_law() -> &'static str {
+        r#"
+$id: eurocent_sub_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Produces a fractional eurocent amount (199 * 0.5 = 99.5)
+    machine_readable:
+      execution:
+        output:
+          - name: deelbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: deelbedrag
+            operation: MULTIPLY
+            values:
+              - 199
+              - 0.5
+"#
+    }
+
+    fn make_eurocent_parent_law() -> &'static str {
+        r#"
+$id: eurocent_parent_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Doubles the sub-law amount (2 * 99.5 = 199)
+    machine_readable:
+      execution:
+        input:
+          - name: deel
+            type: amount
+            source:
+              regulation: eurocent_sub_law
+              output: deelbedrag
+            type_spec:
+              unit: eurocent
+        output:
+          - name: totaal
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: totaal
+            operation: MULTIPLY
+            values:
+              - $deel
+              - 2
+"#
+    }
+
+    /// Generic precision rounding: `type_spec.precision` drives boundary
+    /// rounding for any output, independent of unit. 27 * 0.125 = 3.375
+    /// (exact in binary) rounds half-away-from-zero to 3.38 at precision 2;
+    /// `precision: 0` without a unit converts to an integer just like the
+    /// eurocent default.
+    #[test]
+    fn test_precision_rounds_outputs_at_boundary() {
+        let law = r#"
+$id: precision_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Produces 27 * 0.125 = 3.375, declared with two decimal places.
+    machine_readable:
+      execution:
+        output:
+          - name: factor
+            type: number
+            type_spec:
+              precision: 2
+        actions:
+          - output: factor
+            operation: MULTIPLY
+            values:
+              - 27
+              - 0.125
+  - number: '2'
+    text: Produces 199 * 0.5 = 99.5, declared as a whole number.
+    machine_readable:
+      execution:
+        output:
+          - name: heel
+            type: number
+            type_spec:
+              precision: 0
+        actions:
+          - output: heel
+            operation: MULTIPLY
+            values:
+              - 199
+              - 0.5
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service
+            .evaluate_law_output("precision_law", "factor", BTreeMap::new(), "2025-06-01")
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("factor"),
+            Some(&Value::Float(3.38)),
+            "precision 2 must round 3.375 half away from zero to 3.38"
+        );
+
+        let result = service
+            .evaluate_law_output("precision_law", "heel", BTreeMap::new(), "2025-06-01")
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("heel"),
+            Some(&Value::Int(100)),
+            "precision 0 must convert 99.5 to the integer 100"
+        );
+    }
+
+    /// Outputs without a precision (and without the eurocent default) must
+    /// flow through the boundary untouched.
+    #[test]
+    fn test_no_precision_leaves_output_unrounded() {
+        let law = r#"
+$id: unrounded_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Produces 199 * 0.5 = 99.5 with no precision declared.
+    machine_readable:
+      execution:
+        output:
+          - name: ruw
+            type: number
+        actions:
+          - output: ruw
+            operation: MULTIPLY
+            values:
+              - 199
+              - 0.5
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+        let result = service
+            .evaluate_law_output("unrounded_law", "ruw", BTreeMap::new(), "2025-06-01")
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("ruw"),
+            Some(&Value::Float(99.5)),
+            "no precision and no eurocent unit: value must stay unrounded"
+        );
+    }
+
+    /// Regression test: eurocent rounding must happen exactly ONCE, at the
+    /// outermost requested-output boundary — not at every article boundary.
+    ///
+    /// The sub-law produces deelbedrag = 199 * 0.5 = 99.5 cent. The parent
+    /// doubles it: 2 * 99.5 = 199 cent exactly. If the engine also rounds at
+    /// the sub-law boundary (double rounding), 99.5 becomes 100 and the
+    /// parent returns 200 — a cent too much on a legally binding amount.
+    #[test]
+    fn test_eurocent_rounds_once_at_outer_boundary_cross_law() {
+        let mut service = LawExecutionService::new();
+        service.load_law(make_eurocent_sub_law()).unwrap();
+        service.load_law(make_eurocent_parent_law()).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "eurocent_parent_law",
+                "totaal",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        assert_eq!(
+            result.outputs.get("totaal"),
+            Some(&Value::Int(199)),
+            "intermediate eurocent values must flow unrounded; \
+             double rounding would yield 200"
+        );
+    }
+
+    /// When the sub-law's eurocent output IS the requested output, it is
+    /// rounded at the API boundary (99.5 → 100, half away from zero).
+    #[test]
+    fn test_eurocent_rounds_at_top_level_boundary() {
+        let mut service = LawExecutionService::new();
+        service.load_law(make_eurocent_sub_law()).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "eurocent_sub_law",
+                "deelbedrag",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        assert_eq!(result.outputs.get("deelbedrag"), Some(&Value::Int(100)));
+    }
+
+    /// Same-law internal references must also flow unrounded: only the
+    /// outermost requested output is rounded.
+    #[test]
+    fn test_eurocent_rounds_once_at_outer_boundary_internal_reference() {
+        let law = r#"
+$id: internal_eurocent_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Produces a fractional eurocent amount (199 * 0.5 = 99.5)
+    machine_readable:
+      execution:
+        output:
+          - name: tussenbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: tussenbedrag
+            operation: MULTIPLY
+            values:
+              - 199
+              - 0.5
+  - number: '2'
+    text: Doubles the article 1 amount (2 * 99.5 = 199)
+    machine_readable:
+      execution:
+        input:
+          - name: tussen
+            type: amount
+            source:
+              output: tussenbedrag
+            type_spec:
+              unit: eurocent
+        output:
+          - name: eindbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: eindbedrag
+            operation: MULTIPLY
+            values:
+              - $tussen
+              - 2
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "internal_eurocent_law",
+                "eindbedrag",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        assert_eq!(
+            result.outputs.get("eindbedrag"),
+            Some(&Value::Int(199)),
+            "same-law internal references must not be rounded at the inner boundary"
+        );
+    }
+
+    /// A law whose article produces a BESCHIKKING-like legal character,
+    /// triggering the eurocent hook law below.
+    fn make_eurocent_beschikking_law() -> &'static str {
+        r#"
+$id: eurocent_beschikking_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Produces an EC_BESCHIKKING
+    machine_readable:
+      execution:
+        produces:
+          legal_character: EC_BESCHIKKING
+        output:
+          - name: besluit
+            type: boolean
+        actions:
+          - output: besluit
+            value: true
+"#
+    }
+
+    /// Hook law: fires on EC_BESCHIKKING at stage BESLUIT and produces a
+    /// fractional eurocent amount (199 * 0.5 = 99.5).
+    fn make_eurocent_hook_law() -> &'static str {
+        r#"
+$id: eurocent_hook_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Grants a fractional eurocent vergoeding on every EC_BESCHIKKING
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: EC_BESCHIKKING
+            stage: BESLUIT
+      execution:
+        output:
+          - name: vergoeding
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: vergoeding
+            operation: MULTIPLY
+            values:
+              - 199
+              - 0.5
+"#
+    }
+
+    /// A hook output (Reactive provenance, produced by ANOTHER law) must be
+    /// rounded at the top-level boundary: the eurocent TypeSpec lives on the
+    /// hook law's article, so rounding must follow the provenance, not the
+    /// requested law's output index.
+    #[test]
+    fn test_eurocent_hook_output_rounded_at_boundary_flat() {
+        let mut service = LawExecutionService::new();
+        service.load_law(make_eurocent_beschikking_law()).unwrap();
+        service.load_law(make_eurocent_hook_law()).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "eurocent_beschikking_law",
+                "besluit",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        assert_eq!(result.outputs.get("besluit"), Some(&Value::Bool(true)));
+        assert_eq!(
+            result.output_provenance.get("vergoeding"),
+            Some(&OutputProvenance::Reactive {
+                law_id: "eurocent_hook_law".to_string(),
+                article: "1".to_string(),
+                hook_point: "post_actions".to_string(),
+            }),
+            "test setup: vergoeding must be a Reactive hook output"
+        );
+        assert_eq!(
+            result.outputs.get("vergoeding"),
+            Some(&Value::Int(100)),
+            "Reactive-provenance eurocent output must be rounded at the boundary"
+        );
+    }
+
+    /// Staged variant of the producing law: defines a two-stage procedure so
+    /// `execute_stage` yields between BESLUIT and BEKENDMAKING.
+    fn make_eurocent_staged_law() -> &'static str {
+        r#"
+$id: eurocent_staged_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+procedure:
+  - id: ec_beschikking
+    default: true
+    applies_to:
+      legal_character: EC_STAGED_BESCHIKKING
+    stages:
+      - name: BESLUIT
+      - name: BEKENDMAKING
+        requires:
+          - name: bekendmaking_datum
+            type: date
+articles:
+  - number: '1'
+    text: Produces an EC_STAGED_BESCHIKKING
+    machine_readable:
+      execution:
+        produces:
+          legal_character: EC_STAGED_BESCHIKKING
+        output:
+          - name: besluit
+            type: boolean
+        actions:
+          - output: besluit
+            value: true
+"#
+    }
+
+    /// Hook law for the staged test: fires only at stage BESLUIT.
+    fn make_eurocent_staged_hook_law() -> &'static str {
+        r#"
+$id: eurocent_staged_hook_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Grants a fractional eurocent vergoeding at stage BESLUIT
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: EC_STAGED_BESCHIKKING
+            stage: BESLUIT
+      execution:
+        output:
+          - name: vergoeding
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: vergoeding
+            operation: MULTIPLY
+            values:
+              - 199
+              - 0.5
+"#
+    }
+
+    /// Regression test: provenance must be accumulated ACROSS stages.
+    ///
+    /// The hook fires in the BESLUIT stage (producing vergoeding = 99.5 cent,
+    /// Reactive provenance), then execution yields for `bekendmaking_datum`.
+    /// The resumed BEKENDMAKING stage fires no hooks, so its per-stage result
+    /// carries no provenance for `vergoeding`. Without provenance
+    /// accumulation in `StageState`, the rounding boundary on Complete falls
+    /// back to the requested law's output index, doesn't find `vergoeding`,
+    /// and lets the unrounded Float(99.5) escape.
+    #[test]
+    fn test_eurocent_hook_output_rounded_on_stage_complete() {
+        let mut service = LawExecutionService::new();
+        service.load_law(make_eurocent_staged_law()).unwrap();
+        service.load_law(make_eurocent_staged_hook_law()).unwrap();
+
+        // Stage 1 (BESLUIT): hook fires, then the procedure yields waiting
+        // for bekendmaking_datum.
+        let outcome = service
+            .execute_stage(
+                "eurocent_staged_law",
+                "besluit",
+                None,
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+        let state = match outcome {
+            ExecutionOutcome::Yielded {
+                state,
+                outputs,
+                pending_inputs,
+            } => {
+                assert_eq!(pending_inputs, vec!["bekendmaking_datum".to_string()]);
+                // Yielded outputs are intermediate and deliberately unrounded.
+                assert_eq!(outputs.get("vergoeding"), Some(&Value::Float(99.5)));
+                state
+            }
+            ExecutionOutcome::Complete(_) => panic!("expected Yielded after BESLUIT stage"),
+        };
+
+        // Resume with the required input: BEKENDMAKING completes the
+        // procedure. The hook's eurocent output from the EARLIER stage must
+        // come back rounded.
+        let mut params = BTreeMap::new();
+        params.insert(
+            "bekendmaking_datum".to_string(),
+            Value::String("2025-01-15".to_string()),
+        );
+        let outcome = service
+            .execute_stage(
+                "eurocent_staged_law",
+                "besluit",
+                Some(state),
+                params,
+                "2025-01-01",
+            )
+            .unwrap();
+        match outcome {
+            ExecutionOutcome::Complete(result) => {
+                assert_eq!(
+                    result.outputs.get("vergoeding"),
+                    Some(&Value::Int(100)),
+                    "hook eurocent output from an earlier stage must be rounded on Complete"
+                );
+            }
+            ExecutionOutcome::Yielded { pending_inputs, .. } => {
+                panic!("expected Complete, still pending: {:?}", pending_inputs)
+            }
+        }
+    }
+
+    /// An Override-provenance output (lex specialis, RFC-007) must be rounded
+    /// at the boundary via the overriding article's eurocent TypeSpec.
+    #[test]
+    fn test_eurocent_override_output_rounded_at_boundary() {
+        let law = r#"
+$id: override_eurocent_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Produces a besluit and a default bedrag
+    machine_readable:
+      execution:
+        output:
+          - name: besluit
+            type: boolean
+          - name: bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: besluit
+            value: true
+          - output: bedrag
+            value: 0
+  - number: '2'
+    text: In afwijking van artikel 1 bedraagt het bedrag 199 * 0.5 cent
+    machine_readable:
+      overrides:
+        - law: override_eurocent_law
+          article: '1'
+          output: bedrag
+      execution:
+        output:
+          - name: bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: bedrag
+            operation: MULTIPLY
+            values:
+              - 199
+              - 0.5
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "override_eurocent_law",
+                "besluit",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        assert_eq!(
+            result.output_provenance.get("bedrag"),
+            Some(&OutputProvenance::Override {
+                law_id: "override_eurocent_law".to_string(),
+                article: "2".to_string(),
+            }),
+            "test setup: bedrag must be produced via lex specialis override"
+        );
+        assert_eq!(
+            result.outputs.get("bedrag"),
+            Some(&Value::Int(100)),
+            "Override-provenance eurocent output must be rounded at the boundary"
+        );
+    }
+
+    /// Multi-output `evaluate_law`: eurocent outputs from multiple articles
+    /// must all be rounded on the merged result.
+    #[test]
+    fn test_eurocent_rounds_in_multi_output_evaluation() {
+        let law = r#"
+$id: multi_eurocent_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Produces a fractional eurocent amount (199 * 0.5 = 99.5)
+    machine_readable:
+      execution:
+        output:
+          - name: deel_a
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: deel_a
+            operation: MULTIPLY
+            values:
+              - 199
+              - 0.5
+  - number: '2'
+    text: Produces another fractional eurocent amount (5 * 0.5 = 2.5)
+    machine_readable:
+      execution:
+        output:
+          - name: deel_b
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: deel_b
+            operation: MULTIPLY
+            values:
+              - 5
+              - 0.5
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service
+            .evaluate_law(
+                "multi_eurocent_law",
+                &["deel_a", "deel_b"],
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        assert_eq!(
+            result.outputs.get("deel_a"),
+            Some(&Value::Int(100)),
+            "eurocent output from article 1 must be rounded (99.5 -> 100)"
+        );
+        assert_eq!(
+            result.outputs.get("deel_b"),
+            Some(&Value::Int(3)),
+            "eurocent output from article 2 must be rounded (2.5 -> 3, half away from zero)"
         );
     }
 }

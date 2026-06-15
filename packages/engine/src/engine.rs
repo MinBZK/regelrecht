@@ -31,7 +31,11 @@ use std::collections::{BTreeMap, HashSet};
 use std::rc::Rc;
 
 /// Provenance of an output value: how it was produced during execution.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+///
+/// `Deserialize` is needed because provenance is carried inside the
+/// serializable [`StageState`](crate::service::StageState) across
+/// yield/resume cycles.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type")]
 pub enum OutputProvenance {
     /// Produced by the article's own actions.
