@@ -21,6 +21,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "pr
 
 # Workspace crates
 regelrecht-engine = { path = "../engine" }
+regelrecht-law-model = { path = "../law-model" }
 
 # File system
 walkdir.workspace = true

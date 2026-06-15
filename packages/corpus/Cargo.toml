@@ -17,6 +17,7 @@ tracing.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 serde_yaml_ng.workspace = true
+regelrecht-law-model = { path = "../law-model" }
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"], optional = true }
 serde_json = { workspace = true, optional = true }
 jsonschema = { version = "0.46", optional = true }

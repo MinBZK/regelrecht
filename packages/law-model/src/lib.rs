@@ -13,9 +13,11 @@
 //! The JSON schema under `schema/` remains the authoritative specification
 //! (RFC-013); this crate is one conforming representation of it.
 
+mod header;
 mod model;
 mod value;
 
+pub use header::{parse_law_header, LawHeader};
 pub use model::{
     Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, Case, CompetentAuthority,
     Definition, Execution, HookDeclaration, HookFilter, HookPoint, ImplementsDeclaration, Input,
