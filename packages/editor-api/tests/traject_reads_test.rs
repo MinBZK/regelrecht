@@ -29,8 +29,8 @@ use regelrecht_auth::handlers::{
 };
 use regelrecht_editor_api::config::AppConfig;
 use regelrecht_editor_api::corpus_handlers::{
-    get_corpus_law, get_traject_corpus_law, get_traject_scenario, list_traject_scenarios, save_law,
-    save_scenario,
+    get_corpus_law, get_traject_corpus_law, get_traject_scenario, list_traject_corpus_laws,
+    list_traject_scenarios, save_law, save_scenario,
 };
 use regelrecht_editor_api::state::{AppState, CorpusState};
 use regelrecht_editor_api::traject_corpus::TrajectCorpusCache;
@@ -332,6 +332,99 @@ async fn save_then_read_returns_the_just_saved_content() {
         "expected the saved content; got: {after}"
     );
     assert!(!after.contains("ORIGINAL"));
+}
+
+#[tokio::test]
+async fn ttl_refresh_picks_up_upstream_laws_and_reconciles_saves() {
+    use axum::extract::Query;
+    use regelrecht_corpus::dto::PaginationParams;
+
+    let db = TestDb::new().await;
+    let mut state = empty_state(db.pool.clone());
+    // Zero TTL: every request rolls the index snapshot over — the
+    // production refresh behaviour, accelerated so the test doesn't wait
+    // out the real TTL.
+    state.trajects = Arc::new(TrajectCorpusCache::with_index_ttl(
+        std::time::Duration::ZERO,
+    ));
+    let (owner, sub) = seed_account(&db.pool, "alice@test.local").await;
+
+    let corpus = tempfile::tempdir().unwrap();
+    write_law(corpus.path(), "ORIGINAL");
+    let traject_id = local_traject(&db.pool, owner, corpus.path()).await;
+    let tref = traject_ref(traject_id);
+
+    // First read builds the traject corpus.
+    let (_etag, before) = read_law(state.clone(), session_for(&sub).await, &tref).await;
+    assert!(before.contains("ORIGINAL"));
+
+    // Save through the editor — the overlay records the new body.
+    let saved_body = format!("$id: {LAW_ID}\nname: SAVED\n");
+    let (status, _etag) = save_law_with(
+        state.clone(),
+        session_for(&sub).await,
+        &tref,
+        HeaderMap::new(),
+        saved_body,
+    )
+    .await
+    .expect("save must succeed");
+    assert_eq!(status, StatusCode::OK);
+
+    // A fresh local save survives a refresh: the branch still holds
+    // exactly the saved body, so the reconcile pass keeps the overlay
+    // entry and reads keep returning the save (read-your-writes).
+    let (_etag, after_save) = read_law(state.clone(), session_for(&sub).await, &tref).await;
+    assert!(
+        after_save.contains("SAVED"),
+        "a fresh save must survive the TTL refresh; got: {after_save}"
+    );
+
+    // Upstream changes behind the snapshot's back: a brand-new law lands
+    // in the source (think: merged on the central corpus, a re-harvest)
+    // and the just-saved law's file is overwritten by an external writer
+    // (another replica, a direct push to the branch).
+    let other_dir = corpus.path().join("wet").join("andere_wet");
+    std::fs::create_dir_all(&other_dir).unwrap();
+    std::fs::write(
+        other_dir.join("2025-01-01.yaml"),
+        "$id: andere_wet\nname: Nieuw\n",
+    )
+    .unwrap();
+    write_law(corpus.path(), "EXTERNAL");
+
+    // The next request refreshes the snapshot (TTL expired): the new law
+    // is indexed without a traject delete/recreate or process restart…
+    let Json(entries) = list_traject_corpus_laws(
+        State(state.clone()),
+        session_for(&sub).await,
+        Path(tref.clone()),
+        Query(PaginationParams {
+            offset: 0,
+            limit: None,
+            q: None,
+            ids: None,
+        }),
+    )
+    .await
+    .expect("law list must succeed");
+    assert!(
+        entries.iter().any(|e| e.law_id == "andere_wet"),
+        "refreshed snapshot must index the upstream-added law"
+    );
+
+    // …and the externally overwritten law CONVERGES to the branch
+    // content: the refresh's reconcile pass sees the branch no longer
+    // matches the overlaid save and drops the entry, so this process
+    // stops pinning its own stale save (which would otherwise turn every
+    // cross-replica edit into a permanent 412 loop — the user could
+    // never fetch the conflicting content their If-Match fails against).
+    let (_etag, after) = read_law(state, session_for(&sub).await, &tref).await;
+    assert!(
+        after.contains("EXTERNAL"),
+        "expected reads to converge to the externally written content; got: {after}"
+    );
+    assert!(!after.contains("SAVED"));
 }
 
 #[tokio::test]
