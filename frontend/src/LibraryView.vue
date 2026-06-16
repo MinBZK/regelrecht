@@ -153,18 +153,16 @@ const sidebarSections = computed(() => {
     }
   }
 
-  // "Recent bekeken" sits below the curated groups. Each id resolves to its
-  // richer index entry when available, otherwise to the stored { law_id, name }
-  // (e.g. a law not present in the active traject). Laws already shown above
-  // are skipped so nothing appears twice.
+  // "Recent bekeken" sits below the curated groups and faithfully shows the
+  // view history: a law stays here even when it's also a favorite or edited in
+  // this traject, so it can appear in both sections (favoriting a law must not
+  // remove it from recent). Each id resolves to its richer index entry when
+  // available, otherwise to the stored { law_id, name } (e.g. a law not present
+  // in the active traject).
   if (recentLaws.value.length > 0) {
-    const shown = new Set(sections.flatMap(s => s.laws.map(l => l.law_id)));
     const recent = recentLaws.value
-      .filter(r => !shown.has(r.law_id))
       .map(r => list.find(law => law.law_id === r.law_id) || r);
-    if (recent.length > 0) {
-      sections.push({ key: 'recent', title: 'Recent bekeken', laws: recent });
-    }
+    sections.push({ key: 'recent', title: 'Recent bekeken', laws: recent });
   }
 
   return sections;
