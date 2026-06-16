@@ -59,7 +59,7 @@ pub use annotation::{
 };
 pub use article::{
     Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, Case, Execution,
-    HookDeclaration, HookFilter, HookPoint, MachineReadable, OverrideDeclaration,
+    HookDeclaration, HookFilter, HookPoint, LawLoad, MachineReadable, OverrideDeclaration,
     ProcedureDefinition, Source, Stage, UntranslatableEntry,
 };
 pub use config::{

@@ -9,17 +9,9 @@ pub struct CorpusNode {
     pub is_dir: bool,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct LawMetadata {
-    pub id: Option<String>,
-    pub schema: Option<String>,
-    pub regulatory_layer: Option<String>,
-    pub publication_date: Option<String>,
-    pub valid_from: Option<String>,
-    pub bwb_id: Option<String>,
-    pub name: Option<String>,
-    pub article_count: usize,
-}
+/// Law header metadata. Re-exported from the shared `regelrecht-law-model`
+/// crate so the tolerant header parser is defined in exactly one place.
+pub use regelrecht_law_model::LawHeader as LawMetadata;
 
 /// Scan the corpus directory and return a flat list of nodes for tree rendering.
 pub fn scan_corpus(corpus_root: &Path) -> Vec<CorpusNode> {
@@ -56,34 +48,10 @@ pub fn scan_corpus(corpus_root: &Path) -> Vec<CorpusNode> {
 }
 
 /// Extract metadata from a YAML law file without full deserialization.
+///
+/// Delegates to the shared tolerant header parser in `regelrecht-law-model`.
 pub fn extract_metadata(content: &str) -> LawMetadata {
-    let mut meta = LawMetadata::default();
-
-    for line in content.lines() {
-        let trimmed = line.trim();
-
-        if let Some(val) = trimmed.strip_prefix("$id:") {
-            meta.id = Some(val.trim().trim_matches('\'').trim_matches('"').to_string());
-        } else if let Some(val) = trimmed.strip_prefix("$schema:") {
-            meta.schema = Some(val.trim().to_string());
-        } else if let Some(val) = trimmed.strip_prefix("regulatory_layer:") {
-            meta.regulatory_layer =
-                Some(val.trim().trim_matches('\'').trim_matches('"').to_string());
-        } else if let Some(val) = trimmed.strip_prefix("publication_date:") {
-            meta.publication_date =
-                Some(val.trim().trim_matches('\'').trim_matches('"').to_string());
-        } else if let Some(val) = trimmed.strip_prefix("valid_from:") {
-            meta.valid_from = Some(val.trim().trim_matches('\'').trim_matches('"').to_string());
-        } else if let Some(val) = trimmed.strip_prefix("bwb_id:") {
-            meta.bwb_id = Some(val.trim().trim_matches('\'').trim_matches('"').to_string());
-        } else if let Some(val) = trimmed.strip_prefix("name:") {
-            meta.name = Some(val.trim().trim_matches('\'').trim_matches('"').to_string());
-        } else if trimmed.starts_with("- number:") {
-            meta.article_count += 1;
-        }
-    }
-
-    meta
+    regelrecht_law_model::parse_law_header(content)
 }
 
 /// Find the corpus regulation directory by checking common locations.

@@ -35,6 +35,7 @@ RUN grep -qE '^members = \[$' Cargo.toml && \
     sed -i '/"admin"/d; /"auth"/d; /"editor-api"/d; /"tui"/d' Cargo.toml
 COPY packages/corpus/ corpus/
 COPY packages/engine/ engine/
+COPY packages/law-model/ law-model/
 COPY packages/pipeline/ pipeline/
 COPY packages/harvester/ harvester/
 COPY packages/shared/ shared/
@@ -55,6 +56,7 @@ COPY --from=planner /build/Cargo.toml ./Cargo.toml
 
 COPY packages/corpus/ corpus/
 COPY packages/engine/ engine/
+COPY packages/law-model/ law-model/
 COPY packages/pipeline/ pipeline/
 COPY packages/harvester/ harvester/
 COPY packages/shared/ shared/

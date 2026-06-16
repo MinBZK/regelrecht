@@ -2478,6 +2478,7 @@ impl ServiceProvider for LawExecutionService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::article::LawLoad;
 
     fn make_base_law() -> &'static str {
         r#"

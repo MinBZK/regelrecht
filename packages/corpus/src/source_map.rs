@@ -517,52 +517,31 @@ pub fn validate_yaml_syntax(content: &str) -> Result<()> {
 
 /// Extract the top-level `$id` field from a YAML string.
 ///
-/// Uses a simple line-based approach to avoid full YAML parsing overhead.
-/// Only matches `$id:` at the start of a line (no leading whitespace) to
-/// avoid matching nested `$id:` fields.
+/// Delegates to the shared tolerant header parser in `regelrecht-law-model`,
+/// which matches `$id:` only at the start of a line (so a nested `$id:` is not
+/// picked up) and tolerates a malformed document body.
 pub fn extract_law_id(yaml: &str) -> Option<String> {
-    for line in yaml.lines() {
-        if let Some(rest) = line.strip_prefix("$id:") {
-            let value = rest.trim().trim_matches('"').trim_matches('\'');
-            if !value.is_empty() {
-                return Some(value.to_string());
-            }
-        }
-    }
-    None
+    regelrecht_law_model::parse_law_header(yaml).id
 }
 
-/// Extract the top-level `name` field from a YAML string.
+/// Extract the top-level literal `name` field from a YAML string.
 ///
 /// Skips names starting with `#` (output references resolved at runtime).
 fn extract_law_name(yaml: &str) -> Option<String> {
-    for line in yaml.lines() {
-        if let Some(rest) = line.strip_prefix("name:") {
-            let value = rest.trim().trim_matches('"').trim_matches('\'');
-            if !value.is_empty() && !value.starts_with('#') {
-                return Some(value.to_string());
-            }
-            return None;
-        }
-    }
-    None
+    regelrecht_law_model::parse_law_header(yaml)
+        .name
+        .filter(|name| !name.starts_with('#'))
 }
 
 /// Extract the raw `name:` value including `#` references.
 fn extract_raw_name(yaml: &str) -> Option<String> {
-    for line in yaml.lines() {
-        if let Some(rest) = line.strip_prefix("name:") {
-            let value = rest.trim().trim_matches('"').trim_matches('\'');
-            if !value.is_empty() {
-                return Some(value.to_string());
-            }
-            return None;
-        }
-    }
-    None
+    regelrecht_law_model::parse_law_header(yaml).name
 }
 
-// --- Minimal deserialization types for display-name and output resolution ---
+// --- Minimal, deliberately tolerant view types for display-name and output
+// resolution. These are NOT the canonical law model (`regelrecht-law-model`):
+// they intentionally make every field optional so they keep working on editor
+// drafts and mid-enrichment files that the strict model would reject. ---
 
 #[derive(Deserialize, Default)]
 struct LawDoc {

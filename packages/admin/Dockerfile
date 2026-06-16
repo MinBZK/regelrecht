@@ -30,6 +30,7 @@ COPY packages/admin/ admin/
 COPY packages/auth/ auth/
 COPY packages/corpus/ corpus/
 COPY packages/engine/ engine/
+COPY packages/law-model/ law-model/
 COPY packages/pipeline/ pipeline/
 COPY packages/harvester/ harvester/
 COPY packages/shared/ shared/
@@ -50,6 +51,7 @@ COPY packages/admin/ admin/
 COPY packages/auth/ auth/
 COPY packages/corpus/ corpus/
 COPY packages/engine/ engine/
+COPY packages/law-model/ law-model/
 COPY packages/pipeline/ pipeline/
 COPY packages/harvester/ harvester/
 COPY packages/shared/ shared/

@@ -173,6 +173,7 @@ pub fn resolve_candidate<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::article::LawLoad;
 
     #[test]
     fn test_layer_priority_ordering() {

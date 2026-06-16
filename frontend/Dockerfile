@@ -17,6 +17,7 @@ COPY packages/Cargo.lock packages/Cargo.toml ./
 RUN grep -qE '^members = \[$' Cargo.toml && \
     sed -i '/"admin"/d; /"auth"/d; /"corpus"/d; /"editor-api"/d; /"harvester"/d; /"pipeline"/d; /"tui"/d' Cargo.toml
 COPY packages/engine/ engine/
+COPY packages/law-model/ law-model/
 COPY packages/shared/ shared/
 RUN cargo build --target wasm32-unknown-unknown --release --features wasm -p regelrecht-engine && \
     wasm-bindgen --target web --out-dir /wasm-pkg \
@@ -53,6 +54,7 @@ COPY packages/auth/ auth/
 COPY packages/editor-api/ editor-api/
 COPY packages/corpus/ corpus/
 COPY packages/engine/ engine/
+COPY packages/law-model/ law-model/
 COPY packages/harvester/ harvester/
 COPY packages/pipeline/ pipeline/
 COPY packages/shared/ shared/
@@ -73,6 +75,7 @@ COPY packages/auth/ auth/
 COPY packages/editor-api/ editor-api/
 COPY packages/corpus/ corpus/
 COPY packages/engine/ engine/
+COPY packages/law-model/ law-model/
 COPY packages/harvester/ harvester/
 COPY packages/pipeline/ pipeline/
 COPY packages/shared/ shared/

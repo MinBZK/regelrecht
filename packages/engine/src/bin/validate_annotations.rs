@@ -18,7 +18,7 @@ use std::process;
 
 use jsonschema::Validator;
 use regelrecht_engine::annotation::{law_id_from_source, resolve, TextQuoteSelector};
-use regelrecht_engine::article::ArticleBasedLaw;
+use regelrecht_engine::article::{ArticleBasedLaw, LawLoad};
 
 const ANNOTATION_SCHEMA: &str = include_str!("../../../../schema/v0.5.3/annotation-schema.json");
 
