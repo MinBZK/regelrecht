@@ -377,7 +377,7 @@ pub(crate) fn values_equal(a: &Value, b: &Value) -> bool {
 ///
 /// - `Int(42) == Float(42.0)` returns `true` (like Python)
 /// - The mixed date forms compare chronologically: the string form `"2025-01-01"`
-///   equals the reference-date object form `{iso: "2025-01-01", ...}` (RFC-020).
+///   equals the reference-date object form `{iso: "2025-01-01", ...}` (RFC-021).
 ///   This keeps EQUALS consistent with the ordering operators, which also accept
 ///   both date forms via `parse_date`. Two strings or two objects keep structural
 ///   equality, so objects that merely share an `iso` field are not equal.
@@ -403,7 +403,7 @@ fn execute_equality<R: ValueResolver>(
     // object): the one date pairing structural equality can never match. Two
     // canonical date strings are equal structurally exactly when they are equal
     // chronologically, and object↔object stays structural so arbitrary objects
-    // sharing an `iso` field do not become equal (RFC-020). A side that fails to
+    // sharing an `iso` field do not become equal (RFC-021). A side that fails to
     // parse as a date leaves the structural verdict untouched. Scoped to EQUALS so
     // membership and other structural comparisons keep their existing semantics.
     if !equal && is_mixed_date_pair(&subject_val, &value_val) {
@@ -438,7 +438,7 @@ fn is_mixed_date_pair(a: &Value, b: &Value) -> bool {
 /// - mixed or unsupported types → `TypeMismatch` error
 ///
 /// This lets `$peildatum > $grensdatum` work the same way `$bedrag > 1000` does,
-/// without introducing date-specific operators (RFC-020, route A).
+/// without introducing date-specific operators (RFC-021, route A).
 ///
 /// The operator is a single predicate over [`Ordering`], shared by the numeric
 /// and the date path so the two can never drift apart. An incomparable numeric
@@ -2821,7 +2821,7 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // Date comparison Tests (RFC-020 route A: type-safe ordered comparison)
+    // Date comparison Tests (RFC-021 route A: type-safe ordered comparison)
     // -------------------------------------------------------------------------
 
     mod date_comparison {
@@ -2961,7 +2961,7 @@ mod tests {
 
         #[test]
         fn test_equals_referencedate_object_equals_date_string() {
-            // RFC-020: the object form and the string form of the same date are equal.
+            // RFC-021: the object form and the string form of the same date are equal.
             let resolver = TestResolver::new().with_var("referencedate", date_obj("2025-03-01"));
             let op = ActionOperation::Equals {
                 subject: var("referencedate"),
@@ -3153,7 +3153,7 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // DATE_DIFF Tests (RFC-020 route B: explicit unit argument)
+    // DATE_DIFF Tests (RFC-021 route B: explicit unit argument)
     // -------------------------------------------------------------------------
 
     mod date_diff {
@@ -3399,7 +3399,7 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // Canonical date-form Tests (RFC-020: keep EQUALS and ordering consistent)
+    // Canonical date-form Tests (RFC-021: keep EQUALS and ordering consistent)
     // -------------------------------------------------------------------------
 
     mod canonical_dates {
@@ -3419,7 +3419,7 @@ mod tests {
         fn test_equals_non_canonical_string_stays_structural() {
             // The EQUALS date fallback does not fire when a side fails canonical
             // parsing: "2025-1-1" against the object form of 2025-01-01 is simply
-            // unequal, without an error (RFC-020 implementation notes). Pins the
+            // unequal, without an error (RFC-021 implementation notes). Pins the
             // one place where a non-canonical date is not rejected loudly.
             let resolver = TestResolver::new().with_var("referencedate", date_obj("2025-01-01"));
             let op = ActionOperation::Equals {
