@@ -134,9 +134,9 @@ If you needed **any additional CSS styling** on top of the design-system compone
 
 This project uses an RFC process for design decisions.
 
-- **Location**: `docs/rfcs/`
-- **Process document**: See `docs/rfcs/rfc-000.md`
-- **Template**: Use `docs/rfcs/template.md`
+- **Location**: `docs/src/content/rfcs/`
+- **Process document**: See `docs/src/content/rfcs/rfc-000.md`
+- **Template**: Use `docs/src/content/rfcs/template.md`
 
 ### When to Write an RFC
 
@@ -145,6 +145,25 @@ Write an RFC for:
 - Execution engine architecture changes
 - Cross-cutting design patterns
 - Integration patterns between components
+
+### RFC Metadata (frontmatter)
+
+RFC metadata lives in YAML **frontmatter**, not a bold-labelled body preamble.
+The fields are `title`, `status`, `implementation`, `date`, `authors`,
+optional `depends_on`, and optional `short_title`. The docs site
+(`docs/src/pages/rfcs/`, parsed by `docs/src/lib/rfcs.ts`) renders `status` and
+`implementation` as NDD tags and the rest as a header line — there is no rehype
+preamble plugin.
+
+Two orthogonal fields, both required on every RFC so an absent tag never reads
+as "unknown":
+
+- **`status`** — lifecycle only: `Draft | Proposed | Accepted | Rejected | Superseded`.
+  A built-and-merged RFC is `Accepted`, not `Draft`; "Draft" means the design
+  itself is unsettled.
+- **`implementation`** — build state: `Implemented | Partially implemented | Not implemented`.
+  Independent of `status` (code can land ahead of acceptance). Ground the value
+  in the actual codebase, not the RFC's aspirations.
 
 ## Code Reviews
 

@@ -137,17 +137,22 @@ svg[id^='mermaid-'] .labelBkg {
   background: transparent !important;
 }
 
-/* RFC preamble metadata header (rehype-rfc-meta).
-   Status renders as an <nldd-tag>; the remaining fields sit beneath it as a
-   muted line. Spacing matches the gap rich-text leaves between blocks. */
+/* RFC metadata header (rendered from frontmatter in rfcs/[slug].astro).
+   It is an <nldd-rich-text spacing="flat"> so the text inherits NLDD prose
+   typography (RijksSans) instead of the page serif default; rich-text stacks
+   the tag row and the muted line. We only add the bottom gap to the body. */
 .rr-rfc-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.5rem;
   margin-block: 0 1.5rem;
 }
 .rr-rfc-meta-fields {
+  margin-block: 0.5rem 0;
   color: var(--semantics-content-secondary-color);
   font-size: 0.875rem;
+}
+/* Status + optional implementation tag, side by side, wrapping on narrow
+   rows. Used in the RFC index cell and the RFC header in [slug].astro. */
+.rr-rfc-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--primitives-space-8, 0.5rem);
 }

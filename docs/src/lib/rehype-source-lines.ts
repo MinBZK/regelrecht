@@ -20,8 +20,8 @@ import { readFileSync } from 'node:fs';
  * and subtract the first stamped node's own (body-relative) start line. That
  * difference is the offset, self-correcting regardless of blank-line handling.
  *
- * Must run BEFORE the plugins that reshape nodes (rehype-nldd-code-viewer,
- * rehype-rfc-meta): those replace elements and drop the original positions.
+ * Must run BEFORE the plugins that reshape nodes (rehype-nldd-code-viewer):
+ * those replace elements and drop the original positions.
  *
  * Scope: top-level blocks (headings, paragraphs, lists, blockquotes, tables,
  * code) plus list items, the granularity a reader selects at.

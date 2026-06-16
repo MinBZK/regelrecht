@@ -18,6 +18,20 @@ const rfcs = defineCollection({
   schema: z.object({
     title: z.string().optional(),
     description: z.string().optional(),
+    // RFC metadata, in frontmatter so it is structured data rather than a
+    // bold-labelled preamble parsed out of the body. Lifecycle status uses the
+    // RFC-000 vocabulary (Draft | Proposed | Accepted | Rejected | Superseded).
+    status: z.string().optional(),
+    // Optional implementation status, rendered as a second tag only when
+    // present — an Accepted-and-fully-built RFC just omits it.
+    implementation: z.string().optional(),
+    // Stored as a 'YYYY-MM-DD' string rather than z.date() so it round-trips
+    // through the build without timezone shifts and renders verbatim.
+    date: z.string().optional(),
+    authors: z.array(z.string()).optional(),
+    depends_on: z.array(z.string()).optional(),
+    // Sidebar label; falls back to the stripped title when absent.
+    short_title: z.string().optional(),
   }),
 });
 

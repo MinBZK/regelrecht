@@ -18,6 +18,27 @@ const { entry } = Astro.props;
 const { Content, headings } = await render(entry);
 
 const pathname = '/rfcs/' + entry.id.replace(/\.md$/, '');
+
+// RFC metadata header, rendered from frontmatter. Status is a coloured tag;
+// an optional implementation status sits beside it as a quiet neutral tag;
+// Date / Authors / Depends on form a muted line beneath. Mirrors the index
+// (src/pages/rfcs/index.astro) so the two cannot drift on colour or layout.
+const { status, implementation, date, authors, depends_on } = entry.data;
+const statusColor = (s: string) => {
+  const k = (s ?? '').toLowerCase();
+  if (k.includes('accept')) return 'success';
+  if (k.includes('propos')) return 'accent';
+  if (k.includes('reject')) return 'critical';
+  if (k.includes('supersed')) return 'warning';
+  return 'neutral';
+};
+const metaFields = [
+  date && `Date: ${date}`,
+  authors?.length && `Authors: ${authors.join(', ')}`,
+  depends_on?.length && `Depends on: ${depends_on.join(', ')}`,
+]
+  .filter(Boolean)
+  .join('  ·  ');
 // Edit-link base for this page (whole-file sidebar link + the per-selection
 // line-range affordance both build off it).
 const editBase = entry.filePath
@@ -49,6 +70,17 @@ const title = pageTitle + ' · RegelRecht';
       <EditLink filePath={entry.filePath} />
     </div>
     <div slot="right" class="rr-min-width-0">
+      {status && (
+        <nldd-rich-text spacing="flat" class="rr-rfc-meta">
+          <span class="rr-rfc-tags">
+            <nldd-tag color={statusColor(status)} size="md">{status}</nldd-tag>
+            {implementation && (
+              <nldd-tag color="neutral" size="md">{implementation}</nldd-tag>
+            )}
+          </span>
+          {metaFields && <p class="rr-rfc-meta-fields">{metaFields}</p>}
+        </nldd-rich-text>
+      )}
       <nldd-rich-text data-edit-base={editBase}>
         <Content />
       </nldd-rich-text>

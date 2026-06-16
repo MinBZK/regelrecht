@@ -5,7 +5,6 @@ import remarkGfm from 'remark-gfm';
 import rehypeMermaid from 'rehype-mermaid';
 import { rehypeMermaidAlt } from './src/lib/rehype-mermaid-alt.ts';
 import { rehypeNlddCodeViewer } from './src/lib/rehype-nldd-code-viewer.ts';
-import { rehypeRfcMeta } from './src/lib/rehype-rfc-meta.ts';
 import { rehypeSourceLines } from './src/lib/rehype-source-lines.ts';
 
 export default defineConfig({
@@ -70,7 +69,6 @@ export default defineConfig({
       ],
       rehypeMermaidAlt,
       rehypeNlddCodeViewer,
-      rehypeRfcMeta,
     ],
   },
   vite: {

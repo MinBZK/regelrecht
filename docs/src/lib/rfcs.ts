@@ -15,10 +15,16 @@ export interface RfcEntry {
   id: string
   /** Full H1 title — used in the index table */
   title: string
-  /** Optional **Short title:** value, falls back to title — used in the sidebar */
+  /** Optional `short_title` frontmatter value, falls back to title — sidebar */
   shortTitle: string
-  /** Status from the **Status:** preamble line */
+  /** Lifecycle status from the `status` frontmatter field */
   status: string
+  /**
+   * Optional `implementation` frontmatter value (e.g. "Partially implemented",
+   * "Not implemented", "Implemented"). Only set when the field is present, so
+   * a plain Accepted RFC carries no value and renders no second badge.
+   */
+  implementation?: string
   /** Site-relative link derived from the real filename, e.g. "/rfcs/rfc-008" */
   link: string
 }
@@ -38,14 +44,32 @@ const RFCS_DIR = resolveRfcsDir()
 
 const RFC_FILE = /^rfc-(\d+)\.md$/
 const FRONTMATTER = /^---\n([\s\S]*?)\n---\n/
-const TITLE = /^title:\s*"([^"]+)"/m
-const STATUS = /^\*\*Status:\*\*\s*(.+?)\s*$/m
-const SHORT_TITLE = /^\*\*Short title:\*\*\s*(.+?)\s*$/m
 
 /**
- * Scan docs/rfcs for rfc-NNN.md files and parse number (from filename),
- * title (from frontmatter), status and optional short title (both from the
- * body preamble). Throws if a file lacks a parseable frontmatter title, so a
+ * Read a scalar `key:` value from a frontmatter block. Handles the two shapes
+ * our RFC frontmatter uses: a bare scalar (`status: Accepted`) and a quoted
+ * scalar (`title: "RFC-001: …"`, `date: '2026-01-01'`). Block sequences and
+ * nested maps are out of scope — this is the controlled frontmatter that the
+ * content collection validates, not arbitrary YAML.
+ */
+function frontmatterField(block: string, key: string): string | undefined {
+  const m = block.match(new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, 'm'))
+  if (!m) return undefined
+  const raw = m[1].trim()
+  // Strip a single layer of matching quotes.
+  if (
+    (raw.startsWith('"') && raw.endsWith('"')) ||
+    (raw.startsWith("'") && raw.endsWith("'"))
+  ) {
+    return raw.slice(1, -1)
+  }
+  return raw
+}
+
+/**
+ * Scan docs/rfcs for rfc-NNN.md files and parse number (from filename) and the
+ * metadata fields (title, status, optional implementation and short title)
+ * from frontmatter. Throws if a file lacks a parseable frontmatter title, so a
  * broken RFC fails the build loudly instead of silently disappearing.
  */
 export function getRfcs(): RfcEntry[] {
@@ -75,18 +99,19 @@ export function getRfcs(): RfcEntry[] {
         `docs/rfcs/${filename}: no frontmatter — expected at least a "title" field`,
       )
     }
-    const titleMatch = fm[1].match(TITLE)
-    if (!titleMatch) {
+    const block = fm[1]
+    const rawTitle = frontmatterField(block, 'title')
+    if (!rawTitle) {
       throw new Error(
-        `docs/rfcs/${filename}: no parseable 'title: "…"' in frontmatter`,
+        `docs/rfcs/${filename}: no parseable 'title:' in frontmatter`,
       )
     }
-    // Strip a leading "RFC-NNN: " prefix if the migration left one in
-    // place — the sidebar already prepends the id, so the descriptive
-    // half is what we want stored as `title`.
-    const title = titleMatch[1].replace(/^RFC-\d+:\s*/, '')
-    const status = content.match(STATUS)?.[1] ?? 'Unknown'
-    const shortTitle = content.match(SHORT_TITLE)?.[1] ?? title
+    // Strip a leading "RFC-NNN: " prefix — the sidebar already prepends the
+    // id, so the descriptive half is what we want stored as `title`.
+    const title = rawTitle.replace(/^RFC-\d+:\s*/, '')
+    const status = frontmatterField(block, 'status') ?? 'Unknown'
+    const implementation = frontmatterField(block, 'implementation')
+    const shortTitle = frontmatterField(block, 'short_title') ?? title
 
     // The link is derived from a filename we just read, so it provably
     // resolves to a real page: a non-existent target cannot be produced here.
@@ -96,6 +121,7 @@ export function getRfcs(): RfcEntry[] {
       title,
       shortTitle,
       status,
+      ...(implementation ? { implementation } : {}),
       link: `/rfcs/${filename.replace(/\.md$/, '')}`,
     })
   }

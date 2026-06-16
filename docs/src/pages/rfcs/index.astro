@@ -58,9 +58,16 @@ const statusColor = (s: string) => {
               <nldd-text-cell overline={r.id} text={r.title} width="full" />
               <nldd-spacer-cell />
               <nldd-cell>
-                <nldd-tag color={statusColor(r.status)} size="md">
-                  {r.status}
-                </nldd-tag>
+                <span class="rr-rfc-tags">
+                  <nldd-tag color={statusColor(r.status)} size="md">
+                    {r.status}
+                  </nldd-tag>
+                  {r.implementation && (
+                    <nldd-tag color="neutral" size="md">
+                      {r.implementation}
+                    </nldd-tag>
+                  )}
+                </span>
               </nldd-cell>
               <nldd-spacer-cell />
               <nldd-icon-cell icon="chevron-right" />
