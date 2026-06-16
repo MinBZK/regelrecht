@@ -56,6 +56,9 @@ const inviteRole = ref('contributor');
 const inviteBusy = ref(false);
 const inviteError = ref(null);
 const inviteResult = ref(null);
+// Master-detail: the invite form lives one level deeper, reached via the
+// "Lid uitnodigen" row. false = members list, true = invite form.
+const inviteMode = ref(false);
 
 // Row-level busy + error indicators keyed by member account_id / invite email.
 const rowBusy = ref(new Set());
@@ -80,6 +83,7 @@ watch(
   async (v) => {
     await nextTick();
     if (v) {
+      inviteMode.value = false;
       inviteEmail.value = '';
       inviteRole.value = 'contributor';
       inviteError.value = null;
@@ -98,6 +102,18 @@ watch(
 
 function close() {
   emit('update:modelValue', false);
+}
+
+// Drill into the invite form (one level deeper); start it fresh.
+function openInvite() {
+  inviteEmail.value = '';
+  inviteRole.value = 'contributor';
+  inviteError.value = null;
+  inviteResult.value = null;
+  inviteMode.value = true;
+}
+function backToList() {
+  inviteMode.value = false;
 }
 
 async function submitInvite() {
@@ -189,8 +205,10 @@ async function clickLeave() {
       <nldd-page sticky-header sticky-footer>
         <nldd-top-title-bar
           slot="header"
-          :text="trajectName ? `Leden · ${trajectName}` : 'Leden'"
+          :text="inviteMode ? 'Lid uitnodigen' : (trajectName ? `Leden · ${trajectName}` : 'Leden')"
+          :back-text="inviteMode ? 'Leden' : undefined"
           dismiss-text="Sluit"
+          @back="backToList"
           @dismiss="close"
         ></nldd-top-title-bar>
 
@@ -203,7 +221,7 @@ async function clickLeave() {
         </nldd-simple-section>
 
         <template v-else>
-          <nldd-simple-section>
+          <nldd-simple-section v-if="!inviteMode">
             <nldd-list variant="box">
               <template v-for="m in members" :key="m.account_id">
                 <nldd-list-item size="md">
@@ -250,6 +268,11 @@ async function clickLeave() {
                   {{ rowError.get(m.account_id) }}
                 </div>
               </template>
+              <nldd-list-item v-if="isOwner" size="md" button @click="openInvite">
+                <nldd-text-cell text="Lid uitnodigen"></nldd-text-cell>
+                <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+              </nldd-list-item>
             </nldd-list>
 
             <template v-if="pendingInvites.length > 0">
@@ -285,61 +308,6 @@ async function clickLeave() {
               </nldd-list>
             </template>
 
-            <template v-if="isOwner">
-              <nldd-spacer size="24"></nldd-spacer>
-              <nldd-title size="4"><h2>Lid uitnodigen</h2></nldd-title>
-              <nldd-spacer size="8"></nldd-spacer>
-              <!-- nldd-form renders a real light-DOM <form>; provide our own so
-                   it skips the MutationObserver child-migration (which would
-                   fight Vue's DOM). The inner form owns the submit. -->
-              <nldd-form>
-                <form novalidate @submit.prevent="submitInvite">
-                  <nldd-form-field label="E-mail">
-                    <nldd-text-field
-                      size="md"
-                      type="email"
-                      name="email"
-                      :value="inviteEmail"
-                      :invalid="inviteError ? true : undefined"
-                      :error-message="inviteError ? 'invite-email-error' : undefined"
-                      @input="inviteEmail = $event.target?.value ?? $event.detail?.value ?? inviteEmail"
-                    ></nldd-text-field>
-                    <nldd-form-field-help-text>
-                      Toegang wordt actief bij de eerste login als er nog geen account bestaat.
-                    </nldd-form-field-help-text>
-                    <nldd-form-field-error-text id="invite-email-error">
-                      {{ inviteError }}
-                    </nldd-form-field-error-text>
-                  </nldd-form-field>
-
-                  <nldd-form-field label="Rol">
-                    <nldd-toggle-button-group
-                      type="radio"
-                      size="md"
-                      accessible-label="Rol"
-                      @change="onRoleChange"
-                    >
-                      <nldd-toggle-button value="contributor" text="Bijdrager" :selected="inviteRole === 'contributor' || undefined"></nldd-toggle-button>
-                      <nldd-toggle-button value="owner" text="Eigenaar" :selected="inviteRole === 'owner' || undefined"></nldd-toggle-button>
-                    </nldd-toggle-button-group>
-                  </nldd-form-field>
-
-                  <div v-if="inviteResult" class="members-info">{{ inviteResult }}</div>
-
-                  <nldd-form-actions>
-                    <nldd-button
-                      variant="primary"
-                      size="md"
-                      type="submit"
-                      width="full"
-                      :text="inviteBusy ? 'Bezig…' : 'Nodig lid uit'"
-                      :disabled="inviteBusy || undefined"
-                    ></nldd-button>
-                  </nldd-form-actions>
-                </form>
-              </nldd-form>
-            </template>
-
             <template v-if="!isOwner && callerRole">
               <nldd-spacer size="24"></nldd-spacer>
               <nldd-title size="4"><h2>Dit traject verlaten</h2></nldd-title>
@@ -357,6 +325,60 @@ async function clickLeave() {
                 @click="clickLeave"
               ></nldd-button>
             </template>
+          </nldd-simple-section>
+
+          <!-- Detail: invite form, one level deeper (reached via the
+               "Lid uitnodigen" row). The header bar carries the title + back. -->
+          <nldd-simple-section v-else>
+            <!-- nldd-form renders a real light-DOM <form>; provide our own so
+                 it skips the MutationObserver child-migration (which would
+                 fight Vue's DOM). The inner form owns the submit. -->
+            <nldd-form>
+              <form novalidate @submit.prevent="submitInvite">
+                <nldd-form-field label="E-mail">
+                  <nldd-text-field
+                    size="md"
+                    type="email"
+                    name="email"
+                    :value="inviteEmail"
+                    :invalid="inviteError ? true : undefined"
+                    :error-message="inviteError ? 'invite-email-error' : undefined"
+                    @input="inviteEmail = $event.target?.value ?? $event.detail?.value ?? inviteEmail"
+                  ></nldd-text-field>
+                  <nldd-form-field-help-text>
+                    Toegang wordt actief bij de eerste login als er nog geen account bestaat.
+                  </nldd-form-field-help-text>
+                  <nldd-form-field-error-text id="invite-email-error">
+                    {{ inviteError }}
+                  </nldd-form-field-error-text>
+                </nldd-form-field>
+
+                <nldd-form-field label="Rol">
+                  <nldd-toggle-button-group
+                    type="radio"
+                    size="md"
+                    accessible-label="Rol"
+                    @change="onRoleChange"
+                  >
+                    <nldd-toggle-button value="contributor" text="Bijdrager" :selected="inviteRole === 'contributor' || undefined"></nldd-toggle-button>
+                    <nldd-toggle-button value="owner" text="Eigenaar" :selected="inviteRole === 'owner' || undefined"></nldd-toggle-button>
+                  </nldd-toggle-button-group>
+                </nldd-form-field>
+
+                <div v-if="inviteResult" class="members-info">{{ inviteResult }}</div>
+
+                <nldd-form-actions>
+                  <nldd-button
+                    variant="primary"
+                    size="md"
+                    type="submit"
+                    width="full"
+                    :text="inviteBusy ? 'Bezig…' : 'Nodig lid uit'"
+                    :disabled="inviteBusy || undefined"
+                  ></nldd-button>
+                </nldd-form-actions>
+              </form>
+            </nldd-form>
           </nldd-simple-section>
         </template>
       </nldd-page>
