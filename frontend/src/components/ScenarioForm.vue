@@ -342,7 +342,7 @@ const dateErrorId = useId();
           v-for="(ds, i) in dataSources"
           :key="ds.sourceName"
           size="md"
-          type="button"
+          button
           :data-testid="`ds-row-${i}`"
           @click="selectedSource = i"
         >

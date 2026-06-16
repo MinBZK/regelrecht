@@ -307,7 +307,7 @@ defineExpose({ show });
                 v-for="law in group.laws"
                 :key="law.law_id"
                 size="md"
-                type="button"
+                button
                 @click="selectLaw(law.law_id)"
               >
                 <nldd-text-cell :text="displayName(law)"></nldd-text-cell>
@@ -331,7 +331,7 @@ defineExpose({ show });
               v-for="result in bwbResults"
               :key="result.bwb_id"
               size="md"
-              type="button"
+              button
               :disabled="harvestStatus[result.bwb_id] === 'loading'
                 || isPolling(harvestStatus[result.bwb_id])
                 || undefined"

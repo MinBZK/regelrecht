@@ -73,7 +73,7 @@ function formatCellValue(value, key) {
           v-for="row in data"
           :key="row.id || row.law_id"
           size="md"
-          :type="clickableRows ? 'button' : undefined"
+          :button="clickableRows"
           @click="clickableRows && emit('row-click', row)"
         >
           <template v-for="(col, idx) in columns" :key="col.key">

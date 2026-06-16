@@ -222,7 +222,7 @@ const { lastSavedPr, documentTabs, activeDocumentTab, tabActions } = useAppChrom
         <nldd-container padding="8">
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
-              <nldd-tab-bar variant="compact" navigation>
+              <nldd-tab-bar size="lg" navigation>
                 <nldd-tab-bar-item :selected="isLibraryRoute || undefined" :href="isLibraryRoute ? undefined : libraryTabHref" @click.prevent="isLibraryRoute || router.push(libraryTabTarget)" icon="books" text="Bibliotheek"></nldd-tab-bar-item>
                 <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="isLibraryRoute ? editorTabHref : undefined" @click.prevent="isLibraryRoute && router.push(editorTabTarget)" icon="edit" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>

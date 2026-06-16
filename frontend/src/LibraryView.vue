@@ -594,7 +594,7 @@ watch(activeTrajectRef, () => {
                         v-for="law in section.laws"
                         :key="`${section.key}-${law.law_id}`"
                         size="md"
-                        type="button"
+                        button
                         :data-law-id="law.law_id"
                         :selected="law.law_id === selectedLawId || undefined"
                         @click="selectLaw(law.law_id)"
@@ -646,7 +646,7 @@ watch(activeTrajectRef, () => {
                     v-for="article in articles"
                     :key="article.number"
                     size="md"
-                    type="button"
+                    button
                     :selected="String(article.number) === String(selectedArticleNumber) || undefined"
                     @click="selectArticle(article.number)"
                   >

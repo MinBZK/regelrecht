@@ -366,7 +366,7 @@ const currentStep = computed(() =>
   flex: 0 0 40vh;
   min-height: 220px;
   border-top: 2px solid var(--primitives-color-donkergeel-500);
-  background: var(--semantics-surfaces-background-color);
+  background: var(--semantics-surfaces-base-background-color);
   color: var(--semantics-content-color);
   font-size: 13px;
 }
@@ -384,7 +384,7 @@ const currentStep = computed(() =>
 .law-graph-trace__btn,
 .law-graph-trace__toggle {
   border: 1px solid var(--primitives-color-coolgray-400);
-  background: var(--semantics-surfaces-background-color);
+  background: var(--semantics-surfaces-base-background-color);
   color: var(--semantics-content-color);
   border-radius: 4px;
   padding: 2px 8px;

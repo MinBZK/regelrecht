@@ -82,7 +82,7 @@ function statusBarTitle(group) {
         v-for="group in data"
         :key="group.law_id"
         size="md"
-        type="button"
+        button
         @click="emit('view-jobs', group.law_id)"
       >
         <template v-for="(col, idx) in columns" :key="col.key">
