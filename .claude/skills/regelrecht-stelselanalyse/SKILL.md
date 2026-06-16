@@ -129,7 +129,7 @@ toetsbaar tegen de wettekst i.p.v. alleen de endpoint.
    `input:` — en bewijs met een BDD-scenario dat de bron-wet laadt en de leaf-inputs zet.
 
    Draai de scan reproduceerbaar met
-   `python3 .claude/skills/regelrecht-stelselanalyse/references/cross-law-integriteit.py <corpus-root>`
+   `python3 script/cross-law-integriteit.py <corpus-root>`
    (exit-code 0 = source-clean, 1 = bevindingen).
 
 4. **Classificeer** elke bevinding 4-weg (zie boven). Voer de meta-check uit.
@@ -164,7 +164,7 @@ toetsbaar tegen de wettekst i.p.v. alleen de endpoint.
   eindrapport, micro-cycli.
 - `check-keten.md` — overzicht van alle checks op wets-zuiverheid & cross-law, met per
   check het *orakel* (waartegen) en of het een CI-gate of methodologisch is.
-- `cross-law-integriteit.py` — herbruikbaar script voor de source-refs-integriteitsscan:
+- `script/cross-law-integriteit.py` (repo-script, buiten de skill) — herbruikbaar script voor de source-refs-integriteitsscan:
   bouwt `regulation → outputs`, detecteert MISPLACED/DANGLING/PLAIN-PARAM source-bindingen
   én IMPL-DANGLING (`implements` naar een niet-gedeclareerde open_term) / IMPL-NO-DATE
   (implementing-regeling zonder `valid_from`), en print de telling (exit 1 bij bevindingen).

@@ -41,7 +41,6 @@ jobs:
               - corpus/regulation/**
               - schema/**
               - script/**
-              - .claude/skills/regelrecht-stelselanalyse/references/cross-law-integriteit.py
               - Justfile
               - .pre-commit-config.yaml
               - .yamllint
@@ -253,7 +252,7 @@ jobs:
       # are all modelling errors. The script exits non-zero on any finding.
       - name: Check cross-law binding integrity
         run: |
-          python3 .claude/skills/regelrecht-stelselanalyse/references/cross-law-integriteit.py corpus/regulation
+          python3 script/cross-law-integriteit.py corpus/regulation
 
   pre-commit:
     name: Pre-commit

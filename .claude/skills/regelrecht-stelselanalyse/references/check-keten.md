@@ -48,7 +48,7 @@ Twee mechanismen:
   temporele (`valid_from`) en scope-filtering (`gemeente_code`) en *lex superior > lex
   posterior*.
 
-De statische gate is `cross-law-integriteit.py` (zie de skill-bestandenlijst). Sinds de
+De statische gate is `script/cross-law-integriteit.py`. Sinds de
 uitbreiding dekt hij ook de IoC-kant: `implements` moet naar een echt gedeclareerd
 `open_term` wijzen (IMPL-DANGLING) en implementing-regelingen moeten `valid_from` dragen
 (IMPL-NO-DATE; anders matcht de RFC-003-temporele filter elke datum). Draait nu als
