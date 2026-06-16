@@ -1,6 +1,6 @@
 # Voorstel: RegelRecht onder een Blauwe-Knop-source bij CJIB
 
-*Auteur: Anne Schuth · Datum: 2026-05-27 · Status: voorstel ter bespreking*
+*Auteur: Anne Schuth · Datum: 2026-05-27 · Status: concept*
 
 ## Aanleiding
 
