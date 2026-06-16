@@ -352,7 +352,7 @@ Een cel beslist zelf of ze als Blauwe-Knop-source draait; activatie is een featu
 # cel-config (schets; volledig cel-config formaat in latere RFC)
 blauwe_knop_source:
   enabled: true
-  endpoint: https://cjib.gov.nl/blauwe-knop/fcid    # cel-eigen, geen centrale endpoint
+  endpoint: https://cjib.example/blauwe-knop/fcid   # cel-eigen, geen centrale endpoint
   fcid_version: 3.0.0
   signing_key_ref: cjib-blauwe-knop-2026            # mag dezelfde zijn als bestaande source
   serves_lexostatus: blauwe_knop_fcid_response      # verwijst naar capabilities.yaml
@@ -375,6 +375,8 @@ FCID definieert (voor zover uit de spec af te leiden) de volgende event-typen. O
 `BetalingsverplichtingIngetrokken` is bewust het enige event-type met twee bronnen: een intrekking kan in de cel wonen als een eigen decretogram (de cel nam zelf het intrekking-besluit) óf als een executogram dat een elders genomen intrekking-besluit registreert (de cel voert alleen de afhandeling uit, bv. een `kwijtschelding_verleend` namens een opdrachtgever). Beide serialiseren naar hetzelfde FCID-event omdat de burger in beide gevallen één feit ziet: zijn verplichting is ingetrokken. Welke bron geldt, leest de cel af aan welk veld gezet is (`modality.is_intrekking_van` voor het decretogram-pad, `references_decision` voor het executogram-pad); de `event_type`-afleiding verschilt navenant per pad (zie de twee veld-afleidingstabellen verderop).
 
 Een intrekking is een nested besluit in de zin van RFC-008 OQ5 (zie RFC-022 §3.1). In het decretogram-pad herkent de cel haar via `produces.modality.is_intrekking_van: <oorspronkelijke-id>` en serialiseert haar als `BetalingsverplichtingIngetrokken`. Intrekking en origineel delen een `zaakkenmerk` zodat de burger-client ze als één tijdlijn presenteert.
+
+De tabel dekt de intrekking van een `STRAFBESCHIKKING` (bijvoorbeeld nietigverklaring na geslaagd *verzet*, Sv 257e) bewust **niet**: dat hoort bij het strafprocesrechtelijke model dat samen met de `verzet_route`-afleiding is uitgesteld (zie RFC-022 §1.2). Of FCID daarvoor een `FinancieleVerplichtingIngetrokken`-event kent (spiegelbeeld van `FinancieleVerplichtingOpgelegd`) is onderdeel van vraag 3 aan CJIB; bestaat dat event, dan is de mapping triviaal, zo niet dan is er nog geen FCID-pad voor dit geval. Tot dat model er is, surfacet de pilot geen STRAFBESCHIKKING-intrekking.
 
 ### Producer-zijde: hoe een lexogram-regel zichtbaar wordt in de FCID-response
 
