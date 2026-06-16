@@ -1,5 +1,5 @@
 ---
-title: "Voorstel: RegelRecht onder een Blauwe-Knop-source bij CJIB"
+title: "Voorstel: RegelRecht als engine achter de Blauwe-Knop-source van CJIB"
 lang: nl
 ---
 
@@ -15,7 +15,7 @@ RegelRecht heeft sinds 2024 een raamwerk opgebouwd waarmee een wetsartikel een u
 
 In december 2025 publiceerde de Denktank Achterkant van de Overheid het ontwerp [Nieuwland](https://achterkantvandeoverheid.nl/) en het [Chronolexografie-position paper](https://chronolexografie.nl/). Daarin staat een coherent begrippenkader voor het digitaal vastleggen van de rechtstoestand: chronolexocellen, kronieken, en drie typen vastlegging (lexogram, decretogram, executogram). Het begrippenkader sluit aan op het werk aan VORIJK/MBO en op recente gesprekken met BZK.
 
-Het idee van dit voorstel: **RegelRecht onder een Blauwe-Knop-source schuiven, te beginnen bij CJIB voor de Wahv**. Niet als vervanger van wat CJIB nu draait, maar er naast. De cel wordt zo een Blauwe-Knop-source die op een burger-pull een FCID-response teruggeeft met dezelfde bedragen, termijnen en bezwaarroute als CJIB's eigen systeem, plus de juridische onderbouwing per vordering. Het hele MBO-patroon (data-bij-de-bron, on-device aggregatie, geen centrale stapel) blijft volledig intact. We dragen ertoe bij, we breken er niets aan.
+Het idee van dit voorstel: **een RegelRecht-engine achter de Blauwe-Knop-source van CJIB zetten, te beginnen bij de Wahv**. CJIB blijft de cel die de source aanbiedt; RegelRecht is de engine die de inhoud van de FCID-response uitrekent. Niet als vervanger van wat CJIB nu draait, maar er naast. De source geeft op een burger-pull een FCID-response terug met dezelfde bedragen, termijnen en bezwaarroute als CJIB's eigen systeem, plus de juridische onderbouwing per vordering, omdat de engine die uit de wet afleidt. Het hele MBO-patroon (data-bij-de-bron, on-device aggregatie, geen centrale stapel) blijft volledig intact. We dragen ertoe bij, we breken er niets aan.
 
 ## Wat staat er niet in dit voorstel
 
@@ -145,7 +145,7 @@ CJIB hoeft deze YAML niet zelf te schrijven; ons team doet de eerste versie. Wat
 Concrete tegenprestatie, geen open einde aan de CJIB-kant:
 
 - **Het lexogram en de chronicle-stream** worden door ons geschreven, op basis van CJIB's bestaande Wahv-uitvoering en de wetstekst. Eerste versie binnen twee weken na vaststelling van de pilotwet.
-- **Een pilot-sandbox** waarin de engine als tweede Blauwe-Knop-source draait, gevoed door dezelfde input als CJIB's huidige systeem zou krijgen. CJIB hoeft geen productie-IT te raken voor de pilot.
+- **Een pilot-sandbox** waarin de RegelRecht-engine een tweede Blauwe-Knop-source aandrijft, naast de bestaande, gevoed door dezelfde input als CJIB's huidige systeem zou krijgen. CJIB hoeft geen productie-IT te raken voor de pilot.
 - **Een koppelteam** van twee mensen: ik (Anne) als architect en één engineer voor de implementatie van de chronicle-stream, de cel-config en het Blauwe-Knop-source-endpoint. Aan CJIB-kant is één domeinexpert en eventueel één IT-contact genoeg om in een wekelijks ritme te valideren.
 - **Volledige documentatie** van de mapping per artikel, controleerbaar tegen het bestaande Wahv-systeem. Mismatches zijn data voor het volgende gesprek, niet een falen.
 - **Geen leveringsverplichting** als de pilot niet werkt. Na drie maanden Wahv-vergelijking is een no-go besluit een legitieme uitkomst, geen mislukking.
@@ -159,7 +159,7 @@ Zes dingen, geen open einde.
 3. **FCID-versie en status van jullie huidige Blauwe-Knop-source.** v3.0.0 is de stabiele versie volgens vorijk.nl; v4.x is experimenteel. Welke draait nu in jullie pilot of productie, op welke endpoints, en welke FCID-event-typen ondersteunt jullie source vandaag? Welke vorderingen zijn al ontsloten (alleen Wahv, of ook CAK/OM-vorderingen)?
 4. **Knelpunten in de mapping.** Voor `zaakkenmerk` geldt CJIB's eigen zaaknummer-systematiek als leidend. Voor signing van de FCID-response gaan we uit van de FSC-key uit RFC-009. Botst dit met de sleutels die jullie nu al voor de bestaande Blauwe-Knop-source gebruiken, of kunnen we dezelfde sleutel hergebruiken? Plus: hoe verloopt de bedrag-afronding op centen in jullie bestaande uitvoering (een beleidsregel-detail dat we in het lexogram moeten codificeren)?
 5. **Cel-topologie en bezwaar-routing.** Hoeveel cellen zou CJIB draaien (één centraal, één per opdrachtgever, één per regelinggebied), hoeveel chronicles per cel, en hoe verhoudt dat zich tot de bestaande Blauwe-Knop-source (één source voor alles, of meerdere)? En per type vordering: waar landt het bezwaar formeel, en waar landt het in de praktijk? Een CAK-eigen-bijdrage-vordering staat onder CJIB-zaaknummer maar het bezwaar gaat juridisch naar CAK; in de operationele realiteit belt de burger naar CJIB. De `bezwaar_route` in de FCID-response moet kloppen met beide werelden. Dit punt wil ik graag samen met het VORIJK/MBO-team uitwerken.
-6. **Deduplicatie bij twee parallel-lopende sources.** Tijdens de pilot draaien CJIB-bestaand en RegelRecht-CJIB beide als Blauwe-Knop-source voor de Wahv. De MBO-app krijgt voor dezelfde vordering twee FCID-records. Hoe wil het MBO/VORIJK-team dat de app dedupliceert (op `zaakkenmerk`, op `trace_id`-origin, op een ander criterium)? Het antwoord hierop bepaalt of we naast elkaar kunnen draaien zonder dat de burger dubbele vorderingen ziet.
+6. **Deduplicatie bij twee parallel-lopende sources.** Tijdens de pilot draait CJIB voor de Wahv twee Blauwe-Knop-sources naast elkaar: de bestaande en de RegelRecht-aangedreven. De MBO-app krijgt voor dezelfde vordering twee FCID-records. Hoe wil het MBO/VORIJK-team dat de app dedupliceert (op `zaakkenmerk`, op `trace_id`-origin, op een ander criterium)? Het antwoord hierop bepaalt of we naast elkaar kunnen draaien zonder dat de burger dubbele vorderingen ziet.
 
 ## Volgende stap
 
@@ -170,7 +170,7 @@ Doel: binnen één maand na de werksessie een werkende Blauwe-Knop-source in een
 ## Bijlagen
 
 - [Bijlage A: CJIB-uitvoeringslandschap](#bijlage-a-cjib-uitvoeringslandschap)
-- [Bijlage B: Blauwe-Knop-source met RegelRecht in detail](#bijlage-b-blauwe-knop-source-met-regelrecht-in-detail)
+- [Bijlage B: een door RegelRecht aangedreven Blauwe-Knop-source in detail](#bijlage-b-een-door-regelrecht-aangedreven-blauwe-knop-source-in-detail)
 - [RFC-022: Chronolexogram types in the schema and the cell model](/rfcs/rfc-022)
 - [RFC-009: Multi-Organisation Execution](/rfcs/rfc-009)
 - [Chronolexografie-position paper](https://chronolexografie.nl/position-paper/) van de Denktank Achterkant van de Overheid, december 2025
@@ -188,7 +188,7 @@ Deze bijlage inventariseert wat CJIB feitelijk doet: welke regelingen het zelf u
 
 CJIB is een *zelfstandig bestuursorgaan* (ZBO) onder het ministerie van Justitie en Veiligheid. Het is het centrale financiële-handhavingsknooppunt van de Nederlandse staat: bijna elke administratiefrechtelijke en strafrechtelijke financiële verplichting komt hier uiteindelijk terecht wanneer een burger niet vrijwillig betaalt. Per 2026 voert CJIB uit voor minstens vijftien opdrachtgevers, van OM tot een sectorale inspectie als NEa.
 
-CJIB is ook één van de eerste Blauwe-Knop-sources die in productie draait. Per april 2025 was CJIB samen met de Belastingdienst de meest gevorderde aansluiting; tegen eind 2025 zijn naar verwachting alle acht oorspronkelijke CRI-rijksorganisaties als Blauwe-Knop-source actief (Belastingdienst, Dienst Toeslagen, CJIB, DUO, SVB, CAK, UWV, RVO). De inmiddels uitgebreide kring (NVWA, RDI, RDW e-Tol, Inspectie JenV, NEa, DFEI, ATKM) staat in de pijplijn. CJIB heeft daarmee zowel de breedste portfolio als de meest concrete Blauwe-Knop-implementatie. Dat maakt CJIB de logische eerste pilot voor RegelRecht-onder-een-Blauwe-Knop-source.
+CJIB is ook één van de eerste Blauwe-Knop-sources die in productie draait. Per april 2025 was CJIB samen met de Belastingdienst de meest gevorderde aansluiting; tegen eind 2025 zijn naar verwachting alle acht oorspronkelijke CRI-rijksorganisaties als Blauwe-Knop-source actief (Belastingdienst, Dienst Toeslagen, CJIB, DUO, SVB, CAK, UWV, RVO). De inmiddels uitgebreide kring (NVWA, RDI, RDW e-Tol, Inspectie JenV, NEa, DFEI, ATKM) staat in de pijplijn. CJIB heeft daarmee zowel de breedste portfolio als de meest concrete Blauwe-Knop-implementatie. Dat maakt CJIB de logische eerste cel om een RegelRecht-engine achter de Blauwe-Knop-source te zetten.
 
 ### Mapping op de drie chronolexogram-typen
 
@@ -287,13 +287,13 @@ De volgende items konden niet uit publieke bronnen worden geverifieerd en hebben
 8. **Bezwaar-routing in de FCID-response.** Elke FCID-vordering in de response van de cel-als-Blauwe-Knop-source draagt een `bezwaar_route` die op het moment van pull uit de RFC-008-procedure-stage van het decretogram wordt afgeleid. Voor decretogrammen die CJIB zelf produceert (Wahv-sanctie) wijst de route naar CJIB's eigen bezwaar-intake. Voor decretogrammen die CJIB namens een andere cel draagt (een CAK-besluit, een OM-strafbeschikking) wijst de route formeel naar die andere cel, terwijl de burger in de praktijk vaak CJIB belt. De wettelijke routing per regeling moet per geval gevalideerd worden. Hoe bepaalt CJIB's bestaande Blauwe-Knop-source vandaag de bezwaarroute voor een CAK-vordering (hardcoded, of dynamisch)? Het antwoord bepaalt of de RegelRecht-cel dit uit een mandaat-convenant-modellering of uit een aparte beleidsregel-laag moet afleiden.
 9. **Wet gegevensboekhouding-interactie.** Nieuwland §7.3.2 schetst een Wet gegevensboekhouding die de executogram-zijdige registratie een wettelijke basis zou geven. De huidige grondslag van CJIB is impliciet in Awb 4.4 + sectorale wetten; een expliciete wet zou het beeld wijzigen. De chronicle-stream-architectuur is bewust ontworpen om met die toekomstige wet mee te kunnen bewegen: per cel verifieerbaar wat er feitelijk geregistreerd is, op grond van welke grondslag, op welk moment.
 10. **Burger-machtigingen.** Het Blauwe-Knop-patroon is burger-geïnitieerd via DigiD. Voor de schuldhulpverleningspraktijk en voor sommige sectorale uitvoeringscontexten is er behoefte aan een derde die met expliciete machtiging op een burger toegang krijgt. Of dat via DigiD Machtigen via dezelfde Blauwe-Knop-flow loopt of via FSC met een aparte machtigingscontext is uit publieke bronnen niet ondubbelzinnig af te leiden.
-11. **Deduplicatie bij parallel-lopende sources** (zie ook vraag 6 aan CJIB). Tijdens de pilot leveren CJIB-bestaand en RegelRecht-CJIB beide FCID-responses voor dezelfde Wahv-vorderingen. Welke sleutel hanteert de MBO-app voor deduplicatie? Mogelijke kandidaten: `zaakkenmerk` (mits beide sources hetzelfde zaaknummer hanteren), of `(zaakkenmerk, decision_type, bedrag)`-triplet plus `trace_id`-origin (RegelRecht-source levert `trace_id`, oude bron mogelijk niet). De keuze hoort thuis bij MBO-team.
+11. **Deduplicatie bij parallel-lopende sources** (zie ook vraag 6 aan CJIB). Tijdens de pilot leveren de bestaande en de RegelRecht-aangedreven source beide FCID-responses voor dezelfde Wahv-vorderingen. Welke sleutel hanteert de MBO-app voor deduplicatie? Mogelijke kandidaten: `zaakkenmerk` (mits beide sources hetzelfde zaaknummer hanteren), of `(zaakkenmerk, decision_type, bedrag)`-triplet plus `trace_id`-origin (de RegelRecht-aangedreven source levert `trace_id`, de oude bron mogelijk niet). De keuze hoort thuis bij MBO-team.
 
 ---
 
-## Bijlage B: Blauwe-Knop-source met RegelRecht in detail
+## Bijlage B: een door RegelRecht aangedreven Blauwe-Knop-source in detail
 
-Deze bijlage specificeert hoe een cel die een RegelRecht-engine draait een Blauwe-Knop-source wordt en hoe diezelfde cel-mechaniek gebruikt kan worden voor cross-cel queries in beide voorkomende contexten (burger-client en bevoegde-instantie). Inhoud is technisch; bedoeld voor de IT-lead die de pilot begeleidt.
+Deze bijlage specificeert hoe een cel met een RegelRecht-engine een Blauwe-Knop-source aandrijft en hoe diezelfde cel-mechaniek gebruikt kan worden voor cross-cel queries in beide voorkomende contexten (burger-client en bevoegde-instantie). Inhoud is technisch; bedoeld voor de IT-lead die de pilot begeleidt.
 
 ### Doelversie en transport
 
@@ -418,7 +418,7 @@ De `bezwaar_route`-velden zijn pas correct vanaf `BEKENDMAKING`: de AWB 6:8-hook
 | `bedrag` | currency-getypeerde output × 100 (FCID vereist centen als integer). Afrondingsregels (per record afronden, of totaal afronden) volgen de bestaande CJIB-uitvoering en worden in het lexogram gecodificeerd; mismatch hierop is meetbaar in de drie maanden vergelijking. |
 | `bezwaar_route` | afgeleid uit het RFC-008-procedure-state van het decretogram op pull-tijdstip; zie hieronder |
 | `signature` | de cel's FSC-signing key, hergebruikt als Blauwe-Knop-response-signing key (RFC-009 §5). Per response één signature (BK-spec), niet per record. Hergebruik tussen FSC en BK is een open vraag aan RFC-009 die separaat geamendeerd wordt; in de pilot accepteren we hergebruik onder voorbehoud van werksessie-bevestiging (vraag 4 aan CJIB). |
-| `trace_id` | W3C Trace Context `trace_id` uit de executie-trace van het decretogram. Identificeert deze record als afkomstig uit de RegelRecht-source, en maakt deduplicatie tegen de bestaande Blauwe-Knop-source mogelijk. |
+| `trace_id` | W3C Trace Context `trace_id` uit de executie-trace van het decretogram. Identificeert deze record als afkomstig uit de RegelRecht-aangedreven source, en maakt deduplicatie tegen de bestaande Blauwe-Knop-source mogelijk. |
 
 Het `trace_id` laat een downstream surface (burgerportaal, toezichtstool) terugnavigeren naar de executie-trace die de beschikking heeft geproduceerd. De trace blijft in de cel; alleen de referentie reist mee met het record.
 
