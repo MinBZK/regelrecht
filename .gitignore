@@ -15,6 +15,11 @@
 # Git worktrees
 .worktrees/
 
+# Browser automation artifacts (Playwright MCP / e2e smoke screenshots).
+# The MCP server writes snapshots/screenshots here; keep them out of git.
+.playwright-mcp/
+.screenshots/
+
 # Frontend
 node_modules/
 frontend/dist/
