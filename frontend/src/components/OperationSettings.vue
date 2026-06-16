@@ -132,7 +132,7 @@ const operationValues = computed(() => {
     ];
   }
 
-  // DATE_DIFF: three fixed structural slots (RFC-020). The unit (`in`) is an
+  // DATE_DIFF: three fixed structural slots (RFC-021). The unit (`in`) is an
   // enum value or a variable reference, never a nested operation.
   if (node.operation === 'DATE_DIFF') {
     return [
@@ -351,7 +351,7 @@ function changeOperationType(newType) {
     delete node.to;
     delete node.in;
   } else if (newType === 'DATE_DIFF') {
-    // DATE_DIFF has three fixed structural slots (RFC-020). Seed `in` with
+    // DATE_DIFF has three fixed structural slots (RFC-021). Seed `in` with
     // a valid unit so the node validates without further input.
     if (node.from === undefined) node.from = '';
     if (node.to === undefined) node.to = '';

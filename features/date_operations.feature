@@ -3,7 +3,7 @@ Feature: Date comparison and difference operations
   I want to compare dates and measure the span between them
   So that I can express deadlines and durations against a peildatum
 
-  # Exercises RFC-020:
+  # Exercises RFC-021:
   #   - route A: type-safe comparison operators on dates (LESS_THAN_OR_EQUAL)
   #     and date-aware EQUALS in the mixed form (date string vs $referencedate)
   #   - route B: DATE_DIFF with an explicit unit (days / months / years)

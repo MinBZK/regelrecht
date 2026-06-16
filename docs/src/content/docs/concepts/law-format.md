@@ -120,7 +120,7 @@ Operations are the building blocks of law logic:
 |----------|-----------|--------|
 | **Arithmetic** | `ADD`, `SUBTRACT`, `MULTIPLY`, `DIVIDE` | `values: [...]` |
 | **Aggregate** | `MIN`, `MAX` | `values: [...]` |
-| **Comparison** | `EQUALS`, `GREATER_THAN`, `LESS_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN_OR_EQUAL` | `subject:`, `value:` (operands may be numbers or ISO dates, see [RFC-020](/rfcs/rfc-020)) |
+| **Comparison** | `EQUALS`, `GREATER_THAN`, `LESS_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN_OR_EQUAL` | `subject:`, `value:` (operands may be numbers or ISO dates, see [RFC-021](/rfcs/rfc-021)) |
 | **Logical** | `AND`, `OR`, `NOT` | `AND`/`OR`: `conditions: [...]`; `NOT`: `value:` (wraps a single operation) |
 | **Collection** | `IN`, `LIST` | `IN`: `subject:` + `value:` or `values: [...]`; `LIST`: `items: [...]` |
 | **Conditional** | `IF` (alias `SWITCH`) | `cases: [{when:, then:}]`, `default:` |

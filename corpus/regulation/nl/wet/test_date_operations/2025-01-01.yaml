@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.3/schema/v0.5.3/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.4/schema/v0.5.4/schema.json
 $id: test_date_operations
 name: Testwet datumoperaties
 regulatory_layer: WET
@@ -37,21 +37,21 @@ articles:
           - name: doorlooptijd_jaren
             type: number
         actions:
-          # RFC-020 route A: type-safe comparison of two dates.
+          # RFC-021 route A: type-safe comparison of two dates.
           # $referencedate.iso is the peildatum (calculation date).
           - output: tijdig_ingediend
             value:
               operation: LESS_THAN_OR_EQUAL
               subject: $indieningsdatum
               value: $referencedate.iso
-          # RFC-020 route A: date-aware EQUALS in the mixed form — a date
+          # RFC-021 route A: date-aware EQUALS in the mixed form — a date
           # string against the $referencedate object (no .iso suffix).
           - output: op_peildatum_ingediend
             value:
               operation: EQUALS
               subject: $indieningsdatum
               value: $referencedate
-          # RFC-020 route B: DATE_DIFF with an explicit unit.
+          # RFC-021 route B: DATE_DIFF with an explicit unit.
           - output: doorlooptijd_dagen
             value:
               operation: DATE_DIFF
