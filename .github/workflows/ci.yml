@@ -295,6 +295,23 @@ jobs:
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-registry-
 
+      # Leak-guard laag 2: voorzie het git-ignored aanvulbestand met de casus-/
+      # sector-specifieke patronen uit een secret, zodat de skills-no-casus hook in
+      # CI op volle sterkte draait zonder die patronen in de publieke repo te zetten.
+      # De waarde wordt nooit gelogd. Ontbreekt het secret (bv. PR's vanuit forks,
+      # die geen toegang tot secrets hebben), dan draait alleen laag 1 — expliciet
+      # gelogd, zodat een groene run nooit "volledig gescand" suggereert.
+      - name: Provision leak-guard supplement (laag 2)
+        env:
+          SKILLS_CASUS_DENYLIST: ${{ secrets.SKILLS_CASUS_DENYLIST }}
+        run: |
+          if [ -n "${SKILLS_CASUS_DENYLIST:-}" ]; then
+            printf '%s\n' "$SKILLS_CASUS_DENYLIST" > script/.skills-casus-denylist.local
+            echo "Leak-guard laag 2 voorzien vanuit secret (volle sterkte)."
+          else
+            echo "WAARSCHUWING: geen SKILLS_CASUS_DENYLIST secret — alleen laag 1 (domein-loze vorm) draait. Casus-/sector-patronen worden in deze run NIET gescand."
+          fi
+
       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd  # v3.0.1
 
   test:
