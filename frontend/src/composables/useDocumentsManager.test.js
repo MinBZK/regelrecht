@@ -90,6 +90,20 @@ describe('useDocumentsManager', () => {
     expect(h.api.deleteDocument).toHaveBeenCalledWith('oud.md');
   });
 
+  it('handleSave keeps the rename but flags the orphan when the old delete fails', async () => {
+    h.api.deleteDocument.mockResolvedValueOnce({ ok: false });
+    h.api.currentPath.value = 'oud.md';
+    await nextTick();
+    m.titleDraft.value = 'nieuw';
+    const ok = await m.handleSave();
+    // The rename itself succeeded — content is saved under the new name.
+    expect(ok).toBe(true);
+    expect(h.api.currentPath.value).toBe('nieuw.md');
+    expect(h.api.deleteDocument).toHaveBeenCalledWith('oud.md');
+    // ...but the old file could not be removed, so the orphan is surfaced.
+    expect(m.titleError.value).toMatch(/oude bestand kon niet worden verwijderd/i);
+  });
+
   it('handleSave refuses a rename onto an existing document', async () => {
     h.api.documents.value = [{ path: 'bezet.md' }];
     h.api.currentPath.value = 'oud.md';

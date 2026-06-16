@@ -152,7 +152,15 @@ export function useDocumentsManager(trajectRef) {
       currentEtag.value = oldEtag;
       return false;
     }
-    await deleteDocument(oldPath);
+    const deleted = await deleteDocument(oldPath);
+    if (!deleted?.ok) {
+      // The new name is saved, so content is never lost, but the old path
+      // could not be removed and lingers on the server as an orphan copy.
+      // Surface it so the user can delete it by hand instead of silently
+      // leaving a duplicate behind.
+      titleError.value =
+        'Hernoemd en opgeslagen, maar het oude bestand kon niet worden verwijderd. Verwijder het handmatig.';
+    }
     return true;
   }
 
