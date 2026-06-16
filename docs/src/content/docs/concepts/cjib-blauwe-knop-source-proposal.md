@@ -369,7 +369,7 @@ Een gemeente die het Wahv-lexogram draait maar geen Blauwe-Knop-source wil zijn,
 
 ### FCID-event-typen en chronolexogram-mapping
 
-FCID definieert vier event-typen. Elk is de serialisatie van precies één chronolexogram-type.
+FCID definieert vier event-typen. Elk is de serialisatie van precies één chronolexogram-type. De event-type-namen en hun precieze velden hieronder zijn ontleend aan de [FCID-spec op vorijk.nl](https://vorijk.nl/docs/financiele-verplichtingen/document_types/financial_claims_information_document/) en moeten tegen de definitieve spec-versie worden geverifieerd (vraag 3 aan CJIB); een afwijkende naam of veldnaam in de FCID-versie die CJIB draait, werkt door in deze hele mapping.
 
 | FCID `event_type` | Chronolexogram-type | Brongegeven in de cel |
 |---|---|---|
@@ -411,7 +411,7 @@ De `bezwaar_route`-velden zijn pas correct vanaf `BEKENDMAKING`: de AWB 6:8-hook
 |---|---|
 | `event_type` | uit `decision_type` plus `modality.is_intrekking_van` per de tabel hierboven |
 | `category` | uit `extensions.blauwe_knop.category` |
-| `juridische_grondslag_omschrijving` | bondige verwijzing naar het artikel, bijvoorbeeld `"Wahv art. 2 + bijbehorende beleidsregel"`. Niet de eerste zin van `article.text`: dat parafraseert de inhoud en past zelden in FCID's tekstveld-limiet (v3.0.0 typisch 255 tekens). De cel-config bepaalt de exacte vorm per regel, default is `<lexogram-naam> art. <nr>`. |
+| `juridische_grondslag_omschrijving` | bondige verwijzing naar het artikel, bijvoorbeeld `"Wahv art. 2 + bijbehorende beleidsregel"`. Niet de eerste zin van `article.text`: dat parafraseert de inhoud en past zelden in FCID's tekstveld-limiet (de exacte limiet is spec-afhankelijk en te verifiëren tegen de FCID-versie die CJIB draait). De cel-config bepaalt de exacte vorm per regel, default is `<lexogram-naam> art. <nr>`. |
 | `juridische_grondslag_bron` | `article.url` (canonieke wetten.overheid.nl-link) |
 | `zaakkenmerk` | de cel's bestaande zaaknummer-systematiek; anders deterministische hash van `(cell.id, beschikking_id)`. Voor één verplichting met meerdere FCID-records (hoofdsom + admin + verhoging): hetzelfde `zaakkenmerk`, onderscheiden door `category`. |
 | `gebeurtenis_kenmerk` | UUID v7, gegenereerd op pull-tijdstip |
