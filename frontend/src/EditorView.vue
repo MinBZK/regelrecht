@@ -45,6 +45,7 @@ const { isEnabled } = useFeatureFlags();
 // pickable in the menu.
 const VIEW_DEFINITIONS = [
   { id: 'text', flag: 'panel.article_text', label: 'Tekst' },
+  { id: 'text-notes', flag: 'panel.notes', label: 'Tekst + notities' },
   { id: 'machine', flag: 'panel.machine_readable', label: 'Machine' },
   { id: 'scenario', flag: 'panel.scenario_form', label: "Scenario's" },
   { id: 'yaml', flag: 'panel.yaml_editor', label: 'YAML' },
@@ -141,10 +142,11 @@ const { activeTrajectRef, activeTraject } = useTrajects();
 const canEdit = computed(
   () => (!oidcConfigured.value || authenticated.value) && activeTrajectRef.value !== null,
 );
-// Tekst-pane is only editable when the user has write access AND the
-// `editor.article_text_edit` flag is on. Visibility of the pane is
-// controlled separately by `panel.article_text`.
-const canEditArticleText = computed(() => canEdit.value && isEnabled('editor.article_text_edit'));
+// The Tekst editor pane is editable whenever the user has write access. The
+// old `editor.article_text_edit` flag that gated this separately is merged into
+// the pane itself — the pane IS the editable text view, so this now just tracks
+// canEdit (kept as a named alias for the text-edit affordances below).
+const canEditArticleText = computed(() => canEdit.value);
 
 const route = useRoute();
 const router = useRouter();
@@ -203,20 +205,10 @@ const {
   reload: reloadNotes,
 } = useNotes(lawId, selectedArticle, activeTrajectRef);
 
-// Notes are a layer over the Tekst pane, not a separate pane. This toggle is
-// the user's "show notes now" preference; panel.notes (a feature flag) is the
-// capability gate that makes the toggle available at all. Persisted so it
-// survives navigation within a session.
-const NOTES_TOGGLE_KEY = 'regelrecht-show-notes';
-const showNotes = ref(localStorage.getItem(NOTES_TOGGLE_KEY) === '1');
-watch(showNotes, (v) => {
-  try { localStorage.setItem(NOTES_TOGGLE_KEY, v ? '1' : '0'); } catch { /* ignore */ }
-});
-// Notes overlay only makes sense in read mode: the resolver matches raw text,
-// so it cannot align with the markdown render or the editable textarea.
-const notesActive = computed(
-  () => isEnabled('panel.notes') && showNotes.value && !canEditArticleText.value,
-);
+// Notes live in their own "Tekst viewer + notities" pane (panel.notes), shown
+// read-only against the raw article text — the resolver matches raw text, so it
+// can't align with the editable WYSIWYG editor. No show/hide toggle: opening
+// the pane is the toggle.
 
 // Note authoring (RFC-018 write path). Draft notes live in localStorage per
 // law until exported; they resolve and highlight live alongside committed
@@ -245,9 +237,9 @@ const { draftNotesForArticle } = useResolvedDraftNotes(
   selectedArticle,
   activeTrajectRef,
 );
-const canCreateNotes = computed(
-  () => isEnabled('notes.create') && notesActive.value,
-);
+// Authoring is part of the notes pane (the old separate `notes.create` flag is
+// folded in): wherever the pane is available, you can create notes in it.
+const canCreateNotes = computed(() => isEnabled('panel.notes'));
 // Committed + draft notes share the highlight path. Draft entries already
 // carry __draft so the popover can mark them unsaved.
 const notesForArticle = computed(() => [
@@ -1516,31 +1508,6 @@ async function handleActionSave() {
                       ></nldd-menu-item>
                     </nldd-menu-group>
                   </nldd-toolbar-item>
-                  <!-- Notitie-toggle: alleen op de Tekst-pane in leesmodus
-                       (de overlay heeft ruwe tekst nodig, niet de editable
-                       textarea). Geen start-icon: de design-system heeft geen
-                       note/comment-glyph (`comment` is een lege SVG). -->
-                  <nldd-toolbar-item
-                    v-if="view === 'text' && isEnabled('panel.notes') && !canEditArticleText"
-                    slot="start"
-                    label="Notities"
-                    :priority="2"
-                  >
-                    <nldd-button
-                      size="md"
-                      :variant="showNotes ? 'primary' : 'default'"
-                      text="Notities"
-                      data-testid="notes-toggle"
-                      @click="showNotes = !showNotes"
-                    ></nldd-button>
-                    <nldd-menu-item
-                      slot="overflow"
-                      type="checkbox"
-                      text="Notities"
-                      :selected="showNotes || undefined"
-                      @select="showNotes = !showNotes"
-                    ></nldd-menu-item>
-                  </nldd-toolbar-item>
                   <!-- Vet/Schuin — checkbox segmented control (beide kunnen
                        tegelijk actief zijn). Bron van waarheid: de Tiptap-
                        editor; de control reflecteert de selectie. -->
@@ -1641,12 +1608,10 @@ async function handleActionSave() {
                 </nldd-toolbar>
               </nldd-container>
 
-              <!-- Tekst — WYSIWYG editor when the editor.article_text_edit
-                   feature flag is on, otherwise the read-only ArticleText
-                   display (matches the pre-#589 look). The format controls in
-                   the header toolbar above guard on `textEditorRefs[idx]`,
-                   which is only populated by the WYSIWYG component, so they
-                   auto-hide when the flag is off. -->
+              <!-- Tekst — WYSIWYG editor when the user can edit, otherwise the
+                   read-only ArticleText display. The format controls in the
+                   header toolbar guard on `textEditorRefs[idx]`, which only the
+                   WYSIWYG component populates, so they auto-hide when read-only. -->
               <nldd-simple-section v-if="view === 'text'" width="full">
                 <ArticleTextEditor
                   v-if="canEditArticleText"
@@ -1658,99 +1623,102 @@ async function handleActionSave() {
                   @update:model-value="editedText = $event"
                   @focus="onTextEditorFocus(idx)"
                 />
-                <!-- Notes overlay (read mode only): same Tekst pane, plain
-                     text with resolved highlights instead of the markdown
-                     render. Toggled via the header button below. -->
-                <template v-else-if="notesActive">
-                  <nldd-inline-dialog
-                    v-if="notesError"
-                    variant="alert"
-                    text="Notities niet geladen"
-                    :supporting-text="notesError.message"
-                  ></nldd-inline-dialog>
-                  <nldd-inline-dialog
-                    v-else-if="notesLoading"
-                    text="Notities laden…"
-                  ></nldd-inline-dialog>
-                  <template v-else>
-                    <AnnotatedText
-                      :article="selectedArticle"
-                      :notes-for-article="notesForArticle"
-                      :can-create="canCreateNotes"
-                      :law-id="lawId"
-                      :engine="noteEngine"
-                      :traject-ref="$route.params.trajectRef || ''"
-                      @create-note="onCreateNote"
-                    />
-                    <nldd-inline-dialog
-                      v-if="noteIssues.length"
-                      variant="warning"
-                      :text="`${noteIssues.length} notitie(s) niet verankerd`"
-                      :supporting-text="noteIssues.map(i => i.reason).join('; ')"
-                    ></nldd-inline-dialog>
-                    <!-- Draft notes live in localStorage until written back.
-                         "Opslaan naar repo" appends them to the sidecar on
-                         the active traject's branch (same write model as
-                         law/scenario edits since #632). No source picker —
-                         the traject's own corpus config decides the target.
-                         Without an active traject the save button is
-                         disabled, mirroring the law-edit buttons, so the
-                         backend 403 is never a surprise. "Exporteer YAML"
-                         stays for the offline / manual-commit case. -->
-                    <nldd-inline-dialog
-                      v-if="canCreateNotes && draftCount > 0"
-                      data-testid="draft-notes-bar"
-                      :text="`${draftCount} concept-notitie(s), nog niet opgeslagen`"
-                    >
-                      <nldd-button
-                        slot="actions"
-                        size="md"
-                        variant="primary"
-                        :text="savingNotes ? 'Opslaan…' : 'Opslaan naar repo'"
-                        :disabled="savingNotes || !canEdit || null"
-                        data-testid="save-notes-btn"
-                        @click="saveNotesToRepo"
-                      ></nldd-button>
-                      <nldd-button
-                        slot="actions"
-                        size="md"
-                        text="Exporteer YAML"
-                        data-testid="export-notes-btn"
-                        @click="exportNotes"
-                      ></nldd-button>
-                      <nldd-button
-                        slot="actions"
-                        size="md"
-                        variant="destructive"
-                        text="Concepten wissen"
-                        data-testid="clear-drafts-btn"
-                        @click="askClearDrafts"
-                      ></nldd-button>
-                    </nldd-inline-dialog>
-                    <nldd-inline-dialog
-                      v-if="canCreateNotes && draftCount > 0 && !canEdit"
-                      variant="warning"
-                      data-testid="notes-no-traject"
-                      text="Selecteer eerst een traject"
-                      supporting-text="Opslaan naar repo werkt pas als er een actief traject is. Exporteer YAML werkt wel."
-                    ></nldd-inline-dialog>
-                    <nldd-inline-dialog
-                      v-if="notesSaveError"
-                      variant="alert"
-                      data-testid="notes-save-error"
-                      text="Notities opslaan mislukt"
-                      :supporting-text="notesSaveError"
-                    ></nldd-inline-dialog>
-                    <nldd-inline-dialog
-                      v-if="notesSaveStatus && !notesSaveError"
-                      variant="success"
-                      data-testid="notes-save-status"
-                      text="Opslaan gelukt"
-                      :supporting-text="notesSaveStatus"
-                    ></nldd-inline-dialog>
-                  </template>
-                </template>
                 <ArticleText v-else :article="selectedArticle" />
+              </nldd-simple-section>
+
+              <!-- Tekst viewer + notities — read-only article text with resolved
+                   note highlights and inline note authoring. A separate pane so
+                   it can sit next to the Tekst editor for comparison; the
+                   resolver matches raw text, so it can't share the editable
+                   WYSIWYG render. -->
+              <nldd-simple-section v-else-if="view === 'text-notes'" width="full">
+                <nldd-inline-dialog
+                  v-if="notesError"
+                  variant="alert"
+                  text="Notities niet geladen"
+                  :supporting-text="notesError.message"
+                ></nldd-inline-dialog>
+                <nldd-inline-dialog
+                  v-else-if="notesLoading"
+                  text="Notities laden…"
+                ></nldd-inline-dialog>
+                <template v-else>
+                  <AnnotatedText
+                    :article="selectedArticle"
+                    :notes-for-article="notesForArticle"
+                    :can-create="canCreateNotes"
+                    :law-id="lawId"
+                    :engine="noteEngine"
+                    :traject-ref="$route.params.trajectRef || ''"
+                    @create-note="onCreateNote"
+                  />
+                  <nldd-inline-dialog
+                    v-if="noteIssues.length"
+                    variant="warning"
+                    :text="`${noteIssues.length} notitie(s) niet verankerd`"
+                    :supporting-text="noteIssues.map(i => i.reason).join('; ')"
+                  ></nldd-inline-dialog>
+                  <!-- Draft notes live in localStorage until written back.
+                       "Opslaan naar repo" appends them to the sidecar on
+                       the active traject's branch (same write model as
+                       law/scenario edits since #632). No source picker —
+                       the traject's own corpus config decides the target.
+                       Without an active traject the save button is
+                       disabled, mirroring the law-edit buttons, so the
+                       backend 403 is never a surprise. "Exporteer YAML"
+                       stays for the offline / manual-commit case. -->
+                  <nldd-inline-dialog
+                    v-if="canCreateNotes && draftCount > 0"
+                    data-testid="draft-notes-bar"
+                    :text="`${draftCount} concept-notitie(s), nog niet opgeslagen`"
+                  >
+                    <nldd-button
+                      slot="actions"
+                      size="md"
+                      variant="primary"
+                      :text="savingNotes ? 'Opslaan…' : 'Opslaan naar repo'"
+                      :disabled="savingNotes || !canEdit || null"
+                      data-testid="save-notes-btn"
+                      @click="saveNotesToRepo"
+                    ></nldd-button>
+                    <nldd-button
+                      slot="actions"
+                      size="md"
+                      text="Exporteer YAML"
+                      data-testid="export-notes-btn"
+                      @click="exportNotes"
+                    ></nldd-button>
+                    <nldd-button
+                      slot="actions"
+                      size="md"
+                      variant="destructive"
+                      text="Concepten wissen"
+                      data-testid="clear-drafts-btn"
+                      @click="askClearDrafts"
+                    ></nldd-button>
+                  </nldd-inline-dialog>
+                  <nldd-inline-dialog
+                    v-if="canCreateNotes && draftCount > 0 && !canEdit"
+                    variant="warning"
+                    data-testid="notes-no-traject"
+                    text="Selecteer eerst een traject"
+                    supporting-text="Opslaan naar repo werkt pas als er een actief traject is. Exporteer YAML werkt wel."
+                  ></nldd-inline-dialog>
+                  <nldd-inline-dialog
+                    v-if="notesSaveError"
+                    variant="alert"
+                    data-testid="notes-save-error"
+                    text="Notities opslaan mislukt"
+                    :supporting-text="notesSaveError"
+                  ></nldd-inline-dialog>
+                  <nldd-inline-dialog
+                    v-if="notesSaveStatus && !notesSaveError"
+                    variant="success"
+                    data-testid="notes-save-status"
+                    text="Opslaan gelukt"
+                    :supporting-text="notesSaveStatus"
+                  ></nldd-inline-dialog>
+                </template>
               </nldd-simple-section>
 
               <!-- Machine readable -->

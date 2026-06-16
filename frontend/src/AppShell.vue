@@ -41,15 +41,10 @@ const editorPanelFlags = [
   ['panel.machine_readable', 'Machine editor'],
   ['panel.scenario_form', 'Scenario editor'],
   ['panel.yaml_editor', 'YAML editor'],
-  // Capability gate: when on, the Tekst pane offers a "Notities" toggle that
-  // overlays resolved notes on the article text. Not a separate pane (notes
-  // are a layer over the text, not other content).
-  ['panel.notes', 'Notities'],
-  // Note authoring (RFC-018 write path). Separate gate from panel.notes so
-  // notes can be shown read-only without exposing the (MVP, local-only)
-  // creation + export flow.
-  ['notes.create', 'Notities aanmaken'],
-  ['editor.article_text_edit', 'Tekst bewerken'],
+  // A read-only article-text pane with resolved note highlights + inline note
+  // authoring. Kept separate from the Tekst editor so both can be shown side by
+  // side for comparison.
+  ['panel.notes', 'Tekst viewer + notities'],
 ];
 
 const route = useRoute();
