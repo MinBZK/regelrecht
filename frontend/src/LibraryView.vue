@@ -664,7 +664,7 @@ watch(activeTrajectRef, () => {
 
         <nldd-page v-else-if="isInitialLoading">
           <nldd-simple-section width="full">
-            <nldd-inline-dialog text="Laden…"></nldd-inline-dialog>
+            <nldd-activity-indicator text="Laden" show-text></nldd-activity-indicator>
           </nldd-simple-section>
         </nldd-page>
 
@@ -690,7 +690,7 @@ watch(activeTrajectRef, () => {
               <nldd-simple-section width="full">
                 <nldd-title id="home-titel" size="3"><h3>{{ LIBRARY_HOME_TITLE }}</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
-                <nldd-inline-dialog v-if="loading" text="Laden..."></nldd-inline-dialog>
+                <nldd-activity-indicator v-if="loading" text="Laden" show-text></nldd-activity-indicator>
                 <template v-else>
                   <template
                     v-for="(section, sectionIndex) in sidebarSections"
@@ -764,7 +764,7 @@ watch(activeTrajectRef, () => {
                   </nldd-toolbar-item>
                 </nldd-toolbar>
                 <nldd-spacer v-if="authenticated && selectedLaw" size="16"></nldd-spacer>
-                <nldd-inline-dialog v-if="selectedLawLoading" text="Laden..."></nldd-inline-dialog>
+                <nldd-activity-indicator v-if="selectedLawLoading" text="Wet laden" show-text></nldd-activity-indicator>
                 <nldd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een wet"></nldd-inline-dialog>
                 <nldd-list v-else variant="simple">
                   <nldd-list-item
@@ -803,7 +803,7 @@ watch(activeTrajectRef, () => {
               </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="selectedLawLoading">
                 <!-- Loading takes precedence over `lawError` to avoid flashing a stale error during a refetch. -->
-                <nldd-inline-dialog text="Wet laden…"></nldd-inline-dialog>
+                <nldd-activity-indicator text="Wet laden" show-text></nldd-activity-indicator>
               </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="lawError">
                 <!-- 404 = law not in active traject; give the user an exit instead of a generic error. -->
