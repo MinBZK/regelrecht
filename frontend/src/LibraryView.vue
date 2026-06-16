@@ -168,6 +168,17 @@ const sidebarSections = computed(() => {
   return sections;
 });
 
+// "No usable content" states, shown full-page (like EditorView's no-content
+// states) instead of inside the split-view, so the error/CTA spans the full
+// width rather than the narrow sidebar. isInitialLoading covers the first load
+// before anything resolves; indexError is handled at the same top level.
+const isInitialLoading = computed(
+  () => loading.value && !selectedLawId.value && sidebarSections.value.length === 0,
+);
+const isEmptyLibrary = computed(
+  () => !loading.value && !indexError.value && !selectedLawId.value && sidebarSections.value.length === 0,
+);
+
 const articles = computed(() => selectedLaw.value?.articles ?? []);
 
 /**
@@ -619,10 +630,44 @@ watch(activeTrajectRef, () => {
 </script>
 
 <template>
-        <nldd-navigation-split-view @back="onPaneBack">
+        <!-- Full-page "no usable content" states (matching EditorView): shown
+             instead of the split-view so the error / CTA spans the full width,
+             not the narrow sidebar. -->
+        <nldd-page v-if="indexError">
+          <nldd-simple-section width="full">
+            <nldd-inline-dialog
+              variant="alert"
+              text="Wetten en regels zijn niet geladen"
+              supporting-text="De gegevens konden niet worden opgehaald."
+            >
+              <nldd-button slot="actions" variant="primary" text="Probeer opnieuw" @click="retryLoadCorpus"></nldd-button>
+              <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
+            </nldd-inline-dialog>
+          </nldd-simple-section>
+        </nldd-page>
 
-          <!-- Sidebar hidden on corpus load failure so the main pane carries the error alone (mirrors law-load failure pattern). -->
-          <nldd-split-view-pane v-if="!indexError" slot="sidebar" has-content>
+        <nldd-page v-else-if="isInitialLoading">
+          <nldd-simple-section width="full">
+            <nldd-inline-dialog text="Laden…"></nldd-inline-dialog>
+          </nldd-simple-section>
+        </nldd-page>
+
+        <!-- Nothing curated yet (no favorites, no traject edits, no open law):
+             point the user at search rather than dumping the whole corpus. -->
+        <nldd-page v-else-if="isEmptyLibrary">
+          <nldd-simple-section width="full">
+            <nldd-inline-dialog
+              text="Nog niets in je bibliotheek"
+              supporting-text="Zoek een wet om te openen, of markeer wetten als favoriet."
+            >
+              <nldd-button slot="actions" variant="primary" start-icon="search" text="Zoeken" @click="openSearch"></nldd-button>
+            </nldd-inline-dialog>
+          </nldd-simple-section>
+        </nldd-page>
+
+        <nldd-navigation-split-view v-else @back="onPaneBack">
+
+          <nldd-split-view-pane slot="sidebar" has-content>
             <nldd-page sticky-header>
               <nldd-top-title-bar slot="header" :text="LIBRARY_HOME_TITLE" collapse-anchor="home-titel"></nldd-top-title-bar>
 
@@ -630,15 +675,6 @@ watch(activeTrajectRef, () => {
                 <nldd-title id="home-titel" size="3"><h3>{{ LIBRARY_HOME_TITLE }}</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
                 <nldd-inline-dialog v-if="loading" text="Laden..."></nldd-inline-dialog>
-                <!-- Nothing curated yet (no favorites, no traject edits): point
-                     the user at search rather than dumping the whole corpus. -->
-                <nldd-inline-dialog
-                  v-else-if="sidebarSections.length === 0"
-                  text="Nog niets in je bibliotheek"
-                  supporting-text="Zoek een wet om te openen, of markeer wetten als favoriet."
-                >
-                  <nldd-button slot="actions" variant="primary" start-icon="search" text="Zoeken" @click="openSearch"></nldd-button>
-                </nldd-inline-dialog>
                 <template v-else>
                   <template
                     v-for="(section, sectionIndex) in sidebarSections"
@@ -689,7 +725,7 @@ watch(activeTrajectRef, () => {
                selected. When deselected the pane is removed from the DOM
                so the navigation-split-view reflows to spatial mode and
                shows the sidebar (Wetten Browser) alongside main. -->
-          <nldd-split-view-pane v-if="selectedLawId && !lawError && !indexError" slot="secondary-sidebar" has-content>
+          <nldd-split-view-pane v-if="selectedLawId && !lawError" slot="secondary-sidebar" has-content>
             <nldd-page sticky-header>
               <nldd-top-title-bar
                 slot="header"
@@ -735,27 +771,17 @@ watch(activeTrajectRef, () => {
           </nldd-split-view-pane>
 
           <!-- Main: Artikel Detail -->
-          <nldd-split-view-pane slot="main" :has-content="selectedArticle || lawError || articleNotFound || indexError ? true : undefined">
+          <nldd-split-view-pane slot="main" :has-content="selectedArticle || lawError || articleNotFound ? true : undefined">
             <nldd-page sticky-header>
               <nldd-top-title-bar
                 slot="header"
                 :text="selectedArticle ? `Artikel ${selectedArticle.number}` : undefined"
                 :supporting-text="selectedArticle ? lawName : undefined"
-                :back-text="indexError ? undefined : (lawError ? LIBRARY_HOME_BACK_TEXT : (lawName || 'Terug'))"
+                :back-text="lawError ? LIBRARY_HOME_BACK_TEXT : (lawName || 'Terug')"
                 :collapse-anchor="selectedArticle ? 'article-titel' : undefined"
               ></nldd-top-title-bar>
 
-              <nldd-simple-section width="full" v-if="indexError">
-                <nldd-inline-dialog
-                  variant="alert"
-                  text="Wetten en regels zijn niet geladen"
-                  supporting-text="De gegevens konden niet worden opgehaald."
-                >
-                  <nldd-button slot="actions" variant="primary" text="Probeer opnieuw" @click="retryLoadCorpus"></nldd-button>
-                  <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
-                </nldd-inline-dialog>
-              </nldd-simple-section>
-              <nldd-simple-section width="full" v-else-if="!selectedLawId">
+              <nldd-simple-section width="full" v-if="!selectedLawId">
                 <nldd-inline-dialog text="Selecteer een wet"></nldd-inline-dialog>
               </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="selectedLawLoading">
