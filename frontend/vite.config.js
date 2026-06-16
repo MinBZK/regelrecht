@@ -39,6 +39,15 @@ export default defineConfig({
     include: ['src/**/*.test.js'],
     pool: 'vmThreads',
     testTimeout: 10000,
+    server: {
+      // @cucumber/gherkin 40 and @cucumber/messages 33 ship as pure ESM.
+      // The vmThreads pool loads external ESM in a separate VM context, which
+      // throws "Linked modules must use the same context". Inlining lets vitest
+      // process them in the test context instead.
+      deps: {
+        inline: [/@cucumber\//],
+      },
+    },
   },
   build: {
     cssTarget: ['chrome123', 'edge123', 'firefox120', 'safari18'],
