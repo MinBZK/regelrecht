@@ -21,6 +21,7 @@ import {
 } from './composables/useAppChrome.js';
 import { SUPPORT_EMAIL } from './constants.js';
 import { apiFetch, apiFetchJson } from './lib/apiFetch.js';
+import { humanizeLawId } from './lib/lawName.js';
 import { useLatest } from './lib/useLatest.js';
 import ArticleText from './components/ArticleText.vue';
 import AnnotatedText from './components/AnnotatedText.vue';
@@ -395,7 +396,7 @@ loadCorpusLaws();
 const failedLawName = computed(() => {
   const id = lawId.value;
   if (!id) return '';
-  return corpusLaws.value.find(l => l.law_id === id)?.name || id;
+  return corpusLaws.value.find(l => l.law_id === id)?.name || humanizeLawId(id);
 });
 
 // True when the law fetch errored with 404 (law missing or not in active traject's corpus).
@@ -617,7 +618,7 @@ function closeTab(tab) {
 }
 
 function tabDisplayName(tab) {
-  return lawNames.value[tab.lawId] || tab.lawId;
+  return lawNames.value[tab.lawId] || humanizeLawId(tab.lawId);
 }
 
 // Publish the editor-only chrome (federated "PR #N" indicator + document

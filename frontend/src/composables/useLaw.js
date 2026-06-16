@@ -5,6 +5,7 @@ import { lawUrl } from './corpusUrls.js';
 import { apiFetch } from '../lib/apiFetch.js';
 import { createLruMap } from '../lib/lruMap.js';
 import { useLatest } from '../lib/useLatest.js';
+import { humanizeLawId } from '../lib/lawName.js';
 
 // Shared law cache, keyed by `${trajectRef || ''}::${lawId}` so a law
 // opened in traject A and in traject B (or globally) returns the
@@ -35,7 +36,9 @@ export function resolveLawName(law) {
       }
     }
   }
-  return nameRef || law.$id || '';
+  // No explicit name → a readable version of the id, never the raw snake_case
+  // (e.g. tab labels / titles for laws whose YAML carries no `name`).
+  return nameRef || humanizeLawId(law.$id);
 }
 
 // Shared apiFetch options for law GETs. The thrown ApiError carries the

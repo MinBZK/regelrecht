@@ -13,6 +13,7 @@ import { useTrajects } from './composables/useTrajects.js';
 import { lawsListUrl, lawUrl, changedLawsUrl } from './composables/corpusUrls.js';
 import { SUPPORT_EMAIL } from './constants.js';
 import { openSearch, registerSearchPopover } from './composables/useAppChrome.js';
+import { humanizeLawId } from './lib/lawName.js';
 import { apiFetch, apiFetchJson, ApiError } from './lib/apiFetch.js';
 import { useLatest } from './lib/useLatest.js';
 
@@ -185,20 +186,6 @@ const isEmptyLibrary = computed(
 );
 
 const articles = computed(() => selectedLaw.value?.articles ?? []);
-
-/**
- * Humanize a snake_case law identifier into Title Case Words.
- * `burgerlijk_wetboek_boek_5` → `Burgerlijk Wetboek Boek 5`.
- *
- * Used as a consistent fallback in both the sidebar list and the
- * secondary-sidebar header when a law has no explicit `name`.
- *
- * Orphan prevention is gedaan via CSS `text-wrap: pretty` op de
- * tekst-componenten zelf, niet hier — data blijft schoon.
- */
-function humanizeLawId(id) {
-  return String(id ?? "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-}
 
 const lawName = computed(() => {
   if (!selectedLaw.value) return '';
