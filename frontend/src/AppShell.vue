@@ -86,10 +86,12 @@ const hasDocumentTabs = computed(
 <template>
   <nldd-app-view>
     <nldd-bar-split-view>
-      <!-- Primary Bar: md only — search and settings as buttons.
-           The divider sits under the bar on the library (no document tabs);
-           the editor suppresses it because its document-tab-bar separates. -->
-      <nldd-split-view-pane slot="primary-bar-md" only="md" :no-divider="!isLibraryRoute || undefined">
+      <!-- Primary Bar: md only — search and settings as buttons. The bar-split-
+           view draws the divider automatically where the bar group meets main:
+           on the library it sits under this bar; on the editor the document-tab-
+           bar sits between, so toolbar + tabs read as one group above the single
+           main divider. -->
+      <nldd-split-view-pane slot="primary-bar-md" only="md">
         <nldd-container padding="8">
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
@@ -143,7 +145,7 @@ const hasDocumentTabs = computed(
       </nldd-split-view-pane>
 
       <!-- Primary Bar: lg+ — search as input field in center slot -->
-      <nldd-split-view-pane slot="primary-bar-lg" above="lg" :no-divider="!isLibraryRoute || undefined">
+      <nldd-split-view-pane slot="primary-bar-lg" above="lg">
         <nldd-container padding="8">
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
