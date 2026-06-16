@@ -130,6 +130,21 @@ function setPaneView(idx, viewId) {
   paneViews.value = next;
 }
 
+// Reorder this pane within the left→right pane order. `target`:
+// 'left' | 'right' | 'start' | 'end'. Persists (paneViews → localStorage) and
+// survives flag flips (the availableViews sync filter preserves order).
+function movePane(idx, target) {
+  const next = [...paneViews.value];
+  const [moved] = next.splice(idx, 1);
+  const to =
+    target === 'left' ? idx - 1
+      : target === 'right' ? idx + 1
+        : target === 'start' ? 0
+          : next.length; // 'end'
+  next.splice(Math.max(0, Math.min(next.length, to)), 0, moved);
+  paneViews.value = next;
+}
+
 // All edit operations are gated behind SSO + an active traject. The
 // editor renders in two shapes:
 //   - `/editor/{lawId?}/{articleNumber?}`         → read-only view,
@@ -1496,6 +1511,31 @@ async function handleActionSave() {
                         :text="opt.label"
                         @select="setPaneView(idx, opt.id)"
                       ></nldd-menu-item>
+                      <nldd-menu-divider></nldd-menu-divider>
+                      <nldd-menu-item
+                        text="Verplaats naar links"
+                        icon="arrow-left"
+                        :disabled="idx === 0 || undefined"
+                        @select="movePane(idx, 'left')"
+                      ></nldd-menu-item>
+                      <nldd-menu-item
+                        text="Verplaats naar rechts"
+                        icon="arrow-right"
+                        :disabled="idx === paneViews.length - 1 || undefined"
+                        @select="movePane(idx, 'right')"
+                      ></nldd-menu-item>
+                      <nldd-menu-item
+                        text="Verplaats uiterst links"
+                        icon="arrow-left-to-line"
+                        :disabled="idx === 0 || undefined"
+                        @select="movePane(idx, 'start')"
+                      ></nldd-menu-item>
+                      <nldd-menu-item
+                        text="Verplaats uiterst rechts"
+                        icon="arrow-right-to-line"
+                        :disabled="idx === paneViews.length - 1 || undefined"
+                        @select="movePane(idx, 'end')"
+                      ></nldd-menu-item>
                     </nldd-menu>
                     <nldd-menu-group slot="overflow" text="Weergave">
                       <nldd-menu-item
@@ -1505,6 +1545,31 @@ async function handleActionSave() {
                         :selected="view === opt.id || undefined"
                         :text="opt.label"
                         @select="setPaneView(idx, opt.id)"
+                      ></nldd-menu-item>
+                      <nldd-menu-divider></nldd-menu-divider>
+                      <nldd-menu-item
+                        text="Verplaats naar links"
+                        icon="arrow-left"
+                        :disabled="idx === 0 || undefined"
+                        @select="movePane(idx, 'left')"
+                      ></nldd-menu-item>
+                      <nldd-menu-item
+                        text="Verplaats naar rechts"
+                        icon="arrow-right"
+                        :disabled="idx === paneViews.length - 1 || undefined"
+                        @select="movePane(idx, 'right')"
+                      ></nldd-menu-item>
+                      <nldd-menu-item
+                        text="Verplaats uiterst links"
+                        icon="arrow-left-to-line"
+                        :disabled="idx === 0 || undefined"
+                        @select="movePane(idx, 'start')"
+                      ></nldd-menu-item>
+                      <nldd-menu-item
+                        text="Verplaats uiterst rechts"
+                        icon="arrow-right-to-line"
+                        :disabled="idx === paneViews.length - 1 || undefined"
+                        @select="movePane(idx, 'end')"
                       ></nldd-menu-item>
                     </nldd-menu-group>
                   </nldd-toolbar-item>
