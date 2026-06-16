@@ -19,12 +19,16 @@ const rfcs = defineCollection({
     title: z.string().optional(),
     description: z.string().optional(),
     // RFC metadata, in frontmatter so it is structured data rather than a
-    // bold-labelled preamble parsed out of the body. Lifecycle status uses the
-    // RFC-000 vocabulary (Draft | Proposed | Accepted | Rejected | Superseded).
-    status: z.string().optional(),
-    // Optional implementation status, rendered as a second tag only when
-    // present — an Accepted-and-fully-built RFC just omits it.
-    implementation: z.string().optional(),
+    // bold-labelled preamble parsed out of the body. Both status and
+    // implementation are required enums: every RFC carries both (so an absent
+    // implementation tag never reads as "unknown"), and a typo fails the build
+    // here rather than rendering a silent grey "Unknown" badge.
+    status: z.enum(['Draft', 'Proposed', 'Accepted', 'Rejected', 'Superseded']),
+    implementation: z.enum([
+      'Implemented',
+      'Partially implemented',
+      'Not implemented',
+    ]),
     // Stored as a 'YYYY-MM-DD' string rather than z.date() so it round-trips
     // through the build without timezone shifts and renders verbatim.
     date: z.string().optional(),

@@ -20,13 +20,28 @@ export interface RfcEntry {
   /** Lifecycle status from the `status` frontmatter field */
   status: string
   /**
-   * Optional `implementation` frontmatter value (e.g. "Partially implemented",
-   * "Not implemented", "Implemented"). Only set when the field is present, so
-   * a plain Accepted RFC carries no value and renders no second badge.
+   * `implementation` frontmatter value: "Implemented", "Partially implemented",
+   * or "Not implemented". Every RFC sets it (enforced by the content schema);
+   * optional here only because this pure-Node parser also reads files the
+   * schema does not validate.
    */
   implementation?: string
   /** Site-relative link derived from the real filename, e.g. "/rfcs/rfc-008" */
   link: string
+}
+
+/**
+ * Map an RFC status to an NDD tag colour. Shared by the index page and the RFC
+ * page so the two cannot drift. Substring match keeps "Accepted (…)"-style
+ * values working even though the schema now constrains status to single words.
+ */
+export function rfcStatusColor(status: string): string {
+  const k = (status ?? '').toLowerCase()
+  if (k.includes('accept')) return 'success'
+  if (k.includes('propos')) return 'accent'
+  if (k.includes('reject')) return 'critical'
+  if (k.includes('supersed')) return 'warning'
+  return 'neutral'
 }
 
 // At `astro dev` this module runs from src/lib; at `astro build` it is

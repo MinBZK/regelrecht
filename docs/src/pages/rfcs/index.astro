@@ -5,19 +5,10 @@
  */
 import Base from '~/layouts/Base.astro';
 import EditLink from '~/components/EditLink.astro';
-import { getRfcs } from '~/lib/rfcs';
+import { getRfcs, rfcStatusColor } from '~/lib/rfcs';
 
 const pathname = '/rfcs/';
 const rfcs = getRfcs();
-
-const statusColor = (s: string) => {
-  const k = (s ?? '').toLowerCase();
-  if (k.includes('accept')) return 'success';
-  if (k.includes('propos')) return 'accent';
-  if (k.includes('reject')) return 'critical';
-  if (k.includes('supersed')) return 'warning';
-  return 'neutral';
-};
 ---
 
 <Base
@@ -59,7 +50,7 @@ const statusColor = (s: string) => {
               <nldd-spacer-cell />
               <nldd-cell>
                 <span class="rr-rfc-tags">
-                  <nldd-tag color={statusColor(r.status)} size="md">
+                  <nldd-tag color={rfcStatusColor(r.status)} size="md">
                     {r.status}
                   </nldd-tag>
                   {r.implementation && (
