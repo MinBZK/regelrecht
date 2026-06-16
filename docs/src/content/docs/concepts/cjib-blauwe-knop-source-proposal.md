@@ -366,11 +366,13 @@ FCID definieert (voor zover uit de spec af te leiden) de volgende event-typen. O
 
 | FCID `event_type` | Chronolexogram-type | Brongegeven in de cel |
 |---|---|---|
-| `FinancieleVerplichtingOpgelegd` | decretogram | engine-output met `decision_type: STRAFBESCHIKKING` (totaalbedrag) |
+| `FinancieleVerplichtingOpgelegd` ¹ | decretogram | engine-output met `decision_type: STRAFBESCHIKKING` (totaalbedrag) |
 | `BetalingsverplichtingOpgelegd` | decretogram | engine-output met `decision_type: BETALINGSVERPLICHTING` / `BESTUURLIJKE_BOETE` |
 | `BetalingsverplichtingIngetrokken` | decretogram (intrekking-modaliteit) | engine-output, zelfde `decision_type` als origineel, met `produces.modality.is_intrekking_van` gezet |
 | `BetalingsverplichtingIngetrokken` | executogram dat een intrekking-besluit referenceert | chronicle-stream-event (bv. `kwijtschelding_verleend`) met `references_decision` gezet (zie "Rechtsbescherming op executogram-records") |
 | `BetalingVerwerkt` | executogram | chronicle-stream-event, getriggerd door intake vanuit incasso-systeem |
+
+¹ Een `STRAFBESCHIKKING` krijgt géén `verzet_route` zolang het strafvorderlijke route-model er niet is (zie RFC-022 §1.2); in de pilot draagt ze een `geen_rechtsbescherming_reden`-placeholder, en omdat ze geen geldige `visible_from_stage` in de huidige RFC-008-enum heeft (RFC-022 §3.2) surfacet een productie-source haar nog niet. De rij staat in de tabel voor de volledigheid van de mapping, niet als pilot-leverbaar geval.
 
 `BetalingsverplichtingIngetrokken` is bewust het enige event-type met twee bronnen: een intrekking kan in de cel wonen als een eigen decretogram (de cel nam zelf het intrekking-besluit) óf als een executogram dat een elders genomen intrekking-besluit registreert (de cel voert alleen de afhandeling uit, bv. een `kwijtschelding_verleend` namens een opdrachtgever). Beide serialiseren naar hetzelfde FCID-event omdat de burger in beide gevallen één feit ziet: zijn verplichting is ingetrokken. Welke bron geldt, leest de cel af aan welk veld gezet is (`modality.is_intrekking_van` voor het decretogram-pad, `references_decision` voor het executogram-pad); de `event_type`-afleiding verschilt navenant per pad (zie de twee veld-afleidingstabellen verderop).
 
