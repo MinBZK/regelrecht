@@ -314,12 +314,11 @@ export function useTrajectDocuments(trajectRef) {
   /**
    * Create a new document at `path`. Generates a minimal H1 template
    * body and PUTs it without `If-Match`, so a brand-new file lands at
-   * `200/201 OK`. The caller (`DocumentsPanel.submitCreate`) does a
-   * client-side duplicate check against the already-fetched list
-   * before invoking us — without that check, a race where another
-   * user creates the same path between list-refresh and submit would
-   * silently overwrite. A future iteration can tighten this by adding
-   * `If-None-Match: *` support to the backend.
+   * `200/201 OK`. The caller (`useDocumentsManager.startNew`) only ever
+   * passes a freshly generated `untitled-*.md` path that isn't in the
+   * already-fetched list, so a collision needs a concurrent create of the
+   * same name between list-refresh and submit — a race a future iteration
+   * can close by adding `If-None-Match: *` support to the backend.
    */
   async function createDocument(path) {
     requireTraject(trajectRef.value, 'document create');
@@ -429,7 +428,8 @@ export function useTrajectDocuments(trajectRef) {
   // etag belong to the old traject, so a save would write the old content
   // to the NEW traject's URL (and the stale etag would trip a misleading
   // 412 "overschrijven"-prompt). Clearing here makes the switch safe;
-  // DocumentsPanel additionally closes the edit sheet on the same change.
+  // TrajectDocuments additionally returns the sheet to its list on the same
+  // change.
   watch(
     trajectRef,
     () => {

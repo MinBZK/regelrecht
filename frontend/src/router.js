@@ -86,6 +86,19 @@ const router = createRouter({
       ],
     },
     {
+      // Standalone full-page werkdocumenten editor, opened in a new tab from
+      // the in-sheet editor ("Open in nieuw tabblad"). Deliberately a top-level
+      // route, NOT a child of AppShell: it carries its own minimal top bar
+      // instead of the app chrome, giving the document a full navigation-split-
+      // view (list + editor). `:trajectRef` is pinned to `{slug}-{8hex}` like
+      // the other traject routes; `:docPath(.*)` captures nested document paths
+      // (slashes allowed) and is optional so the bare page opens on the list.
+      path: '/werkdocumenten/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:docPath(.*)?',
+      name: 'werkdocumenten',
+      component: () => import('./WerkdocumentenView.vue'),
+      meta: { title: 'Werkdocumenten', requiresAuth: true },
+    },
+    {
       path: '/editor.html',
       redirect: (to) => ({
         name: 'editor',
