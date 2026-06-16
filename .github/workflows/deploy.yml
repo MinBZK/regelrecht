@@ -206,7 +206,10 @@ jobs:
   # -- Deploy preview --
   deploy-preview:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Each ZAD component deploy takes ~5 minutes and they run sequentially;
+    # a PR touching engine + frontend + docs redeploys 6+ components, which
+    # does not fit in 15 minutes.
+    timeout-minutes: 45
     needs: [build, build-admin, build-harvester-worker, build-enrich-worker, build-pipeline-api, build-lawmaking, build-docs, changes]
     if: >-
       always() &&
@@ -347,7 +350,9 @@ jobs:
   # -- Deploy production --
   deploy-production:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Same budget as deploy-preview: sequential ZAD deploys of all changed
+    # components do not fit in 15 minutes on a broad merge.
+    timeout-minutes: 45
     needs: [build, build-admin, build-harvester-worker, build-enrich-worker, build-pipeline-api, build-grafana, build-lawmaking, build-docs]
     if: >-
       always() &&

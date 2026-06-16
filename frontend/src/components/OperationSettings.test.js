@@ -197,3 +197,111 @@ describe('OperationSettings — AGE op', () => {
     });
   });
 });
+
+describe('OperationSettings — DATE_DIFF op', () => {
+  function dateDiffNode() {
+    return {
+      operation: 'DATE_DIFF',
+      from: '$indieningsdatum',
+      to: '$referencedate.iso',
+      in: 'days',
+    };
+  }
+
+  describe('operationValues', () => {
+    it('returns from, to and in rows for a DATE_DIFF node', () => {
+      const wrapper = mountOp(dateDiffNode());
+      const rows = wrapper.vm.operationValues;
+      expect(rows).toHaveLength(3);
+      expect(rows[0]).toMatchObject({ _label: 'Van', _value: '$indieningsdatum', _kind: 'from' });
+      expect(rows[1]).toMatchObject({ _label: 'Tot', _value: '$referencedate.iso', _kind: 'to' });
+      expect(rows[2]).toMatchObject({ _label: 'Eenheid', _value: 'days', _kind: 'in' });
+    });
+
+    it('falls back to empty strings for missing DATE_DIFF fields', () => {
+      const wrapper = mountOp({ operation: 'DATE_DIFF' });
+      const rows = wrapper.vm.operationValues;
+      expect(rows.map((r) => r._value)).toEqual(['', '', '']);
+    });
+  });
+
+  describe('changeOperationType to DATE_DIFF', () => {
+    it('seeds from/to as empty strings and in with a valid unit', async () => {
+      const node = { operation: 'EQUALS', subject: '$foo', value: 42 };
+      const wrapper = mountOp(node);
+
+      wrapper.vm.changeOperationType('DATE_DIFF');
+      await nextTick();
+
+      expect(node.operation).toBe('DATE_DIFF');
+      expect(node.from).toBe('');
+      expect(node.to).toBe('');
+      // The schema requires `in` to be one of the unit enum values, so the
+      // seed must already validate.
+      expect(node.in).toBe('days');
+      expect(node.subject).toBeUndefined();
+      expect(node.value).toBeUndefined();
+    });
+
+    it.each([
+      ['EQUALS'],
+      ['AND'],
+      ['IF'],
+      ['NOT'],
+      ['SWITCH'],
+      ['ADD'],
+      ['AGE'],
+    ])('strips DATE_DIFF fields when switching to %s', async (newType) => {
+      const node = dateDiffNode();
+      const wrapper = mountOp(node);
+
+      wrapper.vm.changeOperationType(newType);
+      await nextTick();
+
+      expect(node.operation).toBe(newType);
+      // `additionalProperties: false` on every operation type means a leaked
+      // from/to/in field would fail validation on save.
+      expect(node.from).toBeUndefined();
+      expect(node.to).toBeUndefined();
+      expect(node.in).toBeUndefined();
+    });
+  });
+
+  describe('applyValueMutation', () => {
+    it('writes from, to and in on the node', () => {
+      const node = { operation: 'DATE_DIFF', from: '', to: '', in: 'days' };
+      const wrapper = mountOp(node);
+      wrapper.vm.applyValueMutation({ _kind: 'from' }, '$indieningsdatum');
+      wrapper.vm.applyValueMutation({ _kind: 'to' }, '$referencedate.iso');
+      wrapper.vm.applyValueMutation({ _kind: 'in' }, 'months');
+      expect(node.from).toBe('$indieningsdatum');
+      expect(node.to).toBe('$referencedate.iso');
+      expect(node.in).toBe('months');
+    });
+  });
+
+  describe('canRemoveValue', () => {
+    it('blocks removal of all three DATE_DIFF structural fields', () => {
+      const wrapper = mountOp(dateDiffNode());
+      expect(wrapper.vm.canRemoveValue({ _kind: 'from' })).toBe(false);
+      expect(wrapper.vm.canRemoveValue({ _kind: 'to' })).toBe(false);
+      expect(wrapper.vm.canRemoveValue({ _kind: 'in' })).toBe(false);
+    });
+  });
+
+  describe('canAddValue', () => {
+    it('disables the add-value button for DATE_DIFF', () => {
+      const wrapper = mountOp(dateDiffNode());
+      expect(wrapper.vm.canAddValue).toBe(false);
+    });
+  });
+
+  describe('canChangeValueKind', () => {
+    it('allows from/to to become nested operations but keeps in literal-only', () => {
+      const wrapper = mountOp(dateDiffNode());
+      expect(wrapper.vm.canChangeValueKind({ _kind: 'from' })).toBe(true);
+      expect(wrapper.vm.canChangeValueKind({ _kind: 'to' })).toBe(true);
+      expect(wrapper.vm.canChangeValueKind({ _kind: 'in' })).toBe(false);
+    });
+  });
+});

@@ -614,7 +614,8 @@ impl<'a> ArticleEngine<'a> {
             | Operation::Age
             | Operation::DateAdd
             | Operation::Date
-            | Operation::DayOfWeek => Err(EngineError::InvalidOperation(format!(
+            | Operation::DayOfWeek
+            | Operation::DateDiff => Err(EngineError::InvalidOperation(format!(
                 "{} must be nested inside 'value', not used directly at action level",
                 operation.name()
             ))),

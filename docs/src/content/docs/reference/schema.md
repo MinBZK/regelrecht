@@ -7,12 +7,12 @@ The law format is defined by a JSON Schema. All law YAML files in the corpus mus
 
 ## Current Version
 
-The current schema version is **v0.5.2**.
+The current schema version is **v0.5.4**.
 
 Schema URLs use immutable git tags to guarantee reproducibility. The format is:
 
 ```
-https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.2/schema/v0.5.2/schema.json
+https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.4/schema/v0.5.4/schema.json
 ```
 
 The tag `schema-vX.Y.Z` is created when a schema version is released. Using tags instead of `refs/heads/main` ensures that the schema a law file references can never change underneath it. See [RFC-013](/rfcs/rfc-013) for the rationale.
@@ -23,6 +23,8 @@ This table is the single source of truth for which schema version introduced whi
 
 | Version | Introduces | RFC |
 |---------|-----------|-----|
+| v0.5.4 | `DATE_DIFF` operation; date operands for the comparison operators | [RFC-021](/rfcs/rfc-021) |
+| v0.5.3 | `valid_to` (law end date) | [RFC-019](/rfcs/rfc-019) |
 | v0.5.2 | `annotation-schema.json` for stand-off notes | [RFC-005](/rfcs/rfc-005), [RFC-018](/rfcs/rfc-018) |
 | v0.5.1 | Tag-based immutable schema URLs; refinements within the v0.5.x line | [RFC-013](/rfcs/rfc-013) |
 | v0.5.0 | `hooks`, `overrides` (reactive execution); `procedure`, `procedure_id` (Awb lifecycle); Woo support | [RFC-007](/rfcs/rfc-007), [RFC-008](/rfcs/rfc-008) |
@@ -33,6 +35,8 @@ This table is the single source of truth for which schema version introduced whi
 | v0.2.0 | Initial public schema: `regulatory_layer`, `competent_authority`, `execution.produces`, cross-law references (`source`) | [RFC-001](/rfcs/rfc-001), [RFC-002](/rfcs/rfc-002) |
 
 Multi-organization execution ([RFC-009](/rfcs/rfc-009)) reuses `competent_authority` (v0.2.0) and adds no schema construct of its own.
+
+The annotation schema (`annotation-schema.json`) versions independently of the law schema: it lives at `schema/v0.5.2/`, where it was introduced, and a new law-schema version does not republish it.
 
 ## Validation
 
