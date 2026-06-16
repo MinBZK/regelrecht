@@ -15,7 +15,7 @@ function title(path) {
 </script>
 
 <template>
-  <nldd-list variant="box">
+  <nldd-list variant="simple">
     <nldd-list-item
       v-for="doc in documents"
       :key="doc.path"
