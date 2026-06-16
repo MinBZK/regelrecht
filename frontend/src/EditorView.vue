@@ -137,7 +137,7 @@ function setPaneView(idx, viewId) {
 //     `canEdit` is true; writes land in that traject's branch.
 // Pick a traject in the TrajectMenu to flip from the first shape to
 // the second.
-const { activeTrajectRef } = useTrajects();
+const { activeTrajectRef, activeTraject } = useTrajects();
 const canEdit = computed(
   () => (!oidcConfigured.value || authenticated.value) && activeTrajectRef.value !== null,
 );
@@ -819,21 +819,6 @@ watch(selectedArticle, (article) => {
   parseError.value = null;
 }, { immediate: true });
 
-// Reflect navigation depth in the document title:
-//   "Editor: Art. 5 · Wet op de zorgtoeslag · RegelRecht"
-// Tab name first (the high-level location), then most-specific to least-
-// specific so browser tab truncation preserves the article number.
-// Always set (no early return) — router.afterEach used to set a static
-// fallback but it raced with this effect on tab/article switches.
-watchEffect(() => {
-  const detail = [];
-  if (selectedArticle.value) detail.push(`Art. ${selectedArticle.value.number}`);
-  if (lawName.value) detail.push(lawName.value);
-  document.title = detail.length > 0
-    ? `Editor: ${detail.join(' · ')} · RegelRecht`
-    : 'Editor · RegelRecht';
-});
-
 const editedArticle = computed(() => {
   if (!selectedArticle.value) return null;
   return {
@@ -1109,6 +1094,24 @@ watchEffect(() => {
     canUndo: canUndoText.value,
     canRedo: canRedoText.value,
   });
+});
+
+// Reflect navigation depth + unsaved state in the document title:
+//   "• Wijzig: Art. 5 · Wet op de zorgtoeslag · 15 juni test · RegelRecht"
+// A leading dot flags unsaved changes — it stays visible even when the tab
+// title is truncated to its start. Then the mode prefix, then most-specific to
+// least-specific (article, law, traject) with the brand last. Lives here (after
+// articleDirty) and is always set — a static router.afterEach fallback used to
+// race this effect on tab/article switches.
+watchEffect(() => {
+  const detail = [];
+  if (selectedArticle.value) detail.push(`Art. ${selectedArticle.value.number}`);
+  if (lawName.value) detail.push(lawName.value);
+  if (activeTraject.value?.name) detail.push(activeTraject.value.name);
+  const base = detail.length > 0
+    ? `Wijzig: ${detail.join(' · ')} · RegelRecht`
+    : 'Wijzig · RegelRecht';
+  document.title = articleDirty.value ? `• ${base}` : base;
 });
 
 function onYamlInput(event) {

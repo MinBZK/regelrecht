@@ -243,7 +243,7 @@ const lawErrorIs404 = computed(() => lawError.value?.status === 404);
 // Most-specific first so browser tab truncation preserves the article number.
 // We deliberately omit the "Bibliotheek:" prefix here (unlike the editor) —
 // browsing laws is the implicit default, and the law name carries enough
-// context. The editor still prefixes because "Editor:" disambiguates the
+// context. The editor still prefixes because "Wijzig:" disambiguates the
 // edit context from the read-only browse.
 // Always set (no early return) — router.afterEach used to set a static
 // fallback but it raced with this effect on tab/article switches.
