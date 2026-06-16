@@ -654,10 +654,14 @@ defineExpose({ save: onSave });
 <style scoped>
 /* Positioning context for the full-pane loading overlay. min-height fills the
    pane's scroll viewport so the backdrop covers the whole area, not just the
-   (possibly empty) content. */
+   (possibly empty) content. Flex column so the simple-section grows to the full
+   height — its empty-state inline-dialog then self-centers like elsewhere,
+   instead of sitting at the top. The absolute overlay is unaffected. */
 .sb-pane {
+  display: flex;
   position: relative;
   min-height: 100%;
+  flex-direction: column;
 }
 
 /* Card collection */
