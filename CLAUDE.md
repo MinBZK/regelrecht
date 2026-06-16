@@ -73,6 +73,17 @@ This repository uses pre-commit hooks for code quality:
 
 **No branding in commits.** Do not add "Generated with Claude Code" or "Co-Authored-By: Claude" lines to commit messages.
 
+### Test Data
+
+**Never use real secret or private information in tests.** This is a public
+repository — anything in a test fixture is published. Do not put names of
+private repositories, internal hostnames, credentials, tokens, real BSNs/personal
+data, or any reference to a private working environment into test fixtures,
+assertions, comments, or sample data. Use clearly-fictional placeholders instead
+(e.g. `example-org/regelrecht-corpus-example`). When a test needs to model a
+private/traject-owned source, anonymize the identifiers — the test should prove
+the behavior, not leak where the real data lives.
+
 ### Git Worktrees
 
 When using git worktrees, create them **inside the project folder** (e.g., `.worktrees/`).

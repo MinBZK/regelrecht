@@ -945,23 +945,23 @@ mod tests {
         // `file_path` is the in-repo path; the source is rooted at
         // `regulation/nl`, so the stored relative_path drops that prefix.
         map.load_metadata_entry(
-            "besluit_zorgverzekering_bes",
-            "regulation/nl/amvb/besluit_zorgverzekering_bes/2024-01-01.yaml",
+            "besluit_zorgverzekering_example",
+            "regulation/nl/amvb/besluit_zorgverzekering_example/2024-01-01.yaml",
             Some("regulation/nl"),
             "traject-own-abc",
-            "MinBZK/regelrecht-corpus-BES",
+            "example-org/regelrecht-corpus-example",
             0,
             Some("blob-sha-1"),
         )
         .unwrap();
 
-        let law = map.get_law("besluit_zorgverzekering_bes").unwrap();
+        let law = map.get_law("besluit_zorgverzekering_example").unwrap();
         assert!(!law.is_loaded(), "metadata-only entry has no body yet");
         assert_eq!(law.yaml_content, "");
         assert_eq!(law.name, None);
         assert_eq!(
             law.relative_path,
-            "amvb/besluit_zorgverzekering_bes/2024-01-01.yaml"
+            "amvb/besluit_zorgverzekering_example/2024-01-01.yaml"
         );
         assert_eq!(law.source_id, "traject-own-abc");
         assert_eq!(law.source_priority, 0);
