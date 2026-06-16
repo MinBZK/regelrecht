@@ -62,8 +62,9 @@ async function toggle(key) {
   const current = flags.value[key] ?? DEFAULTS[key] ?? true;
   const newValue = !current;
 
-  // Optimistic update. Persist locally too so the toggle survives refreshes
-  // when the backend explicitly can't persist (503, no DB configured in dev).
+  // Optimistic update, persisted locally so the toggle survives refreshes
+  // whenever the backend can't accept the write (503 no-DB, or a failed write
+  // handled in the catch below).
   flags.value = { ...flags.value, [key]: newValue };
 
   try {
@@ -88,8 +89,13 @@ async function toggle(key) {
     const updated = await res.json();
     flags.value = { ...DEFAULTS, ...updated, ...loadLocal() };
   } catch (e) {
-    console.warn('Failed to update feature flag, reverting:', e.message);
-    flags.value = { ...flags.value, [key]: current };
+    // The write was rejected or unreachable — e.g. a 401 in OIDC-off dev (flag
+    // writes need auth, the dev session has none), offline, or a 5xx. Keep the
+    // toggle locally instead of reverting, so panes stay switchable client-side.
+    // Same localStorage override the 503 path uses; a later successful write
+    // clears it and the server becomes authoritative again.
+    console.warn('Feature flag write failed; keeping change locally:', e.message);
+    saveLocal({ ...loadLocal(), [key]: newValue });
   }
 }
 
