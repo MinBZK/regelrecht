@@ -64,6 +64,11 @@ const searchPopoverRef = ref(null);
 registerSearchPopover(searchPopoverRef);
 
 const selectedLawId = ref(null);
+// Which sidebar section the law was opened from, so only that instance is
+// highlighted (a law can sit in both Favorieten and Recent bekeken). Cleared on
+// non-sidebar selects (search / deep-link); highlightSection then falls back to
+// the law's first occurrence.
+const selectedSection = ref(null);
 const selectedLaw = shallowRef(null);
 const selectedLawLoading = ref(false);
 const lawError = ref(null);
@@ -465,6 +470,9 @@ const editLawTarget = computed(() =>
 const editLawHref = computed(() => router.resolve(editLawTarget.value).href);
 
 function selectLaw(lawId, focusAfter = false) {
+  // Default to no section context (search / programmatic); selectLawFromSection
+  // re-sets it after this call for sidebar clicks.
+  selectedSection.value = null;
   if (lawId !== selectedLawId.value || lawError.value) {
     selectedLawId.value = lawId;
     selectedArticleNumber.value = null;
@@ -479,15 +487,36 @@ function selectLaw(lawId, focusAfter = false) {
   // popover._returnFocus restores to. Schedule on nextTick so the popover
   // has fully closed (sync) and Vue has rendered the selected state, then
   // walk the list-item shadow DOM to focus its inner button (the host
-  // doesn't delegate focus).
+  // doesn't delegate focus). Scope by section so a law present in two sections
+  // focuses the clicked instance (selectedSection is set by the time this runs).
   if (focusAfter) {
     nextTick(() => {
-      const item = document.querySelector(`[data-law-id="${CSS.escape(lawId)}"]`);
+      const sectionSel = selectedSection.value ? `[data-section="${CSS.escape(selectedSection.value)}"]` : '';
+      const item = document.querySelector(`${sectionSel}[data-law-id="${CSS.escape(lawId)}"]`);
       const action = item?.shadowRoot?.querySelector('.list-item__action');
       action?.focus?.();
     });
   }
 }
+
+// Sidebar click: record which section it came from, then select (keeping the
+// focus-restore that recent-reordering needs).
+function selectLawFromSection(lawId, sectionKey) {
+  selectLaw(lawId, sectionKey === 'recent');
+  selectedSection.value = sectionKey;
+}
+
+// The single sidebar instance to highlight: the clicked section (when it still
+// holds the law), else the law's first occurrence — so exactly one instance is
+// selected, including on a deep-link where no section was clicked.
+const highlightSection = computed(() => {
+  const id = selectedLawId.value;
+  if (!id) return null;
+  const sections = sidebarSections.value;
+  const clicked = sections.find(s => s.key === selectedSection.value);
+  if (clicked?.laws.some(l => l.law_id === id)) return clicked.key;
+  return sections.find(s => s.laws.some(l => l.law_id === id))?.key ?? null;
+});
 
 function selectArticle(number) {
   const articleStr = String(number);
@@ -704,8 +733,9 @@ watch(activeTrajectRef, () => {
                         size="md"
                         button
                         :data-law-id="law.law_id"
-                        :selected="law.law_id === selectedLawId || undefined"
-                        @click="selectLaw(law.law_id, section.key === 'recent')"
+                        :data-section="section.key"
+                        :selected="(law.law_id === selectedLawId && section.key === highlightSection) || undefined"
+                        @click="selectLawFromSection(law.law_id, section.key)"
                       >
                         <nldd-text-cell :text="displayName(law)" :supporting-text="law.source_name">
                         </nldd-text-cell>
