@@ -45,6 +45,44 @@ describe('useFeatureFlags', () => {
     expect(saved['panel.notes']).toBe(true);
   });
 
+  it('reverts the toggle when OIDC is configured and the write fails (prod — no sticky override)', async () => {
+    // With OIDC configured, /auth/status reports it; a failed write must not
+    // persist a local override that would beat the server on the next load.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input, init) => {
+        const url = typeof input === 'string' ? input : input?.url ?? '';
+        const method = init?.method ?? 'GET';
+        if (method === 'PUT') return Promise.resolve(new Response('unauthorized', { status: 401 }));
+        if (url.includes('/auth/status')) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ authenticated: true, oidc_configured: true }), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            }),
+          );
+        }
+        return Promise.resolve(
+          new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }),
+        );
+      }),
+    );
+    vi.resetModules();
+    const flagsMod = await import('./useFeatureFlags.js');
+    const authMod = await import('./useAuth.js');
+    await authMod.ensureAuthReady(); // load oidc_configured: true before toggling
+    const { isEnabled, toggle, loaded } = flagsMod.useFeatureFlags();
+    await vi.waitFor(() => expect(loaded.value).toBe(true));
+
+    expect(isEnabled('panel.notes')).toBe(false); // default
+    await toggle('panel.notes');
+
+    // Reverted in memory; nothing sticky left in localStorage to override the server.
+    expect(isEnabled('panel.notes')).toBe(false);
+    const saved = JSON.parse(localStorage.getItem('regelrecht-feature-flags') || '{}');
+    expect('panel.notes' in saved).toBe(false);
+  });
+
   it('clears the local override when the server write succeeds', async () => {
     stubFetch(
       () =>

@@ -6,6 +6,7 @@
  */
 import { ref, readonly } from 'vue';
 import { apiFetch, apiFetchJson } from '../lib/apiFetch.js';
+import { useAuth } from './useAuth.js';
 
 const DEFAULTS = {
   'panel.article_text': true,
@@ -89,13 +90,21 @@ async function toggle(key) {
     const updated = await res.json();
     flags.value = { ...DEFAULTS, ...updated, ...loadLocal() };
   } catch (e) {
-    // The write was rejected or unreachable — e.g. a 401 in OIDC-off dev (flag
-    // writes need auth, the dev session has none), offline, or a 5xx. Keep the
-    // toggle locally instead of reverting, so panes stay switchable client-side.
-    // Same localStorage override the 503 path uses; a later successful write
-    // clears it and the server becomes authoritative again.
-    console.warn('Feature flag write failed; keeping change locally:', e.message);
-    saveLocal({ ...loadLocal(), [key]: newValue });
+    // A write can fail two ways. In OIDC-off dev the PUT 401s because the dev
+    // session has no auth, and there is no server state to contradict an
+    // override, so keep the toggle local and let panes stay switchable. With
+    // OIDC configured (prod) that same 401 means a transient/expired session
+    // (or the failure is offline / a 5xx); persisting it would make the
+    // override sticky in localStorage and silently win over the server even
+    // after re-authentication, so revert the optimistic change instead.
+    const { oidcConfigured } = useAuth();
+    if (oidcConfigured.value) {
+      console.warn('Feature flag write failed; reverting (server stays authoritative):', e.message);
+      flags.value = { ...flags.value, [key]: current };
+    } else {
+      console.warn('Feature flag write failed in no-auth dev; keeping change locally:', e.message);
+      saveLocal({ ...loadLocal(), [key]: newValue });
+    }
   }
 }
 
