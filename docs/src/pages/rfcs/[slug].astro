@@ -4,6 +4,7 @@ import Base from '~/layouts/Base.astro';
 import DocsOutline from '~/components/DocsOutline.astro';
 import EditLink from '~/components/EditLink.astro';
 import DocsFooter from '~/components/DocsFooter.astro';
+import { rfcStatusColor, rfcRelations } from '~/lib/rfcs';
 
 export async function getStaticPaths() {
   const rfcs = await getCollection('rfcs');
@@ -18,6 +19,16 @@ const { entry } = Astro.props;
 const { Content, headings } = await render(entry);
 
 const pathname = '/rfcs/' + entry.id.replace(/\.md$/, '');
+
+// RFC metadata header, rendered from frontmatter. Status is a coloured tag
+// (colour via the shared rfcStatusColor so it cannot drift from the index);
+// the implementation status sits beside it as a quiet neutral tag. Date,
+// Authors and the cross-references render as a key/value list beneath.
+const { status, implementation, date, authors } = entry.data;
+// Forward (Depends on) and reverse (Required by) links, resolved against the
+// real RFC set in rfcs.ts so back-references cannot drift from the forward ones.
+const rfcNum = parseInt(entry.id.match(/rfc-(\d+)/)?.[1] ?? '', 10);
+const relations = rfcRelations().get(rfcNum) ?? { dependsOn: [], requiredBy: [] };
 // Edit-link base for this page (whole-file sidebar link + the per-selection
 // line-range affordance both build off it).
 const editBase = entry.filePath
@@ -49,6 +60,50 @@ const title = pageTitle + ' · RegelRecht';
       <EditLink filePath={entry.filePath} />
     </div>
     <div slot="right" class="rr-min-width-0">
+      {status && (
+        <nldd-rich-text spacing="flat" class="rr-rfc-meta">
+          <span class="rr-rfc-tags">
+            <nldd-tag color={rfcStatusColor(status)} size="md">{status}</nldd-tag>
+            {implementation && (
+              <nldd-tag color="neutral" size="md">{implementation}</nldd-tag>
+            )}
+          </span>
+          <dl class="rr-rfc-meta-list">
+            {date && (
+              <div class="rr-rfc-meta-row">
+                <dt>Date</dt>
+                <dd>{date}</dd>
+              </div>
+            )}
+            {authors?.length && (
+              <div class="rr-rfc-meta-row">
+                <dt>Authors</dt>
+                <dd>{authors.join(', ')}</dd>
+              </div>
+            )}
+            {relations.dependsOn.length > 0 && (
+              <div class="rr-rfc-meta-row">
+                <dt>Depends on</dt>
+                <dd>
+                  {relations.dependsOn.map((r, i) => (
+                    <span>{i > 0 ? ', ' : ''}<a href={r.link}>{r.id}</a> ({r.title})</span>
+                  ))}
+                </dd>
+              </div>
+            )}
+            {relations.requiredBy.length > 0 && (
+              <div class="rr-rfc-meta-row">
+                <dt>Required by</dt>
+                <dd>
+                  {relations.requiredBy.map((r, i) => (
+                    <span>{i > 0 ? ', ' : ''}<a href={r.link}>{r.id}</a> ({r.title})</span>
+                  ))}
+                </dd>
+              </div>
+            )}
+          </dl>
+        </nldd-rich-text>
+      )}
       <nldd-rich-text data-edit-base={editBase}>
         <Content />
       </nldd-rich-text>

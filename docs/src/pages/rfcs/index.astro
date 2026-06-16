@@ -5,19 +5,10 @@
  */
 import Base from '~/layouts/Base.astro';
 import EditLink from '~/components/EditLink.astro';
-import { getRfcs } from '~/lib/rfcs';
+import { getRfcs, rfcStatusColor } from '~/lib/rfcs';
 
 const pathname = '/rfcs/';
 const rfcs = getRfcs();
-
-const statusColor = (s: string) => {
-  const k = (s ?? '').toLowerCase();
-  if (k.includes('accept')) return 'success';
-  if (k.includes('propos')) return 'accent';
-  if (k.includes('reject')) return 'critical';
-  if (k.includes('supersed')) return 'warning';
-  return 'neutral';
-};
 ---
 
 <Base
@@ -55,13 +46,18 @@ const statusColor = (s: string) => {
         {
           rfcs.map((r) => (
             <nldd-list-item href={r.link}>
-              <nldd-text-cell overline={r.id} text={r.title} width="full" />
-              <nldd-spacer-cell />
-              <nldd-cell>
-                <nldd-tag color={statusColor(r.status)} size="md">
-                  {r.status}
-                </nldd-tag>
-              </nldd-cell>
+              <nldd-text-cell overline={r.id} text={r.title} width="full">
+                <span slot="supporting-text" class="rr-rfc-tags">
+                  <nldd-tag color={rfcStatusColor(r.status)} size="md">
+                    {r.status}
+                  </nldd-tag>
+                  {r.implementation && (
+                    <nldd-tag color="neutral" size="md">
+                      {r.implementation}
+                    </nldd-tag>
+                  )}
+                </span>
+              </nldd-text-cell>
               <nldd-spacer-cell />
               <nldd-icon-cell icon="chevron-right" />
             </nldd-list-item>

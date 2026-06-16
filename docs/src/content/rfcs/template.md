@@ -1,11 +1,16 @@
 ---
 title: "RFC-NNN: Title"
+status: Proposed # Draft | Proposed | Accepted | Rejected | Superseded
+implementation: Not implemented # Implemented | Partially implemented | Not implemented
+date: YYYY-MM-DD
+authors:
+  - Your Name
+# Optional. Omit when none. Each item: "RFC-NNN (Short description)".
+depends_on:
+  - RFC-NNN (Short description)
+# Optional sidebar label — defaults to the title when omitted.
+# short_title: Short Label
 ---
-
-**Status:** Proposed
-**Date:** YYYY-MM-DD
-**Authors:** Your Name
-**Depends on:** RFC-NNN, RFC-MMM (optional; omit this line if the RFC has no hard dependencies)
 
 ## Context
 
