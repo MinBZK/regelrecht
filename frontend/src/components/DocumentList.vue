@@ -12,6 +12,8 @@ const props = defineProps({
   selectedPath: { type: String, default: null },
   // Maps a document path to a URL; when set, rows become new-tab links.
   hrefFor: { type: Function, default: null },
+  // List style: 'box' in the launcher sheet, 'simple' on the standalone page.
+  variant: { type: String, default: 'simple' },
 });
 const emit = defineEmits(['select', 'new']);
 
@@ -25,7 +27,7 @@ function onRowClick(path) {
 </script>
 
 <template>
-  <nldd-list variant="simple">
+  <nldd-list :variant="variant">
     <nldd-list-item
       v-for="doc in documents"
       :key="doc.path"

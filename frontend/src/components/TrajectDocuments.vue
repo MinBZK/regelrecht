@@ -73,6 +73,7 @@ const sheetTitle = computed(() =>
           ></nldd-inline-dialog>
           <DocumentList
             v-else
+            variant="box"
             :documents="documents"
             :href-for="pageUrl"
             @new="openNew"
