@@ -12,9 +12,6 @@ import { nextTick, ref, watch } from 'vue';
 
 const props = defineProps({
   manager: { type: Object, required: true },
-  // When set, the more-menu offers "Open in nieuw tabblad" pointing here
-  // (only meaningful in the sheet; the standalone page IS the tab).
-  tabUrl: { type: String, default: null },
 });
 const emit = defineEmits(['deleted']);
 
@@ -101,13 +98,6 @@ watch(pendingDeletePath, async (path) => {
         <nldd-icon-button id="document-more-btn" size="md" icon="more" text="Meer" tooltip-timing="never" popovertarget="document-more-menu"></nldd-icon-button>
         <nldd-menu id="document-more-menu" anchor="document-more-btn">
           <nldd-menu-item text="Maak wijzigingen ongedaan" icon="undo" @click="undoChanges"></nldd-menu-item>
-          <nldd-menu-item
-            v-if="tabUrl"
-            text="Open in nieuw tabblad"
-            icon="external-link"
-            :href="tabUrl"
-            target="_blank"
-          ></nldd-menu-item>
           <nldd-menu-divider></nldd-menu-divider>
           <nldd-menu-item text="Verwijder document" icon="delete" destructive @click="askDelete(currentPath)"></nldd-menu-item>
         </nldd-menu>

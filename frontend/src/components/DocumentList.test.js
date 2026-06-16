@@ -46,4 +46,29 @@ describe('DocumentList', () => {
     const selected = wrapper.findAll('nldd-list-item').filter((i) => i.attributes('selected') !== undefined);
     expect(selected).toHaveLength(1);
   });
+
+  it('shows a chevron trailing icon by default (in-place select)', () => {
+    const wrapper = mountList();
+    const icons = wrapper.findAll('nldd-icon').map((i) => i.attributes('name'));
+    expect(icons).toContain('chevron-right');
+    expect(icons).not.toContain('open-new-page');
+  });
+
+  it('renders rows as new-tab links with the open-new-page icon when hrefFor is set', () => {
+    const wrapper = mountList({ hrefFor: (p) => `/werkdocumenten/t-abc12345/${p}` });
+    const icons = wrapper.findAll('nldd-icon').map((i) => i.attributes('name'));
+    expect(icons).toContain('open-new-page');
+    expect(icons).not.toContain('chevron-right');
+
+    const first = wrapper.findAll('nldd-list-item')[0];
+    expect(first.attributes('href')).toBe('/werkdocumenten/t-abc12345/beleid.md');
+    expect(first.attributes('target')).toBe('_blank');
+    expect(first.attributes('rel')).toBe('noopener');
+  });
+
+  it('does not emit select for link rows (native navigation handles it)', async () => {
+    const wrapper = mountList({ hrefFor: (p) => `/x/${p}` });
+    await wrapper.findAll('nldd-list-item')[0].trigger('click');
+    expect(wrapper.emitted('select')).toBeFalsy();
+  });
 });
