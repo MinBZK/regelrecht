@@ -13,8 +13,9 @@ vi.mock('vue-router', () => ({
   useRoute: () => ({ params: {} }),
 }));
 
-// Central corpus (priority 2) listed before the BES repo (priority 0) to prove
-// the grouping order comes from source_priority, not response order.
+// Central corpus (priority 2) listed before the private traject repo
+// (priority 0) to prove the grouping order comes from source_priority, not
+// response order. Source name/law id are anonymized fixtures, not real repos.
 const LAWS = [
   {
     law_id: 'besluit_zorgverzekering',
@@ -23,9 +24,9 @@ const LAWS = [
     source_priority: 2,
   },
   {
-    law_id: 'besluit_zorgverzekering_bes',
+    law_id: 'besluit_zorgverzekering_example',
     source_id: 'traject-own',
-    source_name: 'MinBZK/regelrecht-corpus-BES',
+    source_name: 'example-org/regelrecht-corpus-example',
     source_priority: 0,
   },
 ];
@@ -57,10 +58,10 @@ describe('SearchPopover server-side search', () => {
 
     const groups = wrapper.vm.groupedLaws;
     expect(groups.map((g) => g.source_name)).toEqual([
-      'MinBZK/regelrecht-corpus-BES',
+      'example-org/regelrecht-corpus-example',
       'Centrale Regelrecht Corpus',
     ]);
-    expect(groups[0].laws.map((l) => l.law_id)).toEqual(['besluit_zorgverzekering_bes']);
+    expect(groups[0].laws.map((l) => l.law_id)).toEqual(['besluit_zorgverzekering_example']);
   });
 
   it('queries the backend with the q parameter (not a client-side filter)', async () => {
