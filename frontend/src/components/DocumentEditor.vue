@@ -116,7 +116,7 @@ watch(pendingDeletePath, async (path) => {
       </nldd-toolbar>
     </nldd-container>
 
-    <nldd-container padding="16" padding-top="8">
+    <nldd-simple-section padding-top="8">
       <nldd-activity-indicator v-if="docLoading || creating" text="Document laden" show-text></nldd-activity-indicator>
       <template v-else>
         <nldd-inline-dialog v-if="deleteNotice" variant="warning" :text="deleteNotice"></nldd-inline-dialog>
@@ -154,7 +154,7 @@ watch(pendingDeletePath, async (path) => {
              output, identical to the law-text path. -->
         <nldd-rich-text v-else spacing="snug" v-html="previewHtml"></nldd-rich-text>
       </template>
-    </nldd-container>
+    </nldd-simple-section>
 
     <Teleport to="body">
       <nldd-modal-dialog
