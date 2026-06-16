@@ -284,8 +284,8 @@ function handleKeydown(e) {
             variant="primary"
             size="md"
             width="full"
-            :text="submittingCreate ? 'Bezig…' : '+ Nieuw document'"
-            :disabled="submittingCreate || undefined"
+            text="+ Nieuw document"
+            :loading="submittingCreate || undefined"
             @click="submitCreate"
           ></nldd-button>
         </nldd-container>
@@ -376,8 +376,9 @@ function handleKeydown(e) {
             variant="primary"
             size="md"
             width="full"
-            :text="saving ? 'Opslaan…' : 'Opslaan'"
-            :disabled="saving || !currentPath || undefined"
+            text="Opslaan"
+            :loading="saving || undefined"
+            :disabled="!currentPath || undefined"
             @click="handleSave"
           ></nldd-button>
         </nldd-container>

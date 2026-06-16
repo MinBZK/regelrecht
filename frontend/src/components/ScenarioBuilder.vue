@@ -627,8 +627,8 @@ defineExpose({ save: onSave });
               variant="primary"
               size="md"
               data-testid="save-scenarios-btn"
-              :disabled="saving || undefined"
-              :text="saving ? 'Opslaan…' : 'Opslaan'"
+              :loading="saving || undefined"
+              text="Opslaan"
               @click="onSave"
             ></nldd-button>
             <nldd-button

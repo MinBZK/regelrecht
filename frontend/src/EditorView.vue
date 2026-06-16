@@ -1516,8 +1516,9 @@ async function handleActionSave() {
                         slot="actions"
                         size="md"
                         variant="primary"
-                        :text="savingNotes ? 'Opslaan…' : 'Opslaan naar repo'"
-                        :disabled="savingNotes || !canEdit || null"
+                        text="Opslaan naar repo"
+                        :loading="savingNotes || undefined"
+                        :disabled="!canEdit || null"
                         data-testid="save-notes-btn"
                         @click="saveNotesToRepo"
                       ></nldd-button>
@@ -1573,8 +1574,8 @@ async function handleActionSave() {
                   size="md"
                   width="full"
                   data-testid="save-text-btn"
-                  :disabled="lawSaving || undefined"
-                  :text="lawSaving ? 'Opslaan…' : 'Opslaan'"
+                  :loading="lawSaving || undefined"
+                  text="Opslaan"
                   @click="handleLawSave"
                 ></nldd-button>
               </nldd-container>
@@ -1613,8 +1614,8 @@ async function handleActionSave() {
                   size="md"
                   width="full"
                   data-testid="save-mr-btn"
-                  :disabled="lawSaving || undefined"
-                  :text="lawSaving ? 'Opslaan…' : 'Opslaan'"
+                  :loading="lawSaving || undefined"
+                  text="Opslaan"
                   @click="handleMachineReadableSave"
                 ></nldd-button>
               </nldd-container>

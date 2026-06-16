@@ -462,15 +462,15 @@ function bind(field) {
 
         <nldd-container slot="footer" padding="16">
           <div v-if="createBusy" class="traject-busy" role="status">
-            <span class="traject-spinner" aria-hidden="true"></span>
-            <span>Traject wordt aangemaakt en branch wordt op de remote gezet — dit kan even duren.</span>
+            <nldd-activity-indicator size="14"></nldd-activity-indicator>
+            <span>Traject wordt aangemaakt en branch wordt op de remote gezet. Dit kan even duren.</span>
           </div>
           <nldd-button
             variant="primary"
             size="md"
             full-width
-            :text="createBusy ? 'Bezig…' : 'Aanmaken'"
-            :disabled="createBusy || undefined"
+            text="Aanmaken"
+            :loading="createBusy || undefined"
             @click="submitCreate"
           ></nldd-button>
         </nldd-container>
@@ -508,7 +508,7 @@ function bind(field) {
 .traject-source-hint code {
   font-size: 12px;
   padding: 1px 4px;
-  background: var(--semantics-surfaces-background-color, #fff);
+  background: var(--semantics-surfaces-base-background-color, #fff);
   border-radius: 3px;
 }
 .traject-error {
@@ -523,19 +523,5 @@ function bind(field) {
   font-size: 13px;
   color: var(--semantics-content-secondary-color, #555);
   margin-bottom: 12px;
-}
-.traject-spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid currentColor;
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: traject-spin 0.8s linear infinite;
-  flex-shrink: 0;
-}
-@keyframes traject-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 </style>

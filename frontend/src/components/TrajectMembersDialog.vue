@@ -290,8 +290,8 @@ async function clickLeave() {
             <nldd-button
               variant="primary"
               size="md"
-              :text="inviteBusy ? 'Bezig…' : 'Uitnodigen'"
-              :disabled="inviteBusy || undefined"
+              text="Uitnodigen"
+              :loading="inviteBusy || undefined"
               @click="submitInvite"
             ></nldd-button>
           </nldd-simple-section>
@@ -305,8 +305,8 @@ async function clickLeave() {
             <nldd-button
               variant="ghost"
               size="md"
-              :text="leaveBusy ? 'Bezig…' : 'Verlaat traject'"
-              :disabled="leaveBusy || undefined"
+              text="Verlaat traject"
+              :loading="leaveBusy || undefined"
               @click="clickLeave"
             ></nldd-button>
           </nldd-simple-section>
