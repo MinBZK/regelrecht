@@ -46,10 +46,8 @@ const rfcs = getRfcs();
         {
           rfcs.map((r) => (
             <nldd-list-item href={r.link}>
-              <nldd-text-cell overline={r.id} text={r.title} width="full" />
-              <nldd-spacer-cell />
-              <nldd-cell>
-                <span class="rr-rfc-tags">
+              <nldd-text-cell overline={r.id} text={r.title} width="full">
+                <span slot="supporting-text" class="rr-rfc-tags">
                   <nldd-tag color={rfcStatusColor(r.status)} size="md">
                     {r.status}
                   </nldd-tag>
@@ -59,7 +57,7 @@ const rfcs = getRfcs();
                     </nldd-tag>
                   )}
                 </span>
-              </nldd-cell>
+              </nldd-text-cell>
               <nldd-spacer-cell />
               <nldd-icon-cell icon="chevron-right" />
             </nldd-list-item>
