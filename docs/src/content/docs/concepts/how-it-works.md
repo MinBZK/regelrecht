@@ -134,9 +134,7 @@ On the data side, 342 municipalities, 12 provinces, and 21 water boards all prod
 
 ## Traceability
 
-Every execution produces a trace tree. The trace shows which articles were applied, which inputs were fetched and from where, which operations ran, and what each step produced. Think of it as an explanation of the legal reasoning in structured form.
-
-Traces show cross-law references ("income came from Awir article 8"), IoC resolution ("standard premium came from Regeling standaardpremie"), and organizational boundaries ("income accepted from Tax Authority"). Citizens can request their trace from each contributing organization.
+Every execution can produce a trace tree showing which articles applied, which inputs were fetched and from where, which operations ran, and what each step produced: the legal reasoning behind a number, in structured form. A trace makes a cross-law chain, an IoC resolution, and the Awb hooks that fired on a *beschikking* all visible in one tree. See [Traceability](./traceability) for how to read one, with a real worked example.
 
 ## Temporal versioning
 
