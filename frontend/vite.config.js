@@ -1,5 +1,16 @@
+import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
+
+// @cucumber/messages 33 runs `createRequire(import.meta.url)('../package.json')`
+// at import time (a Node-only API). In the browser build that throws and
+// crashes every view importing the gherkin parser, so alias `node:module` to a
+// browser shim that provides a harmless `createRequire`. Scope it to the build
+// only — under vitest (Node) the real `node:module` works, so we leave it.
+const isVitest = !!process.env.VITEST;
+const nodeModuleShim = fileURLToPath(
+  new URL('./src/shims/node-module.js', import.meta.url),
+);
 
 // Backend port the dev proxy forwards /api, /auth and /health to. Defaults to
 // 8000 (editor-api); `just dev-frontend` sets API_PORT so multiple backends can
@@ -34,11 +45,23 @@ export default defineConfig({
       },
     },
   ],
+  resolve: {
+    alias: isVitest ? {} : { 'node:module': nodeModuleShim },
+  },
   test: {
     environment: 'happy-dom',
     include: ['src/**/*.test.js'],
     pool: 'vmThreads',
     testTimeout: 10000,
+    server: {
+      // @cucumber/gherkin 40 and @cucumber/messages 33 ship as pure ESM. The
+      // vmThreads pool loads external ESM in a separate VM context, which throws
+      // "Linked modules must use the same context". Inlining lets vitest process
+      // them in the test context instead.
+      deps: {
+        inline: [/@cucumber\//],
+      },
+    },
   },
   build: {
     cssTarget: ['chrome123', 'edge123', 'firefox120', 'safari18'],
