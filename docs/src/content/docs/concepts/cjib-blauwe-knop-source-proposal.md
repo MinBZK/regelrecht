@@ -59,7 +59,7 @@ Korte samenvatting van wat de RFC voorstelt:
 - Intrekkingen zijn een nested besluit in de zin van RFC-008 (eigen AWB-lifecycle); `modality.is_intrekking_van` is alleen een backlink-veld naar het origineel besluit, geen nieuwe semantiek.
 - Integraties hangen in een namespaced `extensions`-blok. Het `extensions.blauwe_knop`-blok markeert dat een rule of een chronicle-event in de FCID-response van de cel-als-Blauwe-Knop-source zichtbaar wordt. Activatie gebeurt in de cel-configuratie, niet in de wet zelf.
 - Cross-cell queries hergebruiken het bestaande `source`-blok uit RFC-007. De cel-runtime kiest het juiste federatie-mechanisme: Blauwe Knop wanneer de cel een burger-client is, FSC wanneer de cel een bevoegde-instantie server is. Dezelfde regeling-YAML werkt in beide contexten.
-- Rechtsbescherming wordt niet als nieuw veld geïntroduceerd: de cel leidt de `bezwaar_route` af uit de RFC-008-procedure-stage van het decretogram, op het juiste moment (BEKENDMAKING), zodat de werkelijke einddatum meereist en niet een statische hint.
+- Rechtsbescherming wordt niet als nieuw veld geïntroduceerd: de cel leidt de rechtsmiddel-route af uit de procedure (`procedure_id`) van het decretogram, op het juiste moment, zodat de werkelijke einddatum meereist en niet een statische hint. Let op: dat is niet altijd Awb-*bezwaar*. De Wahv is *lex specialis* en kent administratief beroep bij de officier van justitie (Wahv art. 6), daarna beroep bij de kantonrechter (Wahv art. 9), niet Awb-bezwaar. Voor de Wahv levert de cel dus een `beroep_route` (intake = OM/CVOM, termijn-grondslag Wahv art. 6), niet een `bezwaar_route`. RFC-022 §3.3 beschrijft de drie route-families.
 
 RFC-022 raakt twee bestaande RFCs op punten die separaat aandacht vragen en in follow-up amendementen worden opgelost: RFC-007 (cel-resolutie in `source.regulation` en transport-keuze per cel-context) en RFC-009 (sleutelhergebruik tussen FSC-signing en Blauwe-Knop-response-signing). Voor de pilot maken we gebruik van de voorgestelde uitbreiding; de canonieke updates van die RFCs volgen na de werksessie.
 
@@ -69,13 +69,13 @@ Voor de werksessie hieronder is het niet nodig RFC-022 helemaal door te lezen. D
 
 Voor één pilotwet (voorkeur: Wahv) leveren we drie samenhangende artefacten op.
 
-**Een lexogram.** Een YAML-bestand `corpus/regulation/nl/wet/wet_administratiefrechtelijke_handhaving_verkeersvoorschriften/<valid_from>.yaml`. Dit is de Wahv in machine-leesbare vorm conform het RegelRecht-schema. Eén artikel produceert een `BESCHIKKING` met `decision_type: BETALINGSVERPLICHTING`, het juiste `procedure_id` per RFC-008 (default `beschikking`), en een `extensions.blauwe_knop`-hint die zegt: deze vordering hoort in de FCID-response zichtbaar te zijn zodra de procedure de BEKENDMAKING-stage heeft bereikt. De bezwaarweg zit niet in de regeling, want die wordt door RFC-008 afgeleid uit de AWB-procedure.
+**Een lexogram.** Een YAML-bestand `corpus/regulation/nl/wet/wet_administratiefrechtelijke_handhaving_verkeersvoorschriften/<valid_from>.yaml`. Dit is de Wahv in machine-leesbare vorm conform het RegelRecht-schema. Eén artikel produceert een `BESCHIKKING` met `decision_type: BETALINGSVERPLICHTING` en een `extensions.blauwe_knop`-hint die zegt: deze vordering hoort in de FCID-response zichtbaar te zijn zodra de procedure de bekendmaking-equivalente stage heeft bereikt. De rechtsmiddel-weg zit niet in de regeling, maar wordt uit de procedure afgeleid. Belangrijk: de Wahv volgt **niet** de standaard Awb-bezwaarprocedure. Het is lex specialis met een eigen rechtsmiddel: administratief beroep bij de officier van justitie (Wahv art. 6), daarna beroep bij de kantonrechter (Wahv art. 9). Het lexogram benoemt daarom een Wahv-specifieke `procedure_id` (niet de default `beschikking`), zodat de cel een `beroep_route` afleidt in plaats van een `bezwaar_route`. Dit Wahv-rechtsmiddel-model is een eigen stuk werk binnen de pilot; het is precies het soort detail dat de domeinexpert-validatie moet bevestigen.
 
 **Een chronicle-stream.** Een YAML-bestand `chronicles/cjib_wahv_betalingen.yaml` met minstens drie events: `payment_received`, `kwijtschelding_verleend`, `deurwaardertraject_gestart`. Per event de juiste FCID-mapping in `extensions.blauwe_knop`. `kwijtschelding_verleend` declareert `references_decision: <kwijtschelding-besluit-id>` zodat de cel de bezwaarweg via dat besluit kan afleiden. `payment_received` en `deurwaardertraject_gestart` zijn feiten zonder bezwaar.
 
-**Een werkende Blauwe-Knop-source.** Een RegelRecht-engine draait binnen een afgeschermde CJIB-pilot-omgeving met de Wahv-lexogram en de chronicle-stream geladen. De cel-configuratie activeert het `blauwe_knop_source`-blok en publiceert een Blauwe-Knop-source-endpoint. Wanneer een burger-client (MBO-app, of een test-client in de pilot) een geauthenticeerde pull doet voor deze burger, voert de cel een chronolexoreductie uit: ze loopt door de relevante chronicles, filtert op BSN en op `current_stage >= visible_from_stage`, voegt betalingen en kwijtscheldingen toe, en serialiseert het resultaat als FCID-response. De response is ondertekend met de FSC-key van CJIB (RFC-009 §5) en bevat per vordering een `bezwaar_route` waarvan de einddatum door de AWB-6:8-hook op de BEKENDMAKING-stage is berekend, met de werkelijke datum.
+**Een werkende Blauwe-Knop-source.** Een RegelRecht-engine draait binnen een afgeschermde CJIB-pilot-omgeving met de Wahv-lexogram en de chronicle-stream geladen. De cel-configuratie activeert het `blauwe_knop_source`-blok en publiceert een Blauwe-Knop-source-endpoint. Wanneer een burger-client (MBO-app, of een test-client in de pilot) een geauthenticeerde pull doet voor deze burger, voert de cel een chronolexoreductie uit: ze loopt door de relevante chronicles, filtert op BSN en op `current_stage >= visible_from_stage`, voegt betalingen en kwijtscheldingen toe, en serialiseert het resultaat als FCID-response. De response is ondertekend met de FSC-key van CJIB (RFC-009 §5) en bevat per vordering de juiste rechtsmiddel-route met de werkelijke einddatum: voor de Wahv een `beroep_route` (Wahv art. 6, intake OM/CVOM), voor een gewone Awb-beschikking een `bezwaar_route` waarvan de einddatum door de AWB-6:8-hook op de BEKENDMAKING-stage is berekend.
 
-Aan burger-zijde, on-device: een Wahv-vordering verschijnt in de MBO-app met een directe link naar het artikel, een verifieerbare verwijzing naar de executie-trace, een bezwaarknop met de juiste route en de werkelijke einddatum, en, na betaling, een gekoppeld BetalingVerwerkt-event onder hetzelfde zaakkenmerk. De MBO-app voegt deze response samen met die van andere bronorganisaties in de burger-client. Er is geen centraal punt waar dat geheel bestaat.
+Aan burger-zijde, on-device: een Wahv-vordering verschijnt in de MBO-app met een directe link naar het artikel, een verifieerbare verwijzing naar de executie-trace, een rechtsmiddel-knop met de juiste route (voor de Wahv: administratief beroep bij de OvJ) en de werkelijke einddatum, en, na betaling, een gekoppeld BetalingVerwerkt-event onder hetzelfde zaakkenmerk. De MBO-app voegt deze response samen met die van andere bronorganisaties in de burger-client. Er is geen centraal punt waar dat geheel bestaat.
 
 ### Drie casuïstiek-klassen in de pilot
 
@@ -89,26 +89,28 @@ Een fundamentele mismatch tussen RegelRecht en CJIB-huidig in de CAK-bezwaarrout
 
 ### Het Wahv-artikel in YAML
 
+De Wahv volgt een eigen rechtsmiddelregime (administratief beroep bij de OvJ, Wahv art. 6), niet de Awb-bezwaarprocedure. Het lexogram benoemt daarom een Wahv-specifieke `procedure_id`, niet de default `beschikking`. Die procedure moet als RFC-008-procedure gemodelleerd worden (stages tot en met de uitreiking/bekendmaking, daarna de beroep-stage bij de OvJ); dat is onderdeel van het pilot-werk.
+
 ```yaml
 # Primaire sanctie
 execution:
   produces:
     legal_character: BESCHIKKING
     decision_type: BETALINGSVERPLICHTING
-    procedure_id: beschikking            # RFC-008 default
+    procedure_id: wahv_sanctie           # Wahv-eigen regime, NIET de Awb-default
     extensions:
       blauwe_knop:
         payload: fcid
         category: ALGEMEEN
-        visible_from_stage: BEKENDMAKING
+        visible_from_stage: BEKENDMAKING  # bekendmaking-equivalente stage van de Wahv-procedure
 
-# Intrekking (bv. na succesvol bezwaar of administratieve correctie):
+# Intrekking (bv. na gegrond beroep of administratieve correctie):
 # een nieuwe BESCHIKKING met dezelfde decision_type, plus modality.
 execution:
   produces:
     legal_character: BESCHIKKING
     decision_type: BETALINGSVERPLICHTING
-    procedure_id: beschikking
+    procedure_id: wahv_sanctie
     modality:
       is_intrekking_van: $oorspronkelijke_beschikking_id
     extensions:
@@ -124,11 +126,11 @@ CJIB hoeft deze YAML niet zelf te schrijven; ons team doet de eerste versie. Wat
 
 ## Wat de pilot CJIB oplevert
 
-**Een tweede Blauwe-Knop-source naast de bestaande**, voor dezelfde Wahv-vorderingen, met identieke output op bedrag- en termijn-niveau plus volledige juridische provenance per vordering. Dat is iets dat CJIB op dit moment niet kan leveren en wat Nieuwland §7.2.1 wel vraagt.
+**Een tweede Blauwe-Knop-source naast de bestaande**, voor dezelfde Wahv-vorderingen, met identieke output op bedrag- en termijn-niveau plus volledige juridische provenance per vordering: per vordering de grondslag, de invoer waaruit het bedrag is berekend, en de rechtsmiddel-route met werkelijke einddatum. Die provenance-laag is wat Nieuwland §7.2.1 vraagt en wat een FCID-response vandaag niet bevat.
 
 **Eén bron voor norm, besluit en feit.** Het lexogram zit in het corpus; het besluit komt uit de engine; het feit komt uit de chronicle-stream. Wijzigt de wet, dan beweegt de FCID-response mee zonder aparte release in een tweede systeem. Compliance-werk en uitvoering komen samen onder hetzelfde artefact.
 
-**Rechtsbescherming als ontwerp, niet als marketing.** De AWB-lifecycle uit RFC-008 levert de bezwaartermijn op het juiste moment (BEKENDMAKING, niet BESLUIT). De cel pakt die termijn op en stuurt 'm mee als `bezwaar_route` in elke FCID-response. Een Wahv-sanctie met automatische ophoging die voor iemand met laag inkomen disproportioneel uitwerkt, krijgt vanaf het moment van bekendmaking een zichtbare bezwaarknop in MBO met de werkelijke einddatum, niet pas na een aanmaning. Dit is de operationalisering van Nieuwland §7.2.1, ingebed in het Blauwe-Knop-patroon dat MBO al draait.
+**Rechtsbescherming als ontwerp.** De procedure levert de termijn op het juiste moment (de notificatie-stage, niet het besluit). De cel pakt die termijn op en stuurt 'm mee als rechtsmiddel-route in elke FCID-response, met het juiste rechtsmiddel per regeling: voor de Wahv administratief beroep bij de OvJ (Wahv art. 6), voor een gewone Awb-beschikking bezwaar (Awb 6:7/6:8). Een Wahv-sanctie met automatische ophoging die voor iemand met laag inkomen disproportioneel uitwerkt, krijgt vanaf het moment van bekendmaking een zichtbare beroep-knop in MBO met de werkelijke einddatum, niet pas na een aanmaning. Dit is de operationalisering van Nieuwland §7.2.1, ingebed in het Blauwe-Knop-patroon dat MBO al draait.
 
 **Een directe invulling van de Chronolexografie-architectuur, met behoud van organisatie-autonomie.** CJIB is een cel met eigen kronieken en eigen sleutels. NVWA, NEa, DUO, CAK kunnen straks elk hun eigen cel zijn, met dezelfde mappingsregels. Geen centraal systeem, geen vendor lock-in, en het Blauwe-Knop-patroon blijft het orchestratieprincipe.
 
@@ -159,7 +161,7 @@ Zes dingen, geen open einde.
 
 Een werksessie van een dagdeel met CJIB, het VORIJK/MBO-team en BZK. Agenda: het uitvoeringslandschap valideren, de pilotwet vastpinnen, de cel-topologie schetsen, de bezwaar-routing per type vordering uitwerken, deduplicatie-strategie met MBO-team afspreken, knelpunten benoemen, en bevestigen dat de nieuwe Blauwe-Knop-source naast de bestaande kan draaien. Daarna kan de voorgestelde RFC-022 verder, kan de bijbehorende schema-bump (v0.5.4 → een nieuwe v0.6.0) worden voorbereid, en kunnen we beginnen met het Wahv-lexogram en de eerste chronicle-stream.
 
-Doel: binnen één maand na de werksessie een werkende Blauwe-Knop-source in een pilot-omgeving, met één Wahv-beschikking die op een geauthenticeerde burger-pull in het MBO-pilotportaal verschijnt, een bezwaarknop bevat met de juiste route en termijn, en teruggetraceerd kan worden naar het wetsartikel. Daarna drie maanden vergelijking tegen de bestaande CJIB-Blauwe-Knop-source over alle drie casuïstiek-klassen. Pas daarna een gesprek over wat volgt. Geen jaartallen op het pad daarna; eerst dit laten kloppen.
+Doel: binnen één maand na de werksessie een werkende Blauwe-Knop-source in een pilot-omgeving, met één Wahv-beschikking die op een geauthenticeerde burger-pull in het MBO-pilotportaal verschijnt, een rechtsmiddel-knop bevat met de juiste route en termijn (voor de Wahv: administratief beroep bij de OvJ), en teruggetraceerd kan worden naar het wetsartikel. Daarna drie maanden vergelijking tegen de bestaande CJIB-Blauwe-Knop-source over alle drie casuïstiek-klassen. Pas daarna een gesprek over wat volgt. Geen jaartallen op het pad daarna; eerst dit laten kloppen.
 
 ## Bijlagen
 
@@ -180,9 +182,9 @@ Deze bijlage inventariseert wat CJIB feitelijk doet: welke regelingen het zelf u
 
 ### Waarom CJIB centraal staat
 
-CJIB is een *zelfstandig bestuursorgaan* (ZBO) onder het ministerie van Justitie en Veiligheid. Het is het centrale financiële-handhavingsknooppunt van de Nederlandse staat: bijna elke administratiefrechtelijke en strafrechtelijke financiële verplichting komt hier uiteindelijk terecht wanneer een burger niet vrijwillig betaalt. Per 2026 voert CJIB uit voor minstens vijftien opdrachtgevers, van OM tot een sectorale inspectie als NEa.
+CJIB is een *zelfstandig bestuursorgaan* (ZBO) onder het ministerie van Justitie en Veiligheid. Het is een centraal financiële-handhavingsknooppunt van de Nederlandse staat: een groot deel van de administratiefrechtelijke en strafrechtelijke financiële verplichtingen komt hier terecht wanneer een burger niet vrijwillig betaalt (voor wat er *niet* via CJIB loopt, zie "Wat CJIB niet doet"). De onderstaande tabellen geven dertien opdrachtgevers; interne USB-lijsten noemen er naar verluidt meer (zie open vraag 1). Hoeveel het er precies zijn, is een van de dingen die we in de werksessie willen valideren.
 
-CJIB is ook één van de eerste Blauwe-Knop-sources die in productie draait. Per april 2025 was CJIB samen met de Belastingdienst de meest gevorderde aansluiting; tegen eind 2025 zijn naar verwachting alle acht oorspronkelijke CRI-rijksorganisaties als Blauwe-Knop-source actief (Belastingdienst, Dienst Toeslagen, CJIB, DUO, SVB, CAK, UWV, RVO). De inmiddels uitgebreide kring (NVWA, RDI, RDW e-Tol, Inspectie JenV, NEa, DFEI, ATKM) staat in de pijplijn. CJIB heeft daarmee zowel de breedste portfolio als de meest concrete Blauwe-Knop-implementatie. Dat maakt CJIB de logische eerste cel om een RegelRecht-engine achter de Blauwe-Knop-source te zetten.
+Voor zover uit publieke bronnen is op te maken behoort CJIB tot de eerste Blauwe-Knop-sources, samen met de Belastingdienst; tegen eind 2025 zouden naar verwachting de acht oorspronkelijke CRI-rijksorganisaties als Blauwe-Knop-source actief zijn (Belastingdienst, Dienst Toeslagen, CJIB, DUO, SVB, CAK, UWV, RVO), met een uitgebreide kring (NVWA, RDI, RDW e-Tol, Inspectie JenV, NEa, DFEI, ATKM) in de pijplijn. Wat de status van CJIB's bestaande source precies is (welke FCID-versie, welke vorderingen al ontsloten zijn) weten we niet uit publieke bronnen; dat is open vraag 2 en vraag 3 aan CJIB. Wat CJIB hoe dan ook de logische eerste cel maakt is de breedte van de portfolio (het centrale incasso-knooppunt voor de meeste opdrachtgevers), niet een claim over wie de meest gevorderde implementatie heeft.
 
 ### Mapping op de drie chronolexogram-typen
 
@@ -209,13 +211,14 @@ RFC-022 plaatst elk van deze in zijn juiste plek in de repository-layout: lexogr
 
 ### CJIB als uitvoerder voor andere cellen
 
-CJIB int namens minstens vijftien opdrachtgevers. De juridische grondslag verschilt per geval: sommige zijn sectorale wetten die de minister van JenV of CJIB direct aanwijzen; andere zijn mandaatconstructies onder de Algemene wet bestuursrecht. Het Clustering Rijksincasso (CRI) programma, geformaliseerd via [eenoverheidsincasso.nl](https://www.eenoverheidsincasso.nl/onze-partners), structureert deze samenwerking.
+CJIB int namens een reeks opdrachtgevers; de tabel hieronder geeft er dertien op basis van publieke bronnen (het werkelijke aantal kan hoger liggen, zie open vraag 1). De juridische grondslag verschilt per geval: sommige zijn sectorale wetten die de minister van JenV of CJIB direct aanwijzen; andere zijn mandaatconstructies onder de Algemene wet bestuursrecht. Het Clustering Rijksincasso (CRI) programma, geformaliseerd via [eenoverheidsincasso.nl](https://www.eenoverheidsincasso.nl/onze-partners), structureert deze samenwerking.
 
-In Chronolexografie-termen: de cel van de *opdrachtgever* produceert de primaire decretogram (de inhoudelijke beschikking); CJIB's cel registreert de executogrammen (betaling, kwijtschelding) namens die opdrachtgever. Of CJIB ook een eigen vervolg-decretogram produceert (bijvoorbeeld een dwangbevel onder Awb 4:114) hangt af van de regeling en het convenant. Voor de Blauwe-Knop-presentatie betekent dit dat één FCID-record over een CAK-vordering meerdere bron-relaties heeft: CAK heeft het primaire besluit genomen, CJIB beheert de inning. De `bezwaar_route` moet die werkelijkheid weerspiegelen (zie ook punt 8 in Open vragen, en vraag 5 aan CJIB).
+In Chronolexografie-termen: de cel van de *opdrachtgever* produceert de primaire decretogram (de inhoudelijke beschikking); CJIB's cel registreert de executogrammen (betaling, kwijtschelding) namens die opdrachtgever. Of CJIB ook een eigen vervolg-decretogram produceert (bijvoorbeeld een dwangbevel, gedefinieerd in Awb 4:115, dat onder Awb 4:116 een executoriale titel oplevert) hangt af van de regeling en het convenant. Voor de Blauwe-Knop-presentatie betekent dit dat één FCID-record over een CAK-vordering meerdere bron-relaties heeft: CAK heeft het primaire besluit genomen, CJIB beheert de inning. De `bezwaar_route` moet die werkelijkheid weerspiegelen (zie ook punt 8 in Open vragen, en vraag 5 aan CJIB).
 
 | Opdrachtgever | Type vordering | Grondslag (best available) | Decretogram-cel | Executogram-cel | Past in voorgestelde schema-uitbreiding? |
 |---|---|---|---|---|---|
-| OM | Strafbeschikking, schadevergoeding, ontneming | Sv 257a, Sr 36f, Sr 36e | OM | CJIB | Nieuw `decision_type: STRAFBESCHIKKING` |
+| OM | Strafbeschikking | Sv 257a | OM | CJIB | Nieuw `decision_type: STRAFBESCHIKKING` |
+| Rechter (OM int) | Schadevergoedingsmaatregel, ontnemingsmaatregel | Sr 36f, Sr 36e (ontneming via Sv 511b-procedure) | rechter | CJIB | Géén `STRAFBESCHIKKING`: dit zijn rechterlijke maatregelen uit een vonnis/arrest, geen OM-beschikkingen. Rechtsmiddel is hoger beroep/cassatie, niet verzet; en `legal_character: BESCHIKKING` dekt ze niet. Apart te modelleren (rechterlijke-uitspraak-categorie), buiten scope van deze pilot |
 | DUO | Studieschuld, lesgeld-achterstanden | [Wet studiefinanciering 2000 (BWBR0011453)](https://wetten.overheid.nl/BWBR0011453), Les- en cursusgeldwet `[BWB-ID te verifiëren]` | DUO | CJIB | Nieuw `decision_type: BETALINGSVERPLICHTING` |
 | CAK | Eigen bijdrage Wmo/Wlz, wanbetalersregeling Zvw | [Zvw art. 18a–18d (BWBR0018450)](https://wetten.overheid.nl/BWBR0018450) | CAK | CJIB | Gedeeltelijk: `wet_langdurige_zorg` zit al in corpus |
 | UWV | Terugvorderingen WW/WIA/Wajong | Sectorale werknemersverzekeringswetten + Awb titel 4.4 | UWV | CJIB | Nieuw `decision_type: BETALINGSVERPLICHTING` |
@@ -235,7 +238,7 @@ De acht oorspronkelijke CRI-rijksorganisaties zijn: Belastingdienst, Dienst Toes
 
 Het is goed dit expliciet te maken omdat lezers het vaak verkeerd attribueren. CJIB int **niet**:
 
-- *Gemeentelijke parkeerboetes*. Dit zijn fiscale gemeentelijke sancties; gemeenten innen via Cocensus, belastingsamenwerkingen, of in-house.
+- *Fiscale naheffingsaanslagen parkeerbelasting* (Gemeentewet art. 234). Dit zijn gemeentelijke belastingsancties; gemeenten innen via Cocensus, belastingsamenwerkingen, of in-house. Let op het onderscheid: een Wahv/RVV-*parkeerfeit* (fout parkeren, Mulder-feit) loopt wél via CJIB; alleen de fiscale naheffing voor het niet-betalen van parkeerbelasting loopt via de gemeente. Waar dit voorstel de Wahv-baseline kortweg "parkeerboete" noemt, gaat het om het Mulder-feit, niet om de fiscale naheffing.
 - *Fiscale aanslagen* (inkomstenbelasting, BTW, etc.). De Belastingdienst voert zijn eigen invordering uit op grond van de Invorderingswet 1990. De Belastingdienst draait wel een eigen Blauwe-Knop-source voor die aanslagen.
 - Gemeentelijke leges en lokale heffingen, zelfde reden als parkeerboetes.
 - *Civielrechtelijke vorderingen* tussen particulieren. Die lopen via gerechtsdeurwaarders.
@@ -278,7 +281,7 @@ De volgende items konden niet uit publieke bronnen worden geverifieerd en hebben
 5. **Bilaterale convenanten** die niet in Staatscourant gepubliceerd worden: er kunnen extra opdrachtgevers zijn die niet via publieke bronnen zichtbaar zijn.
 6. **DNA-V kostenverhaalgrondslag.** BWBR0017212 koppelt kostenverhaal niet rechtstreeks aan CJIB; dit loopt waarschijnlijk via beleidsregels die nog geverifieerd moeten worden.
 7. **Per-opdrachtgever BWB-IDs** met `[onzeker]` in de tabel.
-8. **Bezwaar-routing in de FCID-response.** Elke FCID-vordering in de response van de cel-als-Blauwe-Knop-source draagt een `bezwaar_route` die op het moment van pull uit de RFC-008-procedure-stage van het decretogram wordt afgeleid. Voor decretogrammen die CJIB zelf produceert (Wahv-sanctie) wijst de route naar CJIB's eigen bezwaar-intake. Voor decretogrammen die CJIB namens een andere cel draagt (een CAK-besluit, een OM-strafbeschikking) wijst de route formeel naar die andere cel, terwijl de burger in de praktijk vaak CJIB belt. De wettelijke routing per regeling moet per geval gevalideerd worden. Hoe bepaalt CJIB's bestaande Blauwe-Knop-source vandaag de bezwaarroute voor een CAK-vordering (hardcoded, of dynamisch)? Het antwoord bepaalt of de RegelRecht-cel dit uit een mandaat-convenant-modellering of uit een aparte beleidsregel-laag moet afleiden.
+8. **Rechtsmiddel-routing in de FCID-response.** Elke FCID-vordering draagt op het moment van pull de juiste rechtsmiddel-route, afgeleid uit de procedure van het decretogram. Welk rechtsmiddel geldt verschilt per regeling: de Wahv-sanctie die CJIB zelf produceert kent géén Awb-bezwaar maar administratief beroep bij de officier van justitie (Wahv art. 6) en daarna de kantonrechter (Wahv art. 9), dus de route is een `beroep_route` naar het OM/CVOM, niet een `bezwaar_route`. Een CAK-eigen-bijdrage-besluit dat CJIB namens CAK int, is wél een Awb-beschikking met een `bezwaar_route` die formeel naar CAK wijst, terwijl de burger in de praktijk vaak CJIB belt. Een OM-strafbeschikking kent verzet (Sv 257e). De routing per regeling moet per geval gevalideerd worden. Hoe bepaalt CJIB's bestaande Blauwe-Knop-source vandaag de route voor een CAK-vordering (hardcoded, of dynamisch)? Het antwoord bepaalt of de RegelRecht-cel dit uit een mandaat-convenant-modellering of uit een aparte beleidsregel-laag moet afleiden.
 9. **Wet gegevensboekhouding-interactie.** Nieuwland §7.3.2 schetst een Wet gegevensboekhouding die de executogram-zijdige registratie een wettelijke basis zou geven. De huidige grondslag van CJIB is impliciet in Awb 4.4 + sectorale wetten; een expliciete wet zou het beeld wijzigen. De chronicle-stream-architectuur is bewust ontworpen om met die toekomstige wet mee te kunnen bewegen: per cel verifieerbaar wat er feitelijk geregistreerd is, op grond van welke grondslag, op welk moment.
 10. **Burger-machtigingen.** Het Blauwe-Knop-patroon is burger-geïnitieerd via DigiD. Voor de schuldhulpverleningspraktijk en voor sommige sectorale uitvoeringscontexten is er behoefte aan een derde die met expliciete machtiging op een burger toegang krijgt. Of dat via DigiD Machtigen via dezelfde Blauwe-Knop-flow loopt of via FSC met een aparte machtigingscontext is uit publieke bronnen niet ondubbelzinnig af te leiden.
 11. **Deduplicatie bij parallel-lopende sources** (zie ook vraag 6 aan CJIB). Tijdens de pilot leveren de bestaande en de RegelRecht-aangedreven source beide FCID-responses voor dezelfde Wahv-vorderingen. Welke sleutel hanteert de MBO-app voor deduplicatie? Mogelijke kandidaten: `zaakkenmerk` (mits beide sources hetzelfde zaaknummer hanteren), of `(zaakkenmerk, decision_type, bedrag)`-triplet plus `trace_id`-origin (de RegelRecht-aangedreven source levert `trace_id`, de oude bron mogelijk niet). De keuze hoort thuis bij MBO-team.
@@ -291,7 +294,7 @@ Deze bijlage specificeert hoe een cel met een RegelRecht-engine een Blauwe-Knop-
 
 ### Doelversie en transport
 
-FCID-baseline: **v3.0.0** (mei 2023, huidige stabiele versie volgens vorijk.nl). De architectuur is voorbereid op v4.x zodra die productie-rijp is; v4.2.0 is per mei 2026 nog experimenteel. De integratie-spec is herzienbaar zonder dat RFC-022 opnieuw opengaat. Welke versie de pilot daadwerkelijk gebruikt, wordt bepaald door wat CJIB's bestaande Blauwe-Knop-source draait (vraag 3 aan CJIB).
+FCID-baseline: **v3.0.0** (volgens vorijk.nl de huidige stabiele versie; release-datum en de exacte status van de v4.x-lijn te verifiëren tegen vorijk.nl). De architectuur is voorbereid op v4.x zodra die productie-rijp is. De integratie-spec is herzienbaar zonder dat RFC-022 opnieuw opengaat. Welke versie de pilot daadwerkelijk gebruikt, wordt bepaald door wat CJIB's bestaande Blauwe-Knop-source draait (vraag 3 aan CJIB).
 
 Transport en authenticatie volgen [Blauwe Knop Connect](https://vorijk.nl/standaard/connect/draft-bk-connect-00.html) ongewijzigd. De burger authenticeert via DigiD en de App Manager; de cel valideert de aangeboden authorization-token; de cel antwoordt met een FCID-response ondertekend met haar eigen sleutel (JWS). Niets in dit voorstel verandert het protocol; we leveren een tweede source-implementatie naast de bestaande.
 
@@ -328,7 +331,9 @@ lexostatus_definitions:
         - chronicle: cjib_wahv_decisions
           select_where: "decision_type IN (BETALINGSVERPLICHTING) AND current_stage >= BEKENDMAKING"
         - chronicle: cjib_om_executions
-          select_where: "decision_type IN (STRAFBESCHIKKING) AND current_stage >= BEKENDMAKING"
+          # STRAFBESCHIKKING volgt het strafvorderlijke model, niet de Awb-lifecycle: de
+          # zichtbaarheidsdrempel is uitreiking/betekening (Sv 257d), niet Awb-BEKENDMAKING.
+          select_where: "decision_type IN (STRAFBESCHIKKING) AND current_stage >= UITGEREIKT"
         - chronicle: cjib_mandate_executions
           select_where: "decision_type IN (BETALINGSVERPLICHTING, BESTUURLIJKE_BOETE) AND current_stage >= BEKENDMAKING"
       exclude:
@@ -385,9 +390,9 @@ execution:
         visible_from_stage: BEKENDMAKING   # default; overrijdbaar
 ```
 
-`category` is een van `ALGEMEEN`, `ADMINISTRATIEKOSTEN`, `VERHOGING`, `RENTE`. Een regeling die meerdere FCID-records uit één beschikking produceert (hoofdsom + administratiekosten + verhoging) declareert die als aparte artikelen of aparte `produces`-blokken, elk met zijn eigen `extensions.blauwe_knop.category`. Alle records delen hetzelfde `zaakkenmerk`; de burger-client gebruikt `category` om ze in de UI samen te groeperen.
+`category` is hier voorgesteld als een van `ALGEMEEN`, `ADMINISTRATIEKOSTEN`, `VERHOGING`, `RENTE`. Deze waardenlijst is een RegelRecht-voorstel binnen de `extensions.blauwe_knop`-namespace, te toetsen tegen de FCID-spec (vraag 3 aan CJIB): als FCID een eigen category-vocabulaire kent, volgen we dat. Een regeling die meerdere FCID-records uit één beschikking produceert (hoofdsom + administratiekosten + verhoging) declareert die als aparte artikelen of aparte `produces`-blokken, elk met zijn eigen `extensions.blauwe_knop.category`. Alle records delen hetzelfde `zaakkenmerk`; de burger-client gebruikt `category` om ze in de UI samen te groeperen.
 
-`visible_from_stage` selecteert de RFC-008-lifecycle-stage vanaf wanneer de vordering zichtbaar is; default `BEKENDMAKING`. De cel evalueert per pull, per kandidaat-decretogram, of `current_stage >= visible_from_stage`; vorderingen die nog niet zo ver zijn vallen weg (geen null, geen placeholder). Het is bewust `visible_from_stage` en niet `emit_at_stage`: Blauwe Knop kent geen emit-moment, alleen een pull-moment (zie RFC-022 §3.2). De `bezwaar_route`-velden zijn pas vanaf `BEKENDMAKING` correct (de AWB 6:8-hook schrijft de `bezwaartermijn_einddatum` daar), dus verlagen naar BESLUIT is niet toegestaan voor decretogrammen die een `bezwaar_route` vereisen.
+`visible_from_stage` selecteert de procedure-stage vanaf wanneer de vordering zichtbaar is; default `BEKENDMAKING` (of de bekendmaking-equivalente stage van de betreffende procedure). De cel evalueert per pull, per kandidaat-decretogram, of `current_stage >= visible_from_stage`; vorderingen die nog niet zo ver zijn vallen weg (geen null, geen placeholder). Het is bewust `visible_from_stage` en niet `emit_at_stage`: Blauwe Knop kent geen emit-moment, alleen een pull-moment (zie RFC-022 §3.2). De rechtsmiddel-route-velden zijn pas vanaf de notificatie-stage correct (voor Awb-beschikkingen schrijft de AWB 6:8-hook de `bezwaartermijn_einddatum` op BEKENDMAKING; voor de Wahv geldt het analoge moment van de eigen procedure), dus verlagen naar de besluit-stage is niet toegestaan voor decretogrammen die een route vereisen.
 
 #### Veld-afleiding per FCID-record
 
@@ -400,24 +405,40 @@ execution:
 | `zaakkenmerk` | de cel's bestaande zaaknummer-systematiek; anders deterministische hash van `(cell.id, beschikking_id)`. Voor één verplichting met meerdere FCID-records (hoofdsom + admin + verhoging): hetzelfde `zaakkenmerk`, onderscheiden door `category`. |
 | `gebeurtenis_kenmerk` | UUID v7, gegenereerd op pull-tijdstip |
 | `bedrag` | currency-getypeerde output × 100 (FCID vereist centen als integer). Afrondingsregels (per record afronden, of totaal afronden) volgen de bestaande CJIB-uitvoering en worden in het lexogram gecodificeerd; mismatch hierop is meetbaar in de drie maanden vergelijking. |
-| `bezwaar_route` | afgeleid uit het RFC-008-procedure-state van het decretogram op pull-tijdstip; zie hieronder |
+| `bezwaar_route` / `beroep_route` | de rechtsmiddel-route, afgeleid uit de procedure van het decretogram op pull-tijdstip; welk veld (bezwaar vs. beroep) hangt af van de procedure (zie hieronder). Voor de Wahv is dit een `beroep_route`, niet een `bezwaar_route` |
 | `signature` | de cel's FSC-signing key, hergebruikt als Blauwe-Knop-response-signing key (RFC-009 §5). Per response één signature (BK-spec), niet per record. Hergebruik tussen FSC en BK is een open vraag aan RFC-009 die separaat geamendeerd wordt; in de pilot accepteren we hergebruik onder voorbehoud van werksessie-bevestiging (vraag 4 aan CJIB). |
 | `trace_id` | W3C Trace Context `trace_id` uit de executie-trace van het decretogram. Identificeert deze record als afkomstig uit de RegelRecht-aangedreven source, en maakt deduplicatie tegen de bestaande Blauwe-Knop-source mogelijk. |
 
 Het `trace_id` laat een downstream surface (burgerportaal, toezichtstool) terugnavigeren naar de executie-trace die de beschikking heeft geproduceerd. De trace blijft in de cel; alleen de referentie reist mee met het record.
 
-#### `bezwaar_route` afgeleid uit RFC-008
+#### Rechtsmiddel-route afgeleid uit de procedure
 
-De cel leest geen `bezwaarbaar`-veld uit `produces`. In plaats daarvan bevraagt ze, op pull-tijdstip, het RFC-008-procedure-state van het decretogram voor de bezwaar-stage-outputs:
+De cel leest geen `bezwaarbaar`-veld uit `produces`. In plaats daarvan bevraagt ze, op pull-tijdstip, het procedure-state van het decretogram. Welk rechtsmiddel geldt, hangt af van de `procedure_id` (zie RFC-022 §3.3 voor de families):
+
+- **Gewone Awb-beschikking** (Awb titel 4.4 *geldschulden*, meeste bestuurlijke boetes): een `bezwaar_route`.
+- **Lex-specialis eigen-regime** zoals de **Wahv**: een `beroep_route` (administratief beroep bij de OvJ, Wahv art. 6, daarna kantonrechter, Wahv art. 9). Géén Awb-bezwaar.
+- **UOV / concretiserend BAS**: een `beroep_route` (direct beroep).
+- **STRAFBESCHIKKING**: een `verzet_route` (Sv 257e), uit het strafprocesrechtelijke model, niet uit RFC-008.
+
+Veldafleiding voor een `bezwaar_route` (Awb-beschikking):
 
 | `bezwaar_route`-veld | Afleiding |
 |---|---|
 | `intake` | de bezwaar-intake-URL van de cel voor de `procedure_id` van de regel (cel-config) |
-| `termijn_grondslag` | het AWB-artikel (of lex-specialis-override) dat de termijn bepaalde, bv. `"Awb 6:7"` of `"Vw 2000 art. 69"` |
-| `termijn_einddatum` | `bezwaartermijn_einddatum`-output van de BEKENDMAKING-stage-hooks (AWB 6:8 + Termijnenwet) |
-| `direct_beroep_mogelijk` | true wanneer AWB 7:1a van toepassing is; anders afwezig |
+| `termijn_grondslag` | het Awb-artikel (of lex-specialis-override) dat de termijn bepaalde, bv. `"Awb 6:7"` |
+| `termijn_einddatum` | `bezwaartermijn_einddatum`-output van de BEKENDMAKING-stage-hooks (Awb 6:8 + Termijnenwet) |
+| `direct_beroep_mogelijk` | true wanneer Awb 7:1a van toepassing is; anders afwezig |
 
-Als de procedure geen bezwaar-stage heeft (UOV, AVV-zonder-direct-beroep), is `bezwaar_route` afwezig en is hetzij `beroep_route` (UOV, concretiserend BAS) hetzij `geen_rechtsbescherming_reden` (AVV, beleidsregel) aanwezig.
+Veldafleiding voor een `beroep_route` (Wahv-regime):
+
+| `beroep_route`-veld | Afleiding |
+|---|---|
+| `intake` | de administratief-beroep-intake van de cel (voor de Wahv: OM/CVOM) |
+| `termijn_grondslag` | het lex-specialis-artikel dat de termijn bepaalde, bv. `"Wahv art. 6"` |
+| `termijn_einddatum` | de beroeptermijn-einddatum, berekend op de notificatie-equivalente stage van de Wahv-procedure |
+| `vervolgrechtsmiddel` | de instantie van het vervolg-beroep, bv. `"kantonrechter (Wahv art. 9)"` |
+
+Als de procedure geen enkel rechtsmiddel kent (AVV-zonder-direct-beroep, beleidsregel), is geen route aanwezig maar wel een `geen_rechtsbescherming_reden`.
 
 ### Producer-zijde: chronicle-stream-events
 
