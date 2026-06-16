@@ -26,7 +26,24 @@ export interface RfcEntry {
    * schema does not validate.
    */
   implementation?: string
+  /**
+   * Raw `depends_on` frontmatter entries, each like "RFC-004 (Uniform Operation
+   * Syntax)". Resolved into links by `rfcRelations()`.
+   */
+  dependsOn: string[]
   /** Site-relative link derived from the real filename, e.g. "/rfcs/rfc-008" */
+  link: string
+}
+
+/** A resolved cross-reference to another RFC, ready to render as a link. */
+export interface RfcLink {
+  /** Numeric RFC number, e.g. 4 */
+  num: number
+  /** Zero-padded id, e.g. "RFC-004" */
+  id: string
+  /** Descriptive title, e.g. "Uniform Operation Syntax" */
+  title: string
+  /** Site-relative link, e.g. "/rfcs/rfc-004" */
   link: string
 }
 
@@ -82,6 +99,28 @@ function frontmatterField(block: string, key: string): string | undefined {
 }
 
 /**
+ * Read a `key:` block sequence (one `- item` per line) from a frontmatter
+ * block. Returns [] when the key is absent. Stops at the next top-level key or
+ * the end of the block, so it never bleeds into a following field.
+ */
+function frontmatterList(block: string, key: string): string[] {
+  const lines = block.split('\n')
+  const start = lines.findIndex((l) => l.trimEnd() === `${key}:`)
+  if (start === -1) return []
+  const items: string[] = []
+  for (let i = start + 1; i < lines.length; i++) {
+    const line = lines[i]
+    const item = line.match(/^\s*-\s+(.*)$/)
+    if (item) {
+      items.push(item[1].trim())
+    } else if (line.trim() !== '') {
+      break // a non-list, non-blank line ends the sequence
+    }
+  }
+  return items
+}
+
+/**
  * Scan docs/rfcs for rfc-NNN.md files and parse number (from filename) and the
  * metadata fields (title, status, optional implementation and short title)
  * from frontmatter. Throws if a file lacks a parseable frontmatter title, so a
@@ -127,6 +166,7 @@ export function getRfcs(): RfcEntry[] {
     const status = frontmatterField(block, 'status') ?? 'Unknown'
     const implementation = frontmatterField(block, 'implementation')
     const shortTitle = frontmatterField(block, 'short_title') ?? title
+    const dependsOn = frontmatterList(block, 'depends_on')
 
     // The link is derived from a filename we just read, so it provably
     // resolves to a real page: a non-existent target cannot be produced here.
@@ -137,11 +177,59 @@ export function getRfcs(): RfcEntry[] {
       shortTitle,
       status,
       ...(implementation ? { implementation } : {}),
+      dependsOn,
       link: `/rfcs/${filename.replace(/\.md$/, '')}`,
     })
   }
 
   return entries.sort((a, b) => a.num - b.num)
+}
+
+/** The RFC number a `depends_on` entry points at, e.g. "RFC-004 (…)" → 4. */
+const DEPENDS_ON_NUM = /^RFC-0*(\d+)\b/
+
+/**
+ * Forward and reverse dependency links per RFC, resolved against the real RFC
+ * set so a target that does not exist is dropped rather than linked to a 404.
+ * `dependsOn` comes from the `depends_on` frontmatter; `requiredBy` is its
+ * inverse (the RFCs that declare a dependency on this one), computed here so
+ * the back-references cannot drift from the forward ones.
+ */
+export function rfcRelations(): Map<
+  number,
+  { dependsOn: RfcLink[]; requiredBy: RfcLink[] }
+> {
+  const rfcs = getRfcs()
+  const byNum = new Map(rfcs.map((r) => [r.num, r]))
+  const toLink = (r: RfcEntry): RfcLink => ({
+    num: r.num,
+    id: r.id,
+    title: r.title,
+    link: r.link,
+  })
+
+  const relations = new Map<
+    number,
+    { dependsOn: RfcLink[]; requiredBy: RfcLink[] }
+  >(rfcs.map((r) => [r.num, { dependsOn: [], requiredBy: [] }]))
+
+  for (const rfc of rfcs) {
+    for (const raw of rfc.dependsOn) {
+      const targetNum = raw.match(DEPENDS_ON_NUM)?.[1]
+      if (!targetNum) continue
+      const target = byNum.get(parseInt(targetNum, 10))
+      if (!target) continue // points at an RFC that is not in the corpus
+      relations.get(rfc.num)!.dependsOn.push(toLink(target))
+      relations.get(target.num)!.requiredBy.push(toLink(rfc))
+    }
+  }
+
+  // Stable order: dependencies and dependents read low-to-high.
+  for (const rel of relations.values()) {
+    rel.dependsOn.sort((a, b) => a.num - b.num)
+    rel.requiredBy.sort((a, b) => a.num - b.num)
+  }
+  return relations
 }
 
 /** Sidebar items for the `/rfcs/` section, with the Overview entry first. */
