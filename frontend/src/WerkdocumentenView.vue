@@ -81,7 +81,7 @@ function backToList() {
 <template>
   <nldd-app-view>
     <div class="werkdocumenten-view">
-      <nldd-container padding="8">
+      <nldd-container padding="8" padding-left="16">
         <nldd-toolbar size="md">
           <nldd-toolbar-title slot="start" text="Werkdocumenten" :supporting-text="trajectName"></nldd-toolbar-title>
           <nldd-toolbar-item slot="end">

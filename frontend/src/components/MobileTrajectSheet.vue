@@ -189,7 +189,7 @@ onBeforeUnmount(() => {
   <nldd-button
     size="md"
     expandable
-    start-icon="traject"
+    start-icon="document"
     width="full"
     horizontal-alignment="left"
     single-line
