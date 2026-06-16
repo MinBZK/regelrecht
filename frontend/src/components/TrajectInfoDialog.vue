@@ -160,11 +160,6 @@ async function confirmDelete() {
               <nldd-text-cell :text="orDash(detail.description)"></nldd-text-cell>
             </nldd-list-item>
             <nldd-list-item size="md">
-              <nldd-text-cell text="Scope" max-width="180px"></nldd-text-cell>
-              <nldd-spacer-cell size="8"></nldd-spacer-cell>
-              <nldd-text-cell :text="orDash(detail.scope)"></nldd-text-cell>
-            </nldd-list-item>
-            <nldd-list-item size="md">
               <nldd-text-cell text="Status" max-width="180px"></nldd-text-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell :text="detail.status"></nldd-text-cell>

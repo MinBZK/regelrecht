@@ -31,7 +31,6 @@ const DETAIL = {
   id: 'abc',
   name: 'Tariefswijziging 2026',
   description: 'Waarom dit traject',
-  scope: 'zorgtoeslag',
   status: 'bezig',
   role: 'owner',
   members: [],
@@ -78,7 +77,9 @@ describe('TrajectInfoDialog', () => {
     const texts = cellTexts(wrapper);
     expect(texts).toContain('Tariefswijziging 2026');
     expect(texts).toContain('Waarom dit traject');
-    expect(texts).toContain('zorgtoeslag');
+    // Scope is merged into Beschrijving — no separate Scope row.
+    expect(texts).toContain('Beschrijving');
+    expect(texts).not.toContain('Scope');
     expect(texts).toContain('bezig');
     expect(texts).toContain('owner');
   });
