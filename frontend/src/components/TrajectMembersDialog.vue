@@ -269,6 +269,8 @@ async function clickLeave() {
                 </div>
               </template>
               <nldd-list-item v-if="isOwner" size="md" button @click="openInvite">
+                <nldd-icon-cell size="20"><nldd-icon name="plus"></nldd-icon></nldd-icon-cell>
+                <nldd-spacer-cell size="8"></nldd-spacer-cell>
                 <nldd-text-cell text="Lid uitnodigen"></nldd-text-cell>
                 <nldd-spacer-cell size="8"></nldd-spacer-cell>
                 <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
