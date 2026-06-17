@@ -1105,7 +1105,7 @@ watchEffect(() => {
 });
 
 // Reflect navigation depth + unsaved state in the document title:
-//   "• Wijzig: Art. 5 · Wet op de zorgtoeslag · 15 juni test · RegelRecht"
+//   "• Editor: Art. 5 · Wet op de zorgtoeslag · 15 juni test · RegelRecht"
 // A leading dot flags unsaved changes — it stays visible even when the tab
 // title is truncated to its start. Then the mode prefix, then most-specific to
 // least-specific (article, law, traject) with the brand last. Lives here (after
@@ -1117,8 +1117,8 @@ watchEffect(() => {
   if (lawName.value) detail.push(lawName.value);
   if (activeTraject.value?.name) detail.push(activeTraject.value.name);
   const base = detail.length > 0
-    ? `Wijzig: ${detail.join(' · ')} · RegelRecht`
-    : 'Wijzig · RegelRecht';
+    ? `Editor: ${detail.join(' · ')} · RegelRecht`
+    : 'Editor · RegelRecht';
   document.title = articleDirty.value ? `• ${base}` : base;
 });
 

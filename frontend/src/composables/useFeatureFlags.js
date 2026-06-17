@@ -39,6 +39,11 @@ const loaded = ref(false);
 
 let fetchPromise = null;
 
+// useAuth() returns module-level refs; capture oidcConfigured once at load so
+// the toggle() catch below reads .value without calling a composable at runtime
+// outside a setup() context.
+const { oidcConfigured } = useAuth();
+
 async function loadFlags() {
   if (fetchPromise) return fetchPromise;
   fetchPromise = (async () => {
@@ -97,7 +102,6 @@ async function toggle(key) {
     // (or the failure is offline / a 5xx); persisting it would make the
     // override sticky in localStorage and silently win over the server even
     // after re-authentication, so revert the optimistic change instead.
-    const { oidcConfigured } = useAuth();
     if (oidcConfigured.value) {
       console.warn('Feature flag write failed; reverting (server stays authoritative):', e.message);
       flags.value = { ...flags.value, [key]: current };

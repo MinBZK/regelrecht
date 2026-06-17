@@ -74,6 +74,10 @@ const router = createRouter({
           // Editor-links zonder traject (de vroegere read-only editor): er is
           // geen editor zonder traject meer. Door naar de keuzepagina, met de
           // wet als query zodat die na de keuze opent.
+          //
+          // Staat bewust NA `editor-traject`: een traject-ref-URL
+          // ({slug}-{8hex}) moet de traject-route matchen, niet deze redirect.
+          // De declaratievolgorde is hier de scheidsrechter.
           path: 'editor/:lawId/:articleNumber?',
           redirect: (to) => ({
             name: 'editor',
