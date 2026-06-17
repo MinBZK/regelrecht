@@ -21,6 +21,22 @@ const { documentTabs, activeDocumentTab, tabActions } = useAppChrome();
 const route = useRoute();
 const router = useRouter();
 
+// Not logged in: log in, then land on the trajectchooser carrying the current
+// section + law/article, so picking a traject returns the user to where they
+// were — now traject-scoped.
+function loginToChooser() {
+  const inLibrary = route.name === 'library' || route.name === 'library-traject';
+  const target = router.resolve({
+    name: 'trajecten',
+    query: {
+      sectie: inLibrary ? 'library' : 'editor',
+      law: route.params.lawId || undefined,
+      article: route.params.articleNumber || undefined,
+    },
+  });
+  login(target.fullPath);
+}
+
 const sheetEl = ref(null);
 const sheetMode = ref('list'); // 'list' | 'create'
 
@@ -194,7 +210,7 @@ onBeforeUnmount(() => {
   <nldd-button
     size="md"
     expandable
-    start-icon="document"
+    start-icon="traject"
     width="full"
     horizontal-alignment="left"
     single-line
@@ -218,11 +234,11 @@ onBeforeUnmount(() => {
         <!-- Niet ingelogd -->
         <nldd-simple-section v-if="!authenticated">
           <nldd-inline-dialog
-            icon="traject"
+            icon="login"
             text="Log in om een traject te kiezen of aan te maken"
             supporting-text="Zodra je bent ingelogd zie je hier je lopende trajecten en kun je gemakkelijk wisselen."
           >
-            <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
+            <nldd-button slot="actions" variant="primary" text="Inloggen" @click="loginToChooser"></nldd-button>
           </nldd-inline-dialog>
         </nldd-simple-section>
 

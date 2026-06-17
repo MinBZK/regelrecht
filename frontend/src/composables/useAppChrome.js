@@ -63,6 +63,12 @@ const tabActions = shallowRef(null); // { key, displayName, select, close, reord
 const editorChanges = shallowRef(null); // { dirty, saving, canUndo, canRedo } | null
 const editorActions = shallowRef(null); // { save, discard, undo, redo } | null
 
+// --- Library-only chrome ---
+// Whether the library has nothing curated yet (no favorites, no traject edits,
+// no open law). While true, the shell shows the just-in-time search coach-mark
+// on the toolbar search field; the library body itself stays blank.
+const libraryEmpty = shallowRef(false);
+
 export function useAppChrome() {
   return {
     lastSavedPr,
@@ -71,7 +77,14 @@ export function useAppChrome() {
     tabActions,
     editorChanges,
     editorActions,
+    libraryEmpty,
   };
+}
+
+// Published reactively by the library view (and reset when it unmounts) so the
+// shell can gate the search coach-mark on an empty library.
+export function setLibraryEmpty(empty) {
+  libraryEmpty.value = !!empty;
 }
 
 export function setEditorChrome({ pr, tabs, activeTab }) {

@@ -33,6 +33,22 @@ const route = useRoute();
 const router = useRouter();
 const documentsSheet = useDocumentsSheet();
 
+// Not logged in: log in, then land on the trajectchooser carrying the current
+// section + law/article, so picking a traject returns the user to where they
+// were — now traject-scoped.
+function loginToChooser() {
+  const inLibrary = route.name === 'library' || route.name === 'library-traject';
+  const target = router.resolve({
+    name: 'trajecten',
+    query: {
+      sectie: inLibrary ? 'library' : 'editor',
+      law: route.params.lawId || undefined,
+      article: route.params.articleNumber || undefined,
+    },
+  });
+  login(target.fullPath);
+}
+
 /**
  * Navigate to a traject — push the user into the traject-scoped view of
  * the section they are currently in (bibliotheek or editor), at the same
@@ -239,7 +255,7 @@ async function submitCreate() {
   >
     <nldd-container padding="16">
       <nldd-inline-dialog
-        icon="traject"
+        icon="login"
         text="Log in om een traject te kiezen of aan te maken"
         supporting-text="Zodra je bent ingelogd zie je hier je lopende trajecten en kun je gemakkelijk wisselen."
       >
@@ -247,7 +263,7 @@ async function submitCreate() {
           slot="actions"
           variant="primary"
           text="Inloggen"
-          @click="login()"
+          @click="loginToChooser"
         ></nldd-button>
       </nldd-inline-dialog>
     </nldd-container>

@@ -24,19 +24,20 @@ describe('route disambiguation (traject vs no-traject)', () => {
 
   it('mirrors the same split for the editor routes', () => {
     expect(router.resolve(`/editor/${REF}/foo`).name).toBe('editor-traject');
-    // The bare /editor is the traject chooser; a law URL without a
-    // traject redirects onto it (the law travels along as query).
-    expect(router.resolve('/editor').name).toBe('editor');
+    // The chooser lives at its own section-neutral URL (/trajecten); the bare
+    // /editor redirects onto it with sectie=editor, and a no-traject law URL
+    // does the same with the law carried as query.
+    expect(router.resolve('/trajecten').name).toBe('trajecten');
     expect(router.resolve('/editor/nieuw-traject').name).toBe('editor-nieuw-traject');
     // A no-traject law URL hits a redirect route (router.resolve returns the
     // redirect record without following it). Assert it redirects onto the
-    // chooser, carrying the law as query.
+    // chooser, carrying the section + law as query.
     const matched = router.resolve('/editor/wet_op_de_zorgtoeslag').matched;
     const redirect = matched[matched.length - 1].redirect;
     expect(redirect).toBeTruthy();
     expect(redirect({ params: { lawId: 'wet_op_de_zorgtoeslag' } })).toMatchObject({
-      name: 'editor',
-      query: { law: 'wet_op_de_zorgtoeslag' },
+      name: 'trajecten',
+      query: { sectie: 'editor', law: 'wet_op_de_zorgtoeslag' },
     });
   });
 });
