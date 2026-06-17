@@ -128,4 +128,5 @@ Cross-law references and IoC both let laws use values from other laws, but they 
 
 - [Cross-Law References](./cross-law-references) - the other pattern for inter-law values
 - [Hooks and Reactive Execution](./hooks-and-reactive-execution) - yet another pattern: laws that fire automatically
+- [Traceability](./traceability) - how an open-term delegation appears in an execution trace
 - [RFC-003: Inversion of Control](/rfcs/rfc-003) - the full design specification

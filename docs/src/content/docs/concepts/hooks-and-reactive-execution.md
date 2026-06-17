@@ -151,5 +151,7 @@ The engine yields between stages, returning accumulated outputs and indicating w
 
 - [Cross-Law References](./cross-law-references) - how laws reference each other explicitly
 - [Inversion of Control](./inversion-of-control) - how higher laws delegate to lower regulations
+- [Traceability](./traceability) - how hook and override nodes appear in an execution trace
+- [Temporal Validity and Dates](./temporal-and-dates) - the date arithmetic behind the objection-deadline chain
 - [RFC-007: Cross-Law Execution](/rfcs/rfc-007) - hooks and overrides specification
 - [RFC-008: Bestuursrecht/Awb](/rfcs/rfc-008) - the administrative procedure model

@@ -49,10 +49,14 @@ export const sidebar: Record<string, SidebarGroup[]> = {
         { text: 'Cross-Law References', link: '/concepts/cross-law-references' },
         { text: 'Inversion of Control', link: '/concepts/inversion-of-control' },
         { text: 'Hooks and Reactive Execution', link: '/concepts/hooks-and-reactive-execution' },
+        { text: 'Competent Authority', link: '/concepts/competent-authority' },
         { text: 'Multi-Org Execution', link: '/concepts/multi-org-execution' },
         { text: 'Federated Corpus', link: '/concepts/federated-corpus' },
+        { text: 'Notes and Annotations', link: '/concepts/notes-and-annotations' },
+        { text: 'Temporal Validity and Dates', link: '/concepts/temporal-and-dates' },
         { text: 'Untranslatables', link: '/concepts/untranslatables' },
         { text: 'Execution Provenance', link: '/concepts/execution-provenance' },
+        { text: 'Traceability', link: '/concepts/traceability' },
       ],
     },
     {
@@ -135,6 +139,8 @@ export const sidebar: Record<string, SidebarGroup[]> = {
       items: [
         { text: 'Glossary', link: '/reference/glossary' },
         { text: 'Schema', link: '/reference/schema' },
+        { text: 'Conformance', link: '/reference/conformance' },
+        { text: 'Documentation Coverage', link: '/reference/documentation-coverage' },
         { text: 'Accessibility', link: '/reference/accessibility' },
       ],
     },

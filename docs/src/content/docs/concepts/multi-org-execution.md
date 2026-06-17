@@ -67,6 +67,8 @@ A citizen requesting their trace can see: "your income was determined by the Tax
 
 ## Further reading
 
+- [Competent Authority](./competent-authority) - the `competent_authority` field that decides execute-vs-accept
+- [Traceability](./traceability) - how the organizational boundary appears in a real trace
 - [Hooks and Reactive Execution](./hooks-and-reactive-execution) - how Awb rules apply across organizations
 - [Federated Corpus](./federated-corpus) - how different organizations maintain their own law files
 - [RFC-009: Multi-Org Execution](/rfcs/rfc-009) - the full design specification
