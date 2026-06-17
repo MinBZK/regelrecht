@@ -140,4 +140,4 @@ Every execution can produce a trace tree showing which articles applied, which i
 
 Laws change over time. The standard premium was different in 2024 than in 2025. A calculation for January 2025 must use the rules and values in effect on that date. The engine selects the law version where `valid_from <= reference_date`.
 
-The corpus contains both `regeling_standaardpremie/2024-01-01.yaml` and `regeling_standaardpremie/2025-01-01.yaml`. A calculation with `reference_date: 2024-06-15` automatically uses the 2024 value.
+The corpus contains both `regeling_standaardpremie/2024-01-01.yaml` and `regeling_standaardpremie/2025-01-01.yaml`. A calculation with `reference_date: 2024-06-15` automatically uses the 2024 value. See [Temporal Validity and Dates](./temporal-and-dates) for how a law expires with `valid_to`, what happens to a reference into an ended law, and how dates are compared and subtracted inside the rules.

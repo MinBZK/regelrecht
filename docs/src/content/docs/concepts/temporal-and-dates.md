@@ -14,7 +14,8 @@ A law version carries `valid_from`, and optionally `valid_to`: the first and las
 ```gherkin
 Given the calculation date is "2024-12-31"
 When the law "test_einddatum" is executed for outputs "normbedrag"
-Then the output "normbedrag" is "500"
+Then the execution succeeds
+And the output "normbedrag" is "500"
 ```
 
 and the day after, it is gone. Selection does **not** fall through to an older version once the in-force one has ended; an expired law is expired, not replaced by its predecessor. A reference to a law that has ended fails with the data fact rather than a vague "no rule found":
