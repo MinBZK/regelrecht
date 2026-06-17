@@ -187,12 +187,17 @@ function bind(field) {
         </nldd-rich-text>
       </nldd-form-field>
 
-      <div v-if="error" class="traject-error">{{ error }}</div>
+      <nldd-inline-dialog
+        v-if="error"
+        variant="alert"
+        :text="error"
+      ></nldd-inline-dialog>
 
-      <div v-if="busy" class="traject-busy" role="status">
-        <span class="traject-spinner" aria-hidden="true"></span>
-        <span>Traject wordt aangemaakt en branch wordt op de remote gezet — dit kan even duren.</span>
-      </div>
+      <nldd-activity-indicator
+        v-if="busy"
+        show-text
+        text="Traject wordt aangemaakt en branch wordt op de remote gezet — dit kan even duren."
+      ></nldd-activity-indicator>
 
       <nldd-form-actions>
         <nldd-button
@@ -207,33 +212,3 @@ function bind(field) {
     </form>
   </nldd-form>
 </template>
-
-<style scoped>
-.traject-error {
-  color: var(--nldd-color-text-error, #c62828);
-  font-size: 13px;
-  margin-top: 12px;
-}
-.traject-busy {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  color: var(--semantics-content-secondary-color, #555);
-  margin-top: 12px;
-}
-.traject-spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid currentColor;
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: traject-spin 0.8s linear infinite;
-  flex-shrink: 0;
-}
-@keyframes traject-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-</style>
