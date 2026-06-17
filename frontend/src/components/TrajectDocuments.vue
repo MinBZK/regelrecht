@@ -39,12 +39,13 @@ function pageUrl(path) {
 }
 
 // Document rows are native new-tab links (DocumentList :href-for). "Nieuw
-// document" has no stable URL — it is created on the page — so it stays a button
-// that opens the page in a new tab. window.open sits directly in the click
-// gesture here, so it isn't popup-blocked.
+// document" has no stable URL yet (it is created on the page), so it stays a
+// button that opens the page in a new tab with `?new=1`; the page starts a fresh
+// document on load. window.open sits directly in the click gesture, so it isn't
+// popup-blocked.
 function openNew() {
   const url = pageUrl(null);
-  if (url) window.open(url, '_blank', 'noopener');
+  if (url) window.open(`${url}?new=1`, '_blank', 'noopener');
 }
 
 const sheetTitle = computed(() =>

@@ -50,7 +50,7 @@ function onRowClick(path) {
       <nldd-spacer-cell size="8"></nldd-spacer-cell>
       <nldd-text-cell text="Nieuw document"></nldd-text-cell>
       <nldd-spacer-cell size="8"></nldd-spacer-cell>
-      <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+      <nldd-icon-cell size="20"><nldd-icon :name="hrefFor ? 'open-new-page' : 'chevron-right'"></nldd-icon></nldd-icon-cell>
     </nldd-list-item>
   </nldd-list>
 </template>

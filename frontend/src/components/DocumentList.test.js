@@ -54,7 +54,7 @@ describe('DocumentList', () => {
     expect(icons).not.toContain('open-new-page');
   });
 
-  it('renders document rows as new-tab links (open-new-page); the new-document button keeps a chevron', () => {
+  it('renders document rows and the new-document button as new-tab affordances (open-new-page) when hrefFor is set', () => {
     const wrapper = mountList({ hrefFor: (p) => `/werkdocumenten/t-abc12345/${p}` });
     expect(wrapper.findAll('nldd-icon').map((i) => i.attributes('name'))).toContain('open-new-page');
 
@@ -65,13 +65,14 @@ describe('DocumentList', () => {
     expect(first.attributes('target')).toBe('_blank');
     expect(first.attributes('rel')).toBe('noopener');
 
-    // Last row: the "Nieuw document" action is a button, not a new-tab link, so
-    // it uses chevron-right rather than the misleading open-new-page icon.
+    // Last row: the "Nieuw document" action is a button (no href), but its @new
+    // handler opens the page in a new tab, so it mirrors the doc rows with the
+    // open-new-page icon rather than a chevron.
     const newRow = rows[rows.length - 1];
     expect(newRow.attributes('href')).toBeUndefined();
     const newRowIcons = newRow.findAll('nldd-icon').map((i) => i.attributes('name'));
-    expect(newRowIcons).toContain('chevron-right');
-    expect(newRowIcons).not.toContain('open-new-page');
+    expect(newRowIcons).toContain('open-new-page');
+    expect(newRowIcons).not.toContain('chevron-right');
   });
 
   it('does not emit select for link rows (native navigation handles it)', async () => {

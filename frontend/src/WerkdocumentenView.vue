@@ -48,10 +48,26 @@ watchEffect(() => {
   document.title = parts.join(' · ');
 });
 
-// Open the document addressed by the URL on first load (deep link / refresh).
+// Open the document addressed by the URL on first load (deep link / refresh),
+// or start a fresh document when the launcher opened us with `?new=1`.
 onMounted(() => {
   const initial = route.params.docPath;
-  if (initial) open(String(initial));
+  if (initial) {
+    open(String(initial));
+    return;
+  }
+  if (!route.query.new) return;
+  // Wait for the traject's list to load so startNew picks the next free
+  // untitled-N name instead of blind-writing over an existing untitled.md.
+  const stop = watch(
+    [listLoading, activeTraject],
+    ([loading, traject]) => {
+      if (loading || !traject) return;
+      stop();
+      startNew();
+    },
+    { immediate: true },
+  );
 });
 
 // Mirror the open document into the URL so refresh, bookmark and browser back
