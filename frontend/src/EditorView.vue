@@ -1067,6 +1067,12 @@ function discardArticle() {
   machineReadable.value = freshMr ? structuredClone(freshMr) : null;
   yamlSource.value = freshMr ? yaml.dump(freshMr, dumpOpts) : '';
   editedText.value = fresh.text ?? '';
+  // editedText flows into each Tekst pane's Tiptap content via its model watch
+  // on the next tick; clear that history afterwards so Ctrl+Z can't step back
+  // into the discarded edits and re-dirty the article.
+  nextTick(() => {
+    for (const refs of Object.values(textEditorRefs)) refs?.clearHistory?.();
+  });
 }
 
 // Undo/redo route to the last-focused Tekst editor (falling back to the first

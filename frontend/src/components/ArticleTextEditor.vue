@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { useEditor, EditorContent } from '@tiptap/vue-3';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
+import { history } from '@tiptap/pm/history';
 
 const props = defineProps({
   article: { type: Object, default: null },
@@ -149,6 +150,22 @@ const canRedo = computed(() => {
 function undo() { editor.value?.chain().focus().undo().run(); }
 function redo() { editor.value?.chain().focus().redo().run(); }
 
+// Drop the undo/redo history. StarterKit (v3) exposes no clearHistory command,
+// so drop and re-add the ProseMirror history plugin: a fresh instance re-inits
+// with empty undo/redo stacks. Both steps go through Tiptap's own reconfigure
+// (registerPlugin/unregisterPlugin) so editor.state stays in sync — a bare
+// view.updateState leaves Tiptap's cached state untouched. Used after a discard
+// so Ctrl+Z can't step back into the thrown-away edits and re-dirty the article.
+function clearHistory() {
+  const inst = editor.value;
+  if (!inst) return;
+  inst.unregisterPlugin('history');
+  inst.registerPlugin(history({ depth: 100, newGroupDelay: 500 }));
+  // The reconfigure doesn't fire the transaction listeners, so nudge the tick
+  // to re-evaluate canUndo/canRedo for the toolbar.
+  selectionTick.value++;
+}
+
 // Expose the active-format state and toggle handlers so the parent can
 // render the formatting buttons inside its own header toolbar (next to the
 // existing pane-view dropdown) rather than this component re-drawing its
@@ -164,6 +181,7 @@ defineExpose({
   canRedo,
   undo,
   redo,
+  clearHistory,
 });
 </script>
 
