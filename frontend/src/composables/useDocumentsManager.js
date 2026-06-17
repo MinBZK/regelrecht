@@ -138,6 +138,12 @@ export function useDocumentsManager(trajectRef) {
     // Hernoemen: geen rename-API — schrijf eerst onder het nieuwe pad (blind
     // create) en verwijder daarna het oude pad. In die volgorde raakt een
     // mislukking nooit inhoud kwijt.
+    //
+    // Multi-user-kanttekening: de bestaat-al-check hieronder kijkt naar de
+    // gecachte lijst. Maakt een andere sessie tussen die check en de PUT een
+    // bestand op finalPath, dan overschrijft deze blinde write het zonder
+    // waarschuwing. Sluitend te maken met `If-None-Match: *` zodra de backend
+    // dat ondersteunt (zie useTrajectDocuments.saveCurrent).
     if (documents.value.some((d) => d.path === finalPath)) {
       titleError.value = 'Een document met deze naam bestaat al.';
       return false;

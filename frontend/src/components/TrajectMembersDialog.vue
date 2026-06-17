@@ -290,7 +290,7 @@ async function clickLeave() {
                     ></nldd-text-cell>
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <nldd-cell>
-                      <span class="members-pending-role">{{ inv.role }}</span>
+                      <span class="members-pending-role">{{ roleLabel(inv.role) }}</span>
                     </nldd-cell>
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <nldd-cell v-if="isOwner">

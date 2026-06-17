@@ -49,10 +49,8 @@ function onRowClick(path) {
       <nldd-icon-cell size="20"><nldd-icon name="plus"></nldd-icon></nldd-icon-cell>
       <nldd-spacer-cell size="8"></nldd-spacer-cell>
       <nldd-text-cell text="Nieuw document"></nldd-text-cell>
-      <template v-if="hrefFor">
-        <nldd-spacer-cell size="8"></nldd-spacer-cell>
-        <nldd-icon-cell size="20"><nldd-icon name="open-new-page"></nldd-icon></nldd-icon-cell>
-      </template>
+      <nldd-spacer-cell size="8"></nldd-spacer-cell>
+      <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
     </nldd-list-item>
   </nldd-list>
 </template>
