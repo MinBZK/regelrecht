@@ -55,7 +55,7 @@ Korte samenvatting van wat de RFC voorstelt:
 - Lexogrammen (regelingen) blijven in `corpus/regulation/`. Decretogrammen zijn engine-output met `BESCHIKKING`. Executogrammen krijgen een eigen top-level directory `chronicles/`, naast het corpus, omdat een registratie-specificatie geen wet is.
 - Het `chronicles/`-mechanisme is ook ontworpen als architectuurvoorbereiding op een toekomstige Wet gegevensboekhouding (Nieuwland §7.3.2): per cel verifieerbaar wat er feitelijk geregistreerd is, op grond van welke grondslag, op welk moment.
 - De cel is geen nieuw concept maar hetzelfde als wat RFC-002 al `competent_authority` noemt en wat RFC-009 als `EngineIdentity` aan de engine-kant beschrijft.
-- `decision_type` wordt voorgesteld om uitgebreid te worden met drie financiële-domein waarden (BETALINGSVERPLICHTING, STRAFBESCHIKKING, BESTUURLIJKE_BOETE).
+- `decision_type` wordt van gesloten enum *geopend* naar een open string met een aanbevolen vocabulaire; het financiële domein krijgt er drie aanbevolen waarden bij (BETALINGSVERPLICHTING, STRAFBESCHIKKING, BESTUURLIJKE_BOETE). De typologie blijft open, omdat de Chronolexografie-typologie zelf een eerste, niet-uitputtende opsomming is.
 - Intrekkingen zijn een nested besluit in de zin van RFC-008 (eigen AWB-lifecycle); `modality.is_intrekking_van` is alleen een backlink-veld naar het origineel besluit, geen nieuwe semantiek.
 - Integraties hangen in een namespaced `extensions`-blok. Het `extensions.blauwe_knop`-blok markeert dat een rule of een chronicle-event in de FCID-response van de cel-als-Blauwe-Knop-source zichtbaar wordt. Activatie gebeurt in de cel-configuratie, niet in de wet zelf.
 - Cross-cell queries hergebruiken het bestaande `source`-blok uit RFC-007. De cel-runtime kiest het juiste federatie-mechanisme: Blauwe Knop wanneer de cel een burger-client is, FSC wanneer de cel een bevoegde-instantie server is. Dezelfde regeling-YAML werkt in beide contexten.
@@ -260,13 +260,15 @@ De lijn is grofweg: CJIB doet door de staat opgelegde financiële verplichtingen
 
 ### Voorgestelde uitbreiding op het RegelRecht-schema
 
-Het huidige `produces.decision_type` enum heeft negen waarden (TOEKENNING, AFWIJZING, GOEDKEURING, GEEN_BESLUIT, ALGEMEEN_VERBINDEND_VOORSCHRIFT, BELEIDSREGEL, VOORBEREIDINGSBESLUIT, ANDERE_HANDELING, AANSLAG). Geen daarvan beschrijft het financiële handhavingsdomein.
+Het huidige `produces.decision_type` is een *gesloten enum* met negen waarden (TOEKENNING, AFWIJZING, GOEDKEURING, GEEN_BESLUIT, ALGEMEEN_VERBINDEND_VOORSCHRIFT, BELEIDSREGEL, VOORBEREIDINGSBESLUIT, ANDERE_HANDELING, AANSLAG). Geen daarvan beschrijft het financiële handhavingsdomein.
 
-De voorgestelde RFC-022 voegt drie waarden toe, elk een afzonderlijk type besluit:
+De voorgestelde RFC-022 lost dit niet op door drie waarden aan de gesloten enum toe te voegen, maar door het veld te *openen*: `decision_type` wordt een open string met een *aanbevolen* (niet-uitsluitende) vocabulaire. De reden is principieel. De Chronolexografie-typologie van vastleggingen is zelf een *eerste opsomming*, bewust open en niet gelimiteerd tot de nu bekende types. Een open, groeiende typologie als gesloten enum modelleren zou bij elk toekomstig type een breaking schemawijziging afdwingen. Daarom: de negen historische waarden blijven het aanbevolen vocabulaire voor hun domein, en het financiële-handhavingsdomein krijgt er drie aanbevolen waarden bij:
 
 - `BETALINGSVERPLICHTING`: generieke financiële verplichting opgelegd door een bestuursorgaan
 - `STRAFBESCHIKKING`: strafrechtelijke afdoening onder Sv 257a
 - `BESTUURLIJKE_BOETE`: sectorale bestuurlijke boete
+
+Dit zijn *voorbeelden* die aan het aanbevolen vocabulaire worden toegevoegd, geen uitputtende lijst: een volgend decretogram-type vereist geen nieuwe schemawijziging. Validatie-tooling MAG waarschuwen bij een waarde buiten het aanbevolen vocabulaire, maar MAG die niet weigeren.
 
 *Intrekkingen* van een eerdere beschikking zijn geen apart type: ze zijn dezelfde `decision_type` met `modality.is_intrekking_van: <id>`. Dit volgt de Awb-praktijk: een intrekking is een handeling op een bestaand besluit, niet een nieuw type besluit. `legal_character: BESCHIKKING` dekt al deze gevallen.
 
