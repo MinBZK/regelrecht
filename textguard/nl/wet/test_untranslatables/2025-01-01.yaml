@@ -1,0 +1,36 @@
+$id: test_untranslatables
+valid_from: '2025-01-01'
+source: corpus/regulation/nl/wet/test_untranslatables/2025-01-01.yaml
+articles:
+- number: '1'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 0b1b314e49b5af3e607b02b5e58d4557e4d208179da8e629200e98a31aa2a229
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: De basistoeslag bedraagt 1000 eurocent.
+- number: '2'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 47a1bccf1cbec52d4eb10fbac6bb50e7685fea6c91a4cac6e4cfbfdc8624204a
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: Het bedrag wordt naar boven afgerond op hele euro's.
+- number: '3'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: 6ee656c66dcd61d93811c42e653cdf8901cd4c488075389e2701a73556cf358c
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: De toegekende toeslag bedraagt tweemaal de basistoeslag.
+- number: '4'
+  chunks:
+  - index: 0
+    label: aanhef
+    sha256: eb5b38fd78ccfe30acb6d834317e389d836c0379826f51e0b9e4d4ca84cfdbde
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: De som van alle deeltoeslagen wordt berekend. Dit artikel is geaccepteerd als onvertaalbaar.

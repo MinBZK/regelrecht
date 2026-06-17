@@ -75,3 +75,6 @@ ignore: |
   .tox/
   node_modules/
   .github/workflows/
+  # Machine-generated text-fidelity fixtures: verbatim legal text, often
+  # exceeding the line-length rule. Integrity is enforced by script/textguard.py.
+  textguard/

@@ -41,6 +41,7 @@ jobs:
               - corpus/regulation/**
               - schema/**
               - script/**
+              - textguard/**
               - Justfile
               - .pre-commit-config.yaml
               - .yamllint
@@ -230,6 +231,29 @@ jobs:
       - name: Skip (no relevant changes)
         if: needs.changes.outputs.ci != 'true'
         run: echo "No relevant changes, skipping provenance checks"
+
+  text-fidelity:
+    name: Text fidelity (textguard)
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: needs.changes.outputs.ci == 'true'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: '3.x'
+
+      - name: Install pyyaml
+        run: pip install pyyaml
+
+      # Hermetic gate: recompute the normalised per-lid text hashes from the
+      # corpus and compare them to the committed textguard fixtures. A mismatch
+      # means an article's text changed without re-blessing (run `just
+      # textguard-bless` after a verified text change). Exits non-zero on drift.
+      - name: Check per-lid text fidelity
+        run: python3 script/textguard.py check
 
   pre-commit:
     name: Pre-commit

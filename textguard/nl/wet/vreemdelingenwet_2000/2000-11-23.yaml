@@ -1,0 +1,28 @@
+$id: vreemdelingenwet_2000
+valid_from: '2000-11-23'
+source: corpus/regulation/nl/wet/vreemdelingenwet_2000/2000-11-23.yaml
+articles:
+- number: '14'
+  chunks:
+  - index: 0
+    label: lid 1
+    sha256: 97ae2e46bdbdd8ad7229079c9c6b7749e56e5d6bb628435b2de84a5b9e88d434
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '1. Onze Minister is bevoegd: a. de aanvraag tot het verlenen van een verblijfsvergunning voor bepaalde tijd in te willigen, af te wijzen dan wel niet in behandeling te nemen.'
+- number: '16'
+  chunks:
+  - index: 0
+    label: lid 1
+    sha256: 8f4fd7fa1084a2290b1a460da0277d2487ebe4ac94654e98ea8b52faa6374522
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: '1. Een aanvraag tot het verlenen van een verblijfsvergunning voor bepaalde tijd als bedoeld in artikel 14 kan worden afgewezen indien: a. de vreemdeling niet beschikt over een geldige machtiging tot voorlopig verblijf die overeenkomt met het verblijfsdoel; b. de vreemdeling niet beschikt over een geldig document voor grensoverschrijding.'
+- number: '69'
+  chunks:
+  - index: 0
+    label: lid 1
+    sha256: 1e76973696129c8f36a5916e99ac8d60e7a0b08712e379822823867c3881156b
+    verified_against: pending
+    captured_at: '2026-06-01'
+    text: 1. In afwijking van artikel 6:7 van de Algemene wet bestuursrecht bedraagt de termijn voor het indienen van een bezwaar- of beroepschrift vier weken.
