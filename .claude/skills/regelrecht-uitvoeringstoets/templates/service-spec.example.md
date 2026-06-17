@@ -1,8 +1,11 @@
-# NEUTRAAL voorbeeld van een service-spec (geen echte casus-waarden).
-# De skill genereert een ingevulde versie hiervan uit het corpus; die ingevulde
-# versie leeft uitsluitend bij de (privé) PoC, nooit in deze skill of de template.
-# Voorbeelden/demo's draaien tegen een dummy-corpus.
+# Service-spec — neutraal voorbeeld
 
+Illustratief voorbeeld met **placeholders** (geen echte casus-waarden). De skill genereert
+een ingevulde versie hiervan uit het corpus; die ingevulde versie leeft uitsluitend bij de
+(privé) PoC, nooit in deze skill of de template. Voorbeelden/demo's draaien tegen een
+dummy-corpus. Zie `references/service-spec.md` voor het contract en de afleiding.
+
+```yaml
 casus: <voorbeeld-casus>
 orchestrator_law: <hoofdregeling-id>
 
@@ -39,3 +42,4 @@ wat_als:                                            # uit het open-vragen-regist
     varianten: [{ label: "Variant A (corpus)" }, { label: "Variant B (praktijk)" }]
 open_vragen: []
 herkomst_annotaties: true
+```

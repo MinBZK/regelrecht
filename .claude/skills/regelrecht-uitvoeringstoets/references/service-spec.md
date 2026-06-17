@@ -33,7 +33,7 @@ zetten (afwezigheid is een bevinding). Niet weigeren.
 
 ## 3. Het contract (neutraal voorbeeld)
 
-Zie `templates/service-spec.example.yaml` voor een volledig, **neutraal** voorbeeld met
+Zie `templates/service-spec.example.md` voor een volledig, **neutraal** voorbeeld met
 placeholders. De spec bevat o.a.: `lenzen`, `levenscyclus`, `formulier` (groepen/velden met
 `herkomst` + B1-`label`, gates, escalaties), `keten` (knoop → artikel), `termijnen`,
 `mens_taken_bron`, `wat_als`, `open_vragen`, `herkomst_annotaties`.
