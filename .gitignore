@@ -68,3 +68,6 @@ env.sso-local
 # Beads
 .beads/
 .relanding-ref/
+
+# Leak-guard laag 2 — casus-/sector-patronen blijven lokaal (zie script/check-skills-no-casus.sh)
+script/.skills-casus-denylist.local
