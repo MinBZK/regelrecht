@@ -34,11 +34,11 @@ Because the anchor is the content, not a line number, the note follows its text.
 - **Ambiguous**: the quote occurs more than once with no context to separate the hits (the common word "verzekerde" three times in a sentence). Adding a prefix or suffix disambiguates.
 - **Orphaned**: the text is gone. The note is not silently dropped; it is marked orphaned so a human can re-anchor it.
 
-When wording drifts slightly (a Staatsblad amendment swaps a few words), exact matching fails but **fuzzy matching** recovers it: normalized Levenshtein similarity above 0.7 resolves as a fuzzy match with a confidence below 1.0; a wholesale rewrite falls below the threshold and orphans rather than mis-anchoring. A note may also carry an optional article hint to try first; an outdated hint falls back to a full search. The behavior is pinned by `features/notes.feature`.
+When wording drifts slightly (a Staatsblad amendment swaps a few words), exact matching fails but **fuzzy matching** recovers it: normalized Levenshtein similarity above a threshold (currently 0.7) resolves as a fuzzy match with a confidence below 1.0; a wholesale rewrite falls below the threshold and orphans rather than mis-anchoring. A note may also carry an optional article hint to try first; an outdated hint falls back to a full search. The behavior is pinned by `features/notes.feature`.
 
 ## What a note says
 
-The `motivation` field is the kind of note. The W3C model defines thirteen; four matter for law work, and three of those are in use in the corpus today:
+The `motivation` field is the kind of note. The W3C model defines thirteen motivation values (Web Annotation Data Model, §3.3.5); four matter for law work, and three of those are in use in the corpus today:
 
 - **linking** ties a sentence to the `machine_readable` element that executes it, making the chain from text to logic auditable.
 - **commenting** is a plain explanation for readers.

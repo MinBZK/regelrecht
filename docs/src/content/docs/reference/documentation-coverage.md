@@ -5,6 +5,8 @@ description: "Which accepted RFCs and built features have prose documentation ou
 
 This page tracks how well the prose docs cover the accepted RFCs and the implemented engine and platform features. It exists so coverage gaps are visible and tracked, rather than discovered by accident. RFCs that are still Draft or Proposed are out of scope here; their own pages under [RFCs](/rfcs/) are the source of truth until they are accepted.
 
+The table below is **enforced**: `docs/scripts/check-rfc-coverage.mjs` reads the `status` frontmatter of every RFC and fails CI when an Accepted RFC has no row here (or Backlog mention). So the matrix cannot silently fall behind the RFC set: accept a new RFC without adding it, and the docs build breaks. The check guarantees a *row exists* for each Accepted RFC; it does not, and cannot, judge whether the coverage that row points at is good. That judgement stays with whoever accepts the RFC, who owns adding an honest entry as part of acceptance.
+
 ## Accepted RFCs
 
 | RFC | Topic | Prose coverage |

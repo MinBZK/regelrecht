@@ -5,7 +5,7 @@ description: "How to read an execution trace: the node types, the box-drawing tr
 
 When the engine computes an output, it can record every step it took to get there: which articles applied, which inputs it fetched and from where, which operations ran, and what each one produced. That record is the **trace**. It is the legal reasoning behind a number, in a form you can read top to bottom.
 
-A trace is opt-in. The plain evaluation path produces no trace at all (and pays nothing for it); you ask for one explicitly. This page explains how to read a trace, then walks through a real one. For how a trace fits into a reproducible, signed [Execution Receipt](./execution-provenance), see that page.
+A trace is opt-in. The plain evaluation path builds no trace at all; you ask for one explicitly through a separate entry point (`evaluate_law_output_with_trace`, not `evaluate_law_output`). This page explains how to read a trace, then walks through a real one. For how a trace fits into a reproducible, signed [Execution Receipt](./execution-provenance), see that page.
 
 ## Anatomy of a node
 

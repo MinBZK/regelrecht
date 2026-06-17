@@ -27,7 +27,7 @@ Then the execution fails with
   "No version of law 'test_einddatum' in force on 2025-06-01; last in force until 2024-12-31"
 ```
 
-The same honesty holds across a cross-law reference: a law that reads an ended law reports which law ended and when, instead of silently computing on no-longer-valid rules. The selection outcome is one of in force, not yet in force, or ended on a date (`SelectionReason` in `packages/engine/src/resolver.rs`), and both `valid_from` and `valid_to` are recorded in the [Execution Receipt](./execution-provenance) so the choice is reproducible. The scenarios above come from `features/einddatum.feature`.
+The same applies across a cross-law reference: a law that reads an ended law reports which law ended and when, instead of computing on no-longer-valid rules. The selection outcome is one of in force, not yet in force, or ended on a date (`SelectionReason` in `packages/engine/src/resolver.rs`), and both `valid_from` and `valid_to` are recorded in the [Execution Receipt](./execution-provenance) so the choice is reproducible. The scenarios above come from `features/einddatum.feature`.
 
 ## Comparing and subtracting dates
 

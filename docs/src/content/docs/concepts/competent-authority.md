@@ -3,7 +3,7 @@ title: "Competent Authority"
 description: "How an article records the bevoegd gezag: the authority whose execution produces a binding decision, as a named organization or a category resolved per context."
 ---
 
-A *beschikking* is only binding when the right body issues it. The Tax Authority assesses income; the CIZ decides on long-term care indications; a municipal college grants social assistance. An article records which body that is in `competent_authority`, the *bevoegd gezag*. This is what lets the engine tell a binding decision apart from a calculation anyone may run (see [Multi-Org Execution](./multi-org-execution)), and it is the anchor for deriving who may authoritatively annotate a law (see [Notes and Annotations](./notes-and-annotations)).
+A *beschikking* is only binding when the right body issues it. Income is assessed by the Tax Authority, but a long-term care indication is the CIZ's to decide, and social assistance is granted by a municipal college. An article records which body that is in `competent_authority`, the *bevoegd gezag*. This is what lets the engine tell a binding decision apart from a calculation anyone may run (see [Multi-Org Execution](./multi-org-execution)), and it is the anchor for deriving who may authoritatively annotate a law (see [Notes and Annotations](./notes-and-annotations)).
 
 ## The two forms
 
@@ -21,7 +21,7 @@ machine_readable:
 `type` is either `INSTANCE` or `CATEGORY`, defaulting to `INSTANCE`:
 
 - **`INSTANCE`** is one specific organization, named outright. Belastingdienst, CIZ, Minister van Volksgezondheid, Welzijn en Sport.
-- **`CATEGORY`** is a categorical role that resolves to a different concrete body depending on context. "College van burgemeester en wethouders" names a kind of authority; which of the 342 colleges is meant depends on the municipality in scope. The distinction tells the engine whether the authority is settled by the article alone or still needs a contextual fact to pin down.
+- **`CATEGORY`** is a categorical role that resolves to a different concrete body depending on context. "College van burgemeester en wethouders" names a kind of authority; which municipal college is meant depends on the municipality in scope. The distinction tells the engine whether the authority is settled by the article alone or still needs a contextual fact to pin down.
 
 A reference to a computed output, when the authority itself depends on the case:
 
