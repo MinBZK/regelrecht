@@ -271,6 +271,11 @@ onBeforeUnmount(() => {
               :selected="t.ref === activeTrajectRef || undefined"
               @click="selectTraject(t)"
             >
+              <template v-if="t.ref === activeTrajectRef">
+                <nldd-icon-cell slot="start" size="20"><nldd-icon name="check-mark"></nldd-icon></nldd-icon-cell>
+                <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+              </template>
+              <nldd-spacer-cell v-else slot="start" size="28"></nldd-spacer-cell>
               <nldd-text-cell :text="`${t.name}${t.status === 'afgerond' ? ' (afgerond)' : ''}`"></nldd-text-cell>
             </nldd-list-item>
             <nldd-list-item size="md" button @click="startCreate">
@@ -295,6 +300,11 @@ onBeforeUnmount(() => {
                 :selected="isActiveTab(tab) || undefined"
                 @click="selectTab(tab)"
               >
+                <template v-if="isActiveTab(tab)">
+                  <nldd-icon-cell slot="start" size="20"><nldd-icon name="check-mark"></nldd-icon></nldd-icon-cell>
+                  <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+                </template>
+                <nldd-spacer-cell v-else slot="start" size="28"></nldd-spacer-cell>
                 <nldd-text-cell :text="tabText(tab)" :supporting-text="tabSupporting(tab)"></nldd-text-cell>
                 <nldd-spacer-cell size="8"></nldd-spacer-cell>
                 <nldd-cell>
