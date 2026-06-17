@@ -268,7 +268,9 @@ De voorgestelde RFC-022 lost dit niet op door drie waarden aan de gesloten enum 
 - `STRAFBESCHIKKING`: strafrechtelijke afdoening onder Sv 257a
 - `BESTUURLIJKE_BOETE`: sectorale bestuurlijke boete
 
-Dit zijn *voorbeelden* die aan het aanbevolen vocabulaire worden toegevoegd, geen uitputtende lijst: een volgend decretogram-type vereist geen nieuwe schemawijziging. Validatie-tooling MAG waarschuwen bij een waarde buiten het aanbevolen vocabulaire, maar MAG die niet weigeren.
+Dit zijn *voorbeelden* die aan het aanbevolen vocabulaire worden toegevoegd, geen uitputtende lijst: een volgend decretogram-type vereist geen nieuwe schemawijziging.
+
+Het aanbevolen vocabulaire leeft in een apart bestand *naast* het schema, niet als JSON-Schema-enum erin. RegelRecht heeft dit patroon al: de controlled vocabulary voor ambiguïteit-tags uit RFC-018 (`corpus/annotations/_vocabulary/ambiguity.yaml`) staat bewust niet in het schema, om precies dezelfde reden (de set is nog in ontwikkeling, bevriezen zou elke nieuwe waarde een schema-bump maken). Dezelfde mechaniek wordt hergebruikt voor `decision_type`: één vocab-bestand dat zowel de editor-picker als de validatie leest, zodat de waarde wél in de interface zit en er wél validatie op plaatsvindt, maar losgekoppeld van de harde schemaversie. Validatie MAG waarschuwen bij een waarde buiten het vocabulaire, maar MAG die niet weigeren.
 
 *Intrekkingen* van een eerdere beschikking zijn geen apart type: ze zijn dezelfde `decision_type` met `modality.is_intrekking_van: <id>`. Dit volgt de Awb-praktijk: een intrekking is een handeling op een bestaand besluit, niet een nieuw type besluit. `legal_character: BESCHIKKING` dekt al deze gevallen.
 
