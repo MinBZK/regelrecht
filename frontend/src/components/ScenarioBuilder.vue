@@ -483,10 +483,11 @@ defineExpose({ save: onSave });
 </script>
 
 <template>
-  <!-- Overview -->
-  <nldd-simple-section>
-      <div v-if="scenariosLoading" class="sb-loading">Scenario's laden...</div>
-      <nldd-dropdown v-else-if="scenarioFiles.length > 1" size="md">
+  <!-- Overview. Wrapped in a positioned container so the loading overlay can
+       cover the whole pane. -->
+  <div class="sb-pane">
+    <nldd-simple-section>
+      <nldd-dropdown v-if="scenarioFiles.length > 1" size="md">
         <select
           :value="selectedScenarioFile"
           @change="onScenarioFileSelect"
@@ -507,12 +508,7 @@ defineExpose({ save: onSave });
       <nldd-inline-dialog v-if="saveSuccess" text="Opgeslagen"></nldd-inline-dialog>
       <nldd-inline-dialog v-if="saveError" variant="alert" text="Opslaan mislukt" :supporting-text="saveError.message || String(saveError)"></nldd-inline-dialog>
 
-      <template v-if="depsLoading">
-        <nldd-spacer size="8"></nldd-spacer>
-        <div class="sb-section-title">Afhankelijkheden laden</div>
-        <div class="sb-loading">{{ depsProgress }}</div>
-      </template>
-      <nldd-inline-dialog v-else-if="depsError" variant="alert" text="Fout" :supporting-text="String(depsError)"></nldd-inline-dialog>
+      <nldd-inline-dialog v-if="depsError" variant="alert" text="Fout" :supporting-text="String(depsError)"></nldd-inline-dialog>
 
       <template v-if="formState">
         <nldd-collection layout="grid" item-width="320px">
@@ -567,6 +563,17 @@ defineExpose({ save: onSave });
         text="Geen scenario's beschikbaar voor dit artikel."
       ></nldd-inline-dialog>
     </nldd-simple-section>
+    <!-- Full-pane loading overlay with a frosted backdrop, shown while the
+         scenario files or their dependency laws ("X/Y wetten geladen") load.
+         Default (anti-flash) timing keeps quick loads from flashing. -->
+    <nldd-activity-indicator
+      v-if="scenariosLoading || depsLoading"
+      backdrop
+      show-text
+      :text="depsLoading ? depsProgress : 'Scenario\'s laden'"
+      style="position: absolute; inset: 0;"
+    ></nldd-activity-indicator>
+  </div>
 
   <!-- Edit scenario in a side sheet. All ScenarioForm instances stay
        mounted so auto-execute can cache results for the overview cards. -->
@@ -645,17 +652,16 @@ defineExpose({ save: onSave });
 </template>
 
 <style scoped>
-.sb-section-title {
-  font-weight: 600;
-  font-size: 13px;
-  margin-bottom: 4px;
-  color: var(--semantics-text-color-primary, #1C2029);
-}
-
-.sb-loading {
-  font-size: 12px;
-  color: var(--semantics-text-color-secondary, #666);
-  font-style: italic;
+/* Positioning context for the full-pane loading overlay. min-height fills the
+   pane's scroll viewport so the backdrop covers the whole area, not just the
+   (possibly empty) content. Flex column so the simple-section grows to the full
+   height — its empty-state inline-dialog then self-centers like elsewhere,
+   instead of sitting at the top. The absolute overlay is unaffected. */
+.sb-pane {
+  display: flex;
+  position: relative;
+  min-height: 100%;
+  flex-direction: column;
 }
 
 /* Card collection */

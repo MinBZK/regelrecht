@@ -13,6 +13,7 @@ import { useTrajects } from './composables/useTrajects.js';
 import { lawsListUrl, lawUrl, changedLawsUrl } from './composables/corpusUrls.js';
 import { SUPPORT_EMAIL } from './constants.js';
 import { openSearch, registerSearchPopover } from './composables/useAppChrome.js';
+import { humanizeLawId } from './lib/lawName.js';
 import { apiFetch, apiFetchJson, ApiError } from './lib/apiFetch.js';
 import { useLatest } from './lib/useLatest.js';
 
@@ -42,9 +43,12 @@ function libraryRouteFor(params = {}) {
     : { name: 'library', params };
 }
 function editorRouteFor(lawIdVal, articleNumber) {
+  // Without an active traject the editor isn't reachable directly — the
+  // editor requires a traject. Send the user to the chooser, carrying the
+  // law as query so it opens right after a traject is picked.
   return activeTrajectRef.value
     ? { name: 'editor-traject', params: { trajectRef: activeTrajectRef.value, lawId: lawIdVal, articleNumber } }
-    : { name: 'editor', params: { lawId: lawIdVal, articleNumber } };
+    : { name: 'editor', query: { law: lawIdVal || undefined, article: articleNumber || undefined } };
 }
 
 const laws = ref([]);
@@ -61,10 +65,38 @@ const searchPopoverRef = ref(null);
 registerSearchPopover(searchPopoverRef);
 
 const selectedLawId = ref(null);
+// Which sidebar section the law was opened from, so only that instance is
+// highlighted (a law can sit in both Favorieten and Recent bekeken). Cleared on
+// non-sidebar selects (search / deep-link); highlightSection then falls back to
+// the law's first occurrence.
+const selectedSection = ref(null);
 const selectedLaw = shallowRef(null);
 const selectedLawLoading = ref(false);
 const lawError = ref(null);
 const selectedArticleNumber = ref(null);
+
+// Recently-viewed laws (most-recent-first), persisted across sessions. Stored
+// as { law_id, name } so a law that fails to load in the active traject — and
+// therefore never enters the corpus index — still stays reachable + labelled.
+const RECENT_LAWS_KEY = 'regelrecht-recent-laws';
+const MAX_RECENT_LAWS = 12;
+function loadRecentLaws() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RECENT_LAWS_KEY) || '[]');
+    return Array.isArray(raw) ? raw.filter(r => r && r.law_id) : [];
+  } catch {
+    return [];
+  }
+}
+const recentLaws = ref(loadRecentLaws());
+function recordRecentLaw(lawId, name) {
+  if (!lawId) return;
+  const entry = { law_id: lawId, name: name || humanizeLawId(lawId) };
+  recentLaws.value = [entry, ...recentLaws.value.filter(r => r.law_id !== lawId)].slice(0, MAX_RECENT_LAWS);
+  try {
+    localStorage.setItem(RECENT_LAWS_KEY, JSON.stringify(recentLaws.value));
+  } catch { /* storage unavailable — keep the in-memory list */ }
+}
 // Detail view (tekst/machine/yaml) is reflected in the URL hash so the
 // state is bookmarkable and shareable. English keys in the hash because
 // they're stable identifiers, not labels.
@@ -127,24 +159,33 @@ const sidebarSections = computed(() => {
     }
   }
 
+  // "Recent bekeken" sits below the curated groups and faithfully shows the
+  // view history: a law stays here even when it's also a favorite or edited in
+  // this traject, so it can appear in both sections (favoriting a law must not
+  // remove it from recent). Each id resolves to its richer index entry when
+  // available, otherwise to the stored { law_id, name } (e.g. a law not present
+  // in the active traject).
+  if (recentLaws.value.length > 0) {
+    const recent = recentLaws.value
+      .map(r => list.find(law => law.law_id === r.law_id) || r);
+    sections.push({ key: 'recent', title: 'Recent bekeken', laws: recent });
+  }
+
   return sections;
 });
 
-const articles = computed(() => selectedLaw.value?.articles ?? []);
+// "No usable content" states, shown full-page (like EditorView's no-content
+// states) instead of inside the split-view, so the error/CTA spans the full
+// width rather than the narrow sidebar. isInitialLoading covers the first load
+// before anything resolves; indexError is handled at the same top level.
+const isInitialLoading = computed(
+  () => loading.value && !selectedLawId.value && sidebarSections.value.length === 0,
+);
+const isEmptyLibrary = computed(
+  () => !loading.value && !indexError.value && !selectedLawId.value && sidebarSections.value.length === 0,
+);
 
-/**
- * Humanize a snake_case law identifier into Title Case Words.
- * `burgerlijk_wetboek_boek_5` → `Burgerlijk Wetboek Boek 5`.
- *
- * Used as a consistent fallback in both the sidebar list and the
- * secondary-sidebar header when a law has no explicit `name`.
- *
- * Orphan prevention is gedaan via CSS `text-wrap: pretty` op de
- * tekst-componenten zelf, niet hier — data blijft schoon.
- */
-function humanizeLawId(id) {
-  return String(id ?? "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-}
+const articles = computed(() => selectedLaw.value?.articles ?? []);
 
 const lawName = computed(() => {
   if (!selectedLaw.value) return '';
@@ -171,6 +212,16 @@ const indexedLawName = computed(() => {
   return law ? displayName(law) : humanizeLawId(selectedLawId.value);
 });
 
+// Track the active law in "Recent bekeken" — including one that fails to load,
+// so the sidebar reflects what the user is looking at even when nothing is
+// curated yet. Re-runs as the name resolves to upgrade the label from the
+// humanized id to the real name.
+watch([selectedLawId, lawName, indexedLawName], () => {
+  if (selectedLawId.value) {
+    recordRecentLaw(selectedLawId.value, lawName.value || indexedLawName.value);
+  }
+}, { immediate: true });
+
 const selectedArticle = computed(() => {
   if (!selectedArticleNumber.value) return null;
   return articles.value.find(
@@ -193,7 +244,7 @@ const lawErrorIs404 = computed(() => lawError.value?.status === 404);
 // Most-specific first so browser tab truncation preserves the article number.
 // We deliberately omit the "Bibliotheek:" prefix here (unlike the editor) —
 // browsing laws is the implicit default, and the law name carries enough
-// context. The editor still prefixes because "Editor:" disambiguates the
+// context. The editor still prefixes because "Wijzig:" disambiguates the
 // edit context from the read-only browse.
 // Always set (no early return) — router.afterEach used to set a static
 // fallback but it raced with this effect on tab/article switches.
@@ -406,6 +457,9 @@ const editLawTarget = computed(() =>
 const editLawHref = computed(() => router.resolve(editLawTarget.value).href);
 
 function selectLaw(lawId, focusAfter = false) {
+  // Default to no section context (search / programmatic); selectLawFromSection
+  // re-sets it after this call for sidebar clicks.
+  selectedSection.value = null;
   if (lawId !== selectedLawId.value || lawError.value) {
     selectedLawId.value = lawId;
     selectedArticleNumber.value = null;
@@ -420,15 +474,36 @@ function selectLaw(lawId, focusAfter = false) {
   // popover._returnFocus restores to. Schedule on nextTick so the popover
   // has fully closed (sync) and Vue has rendered the selected state, then
   // walk the list-item shadow DOM to focus its inner button (the host
-  // doesn't delegate focus).
+  // doesn't delegate focus). Scope by section so a law present in two sections
+  // focuses the clicked instance (selectedSection is set by the time this runs).
   if (focusAfter) {
     nextTick(() => {
-      const item = document.querySelector(`[data-law-id="${CSS.escape(lawId)}"]`);
+      const sectionSel = selectedSection.value ? `[data-section="${CSS.escape(selectedSection.value)}"]` : '';
+      const item = document.querySelector(`${sectionSel}[data-law-id="${CSS.escape(lawId)}"]`);
       const action = item?.shadowRoot?.querySelector('.list-item__action');
       action?.focus?.();
     });
   }
 }
+
+// Sidebar click: record which section it came from, then select (keeping the
+// focus-restore that recent-reordering needs).
+function selectLawFromSection(lawId, sectionKey) {
+  selectLaw(lawId, sectionKey === 'recent');
+  selectedSection.value = sectionKey;
+}
+
+// The single sidebar instance to highlight: the clicked section (when it still
+// holds the law), else the law's first occurrence — so exactly one instance is
+// selected, including on a deep-link where no section was clicked.
+const highlightSection = computed(() => {
+  const id = selectedLawId.value;
+  if (!id) return null;
+  const sections = sidebarSections.value;
+  const clicked = sections.find(s => s.key === selectedSection.value);
+  if (clicked?.laws.some(l => l.law_id === id)) return clicked.key;
+  return sections.find(s => s.laws.some(l => l.law_id === id))?.key ?? null;
+});
 
 function selectArticle(number) {
   const articleStr = String(number);
@@ -476,6 +551,20 @@ function goToLawRoot() {
 
 function goToLibraryRoot() {
   router.push(libraryRouteFor());
+}
+
+function clearRecent() {
+  // Deselect only if the open law was reachable *solely* via "Recent bekeken"
+  // (not also a favorite / traject edit), so clearing the list doesn't leave a
+  // selected-but-invisible law. Then return to the library home.
+  const sel = selectedLawId.value;
+  const stillShown =
+    !!sel && ((favorites.value && favorites.value.has(sel)) ||
+              (changedLawIds.value && changedLawIds.value.has(sel)));
+  const deselect = !!sel && recentLaws.value.some(r => r.law_id === sel) && !stillShown;
+  recentLaws.value = [];
+  try { localStorage.removeItem(RECENT_LAWS_KEY); } catch { /* ignore */ }
+  if (deselect) goToLibraryRoot();
 }
 
 // Handle browser back/forward navigation
@@ -557,26 +646,51 @@ watch(activeTrajectRef, () => {
 </script>
 
 <template>
-        <nldd-navigation-split-view @back="onPaneBack">
+        <!-- Full-page "no usable content" states (matching EditorView): shown
+             instead of the split-view so the error / CTA spans the full width,
+             not the narrow sidebar. -->
+        <nldd-page v-if="indexError">
+          <nldd-simple-section width="full">
+            <nldd-inline-dialog
+              variant="alert"
+              text="Wetten en regels zijn niet geladen"
+              supporting-text="De gegevens konden niet worden opgehaald."
+            >
+              <nldd-button slot="actions" variant="primary" text="Probeer opnieuw" @click="retryLoadCorpus"></nldd-button>
+              <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
+            </nldd-inline-dialog>
+          </nldd-simple-section>
+        </nldd-page>
 
-          <!-- Sidebar hidden on corpus load failure so the main pane carries the error alone (mirrors law-load failure pattern). -->
-          <nldd-split-view-pane v-if="!indexError" slot="sidebar" has-content>
+        <nldd-page v-else-if="isInitialLoading">
+          <nldd-simple-section width="full">
+            <nldd-activity-indicator text="Laden" show-text></nldd-activity-indicator>
+          </nldd-simple-section>
+        </nldd-page>
+
+        <!-- Nothing curated yet (no favorites, no traject edits, no open law):
+             point the user at search rather than dumping the whole corpus. -->
+        <nldd-page v-else-if="isEmptyLibrary">
+          <nldd-simple-section width="full">
+            <nldd-inline-dialog
+              text="Nog niets in je bibliotheek"
+              supporting-text="Zoek een wet om te openen, of markeer wetten als favoriet."
+            >
+              <nldd-button slot="actions" variant="primary" start-icon="search" text="Zoeken" @click="openSearch"></nldd-button>
+            </nldd-inline-dialog>
+          </nldd-simple-section>
+        </nldd-page>
+
+        <nldd-navigation-split-view v-else @back="onPaneBack">
+
+          <nldd-split-view-pane slot="sidebar" has-content>
             <nldd-page sticky-header>
               <nldd-top-title-bar slot="header" :text="LIBRARY_HOME_TITLE" collapse-anchor="home-titel"></nldd-top-title-bar>
 
               <nldd-simple-section width="full">
                 <nldd-title id="home-titel" size="3"><h3>{{ LIBRARY_HOME_TITLE }}</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
-                <nldd-inline-dialog v-if="loading" text="Laden..."></nldd-inline-dialog>
-                <!-- Nothing curated yet (no favorites, no traject edits): point
-                     the user at search rather than dumping the whole corpus. -->
-                <nldd-inline-dialog
-                  v-else-if="sidebarSections.length === 0"
-                  text="Nog niets in je bibliotheek"
-                  supporting-text="Zoek een wet om te openen, of markeer wetten als favoriet."
-                >
-                  <nldd-button slot="actions" variant="primary" start-icon="search" text="Zoeken" @click="openSearch"></nldd-button>
-                </nldd-inline-dialog>
+                <nldd-activity-indicator v-if="loading" text="Laden" show-text></nldd-activity-indicator>
                 <template v-else>
                   <template
                     v-for="(section, sectionIndex) in sidebarSections"
@@ -586,7 +700,17 @@ watch(activeTrajectRef, () => {
                          curated groups read as distinct blocks. -->
                     <nldd-spacer v-if="sectionIndex > 0" size="24"></nldd-spacer>
                     <template v-if="section.title">
-                      <nldd-title size="5"><h4>{{ section.title }}</h4></nldd-title>
+                      <nldd-title size="5">
+                        <h4>{{ section.title }}</h4>
+                        <nldd-button
+                          v-if="section.key === 'recent'"
+                          slot="actions"
+                          size="xs"
+                          variant="accent-transparent"
+                          text="Wis"
+                          @click="clearRecent"
+                        ></nldd-button>
+                      </nldd-title>
                       <nldd-spacer size="8"></nldd-spacer>
                     </template>
                     <nldd-list variant="simple">
@@ -594,10 +718,11 @@ watch(activeTrajectRef, () => {
                         v-for="law in section.laws"
                         :key="`${section.key}-${law.law_id}`"
                         size="md"
-                        type="button"
+                        button
                         :data-law-id="law.law_id"
-                        :selected="law.law_id === selectedLawId || undefined"
-                        @click="selectLaw(law.law_id)"
+                        :data-section="section.key"
+                        :selected="(law.law_id === selectedLawId && section.key === highlightSection) || undefined"
+                        @click="selectLawFromSection(law.law_id, section.key)"
                       >
                         <nldd-text-cell :text="displayName(law)" :supporting-text="law.source_name">
                         </nldd-text-cell>
@@ -617,7 +742,7 @@ watch(activeTrajectRef, () => {
                selected. When deselected the pane is removed from the DOM
                so the navigation-split-view reflows to spatial mode and
                shows the sidebar (Wetten Browser) alongside main. -->
-          <nldd-split-view-pane v-if="selectedLawId && !lawError && !indexError" slot="secondary-sidebar" has-content>
+          <nldd-split-view-pane v-if="selectedLawId && !lawError" slot="secondary-sidebar" has-content>
             <nldd-page sticky-header>
               <nldd-top-title-bar
                 slot="header"
@@ -639,14 +764,14 @@ watch(activeTrajectRef, () => {
                   </nldd-toolbar-item>
                 </nldd-toolbar>
                 <nldd-spacer v-if="authenticated && selectedLaw" size="16"></nldd-spacer>
-                <nldd-inline-dialog v-if="selectedLawLoading" text="Laden..."></nldd-inline-dialog>
+                <nldd-activity-indicator v-if="selectedLawLoading" text="Wet laden" show-text></nldd-activity-indicator>
                 <nldd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een wet"></nldd-inline-dialog>
                 <nldd-list v-else variant="simple">
                   <nldd-list-item
                     v-for="article in articles"
                     :key="article.number"
                     size="md"
-                    type="button"
+                    button
                     :selected="String(article.number) === String(selectedArticleNumber) || undefined"
                     @click="selectArticle(article.number)"
                   >
@@ -663,32 +788,22 @@ watch(activeTrajectRef, () => {
           </nldd-split-view-pane>
 
           <!-- Main: Artikel Detail -->
-          <nldd-split-view-pane slot="main" :has-content="selectedArticle || lawError || articleNotFound || indexError ? true : undefined">
+          <nldd-split-view-pane slot="main" :has-content="selectedArticle || lawError || articleNotFound ? true : undefined">
             <nldd-page sticky-header>
               <nldd-top-title-bar
                 slot="header"
                 :text="selectedArticle ? `Artikel ${selectedArticle.number}` : undefined"
                 :supporting-text="selectedArticle ? lawName : undefined"
-                :back-text="indexError ? undefined : (lawError ? LIBRARY_HOME_BACK_TEXT : (lawName || 'Terug'))"
+                :back-text="lawError ? LIBRARY_HOME_BACK_TEXT : (lawName || 'Terug')"
                 :collapse-anchor="selectedArticle ? 'article-titel' : undefined"
               ></nldd-top-title-bar>
 
-              <nldd-simple-section width="full" v-if="indexError">
-                <nldd-inline-dialog
-                  variant="alert"
-                  text="Wetten en regels zijn niet geladen"
-                  supporting-text="De gegevens konden niet worden opgehaald."
-                >
-                  <nldd-button slot="actions" variant="primary" text="Probeer opnieuw" @click="retryLoadCorpus"></nldd-button>
-                  <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
-                </nldd-inline-dialog>
-              </nldd-simple-section>
-              <nldd-simple-section width="full" v-else-if="!selectedLawId">
+              <nldd-simple-section width="full" v-if="!selectedLawId">
                 <nldd-inline-dialog text="Selecteer een wet"></nldd-inline-dialog>
               </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="selectedLawLoading">
                 <!-- Loading takes precedence over `lawError` to avoid flashing a stale error during a refetch. -->
-                <nldd-inline-dialog text="Wet laden…"></nldd-inline-dialog>
+                <nldd-activity-indicator text="Wet laden" show-text></nldd-activity-indicator>
               </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="lawError">
                 <!-- 404 = law not in active traject; give the user an exit instead of a generic error. -->

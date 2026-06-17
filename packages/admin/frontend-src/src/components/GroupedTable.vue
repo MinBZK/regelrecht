@@ -60,7 +60,7 @@ function statusBarTitle(group) {
     </template>
 
     <nldd-inline-dialog v-if="loading && data.length === 0" text="Loading…"></nldd-inline-dialog>
-    <nldd-inline-dialog v-else-if="error && data.length === 0" :text="'Failed to load data: ' + error"></nldd-inline-dialog>
+    <nldd-inline-dialog variant="alert" v-else-if="error && data.length === 0" :text="'Failed to load data: ' + error"></nldd-inline-dialog>
     <nldd-inline-dialog
       v-else-if="data.length === 0 && hasActiveFilters"
       text="No results match the current filters."
@@ -82,7 +82,7 @@ function statusBarTitle(group) {
         v-for="group in data"
         :key="group.law_id"
         size="md"
-        type="button"
+        button
         @click="emit('view-jobs', group.law_id)"
       >
         <template v-for="(col, idx) in columns" :key="col.key">

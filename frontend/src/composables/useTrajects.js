@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
-import { apiFetchJson } from '../lib/apiFetch.js';
+import { apiFetch, apiFetchJson } from '../lib/apiFetch.js';
 
 const trajects = ref([]);
 const loading = ref(true);
@@ -50,6 +50,16 @@ export async function createTraject(payload) {
   });
   await refreshTrajects();
   return created;
+}
+
+// Owner-only hard delete (backend: DELETE /api/trajects/:id → 204). The
+// upstream branch on GitHub is deliberately left untouched by the backend.
+export async function deleteTraject(trajectId) {
+  await apiFetch(`/api/trajects/${encodeURIComponent(trajectId)}`, {
+    method: 'DELETE',
+    errorMessage: (status, body) => body || `Delete failed: ${status}`,
+  });
+  await refreshTrajects();
 }
 
 // Active traject lives in `route.params.trajectRef` (per-tab state),

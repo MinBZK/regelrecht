@@ -44,6 +44,7 @@ const anchorId = `row-actions-${useId()}`;
     <nldd-menu-item
       text="Verwijder"
       icon="delete"
+      destructive
       :data-testid="deleteTestid"
       @click.stop="$emit('delete')"
     ></nldd-menu-item>

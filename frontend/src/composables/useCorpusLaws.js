@@ -2,6 +2,7 @@ import { ref, computed, watch } from 'vue';
 import { lawsListUrl } from './corpusUrls.js';
 import { apiFetchJson } from '../lib/apiFetch.js';
 import { createLruMap } from '../lib/lruMap.js';
+import { humanizeLawId } from '../lib/lawName.js';
 
 /**
  * Shared corpus-laws list, scoped by the active traject. Each distinct
@@ -75,15 +76,6 @@ function ensureFetched(trajectRef) {
 }
 
 /**
- * Title-cased fallback for a law_id when the corpus payload hasn't returned
- * yet (or doesn't carry the law). Mirrors EditSheet/LibraryApp's displayName.
- */
-function fallbackName(lawId) {
-  if (!lawId) return '';
-  return lawId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-}
-
-/**
  * @param {import('vue').Ref<string|null>=} trajectRef Optional active
  *   traject reference. Without it the global view is used.
  */
@@ -145,7 +137,7 @@ export function useCorpusLaws(trajectRef) {
     const law = lawsById.value.get(lawId);
     if (law?.display_name) return law.display_name;
     if (law?.name) return law.name;
-    return fallbackName(lawId);
+    return humanizeLawId(lawId);
   }
 
   return { laws, displayName };

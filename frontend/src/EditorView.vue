@@ -15,10 +15,13 @@ import {
   registerSearchPopover,
   setEditorChrome,
   registerTabActions,
+  setEditorChanges,
+  registerEditorActions,
   clearEditorChrome,
 } from './composables/useAppChrome.js';
 import { SUPPORT_EMAIL } from './constants.js';
 import { apiFetch, apiFetchJson } from './lib/apiFetch.js';
+import { humanizeLawId } from './lib/lawName.js';
 import { useLatest } from './lib/useLatest.js';
 import ArticleText from './components/ArticleText.vue';
 import AnnotatedText from './components/AnnotatedText.vue';
@@ -43,6 +46,7 @@ const { isEnabled } = useFeatureFlags();
 // pickable in the menu.
 const VIEW_DEFINITIONS = [
   { id: 'text', flag: 'panel.article_text', label: 'Tekst' },
+  { id: 'text-notes', flag: 'panel.notes', label: 'Tekst + notities' },
   { id: 'machine', flag: 'panel.machine_readable', label: 'Machine' },
   { id: 'scenario', flag: 'panel.scenario_form', label: "Scenario's" },
   { id: 'yaml', flag: 'panel.yaml_editor', label: 'YAML' },
@@ -127,6 +131,21 @@ function setPaneView(idx, viewId) {
   paneViews.value = next;
 }
 
+// Reorder this pane within the left→right pane order. `target`:
+// 'left' | 'right' | 'start' | 'end'. Persists (paneViews → localStorage) and
+// survives flag flips (the availableViews sync filter preserves order).
+function movePane(idx, target) {
+  const next = [...paneViews.value];
+  const [moved] = next.splice(idx, 1);
+  const to =
+    target === 'left' ? idx - 1
+      : target === 'right' ? idx + 1
+        : target === 'start' ? 0
+          : next.length; // 'end'
+  next.splice(Math.max(0, Math.min(next.length, to)), 0, moved);
+  paneViews.value = next;
+}
+
 // All edit operations are gated behind SSO + an active traject. The
 // editor renders in two shapes:
 //   - `/editor/{lawId?}/{articleNumber?}`         → read-only view,
@@ -135,14 +154,15 @@ function setPaneView(idx, viewId) {
 //     `canEdit` is true; writes land in that traject's branch.
 // Pick a traject in the TrajectMenu to flip from the first shape to
 // the second.
-const { activeTrajectRef } = useTrajects();
+const { activeTrajectRef, activeTraject } = useTrajects();
 const canEdit = computed(
   () => (!oidcConfigured.value || authenticated.value) && activeTrajectRef.value !== null,
 );
-// Tekst-pane is only editable when the user has write access AND the
-// `editor.article_text_edit` flag is on. Visibility of the pane is
-// controlled separately by `panel.article_text`.
-const canEditArticleText = computed(() => canEdit.value && isEnabled('editor.article_text_edit'));
+// The Tekst editor pane is editable whenever the user has write access. The
+// old `editor.article_text_edit` flag that gated this separately is merged into
+// the pane itself — the pane IS the editable text view, so this now just tracks
+// canEdit (kept as a named alias for the text-edit affordances below).
+const canEditArticleText = computed(() => canEdit.value);
 
 const route = useRoute();
 const router = useRouter();
@@ -201,20 +221,10 @@ const {
   reload: reloadNotes,
 } = useNotes(lawId, selectedArticle, activeTrajectRef);
 
-// Notes are a layer over the Tekst pane, not a separate pane. This toggle is
-// the user's "show notes now" preference; panel.notes (a feature flag) is the
-// capability gate that makes the toggle available at all. Persisted so it
-// survives navigation within a session.
-const NOTES_TOGGLE_KEY = 'regelrecht-show-notes';
-const showNotes = ref(localStorage.getItem(NOTES_TOGGLE_KEY) === '1');
-watch(showNotes, (v) => {
-  try { localStorage.setItem(NOTES_TOGGLE_KEY, v ? '1' : '0'); } catch { /* ignore */ }
-});
-// Notes overlay only makes sense in read mode: the resolver matches raw text,
-// so it cannot align with the markdown render or the editable textarea.
-const notesActive = computed(
-  () => isEnabled('panel.notes') && showNotes.value && !canEditArticleText.value,
-);
+// Notes live in their own "Tekst viewer + notities" pane (panel.notes), shown
+// read-only against the raw article text — the resolver matches raw text, so it
+// can't align with the editable WYSIWYG editor. No show/hide toggle: opening
+// the pane is the toggle.
 
 // Note authoring (RFC-018 write path). Draft notes live in localStorage per
 // law until exported; they resolve and highlight live alongside committed
@@ -243,9 +253,9 @@ const { draftNotesForArticle } = useResolvedDraftNotes(
   selectedArticle,
   activeTrajectRef,
 );
-const canCreateNotes = computed(
-  () => isEnabled('notes.create') && notesActive.value,
-);
+// Authoring is part of the notes pane (the old separate `notes.create` flag is
+// folded in): wherever the pane is available, you can create notes in it.
+const canCreateNotes = computed(() => isEnabled('panel.notes'));
 // Committed + draft notes share the highlight path. Draft entries already
 // carry __draft so the popover can mark them unsaved.
 const notesForArticle = computed(() => [
@@ -386,7 +396,7 @@ loadCorpusLaws();
 const failedLawName = computed(() => {
   const id = lawId.value;
   if (!id) return '';
-  return corpusLaws.value.find(l => l.law_id === id)?.name || id;
+  return corpusLaws.value.find(l => l.law_id === id)?.name || humanizeLawId(id);
 });
 
 // True when the law fetch errored with 404 (law missing or not in active traject's corpus).
@@ -464,10 +474,10 @@ function saveActiveTab(tab) {
 /**
  * Build a router target for the editor that preserves the current
  * traject scope. With a traject in the URL the user stays in
- * `editor-traject` (full edit mode); without one they stay in `editor`
- * (read-only). Vue Router requires the route name to match the
- * presence/absence of the `:trajectRef` param, so a single literal
- * `name: 'editor'` won't survive a no-traject ↔ with-traject switch.
+ * `editor-traject` (full edit mode). EditorView only ever mounts under a
+ * traject (the editor requires one), so the no-traject branch should not
+ * fire here — but for safety it routes to the chooser with the law as
+ * query rather than the (now removed) no-traject editor.
  */
 function editorRouteFor(lawIdVal, articleNumber) {
   const trajectRef = route.params.trajectRef;
@@ -479,7 +489,7 @@ function editorRouteFor(lawIdVal, articleNumber) {
   }
   return {
     name: 'editor',
-    params: { lawId: lawIdVal, articleNumber },
+    query: { law: lawIdVal || undefined, article: articleNumber || undefined },
   };
 }
 
@@ -608,18 +618,35 @@ function closeTab(tab) {
 }
 
 function tabDisplayName(tab) {
-  return lawNames.value[tab.lawId] || tab.lawId;
+  return lawNames.value[tab.lawId] || humanizeLawId(tab.lawId);
 }
 
 // Publish the editor-only chrome (federated "PR #N" indicator + document
 // tabs) to the AppShell, which can't own these statically. Tab actions are
 // registered once; the values stay in sync reactively while mounted and are
 // cleared on unmount so the library never shows a stale PR badge or tab bar.
+// Drag/keyboard reorder from the mobile tabs sheet. The nldd-list dispatches
+// nldd-reorder with array indices; mirror the move into openTabs so the new
+// order persists (and the md+ document-tab-bar follows it).
+function reorderTabs(fromIndex, toIndex) {
+  const tabs = [...openTabs.value];
+  if (
+    fromIndex < 0 || fromIndex >= tabs.length ||
+    toIndex < 0 || toIndex >= tabs.length ||
+    fromIndex === toIndex
+  ) return;
+  const [moved] = tabs.splice(fromIndex, 1);
+  tabs.splice(toIndex, 0, moved);
+  openTabs.value = tabs;
+  saveTabs(openTabs.value);
+}
+
 registerTabActions({
   key: tabKey,
   displayName: tabDisplayName,
   select: (tab) => { selectTab(tab).catch(console.warn); },
   close: closeTab,
+  reorder: reorderTabs,
 });
 watchEffect(() => {
   setEditorChrome({
@@ -725,8 +752,8 @@ const yamlSource = ref('');
 // panes reset in lockstep when the user tabs to a different article.
 const editedText = ref('');
 
-// Per-pane refs to the ArticleTextEditor instance so the pane-header can
-// render the formatting toolbar (Bold/Italic/lists) next to the existing
+// Per-pane refs to the ArticleTextEditor instance so the header toolbar can
+// render the formatting controls (Bold/Italic/lists) next to the existing
 // pane-view dropdown rather than the editor drawing its own duplicate
 // label dropdown inside the body. Functional ref keeps the map in sync as
 // panes mount/unmount.
@@ -741,6 +768,53 @@ function setTextEditorRef(idx) {
   };
 }
 
+// --- Tekst-opmaak (segmented controls in de header-toolbar) ---
+// De ArticleTextEditor (Tiptap) per pane is de bron van waarheid; deze helpers
+// vertalen activeFormats <-> de segmented-control-waardes en sturen de
+// toggle-commando's aan. Lezen van activeFormats in de template houdt de
+// controls reactief in sync met de selectie.
+
+// Vet/Schuin: checkbox-control — de geselecteerde waardes zijn de actieve
+// inline-formats (beide kunnen tegelijk aan staan).
+function boldItalicValues(idx) {
+  const refs = textEditorRefs[idx];
+  if (!refs) return [];
+  const values = [];
+  if (refs.activeFormats.bold) values.push('bold');
+  if (refs.activeFormats.italic) values.push('italic');
+  return values;
+}
+function onInlineFormatChange(idx, e) {
+  const refs = textEditorRefs[idx];
+  if (!refs) return;
+  if (e.detail.value === 'bold') refs.toggleBold();
+  else if (e.detail.value === 'italic') refs.toggleItalic();
+}
+
+// Lijst: radio-control met none/bullet/ordered. Tiptap's toggle-commando's
+// converteren tussen lijsttypes en heffen de actieve lijst op, dus elke
+// overgang is met één toggle te maken.
+function listValue(idx) {
+  const refs = textEditorRefs[idx];
+  if (!refs) return 'none';
+  if (refs.activeFormats.bulletList) return 'bullet';
+  if (refs.activeFormats.orderedList) return 'ordered';
+  return 'none';
+}
+function setList(idx, target) {
+  const refs = textEditorRefs[idx];
+  if (!refs) return;
+  const current = listValue(idx);
+  if (target === current) return;
+  if (target === 'bullet') refs.toggleBulletList();
+  else if (target === 'ordered') refs.toggleOrderedList();
+  else if (refs.activeFormats.bulletList) refs.toggleBulletList();
+  else if (refs.activeFormats.orderedList) refs.toggleOrderedList();
+}
+function onListChange(idx, e) {
+  setList(idx, e.detail.value);
+}
+
 const dumpOpts = { lineWidth: 80, noRefs: true };
 
 watch(selectedArticle, (article) => {
@@ -752,21 +826,6 @@ watch(selectedArticle, (article) => {
   editedText.value = article?.text ?? '';
   parseError.value = null;
 }, { immediate: true });
-
-// Reflect navigation depth in the document title:
-//   "Editor: Art. 5 · Wet op de zorgtoeslag · RegelRecht"
-// Tab name first (the high-level location), then most-specific to least-
-// specific so browser tab truncation preserves the article number.
-// Always set (no early return) — router.afterEach used to set a static
-// fallback but it raced with this effect on tab/article switches.
-watchEffect(() => {
-  const detail = [];
-  if (selectedArticle.value) detail.push(`Art. ${selectedArticle.value.number}`);
-  if (lawName.value) detail.push(lawName.value);
-  document.title = detail.length > 0
-    ? `Editor: ${detail.join(' · ')} · RegelRecht`
-    : 'Editor · RegelRecht';
-});
 
 const editedArticle = computed(() => {
   if (!selectedArticle.value) return null;
@@ -990,6 +1049,84 @@ const machineReadableSaveError = computed(() =>
 // Alias kept to minimise template churn; both panes ultimately call the
 // same whole-law save.
 const handleMachineReadableSave = handleLawSave;
+
+// --- Wijzigingenbalk (article-level pending changes) -----------------------
+// Tekst + Machine edits share one whole-law save, so "dirty" is article-wide.
+// The AppShell renders the bar; the editor publishes the state and the
+// Opslaan / Wijzigingen-ongedaan / undo / redo actions via useAppChrome.
+const articleDirty = computed(
+  () => isArticleTextDirty.value || isMachineReadableDirty.value,
+);
+
+// Throw away every in-memory edit for the selected article — the same reset
+// the post-save cleanup performs, minus the PUT.
+function discardArticle() {
+  const fresh = selectedArticle.value;
+  if (!fresh) return;
+  const freshMr = fresh.machine_readable ?? null;
+  machineReadable.value = freshMr ? structuredClone(freshMr) : null;
+  yamlSource.value = freshMr ? yaml.dump(freshMr, dumpOpts) : '';
+  editedText.value = fresh.text ?? '';
+  // editedText flows into each Tekst pane's Tiptap content via its model watch
+  // on the next tick; clear that history afterwards so Ctrl+Z can't step back
+  // into the discarded edits and re-dirty the article.
+  nextTick(() => {
+    for (const refs of Object.values(textEditorRefs)) refs?.clearHistory?.();
+  });
+}
+
+// Undo/redo route to the last-focused Tekst editor (falling back to the first
+// mounted one). Tiptap owns the history; the Machine/YAML panes have none, so
+// the buttons simply stay disabled when no text editor can undo.
+const activeTextEditorIdx = ref(null);
+function onTextEditorFocus(idx) { activeTextEditorIdx.value = idx; }
+const targetTextEditor = computed(() => {
+  const active = activeTextEditorIdx.value != null
+    ? textEditorRefs[activeTextEditorIdx.value]
+    : null;
+  if (active) return active;
+  const firstKey = Object.keys(textEditorRefs)[0];
+  return firstKey != null ? textEditorRefs[firstKey] : null;
+});
+const canUndoText = computed(() => targetTextEditor.value?.canUndo ?? false);
+const canRedoText = computed(() => targetTextEditor.value?.canRedo ?? false);
+function undoText() { targetTextEditor.value?.undo?.(); }
+function redoText() { targetTextEditor.value?.redo?.(); }
+
+// Stable actions registered once; the reactive state re-publishes via the
+// watchEffect so the bar re-renders as dirty/saving/undo-availability shift.
+registerEditorActions({
+  save: handleLawSave,
+  discard: discardArticle,
+  undo: undoText,
+  redo: redoText,
+});
+watchEffect(() => {
+  setEditorChanges({
+    dirty: articleDirty.value,
+    saving: lawSaving.value,
+    canUndo: canUndoText.value,
+    canRedo: canRedoText.value,
+  });
+});
+
+// Reflect navigation depth + unsaved state in the document title:
+//   "• Editor: Art. 5 · Wet op de zorgtoeslag · 15 juni test · RegelRecht"
+// A leading dot flags unsaved changes — it stays visible even when the tab
+// title is truncated to its start. Then the mode prefix, then most-specific to
+// least-specific (article, law, traject) with the brand last. Lives here (after
+// articleDirty) and is always set — a static router.afterEach fallback used to
+// race this effect on tab/article switches.
+watchEffect(() => {
+  const detail = [];
+  if (selectedArticle.value) detail.push(`Art. ${selectedArticle.value.number}`);
+  if (lawName.value) detail.push(lawName.value);
+  if (activeTraject.value?.name) detail.push(activeTraject.value.name);
+  const base = detail.length > 0
+    ? `Editor: ${detail.join(' · ')} · RegelRecht`
+    : 'Editor · RegelRecht';
+  document.title = articleDirty.value ? `• ${base}` : base;
+});
 
 function onYamlInput(event) {
   // nldd-code-editor dispatches a CustomEvent with the new value in
@@ -1297,7 +1434,7 @@ async function handleActionSave() {
         <!-- Loading takes precedence over `error` to avoid flashing a stale error during a refetch. -->
         <nldd-page v-else-if="loading">
           <nldd-simple-section width="full">
-            <nldd-inline-dialog text="Wet laden…"></nldd-inline-dialog>
+            <nldd-activity-indicator text="Wet laden" show-text></nldd-activity-indicator>
           </nldd-simple-section>
         </nldd-page>
 
@@ -1358,106 +1495,195 @@ async function handleActionSave() {
           >
             <nldd-page
               sticky-header
-              :background="view === 'scenario' ? 'tinted' : undefined"
-              :sticky-footer="(view === 'machine' && canEdit && !activeAction && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx) || (view === 'text' && canEditArticleText && (isArticleTextDirty || lawSaving) && paneViews.indexOf('text') === idx)"
+              :background="view === 'scenario' ? 'base' : undefined"
             >
-              <div slot="header" class="pane-header">
-                <nldd-button
-                  :id="`pane-view-btn-${idx}`"
-                  size="md"
-                  expandable
-                  :text="viewLabel(view)"
-                  :popovertarget="`pane-view-menu-${idx}`"
-                ></nldd-button>
-                <nldd-menu :id="`pane-view-menu-${idx}`" :anchor="`pane-view-btn-${idx}`">
-                  <nldd-menu-item
-                    v-for="opt in availableViews"
-                    :key="opt.id"
-                    type="radio"
-                    :selected="view === opt.id || undefined"
-                    :text="opt.label"
-                    @select="setPaneView(idx, opt.id)"
-                  ></nldd-menu-item>
-                </nldd-menu>
-                <!-- Notes toggle: only on the Tekst pane, only when the
-                     panel.notes capability is enabled, and only in read mode
-                     (the overlay needs raw text — it can't align with the
-                     editable textarea). Notes are a layer over the text, not
-                     a separate pane. -->
-                <!-- No start-icon: the design-system has no note/comment
-                     glyph (its `comment` icon is an empty SVG). A misleading
-                     icon (edit/document) is worse than none; the "Notities"
-                     label is clear on its own. Tracked upstream:
-                     MinBZK/storybook icon-set request. -->
-                <nldd-button
-                  v-if="view === 'text' && isEnabled('panel.notes') && !canEditArticleText"
-                  size="md"
-                  :variant="showNotes ? 'primary' : 'default'"
-                  text="Notities"
-                  data-testid="notes-toggle"
-                  @click="showNotes = !showNotes"
-                ></nldd-button>
-                <!-- Formatting toolbar lives in the pane-header so it sits in
-                     line with the pane-view dropdown rather than below it.
-                     Wired to the ArticleTextEditor instance via textEditorRefs
-                     so the active-format chips update in lockstep with the
-                     editor's selection. -->
-                <div
-                  v-if="view === 'text' && selectedArticle && textEditorRefs[idx]"
-                  class="fmt-group"
-                  data-testid="article-text-fmt-group"
-                >
-                  <span class="fmt-btn" :class="{ 'is-active': textEditorRefs[idx].activeFormats.bold }">
-                    <nldd-icon-button
-                      icon="bold"
+              <nldd-container slot="header" padding="8" padding-bottom="0">
+                <nldd-toolbar size="md" label="Paneelacties">
+                  <!-- Weergave-keuze (alle panes). Hoogste prioriteit zodat
+                       deze als laatste naar het overflow-menu verhuist. -->
+                  <nldd-toolbar-item slot="start" label="Weergave" :priority="3">
+                    <nldd-button
+                      :id="`pane-view-btn-${idx}`"
                       size="md"
-                      accessible-label="Vet"
-                      data-testid="fmt-bold"
-                      :disabled="!canEditArticleText || undefined"
-                      @click="textEditorRefs[idx].toggleBold()"
-                    ></nldd-icon-button>
-                  </span>
-                  <span class="fmt-btn" :class="{ 'is-active': textEditorRefs[idx].activeFormats.italic }">
-                    <nldd-icon-button
-                      icon="italic"
+                      expandable
+                      :text="viewLabel(view)"
+                      :popovertarget="`pane-view-menu-${idx}`"
+                    ></nldd-button>
+                    <nldd-menu :id="`pane-view-menu-${idx}`" :anchor="`pane-view-btn-${idx}`">
+                      <nldd-menu-item
+                        v-for="opt in availableViews"
+                        :key="opt.id"
+                        type="radio"
+                        :selected="view === opt.id || undefined"
+                        :text="opt.label"
+                        @select="setPaneView(idx, opt.id)"
+                      ></nldd-menu-item>
+                      <nldd-menu-divider></nldd-menu-divider>
+                      <nldd-menu-item
+                        text="Verplaats naar links"
+                        icon="arrow-left"
+                        :disabled="idx === 0 || undefined"
+                        @select="movePane(idx, 'left')"
+                      ></nldd-menu-item>
+                      <nldd-menu-item
+                        text="Verplaats naar rechts"
+                        icon="arrow-right"
+                        :disabled="idx === paneViews.length - 1 || undefined"
+                        @select="movePane(idx, 'right')"
+                      ></nldd-menu-item>
+                      <nldd-menu-item
+                        text="Verplaats uiterst links"
+                        icon="arrow-left-to-line"
+                        :disabled="idx === 0 || undefined"
+                        @select="movePane(idx, 'start')"
+                      ></nldd-menu-item>
+                      <nldd-menu-item
+                        text="Verplaats uiterst rechts"
+                        icon="arrow-right-to-line"
+                        :disabled="idx === paneViews.length - 1 || undefined"
+                        @select="movePane(idx, 'end')"
+                      ></nldd-menu-item>
+                    </nldd-menu>
+                    <nldd-menu-group slot="overflow" text="Weergave">
+                      <nldd-menu-item
+                        v-for="opt in availableViews"
+                        :key="`ovf-view-${opt.id}`"
+                        type="radio"
+                        :selected="view === opt.id || undefined"
+                        :text="opt.label"
+                        @select="setPaneView(idx, opt.id)"
+                      ></nldd-menu-item>
+                      <nldd-menu-divider></nldd-menu-divider>
+                      <nldd-menu-item
+                        text="Verplaats naar links"
+                        icon="arrow-left"
+                        :disabled="idx === 0 || undefined"
+                        @select="movePane(idx, 'left')"
+                      ></nldd-menu-item>
+                      <nldd-menu-item
+                        text="Verplaats naar rechts"
+                        icon="arrow-right"
+                        :disabled="idx === paneViews.length - 1 || undefined"
+                        @select="movePane(idx, 'right')"
+                      ></nldd-menu-item>
+                      <nldd-menu-item
+                        text="Verplaats uiterst links"
+                        icon="arrow-left-to-line"
+                        :disabled="idx === 0 || undefined"
+                        @select="movePane(idx, 'start')"
+                      ></nldd-menu-item>
+                      <nldd-menu-item
+                        text="Verplaats uiterst rechts"
+                        icon="arrow-right-to-line"
+                        :disabled="idx === paneViews.length - 1 || undefined"
+                        @select="movePane(idx, 'end')"
+                      ></nldd-menu-item>
+                    </nldd-menu-group>
+                  </nldd-toolbar-item>
+                  <!-- Vet/Schuin — checkbox segmented control (beide kunnen
+                       tegelijk actief zijn). Bron van waarheid: de Tiptap-
+                       editor; de control reflecteert de selectie. -->
+                  <nldd-toolbar-item
+                    v-if="view === 'text' && selectedArticle && textEditorRefs[idx]"
+                    slot="end"
+                    label="Tekststijl"
+                    :priority="1"
+                  >
+                    <nldd-segmented-control
+                      type="checkbox"
+                      variant="icon"
                       size="md"
-                      accessible-label="Schuin"
-                      data-testid="fmt-italic"
+                      accessible-label="Tekststijl"
                       :disabled="!canEditArticleText || undefined"
-                      @click="textEditorRefs[idx].toggleItalic()"
-                    ></nldd-icon-button>
-                  </span>
-                  <span class="fmt-divider" role="separator" aria-orientation="vertical"></span>
-                  <span class="fmt-btn" :class="{ 'is-active': textEditorRefs[idx].activeFormats.bulletList }">
-                    <nldd-icon-button
-                      icon="bullet-list"
+                      :values.prop="boldItalicValues(idx)"
+                      @item-change="onInlineFormatChange(idx, $event)"
+                    >
+                      <nldd-segmented-control-item value="bold" icon="bold" text="Vet"></nldd-segmented-control-item>
+                      <nldd-segmented-control-item value="italic" icon="italic" text="Schuin"></nldd-segmented-control-item>
+                    </nldd-segmented-control>
+                    <nldd-menu-group slot="overflow" text="Tekststijl">
+                      <nldd-menu-item
+                        type="checkbox"
+                        icon="bold"
+                        text="Vet"
+                        :selected="textEditorRefs[idx].activeFormats.bold || undefined"
+                        :disabled="!canEditArticleText || undefined"
+                        @select="textEditorRefs[idx].toggleBold()"
+                      ></nldd-menu-item>
+                      <nldd-menu-item
+                        type="checkbox"
+                        icon="italic"
+                        text="Schuin"
+                        :selected="textEditorRefs[idx].activeFormats.italic || undefined"
+                        :disabled="!canEditArticleText || undefined"
+                        @select="textEditorRefs[idx].toggleItalic()"
+                      ></nldd-menu-item>
+                    </nldd-menu-group>
+                  </nldd-toolbar-item>
+                  <!-- Lijsttype — radio segmented control: geen / opsomming /
+                       genummerd. "Geen" (minus-small) heft de actieve lijst op. -->
+                  <nldd-toolbar-item
+                    v-if="view === 'text' && selectedArticle && textEditorRefs[idx]"
+                    slot="end"
+                    label="Lijst"
+                    :priority="1"
+                  >
+                    <nldd-segmented-control
+                      type="radio"
+                      variant="icon"
                       size="md"
-                      accessible-label="Opsomming"
-                      data-testid="fmt-bullet-list"
+                      accessible-label="Lijst"
                       :disabled="!canEditArticleText || undefined"
-                      @click="textEditorRefs[idx].toggleBulletList()"
-                    ></nldd-icon-button>
-                  </span>
-                  <span class="fmt-btn" :class="{ 'is-active': textEditorRefs[idx].activeFormats.orderedList }">
-                    <nldd-icon-button
-                      icon="numbered-list"
-                      size="md"
-                      accessible-label="Genummerde lijst"
-                      data-testid="fmt-ordered-list"
-                      :disabled="!canEditArticleText || undefined"
-                      @click="textEditorRefs[idx].toggleOrderedList()"
-                    ></nldd-icon-button>
-                  </span>
-                </div>
-                <span v-if="view === 'yaml' && parseError" class="editor-parse-error">YAML parse error</span>
-              </div>
+                      :value="listValue(idx)"
+                      @change="onListChange(idx, $event)"
+                    >
+                      <nldd-segmented-control-item value="none" icon="minus-small" text="Geen lijst"></nldd-segmented-control-item>
+                      <nldd-segmented-control-item value="bullet" icon="bullet-list" text="Opsomming"></nldd-segmented-control-item>
+                      <nldd-segmented-control-item value="ordered" icon="numbered-list" text="Genummerde lijst"></nldd-segmented-control-item>
+                    </nldd-segmented-control>
+                    <nldd-menu-group slot="overflow" text="Lijst">
+                      <nldd-menu-item
+                        type="radio"
+                        icon="minus-small"
+                        text="Geen lijst"
+                        :selected="listValue(idx) === 'none' || undefined"
+                        :disabled="!canEditArticleText || undefined"
+                        @select="setList(idx, 'none')"
+                      ></nldd-menu-item>
+                      <nldd-menu-item
+                        type="radio"
+                        icon="bullet-list"
+                        text="Opsomming"
+                        :selected="listValue(idx) === 'bullet' || undefined"
+                        :disabled="!canEditArticleText || undefined"
+                        @select="setList(idx, 'bullet')"
+                      ></nldd-menu-item>
+                      <nldd-menu-item
+                        type="radio"
+                        icon="numbered-list"
+                        text="Genummerde lijst"
+                        :selected="listValue(idx) === 'ordered' || undefined"
+                        :disabled="!canEditArticleText || undefined"
+                        @select="setList(idx, 'ordered')"
+                      ></nldd-menu-item>
+                    </nldd-menu-group>
+                  </nldd-toolbar-item>
+                  <!-- YAML parse-status (Machine-readable pane). -->
+                  <nldd-toolbar-item v-if="view === 'yaml' && parseError" slot="end" label="YAML">
+                    <span class="editor-parse-error">YAML parse error</span>
+                    <nldd-menu-item
+                      slot="overflow"
+                      text="YAML parse error"
+                      disabled
+                    ></nldd-menu-item>
+                  </nldd-toolbar-item>
+                </nldd-toolbar>
+              </nldd-container>
 
-              <!-- Tekst — WYSIWYG editor when the editor.article_text_edit
-                   feature flag is on, otherwise the read-only ArticleText
-                   display (matches the pre-#589 look). The toolbar in the
-                   pane-header above guards on `textEditorRefs[idx]`, which
-                   is only populated by the WYSIWYG component, so it auto-
-                   hides when the flag is off. -->
+              <!-- Tekst — WYSIWYG editor when the user can edit, otherwise the
+                   read-only ArticleText display. The format controls in the
+                   header toolbar guard on `textEditorRefs[idx]`, which only the
+                   WYSIWYG component populates, so they auto-hide when read-only. -->
               <nldd-simple-section v-if="view === 'text'" width="full">
                 <ArticleTextEditor
                   v-if="canEditArticleText"
@@ -1467,117 +1693,105 @@ async function handleActionSave() {
                   :save-error="articleTextSaveError"
                   :model-value="editedText"
                   @update:model-value="editedText = $event"
+                  @focus="onTextEditorFocus(idx)"
                 />
-                <!-- Notes overlay (read mode only): same Tekst pane, plain
-                     text with resolved highlights instead of the markdown
-                     render. Toggled via the header button below. -->
-                <template v-else-if="notesActive">
-                  <nldd-inline-dialog
-                    v-if="notesError"
-                    variant="alert"
-                    text="Notities niet geladen"
-                    :supporting-text="notesError.message"
-                  ></nldd-inline-dialog>
-                  <nldd-inline-dialog
-                    v-else-if="notesLoading"
-                    text="Notities laden…"
-                  ></nldd-inline-dialog>
-                  <template v-else>
-                    <AnnotatedText
-                      :article="selectedArticle"
-                      :notes-for-article="notesForArticle"
-                      :can-create="canCreateNotes"
-                      :law-id="lawId"
-                      :engine="noteEngine"
-                      :traject-ref="$route.params.trajectRef || ''"
-                      @create-note="onCreateNote"
-                    />
-                    <nldd-inline-dialog
-                      v-if="noteIssues.length"
-                      variant="warning"
-                      :text="`${noteIssues.length} notitie(s) niet verankerd`"
-                      :supporting-text="noteIssues.map(i => i.reason).join('; ')"
-                    ></nldd-inline-dialog>
-                    <!-- Draft notes live in localStorage until written back.
-                         "Opslaan naar repo" appends them to the sidecar on
-                         the active traject's branch (same write model as
-                         law/scenario edits since #632). No source picker —
-                         the traject's own corpus config decides the target.
-                         Without an active traject the save button is
-                         disabled, mirroring the law-edit buttons, so the
-                         backend 403 is never a surprise. "Exporteer YAML"
-                         stays for the offline / manual-commit case. -->
-                    <nldd-inline-dialog
-                      v-if="canCreateNotes && draftCount > 0"
-                      data-testid="draft-notes-bar"
-                      :text="`${draftCount} concept-notitie(s), nog niet opgeslagen`"
-                    >
-                      <nldd-button
-                        slot="actions"
-                        size="md"
-                        variant="primary"
-                        :text="savingNotes ? 'Opslaan…' : 'Opslaan naar repo'"
-                        :disabled="savingNotes || !canEdit || null"
-                        data-testid="save-notes-btn"
-                        @click="saveNotesToRepo"
-                      ></nldd-button>
-                      <nldd-button
-                        slot="actions"
-                        size="md"
-                        text="Exporteer YAML"
-                        data-testid="export-notes-btn"
-                        @click="exportNotes"
-                      ></nldd-button>
-                      <nldd-button
-                        slot="actions"
-                        size="md"
-                        variant="destructive"
-                        text="Concepten wissen"
-                        data-testid="clear-drafts-btn"
-                        @click="askClearDrafts"
-                      ></nldd-button>
-                    </nldd-inline-dialog>
-                    <nldd-inline-dialog
-                      v-if="canCreateNotes && draftCount > 0 && !canEdit"
-                      variant="warning"
-                      data-testid="notes-no-traject"
-                      text="Selecteer eerst een traject"
-                      supporting-text="Opslaan naar repo werkt pas als er een actief traject is. Exporteer YAML werkt wel."
-                    ></nldd-inline-dialog>
-                    <nldd-inline-dialog
-                      v-if="notesSaveError"
-                      variant="alert"
-                      data-testid="notes-save-error"
-                      text="Notities opslaan mislukt"
-                      :supporting-text="notesSaveError"
-                    ></nldd-inline-dialog>
-                    <nldd-inline-dialog
-                      v-if="notesSaveStatus && !notesSaveError"
-                      variant="success"
-                      data-testid="notes-save-status"
-                      text="Opslaan gelukt"
-                      :supporting-text="notesSaveStatus"
-                    ></nldd-inline-dialog>
-                  </template>
-                </template>
                 <ArticleText v-else :article="selectedArticle" />
               </nldd-simple-section>
-              <!-- Footer + Save button only on the first text pane (mirrors the machine pattern). -->
-              <nldd-container
-                v-if="view === 'text' && canEditArticleText && (isArticleTextDirty || lawSaving) && paneViews.indexOf('text') === idx"
-                slot="footer"
-                padding="16"
-              >
-                <nldd-button
-                  variant="primary"
-                  size="md"
-                  width="full"
-                  data-testid="save-text-btn"
-                  :disabled="lawSaving || undefined"
-                  :text="lawSaving ? 'Opslaan…' : 'Opslaan'"
-                  @click="handleLawSave"
-                ></nldd-button>
-              </nldd-container>
+
+              <!-- Tekst viewer + notities — read-only article text with resolved
+                   note highlights and inline note authoring. A separate pane so
+                   it can sit next to the Tekst editor for comparison; the
+                   resolver matches raw text, so it can't share the editable
+                   WYSIWYG render. -->
+              <nldd-simple-section v-else-if="view === 'text-notes'" width="full">
+                <nldd-inline-dialog
+                  v-if="notesError"
+                  variant="alert"
+                  text="Notities niet geladen"
+                  :supporting-text="notesError.message"
+                ></nldd-inline-dialog>
+                <nldd-inline-dialog
+                  v-else-if="notesLoading"
+                  text="Notities laden…"
+                ></nldd-inline-dialog>
+                <template v-else>
+                  <AnnotatedText
+                    :article="selectedArticle"
+                    :notes-for-article="notesForArticle"
+                    :can-create="canCreateNotes"
+                    :law-id="lawId"
+                    :engine="noteEngine"
+                    :traject-ref="$route.params.trajectRef || ''"
+                    @create-note="onCreateNote"
+                  />
+                  <nldd-inline-dialog
+                    v-if="noteIssues.length"
+                    variant="warning"
+                    :text="`${noteIssues.length} notitie(s) niet verankerd`"
+                    :supporting-text="noteIssues.map(i => i.reason).join('; ')"
+                  ></nldd-inline-dialog>
+                  <!-- Draft notes live in localStorage until written back.
+                       "Opslaan naar repo" appends them to the sidecar on
+                       the active traject's branch (same write model as
+                       law/scenario edits since #632). No source picker —
+                       the traject's own corpus config decides the target.
+                       Without an active traject the save button is
+                       disabled, mirroring the law-edit buttons, so the
+                       backend 403 is never a surprise. "Exporteer YAML"
+                       stays for the offline / manual-commit case. -->
+                  <nldd-inline-dialog
+                    v-if="canCreateNotes && draftCount > 0"
+                    data-testid="draft-notes-bar"
+                    :text="`${draftCount} concept-notitie(s), nog niet opgeslagen`"
+                  >
+                    <nldd-button
+                      slot="actions"
+                      size="md"
+                      variant="primary"
+                      :text="savingNotes ? 'Opslaan…' : 'Opslaan naar repo'"
+                      :disabled="savingNotes || !canEdit || null"
+                      data-testid="save-notes-btn"
+                      @click="saveNotesToRepo"
+                    ></nldd-button>
+                    <nldd-button
+                      slot="actions"
+                      size="md"
+                      text="Exporteer YAML"
+                      data-testid="export-notes-btn"
+                      @click="exportNotes"
+                    ></nldd-button>
+                    <nldd-button
+                      slot="actions"
+                      size="md"
+                      variant="destructive"
+                      text="Concepten wissen"
+                      data-testid="clear-drafts-btn"
+                      @click="askClearDrafts"
+                    ></nldd-button>
+                  </nldd-inline-dialog>
+                  <nldd-inline-dialog
+                    v-if="canCreateNotes && draftCount > 0 && !canEdit"
+                    variant="warning"
+                    data-testid="notes-no-traject"
+                    text="Selecteer eerst een traject"
+                    supporting-text="Opslaan naar repo werkt pas als er een actief traject is. Exporteer YAML werkt wel."
+                  ></nldd-inline-dialog>
+                  <nldd-inline-dialog
+                    v-if="notesSaveError"
+                    variant="alert"
+                    data-testid="notes-save-error"
+                    text="Notities opslaan mislukt"
+                    :supporting-text="notesSaveError"
+                  ></nldd-inline-dialog>
+                  <nldd-inline-dialog
+                    v-if="notesSaveStatus && !notesSaveError"
+                    variant="success"
+                    data-testid="notes-save-status"
+                    text="Opslaan gelukt"
+                    :supporting-text="notesSaveStatus"
+                  ></nldd-inline-dialog>
+                </template>
+              </nldd-simple-section>
 
               <!-- Machine readable -->
               <nldd-simple-section v-else-if="view === 'machine'" width="full">
@@ -1597,27 +1811,6 @@ async function handleActionSave() {
                   @delete="handleDelete"
                 />
               </nldd-simple-section>
-              <!-- Footer + Save button only on the first machine pane.
-                   Duplicates would render redundant Save buttons over
-                   the same shared dirty state — not broken, just noisy.
-                   Hidden while the action sheet is open: the sheet's
-                   "Opslaan" is the real save for those in-place edits, so a
-                   second Machine-pane Save button behind it just distracts. -->
-              <nldd-container
-                v-if="view === 'machine' && canEdit && !activeAction && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx"
-                slot="footer"
-                padding="16"
-              >
-                <nldd-button
-                  variant="primary"
-                  size="md"
-                  width="full"
-                  data-testid="save-mr-btn"
-                  :disabled="lawSaving || undefined"
-                  :text="lawSaving ? 'Opslaan…' : 'Opslaan'"
-                  @click="handleMachineReadableSave"
-                ></nldd-button>
-              </nldd-container>
 
               <!-- Scenario builder -->
               <template v-else-if="view === 'scenario'">
@@ -1745,47 +1938,6 @@ async function handleActionSave() {
   background: #eee;
   padding: 1px 4px;
   border-radius: 3px;
-}
-
-/* Per-pane header: view-picker dropdown sits where the title would
-   normally be, with the YAML parse-error pill floating after it.
-   Mirrors nldd-top-title-bar's compact spacing so the row height
-   matches other panes' headers. */
-.pane-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  min-height: 56px;
-  box-sizing: border-box;
-}
-
-/* Formatting buttons embedded in the text-pane header. The nldd-icon-button
- * library doesn't carry a pressed state of its own, so the wrapper span
- * paints the active background locally — same approach the previous
- * in-component toolbar used. */
-.fmt-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.fmt-btn {
-  display: inline-flex;
-  border-radius: 8px;
-  transition: background-color 120ms ease;
-}
-
-.fmt-btn.is-active {
-  background-color: var(--semantics-surfaces-accent-tinted-background-color, rgba(0, 123, 199, 0.14));
-}
-
-.fmt-divider {
-  display: inline-block;
-  width: 1px;
-  height: 20px;
-  margin: 0 4px;
-  background-color: var(--semantics-borders-default-color, #DDE0E4);
 }
 
 .editor-parse-error {

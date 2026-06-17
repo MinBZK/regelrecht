@@ -58,6 +58,8 @@ corpus-auth.yaml
 # Environment — ignore all .env files, keep the committed *.example templates
 .env*
 !.env*.example
+# Local SSO secrets (no leading dot, so .env* above misses it)
+env.sso-local
 
 # Gemini CLI
 .gemini/*

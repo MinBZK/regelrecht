@@ -2,8 +2,9 @@
 /*
  * Table of contents for the article page's left column. Built from the
  * headings Astro returns from entry.render() ({ depth, slug, text }), kept to
- * depth 2-3. Rendered as a boxed navigation list; depth-3 entries get an extra
- * leading spacer-cell for indentation.
+ * depth 2-3. Rendered as a simple navigation list; depth-3 entries get a
+ * leading spacer-cell in slot=start for indentation, so the row underline
+ * starts at the text rather than under the indent.
  */
 interface Heading {
   depth: number;
@@ -23,7 +24,7 @@ const flat = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
     <nldd-list type="navigation" variant="simple" aria-label="On this page">
       {flat.map((h) => (
         <nldd-list-item href={`#${h.slug}`}>
-          {h.depth === 3 && <nldd-spacer-cell />}
+          {h.depth === 3 && <nldd-spacer-cell slot="start" />}
           <nldd-text-cell text={h.text} />
         </nldd-list-item>
       ))}

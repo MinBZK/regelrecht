@@ -53,8 +53,8 @@ export const lastLibraryPath = computed(() => _lastVisited.value.library ?? '/li
 
 // `/editor` (no traject) is the read-only editor. The first visit
 // lands there; subsequent visits restore the most-recently-seen
-// editor URL — read-only OR traject-scoped, whichever the user was on
-// last.
+// editor URL — the traject chooser OR a traject-scoped editor,
+// whichever the user was on last.
 export const lastEditorPath = computed(
   () => _lastVisited.value.editor ?? '/editor',
 );
@@ -73,11 +73,26 @@ export function sectionTarget(router, storedPath, activeRef) {
   if (activeRef) {
     params.trajectRef = activeRef;
     if (name === 'library') name = 'library-traject';
-    else if (name === 'editor') name = 'editor-traject';
+    else if (name === 'editor') {
+      // Upgrade a stored chooser path to the active traject's editor; a
+      // law carried in the chooser query becomes the editor's law param.
+      name = 'editor-traject';
+      if (loc.query?.law) params.lawId = loc.query.law;
+      if (loc.query?.article) params.articleNumber = loc.query.article;
+    }
   } else {
     delete params.trajectRef;
     if (name === 'library-traject') name = 'library';
-    else if (name === 'editor-traject') name = 'editor';
+    else if (name === 'editor-traject' || name === 'editor') {
+      // The editor requires a traject: without an active one the Editor
+      // tab goes to the traject chooser. A law from the stored path
+      // travels along as query so it opens right after a traject is
+      // picked.
+      const query = { ...(loc.query ?? {}) };
+      if (params.lawId) query.law = params.lawId;
+      if (params.articleNumber) query.article = params.articleNumber;
+      return { name: 'editor', params: {}, query };
+    }
   }
   // Defensive: a corrupted or extremely stale sessionStorage path can
   // resolve to an unrecognised (or null) route name, which would make the

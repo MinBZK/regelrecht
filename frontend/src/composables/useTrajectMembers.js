@@ -59,7 +59,12 @@ export function useTrajectMembers() {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ role }),
-      errorMessage: (status, body) => body || `Rol wijzigen mislukt: ${status}`,
+      // 409 is the backend's atomic "can't demote the last owner" guard — only
+      // reachable when demoting an owner to contributor. Surface the workflow.
+      errorMessage: (status, body) =>
+        status === 409
+          ? 'Een traject moet minstens één eigenaar houden. Maak eerst een ander lid eigenaar.'
+          : body || `Rol wijzigen mislukt: ${status}`,
     });
     await load(trajectId);
   }

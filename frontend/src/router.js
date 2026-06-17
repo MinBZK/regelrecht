@@ -9,12 +9,10 @@ const router = createRouter({
   routes: [
     {
       // Persistent shell: holds the shared chrome (toolbars, tab-bar,
-      // settings menu) and a nested <router-view> for the section bodies.
-      // Because the editor and library are children of this one record,
-      // switching between them reuses the shell instance — only the nested
-      // router-view swaps — so the chrome never rebuilds on a tab switch.
-      // Child paths are relative; route names + full paths stay unchanged,
-      // so deep links and sectionTarget keep working.
+      // settings menu, traject-switcher) and a nested <router-view> for the
+      // section bodies. Editor and library are children of this one record,
+      // so switching between them reuses the shell instance — only the nested
+      // router-view swaps — and the chrome never rebuilds on a tab switch.
       path: '/',
       component: AppShell,
       children: [
@@ -22,71 +20,95 @@ const router = createRouter({
         {
           // Traject-scoped bibliotheek: the same library UI, but reading
           // through `/api/trajects/{trajectRef}/corpus/...` so the active
-          // traject survives a Bibliotheek↔Editor tab switch. Mirrors the
-          // `editor-traject` route below — the active traject lives in the
-          // URL (per-tab state), never a server session.
+          // traject survives a Bibliotheek↔Editor tab switch. The active
+          // traject lives in the URL (per-tab state), never a server session.
           //
           // The `:trajectRef` regex pins the param to `{slug}-{8hex}` so a
-          // plain law-id slug like `wet_op_de_zorgtoeslag` does NOT match here — it
-          // falls through to the no-traject library below. Same invariant as
-          // `editor-traject`: law `$id` slugs must not end in `-{8hex}`.
-          //
-          // Reads of a traject's corpus require auth (the traject is tied to
-          // the user's repo), so this route is gated like `editor-traject`.
-          // The user only ever reaches it from an authenticated session.
+          // plain law-id slug like `wet_op_de_zorgtoeslag` does NOT match
+          // here — it falls through to the no-traject library below.
           path: 'library/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:lawId?/:articleNumber?',
           name: 'library-traject',
           component: LibraryView,
           meta: { title: 'Bibliotheek', requiresAuth: true },
         },
         {
+          // No-traject bibliotheek: public, global browse (no auth).
           path: 'library/:lawId?/:articleNumber?',
           name: 'library',
           component: LibraryView,
           meta: { title: 'Bibliotheek' },
         },
         {
-          // Traject-scoped editor: full read + write. Per-tab active
-          // traject lives in the URL; switching in one tab no longer
-          // leaks into another tab's saves. API hangs under
-          // `/api/trajects/{trajectRef}/corpus/...`.
+          // Traject-scoped editor: full read + write. Per-tab active traject
+          // lives in the URL. API hangs under `/api/trajects/{trajectRef}/...`.
           //
-          // The `:trajectRef` regex pins the param to `{slug}-{8hex}` so a
-          // plain law-id slug like `wet_op_de_zorgtoeslag` does NOT match this
-          // route — it falls through to the no-traject editor below.
-          //
-          // **Invariant**: law `$id` slugs must not match this regex (i.e.
-          // they must not end in `-{8hex}`). Today every harvested $id uses
-          // underscores (e.g. `wet_op_de_zorgtoeslag`) which are excluded
-          // from the character class, so the collision is structurally
-          // impossible. If a future harvester ever emits hyphenated ids, a
-          // schema check (or this regex tightened to require a leading
-          // word from the slug, not just hex chars) must be added.
+          // **Invariant**: law `$id` slugs must not match the `{slug}-{8hex}`
+          // regex (they use underscores, e.g. `wet_op_de_zorgtoeslag`), so a
+          // plain law id can never be mistaken for a traject ref.
           path: 'editor/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:lawId?/:articleNumber?',
           name: 'editor-traject',
           component: () => import('./EditorView.vue'),
           meta: { title: 'Editor', requiresAuth: true },
         },
         {
-          // Editor without a traject: read-only view. Useful for browsing
-          // a law's editor UI (machine_readable, YAML, scenarios) without
-          // committing to a traject. Save actions are disabled (`canEdit`
-          // gates them); the user picks a traject via the TrajectMenu to
-          // unlock edits, which navigates to `editor-traject`.
-          path: 'editor/:lawId?/:articleNumber?',
+          // Nieuw traject aanmaken — eigen pagina met het gedeelde
+          // aanmaakformulier (TrajectCreateForm). Statisch segment, dus
+          // vue-router rankt dit boven de param-routes hieronder.
+          path: 'editor/nieuw-traject',
+          name: 'editor-nieuw-traject',
+          component: () => import('./TrajectCreateView.vue'),
+          meta: { title: 'Nieuw traject', requiresAuth: true },
+        },
+        {
+          // De editor vereist een traject. De kale /editor is de
+          // trajectkeuze-pagina: kies een bestaand traject of maak er een
+          // aan; daarna ga je door naar `editor-traject`. Een meegegeven wet
+          // (query `law`/`article`, gezet door de redirect hieronder) opent
+          // na de keuze direct in de editor.
+          path: 'editor',
           name: 'editor',
-          component: () => import('./EditorView.vue'),
-          meta: { title: 'Editor', requiresAuth: true },
+          component: () => import('./TrajectChooserView.vue'),
+          meta: { title: 'Kies een traject', requiresAuth: true },
+        },
+        {
+          // Editor-links zonder traject (de vroegere read-only editor): er is
+          // geen editor zonder traject meer. Door naar de keuzepagina, met de
+          // wet als query zodat die na de keuze opent.
+          //
+          // Staat bewust NA `editor-traject`: een traject-ref-URL
+          // ({slug}-{8hex}) moet de traject-route matchen, niet deze redirect.
+          // De declaratievolgorde is hier de scheidsrechter.
+          path: 'editor/:lawId/:articleNumber?',
+          redirect: (to) => ({
+            name: 'editor',
+            query: {
+              law: to.params.lawId,
+              article: to.params.articleNumber || undefined,
+            },
+          }),
         },
       ],
+    },
+    {
+      // Standalone full-page werkdocumenten editor, opened in a new tab from
+      // the in-sheet editor ("Open in nieuw tabblad"). Deliberately a top-level
+      // route, NOT a child of AppShell: it carries its own minimal top bar
+      // instead of the app chrome, giving the document a full navigation-split-
+      // view (list + editor). `:trajectRef` is pinned to `{slug}-{8hex}` like
+      // the other traject routes; `:docPath(.*)` captures nested document paths
+      // (slashes allowed) and is optional so the bare page opens on the list.
+      path: '/werkdocumenten/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:docPath(.*)?',
+      name: 'werkdocumenten',
+      component: () => import('./WerkdocumentenView.vue'),
+      meta: { title: 'Werkdocumenten', requiresAuth: true },
     },
     {
       path: '/editor.html',
       redirect: (to) => ({
         name: 'editor',
-        params: {
-          lawId: to.query.law || undefined,
-          articleNumber: to.query.article || undefined,
+        query: {
+          law: to.query.law || undefined,
+          article: to.query.article || undefined,
         },
       }),
     },
@@ -94,22 +116,20 @@ const router = createRouter({
 });
 
 // Gate any route marked `meta.requiresAuth` on the auth-status check. We
-// block the client-side navigation until `/auth/status` has resolved, so
-// the target component never mounts until we know the user may enter.
-// When OIDC is configured and the user is not authenticated, we trigger
-// the SSO redirect here and cancel the navigation \u2014 the previous route
-// stays visible until the browser leaves for `/auth/login`, instead of
-// flashing the protected UI.
+// block the client-side navigation until `/auth/status` has resolved, so the
+// target component never mounts until we know the user may enter.
+// Unauthenticated users are always sent to `/auth/login` and the navigation
+// is cancelled — the previous route stays visible until the browser leaves,
+// instead of flashing the protected UI. Deliberately NOT conditional on
+// `oidcConfigured`: the editor must never open without login, including
+// environments without OIDC (there `/auth/login` either serves the dev login
+// or surfaces a backend error). A failed /auth/status check leaves
+// `authenticated` false and thus fails closed.
 router.beforeEach(async (to) => {
   if (!to.meta.requiresAuth) return true;
   await ensureAuthReady();
-  const { authenticated, oidcConfigured, login } = useAuth();
-  if (oidcConfigured.value && !authenticated.value) {
-    // Pass the intended destination explicitly: inside beforeEach, the
-    // client-side navigation has not committed yet, so window.location
-    // still reflects the source route (e.g. /library). Without this, the
-    // user would land back on the source route after SSO instead of the
-    // page they originally clicked.
+  const { authenticated, login } = useAuth();
+  if (!authenticated.value) {
     login(to.fullPath);
     return false;
   }
@@ -122,12 +142,7 @@ router.afterEach((to) => {
   recordLastVisited(to.name, to.fullPath);
 });
 
-// Note: document.title is owned by the route components (LibraryView, EditorView)
-// via watchEffect \u2014 they reflect law + article state. router.afterEach used to
-// set a static title here, but it ran AFTER the component's reactive update
-// (vue's effect flush is sync; afterEach is one microtask later), so a
-// tab-switch or article-select would set "Editor: Art. 5 \u00b7 ..." and then
-// immediately get clobbered back to "Editor \u00b7 RegelRecht". Letting the
-// components own the title avoids the race.
+// document.title is owned by the route components (they reflect law + article
+// state) via watchEffect — see the note that used to live here on main.
 
 export default router;
