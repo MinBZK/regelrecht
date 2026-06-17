@@ -41,9 +41,9 @@ describe('ArticleTextEditor', () => {
     const wrapper = mount(ArticleTextEditor, {
       props: { article: null, editable: true, modelValue: '' },
     });
-    const empty = wrapper.find('.article-text-editor__empty');
+    const empty = wrapper.find('nldd-inline-dialog');
     expect(empty.exists()).toBe(true);
-    expect(empty.find('nldd-inline-dialog').attributes('text')).toContain('Geen artikel geselecteerd');
+    expect(empty.attributes('text')).toContain('Geen artikel geselecteerd');
   });
 
   it('renders the save error dialog when saveError is set and editable', () => {
@@ -68,7 +68,7 @@ describe('ArticleTextEditor', () => {
       props: { article: null, editable: true, saveError: err, modelValue: '' },
     });
     expect(wrapper.find('[data-testid="save-text-error"]').exists()).toBe(false);
-    expect(wrapper.find('.article-text-editor__empty').exists()).toBe(true);
+    expect(wrapper.find('nldd-inline-dialog').attributes('text')).toContain('Geen artikel geselecteerd');
   });
 
   // The remaining tests exercise tiptap under happy-dom. If the editor instance
