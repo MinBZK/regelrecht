@@ -136,11 +136,16 @@ async function submitCreate() {
   createBusy.value = true;
   try {
     const created = await createTraject(payload);
-    closeSheet();
     if (!created.ref) {
+      // A half-filled summary would navigate to /editor/undefined; surface it
+      // and keep the sheet open instead of silently closing after a real
+      // resource was created (re-submitting would make a duplicate).
       console.warn('MobileTrajectSheet: created traject has no ref', created);
+      createError.value =
+        'Traject aangemaakt maar kon niet worden geopend. Ga terug en selecteer het.';
       return;
     }
+    closeSheet();
     await goToTraject(created.ref);
   } catch (e) {
     createError.value = e.message || 'Aanmaken mislukt';

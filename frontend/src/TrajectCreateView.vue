@@ -52,6 +52,8 @@ async function submitCreate() {
     // navigate to `/editor/undefined/...` and silently no-op.
     if (!created.ref) {
       console.warn('TrajectCreateView: created traject has no ref', created);
+      createError.value =
+        'Traject aangemaakt maar kon niet worden geopend. Ga terug en selecteer het.';
       return;
     }
     await router.push({
