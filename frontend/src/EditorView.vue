@@ -751,6 +751,16 @@ const activeEditItem = ref(null);
 const parseError = ref(null);
 
 const machineReadable = ref(null);
+
+// The YAML pane edits the machine-readable as text. There is something to edit
+// when the article carries machine_readable, or one was created/edited this
+// session (the live ref). With neither, the empty code editor is replaced by a
+// message — like the Machine pane and the read-only YAML view. Deliberately not
+// keyed on the live ref alone: clearing or mid-typing invalid YAML nulls it, and
+// that must not yank the editor out from under the user.
+const hasMachineReadable = computed(
+  () => !!machineReadable.value || !!selectedArticle.value?.machine_readable,
+);
 const yamlSource = ref('');
 // In-memory markdown for the currently selected article's `text` field.
 // Seeded on article switch alongside machineReadable so the Tekst and Machine
@@ -1715,10 +1725,11 @@ async function handleActionSave() {
                   text="Notities niet geladen"
                   :supporting-text="notesError.message"
                 ></nldd-inline-dialog>
-                <nldd-inline-dialog
+                <nldd-activity-indicator
                   v-else-if="notesLoading"
-                  text="Notities laden…"
-                ></nldd-inline-dialog>
+                  text="Notities laden"
+                  show-text
+                ></nldd-activity-indicator>
                 <template v-else>
                   <AnnotatedText
                     :article="selectedArticle"
@@ -1840,13 +1851,19 @@ async function handleActionSave() {
 
               <!-- YAML -->
               <nldd-simple-section v-else-if="view === 'yaml'" width="full">
-                <nldd-code-editor
-                  resize="none"
-                  accessible-label="YAML"
-                  :value="yamlSource"
-                  @input="onYamlInput"
-                ></nldd-code-editor>
-                <nldd-banner v-if="parseError" variant="critical" :text="parseError"></nldd-banner>
+                <nldd-inline-dialog
+                  v-if="!hasMachineReadable"
+                  text="Geen machine-leesbare gegevens voor dit artikel"
+                ></nldd-inline-dialog>
+                <template v-else>
+                  <nldd-code-editor
+                    resize="none"
+                    accessible-label="YAML"
+                    :value="yamlSource"
+                    @input="onYamlInput"
+                  ></nldd-code-editor>
+                  <nldd-banner v-if="parseError" variant="critical" :text="parseError"></nldd-banner>
+                </template>
               </nldd-simple-section>
             </nldd-page>
           </nldd-split-view-pane>
