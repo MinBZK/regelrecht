@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, shallowRef, nextTick, watch, watchEffect } from 'vue';
+import { ref, computed, shallowRef, nextTick, watch, watchEffect, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
 import yaml from 'js-yaml';
 import ArticleText from './components/ArticleText.vue';
@@ -12,12 +12,12 @@ import { lawFetchInit } from './composables/useLaw.js';
 import { useTrajects } from './composables/useTrajects.js';
 import { lawsListUrl, lawUrl, changedLawsUrl } from './composables/corpusUrls.js';
 import { SUPPORT_EMAIL } from './constants.js';
-import { openSearch, registerSearchPopover } from './composables/useAppChrome.js';
+import { registerSearchPopover, setLibraryEmpty } from './composables/useAppChrome.js';
 import { humanizeLawId } from './lib/lawName.js';
 import { apiFetch, apiFetchJson, ApiError } from './lib/apiFetch.js';
 import { useLatest } from './lib/useLatest.js';
 
-const { authenticated } = useAuth();
+const { authenticated, login } = useAuth();
 
 // Library home title (sidebar header + home heading) and the label of
 // the back-button that returns to it from underlying pages. They differ
@@ -60,8 +60,7 @@ const loading = ref(true);
 const indexError = ref(null);
 const searchPopoverRef = ref(null);
 // The toolbar search control lives in the AppShell; register our popover so
-// the shell's search button/field opens it. `openSearch` is imported from the
-// chrome store for the in-body "Zoeken" button below.
+// the shell's search button/field opens it.
 registerSearchPopover(searchPopoverRef);
 
 const selectedLawId = ref(null);
@@ -185,6 +184,12 @@ const isEmptyLibrary = computed(
   () => !loading.value && !indexError.value && !selectedLawId.value && sidebarSections.value.length === 0,
 );
 
+// Tell the shell whether the library is empty so it can show the just-in-time
+// search coach-mark on the toolbar field; reset on unmount so it doesn't linger
+// on the editor route.
+watchEffect(() => setLibraryEmpty(isEmptyLibrary.value));
+onBeforeUnmount(() => setLibraryEmpty(false));
+
 const articles = computed(() => selectedLaw.value?.articles ?? []);
 
 const lawName = computed(() => {
@@ -306,6 +311,21 @@ async function fetchChangedLawIds(trajectRef) {
 }
 
 const togglingFavorites = ref(new Set());
+
+const favoriteLoginWarning = ref(null);
+// Heart button when not logged in: nudge to log in via a popover anchored to the
+// button (same pattern as the Editor tab + Trajecten button) instead of silently
+// doing nothing.
+function onFavoriteClick(e) {
+  if (!authenticated.value) {
+    if (favoriteLoginWarning.value) {
+      favoriteLoginWarning.value.anchorElement = e.currentTarget;
+      favoriteLoginWarning.value.show();
+    }
+    return;
+  }
+  toggleFavorite(selectedLawId.value);
+}
 
 async function toggleFavorite(lawId) {
   if (!authenticated.value || !lawId) return;
@@ -669,27 +689,19 @@ watch(activeTrajectRef, () => {
         </nldd-page>
 
         <!-- Nothing curated yet (no favorites, no traject edits, no open law):
-             point the user at search rather than dumping the whole corpus. -->
-        <nldd-page v-else-if="isEmptyLibrary">
-          <nldd-simple-section width="full">
-            <nldd-inline-dialog
-              text="Nog niets in je bibliotheek"
-              supporting-text="Zoek een wet om te openen, of markeer wetten als favoriet."
-            >
-              <nldd-button slot="actions" variant="primary" start-icon="search" text="Zoeken" @click="openSearch"></nldd-button>
-            </nldd-inline-dialog>
-          </nldd-simple-section>
-        </nldd-page>
+             leave the canvas blank — the just-in-time coach-mark on the toolbar
+             search field (AppShell) points the user at search. -->
+        <nldd-page v-else-if="isEmptyLibrary"></nldd-page>
 
         <nldd-navigation-split-view v-else @back="onPaneBack">
 
           <nldd-split-view-pane slot="sidebar" has-content>
             <nldd-page sticky-header>
-              <nldd-top-title-bar slot="header" :text="LIBRARY_HOME_TITLE" collapse-anchor="home-titel"></nldd-top-title-bar>
+              <nldd-top-title-bar v-if="!loading" slot="header" :text="LIBRARY_HOME_TITLE" collapse-anchor="home-titel"></nldd-top-title-bar>
 
               <nldd-simple-section width="full">
-                <nldd-title id="home-titel" size="3"><h3>{{ LIBRARY_HOME_TITLE }}</h3></nldd-title>
-                <nldd-spacer size="16"></nldd-spacer>
+                <nldd-title v-if="!loading" id="home-titel" size="3"><h3>{{ LIBRARY_HOME_TITLE }}</h3></nldd-title>
+                <nldd-spacer v-if="!loading" size="16"></nldd-spacer>
                 <nldd-activity-indicator v-if="loading" text="Laden" show-text></nldd-activity-indicator>
                 <template v-else>
                   <template
@@ -745,25 +757,37 @@ watch(activeTrajectRef, () => {
           <nldd-split-view-pane v-if="selectedLawId && !lawError" slot="secondary-sidebar" has-content>
             <nldd-page sticky-header>
               <nldd-top-title-bar
+                v-if="!selectedLawLoading"
                 slot="header"
-                :text="lawName || indexedLawName || 'Selecteer een wet'"
+                :text="lawName || indexedLawName"
                 :back-text="LIBRARY_HOME_BACK_TEXT"
                 collapse-anchor="wet-titel"
               ></nldd-top-title-bar>
 
               <nldd-simple-section width="full">
-                <nldd-title id="wet-titel" size="3"><h3>{{ lawName || 'Selecteer een wet' }}</h3></nldd-title>
-                <nldd-spacer size="16"></nldd-spacer>
-                <nldd-toolbar v-if="authenticated && selectedLaw" label="Favorieten">
+                <nldd-title v-if="!selectedLawLoading" id="wet-titel" size="3"><h3>{{ lawName }}</h3></nldd-title>
+                <nldd-spacer v-if="!selectedLawLoading" size="16"></nldd-spacer>
+                <nldd-toolbar v-if="selectedLaw" label="Favorieten">
                   <nldd-toolbar-item slot="start">
                     <nldd-icon-button
                       :icon="favorites?.has(selectedLawId) ? 'heart-filled' : 'heart'"
                       :text="favorites?.has(selectedLawId) ? 'Verwijder uit favorieten' : 'Voeg toe aan favorieten'"
-                      @click="toggleFavorite(selectedLawId)"
+                      @click="onFavoriteClick"
                     ></nldd-icon-button>
                   </nldd-toolbar-item>
                 </nldd-toolbar>
-                <nldd-spacer v-if="authenticated && selectedLaw" size="16"></nldd-spacer>
+                <nldd-spacer v-if="selectedLaw" size="16"></nldd-spacer>
+                <nldd-popover ref="favoriteLoginWarning" accessible-label="Inloggen" width="320px">
+                  <nldd-container padding="16">
+                    <nldd-inline-dialog
+                      icon="login"
+                      text="Log in om wetten als favoriet te markeren"
+                      supporting-text="Zodra je bent ingelogd kun je wetten bewaren en snel terugvinden."
+                    >
+                      <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
+                    </nldd-inline-dialog>
+                  </nldd-container>
+                </nldd-popover>
                 <nldd-activity-indicator v-if="selectedLawLoading" text="Wet laden" show-text></nldd-activity-indicator>
                 <nldd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een wet"></nldd-inline-dialog>
                 <nldd-list v-else variant="simple">
@@ -803,7 +827,7 @@ watch(activeTrajectRef, () => {
               </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="selectedLawLoading">
                 <!-- Loading takes precedence over `lawError` to avoid flashing a stale error during a refetch. -->
-                <nldd-activity-indicator text="Wet laden" show-text></nldd-activity-indicator>
+                <nldd-activity-indicator text="Artikel laden" show-text></nldd-activity-indicator>
               </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="lawError">
                 <!-- 404 = law not in active traject; give the user an exit instead of a generic error. -->

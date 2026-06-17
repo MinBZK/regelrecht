@@ -1841,7 +1841,7 @@ async function handleActionSave() {
                   :value="yamlSource"
                   @input="onYamlInput"
                 ></nldd-code-editor>
-                <div v-if="parseError" class="editor-parse-error-detail">{{ parseError }}</div>
+                <nldd-banner v-if="parseError" variant="critical" :text="parseError"></nldd-banner>
               </nldd-simple-section>
             </nldd-page>
           </nldd-split-view-pane>
