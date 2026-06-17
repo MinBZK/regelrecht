@@ -169,11 +169,6 @@ async function confirmDelete() {
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell :text="detail.role"></nldd-text-cell>
             </nldd-list-item>
-          </nldd-list>
-
-          <nldd-spacer size="24"></nldd-spacer>
-
-          <nldd-list variant="box">
             <nldd-list-item size="md">
               <nldd-text-cell
                 text="Repo"

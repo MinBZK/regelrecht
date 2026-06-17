@@ -39,15 +39,17 @@ function onRowClick(path) {
       :selected="doc.path === selectedPath || undefined"
       @click="onRowClick(doc.path)"
     >
-      <nldd-icon-cell size="20"><nldd-icon name="document"></nldd-icon></nldd-icon-cell>
-      <nldd-spacer-cell size="8"></nldd-spacer-cell>
+      <nldd-spacer-cell slot="start" size="12"></nldd-spacer-cell>
+      <nldd-icon-cell slot="start" size="20"><nldd-icon name="document"></nldd-icon></nldd-icon-cell>
+      <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
       <nldd-text-cell :text="title(doc.path)"></nldd-text-cell>
       <nldd-spacer-cell size="8"></nldd-spacer-cell>
       <nldd-icon-cell size="20"><nldd-icon :name="hrefFor ? 'open-new-page' : 'chevron-right'"></nldd-icon></nldd-icon-cell>
     </nldd-list-item>
     <nldd-list-item size="md" button @click="$emit('new')">
-      <nldd-icon-cell size="20"><nldd-icon name="plus"></nldd-icon></nldd-icon-cell>
-      <nldd-spacer-cell size="8"></nldd-spacer-cell>
+      <nldd-spacer-cell slot="start" size="12"></nldd-spacer-cell>
+      <nldd-icon-cell slot="start" size="20"><nldd-icon name="plus"></nldd-icon></nldd-icon-cell>
+      <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
       <nldd-text-cell text="Nieuw document"></nldd-text-cell>
       <nldd-spacer-cell size="8"></nldd-spacer-cell>
       <nldd-icon-cell size="20"><nldd-icon :name="hrefFor ? 'open-new-page' : 'chevron-right'"></nldd-icon></nldd-icon-cell>
