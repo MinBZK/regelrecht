@@ -82,6 +82,8 @@ async function submitCreate() {
           @submit="submitCreate"
         />
       </nldd-simple-section>
+
+      <nldd-page-footer slot="footer"></nldd-page-footer>
     </nldd-page>
   </nldd-app-view>
 </template>

@@ -129,6 +129,8 @@ function trajectSupportingText(t) {
           </nldd-list-item>
         </nldd-list>
       </nldd-simple-section>
+
+      <nldd-page-footer slot="footer"></nldd-page-footer>
     </nldd-page>
   </nldd-app-view>
 </template>
