@@ -256,7 +256,7 @@ onBeforeUnmount(() => {
         <nldd-simple-section v-else>
           <!-- Acties van het actieve traject — bovenaan, zonder titel (de
                sheet-titel dekt dit al). -->
-          <nldd-list v-if="activeTraject" variant="box">
+          <nldd-list v-if="activeTraject" variant="box" arrow-navigation>
             <nldd-list-item size="md" button @click="openDocuments">
               <nldd-icon-cell size="20"><nldd-icon name="documents"></nldd-icon></nldd-icon-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -278,7 +278,7 @@ onBeforeUnmount(() => {
           <nldd-spacer v-if="activeTraject" size="24"></nldd-spacer>
           <nldd-title size="5"><h2>Trajecten</h2></nldd-title>
           <nldd-spacer size="8"></nldd-spacer>
-          <nldd-list variant="box">
+          <nldd-list variant="box" arrow-navigation>
             <nldd-list-item
               v-for="t in trajects"
               :key="t.id"

@@ -130,7 +130,7 @@ onUnmounted(() => {
 
         <!-- Section A: Bovenliggende operaties -->
         <template v-if="parentOperations.length">
-          <nldd-list variant="box">
+          <nldd-list variant="box" arrow-navigation>
             <!-- Back/up navigation — clickable parent rows with a
                  chevron-left, identical in view and edit: click any
                  ancestor to jump up one or more levels. -->

@@ -97,7 +97,7 @@ function trajectSupportingText(t) {
         <!-- "Nieuw traject" is een gewoon list item onderaan, zodat de
              interactie identiek is mét bestaande trajecten (onderaan de
              lijst) en zonder (als enige item). -->
-        <nldd-list v-else variant="box">
+        <nldd-list v-else variant="box" arrow-navigation>
           <nldd-list-item
             v-for="t in trajects"
             :key="t.id"
