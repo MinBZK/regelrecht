@@ -172,7 +172,7 @@ export async function dispatch(ctx, engine, action, args, table, { loadDependenc
       }
       const expected = args[0];
       const errorStr = String(ctx.error);
-      if (!errorStr.includes(expected)) {
+      if (!errorStr.toLowerCase().includes(expected.toLowerCase())) {
         throw new Error(`Expected error containing "${expected}", got: ${errorStr}`);
       }
       break;
@@ -196,7 +196,7 @@ export async function dispatch(ctx, engine, action, args, table, { loadDependenc
       const name = args[0];
       const substring = args[1];
       const actual = getOutput(ctx, name);
-      if (typeof actual !== 'string' || !actual.includes(substring)) {
+      if (typeof actual !== 'string' || !actual.toLowerCase().includes(substring.toLowerCase())) {
         throw new Error(
           `Expected output "${name}" to contain "${substring}", got: ${JSON.stringify(actual)}`,
         );

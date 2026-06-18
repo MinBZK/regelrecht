@@ -50,9 +50,9 @@ fn main() {
     let grammar = load_grammar(grammar_path);
 
     // Sanity-check the translation logic at build time. Build scripts cannot
-    // host #[test]s, so these asserts pin the expr/regex output for known steps
-    // (the same invariants are unit-tested in grammar_model.rs). A malformed
-    // grammar that breaks these is a real error and should fail the build.
+    // host #[test]s, so `sanity_check` pins the expr/regex output for known
+    // steps via runtime asserts that fire on every build. A malformed grammar
+    // that breaks these is a real error and should fail the build.
     sanity_check(&grammar);
 
     let code = emit_rust(&grammar);

@@ -15,35 +15,42 @@ Feature: Date comparison and difference operations
     Given the calculation date is "2025-07-01"
     Given the following parameters:
       | indieningsdatum | 2025-01-01 |
-    When I evaluate outputs "tijdig_ingediend, op_peildatum_ingediend, doorlooptijd_dagen, doorlooptijd_maanden, doorlooptijd_jaren" of "test_date_operations"
+    When I evaluate "tijdig_ingediend" of "test_date_operations"
     Then output "tijdig_ingediend" is true
+    When I evaluate "op_peildatum_ingediend" of "test_date_operations"
     Then output "op_peildatum_ingediend" is false
+    When I evaluate "doorlooptijd_dagen" of "test_date_operations"
     Then output "doorlooptijd_dagen" equals 181
+    When I evaluate "doorlooptijd_maanden" of "test_date_operations"
     Then output "doorlooptijd_maanden" equals 6
+    When I evaluate "doorlooptijd_jaren" of "test_date_operations"
     Then output "doorlooptijd_jaren" equals 0
 
   Scenario: A request filed on the peildatum is timely with zero duration
     Given the calculation date is "2025-07-01"
     Given the following parameters:
       | indieningsdatum | 2025-07-01 |
-    When I evaluate outputs "tijdig_ingediend, op_peildatum_ingediend, doorlooptijd_dagen" of "test_date_operations"
+    When I evaluate "tijdig_ingediend" of "test_date_operations"
     Then output "tijdig_ingediend" is true
+    When I evaluate "op_peildatum_ingediend" of "test_date_operations"
     Then output "op_peildatum_ingediend" is true
+    When I evaluate "doorlooptijd_dagen" of "test_date_operations"
     Then output "doorlooptijd_dagen" equals 0
 
   Scenario: A request filed after the peildatum is not timely, with a negative span
     Given the calculation date is "2025-01-01"
     Given the following parameters:
       | indieningsdatum | 2025-07-01 |
-    When I evaluate outputs "tijdig_ingediend, doorlooptijd_dagen" of "test_date_operations"
+    When I evaluate "tijdig_ingediend" of "test_date_operations"
     Then output "tijdig_ingediend" is false
+    When I evaluate "doorlooptijd_dagen" of "test_date_operations"
     Then output "doorlooptijd_dagen" equals -181
 
   Scenario: A multi-year span is measured in whole years
     Given the calculation date is "2025-06-01"
     Given the following parameters:
       | indieningsdatum | 2020-06-01 |
-    When I evaluate outputs "doorlooptijd_jaren" of "test_date_operations"
+    When I evaluate "doorlooptijd_jaren" of "test_date_operations"
     Then output "doorlooptijd_jaren" equals 5
 
   Scenario: An end-of-month span counts as a whole month
@@ -52,5 +59,5 @@ Feature: Date comparison and difference operations
     Given the calculation date is "2025-02-28"
     Given the following parameters:
       | indieningsdatum | 2025-01-31 |
-    When I evaluate outputs "doorlooptijd_maanden" of "test_date_operations"
+    When I evaluate "doorlooptijd_maanden" of "test_date_operations"
     Then output "doorlooptijd_maanden" equals 1
