@@ -23,6 +23,7 @@ const {
   trajects,
   activeTrajectRef,
   activeTraject,
+  isActiveTrajectReadOnly,
   loading,
   createTraject,
 } = useTrajects();
@@ -190,6 +191,16 @@ async function submitCreate() {
     :width="fullWidth ? 'full' : undefined"
     :horizontal-alignment="fullWidth ? 'left' : undefined"
   ></nldd-button>
+  <!-- Read-only context: a local-test-corpus traject reads the local +
+       central corpus but rejects saves (backend 403). Surface it so users
+       aren't surprised when saving is disabled. Same inline-dialog notice
+       pattern used elsewhere in this app. -->
+  <nldd-inline-dialog
+    v-if="isActiveTrajectReadOnly"
+    icon="traject"
+    text="Alleen-lezen traject"
+    supporting-text="Dit is een lokale-testcorpus-traject. Wijzigingen opslaan is uitgeschakeld."
+  ></nldd-inline-dialog>
   <!-- Logged in: the active traject's actions first, then the traject switcher
        + create below a divider. "Geen traject" is not an option — you leave
        traject scope by navigating, not from this menu. -->

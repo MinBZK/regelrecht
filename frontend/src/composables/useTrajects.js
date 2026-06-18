@@ -80,10 +80,17 @@ export function useTrajects() {
   const activeTraject = computed(
     () => trajects.value.find((t) => t.ref && t.ref === activeTrajectRef.value) || null,
   );
+  // True for a read-only traject (local-test-corpus). Derived from the
+  // backend `read_only` flag on the active traject summary; consumers use
+  // it to surface a read-only notice. Saves are enforced server-side (403).
+  const isActiveTrajectReadOnly = computed(
+    () => Boolean(activeTraject.value && activeTraject.value.read_only),
+  );
   return {
     trajects,
     activeTrajectRef,
     activeTraject,
+    isActiveTrajectReadOnly,
     loading,
     error,
     createTraject,
