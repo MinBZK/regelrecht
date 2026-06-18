@@ -32,7 +32,7 @@ const router = useRouter();
 // Active traject (null = global browse). Derived from the URL via
 // `route.params.trajectRef`, so the new `library-traject` route makes the
 // bibliotheek traject-aware without any extra plumbing.
-const { activeTrajectRef } = useTrajects();
+const { activeTrajectRef, activeTraject } = useTrajects();
 
 // Keep the user's traject scope across in-app navigations. With a traject
 // in the URL we stay on `library-traject` / `editor-traject`; without one
@@ -245,7 +245,9 @@ const articleNotFound = computed(() =>
 const lawErrorIs404 = computed(() => lawError.value?.status === 404);
 
 // Reflect navigation depth in the document title:
-//   "Art. 5 · Wet op de zorgtoeslag · RegelRecht"
+//   "Art. 5 · Wet op de zorgtoeslag · 15 juni test · RegelRecht"
+// On a traject-scoped browse the active traject name is appended (like the
+// editor) so the browser tab and history show which traject you are viewing.
 // Most-specific first so browser tab truncation preserves the article number.
 // We deliberately omit the "Bibliotheek:" prefix here (unlike the editor) —
 // browsing laws is the implicit default, and the law name carries enough
@@ -260,6 +262,9 @@ watchEffect(() => {
   // law itself failed to load.
   const name = lawName.value || indexedLawName.value;
   if (name) detail.push(name);
+  // Traject-scoped browse: append the traject name (resolves once the trajects
+  // list loads). Null on the public no-traject library, so it drops out there.
+  if (activeTraject.value?.name) detail.push(activeTraject.value.name);
   document.title = detail.length > 0
     ? `${detail.join(' · ')} · RegelRecht`
     : 'Bibliotheek · RegelRecht';
