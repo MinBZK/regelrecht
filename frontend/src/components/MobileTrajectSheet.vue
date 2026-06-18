@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTrajects } from '../composables/useTrajects.js';
 import { useAuth } from '../composables/useAuth.js';
+import { useLoginToChooser } from '../composables/useLoginToChooser.js';
 import { useDocumentsSheet } from '../composables/useDocumentsSheet.js';
 import { useAppChrome } from '../composables/useAppChrome.js';
 import TrajectMembersDialog from './TrajectMembersDialog.vue';
@@ -15,27 +16,15 @@ import TrajectCreateForm from './TrajectCreateForm.vue';
 // "Artikelen"-lijst (de open tabbladen). md/lg houden TrajectMenu + de
 // document-tab-bar. Hergebruikt dezelfde composables/handlers als TrajectMenu.
 const { trajects, activeTrajectRef, activeTraject, loading, createTraject } = useTrajects();
-const { authenticated, login } = useAuth();
+const { authenticated } = useAuth();
 const documentsSheet = useDocumentsSheet();
 const { documentTabs, activeDocumentTab, tabActions } = useAppChrome();
 const route = useRoute();
 const router = useRouter();
 
 // Not logged in: log in, then land on the trajectchooser carrying the current
-// section + law/article, so picking a traject returns the user to where they
-// were — now traject-scoped.
-function loginToChooser() {
-  const inLibrary = route.name === 'library' || route.name === 'library-traject';
-  const target = router.resolve({
-    name: 'trajecten',
-    query: {
-      sectie: inLibrary ? 'library' : 'editor',
-      law: route.params.lawId || undefined,
-      article: route.params.articleNumber || undefined,
-    },
-  });
-  login(target.fullPath);
-}
+// section + law/article (shared composable, see also TrajectMenu).
+const loginToChooser = useLoginToChooser();
 
 const sheetEl = ref(null);
 const sheetMode = ref('list'); // 'list' | 'create'
