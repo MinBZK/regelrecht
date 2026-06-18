@@ -3925,6 +3925,8 @@ dependencies = [
  "chrono",
  "criterion",
  "cucumber",
+ "futures",
+ "gherkin",
  "hex",
  "jsonschema",
  "opentelemetry",

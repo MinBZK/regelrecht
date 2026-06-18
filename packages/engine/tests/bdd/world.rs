@@ -8,7 +8,7 @@ use cucumber::World;
 use regelrecht_engine::{
     Article, ArticleResult, EngineError, LawExecutionService, MatchResult, TextQuoteSelector, Value,
 };
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -32,8 +32,6 @@ pub struct RegelrechtWorld {
     pub result: Option<ArticleResult>,
     /// Last error (if execution failed)
     pub error: Option<EngineError>,
-    /// External data sources for zorgtoeslag scenarios
-    pub external_data: ExternalData,
     /// Articles set up for note-resolution scenarios (RFC-005, RFC-018)
     pub note_articles: Vec<Article>,
     /// Selector built for the current note-resolution scenario
@@ -53,36 +51,12 @@ impl fmt::Debug for RegelrechtWorld {
             .field("parameters", &self.parameters)
             .field("result", &self.result)
             .field("error", &self.error.as_ref().map(|e| e.to_string()))
-            .field("external_data", &self.external_data)
             .field(
                 "service",
                 &format!("<{} laws loaded>", self.service.law_count()),
             )
             .finish()
     }
-}
-
-/// External data sources (mocked for testing)
-#[derive(Debug, Default, Clone)]
-pub struct ExternalData {
-    /// RVIG personal_data
-    pub rvig_personal: HashMap<String, BTreeMap<String, Value>>,
-    /// RVIG relationship_data
-    pub rvig_relationship: HashMap<String, BTreeMap<String, Value>>,
-    /// RVZ insurance data
-    pub rvz_insurance: HashMap<String, BTreeMap<String, Value>>,
-    /// Belastingdienst box1 data
-    pub bd_box1: HashMap<String, BTreeMap<String, Value>>,
-    /// Belastingdienst box2 data
-    pub bd_box2: HashMap<String, BTreeMap<String, Value>>,
-    /// Belastingdienst box3 data
-    pub bd_box3: HashMap<String, BTreeMap<String, Value>>,
-    /// DJI detenties data
-    pub dji_detenties: HashMap<String, BTreeMap<String, Value>>,
-    /// DUO inschrijvingen data
-    pub duo_inschrijvingen: HashMap<String, BTreeMap<String, Value>>,
-    /// DUO studiefinanciering data
-    pub duo_studiefinanciering: HashMap<String, BTreeMap<String, Value>>,
 }
 
 impl Default for RegelrechtWorld {
@@ -107,7 +81,6 @@ impl RegelrechtWorld {
             parameters: BTreeMap::new(),
             result: None,
             error: None,
-            external_data: ExternalData::default(),
             note_articles: Vec::new(),
             note_selector: None,
             note_result: None,
@@ -123,7 +96,6 @@ impl RegelrechtWorld {
         self.parameters.clear();
         self.result = None;
         self.error = None;
-        self.external_data = ExternalData::default();
         self.note_articles.clear();
         self.note_selector = None;
         self.note_result = None;
@@ -134,11 +106,6 @@ impl RegelrechtWorld {
     /// Returns true if trace output is enabled via the `TRACE` env var.
     fn trace_enabled() -> bool {
         std::env::var("TRACE").is_ok_and(|v| !v.is_empty() && v != "0")
-    }
-
-    /// Execute a law for a single output. Delegates to `execute_law_multi`.
-    pub fn execute_law(&mut self, law_id: &str, output_name: &str) {
-        self.execute_law_multi(law_id, &[output_name]);
     }
 
     /// Execute a law for multiple specific outputs.
