@@ -95,12 +95,18 @@ const { lastSavedPr, documentTabs, activeDocumentTab, tabActions, editorChanges,
 const viewport = ref('lg'); // 'sm' | 'md' | 'lg', aligned with the DS bar breakpoints
 let mdQuery = null;
 let lgQuery = null;
+// DS bar breakpoints, mirrored here for matchMedia. Keep in sync with
+// @nldd/design-system (src/assets/styles/breakpoints.ts): md >= 641px, lg >= 1008px.
+// If the DS shifts these thresholds, update them here too — otherwise the
+// coach-mark can anchor to a control that is hidden at the current breakpoint.
+const DS_MD_MIN = '(min-width: 641px)';
+const DS_LG_MIN = '(min-width: 1008px)';
 function updateViewport() {
   viewport.value = lgQuery?.matches ? 'lg' : mdQuery?.matches ? 'md' : 'sm';
 }
 onMounted(() => {
-  mdQuery = window.matchMedia?.('(min-width: 641px)') || null;
-  lgQuery = window.matchMedia?.('(min-width: 1008px)') || null;
+  mdQuery = window.matchMedia?.(DS_MD_MIN) || null;
+  lgQuery = window.matchMedia?.(DS_LG_MIN) || null;
   updateViewport();
   mdQuery?.addEventListener?.('change', updateViewport);
   lgQuery?.addEventListener?.('change', updateViewport);
