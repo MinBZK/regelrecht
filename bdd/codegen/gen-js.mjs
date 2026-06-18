@@ -5,7 +5,7 @@
 // Run via `just bdd-codegen`, or automatically through the frontend
 // prebuild/pretest hooks. Resolves the repo root from THIS file's location
 // (two levels up) so it works whether invoked from the repo root or frontend/.
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -13,12 +13,22 @@ import { createRequire } from 'node:module';
 // Repo root = two levels up from bdd/codegen/gen-js.mjs (-> bdd/ -> repo root).
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+// This runs as the frontend `prebuild` hook. In the frontend Docker image the
+// build context is `frontend/` only, so the repo-root `bdd/` directory is
+// absent. The committed `grammar.generated.js` is the source of truth there
+// (CI guards its freshness), so skip regeneration instead of failing the build.
+const grammarPath = join(root, 'bdd', 'grammar.yaml');
+if (!existsSync(grammarPath)) {
+  console.log(`bdd/grammar.yaml not found at ${grammarPath}; skipping codegen (using committed grammar.generated.js)`);
+  process.exit(0);
+}
+
 // js-yaml is a frontend dependency; resolve it from frontend/node_modules so
 // the generator has a YAML parser without adding a root-level dependency.
 const frontendRequire = createRequire(join(root, 'frontend', 'node_modules', 'js-yaml', 'package.json'));
 const yaml = frontendRequire('js-yaml');
 
-const grammar = yaml.load(readFileSync(join(root, 'bdd', 'grammar.yaml'), 'utf8'));
+const grammar = yaml.load(readFileSync(grammarPath, 'utf8'));
 
 const STR_SENTINEL = '\0S\0';
 const NUM_SENTINEL = '\0N\0';
