@@ -111,7 +111,7 @@ async function confirmDelete() {
     emit('deleted', props.trajectId);
     close();
   } catch (e) {
-    confirmingDelete.value = false;
+    // Keep the modal open so the user can read the error and retry in place.
     deleteError.value = e.message || 'Verwijderen mislukt';
   } finally {
     deleteBusy.value = false;
@@ -152,7 +152,7 @@ async function confirmLeave() {
     emit('left', props.trajectId);
     close();
   } catch (e) {
-    confirmingLeave.value = false;
+    // Keep the modal open so the user can read the error and retry in place.
     leaveError.value = e.message || 'Verlaten mislukt';
   } finally {
     leaveBusy.value = false;
@@ -267,10 +267,6 @@ async function confirmLeave() {
               text="Traject verwijderen"
               @click="askDelete"
             ></nldd-button>
-            <template v-if="deleteError">
-              <nldd-spacer size="16"></nldd-spacer>
-              <nldd-inline-dialog variant="alert" :text="deleteError"></nldd-inline-dialog>
-            </template>
           </template>
 
           <!-- Bijdrager: traject verlaten, zelfde bevestigingspatroon als delete. -->
@@ -283,10 +279,6 @@ async function confirmLeave() {
               text="Traject verlaten"
               @click="askLeave"
             ></nldd-button>
-            <template v-if="leaveError">
-              <nldd-spacer size="16"></nldd-spacer>
-              <nldd-inline-dialog variant="alert" :text="leaveError"></nldd-inline-dialog>
-            </template>
           </template>
         </nldd-simple-section>
       </nldd-page>
@@ -303,6 +295,7 @@ async function confirmLeave() {
       supporting-text="Het traject wordt definitief verwijderd, inclusief leden en uitnodigingen. De traject-branch op GitHub blijft bestaan. Dit kan niet ongedaan worden gemaakt."
       @close="cancelDelete"
     >
+      <nldd-inline-dialog v-if="deleteError" variant="alert" :text="deleteError"></nldd-inline-dialog>
       <nldd-button slot="actions" variant="primary" text="Behoud traject" @click="cancelDelete"></nldd-button>
       <nldd-button
         slot="actions"
@@ -324,6 +317,7 @@ async function confirmLeave() {
       supporting-text="Je verlaat dit traject definitief en verliest meteen je toegang. Wil je later weer bijdragen, dan moet een eigenaar je opnieuw uitnodigen."
       @close="cancelLeave"
     >
+      <nldd-inline-dialog v-if="leaveError" variant="alert" :text="leaveError"></nldd-inline-dialog>
       <nldd-button slot="actions" variant="primary" text="Blijf in traject" @click="cancelLeave"></nldd-button>
       <nldd-button
         slot="actions"
