@@ -1890,6 +1890,7 @@ pub async fn delete_scenario(
     let author = Some(require_editor_user(&session).await?);
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    ensure_traject_writable(&traject)?;
     let target = resolve_traject_scenario_target(&traject, &law_id, &filename).await?;
     let EditorWriteTarget {
         relative_path,
@@ -2395,6 +2396,7 @@ pub async fn delete_traject_document(
     let author = Some(require_editor_user(&session).await?);
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    ensure_traject_writable(&traject)?;
     let backend = resolve_traject_documents_writer(&traject).await?;
     let relative_path = traject_documents_base(&traject_ref).join(&doc_path);
 
