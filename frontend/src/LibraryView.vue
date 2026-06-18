@@ -730,7 +730,7 @@ watch(activeTrajectRef, () => {
                       </nldd-title>
                       <nldd-spacer size="8"></nldd-spacer>
                     </template>
-                    <nldd-list variant="simple">
+                    <nldd-list variant="simple" arrow-navigation>
                       <nldd-list-item
                         v-for="law in section.laws"
                         :key="`${section.key}-${law.law_id}`"
@@ -795,7 +795,7 @@ watch(activeTrajectRef, () => {
                 </nldd-popover>
                 <nldd-activity-indicator v-if="selectedLawLoading" text="Wet laden" show-text></nldd-activity-indicator>
                 <nldd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een wet"></nldd-inline-dialog>
-                <nldd-list v-else variant="simple">
+                <nldd-list v-else variant="simple" arrow-navigation>
                   <nldd-list-item
                     v-for="article in articles"
                     :key="article.number"

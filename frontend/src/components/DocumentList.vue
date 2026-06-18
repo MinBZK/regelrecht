@@ -27,7 +27,7 @@ function onRowClick(path) {
 </script>
 
 <template>
-  <nldd-list :variant="variant">
+  <nldd-list :variant="variant" arrow-navigation>
     <nldd-list-item
       v-for="doc in documents"
       :key="doc.path"
