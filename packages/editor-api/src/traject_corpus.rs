@@ -59,6 +59,9 @@ pub struct TrajectCorpus {
     /// endpoints) to address the traject's own branch directly without
     /// having to reverse-engineer it out of `write_target_for_source`.
     pub writable_own_source_id: String,
+    /// True for a read-only traject (local-test-corpus). Save handlers
+    /// reject writes; `compute_changed_law_ids` short-circuits.
+    pub read_only: bool,
     /// Read-your-writes overlay for law YAML content: only bodies that
     /// went through a successful `save_law` (see [`record_save`]). After a
     /// save we mirror the persisted body here so subsequent reads in the
@@ -686,6 +689,12 @@ impl TrajectCorpus {
     async fn compute_changed_law_ids(
         &self,
     ) -> Result<Vec<String>, regelrecht_corpus::error::CorpusError> {
+        // A read-only traject never accumulates changes; skip the diff
+        // (its writable-own is the local corpus dir, where `changed_files`
+        // would otherwise surface unrelated working-tree noise).
+        if self.read_only {
+            return Ok(Vec::new());
+        }
         let Some(entry) = self.corpus.backends.get(&self.writable_own_source_id) else {
             return Ok(Vec::new());
         };
@@ -957,6 +966,14 @@ async fn build_traject_corpus(
         return Err(TrajectCorpusError::NotFound);
     }
 
+    // The traject exists (rows non-empty implies the FK row exists);
+    // default to writable if the column read ever returns nothing.
+    let read_only: bool = sqlx::query_scalar("SELECT read_only FROM trajects WHERE id = $1")
+        .bind(traject_id)
+        .fetch_optional(pool)
+        .await?
+        .unwrap_or(false);
+
     // Confirm the traject has a writable_own source — without one we
     // can't route saves on laws read from the seed sources. The actual
     // routing happens via `write_target_for_source` below; the local
@@ -1158,6 +1175,7 @@ async fn build_traject_corpus(
         },
         write_target_for_source,
         writable_own_source_id,
+        read_only,
         overlay: Arc::new(RwLock::new(HashMap::new())),
         body_cache: RwLock::new(BoundedBodyCache::default()),
         implements_index: RwLock::new(None),
@@ -1241,6 +1259,7 @@ async fn next_snapshot(old: &Arc<TrajectCorpus>, source_map: SourceMap) -> Arc<T
         },
         write_target_for_source: old.write_target_for_source.clone(),
         writable_own_source_id: old.writable_own_source_id.clone(),
+        read_only: old.read_only,
         overlay: old.overlay.clone(),
         body_cache: RwLock::new(BoundedBodyCache::default()),
         implements_index: RwLock::new(carried_index),
@@ -1411,6 +1430,34 @@ struct TrajectSourceRow {
 }
 
 #[cfg(test)]
+impl TrajectCorpus {
+    /// Bare `TrajectCorpus` with no sources/backends, parameterized on
+    /// `read_only`. Crate-visible so guard tests in other modules (e.g.
+    /// `corpus_handlers::ensure_traject_writable`) can build one without
+    /// a DB or a live source map.
+    pub(crate) fn for_test(read_only: bool) -> Self {
+        TrajectCorpus {
+            corpus: CorpusState {
+                registry: CorpusRegistry::empty(),
+                source_map: SourceMap::new(),
+                backends: HashMap::new(),
+                auth_file: None,
+            },
+            write_target_for_source: HashMap::new(),
+            writable_own_source_id: "own".to_string(),
+            read_only,
+            overlay: Arc::new(RwLock::new(HashMap::new())),
+            body_cache: RwLock::new(BoundedBodyCache::default()),
+            implements_index: RwLock::new(None),
+            implements_index_stale: AtomicBool::new(false),
+            implements_build_lock: Mutex::new(()),
+            implements_memo: Arc::new(RwLock::new(HashMap::new())),
+            changed_cache: Arc::new(RwLock::new(None)),
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     //! Unit tests for the snapshot caches: the bounded lazy-body cache,
     //! the TTL freshness rule, the per-snapshot implements index (incl.
@@ -1527,6 +1574,7 @@ mod tests {
             },
             write_target_for_source: HashMap::new(),
             writable_own_source_id: "own".to_string(),
+            read_only: false,
             overlay: Arc::new(RwLock::new(HashMap::new())),
             body_cache: RwLock::new(BoundedBodyCache::default()),
             implements_index: RwLock::new(None),
@@ -1535,6 +1583,25 @@ mod tests {
             implements_memo: Arc::new(RwLock::new(HashMap::new())),
             changed_cache: Arc::new(RwLock::new(None)),
         }
+    }
+
+    #[test]
+    fn read_only_flag_roundtrips() {
+        // Build two corpora differing only in read_only and assert the
+        // field is observable (the save-handler guard keys on this).
+        let writable = TrajectCorpus::for_test(false);
+        let read_only = TrajectCorpus::for_test(true);
+        assert!(!writable.read_only);
+        assert!(read_only.read_only);
+    }
+
+    #[tokio::test]
+    async fn read_only_traject_reports_no_changed_laws() {
+        // The short-circuit added for read-only trajecten returns an empty
+        // changed-set without touching the (here absent) writable-own
+        // backend — proving the guard, not just the field.
+        let corpus = TrajectCorpus::for_test(true);
+        assert!(corpus.compute_changed_law_ids().await.unwrap().is_empty());
     }
 
     fn metadata_entry(map: &mut SourceMap, law_id: &str, source_id: &str) {
@@ -1862,6 +1929,7 @@ mod tests {
             },
             write_target_for_source: HashMap::new(),
             writable_own_source_id: "own".to_string(),
+            read_only: false,
             overlay: Arc::new(RwLock::new(HashMap::new())),
             body_cache: RwLock::new(BoundedBodyCache::default()),
             implements_index: RwLock::new(None),
