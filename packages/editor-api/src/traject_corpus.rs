@@ -1430,6 +1430,34 @@ struct TrajectSourceRow {
 }
 
 #[cfg(test)]
+impl TrajectCorpus {
+    /// Bare `TrajectCorpus` with no sources/backends, parameterized on
+    /// `read_only`. Crate-visible so guard tests in other modules (e.g.
+    /// `corpus_handlers::ensure_traject_writable`) can build one without
+    /// a DB or a live source map.
+    pub(crate) fn for_test(read_only: bool) -> Self {
+        TrajectCorpus {
+            corpus: CorpusState {
+                registry: CorpusRegistry::empty(),
+                source_map: SourceMap::new(),
+                backends: HashMap::new(),
+                auth_file: None,
+            },
+            write_target_for_source: HashMap::new(),
+            writable_own_source_id: "own".to_string(),
+            read_only,
+            overlay: Arc::new(RwLock::new(HashMap::new())),
+            body_cache: RwLock::new(BoundedBodyCache::default()),
+            implements_index: RwLock::new(None),
+            implements_index_stale: AtomicBool::new(false),
+            implements_build_lock: Mutex::new(()),
+            implements_memo: Arc::new(RwLock::new(HashMap::new())),
+            changed_cache: Arc::new(RwLock::new(None)),
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     //! Unit tests for the snapshot caches: the bounded lazy-body cache,
     //! the TTL freshness rule, the per-snapshot implements index (incl.
@@ -1557,22 +1585,23 @@ mod tests {
         }
     }
 
-    /// Bare `TrajectCorpus` with no sources, parameterized on `read_only`.
-    /// Used to assert the save-handler guard keys on the flag.
-    fn make_test_traject_corpus(read_only: bool) -> TrajectCorpus {
-        let mut corpus = test_corpus(SourceMap::new(), HashMap::new());
-        corpus.read_only = read_only;
-        corpus
-    }
-
     #[test]
     fn read_only_flag_roundtrips() {
         // Build two corpora differing only in read_only and assert the
         // field is observable (the save-handler guard keys on this).
-        let writable = make_test_traject_corpus(false);
-        let read_only = make_test_traject_corpus(true);
+        let writable = TrajectCorpus::for_test(false);
+        let read_only = TrajectCorpus::for_test(true);
         assert!(!writable.read_only);
         assert!(read_only.read_only);
+    }
+
+    #[tokio::test]
+    async fn read_only_traject_reports_no_changed_laws() {
+        // The short-circuit added for read-only trajecten returns an empty
+        // changed-set without touching the (here absent) writable-own
+        // backend — proving the guard, not just the field.
+        let corpus = TrajectCorpus::for_test(true);
+        assert!(corpus.compute_changed_law_ids().await.unwrap().is_empty());
     }
 
     fn metadata_entry(map: &mut SourceMap, law_id: &str, source_id: &str) {

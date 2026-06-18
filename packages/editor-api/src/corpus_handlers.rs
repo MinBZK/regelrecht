@@ -1295,7 +1295,9 @@ fn traject_write_source_id(traject: &TrajectCorpus, law: &LoadedLaw) -> String {
 }
 
 /// Reject writes against a read-only traject (local-test-corpus). All
-/// four traject save handlers call this right after resolving the
+/// six traject write/delete handlers (`save_scenario`, `save_annotations`,
+/// `save_law`, `save_traject_document`, `delete_scenario`,
+/// `delete_traject_document`) call this right after resolving the
 /// `TrajectCorpus`, so a read-only traject never reaches a backend write.
 fn ensure_traject_writable(traject: &TrajectCorpus) -> Result<(), (StatusCode, String)> {
     if traject.read_only {
@@ -2431,6 +2433,19 @@ mod tests {
     //! sqlx + a real source map and live behind separate integration
     //! tests.
     use super::*;
+
+    #[test]
+    fn ensure_traject_writable_blocks_read_only() {
+        let traject = TrajectCorpus::for_test(true);
+        let err = ensure_traject_writable(&traject).expect_err("read-only must be rejected");
+        assert_eq!(err.0, StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn ensure_traject_writable_allows_writable() {
+        let traject = TrajectCorpus::for_test(false);
+        assert!(ensure_traject_writable(&traject).is_ok());
+    }
 
     #[test]
     fn save_response_from_traject_passes_through_pr_when_set() {
