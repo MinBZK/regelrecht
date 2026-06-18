@@ -15,8 +15,8 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 // js-yaml is a frontend dependency; resolve it from frontend/node_modules so
 // the generator has a YAML parser without adding a root-level dependency.
-const require = createRequire(join(root, 'frontend', 'node_modules', 'js-yaml', 'package.json'));
-const yaml = require('js-yaml');
+const frontendRequire = createRequire(join(root, 'frontend', 'node_modules', 'js-yaml', 'package.json'));
+const yaml = frontendRequire('js-yaml');
 
 const grammar = yaml.load(readFileSync(join(root, 'bdd', 'grammar.yaml'), 'utf8'));
 
