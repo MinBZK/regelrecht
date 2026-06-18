@@ -8,27 +8,6 @@ use crate::helpers::value_conversion::{convert_gherkin_value, parse_table_to_par
 use crate::world::RegelrechtWorld;
 
 // =============================================================================
-// Background steps
-// =============================================================================
-
-#[given(expr = "the calculation date is {string}")]
-fn set_calculation_date(world: &mut RegelrechtWorld, date: String) {
-    world.calculation_date = date;
-}
-
-// =============================================================================
-// Untranslatable steps (RFC-012)
-// =============================================================================
-
-#[given(expr = "the untranslatable mode is {string}")]
-fn set_untranslatable_mode(world: &mut RegelrechtWorld, mode: String) {
-    let mode: regelrecht_engine::UntranslatableMode = mode
-        .parse()
-        .unwrap_or_else(|e| panic!("Invalid untranslatable mode: {e}"));
-    world.service.set_untranslatable_mode(mode);
-}
-
-// =============================================================================
 // Bijstand steps
 // =============================================================================
 

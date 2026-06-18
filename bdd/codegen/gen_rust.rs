@@ -8,7 +8,10 @@ fn emit_rust(grammar: &Grammar) -> String {
         let fn_name = format!("step_{}_{}", i, step.id);
         let macro_name = step.keyword.as_str(); // given|when|then
         let attr = if needs_regex(step) {
-            format!("regex = r\"{}\"", to_regex(step).replace('"', "\\\""))
+            // Emit a normal (escaped) string literal: a raw string can't hold the
+            // `\d` / `\"` the regex needs. Escape backslashes first, then quotes.
+            let escaped = to_regex(step).replace('\\', "\\\\").replace('"', "\\\"");
+            format!("regex = \"{escaped}\"")
         } else {
             format!("expr = \"{}\"", to_cucumber_expr(step).replace('"', "\\\""))
         };

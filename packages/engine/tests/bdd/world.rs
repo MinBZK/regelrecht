@@ -40,6 +40,10 @@ pub struct RegelrechtWorld {
     pub note_selector: Option<TextQuoteSelector>,
     /// Result of the last note resolution
     pub note_result: Option<MatchResult>,
+    /// Generic data sources for canonical steps: source name -> (key field, rows)
+    pub data_sources: BTreeMap<String, (String, Vec<BTreeMap<String, Value>>)>,
+    /// Outputs requested by the last canonical `evaluate`/`evaluate_outputs`
+    pub requested_outputs: Vec<String>,
 }
 
 impl fmt::Debug for RegelrechtWorld {
@@ -107,6 +111,8 @@ impl RegelrechtWorld {
             note_articles: Vec::new(),
             note_selector: None,
             note_result: None,
+            data_sources: BTreeMap::new(),
+            requested_outputs: Vec::new(),
         }
     }
 
@@ -121,6 +127,8 @@ impl RegelrechtWorld {
         self.note_articles.clear();
         self.note_selector = None;
         self.note_result = None;
+        self.data_sources.clear();
+        self.requested_outputs.clear();
     }
 
     /// Returns true if trace output is enabled via the `TRACE` env var.

@@ -109,15 +109,6 @@ fn assert_reden_afwijzing_contains(world: &mut RegelrechtWorld, expected_text: S
 // Generic assertion steps
 // =============================================================================
 
-#[then("the execution succeeds")]
-fn assert_execution_succeeds(world: &mut RegelrechtWorld) {
-    assert!(
-        world.is_success(),
-        "Expected successful execution, got error: {:?}",
-        world.error_message()
-    );
-}
-
 #[then(regex = r#"^the output "([^"]+)" is "([^"]+)"$"#)]
 fn assert_output_value(world: &mut RegelrechtWorld, output_name: String, expected: String) {
     assert!(
@@ -151,35 +142,8 @@ fn assert_output_value(world: &mut RegelrechtWorld, output_name: String, expecte
     }
 }
 
-// Multi-output privacy assertion
-
-#[then(regex = r#"^the result contains exactly the outputs "([^"]+)"$"#)]
-fn assert_exact_outputs(world: &mut RegelrechtWorld, expected_outputs: String) {
-    assert!(
-        world.is_success(),
-        "Expected successful execution, got error: {:?}",
-        world.error_message()
-    );
-
-    let expected: std::collections::BTreeSet<&str> =
-        expected_outputs.split(',').map(|s| s.trim()).collect();
-    let actual: std::collections::BTreeSet<&str> = world
-        .result
-        .as_ref()
-        .unwrap()
-        .outputs
-        .keys()
-        .map(|s| s.as_str())
-        .collect();
-
-    assert_eq!(
-        actual, expected,
-        "Expected exactly outputs {:?}, got {:?}",
-        expected, actual
-    );
-}
-
-// Output provenance assertions
+// Output provenance assertions (domain phrasing `the output ...`; the canonical
+// `output ... has X provenance` lives in dispatch.rs — different phrasing, no clash).
 
 #[then(regex = r#"^the output "([^"]+)" has direct provenance$"#)]
 fn assert_output_direct(world: &mut RegelrechtWorld, output_name: String) {
@@ -220,7 +184,8 @@ fn assert_output_override(world: &mut RegelrechtWorld, output_name: String) {
     );
 }
 
-// Untranslatable assertion steps (RFC-012)
+// Untranslatable assertion (domain phrasing `the output ...`; canonical
+// `output ... is tainted ...` lives in dispatch.rs — different phrasing).
 
 #[then(regex = r#"^the output "([^"]+)" is tainted as untranslatable$"#)]
 fn assert_output_untranslatable(world: &mut RegelrechtWorld, output_name: String) {
@@ -252,30 +217,6 @@ fn assert_output_untranslatable(world: &mut RegelrechtWorld, output_name: String
             );
         }
     }
-}
-
-// Error steps (bijstand and general)
-
-#[then(regex = r#"^the execution fails with "([^"]+)"$"#)]
-fn assert_execution_fails_with(world: &mut RegelrechtWorld, expected_message: String) {
-    assert!(
-        world.error.is_some(),
-        "Expected execution to fail, but it succeeded with result: {:?}",
-        world.result
-    );
-
-    let error_msg = world.error_message().unwrap_or_default();
-
-    // Normalize expected message for cross-engine compatibility
-    // Normalize for cross-engine compatibility
-    let normalized_expected = expected_message.to_lowercase();
-
-    assert!(
-        error_msg.to_lowercase().contains(&normalized_expected),
-        "Expected error to contain '{}', got: '{}'",
-        expected_message,
-        error_msg
-    );
 }
 
 // Erfgrensbeplanting steps

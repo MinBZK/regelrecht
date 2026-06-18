@@ -19,9 +19,20 @@
 
 #[path = "../common/mod.rs"]
 mod common;
+mod dispatch;
 mod helpers;
 mod steps;
 mod world;
+
+/// Code-generated cucumber step bindings from `bdd/grammar.yaml`.
+/// The generated fns reference `RegelrechtWorld` and `ArgValue`; bring them into
+/// scope here. `cucumber::gherkin::Step` is referenced fully-qualified.
+#[allow(unused_mut, clippy::let_and_return)]
+mod generated_steps {
+    use crate::dispatch::ArgValue;
+    use crate::world::RegelrechtWorld;
+    include!(concat!(env!("OUT_DIR"), "/bdd_generated_steps.rs"));
+}
 
 use cucumber::World;
 use std::path::Path;
