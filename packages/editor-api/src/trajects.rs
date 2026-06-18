@@ -260,6 +260,24 @@ const CENTRAL_WRITABLE_BASE_BRANCH: &str = "development";
 const CENTRAL_WRITABLE_AUTH_REF: &str = "minbzk-central";
 const CENTRAL_WRITABLE_NAME: &str = "MinBZK/regelrecht-corpus";
 
+/// Reserved custom-repo sentinel: a create request whose `repo_owner` /
+/// `repo_name` equal these (case-insensitive, trimmed) is interpreted as
+/// "make a local-test-corpus traject" instead of a user GitHub repo.
+const LOCAL_TEST_SENTINEL_OWNER: &str = "local";
+const LOCAL_TEST_SENTINEL_REPO: &str = "test-corpus";
+/// Synthesized local writable-own source for a local-test traject.
+const LOCAL_TEST_SOURCE_NAME: &str = "Local Test Corpus";
+const LOCAL_TEST_CORPUS_PATH: &str = "corpus/regulation/nl";
+
+/// True when the create request asks for a local-test-corpus traject via
+/// the reserved `local` / `test-corpus` repo sentinel.
+fn is_local_test_request(req: &CreateTrajectRequest) -> bool {
+    let owner = req.repo_owner.as_deref().map(str::trim).unwrap_or("");
+    let repo = req.repo_name.as_deref().map(str::trim).unwrap_or("");
+    owner.eq_ignore_ascii_case(LOCAL_TEST_SENTINEL_OWNER)
+        && repo.eq_ignore_ascii_case(LOCAL_TEST_SENTINEL_REPO)
+}
+
 #[derive(Debug, Deserialize)]
 pub struct UpdateTrajectRequest {
     pub name: Option<String>,
@@ -1013,23 +1031,32 @@ pub async fn create(
         return Err((StatusCode::BAD_REQUEST, "name is required".to_string()));
     }
 
-    // Resolve the writable-own target first — the validation may need to
-    // talk to GitHub (which can fail with a helpful 4xx); we want to do
-    // that *before* we open the DB transaction so a network blip doesn't
-    // leak a half-rolled row.
-    let target = resolve_writable_target(&state, &req).await?;
+    let local_test = is_local_test_request(&req);
+
+    // Resolve the writable-own GitHub target only for normal trajecten.
+    // A local-test traject uses a synthesized local writable-own and
+    // never touches GitHub, so we skip resolution (and its token check).
+    // The validation may need to talk to GitHub (which can fail with a
+    // helpful 4xx); we want to do that *before* we open the DB
+    // transaction so a network blip doesn't leak a half-rolled row.
+    let target = if local_test {
+        None
+    } else {
+        Some(resolve_writable_target(&state, &req).await?)
+    };
 
     let pool = get_pool_msg(&state)?;
     let mut tx = pool.begin().await.map_err(db_err_msg("begin tx"))?;
 
     let traject_id: Uuid = sqlx::query_scalar(
-        "INSERT INTO trajects (name, description, scope, created_by)
-         VALUES ($1, $2, $3, $4) RETURNING id",
+        "INSERT INTO trajects (name, description, scope, created_by, read_only)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id",
     )
     .bind(name)
     .bind(&req.description)
     .bind(&req.scope)
     .bind(account.id)
+    .bind(local_test)
     .fetch_one(&mut *tx)
     .await
     .map_err(db_err_msg("insert traject"))?;
@@ -1044,9 +1071,12 @@ pub async fn create(
     .await
     .map_err(db_err_msg("insert member"))?;
 
-    // Seed federated config from the global registry. The global corpus
-    // read guard is dropped before the next await so we don't hold it
-    // across the database transaction.
+    // Seed federated read-config from the global registry. The global
+    // corpus read guard is dropped before the next await so we don't hold
+    // it across the database transaction. For a local-test traject this
+    // seeds minbzk-central (so local laws that reference central laws
+    // resolve); the local source is no longer in the registry and is
+    // added below as the writable-own instead.
     let seeded: Vec<SeedSource> = {
         let corpus = state.corpus.read().await;
         corpus
@@ -1085,34 +1115,66 @@ pub async fn create(
         .map_err(db_err_msg("seed traject source"))?;
     }
 
-    // Writable-own source: either the phase-1 MinBZK default or the
-    // user-supplied repo (already validated up-front for push access).
-    // The branch name is derived from the traject name + id; auth flows
-    // through `CORPUS_AUTH_{AUTH_REF_UPPER}_TOKEN` via the `auth_ref`
-    // stored on this row.
-    let writable_branch = derive_branch_name(name, traject_id);
+    // Writable-own source: either the phase-1 MinBZK default / the
+    // user-supplied repo (already validated up-front for push access),
+    // or a synthesized local source for a local-test traject. For the
+    // GitHub path the branch name is derived from the traject name + id;
+    // auth flows through `CORPUS_AUTH_{AUTH_REF_UPPER}_TOKEN` via the
+    // `auth_ref` stored on this row.
     let writable_source_id = format!("traject-own-{}", traject_id.simple());
-    sqlx::query(
-        "INSERT INTO traject_corpus_sources
-         (traject_id, source_id, name, source_type,
-          gh_owner, gh_repo, gh_branch, gh_base_branch, gh_path,
-          priority, auth_ref, is_writable_own)
-         VALUES ($1, $2, $3, 'github',
-                 $4, $5, $6, $7, $8,
-                 0, $9, TRUE)",
-    )
-    .bind(traject_id)
-    .bind(&writable_source_id)
-    .bind(&target.display_name)
-    .bind(&target.owner)
-    .bind(&target.repo)
-    .bind(&writable_branch)
-    .bind(&target.base_branch)
-    .bind(&target.path)
-    .bind(&target.auth_ref)
-    .execute(&mut *tx)
-    .await
-    .map_err(db_err_msg("insert writable source"))?;
+    if local_test {
+        // Synthesized LOCAL writable-own. The local backend is natively
+        // writable on its path, but the traject is `read_only` so the
+        // save handlers reject writes (see `ensure_traject_writable`).
+        // Using a local source means the traject opens without a GitHub
+        // token — important for token-less local dev.
+        sqlx::query(
+            "INSERT INTO traject_corpus_sources
+             (traject_id, source_id, name, source_type,
+              local_path, priority, is_writable_own)
+             VALUES ($1, $2, $3, 'local', $4, 0, TRUE)",
+        )
+        .bind(traject_id)
+        .bind(&writable_source_id)
+        .bind(LOCAL_TEST_SOURCE_NAME)
+        .bind(LOCAL_TEST_CORPUS_PATH)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_err_msg("insert local writable source"))?;
+    } else {
+        // Normal traject: `target` was resolved above (it is `None` only on
+        // the `local_test` path, which this `else` excludes). Treat an
+        // unexpected `None` as an internal error rather than panicking, to
+        // satisfy the workspace `expect_used` lint.
+        let Some(target) = target else {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "writable target unexpectedly missing".to_string(),
+            ));
+        };
+        let writable_branch = derive_branch_name(name, traject_id);
+        sqlx::query(
+            "INSERT INTO traject_corpus_sources
+             (traject_id, source_id, name, source_type,
+              gh_owner, gh_repo, gh_branch, gh_base_branch, gh_path,
+              priority, auth_ref, is_writable_own)
+             VALUES ($1, $2, $3, 'github',
+                     $4, $5, $6, $7, $8,
+                     0, $9, TRUE)",
+        )
+        .bind(traject_id)
+        .bind(&writable_source_id)
+        .bind(&target.display_name)
+        .bind(&target.owner)
+        .bind(&target.repo)
+        .bind(&writable_branch)
+        .bind(&target.base_branch)
+        .bind(&target.path)
+        .bind(&target.auth_ref)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_err_msg("insert writable source"))?;
+    }
 
     tx.commit()
         .await
@@ -1128,7 +1190,7 @@ pub async fn create(
         status: "bezig".to_string(),
         role: "owner".to_string(),
         traject_ref: None,
-        read_only: false,
+        read_only: local_test,
     };
     summary.fill_ref();
     Ok((StatusCode::CREATED, Json(summary)))
