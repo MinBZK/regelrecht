@@ -5,7 +5,7 @@ import {
   writableSource,
   branchTreeUrl,
 } from '../composables/useTrajectDetail.js';
-import { deleteTraject } from '../composables/useTrajects.js';
+import { deleteTraject, leaveTraject } from '../composables/useTrajects.js';
 
 const props = defineProps({
   /** Whether the sheet is currently open. */
@@ -16,7 +16,7 @@ const props = defineProps({
   trajectName: { type: String, default: '' },
 });
 
-const emit = defineEmits(['update:modelValue', 'deleted']);
+const emit = defineEmits(['update:modelValue', 'deleted', 'left']);
 
 const sheetEl = ref(null);
 const { detail, loading, error: loadError, load } = useTrajectDetail();
@@ -52,6 +52,8 @@ watch(
       // attempt must not greet the user on reopen.
       confirmingDelete.value = false;
       deleteError.value = null;
+      confirmingLeave.value = false;
+      leaveError.value = null;
       // Kick off the fetch before awaiting nextTick so the request settles
       // promptly (the test drives this with a couple of nextTick flushes).
       const loaded = props.trajectId ? load(props.trajectId) : Promise.resolve();
@@ -113,6 +115,47 @@ async function confirmDelete() {
     deleteError.value = e.message || 'Verwijderen mislukt';
   } finally {
     deleteBusy.value = false;
+  }
+}
+
+// --- Verlaten (bijdrager) — zelfde bevestigingsmodal als verwijderen. ---
+const leaveModalEl = ref(null);
+const confirmingLeave = ref(false);
+const leaveBusy = ref(false);
+const leaveError = ref(null);
+
+watch(confirmingLeave, async (open) => {
+  await nextTick();
+  const el = leaveModalEl.value;
+  if (!el) return;
+  if (open) el.show?.();
+  else el.hide?.();
+});
+
+function askLeave() {
+  leaveError.value = null;
+  confirmingLeave.value = true;
+}
+
+function cancelLeave() {
+  if (!confirmingLeave.value || leaveBusy.value) return; // idempotent: @close + button
+  confirmingLeave.value = false;
+}
+
+async function confirmLeave() {
+  if (leaveBusy.value) return;
+  leaveBusy.value = true;
+  leaveError.value = null;
+  try {
+    await leaveTraject(props.trajectId);
+    confirmingLeave.value = false;
+    emit('left', props.trajectId);
+    close();
+  } catch (e) {
+    confirmingLeave.value = false;
+    leaveError.value = e.message || 'Verlaten mislukt';
+  } finally {
+    leaveBusy.value = false;
   }
 }
 </script>
@@ -229,6 +272,22 @@ async function confirmDelete() {
               <nldd-inline-dialog variant="alert" :text="deleteError"></nldd-inline-dialog>
             </template>
           </template>
+
+          <!-- Bijdrager: traject verlaten, zelfde bevestigingspatroon als delete. -->
+          <template v-else-if="detail.role">
+            <nldd-spacer size="24"></nldd-spacer>
+            <nldd-button
+              variant="destructive"
+              size="md"
+              width="full"
+              text="Traject verlaten"
+              @click="askLeave"
+            ></nldd-button>
+            <template v-if="leaveError">
+              <nldd-spacer size="16"></nldd-spacer>
+              <nldd-inline-dialog variant="alert" :text="leaveError"></nldd-inline-dialog>
+            </template>
+          </template>
         </nldd-simple-section>
       </nldd-page>
     </nldd-sheet>
@@ -248,9 +307,30 @@ async function confirmDelete() {
       <nldd-button
         slot="actions"
         variant="destructive"
-        :text="deleteBusy ? 'Bezig…' : 'Verwijder'"
+        :text="deleteBusy ? 'Bezig…' : 'Verwijder traject'"
         :disabled="deleteBusy || undefined"
         @click="confirmDelete"
+      ></nldd-button>
+    </nldd-modal-dialog>
+  </Teleport>
+
+  <!-- Leave confirmation — same NLDD modal pattern as delete, from the
+       contributor's side. -->
+  <Teleport to="body">
+    <nldd-modal-dialog
+      ref="leaveModalEl"
+      variant="alert"
+      :text="`Traject ${trajectName} verlaten?`"
+      supporting-text="Je verlaat dit traject definitief en verliest meteen je toegang. Wil je later weer bijdragen, dan moet een eigenaar je opnieuw uitnodigen."
+      @close="cancelLeave"
+    >
+      <nldd-button slot="actions" variant="primary" text="Blijf in traject" @click="cancelLeave"></nldd-button>
+      <nldd-button
+        slot="actions"
+        variant="destructive"
+        :text="leaveBusy ? 'Bezig…' : 'Verlaat traject'"
+        :disabled="leaveBusy || undefined"
+        @click="confirmLeave"
       ></nldd-button>
     </nldd-modal-dialog>
   </Teleport>

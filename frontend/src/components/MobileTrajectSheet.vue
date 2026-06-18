@@ -347,5 +347,6 @@ onBeforeUnmount(() => {
     :traject-id="infoTrajectId"
     :traject-name="infoTrajectName"
     @deleted="onTrajectDeleted"
+    @left="onTrajectDeleted"
   />
 </template>

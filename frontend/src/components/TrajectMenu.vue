@@ -280,6 +280,7 @@ async function submitCreate() {
     :traject-id="infoTrajectId"
     :traject-name="infoTrajectName"
     @deleted="onTrajectDeleted"
+    @left="onTrajectDeleted"
   />
 
   <!-- Teleport the sheet out of the toolbar so it doesn't inherit the

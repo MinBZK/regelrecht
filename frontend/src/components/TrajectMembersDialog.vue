@@ -1,7 +1,6 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue';
 import { useTrajectMembers } from '../composables/useTrajectMembers.js';
-import { refreshTrajects } from '../composables/useTrajects.js';
 
 const props = defineProps({
   /** Whether the sheet is currently open. */
@@ -27,7 +26,6 @@ const {
   updateRole,
   removeMember,
   removeInvite,
-  leaveTraject,
 } = useTrajectMembers();
 
 const isOwner = computed(() => callerRole.value === 'owner');
@@ -175,22 +173,6 @@ async function clickRemoveInvite(inv) {
   }
 }
 
-const leaveBusy = ref(false);
-const leaveError = ref(null);
-
-async function clickLeave() {
-  leaveError.value = null;
-  leaveBusy.value = true;
-  try {
-    await leaveTraject(props.trajectId);
-    await refreshTrajects();
-    close();
-  } catch (e) {
-    leaveError.value = e.message || 'Verlaten mislukt';
-  } finally {
-    leaveBusy.value = false;
-  }
-}
 </script>
 
 <template>
@@ -321,24 +303,6 @@ async function clickLeave() {
               </nldd-list>
             </template>
 
-            <template v-if="!isOwner && callerRole">
-              <nldd-spacer size="24"></nldd-spacer>
-              <nldd-title size="4"><h2>Dit traject verlaten</h2></nldd-title>
-              <nldd-spacer size="8"></nldd-spacer>
-              <p class="members-leave-hint">
-                Je verliest direct toegang tot dit traject. Een owner kan je later
-                opnieuw uitnodigen.
-              </p>
-              <nldd-banner v-if="leaveError" variant="critical" :text="leaveError"></nldd-banner>
-              <nldd-spacer v-if="leaveError" size="16"></nldd-spacer>
-              <nldd-button
-                variant="ghost"
-                size="md"
-                :text="leaveBusy ? 'Bezig…' : 'Verlaat traject'"
-                :disabled="leaveBusy || undefined"
-                @click="clickLeave"
-              ></nldd-button>
-            </template>
           </nldd-simple-section>
 
           <!-- Detail: invite form, one level deeper (reached via the
@@ -406,11 +370,6 @@ async function clickLeave() {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-}
-.members-leave-hint {
-  font-size: 13px;
-  color: var(--semantics-content-secondary-color, #555);
-  margin: 8px 0;
 }
 .members-info {
   font-size: 13px;
