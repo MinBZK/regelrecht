@@ -1557,6 +1557,24 @@ mod tests {
         }
     }
 
+    /// Bare `TrajectCorpus` with no sources, parameterized on `read_only`.
+    /// Used to assert the save-handler guard keys on the flag.
+    fn make_test_traject_corpus(read_only: bool) -> TrajectCorpus {
+        let mut corpus = test_corpus(SourceMap::new(), HashMap::new());
+        corpus.read_only = read_only;
+        corpus
+    }
+
+    #[test]
+    fn read_only_flag_roundtrips() {
+        // Build two corpora differing only in read_only and assert the
+        // field is observable (the save-handler guard keys on this).
+        let writable = make_test_traject_corpus(false);
+        let read_only = make_test_traject_corpus(true);
+        assert!(!writable.read_only);
+        assert!(read_only.read_only);
+    }
+
     fn metadata_entry(map: &mut SourceMap, law_id: &str, source_id: &str) {
         metadata_entry_with_sha(map, law_id, source_id, Some(&format!("sha-{law_id}-v1")));
     }

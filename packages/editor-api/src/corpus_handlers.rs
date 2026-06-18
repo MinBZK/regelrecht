@@ -1294,6 +1294,19 @@ fn traject_write_source_id(traject: &TrajectCorpus, law: &LoadedLaw) -> String {
         .unwrap_or_else(|| law.source_id.clone())
 }
 
+/// Reject writes against a read-only traject (local-test-corpus). All
+/// four traject save handlers call this right after resolving the
+/// `TrajectCorpus`, so a read-only traject never reaches a backend write.
+fn ensure_traject_writable(traject: &TrajectCorpus) -> Result<(), (StatusCode, String)> {
+    if traject.read_only {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Dit is een read-only lokale-testcorpus-traject; opslaan is uitgeschakeld.".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 /// Resolved write routing for a law in a traject: the law's index
 /// entry, the id of the source whose backend the write goes to, and an
 /// owned guard over that backend.
@@ -1529,6 +1542,7 @@ pub async fn save_scenario(
     let author = Some(require_editor_user(&session).await?);
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    ensure_traject_writable(&traject)?;
     let write = resolve_traject_law_write(&traject, &law_id).await?;
     let relative_path = scenario_relative_path(&write.law, &filename)?;
 
@@ -1609,6 +1623,7 @@ pub async fn save_annotations(
     }
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    ensure_traject_writable(&traject)?;
     let target = resolve_traject_annotation_target(&traject, &law_id).await?;
     let EditorWriteTarget {
         relative_path,
@@ -1808,6 +1823,7 @@ pub async fn save_law(
     // corpus so we can mirror the saved body into its read-your-writes
     // overlay after `persist` succeeds.
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    ensure_traject_writable(&traject)?;
     let write = resolve_traject_law_write(&traject, &law_id).await?;
     let relative_path = PathBuf::from(&write.law.relative_path);
 
@@ -2318,6 +2334,7 @@ pub async fn save_traject_document(
     }
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    ensure_traject_writable(&traject)?;
     let backend = resolve_traject_documents_writer(&traject).await?;
     let relative_path = traject_documents_base(&traject_ref).join(&doc_path);
 
