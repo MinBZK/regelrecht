@@ -23,6 +23,11 @@ pub struct TrajectSummary {
     pub scope: String,
     pub status: String,
     pub role: String,
+    /// True for read-only trajecten (e.g. a local-test-corpus traject).
+    /// The frontend uses this to surface a read-only notice; the backend
+    /// save handlers enforce it (see `ensure_traject_writable`).
+    #[serde(default)]
+    pub read_only: bool,
     /// URL-form reference: `{slug}-{8hex}`. Built from current `name`
     /// and `id`; the slug part is cosmetic, the trailing 8 hex chars of
     /// the uuid are the actual lookup key (see `resolve_traject_ref`).
@@ -626,7 +631,8 @@ pub async fn list(
     let mut rows: Vec<TrajectSummary> = sqlx::query_as(
         "SELECT t.id, t.name, t.description, t.scope,
                 t.status::text AS status,
-                tm.role::text  AS role
+                tm.role::text  AS role,
+                t.read_only
          FROM trajects t
          JOIN traject_members tm ON tm.traject_id = t.id
          WHERE tm.account_id = $1
@@ -654,7 +660,8 @@ pub async fn get(
     let mut summary: TrajectSummary = sqlx::query_as(
         "SELECT id, name, description, scope,
                 status::text AS status,
-                $2           AS role
+                $2           AS role,
+                read_only
          FROM trajects WHERE id = $1",
     )
     .bind(id)
@@ -1121,6 +1128,7 @@ pub async fn create(
         status: "bezig".to_string(),
         role: "owner".to_string(),
         traject_ref: None,
+        read_only: false,
     };
     summary.fill_ref();
     Ok((StatusCode::CREATED, Json(summary)))
