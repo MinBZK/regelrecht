@@ -199,7 +199,7 @@ async function submitCreate() {
     v-if="isActiveTrajectReadOnly"
     icon="traject"
     text="Alleen-lezen traject"
-    supporting-text="Dit is een lokale-testcorpus-traject. Wijzigingen opslaan is uitgeschakeld."
+    supporting-text="Dit is een lokaal-testcorpus-traject. Wijzigingen opslaan is uitgeschakeld."
   ></nldd-inline-dialog>
   <!-- Logged in: the active traject's actions first, then the traject switcher
        + create below a divider. "Geen traject" is not an option — you leave

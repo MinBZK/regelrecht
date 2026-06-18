@@ -169,7 +169,7 @@ function bind(field) {
           <nldd-form-field-help-text>
             Tip: vul owner <strong>local</strong> en repo
             <strong>test-corpus</strong> in voor een
-            <strong>lokale-testcorpus-traject</strong> (alleen-lezen; toont de
+            <strong>lokaal-testcorpus-traject</strong> (alleen-lezen; toont de
             lokale testcorpus naast de centrale corpus).
           </nldd-form-field-help-text>
         </nldd-form-field>
