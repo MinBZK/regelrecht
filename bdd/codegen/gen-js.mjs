@@ -13,10 +13,12 @@ import { createRequire } from 'node:module';
 // Repo root = two levels up from bdd/codegen/gen-js.mjs (-> bdd/ -> repo root).
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-// This runs as the frontend `prebuild` hook. In the frontend Docker image the
-// build context is `frontend/` only, so the repo-root `bdd/` directory is
-// absent. The committed `grammar.generated.js` is the source of truth there
-// (CI guards its freshness), so skip regeneration instead of failing the build.
+// This runs as the frontend `predev`/`pretest` hooks and via `just bdd-codegen`,
+// all of which execute in a full repo checkout. The production `build` does NOT
+// regenerate (it uses the committed `grammar.generated.js`, whose freshness CI
+// guards), because the frontend Docker context is `frontend/` only and lacks the
+// repo-root `bdd/` directory. The guard below keeps this safe if it is ever run
+// without the grammar present: skip rather than fail.
 const grammarPath = join(root, 'bdd', 'grammar.yaml');
 if (!existsSync(grammarPath)) {
   console.log(`bdd/grammar.yaml not found at ${grammarPath}; skipping codegen (using committed grammar.generated.js)`);
