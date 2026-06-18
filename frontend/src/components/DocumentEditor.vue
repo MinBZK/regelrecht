@@ -49,12 +49,12 @@ const {
 } = m;
 
 // One blocking error at a time, and it replaces the editor body rather than
-// stacking above it: there is nothing useful to edit behind a fetch/save
-// failure. The latest action error (saveError) outranks an earlier load error
-// (docError) that produced no document. Actionable notices (conflict,
-// draft-present, …) and title validation stay inline with the editor instead.
+// stacking above it: a load failure (docError) that produced no document leaves
+// nothing useful to edit, so it replaces the editor body. A save failure does
+// NOT block — the content is still in openTabs, so it stays an inline notice
+// above the editor (below) and the save can be retried in place. Actionable
+// notices (conflict, draft-present, …) and title validation also stay inline.
 const blockingError = computed(() => {
-  if (saveError.value) return { text: 'Actie mislukt', supporting: saveError.value.message };
   if (docError.value && docError.value.kind !== 'draft-present') {
     return { text: docError.value.message, supporting: null };
   }
@@ -129,6 +129,10 @@ watch(pendingDeletePath, async (path) => {
       :supporting-text="blockingError.supporting || undefined"
     ></nldd-inline-dialog>
     <template v-else>
+      <!-- A save failure is an action error, not a reason to hide the document:
+           surface it but keep the editor (content lives in openTabs) so the user
+           can fix and retry the save in place. -->
+      <nldd-inline-dialog v-if="saveError" variant="alert" text="Opslaan mislukt" :supporting-text="saveError.message"></nldd-inline-dialog>
       <!-- Actionable notices keep the editor in view; at most one at a time. -->
       <nldd-inline-dialog v-if="conflict" variant="warning" :text="conflict">
         <nldd-button slot="actions" size="md" text="Server-versie laden" @click="reloadCurrent"></nldd-button>
