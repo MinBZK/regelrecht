@@ -4,11 +4,12 @@
   "type": "module",
   "scripts": {
     "wasm:build": "just wasm-build",
-    "prebuild": "node scripts/copy-laws.js",
-    "predev": "node scripts/copy-laws.js",
+    "prebuild": "node ../bdd/codegen/gen-js.mjs && node scripts/copy-laws.js",
+    "predev": "node ../bdd/codegen/gen-js.mjs && node scripts/copy-laws.js",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "pretest": "node ../bdd/codegen/gen-js.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test"
