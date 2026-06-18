@@ -165,14 +165,6 @@ function bind(field) {
           ></nldd-text-field>
           <nldd-form-field-help-text>Submap met regulation YAML-bestanden. Laat leeg voor repo-root.</nldd-form-field-help-text>
         </nldd-form-field>
-        <nldd-form-field>
-          <nldd-form-field-help-text>
-            Tip: vul owner <strong>local</strong> en repo
-            <strong>test-corpus</strong> in voor een
-            <strong>lokaal-testcorpus-traject</strong> (alleen-lezen; toont de
-            lokale testcorpus naast de centrale corpus).
-          </nldd-form-field-help-text>
-        </nldd-form-field>
       </template>
 
       <nldd-form-field>
