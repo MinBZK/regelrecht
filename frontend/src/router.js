@@ -51,24 +51,14 @@ const router = createRouter({
           meta: { title: 'Editor', requiresAuth: true },
         },
         {
-          // Nieuw traject aanmaken — eigen pagina met het gedeelde
-          // aanmaakformulier (TrajectCreateForm). Statisch segment, dus
-          // vue-router rankt dit boven de param-routes hieronder.
-          path: 'editor/nieuw-traject',
-          name: 'editor-nieuw-traject',
-          component: () => import('./TrajectCreateView.vue'),
-          meta: { title: 'Nieuw traject', requiresAuth: true },
-        },
-        {
-          // De editor vereist een traject. De kale /editor is de
-          // trajectkeuze-pagina: kies een bestaand traject of maak er een
-          // aan; daarna ga je door naar `editor-traject`. Een meegegeven wet
-          // (query `law`/`article`, gezet door de redirect hieronder) opent
-          // na de keuze direct in de editor.
+          // De kale /editor vereist nog steeds een traject: door naar de
+          // chooser met sectie=editor (meegegeven query blijft behouden). De
+          // naam 'editor' blijft bestaan zodat alle bestaande
+          // `{ name: 'editor' }`-navigaties (Editor-tab, sectionTarget,
+          // redirects) hier doorheen naar de chooser lopen.
           path: 'editor',
           name: 'editor',
-          component: () => import('./TrajectChooserView.vue'),
-          meta: { title: 'Kies een traject', requiresAuth: true },
+          redirect: (to) => ({ name: 'trajecten', query: { sectie: 'editor', ...to.query } }),
         },
         {
           // Editor-links zonder traject (de vroegere read-only editor): er is
@@ -80,14 +70,36 @@ const router = createRouter({
           // De declaratievolgorde is hier de scheidsrechter.
           path: 'editor/:lawId/:articleNumber?',
           redirect: (to) => ({
-            name: 'editor',
+            name: 'trajecten',
             query: {
+              sectie: 'editor',
               law: to.params.lawId,
               article: to.params.articleNumber || undefined,
             },
           }),
         },
       ],
+    },
+    {
+      // Trajectchooser — sectie-neutrale URL (library|editor via `sectie`,
+      // default editor) zodat zowel de bibliotheek als de editor 'm gebruiken;
+      // `law`/`article` dragen de beoogde bestemming mee. Top-level route (geen
+      // AppShell-child), zoals werkdocumenten: geen app-chrome, de pagina draagt
+      // z'n eigen top-title-bar met terugknop naar de bibliotheek.
+      path: '/trajecten',
+      name: 'trajecten',
+      component: () => import('./TrajectChooserView.vue'),
+      meta: { title: 'Trajecten', requiresAuth: true },
+    },
+    {
+      // Nieuw traject aanmaken — eigen pagina met het gedeelde aanmaakformulier
+      // (TrajectCreateForm). Ook top-level (geen app-chrome). Het statische pad
+      // `/editor/nieuw-traject` scoort boven de dynamische `/editor/...`-routes
+      // in de AppShell, dus een traject-ref of wet-id matcht deze nooit.
+      path: '/editor/nieuw-traject',
+      name: 'editor-nieuw-traject',
+      component: () => import('./TrajectCreateView.vue'),
+      meta: { title: 'Nieuw traject', requiresAuth: true },
     },
     {
       // Standalone full-page werkdocumenten editor, opened in a new tab from
@@ -105,8 +117,9 @@ const router = createRouter({
     {
       path: '/editor.html',
       redirect: (to) => ({
-        name: 'editor',
+        name: 'trajecten',
         query: {
+          sectie: 'editor',
           law: to.query.law || undefined,
           article: to.query.article || undefined,
         },

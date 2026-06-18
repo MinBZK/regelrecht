@@ -186,9 +186,14 @@ defineExpose({
 </script>
 
 <template>
-  <div class="article-text-editor" data-testid="article-text-editor">
+  <!-- Empty state as the component root (no wrappers), so it lands as a direct
+       child of the pane's nldd-simple-section and centers like the other panes
+       (AnnotatedText/ArticleText do the same). Wrapping it in the editor's flex
+       layout would top-align it instead. -->
+  <nldd-inline-dialog v-if="!article" text="Geen artikel geselecteerd"></nldd-inline-dialog>
+  <div v-else class="article-text-editor" data-testid="article-text-editor">
     <div class="article-text-editor__body-wrap">
-      <template v-if="article && editable && saveError">
+      <template v-if="editable && saveError">
         <nldd-inline-dialog
           variant="alert"
           text="Opslaan mislukt"
@@ -197,11 +202,7 @@ defineExpose({
         ></nldd-inline-dialog>
         <nldd-spacer size="12"></nldd-spacer>
       </template>
-
-      <div v-if="!article" class="article-text-editor__empty">
-        <nldd-inline-dialog text="Geen artikel geselecteerd"></nldd-inline-dialog>
-      </div>
-      <editor-content v-else :editor="editor" class="article-text-editor__body" />
+      <editor-content :editor="editor" class="article-text-editor__body" />
     </div>
   </div>
 </template>
@@ -211,11 +212,6 @@ defineExpose({
   display: flex;
   flex-direction: column;
   min-height: 0;
-}
-
-.article-text-editor__empty {
-  padding: 32px 16px;
-  text-align: center;
 }
 
 .article-text-editor__body {

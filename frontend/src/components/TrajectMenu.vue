@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useTrajects } from '../composables/useTrajects.js';
 import { useDocumentsSheet } from '../composables/useDocumentsSheet.js';
 import { useAuth } from '../composables/useAuth.js';
+import { useLoginToChooser } from '../composables/useLoginToChooser.js';
 import TrajectMembersDialog from './TrajectMembersDialog.vue';
 import TrajectInfoDialog from './TrajectInfoDialog.vue';
 import TrajectCreateForm from './TrajectCreateForm.vue';
@@ -28,10 +29,14 @@ const {
 } = useTrajects();
 // Auth gates the menu: logged-in users get the traject switcher; everyone
 // else gets a popover explaining that trajecten unlock after login.
-const { authenticated, login } = useAuth();
+const { authenticated } = useAuth();
 const route = useRoute();
 const router = useRouter();
 const documentsSheet = useDocumentsSheet();
+
+// Not logged in: log in, then land on the trajectchooser carrying the current
+// section + law/article (shared composable, see also MobileTrajectSheet).
+const loginToChooser = useLoginToChooser();
 
 /**
  * Navigate to a traject — push the user into the traject-scoped view of
@@ -239,7 +244,7 @@ async function submitCreate() {
   >
     <nldd-container padding="16">
       <nldd-inline-dialog
-        icon="traject"
+        icon="login"
         text="Log in om een traject te kiezen of aan te maken"
         supporting-text="Zodra je bent ingelogd zie je hier je lopende trajecten en kun je gemakkelijk wisselen."
       >
@@ -247,7 +252,7 @@ async function submitCreate() {
           slot="actions"
           variant="primary"
           text="Inloggen"
-          @click="login()"
+          @click="loginToChooser"
         ></nldd-button>
       </nldd-inline-dialog>
     </nldd-container>
@@ -264,6 +269,7 @@ async function submitCreate() {
     :traject-id="infoTrajectId"
     :traject-name="infoTrajectName"
     @deleted="onTrajectDeleted"
+    @left="onTrajectDeleted"
   />
 
   <!-- Teleport the sheet out of the toolbar so it doesn't inherit the

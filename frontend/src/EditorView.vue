@@ -506,16 +506,6 @@ function libraryRouteFor(lawIdVal) {
     : { name: 'library', params: { lawId: lawIdVal } };
 }
 
-// If the user lands on the editor without a lawId, restore the last
-// tab they had open before the refresh — keeping the same traject
-// scope (or lack of it).
-if (!route.params.lawId) {
-  const last = loadSavedActiveTab();
-  if (last?.lawId) {
-    router.replace(editorRouteFor(last.lawId, last.articleNumber || undefined));
-  }
-}
-
 const openTabs = ref(loadSavedTabs());
 
 // Cache for law names (populated on fetch)
@@ -577,6 +567,21 @@ async function selectTab(tab) {
   // `replace` (not `push`) keeps history clean — a tab switch isn't
   // navigation the user wants to undo with the back button.
   router.replace(editorRouteFor(tab.lawId, tab.articleNumber));
+}
+
+// On load there may be no article to edit yet — the URL carries no article
+// (just a traject, or a law without an article number). Rather than show the
+// empty state while tabs are still open, open one right away: the last active
+// tab when the URL has no law at all (so a refresh returns the user where they
+// were), otherwise simply the first open tab. selectTab sets activeTab
+// synchronously, so the empty state never flashes. With no open tabs we fall
+// through to it — the only case it should appear.
+if (!route.params.articleNumber && openTabs.value.length > 0) {
+  const lastActive = loadSavedActiveTab();
+  const restored = !route.params.lawId && lastActive?.lawId
+    ? findTab(lastActive.lawId, lastActive.articleNumber)
+    : null;
+  selectTab(restored || openTabs.value[0]).catch(console.warn);
 }
 
 // Browser back/forward (or any external navigation) — pull state from
@@ -746,6 +751,16 @@ const activeEditItem = ref(null);
 const parseError = ref(null);
 
 const machineReadable = ref(null);
+
+// The YAML pane edits the machine-readable as text. There is something to edit
+// when the article carries machine_readable, or one was created/edited this
+// session (the live ref). With neither, the empty code editor is replaced by a
+// message — like the Machine pane and the read-only YAML view. Deliberately not
+// keyed on the live ref alone: clearing or mid-typing invalid YAML nulls it, and
+// that must not yank the editor out from under the user.
+const hasMachineReadable = computed(
+  () => !!machineReadable.value || !!selectedArticle.value?.machine_readable,
+);
 const yamlSource = ref('');
 // In-memory markdown for the currently selected article's `text` field.
 // Seeded on article switch alongside machineReadable so the Tekst and Machine
@@ -1710,10 +1725,11 @@ async function handleActionSave() {
                   text="Notities niet geladen"
                   :supporting-text="notesError.message"
                 ></nldd-inline-dialog>
-                <nldd-inline-dialog
+                <nldd-activity-indicator
                   v-else-if="notesLoading"
-                  text="Notities laden…"
-                ></nldd-inline-dialog>
+                  text="Notities laden"
+                  show-text
+                ></nldd-activity-indicator>
                 <template v-else>
                   <AnnotatedText
                     :article="selectedArticle"
@@ -1835,13 +1851,19 @@ async function handleActionSave() {
 
               <!-- YAML -->
               <nldd-simple-section v-else-if="view === 'yaml'" width="full">
-                <nldd-code-editor
-                  resize="none"
-                  accessible-label="YAML"
-                  :value="yamlSource"
-                  @input="onYamlInput"
-                ></nldd-code-editor>
-                <div v-if="parseError" class="editor-parse-error-detail">{{ parseError }}</div>
+                <nldd-inline-dialog
+                  v-if="!hasMachineReadable"
+                  text="Geen machine-leesbare gegevens voor dit artikel"
+                ></nldd-inline-dialog>
+                <template v-else>
+                  <nldd-code-editor
+                    resize="none"
+                    accessible-label="YAML"
+                    :value="yamlSource"
+                    @input="onYamlInput"
+                  ></nldd-code-editor>
+                  <nldd-banner v-if="parseError" variant="critical" :text="parseError"></nldd-banner>
+                </template>
               </nldd-simple-section>
             </nldd-page>
           </nldd-split-view-pane>

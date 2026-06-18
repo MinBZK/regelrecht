@@ -1,7 +1,6 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue';
 import { useTrajectMembers } from '../composables/useTrajectMembers.js';
-import { refreshTrajects } from '../composables/useTrajects.js';
 
 const props = defineProps({
   /** Whether the sheet is currently open. */
@@ -27,7 +26,6 @@ const {
   updateRole,
   removeMember,
   removeInvite,
-  leaveTraject,
 } = useTrajectMembers();
 
 const isOwner = computed(() => callerRole.value === 'owner');
@@ -175,22 +173,6 @@ async function clickRemoveInvite(inv) {
   }
 }
 
-const leaveBusy = ref(false);
-const leaveError = ref(null);
-
-async function clickLeave() {
-  leaveError.value = null;
-  leaveBusy.value = true;
-  try {
-    await leaveTraject(props.trajectId);
-    await refreshTrajects();
-    close();
-  } catch (e) {
-    leaveError.value = e.message || 'Verlaten mislukt';
-  } finally {
-    leaveBusy.value = false;
-  }
-}
 </script>
 
 <template>
@@ -213,11 +195,15 @@ async function clickLeave() {
         ></nldd-top-title-bar>
 
         <nldd-simple-section v-if="loading">
-          <p class="members-status">Laden…</p>
+          <nldd-activity-indicator text="Leden laden" show-text></nldd-activity-indicator>
         </nldd-simple-section>
 
         <nldd-simple-section v-else-if="loadError">
-          <p class="members-error">{{ loadError.message || 'Fout bij laden' }}</p>
+          <nldd-inline-dialog
+            variant="alert"
+            text="Leden niet geladen"
+            :supporting-text="loadError.message"
+          ></nldd-inline-dialog>
         </nldd-simple-section>
 
         <template v-else>
@@ -225,6 +211,9 @@ async function clickLeave() {
             <nldd-list variant="box">
               <template v-for="m in members" :key="m.account_id">
                 <nldd-list-item size="md">
+                  <nldd-spacer-cell slot="start" size="12"></nldd-spacer-cell>
+                  <nldd-icon-cell slot="start" size="20"><nldd-icon name="user"></nldd-icon></nldd-icon-cell>
+                  <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
                   <nldd-text-cell :supporting-text="m.name ? m.email : null">
                     <span class="member-name">
                       <span>{{ m.name || m.email }}</span>
@@ -269,8 +258,9 @@ async function clickLeave() {
                 </div>
               </template>
               <nldd-list-item v-if="isOwner" size="md" button @click="openInvite">
-                <nldd-icon-cell size="20"><nldd-icon name="plus"></nldd-icon></nldd-icon-cell>
-                <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                <nldd-spacer-cell slot="start" size="12"></nldd-spacer-cell>
+                <nldd-icon-cell slot="start" size="20"><nldd-icon name="plus"></nldd-icon></nldd-icon-cell>
+                <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
                 <nldd-text-cell text="Lid uitnodigen"></nldd-text-cell>
                 <nldd-spacer-cell size="8"></nldd-spacer-cell>
                 <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
@@ -284,6 +274,9 @@ async function clickLeave() {
               <nldd-list variant="box">
                 <template v-for="inv in pendingInvites" :key="inv.email">
                   <nldd-list-item size="md">
+                    <nldd-spacer-cell slot="start" size="12"></nldd-spacer-cell>
+                    <nldd-icon-cell slot="start" size="20"><nldd-icon name="user"></nldd-icon></nldd-icon-cell>
+                    <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
                     <nldd-text-cell
                       :text="inv.email"
                       supporting-text="Wacht op eerste login"
@@ -310,23 +303,6 @@ async function clickLeave() {
               </nldd-list>
             </template>
 
-            <template v-if="!isOwner && callerRole">
-              <nldd-spacer size="24"></nldd-spacer>
-              <nldd-title size="4"><h2>Dit traject verlaten</h2></nldd-title>
-              <nldd-spacer size="8"></nldd-spacer>
-              <p class="members-leave-hint">
-                Je verliest direct toegang tot dit traject. Een owner kan je later
-                opnieuw uitnodigen.
-              </p>
-              <div v-if="leaveError" class="members-error">{{ leaveError }}</div>
-              <nldd-button
-                variant="ghost"
-                size="md"
-                :text="leaveBusy ? 'Bezig…' : 'Verlaat traject'"
-                :disabled="leaveBusy || undefined"
-                @click="clickLeave"
-              ></nldd-button>
-            </template>
           </nldd-simple-section>
 
           <!-- Detail: invite form, one level deeper (reached via the
@@ -394,12 +370,6 @@ async function clickLeave() {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-}
-.members-status,
-.members-leave-hint {
-  font-size: 13px;
-  color: var(--semantics-content-secondary-color, #555);
-  margin: 8px 0;
 }
 .members-info {
   font-size: 13px;

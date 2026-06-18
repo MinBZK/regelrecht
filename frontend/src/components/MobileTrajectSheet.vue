@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTrajects } from '../composables/useTrajects.js';
 import { useAuth } from '../composables/useAuth.js';
+import { useLoginToChooser } from '../composables/useLoginToChooser.js';
 import { useDocumentsSheet } from '../composables/useDocumentsSheet.js';
 import { useAppChrome } from '../composables/useAppChrome.js';
 import TrajectMembersDialog from './TrajectMembersDialog.vue';
@@ -15,11 +16,15 @@ import TrajectCreateForm from './TrajectCreateForm.vue';
 // "Artikelen"-lijst (de open tabbladen). md/lg houden TrajectMenu + de
 // document-tab-bar. Hergebruikt dezelfde composables/handlers als TrajectMenu.
 const { trajects, activeTrajectRef, activeTraject, loading, createTraject } = useTrajects();
-const { authenticated, login } = useAuth();
+const { authenticated } = useAuth();
 const documentsSheet = useDocumentsSheet();
 const { documentTabs, activeDocumentTab, tabActions } = useAppChrome();
 const route = useRoute();
 const router = useRouter();
+
+// Not logged in: log in, then land on the trajectchooser carrying the current
+// section + law/article (shared composable, see also TrajectMenu).
+const loginToChooser = useLoginToChooser();
 
 const sheetEl = ref(null);
 const sheetMode = ref('list'); // 'list' | 'create'
@@ -194,7 +199,7 @@ onBeforeUnmount(() => {
   <nldd-button
     size="md"
     expandable
-    start-icon="document"
+    start-icon="traject"
     width="full"
     horizontal-alignment="left"
     single-line
@@ -218,11 +223,11 @@ onBeforeUnmount(() => {
         <!-- Niet ingelogd -->
         <nldd-simple-section v-if="!authenticated">
           <nldd-inline-dialog
-            icon="traject"
+            icon="login"
             text="Log in om een traject te kiezen of aan te maken"
             supporting-text="Zodra je bent ingelogd zie je hier je lopende trajecten en kun je gemakkelijk wisselen."
           >
-            <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
+            <nldd-button slot="actions" variant="primary" text="Inloggen" @click="loginToChooser"></nldd-button>
           </nldd-inline-dialog>
         </nldd-simple-section>
 
@@ -240,7 +245,7 @@ onBeforeUnmount(() => {
         <nldd-simple-section v-else>
           <!-- Acties van het actieve traject — bovenaan, zonder titel (de
                sheet-titel dekt dit al). -->
-          <nldd-list v-if="activeTraject" variant="box">
+          <nldd-list v-if="activeTraject" variant="box" arrow-navigation>
             <nldd-list-item size="md" button @click="openDocuments">
               <nldd-icon-cell size="20"><nldd-icon name="documents"></nldd-icon></nldd-icon-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -262,7 +267,7 @@ onBeforeUnmount(() => {
           <nldd-spacer v-if="activeTraject" size="24"></nldd-spacer>
           <nldd-title size="5"><h2>Trajecten</h2></nldd-title>
           <nldd-spacer size="8"></nldd-spacer>
-          <nldd-list variant="box">
+          <nldd-list variant="box" arrow-navigation>
             <nldd-list-item
               v-for="t in trajects"
               :key="t.id"
@@ -331,5 +336,6 @@ onBeforeUnmount(() => {
     :traject-id="infoTrajectId"
     :traject-name="infoTrajectName"
     @deleted="onTrajectDeleted"
+    @left="onTrajectDeleted"
   />
 </template>

@@ -8,7 +8,7 @@
  * Replaces the old draggable nldd-window: no window, no movable dialog — it
  * renders inline in whatever container the host gives it.
  */
-import { nextTick, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 
 const props = defineProps({
   manager: { type: Object, required: true },
@@ -47,6 +47,19 @@ const {
   cancelDelete,
   confirmDelete,
 } = m;
+
+// One blocking error at a time, and it replaces the editor body rather than
+// stacking above it: a load failure (docError) that produced no document leaves
+// nothing useful to edit, so it replaces the editor body. A save failure does
+// NOT block — the content is still in openTabs, so it stays an inline notice
+// above the editor (below) and the save can be retried in place. Actionable
+// notices (conflict, draft-present, …) and title validation also stay inline.
+const blockingError = computed(() => {
+  if (docError.value && docError.value.kind !== 'draft-present') {
+    return { text: docError.value.message, supporting: null };
+  }
+  return null;
+});
 
 // Ctrl/Cmd+S = opslaan.
 function handleKeydown(e) {
@@ -107,19 +120,30 @@ watch(pendingDeletePath, async (path) => {
 
   <nldd-simple-section padding-top="8" @keydown="handleKeydown">
     <nldd-activity-indicator v-if="docLoading || creating" text="Document laden" show-text></nldd-activity-indicator>
+    <!-- A blocking failure replaces the whole editor body: just this one
+         message, nothing useful sits behind it. -->
+    <nldd-inline-dialog
+      v-else-if="blockingError"
+      variant="alert"
+      :text="blockingError.text"
+      :supporting-text="blockingError.supporting || undefined"
+    ></nldd-inline-dialog>
     <template v-else>
-      <nldd-inline-dialog v-if="deleteNotice" variant="warning" :text="deleteNotice"></nldd-inline-dialog>
+      <!-- A save failure is an action error, not a reason to hide the document:
+           surface it but keep the editor (content lives in openTabs) so the user
+           can fix and retry the save in place. -->
+      <nldd-inline-dialog v-if="saveError" variant="alert" text="Opslaan mislukt" :supporting-text="saveError.message"></nldd-inline-dialog>
+      <!-- Actionable notices keep the editor in view; at most one at a time. -->
       <nldd-inline-dialog v-if="conflict" variant="warning" :text="conflict">
         <nldd-button slot="actions" size="md" text="Server-versie laden" @click="reloadCurrent"></nldd-button>
         <nldd-button slot="actions" size="md" text="Lokaal overschrijven" @click="overwriteServer"></nldd-button>
       </nldd-inline-dialog>
-      <nldd-inline-dialog v-if="deletedRemotely" variant="warning" :text="deletedRemotely"></nldd-inline-dialog>
-      <nldd-inline-dialog v-if="docError && docError.kind === 'draft-present'" :text="docError.message">
+      <nldd-inline-dialog v-else-if="deletedRemotely" variant="warning" :text="deletedRemotely"></nldd-inline-dialog>
+      <nldd-inline-dialog v-else-if="deleteNotice" variant="warning" :text="deleteNotice"></nldd-inline-dialog>
+      <nldd-inline-dialog v-else-if="docError && docError.kind === 'draft-present'" :text="docError.message">
         <nldd-button slot="actions" size="md" text="Draft verwerpen" @click="dropDraft"></nldd-button>
       </nldd-inline-dialog>
-      <nldd-inline-dialog v-if="docError && docError.kind !== 'draft-present'" variant="alert" :text="docError.message"></nldd-inline-dialog>
-      <nldd-inline-dialog v-if="saveError" variant="alert" text="Actie mislukt" :supporting-text="saveError.message"></nldd-inline-dialog>
-      <nldd-inline-dialog v-if="titleError" variant="alert" :text="titleError"></nldd-inline-dialog>
+      <nldd-inline-dialog v-else-if="titleError" variant="alert" :text="titleError"></nldd-inline-dialog>
 
       <template v-if="viewMode === 'editor'">
         <nldd-text-field

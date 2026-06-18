@@ -88,13 +88,6 @@ export function useTrajectMembers() {
     await load(trajectId);
   }
 
-  async function leaveTraject(trajectId) {
-    await apiFetch(`/api/trajects/${trajectId}/leave`, {
-      method: 'POST',
-      errorMessage: (status, body) => body || `Verlaten mislukt: ${status}`,
-    });
-  }
-
   return {
     members,
     pendingInvites,
@@ -106,6 +99,5 @@ export function useTrajectMembers() {
     updateRole,
     removeMember,
     removeInvite,
-    leaveTraject,
   };
 }

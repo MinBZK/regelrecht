@@ -62,6 +62,17 @@ export async function deleteTraject(trajectId) {
   await refreshTrajects();
 }
 
+// A contributor leaves a traject (backend: POST /api/trajects/:id/leave). Mirror
+// of deleteTraject from the member's side: refresh the list so the traject they
+// just left drops out immediately.
+export async function leaveTraject(trajectId) {
+  await apiFetch(`/api/trajects/${encodeURIComponent(trajectId)}/leave`, {
+    method: 'POST',
+    errorMessage: (status, body) => body || `Verlaten mislukt: ${status}`,
+  });
+  await refreshTrajects();
+}
+
 // Active traject lives in `route.params.trajectRef` (per-tab state),
 // derived here so consumers do not each repeat the lookup. Returns
 // `null` for any route without a traject param — that's the "global

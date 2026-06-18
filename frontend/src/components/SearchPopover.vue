@@ -302,7 +302,7 @@ defineExpose({ show });
             <nldd-spacer v-if="groupIndex > 0" size="16"></nldd-spacer>
             <nldd-title size="5"><h5>{{ group.source_name }}</h5></nldd-title>
             <nldd-spacer size="8"></nldd-spacer>
-            <nldd-list variant="simple">
+            <nldd-list variant="simple" arrow-navigation>
               <nldd-list-item
                 v-for="law in group.laws"
                 :key="law.law_id"
@@ -326,7 +326,7 @@ defineExpose({ show });
         <template v-else-if="bwbResults.length > 0">
           <nldd-title size="5"><h5>Resultaten van wetten.overheid.nl</h5></nldd-title>
           <nldd-spacer size="8"></nldd-spacer>
-          <nldd-list variant="simple">
+          <nldd-list variant="simple" arrow-navigation>
             <nldd-list-item
               v-for="result in bwbResults"
               :key="result.bwb_id"

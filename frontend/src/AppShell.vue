@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import TrajectMenu from './components/TrajectMenu.vue';
 import TrajectDocuments from './components/TrajectDocuments.vue';
@@ -66,8 +66,58 @@ const editorTabTarget = computed(() =>
 const libraryTabHref = computed(() => router.resolve(libraryTabTarget.value).href);
 const editorTabHref = computed(() => router.resolve(editorTabTarget.value).href);
 
+// The editor requires login. Rather than letting the route guard bounce an
+// unauthenticated user straight to the SSO screen (an unannounced surprise),
+// intercept the Editor tab and first show a small login-warning popover anchored
+// to the clicked tab. Authenticated users navigate as before.
+const loginWarning = ref(null);
+function onEditorTab(e) {
+  if (!authenticated.value) {
+    if (loginWarning.value) {
+      loginWarning.value.anchorElement = e.currentTarget;
+      loginWarning.value.show();
+    }
+    return;
+  }
+  if (isLibraryRoute.value) router.push(editorTabTarget.value);
+}
+
 // View-specific toolbar bits published by the active view.
-const { lastSavedPr, documentTabs, activeDocumentTab, tabActions, editorChanges, editorActions } = useAppChrome();
+const { lastSavedPr, documentTabs, activeDocumentTab, tabActions, editorChanges, editorActions, libraryEmpty } = useAppChrome();
+
+// Just-in-time coach-mark on the toolbar search affordance: shown only while the
+// library is empty (nothing curated yet) and never dismissable — the app drives
+// it, and it disappears by itself once the library has content. Each breakpoint
+// renders its search control in a different bar (sm icon-button, md text button,
+// lg search field), each in a pane that is display:none off-breakpoint. So we
+// resolve the active breakpoint and activate only the coach-mark whose control
+// is actually visible, never anchoring a popover to a hidden control.
+const viewport = ref('lg'); // 'sm' | 'md' | 'lg', aligned with the DS bar breakpoints
+let mdQuery = null;
+let lgQuery = null;
+// DS bar breakpoints, mirrored here for matchMedia. Keep in sync with
+// @nldd/design-system (src/assets/styles/breakpoints.ts): md >= 641px, lg >= 1008px.
+// If the DS shifts these thresholds, update them here too — otherwise the
+// coach-mark can anchor to a control that is hidden at the current breakpoint.
+const DS_MD_MIN = '(min-width: 641px)';
+const DS_LG_MIN = '(min-width: 1008px)';
+function updateViewport() {
+  viewport.value = lgQuery?.matches ? 'lg' : mdQuery?.matches ? 'md' : 'sm';
+}
+onMounted(() => {
+  mdQuery = window.matchMedia?.(DS_MD_MIN) || null;
+  lgQuery = window.matchMedia?.(DS_LG_MIN) || null;
+  updateViewport();
+  mdQuery?.addEventListener?.('change', updateViewport);
+  lgQuery?.addEventListener?.('change', updateViewport);
+});
+onBeforeUnmount(() => {
+  mdQuery?.removeEventListener?.('change', updateViewport);
+  lgQuery?.removeEventListener?.('change', updateViewport);
+});
+const showSearchHintSm = computed(() => libraryEmpty.value && viewport.value === 'sm');
+const showSearchHintMd = computed(() => libraryEmpty.value && viewport.value === 'md');
+const showSearchHintLg = computed(() => libraryEmpty.value && viewport.value === 'lg');
 
 // Editor with open tabs → the mobile traject row splits 50/50 to fit a tabs
 // button next to the traject menu, and the md+ document-tab-bar shows. The
@@ -92,7 +142,7 @@ const hasDocumentTabs = computed(
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar size="md" navigation>
                 <nldd-tab-bar-item :selected="isLibraryRoute || undefined" :href="isLibraryRoute ? undefined : libraryTabHref" @click.prevent="isLibraryRoute || router.push(libraryTabTarget)" text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="isLibraryRoute ? editorTabHref : undefined" @click.prevent="isLibraryRoute && router.push(editorTabTarget)" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="authenticated && isLibraryRoute ? editorTabHref : undefined" @click.prevent="onEditorTab" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item v-if="lastSavedPr" slot="end">
@@ -101,7 +151,15 @@ const hasDocumentTabs = computed(
               <nldd-button size="md" start-icon="external-link" :text="`PR #${lastSavedPr.number}`" :href="lastSavedPr.url" target="_blank" rel="noopener"></nldd-button>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <nldd-button size="md" start-icon="search" text="Zoeken" @click="openSearch"></nldd-button>
+              <nldd-just-in-time-education
+                placement="bottom"
+                arrow-length="160px"
+                text="Zoek een wet om te openen"
+                supporting-text="Markeer een wet als favoriet om die later snel terug te vinden."
+                :active="showSearchHintMd || undefined"
+              >
+                <nldd-button size="md" start-icon="search" text="Zoeken" @click="openSearch"></nldd-button>
+              </nldd-just-in-time-education>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
               <TrajectMenu id-suffix="md" />
@@ -132,7 +190,7 @@ const hasDocumentTabs = computed(
                 </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
-                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login()"></nldd-menu-item>
+                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
               </nldd-menu>
             </nldd-toolbar-item>
           </nldd-toolbar>
@@ -146,16 +204,24 @@ const hasDocumentTabs = computed(
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar size="md" navigation>
                 <nldd-tab-bar-item :selected="isLibraryRoute || undefined" :href="isLibraryRoute ? undefined : libraryTabHref" @click.prevent="isLibraryRoute || router.push(libraryTabTarget)" text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="isLibraryRoute ? editorTabHref : undefined" @click.prevent="isLibraryRoute && router.push(editorTabTarget)" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="authenticated && isLibraryRoute ? editorTabHref : undefined" @click.prevent="onEditorTab" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="center" min-width="240px" width="33%" max-width="480px">
-              <nldd-search-field
-                size="md"
-                placeholder="Zoeken"
-                @click="openSearch"
-                @keydown="onBarSearchKeydown"
-              ></nldd-search-field>
+              <nldd-just-in-time-education
+                placement="bottom"
+                arrow-length="160px"
+                text="Zoek een wet om te openen"
+                supporting-text="Markeer een wet als favoriet om die later snel terug te vinden."
+                :active="showSearchHintLg || undefined"
+              >
+                <nldd-search-field
+                  size="md"
+                  placeholder="Zoeken"
+                  @click="openSearch"
+                  @keydown="onBarSearchKeydown"
+                ></nldd-search-field>
+              </nldd-just-in-time-education>
             </nldd-toolbar-item>
             <nldd-toolbar-item v-if="lastSavedPr" slot="end">
               <nldd-button size="md" start-icon="external-link" :text="`PR #${lastSavedPr.number}`" :href="lastSavedPr.url" target="_blank" rel="noopener"></nldd-button>
@@ -189,7 +255,7 @@ const hasDocumentTabs = computed(
                 </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
-                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login()"></nldd-menu-item>
+                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
               </nldd-menu>
             </nldd-toolbar-item>
           </nldd-toolbar>
@@ -326,18 +392,22 @@ const hasDocumentTabs = computed(
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar navigation>
                 <nldd-tab-bar-item :selected="isLibraryRoute || undefined" :href="isLibraryRoute ? undefined : libraryTabHref" @click.prevent="isLibraryRoute || router.push(libraryTabTarget)" icon="books" text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="isLibraryRoute ? editorTabHref : undefined" @click.prevent="isLibraryRoute && router.push(editorTabTarget)" icon="edit" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="authenticated && isLibraryRoute ? editorTabHref : undefined" @click.prevent="onEditorTab" icon="edit" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <span>
+              <nldd-just-in-time-education
+                placement="top"
+                arrow-length="160px"
+                text="Zoek een wet om te openen"
+                supporting-text="Markeer een wet als favoriet om die later snel terug te vinden."
+                :active="showSearchHintSm || undefined"
+              >
                 <nldd-icon-button size="lg" icon="search" text="Zoeken" @click="openSearch"></nldd-icon-button>
-              </span>
+              </nldd-just-in-time-education>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <span>
-                <nldd-icon-button id="settings-menu-btn-sm" size="lg" icon="account" text="Account" tooltip-timing="never" popovertarget="settings-menu-sm"></nldd-icon-button>
-              </span>
+              <nldd-icon-button id="settings-menu-btn-sm" size="lg" icon="account" text="Account" tooltip-timing="never" popovertarget="settings-menu-sm"></nldd-icon-button>
               <nldd-menu id="settings-menu-sm" anchor="settings-menu-btn-sm">
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
                 <nldd-menu-group text="Functies">
@@ -362,7 +432,7 @@ const hasDocumentTabs = computed(
                 </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
-                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login()"></nldd-menu-item>
+                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
               </nldd-menu>
             </nldd-toolbar-item>
           </nldd-toolbar>
@@ -374,4 +444,18 @@ const hasDocumentTabs = computed(
   <!-- Traject-documents browser sheet + edit window, opened from TrajectMenu.
        Shared by both sections, so it lives in the shell (mounted once). -->
   <TrajectDocuments />
+
+  <!-- Editor requires login: a heads-up popover anchored to the clicked Editor
+       tab (sm/md/lg) so the SSO screen never appears unannounced. -->
+  <nldd-popover ref="loginWarning" accessible-label="Inloggen" width="320px">
+    <nldd-container padding="16">
+      <nldd-inline-dialog
+        icon="login"
+        text="Log in om de editor te gebruiken"
+        supporting-text="Zodra je bent ingelogd kies je een traject en kun je aan de slag."
+      >
+        <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login(editorTabHref)"></nldd-button>
+      </nldd-inline-dialog>
+    </nldd-container>
+  </nldd-popover>
 </template>
