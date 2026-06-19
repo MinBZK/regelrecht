@@ -123,7 +123,14 @@ export function useDependencies() {
           // not-yet-in-force version.
           const newDeps = [];
           for (const versionYaml of yamls) {
-            collectDeps(yaml.load(versionYaml), visited, newDeps);
+            // Isolate the ref scan per version too: a version that loaded into
+            // the engine but is malformed for `js-yaml` must not throw here and
+            // get the (already-loaded) law spuriously marked missing + harvested.
+            try {
+              collectDeps(yaml.load(versionYaml), visited, newDeps);
+            } catch (e) {
+              console.warn(`Skipped transitive-ref scan of an unparseable version of '${lawId}':`, e);
+            }
           }
           if (newDeps.length > 0) {
             toLoad.push(...newDeps);
