@@ -3,7 +3,6 @@
 //! Converts string values from feature files to engine Value types.
 
 use regelrecht_engine::Value;
-use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 
 /// Convert a Gherkin table cell value to an engine Value.
@@ -69,19 +68,15 @@ pub fn parse_table_to_params(
 
 /// Compare two Values with a small numeric tolerance.
 ///
-/// For numeric values (Int/Decimal), uses a tolerance of 1e-9 to absorb any
-/// literal-parsing noise; other types use exact equality.
+/// For numeric values (Int/Decimal), uses an exact-decimal tolerance of 1e-9 to
+/// absorb any literal-parsing noise; other types use exact equality. The
+/// comparison stays in `Decimal` (no f64 round-trip) so it doesn't reintroduce
+/// the float imprecision the engine deliberately avoids.
 #[allow(dead_code)]
 pub fn values_equal_with_tolerance(a: &Value, b: &Value) -> bool {
-    fn num(v: &Value) -> Option<f64> {
-        match v {
-            Value::Int(i) => Some(*i as f64),
-            Value::Decimal(d) => d.to_f64(),
-            _ => None,
-        }
-    }
-    match (num(a), num(b)) {
-        (Some(fa), Some(fb)) => (fa - fb).abs() < 1e-9,
+    match (a.as_decimal(), b.as_decimal()) {
+        // Decimal::new(1, 9) == 1e-9
+        (Some(da), Some(db)) => (da - db).abs() < Decimal::new(1, 9),
         _ => a == b,
     }
 }

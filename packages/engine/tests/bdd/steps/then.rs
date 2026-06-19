@@ -69,7 +69,9 @@ fn assert_uitkering_bedrag(world: &mut RegelrechtWorld, expected: String) {
             );
         }
         Some(Value::Decimal(d)) => {
-            let f = d.to_f64().unwrap_or_default();
+            let f = d
+                .to_f64()
+                .expect("Decimal out of f64 range — check test fixture");
             let actual_int = f.round() as i64;
             assert_eq!(
                 actual_int, expected_amount,
@@ -300,7 +302,9 @@ fn assert_minimale_afstand_cm(world: &mut RegelrechtWorld, expected: String) {
             );
         }
         Some(Value::Decimal(d)) => {
-            let f = d.to_f64().unwrap_or_default();
+            let f = d
+                .to_f64()
+                .expect("Decimal out of f64 range — check test fixture");
             let actual_int = f.round() as i64;
             assert_eq!(
                 actual_int, expected_cm,
@@ -330,7 +334,9 @@ fn assert_minimale_afstand_m(world: &mut RegelrechtWorld, expected: String) {
     let actual = world.get_output("minimale_afstand_m");
     match actual {
         Some(Value::Decimal(d)) => {
-            let f = d.to_f64().unwrap_or_default();
+            let f = d
+                .to_f64()
+                .expect("Decimal out of f64 range — check test fixture");
             let diff = (f - expected_m).abs();
             assert!(
                 diff < 0.001,
@@ -414,7 +420,9 @@ fn assert_standard_premium_eurocent(world: &mut RegelrechtWorld, expected: Strin
             );
         }
         Some(Value::Decimal(d)) => {
-            let f = d.to_f64().unwrap_or_default();
+            let f = d
+                .to_f64()
+                .expect("Decimal out of f64 range — check test fixture");
             let actual_int = f.round() as i64;
             assert_eq!(
                 actual_int, expected_amount,
@@ -441,7 +449,9 @@ fn assert_allowance_amount_euro(world: &mut RegelrechtWorld, expected: String) {
     let actual = world.get_output("hoogte_zorgtoeslag");
     match actual {
         Some(Value::Decimal(d)) => {
-            let f = d.to_f64().unwrap_or_default();
+            let f = d
+                .to_f64()
+                .expect("Decimal out of f64 range — check test fixture");
             // Convert eurocent to euro for comparison
             let actual_euro = f / 100.0;
             let diff = (actual_euro - expected_euro).abs();
