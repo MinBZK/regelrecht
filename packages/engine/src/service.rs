@@ -247,10 +247,9 @@ fn hash_value(value: &Value, hasher: &mut impl Hasher) {
         Value::Null => {}
         Value::Bool(b) => b.hash(hasher),
         Value::Int(i) => i.hash(hasher),
-        Value::Float(f) => {
-            // Canonicalize -0.0 → +0.0 so hash matches PartialEq (IEEE 754: -0.0 == +0.0)
-            let canonical = if *f == 0.0 { 0.0_f64 } else { *f };
-            canonical.to_bits().hash(hasher);
+        Value::Decimal(d) => {
+            // Normalize so equal decimals (1.0 == 1.00) hash identically, matching PartialEq.
+            d.normalize().hash(hasher);
         }
         Value::String(s) => s.hash(hasher),
         Value::Array(arr) => {
@@ -1684,29 +1683,10 @@ impl LawExecutionService {
         // Apply lex specialis overrides
         self.apply_overrides(&mut result, article, law, &post_params, res_ctx)?;
 
-        // Enforce TypeSpec: round eurocent outputs to integer.
-        // This applies only to top-level article outputs (the API boundary).
-        // Intermediate values within article logic remain as Float to preserve
-        // precision during calculation; rounding happens here at the output edge.
-        if let Some(exec) = article.get_execution_spec() {
-            if let Some(outputs) = &exec.output {
-                for output_spec in outputs {
-                    let is_eurocent = output_spec
-                        .type_spec
-                        .as_ref()
-                        .and_then(|ts| ts.unit.as_deref())
-                        == Some("eurocent");
-                    if is_eurocent {
-                        if let Some(Value::Float(f)) = result.outputs.get(&output_spec.name) {
-                            let rounded = crate::operations::f64_to_i64_safe(f.round())?;
-                            result
-                                .outputs
-                                .insert(output_spec.name.clone(), Value::Int(rounded));
-                        }
-                    }
-                }
-            }
-        }
+        // RFC-024: the engine no longer rounds eurocent outputs implicitly. Rounding
+        // is a law-modeled instruction — a law that must round to whole euros/cents
+        // does so with an explicit ROUND/CEIL/FLOOR/TRUNCATE operation. Outputs flow
+        // out as exact Decimals; `unit` is a label, never a rounding trigger (RFC-023).
 
         // RFC-012 Propagate mode: taint all outputs from articles with untranslatables
         if !taints.is_empty() {

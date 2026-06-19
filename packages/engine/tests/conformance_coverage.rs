@@ -11,7 +11,7 @@ use std::collections::HashSet;
 /// Bump this path when a new schema version adds operations: per RFC-014 each
 /// schema version carries its own manifest, so the version in the path and the
 /// `schema_version` field inside the manifest must stay in lockstep.
-const MANIFEST: &str = include_str!("../../../conformance/v0.5.4/manifest.json");
+const MANIFEST: &str = include_str!("../../../conformance/v0.5.5/manifest.json");
 
 #[test]
 fn every_schema_operation_has_a_conformance_level() {

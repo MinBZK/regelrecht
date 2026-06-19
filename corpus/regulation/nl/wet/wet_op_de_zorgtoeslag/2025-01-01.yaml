@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.0/schema/v0.5.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.5/schema.json
 $id: wet_op_de_zorgtoeslag
 regulatory_layer: WET
 publication_date: '2024-12-20'
@@ -120,6 +120,11 @@ articles:
               unit: eurocent
         actions:
           - output: hoogte_zorgtoeslag
+            # RFC-024: round the toeslag to whole eurocent (rekenkundig/half-up).
+            # The engine no longer rounds eurocent outputs implicitly; the rounding
+            # is stated explicitly here as a law-modeled instruction.
+            operation: ROUND
+            precision: 0
             value:
               operation: MAX
               values:

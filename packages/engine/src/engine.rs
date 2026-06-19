@@ -527,6 +527,14 @@ impl<'a> ArticleEngine<'a> {
                 ))
             })
         };
+        let require_precision = |op: &Operation| {
+            action.precision.ok_or_else(|| {
+                EngineError::InvalidOperation(format!(
+                    "{} requires 'precision' at action level",
+                    op.name()
+                ))
+            })
+        };
 
         match operation {
             // Comparison operations (subject + value)
@@ -575,6 +583,24 @@ impl<'a> ArticleEngine<'a> {
             }),
             Operation::Min => Ok(ActionOperation::Min {
                 values: require_values(operation)?,
+            }),
+
+            // Rounding operations (unary value + precision; RFC-024)
+            Operation::Round => Ok(ActionOperation::Round {
+                value: require_value(operation)?,
+                precision: require_precision(operation)?,
+            }),
+            Operation::Ceil => Ok(ActionOperation::Ceil {
+                value: require_value(operation)?,
+                precision: require_precision(operation)?,
+            }),
+            Operation::Floor => Ok(ActionOperation::Floor {
+                value: require_value(operation)?,
+                precision: require_precision(operation)?,
+            }),
+            Operation::Truncate => Ok(ActionOperation::Truncate {
+                value: require_value(operation)?,
+                precision: require_precision(operation)?,
             }),
 
             // Logical operations
@@ -635,6 +661,7 @@ impl<'a> ArticleEngine<'a> {
 mod tests {
     use super::*;
     use crate::article::{ArticleBasedLaw, LawLoad};
+    use rust_decimal_macros::dec;
 
     fn make_simple_law() -> ArticleBasedLaw {
         let yaml = r#"
@@ -803,7 +830,10 @@ articles:
         );
 
         // tax_amount = 4000 * 0.21 = 840.0
-        assert_eq!(result.outputs.get("tax_amount"), Some(&Value::Float(840.0)));
+        assert_eq!(
+            result.outputs.get("tax_amount"),
+            Some(&Value::Decimal(dec!(840)))
+        );
     }
 
     #[test]
@@ -822,7 +852,10 @@ articles:
         assert_eq!(result.outputs.get("taxable_income"), Some(&Value::Int(0)));
 
         // tax_amount = 0 * 0.21 = 0.0
-        assert_eq!(result.outputs.get("tax_amount"), Some(&Value::Float(0.0)));
+        assert_eq!(
+            result.outputs.get("tax_amount"),
+            Some(&Value::Decimal(dec!(0)))
+        );
     }
 
     // -------------------------------------------------------------------------

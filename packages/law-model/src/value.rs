@@ -3,6 +3,8 @@
 //! `Value`, `Operation` and `ParameterType` describe the *format* of a law
 //! document (literals, operation tags, parameter types). They are the canonical
 //! representation re-exported by the engine at `regelrecht_engine::types`.
+use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
+use rust_decimal::Decimal;
 use serde::de::{self, MapAccess, SeqAccess, Visitor};
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -11,16 +13,16 @@ use std::fmt;
 
 /// Represents any value in the engine (similar to Python's Any)
 ///
-/// Note: `PartialEq` is implemented manually so that `Float(NaN) == Float(NaN)`
-/// returns `true`. In the law execution domain, NaN represents invalid/missing
-/// data and two missing values are considered equal for comparison purposes.
-/// This matches the value-equality semantics used by the engine's operations
-/// (`regelrecht_engine::operations`).
+/// Non-integer numbers are represented as an exact [`rust_decimal::Decimal`]
+/// rather than `f64`, so intermediate calculations carry full precision and
+/// rounding only ever happens at an explicit `ROUND`/`CEIL`/`FLOOR`/`TRUNCATE`
+/// operation (RFC-024). `Decimal` has no NaN: non-finite `f64` reaching the
+/// engine boundary (NaN/∞) maps to [`Value::Null`] (the missing/invalid value).
 ///
 /// The `Untranslatable` variant (RFC-012 Layer 3) represents a value that
 /// originates from an article with untranslatable constructs. It propagates
-/// through operations like NaN in floating point: any operation involving an
-/// Untranslatable input produces an Untranslatable output.
+/// through operations: any operation involving an Untranslatable input produces
+/// an Untranslatable output.
 #[derive(Debug, Clone, Default)]
 pub enum Value {
     /// Null/None value
@@ -30,8 +32,8 @@ pub enum Value {
     Bool(bool),
     /// Integer value
     Int(i64),
-    /// Floating point value
-    Float(f64),
+    /// Exact decimal value (non-integer numbers)
+    Decimal(Decimal),
     /// String value
     String(String),
     /// Array of values
@@ -57,7 +59,7 @@ impl Serialize for Value {
             Value::Null => serializer.serialize_none(),
             Value::Bool(b) => serializer.serialize_bool(*b),
             Value::Int(i) => serializer.serialize_i64(*i),
-            Value::Float(f) => serializer.serialize_f64(*f),
+            Value::Decimal(d) => serializer.serialize_f64(d.to_f64().unwrap_or(0.0)),
             Value::String(s) => serializer.serialize_str(s),
             Value::Array(arr) => arr.serialize(serializer),
             Value::Object(map) => map.serialize(serializer),
@@ -102,12 +104,7 @@ impl<'de> Visitor<'de> for ValueVisitor {
     }
 
     fn visit_f64<E: de::Error>(self, v: f64) -> std::result::Result<Value, E> {
-        // Coerce whole-number floats to Int for consistency
-        if v.fract() == 0.0 && v >= i64::MIN as f64 && v <= i64::MAX as f64 {
-            Ok(Value::Int(v as i64))
-        } else {
-            Ok(Value::Float(v))
-        }
+        Ok(f64_to_value(v))
     }
 
     fn visit_str<E: de::Error>(self, v: &str) -> std::result::Result<Value, E> {
@@ -161,13 +158,7 @@ impl PartialEq for Value {
             (Value::Null, Value::Null) => true,
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Int(a), Value::Int(b)) => a == b,
-            (Value::Float(a), Value::Float(b)) => {
-                // NaN == NaN is true in the law execution domain
-                if a.is_nan() && b.is_nan() {
-                    return true;
-                }
-                a == b
-            }
+            (Value::Decimal(a), Value::Decimal(b)) => a == b,
             (Value::String(a), Value::String(b)) => a == b,
             (Value::Array(a), Value::Array(b)) => a == b,
             (Value::Object(a), Value::Object(b)) => a == b,
@@ -199,7 +190,7 @@ impl Value {
     pub fn as_int(&self) -> Option<i64> {
         match self {
             Value::Int(i) => Some(*i),
-            Value::Float(f) => Some(*f as i64),
+            Value::Decimal(d) => d.trunc().to_i64(),
             _ => None,
         }
     }
@@ -207,8 +198,17 @@ impl Value {
     /// Try to get value as f64
     pub fn as_float(&self) -> Option<f64> {
         match self {
-            Value::Float(f) => Some(*f),
+            Value::Decimal(d) => d.to_f64(),
             Value::Int(i) => Some(*i as f64),
+            _ => None,
+        }
+    }
+
+    /// Try to get value as an exact [`Decimal`] (integers widen to decimal).
+    pub fn as_decimal(&self) -> Option<Decimal> {
+        match self {
+            Value::Decimal(d) => Some(*d),
+            Value::Int(i) => Some(Decimal::from(*i)),
             _ => None,
         }
     }
@@ -248,7 +248,7 @@ impl Value {
             Value::Null => "null",
             Value::Bool(_) => "boolean",
             Value::Int(_) => "integer",
-            Value::Float(_) => "float",
+            Value::Decimal(_) => "decimal",
             Value::String(_) => "string",
             Value::Array(_) => "array",
             Value::Object(_) => "object",
@@ -257,15 +257,12 @@ impl Value {
     }
 
     /// Convert value to boolean (Python-style truthiness)
-    ///
-    /// Note: NaN is treated as falsy (unlike Python where `bool(float('nan'))` is True).
-    /// This is intentional for law execution where NaN represents invalid/missing data.
     pub fn to_bool(&self) -> bool {
         match self {
             Value::Null => false,
             Value::Bool(b) => *b,
             Value::Int(i) => *i != 0,
-            Value::Float(f) => *f != 0.0 && !f.is_nan(),
+            Value::Decimal(d) => !d.is_zero(),
             Value::String(s) => !s.is_empty(),
             Value::Array(a) => !a.is_empty(),
             Value::Object(o) => !o.is_empty(),
@@ -294,7 +291,13 @@ impl From<i32> for Value {
 
 impl From<f64> for Value {
     fn from(f: f64) -> Self {
-        Value::Float(f)
+        f64_to_value(f)
+    }
+}
+
+impl From<Decimal> for Value {
+    fn from(d: Decimal) -> Self {
+        Value::Decimal(d)
     }
 }
 
@@ -325,19 +328,39 @@ impl<T: Into<Value>> From<Option<T>> for Value {
     }
 }
 
+/// Convert an `f64` to a [`Value`], coercing whole numbers to [`Value::Int`] and
+/// other finite values to an exact [`Value::Decimal`]. Non-finite values
+/// (NaN/∞), which have no `Decimal` representation, map to [`Value::Null`] (the
+/// missing/invalid value).
+pub fn f64_to_value(v: f64) -> Value {
+    if v.fract() == 0.0 && v >= i64::MIN as f64 && v <= i64::MAX as f64 {
+        Value::Int(v as i64)
+    } else {
+        match Decimal::from_f64(v) {
+            Some(d) => Value::Decimal(d),
+            None => Value::Null,
+        }
+    }
+}
+
 /// Coerce whole-number JSON floats to Int for consistency.
 fn json_number_to_value(n: &serde_json::Number) -> Value {
     if let Some(i) = n.as_i64() {
         Value::Int(i)
     } else if let Some(f) = n.as_f64() {
-        if f.fract() == 0.0 && f >= i64::MIN as f64 && f <= i64::MAX as f64 {
-            Value::Int(f as i64)
-        } else {
-            Value::Float(f)
-        }
+        f64_to_value(f)
     } else {
         Value::Null
     }
+}
+
+/// Convert an exact [`Decimal`] to a JSON number, falling back to `null` only if
+/// the value somehow has no `f64` representation.
+fn decimal_to_json(d: Decimal) -> serde_json::Value {
+    d.to_f64()
+        .and_then(serde_json::Number::from_f64)
+        .map(serde_json::Value::Number)
+        .unwrap_or(serde_json::Value::Null)
 }
 
 /// If the JSON object carries the Untranslatable marker, build the variant.
@@ -410,7 +433,7 @@ impl From<&Value> for serde_json::Value {
             Value::Null => serde_json::Value::Null,
             Value::Bool(b) => serde_json::Value::Bool(*b),
             Value::Int(i) => serde_json::json!(*i),
-            Value::Float(f) => serde_json::json!(*f),
+            Value::Decimal(d) => decimal_to_json(*d),
             Value::String(s) => serde_json::Value::String(s.clone()),
             Value::Array(arr) => serde_json::Value::Array(arr.iter().map(Into::into).collect()),
             Value::Object(map) => {
@@ -433,7 +456,7 @@ impl From<Value> for serde_json::Value {
             Value::Null => serde_json::Value::Null,
             Value::Bool(b) => serde_json::Value::Bool(b),
             Value::Int(i) => serde_json::json!(i),
-            Value::Float(f) => serde_json::json!(f),
+            Value::Decimal(d) => decimal_to_json(d),
             Value::String(s) => serde_json::Value::String(s),
             Value::Array(arr) => {
                 serde_json::Value::Array(arr.into_iter().map(Into::into).collect())
@@ -458,7 +481,7 @@ impl fmt::Display for Value {
             Value::Null => write!(f, "null"),
             Value::Bool(b) => write!(f, "{}", b),
             Value::Int(i) => write!(f, "{}", i),
-            Value::Float(fl) => write!(f, "{}", fl),
+            Value::Decimal(d) => write!(f, "{}", d),
             Value::String(s) => write!(f, "{}", s),
             Value::Array(arr) => {
                 write!(f, "[")?;
@@ -507,6 +530,12 @@ pub enum Operation {
     // Aggregate operations (2)
     Max,
     Min,
+
+    // Rounding operations (4) — unary, with a `precision` (RFC-024)
+    Round,
+    Ceil,
+    Floor,
+    Truncate,
 
     // Logical operations (3)
     And,
@@ -560,6 +589,10 @@ impl Operation {
         Operation::Divide,
         Operation::Max,
         Operation::Min,
+        Operation::Round,
+        Operation::Ceil,
+        Operation::Floor,
+        Operation::Truncate,
         Operation::And,
         Operation::Or,
         Operation::Not,
@@ -601,6 +634,10 @@ impl Operation {
         Operation::Divide,
         Operation::Max,
         Operation::Min,
+        Operation::Round,
+        Operation::Ceil,
+        Operation::Floor,
+        Operation::Truncate,
         Operation::And,
         Operation::Or,
         Operation::Not,
@@ -644,6 +681,14 @@ impl Operation {
         matches!(self, Operation::Max | Operation::Min)
     }
 
+    /// Check if this is a rounding operation (RFC-024)
+    pub fn is_rounding(&self) -> bool {
+        matches!(
+            self,
+            Operation::Round | Operation::Ceil | Operation::Floor | Operation::Truncate
+        )
+    }
+
     /// Check if this is a logical operation
     pub fn is_logical(&self) -> bool {
         matches!(self, Operation::And | Operation::Or | Operation::Not)
@@ -680,6 +725,10 @@ impl Operation {
             Operation::Divide => "DIVIDE",
             Operation::Max => "MAX",
             Operation::Min => "MIN",
+            Operation::Round => "ROUND",
+            Operation::Ceil => "CEIL",
+            Operation::Floor => "FLOOR",
+            Operation::Truncate => "TRUNCATE",
             Operation::And => "AND",
             Operation::Or => "OR",
             Operation::Not => "NOT",
@@ -719,6 +768,7 @@ pub enum ParameterType {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rust_decimal_macros::dec;
 
     #[test]
     fn test_value_bool_conversion() {
@@ -729,10 +779,8 @@ mod tests {
         assert!(!Value::Int(0).to_bool());
         assert!(Value::String("hello".to_string()).to_bool());
         assert!(!Value::String("".to_string()).to_bool());
-        // NaN is falsy (intentional deviation from Python)
-        assert!(!Value::Float(f64::NAN).to_bool());
-        assert!(Value::Float(1.0).to_bool());
-        assert!(!Value::Float(0.0).to_bool());
+        assert!(Value::Decimal(dec!(1.5)).to_bool());
+        assert!(!Value::Decimal(dec!(0.0)).to_bool());
         // Untranslatable is falsy
         assert!(!Value::Untranslatable {
             article: "1".into(),
@@ -745,7 +793,11 @@ mod tests {
     fn test_value_from_primitives() {
         assert_eq!(Value::from(true), Value::Bool(true));
         assert_eq!(Value::from(42i64), Value::Int(42));
-        assert_eq!(Value::from(3.14f64), Value::Float(3.14));
+        assert_eq!(Value::from(3.14f64), Value::Decimal(dec!(3.14)));
+        // Whole-number floats coerce to Int
+        assert_eq!(Value::from(5.0f64), Value::Int(5));
+        // Non-finite floats have no Decimal representation -> Null
+        assert_eq!(Value::from(f64::NAN), Value::Null);
         assert_eq!(Value::from("test"), Value::String("test".to_string()));
     }
 
@@ -779,15 +831,12 @@ mod tests {
     }
 
     #[test]
-    fn test_value_nan_equality() {
-        // NaN == NaN should be true (intentional domain decision for law execution)
-        assert_eq!(Value::Float(f64::NAN), Value::Float(f64::NAN));
-        // NaN != non-NaN
-        assert_ne!(Value::Float(f64::NAN), Value::Float(0.0));
-        assert_ne!(Value::Float(0.0), Value::Float(f64::NAN));
-        // Normal floats still work
-        assert_eq!(Value::Float(1.0), Value::Float(1.0));
-        assert_ne!(Value::Float(1.0), Value::Float(2.0));
+    fn test_value_decimal_equality() {
+        assert_eq!(Value::Decimal(dec!(1.5)), Value::Decimal(dec!(1.5)));
+        assert_ne!(Value::Decimal(dec!(1.5)), Value::Decimal(dec!(2.5)));
+        // Int and Decimal are distinct variants at the Value level (numeric
+        // cross-type equality is handled by the engine's `values_equal`).
+        assert_ne!(Value::Int(1), Value::Decimal(dec!(1.0)));
     }
 
     #[test]
@@ -825,7 +874,7 @@ mod tests {
             Value::Null,
             Value::Bool(true),
             Value::Int(42),
-            Value::Float(3.14),
+            Value::Decimal(dec!(3.14)),
             Value::String("test".to_string()),
             Value::Array(vec![Value::Int(1), Value::Int(2)]),
         ];
