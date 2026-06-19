@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
 import { useDependencies } from '../composables/useDependencies.js';
+import { loadLawVersions } from '../composables/useEngine.js';
 import { useScenarios, isScenarioMismatch } from '../composables/useScenarios.js';
 import { lawVersionsUrl } from '../composables/corpusUrls.js';
 import { apiFetchJson } from '../lib/apiFetch.js';
@@ -227,7 +228,7 @@ async function runDependencyLoad() {
       try {
         if (!props.engine.hasLaw(depId)) {
           const yamls = await fetchLawVersions(depId);
-          for (const versionYaml of yamls) props.engine.loadLaw(versionYaml);
+          loadLawVersions(props.engine, yamls, depId);
         }
       } catch (e) {
         console.warn(`Failed to load scenario dependency '${depId}':`, e);

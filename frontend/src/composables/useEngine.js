@@ -97,12 +97,42 @@ async function loadDependency(lawId, trajectRef = null) {
   const yamls = await apiFetchJson(lawVersionsUrl(trajectRef, lawId), {
     errorMessage: (status) => `Failed to fetch versions of law '${lawId}': ${status}`,
   });
-  const versions = Array.isArray(yamls) ? yamls : [];
-  for (const versionYaml of versions) engine.loadLaw(versionYaml);
-  // Only record the scope once a body is actually loaded, so an empty
-  // result (unknown law) stays retryable rather than masking the law as
-  // "loaded under this scope".
-  if (versions.length > 0) loadedScopes.set(lawId, scope);
+  // Only record the scope once a body actually loaded, so an empty result
+  // (unknown law) — or one whose every version was unloadable — stays
+  // retryable rather than masking the law as "loaded under this scope".
+  if (loadLawVersions(engine, yamls, lawId)) {
+    loadedScopes.set(lawId, scope);
+  }
+}
+
+/**
+ * Load a law's full version set into the engine, **isolating each version**.
+ *
+ * A single unloadable version must not prevent the engine from loading the
+ * law's other, executable versions: a federated corpus routinely carries
+ * versions the WASM engine can't parse (an older-schema or text-only
+ * *harvested* version alongside a small executable one). Without isolation,
+ * `engine.loadLaw` throwing on one version would abort the whole law and the
+ * resolver would report "Law not found" even though a usable version existed.
+ * The engine's date-aware `select_in` then picks the in-force version among
+ * whatever loaded.
+ *
+ * @param {object} engine - WasmEngine instance
+ * @param {string[]} yamls - version YAMLs (any/empty tolerated)
+ * @param {string} lawId - for diagnostics
+ * @returns {boolean} true if at least one version loaded
+ */
+export function loadLawVersions(engine, yamls, lawId) {
+  let anyLoaded = false;
+  for (const versionYaml of yamls || []) {
+    try {
+      engine.loadLaw(versionYaml);
+      anyLoaded = true;
+    } catch (e) {
+      console.warn(`Skipped an unloadable version of '${lawId}':`, e);
+    }
+  }
+  return anyLoaded;
 }
 
 /**

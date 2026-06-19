@@ -17,6 +17,10 @@ function fakeEngine() {
     bodies,
     hasLaw: (id) => loaded.has(id),
     loadLaw: (yamlText) => {
+      // Model the real WASM engine rejecting an unparseable version (e.g. an
+      // old-schema or text-only harvested version): a body marked UNLOADABLE
+      // throws, and must not register the law.
+      if (yamlText.includes('UNLOADABLE')) throw new Error('unparseable version');
       bodies.push(yamlText);
       const m = yamlText.match(/\$id:\s*(\S+)/);
       if (m) loaded.add(m[1]);
@@ -94,6 +98,26 @@ describe('useDependencies.loadAllDependencies', () => {
     expect(zvwBodies).toHaveLength(2);
     expect(zvwBodies).toContain(inForce);
     expect(zvwBodies).toContain(future);
+  });
+
+  it('isolates an unloadable version: a bad version does not drop the good ones', async () => {
+    // Regression for the federated-corpus case where a law has an executable
+    // version AND an old-schema / text-only harvested version the engine can't
+    // parse. The harvested version must not abort the whole law — the engine
+    // must still hold the executable one so select_in can resolve it.
+    const bad = '$id: zorgverzekeringswet\nvalid_from: \'2026-02-21\'\nUNLOADABLE: true\n';
+    const good = '$id: zorgverzekeringswet\nvalid_from: \'2025-01-01\'\narticles: []\n';
+    const engine = fakeEngine();
+    const fetchLawVersions = vi.fn(async (id) =>
+      id === 'zorgverzekeringswet' ? [bad, good] : DEP_VERSIONS[id],
+    );
+
+    const { loadAllDependencies } = useDependencies();
+    await loadAllDependencies(MAIN_LAW, engine, fetchLawVersions);
+
+    expect(engine.loaded.has('zorgverzekeringswet')).toBe(true);
+    expect(engine.bodies).toContain(good);
+    expect(engine.bodies).not.toContain(bad);
   });
 
   it('treats an empty version list as a missing dependency (requests harvest)', async () => {

@@ -11,6 +11,7 @@
 import { ref } from 'vue';
 import yaml from 'js-yaml';
 import { useBwbHarvest } from './useBwbHarvest.js';
+import { loadLawVersions } from './useEngine.js';
 import { implementorsUrl } from './corpusUrls.js';
 import { apiFetchJson } from '../lib/apiFetch.js';
 
@@ -101,14 +102,13 @@ export function useDependencies() {
 
         try {
           const yamls = await fetchLawVersions(lawId);
-          if (!yamls || yamls.length === 0) {
-            // No version of this law is available — treat as a missing
-            // dependency (harvest is requested below), same as a fetch error.
-            throw new Error(`no versions returned for '${lawId}'`);
+          // Load every version (isolating each) so the engine's date-aware
+          // selection can pick the one in force on the scenario's calculation
+          // date. No version loading — empty list or every version unloadable —
+          // is treated as a missing dependency (harvest requested below).
+          if (!loadLawVersions(engine, yamls, lawId)) {
+            throw new Error(`no loadable version for '${lawId}'`);
           }
-          // Load every version so the engine's date-aware selection can pick
-          // the one in force on the scenario's calculation date.
-          for (const versionYaml of yamls) engine.loadLaw(versionYaml);
           loaded++;
           loadedDeps.value = [...loadedDeps.value, lawId];
           progress.value = `${loaded}/${total} wetten geladen`;
@@ -205,8 +205,7 @@ export function useDependencies() {
       try {
         if (!engine.hasLaw(implId)) {
           const yamls = await fetchLawVersions(implId);
-          if (yamls && yamls.length > 0) {
-            for (const versionYaml of yamls) engine.loadLaw(versionYaml);
+          if (loadLawVersions(engine, yamls, implId)) {
             loadedDeps.value = [...loadedDeps.value, implId];
           }
         }
