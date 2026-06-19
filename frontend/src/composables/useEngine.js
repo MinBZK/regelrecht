@@ -124,7 +124,7 @@ async function loadDependency(lawId, trajectRef = null) {
  */
 export function loadLawVersions(engine, yamls, lawId) {
   let anyLoaded = false;
-  for (const versionYaml of yamls || []) {
+  for (const versionYaml of Array.isArray(yamls) ? yamls : []) {
     try {
       engine.loadLaw(versionYaml);
       anyLoaded = true;

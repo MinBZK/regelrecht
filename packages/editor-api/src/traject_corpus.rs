@@ -406,11 +406,30 @@ impl TrajectCorpus {
             let Some(entry) = self.corpus.backends.get(&source_id) else {
                 continue;
             };
+            // Isolate per-version fetch failures: a transient backend error for
+            // one version (e.g. a central GitHub blip on a future-dated version)
+            // must not fail the whole set and take down a law whose in-force
+            // version is locally available. Skip + log, mirroring the frontend's
+            // per-version `loadLawVersions` isolation. A law that ends up with no
+            // fetchable version surfaces to the loader as a missing dependency
+            // (retried on the next run), not a hard 502.
             let content = {
                 let backend = entry.backend.lock().await;
-                backend
+                match backend
                     .read_file(std::path::Path::new(&relative_path))
-                    .await?
+                    .await
+                {
+                    Ok(content) => content,
+                    Err(e) => {
+                        tracing::warn!(
+                            law_id = %law_id,
+                            source_id = %source_id,
+                            error = %e,
+                            "skipping a law version that failed to fetch"
+                        );
+                        continue;
+                    }
+                }
             };
             if let Some(content) = content {
                 out.push(content);

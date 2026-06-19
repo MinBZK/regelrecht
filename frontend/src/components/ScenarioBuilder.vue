@@ -169,7 +169,11 @@ async function fetchLawVersions(lawId) {
     errorMessage: (status) => `Failed to fetch versions of law '${lawId}': ${status}`,
   });
   const list = Array.isArray(yamls) ? yamls : [];
-  versionsCache[lawId] = list;
+  // Only cache a non-empty result. An empty array (unknown/not-yet-harvested
+  // law) must stay uncached so a retry after harvest re-fetches rather than
+  // returning the stale `[]` — `[]` is truthy, so caching it would short-
+  // circuit the `if (versionsCache[lawId])` guard forever.
+  if (list.length > 0) versionsCache[lawId] = list;
   return list;
 }
 
