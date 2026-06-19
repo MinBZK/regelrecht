@@ -1149,7 +1149,31 @@
           "$ref": "#/definitions/legalBasis"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "operation"
+            ],
+            "properties": {
+              "operation": {
+                "enum": [
+                  "ROUND",
+                  "CEIL",
+                  "FLOOR",
+                  "TRUNCATE"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "precision"
+            ]
+          }
+        }
+      ]
     },
     "legalBasis": {
       "type": "object",

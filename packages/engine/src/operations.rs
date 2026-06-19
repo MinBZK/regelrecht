@@ -1505,7 +1505,8 @@ fn to_decimal(val: &Value) -> Result<Decimal> {
 pub(crate) fn decimal_to_i64_safe(d: Decimal) -> Result<i64> {
     let truncated = d.trunc();
     if truncated != d {
-        return Err(EngineError::ArithmeticOverflow(format!(
+        // Not an overflow — the value simply has a fractional part.
+        return Err(EngineError::InvalidOperation(format!(
             "Value {} is not an integer",
             d
         )));
@@ -2396,9 +2397,10 @@ mod tests {
 
         #[test]
         fn test_decimal_to_i64_safe_rejects_non_integer() {
+            // A fractional value is "not an integer" (InvalidOperation), not an overflow.
             assert!(matches!(
                 decimal_to_i64_safe(dec!(42.5)),
-                Err(EngineError::ArithmeticOverflow(_))
+                Err(EngineError::InvalidOperation(_))
             ));
             assert_eq!(decimal_to_i64_safe(dec!(42)).unwrap(), 42);
             assert_eq!(decimal_to_i64_safe(dec!(-42)).unwrap(), -42);
