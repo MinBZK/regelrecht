@@ -317,9 +317,11 @@ impl SourceMap {
             entries.push(law);
         }
 
-        // Newest date first; undated entries (None) sort last. `cached_key`
-        // parses each path once (the key allocates a String), mirroring the
-        // version sort in `resolver.rs`.
+        // Newest date first; undated entries (None) sort last. This re-sorts on
+        // every insertion — O(N) key allocations per insert, O(N²) to build a
+        // law's set one version at a time — negligible at the corpus's 1–5
+        // versions per law. If version counts ever grow large, prefer a single
+        // deferred sort in `get_law_versions` instead.
         entries.sort_by_cached_key(|e| std::cmp::Reverse(extract_date_from_path(&e.file_path)));
     }
 

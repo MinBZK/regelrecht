@@ -388,8 +388,12 @@ impl TrajectCorpus {
 
         let mut out = Vec::with_capacity(entries.len());
         for (source_id, relative_path, body) in entries {
-            // Read-your-writes for the saved/branch version.
-            if saved_key.as_ref() == Some(&(source_id.clone(), relative_path.clone())) {
+            // Read-your-writes for the saved/branch version. Compare by
+            // reference (no per-iteration clone of the two owned Strings).
+            if saved_key
+                .as_ref()
+                .is_some_and(|(s, r)| s == &source_id && r == &relative_path)
+            {
                 if let Some(body) = &saved_body {
                     out.push(body.clone());
                     continue;
@@ -431,8 +435,17 @@ impl TrajectCorpus {
                     }
                 }
             };
-            if let Some(content) = content {
-                out.push(content);
+            match content {
+                Some(content) => out.push(content),
+                // Enumerated in the index but the blob is gone — an index/backend
+                // inconsistency. Skip like the Err path, but log it: same
+                // diagnosability concern, and this path is new.
+                None => tracing::warn!(
+                    law_id = %law_id,
+                    source_id = %source_id,
+                    relative_path = %relative_path,
+                    "skipping a law version whose blob was not found on the backend"
+                ),
             }
         }
         Ok(out)
