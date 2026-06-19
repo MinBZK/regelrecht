@@ -84,6 +84,11 @@ fn values_match(expected: &serde_json::Value, actual: &Value) -> bool {
         }
         // Numeric comparison (Int or exact Decimal) with a small tolerance.
         (serde_json::Value::Number(e), actual) => {
+            // Known limitation, not an oversight: golden fixtures are JSON, and
+            // serde_json parses every number through f64, so the expected side is
+            // already f64. We therefore compare in f64 with a 1e-9 tolerance —
+            // the engine keeps Decimal precision internally, but the fixture
+            // format can't express more than f64 on the expected side.
             let actual_num = match actual {
                 Value::Int(a) => Some(*a as f64),
                 Value::Decimal(a) => a.to_f64(),

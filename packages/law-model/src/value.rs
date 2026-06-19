@@ -340,7 +340,12 @@ impl<T: Into<Value>> From<Option<T>> for Value {
 /// (NaN/∞), which have no `Decimal` representation, map to [`Value::Null`] (the
 /// missing/invalid value).
 pub fn f64_to_value(v: f64) -> Value {
-    if v.fract() == 0.0 && v >= i64::MIN as f64 && v <= i64::MAX as f64 {
+    // `i64::MIN as f64` is exact, but `i64::MAX as f64` rounds UP to i64::MAX+1,
+    // so the upper bound is strict (`<`) — otherwise a whole f64 equal to
+    // 9223372036854775808.0 would saturate to i64::MAX on `as i64`. Out-of-range
+    // whole numbers fall through to the exact Decimal branch instead.
+    const I64_MAX_F64: f64 = i64::MAX as f64;
+    if v.fract() == 0.0 && v >= i64::MIN as f64 && v < I64_MAX_F64 {
         Value::Int(v as i64)
     } else {
         match Decimal::from_f64(v) {
