@@ -144,8 +144,14 @@ impl ReadScope {
         match self {
             ReadScope::Traject(t) => t.law_yaml_versions(law_id).await,
             // The global corpus is fully loaded up front (like `law_yaml`), so
-            // bodies are present; filter any metadata-only sentinel so the
-            // loader never receives an empty YAML string.
+            // eagerly-loaded (local-source) bodies are present; filter any
+            // metadata-only sentinel so the loader never receives an empty YAML
+            // string. Asymmetry to note: GitHub-backed versions are metadata-
+            // only in the global view (never lazily fetched here, just as
+            // `law_yaml`'s Global branch can't fetch them), so they are omitted
+            // from the global endpoint. The traject-scoped path *does* lazily
+            // fetch them — and scenario execution always runs under a traject,
+            // so the omission never affects the dependency loader.
             ReadScope::Global(g) => Ok(g
                 .source_map
                 .get_law_versions(law_id)

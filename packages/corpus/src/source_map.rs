@@ -460,20 +460,25 @@ impl SourceMap {
     /// left untouched. If the caller writes a new file under a different
     /// `$id` that's a different operation (unsupported via this hook).
     pub fn update_yaml_content(&mut self, law_id: &str, new_content: String) -> bool {
-        let name = extract_law_name(&new_content);
-        let (display_name, implements) = derive_loaded_fields(&new_content);
-
-        let Some(law) = self.laws.get_mut(law_id) else {
-            return false;
+        // Parse only once the law is known to be present — an unknown id is a
+        // no-op, so don't pay for header parsing on that path. The borrow on
+        // `laws` is released at the end of the block so the `versions` entry
+        // (which reuses the derived fields) can be updated next.
+        let (file_path, name, display_name, implements) = {
+            let Some(law) = self.laws.get_mut(law_id) else {
+                return false;
+            };
+            let name = extract_law_name(&new_content);
+            let (display_name, implements) = derive_loaded_fields(&new_content);
+            law.name = name.clone();
+            law.display_name = display_name.clone();
+            law.implements = implements.clone();
+            law.yaml_content = new_content.clone();
+            // The in-memory content no longer matches the blob the source
+            // enumeration reported — drop the stale content identity.
+            law.content_sha = None;
+            (law.file_path.clone(), name, display_name, implements)
         };
-        law.name = name.clone();
-        law.display_name = display_name.clone();
-        law.implements = implements.clone();
-        law.yaml_content = new_content.clone();
-        // The in-memory content no longer matches the blob the source
-        // enumeration reported — drop the stale content identity.
-        law.content_sha = None;
-        let file_path = law.file_path.clone();
 
         // Keep the matching version entry coherent with the edited body so the
         // version-set loader (`get_law_versions`) reflects read-your-writes too.
@@ -1213,11 +1218,16 @@ mod tests {
 
     #[test]
     fn test_get_law_versions_priority_order_independent() {
-        // Same as above but indexing central first — outcome must be identical.
+        // Mirrors `..._unions_across_sources_keeping_future` (local 2025 +
+        // central 2025 + central 2099) but indexes central FIRST, so this
+        // exercises both order-independent behaviours at once: the contested
+        // 2025 date still resolves to the higher-priority local body, and
+        // central's future 2099 version is still kept in the union.
         let local_dir = TempDir::new().unwrap();
         let central_dir = TempDir::new().unwrap();
         write_yaml(local_dir.path(), "wet/my_law/2025-01-01.yaml", "my_law");
         write_yaml(central_dir.path(), "wet/my_law/2025-01-01.yaml", "my_law");
+        write_yaml(central_dir.path(), "wet/my_law/2099-01-01.yaml", "my_law");
 
         let local = make_source("local", "Local", local_dir.path(), 1);
         let central = make_source("central", "Central", central_dir.path(), 2);
@@ -1227,8 +1237,16 @@ mod tests {
         map.load_source(&local).unwrap();
 
         let versions = map.get_law_versions("my_law").unwrap();
-        assert_eq!(versions.len(), 1);
-        assert_eq!(versions[0].source_id, "local");
+        assert_eq!(versions.len(), 2, "expected the 2025 + 2099 union");
+        let v2025 = versions
+            .iter()
+            .find(|v| v.file_path.contains("2025-01-01"))
+            .unwrap();
+        assert_eq!(v2025.source_id, "local", "2025 date won by priority");
+        assert!(
+            versions.iter().any(|v| v.file_path.contains("2099-01-01")),
+            "central's future version must be kept regardless of index order"
+        );
     }
 
     #[test]
