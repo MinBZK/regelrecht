@@ -59,7 +59,14 @@ impl Serialize for Value {
             Value::Null => serializer.serialize_none(),
             Value::Bool(b) => serializer.serialize_bool(*b),
             Value::Int(i) => serializer.serialize_i64(*i),
-            Value::Decimal(d) => serializer.serialize_f64(d.to_f64().unwrap_or(0.0)),
+            Value::Decimal(d) => {
+                // Infallible within Decimal's value range (max ~7.9e28 << f64::MAX);
+                // surface the impossible case as an error rather than a wrong 0.0.
+                let f = d.to_f64().ok_or_else(|| {
+                    serde::ser::Error::custom(format!("Decimal {d} is not representable as f64"))
+                })?;
+                serializer.serialize_f64(f)
+            }
             Value::String(s) => serializer.serialize_str(s),
             Value::Array(arr) => arr.serialize(serializer),
             Value::Object(map) => map.serialize(serializer),
