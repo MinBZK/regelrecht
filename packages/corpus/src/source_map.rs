@@ -317,10 +317,10 @@ impl SourceMap {
             entries.push(law);
         }
 
-        entries.sort_by(|a, b| {
-            // Newest date first; undated entries (None) sort last.
-            extract_date_from_path(&b.file_path).cmp(&extract_date_from_path(&a.file_path))
-        });
+        // Newest date first; undated entries (None) sort last. `cached_key`
+        // parses each path once (the key allocates a String), mirroring the
+        // version sort in `resolver.rs`.
+        entries.sort_by_cached_key(|e| std::cmp::Reverse(extract_date_from_path(&e.file_path)));
     }
 
     /// Load a single fetched file (from GitHub or other remote) into the map.

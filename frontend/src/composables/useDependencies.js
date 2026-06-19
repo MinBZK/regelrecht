@@ -114,8 +114,13 @@ export function useDependencies() {
           progress.value = `${loaded}/${total} wetten geladen`;
 
           // Recurse for transitive deps. Collect from every version — a
-          // `source.regulation` reference can appear in one version's articles
-          // and not another's.
+          // `source.regulation` reference can appear in one version and not
+          // another, and a scenario may be evaluated at any calculation date
+          // (including a future one), so a reference introduced only by a
+          // future version must still be loadable. This can over-fetch a
+          // transitive law that no in-force version needs; that's an accepted,
+          // bounded cost — the engine's `select_in` simply never selects a
+          // not-yet-in-force version.
           const newDeps = [];
           for (const versionYaml of yamls) {
             collectDeps(yaml.load(versionYaml), visited, newDeps);
