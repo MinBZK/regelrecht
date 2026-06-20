@@ -7,6 +7,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import GithubSlugger from 'github-slugger'
 
 export interface RfcEntry {
   /** Numeric RFC number, e.g. 8 */
@@ -238,4 +239,104 @@ export function rfcSidebarItems(): { text: string; link: string }[] {
     { text: 'Overview', link: '/rfcs/' },
     ...getRfcs().map((r) => ({ text: `${r.id}: ${r.shortTitle}`, link: r.link })),
   ]
+}
+
+/** A cross-link target: the RFC page plus its section anchors. */
+export interface RfcTarget {
+  /** Zero-padded id, e.g. "RFC-008" */
+  id: string
+  /** Descriptive title, e.g. "Awb Administrative Procedures" */
+  title: string
+  /** Site-relative link to the page, e.g. "/rfcs/rfc-008" */
+  link: string
+  /**
+   * Section number (as a reader writes it after `§`, normalised) → the heading
+   * slug Astro generates. Normalisation removes the dots and lowercases, so
+   * "§9", "§1.2" and "§A.8" key on "9", "12", "a8" — matching how
+   * github-slugger collapses "9. …", "1.2. …" and "A.8 …" into ids.
+   */
+  sections: Map<string, string>
+}
+
+/**
+ * Normalise a section number the way github-slugger collapses a heading's
+ * leading numeric token: lowercase, drop dots and spaces. "1.2" → "12",
+ * "A.8" → "a8", "9" → "9". Used on both sides (heading parse and `§`
+ * reference) so the two cannot disagree.
+ */
+function normalizeSectionNumber(raw: string): string {
+  return raw.toLowerCase().replace(/[.\s]/g, '')
+}
+
+// Leading section token of a heading, e.g. "9. Foo" → "9", "A.8 Bar" → "A.8",
+// "1.2. Baz" → "1.2". Optional leading letter (appendix sections, optionally
+// with its own dot as in "A.8"), then dot-separated digit groups, then a
+// delimiter (the heading's own "." or the space before its title). Headings
+// without a number (Context, Why) produce no section entry and are reachable
+// only as the whole page.
+const HEADING_SECTION = /^((?:[A-Za-z]\.?)?\d+(?:\.\d+)*)[.\s]/
+
+/** Strip markdown inline syntax that would otherwise leak into a slug. */
+function headingText(line: string): string {
+  return line
+    .replace(/^#{1,6}\s+/, '')
+    .replace(/`([^`]*)`/g, '$1') // inline code: keep the contents
+    .trim()
+}
+
+/**
+ * Parse a single RFC file's body headings into a section-number → slug map,
+ * using the same github-slugger instance semantics Astro applies (a fresh
+ * slugger per document, so duplicate headings get -1/-2 suffixes in source
+ * order). Only headings that begin with a section number get an entry; the
+ * RFC page itself is always linkable without one.
+ */
+function parseSections(content: string): Map<string, string> {
+  const slugger = new GithubSlugger()
+  const sections = new Map<string, string>()
+  // Strip frontmatter so its lines never feed the slugger and shift suffixes.
+  const body = content.replace(FRONTMATTER, '')
+  let inFence = false
+  for (const line of body.split('\n')) {
+    // Track fenced code blocks so a "# comment" inside one is not a heading.
+    if (/^\s*(```|~~~)/.test(line)) {
+      inFence = !inFence
+      continue
+    }
+    if (inFence) continue
+    if (!/^#{1,6}\s/.test(line)) continue
+    const text = headingText(line)
+    // Slug every heading in order so duplicates dedupe exactly as Astro does.
+    const slug = slugger.slug(text)
+    const num = text.match(HEADING_SECTION)?.[1]
+    if (!num) continue
+    const key = normalizeSectionNumber(num)
+    // First heading wins for a given number; later collisions keep the slug
+    // they already produced (and the slugger has handled the id dedupe).
+    if (!sections.has(key)) sections.set(key, slug)
+  }
+  return sections
+}
+
+/**
+ * Every RFC keyed by its number, with the data the cross-link rehype plugin
+ * needs: the page link, the descriptive title (for link titles/aria), and the
+ * section-anchor map so `§N` references resolve to the right heading. Pure
+ * Node, runs at build time.
+ */
+export function rfcTargets(): Map<number, RfcTarget> {
+  const targets = new Map<number, RfcTarget>()
+  for (const rfc of getRfcs()) {
+    const content = readFileSync(
+      `${RFCS_DIR}/${rfc.link.replace('/rfcs/', '')}.md`,
+      'utf-8',
+    )
+    targets.set(rfc.num, {
+      id: rfc.id,
+      title: rfc.title,
+      link: rfc.link,
+      sections: parseSections(content),
+    })
+  }
+  return targets
 }
