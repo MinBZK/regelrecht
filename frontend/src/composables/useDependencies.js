@@ -11,6 +11,7 @@
 import { ref } from 'vue';
 import yaml from 'js-yaml';
 import { useBwbHarvest } from './useBwbHarvest.js';
+import { loadLawVersions } from './useEngine.js';
 import { implementorsUrl } from './corpusUrls.js';
 import { apiFetchJson } from '../lib/apiFetch.js';
 
@@ -58,15 +59,19 @@ export function useDependencies() {
    * the engine. Returns the law's `$id` (or null) so the caller can kick off
    * the off-critical-path `loadImplementors` scan.
    *
-   * `fetchLawYaml` already resolves through the active traject, so no traject
-   * ref is needed here.
+   * `fetchLawVersions` already resolves through the active traject, so no
+   * traject ref is needed here. It returns **all** versions of a law (the
+   * engine keys versions by `($id, valid_from)`, so several bodies of one law
+   * coexist), and the engine picks the version in force on the scenario's
+   * calculation date — a referenced law that has a future-dated version would
+   * otherwise load only that future version and fail "not yet in force".
    *
    * @param {string} lawYamlText - Raw YAML text of the main law
    * @param {object} engine - WasmEngine instance
-   * @param {(lawId: string) => Promise<string>} fetchLawYaml - Fetch law YAML by ID
+   * @param {(lawId: string) => Promise<string[]>} fetchLawVersions - Fetch all version YAMLs by ID
    * @returns {Promise<string|null>} The main law's `$id`.
    */
-  async function loadAllDependencies(lawYamlText, engine, fetchLawYaml) {
+  async function loadAllDependencies(lawYamlText, engine, fetchLawVersions) {
     loading.value = true;
     error.value = null;
     loadedDeps.value = [];
@@ -96,16 +101,37 @@ export function useDependencies() {
         }
 
         try {
-          const yamlText = await fetchLawYaml(lawId);
-          engine.loadLaw(yamlText);
+          const yamls = await fetchLawVersions(lawId);
+          // Load every version (isolating each) so the engine's date-aware
+          // selection can pick the one in force on the scenario's calculation
+          // date. No version loading — empty list or every version unloadable —
+          // is treated as a missing dependency (harvest requested below).
+          if (!loadLawVersions(engine, yamls, lawId)) {
+            throw new Error(`no loadable version for '${lawId}'`);
+          }
           loaded++;
           loadedDeps.value = [...loadedDeps.value, lawId];
           progress.value = `${loaded}/${total} wetten geladen`;
 
-          // Recurse into newly loaded law for transitive deps
-          const depLaw = yaml.load(yamlText);
+          // Recurse for transitive deps. Collect from every version — a
+          // `source.regulation` reference can appear in one version and not
+          // another, and a scenario may be evaluated at any calculation date
+          // (including a future one), so a reference introduced only by a
+          // future version must still be loadable. This can over-fetch a
+          // transitive law that no in-force version needs; that's an accepted,
+          // bounded cost — the engine's `select_in` simply never selects a
+          // not-yet-in-force version.
           const newDeps = [];
-          collectDeps(depLaw, visited, newDeps);
+          for (const versionYaml of yamls) {
+            // Isolate the ref scan per version too: a version that loaded into
+            // the engine but is malformed for `js-yaml` must not throw here and
+            // get the (already-loaded) law spuriously marked missing + harvested.
+            try {
+              collectDeps(yaml.load(versionYaml), visited, newDeps);
+            } catch (e) {
+              console.warn(`Skipped transitive-ref scan of an unparseable version of '${lawId}':`, e);
+            }
+          }
           if (newDeps.length > 0) {
             toLoad.push(...newDeps);
             total = toLoad.length;
@@ -154,10 +180,10 @@ export function useDependencies() {
    *
    * @param {string|null} lawId - The `$id` of the law to find implementors of.
    * @param {object} engine - WasmEngine instance.
-   * @param {(lawId: string) => Promise<string>} fetchLawYaml - Fetch law YAML.
+   * @param {(lawId: string) => Promise<string[]>} fetchLawVersions - Fetch all version YAMLs.
    * @param {string|null} trajectRef - Active traject reference.
    */
-  async function loadImplementors(lawId, engine, fetchLawYaml, trajectRef = null) {
+  async function loadImplementors(lawId, engine, fetchLawVersions, trajectRef = null) {
     if (!lawId) return;
     const key = `${trajectRef || ''}::${lawId}`;
     if (implementorsKey === key) return;
@@ -185,9 +211,10 @@ export function useDependencies() {
     for (const implId of implementors) {
       try {
         if (!engine.hasLaw(implId)) {
-          const yamlText = await fetchLawYaml(implId);
-          engine.loadLaw(yamlText);
-          loadedDeps.value = [...loadedDeps.value, implId];
+          const yamls = await fetchLawVersions(implId);
+          if (loadLawVersions(engine, yamls, implId)) {
+            loadedDeps.value = [...loadedDeps.value, implId];
+          }
         }
       } catch (e) {
         console.warn(`Failed to load implementing regulation '${implId}':`, e);

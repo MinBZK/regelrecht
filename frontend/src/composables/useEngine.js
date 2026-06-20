@@ -4,8 +4,8 @@
  * Provides the engine and helpers for loading laws and dependencies.
  */
 import { ref } from 'vue';
-import { lawUrl } from './corpusUrls.js';
-import { apiFetchText } from '../lib/apiFetch.js';
+import { lawVersionsUrl } from './corpusUrls.js';
+import { apiFetchJson, apiFetchText } from '../lib/apiFetch.js';
 import { createLruMap } from '../lib/lruMap.js';
 
 let engineInstance = null;
@@ -68,14 +68,23 @@ async function initEngine() {
 }
 
 /**
- * Fetch law YAML from the API and load it into the engine. When
+ * Fetch a law's YAML from the API and load it into the engine. When
  * `trajectRef` is given the read goes through the traject's per-source
  * backends (read-your-writes for in-progress edits); omit it for the
  * global view.
  *
- * If the law was previously loaded under a *different* scope, unload
- * the stale copy first — otherwise scenario runs after a traject
- * switch would evaluate against the previous scope's dependencies.
+ * Loads **every** version of the law (not just today's-best) so the
+ * engine's date-aware resolution can pick the one in force on a given
+ * calculation date — the same contract the scenario dependency walker
+ * uses. This keeps a single "load a law into the engine" semantic: any
+ * caller (notes, gherkin steps) that brings a law into the shared engine
+ * brings its full version set, so the `engine.hasLaw` skip guard never
+ * leaves a law with only one (possibly future-dated) version loaded.
+ *
+ * If the law was previously loaded under a *different* scope, unload the
+ * stale copy first (`unloadLaw` drops all of its versions) — otherwise
+ * scenario runs after a traject switch would evaluate against the
+ * previous scope's dependencies.
  */
 async function loadDependency(lawId, trajectRef = null) {
   const engine = await initEngine();
@@ -85,11 +94,45 @@ async function loadDependency(lawId, trajectRef = null) {
     engine.unloadLaw(lawId);
   }
 
-  const yaml = await apiFetchText(lawUrl(trajectRef, lawId), {
-    errorMessage: (status) => `Failed to fetch law '${lawId}': ${status}`,
+  const yamls = await apiFetchJson(lawVersionsUrl(trajectRef, lawId), {
+    errorMessage: (status) => `Failed to fetch versions of law '${lawId}': ${status}`,
   });
-  engine.loadLaw(yaml);
-  loadedScopes.set(lawId, scope);
+  // Only record the scope once a body actually loaded, so an empty result
+  // (unknown law) — or one whose every version was unloadable — stays
+  // retryable rather than masking the law as "loaded under this scope".
+  if (loadLawVersions(engine, yamls, lawId)) {
+    loadedScopes.set(lawId, scope);
+  }
+}
+
+/**
+ * Load a law's full version set into the engine, **isolating each version**.
+ *
+ * A single unloadable version must not prevent the engine from loading the
+ * law's other, executable versions: a federated corpus routinely carries
+ * versions the WASM engine can't parse (an older-schema or text-only
+ * *harvested* version alongside a small executable one). Without isolation,
+ * `engine.loadLaw` throwing on one version would abort the whole law and the
+ * resolver would report "Law not found" even though a usable version existed.
+ * The engine's date-aware `select_in` then picks the in-force version among
+ * whatever loaded.
+ *
+ * @param {object} engine - WasmEngine instance
+ * @param {string[]} yamls - version YAMLs (any/empty tolerated)
+ * @param {string} lawId - for diagnostics
+ * @returns {boolean} true if at least one version loaded
+ */
+export function loadLawVersions(engine, yamls, lawId) {
+  let anyLoaded = false;
+  for (const versionYaml of Array.isArray(yamls) ? yamls : []) {
+    try {
+      engine.loadLaw(versionYaml);
+      anyLoaded = true;
+    } catch (e) {
+      console.warn(`Skipped an unloadable version of '${lawId}':`, e);
+    }
+  }
+  return anyLoaded;
 }
 
 /**

@@ -339,6 +339,118 @@ impl TrajectCorpus {
         Ok(Some(content))
     }
 
+    /// Like [`Self::law_yaml`], but returns **every** version of the law
+    /// rather than the single "best for today" one.
+    ///
+    /// The scenario dependency loader feeds all of these to the engine so its
+    /// `select_in` can pick the version in force on the scenario's calculation
+    /// date — fixing the case where a referenced law has a future-dated version
+    /// that would otherwise be the only one loaded (and so "not yet in force").
+    ///
+    /// Read-your-writes: the overlay / body cache hold the single saved (branch)
+    /// body, keyed by `law_id`; it is applied to the version whose source +
+    /// source-relative path matches the saved entry (`get_law`'s winner). Other
+    /// versions are served from the index body (local sources) or lazily fetched
+    /// via their own backend + `relative_path` (GitHub sources). Returns an empty
+    /// vec when no version of the id is indexed.
+    pub async fn law_yaml_versions(
+        &self,
+        law_id: &str,
+    ) -> Result<Vec<String>, regelrecht_corpus::error::CorpusError> {
+        // Snapshot the per-version index metadata, then drop the borrow before
+        // any await below.
+        let entries: Vec<(String, String, Option<String>)> = {
+            let Some(versions) = self.corpus.source_map.get_law_versions(law_id) else {
+                return Ok(Vec::new());
+            };
+            versions
+                .iter()
+                .map(|v| {
+                    let body = v.is_loaded().then(|| v.yaml_content.clone());
+                    (v.source_id.clone(), v.relative_path.clone(), body)
+                })
+                .collect()
+        };
+
+        // The overlay / body cache hold the saved body for the single best
+        // version (`get_law`'s winner); identify it so it's applied to the
+        // right version entry rather than all of them.
+        let saved_key = self
+            .corpus
+            .source_map
+            .get_law(law_id)
+            .map(|l| (l.source_id.clone(), l.relative_path.clone()));
+        let saved_body: Option<String> = if let Some(text) = self.overlay.read().await.get(law_id) {
+            Some(text.clone())
+        } else {
+            self.body_cache.read().await.get(law_id).cloned()
+        };
+
+        let mut out = Vec::with_capacity(entries.len());
+        for (source_id, relative_path, body) in entries {
+            // Read-your-writes for the saved/branch version. Compare by
+            // reference (no per-iteration clone of the two owned Strings).
+            if saved_key
+                .as_ref()
+                .is_some_and(|(s, r)| s == &source_id && r == &relative_path)
+            {
+                if let Some(body) = &saved_body {
+                    out.push(body.clone());
+                    continue;
+                }
+            }
+            // Eagerly-loaded (local) version body is already in the index.
+            if let Some(body) = body {
+                out.push(body);
+                continue;
+            }
+            // Metadata-only (GitHub) version — lazily fetch its body. A source
+            // whose backend was skipped at build time is treated as a missing
+            // version rather than failing the whole set.
+            let Some(entry) = self.corpus.backends.get(&source_id) else {
+                continue;
+            };
+            // Isolate per-version fetch failures: a transient backend error for
+            // one version (e.g. a central GitHub blip on a future-dated version)
+            // must not fail the whole set and take down a law whose in-force
+            // version is locally available. Skip + log, mirroring the frontend's
+            // per-version `loadLawVersions` isolation. A law that ends up with no
+            // fetchable version surfaces to the loader as a missing dependency
+            // (retried on the next run), not a hard 502.
+            let content = {
+                let backend = entry.backend.lock().await;
+                match backend
+                    .read_file(std::path::Path::new(&relative_path))
+                    .await
+                {
+                    Ok(content) => content,
+                    Err(e) => {
+                        tracing::warn!(
+                            law_id = %law_id,
+                            source_id = %source_id,
+                            error = %e,
+                            "skipping a law version that failed to fetch"
+                        );
+                        continue;
+                    }
+                }
+            };
+            match content {
+                Some(content) => out.push(content),
+                // Enumerated in the index but the blob is gone — an index/backend
+                // inconsistency. Skip like the Err path, but log it: same
+                // diagnosability concern, and this path is new.
+                None => tracing::warn!(
+                    law_id = %law_id,
+                    source_id = %source_id,
+                    relative_path = %relative_path,
+                    "skipping a law version whose blob was not found on the backend"
+                ),
+            }
+        }
+        Ok(out)
+    }
+
     /// Mirror a freshly-saved law's content into the read-your-writes
     /// overlay. Called by `save_law` after a successful `backend.persist`,
     /// so the next GET on the same law (or a refresh) sees the new body.

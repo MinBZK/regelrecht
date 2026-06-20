@@ -1,9 +1,10 @@
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
 import { useDependencies } from '../composables/useDependencies.js';
+import { loadLawVersions } from '../composables/useEngine.js';
 import { useScenarios, isScenarioMismatch } from '../composables/useScenarios.js';
-import { lawUrl } from '../composables/corpusUrls.js';
-import { apiFetchText } from '../lib/apiFetch.js';
+import { lawVersionsUrl } from '../composables/corpusUrls.js';
+import { apiFetchJson } from '../lib/apiFetch.js';
 import { useLatest } from '../lib/useLatest.js';
 import { parseFeature } from '../gherkin/parser.js';
 import { mapFeatureToForm, getEffectiveSetup, formStateToGherkin, syncEditedValues } from '../gherkin/formMapper.js';
@@ -151,22 +152,29 @@ watch(featureText, (text) => {
   }
 });
 
-// Cache for fetched law YAML texts, scoped to the active traject so a
-// traject switch doesn't return the previous traject's body.
-const yamlCache = {};
-let yamlCacheTrajectRef = null;
+// Cache for fetched law version lists, scoped to the active traject so a
+// traject switch doesn't return the previous traject's bodies. The dependency
+// loader needs *every* version of a law (not just today's-best) so the engine
+// can pick the one in force on the scenario's calculation date.
+const versionsCache = {};
+let versionsCacheTrajectRef = null;
 
-async function fetchLawYaml(lawId) {
-  if (yamlCacheTrajectRef !== props.trajectRef) {
-    Object.keys(yamlCache).forEach((k) => delete yamlCache[k]);
-    yamlCacheTrajectRef = props.trajectRef;
+async function fetchLawVersions(lawId) {
+  if (versionsCacheTrajectRef !== props.trajectRef) {
+    Object.keys(versionsCache).forEach((k) => delete versionsCache[k]);
+    versionsCacheTrajectRef = props.trajectRef;
   }
-  if (yamlCache[lawId]) return yamlCache[lawId];
-  const text = await apiFetchText(lawUrl(props.trajectRef, lawId), {
-    errorMessage: (status) => `Failed to fetch law '${lawId}': ${status}`,
+  if (versionsCache[lawId]) return versionsCache[lawId];
+  const yamls = await apiFetchJson(lawVersionsUrl(props.trajectRef, lawId), {
+    errorMessage: (status) => `Failed to fetch versions of law '${lawId}': ${status}`,
   });
-  yamlCache[lawId] = text;
-  return text;
+  const list = Array.isArray(yamls) ? yamls : [];
+  // Only cache a non-empty result. An empty array (unknown/not-yet-harvested
+  // law) must stay uncached so a retry after harvest re-fetches rather than
+  // returning the stale `[]` — `[]` is truthy, so caching it would short-
+  // circuit the `if (versionsCache[lawId])` guard forever.
+  if (list.length > 0) versionsCache[lawId] = list;
+  return list;
 }
 
 // --- Dependencies ready tracking ---
@@ -210,7 +218,7 @@ async function runDependencyLoad() {
   const isCurrent = claimDependencyLoad();
   depsReady.value = false;
 
-  const mainLawId = await loadAllDependencies(lawYaml, props.engine, fetchLawYaml);
+  const mainLawId = await loadAllDependencies(lawYaml, props.engine, fetchLawVersions);
   if (!isCurrent()) return;
 
   // Also load dependencies from scenario background + per-scenario steps
@@ -223,8 +231,8 @@ async function runDependencyLoad() {
     for (const depId of allDeps) {
       try {
         if (!props.engine.hasLaw(depId)) {
-          const yaml = await fetchLawYaml(depId);
-          props.engine.loadLaw(yaml);
+          const yamls = await fetchLawVersions(depId);
+          loadLawVersions(props.engine, yamls, depId);
         }
       } catch (e) {
         console.warn(`Failed to load scenario dependency '${depId}':`, e);
@@ -245,7 +253,7 @@ async function runDependencyLoad() {
     // the component, and the guard resets on error so a fresh mount retries.
     depsReady.value = true;
     if (mainLawId) {
-      loadImplementors(mainLawId, props.engine, fetchLawYaml, props.trajectRef);
+      loadImplementors(mainLawId, props.engine, fetchLawVersions, props.trajectRef);
     }
   }
 }

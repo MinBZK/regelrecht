@@ -20,6 +20,16 @@ export function lawUrl(trajectRef, lawId) {
   return `${corpusBase(trajectRef)}/laws/${encodeURIComponent(lawId)}`;
 }
 
+// All versions of a law (newest-first), as a JSON array of YAML strings.
+// Unlike `lawUrl` (one "best for today" body), the scenario dependency loader
+// feeds every version to the engine so its date-aware version selection can
+// pick the one in force on the scenario's calculation date — otherwise a
+// referenced law that has a future-dated version would load only that future
+// version and fail "not yet in force" for a past-dated scenario.
+export function lawVersionsUrl(trajectRef, lawId) {
+  return `${lawUrl(trajectRef, lawId)}/versions`;
+}
+
 export function lawsListUrl(trajectRef, query = '') {
   const q = query ? `?${query}` : '';
   return `${corpusBase(trajectRef)}/laws${q}`;

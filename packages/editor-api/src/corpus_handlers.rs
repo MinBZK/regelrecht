@@ -132,6 +132,38 @@ impl ReadScope {
             }
         }
     }
+
+    /// Look up *all* versions of a law's YAML content within the active scope.
+    /// Mirrors [`Self::law_yaml`] but returns the full version set (newest-first)
+    /// so the scenario loader can hand them all to the engine. An unknown law is
+    /// an empty vec, not an error.
+    async fn law_yaml_versions(
+        &self,
+        law_id: &str,
+    ) -> Result<Vec<String>, regelrecht_corpus::error::CorpusError> {
+        match self {
+            ReadScope::Traject(t) => t.law_yaml_versions(law_id).await,
+            // The global corpus is fully loaded up front (like `law_yaml`), so
+            // eagerly-loaded (local-source) bodies are present; filter any
+            // metadata-only sentinel so the loader never receives an empty YAML
+            // string. Asymmetry to note: GitHub-backed versions are metadata-
+            // only in the global view (never lazily fetched here, just as
+            // `law_yaml`'s Global branch can't fetch them), so they are omitted
+            // from the global endpoint. The traject-scoped path *does* lazily
+            // fetch them — and scenario execution always runs under a traject,
+            // so the omission never affects the dependency loader.
+            ReadScope::Global(g) => Ok(g
+                .source_map
+                .get_law_versions(law_id)
+                .map(|vs| {
+                    vs.iter()
+                        .map(|l| l.yaml_content.clone())
+                        .filter(|y| !y.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default()),
+        }
+    }
 }
 
 /// Read a law's YAML within a scope, mapping the outcome to an HTTP error:
@@ -387,6 +419,48 @@ async fn get_corpus_law_in_scope(
 ) -> Result<EtaggedContentResponse, (StatusCode, String)> {
     let yaml = read_law_yaml(scope, law_id).await?;
     Ok(etagged_content_response("text/yaml; charset=utf-8", yaml))
+}
+
+/// GET /api/corpus/laws/{law_id}/versions — every version's raw YAML, newest
+/// first (global view). The scenario dependency loader feeds all of these to
+/// the engine so its date-aware `select_in` can pick the version in force on
+/// the scenario's calculation date (rather than the single "best for today"
+/// entry that the plain `/laws/{id}` GET returns). An unknown law is an empty
+/// array, not a 404 — the loader treats that as a missing dependency.
+pub async fn get_corpus_law_versions(
+    State(state): State<AppState>,
+    Path(law_id): Path<String>,
+) -> Result<Json<Vec<String>>, (StatusCode, String)> {
+    let scope = global_scope(&state).await;
+    get_corpus_law_versions_in_scope(&scope, &law_id).await
+}
+
+/// GET /api/trajects/{traject_id}/corpus/laws/{law_id}/versions — same as the
+/// global GET but routed through the traject's per-source backends and
+/// read-your-writes overlay.
+pub async fn get_traject_corpus_law_versions(
+    State(state): State<AppState>,
+    session: Session,
+    Path((traject_ref, law_id)): Path<(String, String)>,
+) -> Result<Json<Vec<String>>, (StatusCode, String)> {
+    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    get_corpus_law_versions_in_scope(&scope, &law_id).await
+}
+
+async fn get_corpus_law_versions_in_scope(
+    scope: &ReadScope,
+    law_id: &str,
+) -> Result<Json<Vec<String>>, (StatusCode, String)> {
+    let versions = scope.law_yaml_versions(law_id).await.map_err(|e| {
+        // A backend failure (lazy fetch threw) is a 502, distinguishable from
+        // a genuine "no such law" empty array; logged for operators.
+        tracing::warn!(law_id = %law_id, error = %e, "failed to load law versions");
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Kon versies van wet '{law_id}' niet laden"),
+        )
+    })?;
+    Ok(Json(versions))
 }
 
 /// GET /api/corpus/laws/{law_id}/outputs — list all outputs declared across articles (global view).

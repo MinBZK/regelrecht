@@ -6,13 +6,22 @@ function res(json, ok = true, status = 200) {
   return { ok, status, async json() { return json; }, async text() { return ''; } };
 }
 
-// Fake WASM engine: tracks which laws were loaded.
+// Fake WASM engine: tracks which law ids are loaded, plus every body handed to
+// `loadLaw` so multi-version loading can be asserted (the real engine keys
+// versions by ($id, valid_from), so several bodies of one id coexist).
 function fakeEngine() {
   const loaded = new Set();
+  const bodies = [];
   return {
     loaded,
+    bodies,
     hasLaw: (id) => loaded.has(id),
     loadLaw: (yamlText) => {
+      // Model the real WASM engine rejecting an unparseable version (e.g. an
+      // old-schema or text-only harvested version): a body marked UNLOADABLE
+      // throws, and must not register the law.
+      if (yamlText.includes('UNLOADABLE')) throw new Error('unparseable version');
+      bodies.push(yamlText);
       const m = yamlText.match(/\$id:\s*(\S+)/);
       if (m) loaded.add(m[1]);
     },
@@ -32,10 +41,11 @@ articles:
               output: dekking
 `;
 
-// Dependency YAMLs with no further refs, so the walk terminates.
-const DEP_YAML = {
-  zorgverzekeringswet: '$id: zorgverzekeringswet\narticles: []\n',
-  regeling_standaardpremie: '$id: regeling_standaardpremie\narticles: []\n',
+// Version lists per law id (the `fetchLawVersions` contract). No further refs,
+// so the walk terminates.
+const DEP_VERSIONS = {
+  zorgverzekeringswet: ['$id: zorgverzekeringswet\narticles: []\n'],
+  regeling_standaardpremie: ['$id: regeling_standaardpremie\narticles: []\n'],
 };
 
 beforeEach(() => {
@@ -54,19 +64,81 @@ describe('extractRegulationRefs', () => {
 describe('useDependencies.loadAllDependencies', () => {
   it('loads source.regulation deps, returns the $id, and does NOT scan the corpus', async () => {
     // The implementor scan is off the critical path, so loading the law's own
-    // deps must make no network call at all (only fetchLawYaml is used).
+    // deps must make no network call at all (only fetchLawVersions is used).
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy;
     const engine = fakeEngine();
-    const fetchLawYaml = vi.fn(async (id) => DEP_YAML[id]);
+    const fetchLawVersions = vi.fn(async (id) => DEP_VERSIONS[id]);
 
     const { loadAllDependencies, loading } = useDependencies();
-    const mainLawId = await loadAllDependencies(MAIN_LAW, engine, fetchLawYaml);
+    const mainLawId = await loadAllDependencies(MAIN_LAW, engine, fetchLawVersions);
 
     expect(mainLawId).toBe('wet_op_de_zorgtoeslag');
     expect(engine.loaded.has('zorgverzekeringswet')).toBe(true);
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(loading.value).toBe(false);
+  });
+
+  it('loads EVERY version of a dependency (in-force + future), not just one', async () => {
+    // Regression for the temporal-federation bug: a referenced law that has a
+    // future-dated version must have *all* its versions loaded so the engine
+    // can pick the one in force on the scenario date — loading only the future
+    // version would fail "not yet in force" for a past-dated scenario.
+    const inForce = '$id: zorgverzekeringswet\nvalid_from: \'2025-01-01\'\narticles: []\n';
+    const future = '$id: zorgverzekeringswet\nvalid_from: \'2099-01-01\'\narticles: []\n';
+    const engine = fakeEngine();
+    const fetchLawVersions = vi.fn(async (id) =>
+      id === 'zorgverzekeringswet' ? [future, inForce] : DEP_VERSIONS[id],
+    );
+
+    const { loadAllDependencies } = useDependencies();
+    await loadAllDependencies(MAIN_LAW, engine, fetchLawVersions);
+
+    const zvwBodies = engine.bodies.filter((b) => b.includes('$id: zorgverzekeringswet'));
+    expect(zvwBodies).toHaveLength(2);
+    expect(zvwBodies).toContain(inForce);
+    expect(zvwBodies).toContain(future);
+  });
+
+  it('isolates an unloadable version: a bad version does not drop the good ones', async () => {
+    // Regression for the federated-corpus case where a law has an executable
+    // version AND an old-schema / text-only harvested version the engine can't
+    // parse. The harvested version must not abort the whole law — the engine
+    // must still hold the executable one so select_in can resolve it.
+    const bad = '$id: zorgverzekeringswet\nvalid_from: \'2026-02-21\'\nUNLOADABLE: true\n';
+    const good = '$id: zorgverzekeringswet\nvalid_from: \'2025-01-01\'\narticles: []\n';
+    const engine = fakeEngine();
+    const fetchLawVersions = vi.fn(async (id) =>
+      id === 'zorgverzekeringswet' ? [bad, good] : DEP_VERSIONS[id],
+    );
+
+    const { loadAllDependencies } = useDependencies();
+    await loadAllDependencies(MAIN_LAW, engine, fetchLawVersions);
+
+    expect(engine.loaded.has('zorgverzekeringswet')).toBe(true);
+    expect(engine.bodies).toContain(good);
+    expect(engine.bodies).not.toContain(bad);
+  });
+
+  it('treats an empty version list as a missing dependency (requests harvest)', async () => {
+    // /versions returning [] means no version is available — the loader must
+    // not silently succeed; it routes the id to the harvest request like a
+    // fetch failure. The harvest call is the only network request.
+    const fetchSpy = vi.fn(async (url) => {
+      if (String(url).includes('/harvest')) return res({ results: [] });
+      return res([], false, 404);
+    });
+    globalThis.fetch = fetchSpy;
+    const engine = fakeEngine();
+    const fetchLawVersions = vi.fn(async () => []);
+
+    const { loadAllDependencies } = useDependencies();
+    await loadAllDependencies(MAIN_LAW, engine, fetchLawVersions);
+
+    expect(engine.loaded.has('zorgverzekeringswet')).toBe(false);
+    // The missing dep is routed to harvest, not silently dropped.
+    const harvestCalls = fetchSpy.mock.calls.filter((c) => String(c[0]).includes('/harvest'));
+    expect(harvestCalls.length).toBeGreaterThan(0);
   });
 });
 
@@ -78,10 +150,10 @@ describe('useDependencies.loadImplementors', () => {
     });
     globalThis.fetch = fetchSpy;
     const engine = fakeEngine();
-    const fetchLawYaml = vi.fn(async (id) => DEP_YAML[id]);
+    const fetchLawVersions = vi.fn(async (id) => DEP_VERSIONS[id]);
 
     const { loadImplementors } = useDependencies();
-    await loadImplementors('wet_op_de_zorgtoeslag', engine, fetchLawYaml, 'mig-1a2b3c4d');
+    await loadImplementors('wet_op_de_zorgtoeslag', engine, fetchLawVersions, 'mig-1a2b3c4d');
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(fetchSpy.mock.calls[0][0]).toBe(
@@ -95,11 +167,11 @@ describe('useDependencies.loadImplementors', () => {
     const fetchSpy = vi.fn().mockResolvedValue(res(['regeling_standaardpremie']));
     globalThis.fetch = fetchSpy;
     const engine = fakeEngine();
-    const fetchLawYaml = vi.fn(async (id) => DEP_YAML[id]);
+    const fetchLawVersions = vi.fn(async (id) => DEP_VERSIONS[id]);
 
     const { loadImplementors } = useDependencies();
-    await loadImplementors('wet_op_de_zorgtoeslag', engine, fetchLawYaml, 'mig-1a2b3c4d');
-    await loadImplementors('wet_op_de_zorgtoeslag', engine, fetchLawYaml, 'mig-1a2b3c4d');
+    await loadImplementors('wet_op_de_zorgtoeslag', engine, fetchLawVersions, 'mig-1a2b3c4d');
+    await loadImplementors('wet_op_de_zorgtoeslag', engine, fetchLawVersions, 'mig-1a2b3c4d');
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });

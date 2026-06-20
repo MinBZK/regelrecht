@@ -2530,6 +2530,33 @@ articles:
 "#
     }
 
+    /// A `base_law` version stamped with `valid_from` and a distinguishing
+    /// `base_value`, so a test can assert *which* version the resolver picked.
+    fn base_law_version(valid_from: &str, value: i32) -> String {
+        format!(
+            r#"
+$id: base_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '{valid_from}'
+articles:
+  - number: '1'
+    text: Provides a base value
+    machine_readable:
+      definitions:
+        BASE_VALUE:
+          value: {value}
+      execution:
+        output:
+          - name: base_value
+            type: number
+        actions:
+          - output: base_value
+            value: $BASE_VALUE
+"#
+        )
+    }
+
     // -------------------------------------------------------------------------
     // Basic Tests
     // -------------------------------------------------------------------------
@@ -2580,6 +2607,62 @@ articles:
 
         // doubled_value = base_value (100) * 2 = 200
         assert_eq!(result.outputs.get("doubled_value"), Some(&Value::Int(200)));
+    }
+
+    #[test]
+    fn test_service_cross_law_resolution_picks_in_force_version_over_future() {
+        // Regression for the temporal-federation bug: a referenced law that has
+        // BOTH an in-force and a future-dated version must resolve the in-force
+        // one when executed as-of a date before the future version. This is the
+        // version *set* the scenario loader now hands the engine; before the
+        // fix the loader fed only the single "best for today" version (the
+        // future one in a federated corpus) and execution failed NotYetInForce.
+        let mut service = LawExecutionService::new();
+        // Load future first to prove order doesn't matter (resolver sorts).
+        service
+            .load_law(&base_law_version("2099-01-01", 999))
+            .unwrap();
+        service
+            .load_law(&base_law_version("2025-01-01", 100))
+            .unwrap();
+        service.load_law(make_dependent_law()).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "dependent_law",
+                "doubled_value",
+                BTreeMap::new(),
+                "2025-06-01",
+            )
+            .unwrap();
+
+        // Uses the in-force base_value (100 * 2), NOT the future one (999 * 2).
+        assert_eq!(result.outputs.get("doubled_value"), Some(&Value::Int(200)));
+    }
+
+    #[test]
+    fn test_service_cross_law_only_future_version_is_not_yet_in_force() {
+        // Control: with ONLY the future version loaded — the pre-fix behaviour
+        // where the loader handed the engine a single future-dated version —
+        // the same as-of-2025 execution fails NotYetInForce. This proves the
+        // fix is the version *set* reaching the engine, not `select_in` itself.
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(&base_law_version("2099-01-01", 999))
+            .unwrap();
+        service.load_law(make_dependent_law()).unwrap();
+
+        let result = service.evaluate_law_output(
+            "dependent_law",
+            "doubled_value",
+            BTreeMap::new(),
+            "2025-06-01",
+        );
+
+        assert!(
+            matches!(result, Err(EngineError::LawNotYetInForce { .. })),
+            "expected LawNotYetInForce, got: {result:?}",
+        );
     }
 
     #[test]
