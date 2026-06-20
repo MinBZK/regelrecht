@@ -44,6 +44,9 @@ fn load_schemas() -> Result<HashMap<&'static str, serde_json::Value>, String> {
     let v055: serde_json::Value =
         serde_json::from_str(include_str!("../../../../schema/v0.5.5/schema.json"))
             .map_err(|e| format!("invalid v0.5.5 schema JSON: {e}"))?;
+    let v056: serde_json::Value =
+        serde_json::from_str(include_str!("../../../../schema/v0.5.6/schema.json"))
+            .map_err(|e| format!("invalid v0.5.6 schema JSON: {e}"))?;
     schemas.insert("v0.2.0", v020);
     schemas.insert("v0.3.0", v030);
     schemas.insert("v0.3.1", v031);
@@ -55,13 +58,16 @@ fn load_schemas() -> Result<HashMap<&'static str, serde_json::Value>, String> {
     schemas.insert("v0.5.3", v053);
     schemas.insert("v0.5.4", v054);
     schemas.insert("v0.5.5", v055);
+    schemas.insert("v0.5.6", v056);
     Ok(schemas)
 }
 
 /// Detect schema version from the `$schema` field in the YAML document.
 fn detect_version(value: &serde_json::Value) -> Option<&str> {
     let schema_url = value.get("$schema")?.as_str()?;
-    if schema_url.contains("v0.5.5") {
+    if schema_url.contains("v0.5.6") {
+        Some("v0.5.6")
+    } else if schema_url.contains("v0.5.5") {
         Some("v0.5.5")
     } else if schema_url.contains("v0.5.4") {
         Some("v0.5.4")
@@ -109,11 +115,14 @@ fn main() {
         let path = Path::new(arg);
 
         // Step 1: serde deserialization check (catches type/structure errors)
-        if let Err(e) = ArticleBasedLaw::from_yaml_file(path) {
-            eprintln!("FAIL: {}: serde: {e}", path.display());
-            failed = true;
-            continue;
-        }
+        let law = match ArticleBasedLaw::from_yaml_file(path) {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("FAIL: {}: serde: {e}", path.display());
+                failed = true;
+                continue;
+            }
+        };
 
         // Step 2: JSON Schema validation
         let content = match std::fs::read_to_string(path) {
@@ -169,6 +178,23 @@ fn main() {
                     eprintln!("FAIL: {}: missing $schema field", path.display());
                     failed = true;
                 }
+            }
+        }
+
+        // Step 3: RFC-023 static unit check. Mismatches between declared units
+        // (e.g. eurocent + days) are FAILs; an `amount` output with no declared
+        // unit is a WARN. Un-annotated laws produce no findings.
+        for finding in regelrecht_engine::units::check_law(&law) {
+            let kind = if finding.is_error { "FAIL" } else { "WARN" };
+            eprintln!(
+                "{kind}: {}: units: article {} output '{}': {}",
+                path.display(),
+                finding.article,
+                finding.output,
+                finding.message
+            );
+            if finding.is_error {
+                failed = true;
             }
         }
     }
