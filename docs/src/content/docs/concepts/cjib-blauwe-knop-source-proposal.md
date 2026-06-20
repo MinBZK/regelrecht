@@ -349,6 +349,8 @@ lexostatus_definitions:
       order_by: bekendmaking_datum DESC
 ```
 
+Elke kroniek heeft een eigen tijdsas; de paper kent geen ordening óver kronieken. Een `order_by` die meerdere chronicles overspant draait daarom op een gemeenschappelijke as die de reductie expliciet maakt: het tot-feit-gemaakt-tijdstip dat elk chronolexogram draagt. `bekendmaking_datum` is een domein-projectie van die as voor deze lexostatus.
+
 Het CJIB-specifieke hier is uit welke chronicles de reductie samenvalt (Wahv-, OM-uitvoerings- en mandaat-chronicles), welke filters gelden en hoe duplicaten worden gegroepeerd. Een consument die `openstaande_vorderingen` opvraagt (via Blauwe Knop in een burger-context, of via FSC in een bevoegde-instantie-context, zie verderop) krijgt dezelfde reductie, geserialiseerd in het transport-eigen formaat. De Blauwe-Knop-source-response zelf is conceptueel ook een lexostatus (`blauwe_knop_fcid_response`), die grotendeels overlapt met `openstaande_vorderingen` plus enkele FCID-specifieke velden (`gebeurtenis_kenmerk`, `signature`-block). De exacte vorm van `capabilities.yaml` wordt in een vervolg-RFC vastgepind.
 
 ### Activatie van het `blauwe_knop_source`-blok
@@ -448,7 +450,7 @@ Veldafleiding voor een `beroep_route` (Wahv-regime):
 
 | `beroep_route`-veld | Afleiding |
 |---|---|
-| `intake` | de administratief-beroep-intake van de cel (voor de Wahv: OM/CVOM) |
+| `intake` | de administratief-beroep-intake voor de `procedure_id` van de regel (veiligheidscontext-config; voor de Wahv: OM/CVOM) |
 | `termijn_grondslag` | het lex-specialis-artikel dat de termijn bepaalde, bv. `"Wahv art. 6"` |
 | `termijn_einddatum` | de beroeptermijn-einddatum, berekend op de notificatie-equivalente stage van de Wahv-procedure |
 | `vervolgrechtsmiddel` | de instantie van het vervolg-beroep, bv. `"kantonrechter (Wahv art. 9)"` |
@@ -582,6 +584,6 @@ De tweede vraag is operationeel en kan de werksessie wél beantwoorden: kan de v
 - **Betaalverwerking** (iDEAL, automatische incasso, reconciliatie) ligt upstream van deze integratie.
 - **De Financial Claim Request API en Session API** rondom FCID zijn nog niet geïntegreerd; de pilot beperkt zich tot het FCID-response-formaat.
 - **Burger-machtigingen via DigiD Machtigen** in het Blauwe-Knop-pad. De huidige Blauwe Knop Connect-spec beschrijft alleen de directe burger-flow; gemachtigdentoegang is een open vraag (zie ook open vraag 10 in bijlage A).
-- **De juridische grondslag** voor elke specifieke FSC-aanroep in context 2 is per geval en per relevante wettelijke bepaling. RegelRecht modelleert dat niet; de aanroepende cel is daarvoor verantwoordelijk.
+- **De juridische grondslag** voor elke specifieke FSC-aanroep in context 2 is per geval en per relevante wettelijke bepaling. RegelRecht modelleert dat niet; de veiligheidscontext van de aanroepende kant stelt die grondslag vast en is daarvoor verantwoordelijk.
 - **De AWB-lifecycle-interne werking.** Alle bezwaar-mechaniek leeft in RFC-008. Deze bijlage leest RFC-008's outputs.
 - **Productie-deployment-werk** (NEN 7513-logging, SLA, load-testing, key-rotation-schedule). Deze pilot draait in een sandbox; productie-werk komt na de drie maanden vergelijking, in een separaat traject.
