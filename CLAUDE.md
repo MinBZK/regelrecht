@@ -73,6 +73,25 @@ This repository uses pre-commit hooks for code quality:
 
 **No branding in commits.** Do not add "Generated with Claude Code" or "Co-Authored-By: Claude" lines to commit messages.
 
+### Commit & PR Title Conventions
+
+PR titles are linted by `.github/workflows/pr-title.yml` (a failing title blocks
+merge). The format is **Conventional Commits**: `type(scope): subject`, where
+`(scope)` is optional. Commit messages should follow the same shape.
+
+- **Allowed types**: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`,
+  `test`, `chore`, `build`, `ci`.
+- **Allowed scopes** (optional): `engine`, `admin`, `pipeline`, `harvester`,
+  `editor`, `corpus`, `frontend`, `lawmaking`, `docs`, `grafana`, `ci`,
+  `schema`, `deps`, `dev`. An unlisted scope fails the lint.
+- **The subject MUST start with a lowercase letter** (`subjectPattern:
+  ^[a-z].*$`). This is the easiest rule to trip on: `docs: RFC-…` fails because
+  "RFC" is uppercase — write `docs: verwijzingen naar RFC's …` instead. Editing
+  the PR title re-runs the check; no new commit needed.
+
+Per the global convention these subjects are written in **Dutch** (PR
+descriptions too), while code identifiers stay English.
+
 ### Test Data
 
 **Never use real secret or private information in tests.** This is a public
