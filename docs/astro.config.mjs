@@ -6,6 +6,7 @@ import rehypeMermaid from 'rehype-mermaid';
 import { rehypeMermaidAlt } from './src/lib/rehype-mermaid-alt.ts';
 import { rehypeNlddCodeViewer } from './src/lib/rehype-nldd-code-viewer.ts';
 import { rehypeSourceLines } from './src/lib/rehype-source-lines.ts';
+import { rehypeRfcLinks } from './src/lib/rehype-rfc-links.ts';
 
 export default defineConfig({
   site: 'https://docs.regelrecht.rijks.app',
@@ -52,6 +53,12 @@ export default defineConfig({
       // Stamp source-line data attributes first, before the plugins below
       // restructure nodes and lose the original markdown positions.
       rehypeSourceLines,
+      // Auto-link bare RFC cross-references ("RFC-008", "RFC-001 §9") in RFC
+      // bodies. Runs after source-lines (it inserts <a> nodes, which would
+      // otherwise perturb the line stamping) and before the code-viewer
+      // reshape; it skips <a>/<code>/<pre> so existing links and code examples
+      // are left untouched.
+      rehypeRfcLinks,
       [
         rehypeMermaid,
         {
