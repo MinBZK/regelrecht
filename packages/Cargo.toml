@@ -42,7 +42,7 @@ subtle = "2"
 thiserror = "2.0"
 time = "0.3"
 tokio = "1"
-tower-http = "0.6"
+tower-http = "0.7"
 tower-sessions = "0.14"
 tower-sessions-sqlx-store = { version = "0.15", features = ["postgres"] }
 tracing = "0.1"
