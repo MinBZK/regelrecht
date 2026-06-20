@@ -260,9 +260,6 @@ fn execute_operation_internal<R: ValueResolver>(
         ActionOperation::Floor { value, precision } => {
             execute_rounding(value, *precision, RoundMode::Floor, resolver, depth)
         }
-        ActionOperation::Truncate { value, precision } => {
-            execute_rounding(value, *precision, RoundMode::Truncate, resolver, depth)
-        }
 
         // Logical
         ActionOperation::And { conditions } => execute_and(conditions, resolver, depth),
@@ -760,17 +757,15 @@ enum RoundMode {
     Round,
     /// Round toward +∞ ("naar boven").
     Ceil,
-    /// Round toward -∞ ("naar beneden").
+    /// Round toward -∞ ("naar beneden" / "afkapping").
     Floor,
-    /// Round toward zero (truncate; "afkapping").
-    Truncate,
 }
 
 /// Maximum absolute `precision` a rounding operation accepts (Decimal holds at
 /// most 28 fractional digits, so larger magnitudes are out of range).
 const MAX_ROUND_PRECISION: i64 = 28;
 
-/// Execute a rounding operation (ROUND/CEIL/FLOOR/TRUNCATE): round the single
+/// Execute a rounding operation (ROUND/CEIL/FLOOR): round the single
 /// operand to `precision` decimal places.
 ///
 /// `precision` is in the value's own unit (RFC-023): `0` rounds to whole units,
@@ -807,7 +802,6 @@ fn round_decimal(value: Decimal, precision: i64, mode: RoundMode) -> Result<Deci
         RoundMode::Round => RoundingStrategy::MidpointAwayFromZero,
         RoundMode::Ceil => RoundingStrategy::ToPositiveInfinity,
         RoundMode::Floor => RoundingStrategy::ToNegativeInfinity,
-        RoundMode::Truncate => RoundingStrategy::ToZero,
     };
 
     if !(-MAX_ROUND_PRECISION..=MAX_ROUND_PRECISION).contains(&precision) {
@@ -1962,24 +1956,16 @@ mod tests {
         }
 
         #[test]
-        fn floor_and_truncate_differ_for_negatives() {
+        fn floor_rounds_toward_negative_infinity() {
             let resolver = TestResolver::new();
             let floor = ActionOperation::Floor {
                 value: lit(-1.5f64),
                 precision: 0,
             };
-            let trunc = ActionOperation::Truncate {
-                value: lit(-1.5f64),
-                precision: 0,
-            };
-            // FLOOR toward -inf, TRUNCATE toward zero.
+            // FLOOR rounds toward -inf, so -1.5 → -2.
             assert_eq!(
                 execute_operation(&floor, &resolver, 0).unwrap(),
                 Value::Int(-2)
-            );
-            assert_eq!(
-                execute_operation(&trunc, &resolver, 0).unwrap(),
-                Value::Int(-1)
             );
         }
 

@@ -598,10 +598,6 @@ impl<'a> ArticleEngine<'a> {
                 value: require_value(operation)?,
                 precision: require_precision(operation)?,
             }),
-            Operation::Truncate => Ok(ActionOperation::Truncate {
-                value: require_value(operation)?,
-                precision: require_precision(operation)?,
-            }),
 
             // Logical operations
             Operation::And => Ok(ActionOperation::And {

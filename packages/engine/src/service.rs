@@ -1685,7 +1685,7 @@ impl LawExecutionService {
 
         // RFC-024: the engine no longer rounds eurocent outputs implicitly. Rounding
         // is a law-modeled instruction — a law that must round to whole euros/cents
-        // does so with an explicit ROUND/CEIL/FLOOR/TRUNCATE operation. Outputs flow
+        // does so with an explicit ROUND/CEIL/FLOOR operation. Outputs flow
         // out as exact Decimals; `unit` is a label, never a rounding trigger (RFC-023).
 
         // RFC-012 Propagate mode: taint all outputs from articles with untranslatables

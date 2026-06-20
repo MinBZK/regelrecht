@@ -15,7 +15,7 @@ use std::fmt;
 ///
 /// Non-integer numbers are represented as an exact [`rust_decimal::Decimal`]
 /// rather than `f64`, so intermediate calculations carry full precision and
-/// rounding only ever happens at an explicit `ROUND`/`CEIL`/`FLOOR`/`TRUNCATE`
+/// rounding only ever happens at an explicit `ROUND`/`CEIL`/`FLOOR`
 /// operation (RFC-024). `Decimal` has no NaN: non-finite `f64` reaching the
 /// engine boundary (NaN/∞) maps to [`Value::Null`] (the missing/invalid value).
 ///
@@ -543,11 +543,10 @@ pub enum Operation {
     Max,
     Min,
 
-    // Rounding operations (4) — unary, with a `precision` (RFC-024)
+    // Rounding operations (3) — unary, with a `precision` (RFC-024)
     Round,
     Ceil,
     Floor,
-    Truncate,
 
     // Logical operations (3)
     And,
@@ -604,7 +603,6 @@ impl Operation {
         Operation::Round,
         Operation::Ceil,
         Operation::Floor,
-        Operation::Truncate,
         Operation::And,
         Operation::Or,
         Operation::Not,
@@ -649,7 +647,6 @@ impl Operation {
         Operation::Round,
         Operation::Ceil,
         Operation::Floor,
-        Operation::Truncate,
         Operation::And,
         Operation::Or,
         Operation::Not,
@@ -695,10 +692,7 @@ impl Operation {
 
     /// Check if this is a rounding operation (RFC-024)
     pub fn is_rounding(&self) -> bool {
-        matches!(
-            self,
-            Operation::Round | Operation::Ceil | Operation::Floor | Operation::Truncate
-        )
+        matches!(self, Operation::Round | Operation::Ceil | Operation::Floor)
     }
 
     /// Check if this is a logical operation
@@ -740,7 +734,6 @@ impl Operation {
             Operation::Round => "ROUND",
             Operation::Ceil => "CEIL",
             Operation::Floor => "FLOOR",
-            Operation::Truncate => "TRUNCATE",
             Operation::And => "AND",
             Operation::Or => "OR",
             Operation::Not => "NOT",

@@ -700,7 +700,7 @@
     },
     "roundingOperation": {
       "type": "object",
-      "description": "Rounding operations (RFC-024). Round the single operand to `precision` decimal places, in the value's own unit (RFC-023). Rounding is never implicit - a law that rounds must say so here. ROUND is half-up (rekenkundig, the Hoge Raad default); CEIL rounds up (naar boven); FLOOR rounds down (naar beneden); TRUNCATE rounds toward zero (afkapping).",
+      "description": "Rounding operations (RFC-024). Round the single operand to `precision` decimal places, in the value's own unit (RFC-023). Rounding is never implicit - a law that rounds must say so here. ROUND is half-up (rekenkundig, the Hoge Raad default); CEIL rounds up (naar boven); FLOOR rounds down (naar beneden / afkapping).",
       "required": [
         "operation",
         "value",
@@ -712,8 +712,7 @@
           "enum": [
             "ROUND",
             "CEIL",
-            "FLOOR",
-            "TRUNCATE"
+            "FLOOR"
           ]
         },
         "value": {
@@ -1025,8 +1024,7 @@
         "DATE_DIFF",
         "ROUND",
         "CEIL",
-        "FLOOR",
-        "TRUNCATE"
+        "FLOOR"
       ]
     },
     "operation": {
@@ -1122,7 +1120,7 @@
         },
         "precision": {
           "type": "integer",
-          "description": "Decimal places for an inline rounding operation (ROUND/CEIL/FLOOR/TRUNCATE; RFC-024), in the value's own unit. 0 = whole units; negative rounds to tens/hundreds.",
+          "description": "Decimal places for an inline rounding operation (ROUND/CEIL/FLOOR; RFC-024), in the value's own unit. 0 = whole units; negative rounds to tens/hundreds.",
           "minimum": -28,
           "maximum": 28
         },
@@ -1161,8 +1159,7 @@
                 "enum": [
                   "ROUND",
                   "CEIL",
-                  "FLOOR",
-                  "TRUNCATE"
+                  "FLOOR"
                 ]
               }
             }

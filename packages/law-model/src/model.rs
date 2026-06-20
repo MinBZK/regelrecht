@@ -200,8 +200,6 @@ pub enum ActionOperation {
     Ceil { value: ActionValue, precision: i64 },
     #[serde(rename = "FLOOR")]
     Floor { value: ActionValue, precision: i64 },
-    #[serde(rename = "TRUNCATE")]
-    Truncate { value: ActionValue, precision: i64 },
 
     // Logical
     #[serde(rename = "AND")]
@@ -302,7 +300,6 @@ impl ActionOperation {
             ActionOperation::Round { .. } => "ROUND",
             ActionOperation::Ceil { .. } => "CEIL",
             ActionOperation::Floor { .. } => "FLOOR",
-            ActionOperation::Truncate { .. } => "TRUNCATE",
             ActionOperation::And { .. } => "AND",
             ActionOperation::Or { .. } => "OR",
             ActionOperation::Not { .. } => "NOT",
@@ -340,7 +337,7 @@ pub struct Action {
     /// Conditions for AND/OR operations
     #[serde(default)]
     pub conditions: Option<Vec<ActionValue>>,
-    /// Decimal places for rounding operations (ROUND/CEIL/FLOOR/TRUNCATE; RFC-024)
+    /// Decimal places for rounding operations (ROUND/CEIL/FLOOR; RFC-024)
     #[serde(default)]
     pub precision: Option<i64>,
 }

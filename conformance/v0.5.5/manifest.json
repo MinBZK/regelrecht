@@ -31,8 +31,7 @@
         "MIN",
         "ROUND",
         "CEIL",
-        "FLOOR",
-        "TRUNCATE"
+        "FLOOR"
       ]
     },
     "cross_law": {
