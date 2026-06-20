@@ -20,10 +20,11 @@ const { Content, headings } = await render(entry);
 const pathname = '/rfcs/' + entry.id.replace(/\.md$/, '');
 
 // RFC metadata from frontmatter. Author(s) and date render as an nldd-byline
-// under the title; status and implementation render as nldd-tags (colour via
-// the shared rfcStatusColor so it cannot drift from the index), with the
-// cross-references as plain rich-text lines beneath. No bespoke CSS — the
-// tag row reuses the index's nldd-container wrap layout.
+// under the title; status and implementation render as side-by-side nldd-tags
+// (colour via the shared rfcStatusColor so it cannot drift from the index),
+// with the cross-references as a rich-text line beneath. No bespoke CSS — the
+// tag row reuses the index's nldd-container wrap layout, and it sits outside
+// the content rich-text so the wrap flow isn't flattened by prose typography.
 const { status, implementation, date, authors } = entry.data;
 // Forward (Depends on) and reverse (Required by) links, resolved against the
 // real RFC set in rfcs.ts so back-references cannot drift from the forward ones.
@@ -67,7 +68,7 @@ const title = pageTitle + ' · RegelRecht';
       <nldd-spacer size="24" sm-size="16" />
       <EditLink filePath={entry.filePath} />
     </div>
-    <nldd-rich-text slot="right" data-edit-base={editBase}>
+    <div slot="right">
       {status && (
         <>
           <nldd-container layout="wrap" gap="4">
@@ -77,27 +78,32 @@ const title = pageTitle + ' · RegelRecht';
             )}
           </nldd-container>
           {(relations.dependsOn.length > 0 || relations.requiredBy.length > 0) && (
-            <p>
-              {relations.dependsOn.length > 0 && (
-                <>
-                  Depends on: {relations.dependsOn.map((r, i) => (
-                    <span>{i > 0 ? ', ' : ''}<a href={r.link}>{r.id}</a> ({r.title})</span>
-                  ))}
-                </>
-              )}
-              {relations.dependsOn.length > 0 && relations.requiredBy.length > 0 && <br />}
-              {relations.requiredBy.length > 0 && (
-                <>
-                  Required by: {relations.requiredBy.map((r, i) => (
-                    <span>{i > 0 ? ', ' : ''}<a href={r.link}>{r.id}</a> ({r.title})</span>
-                  ))}
-                </>
-              )}
-            </p>
+            <nldd-rich-text spacing="flat">
+              <p>
+                {relations.dependsOn.length > 0 && (
+                  <>
+                    Depends on: {relations.dependsOn.map((r, i) => (
+                      <span>{i > 0 ? ', ' : ''}<a href={r.link}>{r.id}</a> ({r.title})</span>
+                    ))}
+                  </>
+                )}
+                {relations.dependsOn.length > 0 && relations.requiredBy.length > 0 && <br />}
+                {relations.requiredBy.length > 0 && (
+                  <>
+                    Required by: {relations.requiredBy.map((r, i) => (
+                      <span>{i > 0 ? ', ' : ''}<a href={r.link}>{r.id}</a> ({r.title})</span>
+                    ))}
+                  </>
+                )}
+              </p>
+            </nldd-rich-text>
           )}
+          <nldd-spacer size="16" />
         </>
       )}
-      <Content />
-    </nldd-rich-text>
+      <nldd-rich-text data-edit-base={editBase}>
+        <Content />
+      </nldd-rich-text>
+    </div>
   </nldd-one-third-two-thirds-section>
 </Base>
