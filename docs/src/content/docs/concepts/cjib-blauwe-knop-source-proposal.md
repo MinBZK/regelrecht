@@ -30,18 +30,21 @@ Voor de zekerheid, omdat dit makkelijk verkeerd valt:
 
 Een korte vertaling van de Chronolexografie- en Blauwe-Knop-begrippen die in dit voorstel terugkomen, in CJIB-taal:
 
-Chronolexografie onderscheidt drie typen vastlegging die in de rechtsstaat alle drie nodig zijn (lexogram, decretogram, executogram). De eerste drie termen hieronder zijn die typen:
+Chronolexografie onderscheidt drie typen vastlegging die in de rechtsstaat alle drie nodig zijn (lexogram, decretogram, executogram). De eerste drie termen hieronder zijn die typen. Elk legt een procesrelatief feit vast (op moment T heeft X vastgesteld dat ...), niet een kale waarheid; de cel redeneert via reductie over die vaststellingen, niet over de actuele wereldtoestand:
 
-- **Lexogram**: een wet of regeling in machine-leesbare vorm. Vergelijkbaar met "de regelingstekst zoals jullie compliance-team die interpreteert", maar dan in YAML die een engine direct kan uitvoeren. Voorbeeld: de Wahv zoals die geldt sinds 1 januari 2025.
+- **Lexogram**: de vastlegging van een (mogelijke, toekomstige) wijziging in wet- of regelgeving, in machine-leesbare vorm. Niet de wettekst als statische toestand, maar het procesrelatieve feit dat een regeling op enig moment gaat gelden of wijzigt. Vergelijkbaar met de regelingstekst zoals een compliance-team die interpreteert, maar dan in YAML die een engine direct kan uitvoeren. Voorbeeld: de vastlegging van de invoering/wijziging van de Wahv zoals die geldt sinds 1 januari 2025.
 - **Decretogram**: een concreet besluit. Bij CJIB: een Wahv-sanctie, een OM-strafbeschikking, of een bestuurlijke boete die CJIB namens een toezichthouder int. In RegelRecht-termen: een engine-output met `legal_character: BESCHIKKING`. FCID is daar één serialisatie van; het decretogram zelf is het primaire artefact. Voorbeeld: een Wahv-sanctie van €X die op datum Y aan kentekenhouder Z wordt opgelegd. (Let op: een door de rechter opgelegde schadevergoedings- of ontnemingsmaatregel die CJIB int, is géén decretogram in deze zin maar een rechterlijke uitspraak; zie bijlage A.)
 - **Executogram**: een feit dat de afhandeling registreert. Bij CJIB: een binnengekomen betaling, een verleende kwijtschelding, een gestart deurwaardertraject. Concreet: een entry in een chronicle-stream-bestand. FCID is daar weer een serialisatie van. Voorbeeld: een betaling van €X die op datum Z bij CJIB binnenkomt onder zaakkenmerk Y.
-- **Chronicle / chronolexochronicle**: een tijdlijn van vastleggingen die een cel bijhoudt. Een cel kan meerdere chronicles bijhouden (bijvoorbeeld één per regelingsgebied), elk een geordende reeks van haar decretogrammen en/of executogrammen.
+- **Chronicle (chronolexokroniek)**: een tijdlijn van vastleggingen die een cel bijhoudt. Een cel kan meerdere chronolexokronieken bijhouden (bijvoorbeeld één per regelingsgebied), elk met een eigen tijdsas en een geordende reeks van haar decretogrammen en/of executogrammen.
 - **Chronolexoreductie**: de afleiding van een lexostatus uit één of meer chronicles. Een filter-en-aggregatie-bewerking: "alle Wahv-besluiten in onze chronicle, voor BSN X, in of voorbij BEKENDMAKING, minus intrekkingen". Dit is wat een Blauwe-Knop-source op pull-moment uitvoert.
 - **Lexostatus**: het *resultaat* van een chronolexoreductie. Bij CJIB: `openstaande_vorderingen` als lijst van vordering-records. De cel declareert welke lexostatussen ze aanbiedt en hoe ze elk uit haar chronicles worden afgeleid.
-- **Cel (chronolexocell)**: een organisatie die kronieken bijhoudt, sleutels beheert en bevoegd gezag draagt. CJIB is een cel. NVWA, OM, DUO, CAK ook. Dit is niet nieuw maar dezelfde notie als wat RegelRecht eerder al `competent_authority` noemde.
-- **Engine**: één van de componenten die in een cel kan draaien. Een cel kan één engine bevatten, meerdere, of een engine plus een legacy-systeem.
+- **Chronolexosynthese (synthese)**: het combineren, vergelijken en beoordelen van meerdere lexostatussen uit meerdere cellen. Reductie is de bewerking bínnen één cel; synthese is de bewerking óver cellen heen. De MBO-app voert synthese uit: ze aggregeert de lexostatussen (FCID-responses) van meerdere broncellen on-device.
+- **Cel (chronolexocell)**: een containment- en autonomie-domein waarin chronolexogrammen worden vastgelegd, bewaard en verwerkt, en waarbuiten bewerking niet mogelijk is. Elke actor houdt eigen feiten bij in een eigen cel; reductie vindt plaats ín de cel. Dat is de hele rol van de cel. Twee dingen die er in een eerdere lezing aan vastgeplakt zaten horen er níét bij: het **bevoegd gezag** (`competent_authority`, RFC-002) is een aparte juridische as, en de **veiligheidscontext** (sleutels, signing, transport-keuze, autorisatie) is een aparte RegelRecht-laag (zie RFC-022 §2). Eén organisatie kan meerdere cellen draaien (de pilot-sandbox is dezelfde `competent_authority` als productie, maar een andere veiligheidscontext). CJIB houdt cellen; NVWA, OM, DUO, CAK ook.
+- **Bevoegd gezag (`competent_authority`)**: wie juridisch bevoegd is om het besluit te nemen dat een decretogram vastlegt (RFC-002). Een aparte as, geen eigenschap van de cel.
+- **Veiligheidscontext**: onder welke sleutels, vertrouwensmateriaal en autorisatie er wordt vastgelegd, ondertekend en op cross-cel-vragen geantwoord. Dit is een RegelRecht-laag die het position paper niet kent; alles rond signing, transport-keuze en autorisatie hoort hier, niet op de cel (RFC-022 §2). Een deployment bindt een veiligheidscontext aan een cel.
+- **Engine**: één van de componenten die tegen een cel kan draaien. Een cel kan één engine bevatten, meerdere, of een engine plus een legacy-systeem.
 - **Blauwe-Knop-source**: een endpoint dat een bronorganisatie aanbiedt waar een geauthenticeerde burger-client (via DigiD + App Manager) zijn eigen FCID-records ophaalt. Geen push, geen centrale opslag.
-- **FCID (Financial Claims Information Document)**: het JSON-formaat waarin een Blauwe-Knop-source vorderingen, betalingen en intrekkingen teruggeeft. Per response ondertekend door de bron-cel.
+- **FCID (Financial Claims Information Document)**: het JSON-formaat waarin een Blauwe-Knop-source vorderingen, betalingen en intrekkingen teruggeeft. Per response ondertekend met de signing-sleutel van de veiligheidscontext.
 - **FSC (Federatieve Service Connectivity)**: het standaardmechanisme voor server-naar-server federatie tussen overheidsorganisaties. Naast Blauwe Knop, niet in plaats daarvan: Blauwe Knop is burger-naar-bron, FSC is bron-naar-bron (bijvoorbeeld een bevoegd schuldhulpverlener met machtiging).
 
 In de huidige situatie wonen lexogram, decretogram en executogram in gescheiden systemen, met telkens een verlies aan context op de overgangen. De burger ziet via Blauwe Knop wel het bedrag, maar niet de beschikking of het artikel. De gevolgen daarvan zijn beschreven in Nieuwland en in eerdere publicaties van Kafkabrigade. De pilot die hieronder volgt sluit deze keten voor één wet bij één cel, zonder het Blauwe-Knop-patroon zelf te veranderen.
@@ -54,14 +57,14 @@ Korte samenvatting van wat de RFC voorstelt:
 
 - Lexogrammen (regelingen) blijven in `corpus/regulation/`. Decretogrammen zijn engine-output met `BESCHIKKING`. Executogrammen krijgen een eigen top-level directory `chronicles/`, naast het corpus, omdat een registratie-specificatie geen wet is.
 - Het `chronicles/`-mechanisme is ook ontworpen als architectuurvoorbereiding op een toekomstige Wet gegevensboekhouding (Nieuwland §7.3.2): per cel verifieerbaar wat er feitelijk geregistreerd is, op grond van welke grondslag, op welk moment.
-- De cel is geen nieuw concept maar hetzelfde als wat RFC-002 al `competent_authority` noemt en wat RFC-009 als `EngineIdentity` aan de engine-kant beschrijft.
+- De cel is geen nieuw concept, maar valt ook niet samen met één bestaand RegelRecht-begrip. Een deployment bindt drie onafhankelijke assen aan elkaar: de cel (containment en autonomie over eigen vastlegging, conform het position paper), het bevoegd gezag (`competent_authority`, RFC-002, de juridische as) en de veiligheidscontext (sleutels, signing, transport, autorisatie). De engine (met haar `EngineIdentity`, RFC-009) is één component dat tégen een cel kan draaien, niet de cel zelf. Zie RFC-022 §2.
 - `decision_type` wordt van gesloten enum *geopend* naar een open string met een aanbevolen vocabulaire; het financiële domein krijgt er drie aanbevolen waarden bij (BETALINGSVERPLICHTING, STRAFBESCHIKKING, BESTUURLIJKE_BOETE). De typologie blijft open, omdat de Chronolexografie-typologie zelf een eerste, niet-uitputtende opsomming is.
 - Intrekkingen zijn een nested besluit in de zin van RFC-008 (eigen AWB-lifecycle); `modality.is_intrekking_van` is alleen een backlink-veld naar het origineel besluit, geen nieuwe semantiek.
-- Integraties hangen in een namespaced `extensions`-blok. Het `extensions.blauwe_knop`-blok markeert dat een rule of een chronicle-event in de FCID-response van de cel-als-Blauwe-Knop-source zichtbaar wordt. Activatie gebeurt in de cel-configuratie, niet in de wet zelf.
-- Cross-cell queries hergebruiken het bestaande `source`-blok uit RFC-007. De cel-runtime kiest het juiste federatie-mechanisme: Blauwe Knop wanneer de cel een burger-client is, FSC wanneer de cel een bevoegde-instantie server is. Dezelfde regeling-YAML werkt in beide contexten.
-- Rechtsbescherming wordt niet als nieuw veld geïntroduceerd: de cel leidt de rechtsmiddel-route af uit de procedure (`procedure_id`) van het decretogram, op het juiste moment, zodat de werkelijke einddatum meereist en niet een statische hint. Let op: dat is niet altijd Awb-*bezwaar*. De Wahv is bijvoorbeeld *lex specialis* met een eigen rechtsmiddel; het concrete Wahv-geval staat uitgewerkt onder "Het Wahv-artikel in YAML". RFC-022 §3.3 beschrijft de drie route-families.
+- Integraties hangen in een namespaced `extensions`-blok. Het `extensions.blauwe_knop`-blok markeert dat een rule of een chronicle-event in de FCID-response van de Blauwe-Knop-source zichtbaar wordt. Activatie gebeurt in de veiligheidscontext, niet in de wet zelf.
+- Cross-cell queries hergebruiken het bestaande `source`-blok uit RFC-007. De engine-runtime kiest het transport op grond van de veiligheidscontext: Blauwe Knop in een burger-client-context, FSC in een bevoegde-instantie-server-context. Niet de cel maar de veiligheidscontext bepaalt het transport; dezelfde regeling-YAML werkt in beide contexten.
+- Rechtsbescherming wordt niet als nieuw veld geïntroduceerd: de engine die tegen de cel draait leidt de rechtsmiddel-route af uit de procedure (`procedure_id`) van het decretogram, op het juiste moment, zodat de werkelijke einddatum meereist en niet een statische hint. Let op: dat is niet altijd Awb-*bezwaar*. De Wahv is bijvoorbeeld *lex specialis* met een eigen rechtsmiddel; het concrete Wahv-geval staat uitgewerkt onder "Het Wahv-artikel in YAML". RFC-022 §3.3 beschrijft de drie route-families.
 
-RFC-022 raakt drie bestaande RFCs op punten die separaat aandacht vragen en in follow-up amendementen worden opgelost: RFC-007 (cel-resolutie in `source.regulation` en transport-keuze per cel-context), RFC-009 (sleutelhergebruik tussen FSC-signing en Blauwe-Knop-response-signing) en RFC-013 (de Execution Receipt's `loaded_regulations`-array wordt veralgemeniseerd naar alle geladen artefacten: ook chronicle-streams en lexostatus-definities). De RFC-009-vraag is de enige met een echt open beveiligingspunt; de RFC-007- en RFC-013-wijzigingen zijn additief. Voor de pilot maken we gebruik van de voorgestelde uitbreiding; de canonieke updates van die RFCs volgen na de werksessie.
+RFC-022 raakt drie bestaande RFCs op punten die separaat aandacht vragen en in follow-up amendementen worden opgelost: RFC-007 (cel-resolutie in `source.regulation` en transport-keuze per veiligheidscontext), RFC-009 (sleutelhergebruik tussen FSC-signing en Blauwe-Knop-response-signing) en RFC-013 (de Execution Receipt's `loaded_regulations`-array wordt veralgemeniseerd naar alle geladen artefacten: ook chronicle-streams en lexostatus-definities). De RFC-009-vraag is de enige met een echt open beveiligingspunt; de RFC-007- en RFC-013-wijzigingen zijn additief. Voor de pilot maken we gebruik van de voorgestelde uitbreiding; de canonieke updates van die RFCs volgen na de werksessie.
 
 Voor de werksessie hieronder is het niet nodig RFC-022 helemaal door te lezen. Dit voorstel is zelfstandig leesbaar. De RFC is er voor de IT-lead die wil zien hoe de mapping er onder de motorkap uitziet.
 
@@ -73,9 +76,9 @@ Voor één pilotwet (voorkeur: Wahv) leveren we drie samenhangende artefacten op
 
 **Een chronicle-stream.** Een YAML-bestand `chronicles/cjib_wahv_betalingen.yaml` met minstens drie events: `payment_received`, `kwijtschelding_verleend`, `deurwaardertraject_gestart`. Per event de juiste FCID-mapping in `extensions.blauwe_knop`. `kwijtschelding_verleend` declareert `references_decision: <kwijtschelding-besluit-id>` zodat de cel de bezwaarweg via dat besluit kan afleiden. `payment_received` en `deurwaardertraject_gestart` zijn feiten zonder bezwaar.
 
-**Een werkende Blauwe-Knop-source.** Een RegelRecht-engine draait binnen een afgeschermde CJIB-pilot-omgeving met de Wahv-lexogram en de chronicle-stream geladen. De cel-configuratie activeert het `blauwe_knop_source`-blok en publiceert een Blauwe-Knop-source-endpoint. Wanneer een burger-client (MBO-app, of een test-client in de pilot) een geauthenticeerde pull doet voor deze burger, voert de cel een chronolexoreductie uit: ze loopt door de relevante chronicles, filtert op BSN en op `current_stage >= visible_from_stage`, voegt betalingen en kwijtscheldingen toe, en serialiseert het resultaat als FCID-response. De response is ondertekend met de Blauwe-Knop-signing-sleutel van de cel (voor de pilot een dedicated JWS-sleutel, zie "Vertrouwen en signing") en bevat per vordering de juiste rechtsmiddel-route met de werkelijke einddatum: voor de Wahv een `beroep_route` (Wahv art. 6, intake OM/CVOM), voor een gewone Awb-beschikking een `bezwaar_route` waarvan de einddatum door de AWB-6:8-hook op de BEKENDMAKING-stage is berekend.
+**Een werkende Blauwe-Knop-source.** Een RegelRecht-engine draait binnen een afgeschermde CJIB-pilot-omgeving met de Wahv-lexogram en de chronicle-stream geladen. De veiligheidscontext activeert het `blauwe_knop_source`-blok en publiceert een Blauwe-Knop-source-endpoint. Wanneer een burger-client (MBO-app, of een test-client in de pilot) een geauthenticeerde pull doet voor deze burger, voert de cel een chronolexoreductie uit tot een lexostatus: ze loopt door de relevante chronicles, filtert op BSN en op `current_stage >= visible_from_stage`, en voegt betalingen en kwijtscheldingen toe. De veiligheidscontext serialiseert die lexostatus vervolgens naar het FCID-formaat en ondertekent de response met haar signing-sleutel (voor de pilot een dedicated JWS-sleutel, zie "Vertrouwen en signing"); de reductie tot lexostatus is een cel-bewerking, de serialisatie en ondertekening vallen erbuiten. De response bevat per vordering de juiste rechtsmiddel-route met de werkelijke einddatum: voor de Wahv een `beroep_route` (Wahv art. 6, intake OM/CVOM), voor een gewone Awb-beschikking een `bezwaar_route` waarvan de einddatum door de AWB-6:8-hook op de BEKENDMAKING-stage is berekend.
 
-Aan burger-zijde, on-device: een Wahv-vordering verschijnt in de MBO-app met een directe link naar het artikel, een verifieerbare verwijzing naar de executie-trace, een rechtsmiddel-knop met de juiste route (voor de Wahv: administratief beroep bij de OvJ) en de werkelijke einddatum, en, na betaling, een gekoppeld BetalingVerwerkt-event onder hetzelfde zaakkenmerk. De MBO-app voegt deze response samen met die van andere bronorganisaties in de burger-client. Er is geen centraal punt waar dat geheel bestaat.
+Aan burger-zijde, on-device: een Wahv-vordering verschijnt in de MBO-app met een directe link naar het artikel, een verifieerbare verwijzing naar de executie-trace, een rechtsmiddel-knop met de juiste route (voor de Wahv: administratief beroep bij de OvJ) en de werkelijke einddatum, en, na betaling, een gekoppeld BetalingVerwerkt-event onder hetzelfde zaakkenmerk. De MBO-app voegt deze response samen met die van andere bronorganisaties in de burger-client: dat samenvoegen, vergelijken en beoordelen óver cellen heen is de chronolexosynthese, on-device uitgevoerd. Er is geen centraal punt waar dat geheel bestaat.
 
 ### Drie casuïstiek-klassen in de pilot
 
@@ -132,9 +135,9 @@ CJIB hoeft deze YAML niet zelf te schrijven; ons team doet de eerste versie. Wat
 
 **Rechtsbescherming als ontwerp.** De procedure levert de termijn op het juiste moment (de notificatie-stage, niet het besluit). De cel pakt die termijn op en stuurt 'm mee als rechtsmiddel-route in elke FCID-response, met het juiste rechtsmiddel per regeling: voor de Wahv administratief beroep bij de OvJ (Wahv art. 6), voor een gewone Awb-beschikking bezwaar (Awb 6:7/6:8). Een Wahv-sanctie met automatische ophoging die voor iemand met laag inkomen disproportioneel uitwerkt, krijgt vanaf het moment van bekendmaking een zichtbare beroep-knop in MBO met de werkelijke einddatum, niet pas na een aanmaning. Dit is de operationalisering van Nieuwland §7.2.1, ingebed in het Blauwe-Knop-patroon dat MBO al draait.
 
-**Een directe invulling van de Chronolexografie-architectuur, met behoud van organisatie-autonomie.** CJIB is een cel met eigen kronieken en eigen sleutels. NVWA, NEa, DUO, CAK kunnen straks elk hun eigen cel zijn, met dezelfde mappingsregels. Geen centraal systeem, geen vendor lock-in, en het Blauwe-Knop-patroon blijft het orchestratieprincipe.
+**Een directe invulling van de Chronolexografie-architectuur, met behoud van organisatie-autonomie.** CJIB houdt een cel met eigen kronieken, onder een eigen veiligheidscontext (eigen sleutels). NVWA, NEa, DUO, CAK kunnen straks elk hun eigen cel houden, met dezelfde mappingsregels. Geen centraal systeem, geen vendor lock-in, en het Blauwe-Knop-patroon blijft het orchestratieprincipe.
 
-**Voorspelbare schaalbaarheid voor nieuwe Blauwe-Knop-sources.** Sectorale toezichthouders die instromen krijgen `decision_type: BESTUURLIJKE_BOETE`, het juiste `procedure_id` per RFC-008, en een `extensions.blauwe_knop.category`. Geen schemawijziging per opdrachtgever, geen forks van regelingen alleen voor verschillen in MBO-aansluiting. Een nieuwe source wordt een lexogram plus een chronicle-stream plus een cel-config-toggle, niet een nieuw stuk integratie-infrastructuur.
+**Voorspelbare schaalbaarheid voor nieuwe Blauwe-Knop-sources.** Sectorale toezichthouders die instromen krijgen `decision_type: BESTUURLIJKE_BOETE`, het juiste `procedure_id` per RFC-008, en een `extensions.blauwe_knop.category`. Geen schemawijziging per opdrachtgever, geen forks van regelingen alleen voor verschillen in MBO-aansluiting. Een nieuwe source wordt een lexogram plus een chronicle-stream plus een veiligheidscontext-toggle, niet een nieuw stuk integratie-infrastructuur.
 
 ## Wat wij van onze kant inbrengen
 
@@ -142,7 +145,7 @@ Concrete tegenprestatie, geen open einde aan de CJIB-kant:
 
 - **Het lexogram en de chronicle-stream** worden door ons geschreven, op basis van CJIB's bestaande Wahv-uitvoering en de wetstekst. Eerste versie binnen twee weken na vaststelling van de pilotwet.
 - **Een pilot-sandbox** waarin de RegelRecht-engine een tweede Blauwe-Knop-source aandrijft, naast de bestaande, gevoed door dezelfde input als CJIB's huidige systeem zou krijgen. CJIB hoeft geen productie-IT te raken voor de pilot.
-- **Een koppelteam** van twee mensen: ik (Anne) als architect en één engineer voor de implementatie van de chronicle-stream, de cel-config en het Blauwe-Knop-source-endpoint. Aan CJIB-kant is één domeinexpert en eventueel één IT-contact genoeg om in een wekelijks ritme te valideren.
+- **Een koppelteam** van twee mensen: ik (Anne) als architect en één engineer voor de implementatie van de chronicle-stream, de veiligheidscontext-config en het Blauwe-Knop-source-endpoint. Aan CJIB-kant is één domeinexpert en eventueel één IT-contact genoeg om in een wekelijks ritme te valideren.
 - **Volledige documentatie** van de mapping per artikel, controleerbaar tegen het bestaande Wahv-systeem. Mismatches zijn data voor het volgende gesprek, niet een falen.
 - **Geen leveringsverplichting** als de pilot niet werkt. Na drie maanden Wahv-vergelijking is een no-go besluit een legitieme uitkomst, geen mislukking.
 
@@ -300,19 +303,19 @@ Deze bijlage specificeert hoe een cel met een RegelRecht-engine een Blauwe-Knop-
 
 FCID-baseline: **v3.0.0** (volgens vorijk.nl de huidige stabiele versie; release-datum en de exacte status van de v4.x-lijn te verifiëren tegen vorijk.nl). De architectuur is voorbereid op v4.x zodra die productie-rijp is. De integratie-spec is herzienbaar zonder dat RFC-022 opnieuw opengaat. Welke versie de pilot daadwerkelijk gebruikt, wordt bepaald door wat CJIB's bestaande Blauwe-Knop-source draait (vraag 3 aan CJIB).
 
-Transport en authenticatie volgen [Blauwe Knop Connect](https://vorijk.nl/standaard/connect/draft-bk-connect-00.html) ongewijzigd. De burger authenticeert via DigiD en de App Manager; de cel valideert de aangeboden authorization-token; de cel antwoordt met een FCID-response ondertekend met haar eigen sleutel (JWS). Niets in dit voorstel verandert het protocol; we leveren een tweede source-implementatie naast de bestaande.
+Transport en authenticatie volgen [Blauwe Knop Connect](https://vorijk.nl/standaard/connect/draft-bk-connect-00.html) ongewijzigd. De burger authenticeert via DigiD en de App Manager; de veiligheidscontext valideert de aangeboden authorization-token en antwoordt met een FCID-response over de feiten van de cel, ondertekend met haar eigen sleutel (JWS). Niets in dit voorstel verandert het protocol; we leveren een tweede source-implementatie naast de bestaande.
 
 ### Wat de cel doet op een pull
 
-Een cel die een RegelRecht-engine draait en het `blauwe_knop_source`-blok in haar cel-config activeert, gedraagt zich als een Blauwe-Knop-source. Op een geauthenticeerde pull-request voor een specifieke burger voert de cel een **chronolexoreductie** uit op haar eigen chronicles:
+Een deployment waarvan de veiligheidscontext het `blauwe_knop_source`-blok activeert, biedt een Blauwe-Knop-source aan over de feiten van de cel. Op een geauthenticeerde pull-request voor een specifieke burger voert de cel een **chronolexoreductie** uit op haar eigen chronicles, met als resultaat een lexostatus:
 
 1. Filter alle decretogrammen in de relevante chronicles op `subject_bsn == <burger>`.
-2. Hou alleen decretogrammen waarvoor `current_stage >= visible_from_stage` per regel-niveau (default `BEKENDMAKING`). Een decretogram dat dat niet is, valt af; geen lege FCID-records, geen halfslachtige zichtbaarheid.
+2. Hou alleen decretogrammen waarvoor `current_stage >= visible_from_stage` per regel-niveau (default `BEKENDMAKING`). Dit is geen cel-eigen selectieregel maar een juridische-zichtbaarheidspoort, die afhangt van de activatie door de veiligheidscontext en van de RFC-008-stage. Een decretogram dat de poort niet haalt, valt af; geen lege FCID-records, geen halfslachtige zichtbaarheid.
 3. Voeg de relevante executogram-events toe (betalingen, kwijtscheldingen) uit de chronicles waarin die voorkomen.
-4. Serialiseer het resultaat als FCID-records, conform de veld-afleidingen verderop.
-5. Onderteken de hele response met de cel-eigen signing-sleutel (één signature per response, niet per record).
 
-De response is per cel ondertekend. Er is geen push, geen centraal endpoint, geen kopie buiten de cel. De burger-client (MBO-app) verifieert de handtekening en aggregeert lokaal met de responses van andere sources. FCID is een serialisatie van het decretogram/executogram, geen aparte FCID-state in de cel (zie RFC-022 §1.2).
+De veiligheidscontext serialiseert die lexostatus vervolgens naar FCID-records (conform de veld-afleidingen verderop) en ondertekent de response met haar signing-sleutel (één signature per response, niet per record). De reductie tot lexostatus is een cel-bewerking over feiten; de serialisatie en de ondertekening vallen erbuiten en zijn veiligheidscontext-bewerkingen.
+
+De response is per veiligheidscontext ondertekend. Er is geen push, geen centraal endpoint, geen kopie buiten de cel. De burger-client (MBO-app) verifieert de handtekening en aggregeert lokaal met de responses van andere sources. FCID is een serialisatie van het decretogram/executogram, geen aparte FCID-state in de cel (zie RFC-022 §1.2).
 
 ### Cell-capabilities: welke lexostatussen biedt de cel aan
 
@@ -350,19 +353,19 @@ Het CJIB-specifieke hier is uit welke chronicles de reductie samenvalt (Wahv-, O
 
 ### Activatie van het `blauwe_knop_source`-blok
 
-Een cel beslist zelf of ze als Blauwe-Knop-source draait; activatie is een feature-block in de cel-config, geen toggleable "rol" (RFC-022 §3.2). Het blok koppelt het endpoint, de FCID-versie, de signing-sleutel en de capabilities aan elkaar:
+De veiligheidscontext beslist of er een Blauwe-Knop-source draait; activatie is een feature-block in de veiligheidscontext-config, geen toggleable "rol" (RFC-022 §3.2). Het blok koppelt het endpoint, de FCID-versie, de signing-sleutel en de capabilities aan elkaar:
 
 ```yaml
-# cel-config (schets; volledig cel-config formaat in latere RFC)
+# veiligheidscontext-config (schets; volledig formaat in latere RFC)
 blauwe_knop_source:
   enabled: true
-  endpoint: https://cjib.example/blauwe-knop/fcid   # cel-eigen, geen centrale endpoint
+  endpoint: https://cjib.example/blauwe-knop/fcid   # eigen endpoint, geen centraal endpoint
   fcid_version: 3.0.0
   signing_key_ref: cjib-blauwe-knop-2026            # mag dezelfde zijn als bestaande source
   serves_lexostatus: blauwe_knop_fcid_response      # verwijst naar capabilities.yaml
 ```
 
-Een gemeente die het Wahv-lexogram draait maar geen Blauwe-Knop-source wil zijn, laat het `blauwe_knop_source`-blok in haar cel-config gewoon weg. Dezelfde regeling-YAML werkt in beide cellen.
+Een gemeente die het Wahv-lexogram draait maar geen Blauwe-Knop-source wil zijn, laat het `blauwe_knop_source`-blok in haar veiligheidscontext gewoon weg. Dezelfde regeling-YAML werkt in beide gevallen.
 
 ### FCID-event-typen en chronolexogram-mapping
 
@@ -404,7 +407,7 @@ execution:
 
 `category` is hier voorgesteld als een van `ALGEMEEN`, `ADMINISTRATIEKOSTEN`, `VERHOGING`, `RENTE`. Deze waardenlijst is een RegelRecht-voorstel binnen de `extensions.blauwe_knop`-namespace, te toetsen tegen de FCID-spec (vraag 3 aan CJIB): als FCID een eigen category-vocabulaire kent, volgen we dat. Een regeling die meerdere FCID-records uit één beschikking produceert (hoofdsom + administratiekosten + verhoging) declareert die als aparte artikelen of aparte `produces`-blokken, elk met zijn eigen `extensions.blauwe_knop.category`. Alle records delen hetzelfde `zaakkenmerk`; de burger-client gebruikt `category` om ze in de UI samen te groeperen.
 
-`visible_from_stage` selecteert de procedure-stage vanaf wanneer de vordering zichtbaar is; default `BEKENDMAKING` (of de bekendmaking-equivalente stage van de betreffende procedure). De cel evalueert per pull, per kandidaat-decretogram, of `current_stage >= visible_from_stage`; vorderingen die nog niet zo ver zijn vallen weg (geen null, geen placeholder). Het is bewust `visible_from_stage` en niet `emit_at_stage`: Blauwe Knop kent geen emit-moment, alleen een pull-moment (zie RFC-022 §3.2). De rechtsmiddel-route-velden zijn pas vanaf de notificatie-stage correct (voor Awb-beschikkingen schrijft de AWB 6:8-hook de `bezwaartermijn_einddatum` op BEKENDMAKING; voor de Wahv geldt het analoge moment van de eigen procedure), dus verlagen naar de besluit-stage is niet toegestaan voor decretogrammen die een route vereisen.
+`visible_from_stage` selecteert de procedure-stage vanaf wanneer de vordering zichtbaar is; default `BEKENDMAKING` (of de bekendmaking-equivalente stage van de betreffende procedure). De runtime evalueert per pull, per kandidaat-decretogram, of `current_stage >= visible_from_stage`; dit is een juridische-zichtbaarheidspoort die afhangt van de activatie door de veiligheidscontext en de RFC-008-stage, geen cel-eigen selectieregel. Vorderingen die nog niet zo ver zijn vallen weg (geen null, geen placeholder). Het is bewust `visible_from_stage` en niet `emit_at_stage`: Blauwe Knop kent geen emit-moment, alleen een pull-moment (zie RFC-022 §3.2). De rechtsmiddel-route-velden zijn pas vanaf de notificatie-stage correct (voor Awb-beschikkingen schrijft de AWB 6:8-hook de `bezwaartermijn_einddatum` op BEKENDMAKING; voor de Wahv geldt het analoge moment van de eigen procedure), dus verlagen naar de besluit-stage is niet toegestaan voor decretogrammen die een route vereisen.
 
 #### Veld-afleiding per FCID-record
 
@@ -418,14 +421,14 @@ execution:
 | `gebeurtenis_kenmerk` | UUID v7, gegenereerd op pull-tijdstip |
 | `bedrag` | currency-getypeerde output × 100 (FCID vereist centen als integer). Afrondingsregels (per record afronden, of totaal afronden) volgen de bestaande CJIB-uitvoering en worden in het lexogram gecodificeerd; mismatch hierop is meetbaar in de drie maanden vergelijking. |
 | `bezwaar_route` / `beroep_route` | de rechtsmiddel-route, afgeleid uit de procedure van het decretogram op pull-tijdstip; welk veld (bezwaar vs. beroep) hangt af van de procedure (zie hieronder). Voor de Wahv is dit een `beroep_route`, niet een `bezwaar_route` |
-| `signature` | de Blauwe-Knop-signing-sleutel van de cel; voor de pilot een dedicated JWS-sleutel (los van de FSC-mTLS-sleutel, zie "Vertrouwen en signing"). Per response één signature (BK-spec), niet per record. Of de FSC-sleutel later óók als JWS-sleutel mag dienen is een open beveiligingsvraag aan RFC-009 die separaat geamendeerd wordt; de pilot wacht daar niet op. |
+| `signature` | de Blauwe-Knop-signing-sleutel van de veiligheidscontext; voor de pilot een dedicated JWS-sleutel (los van de FSC-mTLS-sleutel, zie "Vertrouwen en signing"). Per response één signature (BK-spec), niet per record. Of de FSC-sleutel later óók als JWS-sleutel mag dienen is een open beveiligingsvraag aan RFC-009 die separaat geamendeerd wordt; de pilot wacht daar niet op. |
 | `trace_id` | W3C Trace Context `trace_id` uit de executie-trace van het decretogram. Identificeert deze record als afkomstig uit de RegelRecht-aangedreven source, en maakt deduplicatie tegen de bestaande Blauwe-Knop-source mogelijk. |
 
 Het `trace_id` laat een downstream surface (burgerportaal, toezichtstool) terugnavigeren naar de executie-trace die de beschikking heeft geproduceerd. De trace blijft in de cel; alleen de referentie reist mee met het record.
 
 #### Rechtsmiddel-route afgeleid uit de procedure
 
-De cel leest geen `bezwaarbaar`-veld uit `produces`. In plaats daarvan bevraagt ze, op pull-tijdstip, het procedure-state van het decretogram. Welk rechtsmiddel geldt, hangt af van de `procedure_id` (zie RFC-022 §3.3 voor de families):
+De engine leest geen `bezwaarbaar`-veld uit `produces`. In plaats daarvan bevraagt ze, op pull-tijdstip, het procedure-state van het decretogram. Welk rechtsmiddel geldt, hangt af van de `procedure_id` (zie RFC-022 §3.3 voor de families):
 
 - **Gewone Awb-beschikking** (Awb titel 4.4 *geldschulden*, meeste bestuurlijke boetes): een `bezwaar_route`.
 - **Lex-specialis eigen-regime** zoals de **Wahv**: een `beroep_route` (administratief beroep bij de OvJ, Wahv art. 6, daarna kantonrechter, Wahv art. 9). Géén Awb-bezwaar.
@@ -436,7 +439,7 @@ Veldafleiding voor een `bezwaar_route` (Awb-beschikking):
 
 | `bezwaar_route`-veld | Afleiding |
 |---|---|
-| `intake` | de bezwaar-intake-URL van de cel voor de `procedure_id` van de regel (cel-config) |
+| `intake` | de bezwaar-intake-URL voor de `procedure_id` van de regel (veiligheidscontext-config) |
 | `termijn_grondslag` | het Awb-artikel (of lex-specialis-override) dat de termijn bepaalde, bv. `"Awb 6:7"` |
 | `termijn_einddatum` | `bezwaartermijn_einddatum`-output van de BEKENDMAKING-stage-hooks (Awb 6:8 + Termijnenwet) |
 | `direct_beroep_mogelijk` | true wanneer Awb 7:1a van toepassing is; anders afwezig |
@@ -458,7 +461,7 @@ Om de mapping concreet te maken: één Wahv-sanctie van wetsartikel tot MBO-sche
 
 **Casus.** Een Mulder-feit (fout parkeren) onder zaakkenmerk `WM-2026-0001234`. De engine voert het Wahv-lexogram uit met `procedure_id: wahv_sanctie`, produceert een `BESCHIKKING` met `decision_type: BETALINGSVERPLICHTING` van €99,00, bekendgemaakt op 2026-03-01. De Wahv-beroeptermijn (6 weken, Wahv art. 6) wordt op de bekendmaking-equivalente stage berekend op 2026-04-12 (inclusief Termijnenwet-correctie).
 
-**FCID-record** dat de cel op een burger-pull serialiseert (velden volgens de afleidingstabel hierboven; `beroep_route` omdat de Wahv lex specialis is):
+**FCID-record** dat de veiligheidscontext op een burger-pull uit de lexostatus serialiseert (velden volgens de afleidingstabel hierboven; `beroep_route` omdat de Wahv lex specialis is):
 
 ```json
 {
@@ -491,7 +494,7 @@ Een chronicle-stream-entry die in de FCID-response zichtbaar moet zijn, declaree
 ```yaml
 # chronicles/cjib_payments.yaml
 $id: cjib_payments
-competent_authority: cjib
+recording_actor: cjib   # de registrerende actor, geen bevoegd gezag: een executogram is een feit, geen besluit
 chronicle: cjib_main_chronicle
 events:
   - name: payment_received
@@ -540,7 +543,7 @@ Een kleine klasse executogram-records draagt er wel een: events die *impliciet e
       category: ALGEMEEN
 ```
 
-Wanneer `references_decision` aanwezig is, kijkt de cel het RFC-008-procedure-state van die beslissing op en leidt de `bezwaar_route` daaruit af. De BEKENDMAKING-guard geldt ook hier: als de gerefereerde beslissing nog niet bekendgemaakt is, verschijnt het kwijtscheldings-event niet in de FCID-response.
+Wanneer `references_decision` aanwezig is, kijkt de engine het RFC-008-procedure-state van die beslissing op en leidt de `bezwaar_route` daaruit af. De BEKENDMAKING-guard geldt ook hier: als de gerefereerde beslissing nog niet bekendgemaakt is, verschijnt het kwijtscheldings-event niet in de FCID-response.
 
 ### Consumer-zijde: hoe een regeling vorderingen opvraagt
 
@@ -556,26 +559,26 @@ input:
         bsn: $bsn
 ```
 
-De semantiek is uniform: de regeling vraagt `openstaande_vorderingen` op bij cel `cjib`. Het transport waarover die vraag loopt, kiest de engine-runtime op grond van de cel-context (Blauwe Knop in een burger-client, FSC op een bevoegde-instantie-server); de regeling-YAML is in beide gevallen identiek. De mechaniek staat in RFC-022 §4; cel-resolutie in `source.regulation` is een uitbreiding van RFC-007 die na de werksessie geamendeerd wordt.
+De semantiek is uniform: de regeling vraagt `openstaande_vorderingen` op bij cel `cjib`. Het transport waarover die vraag loopt, kiest de engine-runtime op grond van de veiligheidscontext (Blauwe Knop in een burger-client, FSC op een bevoegde-instantie-server); de regeling-YAML is in beide gevallen identiek. De mechaniek staat in RFC-022 §4; cel-resolutie in `source.regulation` is een uitbreiding van RFC-007 die na de werksessie geamendeerd wordt.
 
 Wat dit voor de pilot betekent, zijn twee soorten consumenten:
 
 - **Burger-context (Blauwe Knop).** De engine draait in een burger-client (RegelRecht-WASM, een mobiele app) en pullt zelf de Blauwe-Knop-source van CJIB. Voorbeelden: een tool die uitrekent of iemand in aanmerking komt voor een minnelijke schuldregeling, een Wsnp-rekentool, een proactieve melding over een naderende deurwaardingsstap. Geen serverside aggregatie, niets verlaat het apparaat.
-- **Bevoegde-instantie-context (FSC).** De engine draait op een server met een wettelijke grondslag of een gemodelleerde burger-machtiging, en roept CJIB via FSC. Voorbeelden: een gemeente die in een Wsnp-procedure de schuldsom moet kennen, een beschermingsbewindvoerder met rechtbank-mandaat, een schuldhulpverlener met machtiging. CJIB toetst de grondslag aan de serverkant en geeft een (gefilterde) `openstaande_vorderingen` terug.
+- **Bevoegde-instantie-context (FSC).** De engine draait op een server met een wettelijke grondslag of een gemodelleerde burger-machtiging, en roept CJIB via FSC. Voorbeelden: een gemeente die in een Wsnp-procedure de schuldsom moet kennen, een beschermingsbewindvoerder met rechtbank-mandaat, een schuldhulpverlener met machtiging. De veiligheidscontext van CJIB toetst de grondslag aan de serverkant en geeft een (gefilterde) `openstaande_vorderingen` uit de cel terug.
 
-Beide bestaan náást elkaar; CJIB kan als bron beide endpoints draaien. Dezelfde Wsnp-regeling-YAML werkt zo ongewijzigd in een burger-app én in een gemeente-systeem, omdat de transport-keuze in de cel-config zit, niet in de regeling.
+Beide bestaan náást elkaar; CJIB kan als bron beide endpoints draaien. Dezelfde Wsnp-regeling-YAML werkt zo ongewijzigd in een burger-app én in een gemeente-systeem, omdat de transport-keuze in de veiligheidscontext zit, niet in de regeling.
 
 ### Vertrouwen en signing
 
-Vertrouwen wordt overgenomen uit [RFC-009 §5](/rfcs/rfc-009). De cel tekent FCID-responses (Blauwe Knop) en FSC-responses; de ontvanger verifieert tegen de relevante Trust Anchor (App Manager voor Blauwe Knop, FSC Directory voor FSC). De handtekening is per response, niet per individueel record; dat volgt de Blauwe-Knop-specificatie.
+Vertrouwen wordt overgenomen uit [RFC-009 §5](/rfcs/rfc-009). De veiligheidscontext tekent FCID-responses (Blauwe Knop) en FSC-responses; de ontvanger verifieert tegen de relevante Trust Anchor (App Manager voor Blauwe Knop, FSC Directory voor FSC). De handtekening is per response, niet per individueel record; dat volgt de Blauwe-Knop-specificatie.
 
 Er zijn hier twee aparte vragen die niet door elkaar moeten lopen. De eerste is een echte beveiligingsvraag: mag de FSC-mTLS-sleutel uit RFC-009 óók als JWS-signing-sleutel voor Blauwe Knop dienen? Dat raakt key-usage/EKU-constraints en functiescheiding, en RFC-009 (dat transport-auth en payload-signing in aparte lagen houdt) moet hierop geamendeerd worden; het antwoord kan zijn dat aparte sleutelparen vereist zijn. **Om de pilot niet aan die nog-open vraag op te hangen, kiezen we voor de pilot bewust de veilige default: een eigen, dedicated JWS-signing-sleutel voor de RegelRecht-aangedreven source, los van de FSC-mTLS-sleutel.** De pilot is daarmee niet geblokkeerd, ongeacht wat de canonieke RFC-009-amendement uiteindelijk besluit; sleutelhergebruik blijft een latere optimalisatie, niet iets op het kritieke pad.
 
-De tweede vraag is operationeel en kan de werksessie wél beantwoorden: kan de RegelRecht-cel die naast de bestaande source draait, CJIB's *bestaande* Blauwe-Knop-signing-sleutel (die al een JWS-payload-sleutel is) hergebruiken, of krijgt de tweede source een eigen sleutel? Beide werken; dit is een afstemming met CJIB (vraag 4 aan CJIB), geen beveiligingsbeslissing.
+De tweede vraag is operationeel en kan de werksessie wél beantwoorden: kan de veiligheidscontext van de RegelRecht-aangedreven source CJIB's *bestaande* Blauwe-Knop-signing-sleutel (die al een JWS-payload-sleutel is) hergebruiken, of krijgt de tweede source een eigen sleutel? Beide werken; dit is een afstemming met CJIB (vraag 4 aan CJIB), geen beveiligingsbeslissing.
 
 ### Buiten scope
 
-- **Burger-authenticatie zelf.** Wordt door DigiD en App Manager via Blauwe Knop Connect gedaan; de cel valideert alleen de tokens die uit die flow voortkomen.
+- **Burger-authenticatie zelf.** Wordt door DigiD en App Manager via Blauwe Knop Connect gedaan; de veiligheidscontext valideert alleen de tokens die uit die flow voortkomen.
 - **Betaalverwerking** (iDEAL, automatische incasso, reconciliatie) ligt upstream van deze integratie.
 - **De Financial Claim Request API en Session API** rondom FCID zijn nog niet geïntegreerd; de pilot beperkt zich tot het FCID-response-formaat.
 - **Burger-machtigingen via DigiD Machtigen** in het Blauwe-Knop-pad. De huidige Blauwe Knop Connect-spec beschrijft alleen de directe burger-flow; gemachtigdentoegang is een open vraag (zie ook open vraag 10 in bijlage A).
