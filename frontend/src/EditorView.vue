@@ -154,7 +154,7 @@ function movePane(idx, target) {
 //     `canEdit` is true; writes land in that traject's branch.
 // Pick a traject in the TrajectMenu to flip from the first shape to
 // the second.
-const { activeTrajectRef, activeTraject } = useTrajects();
+const { activeTrajectRef, activeTraject, trajectMissing } = useTrajects();
 const canEdit = computed(
   () => (!oidcConfigured.value || authenticated.value) && activeTrajectRef.value !== null,
 );
@@ -1434,11 +1434,29 @@ async function handleActionSave() {
 </script>
 
 <template>
+        <!-- The URL names a traject the user has no membership for: it was
+             deleted, never existed, or access was revoked. We do not
+             distinguish these (no leak of traject existence). Takes
+             precedence over every editor state below, including the law-404
+             branch, so a missing traject never shows "<law> is niet
+             beschikbaar in dit traject". -->
+        <nldd-page v-if="trajectMissing">
+          <nldd-simple-section width="full">
+            <nldd-inline-dialog
+              variant="alert"
+              text="Dit traject bestaat niet of je hebt geen toegang."
+              supporting-text="Ga terug naar het overzicht om een traject te kiezen."
+            >
+              <nldd-button slot="actions" variant="primary" text="Naar overzicht" :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)"></nldd-button>
+            </nldd-inline-dialog>
+          </nldd-simple-section>
+        </nldd-page>
+
         <!-- Empty state: no tabs open. The CTA points back to the library
              since that's the only way to create new tabs; mention the tab
              bar too because closed tabs may still be visible alongside this
              empty state on the next pane. -->
-        <nldd-page v-if="!activeTab">
+        <nldd-page v-else-if="!activeTab">
           <nldd-simple-section width="full">
             <nldd-inline-dialog text="Open een artikel vanuit de tabbalk of de bibliotheek om te bewerken.">
               <nldd-button slot="actions" variant="secondary" text="Ga naar bibliotheek" :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)"></nldd-button>
