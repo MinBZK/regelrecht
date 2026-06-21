@@ -144,7 +144,7 @@ fn main() {
         };
 
         let version = detect_version(&value);
-        match version {
+        let schema_ok = match version {
             Some(ver) => {
                 let schema = &schemas[ver];
                 match Validator::new(schema) {
@@ -152,12 +152,14 @@ fn main() {
                         let errors: Vec<_> = validator.iter_errors(&value).collect();
                         if errors.is_empty() {
                             eprintln!("OK: {} (schema {ver})", path.display());
+                            true
                         } else {
                             eprintln!("FAIL: {}: schema ({ver})", path.display());
                             for error in &errors {
                                 eprintln!("  - {}: {}", error.instance_path(), error);
                             }
                             failed = true;
+                            false
                         }
                     }
                     Err(e) => {
@@ -166,6 +168,7 @@ fn main() {
                             path.display()
                         );
                         failed = true;
+                        false
                     }
                 }
             }
@@ -173,17 +176,21 @@ fn main() {
                 // Check if $schema field exists but version is unrecognized
                 if value.get("$schema").is_some() {
                     eprintln!("FAIL: {}: unrecognized $schema version", path.display());
-                    failed = true;
                 } else {
                     eprintln!("FAIL: {}: missing $schema field", path.display());
-                    failed = true;
                 }
+                failed = true;
+                false
             }
-        }
+        };
 
-        // Step 3: RFC-023 static unit check. Mismatches between declared units
-        // (e.g. eurocent + days) are FAILs; an `amount` output with no declared
-        // unit is a WARN. Un-annotated laws produce no findings.
+        // Step 3: RFC-023 static unit check — only when the schema validated, so
+        // unit findings aren't interleaved with (and possibly artefacts of) a
+        // schema error. Mismatches between declared units (e.g. eurocent + days)
+        // are FAILs; an `amount` output with no declared unit is a WARN.
+        if !schema_ok {
+            continue;
+        }
         for finding in regelrecht_engine::units::check_law(&law) {
             let kind = if finding.is_error { "FAIL" } else { "WARN" };
             eprintln!(

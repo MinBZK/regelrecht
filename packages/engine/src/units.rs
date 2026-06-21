@@ -347,13 +347,26 @@ pub fn infer_operation_unit(
             value,
             values,
         } => {
-            infer_unit(subject, symbols)?;
+            // IN is "equals any of", so the subject must share the elements' unit
+            // (like the comparison operators) — not just be internally consistent.
+            let subject_unit = infer_unit(subject, symbols)?;
             if let Some(v) = value {
-                infer_unit(v, symbols)?;
+                combine(
+                    AlgebraOp::Comparison,
+                    name,
+                    subject_unit,
+                    infer_unit(v, symbols)?,
+                )?;
             }
             if let Some(vs) = values {
-                let refs: Vec<&ActionValue> = vs.iter().collect();
-                check_children(&refs, symbols)?;
+                for elem in vs {
+                    combine(
+                        AlgebraOp::Comparison,
+                        name,
+                        subject_unit,
+                        infer_unit(elem, symbols)?,
+                    )?;
+                }
             }
             Ok(Unit::Unknown)
         }
@@ -632,6 +645,20 @@ mod tests {
         let op = ActionOperation::Round {
             value: inner,
             precision: 0,
+        };
+        assert!(matches!(
+            infer_operation_unit(&op, &symbols()),
+            Err(EngineError::UnitMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn infer_in_subject_element_unit_mismatch_errors() {
+        // $inkomen (eurocent) IN [$dagen (days)] — same requirement as EQUALS
+        let op = ActionOperation::In {
+            subject: var("inkomen"),
+            value: None,
+            values: Some(vec![var("dagen")]),
         };
         assert!(matches!(
             infer_operation_unit(&op, &symbols()),
