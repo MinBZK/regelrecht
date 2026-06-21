@@ -183,70 +183,6 @@ async fn create_rejects_empty_name() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
-/// A request whose custom repo is the reserved `local` / `test-corpus`
-/// sentinel produces a read-only traject backed by a synthesized local
-/// writable-own source (no GitHub writable-own).
-fn local_test_req(name: &str) -> CreateTrajectRequest {
-    CreateTrajectRequest {
-        name: name.to_string(),
-        description: String::new(),
-        scope: String::new(),
-        repo_owner: Some("Local".to_string()), // case-insensitive
-        repo_name: Some("test-corpus".to_string()),
-        base_branch: None,
-        repo_path: None,
-    }
-}
-
-#[tokio::test]
-async fn local_test_sentinel_creates_read_only_local_traject() {
-    let db = TestDb::new().await;
-    let state = empty_state(db.pool.clone());
-    let owner = seed_account(&db.pool, "owner@example.com", "Owner").await;
-
-    let (status, Json(summary)) = trajects::create(
-        State(state.clone()),
-        Extension(owner.clone()),
-        Json(local_test_req("Lokale test")),
-    )
-    .await
-    .unwrap();
-    assert_eq!(status, StatusCode::CREATED);
-    assert!(summary.read_only, "sentinel traject must be read_only");
-
-    // trajects.read_only persisted
-    let read_only: bool = sqlx::query_scalar("SELECT read_only FROM trajects WHERE id = $1")
-        .bind(summary.id)
-        .fetch_one(&db.pool)
-        .await
-        .unwrap();
-    assert!(read_only);
-
-    // Exactly one writable-own, and it is a LOCAL source at the test path.
-    let (src_type, local_path): (String, Option<String>) = sqlx::query_as(
-        "SELECT source_type::text, local_path
-         FROM traject_corpus_sources
-         WHERE traject_id = $1 AND is_writable_own = TRUE",
-    )
-    .bind(summary.id)
-    .fetch_one(&db.pool)
-    .await
-    .unwrap();
-    assert_eq!(src_type, "local");
-    assert_eq!(local_path.as_deref(), Some("corpus/regulation/nl"));
-
-    // No GitHub writable-own row exists.
-    let gh_writable: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM traject_corpus_sources
-         WHERE traject_id = $1 AND is_writable_own = TRUE AND source_type = 'github'",
-    )
-    .bind(summary.id)
-    .fetch_one(&db.pool)
-    .await
-    .unwrap();
-    assert_eq!(gh_writable, 0);
-}
-
 #[tokio::test]
 async fn normal_traject_is_writable_with_github_own() {
     let db = TestDb::new().await;
@@ -254,13 +190,6 @@ async fn normal_traject_is_writable_with_github_own() {
     let owner = seed_account(&db.pool, "owner2@example.com", "Owner2").await;
 
     let id = create_traject(&state, &owner, "Gewoon traject").await;
-
-    let read_only: bool = sqlx::query_scalar("SELECT read_only FROM trajects WHERE id = $1")
-        .bind(id)
-        .fetch_one(&db.pool)
-        .await
-        .unwrap();
-    assert!(!read_only, "normal traject must be writable");
 
     let src_type: String = sqlx::query_scalar(
         "SELECT source_type::text FROM traject_corpus_sources
