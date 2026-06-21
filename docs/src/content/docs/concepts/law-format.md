@@ -120,13 +120,41 @@ Operations are the building blocks of law logic:
 |----------|-----------|--------|
 | **Arithmetic** | `ADD`, `SUBTRACT`, `MULTIPLY`, `DIVIDE` | `values: [...]` |
 | **Aggregate** | `MIN`, `MAX` | `values: [...]` |
+| **Rounding** | `ROUND`, `CEIL`, `FLOOR` | `value:` + `precision:` (a single operand, rounded to N decimals; see below) |
 | **Comparison** | `EQUALS`, `GREATER_THAN`, `LESS_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN_OR_EQUAL` | `subject:`, `value:` (operands may be numbers or ISO dates, see [RFC-021](/rfcs/rfc-021)) |
 | **Logical** | `AND`, `OR`, `NOT` | `AND`/`OR`: `conditions: [...]`; `NOT`: `value:` (wraps a single operation) |
 | **Collection** | `IN`, `LIST` | `IN`: `subject:` + `value:` or `values: [...]`; `LIST`: `items: [...]` |
 | **Conditional** | `IF` (alias `SWITCH`) | `cases: [{when:, then:}]`, `default:` |
 | **Date** | `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK`, `DATE_DIFF` | `AGE`: `date_of_birth:`, `reference_date:`; `DATE_ADD`: `date:` + `years:`/`months:`/`days:`; `DATE`: `year:`, `month:`, `day:`; `DAY_OF_WEEK`: `date:`; `DATE_DIFF`: `from:`, `to:`, `in:` (days/months/years) |
 
-These 22 operations make up the schema. The engine also accepts the compat aliases `NOT_EQUALS`, `IS_NULL`, `NOT_NULL`, and `NOT_IN` for backward compatibility, but they are outside the schema, so prefer wrapping the positive operation in `NOT`. See [RFC-004: Uniform Operation Syntax](/rfcs/rfc-004) for the full specification.
+These 25 operations make up the schema. The engine also accepts the compat aliases `NOT_EQUALS`, `IS_NULL`, `NOT_NULL`, and `NOT_IN` for backward compatibility, but they are outside the schema, so prefer wrapping the positive operation in `NOT`. See [RFC-004: Uniform Operation Syntax](/rfcs/rfc-004) for the full specification.
+
+### Rounding and precision
+
+Rounding is an **explicit, law-modeled instruction** — the engine never rounds a value implicitly (not even money). A law that must round says so with one of three unary operations, each taking a single `value:` operand and a `precision:` (the number of decimal places to round to, in the value's own [unit](#type-specifications)):
+
+| Operation | Direction | Dutch |
+|-----------|-----------|-------|
+| `ROUND` | nearest, half-up (ties away from zero) | *rekenkundig afronden* |
+| `CEIL` | up (toward +∞) | *naar boven afronden* |
+| `FLOOR` | down (toward −∞) | *naar beneden afronden / afkappen* |
+
+`precision: 0` rounds to whole units, `precision: 2` to two decimals, and a negative precision rounds to tens/hundreds (e.g. `-2` rounds a eurocent value to whole euros). Intermediate values keep full precision — rounding only happens where a rounding operation appears.
+
+```yaml
+# Round the result of a SUBTRACT to whole eurocent, half-up
+- output: tegemoetkoming
+  value:
+    operation: ROUND
+    precision: 0
+    value:
+      operation: SUBTRACT
+      values:
+        - $normbedrag
+        - $eigen_bijdrage
+```
+
+See [RFC-024: Precision and Rounding](/rfcs/rfc-024) for the full design and legal grounding (Hoge Raad half-up default; no implicit intermediate rounding).
 
 ### Variable References
 

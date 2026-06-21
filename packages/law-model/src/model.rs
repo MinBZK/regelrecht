@@ -193,6 +193,14 @@ pub enum ActionOperation {
     #[serde(rename = "MIN")]
     Min { values: Vec<ActionValue> },
 
+    // Rounding (unary value + precision; RFC-024)
+    #[serde(rename = "ROUND")]
+    Round { value: ActionValue, precision: i64 },
+    #[serde(rename = "CEIL")]
+    Ceil { value: ActionValue, precision: i64 },
+    #[serde(rename = "FLOOR")]
+    Floor { value: ActionValue, precision: i64 },
+
     // Logical
     #[serde(rename = "AND")]
     And { conditions: Vec<ActionValue> },
@@ -289,6 +297,9 @@ impl ActionOperation {
             ActionOperation::Divide { .. } => "DIVIDE",
             ActionOperation::Max { .. } => "MAX",
             ActionOperation::Min { .. } => "MIN",
+            ActionOperation::Round { .. } => "ROUND",
+            ActionOperation::Ceil { .. } => "CEIL",
+            ActionOperation::Floor { .. } => "FLOOR",
             ActionOperation::And { .. } => "AND",
             ActionOperation::Or { .. } => "OR",
             ActionOperation::Not { .. } => "NOT",
@@ -326,6 +337,9 @@ pub struct Action {
     /// Conditions for AND/OR operations
     #[serde(default)]
     pub conditions: Option<Vec<ActionValue>>,
+    /// Decimal places for rounding operations (ROUND/CEIL/FLOOR; RFC-024)
+    #[serde(default)]
+    pub precision: Option<i64>,
 }
 
 /// Execution specification within machine_readable section

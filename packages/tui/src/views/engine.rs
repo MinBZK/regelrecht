@@ -621,7 +621,7 @@ fn parse_value(s: &str) -> Value {
         return Value::Int(i);
     }
     if let Ok(f) = s.parse::<f64>() {
-        return Value::Float(f);
+        return Value::from(f);
     }
     match s.to_lowercase().as_str() {
         "true" | "ja" | "yes" => return Value::Bool(true),
@@ -637,7 +637,7 @@ fn format_value(value: &Value) -> String {
         Value::Null => "null".to_string(),
         Value::Bool(b) => b.to_string(),
         Value::Int(i) => i.to_string(),
-        Value::Float(f) => format!("{f:.2}"),
+        Value::Decimal(d) => format!("{d:.2}"),
         Value::String(s) => format!("\"{s}\""),
         Value::Array(arr) => {
             let items: Vec<String> = arr.iter().map(format_value).collect();

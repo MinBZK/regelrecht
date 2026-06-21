@@ -4,6 +4,7 @@
 //! for a comprehensive set of test cases using pre-generated fixtures.
 
 use regelrecht_engine::{LawExecutionService, Value};
+use rust_decimal::prelude::ToPrimitive;
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
@@ -77,34 +78,25 @@ fn values_match(expected: &serde_json::Value, actual: &Value) -> bool {
     match (expected, actual) {
         (serde_json::Value::Null, Value::Null) => true,
         (serde_json::Value::Bool(e), Value::Bool(a)) => e == a,
-        (serde_json::Value::Number(e), Value::Int(a)) => e.as_i64() == Some(*a),
-        (serde_json::Value::Number(e), Value::Float(a)) => {
-            if let Some(f) = e.as_f64() {
-                (f - a).abs() < 1e-9
-            } else {
-                false
-            }
-        }
         (serde_json::Value::String(e), Value::String(a)) => e == a,
         (serde_json::Value::Array(e), Value::Array(a)) => {
             e.len() == a.len() && e.iter().zip(a.iter()).all(|(e, a)| values_match(e, a))
         }
-        // Handle int/float comparison (Python may produce int, Rust may produce float)
+        // Numeric comparison (Int or exact Decimal) with a small tolerance.
         (serde_json::Value::Number(e), actual) => {
-            if let Some(expected_int) = e.as_i64() {
-                match actual {
-                    Value::Int(a) => expected_int == *a,
-                    Value::Float(a) => (expected_int as f64 - a).abs() < 1e-9,
-                    _ => false,
-                }
-            } else if let Some(expected_float) = e.as_f64() {
-                match actual {
-                    Value::Int(a) => (expected_float - *a as f64).abs() < 1e-9,
-                    Value::Float(a) => (expected_float - a).abs() < 1e-9,
-                    _ => false,
-                }
-            } else {
-                false
+            // Known limitation, not an oversight: golden fixtures are JSON, and
+            // serde_json parses every number through f64, so the expected side is
+            // already f64. We therefore compare in f64 with a 1e-9 tolerance —
+            // the engine keeps Decimal precision internally, but the fixture
+            // format can't express more than f64 on the expected side.
+            let actual_num = match actual {
+                Value::Int(a) => Some(*a as f64),
+                Value::Decimal(a) => a.to_f64(),
+                _ => None,
+            };
+            match (e.as_f64(), actual_num) {
+                (Some(expected), Some(actual)) => (expected - actual).abs() < 1e-9,
+                _ => false,
             }
         }
         _ => false,

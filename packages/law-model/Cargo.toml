@@ -12,8 +12,12 @@ categories = ["parsing"]
 
 [dependencies]
 regelrecht-shared = { path = "../shared" }
+rust_decimal.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+rust_decimal_macros.workspace = true
 
 [lints]
 workspace = true

@@ -100,33 +100,24 @@ wet_op_de_zorgtoeslag (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   ╙──Computing motivering_vereist
 ║   ║       └──Result: motivering_vereist = True
 ║   ╟──Computing hoogte_zorgtoeslag
-║   ║   ├──Compute MAX(...) = 209691.78888
-║   ║   │   └──Compute SUBTRACT(...) = 209691.78888
-║   ║   │       ├──IF(took default) = 211200
-║   ║   │       │   ├──CASE 0: False
-║   ║   │       │   │   └──Compute EQUALS(...) = False
-║   ║   │       │   │       └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
-║   ║   │       │   └──DEFAULT: 211200
-║   ║   │       │       └──Resolving from PARAMETERS: $STANDAARDPREMIE = 211200
-║   ║   │       └──Compute ADD(...) = 1508.2111200000002
-║   ║   │           ├──Compute MULTIPLY(...) = 1508.2111200000002
-║   ║   │           │   ├──IF(took default) = 0.01896
-║   ║   │           │   │   ├──CASE 0: False
-║   ║   │           │   │   │   └──Compute EQUALS(...) = False
-║   ║   │           │   │   │       └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
-║   ║   │           │   │   └──DEFAULT: 0.01896
-║   ║   │           │   │       └──Resolving from DEFINITION: $PERCENTAGE_DREMPELINKOMEN_ALLEENSTAANDE = 0.01896
-║   ║   │           │   └──Compute MIN(...) = 79547
-║   ║   │           │       ├──Resolving from PARAMETERS: $TOETSINGSINKOMEN = 79547
-║   ║   │           │       └──IF(took default) = 3971900
-║   ║   │           │           ├──CASE 0: False
-║   ║   │           │           │   └──Compute EQUALS(...) = False
-║   ║   │           │           │       └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
-║   ║   │           │           └──DEFAULT: 3971900
-║   ║   │           │               └──Resolving from DEFINITION: $DREMPELINKOMEN_ALLEENSTAANDE = 3971900
-║   ║   │           └──IF(took default) = 0
-║   ║   │               ├──CASE 0: False
-║   ║   │               │   └──Compute GREATER_THAN(...) = False
+║   ║   ├──Compute ROUND(...) = 209692
+║   ║   │   └──Compute MAX(...) = 209691.78888
+║   ║   │       └──Compute SUBTRACT(...) = 209691.78888
+║   ║   │           ├──IF(took default) = 211200
+║   ║   │           │   ├──CASE 0: False
+║   ║   │           │   │   └──Compute EQUALS(...) = False
+║   ║   │           │   │       └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
+║   ║   │           │   └──DEFAULT: 211200
+║   ║   │           │       └──Resolving from PARAMETERS: $STANDAARDPREMIE = 211200
+║   ║   │           └──Compute ADD(...) = 1508.21112
+║   ║   │               ├──Compute MULTIPLY(...) = 1508.21112
+║   ║   │               │   ├──IF(took default) = 0.01896
+║   ║   │               │   │   ├──CASE 0: False
+║   ║   │               │   │   │   └──Compute EQUALS(...) = False
+║   ║   │               │   │   │       └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
+║   ║   │               │   │   └──DEFAULT: 0.01896
+║   ║   │               │   │       └──Resolving from DEFINITION: $PERCENTAGE_DREMPELINKOMEN_ALLEENSTAANDE = 0.01896
+║   ║   │               │   └──Compute MIN(...) = 79547
 ║   ║   │               │       ├──Resolving from PARAMETERS: $TOETSINGSINKOMEN = 79547
 ║   ║   │               │       └──IF(took default) = 3971900
 ║   ║   │               │           ├──CASE 0: False
@@ -134,8 +125,18 @@ wet_op_de_zorgtoeslag (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   │               │           │       └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
 ║   ║   │               │           └──DEFAULT: 3971900
 ║   ║   │               │               └──Resolving from DEFINITION: $DREMPELINKOMEN_ALLEENSTAANDE = 3971900
-║   ║   │               └──DEFAULT: 0
-║   ║   └──Result: hoogte_zorgtoeslag = 209691.78888
+║   ║   │               └──IF(took default) = 0
+║   ║   │                   ├──CASE 0: False
+║   ║   │                   │   └──Compute GREATER_THAN(...) = False
+║   ║   │                   │       ├──Resolving from PARAMETERS: $TOETSINGSINKOMEN = 79547
+║   ║   │                   │       └──IF(took default) = 3971900
+║   ║   │                   │           ├──CASE 0: False
+║   ║   │                   │           │   └──Compute EQUALS(...) = False
+║   ║   │                   │           │       └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
+║   ║   │                   │           └──DEFAULT: 3971900
+║   ║   │                   │               └──Resolving from DEFINITION: $DREMPELINKOMEN_ALLEENSTAANDE = 3971900
+║   ║   │                   └──DEFAULT: 0
+║   ║   └──Result: hoogte_zorgtoeslag = 209692
 ║   ╟──Computing heeft_recht_op_zorgtoeslag
 ║   ║   ├──Compute AND(...) = True
 ║   ║   │   ├──Compute EQUALS(...) = True
@@ -143,7 +144,7 @@ wet_op_de_zorgtoeslag (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   │   ├──Compute EQUALS(...) = True
 ║   ║   │   │   └──Resolving from PARAMETERS: $VERMOGEN_ONDER_GRENS = True
 ║   ║   │   └──Compute GREATER_THAN(...) = True
-║   ║   │       └──Resolving from OUTPUT: $HOOGTE_ZORGTOESLAG = 209691.78888
+║   ║   │       └──Resolving from OUTPUT: $HOOGTE_ZORGTOESLAG = 209692
 ║   ║   └──Result: heeft_recht_op_zorgtoeslag = True
 ║   ╙──HOOK: Hook PostActions on BESCHIKKING stage BESLUIT → algemene_wet_bestuursrecht:6:7
 ║       ╙──Computing bezwaartermijn_weken

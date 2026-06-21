@@ -70,7 +70,7 @@ fn bench_operations(c: &mut Criterion) {
 
     // MULTIPLY
     let mul_op = ActionOperation::Multiply {
-        values: vec![var_ref("income"), literal(Value::Float(0.1345))],
+        values: vec![var_ref("income"), literal(Value::from(0.1345))],
     };
     group.bench_function("multiply", |b| {
         b.iter(|| execute_operation(black_box(&mul_op), &resolver, 0))
