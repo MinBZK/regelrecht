@@ -1,6 +1,18 @@
 import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { apiFetch, apiFetchJson } from '../lib/apiFetch.js';
+import { useAuth } from './useAuth.js';
+
+// Pure predicate: the URL names a traject (`trajectRef`) but, for an
+// authenticated user whose membership list has finished loading, that ref
+// is not among their memberships (`activeTraject` is null). That means the
+// traject either does not exist or the user has no access — we deliberately
+// do not distinguish the two (no information leak about traject existence).
+// The `authenticated` + `!loading` gates avoid a false flash while auth and
+// the list are still resolving.
+export function isTrajectMissing(trajectRef, authenticated, loading, activeTraject) {
+  return trajectRef != null && authenticated && !loading && activeTraject == null;
+}
 
 const trajects = ref([]);
 const loading = ref(true);
@@ -91,10 +103,20 @@ export function useTrajects() {
   const activeTraject = computed(
     () => trajects.value.find((t) => t.ref && t.ref === activeTrajectRef.value) || null,
   );
+  const { authenticated } = useAuth();
+  const trajectMissing = computed(() =>
+    isTrajectMissing(
+      activeTrajectRef.value,
+      authenticated.value,
+      loading.value,
+      activeTraject.value,
+    ),
+  );
   return {
     trajects,
     activeTrajectRef,
     activeTraject,
+    trajectMissing,
     loading,
     error,
     createTraject,
