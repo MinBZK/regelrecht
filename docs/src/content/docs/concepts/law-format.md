@@ -235,6 +235,30 @@ output:
       precision: 0
 ```
 
+### Units (quantity-kind)
+
+A value's *quantity-kind* is declared with `type_spec.unit` — on inputs, outputs, parameters **and** `definitions` constants (RFC-023). The available units are `euro`, `eurocent`, `ratio` (a 0–1 fraction), `percentage` (0–100), and the durations `years`, `weeks`, `months`, `days`.
+
+A unit is a **label, never a computational constraint**: tagging a value never changes it. In particular, a `percentage` is not silently divided by 100 — any `… / 100` is an explicit operation written where the value is applied. `ratio` and `percentage` are distinct labels for the same dimension; the corpus keeps both so a law that says "1,896" (a ratio) and one that says "30 procent" are both transcribed faithfully.
+
+Constants may use the optionally-structured form to carry a unit (the bare `naam: 123` form stays valid):
+
+```yaml
+definitions:
+  drempelinkomen_alleenstaande:        # money, in whole cents
+    value: 3971900
+    type: amount
+    type_spec:
+      unit: eurocent
+  percentage_drempelinkomen_alleenstaande:  # a 0–1 ratio, explicitly not a percent
+    value: 0.01896
+    type: number
+    type_spec:
+      unit: ratio
+```
+
+The engine uses these labels to reject nonsensical combinations — adding a `eurocent` to a `days`, or `euro` to `eurocent`, is a **unit mismatch** error — while a dimensionless `ratio`/`percentage` multiplied by an amount keeps the amount's unit. Units are **opt-in per law**: an un-annotated value has unit `unknown` and is never checked, so existing laws are unaffected until someone annotates them. `just validate` reports unit mismatches as failures and flags `amount` outputs that lack a unit (only for laws that already declare units elsewhere). See [RFC-023: Quantities in Law YAML](/rfcs/rfc-023).
+
 ## Corpus Contents
 
 The corpus is still small and growing. At the time of writing it spans three regulatory layers:
