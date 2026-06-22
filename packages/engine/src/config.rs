@@ -63,7 +63,7 @@ pub const MAX_OPERATION_DEPTH: usize = 100;
 /// metadata in Cargo.toml.
 pub const SUPPORTED_SCHEMAS: &[&str] = &[
     "v0.2.0", "v0.3.0", "v0.3.1", "v0.3.2", "v0.4.0", "v0.5.0", "v0.5.1", "v0.5.2", "v0.5.3",
-    "v0.5.4", "v0.5.5",
+    "v0.5.4", "v0.5.5", "v0.5.6",
 ];
 
 /// Maximum recursion depth for dot notation property access.

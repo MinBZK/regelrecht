@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.5/schema/v0.5.5/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
 $id: wet_op_de_zorgtoeslag
 regulatory_layer: WET
 publication_date: '2024-12-20'
@@ -54,16 +54,34 @@ articles:
     url: https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2
     machine_readable:
       definitions:
+        # RFC-023: constants declare their quantity-kind. Money is eurocent;
+        # the percentages here are stored as 0-1 ratios (1,896% = 0.01896), so
+        # they carry unit: ratio — not percentage. The label never divides by 100.
         drempelinkomen_alleenstaande:
           value: 3971900
+          type: amount
+          type_spec:
+            unit: eurocent
         drempelinkomen_aanvrager_met_toeslagpartner:
           value: 5587500
+          type: amount
+          type_spec:
+            unit: eurocent
         percentage_drempelinkomen_alleenstaande:
           value: 0.01896
+          type: number
+          type_spec:
+            unit: ratio
         percentage_drempelinkomen_partner:
           value: 0.04273
+          type: number
+          type_spec:
+            unit: ratio
         percentage_toetsingsinkomen:
           value: 0.137
+          type: number
+          type_spec:
+            unit: ratio
       execution:
         produces:
           legal_character: BESCHIKKING

@@ -82,6 +82,9 @@ pub struct ArticleEngine<'a> {
     article: &'a Article,
     /// Law containing the article
     law: &'a ArticleBasedLaw,
+    /// Declared units for this article's symbols (RFC-023). Empty/all-unknown
+    /// for un-annotated articles, which then skip unit checking entirely.
+    symbols: crate::units::SymbolUnits,
 }
 
 impl<'a> ArticleEngine<'a> {
@@ -91,7 +94,12 @@ impl<'a> ArticleEngine<'a> {
     /// * `article` - Article to execute
     /// * `law` - Law containing the article
     pub fn new(article: &'a Article, law: &'a ArticleBasedLaw) -> Self {
-        Self { article, law }
+        let symbols = crate::units::SymbolUnits::from_article(article);
+        Self {
+            article,
+            law,
+            symbols,
+        }
     }
 
     /// Execute this article's logic.
@@ -467,11 +475,19 @@ impl<'a> ArticleEngine<'a> {
         // When an action has an operation, the value/subject fields are operands, not direct results
         if let Some(operation) = &action.operation {
             let action_op = self.action_to_operation(action, operation)?;
+            // RFC-023: reject incompatible units (e.g. eurocent + days). Gated on
+            // the article declaring any unit, so un-annotated laws are untouched.
+            if self.symbols.has_any_unit() {
+                crate::units::infer_operation_unit(&action_op, &self.symbols)?;
+            }
             return execute_operation(&action_op, context, 0);
         }
 
         // Check for direct value (only when no operation is specified)
         if let Some(value) = &action.value {
+            if self.symbols.has_any_unit() {
+                crate::units::infer_unit(value, &self.symbols)?;
+            }
             return evaluate_value(value, context, 0);
         }
 
@@ -744,9 +760,63 @@ articles:
         ArticleBasedLaw::from_yaml_str(yaml).unwrap()
     }
 
+    /// A law that adds a eurocent amount to a duration in days — a unit mismatch
+    /// the engine must reject at runtime (RFC-023).
+    fn make_unit_mismatch_law() -> ArticleBasedLaw {
+        let yaml = r#"
+$id: unit_mismatch_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Unit mismatch article
+    machine_readable:
+      execution:
+        input:
+          - name: bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: duur
+            type: number
+            type_spec:
+              unit: days
+        output:
+          - name: onzin
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: onzin
+            operation: ADD
+            values:
+              - $bedrag
+              - $duur
+"#;
+        ArticleBasedLaw::from_yaml_str(yaml).unwrap()
+    }
+
     // -------------------------------------------------------------------------
     // Basic Execution Tests
     // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_unit_mismatch_rejected_at_runtime() {
+        let law = make_unit_mismatch_law();
+        let article = law.find_article_by_number("1").unwrap();
+        let engine = ArticleEngine::new(article, &law);
+
+        let mut params = BTreeMap::new();
+        params.insert("bedrag".to_string(), Value::Int(100));
+        params.insert("duur".to_string(), Value::Int(5));
+
+        let result = engine.evaluate(params, "2025-01-01");
+        assert!(
+            matches!(result, Err(crate::error::EngineError::UnitMismatch { .. })),
+            "Expected UnitMismatch (eurocent + days), got {:?}",
+            result
+        );
+    }
 
     #[test]
     fn test_evaluate_simple_comparison() {
