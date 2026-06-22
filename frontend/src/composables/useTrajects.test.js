@@ -6,7 +6,7 @@ describe('isTrajectMissing', () => {
   const member = { ref, name: 'Zorgtoeslag' };
 
   it('is true when the URL names a traject not in the membership list', () => {
-    // authenticated, list done loading, ref not found → missing
+    // authorized, list done loading, ref not found → missing
     expect(isTrajectMissing(ref, true, false, null)).toBe(true);
   });
 
@@ -18,7 +18,7 @@ describe('isTrajectMissing', () => {
     expect(isTrajectMissing(ref, true, true, null)).toBe(false);
   });
 
-  it('is false when the user is not authenticated', () => {
+  it('is false when the user is not authorized', () => {
     expect(isTrajectMissing(ref, false, false, null)).toBe(false);
   });
 
