@@ -402,6 +402,10 @@ pub fn infer_operation_unit(
         }
         DateDiff { from, to, unit } => {
             check_children(&[from, to, unit], symbols)?;
+            // The result unit (days/months/years) is selected at runtime by the
+            // `unit` operand, which the unit checker does not evaluate. We
+            // intentionally under-approximate as Unknown rather than guess, so
+            // the result never triggers a spurious unit-mismatch check.
             Ok(Unit::Unknown)
         }
     }
