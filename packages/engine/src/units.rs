@@ -477,7 +477,7 @@ pub fn check_law(law: &crate::article::ArticleBasedLaw) -> Vec<UnitFinding> {
                             article: article_no.clone(),
                             output: o.name.clone(),
                             is_error: false,
-                            message: format!("amount output '{}' has no unit", o.name),
+                            message: "no unit declared".to_string(),
                         });
                     }
                 }

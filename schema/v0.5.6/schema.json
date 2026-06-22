@@ -455,7 +455,7 @@
               ]
             },
             "precision": {
-              "type": "number",
+              "type": "integer",
               "description": "Number of decimal places for numeric values",
               "minimum": 0
             },
