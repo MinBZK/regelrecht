@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue';
+import ScenarioParameterInput from './ScenarioParameterInput.vue';
 
 let nextRowId = 0;
 
@@ -67,14 +68,14 @@ function defaultForType(type) {
   }
 }
 
-function inputType(fieldType) {
-  switch (fieldType) {
-    case 'number':
-    case 'amount':
-      return 'number';
-    default:
-      return 'text';
-  }
+// Null contract for data-source cells: null / undefined / the gherkin string
+// "null" all mean "not provided" and display as empty; clearing stores null.
+// (Mirrors steps.js `'null' -> null` and formMapper `null/'' -> 'null'`.)
+function cellDisplay(v) {
+  return v == null || v === 'null' ? '' : v;
+}
+function cellStore(rowIndex, fieldName, v) {
+  updateCell(rowIndex, fieldName, v === '' || v == null ? null : v);
 }
 
 // All columns: key field + declared fields (deduplicated)
@@ -83,7 +84,7 @@ const allColumns = computed(() => {
   const seen = new Set();
 
   seen.add(props.keyField);
-  cols.push({ name: props.keyField, type: 'string', isKey: true });
+  cols.push({ name: props.keyField, type: 'string', unit: null, isKey: true });
 
   for (const field of props.fields) {
     if (!seen.has(field.name)) {
@@ -149,12 +150,13 @@ const showBody = computed(() => props.drilledIn || expanded.value);
               </nldd-dropdown>
             </nldd-cell>
             <nldd-cell v-else width="full" min-width="120px">
-              <nldd-text-field
-                size="md"
-                :type="inputType(col.type)"
-                :value="String(row[col.name] ?? '')"
-                @input="updateCell(ri, col.name, $event.target?.value ?? $event.detail?.value ?? '')"
-              ></nldd-text-field>
+              <ScenarioParameterInput
+                :type="col.type"
+                :unit="col.unit"
+                :name="col.name"
+                :value="cellDisplay(row[col.name])"
+                @update="cellStore(ri, col.name, $event)"
+              />
             </nldd-cell>
           </nldd-list-item>
 
