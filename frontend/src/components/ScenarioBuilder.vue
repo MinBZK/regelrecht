@@ -9,7 +9,7 @@ import { useLatest } from '../lib/useLatest.js';
 import { parseFeature } from '../gherkin/parser.js';
 import { mapFeatureToForm, getEffectiveSetup, formStateToGherkin, syncEditedValues } from '../gherkin/formMapper.js';
 import { matchStatus, humanize } from '../utils/outputFormat.js';
-import { buildArticleMap } from '../utils/articleMapping.js';
+import { buildArticleMap, buildTypeMap } from '../utils/articleMapping.js';
 import ScenarioForm from './ScenarioForm.vue';
 
 const props = defineProps({
@@ -29,6 +29,9 @@ const emit = defineEmits(['executed', 'dirty-change']);
 
 // --- Article mapping ---
 const articleMap = computed(() => buildArticleMap(props.articles));
+// Datatype mapping: drives the per-type scenario input controls (boolean ->
+// switch, amount -> currency field, etc.) in ScenarioForm.
+const typeMap = computed(() => buildTypeMap(props.articles));
 
 // --- Dependencies ---
 const {
@@ -630,6 +633,7 @@ defineExpose({ save: onSave });
             :ready="ready"
             :law-id="lawId"
             :article-map="articleMap"
+            :type-map="typeMap"
             @show-details="() => onShowDetails(i)"
             @executed="(data) => onScenarioResult(i, data)"
             @change="markDirty"

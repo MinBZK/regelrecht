@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseFeature } from './parser.js';
 import { mapFeatureToForm, getEffectiveSetup, formStateToGherkin, syncEditedValues } from './formMapper.js';
+import { parseValue } from './steps.js';
 
 describe('mapFeatureToForm', () => {
   it('maps a simple scenario with date, evaluate, and assertions', () => {
@@ -365,5 +366,43 @@ Feature: No-op sync
 
     // No scenario-level override should be added
     expect(form.scenarios[0].setup.parameters).toHaveLength(0);
+  });
+});
+
+describe('typed scenario values round-trip', () => {
+  // ScenarioParameterInput now emits real JS types (boolean true, integer
+  // eurocents) instead of strings. Verify these serialize to valid Gherkin
+  // and parse back unchanged, so the new typed controls don't corrupt the
+  // .feature file. See ScenarioForm / ScenarioParameterInput.
+  it('serializes a real boolean and an eurocent amount, then parses back', () => {
+    const parsed = parseFeature(`
+Feature: Typed values
+
+  Scenario: Test
+    Given parameter "is_verzekerde" is "false"
+    Given parameter "inkomen" is 0
+    When I evaluate "result" of "law"
+`);
+
+    const form = mapFeatureToForm(parsed);
+    syncEditedValues(form, 0, {
+      parameterValues: { is_verzekerde: true, inkomen: 150000 },
+      calculationDate: null,
+    });
+
+    const gherkin = formStateToGherkin(form);
+    // boolean → quoted; integer eurocents → unquoted number
+    expect(gherkin).toContain('Given parameter "is_verzekerde" is "true"');
+    expect(gherkin).toContain('Given parameter "inkomen" is 150000');
+
+    // Re-parse. Quoted params (booleans/strings) reload as strings, which the
+    // engine and ScenarioParameterInput coerce via parseValue at use time;
+    // unquoted numbers reload as numbers directly.
+    const reform = mapFeatureToForm(parseFeature(gherkin));
+    const reparams = Object.fromEntries(
+      reform.scenarios[0].setup.parameters.map((p) => [p.name, p.value]),
+    );
+    expect(parseValue(reparams.is_verzekerde)).toBe(true);
+    expect(reparams.inkomen).toBe(150000);
   });
 });
