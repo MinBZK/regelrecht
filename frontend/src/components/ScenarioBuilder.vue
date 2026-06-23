@@ -9,7 +9,8 @@ import { useLatest } from '../lib/useLatest.js';
 import { parseFeature } from '../gherkin/parser.js';
 import { mapFeatureToForm, getEffectiveSetup, formStateToGherkin, syncEditedValues } from '../gherkin/formMapper.js';
 import { matchStatus, humanize } from '../utils/outputFormat.js';
-import { buildArticleMap, buildTypeMap } from '../utils/articleMapping.js';
+import yaml from 'js-yaml';
+import { buildArticleMap, buildTypeMap, buildExternalFieldTypeMap } from '../utils/articleMapping.js';
 import ScenarioForm from './ScenarioForm.vue';
 
 const props = defineProps({
@@ -32,6 +33,9 @@ const articleMap = computed(() => buildArticleMap(props.articles));
 // Datatype mapping: drives the per-type scenario input controls (boolean ->
 // switch, amount -> currency field, etc.) in ScenarioForm.
 const typeMap = computed(() => buildTypeMap(props.articles));
+// External data-source column types, collected from the current law + the
+// already-fetched dependency YAMLs. Rebuilt when the dependency load settles.
+const externalFieldTypeMap = ref(new Map());
 
 // --- Dependencies ---
 const {
@@ -212,6 +216,23 @@ watch(() => props.lawYaml, (val, prev) => {
 
 onBeforeUnmount(() => clearTimeout(lawYamlDebounce));
 
+// Collect external data-source column types from the current law plus the
+// dependency YAMLs already fetched into versionsCache (parsed with js-yaml).
+// Called once the dependency load settles so the data-source tables can render
+// typed cells. Tolerates unparseable/text-only versions.
+function rebuildExternalFieldTypeMap() {
+  const docs = [{ articles: props.articles || [] }];
+  for (const versions of Object.values(versionsCache)) {
+    for (const v of Array.isArray(versions) ? versions : []) {
+      try {
+        const doc = yaml.load(v);
+        if (doc && typeof doc === 'object') docs.push(doc);
+      } catch { /* skip unparseable version */ }
+    }
+  }
+  externalFieldTypeMap.value = buildExternalFieldTypeMap(docs);
+}
+
 // Run the dependency cascade for the current law + scenarios. Reads the
 // latest prop/state values at call time (not captured watch args) so a
 // debounced run always uses the freshest inputs.
@@ -255,8 +276,16 @@ async function runDependencyLoad() {
     // Vue ignores ref writes after unmount, the shared WASM engine outlives
     // the component, and the guard resets on error so a fresh mount retries.
     depsReady.value = true;
+    rebuildExternalFieldTypeMap();
     if (mainLawId) {
-      loadImplementors(mainLawId, props.engine, fetchLawVersions, props.trajectRef);
+      // Implementor regulations load in the background, populating versionsCache
+      // after the rebuild above. Re-type once they settle so any source:{}
+      // fields they declare get picked up (idempotent; skipped if superseded).
+      Promise.resolve(
+        loadImplementors(mainLawId, props.engine, fetchLawVersions, props.trajectRef),
+      )
+        .then(() => { if (isCurrent()) rebuildExternalFieldTypeMap(); })
+        .catch(() => {});
     }
   }
 }
@@ -634,6 +663,7 @@ defineExpose({ save: onSave });
             :law-id="lawId"
             :article-map="articleMap"
             :type-map="typeMap"
+            :external-field-type-map="externalFieldTypeMap"
             @show-details="() => onShowDetails(i)"
             @executed="(data) => onScenarioResult(i, data)"
             @change="markDirty"
