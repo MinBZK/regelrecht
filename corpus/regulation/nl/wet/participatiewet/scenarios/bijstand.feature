@@ -68,7 +68,10 @@ Feature: Bijstandsaanvraag via Participatiewet
     Then the execution succeeds
     Then output "heeft_recht_op_bijstand" is true
     When I evaluate "uitkering_bedrag" of "participatiewet"
-    Then output "uitkering_bedrag" equals 103712
+    # NB: a 5% verlaging yields a sub-cent amount; the model applies no whole-cent
+    # rounding (that would be an explicit ROUND op, RFC-023/024), so the exact
+    # value stands.
+    Then output "uitkering_bedrag" equals 103712.45
 
   Scenario: Burger met gedragscategorie 2 krijgt 30% verlaging (Diemen)
     # Categorie 2: niet meewerken aan plan van aanpak
@@ -84,7 +87,9 @@ Feature: Bijstandsaanvraag via Participatiewet
     Then the execution succeeds
     Then output "heeft_recht_op_bijstand" is true
     When I evaluate "uitkering_bedrag" of "participatiewet"
-    Then output "uitkering_bedrag" equals 76420
+    # NB: a 30% verlaging yields a sub-cent amount; no whole-cent rounding in the
+    # model (would be an explicit ROUND op, RFC-023/024), so the exact value stands.
+    Then output "uitkering_bedrag" equals 76419.70
 
   Scenario: Burger met gedragscategorie 3 krijgt 100% verlaging (Diemen)
     # Categorie 3: niet naar vermogen arbeid verkrijgen

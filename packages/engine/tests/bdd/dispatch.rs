@@ -11,6 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use regelrecht_engine::{
     annotation, Article, OutputProvenance, SelectorHint, TextQuoteSelector, Value,
 };
+use rust_decimal::Decimal;
 
 use crate::helpers::value_conversion::{convert_gherkin_value, values_equal_with_tolerance};
 use crate::world::RegelrechtWorld;
@@ -404,12 +405,21 @@ impl RegelrechtWorld {
     }
 }
 
-/// Convert a captured number to an engine `Value` (Int if integral, else Float).
+/// Convert a captured number to an engine `Value` (Int if integral, else exact
+/// `Decimal`). The engine uses `Decimal` for non-integer numbers (RFC-024), so
+/// we never produce a float. Non-integral literals are routed through the
+/// shortest round-trip string repr and parsed as `Decimal`, so a literal like
+/// `0.5` or `3.14` becomes the exact decimal it reads as — not its f64
+/// approximation.
 fn num_to_value(n: f64) -> Value {
     if n.fract() == 0.0 && n.is_finite() {
         Value::Int(n as i64)
     } else {
-        Value::Float(n)
+        Value::Decimal(
+            format!("{n}")
+                .parse::<Decimal>()
+                .expect("numeric literal parses as Decimal"),
+        )
     }
 }
 

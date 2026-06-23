@@ -266,8 +266,10 @@ Feature: Zorgtoeslag eligibility
     When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
-    # NB: 197205 eurocent = EUR 1.972,05
-    Then output "hoogte_zorgtoeslag" equals 197205
+    # NB: ~197205 eurocent = EUR 1.972,05. Exact-decimal arithmetic (RFC-024)
+    # yields a sub-cent amount; the model applies no whole-cent rounding (that
+    # would be an explicit ROUND op, RFC-023/024), so the exact value stands.
+    Then output "hoogte_zorgtoeslag" equals 197205.31187
 
   # NB: Art 2 no longer checks age directly — that was a scope violation.
   # The Zvw also does not check age for is_verzekerd (minors ARE verzekerd
