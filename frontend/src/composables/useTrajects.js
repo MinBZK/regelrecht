@@ -1,6 +1,26 @@
 import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { apiFetch, apiFetchJson } from '../lib/apiFetch.js';
+import { useAuth } from './useAuth.js';
+
+// Pure predicate: the URL names a traject (`trajectRef`) but, for a user who
+// may use the editor (`authorized`) whose membership list has finished loading
+// (`!loading`) without error (`!errored`), that ref is not among their
+// memberships (`activeTraject` is null). That means the traject either does not
+// exist or the user has no access — we deliberately do not distinguish the two
+// (no information leak about traject existence).
+//
+// `authorized` mirrors `canEdit`'s `!oidcConfigured || authenticated` idiom so
+// the message also works in OIDC-not-configured (dev) deployments. The
+// `!loading` + `!errored` gates cover the trajects-list fetch: a network
+// failure leaves the list empty but is NOT a missing traject, so `errored`
+// suppresses a false "does not exist" for a transient blip. The auth side
+// needs no gate because the `requiresAuth` router guard awaits `/auth/status`
+// before EditorView mounts, so `authorized` is already settled by the time this
+// runs.
+export function isTrajectMissing(trajectRef, authorized, loading, errored, activeTraject) {
+  return trajectRef != null && authorized && !loading && !errored && activeTraject == null;
+}
 
 const trajects = ref([]);
 const loading = ref(true);
@@ -14,6 +34,10 @@ async function loadTrajects() {
   // while the new list is in flight, instead of holding the stale label
   // for the duration of the round-trip.
   loading.value = true;
+  // Clear any prior error so it reflects only this fetch — otherwise a single
+  // historical network blip stays sticky and would permanently suppress the
+  // trajectMissing message (which gates on `!error`) for the whole session.
+  error.value = null;
   try {
     // Raw fetch + ok-branch on purpose: a non-ok status (e.g. 401 on a
     // public page) keeps the previous list without setting `error` —
@@ -91,10 +115,21 @@ export function useTrajects() {
   const activeTraject = computed(
     () => trajects.value.find((t) => t.ref && t.ref === activeTrajectRef.value) || null,
   );
+  const { authenticated, oidcConfigured } = useAuth();
+  const trajectMissing = computed(() =>
+    isTrajectMissing(
+      activeTrajectRef.value,
+      !oidcConfigured.value || authenticated.value,
+      loading.value,
+      error.value != null,
+      activeTraject.value,
+    ),
+  );
   return {
     trajects,
     activeTrajectRef,
     activeTraject,
+    trajectMissing,
     loading,
     error,
     createTraject,
