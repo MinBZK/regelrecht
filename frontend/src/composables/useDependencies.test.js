@@ -140,6 +140,28 @@ describe('useDependencies.loadAllDependencies', () => {
     const harvestCalls = fetchSpy.mock.calls.filter((c) => String(c[0]).includes('/harvest'));
     expect(harvestCalls.length).toBeGreaterThan(0);
   });
+
+  it('refetches versions for a dep already in the (warm) engine, without reloading it', async () => {
+    // Regression for the data-source typing bug: the shared WASM engine
+    // persists across scenario-panel mounts (and is pre-warmed by the machine
+    // view), so a dependency is often already loaded by the time the panel
+    // resolves its graph. The data-source column type map is built from the
+    // fetched version YAMLs (versionsCache), NOT from the engine — so an
+    // already-loaded dep must STILL have its versions fetched. Gating the fetch
+    // on `engine.hasLaw` left the cache empty on a warm engine and collapsed
+    // every typed cell (boolean dropdown, euro field, date picker) to a plain
+    // string field. The engine load itself is correctly skipped (already there).
+    const engine = fakeEngine();
+    engine.loaded.add('zorgverzekeringswet'); // pre-warm: dep already loaded
+    const fetchLawVersions = vi.fn(async (id) => DEP_VERSIONS[id]);
+
+    const { loadAllDependencies } = useDependencies();
+    await loadAllDependencies(MAIN_LAW, engine, fetchLawVersions);
+
+    expect(fetchLawVersions).toHaveBeenCalledWith('zorgverzekeringswet');
+    // Not re-loaded into the engine: no body was handed to loadLaw for it.
+    expect(engine.bodies.some((b) => b.includes('$id: zorgverzekeringswet'))).toBe(false);
+  });
 });
 
 describe('useDependencies.loadImplementors', () => {

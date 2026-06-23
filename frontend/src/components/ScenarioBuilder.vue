@@ -1,3 +1,17 @@
+<script>
+// Parsed-version cache, MODULE-scoped (shared across all ScenarioBuilder
+// instances) so it survives remounts — switching the panel view away and back,
+// or opening another article, remounts this component. The data-source column
+// type map (`rebuildExternalFieldTypeMap`) is derived from these YAMLs, while
+// the WASM engine that gates whether `loadAllDependencies` re-fetches a dep is
+// itself a shared singleton that stays warm across mounts. A per-instance cache
+// would therefore be empty on every remount once the engine is warm, forcing a
+// full dependency re-fetch each time. Invalidated per-traject in
+// `fetchLawVersions`.
+const versionsCache = {};
+let versionsCacheTrajectRef = null;
+</script>
+
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
 import { useDependencies } from '../composables/useDependencies.js';
@@ -163,9 +177,6 @@ watch(featureText, (text) => {
 // traject switch doesn't return the previous traject's bodies. The dependency
 // loader needs *every* version of a law (not just today's-best) so the engine
 // can pick the one in force on the scenario's calculation date.
-const versionsCache = {};
-let versionsCacheTrajectRef = null;
-
 async function fetchLawVersions(lawId) {
   if (versionsCacheTrajectRef !== props.trajectRef) {
     Object.keys(versionsCache).forEach((k) => delete versionsCache[k]);
