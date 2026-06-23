@@ -20,6 +20,8 @@ const props = defineProps({
   articleMap: { type: Object, default: null },
   /** Datatype mapping from buildTypeMap(): name -> { type, unit } */
   typeMap: { type: Object, default: null },
+  /** External data-source field types from buildExternalFieldTypeMap(): name -> { type, unit } */
+  externalFieldTypeMap: { type: Object, default: null },
 });
 
 // Resolve a parameter's declared datatype/unit; default to a plain text field
@@ -27,6 +29,13 @@ const props = defineProps({
 // machine_readable).
 function paramMeta(name) {
   return props.typeMap?.get(name) ?? { type: 'string', unit: null };
+}
+
+// Resolve an external data-source column's datatype/unit from the dependency
+// graph; default to a plain text field for columns not found in the map.
+function typeField(name) {
+  const meta = props.externalFieldTypeMap?.get(name);
+  return { name, type: meta?.type ?? 'string', unit: meta?.unit ?? null };
 }
 
 const emit = defineEmits(['show-details', 'executed', 'change', 'drill-change']);
@@ -43,7 +52,7 @@ function initDataSources() {
   return (props.setup.dataSources || []).map((ds) => ({
     sourceName: ds.sourceName,
     keyField: ds.keyField,
-    fields: ds.headers.filter((h) => h !== ds.keyField).map((h) => ({ name: h, type: 'string' })),
+    fields: ds.headers.filter((h) => h !== ds.keyField).map((h) => typeField(h)),
     rows: ds.rows.map((row, i) => {
       const obj = { _id: i };
       ds.headers.forEach((h, j) => { obj[h] = row[j] ?? ''; });
@@ -132,6 +141,15 @@ function discardEdits() {
 
 // Re-init when scenario/setup changes
 watch([() => props.setup, () => props.scenario], discardEdits, { deep: true });
+
+// Column types come from the dependency graph, which loads asynchronously after
+// the panel mounts. Re-type the data-source columns in place when the map
+// arrives — without rebuilding rows, so unsaved cell edits survive.
+watch(() => props.externalFieldTypeMap, () => {
+  for (const ds of dataSources.value) {
+    ds.fields = ds.fields.map((f) => typeField(f.name));
+  }
+});
 
 // CONTRACT: execute() must stay fully synchronous. The WASM engine runs
 // in-process with no I/O, so `result`/`error`/`running` are all settled
