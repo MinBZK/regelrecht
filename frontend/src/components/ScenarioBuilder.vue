@@ -265,8 +265,12 @@ async function runDependencyLoad() {
     }
     for (const depId of allDeps) {
       try {
+        // Fetch versions unconditionally to populate versionsCache for the
+        // data-source type map (same rationale as loadAllDependencies — the
+        // map is built from cached YAMLs, independent of engine state); load
+        // into the shared engine only if it isn't already present.
+        const yamls = await fetchLawVersions(depId);
         if (!props.engine.hasLaw(depId)) {
-          const yamls = await fetchLawVersions(depId);
           loadLawVersions(props.engine, yamls, depId);
         }
       } catch (e) {
