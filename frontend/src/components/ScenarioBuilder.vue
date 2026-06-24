@@ -7,7 +7,9 @@
 // itself a shared singleton that stays warm across mounts. A per-instance cache
 // would therefore be empty on every remount once the engine is warm, forcing a
 // full dependency re-fetch each time. Invalidated per-traject in
-// `fetchLawVersions`.
+// `fetchLawVersions`. Assumes at most one ScenarioBuilder is mounted at a time
+// (the scenario panel): `versionsCacheTrajectRef` is shared, so two concurrent
+// instances with different trajectRefs would invalidate each other's cache.
 const versionsCache = {};
 let versionsCacheTrajectRef = null;
 </script>
@@ -300,7 +302,7 @@ async function runDependencyLoad() {
         loadImplementors(mainLawId, props.engine, fetchLawVersions, props.trajectRef),
       )
         .then(() => { if (isCurrent()) rebuildExternalFieldTypeMap(); })
-        .catch(() => {});
+        .catch((e) => console.warn('Implementor load / re-type failed (non-fatal):', e));
     }
   }
 }
