@@ -27,7 +27,7 @@ if (!existsSync(grammarPath)) {
 
 // js-yaml is a frontend dependency; resolve it from frontend/node_modules so
 // the generator has a YAML parser without adding a root-level dependency.
-const frontendRequire = createRequire(join(root, 'frontend', 'node_modules', 'js-yaml', 'package.json'));
+const frontendRequire = createRequire(join(root, 'frontend', 'package.json'));
 const yaml = frontendRequire('js-yaml');
 
 const grammar = yaml.load(readFileSync(grammarPath, 'utf8'));

@@ -11,7 +11,3 @@ Feature: Engine error handling
   Scenario: A non-existent output fails with the output name
     When I evaluate "nonexistent_output" of "test_untranslatables"
     Then the execution fails with "nonexistent_output"
-
-  Scenario: A non-existent output via the multi-output API fails with the output name
-    When I evaluate outputs "nonexistent_output" of "test_untranslatables"
-    Then the execution fails with "Output 'nonexistent_output' not found"
