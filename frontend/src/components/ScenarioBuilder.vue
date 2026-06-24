@@ -235,12 +235,14 @@ onBeforeUnmount(() => clearTimeout(lawYamlDebounce));
 // typed cells. Tolerates unparseable/text-only versions.
 function rebuildExternalFieldTypeMap() {
   const docs = [{ articles: props.articles || [] }];
-  for (const versions of Object.values(versionsCache)) {
+  for (const [lawId, versions] of Object.entries(versionsCache)) {
     for (const v of Array.isArray(versions) ? versions : []) {
       try {
         const doc = yaml.load(v);
         if (doc && typeof doc === 'object') docs.push(doc);
-      } catch { /* skip unparseable version */ }
+      } catch (e) {
+        console.warn(`Skipped an unparseable cached version of '${lawId}' while building the type map:`, e);
+      }
     }
   }
   externalFieldTypeMap.value = buildExternalFieldTypeMap(docs);

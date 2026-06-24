@@ -162,6 +162,44 @@ describe('useDependencies.loadAllDependencies', () => {
     // Not re-loaded into the engine: no body was handed to loadLaw for it.
     expect(engine.bodies.some((b) => b.includes('$id: zorgverzekeringswet'))).toBe(false);
   });
+
+  it('does not chase transitive deps of a fetched-but-unloadable (missing) law', async () => {
+    // The transitive-ref scan must run only for a "usable" law (already loaded,
+    // or newly loaded). A law whose versions are all fetched but unloadable is
+    // missing/broken — chasing its refs would queue deps of a law that can't
+    // run. (Regression for moving the scan out of the try/catch.)
+    const unloadableZvw = [
+      '$id: zorgverzekeringswet',
+      'UNLOADABLE: true',
+      'articles:',
+      "  - number: '1'",
+      '    machine_readable:',
+      '      execution:',
+      '        input:',
+      '          - name: x',
+      '            source:',
+      '              regulation: regeling_standaardpremie',
+      '              output: y',
+    ].join('\n') + '\n';
+    const fetchSpy = vi.fn(async (url) => {
+      if (String(url).includes('/harvest')) return res({ results: [] });
+      return res([], false, 404);
+    });
+    globalThis.fetch = fetchSpy;
+    const engine = fakeEngine();
+    const fetchLawVersions = vi.fn(async (id) =>
+      id === 'zorgverzekeringswet' ? [unloadableZvw] : DEP_VERSIONS[id],
+    );
+
+    const { loadAllDependencies } = useDependencies();
+    await loadAllDependencies(MAIN_LAW, engine, fetchLawVersions);
+
+    // The unloadable law is missing (never registered in the engine)...
+    expect(engine.loaded.has('zorgverzekeringswet')).toBe(false);
+    expect(fetchLawVersions).toHaveBeenCalledWith('zorgverzekeringswet');
+    // ...and its transitive ref was NOT chased.
+    expect(fetchLawVersions).not.toHaveBeenCalledWith('regeling_standaardpremie');
+  });
 });
 
 describe('useDependencies.loadImplementors', () => {

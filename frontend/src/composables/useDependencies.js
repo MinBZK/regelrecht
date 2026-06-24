@@ -103,6 +103,11 @@ export function useDependencies() {
         // collapsed every typed data-source cell back to a plain string field.
         const alreadyLoaded = engine.hasLaw(lawId);
         let yamls = [];
+        // Whether this law is sound enough to scan for transitive deps: already
+        // in the engine, or newly loaded without error. A law that was fetched
+        // but failed to load into the engine is broken/missing — we must NOT
+        // chase its transitive refs (would queue deps of a law that can't run).
+        let usable = alreadyLoaded;
         try {
           yamls = await fetchLawVersions(lawId);
           // Load every version (isolating each) so the engine's date-aware
@@ -114,6 +119,7 @@ export function useDependencies() {
           if (!alreadyLoaded && !loadLawVersions(engine, yamls, lawId)) {
             throw new Error(`no loadable version for '${lawId}'`);
           }
+          usable = true;
           loaded++;
           loadedDeps.value = [...loadedDeps.value, lawId];
           progress.value = `${loaded}/${total} wetten geladen`;
@@ -132,28 +138,30 @@ export function useDependencies() {
           }
         }
 
-        // Recurse for transitive deps. Collect from every version — a
-        // `source.regulation` reference can appear in one version and not
-        // another, and a scenario may be evaluated at any calculation date
-        // (including a future one), so a reference introduced only by a future
-        // version must still be loadable. Runs for already-loaded laws too, so
-        // a dep reachable only through one is still discovered and cached. This
-        // can over-fetch a transitive law that no in-force version needs;
-        // that's an accepted, bounded cost — `select_in` never selects a
+        // Recurse for transitive deps of a usable law only. Collect from every
+        // version — a `source.regulation` reference can appear in one version
+        // and not another, and a scenario may be evaluated at any calculation
+        // date (including a future one), so a reference introduced only by a
+        // future version must still be loadable. Runs for already-loaded laws
+        // too, so a dep reachable only through one is still discovered and
+        // cached. This can over-fetch a transitive law that no in-force version
+        // needs; that's an accepted, bounded cost — `select_in` never selects a
         // not-yet-in-force version.
-        const newDeps = [];
-        for (const versionYaml of yamls) {
-          // Isolate the ref scan per version: a version that loaded into the
-          // engine but is malformed for `js-yaml` must not throw here.
-          try {
-            collectDeps(yaml.load(versionYaml), visited, newDeps);
-          } catch (e) {
-            console.warn(`Skipped transitive-ref scan of an unparseable version of '${lawId}':`, e);
+        if (usable) {
+          const newDeps = [];
+          for (const versionYaml of yamls) {
+            // Isolate the ref scan per version: a version that loaded into the
+            // engine but is malformed for `js-yaml` must not throw here.
+            try {
+              collectDeps(yaml.load(versionYaml), visited, newDeps);
+            } catch (e) {
+              console.warn(`Skipped transitive-ref scan of an unparseable version of '${lawId}':`, e);
+            }
           }
-        }
-        if (newDeps.length > 0) {
-          toLoad.push(...newDeps);
-          total = toLoad.length;
+          if (newDeps.length > 0) {
+            toLoad.push(...newDeps);
+            total = toLoad.length;
+          }
         }
       }
 
