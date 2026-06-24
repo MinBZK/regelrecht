@@ -93,39 +93,65 @@ export function useDependencies() {
       const missingDeps = [];
 
       for (const lawId of toLoad) {
-        if (engine.hasLaw(lawId)) {
-          loaded++;
-          loadedDeps.value = [...loadedDeps.value, lawId];
-          progress.value = `${loaded}/${total} wetten geladen`;
-          continue;
-        }
-
+        // Fetch the version YAMLs unconditionally — even for a law already in
+        // the engine. They feed two consumers that are independent of engine
+        // state: the transitive-ref scan below, and (via `versionsCache` in
+        // ScenarioBuilder) the data-source column type map. The WASM engine is
+        // a shared singleton that persists across scenario-panel mounts and is
+        // pre-warmed by the machine view, so gating this fetch on
+        // `engine.hasLaw` left `versionsCache` empty on a warm engine and
+        // collapsed every typed data-source cell back to a plain string field.
+        const alreadyLoaded = engine.hasLaw(lawId);
+        let yamls = [];
+        // Whether this law is sound enough to scan for transitive deps: already
+        // in the engine, or newly loaded without error. A law that was fetched
+        // but failed to load into the engine is broken/missing — we must NOT
+        // chase its transitive refs (would queue deps of a law that can't run).
+        let usable = alreadyLoaded;
         try {
-          const yamls = await fetchLawVersions(lawId);
+          yamls = await fetchLawVersions(lawId);
           // Load every version (isolating each) so the engine's date-aware
           // selection can pick the one in force on the scenario's calculation
-          // date. No version loading — empty list or every version unloadable —
-          // is treated as a missing dependency (harvest requested below).
-          if (!loadLawVersions(engine, yamls, lawId)) {
+          // date. Skip the engine load when the law is already present — only
+          // its YAML (cached above) is still needed. For a not-yet-loaded law,
+          // no loadable version — empty list or every version unloadable — is a
+          // missing dependency (harvest requested below).
+          if (!alreadyLoaded && !loadLawVersions(engine, yamls, lawId)) {
             throw new Error(`no loadable version for '${lawId}'`);
           }
+          usable = true;
           loaded++;
           loadedDeps.value = [...loadedDeps.value, lawId];
           progress.value = `${loaded}/${total} wetten geladen`;
+        } catch (e) {
+          loaded++;
+          if (alreadyLoaded) {
+            // Already executable in the engine; only the type-map YAML couldn't
+            // be (re)fetched. Don't route it to harvest as if it were missing.
+            console.warn(`Could not refetch versions of already-loaded '${lawId}'; type map may be incomplete:`, e);
+            loadedDeps.value = [...loadedDeps.value, lawId];
+            progress.value = `${loaded}/${total} wetten geladen`;
+          } else {
+            console.warn(`Failed to load dependency '${lawId}':`, e);
+            missingDeps.push(lawId);
+            progress.value = `${loaded}/${total} wetten geladen (${lawId} mislukt)`;
+          }
+        }
 
-          // Recurse for transitive deps. Collect from every version — a
-          // `source.regulation` reference can appear in one version and not
-          // another, and a scenario may be evaluated at any calculation date
-          // (including a future one), so a reference introduced only by a
-          // future version must still be loadable. This can over-fetch a
-          // transitive law that no in-force version needs; that's an accepted,
-          // bounded cost — the engine's `select_in` simply never selects a
-          // not-yet-in-force version.
+        // Recurse for transitive deps of a usable law only. Collect from every
+        // version — a `source.regulation` reference can appear in one version
+        // and not another, and a scenario may be evaluated at any calculation
+        // date (including a future one), so a reference introduced only by a
+        // future version must still be loadable. Runs for already-loaded laws
+        // too, so a dep reachable only through one is still discovered and
+        // cached. This can over-fetch a transitive law that no in-force version
+        // needs; that's an accepted, bounded cost — `select_in` never selects a
+        // not-yet-in-force version.
+        if (usable) {
           const newDeps = [];
           for (const versionYaml of yamls) {
-            // Isolate the ref scan per version too: a version that loaded into
-            // the engine but is malformed for `js-yaml` must not throw here and
-            // get the (already-loaded) law spuriously marked missing + harvested.
+            // Isolate the ref scan per version: a version that loaded into the
+            // engine but is malformed for `js-yaml` must not throw here.
             try {
               collectDeps(yaml.load(versionYaml), visited, newDeps);
             } catch (e) {
@@ -136,11 +162,6 @@ export function useDependencies() {
             toLoad.push(...newDeps);
             total = toLoad.length;
           }
-        } catch (e) {
-          console.warn(`Failed to load dependency '${lawId}':`, e);
-          missingDeps.push(lawId);
-          loaded++;
-          progress.value = `${loaded}/${total} wetten geladen (${lawId} mislukt)`;
         }
       }
 

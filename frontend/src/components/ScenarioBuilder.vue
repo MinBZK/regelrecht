@@ -1,3 +1,19 @@
+<script>
+// Parsed-version cache, MODULE-scoped (shared across all ScenarioBuilder
+// instances) so it survives remounts — switching the panel view away and back,
+// or opening another article, remounts this component. The data-source column
+// type map (`rebuildExternalFieldTypeMap`) is derived from these YAMLs, while
+// the WASM engine that gates whether `loadAllDependencies` re-fetches a dep is
+// itself a shared singleton that stays warm across mounts. A per-instance cache
+// would therefore be empty on every remount once the engine is warm, forcing a
+// full dependency re-fetch each time. Invalidated per-traject in
+// `fetchLawVersions`. Assumes at most one ScenarioBuilder is mounted at a time
+// (the scenario panel): `versionsCacheTrajectRef` is shared, so two concurrent
+// instances with different trajectRefs would invalidate each other's cache.
+const versionsCache = {};
+let versionsCacheTrajectRef = null;
+</script>
+
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
 import { useDependencies } from '../composables/useDependencies.js';
@@ -9,7 +25,8 @@ import { useLatest } from '../lib/useLatest.js';
 import { parseFeature } from '../gherkin/parser.js';
 import { mapFeatureToForm, getEffectiveSetup, formStateToGherkin, syncEditedValues } from '../gherkin/formMapper.js';
 import { matchStatus, humanize } from '../utils/outputFormat.js';
-import { buildArticleMap, buildTypeMap } from '../utils/articleMapping.js';
+import yaml from 'js-yaml';
+import { buildArticleMap, buildTypeMap, buildExternalFieldTypeMap } from '../utils/articleMapping.js';
 import ScenarioForm from './ScenarioForm.vue';
 
 const props = defineProps({
@@ -22,6 +39,9 @@ const props = defineProps({
   /** Active traject ref. Required for scenario writes; reads route
    *  through the matching traject's backend so a save is visible
    *  without a corpus reload. */
+  // Single-instance assumption: the module-scoped versionsCache keys on this
+  // trajectRef (see the <script> block at the top), so at most one
+  // ScenarioBuilder may be mounted at a time.
   trajectRef: { type: String, default: null },
 });
 
@@ -32,6 +52,9 @@ const articleMap = computed(() => buildArticleMap(props.articles));
 // Datatype mapping: drives the per-type scenario input controls (boolean ->
 // switch, amount -> currency field, etc.) in ScenarioForm.
 const typeMap = computed(() => buildTypeMap(props.articles));
+// External data-source column types, collected from the current law + the
+// already-fetched dependency YAMLs. Rebuilt when the dependency load settles.
+const externalFieldTypeMap = ref(new Map());
 
 // --- Dependencies ---
 const {
@@ -159,9 +182,6 @@ watch(featureText, (text) => {
 // traject switch doesn't return the previous traject's bodies. The dependency
 // loader needs *every* version of a law (not just today's-best) so the engine
 // can pick the one in force on the scenario's calculation date.
-const versionsCache = {};
-let versionsCacheTrajectRef = null;
-
 async function fetchLawVersions(lawId) {
   if (versionsCacheTrajectRef !== props.trajectRef) {
     Object.keys(versionsCache).forEach((k) => delete versionsCache[k]);
@@ -212,6 +232,25 @@ watch(() => props.lawYaml, (val, prev) => {
 
 onBeforeUnmount(() => clearTimeout(lawYamlDebounce));
 
+// Collect external data-source column types from the current law plus the
+// dependency YAMLs already fetched into versionsCache (parsed with js-yaml).
+// Called once the dependency load settles so the data-source tables can render
+// typed cells. Tolerates unparseable/text-only versions.
+function rebuildExternalFieldTypeMap() {
+  const docs = [{ articles: props.articles || [] }];
+  for (const [lawId, versions] of Object.entries(versionsCache)) {
+    for (const v of Array.isArray(versions) ? versions : []) {
+      try {
+        const doc = yaml.load(v);
+        if (doc && typeof doc === 'object') docs.push(doc);
+      } catch (e) {
+        console.warn(`Skipped an unparseable cached version of '${lawId}' while building the type map:`, e);
+      }
+    }
+  }
+  externalFieldTypeMap.value = buildExternalFieldTypeMap(docs);
+}
+
 // Run the dependency cascade for the current law + scenarios. Reads the
 // latest prop/state values at call time (not captured watch args) so a
 // debounced run always uses the freshest inputs.
@@ -233,8 +272,12 @@ async function runDependencyLoad() {
     }
     for (const depId of allDeps) {
       try {
+        // Fetch versions unconditionally to populate versionsCache for the
+        // data-source type map (same rationale as loadAllDependencies — the
+        // map is built from cached YAMLs, independent of engine state); load
+        // into the shared engine only if it isn't already present.
+        const yamls = await fetchLawVersions(depId);
         if (!props.engine.hasLaw(depId)) {
-          const yamls = await fetchLawVersions(depId);
           loadLawVersions(props.engine, yamls, depId);
         }
       } catch (e) {
@@ -255,8 +298,16 @@ async function runDependencyLoad() {
     // Vue ignores ref writes after unmount, the shared WASM engine outlives
     // the component, and the guard resets on error so a fresh mount retries.
     depsReady.value = true;
+    rebuildExternalFieldTypeMap();
     if (mainLawId) {
-      loadImplementors(mainLawId, props.engine, fetchLawVersions, props.trajectRef);
+      // Implementor regulations load in the background, populating versionsCache
+      // after the rebuild above. Re-type once they settle so any source:{}
+      // fields they declare get picked up (idempotent; skipped if superseded).
+      Promise.resolve(
+        loadImplementors(mainLawId, props.engine, fetchLawVersions, props.trajectRef),
+      )
+        .then(() => { if (isCurrent()) rebuildExternalFieldTypeMap(); })
+        .catch((e) => console.warn('Implementor load / re-type failed (non-fatal):', e));
     }
   }
 }
@@ -634,6 +685,7 @@ defineExpose({ save: onSave });
             :law-id="lawId"
             :article-map="articleMap"
             :type-map="typeMap"
+            :external-field-type-map="externalFieldTypeMap"
             @show-details="() => onShowDetails(i)"
             @executed="(data) => onScenarioResult(i, data)"
             @change="markDirty"

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildTypeMap } from './articleMapping.js';
+import { buildTypeMap, buildExternalFieldTypeMap } from './articleMapping.js';
 
 describe('buildTypeMap', () => {
   it('maps parameter and input names to their declared type', () => {
@@ -57,5 +57,40 @@ describe('buildTypeMap', () => {
   it('handles empty / nullish input', () => {
     expect(buildTypeMap(undefined).size).toBe(0);
     expect(buildTypeMap([]).size).toBe(0);
+  });
+});
+
+describe('buildExternalFieldTypeMap', () => {
+  const law = (inputs) => ({ articles: [{ machine_readable: { execution: { input: inputs } } }] });
+
+  it('collects external (source:{}) inputs as name -> {type, unit}', () => {
+    const m = buildExternalFieldTypeMap([law([
+      { name: 'verdragsinschrijving', type: 'boolean', source: {} },
+      { name: 'spaargeld', type: 'amount', type_spec: { unit: 'eurocent' }, source: {} },
+    ])]);
+    expect(m.get('verdragsinschrijving')).toEqual({ type: 'boolean', unit: null });
+    expect(m.get('spaargeld')).toEqual({ type: 'amount', unit: 'eurocent' });
+  });
+
+  it('excludes cross-law (source.regulation) and internal (source.output) inputs', () => {
+    const m = buildExternalFieldTypeMap([law([
+      { name: 'toetsingsinkomen', type: 'amount', source: { regulation: 'awir', output: 'x' } },
+      { name: 'internal', type: 'number', source: { output: 'y' } },
+    ])]);
+    expect(m.has('toetsingsinkomen')).toBe(false);
+    expect(m.has('internal')).toBe(false);
+  });
+
+  it('merges across multiple law docs; last doc wins on name collision', () => {
+    const m = buildExternalFieldTypeMap([
+      law([{ name: 'x', type: 'string', source: {} }]),
+      law([{ name: 'x', type: 'boolean', source: {} }]),
+    ]);
+    expect(m.get('x')).toEqual({ type: 'boolean', unit: null });
+  });
+
+  it('tolerates empty / missing docs and articles without machine_readable', () => {
+    expect(buildExternalFieldTypeMap(undefined).size).toBe(0);
+    expect(buildExternalFieldTypeMap([null, { articles: [{}] }]).size).toBe(0);
   });
 });

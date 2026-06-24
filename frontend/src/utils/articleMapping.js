@@ -59,3 +59,35 @@ export function buildTypeMap(articles) {
 
   return typeMap;
 }
+
+/**
+ * Builds a fieldName -> { type, unit } map for EXTERNAL data-source fields —
+ * inputs whose `source` is empty (no `regulation` and no `output`), i.e. raw
+ * data the engine resolves by field name (e.g. insurance.verdragsinschrijving).
+ * Spans a set of law docs (the current law + its loaded dependencies), because
+ * data-source fields are declared by the leaf laws, not the law under test.
+ * Last doc wins on a name collision. Drives typed cells in DataSourceTable.
+ *
+ * @param {Array<{articles?: Array}>} lawDocs - parsed law documents
+ * @returns {Map<string, { type: string, unit: (string|null) }>}
+ */
+export function buildExternalFieldTypeMap(lawDocs) {
+  const map = new Map();
+  for (const doc of lawDocs || []) {
+    for (const article of doc?.articles || []) {
+      for (const f of article.machine_readable?.execution?.input || []) {
+        const src = f.source;
+        // External data-source fields are declared with an empty `source: {}`
+        // (a `regulation` means cross-law, an `output` means internal). Match
+        // exactly that — an empty object — rather than merely "no regulation and
+        // no output", so a malformed source carrying other keys isn't
+        // misclassified as external. (versionsCache YAML is not schema-checked.)
+        const isExternal = src && typeof src === 'object' && Object.keys(src).length === 0;
+        if (isExternal && f.name && f.type) {
+          map.set(f.name, { type: f.type, unit: f.type_spec?.unit ?? null });
+        }
+      }
+    }
+  }
+  return map;
+}
