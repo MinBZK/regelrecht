@@ -77,7 +77,12 @@ export function buildExternalFieldTypeMap(lawDocs) {
     for (const article of doc?.articles || []) {
       for (const f of article.machine_readable?.execution?.input || []) {
         const src = f.source;
-        const isExternal = src && !src.regulation && !src.output;
+        // External data-source fields are declared with an empty `source: {}`
+        // (a `regulation` means cross-law, an `output` means internal). Match
+        // exactly that — an empty object — rather than merely "no regulation and
+        // no output", so a malformed source carrying other keys isn't
+        // misclassified as external. (versionsCache YAML is not schema-checked.)
+        const isExternal = src && typeof src === 'object' && Object.keys(src).length === 0;
         if (isExternal && f.name && f.type) {
           map.set(f.name, { type: f.type, unit: f.type_spec?.unit ?? null });
         }

@@ -39,6 +39,9 @@ const props = defineProps({
   /** Active traject ref. Required for scenario writes; reads route
    *  through the matching traject's backend so a save is visible
    *  without a corpus reload. */
+  // Single-instance assumption: the module-scoped versionsCache keys on this
+  // trajectRef (see the <script> block at the top), so at most one
+  // ScenarioBuilder may be mounted at a time.
   trajectRef: { type: String, default: null },
 });
 
