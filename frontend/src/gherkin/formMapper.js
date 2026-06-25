@@ -489,6 +489,6 @@ function formatAssertion(assertion) {
     case 'contains':
       return ['assert_contains', TPL.assert_contains([assertion.outputName, assertion.value])];
     default:
-      return ['assert_succeeds', `unknown assertion: ${assertion.assertionType}`];
+      throw new Error(`formatAssertion: unhandled assertionType '${assertion.assertionType}' — classifier/serializer out of sync`);
   }
 }
