@@ -12,7 +12,7 @@
           slot="header"
           :text="shownStage?.lawLabel || ''"
           dismiss-text="Sluit"
-          @dismiss="$emit('close')"
+          @dismiss="sheetEl?.hide()"
         ></nldd-top-title-bar>
 
         <nldd-simple-section v-if="shownStage">
@@ -76,9 +76,10 @@ watch(
   },
 );
 
-// Fires once the sheet finishes closing — including dismissals the parent
-// didn't initiate (Escape / backdrop). Clear the rendered stage and notify the
-// parent so its `selectedStageId` stays in sync and the node can re-open later.
+// The single close path: fires once the sheet finishes closing, whatever
+// triggered it (the Sluit button's hide(), Escape, backdrop, or the parent
+// nulling `stage`). Clear the rendered stage and notify the parent so its
+// `selectedStageId` stays in sync and the node can re-open later.
 function onClose() {
   shownStage.value = null;
   emit('close');
