@@ -104,6 +104,33 @@ Feature: Loonkostenvoordeel (Wtl artikel 2.1 — vier categorieën)
     And the output "heeft_recht_op_lkv" is "false"
     And the output "hoogte_lkv_per_jaar_eurocent" is "0"
 
+  # ── Anti-cumulatie art. 4.1 lid 3 (peildatum 2025) ──────────────────
+  # Per 2025-01-01 is het LKV oudere werknemer verlaagd naar € 1,35/uur
+  # (max € 2.600), terwijl arbeidsgehandicapt € 3,05/uur (max € 6.000)
+  # blijft. Een werknemer die in BEIDE categorieën valt krijgt de
+  # hoogste berekende tegemoetkoming (art. 4.1 lid 3): de arbeids-
+  # gehandicapt-LKV (€ 6.000), niet de lagere oudere-LKV (€ 2.600). Met
+  # de oude eerst-passende-IF-volgorde zou ten onrechte oudere zijn
+  # geselecteerd. Peildatum 2025-06-01 overschrijft de Background.
+  Scenario: Dubbele doelgroep 2025 — hoogste tegemoetkoming wint (art. 4.1.3)
+    Given the calculation date is "2025-06-01"
+    And a citizen with the following data:
+      | bsn                                          | 999990066 |
+      | verloonde_uren                               | 2000      |
+      | is_oudere_werknemer                          | true      |
+      | is_arbeidsgehandicapte_werknemer             | true      |
+      | is_herplaatsen_arbeidsgehandicapte           | false     |
+      | is_doelgroep_banenafspraak                   | false     |
+      | heeft_pensioengerechtigde_leeftijd_bereikt   | false     |
+      | heeft_loonaangifte_verzoek_ingediend         | true      |
+    When the law "wet_tegemoetkomingen_loondomein" is executed for outputs "heeft_recht_op_lkv,categorie_lkv,tegemoetkoming_oudere_eurocent,tegemoetkoming_arbeidsgehandicapte_eurocent,hoogte_lkv_per_jaar_eurocent"
+    Then the execution succeeds
+    And the output "heeft_recht_op_lkv" is "true"
+    And the output "categorie_lkv" is "arbeidsgehandicapte_werknemer"
+    And the output "tegemoetkoming_oudere_eurocent" is "260000"
+    And the output "tegemoetkoming_arbeidsgehandicapte_eurocent" is "600000"
+    And the output "hoogte_lkv_per_jaar_eurocent" is "600000"
+
   # Pensioengerechtigde werknemer is uitgesloten van alle vier
   # categorieën (art. 2.2 lid 2.a / 2.6 lid 3.a / 2.10 lid 2.a /
   # 2.14 lid 2.a).

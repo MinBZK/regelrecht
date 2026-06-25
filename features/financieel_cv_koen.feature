@@ -127,12 +127,11 @@ Feature: Financieel CV — werknemer-perspectief, casus Koen
       | is_doelgroep_banenafspraak                   | true      |
       | heeft_pensioengerechtigde_leeftijd_bereikt   | false     |
       | heeft_loonaangifte_verzoek_ingediend         | true      |
-    When the law "wet_tegemoetkomingen_loondomein" is executed for outputs "heeft_recht_op_lkv,categorie_lkv,bedrag_per_uur_eurocent,maximum_per_jaar_eurocent,hoogte_lkv_per_jaar_eurocent"
+    When the law "wet_tegemoetkomingen_loondomein" is executed for outputs "heeft_recht_op_lkv,categorie_lkv,tegemoetkoming_banenafspraak_eurocent,hoogte_lkv_per_jaar_eurocent"
     Then the execution succeeds
     And the output "heeft_recht_op_lkv" is "true"
     And the output "categorie_lkv" is "banenafspraak"
-    And the output "bedrag_per_uur_eurocent" is "101"
-    And the output "maximum_per_jaar_eurocent" is "200000"
+    And the output "tegemoetkoming_banenafspraak_eurocent" is "168064"
     And the output "hoogte_lkv_per_jaar_eurocent" is "168064"
 
   # ────────────────────────────────────────────────────────────────────

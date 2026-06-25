@@ -13,6 +13,12 @@ geharvest of gemodelleerd.
 rekening mee te houden in de uitvoeringslogica, ook niet als dekking
 voor edge cases.
 
+> **Stand:** bijgewerkt 2026-06-25 tegen de corpus op branch
+> `feat/financieel_cv_RVO`. Wijzigingen sinds de eerste opzet: LIV is
+> afgeschaft per 2025-01-01 (alleen nog in scope voor peildatum 2024),
+> Vreemdelingenwet 2000 is inmiddels geharvest, en de model-kwaliteit is
+> gevalideerd — zie [Validatie-signalen voor scope](#validatie-signalen-voor-scope).
+
 ## Legenda
 
 | Categorie | Kleur | Betekenis |
@@ -48,7 +54,7 @@ flowchart LR
     PP["PP<br/>WW 76a"]:::kern
     LDP["LDP<br/>Wajong 2:20"]:::kern
     JCWPA["JC + WPA<br/>WIA 35 + 36"]:::kern
-    LIV["LIV<br/>Wtl 3.1 + 3.2"]:::kern
+    LIV["LIV<br/>Wtl 3.1 + 3.2<br/><i>afgeschaft 2025-01-01</i>"]:::kern
     LKV["LKV<br/>Wtl 2.1 + 2.5/9/13/17"]:::kern
     LKS["LKS<br/>Pwet 10c + 10d"]:::kern
   end
@@ -201,7 +207,7 @@ flowchart LR
 
   %% ─── LIV + LKV — Wtl ─────────────────────────────────────
   subgraph WTL["Wtl — BWBR0037522"]
-    WTL_31["3.1 + 3.2<br/>(LIV)"]:::kern
+    WTL_31["3.1 + 3.2<br/>(LIV — afgeschaft 2025)"]:::kern
     WTL_21["2.1 + 2.5/9/13/17<br/>(LKV)"]:::kern
     WTL_22["2.2 lid 2.a, b<br/>uitsluitingen LKV-oudere"]:::pending
     WTL_26["2.6 lid 3<br/>uitsluitingen LKV-arb.geh."]:::pending
@@ -234,7 +240,7 @@ flowchart LR
     WSW["Wsw<br/>BWBR0008903"]:::ooc
     AOW7A["AOW 7a<br/>pensioenleeftijd"]:::ooc
     BW629["BW Boek 7 629<br/>loondoorbetaling"]:::ooc
-    VW2000["Vreemdelingenwet 2000<br/>BWBR0011823"]:::ooc
+    VW2000["Vreemdelingenwet 2000<br/>BWBR0011823<br/>(geharvest)"]:::impl
     SUWI["Wet SUWI<br/>BWBR0013060"]:::ooc
     AWB346["AWB 3:46 motivering"]:::ooc
     AWB67["AWB 6:7 bezwaartermijn"]:::ooc
@@ -342,8 +348,8 @@ scope, **UIT** = niet relevant voor de regelhulp Financieel CV,
 | PP | WW 76a | Output `mag_proefplaatsing_aangaan` | IN ✅ |
 | LDP | Wajong 2:20 | Output `heeft_recht_op_loondispensatie` | IN ✅ |
 | JC + WPA | WIA 35 | Outputs `heeft_recht_op_jobcoaching/werkplekaanpassing` | IN ✅ |
-| LIV | Wtl 3.1 + 3.2 | Output `heeft_recht_op_liv` | IN ✅ |
-| LKV | Wtl 2.1 + 2.5/9/13/17 | Output `heeft_recht_op_lkv` | IN ✅ |
+| LIV | Wtl 3.1 + 3.2 | Output `heeft_recht_op_liv` — **afgeschaft per 2025-01-01**; alleen in scope voor peildatum 2024 | IN (2024) / UIT (2025+) |
+| LKV | Wtl 2.1 + 2.5/9/13/17 | Output `heeft_recht_op_lkv`. NB bedrag oudere werknemer per 2025 verlaagd naar €1,35/uur, max €2.600/jr (art. 2.5) | IN ✅ |
 | LKS | Pwet 10c + 10d | Output `heeft_recht_op_lks` | IN ✅ |
 
 ### BRON — doelgroepvaststelling
@@ -378,7 +384,7 @@ scope, **UIT** = niet relevant voor de regelhulp Financieel CV,
 | Wsw (BWBR0008903) | Uitsluiting NRP lid 2.b/d, LDP, LKV-cat-b, JC/WPA | __ |
 | AOW art. 7a | Pensioenleeftijd: uitsluiting LIV, LKV (alle 4 cat.) | __ |
 | BW Boek 7 art. 629 | Loondoorbetaling werkgever; trigger NRP | __ |
-| Vreemdelingenwet 2000 | "Vreemdeling" Ziektewet 1.1.d | __ |
+| Vreemdelingenwet 2000 | "Vreemdeling" Ziektewet 1.1.d — **inmiddels geharvest** (BWBR0011823) | __ |
 | Wajong art. 2:30 | Uitsluiting volledig + duurzaam ao voor LDP | __ |
 | Wet harmonisatie 2015 (kst-34194-3) | MvT-bron NRP — geen normatieve werking | __ |
 
@@ -411,6 +417,38 @@ scope, **UIT** = niet relevant voor de regelhulp Financieel CV,
 | Gemeente / college B&W | Verlening LKS | IN ✅ |
 
 ---
+
+## Validatie-signalen voor scope
+
+Model-kwaliteitsbevindingen uit een desk-validatie (reverse-validate,
+reference/concept-hygiene, letter-fidelity, version-drift). Ze zijn hier
+opgenomen omdat ze de **scope-discussie raken**: ze laten zien waar het
+corpus onvolledig of verkeerd verankerd is, of waar een doelgroep-grond
+ontbreekt. Geen van deze bevindingen is een wetgevings-fout — het zijn
+modellering- of engine-laag-punten.
+
+> **Herkomst:** de deterministische bevindingen (MISPLACED/DANGLING) zijn
+> bevestigd tegen de RvO-corpus (`script/cross-law-integriteit.py`). De
+> diepere LLM-bevindingen zijn afgeleid op een demo-snapshot van dit
+> stelsel; bevestig ze tegen de actuele RvO-YAML voordat je ze als fix
+> oppakt.
+
+### Bevestigd op RvO-corpus (deterministisch)
+
+| Signaal | Locatie | Scope-implicatie | Klasse |
+|---------|---------|------------------|--------|
+| **MISPLACED binding** — `is_doelgroep_banenafspraak` heeft `source:` onder `parameters:` i.p.v. `input:` → de cross-law binding naar Wfsv wordt stil genegeerd en vuurt nooit | Wtl art. 2.1 | LKV-banenafspraak leunt feitelijk op een directe parameter, niet op de Wfsv-doelgroep. Raakt BRON-keuze Pwet/Wfsv | modellering-fout |
+| **Geen** ziektewet→WIA dangling | Ziektewet 29b.1 | Op RvO bestáát de WIA-wet in corpus; de dangling uit de demo-run **vervalt** hier | n.v.t. (opgelost) |
+
+### Te bevestigen tegen RvO (uit demo-snapshot)
+
+| Signaal | Regeling | Scope-implicatie |
+|---------|----------|------------------|
+| **Wfsv 38b.6-omissie** — kernoutput `behoort_tot_doelgroepregister_banenafspraak` mist de registratie-blijfgrond (38b.6) | BRON banenafspraak | False-negative op doelgroep → propageert naar LKV en NRP. Hoge prioriteit; raakt of 38b.6 in scope moet |
+| **Ziektewet 29b lid 2.e** als losse OR-triggers terwijl de letter een **conjunctie** is (toeleiding **én** WML-vaststelling) | NRP | No-risk polis nu te ruim; vraagt of de WML-loonwaarde-conjunct in scope hoort |
+| **Register-proxy** — banenafspraak-register (Wfsv 38b) gebruikt als volledige kwalificatie i.p.v. deel van de volle Wtl 2.10-status | LKV | Part/whole-conflatie; jurist-vraag of register als proxy acceptabel is |
+| **Kapstok-verankering** — `machine_readable` hangt op chapeau-/definitie-artikelen (Wtl 2.1, Pwet 10c, Wajong 1:1) i.p.v. de dragende norm | meerdere | Geen uitkomst-effect, wél herleidbaarheid; raakt op welk artikel scope-beslissingen landen |
+| **AOW-laag ontbreekt** — pensioenleeftijd als brute boolean | LIV/LKV | Bevestigt AOW 7a als bewuste OOC/untranslatable (zie DEFINITIE-tabel) |
 
 ## Mogelijke prune-richtingen
 

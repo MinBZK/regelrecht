@@ -117,14 +117,15 @@ Feature: Financieel CV — werkgever-perspectief, casus Sadee
     Then the execution fails with "Output 'heeft_recht_op_liv' not found in law 'wet_tegemoetkomingen_loondomein'"
 
   # ────────────────────────────────────────────────────────────────────
-  # LKV — Wtl artikel 2.1
+  # LKV — Wtl artikel 2.1 + anti-cumulatie art. 4.1 lid 3
   # Sadee voldoet aan twee categorieën: b (arbeidsgehandicapt — Wajong)
-  # en c (banenafspraak). Engine kiest in IF-volgorde: b wint vóór c.
-  # Hoogte categorie b = MIN(305 × 1664, 600000) = MIN(507520, 600000)
-  # = 507520 eurocent (€5.075,20 per jaar).
-  # NB: zonder de IF-volgorde zou banenafspraak (101 ec/uur, max €2000)
-  # zijn geselecteerd — een aanzienlijk lager bedrag.
-  Scenario: Sadee krijgt LKV-arbeidsgehandicapt — wint van banenafspraak in IF-volgorde
+  # en c (banenafspraak). Beide tegemoetkomingen worden berekend; het
+  # hoogste bedrag wordt verstrekt (art. 4.1 lid 3):
+  #   b = MIN(305 × 1664, 600000) = 507520 eurocent (€5.075,20)
+  #   c = MIN(101 × 1664, 200000) = 168064 eurocent (€1.680,64)
+  # → b wint omdat het de hoogste berekende tegemoetkoming is, niet door
+  # IF-volgorde maar door de hoogte-vergelijking.
+  Scenario: Sadee krijgt LKV-arbeidsgehandicapt — hoogste tegemoetkoming wint (art. 4.1.3)
     Given the calculation date is "2026-05-11"
     And a citizen with the following data:
       | bsn                                          | 999990100 |
@@ -135,12 +136,12 @@ Feature: Financieel CV — werkgever-perspectief, casus Sadee
       | is_doelgroep_banenafspraak                   | true      |
       | heeft_pensioengerechtigde_leeftijd_bereikt   | false     |
       | heeft_loonaangifte_verzoek_ingediend         | true      |
-    When the law "wet_tegemoetkomingen_loondomein" is executed for outputs "heeft_recht_op_lkv,categorie_lkv,bedrag_per_uur_eurocent,maximum_per_jaar_eurocent,hoogte_lkv_per_jaar_eurocent"
+    When the law "wet_tegemoetkomingen_loondomein" is executed for outputs "heeft_recht_op_lkv,categorie_lkv,tegemoetkoming_arbeidsgehandicapte_eurocent,tegemoetkoming_banenafspraak_eurocent,hoogte_lkv_per_jaar_eurocent"
     Then the execution succeeds
     And the output "heeft_recht_op_lkv" is "true"
     And the output "categorie_lkv" is "arbeidsgehandicapte_werknemer"
-    And the output "bedrag_per_uur_eurocent" is "305"
-    And the output "maximum_per_jaar_eurocent" is "600000"
+    And the output "tegemoetkoming_arbeidsgehandicapte_eurocent" is "507520"
+    And the output "tegemoetkoming_banenafspraak_eurocent" is "168064"
     And the output "hoogte_lkv_per_jaar_eurocent" is "507520"
 
   # ────────────────────────────────────────────────────────────────────
