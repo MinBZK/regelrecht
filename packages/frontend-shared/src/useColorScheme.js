@@ -16,7 +16,7 @@
  *
  * A persistence adapter is `{ theme: Ref<string>, setTheme(value): void }`.
  */
-import { ref, readonly, watch } from 'vue';
+import { ref, readonly, watch, effectScope } from 'vue';
 
 export const VALID_THEMES = ['auto', 'light', 'dark'];
 
@@ -75,6 +75,13 @@ let defaultPersistence = null;
 // so repeated `useColorScheme` calls don't stack duplicate watchers.
 const appliedBackends = new WeakSet();
 
+// Detached scope so the data-scheme watcher lives for the app's lifetime,
+// independent of which component's setup() first calls `useColorScheme`. Without
+// this the watcher would be owned by that first caller's component scope and
+// would be auto-stopped if that component ever unmounts, silently killing the
+// applier.
+const applierScope = effectScope(true);
+
 /**
  * @param {{ theme: import('vue').Ref<string>, setTheme: (v: string) => void }} [persistence]
  *   Optional persistence adapter. Defaults to a shared localStorage adapter.
@@ -88,7 +95,9 @@ export function useColorScheme(persistence) {
   if (!appliedBackends.has(backend)) {
     appliedBackends.add(backend);
     // `immediate` applies the current (cached/default) theme now and on change.
-    watch(backend.theme, applyColorScheme, { immediate: true });
+    // Run inside the detached scope so the watcher isn't tied to the caller's
+    // component lifetime.
+    applierScope.run(() => watch(backend.theme, applyColorScheme, { immediate: true }));
   }
 
   return {

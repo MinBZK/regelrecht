@@ -37,7 +37,10 @@ export function useAuth() {
   // Accepts an explicit return URL so callers that know the user's intended
   // destination (e.g. a router guard firing before navigation commits, where
   // `window.location` still points at the source route) can forward it to
-  // SSO. Falls back to the current location for the common case.
+  // SSO. Falls back to the current location for the common case. Pass a
+  // relative/same-origin path only: `returnUrl` is forwarded verbatim as the
+  // SSO `return_url` (the backend validates it, but don't widen the surface by
+  // handing it an absolute external URL).
   function login(returnUrl) {
     // Only accept an explicit string: a template that passes `login` as a
     // bare event handler (`@click="login"`) hands us a PointerEvent, which

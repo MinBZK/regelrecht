@@ -571,7 +571,8 @@ jobs:
 
       - name: Build admin frontend
         if: matrix.package == 'admin' && needs.changes.outputs.admin == 'true'
-        run: npm run build -w regelrecht-admin-ui
+        # Directory form, consistent with the frontend test step above.
+        run: npm run build -w packages/admin/frontend-src
 
       - name: Skip (no relevant changes)
         if: needs.changes.outputs[matrix.package] != 'true'
