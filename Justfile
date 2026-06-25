@@ -138,7 +138,7 @@ admin:
 
 # Build admin frontend (npm workspace: install at root, build the admin workspace)
 admin-frontend:
-    npm ci && npm run build -w regelrecht-admin-ui
+    npm ci && npm run build -w packages/admin/frontend-src
 
 # Check admin Rust code
 admin-check:

@@ -40,6 +40,7 @@ jobs:
           filters: |
             editor:
               - 'frontend/**'
+              - 'packages/frontend-shared/**'
               - 'packages/editor-api/**'
               - 'packages/engine/**'
               - 'packages/corpus/**'
@@ -49,6 +50,7 @@ jobs:
               - 'corpus/regulation/**'
             admin:
               - 'packages/admin/**'
+              - 'packages/frontend-shared/**'
               - 'packages/pipeline/**'
               - 'packages/corpus/**'
               - 'packages/harvester/**'
@@ -77,6 +79,7 @@ jobs:
               - 'packages/grafana/**'
             lawmaking:
               - 'frontend-lawmaking/**'
+              - 'packages/frontend-shared/**'
             docs:
               - 'docs/**'
 

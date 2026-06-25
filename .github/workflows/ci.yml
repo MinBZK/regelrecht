@@ -37,6 +37,7 @@ jobs:
               - packages/harvester/**
               - packages/pipeline/**
               - frontend/**
+              - packages/frontend-shared/**
               - bdd/**
               - corpus/regulation/**
               - schema/**
@@ -47,6 +48,7 @@ jobs:
               - .github/workflows/ci.yml
             admin:
               - packages/admin/**
+              - packages/frontend-shared/**
               - Justfile
               - .github/workflows/ci.yml
             editor-api:
