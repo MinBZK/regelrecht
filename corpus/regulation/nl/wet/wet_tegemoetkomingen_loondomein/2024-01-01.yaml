@@ -160,18 +160,6 @@ articles:
               Categorie d (art. 2.14): werknemer is na arbeidsongeschikt­
               heid bij dezelfde werkgever herplaatst en voldoet aan
               voorwaarden art. 2.14.
-          - name: is_doelgroep_banenafspraak
-            type: boolean
-            source:
-              regulation: wet_financiering_sociale_verzekeringen
-              output: behoort_tot_doelgroepregister_banenafspraak
-              parameters:
-                bsn: $bsn
-              description: |-
-                Categorie c (art. 2.10): doelgroep banenafspraak en
-                scholingsbelemmerden. Kapstok is Wfsv artikel 38b
-                (BWBR0017745), die het doelgroepregister banenafspraak
-                definieert.
           - name: heeft_pensioengerechtigde_leeftijd_bereikt
             type: boolean
             required: true
@@ -186,6 +174,19 @@ articles:
             description: |-
               Art. 2.1: werkgever heeft in de loonaangifte verzoek
               gedaan voor het loonkostenvoordeel.
+        input:
+          - name: is_doelgroep_banenafspraak
+            type: boolean
+            source:
+              regulation: wet_financiering_sociale_verzekeringen
+              output: behoort_tot_doelgroepregister_banenafspraak
+              parameters:
+                bsn: $bsn
+              description: |-
+                Categorie c (art. 2.10): doelgroep banenafspraak en
+                scholingsbelemmerden. Kapstok is Wfsv artikel 38b
+                (BWBR0017745), die het doelgroepregister banenafspraak
+                definieert.
         output:
           - name: categorie_lkv
             type: string
