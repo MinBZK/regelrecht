@@ -13,7 +13,7 @@ RUN npm ci
 COPY packages/frontend-shared/ packages/frontend-shared/
 COPY packages/admin/frontend-src/ packages/admin/frontend-src/
 # admin vite outDir is '../static', resolving to /app/packages/admin/static.
-RUN npm run build -w regelrecht-admin-ui
+RUN npm run build -w packages/admin/frontend-src
 
 # Stage 2: Chef base
 # Rust version: keep in sync with rust-toolchain.toml (source of truth).

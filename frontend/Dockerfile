@@ -37,7 +37,7 @@ RUN npm ci
 COPY packages/frontend-shared/ packages/frontend-shared/
 COPY frontend/ frontend/
 COPY --from=wasm-builder /wasm-pkg/ frontend/public/wasm/pkg/
-RUN npm run build -w regelrecht-ui-prototype
+RUN npm run build -w frontend
 
 # Stage 2: Chef base
 # Rust version: keep in sync with rust-toolchain.toml (source of truth).
