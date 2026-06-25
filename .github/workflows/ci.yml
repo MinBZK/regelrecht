@@ -363,11 +363,10 @@ jobs:
           node-version: '22'
           registry-url: https://npm.pkg.github.com
           cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install frontend dependencies
         if: needs.changes.outputs.ci == 'true'
-        working-directory: frontend
         run: npm ci
 
       - name: BDD grammar codegen is in sync
@@ -379,8 +378,7 @@ jobs:
 
       - name: Run frontend tests
         if: needs.changes.outputs.ci == 'true'
-        working-directory: frontend
-        run: npm test
+        run: npm test -w regelrecht-ui-prototype
 
       - name: Skip (no relevant changes)
         if: needs.changes.outputs.ci != 'true'
@@ -469,16 +467,9 @@ jobs:
           node-version: '22'
           registry-url: https://npm.pkg.github.com
           cache: 'npm'
-          cache-dependency-path: |
-            frontend/package-lock.json
-            packages/admin/frontend-src/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Install admin frontend dependencies
-        working-directory: packages/admin/frontend-src
+      - name: Install workspace dependencies
         run: npm ci
 
       - name: Install just
@@ -570,17 +561,15 @@ jobs:
           node-version: '22'
           registry-url: https://npm.pkg.github.com
           cache: 'npm'
-          cache-dependency-path: packages/admin/frontend-src/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install admin frontend dependencies
         if: matrix.package == 'admin' && needs.changes.outputs.admin == 'true'
-        working-directory: packages/admin/frontend-src
         run: npm ci
 
       - name: Build admin frontend
         if: matrix.package == 'admin' && needs.changes.outputs.admin == 'true'
-        working-directory: packages/admin/frontend-src
-        run: npm run build
+        run: npm run build -w regelrecht-admin-ui
 
       - name: Skip (no relevant changes)
         if: needs.changes.outputs[matrix.package] != 'true'

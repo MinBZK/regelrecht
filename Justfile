@@ -123,9 +123,12 @@ bench-compare BASE:
 # Run security audit on all dependencies (vulnerabilities, licenses, sources)
 audit:
     cd packages && cargo deny check --config ../deny.toml
-    cd frontend && npm audit
-    cd frontend && npx license-checker --production --failOn "GPL-2.0;GPL-3.0;AGPL-1.0;AGPL-3.0;SSPL-1.0;BUSL-1.1"
-    cd packages/admin/frontend-src && npm audit
+    # One npm workspace at the repo root covers all three frontends + the shared
+    # package, so audit/license-check the whole hoisted tree once. (license-checker
+    # drops --production because the workspace root has no production deps of its
+    # own; the whole-tree scan is strictly broader coverage.)
+    npm audit
+    npx license-checker --failOn "GPL-2.0;GPL-3.0;AGPL-1.0;AGPL-3.0;SSPL-1.0;BUSL-1.1"
 
 # --- Admin ---
 
@@ -133,9 +136,9 @@ audit:
 admin:
     cd packages && cargo run --package regelrecht-admin
 
-# Build admin frontend
+# Build admin frontend (npm workspace: install at root, build the admin workspace)
 admin-frontend:
-    cd packages/admin/frontend-src && npm ci && npm run build
+    npm ci && npm run build -w regelrecht-admin-ui
 
 # Check admin Rust code
 admin-check:
