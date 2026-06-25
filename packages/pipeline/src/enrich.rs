@@ -996,6 +996,11 @@ async fn compute_prompt_hash(repo_path: &Path) -> String {
 /// format. A structurally-invalid law now surfaces as a parse error here instead
 /// of being silently undercounted — acceptable because this only ever runs on
 /// real harvested/enriched corpus files, where a corruption is worth failing on.
+///
+/// An article counts as enriched when it carries a `machine_readable` mapping,
+/// including the empty `{}` an LLM may insert before filling it; an explicit
+/// `machine_readable: null` is treated as un-enriched. No corpus file uses the
+/// bare/null form, so this matches the previous key-presence behavior in practice.
 async fn count_article_stats(path: &Path) -> Result<(usize, usize)> {
     let content = tokio::fs::read_to_string(path).await?;
     let law: ArticleBasedLaw = serde_yaml_ng::from_str(&content)?;
@@ -1295,25 +1300,33 @@ articles:
     }
 
     #[tokio::test]
-    async fn test_count_article_stats_empty_machine_readable_counts() {
-        // An empty `machine_readable: {}` mapping must still count as enriched —
-        // this matches the old key-presence semantics that `FakeLlmRunner` (and
-        // the enrichment delta) rely on when the LLM inserts a bare section.
+    async fn test_count_article_stats_empty_vs_null_machine_readable() {
+        // An empty `machine_readable: {}` mapping counts as enriched — this
+        // matches the old key-presence semantics that `FakeLlmRunner` (and the
+        // enrichment delta) rely on when the LLM inserts a bare section. An
+        // explicit `machine_readable: null` deserializes to None and is treated
+        // as un-enriched; no corpus file uses the bare/null form, so the typed
+        // count matches the previous `contains_key` behavior in practice.
         let yaml = r#"---
 $id: test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
 articles:
   - number: '1'
-    text: Article one.
+    text: Empty section, enriched.
     machine_readable: {}
+  - number: '2'
+    text: Null section, not enriched.
+    machine_readable: null
+  - number: '3'
+    text: No section at all.
 "#;
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("law.yaml");
         tokio::fs::write(&path, yaml).await.unwrap();
 
         let (total, with_mr) = count_article_stats(&path).await.unwrap();
-        assert_eq!(total, 1);
+        assert_eq!(total, 3);
         assert_eq!(with_mr, 1);
     }
 
