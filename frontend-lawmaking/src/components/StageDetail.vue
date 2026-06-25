@@ -47,7 +47,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, nextTick } from 'vue';
 
 const props = defineProps({
   stage: { type: Object, default: null },
@@ -66,13 +66,18 @@ const shownStage = ref(null);
 // parent stays declarative (`:stage` / `@close`).
 watch(
   () => props.stage,
-  (stage) => {
-    if (stage) {
-      shownStage.value = stage;
-      sheetEl.value?.show();
-    } else {
+  async (stage) => {
+    if (!stage) {
       sheetEl.value?.hide();
+      return;
     }
+    shownStage.value = stage;
+    // Render the v-if="shownStage" content before opening so the sheet never
+    // animates in empty. `{ flush: 'post' }` wouldn't suffice here: this watcher
+    // itself sets `shownStage`, so the content render is still pending when the
+    // callback runs — awaiting nextTick flushes it first.
+    await nextTick();
+    sheetEl.value?.show();
   },
 );
 
