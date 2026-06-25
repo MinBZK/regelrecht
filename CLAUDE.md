@@ -19,7 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `frontend-lawmaking/` - Law-making process visualization (Vue/Vite)
 - `docs/` - Astro site serving both the landing page (regelrecht.rijks.app) and the docs (docs.regelrecht.rijks.app)
 - `corpus/regulation/` - Dutch legal regulations in machine-readable YAML format
-- `features/` - Gherkin BDD feature files (used by Rust cucumber-rs)
+- `bdd/` - Canonical, engine-agnostic BDD feature language. `bdd/grammar.yaml` is the single source of truth for the law-agnostic Gherkin vocabulary; step bindings for every engine are code-generated from it (Rust via `packages/engine/build.rs`, editor JS via `bdd/codegen/gen-js.mjs` → `frontend/src/gherkin/grammar.generated.js`). Never hand-edit a generated file — change `grammar.yaml` and run `just bdd-codegen`. Two buckets share the language: **bucket A** = law-validation scenarios next to the live laws (`corpus/regulation/**/scenarios/*.feature`, run against the real corpus — a failure means a law changed or the scenario is stale, a human decides; `@wip`-tagged scenarios are skipped); **bucket B** = engine-conformance suite (`bdd/conformance/*.feature`, `@tier:`-tagged) proving an engine speaks the whole language against synthetic `test_*` laws. `just bdd` runs both buckets.
 
 ## Development Setup
 

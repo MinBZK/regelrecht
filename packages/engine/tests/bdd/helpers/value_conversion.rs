@@ -43,29 +43,6 @@ pub fn convert_gherkin_value(val: &str) -> Value {
     Value::String(trimmed.to_string())
 }
 
-/// Parse a Gherkin data table row into a HashMap.
-///
-/// The table format is:
-/// ```text
-/// | key1 | value1 |
-/// | key2 | value2 |
-/// ```
-pub fn parse_table_to_params(
-    table: &cucumber::gherkin::Table,
-) -> std::collections::BTreeMap<String, Value> {
-    let mut params = std::collections::BTreeMap::new();
-
-    for row in &table.rows {
-        if row.len() >= 2 {
-            let key = row[0].trim().to_string();
-            let value = convert_gherkin_value(&row[1]);
-            params.insert(key, value);
-        }
-    }
-
-    params
-}
-
 /// Compare two Values with a small numeric tolerance.
 ///
 /// For numeric values (Int/Decimal), uses an exact-decimal tolerance of 1e-9 to
@@ -81,30 +58,10 @@ pub fn values_equal_with_tolerance(a: &Value, b: &Value) -> bool {
     }
 }
 
-/// Convert eurocent string to numeric value for comparison.
-///
-/// Handles both integer (eurocent) and float (euro) formats.
-#[allow(dead_code)]
-pub fn parse_eurocent(val: &str) -> Option<i64> {
-    val.trim().parse::<i64>().ok()
-}
-
-/// Convert euro string to eurocent for comparison.
-///
-/// "1358.93" euro -> 135893 eurocent
-#[allow(dead_code)]
-pub fn parse_euro_to_eurocent(val: &str) -> Option<i64> {
-    let trimmed = val.trim();
-    let f: f64 = trimmed.parse().ok()?;
-    Some((f * 100.0).round() as i64)
-}
-
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 mod tests {
-    use super::{
-        convert_gherkin_value, parse_euro_to_eurocent, parse_eurocent, values_equal_with_tolerance,
-    };
+    use super::{convert_gherkin_value, values_equal_with_tolerance};
     use regelrecht_engine::Value;
     use rust_decimal_macros::dec;
 
@@ -172,17 +129,5 @@ mod tests {
             &Value::Int(100),
             &Value::Int(101)
         ));
-    }
-
-    #[test]
-    fn test_parse_eurocent() {
-        assert_eq!(parse_eurocent("109171"), Some(109171));
-        assert_eq!(parse_eurocent("0"), Some(0));
-    }
-
-    #[test]
-    fn test_parse_euro_to_eurocent() {
-        assert_eq!(parse_euro_to_eurocent("1358.93"), Some(135893));
-        assert_eq!(parse_euro_to_eurocent("0.50"), Some(50));
     }
 }

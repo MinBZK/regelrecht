@@ -1,3 +1,4 @@
+@tier:core
 Feature: Law end dates (valid_to) — RFC-019
   A law version can carry a valid_to: the last calendar day on which it is in
   force (inclusive). Version selection drops the law after that day and does
@@ -7,28 +8,28 @@ Feature: Law end dates (valid_to) — RFC-019
 
   Scenario: A law resolves while it is in force
     Given the calculation date is "2024-06-01"
-    When the law "test_einddatum" is executed for outputs "normbedrag"
+    When I evaluate "normbedrag" of "test_einddatum"
     Then the execution succeeds
-    And the output "normbedrag" is "500"
+    Then output "normbedrag" equals 500
 
   Scenario: A law still resolves on its last day in force (inclusive bound)
     Given the calculation date is "2024-12-31"
-    When the law "test_einddatum" is executed for outputs "normbedrag"
+    When I evaluate "normbedrag" of "test_einddatum"
     Then the execution succeeds
-    And the output "normbedrag" is "500"
+    Then output "normbedrag" equals 500
 
   Scenario: A law no longer resolves after its end date
     Given the calculation date is "2025-06-01"
-    When the law "test_einddatum" is executed for outputs "normbedrag"
+    When I evaluate "normbedrag" of "test_einddatum"
     Then the execution fails with "No version of law 'test_einddatum' in force on 2025-06-01; last in force until 2024-12-31"
 
   Scenario: A cross-law reference to an ended law states the data fact
     Given the calculation date is "2025-06-01"
-    When the law "test_einddatum_afnemer" is executed for outputs "afgeleid_bedrag"
+    When I evaluate "afgeleid_bedrag" of "test_einddatum_afnemer"
     Then the execution fails with "No version of law 'test_einddatum' in force on 2025-06-01"
 
   Scenario: The dependent law works while the referenced law is in force
     Given the calculation date is "2024-06-01"
-    When the law "test_einddatum_afnemer" is executed for outputs "afgeleid_bedrag"
+    When I evaluate "afgeleid_bedrag" of "test_einddatum_afnemer"
     Then the execution succeeds
-    And the output "afgeleid_bedrag" is "500"
+    Then output "afgeleid_bedrag" equals 500

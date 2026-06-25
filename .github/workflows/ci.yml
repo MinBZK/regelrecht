@@ -37,7 +37,7 @@ jobs:
               - packages/harvester/**
               - packages/pipeline/**
               - frontend/**
-              - features/**
+              - bdd/**
               - corpus/regulation/**
               - schema/**
               - script/**
@@ -369,6 +369,13 @@ jobs:
         if: needs.changes.outputs.ci == 'true'
         working-directory: frontend
         run: npm ci
+
+      - name: BDD grammar codegen is in sync
+        if: needs.changes.outputs.ci == 'true'
+        run: |
+          node bdd/codegen/gen-js.mjs
+          git diff --exit-code frontend/src/gherkin/grammar.generated.js \
+            || { echo "::error::grammar.generated.js is stale — run 'just bdd-codegen' and commit the result"; exit 1; }
 
       - name: Run frontend tests
         if: needs.changes.outputs.ci == 'true'

@@ -1,3 +1,4 @@
+@tier:untranslatable
 Feature: Untranslatables — RFC-012
   The engine handles articles with untranslatable constructs according to the
   configured mode: error (default), propagate, warn, or ignore.
@@ -9,68 +10,68 @@ Feature: Untranslatables — RFC-012
 
   Scenario: Error mode rejects unaccepted untranslatable
     Given the untranslatable mode is "error"
-    When the untranslatable test law is executed for output "afgerond_bedrag"
+    When I evaluate "afgerond_bedrag" of "test_untranslatables"
     Then the execution fails with "Untranslatable construct"
 
   Scenario: Error mode allows accepted untranslatable
     Given the untranslatable mode is "error"
-    When the untranslatable test law is executed for output "som_deeltoeslagen"
+    When I evaluate "som_deeltoeslagen" of "test_untranslatables"
     Then the execution succeeds
 
   # === Propagate mode ===
 
   Scenario: Propagate mode taints outputs from articles with untranslatables
     Given the untranslatable mode is "propagate"
-    And a citizen with the following data:
+    Given the following parameters:
       | bedrag | 1234 |
-    When the untranslatable test law is executed for output "afgerond_bedrag"
+    When I evaluate "afgerond_bedrag" of "test_untranslatables"
     Then the execution succeeds
-    And the output "afgerond_bedrag" is tainted as untranslatable
+    Then output "afgerond_bedrag" is tainted as untranslatable
 
   Scenario: Propagate mode allows clean articles to execute normally
     Given the untranslatable mode is "propagate"
-    When the untranslatable test law is executed for output "basistoeslag"
+    When I evaluate "basistoeslag" of "test_untranslatables"
     Then the execution succeeds
-    And the output "basistoeslag" is "1000"
+    Then output "basistoeslag" equals 1000
 
   Scenario: Propagate mode taints downstream outputs via cross-ref
     Given the untranslatable mode is "propagate"
-    When the untranslatable test law is executed for output "som_deeltoeslagen"
+    When I evaluate "som_deeltoeslagen" of "test_untranslatables"
     Then the execution succeeds
-    And the output "som_deeltoeslagen" is tainted as untranslatable
+    Then output "som_deeltoeslagen" is tainted as untranslatable
 
   # === Warn mode ===
 
   Scenario: Warn mode executes unaccepted untranslatable with partial logic
     Given the untranslatable mode is "warn"
-    And a citizen with the following data:
+    Given the following parameters:
       | bedrag | 1234 |
-    When the untranslatable test law is executed for output "afgerond_bedrag"
+    When I evaluate "afgerond_bedrag" of "test_untranslatables"
     Then the execution succeeds
-    And the output "afgerond_bedrag" is "1234"
+    Then output "afgerond_bedrag" equals 1234
 
   # === Ignore mode ===
 
   Scenario: Ignore mode rejects unaccepted untranslatable
     Given the untranslatable mode is "ignore"
-    When the untranslatable test law is executed for output "afgerond_bedrag"
+    When I evaluate "afgerond_bedrag" of "test_untranslatables"
     Then the execution fails with "Untranslatable construct"
 
   Scenario: Ignore mode allows accepted untranslatable
     Given the untranslatable mode is "ignore"
-    When the untranslatable test law is executed for output "som_deeltoeslagen"
+    When I evaluate "som_deeltoeslagen" of "test_untranslatables"
     Then the execution succeeds
 
   # === Articles without untranslatables work normally ===
 
   Scenario: Clean article executes normally in error mode
     Given the untranslatable mode is "error"
-    When the untranslatable test law is executed for output "basistoeslag"
+    When I evaluate "basistoeslag" of "test_untranslatables"
     Then the execution succeeds
-    And the output "basistoeslag" is "1000"
+    Then output "basistoeslag" equals 1000
 
   Scenario: Clean article with cross-ref executes normally
     Given the untranslatable mode is "error"
-    When the untranslatable test law is executed for output "toegekende_toeslag"
+    When I evaluate "toegekende_toeslag" of "test_untranslatables"
     Then the execution succeeds
-    And the output "toegekende_toeslag" is "2000"
+    Then output "toegekende_toeslag" equals 2000

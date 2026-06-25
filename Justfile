@@ -71,6 +71,11 @@ test:
 bdd:
     cd packages/engine && {{ci_flags}} cargo test --test bdd -- --nocapture
 
+# Regenerate all BDD step bindings from bdd/grammar.yaml
+bdd-codegen:
+    node bdd/codegen/gen-js.mjs
+    @echo "Rust bindings regenerate automatically via build.rs on next cargo build"
+
 # Run BDD tests with execution trace output (writes box-drawing traces to trace_output/)
 bdd-trace:
     rm -rf trace_output

@@ -86,8 +86,14 @@ optional = true
 version = "0.32"
 optional = true
 
+[build-dependencies]
+serde = { workspace = true }
+serde_yaml_ng = { workspace = true }
+
 [dev-dependencies]
 cucumber = "0.23"
+gherkin = "0.16"
+futures = "0.3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 walkdir.workspace = true
 tracing-subscriber.workspace = true

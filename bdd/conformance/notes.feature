@@ -1,3 +1,4 @@
+@tier:notes
 Feature: Note resolution (RFC-005, RFC-018)
   A note anchors to legal text via a W3C TextQuoteSelector: an exact quote
   plus optional prefix/suffix context. The selector is content-addressed, so
