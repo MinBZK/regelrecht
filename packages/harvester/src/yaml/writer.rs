@@ -37,47 +37,18 @@ struct YamlPreamble {
 }
 
 /// Article representation for YAML serialization.
+///
+/// References are serialized straight from the canonical [`Reference`] model
+/// (`crate::types`) — it already carries the exact field set, order and
+/// `skip_serializing_if` behavior, so there is no separate write mirror to keep
+/// in sync.
 #[derive(Debug, Serialize)]
 struct YamlArticle {
     number: String,
     text: String,
     url: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    references: Vec<YamlReference>,
-}
-
-/// Reference representation for YAML serialization.
-#[derive(Debug, Serialize)]
-struct YamlReference {
-    id: String,
-    bwb_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    artikel: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    lid: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    onderdeel: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    hoofdstuk: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    paragraaf: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    afdeling: Option<String>,
-}
-
-impl From<&Reference> for YamlReference {
-    fn from(r: &Reference) -> Self {
-        Self {
-            id: r.id.clone(),
-            bwb_id: r.bwb_id.clone(),
-            artikel: r.artikel.clone(),
-            lid: r.lid.clone(),
-            onderdeel: r.onderdeel.clone(),
-            hoofdstuk: r.hoofdstuk.clone(),
-            paragraaf: r.paragraaf.clone(),
-            afdeling: r.afdeling.clone(),
-        }
-    }
+    references: Vec<Reference>,
 }
 
 /// Full law representation for YAML serialization.
@@ -147,7 +118,7 @@ fn generate_yaml_struct(law: &Law, effective_date: &str) -> YamlLaw {
                 number: article.number.clone(),
                 text,
                 url: article.url.clone(),
-                references: article.references.iter().map(YamlReference::from).collect(),
+                references: article.references.clone(),
             }
         })
         .collect();
@@ -553,22 +524,129 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_yaml_reference_serialization() {
-        let reference = Reference {
-            id: "ref1".to_string(),
-            bwb_id: "BWBR0018451".to_string(),
-            artikel: Some("4".to_string()),
-            lid: None,
-            onderdeel: None,
-            hoofdstuk: None,
-            paragraaf: None,
-            afdeling: None,
+    /// A CVDR (local-regulation) law that exercises the writer-only projection
+    /// fields — `preamble`, `organisation`, `cvdr_id`, `officiele_titel` and a
+    /// per-article `references` block — which the canonical executable model
+    /// (`ArticleBasedLaw`) does not carry. Keeping these in a golden test guards
+    /// against accidental loss when the writer changes.
+    fn create_test_cvdr_law() -> Law {
+        let metadata = LawMetadata {
+            bwb_id: String::new(),
+            cvdr_id: Some("CVDR123456".to_string()),
+            title: "Voorbeeldverordening".to_string(),
+            regulatory_layer: RegulatoryLayer::GemeentelijkeVerordening,
+            publication_date: Some("2024-01-01".to_string()),
+            effective_date: None,
+            valid_to: None,
+            creator: Some("Gemeente Voorbeeld".to_string()),
+            scope_code: Some("GM0000".to_string()),
         };
 
-        let yaml_ref = YamlReference::from(&reference);
-        assert_eq!(yaml_ref.id, "ref1");
-        assert_eq!(yaml_ref.artikel, Some("4".to_string()));
-        assert!(yaml_ref.lid.is_none());
+        let mut law = Law::new(metadata);
+        law.preamble = Some(crate::types::Preamble {
+            text: "De raad van de gemeente Voorbeeld besluit.".to_string(),
+            url: "https://lokaleregelgeving.overheid.nl/CVDR123456".to_string(),
+        });
+        law.add_article(
+            Article::new(
+                "1",
+                "Begripsbepalingen.",
+                "https://lokaleregelgeving.overheid.nl/CVDR123456#Artikel1",
+            )
+            .with_references(vec![Reference {
+                id: "ref1".to_string(),
+                bwb_id: "BWBR0018451".to_string(),
+                artikel: Some("4".to_string()),
+                lid: None,
+                onderdeel: None,
+                hoofdstuk: None,
+                paragraaf: None,
+                afdeling: None,
+            }]),
+        );
+        law
+    }
+
+    /// Golden byte-identity test for a national (BWB) law. Pins the *exact*
+    /// serialized output so any change to the writer (formatting, field order,
+    /// the de-duplicated `references` projection) is caught, not just substrings.
+    #[test]
+    fn test_generate_yaml_golden_bwb() {
+        let law = create_test_law();
+        let yaml = generate_yaml(&law, "2025-01-01").unwrap();
+        // Indentation below is significant — it is the exact emitted YAML.
+        // SCHEMA_URL is interpolated so a schema-version bump updates this golden
+        // automatically while every other byte stays pinned.
+        let expected = format!(
+            "---
+$schema: {SCHEMA_URL}
+$id: wet_op_de_zorgtoeslag
+regulatory_layer: WET
+publication_date: '2005-12-29'
+valid_from: '2025-01-01'
+bwb_id: BWBR0018451
+url: https://wetten.overheid.nl/BWBR0018451/2025-01-01
+articles:
+  - number: '1'
+    text: 'In deze wet wordt verstaan onder toeslagpartner: partner.'
+    url: https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel1
+"
+        );
+        assert_eq!(yaml, expected);
+    }
+
+    /// Golden byte-identity test for a CVDR (local) law, covering the
+    /// writer-only projection fields and a per-article `references` block.
+    #[test]
+    fn test_generate_yaml_golden_cvdr() {
+        let law = create_test_cvdr_law();
+        let yaml = generate_yaml(&law, "2024-01-01").unwrap();
+        // Indentation below is significant — it is the exact emitted YAML,
+        // including the writer-only `preamble`/`organisation`/`references` fields.
+        let expected = format!(
+            "---
+$schema: {SCHEMA_URL}
+$id: voorbeeldverordening
+regulatory_layer: GEMEENTELIJKE_VERORDENING
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+cvdr_id: CVDR123456
+officiele_titel: Voorbeeldverordening
+organisation: Gemeente Voorbeeld
+url: https://lokaleregelgeving.overheid.nl/CVDR123456
+preamble:
+  text: De raad van de gemeente Voorbeeld besluit.
+  url: https://lokaleregelgeving.overheid.nl/CVDR123456
+articles:
+  - number: '1'
+    text: Begripsbepalingen.
+    url: https://lokaleregelgeving.overheid.nl/CVDR123456#Artikel1
+    references:
+      - id: ref1
+        bwb_id: BWBR0018451
+        artikel: '4'
+"
+        );
+        assert_eq!(yaml, expected);
+    }
+
+    /// Conformance: the harvested YAML deserializes cleanly into the canonical
+    /// executable model (`regelrecht-law-model::ArticleBasedLaw`). The harvester
+    /// writer stays a separate write-projection, but this proves its output
+    /// remains faithful to the single source of truth for the law format.
+    #[test]
+    fn test_generated_yaml_conforms_to_law_model() {
+        for (law, date) in [
+            (create_test_law(), "2025-01-01"),
+            (create_test_cvdr_law(), "2024-01-01"),
+        ] {
+            let yaml = generate_yaml(&law, date).unwrap();
+            let parsed: regelrecht_law_model::ArticleBasedLaw = serde_yaml_ng::from_str(&yaml)
+                .unwrap_or_else(|e| {
+                    panic!("harvested YAML must parse as ArticleBasedLaw: {e}\n{yaml}")
+                });
+            assert_eq!(parsed.articles.len(), law.articles.len());
+            assert_eq!(parsed.regulatory_layer, law.metadata.regulatory_layer);
+        }
     }
 }
