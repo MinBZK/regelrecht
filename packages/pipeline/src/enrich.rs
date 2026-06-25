@@ -4,6 +4,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use regelrecht_corpus::{CorpusClient, CorpusConfig};
+use regelrecht_law_model::ArticleBasedLaw;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
@@ -986,47 +987,30 @@ async fn compute_prompt_hash(repo_path: &Path) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-/// Count total articles and articles with `machine_readable` in one parse pass.
+/// Count total articles and articles with a `machine_readable` section in one
+/// parse pass.
+///
+/// The law is parsed into the canonical [`ArticleBasedLaw`] model
+/// (`regelrecht-law-model`) rather than walked as an untyped YAML value, so the
+/// field access is type-checked against the single source of truth for the law
+/// format. A structurally-invalid law now surfaces as a parse error here instead
+/// of being silently undercounted — acceptable because this only ever runs on
+/// real harvested/enriched corpus files, where a corruption is worth failing on.
+///
+/// An article counts as enriched when it carries a `machine_readable` mapping,
+/// including the empty `{}` an LLM may insert before filling it; an explicit
+/// `machine_readable: null` is treated as un-enriched. No corpus file uses the
+/// bare/null form, so this matches the previous key-presence behavior in practice.
 async fn count_article_stats(path: &Path) -> Result<(usize, usize)> {
     let content = tokio::fs::read_to_string(path).await?;
-    let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&content)?;
-    Ok((
-        count_articles_in_value(&value),
-        count_machine_readable_in_value(&value),
-    ))
-}
-
-fn count_articles_in_value(value: &serde_yaml_ng::Value) -> usize {
-    match value {
-        serde_yaml_ng::Value::Mapping(map) => {
-            if let Some(serde_yaml_ng::Value::Sequence(seq)) = map.get("articles") {
-                return seq.len();
-            }
-            0
-        }
-        _ => 0,
-    }
-}
-
-fn count_machine_readable_in_value(value: &serde_yaml_ng::Value) -> usize {
-    match value {
-        serde_yaml_ng::Value::Mapping(map) => {
-            if let Some(serde_yaml_ng::Value::Sequence(articles)) = map.get("articles") {
-                return articles
-                    .iter()
-                    .filter(|article| {
-                        if let serde_yaml_ng::Value::Mapping(article_map) = article {
-                            article_map.contains_key("machine_readable")
-                        } else {
-                            false
-                        }
-                    })
-                    .count();
-            }
-            0
-        }
-        _ => 0,
-    }
+    let law: ArticleBasedLaw = serde_yaml_ng::from_str(&content)?;
+    let total = law.articles.len();
+    let with_machine_readable = law
+        .articles
+        .iter()
+        .filter(|article| article.machine_readable.is_some())
+        .count();
+    Ok((total, with_machine_readable))
 }
 
 #[cfg(test)]
@@ -1285,22 +1269,65 @@ mod tests {
         assert!(normalize_yaml_path("").is_err());
     }
 
-    #[test]
-    fn test_count_articles_in_value() {
-        let yaml = r#"
+    #[tokio::test]
+    async fn test_count_article_stats() {
+        // A realistic minimal article-based law: typed counting requires the
+        // canonical top-level fields ($id/regulatory_layer/publication_date) and
+        // articles with number+text, so the fixture mirrors a real harvested law.
+        let yaml = r#"---
+$id: test_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
 articles:
-  - id: art1
-    name: Article 1
-  - id: art2
-    name: Article 2
-  - id: art3
-    name: Article 3
+  - number: '1'
+    text: Article one.
+  - number: '2'
+    text: Article two.
+  - number: '3'
+    text: Article three.
     machine_readable:
-      actions: []
+      execution:
+        actions: []
 "#;
-        let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(yaml).unwrap();
-        assert_eq!(count_articles_in_value(&value), 3);
-        assert_eq!(count_machine_readable_in_value(&value), 1);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("law.yaml");
+        tokio::fs::write(&path, yaml).await.unwrap();
+
+        let (total, with_mr) = count_article_stats(&path).await.unwrap();
+        assert_eq!(total, 3);
+        assert_eq!(with_mr, 1);
+    }
+
+    #[tokio::test]
+    async fn test_count_article_stats_empty_vs_null_machine_readable() {
+        // An empty `machine_readable: {}` mapping counts as enriched — this
+        // matches the old key-presence semantics that `FakeLlmRunner` (and the
+        // enrichment delta) rely on when the LLM inserts a bare section. An
+        // explicit `machine_readable: null` deserializes to None and is treated
+        // as un-enriched; no corpus file uses the bare/null form, so the typed
+        // count matches the previous `contains_key` behavior in practice.
+        let yaml = r#"---
+$id: test_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Empty section, enriched.
+    machine_readable: {}
+  - number: '2'
+    text: Null section, not enriched.
+    machine_readable: null
+  - number: '3'
+    text: No section at all.
+"#;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("law.yaml");
+        tokio::fs::write(&path, yaml).await.unwrap();
+
+        let (total, with_mr) = count_article_stats(&path).await.unwrap();
+        assert_eq!(total, 3);
+        assert_eq!(with_mr, 1);
     }
 
     /// Fake LLM runner that simulates enrichment by adding `machine_readable`
@@ -1348,15 +1375,21 @@ articles:
         let law_dir = dir.path().join("regulation/nl/wet/test_law");
         tokio::fs::create_dir_all(&law_dir).await.unwrap();
 
-        let yaml_content = r#"articles:
-  - id: art1
-    name: Article 1
-  - id: art2
-    name: Article 2
+        let yaml_content = r#"---
+$id: test_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Article one.
+  - number: '2'
+    text: Article two.
     machine_readable:
-      actions: []
-  - id: art3
-    name: Article 3
+      execution:
+        actions: []
+  - number: '3'
+    text: Article three.
 "#;
         let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
         tokio::fs::write(dir.path().join(yaml_path), yaml_content)
@@ -1421,7 +1454,7 @@ articles:
         let law_dir = dir.path().join("regulation/nl/wet/test_law");
         tokio::fs::create_dir_all(&law_dir).await.unwrap();
 
-        let yaml_content = "articles:\n  - id: art1\n    name: Article 1\n";
+        let yaml_content = "---\n$id: test_law\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Article one.\n";
         let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
         tokio::fs::write(dir.path().join(yaml_path), yaml_content)
             .await
@@ -1468,7 +1501,7 @@ articles:
         let law_dir = dir.path().join("regulation/nl/wet/test_law");
         tokio::fs::create_dir_all(&law_dir).await.unwrap();
 
-        let yaml_content = "articles:\n  - id: art1\n    name: Article 1\n";
+        let yaml_content = "---\n$id: test_law\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Article one.\n";
         let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
         tokio::fs::write(dir.path().join(yaml_path), yaml_content)
             .await

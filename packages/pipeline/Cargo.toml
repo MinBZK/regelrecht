@@ -25,6 +25,7 @@ path = "src/bin/pipeline_api.rs"
 [dependencies]
 regelrecht-corpus = { path = "../corpus" }
 regelrecht-harvester = { path = "../harvester" }
+regelrecht-law-model = { path = "../law-model" }
 regelrecht-shared = { path = "../shared", features = ["telemetry"] }
 sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json", "migrate"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "process", "time", "fs", "net", "io-util"] }

@@ -38,6 +38,7 @@ textwrap = "0.16"
 unicode-normalization = "0.1"
 
 [dev-dependencies]
+regelrecht-law-model = { path = "../law-model" }
 tempfile.workspace = true
 serde_json.workspace = true
 
