@@ -11,10 +11,6 @@ import { useAuth } from '@regelrecht/frontend-shared';
 
 export { useAuth };
 
-// One shared `login` closure; with no argument the return_url defaults to the
-// current location (same behavior as the old admin-local redirectToLogin).
-const { login } = useAuth();
-
 /**
  * Like fetch(), but redirects to the login page on 401 and returns `null`
  * so callers can `return` early. For other statuses the Response is
@@ -23,7 +19,11 @@ const { login } = useAuth();
 export async function authedFetch(input, init) {
   const response = await fetch(input, init);
   if (response.status === 401) {
-    login();
+    // Resolve `login` lazily (only on an actual 401) so importing this module
+    // doesn't eagerly trigger useAuth()'s /auth/status fetch. With no argument
+    // the return_url defaults to the current location (same behavior as the old
+    // admin-local redirectToLogin).
+    useAuth().login();
     return null;
   }
   return response;

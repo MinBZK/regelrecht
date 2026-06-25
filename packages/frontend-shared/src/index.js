@@ -4,9 +4,7 @@
 // conform to it.
 export { apiFetch, apiFetchJson, apiFetchText, ApiError } from './apiFetch.js';
 export { useAuth, ensureAuthReady } from './useAuth.js';
-export {
-  useColorScheme,
-  applyColorScheme,
-  createLocalStoragePersistence,
-  VALID_THEMES,
-} from './useColorScheme.js';
+// `applyColorScheme` and `createLocalStoragePersistence` stay internal to
+// useColorScheme — they're implementation details, not part of the package's
+// public surface.
+export { useColorScheme, VALID_THEMES } from './useColorScheme.js';

@@ -1,5 +1,6 @@
 /**
- * apiFetch — thin wrapper around `fetch` for the editor's API calls.
+ * apiFetch — thin wrapper around `fetch` for the frontends' API calls (shared
+ * by the editor and admin via @regelrecht/frontend-shared).
  *
  * It does exactly three things the ~50 hand-rolled call sites kept
  * re-implementing:

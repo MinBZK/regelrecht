@@ -378,7 +378,9 @@ jobs:
 
       - name: Run frontend tests
         if: needs.changes.outputs.ci == 'true'
-        run: npm test -w regelrecht-ui-prototype
+        # Directory form (`-w frontend`) rather than the package name, so a
+        # rename of the `name` field can't silently skip the tests.
+        run: npm test -w frontend
 
       - name: Skip (no relevant changes)
         if: needs.changes.outputs.ci != 'true'
