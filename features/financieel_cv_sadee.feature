@@ -19,7 +19,8 @@ Feature: Financieel CV — werkgever-perspectief, casus Sadee
   # Peildatum 2026-05-11 (vandaag) voor alle scenarios. De corpus
   # modelleert valid_from per wet-versie; elke wet blijft geldig totdat
   # er een opvolger komt. Voor onze 7 wetten geldt vandaag:
-  #   - Wtl, WW: 2024-01-01.yaml (geen opvolger → nog geldend)
+  #   - WW: 2024-01-01.yaml (geen opvolger → nog geldend)
+  #   - Wtl: 2025-01-01.yaml (opvolger van 2024; LIV per 2025 afgeschaft)
   #   - Ziektewet, Wajong, WIA, Pwet: 2025-01-01.yaml (geen opvolger)
   #
   # LIV-afschaffing: Wtl 2025-01-01.yaml is via de harvester opgehaald

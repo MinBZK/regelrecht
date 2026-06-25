@@ -152,6 +152,21 @@ articles:
               Categorie d (art. 2.14): werknemer is na arbeidsongeschikt­
               heid bij dezelfde werkgever herplaatst en voldoet aan
               voorwaarden art. 2.14.
+          - name: heeft_pensioengerechtigde_leeftijd_bereikt
+            type: boolean
+            required: true
+            description: |-
+              Uitsluitingsgrond voor alle vier categorieën
+              (art. 2.2 lid 2.a, 2.6 lid 3.a, 2.10 lid 2.a, 2.14 lid 2.a):
+              werknemer heeft pensioengerechtigde leeftijd bereikt
+              (artikel 7a lid 1 AOW).
+          - name: heeft_loonaangifte_verzoek_ingediend
+            type: boolean
+            required: true
+            description: |-
+              Art. 2.1: werkgever heeft in de loonaangifte verzoek
+              gedaan voor het loonkostenvoordeel.
+        input:
           - name: is_doelgroep_banenafspraak
             type: boolean
             source:
@@ -167,20 +182,6 @@ articles:
                 doelgroepregister banenafspraak definieert. De
                 onderliggende grond (o.a. Pwet 7 lid 1.a / 10d) wordt
                 daar als 38b.1.a beoordeeld.
-          - name: heeft_pensioengerechtigde_leeftijd_bereikt
-            type: boolean
-            required: true
-            description: |-
-              Uitsluitingsgrond voor alle vier categorieën
-              (art. 2.2 lid 2.a, 2.6 lid 3.a, 2.10 lid 2.a, 2.14 lid 2.a):
-              werknemer heeft pensioengerechtigde leeftijd bereikt
-              (artikel 7a lid 1 AOW).
-          - name: heeft_loonaangifte_verzoek_ingediend
-            type: boolean
-            required: true
-            description: |-
-              Art. 2.1: werkgever heeft in de loonaangifte verzoek
-              gedaan voor het loonkostenvoordeel.
         output:
           - name: heeft_recht_op_lkv
             type: boolean

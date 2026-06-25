@@ -24,9 +24,10 @@ Feature: Financieel CV — werknemer-perspectief, casus Koen
   #     = 1664 verloonde uren, jaarloon €19.968 (1.996.800 eurocent)
   #
   # Peildatum 2026-05-11 (vandaag). De corpus pakt per wet de laatst-
-  # geldende versie: Wtl/WW 2024-01-01.yaml, Ziektewet/Wajong/WIA/Pwet
-  # 2025-01-01.yaml. Zie financieel_cv_sadee.feature voor uitleg over de
-  # LIV-corpus-gap (Wet 36458 nog niet gemodelleerd in Wtl).
+  # geldende versie (valid_from <= peildatum): Wtl 2025-01-01.yaml
+  # (LIV per 2025 afgeschaft), WW 2024-01-01.yaml (geen opvolger),
+  # Ziektewet/Wajong/WIA/Pwet 2025-01-01.yaml. Zie
+  # financieel_cv_sadee.feature voor uitleg over de LIV-afschaffing.
 
   # ────────────────────────────────────────────────────────────────────
   # NRP — Ziektewet artikel 29b
@@ -110,7 +111,8 @@ Feature: Financieel CV — werknemer-perspectief, casus Koen
     Then the execution fails with "Output 'heeft_recht_op_liv' not found in law 'wet_tegemoetkomingen_loondomein'"
 
   # ────────────────────────────────────────────────────────────────────
-  # LKV — Wtl artikel 2.1
+  # LKV — Wtl 2025: art. 2.1 (recht) + art. 2.13 (bedrag banenafspraak)
+  # + art. 4.1.3 (anti-cumulatie: hoogte = hoogste categorie).
   # Koen valt in categorie c (banenafspraak), niet in b (arbeids-
   # gehandicapt — hij heeft geen WIA/Wajong). Hoogte = MIN(101 × 1664,
   # 200000) = MIN(168064, 200000) = 168064 eurocent (€1.680,64 per jaar).
