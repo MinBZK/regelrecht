@@ -1749,8 +1749,10 @@ articles:
     # is GEEN arbeidsbeperkte in zin van 38b en hoort dus niet in het
     # doelgroepregister banenafspraak (wel in beschut-werk-traject).
     #
-    # 38b.5 (definitie 'de beschikking') en 38b.6 (registratie-blijfgrond)
-    # vallen buiten scope per prompt: alleen 38b.1 t/m 38b.4.
+    # 38b.5 (definitie 'de beschikking') valt buiten scope: puur definitoir.
+    # 38b.6 (registratie-blijfgrond) is WEL gemodelleerd: een persoon die
+    # niet langer aan lid 1/2 voldoet blijft arbeidsbeperkte zolang zijn
+    # opname in de registratie (artikel 38d lid 1) nog niet is geëindigd.
     machine_readable:
       execution:
         produces:
@@ -1853,14 +1855,29 @@ articles:
               outputs zoals LKV-banenafspraak-termijn (3 jaar vanaf
               opname). Voor 38b.1 zelf niet rechtstreeks vereist; dient
               als pass-through naar afnemers (Wtl, Ziektewet).
+          - name: was_arbeidsbeperkte_lid_1_of_2
+            type: boolean
+            required: true
+            description: |-
+              38b.6 blijfgrond: persoon voldeed eerder aan een grond van
+              het eerste of tweede lid (was opgenomen als arbeidsbeperkte),
+              maar voldoet daar nu niet langer aan. Bron: UWV-historie /
+              registratie.
+          - name: registratie_nog_niet_geeindigd
+            type: boolean
+            required: true
+            description: |-
+              38b.6 blijfgrond: de opname van de persoon in de registratie
+              van arbeidsbeperkten (artikel 38d lid 1) is nog niet
+              geëindigd. Bron: UWV-registratie.
         output:
           - name: behoort_tot_doelgroepregister_banenafspraak
             type: boolean
             description: |-
               Kernoutput: voldoet persoon aan een van de gronden van
-              38b.1 (a t/m f) of 38b.2, en is hij niet uitgesloten op
-              grond van chapeau (beschut werk Pwet 10b). Bepaalt opname
-              in doelgroepregister banenafspraak.
+              38b.1 (a t/m f), 38b.2 of de registratie-blijfgrond 38b.6,
+              en is hij niet uitgesloten op grond van chapeau (beschut werk
+              Pwet 10b). Bepaalt opname in doelgroepregister banenafspraak.
           - name: voldoet_aan_grond_38b_1_a
             type: boolean
             description: 38b.1.a — Pwet LKS-traject + UWV-loonwaarde/WML-vaststelling.
@@ -1882,6 +1899,9 @@ articles:
           - name: voldoet_aan_grond_38b_2
             type: boolean
             description: 38b.2 — UWV-oordeel jonggehandicapt met voorziening.
+          - name: voldoet_aan_grond_38b_6
+            type: boolean
+            description: 38b.6 — registratie-blijfgrond (was lid 1/2, registratie nog niet geëindigd).
           - name: grond_opname_doelgroepregister
             type: string
             description: |-
@@ -2001,6 +2021,24 @@ articles:
                 18 jaar (of als studerende, Wajong 1:4), voorziening op
                 grond van Pwet 10 of WIA 35, en zonder voorziening geen
                 WML. Beoordelingsregels per AMvB (38b.3).
+          - output: voldoet_aan_grond_38b_6
+            value:
+              operation: AND
+              conditions:
+                - $was_arbeidsbeperkte_lid_1_of_2
+                - $registratie_nog_niet_geeindigd
+            legal_basis:
+              law: Wet financiering sociale verzekeringen
+              bwb_id: BWBR0017745
+              article: 38b
+              paragraph: '6'
+              explanation: |-
+                Registratie-blijfgrond: wie niet langer aan lid 1 of 2
+                voldoet, wordt tevens als arbeidsbeperkte beschouwd zolang
+                zijn opname in de registratie van arbeidsbeperkten (artikel
+                38d lid 1) nog niet is geëindigd. De chapeau-uitsluiting
+                beschut werk (Pwet 10b lid 1) blijft gelden via de NOT-wrap
+                op de kernoutput.
           - output: behoort_tot_doelgroepregister_banenafspraak
             value:
               operation: AND
@@ -2016,11 +2054,12 @@ articles:
                     - $voldoet_aan_grond_38b_1_e
                     - $voldoet_aan_grond_38b_1_f
                     - $voldoet_aan_grond_38b_2
+                    - $voldoet_aan_grond_38b_6
             legal_basis:
               law: Wet financiering sociale verzekeringen
               bwb_id: BWBR0017745
               article: 38b
-              paragraph: '1, 2'
+              paragraph: '1, 2, 6'
               explanation: |-
                 Persoon is arbeidsbeperkte in zin van 38b (en hoort dus
                 in doelgroepregister banenafspraak, mits ook ingeschreven

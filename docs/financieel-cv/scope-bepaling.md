@@ -427,28 +427,40 @@ corpus onvolledig of verkeerd verankerd is, of waar een doelgroep-grond
 ontbreekt. Geen van deze bevindingen is een wetgevings-fout — het zijn
 modellering- of engine-laag-punten.
 
-> **Herkomst:** de deterministische bevindingen (MISPLACED/DANGLING) zijn
-> bevestigd tegen de RvO-corpus (`script/cross-law-integriteit.py`). De
-> diepere LLM-bevindingen zijn afgeleid op een demo-snapshot van dit
-> stelsel; bevestig ze tegen de actuele RvO-YAML voordat je ze als fix
-> oppakt.
+> **Herkomst:** alle bevindingen zijn (her)gevalideerd tegen de actuele
+> RvO-corpus — deterministisch (`script/cross-law-integriteit.py`) plus
+> een multi-agent desk-review per wet en een persona-consistentiecheck.
+> De ✅-rijen zijn inmiddels gefixt en naar de traject-branch gepusht.
 
-### Bevestigd op RvO-corpus (deterministisch)
+### ✅ Opgelost (gefixt + gepusht naar traject-branch)
 
-| Signaal | Locatie | Scope-implicatie | Klasse |
-|---------|---------|------------------|--------|
-| **MISPLACED binding** — `is_doelgroep_banenafspraak` heeft `source:` onder `parameters:` i.p.v. `input:` → de cross-law binding naar Wfsv wordt stil genegeerd en vuurt nooit | Wtl art. 2.1 | LKV-banenafspraak leunt feitelijk op een directe parameter, niet op de Wfsv-doelgroep. Raakt BRON-keuze Pwet/Wfsv | modellering-fout |
-| **Geen** ziektewet→WIA dangling | Ziektewet 29b.1 | Op RvO bestáát de WIA-wet in corpus; de dangling uit de demo-run **vervalt** hier | n.v.t. (opgelost) |
+| Signaal | Locatie | Fix |
+|---------|---------|-----|
+| **MISPLACED binding** — `is_doelgroep_banenafspraak` had `source:` onder `parameters:` → binding werd stil genegeerd, vuurde nooit | Wtl art. 2.1 (**2024 én 2025**) | Verplaatst naar een `input:`-blok met `source:`; integriteitsscan `misplaced=0` |
+| **Wfsv 38b.6-omissie** — kernoutput `behoort_tot_doelgroepregister_banenafspraak` miste de registratie-blijfgrond → false-negative naar LKV + NRP | Wfsv art. 38b | Grond `voldoet_aan_grond_38b_6` toegevoegd aan de OR (was-arbeidsbeperkte + registratie niet geëindigd) |
+| **Geen** ziektewet→WIA dangling | Ziektewet 29b.1 | WIA bestaat in RvO-corpus; cross-law contract (3 outputs) geverifieerd OK |
 
-### Te bevestigen tegen RvO (uit demo-snapshot)
+### 🟡 Open — herleidbaarheid/corpus-correctie (bevestigd op RvO, geen uitkomst-blocker)
 
 | Signaal | Regeling | Scope-implicatie |
 |---------|----------|------------------|
-| **Wfsv 38b.6-omissie** — kernoutput `behoort_tot_doelgroepregister_banenafspraak` mist de registratie-blijfgrond (38b.6) | BRON banenafspraak | False-negative op doelgroep → propageert naar LKV en NRP. Hoge prioriteit; raakt of 38b.6 in scope moet |
-| **Ziektewet 29b lid 2.e** als losse OR-triggers terwijl de letter een **conjunctie** is (toeleiding **én** WML-vaststelling) | NRP | No-risk polis nu te ruim; vraagt of de WML-loonwaarde-conjunct in scope hoort |
-| **Register-proxy** — banenafspraak-register (Wfsv 38b) gebruikt als volledige kwalificatie i.p.v. deel van de volle Wtl 2.10-status | LKV | Part/whole-conflatie; jurist-vraag of register als proxy acceptabel is |
-| **Kapstok-verankering** — `machine_readable` hangt op chapeau-/definitie-artikelen (Wtl 2.1, Pwet 10c, Wajong 1:1) i.p.v. de dragende norm | meerdere | Geen uitkomst-effect, wél herleidbaarheid; raakt op welk artikel scope-beslissingen landen |
+| **Kapstok-verankering** — `machine_readable` hangt op chapeau-/definitie-artikelen i.p.v. de dragende norm | Pwet 10c.1↔10d · Wajong 1:1 + lid-2-logica in lid-1-blok · Ziektewet legal_character op doelgroep-lid | Geen uitkomst-effect, wél herleidbaarheid; raakt op welk artikel scope-beslissingen landen |
+| **Register-proxy** — banenafspraak-register (Wfsv 38b) als volledige kwalificatie i.p.v. deel van de volle Wtl 2.10-status | LKV | Part/whole-conflatie; jurist-vraag of register als proxy acceptabel is |
+| **Lege MR-stub** — Ziektewet 29b lid 6 (ziekengeldhoogte) heeft lege `machine_readable` zonder untranslatable-rechtvaardiging | NRP | Of verwijderen of als untranslatable markeren (zie prune-richting 2) |
+| **Tekst-fidelity** — Wfsv `beslissingstermijn_dagen: 365` (38f noemt geen dag-termijn); WW 76a "zes **kalender**maanden" i.p.v. "zes maanden" | wfsv · WW | Corpus-correctie, geen scope-keuze |
+| **Dode output** — WIA `heeft_arbeidsbeperking_wia` zonder consumer | JC/WPA | Verwijderen of als geplande output documenteren |
 | **AOW-laag ontbreekt** — pensioenleeftijd als brute boolean | LIV/LKV | Bevestigt AOW 7a als bewuste OOC/untranslatable (zie DEFINITIE-tabel) |
+
+### Persona-check
+
+De persona-scenario's (`features/financieel_cv_koen.feature` = werknemer,
+`financieel_cv_sadee.feature` = werkgever) zijn intern consistent en hun
+verwachte uitkomsten matchen de wetslogica over alle zeven regelingen
+(NRP, LKV, LIV, LKS, LDP, JC/WPA, PP). Keten-checkpoints asserten ook
+tussenresultaten, niet alleen endpoints. De feature-headers claimden eerder
+de verkeerde Wtl-versie (2024 i.p.v. de door de engine gekozen 2025) —
+inmiddels gecorrigeerd. Open op stelselniveau: cross-wet samenloop
+(LKS↔LKV) wordt nog niet geassert; hoort in een aggregator-laag.
 
 ## Mogelijke prune-richtingen
 
