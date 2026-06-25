@@ -1,0 +1,12 @@
+{
+  "name": "regelrecht-frontends",
+  "version": "1.0.0",
+  "private": true,
+  "description": "npm workspace root for the regelrecht Vue frontends and their shared package",
+  "workspaces": [
+    "packages/frontend-shared",
+    "frontend",
+    "frontend-lawmaking",
+    "packages/admin/frontend-src"
+  ]
+}

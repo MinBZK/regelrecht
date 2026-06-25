@@ -1,34 +1,19 @@
-import { ref } from 'vue';
+// Auth state (`useAuth`) now lives in the shared package
+// (@regelrecht/frontend-shared); admin conforms to the editor's implementation.
+//
+// `authedFetch` stays admin-local glue: the editor installs a global
+// window.fetch 401 guard (apiAuthGuard.js), but admin has none and instead
+// redirects inline and returns `null` on 401 so call sites can
+// `if (!response) return;`. It deliberately keeps bare-`fetch` semantics
+// (non-throwing; the raw Response is returned for every non-401 status) because
+// the call sites inspect `response.status`/`response.ok` themselves.
+import { useAuth } from '@regelrecht/frontend-shared';
 
-const authenticated = ref(false);
-const person = ref(null);
-const oidcConfigured = ref(false);
-const loading = ref(true);
-let fetched = false;
+export { useAuth };
 
-async function checkAuth() {
-  try {
-    const response = await fetch('/auth/status');
-    if (!response.ok) return;
-    const status = await response.json();
-    authenticated.value = status.authenticated;
-    oidcConfigured.value = status.oidc_configured;
-    person.value = status.person || null;
-  } catch {
-    // Auth check failed — leave as unauthenticated
-  } finally {
-    loading.value = false;
-  }
-}
-
-function logout() {
-  window.location.href = '/auth/logout';
-}
-
-export function redirectToLogin() {
-  const returnUrl = window.location.pathname + window.location.search + window.location.hash;
-  window.location.href = '/auth/login?return_url=' + encodeURIComponent(returnUrl);
-}
+// One shared `login` closure; with no argument the return_url defaults to the
+// current location (same behavior as the old admin-local redirectToLogin).
+const { login } = useAuth();
 
 /**
  * Like fetch(), but redirects to the login page on 401 and returns `null`
@@ -38,17 +23,8 @@ export function redirectToLogin() {
 export async function authedFetch(input, init) {
   const response = await fetch(input, init);
   if (response.status === 401) {
-    redirectToLogin();
+    login();
     return null;
   }
   return response;
-}
-
-export function useAuth() {
-  if (!fetched) {
-    fetched = true;
-    checkAuth();
-  }
-
-  return { authenticated, person, oidcConfigured, loading, logout, redirectToLogin };
 }

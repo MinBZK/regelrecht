@@ -11,7 +11,7 @@
  * encoded as the *absence* of the attribute so OS-level prefers-color-scheme
  * takes over.
  */
-import { ref, readonly, computed, watchEffect } from 'vue';
+import { ref, readonly, computed } from 'vue';
 import { apiFetch, apiFetchJson, ApiError } from '../lib/apiFetch.js';
 
 const VALID_THEMES = ['auto', 'light', 'dark'];
@@ -137,16 +137,10 @@ async function setSetting(key, value) {
   }
 }
 
-// Apply theme to <html>. Runs before the fetch completes too, using DEFAULTS.
-// 'auto' is encoded as the absence of the attribute so the design-system's
-// `@media (prefers-color-scheme: dark)` selector takes over.
-watchEffect(() => {
-  if (typeof document === 'undefined') return;
-  const t = settings.value.theme || DEFAULTS.theme;
-  const root = document.documentElement;
-  if (t === 'auto') root.removeAttribute('data-scheme');
-  else root.setAttribute('data-scheme', t);
-});
+// The `data-scheme` attribute on <html> is applied by the shared
+// `useColorScheme` (see src/composables/useColorScheme.js), which consumes this
+// store's `theme`/`setTheme` as its persistence backend — so theme application
+// lives in exactly one place across all three frontends.
 
 export function useUserSettings() {
   if (!loaded.value && !fetchPromise) {
