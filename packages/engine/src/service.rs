@@ -3015,6 +3015,237 @@ articles:
         }
     }
 
+    #[test]
+    fn test_service_internal_self_reference_is_circular() {
+        // Degenerate same-law cycle: an article's input sources its own output.
+        let law = r#"
+$id: internal_self_ref_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: References its own output
+    machine_readable:
+      execution:
+        input:
+          - name: my_output
+            type: number
+            source:
+              output: my_output
+        output:
+          - name: my_output
+            type: number
+        actions:
+          - output: my_output
+            value: $my_output
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service.evaluate_law_output(
+            "internal_self_ref_law",
+            "my_output",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
+
+        assert!(
+            matches!(result, Err(EngineError::CircularReference(_))),
+            "Expected CircularReference error for a self-referencing article, got: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_service_internal_reference_basic() {
+        // Article 2's input sources article 1's output (same law). Resolution is
+        // owned by the service; the value flows through to article 2's action.
+        let law = r#"
+$id: internal_ref_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Base calculation article
+    machine_readable:
+      definitions:
+        BASE_VALUE:
+          value: 100
+      execution:
+        output:
+          - name: base_amount
+            type: number
+        actions:
+          - output: base_amount
+            value: $BASE_VALUE
+  - number: '2'
+    text: Derived calculation using internal reference
+    machine_readable:
+      execution:
+        input:
+          - name: base_amount
+            type: number
+            source:
+              output: base_amount
+        output:
+          - name: doubled_amount
+            type: number
+        actions:
+          - output: doubled_amount
+            operation: MULTIPLY
+            values:
+              - $base_amount
+              - 2
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "internal_ref_law",
+                "doubled_amount",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .expect("internal reference must resolve");
+
+        // doubled_amount = base_amount (100) * 2 = 200
+        assert_eq!(result.outputs.get("doubled_amount"), Some(&Value::Int(200)));
+    }
+
+    #[test]
+    fn test_service_internal_reference_chain() {
+        // A chain of internal references within one law: 3 -> 2 -> 1.
+        let law = r#"
+$id: chain_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: First article
+    machine_readable:
+      execution:
+        output:
+          - name: first_value
+            type: number
+        actions:
+          - output: first_value
+            value: 10
+  - number: '2'
+    text: Second article references first
+    machine_readable:
+      execution:
+        input:
+          - name: first_value
+            type: number
+            source:
+              output: first_value
+        output:
+          - name: second_value
+            type: number
+        actions:
+          - output: second_value
+            operation: ADD
+            values:
+              - $first_value
+              - 5
+  - number: '3'
+    text: Third article references second
+    machine_readable:
+      execution:
+        input:
+          - name: second_value
+            type: number
+            source:
+              output: second_value
+        output:
+          - name: third_value
+            type: number
+        actions:
+          - output: third_value
+            operation: MULTIPLY
+            values:
+              - $second_value
+              - 2
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service
+            .evaluate_law_output("chain_law", "third_value", BTreeMap::new(), "2025-01-01")
+            .expect("internal reference chain must resolve");
+
+        // first_value = 10, second_value = 10 + 5 = 15, third_value = 15 * 2 = 30
+        assert_eq!(result.outputs.get("third_value"), Some(&Value::Int(30)));
+    }
+
+    #[test]
+    fn test_service_internal_reference_with_parameters() {
+        // The referenced article consumes a parameter that the caller supplies;
+        // the internal reference must still resolve correctly.
+        let law = r#"
+$id: param_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Article that uses parameter
+    machine_readable:
+      execution:
+        parameters:
+          - name: multiplier
+            type: number
+            required: true
+        output:
+          - name: base_result
+            type: number
+        actions:
+          - output: base_result
+            operation: MULTIPLY
+            values:
+              - 100
+              - $multiplier
+  - number: '2'
+    text: Article that references article 1
+    machine_readable:
+      execution:
+        parameters:
+          - name: multiplier
+            type: number
+            required: true
+        input:
+          - name: base_result
+            type: number
+            source:
+              output: base_result
+        output:
+          - name: final_result
+            type: number
+        actions:
+          - output: final_result
+            operation: ADD
+            values:
+              - $base_result
+              - 50
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let mut params = BTreeMap::new();
+        params.insert("multiplier".to_string(), Value::Int(3));
+
+        let result = service
+            .evaluate_law_output("param_law", "final_result", params, "2025-01-01")
+            .expect("internal reference with parameters must resolve");
+
+        // base_result = 100 * 3 = 300, final_result = 300 + 50 = 350
+        assert_eq!(result.outputs.get("final_result"), Some(&Value::Int(350)));
+    }
+
     // -------------------------------------------------------------------------
     // Parameter Override Tests
     // -------------------------------------------------------------------------
