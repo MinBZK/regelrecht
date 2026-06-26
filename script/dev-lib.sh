@@ -87,14 +87,22 @@ dev_wait_postgres() {
     done
 }
 
-# dev_ensure_deps <dir> <label> — run `npm ci` in <dir> if node_modules is
-# absent. Returns non-zero (with a warning) on failure so the caller can skip
-# that frontend instead of aborting the whole stack.
+# dev_ensure_deps <dir> <label> — ensure the npm workspace is installed. All
+# frontends share one root node_modules (npm workspace), so this runs a single
+# root `npm ci` the first time and is a no-op afterwards. <dir> is kept for the
+# call-site label only. Returns non-zero (with a warning) on failure so the
+# caller can skip that frontend instead of aborting the whole stack.
 dev_ensure_deps() {
     local dir="$1" label="$2"
-    [ -d "$dir/node_modules" ] && return 0
-    printf "${bold}=> Installing %s deps…${reset} " "$label"
-    if (cd "$dir" && npm ci --silent) > /dev/null 2>&1; then
+    # The root `npm ci` and the sentinel below are relative to the repo root (all
+    # dev recipes run there). The old per-dir `cd` made this position-independent;
+    # the workspace install isn't, so fail loudly if the invariant is violated
+    # rather than silently skipping the frontend.
+    [ -f package.json ] || { printf "${red}dev_ensure_deps must run from the repo root${reset}\n"; return 1; }
+    # The shared package's workspace symlink is the "deps installed" sentinel.
+    [ -e "node_modules/@regelrecht/frontend-shared" ] && return 0
+    printf "${bold}=> Installing workspace deps (for %s)…${reset} " "$label"
+    if npm ci --silent > /dev/null 2>&1; then
         printf "${green}done${reset}\n"
         return 0
     fi

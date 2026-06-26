@@ -1,12 +1,19 @@
 # syntax=docker/dockerfile:1
-# Stage 1: Build frontend
+# Stage 1: Build frontend (npm workspace root — builds the admin-ui workspace)
 FROM node:26-alpine@sha256:a2dc166a387cc6ca1e62d0c8e265e49ca985d6e60abc9fe6e6c3d6ce8e63f606 AS frontend-builder
 WORKDIR /app
-COPY packages/admin/frontend-src/package.json packages/admin/frontend-src/package-lock.json* packages/admin/frontend-src/.npmrc ./
+# Workspace manifests first so `npm ci` is cached independently of source.
+COPY package.json package-lock.json .npmrc ./
+COPY packages/frontend-shared/package.json packages/frontend-shared/
+COPY frontend/package.json frontend/
+COPY frontend-lawmaking/package.json frontend-lawmaking/
+COPY packages/admin/frontend-src/package.json packages/admin/frontend-src/
 RUN npm ci
-COPY packages/admin/frontend-src/ .
-# vite outDir is '../static' which resolves to /static from /app
-RUN npm run build
+# Source: the shared package + the admin frontend.
+COPY packages/frontend-shared/ packages/frontend-shared/
+COPY packages/admin/frontend-src/ packages/admin/frontend-src/
+# admin vite outDir is '../static', resolving to /app/packages/admin/static.
+RUN npm run build -w packages/admin/frontend-src
 
 # Stage 2: Chef base
 # Rust version: keep in sync with rust-toolchain.toml (source of truth).
@@ -66,7 +73,7 @@ RUN apk add --no-cache ca-certificates && \
     addgroup -S app && adduser -S app -G app
 
 COPY --from=builder /build/target/release/regelrecht-admin /usr/local/bin/
-COPY --from=frontend-builder /static /app/static
+COPY --from=frontend-builder /app/packages/admin/static /app/static
 
 WORKDIR /app
 ENV STATIC_DIR=/app/static

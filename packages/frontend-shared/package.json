@@ -1,0 +1,21 @@
+{
+  "name": "@regelrecht/frontend-shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared frontend primitives (auth, color scheme, API fetch) for the regelrecht Vue frontends",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "happy-dom": "^20.10.6",
+    "vitest": "^4.1.9"
+  }
+}

@@ -4,12 +4,12 @@ import { useRoute, useRouter } from 'vue-router';
 import { useAuth } from './composables/useAuth.js';
 import { usePlatformInfo } from './composables/usePlatformInfo.js';
 import { useNewHarvestJob } from './composables/useNewHarvestJob.js';
-import { useColorScheme } from './composables/useColorScheme.js';
+import { useColorScheme } from '@regelrecht/frontend-shared';
 import NewHarvestJobSheet from './components/NewHarvestJobSheet.vue';
 
 const route = useRoute();
 const router = useRouter();
-const { authenticated, oidcConfigured, loading: authLoading, logout, redirectToLogin } = useAuth();
+const { authenticated, oidcConfigured, loading: authLoading, logout, login } = useAuth();
 const { info } = usePlatformInfo();
 const { open: openNewHarvestJob } = useNewHarvestJob();
 const { colorScheme, setColorScheme } = useColorScheme();
@@ -36,7 +36,7 @@ const activeTab = computed(() => route.name);
 // Redirect to login if OIDC configured but not authenticated
 watch([authLoading, oidcConfigured, authenticated], ([loading, oidc, auth]) => {
   if (!loading && oidc && !auth) {
-    redirectToLogin();
+    login();
   }
 });
 </script>

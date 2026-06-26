@@ -26,11 +26,18 @@ RUN cargo build --target wasm32-unknown-unknown --release --features wasm -p reg
 # Stage 1b: Build frontend (with WASM module)
 FROM node:26-alpine@sha256:725aeba2364a9b16beae49e180d83bd597dbd0b15c47f1f28875c290bfd255b9 AS frontend-builder
 WORKDIR /app
-COPY frontend/package.json frontend/package-lock.json* frontend/.npmrc ./
+# Workspace manifests first so `npm ci` is cached independently of source.
+COPY package.json package-lock.json .npmrc ./
+COPY packages/frontend-shared/package.json packages/frontend-shared/
+COPY frontend/package.json frontend/
+COPY frontend-lawmaking/package.json frontend-lawmaking/
+COPY packages/admin/frontend-src/package.json packages/admin/frontend-src/
 RUN npm ci
-COPY frontend/ .
-COPY --from=wasm-builder /wasm-pkg/ public/wasm/pkg/
-RUN npm run build
+# Source: the shared package + the editor frontend, plus the WASM module.
+COPY packages/frontend-shared/ packages/frontend-shared/
+COPY frontend/ frontend/
+COPY --from=wasm-builder /wasm-pkg/ frontend/public/wasm/pkg/
+RUN npm run build -w frontend
 
 # Stage 2: Chef base
 # Rust version: keep in sync with rust-toolchain.toml (source of truth).
@@ -97,7 +104,7 @@ RUN apk add --no-cache ca-certificates git && \
     addgroup -S app && adduser -S app -G app
 
 COPY --from=builder /build/target/release/regelrecht-editor-api /usr/local/bin/
-COPY --from=frontend-builder /app/dist /app/static
+COPY --from=frontend-builder /app/frontend/dist /app/static
 COPY corpus-registry.yaml /app/corpus-registry.yaml
 COPY corpus/regulation/ /app/corpus/regulation/
 
