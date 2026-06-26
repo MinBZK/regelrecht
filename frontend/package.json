@@ -39,7 +39,7 @@
     "@vitejs/plugin-vue": "^6.0.7",
     "@vue/test-utils": "^2.4.11",
     "happy-dom": "^20.10.6",
-    "js-yaml": "^4.2.0",
+    "js-yaml": "^5.1.0",
     "jsdom": "^29.1.1",
     "vite": "^8.0.16",
     "vitest": "^4.1.9",
