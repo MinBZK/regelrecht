@@ -384,6 +384,10 @@ jobs:
         # rename of the `name` field can't silently skip the tests.
         run: npm test -w frontend
 
+      - name: Run shared-package tests
+        if: needs.changes.outputs.ci == 'true'
+        run: npm test -w packages/frontend-shared
+
       - name: Skip (no relevant changes)
         if: needs.changes.outputs.ci != 'true'
         run: echo "No relevant changes, skipping tests"
