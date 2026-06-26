@@ -20,7 +20,7 @@
  * reproduces the real dependency graph.
  */
 import { test, expect } from '@playwright/test';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { loadCorpus, loadScenario, mockCorpusApi } from './helpers-corpus.js';
 
 test.describe('Edit → re-execute loop', () => {

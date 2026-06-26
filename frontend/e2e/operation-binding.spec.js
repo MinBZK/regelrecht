@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { interceptLaw, gotoEditor, selectArticle, readYamlPane } from './helpers.js';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 

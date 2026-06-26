@@ -21,7 +21,7 @@
  * that scheme has to be rethought.
  */
 import { ref, watch } from 'vue';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { MarkerType, Position } from '@vue-flow/core';
 import { extractRegulationRefs } from './useDependencies.js';
 import { useLatest } from '../lib/useLatest.js';

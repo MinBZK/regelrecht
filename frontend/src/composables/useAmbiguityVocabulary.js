@@ -9,7 +9,7 @@
  * picker and the CI check read one source and cannot drift.
  */
 import { ref } from 'vue';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { apiFetchText } from '../lib/apiFetch.js';
 
 // Session cache: the file does not change while the editor is open.

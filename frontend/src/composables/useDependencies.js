@@ -9,7 +9,7 @@
  * federated corpus and scenarios already declare the regulations they need.
  */
 import { ref } from 'vue';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { useBwbHarvest } from './useBwbHarvest.js';
 import { loadLawVersions } from './useEngine.js';
 import { implementorsUrl } from './corpusUrls.js';

@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 
 const props = defineProps({
   article: { type: Object, default: null },

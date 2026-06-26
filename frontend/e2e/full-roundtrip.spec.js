@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { interceptLaw, gotoEditor, selectArticle, readYamlPane, loadFixture } from './helpers.js';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 
 /**
  * Load the pinned zorgtoeslag fixture (snapshot of the corpus law file).

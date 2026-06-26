@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 
 const FIXTURE_DIR = resolve(import.meta.dirname, 'fixtures');
 
