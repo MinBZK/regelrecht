@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@regelrecht/frontend-shared": "*",
-    "@cucumber/gherkin": "^40.0.0",
+    "@cucumber/gherkin": "^41.0.0",
     "@cucumber/messages": "^33.0.2",
     "@nldd/design-system": "^0.8.63",
     "@tiptap/core": "^3.27.1",
