@@ -11,7 +11,7 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { resolve, dirname, relative } from 'path';
 import { fileURLToPath } from 'url';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');

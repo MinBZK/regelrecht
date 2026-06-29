@@ -13,7 +13,7 @@
  * `__draft` marker so the UI can show them as unsaved and offer delete/export.
  */
 import { ref, computed, watch } from 'vue';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { lastSavedPr, sanitizeSavedPr } from './useSavedPr.js';
 import { annotationsUrl, requireTraject } from './corpusUrls.js';
 import { apiFetch, apiFetchText } from '../lib/apiFetch.js';

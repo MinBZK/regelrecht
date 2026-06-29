@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ref } from 'vue';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { useDraftNotes } from './useDraftNotes.js';
 import { lastSavedPr } from './useSavedPr.js';
 

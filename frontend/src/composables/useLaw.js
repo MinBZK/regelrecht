@@ -1,5 +1,5 @@
 import { computed, ref, shallowRef } from 'vue';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { lastSavedPr, sanitizeSavedPr } from './useSavedPr.js';
 import { lawUrl } from './corpusUrls.js';
 import { apiFetch } from '../lib/apiFetch.js';

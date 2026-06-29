@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, reactive, watch, watchEffect, nextTick, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { useLaw, fetchLaw } from './composables/useLaw.js';
 import { lawsListUrl } from './composables/corpusUrls.js';
 import { useEngine } from './composables/useEngine.js';

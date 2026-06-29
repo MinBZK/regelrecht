@@ -25,7 +25,7 @@ import { useLatest } from '../lib/useLatest.js';
 import { parseFeature } from '../gherkin/parser.js';
 import { mapFeatureToForm, getEffectiveSetup, formStateToGherkin, syncEditedValues } from '../gherkin/formMapper.js';
 import { matchStatus, humanize } from '../utils/outputFormat.js';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { buildArticleMap, buildTypeMap, buildExternalFieldTypeMap } from '../utils/articleMapping.js';
 import ScenarioForm from './ScenarioForm.vue';
 

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, shallowRef, nextTick, watch, watchEffect, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import ArticleText from './components/ArticleText.vue';
 import MachineReadable from './components/MachineReadable.vue';
 import YamlView from './components/YamlView.vue';
