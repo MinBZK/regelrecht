@@ -15,11 +15,10 @@
 //!   - Tier B — synthetic fixtures exercising constructs the corpus may not hit.
 #![cfg(feature = "validate")]
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use regelrecht_engine::article::{ArticleBasedLaw, LawLoad};
-use regelrecht_engine::schema::{detect_version, load_schemas, validation_errors};
+use regelrecht_engine::schema::{detect_version, validation_errors_for};
 use serde_json::Value;
 use walkdir::WalkDir;
 
@@ -67,8 +66,8 @@ fn normalize(value: &Value) -> Value {
     }
 }
 
-fn schema_accepts(schemas: &HashMap<&str, Value>, version: &str, value: &Value) -> bool {
-    matches!(validation_errors(&schemas[version], value), Ok(errs) if errs.is_empty())
+fn schema_accepts(version: &str, value: &Value) -> bool {
+    matches!(validation_errors_for(version, value), Ok(errs) if errs.is_empty())
 }
 
 /// Tier A — every real corpus law must round-trip through schema ⋂ model.
@@ -81,7 +80,6 @@ fn schema_accepts(schemas: &HashMap<&str, Value>, version: &str, value: &Value) 
 #[test]
 fn tier_a_corpus_differential() {
     let root = repo_root();
-    let schemas = load_schemas().expect("load embedded schemas");
     let corpus = root.join("corpus/regulation");
 
     let mut checked = 0usize;
@@ -109,7 +107,7 @@ fn tier_a_corpus_differential() {
             .to_string();
 
         // (1) schema accepts the published law.
-        let errs = validation_errors(&schemas[version], &value).expect("compile schema");
+        let errs = validation_errors_for(version, &value).expect("compile schema");
         if !errs.is_empty() {
             hard_failures.push(format!(
                 "{rel}: schema {version} rejected a corpus law: {errs:?}"
@@ -131,7 +129,7 @@ fn tier_a_corpus_differential() {
         // `null` ≡ absent for an optional field — normalizing isolates real
         // structural problems from that serialization quirk.
         let reserialized = normalize(&serde_json::to_value(&law).expect("serialize model"));
-        if !validation_errors(&schemas[version], &reserialized)
+        if !validation_errors_for(version, &reserialized)
             .expect("compile schema")
             .is_empty()
         {
@@ -174,7 +172,6 @@ fn tier_a_corpus_differential() {
 ///              listed fixture the model now rejects must be removed.
 #[test]
 fn tier_b_fixtures() {
-    let schemas = load_schemas().expect("load embedded schemas");
     let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/conformance");
 
     // valid/
@@ -186,18 +183,18 @@ fn tier_b_fixtures() {
             .unwrap_or_else(|| panic!("valid fixture {name} lacks a recognised $schema"));
 
         assert!(
-            schema_accepts(&schemas, version, &value),
+            schema_accepts(version, &value),
             "valid fixture {name}: schema {version} should accept it but did not: {:?}",
-            validation_errors(&schemas[version], &value).unwrap()
+            validation_errors_for(version, &value).unwrap()
         );
         let law = ArticleBasedLaw::from_yaml_str(&content)
             .unwrap_or_else(|e| panic!("valid fixture {name}: model should parse it: {e}"));
         // Normalize away `null`-for-None before re-validating (see Tier A note).
         let reserialized = normalize(&serde_json::to_value(&law).expect("serialize"));
         assert!(
-            schema_accepts(&schemas, version, &reserialized),
+            schema_accepts(version, &reserialized),
             "valid fixture {name}: re-serialized model no longer schema-valid: {:?}",
-            validation_errors(&schemas[version], &reserialized).unwrap()
+            validation_errors_for(version, &reserialized).unwrap()
         );
     }
 
@@ -216,7 +213,7 @@ fn tier_b_fixtures() {
             .unwrap_or_else(|| panic!("invalid fixture {name} lacks a recognised $schema"));
 
         assert!(
-            !schema_accepts(&schemas, version, &value),
+            !schema_accepts(version, &value),
             "invalid fixture {name}: schema {version} unexpectedly accepted it — fixture is not actually invalid"
         );
 

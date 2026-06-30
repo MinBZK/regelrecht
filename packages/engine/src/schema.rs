@@ -113,3 +113,41 @@ pub fn validation_errors(
         .map(|error| format!("{}: {error}", error.instance_path()))
         .collect())
 }
+
+/// All embedded schemas compiled once, keyed by version. Built lazily on first
+/// use and cached for the process — callers validating many documents (e.g. the
+/// conformance suite over the whole corpus) avoid recompiling the schema per
+/// call. `Err` means a schema failed to load or compile.
+fn compiled_validators() -> &'static Result<HashMap<&'static str, Validator>, String> {
+    static CACHE: std::sync::OnceLock<Result<HashMap<&'static str, Validator>, String>> =
+        std::sync::OnceLock::new();
+    CACHE.get_or_init(|| {
+        let schemas = load_schemas()?;
+        let mut validators = HashMap::with_capacity(schemas.len());
+        for (version, schema) in &schemas {
+            let validator =
+                Validator::new(schema).map_err(|e| format!("compile schema {version}: {e}"))?;
+            validators.insert(*version, validator);
+        }
+        Ok(validators)
+    })
+}
+
+/// Validate `value` against the cached validator for `version`, returning the
+/// validation errors as formatted `"{instance_path}: {message}"` strings (empty
+/// == valid). Unlike [`validation_errors`], the validator is compiled once and
+/// reused across calls. `Err` means the version is unknown or a schema failed to
+/// compile.
+pub fn validation_errors_for(
+    version: &str,
+    value: &serde_json::Value,
+) -> Result<Vec<String>, String> {
+    let validators = compiled_validators().as_ref().map_err(String::clone)?;
+    let validator = validators
+        .get(version)
+        .ok_or_else(|| format!("unknown schema version {version}"))?;
+    Ok(validator
+        .iter_errors(value)
+        .map(|error| format!("{}: {error}", error.instance_path()))
+        .collect())
+}
