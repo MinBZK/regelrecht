@@ -204,9 +204,15 @@ mod inner {
                 }
             }
 
+            // One JWT for the whole cold mint — the installation lookup and
+            // the token mint that follow are milliseconds apart and the JWT
+            // is valid for minutes, so signing it once (rather than per
+            // helper) avoids a redundant RSA signing operation.
+            let jwt = self.generate_jwt()?;
+
             // No installation on this owner → the app can't help here; let
             // the caller fall back to the env/file token chain.
-            let Some(installation_id) = self.installation_id(owner).await? else {
+            let Some(installation_id) = self.installation_id(owner, &jwt).await? else {
                 return Ok(None);
             };
 
@@ -216,7 +222,16 @@ mod inner {
             // not-installed verdict) so a persistently-not-selected repo
             // doesn't re-mint and 422 on every corpus operation, while a
             // later repo-selection change still takes effect within minutes.
-            let Some(token) = self.mint_token(installation_id, repo).await? else {
+            let Some(token) = self.mint_token(installation_id, repo, &jwt).await? else {
+                // Log so an operator can tell a deliberately-excluded repo
+                // apart from a typo'd `owner/repo` — both surface as 422, and
+                // without this the App bypass is silent for the TTL window.
+                tracing::warn!(
+                    owner = %owner,
+                    repo = %repo,
+                    "GitHub App: repo not in installation's selected repositories (422); \
+                     falling back to static token chain"
+                );
                 self.tokens
                     .lock()
                     .await
@@ -281,7 +296,7 @@ mod inner {
         /// for [`INSTALLATION_TTL`] (both the id and the "not installed"
         /// verdict) so a later install/uninstall is picked up without a
         /// process restart.
-        async fn installation_id(&self, owner: &str) -> Result<Option<u64>> {
+        async fn installation_id(&self, owner: &str, jwt: &str) -> Result<Option<u64>> {
             let cache_key = owner.to_lowercase();
             if let Some((id, expiry)) = self.installations.lock().await.get(&cache_key) {
                 if *expiry > SystemTime::now() {
@@ -289,12 +304,11 @@ mod inner {
                 }
             }
 
-            let jwt = self.generate_jwt()?;
             // Try the org endpoint first, then the user endpoint — a
             // personal-account install is reachable only via `/users/...`.
-            let id = match self.fetch_installation(&jwt, "orgs", owner).await? {
+            let id = match self.fetch_installation(jwt, "orgs", owner).await? {
                 Some(id) => Some(id),
-                None => self.fetch_installation(&jwt, "users", owner).await?,
+                None => self.fetch_installation(jwt, "users", owner).await?,
             };
 
             self.installations
@@ -347,8 +361,12 @@ mod inner {
         /// is the normal case for a least-privilege "only select
         /// repositories" install, not an error — the caller then falls back
         /// to the static token chain instead of hard-failing the source.
-        async fn mint_token(&self, installation_id: u64, repo: &str) -> Result<Option<String>> {
-            let jwt = self.generate_jwt()?;
+        async fn mint_token(
+            &self,
+            installation_id: u64,
+            repo: &str,
+            jwt: &str,
+        ) -> Result<Option<String>> {
             let url = format!(
                 "{}/app/installations/{}/access_tokens",
                 self.api_base, installation_id
@@ -360,7 +378,7 @@ mod inner {
             let response = self
                 .client
                 .post(&url)
-                .headers(self.jwt_headers(&jwt)?)
+                .headers(self.jwt_headers(jwt)?)
                 .json(&body)
                 .send()
                 .await

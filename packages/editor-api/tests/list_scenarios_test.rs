@@ -222,6 +222,7 @@ async fn list_scenarios_global_returns_target_law_ids() {
             source_map,
             backends,
             auth_file: None,
+            providers: regelrecht_corpus::auth::ProviderAuthRegistry::default(),
         })),
         oidc_client: None,
         end_session_url: None,
