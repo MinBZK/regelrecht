@@ -65,7 +65,7 @@ pub use article::{
 };
 pub use config::{
     MAX_ARRAY_SIZE, MAX_CROSS_LAW_DEPTH, MAX_LOADED_LAWS, MAX_OPERATION_DEPTH, MAX_PROPERTY_DEPTH,
-    MAX_RESOLUTION_DEPTH, MAX_YAML_SIZE,
+    MAX_YAML_SIZE,
 };
 pub use context::RuleContext;
 pub use data_source::{DataSource, DataSourceMatch, DataSourceRegistry, DictDataSource};

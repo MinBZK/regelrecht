@@ -20,14 +20,13 @@
 //! ```
 
 use crate::article::{Action, ActionOperation, Article, ArticleBasedLaw};
-use crate::config;
 use crate::context::RuleContext;
 use crate::error::{EngineError, Result};
 use crate::operations::{evaluate_value, execute_operation};
 use crate::trace::{PathNode, TraceBuilder};
 use crate::types::{PathNodeType, Value};
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::rc::Rc;
 
 /// Provenance of an output value: how it was produced during execution.
@@ -77,6 +76,17 @@ pub struct ArticleResult {
 ///
 /// The engine orchestrates the execution of an article's actions,
 /// resolving variables and evaluating operations to produce outputs.
+///
+/// The engine evaluates **one article in isolation**: it expects every input
+/// it needs to already be present in `parameters`. It does **not** resolve
+/// cross-article (`source.output`) or cross-law (`source.regulation`)
+/// references itself. An unresolved internal (`source.output`) input is left
+/// untouched (a consuming action then surfaces a `VariableNotFound`), while an
+/// unresolved external (`source.regulation`) input — which this engine can
+/// never resolve on its own — yields [`EngineError::ExternalReferenceNotResolved`].
+/// All reference resolution, cycle detection and depth limiting live in
+/// [`crate::LawExecutionService`], which is the single resolution authority and
+/// the entry point every production caller uses.
 pub struct ArticleEngine<'a> {
     /// Article to execute
     article: &'a Article,
@@ -136,10 +146,7 @@ impl<'a> ArticleEngine<'a> {
         calculation_date: &str,
         requested_output: Option<&str>,
     ) -> Result<ArticleResult> {
-        // Initialize visited set with current article to detect circular references
-        let visited = HashSet::from([self.article.number.clone()]);
-
-        self.evaluate_internal(parameters, calculation_date, requested_output, visited, 0)
+        self.evaluate_internal_traced(parameters, calculation_date, requested_output, None)
     }
 
     /// Execute this article's logic with trace support.
@@ -152,75 +159,26 @@ impl<'a> ArticleEngine<'a> {
         requested_output: Option<&str>,
         trace: Rc<RefCell<TraceBuilder>>,
     ) -> Result<ArticleResult> {
-        let visited = HashSet::from([self.article.number.clone()]);
-
-        self.evaluate_internal_traced(
-            parameters,
-            calculation_date,
-            requested_output,
-            visited,
-            0,
-            Some(trace),
-        )
+        self.evaluate_internal_traced(parameters, calculation_date, requested_output, Some(trace))
     }
 
-    /// Internal evaluation method that tracks visited articles for circular reference detection.
+    /// Internal evaluation, optionally tracing.
     ///
-    /// # Arguments
-    /// * `parameters` - Input parameters
-    /// * `calculation_date` - Date for calculations
-    /// * `requested_output` - Specific output to calculate (optional)
-    /// * `visited` - Set of article numbers already in the resolution chain
-    /// * `depth` - Current resolution depth
-    fn evaluate_internal(
-        &self,
-        parameters: BTreeMap<String, Value>,
-        calculation_date: &str,
-        requested_output: Option<&str>,
-        visited: HashSet<String>,
-        depth: usize,
-    ) -> Result<ArticleResult> {
-        self.evaluate_internal_traced(
-            parameters,
-            calculation_date,
-            requested_output,
-            visited,
-            depth,
-            None,
-        )
-    }
-
-    /// Internal evaluation with optional tracing.
+    /// `parameters` must already contain every value this article needs;
+    /// cross-article/cross-law resolution is [`crate::LawExecutionService`]'s job.
     fn evaluate_internal_traced(
         &self,
         parameters: BTreeMap<String, Value>,
         calculation_date: &str,
         requested_output: Option<&str>,
-        visited: HashSet<String>,
-        depth: usize,
         trace: Option<Rc<RefCell<TraceBuilder>>>,
     ) -> Result<ArticleResult> {
         tracing::debug!(
             law_id = %self.law.id,
             article = %self.article.number,
-            depth = depth,
             requested_output = ?requested_output,
             "Starting article evaluation"
         );
-
-        // Check depth limit
-        if depth > config::MAX_RESOLUTION_DEPTH {
-            tracing::warn!(
-                law_id = %self.law.id,
-                article = %self.article.number,
-                depth = depth,
-                "Resolution depth exceeded"
-            );
-            return Err(EngineError::CircularReference(format!(
-                "Resolution depth exceeded {} levels. Possible circular reference involving article '{}'",
-                config::MAX_RESOLUTION_DEPTH, self.article.number
-            )));
-        }
 
         // Create execution context
         let mut context = RuleContext::new(parameters.clone(), calculation_date)?;
@@ -235,8 +193,8 @@ impl<'a> ArticleEngine<'a> {
             context.set_definitions(definitions);
         }
 
-        // Resolve inputs with sources (internal references)
-        self.resolve_input_sources(&mut context, &parameters, calculation_date, &visited, depth)?;
+        // Guard against any input that still carries an unresolved external source.
+        self.check_input_sources(&parameters)?;
 
         // Execute actions (with trace instrumentation)
         self.execute_actions_traced(&mut context, requested_output)?;
@@ -281,139 +239,42 @@ impl<'a> ArticleEngine<'a> {
         Ok(result)
     }
 
-    /// Resolve input sources (internal and external references).
+    /// Validate that every input carrying an external `source` was pre-resolved.
     ///
-    /// This processes inputs that have a `source` specification and resolves them
-    /// before action execution. Internal references (same law) are resolved directly.
-    /// External references require a ServiceProvider (Phase 7).
+    /// Reference resolution is owned by [`crate::LawExecutionService`], which
+    /// resolves inputs (data sources, cross-law and cross-article references)
+    /// and passes the values in via `parameters`. This single-article engine
+    /// only checks that a `source.regulation` input it cannot resolve itself is
+    /// already present; internal (`source.output`) and empty (`source: {}`)
+    /// inputs are left untouched — they are either already in `parameters` or
+    /// stay unresolved (a consuming action then surfaces a `VariableNotFound`).
     ///
     /// # Arguments
-    /// * `context` - Execution context
-    /// * `parameters` - Input parameters
-    /// * `calculation_date` - Date for calculations
-    /// * `visited` - Set of article numbers already in the resolution chain
-    /// * `depth` - Current resolution depth
-    fn resolve_input_sources(
-        &self,
-        context: &mut RuleContext,
-        parameters: &BTreeMap<String, Value>,
-        calculation_date: &str,
-        visited: &HashSet<String>,
-        depth: usize,
-    ) -> Result<()> {
-        let inputs = self.article.get_inputs();
-
-        for input in inputs {
-            let source = match &input.source {
-                Some(s) => s,
-                None => continue, // No source, skip
+    /// * `parameters` - Input parameters (already-resolved values)
+    fn check_input_sources(&self, parameters: &BTreeMap<String, Value>) -> Result<()> {
+        for input in self.article.get_inputs() {
+            let Some(source) = &input.source else {
+                continue; // No source, nothing to check
             };
 
-            // Determine the type of reference:
-            // 1. External: source.regulation is set (simple cross-law reference)
-            // 2. Internal: source.output is set (same-law reference)
-            // 3. Empty source: resolved by DataSourceRegistry in service layer
-
+            // An external (cross-law) reference can only be resolved by the
+            // service layer. If it was not pre-resolved into parameters, this
+            // standalone engine cannot proceed.
             if let Some(regulation) = &source.regulation {
-                // External reference: requires ServiceProvider
-                // Check if value was pre-resolved via parameters
-                if parameters.contains_key(&input.name) {
-                    continue;
+                if !parameters.contains_key(&input.name) {
+                    return Err(EngineError::ExternalReferenceNotResolved {
+                        input_name: input.name.clone(),
+                        regulation: regulation.clone(),
+                        output: source.output.clone().unwrap_or_default(),
+                    });
                 }
-
-                return Err(EngineError::ExternalReferenceNotResolved {
-                    input_name: input.name.clone(),
-                    regulation: regulation.clone(),
-                    output: source.output.clone().unwrap_or_default(),
-                });
-            } else if let Some(output_name) = &source.output {
-                // Internal reference: resolve within the same law.
-                // Check if already resolved by service layer.
-                if parameters.contains_key(&input.name) {
-                    continue;
-                }
-                let value = self.resolve_internal_reference(
-                    output_name,
-                    parameters,
-                    calculation_date,
-                    visited,
-                    depth,
-                )?;
-                context.set_resolved_input(&input.name, value);
-            } else {
-                // Empty source (source: {}) — resolved by DataSourceRegistry in service layer.
-                // Check if already provided as parameter.
-                if parameters.contains_key(&input.name) {
-                    continue;
-                }
-                // Otherwise leave unresolved — the service layer will handle it.
             }
+            // Internal (`source.output`) and empty (`source: {}`) inputs need no
+            // action here: resolved by the service when present in parameters,
+            // otherwise intentionally left unresolved.
         }
 
         Ok(())
-    }
-
-    /// Resolve an internal reference (within the same law).
-    ///
-    /// Finds the article that produces the given output and executes it.
-    /// Tracks visited articles to detect indirect circular references (A→B→A).
-    ///
-    /// # Arguments
-    /// * `output_name` - Name of the output to resolve
-    /// * `parameters` - Input parameters
-    /// * `calculation_date` - Date for calculations
-    /// * `visited` - Set of article numbers already in the resolution chain
-    /// * `depth` - Current resolution depth
-    fn resolve_internal_reference(
-        &self,
-        output_name: &str,
-        parameters: &BTreeMap<String, Value>,
-        calculation_date: &str,
-        visited: &HashSet<String>,
-        depth: usize,
-    ) -> Result<Value> {
-        // Find the article that produces this output
-        let article = self
-            .law
-            .find_article_by_output(output_name)
-            .ok_or_else(|| EngineError::OutputNotFound {
-                law_id: self.law.id.clone(),
-                output: output_name.to_string(),
-            })?;
-
-        // Check for circular reference (direct or indirect)
-        // visited already contains the current article (and all its callers)
-        if visited.contains(&article.number) {
-            return Err(EngineError::CircularReference(format!(
-                "Circular reference detected: article '{}' references output '{}' from article '{}', \
-                 which is already in the resolution chain: {:?}",
-                self.article.number, output_name, article.number, visited
-            )));
-        }
-
-        // Add the target article to visited set for the recursive call
-        let mut new_visited = visited.clone();
-        new_visited.insert(article.number.clone());
-
-        // Execute the referenced article with updated visited set
-        let engine = ArticleEngine::new(article, self.law);
-        let result = engine.evaluate_internal(
-            parameters.clone(),
-            calculation_date,
-            Some(output_name),
-            new_visited,
-            depth + 1,
-        )?;
-
-        // Extract the requested output
-        result
-            .outputs
-            .get(output_name)
-            .cloned()
-            .ok_or_else(|| EngineError::OutputNotFound {
-                law_id: self.law.id.clone(),
-                output: output_name.to_string(),
-            })
     }
 
     /// Execute all actions in order, with optional trace instrumentation.
@@ -1007,353 +868,6 @@ articles:
         let result = engine.evaluate(BTreeMap::new(), "2025-06-15").unwrap();
 
         assert_eq!(result.outputs.get("current_year"), Some(&Value::Int(2025)));
-    }
-
-    // -------------------------------------------------------------------------
-    // Internal Reference Resolution Tests
-    // -------------------------------------------------------------------------
-
-    #[test]
-    fn test_internal_reference_basic() {
-        // Law with two articles: article 2 references output from article 1
-        let yaml = r#"
-$id: internal_ref_law
-regulatory_layer: WET
-publication_date: '2025-01-01'
-articles:
-  - number: '1'
-    text: Base calculation article
-    machine_readable:
-      definitions:
-        BASE_VALUE:
-          value: 100
-      execution:
-        output:
-          - name: base_amount
-            type: number
-        actions:
-          - output: base_amount
-            value: $BASE_VALUE
-  - number: '2'
-    text: Derived calculation using internal reference
-    machine_readable:
-      execution:
-        input:
-          - name: base_amount
-            type: number
-            source:
-              output: base_amount
-        output:
-          - name: doubled_amount
-            type: number
-        actions:
-          - output: doubled_amount
-            operation: MULTIPLY
-            values:
-              - $base_amount
-              - 2
-"#;
-        let law = ArticleBasedLaw::from_yaml_str(yaml).unwrap();
-        let article = law.find_article_by_number("2").unwrap();
-        let engine = ArticleEngine::new(article, &law);
-
-        let result = engine.evaluate(BTreeMap::new(), "2025-01-01").unwrap();
-
-        // doubled_amount should be 100 * 2 = 200
-        assert_eq!(result.outputs.get("doubled_amount"), Some(&Value::Int(200)));
-        // base_amount should be in resolved_inputs
-        assert_eq!(
-            result.resolved_inputs.get("base_amount"),
-            Some(&Value::Int(100))
-        );
-    }
-
-    #[test]
-    fn test_internal_reference_chain() {
-        // Law with three articles: 3 -> 2 -> 1
-        let yaml = r#"
-$id: chain_law
-regulatory_layer: WET
-publication_date: '2025-01-01'
-articles:
-  - number: '1'
-    text: First article
-    machine_readable:
-      execution:
-        output:
-          - name: first_value
-            type: number
-        actions:
-          - output: first_value
-            value: 10
-  - number: '2'
-    text: Second article references first
-    machine_readable:
-      execution:
-        input:
-          - name: first_value
-            type: number
-            source:
-              output: first_value
-        output:
-          - name: second_value
-            type: number
-        actions:
-          - output: second_value
-            operation: ADD
-            values:
-              - $first_value
-              - 5
-  - number: '3'
-    text: Third article references second
-    machine_readable:
-      execution:
-        input:
-          - name: second_value
-            type: number
-            source:
-              output: second_value
-        output:
-          - name: third_value
-            type: number
-        actions:
-          - output: third_value
-            operation: MULTIPLY
-            values:
-              - $second_value
-              - 2
-"#;
-        let law = ArticleBasedLaw::from_yaml_str(yaml).unwrap();
-        let article = law.find_article_by_number("3").unwrap();
-        let engine = ArticleEngine::new(article, &law);
-
-        let result = engine.evaluate(BTreeMap::new(), "2025-01-01").unwrap();
-
-        // Chain: first_value = 10, second_value = 10 + 5 = 15, third_value = 15 * 2 = 30
-        assert_eq!(result.outputs.get("third_value"), Some(&Value::Int(30)));
-    }
-
-    #[test]
-    fn test_internal_reference_with_parameters() {
-        // Referenced article uses parameters passed through
-        let yaml = r#"
-$id: param_law
-regulatory_layer: WET
-publication_date: '2025-01-01'
-articles:
-  - number: '1'
-    text: Article that uses parameter
-    machine_readable:
-      execution:
-        parameters:
-          - name: multiplier
-            type: number
-            required: true
-        output:
-          - name: base_result
-            type: number
-        actions:
-          - output: base_result
-            operation: MULTIPLY
-            values:
-              - 100
-              - $multiplier
-  - number: '2'
-    text: Article that references article 1
-    machine_readable:
-      execution:
-        parameters:
-          - name: multiplier
-            type: number
-            required: true
-        input:
-          - name: base_result
-            type: number
-            source:
-              output: base_result
-        output:
-          - name: final_result
-            type: number
-        actions:
-          - output: final_result
-            operation: ADD
-            values:
-              - $base_result
-              - 50
-"#;
-        let law = ArticleBasedLaw::from_yaml_str(yaml).unwrap();
-        let article = law.find_article_by_number("2").unwrap();
-        let engine = ArticleEngine::new(article, &law);
-
-        let mut params = BTreeMap::new();
-        params.insert("multiplier".to_string(), Value::Int(3));
-
-        let result = engine.evaluate(params, "2025-01-01").unwrap();
-
-        // base_result = 100 * 3 = 300, final_result = 300 + 50 = 350
-        assert_eq!(result.outputs.get("final_result"), Some(&Value::Int(350)));
-    }
-
-    #[test]
-    fn test_circular_reference_detection() {
-        // Article that references itself should fail
-        let yaml = r#"
-$id: circular_law
-regulatory_layer: WET
-publication_date: '2025-01-01'
-articles:
-  - number: '1'
-    text: Self-referencing article
-    machine_readable:
-      execution:
-        input:
-          - name: my_output
-            type: number
-            source:
-              output: my_output
-        output:
-          - name: my_output
-            type: number
-        actions:
-          - output: my_output
-            value: $my_output
-"#;
-        let law = ArticleBasedLaw::from_yaml_str(yaml).unwrap();
-        let article = law.find_article_by_number("1").unwrap();
-        let engine = ArticleEngine::new(article, &law);
-
-        let result = engine.evaluate(BTreeMap::new(), "2025-01-01");
-
-        assert!(matches!(result, Err(EngineError::CircularReference(_))));
-    }
-
-    #[test]
-    fn test_indirect_circular_reference_detection() {
-        // Indirect circular reference: A → B → A should fail
-        let yaml = r#"
-$id: indirect_circular_law
-regulatory_layer: WET
-publication_date: '2025-01-01'
-articles:
-  - number: '1'
-    text: Article A references B
-    machine_readable:
-      execution:
-        input:
-          - name: value_from_b
-            type: number
-            source:
-              output: output_b
-        output:
-          - name: output_a
-            type: number
-        actions:
-          - output: output_a
-            operation: ADD
-            values:
-              - $value_from_b
-              - 1
-  - number: '2'
-    text: Article B references A (creates cycle)
-    machine_readable:
-      execution:
-        input:
-          - name: value_from_a
-            type: number
-            source:
-              output: output_a
-        output:
-          - name: output_b
-            type: number
-        actions:
-          - output: output_b
-            operation: ADD
-            values:
-              - $value_from_a
-              - 2
-"#;
-        let law = ArticleBasedLaw::from_yaml_str(yaml).unwrap();
-
-        // Starting from article 1: A → B → A (cycle detected)
-        let article = law.find_article_by_number("1").unwrap();
-        let engine = ArticleEngine::new(article, &law);
-
-        let result = engine.evaluate(BTreeMap::new(), "2025-01-01");
-
-        assert!(
-            matches!(result, Err(EngineError::CircularReference(_))),
-            "Expected CircularReference error for A→B→A cycle, got: {:?}",
-            result
-        );
-    }
-
-    #[test]
-    fn test_three_way_circular_reference() {
-        // Three-way circular reference: A → B → C → A should fail
-        let yaml = r#"
-$id: three_way_circular_law
-regulatory_layer: WET
-publication_date: '2025-01-01'
-articles:
-  - number: '1'
-    text: Article A references B
-    machine_readable:
-      execution:
-        input:
-          - name: from_b
-            type: number
-            source:
-              output: output_b
-        output:
-          - name: output_a
-            type: number
-        actions:
-          - output: output_a
-            value: $from_b
-  - number: '2'
-    text: Article B references C
-    machine_readable:
-      execution:
-        input:
-          - name: from_c
-            type: number
-            source:
-              output: output_c
-        output:
-          - name: output_b
-            type: number
-        actions:
-          - output: output_b
-            value: $from_c
-  - number: '3'
-    text: Article C references A (completes cycle)
-    machine_readable:
-      execution:
-        input:
-          - name: from_a
-            type: number
-            source:
-              output: output_a
-        output:
-          - name: output_c
-            type: number
-        actions:
-          - output: output_c
-            value: $from_a
-"#;
-        let law = ArticleBasedLaw::from_yaml_str(yaml).unwrap();
-
-        // Starting from article 1: A → B → C → A (cycle detected)
-        let article = law.find_article_by_number("1").unwrap();
-        let engine = ArticleEngine::new(article, &law);
-
-        let result = engine.evaluate(BTreeMap::new(), "2025-01-01");
-
-        assert!(
-            matches!(result, Err(EngineError::CircularReference(_))),
-            "Expected CircularReference error for A→B→C→A cycle, got: {:?}",
-            result
-        );
     }
 
     #[test]

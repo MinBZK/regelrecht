@@ -37,17 +37,16 @@ pub const MAX_YAML_SIZE: usize = 1_000_000;
 /// 1000 elements is sufficient for any reasonable law structure.
 pub const MAX_ARRAY_SIZE: usize = 1_000;
 
-/// Maximum depth for internal reference resolution within a single law.
+/// Maximum combined depth for reference resolution in the service layer.
 ///
-/// Prevents stack overflow from deeply nested article references.
-/// 50 levels is far beyond what any legitimate law structure would need.
-pub const MAX_RESOLUTION_DEPTH: usize = 50;
-
-/// Maximum depth for cross-law reference resolution.
-///
-/// Prevents infinite loops in cross-law reference chains.
-/// 20 levels is conservative - Dutch regulations typically have at most
-/// 3-5 levels (Wet -> Ministerieel Regeling -> Gemeentelijke Verordening).
+/// A single shared counter governs cross-law reference chains and same-law
+/// (internal) article-reference chains *together*: every hop of either kind
+/// draws on this one budget within a resolution chain, not on separate
+/// per-kind budgets. Prevents infinite loops and stack overflow.
+/// 20 levels is conservative: cross-law chains in Dutch regulations are
+/// typically 3-5 levels (Wet -> Ministeriele Regeling -> Gemeentelijke
+/// Verordening), with internal article chains within a law adding only a few
+/// more — well under the shared budget.
 pub const MAX_CROSS_LAW_DEPTH: usize = 20;
 
 /// Maximum nesting depth for operations during evaluation.
@@ -87,12 +86,6 @@ mod tests {
 
         assert!(MAX_ARRAY_SIZE >= 100, "Should allow reasonable arrays");
         assert!(MAX_ARRAY_SIZE <= 10_000, "Should not allow huge arrays");
-
-        assert!(
-            MAX_RESOLUTION_DEPTH >= 10,
-            "Should allow reasonable nesting"
-        );
-        assert!(MAX_RESOLUTION_DEPTH <= 100, "Should limit deep nesting");
 
         assert!(MAX_CROSS_LAW_DEPTH >= 5, "Should allow typical chains");
         assert!(MAX_CROSS_LAW_DEPTH <= 50, "Should limit deep chains");

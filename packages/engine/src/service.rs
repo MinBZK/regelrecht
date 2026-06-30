@@ -2130,10 +2130,20 @@ impl LawExecutionService {
                     res_ctx.trace_set_result(value.clone());
                     context.set_resolved_input(&input.name, value.clone());
                 } else {
+                    // The referenced article ran but produced no such output
+                    // (e.g. an IF action whose branch was not taken). Surface the
+                    // precise cause here instead of leaving the input unresolved
+                    // and letting the consuming action fail later with a generic
+                    // VariableNotFound. Mirrors the external-reference path
+                    // (resolve_external_input_internal), which errors the same way.
                     res_ctx.trace_set_message(format!(
                         "Internal reference: output '{}' not in result from article {}",
                         output_name, ref_article.number
                     ));
+                    return Err(EngineError::OutputNotFound {
+                        law_id: law.id.clone(),
+                        output: output_name.to_string(),
+                    });
                 }
             } else {
                 // Empty source (source: {}) — resolved from DataSourceRegistry only.
@@ -3012,6 +3022,300 @@ articles:
                 );
             }
             other => panic!("Expected CircularReference depth error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_service_internal_self_reference_is_circular() {
+        // Degenerate same-law cycle: an article's input sources its own output.
+        let law = r#"
+$id: internal_self_ref_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: References its own output
+    machine_readable:
+      execution:
+        input:
+          - name: my_output
+            type: number
+            source:
+              output: my_output
+        output:
+          - name: my_output
+            type: number
+        actions:
+          - output: my_output
+            value: $my_output
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service.evaluate_law_output(
+            "internal_self_ref_law",
+            "my_output",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
+
+        assert!(
+            matches!(result, Err(EngineError::CircularReference(_))),
+            "Expected CircularReference error for a self-referencing article, got: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_service_internal_reference_basic() {
+        // Article 2's input sources article 1's output (same law). Resolution is
+        // owned by the service; the value flows through to article 2's action.
+        let law = r#"
+$id: internal_ref_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Base calculation article
+    machine_readable:
+      definitions:
+        BASE_VALUE:
+          value: 100
+      execution:
+        output:
+          - name: base_amount
+            type: number
+        actions:
+          - output: base_amount
+            value: $BASE_VALUE
+  - number: '2'
+    text: Derived calculation using internal reference
+    machine_readable:
+      execution:
+        input:
+          - name: base_amount
+            type: number
+            source:
+              output: base_amount
+        output:
+          - name: doubled_amount
+            type: number
+        actions:
+          - output: doubled_amount
+            operation: MULTIPLY
+            values:
+              - $base_amount
+              - 2
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "internal_ref_law",
+                "doubled_amount",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .expect("internal reference must resolve");
+
+        // doubled_amount = base_amount (100) * 2 = 200
+        assert_eq!(result.outputs.get("doubled_amount"), Some(&Value::Int(200)));
+    }
+
+    #[test]
+    fn test_service_internal_reference_chain() {
+        // A chain of internal references within one law: 3 -> 2 -> 1.
+        let law = r#"
+$id: chain_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: First article
+    machine_readable:
+      execution:
+        output:
+          - name: first_value
+            type: number
+        actions:
+          - output: first_value
+            value: 10
+  - number: '2'
+    text: Second article references first
+    machine_readable:
+      execution:
+        input:
+          - name: first_value
+            type: number
+            source:
+              output: first_value
+        output:
+          - name: second_value
+            type: number
+        actions:
+          - output: second_value
+            operation: ADD
+            values:
+              - $first_value
+              - 5
+  - number: '3'
+    text: Third article references second
+    machine_readable:
+      execution:
+        input:
+          - name: second_value
+            type: number
+            source:
+              output: second_value
+        output:
+          - name: third_value
+            type: number
+        actions:
+          - output: third_value
+            operation: MULTIPLY
+            values:
+              - $second_value
+              - 2
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service
+            .evaluate_law_output("chain_law", "third_value", BTreeMap::new(), "2025-01-01")
+            .expect("internal reference chain must resolve");
+
+        // first_value = 10, second_value = 10 + 5 = 15, third_value = 15 * 2 = 30
+        assert_eq!(result.outputs.get("third_value"), Some(&Value::Int(30)));
+    }
+
+    #[test]
+    fn test_service_internal_reference_with_parameters() {
+        // The referenced article consumes a parameter that the caller supplies;
+        // the internal reference must still resolve correctly.
+        let law = r#"
+$id: param_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Article that uses parameter
+    machine_readable:
+      execution:
+        parameters:
+          - name: multiplier
+            type: number
+            required: true
+        output:
+          - name: base_result
+            type: number
+        actions:
+          - output: base_result
+            operation: MULTIPLY
+            values:
+              - 100
+              - $multiplier
+  - number: '2'
+    text: Article that references article 1
+    machine_readable:
+      execution:
+        parameters:
+          - name: multiplier
+            type: number
+            required: true
+        input:
+          - name: base_result
+            type: number
+            source:
+              output: base_result
+        output:
+          - name: final_result
+            type: number
+        actions:
+          - output: final_result
+            operation: ADD
+            values:
+              - $base_result
+              - 50
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let mut params = BTreeMap::new();
+        params.insert("multiplier".to_string(), Value::Int(3));
+
+        let result = service
+            .evaluate_law_output("param_law", "final_result", params, "2025-01-01")
+            .expect("internal reference with parameters must resolve");
+
+        // base_result = 100 * 3 = 300, final_result = 300 + 50 = 350
+        assert_eq!(result.outputs.get("final_result"), Some(&Value::Int(350)));
+    }
+
+    #[test]
+    fn test_service_internal_reference_missing_output_errors() {
+        // Article 2 internally references `missing_output`, which article 1
+        // declares but never produces (no action emits it). The referenced
+        // article runs successfully but its result lacks the output. This must
+        // surface as OutputNotFound at the resolution site — mirroring the
+        // external-reference path — rather than being silently left unresolved
+        // and failing later with a generic VariableNotFound on the input.
+        let law = r#"
+$id: missing_internal_output_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Declares an output it never produces
+    machine_readable:
+      execution:
+        output:
+          - name: produced
+            type: number
+          - name: missing_output
+            type: number
+        actions:
+          - output: produced
+            value: 1
+  - number: '2'
+    text: References the never-produced output
+    machine_readable:
+      execution:
+        input:
+          - name: missing_output
+            type: number
+            source:
+              output: missing_output
+        output:
+          - name: result
+            type: number
+        actions:
+          - output: result
+            value: $missing_output
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service.evaluate_law_output(
+            "missing_internal_output_law",
+            "result",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
+
+        match result {
+            Err(EngineError::OutputNotFound { output, .. }) => {
+                assert_eq!(output, "missing_output");
+            }
+            other => panic!(
+                "Expected OutputNotFound for an unproduced internal output, got: {:?}",
+                other
+            ),
         }
     }
 
