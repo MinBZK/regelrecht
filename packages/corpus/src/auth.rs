@@ -104,8 +104,22 @@ pub async fn resolve_token_async(
 ) -> Result<Option<String>> {
     if let Some(providers) = providers {
         if let Some(minter) = providers.minter_for(source) {
-            if let Some(token) = minter.token_for_source(source).await? {
-                return Ok(Some(token));
+            match minter.token_for_source(source).await {
+                Ok(Some(token)) => return Ok(Some(token)),
+                // The provider can't serve this source (not installed / repo
+                // not in the install) — fall through to the static chain.
+                Ok(None) => {}
+                // A provider failure (transient GitHub 5xx/429, mint error,
+                // expired key, …) must NOT hard-fail the source: the whole
+                // point of the hybrid is that the static env/file token keeps
+                // working. Log and fall through rather than propagate.
+                Err(e) => {
+                    tracing::warn!(
+                        source_id = %source.id,
+                        error = %e,
+                        "provider token mint failed; falling back to static token chain"
+                    );
+                }
             }
         }
     }
@@ -432,6 +446,19 @@ sources:
         }
     }
 
+    /// A minter that always errors, to prove a provider failure doesn't
+    /// hard-fail the source but falls through to the static chain.
+    struct FailingMinter;
+
+    #[async_trait::async_trait]
+    impl AppTokenMinter for FailingMinter {
+        async fn token_for_source(&self, _source: &Source) -> Result<Option<String>> {
+            Err(CorpusError::Git(
+                "simulated transient GitHub error".to_string(),
+            ))
+        }
+    }
+
     fn github_probe(id: &str) -> Source {
         Source {
             id: id.to_string(),
@@ -490,5 +517,23 @@ sources:
             .unwrap();
         unsafe { std::env::remove_var(key) };
         assert_eq!(got.as_deref(), Some("env-fallback-token"));
+    }
+
+    /// A provider *error* (transient GitHub failure, mint error) must not
+    /// hard-fail: the resolver logs and still falls through to the static
+    /// per-source env var instead of propagating the error.
+    #[tokio::test]
+    async fn resolve_token_async_falls_back_when_minter_errors() {
+        let key = "CORPUS_AUTH_PROVIDER_ERR_SRC_TOKEN";
+        unsafe { std::env::set_var(key, "env-after-error") };
+        let registry = ProviderAuthRegistry {
+            github: Some(Arc::new(FailingMinter)),
+        };
+        let src = github_probe("provider-err-src");
+        let got = resolve_token_async(&src, None, Some(&registry), true)
+            .await
+            .unwrap();
+        unsafe { std::env::remove_var(key) };
+        assert_eq!(got.as_deref(), Some("env-after-error"));
     }
 }

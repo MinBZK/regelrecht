@@ -137,9 +137,12 @@ mod inner {
         /// contains newlines. `base64 -w0 key.pem` gives a safe single-line
         /// value.
         ///
-        /// Returns `Ok(None)` when `GITHUB_APP_ID` is unset. Returns an
-        /// error when the id is set but the key is missing/unreadable, so a
-        /// half-configured app fails loudly instead of silently disabling.
+        /// Returns `Ok(None)` when `GITHUB_APP_ID` is unset (app simply not
+        /// configured). Returns `Err` when the id is set but the key is
+        /// missing/unreadable, so a half-configured app surfaces loudly
+        /// rather than parsing to a silent no-op — the caller decides whether
+        /// that `Err` is fatal (the editor logs it at error level and
+        /// continues on the static token chain rather than refusing to boot).
         pub fn from_env() -> Result<Option<Self>> {
             let Ok(app_id) = std::env::var("GITHUB_APP_ID") else {
                 return Ok(None);
@@ -194,7 +197,11 @@ mod inner {
                 return Ok(None);
             };
 
-            let token = self.mint_token(installation_id, repo).await?;
+            // 422 (repo not in this installation's selected set) → the app
+            // can't serve this repo; fall back to the static chain.
+            let Some(token) = self.mint_token(installation_id, repo).await? else {
+                return Ok(None);
+            };
             let expiry = SystemTime::now() + TOKEN_TTL;
             self.tokens
                 .lock()
@@ -313,7 +320,13 @@ mod inner {
 
         /// Mint an installation token scoped to a single repo with
         /// `contents:write` + `metadata:read`.
-        async fn mint_token(&self, installation_id: u64, repo: &str) -> Result<String> {
+        ///
+        /// Returns `Ok(None)` when the repo is **not part of this
+        /// installation's selected repositories** (GitHub answers 422). That
+        /// is the normal case for a least-privilege "only select
+        /// repositories" install, not an error — the caller then falls back
+        /// to the static token chain instead of hard-failing the source.
+        async fn mint_token(&self, installation_id: u64, repo: &str) -> Result<Option<String>> {
             let jwt = self.generate_jwt()?;
             let url = format!(
                 "{}/app/installations/{}/access_tokens",
@@ -332,6 +345,13 @@ mod inner {
                 .await
                 .map_err(|e| CorpusError::Git(format!("GitHub App token mint failed: {e}")))?;
 
+            // 422 = at least one requested repo isn't accessible to this
+            // installation (the "only select repositories" case). The app
+            // genuinely can't serve this repo → signal fall-through, don't
+            // error.
+            if response.status() == reqwest::StatusCode::UNPROCESSABLE_ENTITY {
+                return Ok(None);
+            }
             if !response.status().is_success() {
                 return Err(CorpusError::Git(format!(
                     "GitHub App token mint for installation {installation_id} returned {}: {}",
@@ -342,7 +362,7 @@ mod inner {
             let parsed: AccessTokenResponse = response.json().await.map_err(|e| {
                 CorpusError::Git(format!("failed to parse access-token response: {e}"))
             })?;
-            Ok(parsed.token)
+            Ok(Some(parsed.token))
         }
     }
 
@@ -521,6 +541,34 @@ Bz/gbfBkAPp8C+YDnkQV0dls16CS9wWhTrg8eJustV6QJ96Uw9h4+WZdPZCo9D9s
             // Second call must be served from the cache (no extra requests).
             let second = auth.token_for_source(&src).await.unwrap();
             assert_eq!(second.as_deref(), Some("ghs_installation_token"));
+        }
+
+        /// "Only select repositories" install: the owner has an
+        /// installation, but the target repo isn't in its selected set, so
+        /// the mint returns 422. That must surface as `Ok(None)` (the app
+        /// can't serve this repo → fall back to the static chain), not an
+        /// error that would break the fallback.
+        #[tokio::test]
+        async fn repo_not_in_installation_returns_none() {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path_matcher("/orgs/acme/installation"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "id": 42
+                })))
+                .mount(&server)
+                .await;
+            Mock::given(method("POST"))
+                .and(path_matcher("/app/installations/42/access_tokens"))
+                .respond_with(ResponseTemplate::new(422))
+                .mount(&server)
+                .await;
+
+            let auth = app(&server);
+            assert_eq!(
+                auth.token_for("acme", "not-granted-repo").await.unwrap(),
+                None
+            );
         }
 
         /// A personal account exposes its install only via `/users/...`;
