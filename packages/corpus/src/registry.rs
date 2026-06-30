@@ -148,6 +148,7 @@ impl CorpusRegistry {
         &self,
         law_ids: &std::collections::HashSet<String>,
         auth_file: Option<&Path>,
+        providers: Option<&crate::auth::ProviderAuthRegistry>,
     ) -> Result<SourceMap> {
         let mut map = SourceMap::new();
         let mut fetcher = crate::github::GitHubFetcher::new()?;
@@ -171,11 +172,8 @@ impl CorpusRegistry {
 
         for source in &self.sources {
             if let SourceType::GitHub { github } = &source.source_type {
-                let token = crate::auth::resolve_token_for_source(
-                    &source.id,
-                    source.auth_ref.as_deref(),
-                    auth_file,
-                )?;
+                let token =
+                    crate::auth::resolve_token_async(source, auth_file, providers, false).await?;
                 match fetcher
                     .fetch_source_filtered(github, token.as_deref(), &missing)
                     .await?
@@ -230,13 +228,15 @@ impl CorpusRegistry {
     pub async fn index_all_sources_async(
         &self,
         auth_file: Option<&Path>,
+        providers: Option<&crate::auth::ProviderAuthRegistry>,
     ) -> Result<(SourceMap, Vec<String>)> {
         let mut map = SourceMap::new();
         let mut fetcher = crate::github::GitHubFetcher::new()?;
         let mut failed: Vec<String> = Vec::new();
 
         for source in &self.sources {
-            if let Err(e) = Self::index_one_source(&mut map, &mut fetcher, source, auth_file).await
+            if let Err(e) =
+                Self::index_one_source(&mut map, &mut fetcher, source, auth_file, providers).await
             {
                 tracing::warn!(
                     source_id = %source.id,
@@ -276,17 +276,15 @@ impl CorpusRegistry {
         fetcher: &mut crate::github::GitHubFetcher,
         source: &Source,
         auth_file: Option<&Path>,
+        providers: Option<&crate::auth::ProviderAuthRegistry>,
     ) -> Result<()> {
         match &source.source_type {
             SourceType::Local { .. } => {
                 map.load_source(source)?;
             }
             SourceType::GitHub { github } => {
-                let token = crate::auth::resolve_token_for_source(
-                    &source.id,
-                    source.auth_ref.as_deref(),
-                    auth_file,
-                )?;
+                let token =
+                    crate::auth::resolve_token_async(source, auth_file, providers, false).await?;
                 for (law_id, path, sha) in fetcher
                     .list_source_law_paths(github, token.as_deref())
                     .await?

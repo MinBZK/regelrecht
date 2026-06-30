@@ -914,6 +914,7 @@ impl TrajectCorpusCache {
         pool: &PgPool,
         traject_id: Uuid,
         auth_file: Option<PathBuf>,
+        providers: regelrecht_corpus::auth::ProviderAuthRegistry,
     ) -> Result<Arc<TrajectCorpus>, TrajectCorpusError> {
         let slot = {
             let mut map = self.cells.write().await;
@@ -961,7 +962,9 @@ impl TrajectCorpusCache {
         };
 
         let corpus = match stale {
-            None => build_traject_corpus(pool, traject_id, auth_file.as_deref()).await?,
+            None => {
+                build_traject_corpus(pool, traject_id, auth_file.as_deref(), &providers).await?
+            }
             Some(old) => match refresh_traject_corpus(&old, traject_id).await {
                 Ok(refreshed) => refreshed,
                 Err(e) => {
@@ -1052,6 +1055,7 @@ async fn build_traject_corpus(
     pool: &PgPool,
     traject_id: Uuid,
     auth_file: Option<&std::path::Path>,
+    providers: &regelrecht_corpus::auth::ProviderAuthRegistry,
 ) -> Result<Arc<TrajectCorpus>, TrajectCorpusError> {
     let rows = sqlx::query_as::<_, TrajectSourceRow>(
         "SELECT source_id, name, source_type::text AS source_type,
@@ -1101,25 +1105,23 @@ async fn build_traject_corpus(
     // Build a backend per source, scoped to a traject-specific clone path.
     let mut backends: HashMap<String, BackendEntry> = HashMap::new();
     for (row, source) in rows.iter().zip(sources.iter()) {
-        // For the writable-own source we resolve strictly (no legacy
-        // `CORPUS_GIT_TOKEN` fallback). The `auth_ref` on this row was
-        // derived from the create-request's repo coords, so a missing
-        // per-repo token MUST fail closed — not transparently ship the
-        // central token to a user-chosen GitHub repo on the next push.
-        // Seeded (non-writable) sources keep the legacy fallback so
-        // pre-existing deployments that rely on a single global PAT for
-        // read-only mirrors keep working.
-        let token_result = if row.is_writable_own {
-            let key = source.auth_ref.as_deref().unwrap_or(&source.id);
-            regelrecht_corpus::auth::resolve_token_strict(key, auth_file)
-        } else {
-            regelrecht_corpus::auth::resolve_token_for_source(
-                &source.id,
-                source.auth_ref.as_deref(),
-                auth_file,
-            )
-        };
-        let token = token_result.unwrap_or_else(|e| {
+        // Prefer a provider-minted short-lived token (GitHub App, …) when
+        // configured, then the static chain. For the writable-own source
+        // the static chain resolves strictly (no legacy `CORPUS_GIT_TOKEN`
+        // fallback): its `auth_ref` was derived from the create-request's
+        // repo coords, so a missing per-repo token MUST fail closed — not
+        // transparently ship the central token to a user-chosen GitHub repo
+        // on the next push. Seeded (non-writable) sources keep the legacy
+        // fallback so pre-existing deployments that rely on a single global
+        // PAT for read-only mirrors keep working.
+        let token = regelrecht_corpus::auth::resolve_token_async(
+            source,
+            auth_file,
+            Some(providers),
+            row.is_writable_own,
+        )
+        .await
+        .unwrap_or_else(|e| {
             tracing::warn!(
                 traject = %traject_id,
                 source_id = %source.id,
@@ -1237,7 +1239,10 @@ async fn build_traject_corpus(
     // failing entirely on what is usually a transient GitHub hiccup. The hard
     // failure path is the writable-own *backend* init above, which returns
     // `Err` so a broken write target never opens silently.
-    let source_map = match registry.index_all_sources_async(auth_file).await {
+    let source_map = match registry
+        .index_all_sources_async(auth_file, Some(providers))
+        .await
+    {
         Ok((map, failed)) => {
             if failed.iter().any(|id| id == &writable_own_source_id) {
                 tracing::error!(
@@ -1267,6 +1272,7 @@ async fn build_traject_corpus(
             source_map,
             backends,
             auth_file: auth_file.map(|p| p.to_path_buf()),
+            providers: providers.clone(),
         },
         write_target_for_source,
         writable_own_source_id,
@@ -1318,7 +1324,7 @@ async fn refresh_traject_corpus(
     let registry = old.corpus.registry.clone();
     let auth_file = old.corpus.auth_file.clone();
     let (source_map, failed) = registry
-        .index_all_sources_async(auth_file.as_deref())
+        .index_all_sources_async(auth_file.as_deref(), Some(&old.corpus.providers))
         .await?;
     if !failed.is_empty() {
         return Err(TrajectCorpusError::Corpus(
@@ -1350,6 +1356,7 @@ async fn next_snapshot(old: &Arc<TrajectCorpus>, source_map: SourceMap) -> Arc<T
             source_map,
             backends: old.corpus.backends.clone(),
             auth_file: old.corpus.auth_file.clone(),
+            providers: old.corpus.providers.clone(),
         },
         write_target_for_source: old.write_target_for_source.clone(),
         writable_own_source_id: old.writable_own_source_id.clone(),
@@ -1636,6 +1643,7 @@ mod tests {
                 source_map,
                 backends,
                 auth_file: None,
+                providers: regelrecht_corpus::auth::ProviderAuthRegistry::default(),
             },
             write_target_for_source: HashMap::new(),
             writable_own_source_id: "own".to_string(),
@@ -1971,6 +1979,7 @@ mod tests {
                 source_map,
                 backends,
                 auth_file: None,
+                providers: regelrecht_corpus::auth::ProviderAuthRegistry::default(),
             },
             write_target_for_source: HashMap::new(),
             writable_own_source_id: "own".to_string(),

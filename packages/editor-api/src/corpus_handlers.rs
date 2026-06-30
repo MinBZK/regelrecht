@@ -1307,13 +1307,13 @@ async fn require_traject_corpus_from_ref(
         ));
     }
 
-    let auth_file = {
+    let (auth_file, providers) = {
         let corpus = state.corpus.read().await;
-        corpus.auth_file.clone()
+        (corpus.auth_file.clone(), corpus.providers.clone())
     };
     state
         .trajects
-        .get_or_build(pool, traject_id, auth_file)
+        .get_or_build(pool, traject_id, auth_file, providers)
         .await
         .map_err(traject_corpus_error)
 }
@@ -1994,11 +1994,16 @@ pub async fn reload_corpus(
     // Gather everything we need under a read lock so concurrent readers
     // (law fetches, scenario loads, dependency resolution) are not blocked
     // for the duration of the GitHub round-trip.
-    let (registry, auth_file, mut law_ids) = {
+    let (registry, auth_file, providers, mut law_ids) = {
         let corpus = state.corpus.read().await;
         let law_ids: std::collections::HashSet<String> =
             corpus.source_map.laws().map(|l| l.law_id.clone()).collect();
-        (corpus.registry.clone(), corpus.auth_file.clone(), law_ids)
+        (
+            corpus.registry.clone(),
+            corpus.auth_file.clone(),
+            corpus.providers.clone(),
+            law_ids,
+        )
     };
 
     // Include any extras the caller explicitly requests (e.g. a freshly
@@ -2010,7 +2015,7 @@ pub async fn reload_corpus(
     }
 
     let new_map = registry
-        .load_favorites_async(&law_ids, auth_file.as_deref())
+        .load_favorites_async(&law_ids, auth_file.as_deref(), Some(&providers))
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "corpus reload failed");

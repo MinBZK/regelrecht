@@ -851,42 +851,65 @@ async fn resolve_writable_target(
                 ));
             }
 
-            // Resolve the token. Use the *strict* resolver here — the
-            // `auth_ref` is derived from user-supplied repo coords, so
-            // an unknown ref must NOT fall back to `CORPUS_GIT_TOKEN`
-            // (that would ship the central token to a repo the user
-            // picked, a token-exfiltration vector). The strict variant
-            // returns `None` when no per-repo env var or auth-file
-            // entry is configured, which we then surface as a clean
-            // 503 with the expected env-var name.
-            let auth_file = {
+            // Resolve the token. Prefer a provider-minted short-lived
+            // token (GitHub App, …) when configured; otherwise the *strict*
+            // static resolver — the `auth_ref` is derived from
+            // user-supplied repo coords, so an unknown ref must NOT fall
+            // back to `CORPUS_GIT_TOKEN` (that would ship the central token
+            // to a repo the user picked, a token-exfiltration vector). When
+            // neither yields a token we surface a clean 503 naming both the
+            // env var and the GitHub App as ways to grant access.
+            let (auth_file, providers) = {
                 let corpus = state.corpus.read().await;
-                corpus.auth_file.clone()
+                (corpus.auth_file.clone(), corpus.providers.clone())
             };
-            let token =
-                regelrecht_corpus::auth::resolve_token_strict(&auth_ref, auth_file.as_deref())
-                    .map_err(|e| {
-                        tracing::error!(error = %e, "auth lookup failed for new traject repo");
-                        (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            "auth lookup failed".to_string(),
-                        )
-                    })?
-                    .ok_or_else(|| {
-                        let env_name = regelrecht_corpus::auth::token_env_name(&auth_ref);
-                        tracing::warn!(
-                            auth_ref = %auth_ref,
-                            env_name = %env_name,
-                            "no token configured for user-supplied repo"
-                        );
-                        (
-                            StatusCode::SERVICE_UNAVAILABLE,
-                            format!(
-                                "deze repo is nog niet door je beheerder geconfigureerd \
-                         (verwacht env var {env_name})"
-                            ),
-                        )
-                    })?;
+            // Minimal GitHub source describing the repo under validation, so
+            // the resolver can route it to the GitHub App minter.
+            let probe_source = regelrecht_corpus::Source {
+                id: auth_ref.clone(),
+                name: format!("{owner}/{repo}"),
+                source_type: regelrecht_corpus::SourceType::GitHub {
+                    github: regelrecht_corpus::models::GitHubSource {
+                        owner: owner.to_string(),
+                        repo: repo.to_string(),
+                        branch: base_branch.to_string(),
+                        path: None,
+                        git_ref: None,
+                    },
+                },
+                scopes: Vec::new(),
+                priority: 0,
+                auth_ref: Some(auth_ref.clone()),
+            };
+            let token = regelrecht_corpus::auth::resolve_token_async(
+                &probe_source,
+                auth_file.as_deref(),
+                Some(&providers),
+                true,
+            )
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "auth lookup failed for new traject repo");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "auth lookup failed".to_string(),
+                )
+            })?
+            .ok_or_else(|| {
+                let env_name = regelrecht_corpus::auth::token_env_name(&auth_ref);
+                tracing::warn!(
+                    auth_ref = %auth_ref,
+                    env_name = %env_name,
+                    "no token configured for user-supplied repo (no GitHub App access, no env/file token)"
+                );
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    format!(
+                        "deze repo is nog niet door je beheerder geconfigureerd \
+                         (installeer de GitHub App op de repo, of zet env var {env_name})"
+                    ),
+                )
+            })?;
 
             let info = regelrecht_corpus::repo_access::validate_repo_access(
                 "https://api.github.com",

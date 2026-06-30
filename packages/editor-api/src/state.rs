@@ -82,6 +82,12 @@ pub struct CorpusState {
     pub backends: HashMap<String, BackendEntry>,
     /// Path to corpus-auth.yaml for GitHub authentication during reload.
     pub auth_file: Option<PathBuf>,
+    /// Per-provider credential minters (GitHub App, …). Preferred over the
+    /// static `auth_file`/env token chain when a provider is configured, so
+    /// a private repo can be coupled to a traject without registering a
+    /// per-repo token. Cheap to clone (shares each minter's `Arc` + its
+    /// token cache); empty when no provider is configured.
+    pub providers: regelrecht_corpus::auth::ProviderAuthRegistry,
 }
 
 impl CorpusState {
@@ -92,6 +98,7 @@ impl CorpusState {
             source_map: SourceMap::new(),
             backends: HashMap::new(),
             auth_file: None,
+            providers: regelrecht_corpus::auth::ProviderAuthRegistry::default(),
         }
     }
 }
