@@ -2130,10 +2130,20 @@ impl LawExecutionService {
                     res_ctx.trace_set_result(value.clone());
                     context.set_resolved_input(&input.name, value.clone());
                 } else {
+                    // The referenced article ran but produced no such output
+                    // (e.g. an IF action whose branch was not taken). Surface the
+                    // precise cause here instead of leaving the input unresolved
+                    // and letting the consuming action fail later with a generic
+                    // VariableNotFound. Mirrors the external-reference path
+                    // (resolve_external_input_internal), which errors the same way.
                     res_ctx.trace_set_message(format!(
                         "Internal reference: output '{}' not in result from article {}",
                         output_name, ref_article.number
                     ));
+                    return Err(EngineError::OutputNotFound {
+                        law_id: law.id.clone(),
+                        output: output_name.to_string(),
+                    });
                 }
             } else {
                 // Empty source (source: {}) — resolved from DataSourceRegistry only.
@@ -3244,6 +3254,69 @@ articles:
 
         // base_result = 100 * 3 = 300, final_result = 300 + 50 = 350
         assert_eq!(result.outputs.get("final_result"), Some(&Value::Int(350)));
+    }
+
+    #[test]
+    fn test_service_internal_reference_missing_output_errors() {
+        // Article 2 internally references `missing_output`, which article 1
+        // declares but never produces (no action emits it). The referenced
+        // article runs successfully but its result lacks the output. This must
+        // surface as OutputNotFound at the resolution site — mirroring the
+        // external-reference path — rather than being silently left unresolved
+        // and failing later with a generic VariableNotFound on the input.
+        let law = r#"
+$id: missing_internal_output_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Declares an output it never produces
+    machine_readable:
+      execution:
+        output:
+          - name: produced
+            type: number
+          - name: missing_output
+            type: number
+        actions:
+          - output: produced
+            value: 1
+  - number: '2'
+    text: References the never-produced output
+    machine_readable:
+      execution:
+        input:
+          - name: missing_output
+            type: number
+            source:
+              output: missing_output
+        output:
+          - name: result
+            type: number
+        actions:
+          - output: result
+            value: $missing_output
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service.evaluate_law_output(
+            "missing_internal_output_law",
+            "result",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
+
+        match result {
+            Err(EngineError::OutputNotFound { output, .. }) => {
+                assert_eq!(output, "missing_output");
+            }
+            other => panic!(
+                "Expected OutputNotFound for an unproduced internal output, got: {:?}",
+                other
+            ),
+        }
     }
 
     // -------------------------------------------------------------------------
