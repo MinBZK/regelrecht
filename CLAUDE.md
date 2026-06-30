@@ -118,6 +118,13 @@ git worktree add .worktrees/feature-branch feature-branch
 Laws are stored as article-based YAML files conforming to the official JSON schema:
 - Schema: `schema/latest/schema.json` (symlink to the current version directory in this repo)
 
+The hand-authored `schema.json` is the **canonical, language-agnostic contract**; the Rust
+`law-model` (`packages/law-model/`) is one implementation that must *conform* to it (neither is
+generated from the other). `just conformance` proves this — a corpus differential plus synthetic
+fixtures, the structural twin of the BDD bucket-B suite. See
+`packages/engine/tests/conformance/README.md`. The model is currently more permissive than the
+schema in a few documented ways (`KNOWN_GAPS`); reconciling that is tracked separately.
+
 ### Cross-Law References
 
 Laws reference each other via `source` on input fields:

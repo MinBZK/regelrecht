@@ -57,8 +57,16 @@ validate *FILES:
 validate-annotations *FILES:
     script/validate-annotations.sh {{FILES}}
 
+# Schema↔model conformance suite — proves the Rust law-model conforms to the
+# canonical schema.json. Standalone helper; `just test` already runs it via
+# --all-features. Needs the `validate` feature (jsonschema). See
+# packages/engine/tests/conformance/README.md.
+conformance:
+    cd packages && {{ci_flags}} cargo test -p regelrecht-engine --features validate --test conformance
+
 # Run all quality checks (format + lint + check + validate + validate-annotations + tests)
 # Note: pipeline-integration-test excluded — it requires Docker (testcontainers)
+# Note: the conformance suite runs as part of `test` (cargo test --all-features).
 check: format lint build-check validate validate-annotations test harvester-test pipeline-test admin-fmt admin-lint admin-check admin-test admin-frontend editor-api-fmt editor-api-lint editor-api-check
 
 # --- Tests ---
