@@ -34,6 +34,7 @@ mod inner {
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use async_trait::async_trait;
+    use base64::Engine;
     use jsonwebtoken::{Algorithm, EncodingKey, Header};
     use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, USER_AGENT};
     use serde::{Deserialize, Serialize};
@@ -126,8 +127,15 @@ mod inner {
         /// back to the env/file token chain).
         ///
         /// - `GITHUB_APP_ID` — the numeric app id (or client id).
-        /// - `GITHUB_APP_PRIVATE_KEY` — the PEM contents, **or**
-        ///   `GITHUB_APP_PRIVATE_KEY_PATH` — a path to the PEM file.
+        /// - `GITHUB_APP_PRIVATE_KEY` — the PEM contents **or its base64
+        ///   encoding**, **or** `GITHUB_APP_PRIVATE_KEY_PATH` — a path to
+        ///   the PEM file.
+        ///
+        /// The base64 form exists because a raw PEM is multiline, and some
+        /// deployment platforms (e.g. ZAD passes env vars as a single
+        /// newline-separated `KEY=VALUE` blob) corrupt a value that itself
+        /// contains newlines. `base64 -w0 key.pem` gives a safe single-line
+        /// value.
         ///
         /// Returns `Ok(None)` when `GITHUB_APP_ID` is unset. Returns an
         /// error when the id is set but the key is missing/unreadable, so a
@@ -139,7 +147,7 @@ mod inner {
             if app_id.trim().is_empty() {
                 return Ok(None);
             }
-            let pem = if let Ok(inline) = std::env::var("GITHUB_APP_PRIVATE_KEY") {
+            let raw = if let Ok(inline) = std::env::var("GITHUB_APP_PRIVATE_KEY") {
                 if inline.trim().is_empty() {
                     return Err(CorpusError::Config(
                         "GITHUB_APP_ID is set but GITHUB_APP_PRIVATE_KEY is empty".to_string(),
@@ -159,6 +167,7 @@ mod inner {
                         .to_string(),
                 ));
             };
+            let pem = normalize_private_key(raw)?;
             Ok(Some(Self::new(app_id, &pem)?))
         }
 
@@ -337,6 +346,30 @@ mod inner {
         }
     }
 
+    /// Accept the private key either as a raw PEM (multiline) or as the
+    /// base64 encoding of a PEM (single line). A real PEM always carries the
+    /// dashed `-----BEGIN ` marker, and `-` is not in the base64 alphabet,
+    /// so the marker's presence unambiguously distinguishes the two — no
+    /// guessing. The base64 path tolerates embedded whitespace (wrapped
+    /// base64) by stripping it before decoding.
+    fn normalize_private_key(raw: Vec<u8>) -> Result<Vec<u8>> {
+        if raw.windows(11).any(|w| w == b"-----BEGIN ") {
+            return Ok(raw);
+        }
+        let cleaned: Vec<u8> = raw
+            .into_iter()
+            .filter(|b| !b.is_ascii_whitespace())
+            .collect();
+        base64::engine::general_purpose::STANDARD
+            .decode(&cleaned)
+            .map_err(|e| {
+                CorpusError::Config(format!(
+                    "GITHUB_APP_PRIVATE_KEY is neither a PEM (no -----BEGIN marker) \
+                     nor valid base64: {e}"
+                ))
+            })
+    }
+
     #[async_trait]
     impl AppTokenMinter for GitHubAppAuth {
         /// Mint a token for a GitHub source. Returns `Ok(None)` for non-
@@ -354,10 +387,11 @@ mod inner {
     mod tests {
         #![allow(clippy::unwrap_used)]
 
+        use base64::Engine;
         use wiremock::matchers::{method, path as path_matcher};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
-        use super::GitHubAppAuth;
+        use super::{normalize_private_key, GitHubAppAuth};
         use crate::auth::AppTokenMinter;
         use crate::models::{LocalSource, Source, SourceType};
 
@@ -416,6 +450,21 @@ Bz/gbfBkAPp8C+YDnkQV0dls16CS9wWhTrg8eJustV6QJ96Uw9h4+WZdPZCo9D9s
                 priority: 0,
                 auth_ref: None,
             }
+        }
+
+        /// The private key may be given as raw PEM (multiline) or as base64
+        /// of the PEM (single line, for env vars that can't carry
+        /// newlines). Both must reach the same key bytes; pure garbage is an
+        /// error, not a silent empty key.
+        #[test]
+        fn normalize_private_key_accepts_raw_pem_and_base64() {
+            let pem = TEST_PRIVATE_KEY.as_bytes().to_vec();
+            assert_eq!(normalize_private_key(pem.clone()).unwrap(), pem);
+
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&pem);
+            assert_eq!(normalize_private_key(b64.into_bytes()).unwrap(), pem);
+
+            assert!(normalize_private_key(b"neither pem nor base64 !!!".to_vec()).is_err());
         }
 
         /// A non-GitHub source is not this provider's concern: the minter
