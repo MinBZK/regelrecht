@@ -78,6 +78,14 @@ mod inner {
         token: String,
     }
 
+    /// A cached token-resolution result with its expiry: `Some(token)` is a
+    /// live installation token, `None` the negative "repo not in this
+    /// install" verdict.
+    type CachedToken = (Option<String>, SystemTime);
+    /// A cached installation-lookup result with its expiry: `Some(id)` when
+    /// installed on the owner, `None` for the "not installed" verdict.
+    type CachedInstallation = (Option<u64>, SystemTime);
+
     /// Authenticates to GitHub as a GitHub App and mints short-lived
     /// per-repo installation tokens. Construct once at startup
     /// ([`GitHubAppAuth::from_env`]) and share via `Arc`.
@@ -93,11 +101,14 @@ mod inner {
         /// expiry ([`INSTALLATION_TTL`]) bounds how long that verdict (and a
         /// positive id, in case of uninstall+reinstall) is trusted. Keyed
         /// lowercase because GitHub owners are case-insensitive.
-        installations: Mutex<HashMap<String, (Option<u64>, SystemTime)>>,
-        /// (lowercased owner, lowercased repo) → (token, expiry). Keyed
-        /// lowercase because GitHub owner/repo names are case-insensitive,
-        /// so differently-cased references share one cached token.
-        tokens: Mutex<HashMap<(String, String), (String, SystemTime)>>,
+        installations: Mutex<HashMap<String, CachedInstallation>>,
+        /// (lowercased owner, lowercased repo) → (token-or-negative, expiry).
+        /// `Some(token)` is a live installation token; `None` is the negative
+        /// verdict "repo not in this install" (422), cached briefly so it
+        /// isn't re-minted on every call. Keyed lowercase because GitHub
+        /// owner/repo names are case-insensitive, so differently-cased
+        /// references share one cached entry.
+        tokens: Mutex<HashMap<(String, String), CachedToken>>,
     }
 
     impl GitHubAppAuth {
@@ -184,10 +195,12 @@ mod inner {
             // the original casing is still sent on the API calls below.
             let key = (owner.to_lowercase(), repo.to_lowercase());
 
-            // Serve a still-valid cached token without any network call.
-            if let Some((token, expiry)) = self.tokens.lock().await.get(&key) {
+            // Serve a still-valid cached result without any network call.
+            // A cached `None` is the negative verdict ("repo not in this
+            // install"); both are honoured until they expire.
+            if let Some((cached, expiry)) = self.tokens.lock().await.get(&key) {
                 if *expiry > SystemTime::now() {
-                    return Ok(Some(token.clone()));
+                    return Ok(cached.clone());
                 }
             }
 
@@ -198,15 +211,23 @@ mod inner {
             };
 
             // 422 (repo not in this installation's selected set) → the app
-            // can't serve this repo; fall back to the static chain.
+            // can't serve this repo; fall back to the static chain. Negative-
+            // cache it for the short installation TTL (mirroring the
+            // not-installed verdict) so a persistently-not-selected repo
+            // doesn't re-mint and 422 on every corpus operation, while a
+            // later repo-selection change still takes effect within minutes.
             let Some(token) = self.mint_token(installation_id, repo).await? else {
+                self.tokens
+                    .lock()
+                    .await
+                    .insert(key, (None, SystemTime::now() + INSTALLATION_TTL));
                 return Ok(None);
             };
             let expiry = SystemTime::now() + TOKEN_TTL;
             self.tokens
                 .lock()
                 .await
-                .insert(key, (token.clone(), expiry));
+                .insert(key, (Some(token.clone()), expiry));
             Ok(Some(token))
         }
 
@@ -558,13 +579,20 @@ Bz/gbfBkAPp8C+YDnkQV0dls16CS9wWhTrg8eJustV6QJ96Uw9h4+WZdPZCo9D9s
                 })))
                 .mount(&server)
                 .await;
+            // Exactly one mint: the 422 verdict must be negative-cached so a
+            // second resolution doesn't hit the API again.
             Mock::given(method("POST"))
                 .and(path_matcher("/app/installations/42/access_tokens"))
                 .respond_with(ResponseTemplate::new(422))
+                .expect(1)
                 .mount(&server)
                 .await;
 
             let auth = app(&server);
+            assert_eq!(
+                auth.token_for("acme", "not-granted-repo").await.unwrap(),
+                None
+            );
             assert_eq!(
                 auth.token_for("acme", "not-granted-repo").await.unwrap(),
                 None
