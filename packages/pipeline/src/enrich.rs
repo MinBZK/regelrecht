@@ -62,6 +62,11 @@ pub trait LlmRunner: Send + Sync {
     ) -> Result<()>;
 }
 
+/// Max bytes of the LLM subprocess's stderr to retain for diagnostics. The tail
+/// (most recent output) is kept and appended to the error on a non-zero exit, so
+/// a failure reports the real cause (e.g. an auth `401`) instead of a bare code.
+const MAX_STDERR_CAPTURE: usize = 4096;
+
 /// Default runner that spawns a real CLI process.
 pub struct ProcessLlmRunner;
 
@@ -80,13 +85,14 @@ impl LlmRunner for ProcessLlmRunner {
 
         let mut cmd = build_command(&config.provider, &prompt, yaml_abs, repo_path);
 
-        // stderr is inherited so the LLM's own errors/stack traces stay visible
-        // in the worker's logs. stdout is piped and drained (see below) instead
-        // of inherited: a verbose agent (e.g. opencode `--format json`) inlines
-        // the full body of every fetched page into its event stream, which
-        // would otherwise flood container logs and bury the worker's own
-        // tracing lines.
-        cmd.stderr(std::process::Stdio::inherit());
+        // Both streams are piped and drained. stdout is drained-and-discarded: a
+        // verbose agent (e.g. opencode `--format json`) inlines the full body of
+        // every fetched page into its event stream, which would flood container
+        // logs. stderr is drained too — we MUST keep reading both or a full 64 KB
+        // OS pipe buffer blocks the child — but for stderr we also keep a bounded
+        // tail and re-log previews, so the LLM's real error (e.g. an auth 401) is
+        // both visible in the logs and attached to the job's failure.
+        cmd.stderr(std::process::Stdio::piped());
         cmd.stdout(std::process::Stdio::piped());
         let mut child = cmd.spawn().map_err(|e| {
             PipelineError::Enrich(format!("failed to spawn {}: {e}", provider_name))
@@ -95,6 +101,49 @@ impl LlmRunner for ProcessLlmRunner {
         // Capture the PID before any wait reaps the child; the memory watchdog
         // and process-group kill both need it.
         let pid = child.id();
+
+        // Drain stderr, retaining the last `MAX_STDERR_CAPTURE` bytes for the
+        // error message and re-logging bounded previews so it stays visible.
+        let stderr_tail = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let stderr_task = child.stderr.take().map(|mut stderr| {
+            let tail = stderr_tail.clone();
+            let stderr_provider = provider_name.clone();
+            tokio::spawn(async move {
+                let mut buf = [0u8; 8192];
+                loop {
+                    match stderr.read(&mut buf).await {
+                        Ok(0) | Err(_) => break, // EOF or pipe gone
+                        Ok(n) => {
+                            let text = String::from_utf8_lossy(&buf[..n]);
+                            let preview: String = text.trim().chars().take(500).collect();
+                            if !preview.is_empty() {
+                                tracing::warn!(provider = %stderr_provider, %preview, "agent stderr");
+                            }
+                            if let Ok(mut t) = tail.lock() {
+                                t.push_str(&text);
+                                if t.len() > MAX_STDERR_CAPTURE {
+                                    let mut cut = t.len() - MAX_STDERR_CAPTURE;
+                                    while cut < t.len() && !t.is_char_boundary(cut) {
+                                        cut += 1;
+                                    }
+                                    *t = t[cut..].to_string();
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+        });
+        // Read the retained stderr tail, formatted as a "; stderr: …" suffix.
+        let stderr_suffix = || {
+            stderr_tail
+                .lock()
+                .ok()
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .map(|t| format!("; stderr: {t}"))
+                .unwrap_or_default()
+        };
 
         // Drain the agent's stdout so it never reaches container logs. We MUST
         // keep reading it: if the OS pipe buffer (64 KB) fills, the child blocks
@@ -138,8 +187,8 @@ impl LlmRunner for ProcessLlmRunner {
             _ = tokio::time::sleep(config.timeout) => {
                 terminate(&mut child, pid).await;
                 return Err(PipelineError::Enrich(format!(
-                    "{} timed out after {:?}",
-                    provider_name, config.timeout
+                    "{} timed out after {:?}{}",
+                    provider_name, config.timeout, stderr_suffix()
                 )));
             }
             observed_mb = watch_memory(pid, config.max_rss_mb) => {
@@ -152,16 +201,22 @@ impl LlmRunner for ProcessLlmRunner {
                 );
                 terminate(&mut child, pid).await;
                 return Err(PipelineError::Enrich(format!(
-                    "{provider_name} exceeded memory limit of {} MB (RSS {observed_mb} MB), killed",
-                    config.max_rss_mb
+                    "{provider_name} exceeded memory limit of {} MB (RSS {observed_mb} MB), killed{}",
+                    config.max_rss_mb, stderr_suffix()
                 )));
             }
         };
 
         if !status.success() {
+            // Let the stderr drain finish so the tail is complete before we read it.
+            if let Some(task) = stderr_task {
+                let _ = task.await;
+            }
             return Err(PipelineError::Enrich(format!(
-                "{} exited with {}",
-                provider_name, status,
+                "{} exited with {}{}",
+                provider_name,
+                status,
+                stderr_suffix()
             )));
         }
 
@@ -341,13 +396,14 @@ pub struct EnrichmentMetadata {
 ///
 /// Both providers manage their own authentication:
 /// - **OpenCode/VLAM**: reads `~/.local/share/opencode/auth.json` (set via `opencode auth`)
-/// - **Claude**: reads `CLAUDE_CODE_OAUTH_TOKEN` (a personal Claude subscription token from
-///   `claude setup-token`) or `ANTHROPIC_API_KEY` (a Console API key). Note that
-///   `ANTHROPIC_API_KEY` takes precedence, so it must be *unset* for the OAuth token to be
-///   used. Both are read directly from the environment; no credentials file is written.
+/// - **Claude**: authenticates with a **personal Claude subscription** via
+///   `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`), read directly from the
+///   environment; no credentials file is written. `ANTHROPIC_API_KEY` is intentionally NOT
+///   used — it is not on `LLM_ENV_ALLOWLIST`, so it is never forwarded to `claude` and can
+///   never take precedence over the OAuth token.
 ///
-/// In Docker, set the appropriate env vars (both auth vars are forwarded to the subprocess
-/// via `LLM_ENV_ALLOWLIST`).
+/// In Docker, set the appropriate env var (forwarded to the subprocess via
+/// `LLM_ENV_ALLOWLIST`).
 #[derive(Debug, Clone)]
 pub enum LlmProvider {
     OpenCode {
@@ -550,8 +606,14 @@ const LLM_ENV_ALLOWLIST: &[&str] = &[
     "SHELL",
     "TMPDIR",
     "XDG_",
-    // Provider-specific auth
-    "ANTHROPIC_API_KEY",
+    // Provider-specific auth.
+    //
+    // NOTE: ANTHROPIC_API_KEY is deliberately NOT forwarded. The claude provider
+    // authenticates only with a personal subscription via CLAUDE_CODE_OAUTH_TOKEN.
+    // Keeping ANTHROPIC_API_KEY out of the subprocess env means that even if it is
+    // still set on the worker (e.g. a leftover), it can never reach `claude` and
+    // silently take precedence over the OAuth token — the exact footgun that
+    // makes claude fail auth at startup.
     "CLAUDE_CODE_OAUTH_TOKEN",
     "VLAM_API_KEY",
     "OPENCODE_",
@@ -578,6 +640,36 @@ fn build_command(
     // Collect allowed env vars before creating the command.
     let safe_env: Vec<(String, String)> =
         std::env::vars().filter(|(k, _)| env_allowed(k)).collect();
+
+    // Diagnostic logging: record exactly what will be spawned and which env vars
+    // are forwarded (NAMES only — never values). Classify the OAuth token by its
+    // non-secret prefix so a misconfiguration (an API key pasted into the OAuth
+    // slot) is obvious, and flag whether ANTHROPIC_API_KEY is still present in the
+    // worker env even though it is deliberately never forwarded.
+    let forwarded_env: Vec<&str> = safe_env.iter().map(|(k, _)| k.as_str()).collect();
+    let oauth_token_kind = std::env::var("CLAUDE_CODE_OAUTH_TOKEN").ok().map(|t| {
+        if t.is_empty() {
+            "empty"
+        } else if t.starts_with("sk-ant-oat") {
+            "oauth-token (sk-ant-oat…)"
+        } else if t.starts_with("sk-ant-api") {
+            "WRONG: looks like an API key (sk-ant-api…)"
+        } else {
+            "unrecognized-prefix"
+        }
+    });
+    let model = match provider {
+        LlmProvider::OpenCode { model, .. } | LlmProvider::Claude { model, .. } => model.as_deref(),
+    };
+    tracing::info!(
+        provider = provider.name(),
+        model = ?model,
+        prompt_chars = prompt.len(),
+        forwarded_env = ?forwarded_env,
+        claude_oauth_token_kind = ?oauth_token_kind,
+        anthropic_api_key_present_in_worker_env = std::env::var_os("ANTHROPIC_API_KEY").is_some(),
+        "spawning LLM subprocess"
+    );
 
     let mut cmd = match provider {
         LlmProvider::OpenCode { path, model } => {

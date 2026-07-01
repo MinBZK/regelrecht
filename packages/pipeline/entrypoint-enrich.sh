@@ -53,10 +53,10 @@ printf '{"dependencies":{"@ai-sdk/openai-compatible":"*"}}' \
   > "$HOME/.config/opencode/package.json"
 
 # --- Claude auth ---
-# Both credentials are read directly from env by the claude CLI — no file is written:
-#   - CLAUDE_CODE_OAUTH_TOKEN: a personal Claude subscription token (`claude setup-token`),
-#     the way to authenticate against a Pro/Max plan headlessly.
-#   - ANTHROPIC_API_KEY: a metered Console API key.
-# ANTHROPIC_API_KEY takes precedence, so it must be unset for the OAuth token to be used.
+# The claude provider authenticates with a personal Claude subscription via
+# CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`), read directly from env — no file
+# is written. ANTHROPIC_API_KEY is intentionally NOT used: it is not forwarded to
+# the claude subprocess (see LLM_ENV_ALLOWLIST), so it can never take precedence
+# over the OAuth token, even if it is still set here.
 
 exec regelrecht-enrich-worker
