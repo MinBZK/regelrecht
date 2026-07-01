@@ -37,6 +37,8 @@ pub mod operations;
 pub mod priority;
 pub mod receipt;
 pub mod resolver;
+#[cfg(feature = "validate")]
+pub mod schema;
 pub mod service;
 pub mod trace;
 pub mod types;
