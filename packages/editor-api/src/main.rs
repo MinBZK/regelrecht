@@ -549,6 +549,10 @@ async fn main() {
             .merge(user_notes_reader_routes)
             .merge(user_notes_writer_routes)
             .merge(github_oauth_routes)
+            // Relay is public (no session/account): GitHub redirects the
+            // browser here on the fixed callback host and we 302 it on to the
+            // originating deployment. Must sit OUTSIDE the auth layer.
+            .merge(github_oauth::github_relay_route())
             .with_state(app_state)
             // Innermost custom layer: wraps the routed handlers most
             // tightly, so the request-scoped timing recorder is installed
