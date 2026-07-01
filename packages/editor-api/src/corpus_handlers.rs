@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Extension, Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use serde::{Deserialize, Serialize};
@@ -22,6 +22,8 @@ use regelrecht_corpus::source_map::{
 };
 use regelrecht_corpus::CorpusError;
 
+use crate::accounts::AccountRecord;
+use crate::github_oauth;
 use crate::state::{AppState, CorpusState};
 use crate::traject_corpus::{TrajectCorpus, TrajectCorpusError};
 use crate::trajects::resolve_traject_ref;
@@ -1593,6 +1595,7 @@ fn save_response_from_traject(outcome: PersistOutcome) -> SaveResponse {
 /// body's `etag` field.
 pub async fn save_scenario(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path((traject_ref, law_id, filename)): Path<(String, String, String)>,
     headers: axum::http::HeaderMap,
@@ -1601,6 +1604,7 @@ pub async fn save_scenario(
     use axum::response::IntoResponse;
     validate_scenario_filename(&filename)?;
     let author = Some(require_editor_user(&session).await?);
+    let token_override = github_oauth::user_write_token(&state, account.id).await?;
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let write = resolve_traject_law_write(&traject, &law_id).await?;
@@ -1626,6 +1630,7 @@ pub async fn save_scenario(
         .persist(&WriteContext {
             message: format!("Update scenario {} for {}", filename, law_id),
             author,
+            token_override,
         })
         .await
         .map_err(corpus_write_error("scenario"))?;
@@ -1660,11 +1665,13 @@ const MAX_NOTES_PER_SAVE: usize = 500;
 /// dialog (the self-XSS vector `save_law` also avoids).
 pub async fn save_annotations(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path((traject_ref, law_id)): Path<(String, String)>,
     body: String,
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
     let author = Some(require_editor_user(&session).await?);
+    let token_override = github_oauth::user_write_token(&state, account.id).await?;
 
     // Body is a JSON array of new notes. Parse + bound it before touching
     // the backend.
@@ -1805,6 +1812,7 @@ pub async fn save_annotations(
         .persist(&WriteContext {
             message: format!("Notities bijgewerkt voor {}", law_id),
             author,
+            token_override,
         })
         .await
         .map_err(corpus_write_error("annotations"))?;
@@ -1828,6 +1836,7 @@ pub async fn save_annotations(
 /// the source map.
 pub async fn save_law(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path((traject_ref, law_id)): Path<(String, String)>,
     headers: axum::http::HeaderMap,
@@ -1835,6 +1844,7 @@ pub async fn save_law(
 ) -> Result<axum::response::Response, (StatusCode, String)> {
     use axum::response::IntoResponse;
     let author = Some(require_editor_user(&session).await?);
+    let token_override = github_oauth::user_write_token(&state, account.id).await?;
 
     // Validation:
     //   1. Body must parse as well-formed YAML. extract_law_id below is a
@@ -1907,6 +1917,7 @@ pub async fn save_law(
             .persist(&WriteContext {
                 message: format!("Update law {}", law_id),
                 author,
+                token_override,
             })
             .await
             .map_err(corpus_write_error("law"))?
@@ -1941,11 +1952,13 @@ pub async fn save_law(
 /// — delete a scenario file in the traject's writable-own backend.
 pub async fn delete_scenario(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path((traject_ref, law_id, filename)): Path<(String, String, String)>,
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
     validate_scenario_filename(&filename)?;
     let author = Some(require_editor_user(&session).await?);
+    let token_override = github_oauth::user_write_token(&state, account.id).await?;
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let target = resolve_traject_scenario_target(&traject, &law_id, &filename).await?;
@@ -1963,6 +1976,7 @@ pub async fn delete_scenario(
         .persist(&WriteContext {
             message: format!("Delete scenario {} for {}", filename, law_id),
             author,
+            token_override,
         })
         .await
         .map_err(corpus_write_error("scenario"))?;
@@ -2362,6 +2376,7 @@ pub async fn get_traject_document(
 /// `200 OK`.
 pub async fn save_traject_document(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path((traject_ref, doc_path)): Path<(String, String)>,
     headers: axum::http::HeaderMap,
@@ -2370,6 +2385,7 @@ pub async fn save_traject_document(
     use axum::response::IntoResponse;
     validate_document_path(&doc_path)?;
     let author = Some(require_editor_user(&session).await?);
+    let token_override = github_oauth::user_write_token(&state, account.id).await?;
 
     // The body is always text in fase 1. A *missing* Content-Type is
     // allowed because browsers occasionally omit it on
@@ -2411,7 +2427,11 @@ pub async fn save_traject_document(
         format!("Add document {doc_path}")
     };
     let outcome = backend
-        .persist(&WriteContext { message, author })
+        .persist(&WriteContext {
+            message,
+            author,
+            token_override,
+        })
         .await
         .map_err(corpus_write_error("document"))?;
 
@@ -2444,12 +2464,14 @@ pub async fn save_traject_document(
 /// signals real divergence (someone else removed it) worth surfacing.
 pub async fn delete_traject_document(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path((traject_ref, doc_path)): Path<(String, String)>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
     validate_document_path(&doc_path)?;
     let author = Some(require_editor_user(&session).await?);
+    let token_override = github_oauth::user_write_token(&state, account.id).await?;
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let backend = resolve_traject_documents_writer(&traject).await?;
@@ -2472,6 +2494,7 @@ pub async fn delete_traject_document(
         .persist(&WriteContext {
             message: format!("Delete document {doc_path}"),
             author,
+            token_override,
         })
         .await
         .map_err(corpus_write_error("document"))?;
@@ -2603,6 +2626,7 @@ mod tests {
         // `author`-shaped field.
         let _: fn(
             axum::extract::State<crate::state::AppState>,
+            axum::extract::Extension<crate::accounts::AccountRecord>,
             Session,
             axum::extract::Path<(String, String, String)>,
             axum::http::HeaderMap,
@@ -2610,12 +2634,14 @@ mod tests {
         ) -> _ = save_scenario;
         let _: fn(
             axum::extract::State<crate::state::AppState>,
+            axum::extract::Extension<crate::accounts::AccountRecord>,
             Session,
             axum::extract::Path<(String, String)>,
             String,
         ) -> _ = save_annotations;
         let _: fn(
             axum::extract::State<crate::state::AppState>,
+            axum::extract::Extension<crate::accounts::AccountRecord>,
             Session,
             axum::extract::Path<(String, String)>,
             axum::http::HeaderMap,
@@ -2624,6 +2650,7 @@ mod tests {
         // delete_scenario takes no body at all — even stronger guarantee.
         let _: fn(
             axum::extract::State<crate::state::AppState>,
+            axum::extract::Extension<crate::accounts::AccountRecord>,
             Session,
             axum::extract::Path<(String, String, String)>,
         ) -> _ = delete_scenario;

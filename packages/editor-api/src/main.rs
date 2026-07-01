@@ -19,8 +19,11 @@ use tower_sessions_sqlx_store::PostgresStore;
 mod accounts;
 mod config;
 mod corpus_handlers;
+mod crypto;
 mod favorites;
 mod feature_flags;
+mod github_oauth;
+mod github_tokens;
 mod harvest_proxy;
 mod middleware;
 mod state;
@@ -374,6 +377,20 @@ async fn main() {
             middleware::require_role::<AppState>("editor-writer"),
         ));
 
+    // GitHub user-OAuth link flow (spike). Requires an authenticated editor
+    // session with a resolved account (to key the stored token), so it sits
+    // behind the same account_middleware + writer-role gate as traject writes.
+    // When the feature is unconfigured the handlers themselves return 501.
+    let github_oauth_routes = github_oauth::github_oauth_routes()
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            accounts::account_middleware,
+        ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_role::<AppState>("editor-writer"),
+        ));
+
     // --- Build app with session layer ---
     // SessionManagerLayer is generic over the store type, so we build the
     // router in two branches depending on whether auth is enabled.
@@ -439,6 +456,7 @@ async fn main() {
             .merge(admin_routes)
             .merge(traject_reader_routes)
             .merge(traject_writer_routes)
+            .merge(github_oauth_routes)
             .with_state(app_state)
             // Inside the session layer (session loaded) and outside the route
             // role gates (fresh roles / a dropped auth marker are seen by the
