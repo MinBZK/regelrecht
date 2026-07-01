@@ -62,6 +62,11 @@ pub trait LlmRunner: Send + Sync {
     ) -> Result<()>;
 }
 
+/// Max bytes of the LLM subprocess's stderr to retain for diagnostics. The tail
+/// (most recent output) is kept and appended to the error on a non-zero exit, so
+/// a failure reports the real cause (e.g. an auth `401`) instead of a bare code.
+const MAX_STDERR_CAPTURE: usize = 4096;
+
 /// Default runner that spawns a real CLI process.
 pub struct ProcessLlmRunner;
 
@@ -80,13 +85,14 @@ impl LlmRunner for ProcessLlmRunner {
 
         let mut cmd = build_command(&config.provider, &prompt, yaml_abs, repo_path);
 
-        // stderr is inherited so the LLM's own errors/stack traces stay visible
-        // in the worker's logs. stdout is piped and drained (see below) instead
-        // of inherited: a verbose agent (e.g. opencode `--format json`) inlines
-        // the full body of every fetched page into its event stream, which
-        // would otherwise flood container logs and bury the worker's own
-        // tracing lines.
-        cmd.stderr(std::process::Stdio::inherit());
+        // Both streams are piped and drained. stdout is drained-and-discarded: a
+        // verbose agent (e.g. opencode `--format json`) inlines the full body of
+        // every fetched page into its event stream, which would flood container
+        // logs. stderr is drained too — we MUST keep reading both or a full 64 KB
+        // OS pipe buffer blocks the child — but for stderr we also keep a bounded
+        // tail and re-log previews, so the LLM's real error (e.g. an auth 401) is
+        // both visible in the logs and attached to the job's failure.
+        cmd.stderr(std::process::Stdio::piped());
         cmd.stdout(std::process::Stdio::piped());
         let mut child = cmd.spawn().map_err(|e| {
             PipelineError::Enrich(format!("failed to spawn {}: {e}", provider_name))
@@ -95,6 +101,49 @@ impl LlmRunner for ProcessLlmRunner {
         // Capture the PID before any wait reaps the child; the memory watchdog
         // and process-group kill both need it.
         let pid = child.id();
+
+        // Drain stderr, retaining the last `MAX_STDERR_CAPTURE` bytes for the
+        // error message and re-logging bounded previews so it stays visible.
+        let stderr_tail = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let stderr_task = child.stderr.take().map(|mut stderr| {
+            let tail = stderr_tail.clone();
+            let stderr_provider = provider_name.clone();
+            tokio::spawn(async move {
+                let mut buf = [0u8; 8192];
+                loop {
+                    match stderr.read(&mut buf).await {
+                        Ok(0) | Err(_) => break, // EOF or pipe gone
+                        Ok(n) => {
+                            let text = String::from_utf8_lossy(&buf[..n]);
+                            let preview: String = text.trim().chars().take(500).collect();
+                            if !preview.is_empty() {
+                                tracing::warn!(provider = %stderr_provider, %preview, "agent stderr");
+                            }
+                            if let Ok(mut t) = tail.lock() {
+                                t.push_str(&text);
+                                if t.len() > MAX_STDERR_CAPTURE {
+                                    let mut cut = t.len() - MAX_STDERR_CAPTURE;
+                                    while cut < t.len() && !t.is_char_boundary(cut) {
+                                        cut += 1;
+                                    }
+                                    *t = t[cut..].to_string();
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+        });
+        // Read the retained stderr tail, formatted as a "; stderr: …" suffix.
+        let stderr_suffix = || {
+            stderr_tail
+                .lock()
+                .ok()
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .map(|t| format!("; stderr: {t}"))
+                .unwrap_or_default()
+        };
 
         // Drain the agent's stdout so it never reaches container logs. We MUST
         // keep reading it: if the OS pipe buffer (64 KB) fills, the child blocks
@@ -137,9 +186,15 @@ impl LlmRunner for ProcessLlmRunner {
             }
             _ = tokio::time::sleep(config.timeout) => {
                 terminate(&mut child, pid).await;
+                // Abort the drain task rather than leaving it detached: if a
+                // grandchild inherited fd 2 and survived terminate(), the task
+                // would otherwise leak. The tail read below is already populated.
+                if let Some(t) = &stderr_task {
+                    t.abort();
+                }
                 return Err(PipelineError::Enrich(format!(
-                    "{} timed out after {:?}",
-                    provider_name, config.timeout
+                    "{} timed out after {:?}{}",
+                    provider_name, config.timeout, stderr_suffix()
                 )));
             }
             observed_mb = watch_memory(pid, config.max_rss_mb) => {
@@ -151,20 +206,40 @@ impl LlmRunner for ProcessLlmRunner {
                     "LLM subprocess exceeded memory limit, killing to protect the container"
                 );
                 terminate(&mut child, pid).await;
+                if let Some(t) = &stderr_task {
+                    t.abort();
+                }
                 return Err(PipelineError::Enrich(format!(
-                    "{provider_name} exceeded memory limit of {} MB (RSS {observed_mb} MB), killed",
-                    config.max_rss_mb
+                    "{provider_name} exceeded memory limit of {} MB (RSS {observed_mb} MB), killed{}",
+                    config.max_rss_mb, stderr_suffix()
                 )));
             }
         };
 
         if !status.success() {
+            // Give the stderr drain a moment to finish so the tail is complete,
+            // but bound the wait: the child has exited, yet a leaked grandchild
+            // that inherited fd 2 could keep the pipe open and never EOF. Without
+            // a bound this await (outside the timeout/memory select!) would wedge
+            // the worker loop. Best-effort, like the tail in the other paths.
+            if let Some(task) = stderr_task {
+                let _ = tokio::time::timeout(Duration::from_secs(2), task).await;
+            }
             return Err(PipelineError::Enrich(format!(
-                "{} exited with {}",
-                provider_name, status,
+                "{} exited with {}{}",
+                provider_name,
+                status,
+                stderr_suffix()
             )));
         }
 
+        // Success: abort the drain task instead of leaving it detached — same
+        // fd-2/grandchild-leak guard as the timeout/OOM paths. Normally it has
+        // already finished (the child closed stderr on exit); aborting a finished
+        // task is a no-op.
+        if let Some(t) = &stderr_task {
+            t.abort();
+        }
         Ok(())
     }
 }
@@ -341,9 +416,14 @@ pub struct EnrichmentMetadata {
 ///
 /// Both providers manage their own authentication:
 /// - **OpenCode/VLAM**: reads `~/.local/share/opencode/auth.json` (set via `opencode auth`)
-/// - **Claude**: reads `~/.claude/.credentials` or `ANTHROPIC_API_KEY` env var
+/// - **Claude**: authenticates with a **personal Claude subscription** via
+///   `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`), read directly from the
+///   environment; no credentials file is written. `ANTHROPIC_API_KEY` is intentionally NOT
+///   used — it is not on `LLM_ENV_ALLOWLIST`, so it is never forwarded to `claude` and can
+///   never take precedence over the OAuth token.
 ///
-/// In Docker, mount the appropriate auth files or set env vars.
+/// In Docker, set the appropriate env var (forwarded to the subprocess via
+/// `LLM_ENV_ALLOWLIST`).
 #[derive(Debug, Clone)]
 pub enum LlmProvider {
     OpenCode {
@@ -546,8 +626,15 @@ const LLM_ENV_ALLOWLIST: &[&str] = &[
     "SHELL",
     "TMPDIR",
     "XDG_",
-    // Provider-specific auth
-    "ANTHROPIC_API_KEY",
+    // Provider-specific auth.
+    //
+    // NOTE: ANTHROPIC_API_KEY is deliberately NOT forwarded. The claude provider
+    // authenticates only with a personal subscription via CLAUDE_CODE_OAUTH_TOKEN.
+    // Keeping ANTHROPIC_API_KEY out of the subprocess env means that even if it is
+    // still set on the worker (e.g. a leftover), it can never reach `claude` and
+    // silently take precedence over the OAuth token — the exact footgun that
+    // makes claude fail auth at startup.
+    "CLAUDE_CODE_OAUTH_TOKEN",
     "VLAM_API_KEY",
     "OPENCODE_",
 ];
@@ -557,6 +644,27 @@ fn env_allowed(key: &str) -> bool {
     LLM_ENV_ALLOWLIST
         .iter()
         .any(|prefix| key == *prefix || key.starts_with(prefix))
+}
+
+/// Select one Claude OAuth token from a comma-separated list, rotating by a
+/// time `bucket` so consecutive runs spread across several personal
+/// subscriptions (each token has its own usage/rate limits).
+///
+/// `CLAUDE_CODE_OAUTH_TOKEN` may hold multiple tokens separated by commas. The
+/// chosen index is `bucket % n`; callers pass `unix_secs / 100`, so the active
+/// token rotates roughly every 100 seconds. Returns `(index, count, token)`, or
+/// `None` when there are no non-empty tokens. Pure so it can be unit-tested.
+fn select_claude_token(raw: &str, bucket: u64) -> Option<(usize, usize, &str)> {
+    let tokens: Vec<&str> = raw
+        .split(',')
+        .map(|t| t.trim())
+        .filter(|t| !t.is_empty())
+        .collect();
+    if tokens.is_empty() {
+        return None;
+    }
+    let idx = (bucket % tokens.len() as u64) as usize;
+    Some((idx, tokens.len(), tokens[idx]))
 }
 
 /// Build the command for the configured LLM provider.
@@ -573,6 +681,38 @@ fn build_command(
     // Collect allowed env vars before creating the command.
     let safe_env: Vec<(String, String)> =
         std::env::vars().filter(|(k, _)| env_allowed(k)).collect();
+
+    // Diagnostic logging: record exactly what will be spawned and which env vars
+    // are forwarded (NAMES only — never values). Classify the OAuth token by its
+    // non-secret prefix so a misconfiguration (an API key pasted into the OAuth
+    // slot) is obvious, and flag whether ANTHROPIC_API_KEY is still present in the
+    // worker env even though it is deliberately never forwarded.
+    let forwarded_env: Vec<&str> = safe_env.iter().map(|(k, _)| k.as_str()).collect();
+    let oauth_token_kind = std::env::var("CLAUDE_CODE_OAUTH_TOKEN").ok().map(|t| {
+        if t.is_empty() {
+            "empty"
+        } else if t.starts_with("sk-ant-oat") {
+            "oauth-token (sk-ant-oat…)"
+        } else if t.starts_with("sk-ant-api") {
+            "WRONG: looks like an API key (sk-ant-api…)"
+        } else {
+            "unrecognized-prefix"
+        }
+    });
+    let model = match provider {
+        LlmProvider::OpenCode { model, .. } | LlmProvider::Claude { model, .. } => model.as_deref(),
+    };
+    tracing::info!(
+        provider = provider.name(),
+        model = ?model,
+        prompt_chars = prompt.len(),
+        claude_oauth_token_kind = ?oauth_token_kind,
+        anthropic_api_key_present_in_worker_env = std::env::var_os("ANTHROPIC_API_KEY").is_some(),
+        "spawning LLM subprocess"
+    );
+    // The forwarded env var NAMES are static between spawns — keep them at debug
+    // so they don't add a long line to every job's info logs.
+    tracing::debug!(provider = provider.name(), forwarded_env = ?forwarded_env, "forwarded env to LLM subprocess");
 
     let mut cmd = match provider {
         LlmProvider::OpenCode { path, model } => {
@@ -598,6 +738,29 @@ fn build_command(
             cmd.env_clear();
             cmd.envs(safe_env);
             cmd.env("NODE_OPTIONS", "--max-old-space-size=512");
+            // If CLAUDE_CODE_OAUTH_TOKEN holds several comma-separated tokens,
+            // override the forwarded value with a single one chosen by a
+            // time-rotating index, so load spreads across the subscriptions.
+            if let Ok(raw) = std::env::var("CLAUDE_CODE_OAUTH_TOKEN") {
+                let bucket = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() / 100)
+                    .unwrap_or(0);
+                if let Some((idx, count, token)) = select_claude_token(&raw, bucket) {
+                    // Always apply the selected (trimmed) token — even for a
+                    // single token — so stray whitespace or a trailing comma
+                    // never reaches claude verbatim. Never log the token value;
+                    // only the 1-based position and count.
+                    cmd.env("CLAUDE_CODE_OAUTH_TOKEN", token);
+                    if count > 1 {
+                        tracing::info!(
+                            using_token = idx + 1,
+                            of_tokens = count,
+                            "selected claude oauth token (rotating by ~100s)"
+                        );
+                    }
+                }
+            }
             cmd.arg("-p")
                 .arg(prompt)
                 .arg("--allowedTools")
@@ -1156,6 +1319,25 @@ mod tests {
         assert!(ENRICH_PROVIDERS.contains(&"opencode"));
         assert!(ENRICH_PROVIDERS.contains(&"claude"));
         assert_eq!(ENRICH_PROVIDERS.len(), 2);
+    }
+
+    #[test]
+    fn test_select_claude_token() {
+        // empty / whitespace-only -> None
+        assert_eq!(select_claude_token("", 0), None);
+        assert_eq!(select_claude_token("  , ,", 5), None);
+
+        // single token -> always that token, index 0
+        assert_eq!(select_claude_token("tokA", 0), Some((0, 1, "tokA")));
+        assert_eq!(select_claude_token(" tokA ", 999), Some((0, 1, "tokA")));
+
+        // multiple tokens -> rotate by bucket % n, whitespace trimmed
+        assert_eq!(select_claude_token("a, b , c", 0), Some((0, 3, "a")));
+        assert_eq!(select_claude_token("a, b , c", 1), Some((1, 3, "b")));
+        assert_eq!(select_claude_token("a, b , c", 2), Some((2, 3, "c")));
+        assert_eq!(select_claude_token("a, b , c", 3), Some((0, 3, "a")));
+        // large bucket (e.g. unix_secs/100) still wraps correctly
+        assert_eq!(select_claude_token("a,b", 17_000_001), Some((1, 2, "b")));
     }
 
     #[test]

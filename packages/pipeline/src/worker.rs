@@ -384,6 +384,13 @@ async fn process_next_job(
             // idx_unique_active_enrich_job partial unique index to atomically
             // prevent duplicate enrich jobs — no TOCTOU race possible.
 
+            // Auto-enrich is opt-in (parsed once in WorkerConfig from
+            // ENRICH_AUTO_ENQUEUE). By default, harvesting a law does NOT enqueue
+            // enrich jobs — enrichment is requested explicitly via the admin API
+            // (POST /api/enrich-jobs). This prevents the recursive "harvest
+            // everything → enrich everything" queue from filling up (and burning
+            // LLM budget) for laws nobody asked to enrich.
+            let auto_enrich = config.auto_enrich_enqueue;
             // Skip auto-enrich if law is exhausted for enrich
             let enrich_exhausted = match law_status::get_law(pool, &job.law_id).await {
                 Ok(law) => law.status == LawStatusValue::EnrichExhausted,
@@ -392,7 +399,12 @@ async fn process_next_job(
                     false
                 }
             };
-            if enrich_exhausted {
+            if !auto_enrich {
+                // debug, not info: with auto-enrich off by default this fires for
+                // every harvested law (~22k on a full corpus harvest) — steady-state
+                // noise, not an event worth surfacing at info.
+                tracing::debug!(law_id = %job.law_id, "auto-enrich disabled (set ENRICH_AUTO_ENQUEUE=true to enable); not enqueuing enrich jobs");
+            } else if enrich_exhausted {
                 tracing::info!(law_id = %job.law_id, "skipping auto-enrich: law is enrich_exhausted");
             } else {
                 for provider_name in crate::enrich::ENRICH_PROVIDERS {
@@ -723,6 +735,11 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
 
     let mut current_interval = std::time::Duration::ZERO;
     let mut consecutive_resource_failures: u32 = 0;
+    // Log the "paused on daily limit" state at info only on the first hit, then
+    // debug while it persists — otherwise a paused worker (e.g. ENRICH_DAILY_LIMIT
+    // unset) emits an info line every poll interval indefinitely. Reset once a job
+    // actually runs so a later pause is surfaced again.
+    let mut daily_limit_pause_logged = false;
 
     loop {
         tokio::select! {
@@ -740,6 +757,48 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
                 // Ready to process next job
             }
         }
+
+        // Enforce the per-provider daily run cap before claiming a job. Counted
+        // from the durable `jobs` table (not an in-memory counter) so the cap
+        // holds across worker restarts/redeploys. Primarily protects a personal
+        // Claude subscription token from running the whole corpus in one day.
+        // Fail-closed: a limit of 0 (the default when ENRICH_DAILY_LIMIT is
+        // unset) pauses the worker without even querying.
+        //
+        // The cap keys on the worker's configured provider (LLM_PROVIDER), not
+        // the per-job payload provider. That is exact for a provider-dedicated
+        // worker (the intended deployment); a worker serving multiple providers
+        // would under-count the non-default provider's runs.
+        let limit = config.enrich_daily_limit;
+        let provider = enrich_config.provider.name();
+        let over_limit = if limit == 0 {
+            true
+        } else {
+            match job_queue::count_enrich_jobs_started_today(&pool, provider).await {
+                Ok(ran_today) => ran_today >= i64::from(limit),
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to check daily enrich limit, proceeding");
+                    false
+                }
+            }
+        };
+        if over_limit {
+            current_interval = config.max_poll_interval;
+            if !daily_limit_pause_logged {
+                tracing::info!(
+                    provider,
+                    limit,
+                    next_poll = ?current_interval,
+                    "daily enrich limit reached (or ENRICH_DAILY_LIMIT unset/0), pausing until the UTC day rolls over"
+                );
+                daily_limit_pause_logged = true;
+            } else {
+                tracing::debug!(provider, limit, "still paused on daily enrich limit");
+            }
+            continue;
+        }
+        // Not paused this cycle — re-arm the info-level pause log for the next pause.
+        daily_limit_pause_logged = false;
 
         match process_next_enrich_job(
             &pool,

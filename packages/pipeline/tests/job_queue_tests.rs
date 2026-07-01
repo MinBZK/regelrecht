@@ -467,3 +467,60 @@ async fn test_concurrent_claim_safety() {
 
     assert_eq!(claimed_count, 1);
 }
+
+#[tokio::test]
+async fn test_count_enrich_jobs_started_today() {
+    let db = TestDb::new().await;
+
+    // Two claude enrich jobs and one opencode enrich job (payload provider set,
+    // as the admin enqueues them), plus a harvest job that must never count.
+    for law in ["c1", "c2"] {
+        let req =
+            CreateJobRequest::new(JobType::Enrich, law).with_payload(json!({"provider": "claude"}));
+        job_queue::create_job(&db.pool, req).await.unwrap();
+    }
+    let req =
+        CreateJobRequest::new(JobType::Enrich, "o1").with_payload(json!({"provider": "opencode"}));
+    job_queue::create_job(&db.pool, req).await.unwrap();
+    job_queue::create_job(&db.pool, CreateJobRequest::new(JobType::Harvest, "h1"))
+        .await
+        .unwrap();
+    // A pending (never claimed) claude job: started_at is NULL, so it must not count.
+    let req =
+        CreateJobRequest::new(JobType::Enrich, "c3").with_payload(json!({"provider": "claude"}));
+    job_queue::create_job(&db.pool, req).await.unwrap();
+
+    // Claiming sets started_at = now(). Claim the three oldest enrich jobs
+    // (c1, c2, o1 by creation order) and the harvest job; c3 stays pending.
+    for _ in 0..3 {
+        job_queue::claim_job(&db.pool, Some(JobType::Enrich))
+            .await
+            .unwrap()
+            .unwrap();
+    }
+    job_queue::claim_job(&db.pool, Some(JobType::Harvest))
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Only the two claimed claude jobs count; pending c3, opencode, and harvest excluded.
+    let claude = job_queue::count_enrich_jobs_started_today(&db.pool, "claude")
+        .await
+        .unwrap();
+    assert_eq!(claude, 2, "two claude enrich jobs started today");
+
+    let opencode = job_queue::count_enrich_jobs_started_today(&db.pool, "opencode")
+        .await
+        .unwrap();
+    assert_eq!(opencode, 1, "provider filter is per-provider");
+
+    // A run from a previous day falls outside today's UTC window.
+    sqlx::query("UPDATE jobs SET started_at = now() - interval '2 days' WHERE law_id = 'c1'")
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    let claude = job_queue::count_enrich_jobs_started_today(&db.pool, "claude")
+        .await
+        .unwrap();
+    assert_eq!(claude, 1, "backdated run excluded from today's count");
+}

@@ -78,6 +78,25 @@ pub struct WorkerConfig {
     /// so retrying in-process just burns job retry budget in a tight loop.
     /// Default: 5. Configurable via `WORKER_MAX_CONSECUTIVE_RESOURCE_FAILURES`.
     pub max_consecutive_resource_failures: u32,
+    /// Maximum number of enrichment jobs (for this worker's provider) that may
+    /// run per UTC calendar day. Configurable via `ENRICH_DAILY_LIMIT`.
+    ///
+    /// **Fail-closed**: absent (or unparseable) reads as `0`, and `0` pauses
+    /// enrichment entirely — a worker must be given an explicit positive limit
+    /// to run. This protects a personal Claude subscription token from being
+    /// spent by accident (a forgotten env var runs nothing rather than the whole
+    /// corpus).
+    ///
+    /// Enforced by the enrich worker against the durable `jobs` table, so the
+    /// cap survives restarts. The cap keys on this worker's configured provider
+    /// (`LLM_PROVIDER`), and once reached it pauses the whole worker until the
+    /// UTC day rolls over — so it is meant for a provider-dedicated worker (e.g.
+    /// a claude-only enrichworker).
+    pub enrich_daily_limit: u32,
+    /// When true, a completed harvest auto-enqueues enrich jobs for that law.
+    /// Off by default; enrichment is otherwise requested explicitly via the admin
+    /// API. Configurable via `ENRICH_AUTO_ENQUEUE`.
+    pub auto_enrich_enqueue: bool,
 }
 
 impl std::fmt::Debug for WorkerConfig {
@@ -97,6 +116,8 @@ impl std::fmt::Debug for WorkerConfig {
                 "max_consecutive_resource_failures",
                 &self.max_consecutive_resource_failures,
             )
+            .field("enrich_daily_limit", &self.enrich_daily_limit)
+            .field("auto_enrich_enqueue", &self.auto_enrich_enqueue)
             .finish()
     }
 }
@@ -148,6 +169,30 @@ impl WorkerConfig {
                 .unwrap_or(5)
                 .max(1);
 
+        // Per-provider daily run cap. Fail-closed: absent reads as 0 (paused),
+        // and a present-but-unparseable value warns and also reads as 0 rather
+        // than silently disabling the cap (this guards spend on a personal token).
+        let enrich_daily_limit: u32 = match std::env::var("ENRICH_DAILY_LIMIT") {
+            Ok(raw) => raw.parse::<u32>().unwrap_or_else(|_| {
+                tracing::warn!(
+                    value = %raw,
+                    "ENRICH_DAILY_LIMIT is not a valid non-negative integer; treating as 0 (enrichment paused)"
+                );
+                0
+            }),
+            Err(_) => 0,
+        };
+
+        // Auto-enrich after harvest is opt-in; unset/unrecognized reads as false.
+        let auto_enrich_enqueue = std::env::var("ENRICH_AUTO_ENQUEUE")
+            .map(|v| {
+                matches!(
+                    v.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
+            .unwrap_or(false);
+
         Ok(Self {
             database_url,
             max_connections,
@@ -160,6 +205,8 @@ impl WorkerConfig {
             orphan_timeout: Duration::from_secs(orphan_timeout_secs),
             exhausted_threshold,
             max_consecutive_resource_failures,
+            enrich_daily_limit,
+            auto_enrich_enqueue,
         })
     }
 
