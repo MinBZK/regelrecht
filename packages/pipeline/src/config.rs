@@ -93,6 +93,10 @@ pub struct WorkerConfig {
     /// UTC day rolls over — so it is meant for a provider-dedicated worker (e.g.
     /// a claude-only enrichworker).
     pub enrich_daily_limit: u32,
+    /// When true, a completed harvest auto-enqueues enrich jobs for that law.
+    /// Off by default; enrichment is otherwise requested explicitly via the admin
+    /// API. Configurable via `ENRICH_AUTO_ENQUEUE`.
+    pub auto_enrich_enqueue: bool,
 }
 
 impl std::fmt::Debug for WorkerConfig {
@@ -113,6 +117,7 @@ impl std::fmt::Debug for WorkerConfig {
                 &self.max_consecutive_resource_failures,
             )
             .field("enrich_daily_limit", &self.enrich_daily_limit)
+            .field("auto_enrich_enqueue", &self.auto_enrich_enqueue)
             .finish()
     }
 }
@@ -178,6 +183,16 @@ impl WorkerConfig {
             Err(_) => 0,
         };
 
+        // Auto-enrich after harvest is opt-in; unset/unrecognized reads as false.
+        let auto_enrich_enqueue = std::env::var("ENRICH_AUTO_ENQUEUE")
+            .map(|v| {
+                matches!(
+                    v.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
+            .unwrap_or(false);
+
         Ok(Self {
             database_url,
             max_connections,
@@ -191,6 +206,7 @@ impl WorkerConfig {
             exhausted_threshold,
             max_consecutive_resource_failures,
             enrich_daily_limit,
+            auto_enrich_enqueue,
         })
     }
 

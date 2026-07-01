@@ -233,6 +233,13 @@ impl LlmRunner for ProcessLlmRunner {
             )));
         }
 
+        // Success: abort the drain task instead of leaving it detached — same
+        // fd-2/grandchild-leak guard as the timeout/OOM paths. Normally it has
+        // already finished (the child closed stderr on exit); aborting a finished
+        // task is a no-op.
+        if let Some(t) = &stderr_task {
+            t.abort();
+        }
         Ok(())
     }
 }
