@@ -407,7 +407,10 @@ async fn process_next_job(
                 }
             };
             if !auto_enrich {
-                tracing::info!(law_id = %job.law_id, "auto-enrich disabled (set ENRICH_AUTO_ENQUEUE=true to enable); not enqueuing enrich jobs");
+                // debug, not info: with auto-enrich off by default this fires for
+                // every harvested law (~22k on a full corpus harvest) — steady-state
+                // noise, not an event worth surfacing at info.
+                tracing::debug!(law_id = %job.law_id, "auto-enrich disabled (set ENRICH_AUTO_ENQUEUE=true to enable); not enqueuing enrich jobs");
             } else if enrich_exhausted {
                 tracing::info!(law_id = %job.law_id, "skipping auto-enrich: law is enrich_exhausted");
             } else {
