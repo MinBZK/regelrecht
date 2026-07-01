@@ -1,6 +1,136 @@
 use std::path::Path;
+use std::sync::Arc;
 
 use crate::error::{CorpusError, Result};
+use crate::models::{Source, SourceType};
+
+/// Mints a short-lived, repo-scoped token for a source on demand, instead
+/// of relying on a long-lived stored PAT.
+///
+/// One implementation per VCS provider — today
+/// [`crate::github_app::GitHubAppAuth`] (GitHub App installation tokens).
+/// Kept as an abstract trait here (not behind the `github` feature) so the
+/// resolver, the [`ProviderAuthRegistry`] factory, and the editor-api
+/// state can refer to it without pulling in reqwest; the concrete,
+/// network-backed implementations live in their provider modules.
+///
+/// `token_for_source` returns `Ok(None)` when this provider can't serve
+/// the source — the source is a different provider's kind, or the app has
+/// no access (e.g. not installed on the owner). That's the signal for the
+/// caller to fall back to the static env/file token chain rather than
+/// fail.
+#[async_trait::async_trait]
+pub trait AppTokenMinter: Send + Sync {
+    async fn token_for_source(&self, source: &Source) -> Result<Option<String>>;
+}
+
+/// Factory + registry of per-provider credential minters.
+///
+/// Built once from the environment ([`ProviderAuthRegistry::from_env`]):
+/// each provider self-configures and is simply absent when its env isn't
+/// set. [`minter_for`](Self::minter_for) routes a source to its provider's
+/// minter by [`SourceType`], so adding GitLab (or any other provider)
+/// later is a new field + a new match arm here — call sites don't change.
+#[derive(Default, Clone)]
+pub struct ProviderAuthRegistry {
+    /// GitHub App minter. Other providers (GitLab, Azure DevOps, …) get
+    /// their own field here when implemented.
+    github: Option<Arc<dyn AppTokenMinter>>,
+}
+
+impl ProviderAuthRegistry {
+    /// Load every supported provider's minter from the environment. A
+    /// provider whose env isn't configured stays `None` (the source then
+    /// falls back to the static token chain). Errors only when a provider
+    /// is half-configured (e.g. GitHub app id set but key unreadable).
+    pub fn from_env() -> Result<Self> {
+        Ok(Self {
+            github: load_github_app_minter()?,
+        })
+    }
+
+    /// The minter for `source`'s provider, or `None` when that provider
+    /// has no app-auth configured / the source has no remote provider
+    /// (local).
+    pub fn minter_for(&self, source: &Source) -> Option<&dyn AppTokenMinter> {
+        match &source.source_type {
+            SourceType::GitHub { .. } => self.github.as_deref(),
+            SourceType::Local { .. } => None,
+        }
+    }
+
+    /// Whether any provider minter is configured — for startup logging so
+    /// operators can confirm the app-auth path is active.
+    pub fn is_configured(&self) -> bool {
+        self.github.is_some()
+    }
+}
+
+/// Build the GitHub App minter from the environment, or `None` when the
+/// app isn't configured. Gated on the `github` feature; without it the
+/// provider is simply unavailable.
+#[cfg(feature = "github")]
+fn load_github_app_minter() -> Result<Option<Arc<dyn AppTokenMinter>>> {
+    Ok(crate::github_app::GitHubAppAuth::from_env()?
+        .map(|a| Arc::new(a) as Arc<dyn AppTokenMinter>))
+}
+
+#[cfg(not(feature = "github"))]
+fn load_github_app_minter() -> Result<Option<Arc<dyn AppTokenMinter>>> {
+    Ok(None)
+}
+
+/// Resolve a token for a source, preferring a provider-minted short-lived
+/// token (GitHub App, …) when one is available, then the static env/file
+/// chain.
+///
+/// Resolution order:
+/// 0. **Provider minter** (`providers`) — routed by [`SourceType`]. Mints
+///    a short-lived, repo-scoped token; nothing long-lived is stored. A
+///    `None` from the minter (provider not configured / app not installed)
+///    falls through to the static chain.
+/// 1.–N. the static chain via [`resolve_token_strict`] (when `strict`) or
+///    [`resolve_token_for_source`] (otherwise).
+///
+/// `strict` mirrors the two static resolvers: pass `true` for any source
+/// whose lookup key is derived from untrusted input (the writable-own
+/// source of a traject), so an unknown key fails closed instead of
+/// leaking the legacy `CORPUS_GIT_TOKEN`.
+pub async fn resolve_token_async(
+    source: &Source,
+    auth_file: Option<&Path>,
+    providers: Option<&ProviderAuthRegistry>,
+    strict: bool,
+) -> Result<Option<String>> {
+    if let Some(providers) = providers {
+        if let Some(minter) = providers.minter_for(source) {
+            match minter.token_for_source(source).await {
+                Ok(Some(token)) => return Ok(Some(token)),
+                // The provider can't serve this source (not installed / repo
+                // not in the install) — fall through to the static chain.
+                Ok(None) => {}
+                // A provider failure (transient GitHub 5xx/429, mint error,
+                // expired key, …) must NOT hard-fail the source: the whole
+                // point of the hybrid is that the static env/file token keeps
+                // working. Log and fall through rather than propagate.
+                Err(e) => {
+                    tracing::warn!(
+                        source_id = %source.id,
+                        error = %e,
+                        "provider token mint failed; falling back to static token chain"
+                    );
+                }
+            }
+        }
+    }
+
+    if strict {
+        let key = source.auth_ref.as_deref().unwrap_or(&source.id);
+        resolve_token_strict(key, auth_file)
+    } else {
+        resolve_token_for_source(&source.id, source.auth_ref.as_deref(), auth_file)
+    }
+}
 
 /// Construct the per-source token env-var name from a slug.
 ///
@@ -303,5 +433,107 @@ sources:
         let result = resolve_token_strict("strict-per-source-ok", None).unwrap();
         unsafe { std::env::remove_var(key) };
         assert_eq!(result, Some("per-source-value".to_string()));
+    }
+
+    /// A minter that returns a fixed answer, to exercise the resolver's
+    /// provider tier without a network call.
+    struct FakeMinter(Option<String>);
+
+    #[async_trait::async_trait]
+    impl AppTokenMinter for FakeMinter {
+        async fn token_for_source(&self, _source: &Source) -> Result<Option<String>> {
+            Ok(self.0.clone())
+        }
+    }
+
+    /// A minter that always errors, to prove a provider failure doesn't
+    /// hard-fail the source but falls through to the static chain.
+    struct FailingMinter;
+
+    #[async_trait::async_trait]
+    impl AppTokenMinter for FailingMinter {
+        async fn token_for_source(&self, _source: &Source) -> Result<Option<String>> {
+            Err(CorpusError::Git(
+                "simulated transient GitHub error".to_string(),
+            ))
+        }
+    }
+
+    fn github_probe(id: &str) -> Source {
+        Source {
+            id: id.to_string(),
+            name: id.to_string(),
+            source_type: SourceType::GitHub {
+                github: crate::models::GitHubSource {
+                    owner: "acme".to_string(),
+                    repo: "corpus".to_string(),
+                    branch: "main".to_string(),
+                    path: None,
+                    git_ref: None,
+                },
+            },
+            scopes: Vec::new(),
+            priority: 0,
+            auth_ref: None,
+        }
+    }
+
+    /// A default (unconfigured) registry has no minter for any source, so
+    /// `resolve_token_async` behaves exactly like the static chain.
+    #[test]
+    fn default_registry_has_no_minter() {
+        let registry = ProviderAuthRegistry::default();
+        assert!(!registry.is_configured());
+        assert!(registry.minter_for(&github_probe("x")).is_none());
+    }
+
+    /// When a provider minter yields a token it wins over the static
+    /// env/file chain — the whole point of the app-auth tier.
+    #[tokio::test]
+    async fn resolve_token_async_prefers_provider_minter() {
+        let registry = ProviderAuthRegistry {
+            github: Some(Arc::new(FakeMinter(Some("minted-token".to_string())))),
+        };
+        let src = github_probe("provider-wins-src");
+        let got = resolve_token_async(&src, None, Some(&registry), true)
+            .await
+            .unwrap();
+        assert_eq!(got.as_deref(), Some("minted-token"));
+    }
+
+    /// When the minter declines (app not installed → `None`), the resolver
+    /// falls back to the static per-source env var. Uses a unique key, so
+    /// no `ENV_LOCK` and no legacy fallback are involved.
+    #[tokio::test]
+    async fn resolve_token_async_falls_back_when_minter_declines() {
+        let key = "CORPUS_AUTH_PROVIDER_FALLBACK_SRC_TOKEN";
+        unsafe { std::env::set_var(key, "env-fallback-token") };
+        let registry = ProviderAuthRegistry {
+            github: Some(Arc::new(FakeMinter(None))),
+        };
+        let src = github_probe("provider-fallback-src");
+        let got = resolve_token_async(&src, None, Some(&registry), true)
+            .await
+            .unwrap();
+        unsafe { std::env::remove_var(key) };
+        assert_eq!(got.as_deref(), Some("env-fallback-token"));
+    }
+
+    /// A provider *error* (transient GitHub failure, mint error) must not
+    /// hard-fail: the resolver logs and still falls through to the static
+    /// per-source env var instead of propagating the error.
+    #[tokio::test]
+    async fn resolve_token_async_falls_back_when_minter_errors() {
+        let key = "CORPUS_AUTH_PROVIDER_ERR_SRC_TOKEN";
+        unsafe { std::env::set_var(key, "env-after-error") };
+        let registry = ProviderAuthRegistry {
+            github: Some(Arc::new(FailingMinter)),
+        };
+        let src = github_probe("provider-err-src");
+        let got = resolve_token_async(&src, None, Some(&registry), true)
+            .await
+            .unwrap();
+        unsafe { std::env::remove_var(key) };
+        assert_eq!(got.as_deref(), Some("env-after-error"));
     }
 }

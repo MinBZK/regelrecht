@@ -557,7 +557,22 @@ async fn init_corpus(favorites: &HashSet<String>) -> CorpusState {
         None
     };
 
-    let source_map = match registry.load_favorites_async(favorites, auth_file).await {
+    // Per-provider credential minters (GitHub App, …). When configured,
+    // these mint short-lived repo-scoped tokens on demand so a private repo
+    // can be coupled to a traject without a per-repo `CORPUS_AUTH_*` env
+    // var; the static auth_file/env chain remains the fallback.
+    let providers = regelrecht_corpus::auth::ProviderAuthRegistry::from_env().unwrap_or_else(|e| {
+        tracing::error!(error = %e, "GitHub App auth is half-configured; continuing without it");
+        regelrecht_corpus::auth::ProviderAuthRegistry::default()
+    });
+    if providers.is_configured() {
+        tracing::info!("provider app-auth configured (GitHub App); tokens minted on demand");
+    }
+
+    let source_map = match registry
+        .load_favorites_async(favorites, auth_file, Some(&providers))
+        .await
+    {
         Ok(map) => {
             tracing::info!(laws = map.len(), "loaded corpus laws");
             map
@@ -577,13 +592,14 @@ async fn init_corpus(favorites: &HashSet<String>) -> CorpusState {
         }
     };
 
-    let backends = init_backends(&registry, auth_file).await;
+    let backends = init_backends(&registry, auth_file, &providers).await;
 
     CorpusState {
         registry,
         source_map,
         backends,
         auth_file: auth_file.map(|p| p.to_path_buf()),
+        providers,
     }
 }
 
@@ -596,15 +612,18 @@ async fn init_corpus(favorites: &HashSet<String>) -> CorpusState {
 async fn init_backends(
     registry: &regelrecht_corpus::CorpusRegistry,
     auth_file: Option<&std::path::Path>,
+    providers: &regelrecht_corpus::auth::ProviderAuthRegistry,
 ) -> HashMap<String, crate::state::BackendEntry> {
     let mut backends = HashMap::new();
 
     for source in registry.sources() {
-        let token = regelrecht_corpus::auth::resolve_token_for_source(
-            &source.id,
-            source.auth_ref.as_deref(),
+        let token = regelrecht_corpus::auth::resolve_token_async(
+            source,
             auth_file,
+            Some(providers),
+            false,
         )
+        .await
         .unwrap_or_else(|e| {
             tracing::warn!(source_id = %source.id, error = %e, "failed to resolve auth token");
             None

@@ -10,6 +10,8 @@ pub mod error;
 pub mod github;
 #[cfg(feature = "github")]
 pub mod github_api_backend;
+#[cfg(feature = "github")]
+pub mod github_app;
 pub mod models;
 #[cfg(feature = "github")]
 pub mod pr_client;
@@ -29,6 +31,8 @@ pub use error::CorpusError;
 pub use github::{FetchResult, GitHubFetcher};
 #[cfg(feature = "github")]
 pub use github_api_backend::GitHubApiBackend;
+#[cfg(feature = "github")]
+pub use github_app::GitHubAppAuth;
 pub use models::{RegistryManifest, Source, SourceType};
 #[cfg(feature = "github")]
 pub use pr_client::PullRequestClient;
