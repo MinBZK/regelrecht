@@ -457,6 +457,10 @@ async fn main() {
             .merge(traject_reader_routes)
             .merge(traject_writer_routes)
             .merge(github_oauth_routes)
+            // Relay is public (no session/account): GitHub redirects the
+            // browser here on the fixed callback host and we 302 it on to the
+            // originating deployment. Must sit OUTSIDE the auth layer.
+            .merge(github_oauth::github_relay_route())
             .with_state(app_state)
             // Inside the session layer (session loaded) and outside the route
             // role gates (fresh roles / a dropped auth marker are seen by the
