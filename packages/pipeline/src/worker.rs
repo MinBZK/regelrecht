@@ -763,6 +763,11 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
         // Claude subscription token from running the whole corpus in one day.
         // Fail-closed: a limit of 0 (the default when ENRICH_DAILY_LIMIT is
         // unset) pauses the worker without even querying.
+        //
+        // The cap keys on the worker's configured provider (LLM_PROVIDER), not
+        // the per-job payload provider. That is exact for a provider-dedicated
+        // worker (the intended deployment); a worker serving multiple providers
+        // would under-count the non-default provider's runs.
         let limit = config.enrich_daily_limit;
         let provider = enrich_config.provider.name();
         let over_limit = if limit == 0 {

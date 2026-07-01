@@ -208,9 +208,13 @@ impl LlmRunner for ProcessLlmRunner {
         };
 
         if !status.success() {
-            // Let the stderr drain finish so the tail is complete before we read it.
+            // Give the stderr drain a moment to finish so the tail is complete,
+            // but bound the wait: the child has exited, yet a leaked grandchild
+            // that inherited fd 2 could keep the pipe open and never EOF. Without
+            // a bound this await (outside the timeout/memory select!) would wedge
+            // the worker loop. Best-effort, like the tail in the other paths.
             if let Some(task) = stderr_task {
-                let _ = task.await;
+                let _ = tokio::time::timeout(Duration::from_secs(2), task).await;
             }
             return Err(PipelineError::Enrich(format!(
                 "{} exited with {}{}",
@@ -725,11 +729,15 @@ fn build_command(
                     .map(|d| d.as_secs() / 100)
                     .unwrap_or(0);
                 if let Some((idx, count, token)) = select_claude_token(&raw, bucket) {
+                    // Always apply the selected (trimmed) token — even for a
+                    // single token — so stray whitespace or a trailing comma
+                    // never reaches claude verbatim. Never log the token value;
+                    // only the 1-based position and count.
+                    cmd.env("CLAUDE_CODE_OAUTH_TOKEN", token);
                     if count > 1 {
-                        cmd.env("CLAUDE_CODE_OAUTH_TOKEN", token);
                         tracing::info!(
-                            token_count = count,
-                            selected_index = idx,
+                            using_token = idx + 1,
+                            of_tokens = count,
                             "selected claude oauth token (rotating by ~100s)"
                         );
                     }
