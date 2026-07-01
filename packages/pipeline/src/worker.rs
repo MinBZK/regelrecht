@@ -742,6 +742,11 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
 
     let mut current_interval = std::time::Duration::ZERO;
     let mut consecutive_resource_failures: u32 = 0;
+    // Log the "paused on daily limit" state at info only on the first hit, then
+    // debug while it persists — otherwise a paused worker (e.g. ENRICH_DAILY_LIMIT
+    // unset) emits an info line every poll interval indefinitely. Reset once a job
+    // actually runs so a later pause is surfaced again.
+    let mut daily_limit_pause_logged = false;
 
     loop {
         tokio::select! {
@@ -786,14 +791,21 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
         };
         if over_limit {
             current_interval = config.max_poll_interval;
-            tracing::info!(
-                provider,
-                limit,
-                next_poll = ?current_interval,
-                "daily enrich limit reached (or ENRICH_DAILY_LIMIT unset/0), pausing until the UTC day rolls over"
-            );
+            if !daily_limit_pause_logged {
+                tracing::info!(
+                    provider,
+                    limit,
+                    next_poll = ?current_interval,
+                    "daily enrich limit reached (or ENRICH_DAILY_LIMIT unset/0), pausing until the UTC day rolls over"
+                );
+                daily_limit_pause_logged = true;
+            } else {
+                tracing::debug!(provider, limit, "still paused on daily enrich limit");
+            }
             continue;
         }
+        // Not paused this cycle — re-arm the info-level pause log for the next pause.
+        daily_limit_pause_logged = false;
 
         match process_next_enrich_job(
             &pool,

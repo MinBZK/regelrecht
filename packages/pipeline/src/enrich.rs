@@ -186,6 +186,12 @@ impl LlmRunner for ProcessLlmRunner {
             }
             _ = tokio::time::sleep(config.timeout) => {
                 terminate(&mut child, pid).await;
+                // Abort the drain task rather than leaving it detached: if a
+                // grandchild inherited fd 2 and survived terminate(), the task
+                // would otherwise leak. The tail read below is already populated.
+                if let Some(t) = &stderr_task {
+                    t.abort();
+                }
                 return Err(PipelineError::Enrich(format!(
                     "{} timed out after {:?}{}",
                     provider_name, config.timeout, stderr_suffix()
@@ -200,6 +206,9 @@ impl LlmRunner for ProcessLlmRunner {
                     "LLM subprocess exceeded memory limit, killing to protect the container"
                 );
                 terminate(&mut child, pid).await;
+                if let Some(t) = &stderr_task {
+                    t.abort();
+                }
                 return Err(PipelineError::Enrich(format!(
                     "{provider_name} exceeded memory limit of {} MB (RSS {observed_mb} MB), killed{}",
                     config.max_rss_mb, stderr_suffix()
@@ -690,11 +699,13 @@ fn build_command(
         provider = provider.name(),
         model = ?model,
         prompt_chars = prompt.len(),
-        forwarded_env = ?forwarded_env,
         claude_oauth_token_kind = ?oauth_token_kind,
         anthropic_api_key_present_in_worker_env = std::env::var_os("ANTHROPIC_API_KEY").is_some(),
         "spawning LLM subprocess"
     );
+    // The forwarded env var NAMES are static between spawns — keep them at debug
+    // so they don't add a long line to every job's info logs.
+    tracing::debug!(provider = provider.name(), forwarded_env = ?forwarded_env, "forwarded env to LLM subprocess");
 
     let mut cmd = match provider {
         LlmProvider::OpenCode { path, model } => {
