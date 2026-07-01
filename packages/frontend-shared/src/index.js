@@ -4,6 +4,7 @@
 // conform to it.
 export { apiFetch, apiFetchJson, apiFetchText, ApiError } from './apiFetch.js';
 export { useAuth, ensureAuthReady } from './useAuth.js';
+export { useGithubAuth, ensureGithubReady } from './useGithubAuth.js';
 // `applyColorScheme`, `createLocalStoragePersistence` and `VALID_THEMES` stay
 // internal to useColorScheme — they're implementation details, not part of the
 // package's public surface (no consumer imports them).
