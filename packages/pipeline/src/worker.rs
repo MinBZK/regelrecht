@@ -741,6 +741,36 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
             }
         }
 
+        // Enforce the per-provider daily run cap before claiming a job. Counted
+        // from the durable `jobs` table (not an in-memory counter) so the cap
+        // holds across worker restarts/redeploys. Primarily protects a personal
+        // Claude subscription token from running the whole corpus in one day.
+        // Fail-closed: a limit of 0 (the default when ENRICH_DAILY_LIMIT is
+        // unset) pauses the worker without even querying.
+        let limit = config.enrich_daily_limit;
+        let provider = enrich_config.provider.name();
+        let over_limit = if limit == 0 {
+            true
+        } else {
+            match job_queue::count_enrich_jobs_started_today(&pool, provider).await {
+                Ok(ran_today) => ran_today >= i64::from(limit),
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to check daily enrich limit, proceeding");
+                    false
+                }
+            }
+        };
+        if over_limit {
+            current_interval = config.max_poll_interval;
+            tracing::info!(
+                provider,
+                limit,
+                next_poll = ?current_interval,
+                "daily enrich limit reached (or ENRICH_DAILY_LIMIT unset/0), pausing until the UTC day rolls over"
+            );
+            continue;
+        }
+
         match process_next_enrich_job(
             &pool,
             &repo_path,

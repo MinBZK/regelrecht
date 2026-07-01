@@ -120,6 +120,48 @@ where
     Ok(job)
 }
 
+/// Count enrichment jobs for `provider` that have started running today (UTC
+/// calendar day).
+///
+/// Used to enforce a per-provider daily run cap (see `ENRICH_DAILY_LIMIT`),
+/// which protects a personal Claude subscription token from running the whole
+/// corpus in one go. Reads the durable `jobs` table so the cap holds across
+/// worker restarts/redeploys (an in-memory counter would reset on every pod
+/// restart).
+///
+/// Counts every job that actually ran today, in ANY status — started,
+/// processing, completed, failed, and failed-and-awaiting-retry all count
+/// (`fail_job` keeps `started_at`, and a re-claim refreshes it). Only never-run
+/// `pending` jobs (`started_at IS NULL`, which spent no tokens) are excluded.
+/// A job counts once per day regardless of how many retries it took.
+///
+/// Relies on every enqueue path setting `payload.provider` (the admin and
+/// auto-enrich both do, one job per provider); a provider-less payload would run
+/// under the worker's default provider but not be counted here.
+///
+/// Not transactional with the caller's claim: with N concurrent workers the cap
+/// may be exceeded by up to N near the boundary. That's acceptable for a spend
+/// guard.
+pub async fn count_enrich_jobs_started_today<'e, E>(executor: E, provider: &str) -> Result<i64>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let count = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT COUNT(*)
+        FROM jobs
+        WHERE job_type = 'enrich'
+          AND payload->>'provider' = $1
+          AND started_at >= date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
+        "#,
+    )
+    .bind(provider)
+    .fetch_one(executor)
+    .await?;
+
+    Ok(count)
+}
+
 /// Claim the highest-priority pending job using FOR UPDATE SKIP LOCKED.
 /// Jobs scheduled in the future (`scheduled_at > now()`, set by the retry
 /// backoff) are skipped until they become due.

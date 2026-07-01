@@ -341,9 +341,13 @@ pub struct EnrichmentMetadata {
 ///
 /// Both providers manage their own authentication:
 /// - **OpenCode/VLAM**: reads `~/.local/share/opencode/auth.json` (set via `opencode auth`)
-/// - **Claude**: reads `~/.claude/.credentials` or `ANTHROPIC_API_KEY` env var
+/// - **Claude**: reads `CLAUDE_CODE_OAUTH_TOKEN` (a personal Claude subscription token from
+///   `claude setup-token`) or `ANTHROPIC_API_KEY` (a Console API key). Note that
+///   `ANTHROPIC_API_KEY` takes precedence, so it must be *unset* for the OAuth token to be
+///   used. Both are read directly from the environment; no credentials file is written.
 ///
-/// In Docker, mount the appropriate auth files or set env vars.
+/// In Docker, set the appropriate env vars (both auth vars are forwarded to the subprocess
+/// via `LLM_ENV_ALLOWLIST`).
 #[derive(Debug, Clone)]
 pub enum LlmProvider {
     OpenCode {
@@ -548,6 +552,7 @@ const LLM_ENV_ALLOWLIST: &[&str] = &[
     "XDG_",
     // Provider-specific auth
     "ANTHROPIC_API_KEY",
+    "CLAUDE_CODE_OAUTH_TOKEN",
     "VLAM_API_KEY",
     "OPENCODE_",
 ];
