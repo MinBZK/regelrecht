@@ -52,6 +52,11 @@ pub async fn ensure_schema(pool: &PgPool) -> Result<()> {
 
 async fn run_migrations_inner(pool: &PgPool) -> Result<()> {
     tracing::info!("running database migrations...");
+    // `migrate!` embeds ./migrations at compile time and keys each file by its
+    // numeric filename prefix. Two files sharing a prefix (e.g. a rebase that
+    // lands two `0022_*.sql`) both map to the same sqlx version and fail at
+    // run time with a duplicate `_sqlx_migrations_pkey` — so every new
+    // migration MUST take the next free number.
     sqlx::migrate!("./migrations").run(pool).await?;
     tracing::info!("migrations completed");
     Ok(())
