@@ -626,6 +626,27 @@ fn env_allowed(key: &str) -> bool {
         .any(|prefix| key == *prefix || key.starts_with(prefix))
 }
 
+/// Select one Claude OAuth token from a comma-separated list, rotating by a
+/// time `bucket` so consecutive runs spread across several personal
+/// subscriptions (each token has its own usage/rate limits).
+///
+/// `CLAUDE_CODE_OAUTH_TOKEN` may hold multiple tokens separated by commas. The
+/// chosen index is `bucket % n`; callers pass `unix_secs / 100`, so the active
+/// token rotates roughly every 100 seconds. Returns `(index, count, token)`, or
+/// `None` when there are no non-empty tokens. Pure so it can be unit-tested.
+fn select_claude_token(raw: &str, bucket: u64) -> Option<(usize, usize, &str)> {
+    let tokens: Vec<&str> = raw
+        .split(',')
+        .map(|t| t.trim())
+        .filter(|t| !t.is_empty())
+        .collect();
+    if tokens.is_empty() {
+        return None;
+    }
+    let idx = (bucket % tokens.len() as u64) as usize;
+    Some((idx, tokens.len(), tokens[idx]))
+}
+
 /// Build the command for the configured LLM provider.
 ///
 /// The subprocess gets a stripped environment: only variables on
@@ -695,6 +716,25 @@ fn build_command(
             cmd.env_clear();
             cmd.envs(safe_env);
             cmd.env("NODE_OPTIONS", "--max-old-space-size=512");
+            // If CLAUDE_CODE_OAUTH_TOKEN holds several comma-separated tokens,
+            // override the forwarded value with a single one chosen by a
+            // time-rotating index, so load spreads across the subscriptions.
+            if let Ok(raw) = std::env::var("CLAUDE_CODE_OAUTH_TOKEN") {
+                let bucket = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() / 100)
+                    .unwrap_or(0);
+                if let Some((idx, count, token)) = select_claude_token(&raw, bucket) {
+                    if count > 1 {
+                        cmd.env("CLAUDE_CODE_OAUTH_TOKEN", token);
+                        tracing::info!(
+                            token_count = count,
+                            selected_index = idx,
+                            "selected claude oauth token (rotating by ~100s)"
+                        );
+                    }
+                }
+            }
             cmd.arg("-p")
                 .arg(prompt)
                 .arg("--allowedTools")
@@ -1253,6 +1293,25 @@ mod tests {
         assert!(ENRICH_PROVIDERS.contains(&"opencode"));
         assert!(ENRICH_PROVIDERS.contains(&"claude"));
         assert_eq!(ENRICH_PROVIDERS.len(), 2);
+    }
+
+    #[test]
+    fn test_select_claude_token() {
+        // empty / whitespace-only -> None
+        assert_eq!(select_claude_token("", 0), None);
+        assert_eq!(select_claude_token("  , ,", 5), None);
+
+        // single token -> always that token, index 0
+        assert_eq!(select_claude_token("tokA", 0), Some((0, 1, "tokA")));
+        assert_eq!(select_claude_token(" tokA ", 999), Some((0, 1, "tokA")));
+
+        // multiple tokens -> rotate by bucket % n, whitespace trimmed
+        assert_eq!(select_claude_token("a, b , c", 0), Some((0, 3, "a")));
+        assert_eq!(select_claude_token("a, b , c", 1), Some((1, 3, "b")));
+        assert_eq!(select_claude_token("a, b , c", 2), Some((2, 3, "c")));
+        assert_eq!(select_claude_token("a, b , c", 3), Some((0, 3, "a")));
+        // large bucket (e.g. unix_secs/100) still wraps correctly
+        assert_eq!(select_claude_token("a,b", 17_000_001), Some((1, 2, "b")));
     }
 
     #[test]

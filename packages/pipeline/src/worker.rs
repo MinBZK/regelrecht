@@ -384,6 +384,20 @@ async fn process_next_job(
             // idx_unique_active_enrich_job partial unique index to atomically
             // prevent duplicate enrich jobs — no TOCTOU race possible.
 
+            // Auto-enrich is opt-in. By default, harvesting a law does NOT
+            // enqueue enrich jobs — enrichment is requested explicitly via the
+            // admin API (POST /api/enrich-jobs). This prevents the recursive
+            // "harvest everything → enrich everything" queue from filling up
+            // (and burning LLM budget) for laws nobody asked to enrich. Set
+            // ENRICH_AUTO_ENQUEUE=true to restore the old recursive behavior.
+            let auto_enrich = std::env::var("ENRICH_AUTO_ENQUEUE")
+                .map(|v| {
+                    matches!(
+                        v.trim().to_ascii_lowercase().as_str(),
+                        "1" | "true" | "yes" | "on"
+                    )
+                })
+                .unwrap_or(false);
             // Skip auto-enrich if law is exhausted for enrich
             let enrich_exhausted = match law_status::get_law(pool, &job.law_id).await {
                 Ok(law) => law.status == LawStatusValue::EnrichExhausted,
@@ -392,7 +406,9 @@ async fn process_next_job(
                     false
                 }
             };
-            if enrich_exhausted {
+            if !auto_enrich {
+                tracing::info!(law_id = %job.law_id, "auto-enrich disabled (set ENRICH_AUTO_ENQUEUE=true to enable); not enqueuing enrich jobs");
+            } else if enrich_exhausted {
                 tracing::info!(law_id = %job.law_id, "skipping auto-enrich: law is enrich_exhausted");
             } else {
                 for provider_name in crate::enrich::ENRICH_PROVIDERS {
