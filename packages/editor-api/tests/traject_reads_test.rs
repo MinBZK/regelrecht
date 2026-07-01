@@ -14,7 +14,7 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{Extension, Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::Json;
 use pretty_assertions::assert_eq;
@@ -27,6 +27,7 @@ use uuid::Uuid;
 use regelrecht_auth::handlers::{
     SESSION_KEY_EMAIL, SESSION_KEY_EMAIL_VERIFIED, SESSION_KEY_NAME, SESSION_KEY_SUB,
 };
+use regelrecht_editor_api::accounts::AccountRecord;
 use regelrecht_editor_api::config::AppConfig;
 use regelrecht_editor_api::corpus_handlers::{
     get_corpus_law, get_traject_corpus_law, get_traject_scenario, list_traject_corpus_laws,
@@ -47,6 +48,7 @@ fn empty_state(pool: PgPool) -> AppState {
         config: Arc::new(AppConfig {
             oidc: None,
             base_url: None,
+            github_oauth: None,
         }),
         http_client: reqwest::Client::new(),
         pool: Some(pool),
@@ -178,6 +180,18 @@ async fn read_law(state: AppState, session: Session, tref: &str) -> (String, Str
     (etag, body)
 }
 
+/// A throwaway account for direct handler calls. These tests build
+/// `AppConfig` with `github_oauth: None`, so the write path never reads
+/// `account.id` (user-OAuth is disabled) — any value is fine.
+fn test_account() -> AccountRecord {
+    AccountRecord {
+        id: Uuid::new_v4(),
+        person_sub: "test-sub".to_string(),
+        email: "test@example.gov".to_string(),
+        name: "Test User".to_string(),
+    }
+}
+
 /// Helper: call `save_law` and return the response (status + new ETag).
 async fn save_law_with(
     state: AppState,
@@ -188,6 +202,7 @@ async fn save_law_with(
 ) -> Result<(StatusCode, Option<String>), (StatusCode, String)> {
     let response = save_law(
         State(state),
+        Extension(test_account()),
         session,
         Path((tref.to_string(), LAW_ID.to_string())),
         headers,
@@ -235,6 +250,7 @@ async fn save_scenario_with(
 ) -> Result<(StatusCode, Option<String>), (StatusCode, String)> {
     let response = save_scenario(
         State(state),
+        Extension(test_account()),
         session,
         Path((tref.to_string(), LAW_ID.to_string(), filename.to_string())),
         headers,

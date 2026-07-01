@@ -42,6 +42,7 @@ fn empty_state(pool: PgPool) -> AppState {
         config: Arc::new(AppConfig {
             oidc: None,
             base_url: None,
+            github_oauth: None,
         }),
         http_client: reqwest::Client::new(),
         pool: Some(pool),

@@ -454,7 +454,12 @@ impl RepoBackend for GitHubApiBackend {
                 .unwrap_or_else(|| "noreply@regelrecht.local".to_string()),
         };
 
-        let token = self.token.as_deref();
+        // A per-call `token_override` (the acting editor user's own GitHub
+        // OAuth token) supersedes the backend's baked-in token for this write,
+        // so the commit authenticates *as the user* and GitHub enforces their
+        // push rights. Absent an override we fall back to the configured token
+        // — byte-identical to the pre-spike behaviour.
+        let token = ctx.token_override.as_deref().or(self.token.as_deref());
         let repo = self.full_repo();
         let mut new_shas: HashMap<PathBuf, String> = HashMap::new();
 

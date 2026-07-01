@@ -5,6 +5,7 @@ import TrajectMenu from './components/TrajectMenu.vue';
 import TrajectDocuments from './components/TrajectDocuments.vue';
 import MobileTrajectSheet from './components/MobileTrajectSheet.vue';
 import { useAuth } from './composables/useAuth.js';
+import { useGithubAuth } from './composables/useGithubAuth.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import { useTrajects } from './composables/useTrajects.js';
@@ -22,6 +23,14 @@ import { useAppChrome, openSearch, onBarSearchKeydown } from './composables/useA
 // instance is reused, so the chrome never rebuilds (no refresh flash).
 
 const { authenticated, loading: authLoading, oidcConfigured, person, hasAnyRole, login, logout } = useAuth();
+// GitHub user-OAuth (spike): let a user link their own GitHub account so
+// traject writes go out under their credential. `status` is reactive and may
+// be null until loaded; the template guards on `githubStatus?.configured`.
+const {
+  status: githubStatus,
+  connect: connectGithub,
+  disconnect: disconnectGithub,
+} = useGithubAuth();
 const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
 
 // Roles that may reach the harvester-admin "Corpusinwinning" section. Any harvester-*
@@ -210,6 +219,8 @@ const hasDocumentTabs = computed(
                 ></nldd-menu-item>
                 </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
+                <nldd-menu-item v-if="authenticated && githubStatus?.configured && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
+                <nldd-menu-item v-else-if="authenticated && githubStatus?.configured" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
                 <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
               </nldd-menu>
@@ -277,6 +288,8 @@ const hasDocumentTabs = computed(
                 ></nldd-menu-item>
                 </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
+                <nldd-menu-item v-if="authenticated && githubStatus?.configured && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
+                <nldd-menu-item v-else-if="authenticated && githubStatus?.configured" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
                 <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
               </nldd-menu>
@@ -456,6 +469,8 @@ const hasDocumentTabs = computed(
                 ></nldd-menu-item>
                 </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
+                <nldd-menu-item v-if="authenticated && githubStatus?.configured && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
+                <nldd-menu-item v-else-if="authenticated && githubStatus?.configured" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
                 <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
               </nldd-menu>
