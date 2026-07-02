@@ -2,4 +2,4 @@
 // editor and admin share one implementation. This thin re-export keeps the
 // editor's call sites (AppShell, router guard, apiAuthGuard) importing from
 // './composables/useAuth.js' unchanged.
-export { useAuth, ensureAuthReady } from '@regelrecht/frontend-shared';
+export { useAuth, ensureAuthReady, hasRole, hasAnyRole } from '@regelrecht/frontend-shared';
