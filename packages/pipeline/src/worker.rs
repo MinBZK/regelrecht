@@ -1212,6 +1212,33 @@ async fn process_next_enrich_job(
                 tracing::info!(branch = %branch, "created enrichment branch corpus");
                 Some(enrich_corpus)
             }
+            Err(e @ PipelineError::BaseDrift { .. }) => {
+                // A previously-enriched law's base moved. Do NOT enrich on a
+                // stale base and do NOT overwrite the existing enrichment —
+                // fail the job loudly for human review / re-enrich.
+                tracing::error!(error = %e, law_id = %job.law_id, branch = %branch, "base drift detected; failing enrich job");
+                let error_json =
+                    serde_json::json!({ "error": e.to_string(), "kind": "base_drift" });
+                match job_queue::fail_job(pool, job.id, Some(error_json)).await {
+                    Ok(failed_job) if failed_job.status == crate::models::JobStatus::Failed => {
+                        if let Err(se) = sqlx::query(
+                            "UPDATE law_entries SET status = 'enrich_failed'::law_status, updated_at = now() \
+                             WHERE law_id = $1 AND status NOT IN ('enriched', 'enrich_exhausted')",
+                        )
+                        .bind(&job.law_id)
+                        .execute(pool)
+                        .await
+                        {
+                            tracing::warn!(error = %se, law_id = %job.law_id, "failed to update law status to enrich_failed");
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(fe) => {
+                        tracing::error!(error = %fe, "failed to mark base-drift enrich job as failed")
+                    }
+                }
+                return Ok(JobOutcome::Processed);
+            }
             Err(e) => {
                 tracing::warn!(error = %e, branch = %branch, "failed to create enrichment branch corpus, proceeding without");
                 None
@@ -1274,9 +1301,14 @@ async fn process_next_enrich_job(
         );
     }
 
+    let source_hash = enrich_corpus
+        .as_ref()
+        .map(|c| c.source_hash.clone())
+        .unwrap_or_default();
+
     let enrich_outcome = tokio::time::timeout(
         job_timeout,
-        execute_enrich(&payload, &effective_repo, &bounded_config),
+        execute_enrich(&payload, &effective_repo, &bounded_config, &source_hash),
     )
     .await;
 

@@ -1169,8 +1169,9 @@ pub async fn execute_enrich(
     payload: &EnrichPayload,
     repo_path: &Path,
     config: &EnrichConfig,
+    source_hash: &str,
 ) -> Result<(EnrichResult, Vec<PathBuf>)> {
-    execute_enrich_with_runner(payload, repo_path, config, &ProcessLlmRunner).await
+    execute_enrich_with_runner(payload, repo_path, config, source_hash, &ProcessLlmRunner).await
 }
 
 /// Execute the enrichment: call the LLM runner to generate machine_readable sections.
@@ -1181,6 +1182,7 @@ pub async fn execute_enrich_with_runner(
     payload: &EnrichPayload,
     repo_path: &Path,
     config: &EnrichConfig,
+    source_hash: &str,
     runner: &dyn LlmRunner,
 ) -> Result<(EnrichResult, Vec<PathBuf>)> {
     let normalized_path = normalize_yaml_path(&payload.yaml_path)?;
@@ -1256,7 +1258,7 @@ pub async fn execute_enrich_with_runner(
         coverage_score,
         articles_total: articles_before,
         articles_with_machine_readable,
-        source_hash: String::new(),
+        source_hash: source_hash.to_string(),
     };
 
     let metadata_path = yaml_abs
@@ -2063,7 +2065,7 @@ articles:
         });
 
         let (result, written_files) =
-            execute_enrich_with_runner(&payload, dir.path(), &config, &FakeLlmRunner)
+            execute_enrich_with_runner(&payload, dir.path(), &config, "", &FakeLlmRunner)
                 .await
                 .unwrap();
 
@@ -2127,7 +2129,7 @@ articles:
             model: None,
         });
 
-        let err = execute_enrich_with_runner(&payload, dir.path(), &config, &FailingLlmRunner)
+        let err = execute_enrich_with_runner(&payload, dir.path(), &config, "", &FailingLlmRunner)
             .await
             .unwrap_err();
 
@@ -2175,7 +2177,7 @@ articles:
             model: None,
         });
 
-        let err = execute_enrich_with_runner(&payload, dir.path(), &config, &NoopLlmRunner)
+        let err = execute_enrich_with_runner(&payload, dir.path(), &config, "", &NoopLlmRunner)
             .await
             .unwrap_err();
 
