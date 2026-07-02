@@ -1224,7 +1224,7 @@ async fn process_next_enrich_job(
     // Use the enrichment branch repo if available, otherwise the base repo
     let effective_repo = enrich_corpus
         .as_ref()
-        .map(|c| c.repo_path().to_path_buf())
+        .map(|c| c.client.repo_path().to_path_buf())
         .unwrap_or_else(|| repo_path.to_path_buf());
 
     // Ensure skill files are available in the repo checkout so the LLM can
@@ -1235,7 +1235,9 @@ async fn process_next_enrich_job(
     }
 
     // Capture the per-job checkout path for cleanup after the job completes.
-    let checkout_path = enrich_corpus.as_ref().map(|c| c.repo_path().to_path_buf());
+    let checkout_path = enrich_corpus
+        .as_ref()
+        .map(|c| c.client.repo_path().to_path_buf());
 
     // Compute the progress file path and spawn a background polling task.
     // The LLM writes phase info to this file; we relay it to the DB every 10s.
@@ -1346,6 +1348,7 @@ async fn process_next_enrich_job(
                         result.provider, result.law_id, result.yaml_path
                     );
                     corpus
+                        .client
                         .commit_and_push(&written_files, &message)
                         .await
                         .map_err(|e| PipelineError::Enrich(format!("corpus push failed: {e}")))?;

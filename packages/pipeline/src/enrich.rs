@@ -48,8 +48,6 @@ fn pick_enrich_base(preferred: &str, preferred_exists: bool) -> &str {
 
 /// Outcome of comparing a target law's base version against the enrichment's
 /// recorded provenance. Pure decision so it can be unit-tested without git.
-// used by create_enrich_corpus in a later task
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BaseAction {
     /// Law not yet on the enrich branch — check it out fresh from the base.
@@ -63,8 +61,6 @@ pub(crate) enum BaseAction {
 /// Decide what to do for a target law given whether it is already tracked on
 /// the enrich branch, the `source_hash` recorded in its `.enrichment.yaml`
 /// (if any), and the current base-branch blob SHA of the law.
-// used by create_enrich_corpus in a later task
-#[allow(dead_code)]
 pub(crate) fn decide_base_action(
     tracked: bool,
     stored_source_hash: Option<&str>,
@@ -937,12 +933,34 @@ fn build_command(
 /// plus the `features/` directory. This prevents the LLM subprocess from
 /// indexing the entire corpus (thousands of files), which would exceed context
 /// limits and cause excessive memory usage.
+/// Result of preparing the per-job enrichment checkout: the client plus the
+/// base-branch blob SHA of the target law (recorded into `.enrichment.yaml`
+/// as `source_hash`).
+pub struct EnrichCorpus {
+    pub client: CorpusClient,
+    pub source_hash: String,
+}
+
+/// Read the `source_hash` recorded in the target law's `.enrichment.yaml`, if
+/// present and non-empty. Returns `None` when the file is absent/unparseable
+/// or the field is empty (both treated as "unknown provenance").
+async fn read_stored_source_hash(repo_path: &Path, normalized_law_path: &str) -> Option<String> {
+    let meta_rel = Path::new(normalized_law_path)
+        .parent()?
+        .join(".enrichment.yaml");
+    let content = tokio::fs::read_to_string(repo_path.join(meta_rel))
+        .await
+        .ok()?;
+    let meta: EnrichmentMetadata = serde_yaml_ng::from_str(&content).ok()?;
+    (!meta.source_hash.is_empty()).then_some(meta.source_hash)
+}
+
 pub async fn create_enrich_corpus(
     base_config: &CorpusConfig,
     branch: &str,
     job_id: Uuid,
     yaml_path: &str,
-) -> Result<CorpusClient> {
+) -> Result<EnrichCorpus> {
     let mut config = base_config.clone();
     config.branch = branch.into();
 
@@ -1004,11 +1022,36 @@ pub async fn create_enrich_corpus(
         );
     }
 
-    client
-        .checkout_from_branch(base_branch, &[&normalized])
-        .await?;
+    // Freshness guard: compare the target law's base version against the
+    // provenance recorded in a prior enrichment. New law -> check out fresh;
+    // unchanged base -> keep existing enrichment; changed/unknown base ->
+    // fail loudly (do NOT auto-overwrite a possibly-validated enrichment).
+    let base_sha = client.fetch_base_blob_sha(base_branch, &normalized).await?;
+    let tracked = client.is_tracked(&normalized).await?;
+    let stored = read_stored_source_hash(client.repo_path(), &normalized).await;
 
-    Ok(client)
+    match decide_base_action(tracked, stored.as_deref(), &base_sha) {
+        BaseAction::CheckoutFresh => {
+            client.checkout_path_from_fetch_head(&normalized).await?;
+            tracing::info!(base = %base_branch, path = %normalized, "checked out law fresh from base");
+        }
+        BaseAction::Skip => {
+            tracing::debug!(path = %normalized, "base unchanged, keeping existing enrichment");
+        }
+        BaseAction::Drift => {
+            return Err(PipelineError::BaseDrift {
+                yaml_path: normalized.clone(),
+                base: base_branch.to_string(),
+                expected: stored.unwrap_or_default(),
+                actual: base_sha,
+            });
+        }
+    }
+
+    Ok(EnrichCorpus {
+        client,
+        source_hash: base_sha,
+    })
 }
 
 /// Ensure `.claude/skills/` exist in the target repo directory.
