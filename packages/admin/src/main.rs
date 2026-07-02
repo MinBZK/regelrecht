@@ -20,6 +20,7 @@ mod config;
 mod corpus_handlers;
 mod error;
 mod handlers;
+mod harvest_deps;
 mod metrics;
 mod middleware;
 mod models;
@@ -169,6 +170,10 @@ async fn main() {
     // Writer routes — `harvester-writer` can enqueue work.
     let writer_routes = Router::new()
         .route("/api/harvest-jobs", post(handlers::create_harvest_job))
+        .route(
+            "/api/harvest-dependencies",
+            post(harvest_deps::harvest_dependencies),
+        )
         .route("/api/enrich-jobs", post(handlers::create_enrich_jobs))
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),

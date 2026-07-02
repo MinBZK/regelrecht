@@ -155,7 +155,7 @@ async fn resolve_identifiers(
 }
 
 /// Find a law's BWB ID by its slug in the law_entries table.
-async fn find_bwb_id_by_slug(
+pub async fn find_bwb_id_by_slug(
     pool: &sqlx::PgPool,
     slug: &str,
 ) -> Result<Option<String>, sqlx::Error> {
