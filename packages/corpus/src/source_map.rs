@@ -637,6 +637,10 @@ struct LawDoc {
     /// derivation doesn't re-scan the raw string.
     #[serde(default)]
     name: Option<String>,
+    /// Top-level `legal_basis:` — the higher laws this regulation is grounded
+    /// in. Each entry carries the referenced law's `$id` in `law_id`.
+    #[serde(default)]
+    legal_basis: Vec<LawLegalBasis>,
     #[serde(default)]
     articles: Vec<LawArticle>,
 }
@@ -645,8 +649,20 @@ struct LawDoc {
 struct LawArticle {
     #[serde(default)]
     number: Option<String>,
+    /// Per-article `legal_basis:` — same shape as the top-level field, for laws
+    /// that anchor individual articles to their basis.
+    #[serde(default)]
+    legal_basis: Vec<LawLegalBasis>,
     #[serde(default)]
     machine_readable: Option<LawMr>,
+}
+
+/// One `legal_basis` entry — the `$id` of the higher law this regulation (or
+/// article) is grounded in.
+#[derive(Deserialize, Default)]
+struct LawLegalBasis {
+    #[serde(default)]
+    law_id: String,
 }
 
 #[derive(Deserialize, Default)]
@@ -867,6 +883,107 @@ fn collect_implements_from_doc(doc: &LawDoc) -> Vec<String> {
         }
     }
     out
+}
+
+/// Extract the top-level `bwb_id` (BWB identifier, e.g. `BWBR0018451`) of a law
+/// from its YAML, tolerating draft/mid-enrichment files. Reads the shared
+/// tolerant header parse, which matches keys at column 0 only (a nested `bwb_id`,
+/// e.g. inside a `references` citation, is deliberately not returned).
+pub fn extract_bwb_id(yaml: &str) -> Option<String> {
+    regelrecht_law_model::parse_law_header(yaml).bwb_id
+}
+
+/// Collect the deduped `$id`s of every other law this law references through
+/// its machine-readable model. This is the union of three reference kinds:
+///
+/// - `source.regulation` on any input or nested operation (a cross-law value
+///   binding — "get this value from that law");
+/// - `machine_readable.implements[].law` (the IoC link a lower regulation
+///   declares to the higher law whose `open_term` it fills);
+/// - top-level and per-article `legal_basis[].law_id` (the higher law this
+///   regulation is grounded in).
+///
+/// Self-references and empty ids are excluded. Order is stable (first
+/// occurrence wins). Used to walk a law's model-dependency closure so
+/// referenced regulations reached only via delegation — never via an
+/// `<extref>` hyperlink in the source text — can still be harvested.
+pub fn collect_law_references(yaml: &str) -> Vec<String> {
+    let self_id = extract_law_id(yaml);
+    let doc: LawDoc = serde_yaml_ng::from_str(yaml).unwrap_or_else(|e| {
+        // An incomplete closure is the exact "Law not found" failure mode this
+        // feature exists to prevent, so surface (at debug) when a law's
+        // implements/legal_basis refs are dropped due to a tolerant-parse miss.
+        tracing::debug!(error = %e, "collect_law_references: LawDoc parse failed; implements/legal_basis refs skipped");
+        LawDoc::default()
+    });
+    // The `source.regulation` bindings can nest arbitrarily deep inside
+    // operation trees, so scan the raw value recursively for them rather than
+    // trying to model every operation shape in the tolerant structs above.
+    let value: serde_yaml_ng::Value =
+        serde_yaml_ng::from_str(yaml).unwrap_or(serde_yaml_ng::Value::Null);
+
+    let mut raw: Vec<String> = Vec::new();
+
+    // implements[].law
+    for article in &doc.articles {
+        if let Some(mr) = &article.machine_readable {
+            for decl in &mr.implements {
+                raw.push(decl.law.clone());
+            }
+        }
+    }
+
+    // legal_basis[].law_id (top-level + per-article)
+    for lb in &doc.legal_basis {
+        raw.push(lb.law_id.clone());
+    }
+    for article in &doc.articles {
+        for lb in &article.legal_basis {
+            raw.push(lb.law_id.clone());
+        }
+    }
+
+    // source.regulation anywhere in the document
+    collect_source_regulations(&value, &mut raw);
+
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for id in raw {
+        let id = id.trim();
+        if id.is_empty() || self_id.as_deref() == Some(id) {
+            continue;
+        }
+        if seen.insert(id.to_string()) {
+            out.push(id.to_string());
+        }
+    }
+    out
+}
+
+/// Recursively collect the string value of every `source.regulation` in a YAML
+/// value tree, appending each to `out` (raw, un-deduped).
+fn collect_source_regulations(value: &serde_yaml_ng::Value, out: &mut Vec<String>) {
+    use serde_yaml_ng::Value;
+    match value {
+        Value::Mapping(map) => {
+            for (key, child) in map {
+                if key.as_str() == Some("source") {
+                    if let Value::Mapping(source) = child {
+                        if let Some(Value::String(reg)) = source.get("regulation") {
+                            out.push(reg.clone());
+                        }
+                    }
+                }
+                collect_source_regulations(child, out);
+            }
+        }
+        Value::Sequence(seq) => {
+            for child in seq {
+                collect_source_regulations(child, out);
+            }
+        }
+        _ => {}
+    }
 }
 
 #[cfg(test)]
@@ -1566,5 +1683,101 @@ articles:
         assert!(collect_law_implements(yaml).is_empty());
         // Malformed YAML is tolerated as "no implements".
         assert!(collect_law_implements("not: [valid").is_empty());
+    }
+
+    #[test]
+    fn test_extract_bwb_id() {
+        assert_eq!(
+            extract_bwb_id("$id: x\nbwb_id: BWBR0018451\n").as_deref(),
+            Some("BWBR0018451")
+        );
+        assert_eq!(extract_bwb_id("$id: x\nfoo: bar\n"), None);
+    }
+
+    #[test]
+    fn test_collect_law_references_all_kinds() {
+        // Mirrors the zorgtoeslag/standaardpremie shape: source.regulation on
+        // inputs, implements[].law, and top-level + per-article legal_basis.
+        let yaml = "\
+$id: wet_op_de_zorgtoeslag
+legal_basis:
+  - law_id: grondwet
+articles:
+  - number: '1'
+    legal_basis:
+      - law_id: kaderwet
+    machine_readable:
+      implements:
+        - law: hogere_wet
+          open_term: iets
+      execution:
+        input:
+          - name: is_verzekerde
+            source:
+              regulation: zorgverzekeringswet
+              output: is_verzekerd
+          - name: toetsingsinkomen
+            source:
+              regulation: algemene_wet_inkomensafhankelijke_regelingen
+              output: toetsingsinkomen
+          # Self-reference and local-output source are excluded.
+          - name: standaardpremie
+            source:
+              output: standaardpremie
+          - name: partner_inkomen
+            source:
+              regulation: wet_op_de_zorgtoeslag
+              output: x
+";
+        let refs = collect_law_references(yaml);
+        // Dedup, first-seen order, self excluded, local-output source ignored.
+        assert_eq!(
+            refs,
+            vec![
+                "hogere_wet".to_string(),
+                "grondwet".to_string(),
+                "kaderwet".to_string(),
+                "zorgverzekeringswet".to_string(),
+                "algemene_wet_inkomensafhankelijke_regelingen".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_collect_law_references_zorgtoeslag_style_legal_basis() {
+        // The regeling_standaardpremie shape: implements + top-level
+        // legal_basis with repeated law_ids (deduped).
+        let yaml = "\
+$id: regeling_standaardpremie
+bwb_id: BWBR0050536
+legal_basis:
+  - law_id: wet_op_de_zorgtoeslag
+    article: '4'
+  - law_id: zorgverzekeringswet
+    article: 18d
+  - law_id: zorgverzekeringswet
+    article: 18e
+articles:
+  - number: '1'
+    machine_readable:
+      implements:
+        - law: wet_op_de_zorgtoeslag
+          article: '4'
+          open_term: standaardpremie
+";
+        assert_eq!(
+            collect_law_references(yaml),
+            vec![
+                "wet_op_de_zorgtoeslag".to_string(),
+                "zorgverzekeringswet".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_collect_law_references_empty_and_malformed() {
+        assert!(collect_law_references("$id: x\narticles: []\n").is_empty());
+        // Malformed YAML is tolerated as "no references".
+        assert!(collect_law_references("not: [valid").is_empty());
     }
 }

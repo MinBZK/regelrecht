@@ -2,6 +2,7 @@ pub mod config;
 pub mod corpus_handlers;
 pub mod error;
 pub mod handlers;
+pub mod harvest_deps;
 pub mod metrics;
 pub mod middleware;
 pub mod models;
