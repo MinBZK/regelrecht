@@ -97,12 +97,6 @@ pub struct WorkerConfig {
     /// Off by default; enrichment is otherwise requested explicitly via the admin
     /// API. Configurable via `ENRICH_AUTO_ENQUEUE`.
     pub auto_enrich_enqueue: bool,
-    /// When true, a completed enrichment enqueues follow-up harvests for the
-    /// related legislation the agent declared in `.enrichment-result.yaml`
-    /// (delegated regelingen, cross-law sources, legal bases the extref-only
-    /// harvester misses). Off by default. Configurable via
-    /// `HARVEST_RELATED_LEGISLATION`.
-    pub auto_harvest_related: bool,
     /// Maximum recursion depth for related-legislation follow-up harvests.
     /// A depth-0 enrichment may enqueue harvests at depth 1, whose enrichments
     /// may enqueue at depth 2, etc., up to this cap. Default: 2. Configurable
@@ -129,7 +123,6 @@ impl std::fmt::Debug for WorkerConfig {
             )
             .field("enrich_daily_limit", &self.enrich_daily_limit)
             .field("auto_enrich_enqueue", &self.auto_enrich_enqueue)
-            .field("auto_harvest_related", &self.auto_harvest_related)
             .field("related_harvest_max_depth", &self.related_harvest_max_depth)
             .finish()
     }
@@ -206,17 +199,6 @@ impl WorkerConfig {
             })
             .unwrap_or(false);
 
-        // Auto-harvest of related legislation after enrichment is opt-in;
-        // unset/unrecognized reads as false.
-        let auto_harvest_related = std::env::var("HARVEST_RELATED_LEGISLATION")
-            .map(|v| {
-                matches!(
-                    v.trim().to_ascii_lowercase().as_str(),
-                    "1" | "true" | "yes" | "on"
-                )
-            })
-            .unwrap_or(false);
-
         let related_harvest_max_depth: u32 = std::env::var("RELATED_HARVEST_MAX_DEPTH")
             .ok()
             .and_then(|v| v.parse().ok())
@@ -236,7 +218,6 @@ impl WorkerConfig {
             max_consecutive_resource_failures,
             enrich_daily_limit,
             auto_enrich_enqueue,
-            auto_harvest_related,
             related_harvest_max_depth,
         })
     }

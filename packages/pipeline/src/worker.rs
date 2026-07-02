@@ -817,7 +817,6 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
             config.job_timeout,
             config.exhausted_threshold,
             &http_client,
-            config.auto_harvest_related,
             config.related_harvest_max_depth,
         )
         .await
@@ -1064,7 +1063,6 @@ async fn process_next_enrich_job(
     job_timeout: Duration,
     exhausted_threshold: i32,
     http_client: &Client,
-    auto_harvest_related: bool,
     related_harvest_max_depth: u32,
 ) -> Result<JobOutcome> {
     let job = match job_queue::claim_job(pool, Some(JobType::Enrich)).await? {
@@ -1368,27 +1366,27 @@ async fn process_next_enrich_job(
                     // Enqueue follow-up harvests for the related legislation the
                     // enrichment agent declared (delegated regelingen, cross-law
                     // sources, legal bases the extref-only harvester misses).
-                    // Opt-in and depth-capped so the recursion is bounded.
-                    if auto_harvest_related {
-                        let enrich_depth = payload.depth.unwrap_or(0);
-                        if enrich_depth < related_harvest_max_depth {
-                            harvest_related_legislation(
-                                pool,
-                                http_client,
-                                &job.law_id,
-                                &result.related_legislation,
-                                enrich_depth,
-                            )
-                            .await;
-                        } else if !result.related_legislation.is_empty() {
-                            tracing::info!(
-                                law_id = %job.law_id,
-                                depth = enrich_depth,
-                                max_depth = related_harvest_max_depth,
-                                related = result.related_legislation.len(),
-                                "skipping related-legislation harvest: max depth reached"
-                            );
-                        }
+                    // Always on, but depth-capped so the recursion is bounded (and
+                    // the LLM-costly re-enrichment of those harvests is separately
+                    // gated by ENRICH_AUTO_ENQUEUE + ENRICH_DAILY_LIMIT).
+                    let enrich_depth = payload.depth.unwrap_or(0);
+                    if enrich_depth < related_harvest_max_depth {
+                        harvest_related_legislation(
+                            pool,
+                            http_client,
+                            &job.law_id,
+                            &result.related_legislation,
+                            enrich_depth,
+                        )
+                        .await;
+                    } else if !result.related_legislation.is_empty() {
+                        tracing::info!(
+                            law_id = %job.law_id,
+                            depth = enrich_depth,
+                            max_depth = related_harvest_max_depth,
+                            related = result.related_legislation.len(),
+                            "skipping related-legislation harvest: max depth reached"
+                        );
                     }
 
                     Ok(JobOutcome::Processed)
