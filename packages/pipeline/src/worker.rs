@@ -412,8 +412,12 @@ async fn process_next_job(
                         law_id: job.law_id.clone(),
                         yaml_path: result.file_path.clone(),
                         provider: Some((*provider_name).to_string()),
-                        // Inherit the just-completed harvest's depth so a
-                        // related-legislation harvest chain keeps counting.
+                        // Inherit the harvest's depth. NB: this is the shared
+                        // extref-recursion counter, so a law reached via
+                        // >= RELATED_HARVEST_MAX_DEPTH extref hops enriches at a
+                        // depth that skips related-legislation discovery. Roots and
+                        // shallow laws (the intended case) are unaffected; a
+                        // dedicated related-depth counter is the follow-up.
                         depth: payload.depth,
                     };
                     let payload_json = match serde_json::to_value(&enrich_payload) {
@@ -945,9 +949,13 @@ async fn resolve_related_bwb_id(
         }
     }
 
-    // (c) SRU search by name — accept only an unambiguous single hit
+    // (c) SRU search by name — accept only an unambiguous single hit, and only
+    // if it is a well-formed BWB id (paths a/b validate too; don't let a
+    // malformed SRU id slip into a harvest payload).
     match crate::api::bwb_search::search_bwb_by_name(http_client, &entry.name).await {
-        Ok(results) if results.len() == 1 => RelatedResolution::Resolved(results[0].bwb_id.clone()),
+        Ok(results) if results.len() == 1 && is_valid_bwb_id(&results[0].bwb_id) => {
+            RelatedResolution::Resolved(results[0].bwb_id.clone())
+        }
         Ok(results) if results.len() > 1 => RelatedResolution::NeedsConfirmation,
         Ok(_) => RelatedResolution::Unresolved,
         Err(e) => {

@@ -433,9 +433,9 @@ pub struct EnrichmentResultEnvelope {
 /// Never errors, so it can never fail an otherwise-successful enrichment:
 /// - absent file → empty list;
 /// - unparseable file → logged at `warn` and empty list.
-fn read_enrichment_result_envelope(yaml_abs: &Path) -> Vec<RelatedLegislation> {
+async fn read_enrichment_result_envelope(yaml_abs: &Path) -> Vec<RelatedLegislation> {
     let envelope_path = enrichment_result_path(yaml_abs);
-    let content = match std::fs::read_to_string(&envelope_path) {
+    let content = match tokio::fs::read_to_string(&envelope_path).await {
         Ok(c) => c,
         Err(_) => return Vec::new(),
     };
@@ -1162,7 +1162,7 @@ pub async fn execute_enrich_with_runner(
 
     // Read the related-legislation result envelope the agent may have written.
     // Never fails: absent/malformed → empty (see read_enrichment_result_envelope).
-    let related_legislation = read_enrichment_result_envelope(&yaml_abs);
+    let related_legislation = read_enrichment_result_envelope(&yaml_abs).await;
 
     // Collect written files for corpus staging
     let mut written_files = vec![yaml_abs.clone(), metadata_path];
@@ -1392,16 +1392,16 @@ related_legislation:
         assert!(entry.bwb_id.is_none());
     }
 
-    #[test]
-    fn test_read_envelope_absent_file_is_empty() {
+    #[tokio::test]
+    async fn test_read_envelope_absent_file_is_empty() {
         let dir = tempfile::tempdir().unwrap();
         let yaml_abs = dir.path().join("2025-01-01.yaml");
         // No sidecar exists next to it.
-        assert!(read_enrichment_result_envelope(&yaml_abs).is_empty());
+        assert!(read_enrichment_result_envelope(&yaml_abs).await.is_empty());
     }
 
-    #[test]
-    fn test_read_envelope_malformed_is_empty() {
+    #[tokio::test]
+    async fn test_read_envelope_malformed_is_empty() {
         let dir = tempfile::tempdir().unwrap();
         let yaml_abs = dir.path().join("2025-01-01.yaml");
         std::fs::write(
@@ -1410,11 +1410,11 @@ related_legislation:
         )
         .unwrap();
         // Malformed sidecar must never error — it degrades to empty.
-        assert!(read_enrichment_result_envelope(&yaml_abs).is_empty());
+        assert!(read_enrichment_result_envelope(&yaml_abs).await.is_empty());
     }
 
-    #[test]
-    fn test_read_envelope_present_parses() {
+    #[tokio::test]
+    async fn test_read_envelope_present_parses() {
         let dir = tempfile::tempdir().unwrap();
         let yaml_abs = dir.path().join("2025-01-01.yaml");
         std::fs::write(
@@ -1422,7 +1422,7 @@ related_legislation:
             "related_legislation:\n  - name: Delegated Regeling\n    bwb_id: BWBR0037841\n",
         )
         .unwrap();
-        let related = read_enrichment_result_envelope(&yaml_abs);
+        let related = read_enrichment_result_envelope(&yaml_abs).await;
         assert_eq!(related.len(), 1);
         assert_eq!(related[0].bwb_id.as_deref(), Some("BWBR0037841"));
     }
