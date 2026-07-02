@@ -10,7 +10,7 @@ use crate::config::WorkerConfig;
 use crate::db;
 use crate::enrich::{
     create_enrich_corpus, enrich_branch_name, execute_enrich, progress_file_path, EnrichConfig,
-    EnrichPayload,
+    EnrichPayload, RelatedLegislation,
 };
 use crate::error::{PipelineError, Result};
 use crate::harvest::{execute_harvest, HarvestPayload, HarvestResult, MAX_HARVEST_DEPTH};
@@ -412,6 +412,13 @@ async fn process_next_job(
                         law_id: job.law_id.clone(),
                         yaml_path: result.file_path.clone(),
                         provider: Some((*provider_name).to_string()),
+                        // Inherit the harvest's depth. NB: this is the shared
+                        // extref-recursion counter, so a law reached via
+                        // >= RELATED_HARVEST_MAX_DEPTH extref hops enriches at a
+                        // depth that skips related-legislation discovery. Roots and
+                        // shallow laws (the intended case) are unaffected; a
+                        // dedicated related-depth counter is the follow-up.
+                        depth: payload.depth,
                     };
                     let payload_json = match serde_json::to_value(&enrich_payload) {
                         Ok(json) => json,
@@ -700,6 +707,12 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
 
     let enrich_config = EnrichConfig::from_env();
 
+    // One shared HTTP client for related-legislation SRU resolution. Built once
+    // (connection pooling) and threaded into every enrich job's follow-up hook.
+    let http_client = regelrecht_harvester::http::create_client().map_err(|e| {
+        crate::error::PipelineError::Worker(format!("failed to create HTTP client: {e}"))
+    })?;
+
     // Corpus config is passed per-job so each enrichment creates its own
     // branch-specific corpus client. We still use the base repo_path as
     // fallback when corpus is not configured.
@@ -807,6 +820,8 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
             config.corpus_config.as_ref(),
             config.job_timeout,
             config.exhausted_threshold,
+            &http_client,
+            config.related_harvest_max_depth,
         )
         .await
         {
@@ -846,6 +861,207 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
     Ok(())
 }
 
+/// Base priority for related-legislation follow-up harvests. One point below
+/// this per nesting level (see [`related_harvest_priority`]) so the speculative
+/// related-harvest chain always yields to editor- and root-requested harvests
+/// (which use higher priorities).
+const RELATED_HARVEST_BASE: i32 = 40;
+
+/// Priority for a related-legislation follow-up harvest spawned by an enrichment
+/// at `enrich_depth`. Drops one point per nesting level so deeper (more
+/// speculative) harvests yield to shallower ones; [`Priority::new`] clamps the
+/// result into the valid `0..=100` range.
+fn related_harvest_priority(enrich_depth: u32) -> Priority {
+    Priority::new(RELATED_HARVEST_BASE - (enrich_depth as i32 + 1))
+}
+
+/// True when `s` is a syntactically valid BWB regulation id (`^BWBR\d{7}$`).
+fn is_valid_bwb_id(s: &str) -> bool {
+    s.len() == 11 && s.starts_with("BWBR") && s[4..].bytes().all(|b| b.is_ascii_digit())
+}
+
+/// Turn a law name into a corpus slug: ASCII-lowercase, every run of
+/// non-alphanumeric characters collapsed to a single `_`, trimmed of leading and
+/// trailing `_`. Best-effort fallback used for slug lookup when the agent didn't
+/// supply an explicit `slug`.
+fn slugify(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    let mut pending_underscore = false;
+    for c in name.chars() {
+        if c.is_ascii_alphanumeric() {
+            if pending_underscore && !out.is_empty() {
+                out.push('_');
+            }
+            pending_underscore = false;
+            out.push(c.to_ascii_lowercase());
+        } else {
+            pending_underscore = true;
+        }
+    }
+    out
+}
+
+/// Outcome of resolving a single [`RelatedLegislation`] entry to a BWB id.
+enum RelatedResolution {
+    /// Resolved to a concrete BWB id.
+    Resolved(String),
+    /// SRU search matched more than one law — a human must pick; skip for now.
+    NeedsConfirmation,
+    /// No candidate (unknown slug, zero SRU hits, or a lookup error). Skip.
+    Unresolved,
+}
+
+/// Resolve a related-legislation entry to a BWB id via the hybrid order:
+/// (a) explicit valid `bwb_id`, (b) slug lookup (explicit `slug` else
+/// `slugify(name)`) against `law_entries`, (c) SRU search by name accepting only
+/// an unambiguous single hit. Never errors — lookup failures degrade to skips.
+async fn resolve_related_bwb_id(
+    pool: &PgPool,
+    http_client: &Client,
+    entry: &RelatedLegislation,
+) -> RelatedResolution {
+    // (a) explicit bwb_id
+    if let Some(bwb_id) = entry.bwb_id.as_deref() {
+        if is_valid_bwb_id(bwb_id) {
+            return RelatedResolution::Resolved(bwb_id.to_string());
+        }
+    }
+
+    // (b) slug lookup
+    let slug = entry.slug.clone().unwrap_or_else(|| slugify(&entry.name));
+    if !slug.is_empty() {
+        match crate::api::harvest::find_bwb_id_by_slug(pool, &slug).await {
+            // The slug may map to a CVDR id (local regulation); only a BWB id is
+            // harvestable through the `bwb_id` follow-up path, so skip non-BWB
+            // hits rather than enqueue a malformed harvest.
+            Ok(Some(id)) if is_valid_bwb_id(&id) => return RelatedResolution::Resolved(id),
+            Ok(Some(id)) => {
+                // The slug already identified the law (it's just CVDR, not
+                // BWB-harvestable here). Do NOT fall through to the name search:
+                // a title match could resolve a *different* national law.
+                tracing::debug!(slug = %slug, resolved = %id, "slug resolved to a non-BWB id; not harvestable via bwb_id path");
+                return RelatedResolution::Unresolved;
+            }
+            Ok(None) => {}
+            Err(e) => {
+                tracing::warn!(slug = %slug, error = %e, "slug lookup failed for related legislation");
+            }
+        }
+    }
+
+    // (c) SRU search by name — accept only an unambiguous single hit, and only
+    // if it is a well-formed BWB id (paths a/b validate too; don't let a
+    // malformed SRU id slip into a harvest payload).
+    match crate::api::bwb_search::search_bwb_by_name(http_client, &entry.name).await {
+        Ok(results) if results.len() == 1 && is_valid_bwb_id(&results[0].bwb_id) => {
+            RelatedResolution::Resolved(results[0].bwb_id.clone())
+        }
+        Ok(results) if results.len() > 1 => RelatedResolution::NeedsConfirmation,
+        Ok(_) => RelatedResolution::Unresolved,
+        Err(e) => {
+            tracing::warn!(name = %entry.name, error = %e, "SRU search failed for related legislation");
+            RelatedResolution::Unresolved
+        }
+    }
+}
+
+/// Resolve every related-legislation entry declared by an enrichment and enqueue
+/// a follow-up harvest for each resolved BWB id at `enrich_depth + 1`. Emits one
+/// summary log with the total/resolved/enqueued/needs_confirmation/unresolved
+/// counts. Best-effort throughout: a failure on one entry never blocks the rest,
+/// and none of this can fail the already-committed enrichment.
+async fn harvest_related_legislation(
+    pool: &PgPool,
+    http_client: &Client,
+    parent_law_id: &str,
+    related: &[RelatedLegislation],
+    enrich_depth: u32,
+) {
+    if related.is_empty() {
+        return;
+    }
+
+    let child_depth = enrich_depth + 1;
+    let priority = related_harvest_priority(enrich_depth);
+    let total = related.len();
+    let mut resolved = 0u32;
+    let mut enqueued = 0u32;
+    let mut already_queued = 0u32;
+    let mut exhausted = 0u32;
+    let mut needs_confirmation = 0u32;
+    let mut unresolved = 0u32;
+
+    for entry in related {
+        let bwb_id = match resolve_related_bwb_id(pool, http_client, entry).await {
+            RelatedResolution::Resolved(id) => id,
+            RelatedResolution::NeedsConfirmation => {
+                needs_confirmation += 1;
+                tracing::info!(
+                    parent_law_id = %parent_law_id,
+                    name = %entry.name,
+                    "related legislation matched multiple BWB results: needs_confirmation, skipping"
+                );
+                continue;
+            }
+            RelatedResolution::Unresolved => {
+                unresolved += 1;
+                continue;
+            }
+        };
+        resolved += 1;
+
+        // Skip harvest for exhausted laws (mirror the follow-up harvest block).
+        if let Ok(law) = law_status::get_law(pool, &bwb_id).await {
+            if law.status == LawStatusValue::HarvestExhausted {
+                exhausted += 1;
+                tracing::info!(bwb_id = %bwb_id, "skipping related harvest: law is harvest_exhausted");
+                continue;
+            }
+        }
+
+        // Related harvests always want the latest consolidation (date None). The
+        // dedup key uses the payload date, which is NULL here — the ON-CONFLICT
+        // guard still matches existing NULL-date jobs and skips duplicates.
+        let follow_up_payload = HarvestPayload {
+            bwb_id: Some(bwb_id.clone()),
+            cvdr_id: None,
+            date: None,
+            max_size_mb: None,
+            depth: Some(child_depth),
+        };
+        let payload_json = match serde_json::to_value(&follow_up_payload) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(bwb_id = %bwb_id, error = %e, "failed to serialize related harvest payload");
+                continue;
+            }
+        };
+        let req = CreateJobRequest::new(JobType::Harvest, bwb_id.as_str())
+            .with_priority(priority)
+            .with_payload(payload_json);
+        match job_queue::create_harvest_job_if_not_exists(pool, req, "").await {
+            Ok(Some(_)) => enqueued += 1,
+            Ok(None) => already_queued += 1, // an active harvest already exists
+            Err(e) => {
+                tracing::warn!(bwb_id = %bwb_id, error = %e, "failed to create related harvest job")
+            }
+        }
+    }
+
+    tracing::info!(
+        parent_law_id = %parent_law_id,
+        depth = child_depth,
+        total,
+        resolved,
+        enqueued,
+        already_queued,
+        exhausted,
+        needs_confirmation,
+        unresolved,
+        "related-legislation harvest summary"
+    );
+}
+
 /// Process the next available enrich job.
 ///
 /// Returns the [`JobOutcome`]: `Processed` when a job was handled, `Idle` when
@@ -855,6 +1071,7 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
 /// Each enrichment creates a separate branch (`enrich/{provider}`)
 /// so results can be reviewed before merging. A dedicated `CorpusClient` is
 /// created per job pointing at the enrichment branch.
+#[allow(clippy::too_many_arguments)]
 async fn process_next_enrich_job(
     pool: &PgPool,
     repo_path: &Path,
@@ -862,6 +1079,8 @@ async fn process_next_enrich_job(
     corpus_config: Option<&CorpusConfig>,
     job_timeout: Duration,
     exhausted_threshold: i32,
+    http_client: &Client,
+    related_harvest_max_depth: u32,
 ) -> Result<JobOutcome> {
     let job = match job_queue::claim_job(pool, Some(JobType::Enrich)).await? {
         Some(job) => job,
@@ -1160,6 +1379,33 @@ async fn process_next_enrich_job(
                             "coverage score updated"
                         );
                     }
+
+                    // Enqueue follow-up harvests for the related legislation the
+                    // enrichment agent declared (delegated regelingen, cross-law
+                    // sources, legal bases the extref-only harvester misses).
+                    // Always on, but depth-capped so the recursion is bounded (and
+                    // the LLM-costly re-enrichment of those harvests is separately
+                    // gated by ENRICH_AUTO_ENQUEUE + ENRICH_DAILY_LIMIT).
+                    let enrich_depth = payload.depth.unwrap_or(0);
+                    if enrich_depth < related_harvest_max_depth {
+                        harvest_related_legislation(
+                            pool,
+                            http_client,
+                            &job.law_id,
+                            &result.related_legislation,
+                            enrich_depth,
+                        )
+                        .await;
+                    } else if !result.related_legislation.is_empty() {
+                        tracing::info!(
+                            law_id = %job.law_id,
+                            depth = enrich_depth,
+                            max_depth = related_harvest_max_depth,
+                            related = result.related_legislation.len(),
+                            "skipping related-legislation harvest: max depth reached"
+                        );
+                    }
+
                     Ok(JobOutcome::Processed)
                 }
             }
@@ -1459,5 +1705,59 @@ mod tests {
         assert_eq!(counter, 1);
         handle_resource_exhaustion(&mut counter, 3, "test");
         assert_eq!(counter, 2);
+    }
+
+    #[test]
+    fn is_valid_bwb_id_matches_bwbr_seven_digits() {
+        assert!(is_valid_bwb_id("BWBR0018451"));
+        // Wrong prefix, wrong digit count, extra chars, or wrong casing all fail.
+        assert!(!is_valid_bwb_id("BWBR001845")); // 6 digits
+        assert!(!is_valid_bwb_id("BWBR00184510")); // 8 digits
+        assert!(!is_valid_bwb_id("CVDR0018451"));
+        assert!(!is_valid_bwb_id("BWBR001845x"));
+        assert!(!is_valid_bwb_id("bwbr0018451"));
+        assert!(!is_valid_bwb_id(""));
+    }
+
+    #[test]
+    fn slugify_normalizes_names() {
+        assert_eq!(slugify("Wet op de zorgtoeslag"), "wet_op_de_zorgtoeslag");
+        // Collapses runs of punctuation/whitespace and trims the edges.
+        assert_eq!(
+            slugify("  Regeling: standaard-premie!!  "),
+            "regeling_standaard_premie"
+        );
+        assert_eq!(slugify("---"), "");
+    }
+
+    #[test]
+    fn related_harvest_priority_drops_one_per_level_and_clamps() {
+        // Base is 40; child depth = enrich_depth + 1, priority = 40 - child_depth.
+        assert_eq!(related_harvest_priority(0).value(), 39);
+        assert_eq!(related_harvest_priority(1).value(), 38);
+        assert_eq!(related_harvest_priority(2).value(), 37);
+        // Deep chains clamp at 0 rather than going negative.
+        assert_eq!(related_harvest_priority(39).value(), 0);
+        assert_eq!(related_harvest_priority(100).value(), 0);
+    }
+
+    #[test]
+    fn harvest_payload_depth_round_trips_through_serde() {
+        let payload = HarvestPayload {
+            bwb_id: Some("BWBR0018451".to_string()),
+            cvdr_id: None,
+            date: None,
+            max_size_mb: None,
+            depth: Some(2),
+        };
+        let json = serde_json::to_value(&payload).unwrap();
+        assert_eq!(json["depth"], 2);
+        let back: HarvestPayload = serde_json::from_value(json).unwrap();
+        assert_eq!(back.depth, Some(2));
+
+        // depth None is omitted from the wire form (backward compatible).
+        let root = HarvestPayload::for_law("BWBR0018451", None);
+        let root_json = serde_json::to_string(&root).unwrap();
+        assert!(!root_json.contains("depth"));
     }
 }

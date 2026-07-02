@@ -374,11 +374,91 @@ pub struct EnrichPayload {
     /// When set, overrides the worker's `LLM_PROVIDER` env var.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
+    /// Recursion depth for related-legislation follow-up harvests. Inherited
+    /// from the harvest job that spawned this enrichment. `None` or `0` means a
+    /// root enrichment; the child harvests it enqueues get `depth + 1`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub depth: Option<u32>,
 }
 
 /// All known provider names. Used to create one enrich job per provider
 /// after a successful harvest.
 pub const ENRICH_PROVIDERS: &[&str] = &["opencode", "claude"];
+
+/// A related-legislation reference returned by the enrichment agent in the
+/// `.enrichment-result.yaml` sidecar (the "result envelope").
+///
+/// The extref-only recursive harvester only follows explicit BWB cross-links in
+/// the source text, so it misses delegated regelingen and other laws a
+/// machine-readable model actually depends on (a `source.regulation`, a
+/// `legal_basis`, or an `open_term` delegation). The enrichment agent knows
+/// these because it just modeled them, so it declares them here and the worker
+/// enqueues follow-up harvests — letting the dependency graph fill itself in.
+///
+/// This lives OUTSIDE the law schema on purpose: the law YAML stays
+/// schema-conformant, and this provenance/routing metadata rides alongside it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RelatedLegislation {
+    /// Human-readable name of the related law/regeling (used for SRU fallback
+    /// resolution when no `bwb_id`/`slug` is supplied).
+    pub name: String,
+    /// How this law relates: `source_regulation`, `legal_basis`, or
+    /// `delegated_regeling`. Informational; the worker treats all the same.
+    #[serde(default)]
+    pub relation: String,
+    /// Best-effort BWB identifier (e.g. "BWBR0018451"). Preferred resolution.
+    #[serde(default)]
+    pub bwb_id: Option<String>,
+    /// Best-effort corpus slug (e.g. "wet_op_de_zorgtoeslag"). Second-choice
+    /// resolution, looked up against `law_entries`.
+    #[serde(default)]
+    pub slug: Option<String>,
+    /// The `open_term` id this delegation fills, when `relation` is a delegation.
+    #[serde(default)]
+    pub open_term: Option<String>,
+}
+
+/// The `.enrichment-result.yaml` result envelope written next to an enriched
+/// law YAML. Deliberately NOT a law-schema change — see [`RelatedLegislation`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct EnrichmentResultEnvelope {
+    #[serde(default)]
+    pub law_id: Option<String>,
+    #[serde(default)]
+    pub related_legislation: Vec<RelatedLegislation>,
+}
+
+/// Read the sibling `.enrichment-result.yaml` result envelope for a law YAML.
+///
+/// Never errors, so it can never fail an otherwise-successful enrichment:
+/// - absent file → empty list;
+/// - unparseable file → logged at `warn` and empty list.
+async fn read_enrichment_result_envelope(yaml_abs: &Path) -> Vec<RelatedLegislation> {
+    let envelope_path = enrichment_result_path(yaml_abs);
+    let content = match tokio::fs::read_to_string(&envelope_path).await {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+    match serde_yaml_ng::from_str::<EnrichmentResultEnvelope>(&content) {
+        Ok(envelope) => envelope.related_legislation,
+        Err(e) => {
+            tracing::warn!(
+                path = %envelope_path.display(),
+                error = %e,
+                "failed to parse .enrichment-result.yaml; ignoring related legislation"
+            );
+            Vec::new()
+        }
+    }
+}
+
+/// Path of the `.enrichment-result.yaml` sidecar next to a law YAML file.
+fn enrichment_result_path(yaml_abs: &Path) -> PathBuf {
+    yaml_abs
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join(".enrichment-result.yaml")
+}
 
 /// Result of a successful enrichment execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -395,6 +475,11 @@ pub struct EnrichResult {
     pub coverage_score: f64,
     pub provider: String,
     pub branch: String,
+    /// Related legislation the enrichment agent declared this law depends on,
+    /// read from the `.enrichment-result.yaml` sidecar. The worker uses these to
+    /// enqueue follow-up harvests. Empty when no sidecar was written.
+    #[serde(default)]
+    pub related_legislation: Vec<RelatedLegislation>,
 }
 
 /// Metadata written alongside the enriched law YAML as `.enrichment.yaml`.
@@ -1075,8 +1160,18 @@ pub async fn execute_enrich_with_runner(
         .map_err(|e| PipelineError::Enrich(format!("failed to serialize metadata: {e}")))?;
     tokio::fs::write(&metadata_path, &metadata_yaml).await?;
 
+    // Read the related-legislation result envelope the agent may have written.
+    // Never fails: absent/malformed → empty (see read_enrichment_result_envelope).
+    let related_legislation = read_enrichment_result_envelope(&yaml_abs).await;
+
     // Collect written files for corpus staging
     let mut written_files = vec![yaml_abs.clone(), metadata_path];
+
+    // Stage the result envelope as provenance when the agent wrote one.
+    let envelope_path = enrichment_result_path(&yaml_abs);
+    if envelope_path.exists() {
+        written_files.push(envelope_path);
+    }
 
     // Check if a feature file was generated for this specific law.
     // MvT research creates feature files named after the law slug.
@@ -1114,6 +1209,7 @@ pub async fn execute_enrich_with_runner(
         coverage_score,
         provider: provider_name,
         branch,
+        related_legislation,
     };
 
     Ok((result, written_files))
@@ -1206,23 +1302,29 @@ mod tests {
             law_id: "BWBR0018451".to_string(),
             yaml_path: "regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
             provider: Some("claude".to_string()),
+            depth: Some(2),
         };
 
         let json = serde_json::to_string(&payload).unwrap();
         let deserialized: EnrichPayload = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.provider.as_deref(), Some("claude"));
+        assert_eq!(deserialized.depth, Some(2));
 
-        // Verify backward compatibility: provider is optional and skipped when None
+        // Verify backward compatibility: provider and depth are optional and
+        // skipped when None (old queued payloads omit them entirely).
         let payload_no_provider = EnrichPayload {
             law_id: "BWBR0018451".to_string(),
             yaml_path: "regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
             provider: None,
+            depth: None,
         };
         let json_no_provider = serde_json::to_string(&payload_no_provider).unwrap();
         assert!(!json_no_provider.contains("provider"));
+        assert!(!json_no_provider.contains("depth"));
         let deserialized_no_provider: EnrichPayload =
             serde_json::from_str(&json_no_provider).unwrap();
         assert!(deserialized_no_provider.provider.is_none());
+        assert!(deserialized_no_provider.depth.is_none());
 
         assert_eq!(deserialized.law_id, "BWBR0018451");
         assert!(deserialized.yaml_path.contains("zorgtoeslag"));
@@ -1238,6 +1340,7 @@ mod tests {
             coverage_score: 0.7,
             provider: "opencode".to_string(),
             branch: "enrich/opencode".to_string(),
+            related_legislation: Vec::new(),
         };
 
         let json = serde_json::to_value(&result).unwrap();
@@ -1245,6 +1348,83 @@ mod tests {
         assert_eq!(json["coverage_score"], 0.7);
         assert_eq!(json["provider"], "opencode");
         assert_eq!(json["branch"], "enrich/opencode");
+    }
+
+    #[test]
+    fn test_envelope_full_deserialization() {
+        let yaml = r#"
+law_id: wet_op_de_zorgtoeslag
+related_legislation:
+  - name: Regeling vaststelling standaardpremie en bestuursrechtelijke premie
+    relation: delegated_regeling
+    bwb_id: BWBR0037841
+    slug: regeling_standaardpremie
+    open_term: standaardpremie
+  - name: Algemene wet inkomensafhankelijke regelingen
+    relation: source_regulation
+"#;
+        let envelope: EnrichmentResultEnvelope = serde_yaml_ng::from_str(yaml).unwrap();
+        assert_eq!(envelope.law_id.as_deref(), Some("wet_op_de_zorgtoeslag"));
+        assert_eq!(envelope.related_legislation.len(), 2);
+        let first = &envelope.related_legislation[0];
+        assert_eq!(first.relation, "delegated_regeling");
+        assert_eq!(first.bwb_id.as_deref(), Some("BWBR0037841"));
+        assert_eq!(first.slug.as_deref(), Some("regeling_standaardpremie"));
+        assert_eq!(first.open_term.as_deref(), Some("standaardpremie"));
+        // Second entry omits every optional field.
+        let second = &envelope.related_legislation[1];
+        assert_eq!(second.relation, "source_regulation");
+        assert!(second.bwb_id.is_none());
+        assert!(second.slug.is_none());
+        assert!(second.open_term.is_none());
+    }
+
+    #[test]
+    fn test_envelope_missing_fields_default() {
+        // Only `name` is required; everything else defaults.
+        let yaml = "related_legislation:\n  - name: Some Law\n";
+        let envelope: EnrichmentResultEnvelope = serde_yaml_ng::from_str(yaml).unwrap();
+        assert!(envelope.law_id.is_none());
+        assert_eq!(envelope.related_legislation.len(), 1);
+        let entry = &envelope.related_legislation[0];
+        assert_eq!(entry.name, "Some Law");
+        assert_eq!(entry.relation, "");
+        assert!(entry.bwb_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_read_envelope_absent_file_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let yaml_abs = dir.path().join("2025-01-01.yaml");
+        // No sidecar exists next to it.
+        assert!(read_enrichment_result_envelope(&yaml_abs).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_read_envelope_malformed_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let yaml_abs = dir.path().join("2025-01-01.yaml");
+        std::fs::write(
+            enrichment_result_path(&yaml_abs),
+            "related_legislation: [this is: not valid: yaml",
+        )
+        .unwrap();
+        // Malformed sidecar must never error — it degrades to empty.
+        assert!(read_enrichment_result_envelope(&yaml_abs).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_read_envelope_present_parses() {
+        let dir = tempfile::tempdir().unwrap();
+        let yaml_abs = dir.path().join("2025-01-01.yaml");
+        std::fs::write(
+            enrichment_result_path(&yaml_abs),
+            "related_legislation:\n  - name: Delegated Regeling\n    bwb_id: BWBR0037841\n",
+        )
+        .unwrap();
+        let related = read_enrichment_result_envelope(&yaml_abs).await;
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].bwb_id.as_deref(), Some("BWBR0037841"));
     }
 
     #[test]
@@ -1582,6 +1762,7 @@ articles:
             law_id: "BWBR0000001".into(),
             yaml_path: yaml_path.into(),
             provider: Some("opencode".into()),
+            depth: None,
         };
 
         let config = test_config(LlmProvider::OpenCode {
@@ -1646,6 +1827,7 @@ articles:
             law_id: "BWBR0000001".into(),
             yaml_path: yaml_path.into(),
             provider: None,
+            depth: None,
         };
 
         let config = test_config(LlmProvider::OpenCode {
@@ -1693,6 +1875,7 @@ articles:
             law_id: "BWBR0000001".into(),
             yaml_path: yaml_path.into(),
             provider: None,
+            depth: None,
         };
 
         let config = test_config(LlmProvider::OpenCode {

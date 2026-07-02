@@ -13,7 +13,10 @@ if [ $# -eq 0 ]; then
     FILES=()
     while IFS= read -r -d '' f; do
         FILES+=("$f")
-    done < <(find "$REPO_ROOT/corpus/regulation" -name '*.yaml' -print0 | sort -z)
+    # Exclude dot-prefixed sidecars (e.g. .enrichment.yaml, .enrichment-result.yaml)
+    # — enrichment metadata/result envelopes, not law files. `find -name '*.yaml'`
+    # matches leading-dot names, so filter them out explicitly.
+    done < <(find "$REPO_ROOT/corpus/regulation" -name '*.yaml' ! -name '.*' -print0 | sort -z)
     set -- "${FILES[@]}"
 fi
 

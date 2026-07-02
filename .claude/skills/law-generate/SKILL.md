@@ -763,6 +763,44 @@ The JSON payload format (written to the temp file):
     laws (>20 articles), this limit applies per batch — each batch of ~15 articles
     gets its own 3-iteration budget
 
+## Phase 4.5: Write the related-legislation result envelope
+
+After the `machine_readable` sections are final, write a **sibling result
+envelope** so the pipeline can auto-harvest the legislation this law depends on
+(delegated regelingen and cross-law references the extref-only harvester misses).
+
+Write it next to the law YAML as `.enrichment-result.yaml` (same directory,
+e.g. `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/.enrichment-result.yaml`).
+Use the `Write` tool — no new agent tools are needed.
+
+```yaml
+# .enrichment-result.yaml — result envelope, NOT part of the law schema
+law_id: wet_op_de_zorgtoeslag
+related_legislation:
+  - name: Regeling vaststelling standaardpremie en bestuursrechtelijke premie
+    relation: delegated_regeling      # source_regulation | legal_basis | delegated_regeling
+    bwb_id: BWBR0037841               # optional, best-effort
+    slug: regeling_standaardpremie    # optional, best-effort
+    open_term: standaardpremie        # optional, only for delegations
+  - name: Algemene wet inkomensafhankelijke regelingen
+    relation: source_regulation
+```
+
+Coverage: add one entry for **every** `source.regulation` you bound, every
+`legal_basis` you anchored on, and every `open_term` delegation you declared.
+Fields:
+
+- `name` — **required**; the human-readable law/regeling title (used for search
+  fallback when no id/slug is given).
+- `relation` — one of `source_regulation`, `legal_basis`, `delegated_regeling`.
+- `bwb_id`, `slug`, `open_term` — **optional**, best-effort. Supply what you know
+  (a known `bwb_id` resolves fastest); leave the rest out.
+
+**CRITICAL — this MUST NOT go in the law YAML.** The law file stays strictly
+schema-conformant (`just validate` must still pass). The related-legislation list
+lives only in the `.enrichment-result.yaml` sidecar, which the pipeline reads
+separately. Do not add a `related_legislation:` key anywhere inside the law YAML.
+
 ## Phase 5: Report
 
 Report to the user:

@@ -97,6 +97,11 @@ pub struct WorkerConfig {
     /// Off by default; enrichment is otherwise requested explicitly via the admin
     /// API. Configurable via `ENRICH_AUTO_ENQUEUE`.
     pub auto_enrich_enqueue: bool,
+    /// Maximum recursion depth for related-legislation follow-up harvests.
+    /// A depth-0 enrichment may enqueue harvests at depth 1, whose enrichments
+    /// may enqueue at depth 2, etc., up to this cap. Default: 2. Configurable
+    /// via `RELATED_HARVEST_MAX_DEPTH`.
+    pub related_harvest_max_depth: u32,
 }
 
 impl std::fmt::Debug for WorkerConfig {
@@ -118,6 +123,7 @@ impl std::fmt::Debug for WorkerConfig {
             )
             .field("enrich_daily_limit", &self.enrich_daily_limit)
             .field("auto_enrich_enqueue", &self.auto_enrich_enqueue)
+            .field("related_harvest_max_depth", &self.related_harvest_max_depth)
             .finish()
     }
 }
@@ -193,6 +199,11 @@ impl WorkerConfig {
             })
             .unwrap_or(false);
 
+        let related_harvest_max_depth: u32 = std::env::var("RELATED_HARVEST_MAX_DEPTH")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(2);
+
         Ok(Self {
             database_url,
             max_connections,
@@ -207,6 +218,7 @@ impl WorkerConfig {
             max_consecutive_resource_failures,
             enrich_daily_limit,
             auto_enrich_enqueue,
+            related_harvest_max_depth,
         })
     }
 

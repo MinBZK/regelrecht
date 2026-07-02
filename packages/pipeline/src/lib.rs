@@ -20,8 +20,9 @@ pub use api_state::ApiState;
 pub use config::{PipelineConfig, WorkerConfig};
 pub use db::{create_pool, ensure_schema, MIGRATION_LOCK_KEY};
 pub use enrich::{
-    progress_file_path, EnrichConfig, EnrichPayload, EnrichResult, EnrichmentMetadata, LlmProvider,
-    LlmRunner, ProcessLlmRunner, ENRICH_PROVIDERS,
+    progress_file_path, EnrichConfig, EnrichPayload, EnrichResult, EnrichmentMetadata,
+    EnrichmentResultEnvelope, LlmProvider, LlmRunner, ProcessLlmRunner, RelatedLegislation,
+    ENRICH_PROVIDERS,
 };
 pub use error::PipelineError;
 pub use harvest::{HarvestPayload, HarvestResult, MAX_HARVEST_DEPTH};
