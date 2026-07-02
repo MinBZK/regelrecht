@@ -62,7 +62,7 @@ The regex catches surface tells. These are the ones you read for:
 
 These hold even without opening the checklist:
 
-- **No em-dashes (—) or en-dashes (–) as punctuation.** Ever. Comma, period, parentheses, colon, or rewrite.
+- **No em-dashes (—), ever.** Comma, period, parentheses, colon, or rewrite. An en-dash (–) as prose punctuation is out too, but an en-dash inside a range is correct typography and stays: `art. 257a–257h`, `11.3–12.4:1`, `€5.212 – €7.747`, `32 – 36 uur`, `September–December`. The linter knows the difference.
 - **American English** for English text (organize, analyze, behavior) unless told otherwise.
 - **No emoji in running prose**, no random mid-sentence bolding for emphasis.
 
