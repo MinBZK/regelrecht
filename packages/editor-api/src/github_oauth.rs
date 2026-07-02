@@ -88,11 +88,13 @@ pub struct GithubOAuth {
     /// 302-forwards GitHub's response to the originating deployment (carried in
     /// the signed-ish `state`). `None` = self-callback, exactly as before.
     pub callback_base: Option<String>,
-    /// Host suffixes the relay may forward to (e.g. `rijksapps.nl`,
-    /// `editor.regelrecht.rijks.app`). The relay refuses any origin whose host
+    /// Host suffixes the relay may forward to (e.g. `editor.regelrecht.rijks.app`
+    /// plus the preview host pattern). The relay refuses any origin whose host
     /// doesn't match — without this the relay would be an open redirect that
     /// leaks the OAuth `code`. Required (non-empty) whenever `callback_base` is
-    /// set; `from_env` fails closed otherwise.
+    /// set; `from_env` fails closed otherwise. Keep the deployed value as tight
+    /// as the preview host pattern allows — prefer the exact prod host + the
+    /// specific preview suffix over a broad shared apex like `rijksapps.nl`.
     pub allowed_origin_suffixes: Vec<String>,
     /// Base of GitHub's web OAuth endpoints. Overridable for tests.
     pub github_base: String,
@@ -274,8 +276,10 @@ fn validate_return_url(url: Option<&str>) -> Option<String> {
     Some(url.to_string())
 }
 
-/// Append a `github=<marker>` query flag so the SPA can show a toast after the
-/// browser bounces back from GitHub.
+/// Append a `github=<marker>` query flag on the bounce-back so a consumer *can*
+/// react (e.g. a toast). The SPA re-fetches `/auth/github/status` on load, so the
+/// connected/expired state is already reflected without reading this flag; wiring
+/// a toast off it is a spike follow-up.
 fn with_marker(base_url: &str, path: &str, marker: &str) -> String {
     let sep = if path.contains('?') { '&' } else { '?' };
     format!("{base_url}{path}{sep}github={marker}")
@@ -300,6 +304,17 @@ pub async fn login(
         .ok_or(StatusCode::NOT_IMPLEMENTED)?;
 
     let base_url = base_url_from_config_or_request(&state, &headers);
+    // Defense in depth: in relay mode `base_url` becomes the origin the relay
+    // will bounce a `code` back to, and (absent a configured BASE_URL) it's
+    // derived from the `X-Forwarded-Host`/`Host` request headers. The relay
+    // already refuses a non-allowlisted origin, but reject it here too so a
+    // spoofed/misconfigured host fails immediately at login rather than after a
+    // GitHub round-trip. Only meaningful in relay mode (where an allowlist is
+    // guaranteed non-empty by `from_env`).
+    if oauth.callback_base.is_some() && !origin_allowed(oauth, &base_url) {
+        tracing::warn!(base_url = %base_url, "github login: origin not allowlisted (relay mode)");
+        return Err(StatusCode::BAD_REQUEST);
+    }
     // The `redirect_uri` GitHub validates: the fixed relay host in relay mode,
     // else this deployment's own callback. The browser ultimately lands back on
     // `base_url` (directly, or via the relay's 302).
