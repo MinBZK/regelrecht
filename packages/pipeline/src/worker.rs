@@ -932,7 +932,11 @@ async fn resolve_related_bwb_id(
             // hits rather than enqueue a malformed harvest.
             Ok(Some(id)) if is_valid_bwb_id(&id) => return RelatedResolution::Resolved(id),
             Ok(Some(id)) => {
-                tracing::debug!(slug = %slug, resolved = %id, "slug resolved to a non-BWB id; skipping");
+                // The slug already identified the law (it's just CVDR, not
+                // BWB-harvestable here). Do NOT fall through to the name search:
+                // a title match could resolve a *different* national law.
+                tracing::debug!(slug = %slug, resolved = %id, "slug resolved to a non-BWB id; not harvestable via bwb_id path");
+                return RelatedResolution::Unresolved;
             }
             Ok(None) => {}
             Err(e) => {
@@ -974,6 +978,8 @@ async fn harvest_related_legislation(
     let total = related.len();
     let mut resolved = 0u32;
     let mut enqueued = 0u32;
+    let mut already_queued = 0u32;
+    let mut exhausted = 0u32;
     let mut needs_confirmation = 0u32;
     let mut unresolved = 0u32;
 
@@ -999,6 +1005,7 @@ async fn harvest_related_legislation(
         // Skip harvest for exhausted laws (mirror the follow-up harvest block).
         if let Ok(law) = law_status::get_law(pool, &bwb_id).await {
             if law.status == LawStatusValue::HarvestExhausted {
+                exhausted += 1;
                 tracing::info!(bwb_id = %bwb_id, "skipping related harvest: law is harvest_exhausted");
                 continue;
             }
@@ -1026,7 +1033,7 @@ async fn harvest_related_legislation(
             .with_payload(payload_json);
         match job_queue::create_harvest_job_if_not_exists(pool, req, "").await {
             Ok(Some(_)) => enqueued += 1,
-            Ok(None) => {} // already queued, skip
+            Ok(None) => already_queued += 1, // an active harvest already exists
             Err(e) => {
                 tracing::warn!(bwb_id = %bwb_id, error = %e, "failed to create related harvest job")
             }
@@ -1039,6 +1046,8 @@ async fn harvest_related_legislation(
         total,
         resolved,
         enqueued,
+        already_queued,
+        exhausted,
         needs_confirmation,
         unresolved,
         "related-legislation harvest summary"
