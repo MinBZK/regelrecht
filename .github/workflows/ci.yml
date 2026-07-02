@@ -48,7 +48,6 @@ jobs:
               - .github/workflows/ci.yml
             admin:
               - packages/admin/**
-              - packages/frontend-shared/**
               - Justfile
               - .github/workflows/ci.yml
             editor-api:
@@ -556,29 +555,12 @@ jobs:
         if: needs.changes.outputs[matrix.package] == 'true'
         run: just ${{ matrix.package }}-check
 
-      # The remaining steps are admin-only: editor-api has no `just
-      # editor-api-test` recipe and no frontend build of its own.
+      # Admin-only extra step: editor-api has no `just editor-api-test` recipe.
+      # (The admin frontend moved into the editor, so there is no longer an
+      # admin frontend build here either — admin is an API-only Rust binary.)
       - name: Run tests
         if: matrix.package == 'admin' && needs.changes.outputs.admin == 'true'
         run: just admin-test
-
-      - name: Setup Node.js
-        if: matrix.package == 'admin' && needs.changes.outputs.admin == 'true'
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
-        with:
-          node-version: '22'
-          registry-url: https://npm.pkg.github.com
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
-
-      - name: Install admin frontend dependencies
-        if: matrix.package == 'admin' && needs.changes.outputs.admin == 'true'
-        run: npm ci
-
-      - name: Build admin frontend
-        if: matrix.package == 'admin' && needs.changes.outputs.admin == 'true'
-        # Directory form, consistent with the frontend test step above.
-        run: npm run build -w packages/admin/frontend-src
 
       - name: Skip (no relevant changes)
         if: needs.changes.outputs[matrix.package] != 'true'

@@ -10,7 +10,6 @@ use axum::routing::{delete, get, post};
 use axum::Router;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
-use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 use tower_sessions::cookie::SameSite;
 use tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer};
@@ -225,12 +224,13 @@ async fn main() {
         ))
         .layer(session_layer)
         .layer(axum_middleware::from_fn(middleware::security_headers))
-        .layer(TraceLayer::new_for_http())
-        .fallback_service({
-            let static_dir = env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string());
-            let index_path = format!("{static_dir}/index.html");
-            ServeDir::new(&static_dir).fallback(ServeFile::new(index_path))
-        });
+        .layer(TraceLayer::new_for_http());
+    // API-only service: the harvester-admin dashboard UI now lives in the
+    // editor (frontend/src/harvester), which reaches this API through the
+    // editor-api /api/harvest-admin/* proxy. This binary no longer serves a
+    // SPA, so there is no static fallback — unmatched paths 404. The API
+    // surface (/health, /metrics, /auth/*, /api/*) stays a standalone,
+    // publicly-addressable harvest API (OIDC + ADMIN_API_KEY on GET/DELETE).
 
     let port: u16 = env::var("ADMIN_PORT")
         .ok()

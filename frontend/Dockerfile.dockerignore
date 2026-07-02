@@ -14,12 +14,7 @@
 **/.pytest_cache
 .github
 .claude
-# Exclude packages not needed for editor-api build. admin's frontend-src
-# package.json is kept (negation pattern) because the npm workspace `npm ci`
-# in the frontend-builder stage needs every workspace manifest present.
-packages/admin/*
-!packages/admin/frontend-src
-packages/admin/frontend-src/*
-!packages/admin/frontend-src/package.json
+# Exclude packages not needed for the editor-api build.
+packages/admin
 packages/tui
 # Keep: packages/auth, packages/editor-api, packages/corpus, packages/engine, packages/harvester, packages/pipeline, packages/shared, packages/frontend-shared, packages/Cargo.*

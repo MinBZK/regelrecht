@@ -27,7 +27,7 @@ updates:
 
 
   # Single entry for the root npm workspace. frontend, frontend-lawmaking and
-  # packages/admin/frontend-src are workspace members sharing one root
+  # packages/frontend-shared are workspace members sharing one root
   # package-lock.json (since #860). Dependabot must target the root directory so
   # it updates the member package.json *and* the root lockfile in sync;
   # targeting a member directory bumps only its package.json and leaves the root

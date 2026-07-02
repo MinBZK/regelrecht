@@ -83,9 +83,9 @@ Notes:
   `.env.sso-local` (copy `.env.sso-local.example` and fill in the values, see
   [Auth and roles](/auth-and-roles/)). Use Chrome or Firefox: the session cookie
   is `Secure` and only those send it over `http://localhost`. The default port
-  `7300` (and `7400`/`7500`) are the redirect URIs already registered on the
+  `7300` (and `7500`) are the redirect URIs already registered on the
   `regelrecht-local` Keycloak client. Override ports with `EDITOR_PORT` /
-  `ADMIN_FE_PORT` / `LAWMAKING_PORT`.
+  `LAWMAKING_PORT`.
 - `just dev-frontend` and `just dev` are **mutually exclusive**: they share
   `.dev-pids` and ports, so run one at a time. `just dev-down` stops either.
 - In a dev container where the native backend can't reach Postgres on
@@ -101,9 +101,8 @@ just dev-down
 ## Logs
 
 ```bash
-tail -f .dev-admin.log           # Admin API log
-tail -f .dev-admin-frontend.log  # Admin frontend log
-tail -f .dev-editor.log          # Editor log
+tail -f .dev-admin.log           # Admin (harvester) API log
+tail -f .dev-editor.log          # Editor log (hosts the harvester Beheer UI)
 just dev-logs                    # Infrastructure logs
 ```
 

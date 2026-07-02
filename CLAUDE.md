@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `packages/engine/` - Rust law execution engine
 - `packages/pipeline/` - PostgreSQL-backed job queue and law status tracking
 - `packages/harvester/` - Law corpus harvesting from BWB (Basis Wettelijke Regelgeving)
-- `packages/admin/` - Admin dashboard (Rust API + Vue frontend)
+- `packages/admin/` - Harvester-admin API (Rust; standalone harvest job/corpus API). Its dashboard UI now lives in the editor as the "Beheer" section (`frontend/src/harvester/`), reached through the editor-api `/api/harvest-admin/*` proxy; the API stays independently addressable for scripts/services.
 - `packages/editor-api/` - Rust backend API for the editor frontend
 - `packages/corpus/` - Shared library for working with YAML regulation files
 - `packages/shared/` - Common types/utilities across packages

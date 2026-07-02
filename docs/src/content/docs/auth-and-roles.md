@@ -31,7 +31,7 @@ Keycloak composite role).
 There are two applications today:
 
 - **editor**: `packages/editor-api` + `frontend/` (law and scenario editor)
-- **harvester**: `packages/admin` (harvester job queue & corpus sync dashboard)
+- **harvester**: `packages/admin` — a standalone harvester job-queue & corpus API. Its dashboard UI is served inside the editor as the "Beheer" section (`frontend/src/harvester/`), visible to any `harvester-*` role and reached through the editor-api `/api/harvest-admin/*` proxy (which forwards the session cookie so the harvester API enforces the `harvester-*` gates below). The API stays independently addressable for non-editor clients.
 
 ### Role reference
 
