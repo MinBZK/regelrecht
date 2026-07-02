@@ -1232,7 +1232,18 @@ async fn process_next_enrich_job(
                             tracing::warn!(error = %se, law_id = %job.law_id, "failed to update law status to enrich_failed");
                         }
                     }
-                    Ok(_) => {}
+                    Ok(_) => {
+                        if let Err(e) = law_status::update_status_if(
+                            pool,
+                            &job.law_id,
+                            LawStatusValue::Enriching,
+                            LawStatusValue::Harvested,
+                        )
+                        .await
+                        {
+                            tracing::warn!(error = %e, law_id = %job.law_id, "failed to reset law status to harvested");
+                        }
+                    }
                     Err(fe) => {
                         tracing::error!(error = %fe, "failed to mark base-drift enrich job as failed")
                     }
