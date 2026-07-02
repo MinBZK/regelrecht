@@ -131,7 +131,7 @@ These 25 operations make up the schema. The engine also accepts the compat alias
 
 ### Rounding and precision
 
-Rounding is an **explicit, law-modeled instruction** — the engine never rounds a value implicitly (not even money). A law that must round says so with one of three unary operations, each taking a single `value:` operand and a `precision:` (the number of decimal places to round to, in the value's own [unit](#type-specifications)):
+Rounding is an **explicit, law-modeled instruction**: the engine never rounds a value implicitly (not even money). A law that must round says so with one of three unary operations, each taking a single `value:` operand and a `precision:` (the number of decimal places to round to, in the value's own [unit](#type-specifications)):
 
 | Operation | Direction | Dutch |
 |-----------|-----------|-------|
@@ -139,7 +139,7 @@ Rounding is an **explicit, law-modeled instruction** — the engine never rounds
 | `CEIL` | up (toward +∞) | *naar boven afronden* |
 | `FLOOR` | down (toward −∞) | *naar beneden afronden / afkappen* |
 
-`precision: 0` rounds to whole units, `precision: 2` to two decimals, and a negative precision rounds to tens/hundreds (e.g. `-2` rounds a eurocent value to whole euros). Intermediate values keep full precision — rounding only happens where a rounding operation appears.
+`precision: 0` rounds to whole units, `precision: 2` to two decimals, and a negative precision rounds to tens/hundreds (e.g. `-2` rounds a eurocent value to whole euros). Intermediate values keep full precision; rounding only happens where a rounding operation appears.
 
 ```yaml
 # Round the result of a SUBTRACT to whole eurocent, half-up
@@ -237,9 +237,9 @@ output:
 
 ### Units (quantity-kind)
 
-A value's *quantity-kind* is declared with `type_spec.unit` — on inputs, outputs, parameters **and** `definitions` constants (RFC-023). The available units are `euro`, `eurocent`, `ratio` (a 0–1 fraction), `percentage` (0–100), and the durations `years`, `weeks`, `months`, `days`.
+A value's *quantity-kind* is declared with `type_spec.unit`, on inputs, outputs, parameters **and** `definitions` constants (RFC-023). The available units are `euro`, `eurocent`, `ratio` (a 0–1 fraction), `percentage` (0–100), and the durations `years`, `weeks`, `months`, `days`.
 
-A unit is a **label, never a computational constraint**: tagging a value never changes it. In particular, a `percentage` is not silently divided by 100 — any `… / 100` is an explicit operation written where the value is applied. `ratio` and `percentage` are distinct labels for the same dimension; the corpus keeps both so a law that says "1,896" (a ratio) and one that says "30 procent" are both transcribed faithfully.
+A unit is a **label, never a computational constraint**: tagging a value never changes it. In particular, a `percentage` is not silently divided by 100; any `… / 100` is an explicit operation written where the value is applied. `ratio` and `percentage` are distinct labels for the same dimension; the corpus keeps both so a law that says "1,896" (a ratio) and one that says "30 procent" are both transcribed faithfully.
 
 Constants may use the optionally-structured form to carry a unit (the bare `naam: 123` form stays valid):
 
@@ -257,7 +257,7 @@ definitions:
       unit: ratio
 ```
 
-The engine uses these labels to reject nonsensical combinations — adding a `eurocent` to a `days`, or `euro` to `eurocent`, is a **unit mismatch** error — while a dimensionless `ratio`/`percentage` multiplied by an amount keeps the amount's unit. Units are **opt-in per law**: an un-annotated value has unit `unknown` and is never checked, so existing laws are unaffected until someone annotates them. `just validate` reports unit mismatches as failures and flags `amount` outputs that lack a unit (only for laws that already declare units elsewhere). See [RFC-023: Quantities in Law YAML](/rfcs/rfc-023).
+The engine uses these labels to reject nonsensical combinations (adding a `eurocent` to a `days`, or `euro` to `eurocent`, is a **unit mismatch** error), while a dimensionless `ratio`/`percentage` multiplied by an amount keeps the amount's unit. Units are **opt-in per law**: an un-annotated value has unit `unknown` and is never checked, so existing laws are unaffected until someone annotates them. `just validate` reports unit mismatches as failures and flags `amount` outputs that lack a unit (only for laws that already declare units elsewhere). See [RFC-023: Quantities in Law YAML](/rfcs/rfc-023).
 
 ## Corpus Contents
 
