@@ -46,6 +46,39 @@ fn pick_enrich_base(preferred: &str, preferred_exists: bool) -> &str {
     }
 }
 
+/// Outcome of comparing a target law's base version against the enrichment's
+/// recorded provenance. Pure decision so it can be unit-tested without git.
+// used by create_enrich_corpus in a later task
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BaseAction {
+    /// Law not yet on the enrich branch — check it out fresh from the base.
+    CheckoutFresh,
+    /// Law present and its base is unchanged — keep the existing enrichment.
+    Skip,
+    /// Law present but its base moved (or provenance is missing) — fail loudly.
+    Drift,
+}
+
+/// Decide what to do for a target law given whether it is already tracked on
+/// the enrich branch, the `source_hash` recorded in its `.enrichment.yaml`
+/// (if any), and the current base-branch blob SHA of the law.
+// used by create_enrich_corpus in a later task
+#[allow(dead_code)]
+pub(crate) fn decide_base_action(
+    tracked: bool,
+    stored_source_hash: Option<&str>,
+    base_sha: &str,
+) -> BaseAction {
+    if !tracked {
+        return BaseAction::CheckoutFresh;
+    }
+    match stored_source_hash {
+        Some(h) if !h.is_empty() && h == base_sha => BaseAction::Skip,
+        _ => BaseAction::Drift,
+    }
+}
+
 /// Trait abstracting the LLM invocation so `execute_enrich` can be tested
 /// with a fake provider that doesn't spawn real processes.
 #[async_trait::async_trait]
@@ -1354,6 +1387,44 @@ mod tests {
         // remote-exists bool is moot and we always use `development`.
         assert_eq!(pick_enrich_base("development", true), "development");
         assert_eq!(pick_enrich_base("development", false), "development");
+    }
+
+    #[test]
+    fn decide_base_action_new_law_checks_out_fresh() {
+        assert_eq!(
+            decide_base_action(false, None, "sha_new"),
+            BaseAction::CheckoutFresh
+        );
+        // Even if a stored hash somehow exists, an untracked path is a fresh checkout.
+        assert_eq!(
+            decide_base_action(false, Some("sha_old"), "sha_new"),
+            BaseAction::CheckoutFresh
+        );
+    }
+
+    #[test]
+    fn decide_base_action_unchanged_base_skips() {
+        assert_eq!(
+            decide_base_action(true, Some("sha"), "sha"),
+            BaseAction::Skip
+        );
+    }
+
+    #[test]
+    fn decide_base_action_changed_base_is_drift() {
+        assert_eq!(
+            decide_base_action(true, Some("sha_old"), "sha_new"),
+            BaseAction::Drift
+        );
+    }
+
+    #[test]
+    fn decide_base_action_missing_or_empty_provenance_is_drift() {
+        assert_eq!(decide_base_action(true, None, "sha_new"), BaseAction::Drift);
+        assert_eq!(
+            decide_base_action(true, Some(""), "sha_new"),
+            BaseAction::Drift
+        );
     }
 
     #[test]
