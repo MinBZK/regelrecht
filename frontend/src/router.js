@@ -102,6 +102,40 @@ const router = createRouter({
       meta: { title: 'Nieuw traject', requiresAuth: true },
     },
     {
+      // Harvester-admin "Beheer" section — the merged harvester dashboard.
+      // Top-level route (sibling of AppShell, not nested) so it carries its own
+      // chrome (HarvesterView), with the two sub-screens as nested children —
+      // mirroring the original standalone admin dashboard. Gated on any
+      // harvester-* role via `meta.requiresRole` (checked in `beforeEach`);
+      // write actions inside are enforced server-side by the harvester-admin
+      // API. Child routes inherit this record's meta.
+      path: '/beheer',
+      component: () => import('./harvester/HarvesterView.vue'),
+      meta: {
+        title: 'Beheer',
+        requiresAuth: true,
+        requiresRole: [
+          'harvester-reader',
+          'harvester-writer',
+          'harvester-admin',
+          'regelrecht-admin',
+        ],
+      },
+      children: [
+        { path: '', redirect: '/beheer/law-entries' },
+        {
+          path: 'law-entries',
+          name: 'law-entries',
+          component: () => import('./harvester/views/LawEntriesView.vue'),
+        },
+        {
+          path: 'jobs',
+          name: 'jobs',
+          component: () => import('./harvester/views/JobsView.vue'),
+        },
+      ],
+    },
+    {
       // Standalone full-page werkdocumenten editor, opened in a new tab from
       // the in-sheet editor ("Open in nieuw tabblad"). Deliberately a top-level
       // route, NOT a child of AppShell: it carries its own minimal top bar
@@ -141,10 +175,19 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   if (!to.meta.requiresAuth) return true;
   await ensureAuthReady();
-  const { authenticated, login } = useAuth();
+  const { authenticated, hasAnyRole, login } = useAuth();
   if (!authenticated.value) {
     login(to.fullPath);
     return false;
+  }
+  // Role-gated routes (e.g. the harvester-admin Beheer section): an
+  // authenticated user lacking the required role is redirected to the
+  // library rather than bounced through login (which would loop, since
+  // logging in again yields the same role set). `requiresRole` is a list of
+  // acceptable roles; holding any one grants access. `meta` is merged across
+  // matched records, so a child inherits its parent's `requiresRole`.
+  if (to.meta.requiresRole && !hasAnyRole(to.meta.requiresRole)) {
+    return { path: '/library' };
   }
   return true;
 });
