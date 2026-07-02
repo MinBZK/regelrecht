@@ -1006,9 +1006,10 @@ pub async fn create_enrich_corpus(
     // prevents an unrelated `checkout` or `reset` failure from silently
     // dropping the enrichment back to production's branch.
     //
-    // Pass the exact file path (not the directory) so the `ls-files` guard
-    // inside `checkout_from_branch` doesn't match sibling files and skip
-    // fetching a newly harvested version of an already-known law.
+    // The freshness guard below works on the exact file path (not the
+    // directory): `is_tracked` and `fetch_base_blob_sha` resolve a single blob,
+    // so a newly harvested version of an already-known law is judged on its own
+    // path rather than being masked by a sibling version in the same directory.
     let preferred_base = base_config.branch.as_str();
     let preferred_exists = if preferred_base == "development" || branch_is_known(preferred_base) {
         true
