@@ -516,6 +516,10 @@ pub struct EnrichmentMetadata {
     pub articles_total: usize,
     /// Total articles with a `machine_readable` section after enrichment.
     pub articles_with_machine_readable: usize,
+    /// Git blob SHA of the base-branch law YAML this enrichment was generated
+    /// from. Empty when unknown (files written before this field existed).
+    #[serde(default)]
+    pub source_hash: String,
 }
 
 /// Supported LLM providers for enrichment.
@@ -1171,6 +1175,7 @@ pub async fn execute_enrich_with_runner(
         coverage_score,
         articles_total: articles_before,
         articles_with_machine_readable,
+        source_hash: String::new(),
     };
 
     let metadata_path = yaml_abs
@@ -1633,6 +1638,7 @@ related_legislation:
             coverage_score: 0.7,
             articles_total: 10,
             articles_with_machine_readable: 7,
+            source_hash: String::new(),
         };
 
         let yaml = serde_yaml_ng::to_string(&meta).unwrap();
@@ -1641,6 +1647,33 @@ related_legislation:
 
         let deserialized: EnrichmentMetadata = serde_yaml_ng::from_str(&yaml).unwrap();
         assert_eq!(deserialized.articles_with_machine_readable, 7);
+    }
+
+    #[test]
+    fn enrichment_metadata_source_hash_defaults_when_absent() {
+        // A .enrichment.yaml written before this field existed.
+        let legacy = "law_id: BWBR0001\ntimestamp: '2026-01-01T00:00:00Z'\nprovider: claude\nmodel: m\nprompt_hash: p\ncode_commit: c\ncoverage_score: 1.0\narticles_total: 1\narticles_with_machine_readable: 1\n";
+        let meta: EnrichmentMetadata = serde_yaml_ng::from_str(legacy).unwrap();
+        assert_eq!(meta.source_hash, "");
+    }
+
+    #[test]
+    fn enrichment_metadata_source_hash_roundtrips() {
+        let meta = EnrichmentMetadata {
+            law_id: "BWBR0001".into(),
+            timestamp: "2026-01-01T00:00:00Z".into(),
+            provider: "claude".into(),
+            model: "m".into(),
+            prompt_hash: "p".into(),
+            code_commit: "c".into(),
+            coverage_score: 1.0,
+            articles_total: 1,
+            articles_with_machine_readable: 1,
+            source_hash: "abc123".into(),
+        };
+        let yaml = serde_yaml_ng::to_string(&meta).unwrap();
+        let back: EnrichmentMetadata = serde_yaml_ng::from_str(&yaml).unwrap();
+        assert_eq!(back.source_hash, "abc123");
     }
 
     #[test]
