@@ -671,6 +671,36 @@ impl CorpusClient {
         Ok(())
     }
 
+    /// Fetch the base branch shallowly and return the git blob SHA of `path` on
+    /// it. Uses `FETCH_HEAD` (the single-branch enrich clone never creates
+    /// `origin/<base>`). Blob SHA is content-addressed, so it is comparable
+    /// across clones.
+    pub async fn fetch_base_blob_sha(&self, base_branch: &str, path: &str) -> Result<String> {
+        self.run_git(&["fetch", "--depth", "1", "origin", base_branch])
+            .await?;
+        let sha = self
+            .run_git_output(&["rev-parse", &format!("FETCH_HEAD:{path}")])
+            .await?;
+        Ok(sha.trim().to_string())
+    }
+
+    /// Whether `path` is tracked in the current checkout/branch.
+    pub async fn is_tracked(&self, path: &str) -> Result<bool> {
+        let listed = self.run_git_output(&["ls-files", "--", path]).await?;
+        Ok(!listed.trim().is_empty())
+    }
+
+    /// Check `path` out of the most recent `FETCH_HEAD` and unstage it, so it
+    /// does not pollute an empty `git status --porcelain` check before the
+    /// enrichment commits. Call `fetch_base_blob_sha` first so `FETCH_HEAD` is
+    /// set.
+    pub async fn checkout_path_from_fetch_head(&self, path: &str) -> Result<()> {
+        self.run_git(&["checkout", "FETCH_HEAD", "--", path])
+            .await?;
+        self.run_git(&["reset", "HEAD", "--", path]).await?;
+        Ok(())
+    }
+
     async fn configure_git_user(&self) -> Result<()> {
         self.run_git(&["config", "user.name", &self.config.git_author_name])
             .await?;
@@ -866,6 +896,27 @@ mod tests {
                 .await
                 .unwrap();
         }
+    }
+
+    /// git blob SHA of `content` as git would compute it (matches rev-parse of
+    /// a committed/fetched blob with identical bytes).
+    fn git_hash_object(content: &str) -> String {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+        let mut child = Command::new("git")
+            .args(["hash-object", "--stdin"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(content.as_bytes())
+            .unwrap();
+        let out = child.wait_with_output().unwrap();
+        String::from_utf8(out.stdout).unwrap().trim().to_string()
     }
 
     #[test]
@@ -1716,6 +1767,99 @@ mod tests {
         assert!(repo_path
             .join("regulation/nl/wet/new_law/2025-01-01.yaml")
             .exists());
+    }
+
+    #[tokio::test]
+    async fn fetch_base_blob_sha_returns_stable_content_hash() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+
+        // Enrichment clone on a branch that doesn't exist yet (born from development).
+        let repo_path = dir.path().join("enrich-clone");
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.branch = "enrich/test".into();
+        let mut client = CorpusClient::new(config);
+        client.ensure_repo().await.unwrap();
+
+        // Push a law file to development with known content.
+        let base_content = "new law content";
+        let path = "regulation/nl/wet/new_law/2025-01-01.yaml";
+        let tmp = dir.path().join("setup");
+        clone_with_config(&bare_path, &tmp).await;
+        let new_law = tmp.join("regulation/nl/wet/new_law");
+        tokio::fs::create_dir_all(&new_law).await.unwrap();
+        tokio::fs::write(new_law.join("2025-01-01.yaml"), base_content)
+            .await
+            .unwrap();
+        for args in [
+            vec!["add", "."],
+            vec!["commit", "-m", "harvest new law"],
+            vec!["push", "origin", "development"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&tmp)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        let sha = client
+            .fetch_base_blob_sha("development", path)
+            .await
+            .unwrap();
+
+        // `git hash-object` of the same bytes must equal the reported blob SHA.
+        let expected = git_hash_object(base_content);
+        assert_eq!(sha, expected);
+    }
+
+    #[tokio::test]
+    async fn is_tracked_reflects_branch_contents() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+
+        // Enrichment clone born from development (without the new law).
+        let repo_path = dir.path().join("enrich-clone");
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.branch = "enrich/test".into();
+        let mut client = CorpusClient::new(config);
+        client.ensure_repo().await.unwrap();
+
+        // Push a new law to development after the enrich branch was created.
+        let path = "regulation/nl/wet/new_law/2025-01-01.yaml";
+        let tmp = dir.path().join("setup");
+        clone_with_config(&bare_path, &tmp).await;
+        let new_law = tmp.join("regulation/nl/wet/new_law");
+        tokio::fs::create_dir_all(&new_law).await.unwrap();
+        tokio::fs::write(new_law.join("2025-01-01.yaml"), "new law content")
+            .await
+            .unwrap();
+        for args in [
+            vec!["add", "."],
+            vec!["commit", "-m", "harvest new law"],
+            vec!["push", "origin", "development"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&tmp)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        // The law exists on development but not on the enrich branch.
+        assert!(!client.is_tracked(path).await.unwrap());
+
+        client
+            .fetch_base_blob_sha("development", path)
+            .await
+            .unwrap();
+        client.checkout_path_from_fetch_head(path).await.unwrap();
+        client.run_git(&["add", "--", path]).await.unwrap();
+        assert!(client.is_tracked(path).await.unwrap());
     }
 
     #[tokio::test]
