@@ -644,6 +644,8 @@ pub async fn create_enrich_jobs(
             law_id: law_id.clone(),
             yaml_path: yaml_path.clone(),
             provider: Some((*provider_name).to_string()),
+            // Admin-requested enrichments are roots of the related-harvest chain.
+            depth: None,
         };
 
         let payload_json = serde_json::to_value(&enrich_payload).map_err(|e| {
