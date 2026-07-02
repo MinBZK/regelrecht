@@ -921,18 +921,6 @@ fn build_command(
     cmd
 }
 
-/// Create a `CorpusClient` for the enrichment branch.
-///
-/// Clones the base corpus config but sets the branch to the enrichment branch.
-/// The client's `ensure_repo()` will auto-create the branch if it doesn't exist.
-///
-/// Each invocation uses a unique checkout directory (keyed by branch + job ID)
-/// to prevent concurrent workers from clobbering each other's checkouts.
-///
-/// Uses sparse checkout to only materialize the law directory being enriched
-/// plus the `features/` directory. This prevents the LLM subprocess from
-/// indexing the entire corpus (thousands of files), which would exceed context
-/// limits and cause excessive memory usage.
 /// Result of preparing the per-job enrichment checkout: the client plus the
 /// base-branch blob SHA of the target law (recorded into `.enrichment.yaml`
 /// as `source_hash`).
@@ -945,16 +933,33 @@ pub struct EnrichCorpus {
 /// present and non-empty. Returns `None` when the file is absent/unparseable
 /// or the field is empty (both treated as "unknown provenance").
 async fn read_stored_source_hash(repo_path: &Path, normalized_law_path: &str) -> Option<String> {
+    #[derive(serde::Deserialize)]
+    struct Provenance {
+        #[serde(default)]
+        source_hash: String,
+    }
     let meta_rel = Path::new(normalized_law_path)
         .parent()?
         .join(".enrichment.yaml");
     let content = tokio::fs::read_to_string(repo_path.join(meta_rel))
         .await
         .ok()?;
-    let meta: EnrichmentMetadata = serde_yaml_ng::from_str(&content).ok()?;
-    (!meta.source_hash.is_empty()).then_some(meta.source_hash)
+    let prov: Provenance = serde_yaml_ng::from_str(&content).ok()?;
+    (!prov.source_hash.is_empty()).then_some(prov.source_hash)
 }
 
+/// Create a `CorpusClient` for the enrichment branch.
+///
+/// Clones the base corpus config but sets the branch to the enrichment branch.
+/// The client's `ensure_repo()` will auto-create the branch if it doesn't exist.
+///
+/// Each invocation uses a unique checkout directory (keyed by branch + job ID)
+/// to prevent concurrent workers from clobbering each other's checkouts.
+///
+/// Uses sparse checkout to only materialize the law directory being enriched
+/// plus the `features/` directory. This prevents the LLM subprocess from
+/// indexing the entire corpus (thousands of files), which would exceed context
+/// limits and cause excessive memory usage.
 pub async fn create_enrich_corpus(
     base_config: &CorpusConfig,
     branch: &str,

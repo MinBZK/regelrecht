@@ -1208,9 +1208,9 @@ async fn process_next_enrich_job(
     let branch = enrich_branch_name(effective_config.provider.name());
     let enrich_corpus = if let Some(base_config) = corpus_config {
         match create_enrich_corpus(base_config, &branch, job.id, &payload.yaml_path).await {
-            Ok(client) => {
+            Ok(enrich_corpus) => {
                 tracing::info!(branch = %branch, "created enrichment branch corpus");
-                Some(client)
+                Some(enrich_corpus)
             }
             Err(e) => {
                 tracing::warn!(error = %e, branch = %branch, "failed to create enrichment branch corpus, proceeding without");
