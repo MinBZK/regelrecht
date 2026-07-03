@@ -79,6 +79,8 @@ export const GROUPED_COLUMNS = [
 // Untranslatables (RFC-012): one row per legal construct the enrichment agent
 // could not express with the engine's current operation set. Atomic grain —
 // grouped views (per construct / per law) are aggregation over this same list.
+// Keep in sync with ENRICH_PROVIDERS in packages/pipeline/src/enrich.rs — a
+// provider added there but not here still displays, only its filter option is missing.
 export const UNTRANSLATABLE_PROVIDERS = ['opencode', 'claude'];
 
 export const UNTRANSLATABLE_COLUMNS = [
@@ -201,9 +203,12 @@ export const STATUS_BADGE_MAP = {
   queued: 'neutral',
   // No consolidated text to harvest — informational, terminal, not a failure.
   not_harvestable: 'neutral',
-  // Untranslatables (RFC-012): a human-reviewed `accepted` flag rendered as a badge.
+  // Untranslatables (RFC-012): the human-review `accepted` flag rendered as a
+  // badge. `accepted` is a review gate that defaults to false, so false means
+  // "not yet reviewed / open" (neutral), NOT "rejected" (which would wrongly
+  // paint every fresh untranslatable red).
   accepted: 'success',
-  rejected: 'critical',
+  open: 'neutral',
 };
 
 export const DATE_FORMATTER = new Intl.DateTimeFormat('nl-NL', {

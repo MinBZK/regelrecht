@@ -46,7 +46,7 @@ function closeDetail() {
     @row-click="openDetail"
   >
     <template #cell-accepted="{ row }">
-      <StatusBadge :status="row.accepted ? 'accepted' : 'rejected'" />
+      <StatusBadge :status="row.accepted ? 'accepted' : 'open'" />
     </template>
     <template #pagination>
       <PaginationControls

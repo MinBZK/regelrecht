@@ -80,7 +80,7 @@ function onSheetClose() {
               <nldd-text-cell text="Accepted" color="secondary" width="fit-content" />
               <nldd-spacer-cell size="12" />
               <nldd-cell width="full" style="align-items: flex-end">
-                <StatusBadge :status="row.accepted ? 'accepted' : 'rejected'" size="md" />
+                <StatusBadge :status="row.accepted ? 'accepted' : 'open'" size="md" />
               </nldd-cell>
             </nldd-list-item>
           </nldd-list>
