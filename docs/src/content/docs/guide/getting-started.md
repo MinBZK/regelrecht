@@ -39,8 +39,8 @@ This starts:
 
 | Service | URL | Description |
 |---------|-----|-------------|
-| Editor | http://localhost:3000 | Law editor + harvester **Beheer** section (hot reload) |
-| Admin API | http://localhost:8000 | Harvester REST API (auto-recompile; UI is the editor's Beheer section) |
+| Editor | http://localhost:3000 | Law editor + **Corpusinwinning** section (hot reload) |
+| Admin API | http://localhost:8000 | Harvester REST API (auto-recompile; UI is the editor's Corpusinwinning section) |
 | Grafana | http://localhost:3002 | Metrics dashboard |
 | Prometheus | http://localhost:9090 | Metrics collection |
 | PostgreSQL | localhost:5433 | Database |

@@ -1,6 +1,6 @@
 <script setup>
 /**
- * HarvesterView — the harvester-admin "Beheer" section, merged into the editor.
+ * HarvesterView — the harvester-admin "Corpusinwinning" section, merged into the editor.
  *
  * Top-level route (sibling of AppShell, not nested) so it carries its own
  * compact chrome instead of the editor's app chrome — mirroring the other
@@ -44,8 +44,8 @@ const deploymentName = computed(() =>
 );
 
 const tabs = [
-  { key: 'law-entries', label: 'Wetten', route: '/beheer/law-entries' },
-  { key: 'jobs', label: 'Taken', route: '/beheer/jobs' },
+  { key: 'law-entries', label: 'Wetten', route: '/harvesting/law-entries' },
+  { key: 'jobs', label: 'Taken', route: '/harvesting/jobs' },
 ];
 const activeTab = computed(() => route.name);
 
@@ -56,7 +56,7 @@ function goToLibrary() {
 
 <template>
   <nldd-app-view>
-    <div class="beheer-view">
+    <div class="harvesting-view">
       <nldd-container padding="8" padding-left="16">
         <nldd-toolbar size="md">
           <nldd-toolbar-item slot="start">
@@ -70,7 +70,7 @@ function goToLibrary() {
           </nldd-toolbar-item>
           <nldd-toolbar-title
             slot="start"
-            text="Beheer"
+            text="Corpusinwinning"
             supporting-text="RegelRecht"
             min-width="fit-content"
           ></nldd-toolbar-title>
@@ -104,15 +104,15 @@ function goToLibrary() {
           </nldd-toolbar-item>
           <nldd-toolbar-item slot="end">
             <nldd-icon-button
-              id="beheer-account-btn"
+              id="harvesting-account-btn"
               size="md"
               icon="account"
               text="Account"
               tooltip-timing="never"
               expandable
-              popovertarget="beheer-account-menu"
+              popovertarget="harvesting-account-menu"
             ></nldd-icon-button>
-            <nldd-menu id="beheer-account-menu" anchor="beheer-account-btn">
+            <nldd-menu id="harvesting-account-menu" anchor="harvesting-account-btn">
               <nldd-menu-item
                 v-if="!authLoading && authenticated"
                 :text="person?.name || person?.email"

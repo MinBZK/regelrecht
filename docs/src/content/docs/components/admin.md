@@ -3,13 +3,13 @@ title: "Admin Dashboard"
 description: "The web dashboard operators use to monitor and control the harvester pipeline."
 ---
 
-The harvester-admin service lets operators monitor and control the harvester pipeline. It is a standalone Rust API; its dashboard UI lives inside the editor as the "Beheer" section (`frontend/src/harvester/`), reached through the editor-api `/api/harvest-admin/*` proxy. The API stays independently addressable for scripts and other services.
+The harvester-admin service lets operators monitor and control the harvester pipeline. It is a standalone Rust API; its dashboard UI lives inside the editor as the "Corpusinwinning" section (`frontend/src/harvester/`), reached through the editor-api `/api/harvest-admin/*` proxy. The API stays independently addressable for scripts and other services.
 
 ## Overview
 
 - **Language**: Rust (Axum), API only
 - **Location**: `packages/admin/` (API); UI in `frontend/src/harvester/`
-- **Production URL**: `harvester-admin.regelrecht.rijks.app` (API); UI at `editor.regelrecht.rijks.app` → Beheer
+- **Production URL**: `harvester-admin.regelrecht.rijks.app` (API); UI at `editor.regelrecht.rijks.app` → Corpusinwinning
 
 ## What it does
 
@@ -47,7 +47,7 @@ The dashboard UI is served by the editor. For the full end-to-end flow
 just dev-frontend all
 ```
 
-Then open the editor and choose "Beheer" from the account menu (visible to any
+Then open the editor and choose "Corpusinwinning" from the account menu (visible to any
 `harvester-*` role).
 
 ## Further reading

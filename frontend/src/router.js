@@ -102,17 +102,17 @@ const router = createRouter({
       meta: { title: 'Nieuw traject', requiresAuth: true },
     },
     {
-      // Harvester-admin "Beheer" section — the merged harvester dashboard.
+      // Harvester-admin "Corpusinwinning" section — the merged harvester dashboard.
       // Top-level route (sibling of AppShell, not nested) so it carries its own
       // chrome (HarvesterView), with the two sub-screens as nested children —
       // mirroring the original standalone admin dashboard. Gated on any
       // harvester-* role via `meta.requiresRole` (checked in `beforeEach`);
       // write actions inside are enforced server-side by the harvester-admin
       // API. Child routes inherit this record's meta.
-      path: '/beheer',
+      path: '/harvesting',
       component: () => import('./harvester/HarvesterView.vue'),
       meta: {
-        title: 'Beheer',
+        title: 'Corpusinwinning',
         requiresAuth: true,
         requiresRole: [
           'harvester-reader',
@@ -122,7 +122,7 @@ const router = createRouter({
         ],
       },
       children: [
-        { path: '', redirect: '/beheer/law-entries' },
+        { path: '', redirect: '/harvesting/law-entries' },
         {
           path: 'law-entries',
           name: 'law-entries',
@@ -180,7 +180,7 @@ router.beforeEach(async (to) => {
     login(to.fullPath);
     return false;
   }
-  // Role-gated routes (e.g. the harvester-admin Beheer section): an
+  // Role-gated routes (e.g. the harvester-admin Corpusinwinning section): an
   // authenticated user lacking the required role is redirected to the
   // library rather than bounced through login (which would loop, since
   // logging in again yields the same role set). `requiresRole` is a list of

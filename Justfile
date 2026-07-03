@@ -361,8 +361,8 @@ dev-frontend APP="all":
     admin_api_port=8000
     if [ "$app" = all ]; then admin_api_port=8001; fi
     # When both editor and admin run (i.e. 'all'), point editor-api's
-    # harvester-admin proxy at the local admin API so the editor's Beheer
-    # section reaches it. In editor-only mode the proxy is unset and the Beheer
+    # harvester-admin proxy at the local admin API so the editor's Corpusinwinning
+    # section reaches it. In editor-only mode the proxy is unset and the Corpusinwinning
     # screens 503 (run `just dev-frontend all` for the full harvester flow).
     harvest_admin_env=""
     if [ "$run_admin" = true ]; then
@@ -405,7 +405,7 @@ dev-frontend APP="all":
     fi
 
     # Admin is now an API-only service (its dashboard UI moved into the editor's
-    # Beheer section). In 'all' mode the editor-api proxies to it via
+    # Corpusinwinning section). In 'all' mode the editor-api proxies to it via
     # HARVEST_ADMIN_URL (set on the editor-api above), so the harvester screens
     # work end-to-end through the editor at :${editor_port}.
     if [ "$run_admin" = true ]; then
@@ -430,7 +430,7 @@ dev-frontend APP="all":
         echo "  Editor:     http://localhost:${editor_port}     (vite HMR → editor-api :8000, SSO)"
     fi
     if [ "$run_admin" = true ]; then
-        echo "  Admin API:  http://localhost:${admin_api_port}     (harvester API; UI is the editor's Beheer section)"
+        echo "  Admin API:  http://localhost:${admin_api_port}     (harvester API; UI is the editor's Corpusinwinning section)"
     fi
     if [ "$run_lawmaking" = true ]; then
         echo "  Lawmaking:  http://localhost:${lawmaking_port}     (vite HMR, no backend)"

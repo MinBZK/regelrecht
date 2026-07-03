@@ -1,8 +1,8 @@
-/* Harvester "Beheer" section styles — the component-specific hooks ported from
+/* Harvester "Corpusinwinning" section styles — the component-specific hooks ported from
    the standalone admin dashboard (packages/admin/frontend-src/css/admin.css).
    These target light-DOM class hooks in the ported table/toolbar components, so
    they must be global (an SFC `<style scoped>` on HarvesterView would not reach
-   the child components). Loaded only when the Beheer section is opened, since
+   the child components). Loaded only when the Corpusinwinning section is opened, since
    HarvesterView is lazy-loaded.
 
    Uses @nldd/design-system design tokens. Three rules from the original

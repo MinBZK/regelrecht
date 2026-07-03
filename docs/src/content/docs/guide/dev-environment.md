@@ -12,8 +12,7 @@ The development stack runs infrastructure in Docker and application services nat
 │  Native (hot reload)                            │
 │  ┌──────────────┐ ┌──────────────┐              │
 │  │ Editor :3000 │ │Admin API:8000│              │
-│  │ (Vite; hosts │ │(cargo watch; │              │
-│  │  Beheer UI)  │ │ API only)    │              │
+│  │   (Vite)     │ │(cargo watch) │              │
 │  └──────────────┘ └──────────────┘              │
 ├─────────────────────────────────────────────────┤
 │  Docker                                         │
@@ -71,8 +70,8 @@ just dev-down                # stop it (shared with `just dev`)
 
 | App | URL | Backend | DB | Notes |
 |-----|-----|---------|----|----|
-| editor | `http://localhost:7300` | editor-api `:8000` | yes | real SSO, needs `.env.sso-local`; hosts the harvester **Beheer** UI |
-| harvester-admin | API only (UI is the editor's Beheer section) | admin API `:8000` (`:8001` when all run together) | yes | in `all`, editor-api proxies `/api/harvest-admin/*` here |
+| editor | `http://localhost:7300` | editor-api `:8000` | yes | real SSO, needs `.env.sso-local`; hosts the **Corpusinwinning** section |
+| harvester-admin | API only (UI is the editor's Corpusinwinning section) | admin API `:8000` (`:8001` when all run together) | yes | in `all`, editor-api proxies `/api/harvest-admin/*` here |
 | lawmaking | `http://localhost:7500` | none | no | static, no backend |
 
 Notes:
@@ -103,7 +102,7 @@ just dev-down
 
 ```bash
 tail -f .dev-admin.log           # Admin (harvester) API log
-tail -f .dev-editor.log          # Editor log (hosts the harvester Beheer UI)
+tail -f .dev-editor.log          # Editor log (hosts the Corpusinwinning section)
 just dev-logs                    # Infrastructure logs
 ```
 
