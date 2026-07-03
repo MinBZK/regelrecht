@@ -8,6 +8,13 @@
 //! `.enrichment.yaml` recording a *stale* `source_hash`, then asserts the guard
 //! fails the job loudly with `BaseDrift` instead of silently re-enriching over a
 //! possibly-validated result.
+//!
+//! NOTE: this test is DB-free — it needs only `git` and a temp dir, no
+//! testcontainers/Postgres. It lives in the integration `tests/` target (rather
+//! than as a `#[cfg(test)]` unit test) purely for filesystem/git isolation: it
+//! shells out to real `git` against a bare remote in a `tempfile` dir. It is not
+//! Docker-dependent, and it also runs under `just test-all`, so coverage isn't
+//! gated on the Docker-only `pipeline-integration-test` recipe.
 
 use std::path::Path;
 

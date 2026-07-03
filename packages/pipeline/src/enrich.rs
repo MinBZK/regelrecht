@@ -998,6 +998,46 @@ pub async fn create_enrich_corpus(
     let mut client = CorpusClient::new(config);
     client.ensure_repo().await?;
 
+    // Past `ensure_repo()` a per-job git clone exists on disk. Resolving the
+    // base branch, checking freshness, or checking out the law can all fail —
+    // including a deliberate `BaseDrift` bail-out. The worker's shared cleanup
+    // only captures the checkout path on the success path, so on any error we
+    // must remove the clone here; otherwise an errored (and especially a
+    // drifted, awaiting-human) job leaks its clone on a disk/OOM-sensitive
+    // worker.
+    let checkout_dir = client.repo_path().to_path_buf();
+    let source_hash = match resolve_enrich_base(&client, base_config, &normalized).await {
+        Ok(source_hash) => source_hash,
+        Err(e) => {
+            if let Err(rm) = tokio::fs::remove_dir_all(&checkout_dir).await {
+                tracing::warn!(
+                    path = %checkout_dir.display(),
+                    error = %rm,
+                    "failed to clean up per-job corpus checkout after enrich setup error"
+                );
+            }
+            return Err(e);
+        }
+    };
+
+    Ok(EnrichCorpus {
+        client,
+        source_hash,
+    })
+}
+
+/// Resolve the enrichment base branch and materialize the target law from it,
+/// returning the base blob SHA to record as provenance (`source_hash`).
+///
+/// Split out from [`create_enrich_corpus`] so that every error it can raise — a
+/// git probe failure, a checkout failure, or a [`PipelineError::BaseDrift`]
+/// bail-out — flows through a single caller-side cleanup that removes the
+/// per-job clone. Only `&self` methods are used; the clone already exists.
+async fn resolve_enrich_base(
+    client: &CorpusClient,
+    base_config: &CorpusConfig,
+    normalized: &str,
+) -> Result<String> {
     // Prefer the worker's own base branch (e.g. `pr574`) so PR deployments
     // enrich their own harvested YAML, not production's. Probe the remote
     // first and fall back to `development` only when the branch doesn't
@@ -1032,21 +1072,21 @@ pub async fn create_enrich_corpus(
     // provenance recorded in a prior enrichment. New law -> check out fresh;
     // unchanged base -> keep existing enrichment; changed/unknown base ->
     // fail loudly (do NOT auto-overwrite a possibly-validated enrichment).
-    let base_sha = client.fetch_base_blob_sha(base_branch, &normalized).await?;
-    let tracked = client.is_tracked(&normalized).await?;
-    let stored = read_stored_source_hash(client.repo_path(), &normalized).await;
+    let base_sha = client.fetch_base_blob_sha(base_branch, normalized).await?;
+    let tracked = client.is_tracked(normalized).await?;
+    let stored = read_stored_source_hash(client.repo_path(), normalized).await;
 
     match decide_base_action(tracked, stored.as_deref(), &base_sha) {
         BaseAction::CheckoutFresh => {
-            client.checkout_path_from_fetch_head(&normalized).await?;
+            client.checkout_path_from_fetch_head(normalized).await?;
             tracing::info!(base = %base_branch, path = %normalized, "checked out law fresh from base");
         }
         BaseAction::Skip => {
-            tracing::debug!(path = %normalized, "base unchanged, keeping existing enrichment");
+            tracing::debug!(path = %normalized, "base unchanged, no fresh checkout needed");
         }
         BaseAction::Drift => {
             return Err(PipelineError::BaseDrift {
-                yaml_path: normalized.clone(),
+                yaml_path: normalized.to_string(),
                 base: base_branch.to_string(),
                 expected: stored.unwrap_or_else(|| "(none recorded)".to_string()),
                 actual: base_sha,
@@ -1054,10 +1094,7 @@ pub async fn create_enrich_corpus(
         }
     }
 
-    Ok(EnrichCorpus {
-        client,
-        source_hash: base_sha,
-    })
+    Ok(base_sha)
 }
 
 /// Ensure `.claude/skills/` exist in the target repo directory.

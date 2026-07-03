@@ -1219,8 +1219,15 @@ async fn process_next_enrich_job(
                 tracing::error!(error = %e, law_id = %job.law_id, branch = %branch, "base drift detected; failing enrich job");
                 let error_json =
                     serde_json::json!({ "error": e.to_string(), "kind": "base_drift" });
-                match job_queue::fail_job(pool, job.id, Some(error_json)).await {
-                    Ok(failed_job) if failed_job.status == crate::models::JobStatus::Failed => {
+                // Terminal-fail (not fail_job): base drift is deterministic
+                // against the same base, so it must NOT re-enter the job-level
+                // retry loop. fail_job_terminal marks the job Failed in one shot
+                // instead of bouncing it back to 'pending' up to max_attempts —
+                // which would deterministically re-fail against the same base
+                // and flip-flop the law status Enriching -> Harvested on each
+                // non-final attempt before finally landing on Failed.
+                match job_queue::fail_job_terminal(pool, job.id, Some(error_json)).await {
+                    Ok(_failed_job) => {
                         if let Err(se) = sqlx::query(
                             "UPDATE law_entries SET status = 'enrich_failed'::law_status, updated_at = now() \
                              WHERE law_id = $1 AND status NOT IN ('enriched', 'enrich_exhausted')",
@@ -1231,18 +1238,13 @@ async fn process_next_enrich_job(
                         {
                             tracing::warn!(error = %se, law_id = %job.law_id, "failed to update law status to enrich_failed");
                         }
-                    }
-                    Ok(_) => {
-                        if let Err(e) = law_status::update_status_if(
-                            pool,
-                            &job.law_id,
-                            LawStatusValue::Enriching,
-                            LawStatusValue::Harvested,
-                        )
-                        .await
-                        {
-                            tracing::warn!(error = %e, law_id = %job.law_id, "failed to reset law status to harvested");
-                        }
+                        // Deliberately NOT calling handle_enrich_exhausted_or_retry here,
+                        // and the job was terminal-failed above: unlike the other enrich
+                        // failures (timeout, commit failure, enrich error), base drift is
+                        // part of neither the job-level retry loop nor the law-level
+                        // exhaust loop. The base is unchanged-but-stale relative to the
+                        // recorded provenance, so any retry would just re-fail against the
+                        // same base. Drift requires a human to review and re-enrich.
                     }
                     Err(fe) => {
                         tracing::error!(error = %fe, "failed to mark base-drift enrich job as failed")
