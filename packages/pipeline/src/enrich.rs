@@ -1048,7 +1048,7 @@ pub async fn create_enrich_corpus(
             return Err(PipelineError::BaseDrift {
                 yaml_path: normalized.clone(),
                 base: base_branch.to_string(),
-                expected: stored.unwrap_or_default(),
+                expected: stored.unwrap_or_else(|| "(none recorded)".to_string()),
                 actual: base_sha,
             });
         }
