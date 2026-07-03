@@ -18,6 +18,22 @@ use crate::job_queue::{self, CreateJobRequest};
 use crate::law_status;
 use crate::models::{JobType, LawStatusValue, Priority};
 
+/// Local night window (Europe/Amsterdam) as a half-open hour-of-day range
+/// `[start, end)`. Hours in this range get the multiplied enrich cap.
+const NIGHT_START_HOUR: i32 = 0;
+const NIGHT_END_HOUR: i32 = 8;
+
+/// The enrich cap for a given local hour-of-day: the base hourly limit during
+/// the day, times `night_multiplier` during the night window. Saturating so a
+/// large multiplier can't overflow `u32`.
+pub fn hourly_cap(base: u32, night_multiplier: u32, local_hour: i32) -> u32 {
+    if (NIGHT_START_HOUR..NIGHT_END_HOUR).contains(&local_hour) {
+        base.saturating_mul(night_multiplier)
+    } else {
+        base
+    }
+}
+
 /// Outcome of attempting to process a single job, used to drive the
 /// resource-exhaustion circuit breaker in the worker loops.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1655,6 +1671,22 @@ async fn handle_enrich_exhausted_or_retry(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hourly_cap_day_vs_night() {
+        // Day hours [8, 24) use the base limit.
+        assert_eq!(hourly_cap(4, 5, 8), 4, "08:00 is the first day hour");
+        assert_eq!(hourly_cap(4, 5, 12), 4);
+        assert_eq!(hourly_cap(4, 5, 23), 4);
+        // Night hours [0, 8) get base * multiplier.
+        assert_eq!(hourly_cap(4, 5, 0), 20, "midnight is a night hour");
+        assert_eq!(hourly_cap(4, 5, 3), 20);
+        assert_eq!(hourly_cap(4, 5, 7), 20, "07:00 is the last night hour");
+        // Default multiplier 1 means no boost.
+        assert_eq!(hourly_cap(4, 1, 3), 4);
+        // Saturating: a huge multiplier can't overflow.
+        assert_eq!(hourly_cap(u32::MAX, 5, 3), u32::MAX);
+    }
 
     #[test]
     fn classifies_fork_eagain_errors_as_resource_exhaustion() {
