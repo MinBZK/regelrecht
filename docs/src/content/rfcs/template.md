@@ -8,7 +8,7 @@ authors:
 # Optional. Omit when none. Each item: "RFC-NNN (Short description)".
 depends_on:
   - RFC-NNN (Short description)
-# Optional sidebar label — defaults to the title when omitted.
+# Optional sidebar label; defaults to the title when omitted.
 # short_title: Short Label
 ---
 

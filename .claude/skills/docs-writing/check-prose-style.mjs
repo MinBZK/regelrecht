@@ -48,14 +48,65 @@ const DEFAULT_TARGETS = [
 // "klantreis"). A linter that cries wolf on domain vocabulary gets muted.
 // ---------------------------------------------------------------------------
 
+// True when the en-dash at index `i` joins two range endpoints (so it is
+// correct typography, not prose punctuation). Endpoints:
+//   tight  x–y     both immediate neighbors alphanumeric (12–13, 257a–257h,
+//                  September–December)
+//   spaced x – y   a currency amount or digit on each side (€5.212 – €7.747,
+//                  32 – 36 uur). A currency symbol may sit just before the
+//                  left number and just after the space on the right.
+// One exclusion inside the tight case: an en-dash between two all-lowercase
+// words (klimaat–energiedossier) is a prose dash, not a range. Real tight
+// ranges carry a digit (257a–257h, 12–13) or are capitalized proper nouns
+// (September–December); a lowercase–lowercase pair is not a range.
+const RANGE_END = /[\p{L}\p{N}]/u;
+function isRangeDash(s, i) {
+  const before = s[i - 1] ?? '';
+  const after = s[i + 1] ?? '';
+  // tight: alnum–alnum
+  if (RANGE_END.test(before) && RANGE_END.test(after)) {
+    const leftWord = (s.slice(0, i).match(/[\p{L}\p{N}]+$/u) ?? [''])[0];
+    const rightWord = (s.slice(i + 1).match(/^[\p{L}\p{N}]+/u) ?? [''])[0];
+    const pair = leftWord + rightWord;
+    const hasDigit = /\p{N}/u.test(pair);
+    const bothLowerAlpha = /^\p{Ll}+$/u.test(leftWord) && /^\p{Ll}+$/u.test(rightWord);
+    return hasDigit || !bothLowerAlpha;
+  }
+  // spaced: " – " with a number/currency amount on each side
+  if (before === ' ' && after === ' ') {
+    const left = s.slice(Math.max(0, i - 14), i - 1);
+    const right = s.slice(i + 2, i + 16);
+    const leftNum = /[\p{N}][\p{N}.,]*\s*$/u.test(left) || /[€$]\s*[\p{N}][\p{N}.,]*\s*$/u.test(left);
+    const rightNum = /^\s*[€$]?\s*[\p{N}]/u.test(right);
+    return leftNum && rightNum;
+  }
+  return false;
+}
+
 const RULES = [
   {
     id: 'em-dash',
     level: 'error',
-    // em-dash and en-dash used as punctuation. A hyphen-minus is fine.
-    re: /[—–]/g,
-    msg: 'em-dash / en-dash',
+    // An em-dash is never correct range typography, so any occurrence is a tell.
+    re: /—/g,
+    msg: 'em-dash',
     hint: 'Rewrite with a comma, period, parentheses, or colon. Never an em-dash.',
+  },
+  {
+    id: 'en-dash',
+    level: 'error',
+    // An en-dash is CORRECT typography for a range and wrong as prose
+    // punctuation. Match every en-dash, then `accept` the range uses so only
+    // prose en-dashes error. Range shapes we accept:
+    //   - tight, both sides alphanumeric: 12–13, 257a–257h, 4:85–4:125,
+    //     11.3–12.4, September–December
+    //   - spaced numeric/money: €5.212 – €7.747, 32 – 36 uur (a digit or
+    //     currency amount on both sides of " – ")
+    // A spaced dash between words ("prose – like this") is prose, so it errors.
+    re: /–/g,
+    accept: (prose, i) => isRangeDash(prose, i),
+    msg: 'en-dash as prose punctuation',
+    hint: 'Rewrite with a comma, period, parentheses, or colon. (A dash inside a numeric or legal range is fine and is not flagged.)',
   },
   {
     id: 'banned-en',
@@ -232,9 +283,11 @@ for (const file of files) {
     rule.re.lastIndex = 0;
     let m;
     while ((m = rule.re.exec(prose)) !== null) {
-      const line = lineOf(m.index);
-      const excerpt = (rawLines[line - 1] ?? '').trim().slice(0, 100);
-      findings.push({ rel, line, rule, excerpt });
+      if (!(rule.accept && rule.accept(prose, m.index))) {
+        const line = lineOf(m.index);
+        const excerpt = (rawLines[line - 1] ?? '').trim().slice(0, 100);
+        findings.push({ rel, line, rule, excerpt });
+      }
       if (m.index === rule.re.lastIndex) rule.re.lastIndex++; // guard zero-width
     }
   }
