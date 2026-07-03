@@ -112,7 +112,7 @@ const router = createRouter({
       path: '/harvesting',
       component: () => import('./harvester/HarvesterView.vue'),
       meta: {
-        title: 'Corpusinwinning',
+        title: 'Harvester',
         requiresAuth: true,
         requiresRole: [
           'harvester-reader',

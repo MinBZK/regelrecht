@@ -71,7 +71,7 @@ function goToLibrary() {
           </nldd-toolbar-item>
           <nldd-toolbar-title
             slot="start"
-            text="Corpusinwinning"
+            text="Harvester"
             supporting-text="RegelRecht"
             min-width="fit-content"
           ></nldd-toolbar-title>
