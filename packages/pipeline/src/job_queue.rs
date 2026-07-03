@@ -131,7 +131,9 @@ where
 ///
 /// Timezone is resolved by Postgres (`AT TIME ZONE 'Europe/Amsterdam'`), which is
 /// DST-correct; no chrono-tz needed. Served by the existing partial index
-/// `0022_enrich_daily_count_index` on `((payload->>'provider'), started_at)`.
+/// `0022_enrich_daily_count_index` on `((payload->>'provider'), started_at)`:
+/// the hour bound lives in the `WHERE` clause, so the scan is bounded to the
+/// current hour bucket (a `COUNT(*) FILTER (...)` would not push into the index).
 ///
 /// Counts every job that actually ran this hour, in ANY status; only never-run
 /// `pending` jobs (`started_at IS NULL`) are excluded. Relies on every enqueue
@@ -150,16 +152,14 @@ where
     let row = sqlx::query_as::<_, (i64, i32)>(
         r#"
         SELECT
-            COUNT(*) FILTER (
-                WHERE started_at >= date_trunc(
-                    'hour', now() AT TIME ZONE 'Europe/Amsterdam'
-                ) AT TIME ZONE 'Europe/Amsterdam'
-            ) AS ran_this_hour,
+            COUNT(*) AS ran_this_hour,
             EXTRACT(HOUR FROM now() AT TIME ZONE 'Europe/Amsterdam')::int AS local_hour
         FROM jobs
         WHERE job_type = 'enrich'
           AND started_at IS NOT NULL
           AND payload->>'provider' = $1
+          AND started_at >= date_trunc('hour', now() AT TIME ZONE 'Europe/Amsterdam')
+                            AT TIME ZONE 'Europe/Amsterdam'
         "#,
     )
     .bind(provider)
