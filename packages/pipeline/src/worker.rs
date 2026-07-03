@@ -18,6 +18,27 @@ use crate::job_queue::{self, CreateJobRequest};
 use crate::law_status;
 use crate::models::{JobType, LawStatusValue, Priority};
 
+/// Local night window (Europe/Amsterdam) as a half-open hour-of-day range
+/// `[start, end)`. Hours in this range get the multiplied enrich cap.
+const NIGHT_START_HOUR: i32 = 0;
+const NIGHT_END_HOUR: i32 = 8;
+
+/// Whether the given local hour-of-day falls in the night window `[start, end)`.
+fn is_night_hour(local_hour: i32) -> bool {
+    (NIGHT_START_HOUR..NIGHT_END_HOUR).contains(&local_hour)
+}
+
+/// The enrich cap for a given local hour-of-day: the base hourly limit during
+/// the day, times `night_multiplier` during the night window. Saturating so a
+/// large multiplier can't overflow `u32`.
+fn hourly_cap(base: u32, night_multiplier: u32, local_hour: i32) -> u32 {
+    if is_night_hour(local_hour) {
+        base.saturating_mul(night_multiplier)
+    } else {
+        base
+    }
+}
+
 /// Outcome of attempting to process a single job, used to drive the
 /// resource-exhaustion circuit breaker in the worker loops.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -748,11 +769,11 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
 
     let mut current_interval = std::time::Duration::ZERO;
     let mut consecutive_resource_failures: u32 = 0;
-    // Log the "paused on daily limit" state at info only on the first hit, then
-    // debug while it persists — otherwise a paused worker (e.g. ENRICH_DAILY_LIMIT
+    // Log the "paused on hourly limit" state at info only on the first hit, then
+    // debug while it persists — otherwise a paused worker (e.g. ENRICH_HOURLY_LIMIT
     // unset) emits an info line every poll interval indefinitely. Reset once a job
     // actually runs so a later pause is surfaced again.
-    let mut daily_limit_pause_logged = false;
+    let mut hourly_limit_pause_logged = false;
 
     loop {
         tokio::select! {
@@ -771,47 +792,70 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
             }
         }
 
-        // Enforce the per-provider daily run cap before claiming a job. Counted
-        // from the durable `jobs` table (not an in-memory counter) so the cap
-        // holds across worker restarts/redeploys. Primarily protects a personal
-        // Claude subscription token from running the whole corpus in one day.
-        // Fail-closed: a limit of 0 (the default when ENRICH_DAILY_LIMIT is
+        // Enforce the per-provider hourly run cap before claiming a job. The cap
+        // is multiplied during the local night window (00:00–08:00 Europe/
+        // Amsterdam) by ENRICH_NIGHT_MULTIPLIER, so bulk enrichment runs mostly
+        // overnight. Counted from the durable `jobs` table (not an in-memory
+        // counter) so the cap holds across restarts/redeploys.
+        //
+        // Fail-closed: a base limit of 0 (the default when ENRICH_HOURLY_LIMIT is
         // unset) pauses the worker without even querying.
         //
         // The cap keys on the worker's configured provider (LLM_PROVIDER), not
-        // the per-job payload provider. That is exact for a provider-dedicated
-        // worker (the intended deployment); a worker serving multiple providers
-        // would under-count the non-default provider's runs.
-        let limit = config.enrich_daily_limit;
+        // the per-job payload provider — exact for a provider-dedicated worker
+        // (the intended deployment).
+        let base = config.enrich_hourly_limit;
         let provider = enrich_config.provider.name();
-        let over_limit = if limit == 0 {
-            true
+        // `Some((cap, local_hour))` when we must pause; `None` when clear to run.
+        // A base of 0 pauses with a sentinel hour of -1 (renders as window=day).
+        let pause: Option<(u32, i32)> = if base == 0 {
+            Some((0, -1))
         } else {
-            match job_queue::count_enrich_jobs_started_today(&pool, provider).await {
-                Ok(ran_today) => ran_today >= i64::from(limit),
+            match job_queue::count_enrich_jobs_started_this_hour(&pool, provider).await {
+                Ok((ran_this_hour, local_hour)) => {
+                    let cap = hourly_cap(base, config.enrich_night_multiplier, local_hour);
+                    if ran_this_hour >= i64::from(cap) {
+                        Some((cap, local_hour))
+                    } else {
+                        None
+                    }
+                }
                 Err(e) => {
-                    tracing::warn!(error = %e, "failed to check daily enrich limit, proceeding");
-                    false
+                    tracing::warn!(error = %e, "failed to check hourly enrich limit, proceeding");
+                    None
                 }
             }
         };
-        if over_limit {
+        if let Some((cap, local_hour)) = pause {
             current_interval = config.max_poll_interval;
-            if !daily_limit_pause_logged {
+            let window = if is_night_hour(local_hour) {
+                "night"
+            } else {
+                "day"
+            };
+            if !hourly_limit_pause_logged {
                 tracing::info!(
                     provider,
-                    limit,
+                    cap,
+                    local_hour,
+                    window,
                     next_poll = ?current_interval,
-                    "daily enrich limit reached (or ENRICH_DAILY_LIMIT unset/0), pausing until the UTC day rolls over"
+                    "hourly enrich limit reached (or ENRICH_HOURLY_LIMIT unset/0), pausing until the next local hour"
                 );
-                daily_limit_pause_logged = true;
+                hourly_limit_pause_logged = true;
             } else {
-                tracing::debug!(provider, limit, "still paused on daily enrich limit");
+                tracing::debug!(
+                    provider,
+                    cap,
+                    local_hour,
+                    window,
+                    "still paused on hourly enrich limit"
+                );
             }
             continue;
         }
         // Not paused this cycle — re-arm the info-level pause log for the next pause.
-        daily_limit_pause_logged = false;
+        hourly_limit_pause_logged = false;
 
         match process_next_enrich_job(
             &pool,
@@ -1385,7 +1429,7 @@ async fn process_next_enrich_job(
                     // sources, legal bases the extref-only harvester misses).
                     // Always on, but depth-capped so the recursion is bounded (and
                     // the LLM-costly re-enrichment of those harvests is separately
-                    // gated by ENRICH_AUTO_ENQUEUE + ENRICH_DAILY_LIMIT).
+                    // gated by ENRICH_AUTO_ENQUEUE + ENRICH_HOURLY_LIMIT).
                     let enrich_depth = payload.depth.unwrap_or(0);
                     if enrich_depth < related_harvest_max_depth {
                         harvest_related_legislation(
@@ -1655,6 +1699,22 @@ async fn handle_enrich_exhausted_or_retry(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hourly_cap_day_vs_night() {
+        // Day hours [8, 24) use the base limit.
+        assert_eq!(hourly_cap(4, 5, 8), 4, "08:00 is the first day hour");
+        assert_eq!(hourly_cap(4, 5, 12), 4);
+        assert_eq!(hourly_cap(4, 5, 23), 4);
+        // Night hours [0, 8) get base * multiplier.
+        assert_eq!(hourly_cap(4, 5, 0), 20, "midnight is a night hour");
+        assert_eq!(hourly_cap(4, 5, 3), 20);
+        assert_eq!(hourly_cap(4, 5, 7), 20, "07:00 is the last night hour");
+        // Default multiplier 1 means no boost.
+        assert_eq!(hourly_cap(4, 1, 3), 4);
+        // Saturating: a huge multiplier can't overflow.
+        assert_eq!(hourly_cap(u32::MAX, 5, 3), u32::MAX);
+    }
 
     #[test]
     fn classifies_fork_eagain_errors_as_resource_exhaustion() {

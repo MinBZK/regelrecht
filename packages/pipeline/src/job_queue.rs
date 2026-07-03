@@ -120,46 +120,53 @@ where
     Ok(job)
 }
 
-/// Count enrichment jobs for `provider` that have started running today (UTC
-/// calendar day).
+/// Count enrich jobs for `provider` started within the current local clock-hour
+/// bucket (Europe/Amsterdam), and return that bucket's local hour-of-day
+/// (`0..=23`) so the caller can pick the day vs night cap.
 ///
-/// Used to enforce a per-provider daily run cap (see `ENRICH_DAILY_LIMIT`),
-/// which protects a personal Claude subscription token from running the whole
-/// corpus in one go. Reads the durable `jobs` table so the cap holds across
-/// worker restarts/redeploys (an in-memory counter would reset on every pod
-/// restart).
+/// Used to enforce a per-provider hourly run cap (see `ENRICH_HOURLY_LIMIT` +
+/// `ENRICH_NIGHT_MULTIPLIER`), which protects a personal Claude subscription
+/// token from running the whole corpus in one go. Reads the durable `jobs` table
+/// so the cap holds across worker restarts/redeploys.
 ///
-/// Counts every job that actually ran today, in ANY status — started,
-/// processing, completed, failed, and failed-and-awaiting-retry all count
-/// (`fail_job` keeps `started_at`, and a re-claim refreshes it). Only never-run
-/// `pending` jobs (`started_at IS NULL`, which spent no tokens) are excluded.
-/// A job counts once per day regardless of how many retries it took.
+/// Timezone is resolved by Postgres (`AT TIME ZONE 'Europe/Amsterdam'`), which is
+/// DST-correct; no chrono-tz needed. Served by the existing partial index
+/// `0022_enrich_daily_count_index` on `((payload->>'provider'), started_at)`:
+/// the hour bound lives in the `WHERE` clause, so the scan is bounded to the
+/// current hour bucket (a `COUNT(*) FILTER (...)` would not push into the index).
 ///
-/// Relies on every enqueue path setting `payload.provider` (the admin and
-/// auto-enrich both do, one job per provider); a provider-less payload would run
-/// under the worker's default provider but not be counted here.
+/// Counts every job that actually ran this hour, in ANY status; only never-run
+/// `pending` jobs (`started_at IS NULL`) are excluded. Relies on every enqueue
+/// path setting `payload.provider`.
 ///
 /// Not transactional with the caller's claim: with N concurrent workers the cap
-/// may be exceeded by up to N near the boundary. That's acceptable for a spend
-/// guard.
-pub async fn count_enrich_jobs_started_today<'e, E>(executor: E, provider: &str) -> Result<i64>
+/// may be exceeded by up to N near the hour boundary. That's acceptable for a
+/// spend guard.
+pub async fn count_enrich_jobs_started_this_hour<'e, E>(
+    executor: E,
+    provider: &str,
+) -> Result<(i64, i32)>
 where
     E: sqlx::PgExecutor<'e>,
 {
-    let count = sqlx::query_scalar::<_, i64>(
+    let row = sqlx::query_as::<_, (i64, i32)>(
         r#"
-        SELECT COUNT(*)
+        SELECT
+            COUNT(*) AS ran_this_hour,
+            EXTRACT(HOUR FROM now() AT TIME ZONE 'Europe/Amsterdam')::int AS local_hour
         FROM jobs
         WHERE job_type = 'enrich'
+          AND started_at IS NOT NULL
           AND payload->>'provider' = $1
-          AND started_at >= date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
+          AND started_at >= date_trunc('hour', now() AT TIME ZONE 'Europe/Amsterdam')
+                            AT TIME ZONE 'Europe/Amsterdam'
         "#,
     )
     .bind(provider)
     .fetch_one(executor)
     .await?;
 
-    Ok(count)
+    Ok(row)
 }
 
 /// Claim the highest-priority pending job using FOR UPDATE SKIP LOCKED.

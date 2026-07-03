@@ -85,7 +85,9 @@ services:
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       # Fail-closed: unset/0 pauses enrichment; set a positive value to run.
-      ENRICH_DAILY_LIMIT: ${ENRICH_DAILY_LIMIT:-0}
+      # The night window (00:00–08:00 Europe/Amsterdam) multiplies the cap.
+      ENRICH_HOURLY_LIMIT: ${ENRICH_HOURLY_LIMIT:-0}
+      ENRICH_NIGHT_MULTIPLIER: ${ENRICH_NIGHT_MULTIPLIER:-1}
       REGULATION_REPO_PATH: /tmp/regulation-repo
       REGULATION_OUTPUT_BASE: regulation/nl
       WORKER_POLL_INTERVAL_SECS: ${WORKER_POLL_INTERVAL_SECS:-5}
