@@ -100,3 +100,47 @@ describe('ensureAuthReady / checkAuth', () => {
     expect(apiFetchJson).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('roles / hasRole / hasAnyRole', () => {
+  beforeEach(() => stubLocation());
+
+  it('exposes the roles from /auth/status and gates on them', async () => {
+    const apiFetchJson = vi.fn().mockResolvedValue({
+      authenticated: true,
+      oidc_configured: true,
+      person: { name: 'Jane', roles: ['editor-reader', 'harvester-writer'] },
+    });
+    const { useAuth, ensureAuthReady } = await freshAuth(apiFetchJson);
+    await ensureAuthReady();
+    const { roles, hasRole, hasAnyRole } = useAuth();
+    expect(roles.value).toEqual(['editor-reader', 'harvester-writer']);
+    expect(hasRole('harvester-writer')).toBe(true);
+    expect(hasRole('harvester-admin')).toBe(false);
+    expect(hasAnyRole(['harvester-reader', 'harvester-writer'])).toBe(true);
+    expect(hasAnyRole(['harvester-admin', 'regelrecht-admin'])).toBe(false);
+  });
+
+  it('defaults roles to an empty array when unauthenticated', async () => {
+    const apiFetchJson = vi.fn().mockResolvedValue({
+      authenticated: false,
+      oidc_configured: true,
+    });
+    const { useAuth, ensureAuthReady } = await freshAuth(apiFetchJson);
+    await ensureAuthReady();
+    const { roles, hasAnyRole } = useAuth();
+    expect(roles.value).toEqual([]);
+    expect(hasAnyRole(['harvester-reader'])).toBe(false);
+  });
+
+  it('defaults roles to an empty array when person carries no roles field', async () => {
+    const apiFetchJson = vi.fn().mockResolvedValue({
+      authenticated: true,
+      oidc_configured: true,
+      person: { name: 'No Roles' },
+    });
+    const { useAuth, ensureAuthReady } = await freshAuth(apiFetchJson);
+    await ensureAuthReady();
+    const { roles } = useAuth();
+    expect(roles.value).toEqual([]);
+  });
+});

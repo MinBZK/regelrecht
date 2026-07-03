@@ -1,6 +1,6 @@
 <script setup>
 import { nextTick, ref, watch } from 'vue';
-import { authedFetch } from '../composables/useAuth.js';
+import { apiFetch } from '@regelrecht/frontend-shared';
 import { useNewHarvestJob } from '../composables/useNewHarvestJob.js';
 
 const { isOpen, close, notifyCreated } = useNewHarvestJob();
@@ -57,20 +57,18 @@ async function submit({ keepOpen = false } = {}) {
   buttonLabel.value = 'Submitting…';
 
   try {
-    const response = await authedFetch('api/harvest-jobs', {
+    const response = await apiFetch('/api/harvest-admin/harvest-jobs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ law_id: lawId }),
+      allowStatuses: [401, 409],
     });
-    if (!response) return;
+    // 401 is handled by the editor's global apiAuthGuard (redirect to login).
+    if (response.status === 401) return;
     if (response.status === 409) {
       errorId.value = 'harvest-law-id-conflict';
       el.focus?.();
       return;
-    }
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      throw new Error(text || `HTTP ${response.status}`);
     }
     await response.json();
     setFieldValue(el, '');

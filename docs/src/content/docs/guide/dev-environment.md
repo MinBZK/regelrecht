@@ -10,10 +10,10 @@ The development stack runs infrastructure in Docker and application services nat
 ```
 ┌─────────────────────────────────────────────────┐
 │  Native (hot reload)                            │
-│  ┌─────────────┐ ┌──────────┐ ┌──────────────┐ │
-│  │ Editor :3000 │ │Admin :3001│ │Admin API:8000│ │
-│  │ (Vite)       │ │(Vite)    │ │(cargo watch) │ │
-│  └─────────────┘ └──────────┘ └──────────────┘ │
+│  ┌──────────────┐ ┌──────────────┐              │
+│  │ Editor :3000 │ │Admin API:8000│              │
+│  │   (Vite)     │ │(cargo watch) │              │
+│  └──────────────┘ └──────────────┘              │
 ├─────────────────────────────────────────────────┤
 │  Docker                                         │
 │  ┌──────────┐ ┌────────────┐ ┌───────┐         │
@@ -70,8 +70,8 @@ just dev-down                # stop it (shared with `just dev`)
 
 | App | URL | Backend | DB | Notes |
 |-----|-----|---------|----|----|
-| editor | `http://localhost:7300` | editor-api `:8000` | yes | real SSO, needs `.env.sso-local` |
-| admin | `http://localhost:7400` | admin API `:8000` (`:8001` when all run together) | yes | none |
+| editor | `http://localhost:7300` | editor-api `:8000` | yes | real SSO, needs `.env.sso-local`; hosts the **Corpusinwinning** section |
+| harvester-admin | API only (UI is the editor's Corpusinwinning section) | admin API `:8000` (`:8001` when all run together) | yes | in `all`, editor-api proxies `/api/harvest-admin/*` here |
 | lawmaking | `http://localhost:7500` | none | no | static, no backend |
 
 Notes:
@@ -83,9 +83,9 @@ Notes:
   `.env.sso-local` (copy `.env.sso-local.example` and fill in the values, see
   [Auth and roles](/auth-and-roles/)). Use Chrome or Firefox: the session cookie
   is `Secure` and only those send it over `http://localhost`. The default port
-  `7300` (and `7400`/`7500`) are the redirect URIs already registered on the
+  `7300` (and `7500`) are the redirect URIs already registered on the
   `regelrecht-local` Keycloak client. Override ports with `EDITOR_PORT` /
-  `ADMIN_FE_PORT` / `LAWMAKING_PORT`.
+  `LAWMAKING_PORT`.
 - `just dev-frontend` and `just dev` are **mutually exclusive**: they share
   `.dev-pids` and ports, so run one at a time. `just dev-down` stops either.
 - In a dev container where the native backend can't reach Postgres on
@@ -101,9 +101,8 @@ just dev-down
 ## Logs
 
 ```bash
-tail -f .dev-admin.log           # Admin API log
-tail -f .dev-admin-frontend.log  # Admin frontend log
-tail -f .dev-editor.log          # Editor log
+tail -f .dev-admin.log           # Admin (harvester) API log
+tail -f .dev-editor.log          # Editor log (hosts the Corpusinwinning section)
 just dev-logs                    # Infrastructure logs
 ```
 

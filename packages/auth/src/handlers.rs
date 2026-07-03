@@ -84,6 +84,11 @@ pub struct PersonInfo {
     pub sub: String,
     pub email: String,
     pub name: String,
+    /// Keycloak realm roles the user holds (e.g. `editor-reader`,
+    /// `harvester-writer`). Surfaced so the frontend can gate role-specific
+    /// UI (menu items, sections). Authorization itself remains enforced
+    /// server-side per route — this is purely for display.
+    pub roles: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -486,7 +491,18 @@ pub async fn status<S: OidcAppState>(State(state): State<S>, session: Session) -
             .ok()
             .flatten()
             .unwrap_or_default();
-        Some(PersonInfo { sub, email, name })
+        let roles: Vec<String> = session
+            .get(SESSION_KEY_ROLES)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        Some(PersonInfo {
+            sub,
+            email,
+            name,
+            roles,
+        })
     } else {
         None
     };
@@ -577,6 +593,38 @@ mod tests {
     fn callback_query_missing_state_fails() {
         let result: Result<CallbackQuery, _> = serde_json::from_str(r#"{"code":"abc123"}"#);
         assert!(result.is_err());
+    }
+
+    // --- AuthStatus / PersonInfo serialization (the /auth/status contract) ---
+
+    #[test]
+    fn auth_status_serializes_person_roles() {
+        let status = AuthStatus {
+            authenticated: true,
+            oidc_configured: true,
+            person: Some(PersonInfo {
+                sub: "sub-123".to_string(),
+                email: "user@example.org".to_string(),
+                name: "Test User".to_string(),
+                roles: vec!["editor-reader".to_string(), "harvester-writer".to_string()],
+            }),
+        };
+        let json: serde_json::Value = serde_json::to_value(&status).unwrap();
+        assert_eq!(
+            json["person"]["roles"],
+            serde_json::json!(["editor-reader", "harvester-writer"])
+        );
+    }
+
+    #[test]
+    fn auth_status_unauthenticated_omits_person() {
+        let status = AuthStatus {
+            authenticated: false,
+            oidc_configured: true,
+            person: None,
+        };
+        let json: serde_json::Value = serde_json::to_value(&status).unwrap();
+        assert!(json.get("person").is_none());
     }
 
     // --- extract_realm_roles ---

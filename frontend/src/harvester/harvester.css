@@ -1,0 +1,57 @@
+/* Harvester "Corpusinwinning" section styles — the component-specific hooks ported from
+   the standalone admin dashboard (packages/admin/frontend-src/css/admin.css).
+   These target light-DOM class hooks in the ported table/toolbar components, so
+   they must be global (an SFC `<style scoped>` on HarvesterView would not reach
+   the child components). Loaded only when the Corpusinwinning section is opened, since
+   HarvesterView is lazy-loaded.
+
+   Uses @nldd/design-system design tokens. Three rules from the original
+   admin.css are intentionally NOT carried over: the html/body reset (the editor
+   owns its global reset), the fixed-position preview env-badge (now an inline
+   toolbar <nldd-tag> in HarvesterView), and the global `[id^=nldd-tooltip-]`
+   position-pin (the editor renders many tooltips without it, so it was
+   vestigial, and keeping a global rule in a lazy-loaded section stylesheet
+   leaks it into the rest of the app). */
+
+/* Table toolbar (filter & sort controls above the tables) */
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--primitives-space-8);
+  flex-wrap: wrap;
+}
+
+/* Monospace id/uuid cells */
+.cell-mono {
+  font-family: var(--primitives-font-family-monospace);
+  font-size: 12px;
+  color: var(--semantics-content-secondary-color);
+}
+
+/* Segmented job-status distribution bar (grouped jobs view) */
+.status-bar {
+  display: flex;
+  width: 100%;
+  height: 8px;
+  border-radius: var(--primitives-corner-radius-xs);
+  overflow: hidden;
+  background: var(--primitives-color-neutral-100);
+}
+
+.status-bar__segment {
+  height: 100%;
+  min-width: 2px;
+}
+
+.status-bar__segment--pending {
+  background: light-dark(var(--primitives-color-neutral-150), var(--primitives-color-neutral-250));
+}
+.status-bar__segment--processing {
+  background: light-dark(var(--primitives-color-accent-500), var(--primitives-color-accent-400));
+}
+.status-bar__segment--completed {
+  background: light-dark(var(--primitives-color-success-450), var(--primitives-color-success-550));
+}
+.status-bar__segment--failed {
+  background: var(--primitives-color-critical-450);
+}

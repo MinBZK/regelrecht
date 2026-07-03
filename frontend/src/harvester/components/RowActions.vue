@@ -2,7 +2,7 @@
 import { computed, useId } from 'vue';
 import { useRouter } from 'vue-router';
 import { RE_HARVESTABLE_STATUSES, ENRICHABLE_STATUSES } from '../constants.js';
-import { authedFetch } from '../composables/useAuth.js';
+import { apiFetch } from '@regelrecht/frontend-shared';
 
 const props = defineProps({
   row: { type: Object, required: true },
@@ -27,20 +27,18 @@ const canReset = computed(
 
 async function onHarvest() {
   try {
-    const response = await authedFetch('api/harvest-jobs', {
+    const response = await apiFetch('/api/harvest-admin/harvest-jobs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ bwb_id: props.row.law_id }),
+      allowStatuses: [401, 409],
     });
-    if (!response) return;
+    // 401 is handled by the editor's global apiAuthGuard (redirect to login).
+    if (response.status === 401) return;
     if (response.status === 409) {
       const text = await response.text().catch(() => '');
       alert(text || 'A harvest job for this law is already pending or processing.');
       return;
-    }
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      throw new Error(text || `HTTP ${response.status}`);
     }
     const result = await response.json();
     alert(`Created harvest job: ${result.job_id}`);
@@ -52,20 +50,17 @@ async function onHarvest() {
 
 async function onEnrich() {
   try {
-    const response = await authedFetch('api/enrich-jobs', {
+    const response = await apiFetch('/api/harvest-admin/enrich-jobs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ law_id: props.row.law_id }),
+      allowStatuses: [401, 409],
     });
-    if (!response) return;
+    if (response.status === 401) return;
     if (response.status === 409) {
       const text = await response.text().catch(() => '');
       alert(text || 'Enrich jobs for this law are already pending or processing.');
       return;
-    }
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      throw new Error(text || `HTTP ${response.status}`);
     }
     const result = await response.json();
     alert(`Created ${result.job_ids.length} enrich job(s) for ${result.providers.join(', ')}`);
@@ -77,15 +72,11 @@ async function onEnrich() {
 
 async function onResetExhausted() {
   try {
-    const response = await authedFetch(
-      `api/law_entries/${encodeURIComponent(props.row.law_id)}/reset-exhausted`,
-      { method: 'POST' },
+    const response = await apiFetch(
+      `/api/harvest-admin/law_entries/${encodeURIComponent(props.row.law_id)}/reset-exhausted`,
+      { method: 'POST', allowStatuses: [401] },
     );
-    if (!response) return;
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      throw new Error(text || `HTTP ${response.status}`);
-    }
+    if (response.status === 401) return;
     emit('action-complete');
   } catch (err) {
     alert('Reset failed: ' + err.message);

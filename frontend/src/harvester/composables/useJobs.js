@@ -23,7 +23,10 @@ export function useJobs(options = {}) {
     for (const [key, value] of Object.entries(filters)) {
       if (value) params.set(key, value);
     }
-    const endpoint = viewMode.value === 'grouped' ? 'api/jobs/summary' : 'api/jobs';
+    const endpoint =
+      viewMode.value === 'grouped'
+        ? '/api/harvest-admin/jobs/summary'
+        : '/api/harvest-admin/jobs';
     return `${endpoint}?${params.toString()}`;
   }
 

@@ -26,6 +26,12 @@ pub struct AppState {
     /// Base URL of the pipeline-api service (e.g. "http://pipeline-api:8001").
     /// When set, `/api/harvest/*` requests are proxied to this service.
     pub pipeline_api_url: Option<String>,
+    /// Base URL of the standalone harvester-admin API (e.g.
+    /// "http://regelrecht-harvester-admin:8000"). When set, `/api/harvest-admin/*`
+    /// requests are proxied to it, forwarding the caller's session cookie so
+    /// the harvester-admin service validates the shared session and enforces
+    /// its own harvester-* role gates.
+    pub harvest_admin_url: Option<String>,
     /// Single-flight gate for `POST /api/corpus/reload`. The reload fans out
     /// to GitHub (one API call per law source); without this gate an
     /// authenticated user could burn through the 5000 req/hr token quota

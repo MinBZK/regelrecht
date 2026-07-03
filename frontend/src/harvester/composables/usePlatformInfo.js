@@ -1,13 +1,12 @@
 import { ref } from 'vue';
+import { apiFetchJson } from '@regelrecht/frontend-shared';
 
 const info = ref(null);
 let fetched = false;
 
 async function load() {
   try {
-    const response = await fetch('/api/info');
-    if (!response.ok) return;
-    info.value = await response.json();
+    info.value = await apiFetchJson('/api/harvest-admin/info');
   } catch {
     // ignore
   }

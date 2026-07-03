@@ -6,7 +6,6 @@
   "workspaces": [
     "packages/frontend-shared",
     "frontend",
-    "frontend-lawmaking",
-    "packages/admin/frontend-src"
+    "frontend-lawmaking"
   ]
 }

@@ -1,10 +1,25 @@
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { apiFetchJson } from './apiFetch.js';
 
 const authenticated = ref(false);
 const oidcConfigured = ref(false);
 const person = ref(null);
 const loading = ref(true);
+
+// Realm roles the signed-in user holds, surfaced by `/auth/status`. Empty when
+// unauthenticated. Used only to gate role-specific UI (menu items, sections) —
+// the backend still enforces authorization per route.
+const roles = computed(() => person.value?.roles ?? []);
+
+/** True when the user holds the given realm role. */
+export function hasRole(role) {
+  return roles.value.includes(role);
+}
+
+/** True when the user holds at least one of the given realm roles. */
+export function hasAnyRole(candidates) {
+  return candidates.some((role) => roles.value.includes(role));
+}
 
 let readyPromise = null;
 
@@ -55,5 +70,15 @@ export function useAuth() {
     window.location.href = '/auth/logout';
   }
 
-  return { authenticated, oidcConfigured, person, loading, login, logout };
+  return {
+    authenticated,
+    oidcConfigured,
+    person,
+    roles,
+    hasRole,
+    hasAnyRole,
+    loading,
+    login,
+    logout,
+  };
 }

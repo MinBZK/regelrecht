@@ -20,7 +20,7 @@ export function useLawEntries() {
     for (const [key, value] of Object.entries(filters)) {
       if (value) params.set(key, value);
     }
-    return `api/law_entries?${params.toString()}`;
+    return `/api/harvest-admin/law_entries?${params.toString()}`;
   }
 
   const { data, totalCount, loading, error, refresh, startPolling, stopPolling } =

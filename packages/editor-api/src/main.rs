@@ -67,6 +67,8 @@ async fn main() {
     let hostname = env::var("HOSTNAME").ok();
     let pipeline_api_url =
         resolve_pipeline_api_url(hostname.as_deref(), env::var("PIPELINE_API_URL").ok());
+    let harvest_admin_url =
+        resolve_harvest_admin_url(hostname.as_deref(), env::var("HARVEST_ADMIN_URL").ok());
     let hostname_log = hostname.as_deref().unwrap_or("<none>");
     match &pipeline_api_url {
         Some(url) => {
@@ -75,6 +77,15 @@ async fn main() {
         None => tracing::info!(
             hostname = %hostname_log,
             "no pipeline-api URL configured, harvest proxy disabled"
+        ),
+    }
+    match &harvest_admin_url {
+        Some(url) => {
+            tracing::info!(url = %url, hostname = %hostname_log, "harvester-admin proxy target")
+        }
+        None => tracing::info!(
+            hostname = %hostname_log,
+            "no harvester-admin URL configured, harvest-admin proxy disabled"
         ),
     }
 
@@ -115,6 +126,7 @@ async fn main() {
         http_client,
         pool: pool.clone(),
         pipeline_api_url,
+        harvest_admin_url,
         reload_lock: Arc::new(tokio::sync::Mutex::new(())),
         trajects: Arc::new(traject_corpus::TrajectCorpusCache::new()),
     };
@@ -233,6 +245,23 @@ async fn main() {
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
             middleware::require_role::<AppState>("editor-admin"),
+        ));
+
+    // Harvester-admin proxy — the merged "Beheer" section in the editor reaches
+    // the standalone harvester-admin API through here. A single wildcard route
+    // forwards every method (GET reads, POST enqueue, DELETE) to that service,
+    // rewriting `/api/harvest-admin/<x>` → `/api/<x>` and forwarding the
+    // session cookie. Gated on `harvester-reader` as defence-in-depth; the
+    // harvester-admin service is the real enforcer for writer/admin actions
+    // (writes stay OIDC-only there — editor-api never mints a service token).
+    let harvest_admin_routes = Router::new()
+        .route(
+            "/api/harvest-admin/{*rest}",
+            axum::routing::any(harvest_proxy::proxy_harvest_admin),
+        )
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_role::<AppState>("harvester-reader"),
         ));
 
     // Traject routes — user-scoped CRUD on shared editing sessions plus
@@ -437,6 +466,7 @@ async fn main() {
             .merge(reader_routes)
             .merge(writer_routes)
             .merge(admin_routes)
+            .merge(harvest_admin_routes)
             .merge(traject_reader_routes)
             .merge(traject_writer_routes)
             .with_state(app_state)
@@ -470,6 +500,7 @@ async fn main() {
             .merge(reader_routes)
             .merge(writer_routes)
             .merge(admin_routes)
+            .merge(harvest_admin_routes)
             .merge(traject_reader_routes)
             .merge(traject_writer_routes)
             .with_state(app_state)
@@ -698,6 +729,21 @@ fn resolve_pipeline_api_url(hostname: Option<&str>, env_url: Option<String>) -> 
         .or(env_url)
 }
 
+/// Resolve the standalone harvester-admin API URL, preferring pod HOSTNAME over
+/// an environment override — same rationale and priority as
+/// [`resolve_pipeline_api_url`] (`HOSTNAME` → `HARVEST_ADMIN_URL` → `None`).
+///
+/// The harvester-admin service is deployed under ZAD component name
+/// `harvester-admin`, so the in-cluster service is `{deployment}-harvester-admin`.
+/// `HARVEST_ADMIN_URL` is the explicit override for local dev where HOSTNAME
+/// doesn't match the `{deployment}-{component}-{rs}-{pod}` shape.
+fn resolve_harvest_admin_url(hostname: Option<&str>, env_url: Option<String>) -> Option<String> {
+    hostname
+        .and_then(regelrecht_corpus::deployment_from_hostname)
+        .map(|deployment| format!("http://{deployment}-harvester-admin:8000"))
+        .or(env_url)
+}
+
 /// True when `base_url` is an http (not https) origin pointing at the local
 /// machine. Used to drop the session cookie's `Secure` flag for local SSO dev
 /// (`just editor-sso` over http://localhost) so Safari — which, unlike Chrome
@@ -785,6 +831,52 @@ mod pipeline_api_url_tests {
     fn no_hostname_uses_env_override() {
         let url = resolve_pipeline_api_url(None, Some("http://localhost:8001".to_string()));
         assert_eq!(url.as_deref(), Some("http://localhost:8001"));
+    }
+}
+
+#[cfg(test)]
+mod harvest_admin_url_tests {
+    use super::resolve_harvest_admin_url;
+
+    #[test]
+    fn prod_pod_hostname_derives_regelrecht_harvester_admin() {
+        let url = resolve_harvest_admin_url(Some("regelrecht-editor-abc-xyz"), None);
+        assert_eq!(
+            url.as_deref(),
+            Some("http://regelrecht-harvester-admin:8000")
+        );
+    }
+
+    #[test]
+    fn pr_preview_pod_hostname_derives_pr_harvester_admin() {
+        let url = resolve_harvest_admin_url(Some("pr123-editor-abc-xyz"), None);
+        assert_eq!(url.as_deref(), Some("http://pr123-harvester-admin:8000"));
+    }
+
+    #[test]
+    fn hostname_wins_over_stale_env_var() {
+        let url = resolve_harvest_admin_url(
+            Some("regelrecht-editor-abc-xyz"),
+            Some("http://harvester-admin-pr552:8001".to_string()),
+        );
+        assert_eq!(
+            url.as_deref(),
+            Some("http://regelrecht-harvester-admin:8000")
+        );
+    }
+
+    #[test]
+    fn dev_hostname_falls_back_to_env_override() {
+        let url = resolve_harvest_admin_url(
+            Some("tim-laptop"),
+            Some("http://localhost:8000".to_string()),
+        );
+        assert_eq!(url.as_deref(), Some("http://localhost:8000"));
+    }
+
+    #[test]
+    fn no_hostname_and_no_env_returns_none() {
+        assert!(resolve_harvest_admin_url(None, None).is_none());
     }
 }
 

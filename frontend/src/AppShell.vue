@@ -21,8 +21,27 @@ import { useAppChrome, openSearch, onBarSearchKeydown } from './composables/useA
 // switching between them swaps only the nested router-view — the shell
 // instance is reused, so the chrome never rebuilds (no refresh flash).
 
-const { authenticated, loading: authLoading, oidcConfigured, person, login, logout } = useAuth();
+const { authenticated, loading: authLoading, oidcConfigured, person, hasAnyRole, login, logout } = useAuth();
 const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
+
+// Roles that may reach the harvester-admin "Corpusinwinning" section. Any harvester-*
+// tier (reader/writer/admin) or the spanning regelrecht-admin sees the menu
+// item; write actions inside the section are still enforced server-side by
+// the harvester-admin API. Composite-role expansion means a higher tier
+// already carries the lower ones, but we list all four so a directly-assigned
+// role can never be missed.
+const HARVESTER_ROLES = [
+  'harvester-reader',
+  'harvester-writer',
+  'harvester-admin',
+  'regelrecht-admin',
+];
+const canViewHarvesting = computed(
+  () => authenticated.value && hasAnyRole(HARVESTER_ROLES),
+);
+function goToHarvesting() {
+  router.push("/harvesting");
+}
 const { colorScheme, setColorScheme } = useColorScheme();
 const { activeTrajectRef } = useTrajects();
 
@@ -168,6 +187,8 @@ const hasDocumentTabs = computed(
               <nldd-icon-button id="settings-menu-btn-md" size="md" icon="account" text="Account" tooltip-timing="never" expandable popovertarget="settings-menu-md"></nldd-icon-button>
               <nldd-menu id="settings-menu-md" anchor="settings-menu-btn-md">
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <nldd-menu-item v-if="canViewHarvesting" text="Corpusinwinning" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
+                <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
                 <nldd-menu-group text="Functies">
                 <nldd-menu-item
                   v-for="[key, label] in editorPanelFlags"
@@ -233,6 +254,8 @@ const hasDocumentTabs = computed(
               <nldd-icon-button id="settings-menu-btn-lg" size="md" icon="account" text="Account" tooltip-timing="never" expandable popovertarget="settings-menu-lg"></nldd-icon-button>
               <nldd-menu id="settings-menu-lg" anchor="settings-menu-btn-lg">
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <nldd-menu-item v-if="canViewHarvesting" text="Corpusinwinning" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
+                <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
                 <nldd-menu-group text="Functies">
                 <nldd-menu-item
                   v-for="[key, label] in editorPanelFlags"
@@ -410,6 +433,8 @@ const hasDocumentTabs = computed(
               <nldd-icon-button id="settings-menu-btn-sm" size="lg" icon="account" text="Account" tooltip-timing="never" popovertarget="settings-menu-sm"></nldd-icon-button>
               <nldd-menu id="settings-menu-sm" anchor="settings-menu-btn-sm">
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <nldd-menu-item v-if="canViewHarvesting" text="Corpusinwinning" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
+                <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
                 <nldd-menu-group text="Functies">
                 <nldd-menu-item
                   v-for="[key, label] in editorPanelFlags"

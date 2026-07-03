@@ -1,5 +1,5 @@
 import { ref, onUnmounted } from 'vue';
-import { authedFetch } from './useAuth.js';
+import { apiFetch } from '@regelrecht/frontend-shared';
 
 export function usePollingFetch(buildUrl, options = {}) {
   const { interval = 20_000 } = options;
@@ -20,14 +20,12 @@ export function usePollingFetch(buildUrl, options = {}) {
     if (initialLoad) loading.value = true;
 
     try {
-      const response = await authedFetch(url);
-      if (!response) return;
-
-      if (!response.ok) {
-        const body = await response.text().catch(() => '');
-        throw new Error(`HTTP ${response.status}${body ? ': ' + body.substring(0, 200) : ''}`);
-      }
-
+      // 401 is handled by the editor's global apiAuthGuard (redirect to
+      // login); return early on it so we don't flash an error state before the
+      // redirect — matching the mutation call sites (RowActions etc.). apiFetch
+      // throws ApiError on other non-ok statuses, caught below.
+      const response = await apiFetch(url, { allowStatuses: [401] });
+      if (response.status === 401) return;
       const json = await response.json();
       data.value = json.data || [];
       totalCount.value = json.total ?? data.value.length;

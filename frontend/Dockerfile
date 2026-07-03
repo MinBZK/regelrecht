@@ -31,7 +31,6 @@ COPY package.json package-lock.json .npmrc ./
 COPY packages/frontend-shared/package.json packages/frontend-shared/
 COPY frontend/package.json frontend/
 COPY frontend-lawmaking/package.json frontend-lawmaking/
-COPY packages/admin/frontend-src/package.json packages/admin/frontend-src/
 RUN npm ci
 # Source: the shared package + the editor frontend, plus the WASM module.
 COPY packages/frontend-shared/ packages/frontend-shared/

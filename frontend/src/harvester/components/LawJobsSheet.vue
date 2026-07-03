@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
-import { authedFetch } from '../composables/useAuth.js';
+import { apiFetch } from '@regelrecht/frontend-shared';
 import { useLawJobsSheet } from '../composables/useLawJobsSheet.js';
 import StatusBadge from './StatusBadge.vue';
 import { formatDate, jobSubtitle } from '../formatters.js';
@@ -53,12 +53,7 @@ async function loadJobs() {
       order: 'desc',
       limit: String(JOBS_LIMIT),
     });
-    const response = await authedFetch(`api/jobs?${params}`);
-    if (!response) return;
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      throw new Error(text || `HTTP ${response.status}`);
-    }
+    const response = await apiFetch(`/api/harvest-admin/jobs?${params}`);
     const body = await response.json();
     jobs.value = body.data ?? [];
     totalJobs.value = body.total ?? jobs.value.length;

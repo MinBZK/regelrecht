@@ -1,4 +1,5 @@
 import { ref, onUnmounted } from 'vue';
+import { apiFetch } from '@regelrecht/frontend-shared';
 
 export function useJobDetail() {
   const job = ref(null);
@@ -28,8 +29,9 @@ export function useJobDetail() {
     progressTimer = setInterval(async () => {
       if (!job.value) return;
       try {
-        const resp = await fetch(`api/jobs/${encodeURIComponent(job.value.id)}`);
-        if (!resp.ok) return;
+        const resp = await apiFetch(
+          `/api/harvest-admin/jobs/${encodeURIComponent(job.value.id)}`,
+        );
         const updated = await resp.json();
         job.value = updated;
         if (updated.status !== 'processing') {

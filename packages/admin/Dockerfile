@@ -1,28 +1,17 @@
 # syntax=docker/dockerfile:1
-# Stage 1: Build frontend (npm workspace root — builds the admin-ui workspace)
-FROM node:26-alpine@sha256:725aeba2364a9b16beae49e180d83bd597dbd0b15c47f1f28875c290bfd255b9 AS frontend-builder
-WORKDIR /app
-# Workspace manifests first so `npm ci` is cached independently of source.
-COPY package.json package-lock.json .npmrc ./
-COPY packages/frontend-shared/package.json packages/frontend-shared/
-COPY frontend/package.json frontend/
-COPY frontend-lawmaking/package.json frontend-lawmaking/
-COPY packages/admin/frontend-src/package.json packages/admin/frontend-src/
-RUN npm ci
-# Source: the shared package + the admin frontend.
-COPY packages/frontend-shared/ packages/frontend-shared/
-COPY packages/admin/frontend-src/ packages/admin/frontend-src/
-# admin vite outDir is '../static', resolving to /app/packages/admin/static.
-RUN npm run build -w packages/admin/frontend-src
+# API-only image: the harvester-admin binary is a standalone harvest API. Its
+# dashboard UI now lives in the editor (frontend/src/harvester), which reaches
+# this API through the editor-api /api/harvest-admin/* proxy — so there is no
+# frontend build stage and no static assets here.
 
-# Stage 2: Chef base
+# Stage 1: Chef base
 # Rust version: keep in sync with rust-toolchain.toml (source of truth).
 FROM rust:1.96-alpine@sha256:f87aa870663e2b57ec8c69de82c7eedf7383bee987eef7612c0359635eaadb41 AS chef
 RUN apk add --no-cache musl-dev
 RUN cargo install cargo-chef --locked
 WORKDIR /build
 
-# Stage 3: Plan dependencies
+# Stage 2: Plan dependencies
 FROM chef AS planner
 COPY packages/Cargo.lock packages/Cargo.toml ./
 # Trim workspace members to those actually built by this Dockerfile so chef
@@ -43,7 +32,7 @@ COPY packages/harvester/ harvester/
 COPY packages/shared/ shared/
 RUN cargo chef prepare --recipe-path recipe.json
 
-# Stage 4: Build Rust binary (deps cached separately from source)
+# Stage 3: Build Rust binary (deps cached separately from source)
 FROM chef AS builder
 COPY packages/Cargo.lock ./
 COPY --from=planner /build/Cargo.toml ./Cargo.toml
@@ -67,16 +56,14 @@ COPY packages/shared/ shared/
 RUN find . -name '*.rs' -exec touch {} + && \
     cargo build --release --bin regelrecht-admin
 
-# Stage 5: Runtime
+# Stage 4: Runtime
 FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 RUN apk add --no-cache ca-certificates && \
     addgroup -S app && adduser -S app -G app
 
 COPY --from=builder /build/target/release/regelrecht-admin /usr/local/bin/
-COPY --from=frontend-builder /app/packages/admin/static /app/static
 
 WORKDIR /app
-ENV STATIC_DIR=/app/static
 USER app
 EXPOSE 8000
 CMD ["regelrecht-admin"]
