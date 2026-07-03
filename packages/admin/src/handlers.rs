@@ -10,7 +10,7 @@ use regelrecht_pipeline::{EnrichPayload, JobType, Priority, ENRICH_PROVIDERS};
 use serde::{Deserialize, Serialize};
 
 use crate::error::ApiError;
-use crate::models::{Job, LawEntry, PaginatedResponse};
+use crate::models::{Job, LawEntry, PaginatedResponse, Untranslatable};
 use crate::state::AppState;
 
 /// Map a sqlx error to a 500 ApiError, logging the cause with `op` so the log
@@ -195,6 +195,141 @@ pub async fn list_law_entries(
             .await
             .map_err(db_err("data query failed"))?
     };
+
+    Ok(Json(PaginatedResponse {
+        data,
+        total,
+        limit,
+        offset,
+    }))
+}
+
+// --- Untranslatables ---
+
+#[derive(Deserialize)]
+pub struct UntranslatablesQuery {
+    pub law_id: Option<String>,
+    pub provider: Option<String>,
+    pub accepted: Option<bool>,
+    pub construct: Option<String>,
+    pub sort: Option<String>,
+    pub order: Option<String>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+const ALLOWED_SORT_COLUMNS_UNTRANSLATABLE: &[&str] = &[
+    "id",
+    "law_id",
+    "provider",
+    "article",
+    "construct",
+    "accepted",
+    "created_at",
+];
+
+pub async fn list_untranslatables(
+    State(state): State<AppState>,
+    Query(params): Query<UntranslatablesQuery>,
+) -> Result<Json<PaginatedResponse<Untranslatable>>, ApiError> {
+    let pool = &state.pool;
+    let limit = clamped_limit(params.limit);
+    let offset = clamped_offset(params.offset);
+
+    let sort_column = validated_sort_column(
+        params.sort.as_deref(),
+        ALLOWED_SORT_COLUMNS_UNTRANSLATABLE,
+        "created_at",
+    )
+    .ok_or(ApiError::BadRequest("invalid sort column".to_string()))?;
+
+    let order = normalized_order(params.order.as_deref());
+
+    // Build dynamic WHERE clause for multi-filter support. Columns are qualified
+    // with `u.` so they stay unambiguous under the law_entries join.
+    let mut where_clauses = Vec::new();
+    let mut bind_index: usize = 1;
+
+    if params.law_id.is_some() {
+        // Partial / case-insensitive match, matching the jobs/law search fields.
+        where_clauses.push(format!("u.law_id ILIKE ${bind_index}"));
+        bind_index += 1;
+    }
+    if params.provider.is_some() {
+        where_clauses.push(format!("u.provider = ${bind_index}"));
+        bind_index += 1;
+    }
+    if params.accepted.is_some() {
+        where_clauses.push(format!("u.accepted = ${bind_index}"));
+        bind_index += 1;
+    }
+    if params.construct.is_some() {
+        where_clauses.push(format!("u.construct ILIKE ${bind_index}"));
+        bind_index += 1;
+    }
+
+    let where_sql = if where_clauses.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", where_clauses.join(" AND "))
+    };
+
+    // Count query (no join needed — filters are all on the untranslatables table).
+    // Filter values are bound in the same order for the count and data queries.
+    let count_sql = format!("SELECT COUNT(*) FROM untranslatables u {where_sql}");
+    let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql);
+    if let Some(ref law_id) = params.law_id {
+        count_query = count_query.bind(format!("%{}%", like_escape(law_id)));
+    }
+    if let Some(ref provider) = params.provider {
+        count_query = count_query.bind(provider);
+    }
+    if let Some(accepted) = params.accepted {
+        count_query = count_query.bind(accepted);
+    }
+    if let Some(ref construct) = params.construct {
+        count_query = count_query.bind(format!("%{}%", like_escape(construct)));
+    }
+
+    let total: i64 = count_query
+        .fetch_one(pool)
+        .await
+        .map_err(db_err("count query failed"))?;
+
+    // Data query — sort column is validated against an allowlist above, so
+    // interpolating it into the query string is safe. LEFT JOIN so an
+    // untranslatable whose law_entry is missing still appears (law_name = NULL).
+    let limit_idx = bind_index;
+    let offset_idx = bind_index + 1;
+    let data_sql = format!(
+        "SELECT u.id, u.law_id, le.law_name, u.enrich_job_id, u.provider, \
+         u.article, u.construct, u.reason, u.suggestion, u.legal_text_excerpt, \
+         u.accepted, u.created_at \
+         FROM untranslatables u \
+         LEFT JOIN law_entries le ON le.law_id = u.law_id \
+         {where_sql} \
+         ORDER BY u.{sort_column} {order} LIMIT ${limit_idx} OFFSET ${offset_idx}"
+    );
+
+    let mut data_query = sqlx::query_as::<_, Untranslatable>(&data_sql);
+    if let Some(ref law_id) = params.law_id {
+        data_query = data_query.bind(format!("%{}%", like_escape(law_id)));
+    }
+    if let Some(ref provider) = params.provider {
+        data_query = data_query.bind(provider);
+    }
+    if let Some(accepted) = params.accepted {
+        data_query = data_query.bind(accepted);
+    }
+    if let Some(ref construct) = params.construct {
+        data_query = data_query.bind(format!("%{}%", like_escape(construct)));
+    }
+    data_query = data_query.bind(limit).bind(offset);
+
+    let data: Vec<Untranslatable> = data_query
+        .fetch_all(pool)
+        .await
+        .map_err(db_err("data query failed"))?;
 
     Ok(Json(PaginatedResponse {
         data,

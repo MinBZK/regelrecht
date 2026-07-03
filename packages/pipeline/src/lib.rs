@@ -13,6 +13,7 @@ pub mod law_status;
 pub mod models;
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
+pub mod untranslatables;
 pub mod worker;
 
 pub use api_state::ApiState;
@@ -30,4 +31,6 @@ pub use harvest::{HarvestPayload, HarvestResult, MAX_HARVEST_DEPTH};
 // handler `api::harvest::request_harvest` shares that name, so callers import
 // it path-qualified via the module.
 pub use harvest_request::{HarvestRequestOptions, HarvestRequestOutcome};
-pub use models::{FeatureFlag, Job, JobStatus, JobType, LawEntry, LawStatusValue, Priority};
+pub use models::{
+    FeatureFlag, Job, JobStatus, JobType, LawEntry, LawStatusValue, Priority, Untranslatable,
+};

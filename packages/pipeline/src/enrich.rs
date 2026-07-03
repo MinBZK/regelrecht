@@ -480,6 +480,27 @@ pub struct EnrichResult {
     /// enqueue follow-up harvests. Empty when no sidecar was written.
     #[serde(default)]
     pub related_legislation: Vec<RelatedLegislation>,
+    /// Untranslatable constructs captured from the enriched YAML (RFC-012):
+    /// legal constructs the agent could not express with the engine's current
+    /// operation set. The worker persists these to the `untranslatables` table;
+    /// they also ride here in `jobs.result`. `#[serde(default)]` keeps older
+    /// stored results deserializable.
+    #[serde(default)]
+    pub untranslatables: Vec<CapturedUntranslatable>,
+}
+
+/// A single untranslatable captured from an enriched article, flattened for
+/// persistence. DB-free by design: it rides in `jobs.result` JSON and is written
+/// to the `untranslatables` table by the worker.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CapturedUntranslatable {
+    /// The owning article's number (`Article.number`).
+    pub article: String,
+    pub construct: String,
+    pub reason: String,
+    pub suggestion: Option<String>,
+    pub legal_text_excerpt: Option<String>,
+    pub accepted: bool,
 }
 
 /// Metadata written alongside the enriched law YAML as `.enrichment.yaml`.
@@ -1164,6 +1185,9 @@ pub async fn execute_enrich_with_runner(
     // Never fails: absent/malformed → empty (see read_enrichment_result_envelope).
     let related_legislation = read_enrichment_result_envelope(&yaml_abs).await;
 
+    // Capture the untranslatables the agent flagged in the enriched YAML (RFC-012).
+    let untranslatables = collect_untranslatables(&yaml_abs).await?;
+
     // Collect written files for corpus staging
     let mut written_files = vec![yaml_abs.clone(), metadata_path];
 
@@ -1210,6 +1234,7 @@ pub async fn execute_enrich_with_runner(
         provider: provider_name,
         branch,
         related_legislation,
+        untranslatables,
     };
 
     Ok((result, written_files))
@@ -1270,6 +1295,36 @@ async fn count_article_stats(path: &Path) -> Result<(usize, usize)> {
         .filter(|article| article.machine_readable.is_some())
         .count();
     Ok((total, with_machine_readable))
+}
+
+/// Collect all untranslatables from an enriched law YAML, flattened to
+/// [`CapturedUntranslatable`] with the owning article number attached.
+///
+/// Parses the law into the canonical [`ArticleBasedLaw`] model, mirroring
+/// [`count_article_stats`]. Returns an empty vec when no article declares any.
+async fn collect_untranslatables(path: &Path) -> Result<Vec<CapturedUntranslatable>> {
+    let content = tokio::fs::read_to_string(path).await?;
+    let law: ArticleBasedLaw = serde_yaml_ng::from_str(&content)?;
+    let mut out = Vec::new();
+    for article in &law.articles {
+        let Some(machine_readable) = &article.machine_readable else {
+            continue;
+        };
+        let Some(entries) = &machine_readable.untranslatables else {
+            continue;
+        };
+        for entry in entries {
+            out.push(CapturedUntranslatable {
+                article: article.number.clone(),
+                construct: entry.construct.clone(),
+                reason: entry.reason.clone(),
+                suggestion: entry.suggestion.clone(),
+                legal_text_excerpt: entry.legal_text_excerpt.clone(),
+                accepted: entry.accepted,
+            });
+        }
+    }
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -1341,6 +1396,7 @@ mod tests {
             provider: "opencode".to_string(),
             branch: "enrich/opencode".to_string(),
             related_legislation: Vec::new(),
+            untranslatables: Vec::new(),
         };
 
         let json = serde_json::to_value(&result).unwrap();
@@ -1659,6 +1715,90 @@ articles:
         let (total, with_mr) = count_article_stats(&path).await.unwrap();
         assert_eq!(total, 3);
         assert_eq!(with_mr, 1);
+    }
+
+    #[tokio::test]
+    async fn test_collect_untranslatables() {
+        // Two articles carry untranslatables (one accepted, one not); a third
+        // article has a machine_readable section without any. The collector must
+        // flatten every entry, attach the owning article number, and preserve the
+        // optional fields + accepted flag.
+        let yaml = r#"---
+$id: test_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Article one.
+    machine_readable:
+      untranslatables:
+        - construct: rounding
+          reason: Engine cannot round yet.
+          suggestion: Add a ROUND operation.
+          legal_text_excerpt: naar boven afgerond op hele euro's
+          accepted: false
+  - number: '2'
+    text: Article two.
+    machine_readable:
+      execution:
+        actions: []
+  - number: '3'
+    text: Article three.
+    machine_readable:
+      untranslatables:
+        - construct: table_lookup
+          reason: Table lookup unsupported.
+          accepted: true
+"#;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("law.yaml");
+        tokio::fs::write(&path, yaml).await.unwrap();
+
+        let collected = collect_untranslatables(&path).await.unwrap();
+        assert_eq!(collected.len(), 2);
+
+        let rounding = collected
+            .iter()
+            .find(|u| u.construct == "rounding")
+            .expect("rounding entry");
+        assert_eq!(rounding.article, "1");
+        assert_eq!(rounding.reason, "Engine cannot round yet.");
+        assert_eq!(
+            rounding.suggestion.as_deref(),
+            Some("Add a ROUND operation.")
+        );
+        assert_eq!(
+            rounding.legal_text_excerpt.as_deref(),
+            Some("naar boven afgerond op hele euro's")
+        );
+        assert!(!rounding.accepted);
+
+        let lookup = collected
+            .iter()
+            .find(|u| u.construct == "table_lookup")
+            .expect("table_lookup entry");
+        assert_eq!(lookup.article, "3");
+        assert!(lookup.suggestion.is_none());
+        assert!(lookup.legal_text_excerpt.is_none());
+        assert!(lookup.accepted);
+    }
+
+    #[tokio::test]
+    async fn test_collect_untranslatables_none() {
+        let yaml = r#"---
+$id: test_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Article one.
+"#;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("law.yaml");
+        tokio::fs::write(&path, yaml).await.unwrap();
+
+        assert!(collect_untranslatables(&path).await.unwrap().is_empty());
     }
 
     #[tokio::test]

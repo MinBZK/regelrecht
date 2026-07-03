@@ -15,3 +15,22 @@ pub struct PaginatedResponse<T: Serialize> {
     pub limit: i64,
     pub offset: i64,
 }
+
+/// A captured untranslatable (RFC-012) as returned by the harvester API. Unlike
+/// the pipeline row type, this carries the joined `law_name` (from `law_entries`)
+/// for display; the join is a LEFT JOIN, so `law_name` may be `None`.
+#[derive(Serialize, sqlx::FromRow)]
+pub struct Untranslatable {
+    pub id: uuid::Uuid,
+    pub law_id: String,
+    pub law_name: Option<String>,
+    pub enrich_job_id: uuid::Uuid,
+    pub provider: String,
+    pub article: String,
+    pub construct: String,
+    pub reason: String,
+    pub suggestion: Option<String>,
+    pub legal_text_excerpt: Option<String>,
+    pub accepted: bool,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}

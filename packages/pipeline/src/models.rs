@@ -135,6 +135,24 @@ pub struct LawEntry {
     pub updated_at: DateTime<Utc>,
 }
 
+/// A single untranslatable construct captured during enrichment (RFC-012),
+/// one row per (law, provider, article, construct). Mirrors the
+/// `untranslatables` table; refreshed per (law_id, provider) on each enrich.
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Untranslatable {
+    pub id: Uuid,
+    pub law_id: String,
+    pub enrich_job_id: Uuid,
+    pub provider: String,
+    pub article: String,
+    pub construct: String,
+    pub reason: String,
+    pub suggestion: Option<String>,
+    pub legal_text_excerpt: Option<String>,
+    pub accepted: bool,
+    pub created_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct FeatureFlag {
     pub key: String,

@@ -46,6 +46,7 @@ const deploymentName = computed(() =>
 const tabs = [
   { key: 'law-entries', label: 'Wetten', route: '/harvesting/law-entries' },
   { key: 'jobs', label: 'Taken', route: '/harvesting/jobs' },
+  { key: 'untranslatables', label: 'Untranslatables', route: '/harvesting/untranslatables' },
 ];
 const activeTab = computed(() => route.name);
 

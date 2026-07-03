@@ -133,6 +133,11 @@ const router = createRouter({
           name: 'jobs',
           component: () => import('./harvester/views/JobsView.vue'),
         },
+        {
+          path: 'untranslatables',
+          name: 'untranslatables',
+          component: () => import('./harvester/views/UntranslatablesView.vue'),
+        },
       ],
     },
     {
