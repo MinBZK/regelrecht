@@ -469,7 +469,7 @@ async fn test_concurrent_claim_safety() {
 }
 
 #[tokio::test]
-async fn test_count_enrich_jobs_started_today() {
+async fn test_count_enrich_jobs_started_this_hour() {
     let db = TestDb::new().await;
 
     // Two claude enrich jobs and one opencode enrich job (payload provider set,
@@ -504,23 +504,26 @@ async fn test_count_enrich_jobs_started_today() {
         .unwrap();
 
     // Only the two claimed claude jobs count; pending c3, opencode, and harvest excluded.
-    let claude = job_queue::count_enrich_jobs_started_today(&db.pool, "claude")
+    let (claude, local_hour) = job_queue::count_enrich_jobs_started_this_hour(&db.pool, "claude")
         .await
         .unwrap();
-    assert_eq!(claude, 2, "two claude enrich jobs started today");
+    assert_eq!(claude, 2, "two claude enrich jobs started this hour");
+    assert!((0..=23).contains(&local_hour), "local hour is 0..=23");
 
-    let opencode = job_queue::count_enrich_jobs_started_today(&db.pool, "opencode")
+    let (opencode, _) = job_queue::count_enrich_jobs_started_this_hour(&db.pool, "opencode")
         .await
         .unwrap();
     assert_eq!(opencode, 1, "provider filter is per-provider");
 
-    // A run from a previous day falls outside today's UTC window.
-    sqlx::query("UPDATE jobs SET started_at = now() - interval '2 days' WHERE law_id = 'c1'")
+    // A run from a previous hour falls outside the current clock-hour bucket.
+    // (2h back is always before the current bucket start, which is <=59min behind
+    // now, so this assertion is not sensitive to where in the hour the test runs.)
+    sqlx::query("UPDATE jobs SET started_at = now() - interval '2 hours' WHERE law_id = 'c1'")
         .execute(&db.pool)
         .await
         .unwrap();
-    let claude = job_queue::count_enrich_jobs_started_today(&db.pool, "claude")
+    let (claude, _) = job_queue::count_enrich_jobs_started_this_hour(&db.pool, "claude")
         .await
         .unwrap();
-    assert_eq!(claude, 1, "backdated run excluded from today's count");
+    assert_eq!(claude, 1, "backdated run excluded from this hour's count");
 }
