@@ -7,7 +7,7 @@ The harvester-admin service lets operators monitor and control the harvester pip
 
 ## Overview
 
-- **Language**: Rust (Axum) — API only
+- **Language**: Rust (Axum), API only
 - **Location**: `packages/admin/` (API); UI in `frontend/src/harvester/`
 - **Production URL**: `harvester-admin.regelrecht.rijks.app` (API); UI at `editor.regelrecht.rijks.app` → Beheer
 

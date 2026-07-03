@@ -22,7 +22,6 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://regelrecht:regelrecht_dev@postgres:5432/regelrecht_pipeline
-      STATIC_DIR: /app/static
       RUST_LOG: info
     ports:
       - ${ADMIN_PORT:-8000}:8000

@@ -31,7 +31,7 @@ Keycloak composite role).
 There are two applications today:
 
 - **editor**: `packages/editor-api` + `frontend/` (law and scenario editor)
-- **harvester**: `packages/admin` — a standalone harvester job-queue & corpus API. Its dashboard UI is served inside the editor as the "Beheer" section (`frontend/src/harvester/`), visible to any `harvester-*` role and reached through the editor-api `/api/harvest-admin/*` proxy (which forwards the session cookie so the harvester API enforces the `harvester-*` gates below). The API stays independently addressable for non-editor clients.
+- **harvester**: `packages/admin`, a standalone harvester job-queue & corpus API. Its dashboard UI is served inside the editor as the "Beheer" section (`frontend/src/harvester/`), visible to any `harvester-*` role and reached through the editor-api `/api/harvest-admin/*` proxy (which forwards the session cookie so the harvester API enforces the `harvester-*` gates below). The API stays independently addressable for non-editor clients.
 
 ### Role reference
 
@@ -263,11 +263,12 @@ URI per app port:
    PKCE (S256) is sent by the app and accepted by Keycloak out of the box; you
    may optionally enforce it under *Advanced → Proof Key for Code Exchange*.
 2. **Valid redirect URIs**: add exactly `http://localhost:7300/auth/callback`
-   for the editor, and one per other local app, e.g.
-   `http://localhost:7400/auth/callback` for harvester-admin. Scheme + host +
-   port + path must match the value the app sends.
-3. **Web origins**: add `http://localhost:7300` (and `http://localhost:7400`),
-   or `+` to derive from the redirect URIs, so the browser's CORS checks pass.
+   for the editor. (The harvester-admin service is API-only; its UI is the
+   editor's Beheer section, reached through the editor-api proxy, so it needs
+   no separate browser redirect URI in local dev.) Scheme + host + port + path
+   must match the value the app sends.
+3. **Web origins**: add `http://localhost:7300`, or `+` to derive from the
+   redirect URIs, so the browser's CORS checks pass.
 4. **Client scopes**: ensure `openid`, `email`, and `profile` are granted; the
    app requests these three scopes.
 5. **Realm-roles ID-token mapper**: add a *User Realm Role* mapper on the client

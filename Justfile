@@ -313,7 +313,7 @@ dev:
     printf "\n"
     printf "${bold}${green}  Dev stack is running with hot reload${reset}\n\n"
     if [ "$editor_fe" = true ]; then
-        echo "  Editor:     http://localhost:3000     (hot reload; harvester Beheer via editor-api proxy)"
+        echo "  Editor:     http://localhost:3000     (hot reload)"
     fi
     echo   "  Admin API:  http://localhost:8000     (auto-recompile on save)"
     echo   "  Grafana:    http://localhost:${GRAFANA_PORT:-3002}"

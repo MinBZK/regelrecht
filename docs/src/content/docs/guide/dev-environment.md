@@ -10,10 +10,11 @@ The development stack runs infrastructure in Docker and application services nat
 ```
 ┌─────────────────────────────────────────────────┐
 │  Native (hot reload)                            │
-│  ┌─────────────┐ ┌──────────┐ ┌──────────────┐ │
-│  │ Editor :3000 │ │Admin :3001│ │Admin API:8000│ │
-│  │ (Vite)       │ │(Vite)    │ │(cargo watch) │ │
-│  └─────────────┘ └──────────┘ └──────────────┘ │
+│  ┌──────────────┐ ┌──────────────┐              │
+│  │ Editor :3000 │ │Admin API:8000│              │
+│  │ (Vite; hosts │ │(cargo watch; │              │
+│  │  Beheer UI)  │ │ API only)    │              │
+│  └──────────────┘ └──────────────┘              │
 ├─────────────────────────────────────────────────┤
 │  Docker                                         │
 │  ┌──────────┐ ┌────────────┐ ┌───────┐         │
@@ -70,8 +71,8 @@ just dev-down                # stop it (shared with `just dev`)
 
 | App | URL | Backend | DB | Notes |
 |-----|-----|---------|----|----|
-| editor | `http://localhost:7300` | editor-api `:8000` | yes | real SSO, needs `.env.sso-local` |
-| admin | `http://localhost:7400` | admin API `:8000` (`:8001` when all run together) | yes | none |
+| editor | `http://localhost:7300` | editor-api `:8000` | yes | real SSO, needs `.env.sso-local`; hosts the harvester **Beheer** UI |
+| harvester-admin | API only (UI is the editor's Beheer section) | admin API `:8000` (`:8001` when all run together) | yes | in `all`, editor-api proxies `/api/harvest-admin/*` here |
 | lawmaking | `http://localhost:7500` | none | no | static, no backend |
 
 Notes:
