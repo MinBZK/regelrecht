@@ -97,7 +97,8 @@ pub struct WorkerConfig {
     /// Multiplier applied to `enrich_hourly_limit` during the local night window
     /// (00:00–08:00 Europe/Amsterdam), so bulk enrichment runs mostly overnight.
     /// Configurable via `ENRICH_NIGHT_MULTIPLIER`. Default `1` (no boost) so a
-    /// missing or typo'd value never silently amplifies spend.
+    /// missing or typo'd value never silently amplifies spend; clamped to a
+    /// minimum of `1` so an explicit `0` can't invert the intent (night pause).
     pub enrich_night_multiplier: u32,
     /// When true, a completed harvest auto-enqueues enrich jobs for that law.
     /// Off by default; enrichment is otherwise requested explicitly via the admin
@@ -197,7 +198,10 @@ impl WorkerConfig {
         };
 
         // Night-window multiplier. Default 1 (no boost). Present-but-unparseable
-        // warns and reads as 1 rather than amplifying spend on a typo.
+        // warns and reads as 1 rather than amplifying spend on a typo. Clamped to
+        // a minimum of 1 (`.max(1)`) so an explicit `0` can't invert the intent —
+        // a 0 would make the night cap `base * 0 = 0`, pausing the worker at night
+        // and running it only by day. Never amplifies spend.
         let enrich_night_multiplier: u32 = match std::env::var("ENRICH_NIGHT_MULTIPLIER") {
             Ok(raw) => raw.parse::<u32>().unwrap_or_else(|_| {
                 tracing::warn!(
@@ -207,7 +211,8 @@ impl WorkerConfig {
                 1
             }),
             Err(_) => 1,
-        };
+        }
+        .max(1);
 
         // Auto-enrich after harvest is opt-in; unset/unrecognized reads as false.
         let auto_enrich_enqueue = std::env::var("ENRICH_AUTO_ENQUEUE")

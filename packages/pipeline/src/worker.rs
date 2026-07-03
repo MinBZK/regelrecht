@@ -23,11 +23,16 @@ use crate::models::{JobType, LawStatusValue, Priority};
 const NIGHT_START_HOUR: i32 = 0;
 const NIGHT_END_HOUR: i32 = 8;
 
+/// Whether the given local hour-of-day falls in the night window `[start, end)`.
+fn is_night_hour(local_hour: i32) -> bool {
+    (NIGHT_START_HOUR..NIGHT_END_HOUR).contains(&local_hour)
+}
+
 /// The enrich cap for a given local hour-of-day: the base hourly limit during
 /// the day, times `night_multiplier` during the night window. Saturating so a
 /// large multiplier can't overflow `u32`.
 fn hourly_cap(base: u32, night_multiplier: u32, local_hour: i32) -> u32 {
-    if (NIGHT_START_HOUR..NIGHT_END_HOUR).contains(&local_hour) {
+    if is_night_hour(local_hour) {
         base.saturating_mul(night_multiplier)
     } else {
         base
@@ -823,7 +828,7 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
         };
         if let Some((cap, local_hour)) = pause {
             current_interval = config.max_poll_interval;
-            let window = if (NIGHT_START_HOUR..NIGHT_END_HOUR).contains(&local_hour) {
+            let window = if is_night_hour(local_hour) {
                 "night"
             } else {
                 "day"
