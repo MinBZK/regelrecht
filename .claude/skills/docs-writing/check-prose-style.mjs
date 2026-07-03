@@ -55,12 +55,23 @@ const DEFAULT_TARGETS = [
 //   spaced x – y   a currency amount or digit on each side (€5.212 – €7.747,
 //                  32 – 36 uur). A currency symbol may sit just before the
 //                  left number and just after the space on the right.
+// One exclusion inside the tight case: an en-dash between two all-lowercase
+// words (klimaat–energiedossier) is a prose dash, not a range. Real tight
+// ranges carry a digit (257a–257h, 12–13) or are capitalized proper nouns
+// (September–December); a lowercase–lowercase pair is not a range.
 const RANGE_END = /[\p{L}\p{N}]/u;
 function isRangeDash(s, i) {
   const before = s[i - 1] ?? '';
   const after = s[i + 1] ?? '';
   // tight: alnum–alnum
-  if (RANGE_END.test(before) && RANGE_END.test(after)) return true;
+  if (RANGE_END.test(before) && RANGE_END.test(after)) {
+    const leftWord = (s.slice(0, i).match(/[\p{L}\p{N}]+$/u) ?? [''])[0];
+    const rightWord = (s.slice(i + 1).match(/^[\p{L}\p{N}]+/u) ?? [''])[0];
+    const pair = leftWord + rightWord;
+    const hasDigit = /\p{N}/u.test(pair);
+    const bothLowerAlpha = /^\p{Ll}+$/u.test(leftWord) && /^\p{Ll}+$/u.test(rightWord);
+    return hasDigit || !bothLowerAlpha;
+  }
   // spaced: " – " with a number/currency amount on each side
   if (before === ' ' && after === ' ') {
     const left = s.slice(Math.max(0, i - 14), i - 1);
