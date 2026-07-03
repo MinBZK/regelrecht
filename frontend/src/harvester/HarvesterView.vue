@@ -44,8 +44,8 @@ const deploymentName = computed(() =>
 );
 
 const tabs = [
-  { key: 'law-entries', label: 'Law Entries', route: '/beheer/law-entries' },
-  { key: 'jobs', label: 'Jobs', route: '/beheer/jobs' },
+  { key: 'law-entries', label: 'Wetten', route: '/beheer/law-entries' },
+  { key: 'jobs', label: 'Taken', route: '/beheer/jobs' },
 ];
 const activeTab = computed(() => route.name);
 

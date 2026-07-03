@@ -1,24 +1,17 @@
-/* Harvester "Beheer" section styles — ported verbatim from the standalone
-   admin dashboard (packages/admin/frontend-src/css/admin.css). These target
-   light-DOM class hooks in the ported table/toolbar components, so they must
-   be global (an SFC `<style scoped>` on HarvesterView would not reach the
-   child components). Loaded only when the Beheer section is opened, since
+/* Harvester "Beheer" section styles — the component-specific hooks ported from
+   the standalone admin dashboard (packages/admin/frontend-src/css/admin.css).
+   These target light-DOM class hooks in the ported table/toolbar components, so
+   they must be global (an SFC `<style scoped>` on HarvesterView would not reach
+   the child components). Loaded only when the Beheer section is opened, since
    HarvesterView is lazy-loaded.
 
-   Uses @nldd/design-system design tokens. The html/body reset and the
-   preview env-badge from the original admin.css are intentionally dropped —
-   the editor owns its global reset, and the deployment badge is now an inline
-   toolbar <nldd-tag> in HarvesterView rather than a fixed-position element. */
-
-/* nldd-tooltip appends sr-only description spans (`id="nldd-tooltip-N"`)
-   directly under <body> with `position: absolute` but no top/left, which on
-   pages with many tooltips (the harvester tables) can pile up at the end of
-   the document and trigger an unwanted scroll. Force them to top-left so
-   they're truly out of flow. */
-[id^='nldd-tooltip-'] {
-  top: 0;
-  left: 0;
-}
+   Uses @nldd/design-system design tokens. Three rules from the original
+   admin.css are intentionally NOT carried over: the html/body reset (the editor
+   owns its global reset), the fixed-position preview env-badge (now an inline
+   toolbar <nldd-tag> in HarvesterView), and the global `[id^=nldd-tooltip-]`
+   position-pin (the editor renders many tooltips without it, so it was
+   vestigial, and keeping a global rule in a lazy-loaded section stylesheet
+   leaks it into the rest of the app). */
 
 /* Table toolbar (filter & sort controls above the tables) */
 .table-toolbar {
