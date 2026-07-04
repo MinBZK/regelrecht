@@ -22,6 +22,10 @@ function stubFetch(putResponse) {
   );
 }
 
+// A flag not in DEFAULTS: unknown keys default to `true` (isEnabled's `?? true`),
+// which is all these tests about the store mechanics need.
+const KEY = 'test.flag';
+
 describe('useFeatureFlags', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -36,13 +40,13 @@ describe('useFeatureFlags', () => {
     const { isEnabled, toggle, loaded } = await freshFlags();
     await vi.waitFor(() => expect(loaded.value).toBe(true));
 
-    expect(isEnabled('panel.notes')).toBe(false); // default
-    await toggle('panel.notes');
+    expect(isEnabled(KEY)).toBe(true); // unknown key defaults on
+    await toggle(KEY);
 
-    // Kept on (not reverted) and persisted so it survives a refresh.
-    expect(isEnabled('panel.notes')).toBe(true);
+    // Kept (not reverted) and persisted so it survives a refresh.
+    expect(isEnabled(KEY)).toBe(false);
     const saved = JSON.parse(localStorage.getItem('regelrecht-feature-flags') || '{}');
-    expect(saved['panel.notes']).toBe(true);
+    expect(saved[KEY]).toBe(false);
   });
 
   it('reverts the toggle when OIDC is configured and the write fails (prod — no sticky override)', async () => {
@@ -74,19 +78,54 @@ describe('useFeatureFlags', () => {
     const { isEnabled, toggle, loaded } = flagsMod.useFeatureFlags();
     await vi.waitFor(() => expect(loaded.value).toBe(true));
 
-    expect(isEnabled('panel.notes')).toBe(false); // default
-    await toggle('panel.notes');
+    expect(isEnabled(KEY)).toBe(true); // default
+    await toggle(KEY);
 
     // Reverted in memory; nothing sticky left in localStorage to override the server.
-    expect(isEnabled('panel.notes')).toBe(false);
+    expect(isEnabled(KEY)).toBe(true);
     const saved = JSON.parse(localStorage.getItem('regelrecht-feature-flags') || '{}');
-    expect('panel.notes' in saved).toBe(false);
+    expect(KEY in saved).toBe(false);
+  });
+
+  it('lets a server (DB) value win over a stale local override', async () => {
+    // A toggle saved during a no-DB session leaves the flag off in localStorage;
+    // once the flag is set in the DB the server value must win, otherwise the
+    // feature stays hidden despite the admin-set flag.
+    localStorage.setItem('regelrecht-feature-flags', JSON.stringify({ [KEY]: false }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input, init) => {
+        const method = init?.method ?? 'GET';
+        if (method === 'PUT') return Promise.resolve(new Response('{}', { status: 200 }));
+        return Promise.resolve(
+          new Response(JSON.stringify({ [KEY]: true }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        );
+      }),
+    );
+    const { isEnabled, loaded } = await freshFlags();
+    await vi.waitFor(() => expect(loaded.value).toBe(true));
+
+    expect(isEnabled(KEY)).toBe(true);
+  });
+
+  it('keeps a local override for a flag the server does not define (no-DB dev)', async () => {
+    // Server returns an empty set (no DB row for this key), so the local toggle
+    // is the only source and must survive.
+    localStorage.setItem('regelrecht-feature-flags', JSON.stringify({ [KEY]: false }));
+    stubFetch(() => new Response('{}', { status: 200 }));
+    const { isEnabled, loaded } = await freshFlags();
+    await vi.waitFor(() => expect(loaded.value).toBe(true));
+
+    expect(isEnabled(KEY)).toBe(false);
   });
 
   it('clears the local override when the server write succeeds', async () => {
     stubFetch(
       () =>
-        new Response(JSON.stringify({ 'panel.notes': true }), {
+        new Response(JSON.stringify({ [KEY]: false }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         }),
@@ -94,11 +133,11 @@ describe('useFeatureFlags', () => {
     const { isEnabled, toggle, loaded } = await freshFlags();
     await vi.waitFor(() => expect(loaded.value).toBe(true));
 
-    await toggle('panel.notes');
+    await toggle(KEY);
 
-    expect(isEnabled('panel.notes')).toBe(true);
+    expect(isEnabled(KEY)).toBe(false);
     // Server is authoritative — no lingering local override.
     const saved = JSON.parse(localStorage.getItem('regelrecht-feature-flags') || '{}');
-    expect('panel.notes' in saved).toBe(false);
+    expect(KEY in saved).toBe(false);
   });
 });
