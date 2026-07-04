@@ -67,21 +67,23 @@ describe('OverviewView', () => {
 
   it('renders harvest and enrich as two separate per-type panels', () => {
     const w = shallowMount(OverviewView);
-    const text = w.text();
+    // Values live in overline/title slots (light DOM) or on nldd-text-cell
+    // `text` attributes (shadow DOM); w.html() covers both.
+    const html = w.html();
     // Per-type headings + totals
-    expect(text).toContain('Harvest');
-    expect(text).toContain('842');
-    expect(text).toContain('Enrich');
-    expect(text).toContain('362');
+    expect(html).toContain('Harvest');
+    expect(html).toContain('842');
+    expect(html).toContain('Enrich');
+    expect(html).toContain('362');
     // Per-type executed counts (harvest today 30 / week 140, enrich today 17 / week 70)
-    expect(text).toContain('Vandaag');
-    expect(text).toContain('Afgelopen 7 dagen');
-    expect(text).toContain('30');
-    expect(text).toContain('17');
+    expect(html).toContain('Uitgevoerd vandaag');
+    expect(html).toContain('Afgelopen 7 dagen');
+    expect(html).toContain('text="30"');
+    expect(html).toContain('text="17"');
     // Per-type status counts come from by_type_status, not the combined by_status.
     // harvest.completed = 830, enrich.completed = 350
-    expect(text).toContain('830');
-    expect(text).toContain('350');
+    expect(html).toContain('text="830"');
+    expect(html).toContain('text="350"');
   });
 
   it('wires the failures DataTable with the recent_failures data', () => {

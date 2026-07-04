@@ -83,43 +83,63 @@ async function onFailureClick(row) {
   <template v-else-if="stats">
     <!-- Top-level totals -->
     <nldd-simple-section>
-      <div class="overview-kpis">
-        <nldd-card v-for="kpi in topKpis" :key="kpi.label" class="overview-kpi">
+      <nldd-collection item-width="240px">
+        <nldd-card v-for="kpi in topKpis" :key="kpi.label">
           <nldd-container padding="16">
-            <div class="overview-kpi__value">{{ formatNumber(kpi.value) }}</div>
-            <div class="overview-kpi__label">{{ kpi.label }}</div>
+            <nldd-title size="2">
+              <span slot="overline">{{ kpi.label }}</span>
+              {{ formatNumber(kpi.value) }}
+            </nldd-title>
           </nldd-container>
         </nldd-card>
-      </div>
+      </nldd-collection>
     </nldd-simple-section>
 
     <!-- Per-type detail: harvest and enrich as two separate kinds -->
     <nldd-simple-section>
-      <div class="overview-types">
-        <nldd-card v-for="panel in typePanels" :key="panel.key" class="overview-type">
+      <nldd-collection item-width="320px">
+        <nldd-card v-for="panel in typePanels" :key="panel.key">
           <nldd-container padding="16">
-            <nldd-title size="6"><h3>{{ panel.label }}</h3></nldd-title>
-            <div class="overview-type__total">
+            <nldd-title size="3">
+              <span slot="overline">{{ panel.label }}</span>
               {{ formatNumber(panel.total) }}
-              <span class="overview-type__total-label">jobs totaal</span>
-            </div>
-            <div class="overview-badges">
-              <span v-for="item in panel.statuses" :key="item.status" class="overview-badge">
-                <StatusBadge :status="item.status" size="md" />
-                <span class="overview-badge__count">{{ formatNumber(item.count) }}</span>
-              </span>
-            </div>
-            <div class="overview-type__executed">
-              Uitgevoerd — Vandaag {{ formatNumber(panel.today) }} ·
-              Afgelopen 7 dagen {{ formatNumber(panel.last7d) }}
-            </div>
+              <span slot="subtitle">jobs totaal</span>
+            </nldd-title>
+
+            <nldd-spacer size="16"></nldd-spacer>
+
+            <nldd-list variant="simple">
+              <nldd-list-item v-for="item in panel.statuses" :key="item.status">
+                <nldd-cell width="fit-content">
+                  <StatusBadge :status="item.status" size="md" />
+                </nldd-cell>
+                <nldd-text-cell :text="formatNumber(item.count)" horizontal-alignment="right" />
+              </nldd-list-item>
+            </nldd-list>
+
+            <nldd-spacer size="12"></nldd-spacer>
+            <nldd-divider></nldd-divider>
+            <nldd-spacer size="12"></nldd-spacer>
+
+            <nldd-list variant="simple">
+              <nldd-list-item>
+                <nldd-text-cell text="Uitgevoerd vandaag" color="secondary" />
+                <nldd-text-cell :text="formatNumber(panel.today)" horizontal-alignment="right" />
+              </nldd-list-item>
+              <nldd-list-item>
+                <nldd-text-cell text="Afgelopen 7 dagen" color="secondary" />
+                <nldd-text-cell :text="formatNumber(panel.last7d)" horizontal-alignment="right" />
+              </nldd-list-item>
+            </nldd-list>
           </nldd-container>
         </nldd-card>
-      </div>
+      </nldd-collection>
     </nldd-simple-section>
 
     <!-- Recent failures -->
-    <nldd-title class="overview-failures-title" size="6"><h3>Gefaalde jobs</h3></nldd-title>
+    <nldd-simple-section>
+      <nldd-title slot="header" size="6"><h3>Gefaalde jobs</h3></nldd-title>
+    </nldd-simple-section>
     <DataTable
       :columns="FAILED_COLUMNS"
       :data="stats.recent_failures"
