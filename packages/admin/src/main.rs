@@ -232,7 +232,7 @@ async fn main() {
     // editor-api /api/harvest-admin/* proxy. This binary no longer serves a
     // SPA, so there is no static fallback — unmatched paths 404. The API
     // surface (/health, /metrics, /auth/*, /api/*) stays a standalone,
-    // publicly-addressable harvest API (OIDC + ADMIN_API_KEY on GET/DELETE).
+    // publicly-addressable harvest API (OIDC + ADMIN_API_KEY on GET/POST/DELETE).
 
     let port: u16 = env::var("ADMIN_PORT")
         .ok()
