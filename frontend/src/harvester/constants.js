@@ -76,6 +76,61 @@ export const GROUPED_COLUMNS = [
   { key: 'total_jobs', label: 'Jobs', sortable: true, filter: { key: 'status', options: JOB_STATUSES, label: 'Status' }, width: 'fit-content', minWidth: '24px', align: 'right', hideBelow: '640px' },
 ];
 
+// Untranslatables (RFC-012): one row per legal construct the enrichment agent
+// could not express with the engine's current operation set. Atomic grain —
+// grouped views (per construct / per law) are aggregation over this same list.
+// Keep in sync with ENRICH_PROVIDERS in packages/pipeline/src/enrich.rs — a
+// provider added there but not here still displays, only its filter option is missing.
+export const UNTRANSLATABLE_PROVIDERS = ['opencode', 'claude'];
+
+export const UNTRANSLATABLE_COLUMNS = [
+  {
+    key: 'law_name',
+    label: 'Law',
+    filter: { key: 'law_id', type: 'text', label: 'Law' },
+    overline: (row) => row.law_id,
+    text: (row) => row.law_name || '—',
+    supportingText: (row) =>
+      row.created_at ? `Captured at ${formatDate(row.created_at)}` : undefined,
+  },
+  {
+    key: 'article',
+    label: 'Article',
+    width: 'fit-content',
+    minWidth: '60px',
+    text: (row) => row.article || '—',
+  },
+  {
+    key: 'construct',
+    label: 'Construct',
+    filter: { key: 'construct', type: 'text', label: 'Construct' },
+    text: (row) => row.construct || '—',
+  },
+  {
+    // Free-text, potentially long: the cell truncates natively; full text lives
+    // in the detail panel.
+    key: 'reason',
+    label: 'Reason',
+    hideBelow: '640px',
+    text: (row) => row.reason || '—',
+  },
+  {
+    key: 'accepted',
+    label: 'Accepted',
+    filter: { options: ['true', 'false'] },
+    width: 120,
+  },
+  {
+    key: 'provider',
+    label: 'Provider',
+    filter: { options: UNTRANSLATABLE_PROVIDERS },
+    width: 'fit-content',
+    minWidth: '80px',
+    hideBelow: '640px',
+    text: (row) => row.provider || '—',
+  },
+];
+
 // Sort menus are independent from visible columns — users should be able to
 // sort by fields that aren't shown as a separate column.
 // `directionLabels` controls which directions appear in the menu:
@@ -113,10 +168,23 @@ export const LAW_ENTRY_SORT_OPTIONS = [
   { key: 'law_name', label: 'Name', directionLabels: DIR_TEXT },
 ];
 
+// Keys must match the backend sort allowlist (ALLOWED_SORT_COLUMNS_UNTRANSLATABLE):
+// all real untranslatables columns. The "Law" pivot sorts by law_id (a real
+// column), not the joined law_name.
+export const UNTRANSLATABLE_SORT_OPTIONS = [
+  { key: 'created_at', label: 'Recent changes' },
+  { key: 'law_id', label: 'Law', directionLabels: DIR_TEXT },
+  { key: 'construct', label: 'Construct', directionLabels: DIR_TEXT },
+  { key: 'article', label: 'Article', directionLabels: DIR_TEXT },
+  { key: 'accepted', label: 'Accepted' },
+  { key: 'provider', label: 'Provider', directionLabels: DIR_TEXT },
+];
+
 // Sort allowlists for server-side validation (defence in depth)
 export const LAW_ENTRY_SORT_KEYS = new Set(LAW_ENTRY_SORT_OPTIONS.map((o) => o.key));
 export const JOB_SORT_KEYS = new Set(JOB_SORT_OPTIONS.map((o) => o.key));
 export const GROUPED_SORT_KEYS = new Set(GROUPED_SORT_OPTIONS.map((o) => o.key));
+export const UNTRANSLATABLE_SORT_KEYS = new Set(UNTRANSLATABLE_SORT_OPTIONS.map((o) => o.key));
 
 export const STATUS_BADGE_MAP = {
   completed: 'success',
@@ -135,6 +203,12 @@ export const STATUS_BADGE_MAP = {
   queued: 'neutral',
   // No consolidated text to harvest — informational, terminal, not a failure.
   not_harvestable: 'neutral',
+  // Untranslatables (RFC-012): the human-review `accepted` flag rendered as a
+  // badge. `accepted` is a review gate that defaults to false, so false means
+  // "not yet reviewed / open" (neutral), NOT "rejected" (which would wrongly
+  // paint every fresh untranslatable red).
+  accepted: 'success',
+  open: 'neutral',
 };
 
 export const DATE_FORMATTER = new Intl.DateTimeFormat('nl-NL', {

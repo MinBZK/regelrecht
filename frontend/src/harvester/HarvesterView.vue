@@ -46,6 +46,7 @@ const deploymentName = computed(() =>
 const tabs = [
   { key: 'law-entries', label: 'Wetten', route: '/harvesting/law-entries' },
   { key: 'jobs', label: 'Taken', route: '/harvesting/jobs' },
+  { key: 'untranslatables', label: 'Untranslatables', route: '/harvesting/untranslatables' },
 ];
 const activeTab = computed(() => route.name);
 
@@ -70,7 +71,7 @@ function goToLibrary() {
           </nldd-toolbar-item>
           <nldd-toolbar-title
             slot="start"
-            text="Corpusinwinning"
+            text="Harvester"
             supporting-text="RegelRecht"
             min-width="fit-content"
           ></nldd-toolbar-title>

@@ -1345,6 +1345,17 @@ async fn process_next_enrich_job(
 
                 let mut tx = pool.begin().await?;
                 job_queue::complete_job(&mut *tx, job.id, result_json).await?;
+                // Mirror the captured untranslatables into their table so they
+                // surface in the harvester UI. Atomic with the completion:
+                // delete-and-replace per (law_id, provider).
+                crate::untranslatables::replace_untranslatables(
+                    &mut tx,
+                    &result.law_id,
+                    &result.provider,
+                    job.id,
+                    &result.untranslatables,
+                )
+                .await?;
                 law_status::update_status(&mut *tx, &job.law_id, LawStatusValue::Enriched).await?;
                 tx.commit().await?;
                 Ok(())

@@ -41,8 +41,181 @@ fn test_app(pool: sqlx::PgPool) -> Router {
     Router::new()
         .route("/api/law_entries", get(handlers::list_law_entries))
         .route("/api/jobs", get(handlers::list_jobs))
+        .route("/api/untranslatables", get(handlers::list_untranslatables))
         .route("/api/harvest-jobs", post(handlers::create_harvest_job))
         .with_state(state)
+}
+
+/// Seed one untranslatable row for `law_id`/`provider`. Creates the law_entry
+/// (so the join has a `law_name`) and an enrich job (to satisfy the FK) on first
+/// use, then inserts the row. Returns nothing — tests query via the handler.
+async fn seed_untranslatable(
+    pool: &sqlx::PgPool,
+    law_id: &str,
+    law_name: &str,
+    provider: &str,
+    construct: &str,
+    accepted: bool,
+) {
+    regelrecht_pipeline::law_status::upsert_law(pool, law_id, Some(law_name), None)
+        .await
+        .unwrap();
+    let job = job_queue::create_job(pool, CreateJobRequest::new(JobType::Enrich, law_id))
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO untranslatables \
+         (law_id, enrich_job_id, provider, article, construct, reason, accepted) \
+         VALUES ($1, $2, $3, '1', $4, 'reason', $5)",
+    )
+    .bind(law_id)
+    .bind(job.id)
+    .bind(provider)
+    .bind(construct)
+    .bind(accepted)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+async fn get_untranslatables(pool: &sqlx::PgPool, query: &str) -> Value {
+    let app = test_app(pool.clone());
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/untranslatables{query}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    body_json(response).await
+}
+
+// --- list_untranslatables ---
+
+#[tokio::test]
+async fn list_untranslatables_empty() {
+    let db = TestDb::new().await;
+    let json = get_untranslatables(&db.pool, "").await;
+    assert_eq!(json["total"], 0);
+    assert_eq!(json["data"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn list_untranslatables_returns_rows_with_law_name() {
+    let db = TestDb::new().await;
+    seed_untranslatable(
+        &db.pool, "test_law", "Test Law", "opencode", "rounding", false,
+    )
+    .await;
+    seed_untranslatable(
+        &db.pool,
+        "test_law",
+        "Test Law",
+        "opencode",
+        "table_lookup",
+        true,
+    )
+    .await;
+
+    let json = get_untranslatables(&db.pool, "").await;
+    assert_eq!(json["total"], 2);
+    // law_name comes from the LEFT JOIN on law_entries.
+    assert_eq!(json["data"][0]["law_name"], "Test Law");
+}
+
+#[tokio::test]
+async fn list_untranslatables_filters_by_accepted() {
+    let db = TestDb::new().await;
+    seed_untranslatable(
+        &db.pool, "test_law", "Test Law", "opencode", "rounding", false,
+    )
+    .await;
+    seed_untranslatable(
+        &db.pool,
+        "test_law",
+        "Test Law",
+        "opencode",
+        "table_lookup",
+        true,
+    )
+    .await;
+
+    let json = get_untranslatables(&db.pool, "?accepted=true").await;
+    assert_eq!(json["total"], 1);
+    assert_eq!(json["data"][0]["construct"], "table_lookup");
+}
+
+#[tokio::test]
+async fn list_untranslatables_filters_by_law_id_partial() {
+    let db = TestDb::new().await;
+    seed_untranslatable(
+        &db.pool,
+        "wet_alpha",
+        "Wet Alpha",
+        "opencode",
+        "rounding",
+        false,
+    )
+    .await;
+    seed_untranslatable(
+        &db.pool, "wet_beta", "Wet Beta", "opencode", "rounding", false,
+    )
+    .await;
+
+    let json = get_untranslatables(&db.pool, "?law_id=alpha").await;
+    assert_eq!(json["total"], 1);
+    assert_eq!(json["data"][0]["law_id"], "wet_alpha");
+}
+
+#[tokio::test]
+async fn list_untranslatables_filters_by_provider() {
+    let db = TestDb::new().await;
+    seed_untranslatable(
+        &db.pool, "test_law", "Test Law", "opencode", "rounding", false,
+    )
+    .await;
+    seed_untranslatable(
+        &db.pool, "test_law", "Test Law", "claude", "rounding", false,
+    )
+    .await;
+
+    let json = get_untranslatables(&db.pool, "?provider=claude").await;
+    assert_eq!(json["total"], 1);
+    assert_eq!(json["data"][0]["provider"], "claude");
+}
+
+#[tokio::test]
+async fn list_untranslatables_rejects_invalid_sort() {
+    let db = TestDb::new().await;
+    let app = test_app(db.pool.clone());
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/untranslatables?sort=bogus")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn list_untranslatables_pagination() {
+    let db = TestDb::new().await;
+    for construct in ["a", "b", "c"] {
+        seed_untranslatable(
+            &db.pool, "test_law", "Test Law", "opencode", construct, false,
+        )
+        .await;
+    }
+
+    let json = get_untranslatables(&db.pool, "?limit=1&offset=1").await;
+    assert_eq!(json["total"], 3);
+    assert_eq!(json["data"].as_array().unwrap().len(), 1);
 }
 
 async fn body_json(response: axum::http::Response<Body>) -> Value {

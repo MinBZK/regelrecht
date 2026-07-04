@@ -112,7 +112,7 @@ const router = createRouter({
       path: '/harvesting',
       component: () => import('./harvester/HarvesterView.vue'),
       meta: {
-        title: 'Corpusinwinning',
+        title: 'Harvester',
         requiresAuth: true,
         requiresRole: [
           'harvester-reader',
@@ -132,6 +132,11 @@ const router = createRouter({
           path: 'jobs',
           name: 'jobs',
           component: () => import('./harvester/views/JobsView.vue'),
+        },
+        {
+          path: 'untranslatables',
+          name: 'untranslatables',
+          component: () => import('./harvester/views/UntranslatablesView.vue'),
         },
       ],
     },

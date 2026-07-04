@@ -57,9 +57,11 @@ export default defineConfig({
       // @cucumber/gherkin 40 and @cucumber/messages 33 ship as pure ESM. The
       // vmThreads pool loads external ESM in a separate VM context, which throws
       // "Linked modules must use the same context". Inlining lets vitest process
-      // them in the test context instead.
+      // them in the test context instead. The @regelrecht/frontend-shared
+      // workspace package (ESM) hits the same issue when a test transitively
+      // imports it (e.g. usePollingFetch → apiFetch), so inline it too.
       deps: {
-        inline: [/@cucumber\//],
+        inline: [/@cucumber\//, /@regelrecht\//],
       },
     },
   },
