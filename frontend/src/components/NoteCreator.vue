@@ -10,7 +10,7 @@
  * not persist — useDraftNotes (owned by EditorApp) does, so the new note
  * highlights live alongside committed ones.
  */
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { buildSelector } from '../composables/useTextSelection.js';
 import { useAmbiguityVocabulary } from '../composables/useAmbiguityVocabulary.js';
 import { documentsListUrl } from '../composables/corpusUrls.js';
@@ -127,31 +127,34 @@ const canSave = computed(() => {
 
 // Show/hide the popover with the range. nldd-popover is the same primitive
 // AnnotatedText uses for the hover card.
-watch(
-  () => props.range,
-  (range) => {
-    const pop = popoverEl.value;
-    if (!pop) return;
-    if (range && props.anchor) {
-      pop.anchorElement = props.anchor;
-      try {
-        if (!pop.matches?.(':popover-open')) pop.showPopover?.();
-      } catch {
-        /* already open */
-      }
-      // Refresh the documents list each time the form opens. The list is
-      // small (a fresh traject often has zero) so a re-fetch on every open
-      // is cheap and beats caching staleness across saves.
-      fetchDocumentOptions().catch(() => {});
-    } else {
-      pop.hidePopover?.();
-      // Clear the form too: range goes null on cancel/article-switch, and
-      // stale commentText/linkTarget/tag would otherwise pre-fill the next
-      // selection's form.
-      reset();
+function applyRange(range) {
+  const pop = popoverEl.value;
+  if (!pop) return;
+  if (range && props.anchor) {
+    pop.anchorElement = props.anchor;
+    try {
+      if (!pop.matches?.(':popover-open')) pop.showPopover?.();
+    } catch {
+      /* already open */
     }
-  },
-);
+    // Refresh the documents list each time the form opens. The list is
+    // small (a fresh traject often has zero) so a re-fetch on every open
+    // is cheap and beats caching staleness across saves.
+    fetchDocumentOptions().catch(() => {});
+  } else {
+    pop.hidePopover?.();
+    // Clear the form too: range goes null on cancel/article-switch, and
+    // stale commentText/linkTarget/tag would otherwise pre-fill the next
+    // selection's form.
+    reset();
+  }
+}
+watch(() => props.range, applyRange);
+// v-if mounts this component fresh when a note starts, so the initial range is
+// already set by the time we mount — the watch alone (not immediate) would miss
+// it and need a second click. Show the popover for the initial range on mount,
+// when popoverEl is bound.
+onMounted(() => applyRange(props.range));
 
 function reset() {
   motivation.value = 'commenting'; // back to the default, not sticky on linking
@@ -498,6 +501,14 @@ const statusInfo = computed(() => {
   /* A long selected fragment must wrap inside the card, not force it wider
      than max-width or get clipped. */
   overflow-wrap: anywhere;
+  /* The fragment is only a confirmation of what's already highlighted on the
+     page, so cap it at a few lines. An unbounded quote grows the popover past
+     the viewport, forcing an internal scroll that hides the save buttons. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
 }
 .nc-field {
   display: flex;

@@ -21,11 +21,14 @@ import {
 } from './composables/useAppChrome.js';
 import { SUPPORT_EMAIL } from './constants.js';
 import { apiFetch, apiFetchJson } from './lib/apiFetch.js';
+import { RETRY_MIN_SPINNER_MS } from './lib/retryFeedback.js';
 import { humanizeLawId } from './lib/lawName.js';
 import { useLatest } from './lib/useLatest.js';
 import ArticleText from './components/ArticleText.vue';
-import AnnotatedText from './components/AnnotatedText.vue';
 import ArticleTextEditor from './components/ArticleTextEditor.vue';
+import NoteCreator from './components/NoteCreator.vue';
+import { cpToUtf16 } from './composables/useNotesHighlight.js';
+import { utf16ToCp } from './composables/useTextSelection.js';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
@@ -46,7 +49,6 @@ const { isEnabled } = useFeatureFlags();
 // pickable in the menu.
 const VIEW_DEFINITIONS = [
   { id: 'text', flag: 'panel.article_text', label: 'Tekst' },
-  { id: 'text-notes', flag: 'panel.notes', label: 'Tekst + notities' },
   { id: 'machine', flag: 'panel.machine_readable', label: 'Machine' },
   { id: 'scenario', flag: 'panel.scenario_form', label: "Scenario's" },
   { id: 'yaml', flag: 'panel.yaml_editor', label: 'YAML' },
@@ -216,15 +218,13 @@ watch(activeTrajectRef, (next) => {
 const {
   notesForArticle: committedNotesForArticle,
   issues: noteIssues,
-  loading: notesLoading,
-  error: notesError,
   reload: reloadNotes,
 } = useNotes(lawId, selectedArticle, activeTrajectRef);
 
-// Notes live in their own "Tekst viewer + notities" pane (panel.notes), shown
-// read-only against the raw article text — the resolver matches raw text, so it
-// can't align with the editable WYSIWYG editor. No show/hide toggle: opening
-// the pane is the toggle.
+// Notes render as annotations inside the editable Tekst editor (they used to
+// live in a separate read-only "Tekst + notities" pane, now dropped). The
+// resolver's code-point spans are converted to the editor's annotation overlay
+// in `editorAnnotations`; authoring runs off the toolbar "Reactie" button.
 
 // Note authoring (RFC-018 write path). Draft notes live in localStorage per
 // law until exported; they resolve and highlight live alongside committed
@@ -255,7 +255,10 @@ const { draftNotesForArticle } = useResolvedDraftNotes(
 );
 // Authoring is part of the notes pane (the old separate `notes.create` flag is
 // folded in): wherever the pane is available, you can create notes in it.
-const canCreateNotes = computed(() => isEnabled('panel.notes'));
+// Note creation is a writer action (it persists to the traject sidecar), so it
+// follows the same write-access gate as law-text editing. The old panel.notes
+// flag is gone — notes now live in the Tekst editor itself.
+const canCreateNotes = computed(() => canEdit.value);
 // Committed + draft notes share the highlight path. Draft entries already
 // carry __draft so the popover can mark them unsaved.
 const notesForArticle = computed(() => [
@@ -265,6 +268,90 @@ const notesForArticle = computed(() => [
 
 function onCreateNote(note) {
   addDraft(note);
+}
+
+// A stable id per note so an annotation-click maps back to it. Committed notes
+// carry a W3C id; a draft may not, so fall back to its position.
+function noteKey(note, i) {
+  return note?.id || `note-${i}`;
+}
+const noteById = computed(() => {
+  const m = new Map();
+  notesForArticle.value.forEach((entry, i) => m.set(noteKey(entry.note, i), entry.note));
+  return m;
+});
+// Notes → DS annotations for the editable Tekst editor. Convert the resolver's
+// code-point spans to UTF-16 offsets against the SAVED text (not editedText) so
+// this stays stable while typing — the editor maps the anchors through edits
+// itself. Recomputes on article switch / save, when the notes re-resolve.
+const editorAnnotations = computed(() => {
+  const text = selectedArticle.value?.text || '';
+  const out = [];
+  notesForArticle.value.forEach((entry, i) => {
+    const id = noteKey(entry.note, i);
+    for (const span of entry.spans) {
+      const start = cpToUtf16(text, span.start);
+      const end = cpToUtf16(text, span.end);
+      out.push({ id, start, end, quote: text.slice(start, end) });
+    }
+  });
+  return out;
+});
+
+// NoteCreator (authoring popover) state, opened by the toolbar comment button
+// on the current editor selection.
+const noteCreator = reactive({ open: false, range: null, anchor: null });
+
+// Anchor the note popover to the SELECTED TEXT, not the toolbar button. The DS
+// popover needs a real element, so we position an invisible one at the
+// selection's viewport rect (nldd-text-editor's getSelection().rect) and use it
+// as the anchor. One reused element, repositioned per note.
+let noteAnchorEl = null;
+function selectionAnchor(rect) {
+  if (!noteAnchorEl) {
+    noteAnchorEl = document.createElement('div');
+    noteAnchorEl.setAttribute('aria-hidden', 'true');
+    noteAnchorEl.style.cssText = 'position:fixed;pointer-events:none;z-index:-1;';
+    document.body.appendChild(noteAnchorEl);
+  }
+  noteAnchorEl.style.left = `${rect.left}px`;
+  noteAnchorEl.style.top = `${rect.top}px`;
+  noteAnchorEl.style.width = `${rect.width}px`;
+  noteAnchorEl.style.height = `${rect.height}px`;
+  return noteAnchorEl;
+}
+onBeforeUnmount(() => {
+  noteAnchorEl?.remove();
+  noteAnchorEl = null;
+});
+
+function startNoteFromSelection(idx, ev) {
+  const refs = textEditorRefs[idx];
+  if (!refs) return;
+  const sel = refs.getSelection();
+  if (sel.empty) return;
+  const text = editedText.value || '';
+  noteCreator.range = { start: utf16ToCp(text, sel.start), end: utf16ToCp(text, sel.end) };
+  // Anchor to the selection rect; fall back to the click target (e.g. when
+  // invoked from the overflow menu, where there is no selection rect handy).
+  noteCreator.anchor = sel.rect ? selectionAnchor(sel.rect) : (ev?.currentTarget ?? null);
+  noteCreator.open = true;
+}
+function onNoteCreated(note) {
+  onCreateNote(note);
+  noteCreator.open = false;
+}
+
+// Clicking an annotation's badge opens a small read-only detail of the note.
+const activeNoteDetail = ref(null);
+function noteDetailText(note) {
+  if (!note) return '';
+  const body = Array.isArray(note.body) ? note.body[0] : note.body;
+  return body?.value || body?.source || note.motivation || 'Notitie';
+}
+function onEditorAnnotationClick(ids) {
+  const id = Array.isArray(ids) ? ids[0] : ids;
+  activeNoteDetail.value = noteById.value.get(id) || null;
 }
 
 // Wiping drafts is irreversible (local-only until exported), so it goes
@@ -409,7 +496,7 @@ const lawErrorIs404 = computed(() => error.value?.status === 404);
  */
 function retryLoadLaw() {
   if (!lawId.value) return;
-  switchLaw(lawId.value, selectedArticleNumber.value);
+  switchLaw(lawId.value, selectedArticleNumber.value, undefined, { minLoadingMs: RETRY_MIN_SPINNER_MS });
 }
 
 function onSearchSelectLaw(lawIdVal) {
@@ -1042,6 +1129,12 @@ async function handleLawSave() {
     machineReadable.value = freshMr ? structuredClone(freshMr) : null;
     yamlSource.value = freshMr ? yaml.dump(freshMr, dumpOpts) : '';
     editedText.value = fresh?.text ?? '';
+    // The article text changed, so notes must re-resolve against the saved copy:
+    // their quote-based selectors re-anchor via the engine, so a note whose
+    // quoted text merely moved comes back at its new place, while one whose own
+    // text was edited orphans (surfaced in the issues list) rather than silently
+    // re-attaching. Fire-and-forget.
+    if (lastSaveTouchedText.value) void reloadNotes();
     // Successful save — the dialog flags drop back to false.
     lastSaveTouchedText.value = false;
     lastSaveTouchedMachine.value = false;
@@ -1467,7 +1560,7 @@ async function handleActionSave() {
         <!-- Loading takes precedence over `error` to avoid flashing a stale error during a refetch. -->
         <nldd-page v-else-if="loading">
           <nldd-simple-section width="full">
-            <nldd-activity-indicator text="Wet laden" show-text></nldd-activity-indicator>
+            <nldd-activity-indicator timing="instant" text="Artikel laden" show-text></nldd-activity-indicator>
           </nldd-simple-section>
         </nldd-page>
 
@@ -1534,7 +1627,7 @@ async function handleActionSave() {
                 <nldd-toolbar size="md" label="Paneelacties">
                   <!-- Weergave-keuze (alle panes). Hoogste prioriteit zodat
                        deze als laatste naar het overflow-menu verhuist. -->
-                  <nldd-toolbar-item slot="start" label="Weergave" :priority="3">
+                  <nldd-toolbar-item slot="start" label="Weergave" :priority="4">
                     <nldd-button
                       :id="`pane-view-btn-${idx}`"
                       size="md"
@@ -1620,7 +1713,7 @@ async function handleActionSave() {
                     v-if="view === 'text' && selectedArticle && textEditorRefs[idx]"
                     slot="end"
                     label="Tekststijl"
-                    :priority="1"
+                    :priority="2"
                   >
                     <nldd-segmented-control
                       type="checkbox"
@@ -1701,6 +1794,36 @@ async function handleActionSave() {
                       ></nldd-menu-item>
                     </nldd-menu-group>
                   </nldd-toolbar-item>
+                  <!-- Notitie toevoegen — annotatie op de huidige selectie.
+                       Prioriteit tussen de mode-switcher (4) en de opmaak-
+                       controls (Tekststijl 2, Lijst 1) in, zodat deze primaire
+                       actie pas na de opmaak naar de overflow verdwijnt. -->
+                  <nldd-toolbar-item
+                    v-if="view === 'text' && selectedArticle && textEditorRefs[idx] && canCreateNotes"
+                    slot="end"
+                    label="Notitie"
+                    :priority="3"
+                  >
+                    <nldd-icon-button
+                      icon="comment"
+                      text="Notitie toevoegen"
+                      variant="secondary"
+                      size="md"
+                      :disabled="textEditorRefs[idx].selectionEmpty || undefined"
+                      @mousedown.prevent
+                      @click="startNoteFromSelection(idx, $event)"
+                    ></nldd-icon-button>
+                    <!-- No :disabled here: the toolbar clones overflow items, so
+                         a live-changing disabled (selectionEmpty) would freeze at
+                         clone time and stick. startNoteFromSelection no-ops on an
+                         empty selection instead. -->
+                    <nldd-menu-item
+                      slot="overflow"
+                      icon="comment"
+                      text="Notitie toevoegen"
+                      @select="startNoteFromSelection(idx, $event)"
+                    ></nldd-menu-item>
+                  </nldd-toolbar-item>
                   <!-- YAML parse-status (Machine-readable pane). -->
                   <nldd-toolbar-item v-if="view === 'yaml' && parseError" slot="end" label="YAML">
                     <span class="editor-parse-error">YAML parse error</span>
@@ -1725,56 +1848,49 @@ async function handleActionSave() {
                   :editable="canEditArticleText"
                   :save-error="articleTextSaveError"
                   :model-value="editedText"
+                  :annotations="editorAnnotations"
                   @update:model-value="editedText = $event"
                   @focus="onTextEditorFocus(idx)"
+                  @annotation-click="onEditorAnnotationClick"
                 />
                 <ArticleText v-else :article="selectedArticle" />
-              </nldd-simple-section>
 
-              <!-- Tekst viewer + notities — read-only article text with resolved
-                   note highlights and inline note authoring. A separate pane so
-                   it can sit next to the Tekst editor for comparison; the
-                   resolver matches raw text, so it can't share the editable
-                   WYSIWYG render. -->
-              <nldd-simple-section v-else-if="view === 'text-notes'" width="full">
+                <!-- Note authoring popover, opened by the toolbar "Reactie"
+                     button on the current editor selection. -->
+                <NoteCreator
+                  v-if="noteCreator.open"
+                  :range="noteCreator.range"
+                  :raw-text="editedText"
+                  :law-id="lawId"
+                  :article="selectedArticle"
+                  :engine="noteEngine"
+                  :anchor="noteCreator.anchor"
+                  :traject-ref="activeTrajectRef || ''"
+                  @create="onNoteCreated"
+                  @cancel="noteCreator.open = false"
+                />
+
+                <!-- Read-only detail of the clicked annotation's note. -->
                 <nldd-inline-dialog
-                  v-if="notesError"
-                  variant="alert"
-                  text="Notities niet geladen"
-                  :supporting-text="notesError.message"
-                ></nldd-inline-dialog>
-                <nldd-activity-indicator
-                  v-else-if="notesLoading"
-                  text="Notities laden"
-                  show-text
-                ></nldd-activity-indicator>
-                <template v-else>
-                  <AnnotatedText
-                    :article="selectedArticle"
-                    :notes-for-article="notesForArticle"
-                    :can-create="canCreateNotes"
-                    :law-id="lawId"
-                    :engine="noteEngine"
-                    :traject-ref="$route.params.trajectRef || ''"
-                    @create-note="onCreateNote"
-                  />
+                  v-if="activeNoteDetail"
+                  data-testid="note-detail"
+                  :text="noteDetailText(activeNoteDetail)"
+                >
+                  <nldd-button slot="actions" size="md" text="Sluiten" @click="activeNoteDetail = null"></nldd-button>
+                </nldd-inline-dialog>
+
+                <!-- Notes management, moved here from the dropped text-notes pane.
+                     "Opslaan naar repo" appends drafts to the sidecar on the
+                     active traject's branch; "Exporteer YAML" is the offline path. -->
+                <template v-if="canCreateNotes">
                   <nldd-inline-dialog
                     v-if="noteIssues.length"
                     variant="warning"
                     :text="`${noteIssues.length} notitie(s) niet verankerd`"
                     :supporting-text="noteIssues.map(i => i.reason).join('; ')"
                   ></nldd-inline-dialog>
-                  <!-- Draft notes live in localStorage until written back.
-                       "Opslaan naar repo" appends them to the sidecar on
-                       the active traject's branch (same write model as
-                       law/scenario edits since #632). No source picker —
-                       the traject's own corpus config decides the target.
-                       Without an active traject the save button is
-                       disabled, mirroring the law-edit buttons, so the
-                       backend 403 is never a surprise. "Exporteer YAML"
-                       stays for the offline / manual-commit case. -->
                   <nldd-inline-dialog
-                    v-if="canCreateNotes && draftCount > 0"
+                    v-if="draftCount > 0"
                     data-testid="draft-notes-bar"
                     :text="`${draftCount} concept-notitie(s), nog niet opgeslagen`"
                   >
@@ -1804,7 +1920,7 @@ async function handleActionSave() {
                     ></nldd-button>
                   </nldd-inline-dialog>
                   <nldd-inline-dialog
-                    v-if="canCreateNotes && draftCount > 0 && !canEdit"
+                    v-if="draftCount > 0 && !canEdit"
                     variant="warning"
                     data-testid="notes-no-traject"
                     text="Selecteer eerst een traject"
@@ -1875,7 +1991,7 @@ async function handleActionSave() {
                 ></nldd-inline-dialog>
                 <template v-else>
                   <nldd-code-editor
-                    resize="none"
+                    resize="auto"
                     accessible-label="YAML"
                     :value="yamlSource"
                     @input="onYamlInput"

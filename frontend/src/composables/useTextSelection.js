@@ -38,7 +38,7 @@ function collectTextNodes(root) {
 }
 
 /** UTF-16 offset within `text` -> code-point offset (inverse of cpToUtf16). */
-function utf16ToCp(text, u16Offset) {
+export function utf16ToCp(text, u16Offset) {
   let cp = 0;
   let u = 0;
   for (const ch of text) {

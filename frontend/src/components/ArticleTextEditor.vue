@@ -1,9 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
-import { useEditor, EditorContent } from '@tiptap/vue-3';
-import StarterKit from '@tiptap/starter-kit';
-import { Markdown } from 'tiptap-markdown';
-import { history } from '@tiptap/pm/history';
+import { ref, reactive } from 'vue';
 
 const props = defineProps({
   article: { type: Object, default: null },
@@ -11,166 +7,105 @@ const props = defineProps({
   /** Error from the most recent save attempt (Error instance or null) */
   saveError: { type: Object, default: null },
   /**
-   * Markdown source, v-model-bound to the parent editor state.
-   *
-   * WARNING: tiptap-markdown is configured with `html: false`, so raw HTML
-   * tags in the incoming markdown (e.g. `<em>`, `<sup>`, `<br>` from a
-   * harvested corpus entry) are silently dropped on load. Editing such an
-   * article and saving will strip the HTML from the persisted YAML even if
-   * the user typed nothing — the diff at the first save will be larger than
-   * the "numbered-prose normalization" framing in the PR description
-   * suggests. The engine ignores `text` so this is functionally lossless,
-   * but the rendered output in downstream readers will change.
+   * Markdown source, v-model-bound to the parent editor state. The
+   * nldd-text-editor works in Markdown directly: its `value` is the Markdown
+   * document (annotation sentinels stripped), so this round-trips
+   * Markdown ↔ Markdown with no HTML intermediate — unlike the previous
+   * Tiptap editor, raw HTML in the source is preserved as literal text.
    */
   modelValue: { type: String, default: '' },
+  /**
+   * Annotations to overlay, in the DS shape { id, start, end, quote } with
+   * UTF-16 offsets into the (clean) Markdown. The editor maps them through
+   * edits; read them back with getAnnotations() on save.
+   */
+  annotations: { type: Array, default: () => [] },
 });
 
-const emit = defineEmits(['update:modelValue', 'focus']);
+const emit = defineEmits(['update:modelValue', 'focus', 'annotation-click']);
 
-const editor = useEditor({
-  content: props.modelValue,
-  editable: props.editable,
-  extensions: [
-    StarterKit,
-    // Strict commonmark — HTML embedded in source markdown is dropped rather
-    // than partially mapping into the prosemirror schema.
-    //
-    // Side effect: editing an article whose stored `text` already contains
-    // raw HTML (e.g. <em>, <sup>, <br> from a harvested corpus entry) will
-    // strip that HTML on first save. The engine ignores `text`, so this is
-    // functionally lossless, but it produces a larger first-save diff than
-    // the PR description's "numbered-prose normalization" implies. If the
-    // corpus grows HTML-heavy `text` fields later, revisit by either
-    // tolerating html: true with explicit schema mappings, or pre-stripping
-    // and surfacing a warning before the user starts typing.
-    Markdown.configure({
-      html: false,
-      tightLists: true,
-      bulletListMarker: '-',
-      transformPastedText: true,
-    }),
-  ],
-  onUpdate: ({ editor }) => {
-    emit('update:modelValue', editor.storage.markdown.getMarkdown());
-  },
-  // Let the parent track which text editor was last focused, so the
-  // article-level changes bar can route undo/redo to the right instance.
-  onFocus: () => { emit('focus'); },
+const editorRef = ref(null);
+
+// Reactive mirror of the editor's toolbar state, fed by the
+// `nldd-text-editor-state` event. The parent's header toolbar reads
+// activeFormats/canUndo/canRedo off the exposed refs to drive the format
+// segmented-controls and the article-level undo/redo bar.
+const activeFormats = reactive({
+  bold: false,
+  italic: false,
+  bulletList: false,
+  orderedList: false,
 });
+const canUndo = ref(false);
+const canRedo = ref(false);
+// Drives the toolbar "comment" button: authoring needs a non-empty selection.
+const selectionEmpty = ref(true);
 
-// Reactive tick used to re-evaluate `editor.isActive(...)` in the template
-// on every selection change. Without this the toolbar active-state never
-// updates because the editor instance reference is stable.
-const selectionTick = ref(0);
-watch(editor, (inst) => {
-  if (!inst) return;
-  const bump = () => { selectionTick.value++; };
-  // `selectionUpdate` alone misses Ctrl+B style commands that change marks
-  // without moving the cursor. `transaction` covers those, but fires on
-  // every keystroke too — gate it on a doc-or-selection change so the
-  // toolbar re-render doesn't run on pure cursor motion within a paragraph.
-  const onTransaction = ({ transaction: tr }) => {
-    if (tr.docChanged || tr.selectionSet) bump();
-  };
-  inst.on('selectionUpdate', bump);
-  inst.on('transaction', onTransaction);
-  // Return a cleanup so Vue removes the listeners if the watcher re-runs
-  // (HMR while the component stays mounted re-evaluates the callback with
-  // the same editor instance, which would otherwise stack listeners).
-  return () => {
-    inst.off('selectionUpdate', bump);
-    inst.off('transaction', onTransaction);
-  };
-}, { immediate: true });
-
-// Re-seed content when the parent swaps articles or a save completes. Skip if
-// the markdown already matches what the editor holds — calling setContent on
-// every keystroke would reset the cursor.
-//
-// Track the previously-rendered article so we only reset the cursor on an
-// actual article switch. ProseMirror otherwise keeps the previous cursor
-// offset, which can land in the middle of the new article (or snap to the
-// end) and confuses the user. Within a single article we leave the selection
-// alone — e.g. a server-side save that round-trips an unchanged markdown
-// string should not yank the cursor to position 0.
-let lastArticleNumber = props.article ? String(props.article.number) : null;
-watch(() => props.modelValue, (next) => {
-  const inst = editor.value;
-  if (!inst) return;
-  const current = inst.storage.markdown.getMarkdown();
-  if (current === next) return;
-  inst.commands.setContent(next || '', { emitUpdate: false });
-  const currentArticleNumber = props.article ? String(props.article.number) : null;
-  if (currentArticleNumber !== lastArticleNumber) {
-    inst.commands.setTextSelection(0);
-    lastArticleNumber = currentArticleNumber;
-  }
-});
-
-watch(() => props.editable, (next) => {
-  editor.value?.setEditable(next);
-});
-
-// Compute the active-format map once per selection/transaction tick. The
-// template binds against `activeFormats.bold` etc., which makes the
-// reactive dependency on `selectionTick` explicit (no side-effect read +
-// lint suppression). Add another mark name here when the toolbar grows a
-// new format button.
-const activeFormats = computed(() => {
-  // Subscribe to selection/transaction changes.
-  selectionTick.value;
-  const inst = editor.value;
-  if (!inst) return { bold: false, italic: false, bulletList: false, orderedList: false };
-  return {
-    bold: inst.isActive('bold'),
-    italic: inst.isActive('italic'),
-    bulletList: inst.isActive('bulletList'),
-    orderedList: inst.isActive('orderedList'),
-  };
-});
-
-function toggleBold() { editor.value?.chain().focus().toggleBold().run(); }
-function toggleItalic() { editor.value?.chain().focus().toggleItalic().run(); }
-function toggleBulletList() { editor.value?.chain().focus().toggleBulletList().run(); }
-function toggleOrderedList() { editor.value?.chain().focus().toggleOrderedList().run(); }
-
-// Undo/redo from Tiptap's StarterKit history. canUndo/canRedo read
-// `selectionTick` so they re-evaluate after every doc change (history depth
-// shifts), keeping the toolbar buttons enabled/disabled in lockstep.
-const canUndo = computed(() => {
-  selectionTick.value;
-  const inst = editor.value;
-  return inst ? inst.can().undo() : false;
-});
-const canRedo = computed(() => {
-  selectionTick.value;
-  const inst = editor.value;
-  return inst ? inst.can().redo() : false;
-});
-function undo() { editor.value?.chain().focus().undo().run(); }
-function redo() { editor.value?.chain().focus().redo().run(); }
-
-// Drop the undo/redo history. StarterKit (v3) exposes no clearHistory command,
-// so drop and re-add the ProseMirror history plugin: a fresh instance re-inits
-// with empty undo/redo stacks. Both steps go through Tiptap's own reconfigure
-// (registerPlugin/unregisterPlugin) so editor.state stays in sync — a bare
-// view.updateState leaves Tiptap's cached state untouched. Used after a discard
-// so Ctrl+Z can't step back into the thrown-away edits and re-dirty the article.
-function clearHistory() {
-  const inst = editor.value;
-  if (!inst) return;
-  inst.unregisterPlugin('history');
-  inst.registerPlugin(history({ depth: 100, newGroupDelay: 500 }));
-  // The reconfigure doesn't fire the transaction listeners, so nudge the tick
-  // to re-evaluate canUndo/canRedo for the toolbar.
-  selectionTick.value++;
+function onState(e) {
+  const s = e.detail;
+  activeFormats.bold = s.active.bold;
+  activeFormats.italic = s.active.italic;
+  activeFormats.bulletList = s.active.bulletList;
+  activeFormats.orderedList = s.active.orderedList;
+  canUndo.value = s.canUndo;
+  canRedo.value = s.canRedo;
+  selectionEmpty.value = s.empty;
 }
 
-// Expose the active-format state and toggle handlers so the parent can
-// render the formatting buttons inside its own header toolbar (next to the
-// existing pane-view dropdown) rather than this component re-drawing its
-// own toolbar with a duplicate label dropdown. undo/redo feed the
-// article-level changes bar in the AppShell.
+function onAnnotationClick(e) {
+  emit('annotation-click', e.detail.ids);
+}
+
+// The current selection as { start, end, quote, empty } in clean UTF-16 offsets
+// (the anchor for a new note), and the live edit-mapped annotations (for save).
+function getSelection() {
+  return editorRef.value?.getSelection() ?? { start: 0, end: 0, quote: '', empty: true };
+}
+function getAnnotations() {
+  return editorRef.value?.getAnnotations() ?? [];
+}
+
+// The element sets `value` before dispatching `input`, so `e.target.value` is
+// the fresh (sentinel-stripped) Markdown. The DS editor guards a value that
+// merely mirrors its own document, so binding `:value="modelValue"` back in
+// doesn't churn the cursor on each keystroke.
+function onInput(e) {
+  emit('update:modelValue', e.target.value);
+}
+
+// focusin bubbles and is composed, so it crosses the shadow boundary; the
+// parent uses it to route the changes-bar undo/redo to the focused pane.
+function onFocusIn() {
+  emit('focus');
+}
+
+function toggleBold() {
+  editorRef.value?.toggleBold();
+}
+function toggleItalic() {
+  editorRef.value?.toggleItalic();
+}
+// Lists are an exclusive picker (none/bullet/ordered): setList replaces any
+// existing list, so toggling the active type strips it and switching between
+// types converts in one step.
+function toggleBulletList() {
+  editorRef.value?.setList(activeFormats.bulletList ? 'none' : 'bullet');
+}
+function toggleOrderedList() {
+  editorRef.value?.setList(activeFormats.orderedList ? 'none' : 'ordered');
+}
+function undo() {
+  editorRef.value?.undo();
+}
+function redo() {
+  editorRef.value?.redo();
+}
+function clearHistory() {
+  editorRef.value?.clearHistory();
+}
+
+// Same exposed surface the parent's header toolbar and changes bar consumed
+// from the old Tiptap editor, so EditorView needs no changes.
 defineExpose({
   activeFormats,
   toggleBold,
@@ -182,14 +117,16 @@ defineExpose({
   undo,
   redo,
   clearHistory,
+  selectionEmpty,
+  getSelection,
+  getAnnotations,
 });
 </script>
 
 <template>
   <!-- Empty state as the component root (no wrappers), so it lands as a direct
        child of the pane's nldd-simple-section and centers like the other panes
-       (AnnotatedText/ArticleText do the same). Wrapping it in the editor's flex
-       layout would top-align it instead. -->
+       (AnnotatedText/ArticleText do the same). -->
   <nldd-inline-dialog v-if="!article" text="Geen artikel geselecteerd"></nldd-inline-dialog>
   <div v-else class="article-text-editor" data-testid="article-text-editor">
     <div class="article-text-editor__body-wrap">
@@ -202,7 +139,22 @@ defineExpose({
         ></nldd-inline-dialog>
         <nldd-spacer size="12"></nldd-spacer>
       </template>
-      <editor-content :editor="editor" class="article-text-editor__body" />
+      <nldd-text-editor
+        ref="editorRef"
+        class="article-text-editor__body"
+        variant="simple"
+        :rows="8"
+        resize="auto"
+        annotatable
+        :value="modelValue"
+        :annotations="annotations"
+        :readonly="!editable"
+        accessible-label="Artikeltekst"
+        @input="onInput"
+        @focusin="onFocusIn"
+        @nldd-text-editor-state="onState"
+        @nldd-text-editor-annotation-click="onAnnotationClick"
+      ></nldd-text-editor>
     </div>
   </div>
 </template>
@@ -215,35 +167,7 @@ defineExpose({
 }
 
 .article-text-editor__body {
-  background: var(--semantics-surfaces-tinted-background-color, #F4F6F9);
-  border: 1px solid var(--semantics-borders-default-color, #DDE0E4);
-  border-radius: 12px;
-  padding: 16px;
-  min-height: 200px;
-  line-height: 1.6;
-  font-size: 14px;
-}
-
-.article-text-editor__body :deep(.ProseMirror) {
-  outline: none;
-  min-height: 160px;
-}
-
-.article-text-editor__body :deep(.ProseMirror p) {
-  margin: 0 0 12px;
-}
-
-.article-text-editor__body :deep(.ProseMirror p:last-child) {
-  margin-bottom: 0;
-}
-
-.article-text-editor__body :deep(.ProseMirror ul),
-.article-text-editor__body :deep(.ProseMirror ol) {
-  margin: 0 0 12px;
-  padding-left: 24px;
-}
-
-.article-text-editor__body :deep(.ProseMirror li) {
-  margin-bottom: 4px;
+  display: block;
+  width: 100%;
 }
 </style>
