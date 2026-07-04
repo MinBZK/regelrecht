@@ -217,20 +217,24 @@ async function submitCreate() {
       icon="traject"
       @click="openInfoForActive"
     ></nldd-menu-item>
-    <nldd-menu-divider v-if="activeTraject"></nldd-menu-divider>
-    <nldd-menu-item
-      v-for="t in trajects"
-      :key="t.id"
-      type="radio"
-      :selected="t.ref === activeTrajectRef || undefined"
-      :text="`${t.name}${t.status === 'afgerond' ? ' (afgerond)' : ''}`"
-      @select="selectTraject(t)"
-    ></nldd-menu-item>
-    <nldd-menu-item
-      text="Nieuw traject…"
-      icon="plus"
-      @click="openCreate"
-    ></nldd-menu-item>
+    <!-- The group draws its own divider above (auto-suppressed when it's the
+         first child, i.e. no active-traject actions precede it), so no manual
+         nldd-menu-divider here. -->
+    <nldd-menu-group text="Trajecten">
+      <nldd-menu-item
+        v-for="t in trajects"
+        :key="t.id"
+        type="radio"
+        :selected="t.ref === activeTrajectRef || undefined"
+        :text="`${t.name}${t.status === 'afgerond' ? ' (afgerond)' : ''}`"
+        @select="selectTraject(t)"
+      ></nldd-menu-item>
+      <nldd-menu-item
+        text="Nieuw traject…"
+        icon="plus"
+        @click="openCreate"
+      ></nldd-menu-item>
+    </nldd-menu-group>
   </nldd-menu>
 
   <!-- Not logged in: no menu — a popover explaining that trajecten unlock
