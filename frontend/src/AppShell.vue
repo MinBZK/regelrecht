@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
+import { computed, ref, onMounted, onBeforeUnmount, provide } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import TrajectMenu from './components/TrajectMenu.vue';
 import TrajectDocuments from './components/TrajectDocuments.vue';
@@ -60,10 +60,6 @@ const editorPanelFlags = [
   ['panel.machine_readable', 'Machine editor'],
   ['panel.scenario_form', 'Scenario editor'],
   ['panel.yaml_editor', 'YAML editor'],
-  // A read-only article-text pane with resolved note highlights + inline note
-  // authoring. Kept separate from the Tekst editor so both can be shown side by
-  // side for comparison.
-  ['panel.notes', 'Tekst viewer + notities'],
 ];
 
 const route = useRoute();
@@ -90,12 +86,33 @@ const editorTabHref = computed(() => router.resolve(editorTabTarget.value).href)
 // intercept the Editor tab and first show a small login-warning popover anchored
 // to the clicked tab. Authenticated users navigate as before.
 const loginWarning = ref(null);
+// Where the "Inloggen" button returns after SSO. Defaults to the editor tab;
+// callers (e.g. the Bibliotheek "Bewerken" button) point it at a specific
+// article so login lands straight on the page being edited.
+const loginRedirect = ref(null);
+
+// Show the login-warning popover anchored to `anchorEl`. Provided to the nested
+// views so every editor entry point (the Editor tab, the Bibliotheek
+// "Bewerken" button) shows the same heads-up instead of bouncing to SSO.
+function showLoginWarning(anchorEl, redirectHref) {
+  if (!loginWarning.value) return;
+  loginRedirect.value = redirectHref ?? editorTabHref.value;
+  loginWarning.value.anchorElement = anchorEl;
+  loginWarning.value.show();
+}
+provide('showLoginWarning', showLoginWarning);
+
+// Secondary action on the login popover: to the public "Account aanvragen"
+// page. Close the popover first so it isn't left hanging over the new page.
+const accountRequestHref = computed(() => router.resolve({ name: 'account-aanvragen' }).href);
+function goToAccountRequest() {
+  loginWarning.value?.hide();
+  router.push({ name: 'account-aanvragen' });
+}
+
 function onEditorTab(e) {
   if (!authenticated.value) {
-    if (loginWarning.value) {
-      loginWarning.value.anchorElement = e.currentTarget;
-      loginWarning.value.show();
-    }
+    showLoginWarning(e.currentTarget);
     return;
   }
   if (isLibraryRoute.value) router.push(editorTabTarget.value);
@@ -181,10 +198,11 @@ const hasDocumentTabs = computed(
               </nldd-just-in-time-education>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <TrajectMenu id-suffix="md" />
-            </nldd-toolbar-item>
-            <nldd-toolbar-item slot="end">
-              <nldd-icon-button id="settings-menu-btn-md" size="md" icon="account" text="Account" tooltip-timing="never" expandable popovertarget="settings-menu-md"></nldd-icon-button>
+              <nldd-button-bar size="md">
+                <TrajectMenu id-suffix="md" />
+                <nldd-button-bar-divider></nldd-button-bar-divider>
+                <nldd-icon-button id="settings-menu-btn-md" size="md" icon="account" text="Account" tooltip-timing="never" expandable popovertarget="settings-menu-md"></nldd-icon-button>
+              </nldd-button-bar>
               <nldd-menu id="settings-menu-md" anchor="settings-menu-btn-md">
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
                 <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
@@ -248,10 +266,11 @@ const hasDocumentTabs = computed(
               <nldd-button size="md" start-icon="external-link" :text="`PR #${lastSavedPr.number}`" :href="lastSavedPr.url" target="_blank" rel="noopener"></nldd-button>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <TrajectMenu id-suffix="lg" />
-            </nldd-toolbar-item>
-            <nldd-toolbar-item slot="end">
-              <nldd-icon-button id="settings-menu-btn-lg" size="md" icon="account" text="Account" tooltip-timing="never" expandable popovertarget="settings-menu-lg"></nldd-icon-button>
+              <nldd-button-bar size="md">
+                <TrajectMenu id-suffix="lg" />
+                <nldd-button-bar-divider></nldd-button-bar-divider>
+                <nldd-icon-button id="settings-menu-btn-lg" size="md" icon="account" text="Account" tooltip-timing="never" expandable popovertarget="settings-menu-lg"></nldd-icon-button>
+              </nldd-button-bar>
               <nldd-menu id="settings-menu-lg" anchor="settings-menu-btn-lg">
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
                 <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
@@ -479,7 +498,8 @@ const hasDocumentTabs = computed(
         text="Log in om de editor te gebruiken"
         supporting-text="Zodra je bent ingelogd kies je een traject en kun je aan de slag."
       >
-        <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login(editorTabHref)"></nldd-button>
+        <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login(loginRedirect || editorTabHref)"></nldd-button>
+        <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
       </nldd-inline-dialog>
     </nldd-container>
   </nldd-popover>

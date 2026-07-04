@@ -141,6 +141,15 @@ const router = createRouter({
       ],
     },
     {
+      // Account aanvragen — publieke uitlegpagina (geen requiresAuth),
+      // bereikbaar vanaf de login-warning-popover. Top-level route met een
+      // eigen top-title-bar, geen app-chrome (net als de trajecten-pagina's).
+      path: '/account-aanvragen',
+      name: 'account-aanvragen',
+      component: () => import('./AccountRequestView.vue'),
+      meta: { title: 'Account aanvragen' },
+    },
+    {
       // Standalone full-page werkdocumenten editor, opened in a new tab from
       // the in-sheet editor ("Open in nieuw tabblad"). Deliberately a top-level
       // route, NOT a child of AppShell: it carries its own minimal top bar
