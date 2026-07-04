@@ -836,10 +836,13 @@ mod tests {
     #[tokio::test]
     async fn api_key_post_passes_regardless_of_role() {
         // POST is in API_KEY_ALLOWED_METHODS — the bearer path accepts it
-        // as admin-equivalent without consulting the session role, so a valid
-        // key can enqueue jobs on any role-gated route.
+        // without consulting the session role, so a valid key can enqueue jobs
+        // on any role-gated route. A non-admin gate (harvester-writer) is used
+        // here so the pass is evidently a method-based bypass, not a role match;
+        // together with `api_key_valid_post_passes` (a reader-gated route) the
+        // two cases span the "regardless of role" claim.
         let state = test_state_with_api_key(true, Some("test-key"));
-        let app = role_app(state, "harvester-admin");
+        let app = role_app(state, "harvester-writer");
         let response = app
             .oneshot(
                 axum::http::Request::builder()
