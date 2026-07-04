@@ -22,29 +22,36 @@ const FAILED_COLUMNS = [
   { key: 'error', label: 'Reden', minWidth: '240px', text: (row) => row.error },
 ];
 
-const kpiCards = computed(() => {
+// Top-level totals shown as standalone KPI cards; the per-type detail lives in
+// the panels below.
+const topKpis = computed(() => {
   const s = stats.value;
   if (!s) return [];
   return [
     { label: 'Jobs totaal', value: s.jobs.total },
-    { label: 'Harvest', value: s.jobs.by_type.harvest },
-    { label: 'Enrich', value: s.jobs.by_type.enrich },
     { label: 'Open untranslatables', value: s.open_untranslatables },
   ];
 });
 
-const statusItems = computed(() => {
-  const byStatus = stats.value?.jobs.by_status || {};
-  return JOB_STATUSES.map((status) => ({ status, count: byStatus[status] ?? 0 }));
-});
-
-const windowCards = computed(() => {
-  const e = stats.value?.executed;
-  if (!e) return [];
+// Harvest and enrich are treated as two separate kinds, each with its own
+// status breakdown and executed counts.
+const typePanels = computed(() => {
+  const s = stats.value;
+  if (!s) return [];
   return [
-    { label: 'Vandaag', ...e.today },
-    { label: 'Afgelopen 7 dagen', ...e.last_7d },
-  ];
+    { key: 'harvest', label: 'Harvest' },
+    { key: 'enrich', label: 'Enrich' },
+  ].map(({ key, label }) => ({
+    key,
+    label,
+    total: s.jobs.by_type[key] ?? 0,
+    statuses: JOB_STATUSES.map((status) => ({
+      status,
+      count: s.jobs.by_type_status[key]?.[status] ?? 0,
+    })),
+    today: s.executed.today[key] ?? 0,
+    last7d: s.executed.last_7d[key] ?? 0,
+  }));
 });
 
 // Failed rows only carry a subset of the job; fetch the full job so the detail
@@ -74,10 +81,10 @@ async function onFailureClick(row) {
   </nldd-simple-section>
 
   <template v-else-if="stats">
-    <!-- KPI cards -->
+    <!-- Top-level totals -->
     <nldd-simple-section>
       <div class="overview-kpis">
-        <nldd-card v-for="kpi in kpiCards" :key="kpi.label" class="overview-kpi">
+        <nldd-card v-for="kpi in topKpis" :key="kpi.label" class="overview-kpi">
           <nldd-container padding="16">
             <div class="overview-kpi__value">{{ formatNumber(kpi.value) }}</div>
             <div class="overview-kpi__label">{{ kpi.label }}</div>
@@ -86,27 +93,25 @@ async function onFailureClick(row) {
       </div>
     </nldd-simple-section>
 
-    <!-- Jobs per status -->
+    <!-- Per-type detail: harvest and enrich as two separate kinds -->
     <nldd-simple-section>
-      <nldd-title slot="header" size="6"><h3>Jobs per status</h3></nldd-title>
-      <div class="overview-badges">
-        <span v-for="item in statusItems" :key="item.status" class="overview-badge">
-          <StatusBadge :status="item.status" size="md" />
-          <span class="overview-badge__count">{{ formatNumber(item.count) }}</span>
-        </span>
-      </div>
-    </nldd-simple-section>
-
-    <!-- Executed windows -->
-    <nldd-simple-section>
-      <nldd-title slot="header" size="6"><h3>Uitgevoerd</h3></nldd-title>
-      <div class="overview-kpis">
-        <nldd-card v-for="win in windowCards" :key="win.label" class="overview-kpi">
+      <div class="overview-types">
+        <nldd-card v-for="panel in typePanels" :key="panel.key" class="overview-type">
           <nldd-container padding="16">
-            <div class="overview-kpi__value">{{ formatNumber(win.total) }}</div>
-            <div class="overview-kpi__label">{{ win.label }}</div>
-            <div class="overview-kpi__sub">
-              Harvest {{ formatNumber(win.harvest) }} · Enrich {{ formatNumber(win.enrich) }}
+            <nldd-title size="6"><h3>{{ panel.label }}</h3></nldd-title>
+            <div class="overview-type__total">
+              {{ formatNumber(panel.total) }}
+              <span class="overview-type__total-label">jobs totaal</span>
+            </div>
+            <div class="overview-badges">
+              <span v-for="item in panel.statuses" :key="item.status" class="overview-badge">
+                <StatusBadge :status="item.status" size="md" />
+                <span class="overview-badge__count">{{ formatNumber(item.count) }}</span>
+              </span>
+            </div>
+            <div class="overview-type__executed">
+              Uitgevoerd — Vandaag {{ formatNumber(panel.today) }} ·
+              Afgelopen 7 dagen {{ formatNumber(panel.last7d) }}
             </div>
           </nldd-container>
         </nldd-card>

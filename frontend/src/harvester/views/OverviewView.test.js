@@ -9,7 +9,10 @@ const STATS = {
     total: 1204,
     by_type: { harvest: 842, enrich: 362 },
     by_status: { pending: 12, processing: 3, completed: 1180, failed: 9 },
-    by_type_status: {},
+    by_type_status: {
+      harvest: { pending: 5, processing: 2, completed: 830, failed: 5 },
+      enrich: { pending: 7, processing: 1, completed: 350, failed: 4 },
+    },
   },
   executed: {
     today: { total: 47, harvest: 30, enrich: 17 },
@@ -53,16 +56,32 @@ afterEach(() => {
 });
 
 describe('OverviewView', () => {
-  it('renders the KPI figures (nl-NL formatted)', () => {
+  it('renders the top KPI totals (nl-NL formatted)', () => {
     const w = shallowMount(OverviewView);
     const text = w.text();
     expect(text).toContain('1.204'); // jobs total
-    expect(text).toContain('842'); // harvest
-    expect(text).toContain('362'); // enrich
+    expect(text).toContain('Jobs totaal');
     expect(text).toContain('23'); // open untranslatables
-    // Executed windows
+    expect(text).toContain('Open untranslatables');
+  });
+
+  it('renders harvest and enrich as two separate per-type panels', () => {
+    const w = shallowMount(OverviewView);
+    const text = w.text();
+    // Per-type headings + totals
+    expect(text).toContain('Harvest');
+    expect(text).toContain('842');
+    expect(text).toContain('Enrich');
+    expect(text).toContain('362');
+    // Per-type executed counts (harvest today 30 / week 140, enrich today 17 / week 70)
     expect(text).toContain('Vandaag');
     expect(text).toContain('Afgelopen 7 dagen');
+    expect(text).toContain('30');
+    expect(text).toContain('17');
+    // Per-type status counts come from by_type_status, not the combined by_status.
+    // harvest.completed = 830, enrich.completed = 350
+    expect(text).toContain('830');
+    expect(text).toContain('350');
   });
 
   it('wires the failures DataTable with the recent_failures data', () => {

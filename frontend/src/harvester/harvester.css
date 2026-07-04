@@ -52,11 +52,38 @@
   color: var(--semantics-content-secondary-color);
 }
 
+/* Overview dashboard: per-type detail panels (harvest / enrich) */
+.overview-types {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--primitives-space-16);
+}
+
+.overview-type__total {
+  margin-top: var(--primitives-space-8);
+  font-size: var(--primitives-font-size-500);
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.overview-type__total-label {
+  font-size: var(--primitives-font-size-90);
+  font-weight: 400;
+  color: var(--semantics-content-secondary-color);
+}
+
+.overview-type__executed {
+  margin-top: var(--primitives-space-12);
+  font-size: var(--primitives-font-size-80);
+  color: var(--semantics-content-secondary-color);
+}
+
 /* Overview dashboard: status badges with counts */
 .overview-badges {
   display: flex;
   flex-wrap: wrap;
   gap: var(--primitives-space-16);
+  margin-top: var(--primitives-space-12);
 }
 
 .overview-badge {
