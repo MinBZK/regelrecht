@@ -44,6 +44,7 @@ const deploymentName = computed(() =>
 );
 
 const tabs = [
+  { key: 'overview', label: 'Overzicht', route: '/harvesting/overview' },
   { key: 'law-entries', label: 'Wetten', route: '/harvesting/law-entries' },
   { key: 'jobs', label: 'Taken', route: '/harvesting/jobs' },
   { key: 'untranslatables', label: 'Untranslatables', route: '/harvesting/untranslatables' },

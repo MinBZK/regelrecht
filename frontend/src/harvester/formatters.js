@@ -7,6 +7,12 @@ export function formatDate(value) {
   return DATE_FORMATTER.format(date);
 }
 
+export function formatNumber(value) {
+  if (value === null || value === undefined) return '—';
+  const num = Number(value);
+  return Number.isFinite(num) ? num.toLocaleString('nl-NL') : String(value);
+}
+
 export function formatCoverageScore(value) {
   if (value === null || value === undefined) return null;
   const num = Number(value);
