@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, shallowRef, nextTick, watch, watchEffect, onBeforeUnmount } from 'vue';
+import { ref, computed, shallowRef, nextTick, watch, watchEffect, onBeforeUnmount, inject } from 'vue';
 import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
 import * as yaml from 'js-yaml';
 import ArticleText from './components/ArticleText.vue';
@@ -16,8 +16,16 @@ import { registerSearchPopover, setLibraryEmpty } from './composables/useAppChro
 import { humanizeLawId } from './lib/lawName.js';
 import { apiFetch, apiFetchJson, ApiError } from './lib/apiFetch.js';
 import { useLatest } from './lib/useLatest.js';
+import { holdRetryFloor, RETRY_MIN_SPINNER_MS } from './lib/retryFeedback.js';
 
 const { authenticated, login } = useAuth();
+
+// Provided by AppShell: shows the login-warning popover anchored to an element,
+// so "Bewerken" gates on login the same way the Editor tab does.
+const showLoginWarning = inject('showLoginWarning', null);
+// The detail-pane "Bewerken" button, used as the popover anchor for edit
+// actions that don't originate from a click on the button itself.
+const editButton = ref(null);
 
 // Library home title (sidebar header + home heading) and the label of
 // the back-button that returns to it from underlying pages. They differ
@@ -124,6 +132,18 @@ const detailView = computed({
     }
   },
 });
+// nldd-tab-bar fires `tabchange` on BOTH pointer click and arrow-key
+// activation (content-switching tabs auto-activate on arrow — the ARIA
+// pattern). Driving detailView from this single event keeps the keyboard, the
+// selected tab, and the visible panel in lockstep; a per-item @click never
+// fired on arrow, which is why the highlight moved but the view lagged.
+// `:selected` stays the controlled-in binding so a hash-driven detailView
+// change (e.g. a deep link to #yaml) still reflects on the tabs.
+function onDetailTabChange(e) {
+  const view = e.detail?.item?.dataset?.view;
+  if (view) detailView.value = view;
+}
+
 const activeAction = ref(null);
 
 // Curated sidebar sections (in render order). Each entry is
@@ -416,8 +436,10 @@ async function loadIndex() {
 
 const claimLoadLaw = useLatest();
 
-async function loadLaw(lawId) {
+async function loadLaw(lawId, { minLoadingMs = 0 } = {}) {
   const isCurrent = claimLoadLaw();
+  const startedAt = Date.now();
+  let failed = false;
   try {
     selectedLawLoading.value = true;
     const res = await apiFetch(lawUrl(activeTrajectRef.value, lawId), lawFetchInit);
@@ -432,11 +454,15 @@ async function loadLaw(lawId) {
     // stripped from the URL.
   } catch (e) {
     if (!isCurrent()) return;
+    failed = true;
     selectedLaw.value = null;
     lawError.value = e;
   } finally {
     if (isCurrent()) {
-      selectedLawLoading.value = false;
+      // On a failed retry, hold the spinner briefly so the click reads as
+      // feedback instead of the error dialog snapping straight back.
+      await holdRetryFloor({ startedAt, minMs: minLoadingMs, failed });
+      if (isCurrent()) selectedLawLoading.value = false;
     }
   }
 }
@@ -451,7 +477,7 @@ function retryLoadLaw() {
   // template can't briefly fall through to the "Selecteer een wet"
   // empty state.
   lawError.value = null;
-  loadLaw(selectedLawId.value);
+  loadLaw(selectedLawId.value, { minLoadingMs: RETRY_MIN_SPINNER_MS });
 }
 
 function retryLoadCorpus() {
@@ -468,6 +494,10 @@ function retryLoadCorpus() {
 function editInEditor() {
   if (!selectedLawId.value || !selectedArticleNumber.value) return;
   activeAction.value = null;
+  if (!authenticated.value) {
+    gateEditorLogin(editButton.value);
+    return;
+  }
   // Carry the active traject so "Bewerken" opens the editable
   // editor-traject view instead of the read-only editor.
   router.push(editorRouteFor(selectedLawId.value, selectedArticleNumber.value));
@@ -480,6 +510,21 @@ const editLawTarget = computed(() =>
   editorRouteFor(selectedLawId.value, selectedArticleNumber.value || undefined),
 );
 const editLawHref = computed(() => router.resolve(editLawTarget.value).href);
+
+// Editor requires login. Instead of letting the route guard bounce an
+// unauthenticated user to SSO, show the same login-warning popover the Editor
+// tab uses (anchored to `anchorEl`), returning to this article after login.
+function gateEditorLogin(anchorEl) {
+  showLoginWarning?.(anchorEl, editLawHref.value);
+}
+
+function onEditClick(e) {
+  if (!authenticated.value) {
+    gateEditorLogin(e.currentTarget);
+    return;
+  }
+  router.push(editLawTarget.value);
+}
 
 function selectLaw(lawId, focusAfter = false) {
   // Default to no section context (search / programmatic); selectLawFromSection
@@ -689,7 +734,7 @@ watch(activeTrajectRef, () => {
 
         <nldd-page v-else-if="isInitialLoading">
           <nldd-simple-section width="full">
-            <nldd-activity-indicator text="Laden" show-text></nldd-activity-indicator>
+            <nldd-activity-indicator timing="instant" text="Laden" show-text></nldd-activity-indicator>
           </nldd-simple-section>
         </nldd-page>
 
@@ -707,7 +752,7 @@ watch(activeTrajectRef, () => {
               <nldd-simple-section width="full">
                 <nldd-title v-if="!loading" id="home-titel" size="3"><h3>{{ LIBRARY_HOME_TITLE }}</h3></nldd-title>
                 <nldd-spacer v-if="!loading" size="16"></nldd-spacer>
-                <nldd-activity-indicator v-if="loading" text="Laden" show-text></nldd-activity-indicator>
+                <nldd-activity-indicator v-if="loading" timing="instant" text="Laden" show-text></nldd-activity-indicator>
                 <template v-else>
                   <template
                     v-for="(section, sectionIndex) in sidebarSections"
@@ -793,7 +838,7 @@ watch(activeTrajectRef, () => {
                     </nldd-inline-dialog>
                   </nldd-container>
                 </nldd-popover>
-                <nldd-activity-indicator v-if="selectedLawLoading" text="Wet laden" show-text></nldd-activity-indicator>
+                <nldd-activity-indicator v-if="selectedLawLoading" timing="instant" text="Wet laden" show-text></nldd-activity-indicator>
                 <nldd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een wet"></nldd-inline-dialog>
                 <nldd-list v-else variant="simple" arrow-navigation>
                   <nldd-list-item
@@ -832,7 +877,7 @@ watch(activeTrajectRef, () => {
               </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="selectedLawLoading">
                 <!-- Loading takes precedence over `lawError` to avoid flashing a stale error during a refetch. -->
-                <nldd-activity-indicator text="Artikel laden" show-text></nldd-activity-indicator>
+                <nldd-activity-indicator timing="instant" text="Artikel laden" show-text></nldd-activity-indicator>
               </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="lawError">
                 <!-- 404 = law not in active traject; give the user an exit instead of a generic error. -->
@@ -877,14 +922,14 @@ watch(activeTrajectRef, () => {
                   <nldd-spacer size="16"></nldd-spacer>
                   <nldd-toolbar>
                     <nldd-toolbar-item slot="start">
-                      <nldd-tab-bar size="md">
-                        <nldd-tab-bar-item :selected="detailView === 'tekst' || undefined" text="Tekst" @click="detailView = 'tekst'"></nldd-tab-bar-item>
-                        <nldd-tab-bar-item :selected="detailView === 'machine' || undefined" text="Machine" @click="detailView = 'machine'"></nldd-tab-bar-item>
-                        <nldd-tab-bar-item :selected="detailView === 'yaml' || undefined" text="YAML" @click="detailView = 'yaml'"></nldd-tab-bar-item>
+                      <nldd-tab-bar size="md" @tabchange="onDetailTabChange">
+                        <nldd-tab-bar-item data-view="tekst" :selected="detailView === 'tekst' || undefined" text="Tekst"></nldd-tab-bar-item>
+                        <nldd-tab-bar-item data-view="machine" :selected="detailView === 'machine' || undefined" text="Machine"></nldd-tab-bar-item>
+                        <nldd-tab-bar-item data-view="yaml" :selected="detailView === 'yaml' || undefined" text="YAML"></nldd-tab-bar-item>
                       </nldd-tab-bar>
                     </nldd-toolbar-item>
                     <nldd-toolbar-item slot="end">
-                      <nldd-button v-if="selectedLawId" variant="secondary" text="Bewerken" :href="editLawHref" @click.prevent="router.push(editLawTarget)"></nldd-button>
+                      <nldd-button ref="editButton" v-if="selectedLawId" variant="secondary" text="Bewerken" :href="authenticated ? editLawHref : undefined" @click.prevent="onEditClick"></nldd-button>
                     </nldd-toolbar-item>
                   </nldd-toolbar>
                   <nldd-spacer size="24"></nldd-spacer>
