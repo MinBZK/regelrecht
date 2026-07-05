@@ -103,6 +103,10 @@ fn is_resource_exhaustion(err: &str) -> bool {
 /// succeed on a later attempt and must stay retryable.
 fn is_deterministic_content_failure(err: &str) -> bool {
     let e = err.to_ascii_lowercase();
+    // These markers track PipelineError's `#[error(...)]` Display formats
+    // ("YAML error: …" on `Yaml`, and the `Enrich` message from enrich.rs). The
+    // `deterministic_markers_track_error_display_format` test constructs the real
+    // errors so a format change fails loudly instead of silently regressing.
     const MARKERS: &[&str] = &[
         "no machine_readable sections", // LLM returned nothing usable
         "yaml error",                   // parse / deserialize / schema-validation failure
@@ -1854,6 +1858,30 @@ mod tests {
         assert!(!is_deterministic_content_failure(
             "IO error: Resource temporarily unavailable (os error 11)"
         ));
+    }
+
+    #[test]
+    fn deterministic_markers_track_error_display_format() {
+        // The classifier matches on error Display strings, so its markers are
+        // coupled to PipelineError's `#[error(...)]` formats. Construct the real
+        // errors and run them through the classifier: if a format string drifts
+        // (e.g. "YAML error:" is renamed), this fails instead of silently
+        // regressing content failures back to the 30-retry ladder.
+        let yaml_err: PipelineError = serde_yaml_ng::from_str::<i32>("[1, 2]")
+            .expect_err("deserializing a sequence into i32 must fail")
+            .into();
+        assert!(
+            is_deterministic_content_failure(&yaml_err.to_string()),
+            "PipelineError::Yaml Display must still match a classifier marker"
+        );
+
+        let enrich_err = PipelineError::Enrich(
+            "LLM produced no machine_readable sections (3 articles needed enrichment)".to_string(),
+        );
+        assert!(
+            is_deterministic_content_failure(&enrich_err.to_string()),
+            "PipelineError::Enrich Display must preserve the message the classifier keys on"
+        );
     }
 
     #[test]
