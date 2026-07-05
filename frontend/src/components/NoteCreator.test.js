@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import NoteCreator from './NoteCreator.vue';
+import { useAuth } from '../composables/useAuth.js';
 
 // NoteCreator pulls in useAmbiguityVocabulary, which fetches the vocabulary
 // file on first use. Stub fetch so the test does not hit the network (and
@@ -85,7 +86,7 @@ describe('NoteCreator', () => {
   it('builds a linking note with a SpecificResource body', async () => {
     const w = mountCreator();
     await nextTick();
-    w.vm.motivation = 'linking';
+    w.vm.linkMode = 'element';
     w.vm.linkTarget = 'hoogte_zorgtoeslag';
     await nextTick();
     w.vm.save();
@@ -98,10 +99,9 @@ describe('NoteCreator', () => {
     });
   });
 
-  it('builds a questioning note with question text + ambiguity tag', async () => {
+  it('combines a comment, ambiguity tag and open action into one note', async () => {
     const w = mountCreator();
     await nextTick();
-    w.vm.motivation = 'questioning';
     w.vm.commentText = 'is dit een open norm?';
     w.vm.ambiguityTag = 'open-norm-partial';
     w.vm.workflow = 'open';
@@ -120,7 +120,6 @@ describe('NoteCreator', () => {
   it('builds a tagging note with just the tag', async () => {
     const w = mountCreator();
     await nextTick();
-    w.vm.motivation = 'tagging';
     w.vm.ambiguityTag = 'missing-document';
     await nextTick();
     w.vm.save();
@@ -153,11 +152,12 @@ describe('NoteCreator', () => {
       },
     });
     await nextTick();
-    // Only the warning + a single "Annuleren" — no type picker, no save.
+    // Only the warning — no type picker, no save. The user dismisses by
+    // clicking outside (no in-form cancel button anymore).
     expect(w.find('[data-testid="note-creator-status"]').exists()).toBe(true);
     expect(w.find('[data-testid="note-save"]').exists()).toBe(false);
     expect(w.find('[data-testid="note-comment-text"]').exists()).toBe(false);
-    expect(w.find('[data-testid="note-cancel"]').exists()).toBe(true);
+    expect(w.find('[data-testid="note-cancel"]').exists()).toBe(false);
   });
 
   it('shows the full form once the selection resolves uniquely', async () => {
@@ -227,13 +227,16 @@ describe('NoteCreator', () => {
     expect(w.emitted('create')).toHaveLength(1);
   });
 
-  it('remembers the creator across mounts via localStorage', async () => {
+  it('sets the creator to the signed-in user (id + name)', async () => {
+    const { person } = useAuth();
     const w = mountCreator();
     await nextTick();
-    w.vm.creator = 'J. de Vries';
+    person.value = { id: 'u1', name: 'J. de Vries' };
     w.vm.commentText = 'x';
     await nextTick();
     w.vm.save();
-    expect(localStorage.getItem('regelrecht-note-creator')).toBe('J. de Vries');
+    const note = w.emitted('create')[0][0];
+    expect(note.creator).toEqual({ id: 'u1', name: 'J. de Vries' });
+    person.value = null; // reset shared module state for other tests
   });
 });
