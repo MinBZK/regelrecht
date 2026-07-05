@@ -1496,41 +1496,42 @@ async fn process_next_enrich_job(
                 // queue behind ~30 doomed runs. Fail terminally and exhaust the law
                 // in one step. The exhaust is guarded (enrich_failed → enrich_exhausted
                 // only), so a provider that already enriched this law keeps 'enriched'.
-                match job_queue::fail_job_terminal(pool, job.id, Some(error_json)).await {
-                    Ok(_) => {
-                        // Log the actual outcome — never claim "exhausted" when a
-                        // DB error left the law unchanged, or when the other
-                        // provider had already reached a terminal state (0 rows).
-                        match law_status::mark_enrich_failed(pool, &job.law_id).await {
-                            Ok(0) => {
-                                tracing::warn!(
-                                    job_id = %job.id,
-                                    law_id = %job.law_id,
-                                    "deterministic content failure — job failed without retry; law already in a terminal state, status kept"
-                                );
-                            }
-                            Ok(_) => {
-                                if let Err(ex_err) =
-                                    law_status::exhaust_law(pool, &job.law_id, JobType::Enrich)
-                                        .await
-                                {
-                                    tracing::warn!(error = %ex_err, law_id = %job.law_id, "failed to mark law enrich_exhausted");
-                                } else {
-                                    tracing::warn!(
-                                        job_id = %job.id,
-                                        law_id = %job.law_id,
-                                        "deterministic content failure — marked enrich_exhausted without retry"
-                                    );
-                                }
-                            }
-                            Err(status_err) => {
-                                tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to set status to enrich_failed");
-                            }
-                        }
+                // Terminal-fail the job and transition the law atomically: if any
+                // step errors, the transaction rolls back and the job is left in
+                // 'processing' for the reaper to reclaim and retry (self-healing
+                // once the DB recovers) — never a law stranded in 'enriching' with
+                // a failed job and no follow-up. `mark_enrich_failed` is guarded
+                // (NOT IN enriched/enrich_exhausted), so 0 rows means another
+                // provider already reached a terminal state — keep it, skip the
+                // exhaust.
+                let fast_fail = async {
+                    let mut tx = pool.begin().await?;
+                    job_queue::fail_job_terminal(&mut *tx, job.id, Some(error_json)).await?;
+                    let rows = law_status::mark_enrich_failed(&mut *tx, &job.law_id).await?;
+                    if rows > 0 {
+                        law_status::exhaust_law(&mut *tx, &job.law_id, JobType::Enrich).await?;
                     }
-                    Err(fail_err) => {
-                        tracing::error!(job_id = %job.id, error = %fail_err, "failed to terminally fail job");
-                    }
+                    tx.commit().await?;
+                    Ok::<u64, PipelineError>(rows)
+                }
+                .await;
+                match fast_fail {
+                    Ok(0) => tracing::warn!(
+                        job_id = %job.id,
+                        law_id = %job.law_id,
+                        "deterministic content failure — job failed without retry; law already in a terminal state, status kept"
+                    ),
+                    Ok(_) => tracing::warn!(
+                        job_id = %job.id,
+                        law_id = %job.law_id,
+                        "deterministic content failure — marked enrich_exhausted without retry"
+                    ),
+                    Err(e) => tracing::error!(
+                        job_id = %job.id,
+                        law_id = %job.law_id,
+                        error = %e,
+                        "fast-fail transaction rolled back; job left in 'processing' for the reaper to retry"
+                    ),
                 }
             } else {
                 match job_queue::fail_job(pool, job.id, Some(error_json)).await {
