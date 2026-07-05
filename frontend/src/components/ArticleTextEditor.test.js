@@ -33,7 +33,7 @@ describe('ArticleTextEditor', () => {
     // activeFormats reflects the editor's current selection — only the shape
     // is part of the contract with the parent toolbar.
     expect(Object.keys(exposed.activeFormats).sort()).toEqual([
-      'bold', 'bulletList', 'italic', 'orderedList',
+      'bold', 'bulletList', 'canIndent', 'canOutdent', 'italic', 'orderedList',
     ]);
   });
 

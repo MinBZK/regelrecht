@@ -22,6 +22,7 @@ import {
 import { SUPPORT_EMAIL } from './constants.js';
 import { apiFetch, apiFetchJson } from './lib/apiFetch.js';
 import { RETRY_MIN_SPINNER_MS } from './lib/retryFeedback.js';
+import { dismissPopoverOnScroll } from './lib/dismissOnScroll.js';
 import { humanizeLawId } from './lib/lawName.js';
 import { useLatest } from './lib/useLatest.js';
 import ArticleText from './components/ArticleText.vue';
@@ -307,22 +308,40 @@ const noteCreator = reactive({ open: false, range: null, anchor: null });
 // selection's viewport rect (nldd-text-editor's getSelection().rect) and use it
 // as the anchor. One reused element, repositioned per note.
 let noteAnchorEl = null;
+let annotationAnchorEl = null;
+function makeAnchorEl() {
+  const el = document.createElement('div');
+  el.setAttribute('aria-hidden', 'true');
+  el.style.cssText = 'position:fixed;pointer-events:none;z-index:-1;';
+  document.body.appendChild(el);
+  return el;
+}
+function positionAnchor(el, rect) {
+  el.style.left = `${rect.left}px`;
+  el.style.top = `${rect.top}px`;
+  el.style.width = `${rect.width}px`;
+  el.style.height = `${rect.height}px`;
+}
 function selectionAnchor(rect) {
-  if (!noteAnchorEl) {
-    noteAnchorEl = document.createElement('div');
-    noteAnchorEl.setAttribute('aria-hidden', 'true');
-    noteAnchorEl.style.cssText = 'position:fixed;pointer-events:none;z-index:-1;';
-    document.body.appendChild(noteAnchorEl);
-  }
-  noteAnchorEl.style.left = `${rect.left}px`;
-  noteAnchorEl.style.top = `${rect.top}px`;
-  noteAnchorEl.style.width = `${rect.width}px`;
-  noteAnchorEl.style.height = `${rect.height}px`;
+  if (!noteAnchorEl) noteAnchorEl = makeAnchorEl();
+  positionAnchor(noteAnchorEl, rect);
   return noteAnchorEl;
+}
+// Separate element from the authoring anchor: viewing an annotation and
+// authoring a new one are distinct actions, so the two popovers never share
+// (and fight over) one position.
+function annotationAnchor(rect) {
+  if (!annotationAnchorEl) annotationAnchorEl = makeAnchorEl();
+  positionAnchor(annotationAnchorEl, rect);
+  return annotationAnchorEl;
 }
 onBeforeUnmount(() => {
   noteAnchorEl?.remove();
   noteAnchorEl = null;
+  annotationAnchorEl?.remove();
+  annotationAnchorEl = null;
+  annotationScrollCleanup?.();
+  annotationScrollCleanup = null;
 });
 
 function startNoteFromSelection(idx, ev) {
@@ -342,16 +361,49 @@ function onNoteCreated(note) {
   noteCreator.open = false;
 }
 
-// Clicking an annotation's badge opens a small read-only detail of the note.
-const activeNoteDetail = ref(null);
+// Clicking an annotation's badge opens a popover listing every note that badge
+// covers (a merged badge can carry several ids), anchored to the badge itself
+// via the rect the DS text-editor hands along with the click.
+let annotationPopEl = null; // plain ref: the popover is driven imperatively
+const activeNotes = ref([]);
+const NOTE_MOTIVATION_LABELS = {
+  commenting: 'Toelichting',
+  questioning: 'Vraag',
+  linking: 'Koppeling',
+  tagging: 'Label',
+};
+function noteMotivationLabel(note) {
+  return NOTE_MOTIVATION_LABELS[note?.motivation] || 'Notitie';
+}
 function noteDetailText(note) {
   if (!note) return '';
   const body = Array.isArray(note.body) ? note.body[0] : note.body;
-  return body?.value || body?.source || note.motivation || 'Notitie';
+  return body?.value || body?.source || '';
 }
-function onEditorAnnotationClick(ids) {
-  const id = Array.isArray(ids) ? ids[0] : ids;
-  activeNoteDetail.value = noteById.value.get(id) || null;
+// The popover is pinned to the badge's viewport rect at click time, so once
+// anything scrolls that anchor is stale and the popover floats free of its
+// annotation (the badge may even scroll out of view). Dismiss on scroll instead
+// — re-click the badge to reopen.
+let annotationScrollCleanup = null;
+function onEditorAnnotationClick(ids, rect) {
+  const idList = [...new Set(Array.isArray(ids) ? ids : [ids])];
+  activeNotes.value = idList.map((id) => noteById.value.get(id)).filter(Boolean);
+  if (!annotationPopEl) return;
+  if (activeNotes.value.length && rect) {
+    annotationPopEl.anchorElement = annotationAnchor(rect);
+    try {
+      if (!annotationPopEl.matches?.(':popover-open')) annotationPopEl.showPopover?.();
+    } catch { /* already open */ }
+    annotationScrollCleanup?.();
+    annotationScrollCleanup = dismissPopoverOnScroll(annotationPopEl);
+  } else {
+    annotationPopEl.hidePopover?.();
+  }
+}
+function onAnnotationPopoverClose() {
+  activeNotes.value = [];
+  annotationScrollCleanup?.();
+  annotationScrollCleanup = null;
 }
 
 // Wiping drafts is irreversible (local-only until exported), so it goes
@@ -1794,6 +1846,48 @@ async function handleActionSave() {
                       ></nldd-menu-item>
                     </nldd-menu-group>
                   </nldd-toolbar-item>
+                  <!-- Inspringen — vergroot/verklein de inspringing van de
+                       geselecteerde regels. Laagste prioriteit (0), dus deze
+                       verdwijnt als eerste naar de overflow. -->
+                  <nldd-toolbar-item
+                    v-if="view === 'text' && selectedArticle && textEditorRefs[idx]"
+                    slot="end"
+                    label="Inspringen"
+                    :priority="0"
+                  >
+                    <nldd-icon-button
+                      icon="indent-increase"
+                      text="Inspringen vergroten"
+                      variant="secondary"
+                      size="md"
+                      :disabled="!canEditArticleText || !textEditorRefs[idx].activeFormats.canIndent || undefined"
+                      @mousedown.prevent
+                      @click="textEditorRefs[idx].indent()"
+                    ></nldd-icon-button>
+                    <nldd-icon-button
+                      icon="indent-decrease"
+                      text="Inspringen verkleinen"
+                      variant="secondary"
+                      size="md"
+                      :disabled="!canEditArticleText || !textEditorRefs[idx].activeFormats.canOutdent || undefined"
+                      @mousedown.prevent
+                      @click="textEditorRefs[idx].outdent()"
+                    ></nldd-icon-button>
+                    <nldd-menu-group slot="overflow" text="Inspringen">
+                      <nldd-menu-item
+                        icon="indent-increase"
+                        text="Inspringen vergroten"
+                        :disabled="!canEditArticleText || !textEditorRefs[idx].activeFormats.canIndent || undefined"
+                        @select="textEditorRefs[idx].indent()"
+                      ></nldd-menu-item>
+                      <nldd-menu-item
+                        icon="indent-decrease"
+                        text="Inspringen verkleinen"
+                        :disabled="!canEditArticleText || !textEditorRefs[idx].activeFormats.canOutdent || undefined"
+                        @select="textEditorRefs[idx].outdent()"
+                      ></nldd-menu-item>
+                    </nldd-menu-group>
+                  </nldd-toolbar-item>
                   <!-- Notitie toevoegen — annotatie op de huidige selectie.
                        Prioriteit tussen de mode-switcher (4) en de opmaak-
                        controls (Tekststijl 2, Lijst 1) in, zodat deze primaire
@@ -1870,14 +1964,26 @@ async function handleActionSave() {
                   @cancel="noteCreator.open = false"
                 />
 
-                <!-- Read-only detail of the clicked annotation's note. -->
-                <nldd-inline-dialog
-                  v-if="activeNoteDetail"
-                  data-testid="note-detail"
-                  :text="noteDetailText(activeNoteDetail)"
+                <!-- Every note the clicked annotation badge covers, anchored to
+                     the badge via the rect from the DS annotation-click event. -->
+                <nldd-popover
+                  :ref="(el) => (annotationPopEl = el)"
+                  accessible-label="Notities"
+                  width="360px"
+                  placement="bottom-start"
+                  @close="onAnnotationPopoverClose"
                 >
-                  <nldd-button slot="actions" size="md" text="Sluiten" @click="activeNoteDetail = null"></nldd-button>
-                </nldd-inline-dialog>
+                  <nldd-container padding="16" data-testid="note-detail">
+                    <template v-for="(note, i) in activeNotes" :key="i">
+                      <nldd-spacer v-if="i > 0" size="16"></nldd-spacer>
+                      <div class="annotation-note">
+                        <span class="annotation-note__type">{{ noteMotivationLabel(note) }}</span>
+                        <p class="annotation-note__body">{{ noteDetailText(note) || '—' }}</p>
+                        <span v-if="note.creator" class="annotation-note__author">{{ note.creator?.name ?? note.creator }}</span>
+                      </div>
+                    </template>
+                  </nldd-container>
+                </nldd-popover>
 
                 <!-- Notes management, moved here from the dropped text-notes pane.
                      "Opslaan naar repo" appends drafts to the sidecar on the
@@ -2114,5 +2220,29 @@ async function handleActionSave() {
   padding: 8px 12px;
   border: 1px solid #fecaca;
   border-radius: 6px;
+}
+
+/* Annotation-detail popover: one block per note the badge covers. */
+.annotation-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: var(--primitives-font-family-body);
+}
+.annotation-note__type {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.6;
+}
+.annotation-note__body {
+  margin: 0;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.annotation-note__author {
+  font-size: 0.78rem;
+  opacity: 0.7;
 }
 </style>

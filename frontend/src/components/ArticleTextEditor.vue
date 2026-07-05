@@ -35,6 +35,10 @@ const activeFormats = reactive({
   italic: false,
   bulletList: false,
   orderedList: false,
+  // Whether the current selection can nest deeper (a preceding sibling to nest
+  // under) / outdent (already nested). Drive the toolbar's indent buttons.
+  canIndent: false,
+  canOutdent: false,
 });
 const canUndo = ref(false);
 const canRedo = ref(false);
@@ -47,13 +51,15 @@ function onState(e) {
   activeFormats.italic = s.active.italic;
   activeFormats.bulletList = s.active.bulletList;
   activeFormats.orderedList = s.active.orderedList;
+  activeFormats.canIndent = s.canIndent;
+  activeFormats.canOutdent = s.canOutdent;
   canUndo.value = s.canUndo;
   canRedo.value = s.canRedo;
   selectionEmpty.value = s.empty;
 }
 
 function onAnnotationClick(e) {
-  emit('annotation-click', e.detail.ids);
+  emit('annotation-click', e.detail.ids, e.detail.rect);
 }
 
 // The current selection as { start, end, quote, empty } in clean UTF-16 offsets
@@ -94,6 +100,12 @@ function toggleBulletList() {
 function toggleOrderedList() {
   editorRef.value?.setList(activeFormats.orderedList ? 'none' : 'ordered');
 }
+function indent() {
+  editorRef.value?.indent();
+}
+function outdent() {
+  editorRef.value?.outdent();
+}
 function undo() {
   editorRef.value?.undo();
 }
@@ -112,6 +124,8 @@ defineExpose({
   toggleItalic,
   toggleBulletList,
   toggleOrderedList,
+  indent,
+  outdent,
   canUndo,
   canRedo,
   undo,
