@@ -122,7 +122,12 @@ const router = createRouter({
         ],
       },
       children: [
-        { path: '', redirect: '/harvesting/law-entries' },
+        { path: '', redirect: '/harvesting/overview' },
+        {
+          path: 'overview',
+          name: 'overview',
+          component: () => import('./harvester/views/OverviewView.vue'),
+        },
         {
           path: 'law-entries',
           name: 'law-entries',
