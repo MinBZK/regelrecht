@@ -310,6 +310,7 @@ where
 /// failures (e.g. the enrichment LLM produced no machine_readable sections, or
 /// its output failed to parse) where retrying the same input reproduces the
 /// same failure and only burns budget and blocks the serial queue.
+#[tracing::instrument(skip(executor, error_result))]
 pub async fn fail_job_terminal<'e, E>(
     executor: E,
     job_id: Uuid,

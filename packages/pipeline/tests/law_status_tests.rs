@@ -347,3 +347,65 @@ async fn test_update_status_unless_any_protects_multiple_statuses() {
         .unwrap();
     assert_eq!(entry.status, LawStatusValue::Queued);
 }
+
+#[tokio::test]
+async fn test_mark_enrich_failed_guards_terminal_states() {
+    let db = TestDb::new().await;
+
+    // A non-terminal law is marked enrich_failed and reports one affected row.
+    law_status::upsert_law(&db.pool, "failing_law", None, None)
+        .await
+        .unwrap();
+    law_status::update_status(&db.pool, "failing_law", LawStatusValue::Enriching)
+        .await
+        .unwrap();
+    let rows = law_status::mark_enrich_failed(&db.pool, "failing_law")
+        .await
+        .unwrap();
+    assert_eq!(rows, 1, "a non-terminal law is marked enrich_failed");
+    assert_eq!(
+        law_status::get_law(&db.pool, "failing_law")
+            .await
+            .unwrap()
+            .status,
+        LawStatusValue::EnrichFailed
+    );
+
+    // A law another provider already enriched must NOT regress: 0 rows, status kept.
+    law_status::upsert_law(&db.pool, "done_law", None, None)
+        .await
+        .unwrap();
+    law_status::update_status(&db.pool, "done_law", LawStatusValue::Enriched)
+        .await
+        .unwrap();
+    let rows = law_status::mark_enrich_failed(&db.pool, "done_law")
+        .await
+        .unwrap();
+    assert_eq!(rows, 0, "an already-enriched law must not be regressed");
+    assert_eq!(
+        law_status::get_law(&db.pool, "done_law")
+            .await
+            .unwrap()
+            .status,
+        LawStatusValue::Enriched
+    );
+
+    // Same for an already-exhausted law.
+    law_status::upsert_law(&db.pool, "exhausted_law", None, None)
+        .await
+        .unwrap();
+    law_status::update_status(&db.pool, "exhausted_law", LawStatusValue::EnrichExhausted)
+        .await
+        .unwrap();
+    let rows = law_status::mark_enrich_failed(&db.pool, "exhausted_law")
+        .await
+        .unwrap();
+    assert_eq!(rows, 0, "an already-exhausted law must not be regressed");
+    assert_eq!(
+        law_status::get_law(&db.pool, "exhausted_law")
+            .await
+            .unwrap()
+            .status,
+        LawStatusValue::EnrichExhausted
+    );
+}
