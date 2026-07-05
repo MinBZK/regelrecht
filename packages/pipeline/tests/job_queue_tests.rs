@@ -190,6 +190,59 @@ async fn test_fail_job_with_retry() {
 }
 
 #[tokio::test]
+async fn test_fail_job_terminal_fails_immediately_without_retry() {
+    let db = TestDb::new().await;
+
+    // max_attempts = 3, but a terminal failure must not reschedule even on the
+    // first attempt (deterministic content failures should not burn retries).
+    let req = CreateJobRequest::new(JobType::Enrich, "BWBR0001840").with_max_attempts(3);
+    let job = job_queue::create_job(&db.pool, req).await.unwrap();
+
+    let claimed = job_queue::claim_job(&db.pool, None).await.unwrap().unwrap();
+    assert_eq!(claimed.attempts, 1, "still on the first attempt");
+
+    let failed = job_queue::fail_job_terminal(
+        &db.pool,
+        job.id,
+        Some(json!({"error": "LLM produced no machine_readable sections"})),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        failed.status,
+        JobStatus::Failed,
+        "terminal failure must mark Failed even with attempts < max_attempts"
+    );
+    assert!(failed.completed_at.is_some());
+    assert!(
+        failed.scheduled_at.is_none(),
+        "terminally failed job must not carry a retry schedule"
+    );
+
+    let none = job_queue::claim_job(&db.pool, None).await.unwrap();
+    assert!(
+        none.is_none(),
+        "terminally failed job must not be reclaimed"
+    );
+}
+
+#[tokio::test]
+async fn test_fail_job_terminal_requires_processing_state() {
+    let db = TestDb::new().await;
+
+    // A job that was never claimed is 'pending', not 'processing' — terminal
+    // fail must reject it (mirrors fail_job's guard).
+    let req = CreateJobRequest::new(JobType::Enrich, "BWBR0001840");
+    let job = job_queue::create_job(&db.pool, req).await.unwrap();
+
+    let err = job_queue::fail_job_terminal(&db.pool, job.id, None)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, PipelineError::JobNotProcessing(_)));
+}
+
+#[tokio::test]
 async fn test_fail_job_sets_exponential_backoff_schedule() {
     let db = TestDb::new().await;
 

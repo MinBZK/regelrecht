@@ -303,6 +303,43 @@ where
     Ok(job)
 }
 
+/// Mark a job as permanently failed regardless of remaining attempts.
+///
+/// Unlike [`fail_job`], this never reschedules for retry: it sets `failed`
+/// immediately even when `attempts < max_attempts`. Used for deterministic
+/// failures (e.g. the enrichment LLM produced no machine_readable sections, or
+/// its output failed to parse) where retrying the same input reproduces the
+/// same failure and only burns budget and blocks the serial queue.
+#[tracing::instrument(skip(executor, error_result))]
+pub async fn fail_job_terminal<'e, E>(
+    executor: E,
+    job_id: Uuid,
+    error_result: Option<serde_json::Value>,
+) -> Result<Job>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let job = sqlx::query_as::<_, Job>(
+        r#"
+        UPDATE jobs
+        SET status = 'failed'::job_status,
+            result = $2,
+            completed_at = now(),
+            scheduled_at = NULL
+        WHERE id = $1 AND status = 'processing'
+        RETURNING *
+        "#,
+    )
+    .bind(job_id)
+    .bind(&error_result)
+    .fetch_optional(executor)
+    .await?
+    .ok_or(PipelineError::JobNotProcessing(job_id))?;
+
+    tracing::warn!(job_id = %job.id, attempts = job.attempts, "job terminally failed (non-retryable)");
+    Ok(job)
+}
+
 /// Reap orphaned jobs stuck in 'processing' for longer than `timeout`.
 ///
 /// Jobs that remain in 'processing' beyond the timeout are assumed orphaned

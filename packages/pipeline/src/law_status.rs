@@ -378,3 +378,22 @@ where
     }
     Ok(())
 }
+
+/// Set a law's status to `enrich_failed`, but never regress a law that already
+/// reached a terminal enrich state (`enriched` or `enrich_exhausted`). With dual
+/// providers a failing provider must not clobber a status another provider
+/// already earned. Returns the number of rows updated (0 = already terminal).
+#[tracing::instrument(skip(executor))]
+pub async fn mark_enrich_failed<'e, E>(executor: E, law_id: &str) -> Result<u64>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let result = sqlx::query(
+        "UPDATE law_entries SET status = 'enrich_failed'::law_status, updated_at = now() \
+         WHERE law_id = $1 AND status NOT IN ('enriched', 'enrich_exhausted')",
+    )
+    .bind(law_id)
+    .execute(executor)
+    .await?;
+    Ok(result.rows_affected())
+}
