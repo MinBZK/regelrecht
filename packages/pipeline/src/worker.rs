@@ -91,6 +91,25 @@ fn is_resource_exhaustion(err: &str) -> bool {
     MARKERS.iter().any(|m| e.contains(m))
 }
 
+/// Returns true when an enrichment error is deterministic — re-running the same
+/// law with the same provider reproduces it, so retrying wastes LLM budget and
+/// blocks the serial queue. These are content/output faults: the LLM produced no
+/// machine_readable sections at all, or its output failed to parse/validate
+/// against the schema (malformed YAML, wrong types, missing fields — all
+/// surfaced as `PipelineError::Yaml`, i.e. "YAML error: …").
+///
+/// Transient faults (timeouts, reaped/stuck jobs, corpus/git-push failures,
+/// resource exhaustion, network errors) are deliberately excluded — those can
+/// succeed on a later attempt and must stay retryable.
+fn is_deterministic_content_failure(err: &str) -> bool {
+    let e = err.to_ascii_lowercase();
+    const MARKERS: &[&str] = &[
+        "no machine_readable sections", // LLM returned nothing usable
+        "yaml error",                   // parse / deserialize / schema-validation failure
+    ];
+    MARKERS.iter().any(|m| e.contains(m))
+}
+
 /// Interval between orphaned-job reaper runs.
 const REAPER_INTERVAL: Duration = Duration::from_secs(60);
 
@@ -1272,14 +1291,7 @@ async fn process_next_enrich_job(
                 Ok(failed_job) => {
                     if failed_job.status == crate::models::JobStatus::Failed {
                         // Set EnrichFailed only if not already Enriched or EnrichExhausted.
-                        if let Err(e) = sqlx::query(
-                            "UPDATE law_entries SET status = 'enrich_failed'::law_status, updated_at = now() \
-                             WHERE law_id = $1 AND status NOT IN ('enriched', 'enrich_exhausted')",
-                        )
-                        .bind(&job.law_id)
-                        .execute(pool)
-                        .await
-                        {
+                        if let Err(e) = law_status::mark_enrich_failed(pool, &job.law_id).await {
                             tracing::warn!(error = %e, law_id = %job.law_id, "failed to update law status to enrich_failed");
                         }
 
@@ -1374,13 +1386,7 @@ async fn process_next_enrich_job(
                     match job_queue::fail_job(pool, job.id, Some(error_json)).await {
                         Ok(failed_job) if failed_job.status == crate::models::JobStatus::Failed => {
                             // Set EnrichFailed only if not already Enriched or EnrichExhausted.
-                            if let Err(e) = sqlx::query(
-                                "UPDATE law_entries SET status = 'enrich_failed'::law_status, updated_at = now() \
-                                 WHERE law_id = $1 AND status NOT IN ('enriched', 'enrich_exhausted')",
-                            )
-                            .bind(&job.law_id)
-                            .execute(pool)
-                            .await
+                            if let Err(e) = law_status::mark_enrich_failed(pool, &job.law_id).await
                             {
                                 tracing::warn!(error = %e, law_id = %job.law_id, "failed to update law status to enrich_failed");
                             }
@@ -1466,7 +1472,8 @@ async fn process_next_enrich_job(
             }
         }
         Ok(Err(e)) => {
-            let outcome = outcome_for_error(&e.to_string());
+            let err_str = e.to_string();
+            let outcome = outcome_for_error(&err_str);
             tracing::error!(
                 job_id = %job.id,
                 law_id = %job.law_id,
@@ -1474,47 +1481,76 @@ async fn process_next_enrich_job(
                 "enrichment failed"
             );
 
-            let error_json = serde_json::json!({ "error": e.to_string() });
-            match job_queue::fail_job(pool, job.id, Some(error_json)).await {
-                Ok(failed_job) => {
-                    if failed_job.status == crate::models::JobStatus::Failed {
-                        // Set EnrichFailed only if not already Enriched or EnrichExhausted.
-                        if let Err(status_err) = sqlx::query(
-                            "UPDATE law_entries SET status = 'enrich_failed'::law_status, updated_at = now() \
-                             WHERE law_id = $1 AND status NOT IN ('enriched', 'enrich_exhausted')",
-                        )
-                        .bind(&job.law_id)
-                        .execute(pool)
-                        .await
+            let error_json = serde_json::json!({ "error": err_str.clone() });
+
+            if is_deterministic_content_failure(&err_str) {
+                // Deterministic content failure (LLM produced no machine_readable
+                // sections, or its output failed to parse/validate). Re-running the
+                // same law with the same provider reproduces it, so the normal
+                // retry ladder (3 inner attempts × up to EXHAUSTED_THRESHOLD
+                // recreated jobs) only wastes LLM budget and blocks the serial
+                // queue behind ~30 doomed runs. Fail terminally and exhaust the law
+                // in one step. The exhaust is guarded (enrich_failed → enrich_exhausted
+                // only), so a provider that already enriched this law keeps 'enriched'.
+                match job_queue::fail_job_terminal(pool, job.id, Some(error_json)).await {
+                    Ok(_) => {
+                        if let Err(status_err) =
+                            law_status::mark_enrich_failed(pool, &job.law_id).await
                         {
                             tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to set status to enrich_failed");
                         }
-
-                        handle_enrich_exhausted_or_retry(
-                            pool,
-                            &job.law_id,
-                            &payload,
-                            job.priority,
-                            exhausted_threshold,
-                        )
-                        .await;
-                    } else {
-                        // Job will be retried — atomically reset to Harvested only if
-                        // status is currently Enriching. Cannot regress from Enriched.
-                        if let Err(status_err) = law_status::update_status_if(
-                            pool,
-                            &job.law_id,
-                            LawStatusValue::Enriching,
-                            LawStatusValue::Harvested,
-                        )
-                        .await
+                        if let Err(ex_err) =
+                            law_status::exhaust_law(pool, &job.law_id, JobType::Enrich).await
                         {
-                            tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to reset status to harvested for retry");
+                            tracing::warn!(error = %ex_err, law_id = %job.law_id, "failed to mark law enrich_exhausted");
                         }
+                        tracing::warn!(
+                            job_id = %job.id,
+                            law_id = %job.law_id,
+                            "deterministic content failure — marked enrich_exhausted without retry"
+                        );
+                    }
+                    Err(fail_err) => {
+                        tracing::error!(job_id = %job.id, error = %fail_err, "failed to terminally fail job");
                     }
                 }
-                Err(fail_err) => {
-                    tracing::error!(job_id = %job.id, error = %fail_err, "failed to mark job as failed");
+            } else {
+                match job_queue::fail_job(pool, job.id, Some(error_json)).await {
+                    Ok(failed_job) => {
+                        if failed_job.status == crate::models::JobStatus::Failed {
+                            // Set EnrichFailed only if not already Enriched or EnrichExhausted.
+                            if let Err(status_err) =
+                                law_status::mark_enrich_failed(pool, &job.law_id).await
+                            {
+                                tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to set status to enrich_failed");
+                            }
+
+                            handle_enrich_exhausted_or_retry(
+                                pool,
+                                &job.law_id,
+                                &payload,
+                                job.priority,
+                                exhausted_threshold,
+                            )
+                            .await;
+                        } else {
+                            // Job will be retried — atomically reset to Harvested only if
+                            // status is currently Enriching. Cannot regress from Enriched.
+                            if let Err(status_err) = law_status::update_status_if(
+                                pool,
+                                &job.law_id,
+                                LawStatusValue::Enriching,
+                                LawStatusValue::Harvested,
+                            )
+                            .await
+                            {
+                                tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to reset status to harvested for retry");
+                            }
+                        }
+                    }
+                    Err(fail_err) => {
+                        tracing::error!(job_id = %job.id, error = %fail_err, "failed to mark job as failed");
+                    }
                 }
             }
 
@@ -1765,6 +1801,44 @@ mod tests {
         ));
         assert!(!is_resource_exhaustion(
             "YAML error: did not find expected key at line 5 column 3"
+        ));
+    }
+
+    #[test]
+    fn classifies_content_failures_as_deterministic() {
+        // Real strings observed from failed enrich jobs (opencode) — retrying
+        // these reproduces the same failure, so they must fail fast.
+        assert!(is_deterministic_content_failure(
+            "enrichment error: LLM produced no machine_readable sections (159 articles needed enrichment)"
+        ));
+        assert!(is_deterministic_content_failure(
+            "YAML error: articles[4].machine_readable.untranslatables[0]: missing field `construct` at line 445 column 11"
+        ));
+        assert!(is_deterministic_content_failure(
+            "YAML error: articles[9].machine_readable: invalid type: sequence, expected struct MachineReadable at line 395 column 7"
+        ));
+        assert!(is_deterministic_content_failure(
+            "YAML error: did not find expected key at line 177 column 3"
+        ));
+    }
+
+    #[test]
+    fn does_not_classify_transient_failures_as_deterministic() {
+        // Transient faults must stay retryable — a later attempt can succeed.
+        assert!(!is_deterministic_content_failure(
+            "reaped: job stuck in processing"
+        ));
+        assert!(!is_deterministic_content_failure(
+            "job timed out after 600s"
+        ));
+        assert!(!is_deterministic_content_failure(
+            "enrichment error: corpus push failed: git command failed: could not read from remote"
+        ));
+        assert!(!is_deterministic_content_failure(
+            "enrichment error: claude exited with exit status: 1"
+        ));
+        assert!(!is_deterministic_content_failure(
+            "IO error: Resource temporarily unavailable (os error 11)"
         ));
     }
 
