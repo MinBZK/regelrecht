@@ -204,6 +204,7 @@ const hasDocumentTabs = computed(
                 <nldd-icon-button id="settings-menu-btn-md" size="md" icon="account" text="Account" tooltip-timing="never" expandable popovertarget="settings-menu-md"></nldd-icon-button>
               </nldd-button-bar>
               <nldd-menu id="settings-menu-md" anchor="settings-menu-btn-md">
+                <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
                 <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
                 <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
@@ -227,9 +228,10 @@ const hasDocumentTabs = computed(
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
                 </nldd-menu-group>
-                <nldd-menu-divider></nldd-menu-divider>
-                <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
-                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
+                <template v-if="!authLoading && authenticated">
+                  <nldd-menu-divider></nldd-menu-divider>
+                  <nldd-menu-item text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
+                </template>
               </nldd-menu>
             </nldd-toolbar-item>
           </nldd-toolbar>
@@ -272,6 +274,7 @@ const hasDocumentTabs = computed(
                 <nldd-icon-button id="settings-menu-btn-lg" size="md" icon="account" text="Account" tooltip-timing="never" expandable popovertarget="settings-menu-lg"></nldd-icon-button>
               </nldd-button-bar>
               <nldd-menu id="settings-menu-lg" anchor="settings-menu-btn-lg">
+                <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
                 <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
                 <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
@@ -295,9 +298,10 @@ const hasDocumentTabs = computed(
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
                 </nldd-menu-group>
-                <nldd-menu-divider></nldd-menu-divider>
-                <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
-                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
+                <template v-if="!authLoading && authenticated">
+                  <nldd-menu-divider></nldd-menu-divider>
+                  <nldd-menu-item text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
+                </template>
               </nldd-menu>
             </nldd-toolbar-item>
           </nldd-toolbar>
@@ -474,9 +478,10 @@ const hasDocumentTabs = computed(
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
                 </nldd-menu-group>
-                <nldd-menu-divider></nldd-menu-divider>
-                <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
-                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
+                <template v-if="!authLoading && authenticated">
+                  <nldd-menu-divider></nldd-menu-divider>
+                  <nldd-menu-item text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
+                </template>
               </nldd-menu>
             </nldd-toolbar-item>
           </nldd-toolbar>
