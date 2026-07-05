@@ -1485,7 +1485,7 @@ async fn process_next_enrich_job(
                 "enrichment failed"
             );
 
-            let error_json = serde_json::json!({ "error": err_str.clone() });
+            let error_json = serde_json::json!({ "error": &err_str });
 
             if is_deterministic_content_failure(&err_str) {
                 // Deterministic content failure (LLM produced no machine_readable
