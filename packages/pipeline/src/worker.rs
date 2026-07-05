@@ -1494,21 +1494,35 @@ async fn process_next_enrich_job(
                 // only), so a provider that already enriched this law keeps 'enriched'.
                 match job_queue::fail_job_terminal(pool, job.id, Some(error_json)).await {
                     Ok(_) => {
-                        if let Err(status_err) =
-                            law_status::mark_enrich_failed(pool, &job.law_id).await
-                        {
-                            tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to set status to enrich_failed");
+                        // Log the actual outcome — never claim "exhausted" when a
+                        // DB error left the law unchanged, or when the other
+                        // provider had already reached a terminal state (0 rows).
+                        match law_status::mark_enrich_failed(pool, &job.law_id).await {
+                            Ok(0) => {
+                                tracing::warn!(
+                                    job_id = %job.id,
+                                    law_id = %job.law_id,
+                                    "deterministic content failure — job failed without retry; law already in a terminal state, status kept"
+                                );
+                            }
+                            Ok(_) => {
+                                if let Err(ex_err) =
+                                    law_status::exhaust_law(pool, &job.law_id, JobType::Enrich)
+                                        .await
+                                {
+                                    tracing::warn!(error = %ex_err, law_id = %job.law_id, "failed to mark law enrich_exhausted");
+                                } else {
+                                    tracing::warn!(
+                                        job_id = %job.id,
+                                        law_id = %job.law_id,
+                                        "deterministic content failure — marked enrich_exhausted without retry"
+                                    );
+                                }
+                            }
+                            Err(status_err) => {
+                                tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to set status to enrich_failed");
+                            }
                         }
-                        if let Err(ex_err) =
-                            law_status::exhaust_law(pool, &job.law_id, JobType::Enrich).await
-                        {
-                            tracing::warn!(error = %ex_err, law_id = %job.law_id, "failed to mark law enrich_exhausted");
-                        }
-                        tracing::warn!(
-                            job_id = %job.id,
-                            law_id = %job.law_id,
-                            "deterministic content failure — marked enrich_exhausted without retry"
-                        );
                     }
                     Err(fail_err) => {
                         tracing::error!(job_id = %job.id, error = %fail_err, "failed to terminally fail job");
