@@ -151,6 +151,22 @@ export function useDraftNotes(lawId, trajectRef) {
   }
 
   /**
+   * Serialise an explicit set of notes to the same sidecar YAML shape as
+   * `exportYaml`, for a caller that already holds the notes it wants (e.g. the
+   * article-scoped export, where EditorView passes the notes resolved to the
+   * open article). Strips the `__draft` marker; committed and draft notes mix
+   * freely.
+   */
+  function exportYamlFromNotes(notes) {
+    const doc = {
+      $schema:
+        'https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.3/annotation-schema.json',
+      annotations: notes.map(stripDraftMarker),
+    };
+    return yaml.dump(doc, { lineWidth: -1, noRefs: true });
+  }
+
+  /**
    * Append the local drafts to the law's sidecar via editor-api. The save
    * is routed through the session's active traject (same model as law and
    * scenario edits since #632): the notes land in that traject's writable
@@ -223,6 +239,7 @@ export function useDraftNotes(lawId, trajectRef) {
     draftCount,
     addDraft,
     removeDraft,
+    exportYamlFromNotes,
     clearDrafts,
     exportYaml,
     saveToRepo,

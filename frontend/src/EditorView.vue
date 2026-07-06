@@ -38,7 +38,7 @@ import ScenarioBuilder from './components/ScenarioBuilder.vue';
 import ExecutionTraceView from './components/ExecutionTraceView.vue';
 import LawGraphView from './components/LawGraphView.vue';
 
-const { authenticated, oidcConfigured } = useAuth();
+const { authenticated, oidcConfigured, person } = useAuth();
 const { isEnabled } = useFeatureFlags();
 
 // Per-pane view selection. Each pane independently picks one of the
@@ -53,6 +53,7 @@ const VIEW_DEFINITIONS = [
   { id: 'machine', flag: 'panel.machine_readable', label: 'Machine' },
   { id: 'scenario', flag: 'panel.scenario_form', label: "Scenario's" },
   { id: 'yaml', flag: 'panel.yaml_editor', label: 'YAML' },
+  { id: 'notes', flag: 'panel.notes', label: 'Notities' },
 ];
 
 const availableViews = computed(() => VIEW_DEFINITIONS.filter(v => isEnabled(v.flag)));
@@ -244,8 +245,10 @@ const {
   drafts: draftNotes,
   draftCount,
   addDraft,
+  removeDraft,
   clearDrafts,
   exportYaml,
+  exportYamlFromNotes,
   saveToRepo,
 } = useDraftNotes(lawId, activeTrajectRef);
 const { draftNotesForArticle } = useResolvedDraftNotes(
@@ -367,7 +370,7 @@ function onNoteCreated(note) {
 let annotationPopEl = null; // plain ref: the popover is driven imperatively
 const activeNotes = ref([]);
 const NOTE_MOTIVATION_LABELS = {
-  commenting: 'Toelichting',
+  commenting: 'Opmerking',
   questioning: 'Vraag',
   linking: 'Koppeling',
   tagging: 'Label',
@@ -379,6 +382,44 @@ function noteDetailText(note) {
   if (!note) return '';
   const body = Array.isArray(note.body) ? note.body[0] : note.body;
   return body?.value || body?.source || '';
+}
+// Notes grouped by the fragment they annotate (their primary span), so every
+// comment on the same quote sits together under one quote header. Groups are
+// ordered by where the fragment starts in the article text; a note without a
+// resolvable span falls into a trailing "unanchored" group.
+const noteGroups = computed(() => {
+  const text = selectedArticle.value?.text || '';
+  const groups = new Map();
+  for (const entry of notesForArticle.value) {
+    const span = entry?.spans?.[0];
+    const key = span ? `${span.start}-${span.end}` : 'unanchored';
+    if (!groups.has(key)) {
+      const quote = span ? text.slice(cpToUtf16(text, span.start), cpToUtf16(text, span.end)) : '';
+      groups.set(key, { start: span?.start ?? Number.MAX_SAFE_INTEGER, quote, notes: [] });
+    }
+    groups.get(key).notes.push(entry.note);
+  }
+  return [...groups.values()].sort((a, b) => a.start - b.start);
+});
+// Author display name, tolerating the new { id, name } shape and legacy strings.
+function noteCreatorName(note) {
+  return note?.creator?.name ?? note?.creator ?? '';
+}
+// True when the note was authored by the signed-in user (creator id matches).
+function isOwnNote(note) {
+  const uid = person.value?.id;
+  const cid = note?.creator?.id;
+  return !!(uid && cid && uid === cid);
+}
+// Only the user's own, still-unsaved drafts can be removed: committed notes live
+// in the repo sidecar with no delete path yet, and you can't remove someone
+// else's note. Drafts are local, so removeDraft (by index) is enough.
+function canDeleteNote(note) {
+  return !!note?.__draft && isOwnNote(note);
+}
+function deleteNote(note) {
+  const i = draftNotes.value.indexOf(note);
+  if (i >= 0) removeDraft(i);
 }
 // The popover is pinned to the badge's viewport rect at click time, so once
 // anything scrolls that anchor is stale and the popover floats free of its
@@ -432,23 +473,55 @@ function confirmClearDrafts() {
 }
 
 const exporting = ref(false);
+// Local YYYY-MM-DD-HH-mm-ss stamp for download filenames — hyphens throughout
+// (no underscores, no colons), sortable, and unique enough to avoid clobbering
+// an earlier export from the same article.
+function fileTimestamp() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`;
+}
+
+// Law id as a filename part, hyphenated (the corpus slug uses underscores).
+function lawSlug() {
+  return (lawId.value || 'wet').replace(/_/g, '-');
+}
+
+// Trigger a browser download of `text` as `filename`. Revoke on a later tick:
+// a programmatic anchor download starts asynchronously, and revoking
+// synchronously after click() races the browser fetching the blob (unreliable
+// in Safari/Firefox).
+function downloadYaml(text, filename) {
+  const blob = new Blob([text], { type: 'text/yaml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+// Whole-law export: every committed note (from the sidecar) plus the drafts.
 async function exportNotes() {
   if (exporting.value) return; // a second click would download a duplicate
   exporting.value = true;
-  let url;
   try {
-    const text = await exportYaml();
-    const blob = new Blob([text], { type: 'text/yaml' });
-    url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'annotations.yaml';
-    a.click();
+    downloadYaml(await exportYaml(), `${lawSlug()}-annotations-${fileTimestamp()}.yaml`);
   } finally {
-    // Revoke on a later tick: a programmatic anchor download starts
-    // asynchronously, and revoking synchronously after click() races the
-    // browser fetching the blob (unreliable in Safari/Firefox).
-    if (url) setTimeout(() => URL.revokeObjectURL(url), 0);
+    exporting.value = false;
+  }
+}
+
+// Article-scoped export: only the notes that resolve to the open article
+// (committed + drafts), which EditorView already has as notesForArticle.
+function exportArticleNotes() {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const notes = notesForArticle.value.map((e) => e.note);
+    const nr = selectedArticleNumber.value || 'artikel';
+    downloadYaml(exportYamlFromNotes(notes), `${lawSlug()}-artikel-${nr}-annotations-${fileTimestamp()}.yaml`);
+  } finally {
     exporting.value = false;
   }
 }
@@ -1918,6 +1991,32 @@ async function handleActionSave() {
                       @select="startNoteFromSelection(idx, $event)"
                     ></nldd-menu-item>
                   </nldd-toolbar-item>
+                  <!-- Notities downloaden — expandable icon-button (area end) met
+                       een menu: dit artikel, of de hele wet, als YAML. -->
+                  <nldd-toolbar-item
+                    v-if="view === 'notes' && selectedArticle"
+                    slot="end"
+                    label="Notities downloaden"
+                    :priority="3"
+                  >
+                    <nldd-icon-button
+                      :id="`notes-export-btn-${idx}`"
+                      icon="download"
+                      text="Notities downloaden"
+                      variant="secondary"
+                      size="md"
+                      expandable
+                      :popovertarget="`notes-export-menu-${idx}`"
+                    ></nldd-icon-button>
+                    <nldd-menu :id="`notes-export-menu-${idx}`" :anchor="`notes-export-btn-${idx}`">
+                      <nldd-menu-item text="Download artikel-notities als YAML" @select="exportArticleNotes"></nldd-menu-item>
+                      <nldd-menu-item text="Download wet-notities als YAML" @select="exportNotes"></nldd-menu-item>
+                    </nldd-menu>
+                    <nldd-menu-group slot="overflow" text="Notities downloaden">
+                      <nldd-menu-item text="Download artikel-notities als YAML" @select="exportArticleNotes"></nldd-menu-item>
+                      <nldd-menu-item text="Download wet-notities als YAML" @select="exportNotes"></nldd-menu-item>
+                    </nldd-menu-group>
+                  </nldd-toolbar-item>
                   <!-- YAML parse-status (Machine-readable pane). -->
                   <nldd-toolbar-item v-if="view === 'yaml' && parseError" slot="end" label="YAML">
                     <span class="editor-parse-error">YAML parse error</span>
@@ -1985,68 +2084,7 @@ async function handleActionSave() {
                   </nldd-container>
                 </nldd-popover>
 
-                <!-- Notes management, moved here from the dropped text-notes pane.
-                     "Opslaan naar repo" appends drafts to the sidecar on the
-                     active traject's branch; "Exporteer YAML" is the offline path. -->
-                <template v-if="canCreateNotes">
-                  <nldd-inline-dialog
-                    v-if="noteIssues.length"
-                    variant="warning"
-                    :text="`${noteIssues.length} notitie(s) niet verankerd`"
-                    :supporting-text="noteIssues.map(i => i.reason).join('; ')"
-                  ></nldd-inline-dialog>
-                  <nldd-inline-dialog
-                    v-if="draftCount > 0"
-                    data-testid="draft-notes-bar"
-                    :text="`${draftCount} concept-notitie(s), nog niet opgeslagen`"
-                  >
-                    <nldd-button
-                      slot="actions"
-                      size="md"
-                      variant="primary"
-                      :text="savingNotes ? 'Opslaan…' : 'Opslaan naar repo'"
-                      :disabled="savingNotes || !canEdit || null"
-                      data-testid="save-notes-btn"
-                      @click="saveNotesToRepo"
-                    ></nldd-button>
-                    <nldd-button
-                      slot="actions"
-                      size="md"
-                      text="Exporteer YAML"
-                      data-testid="export-notes-btn"
-                      @click="exportNotes"
-                    ></nldd-button>
-                    <nldd-button
-                      slot="actions"
-                      size="md"
-                      variant="destructive"
-                      text="Concepten wissen"
-                      data-testid="clear-drafts-btn"
-                      @click="askClearDrafts"
-                    ></nldd-button>
-                  </nldd-inline-dialog>
-                  <nldd-inline-dialog
-                    v-if="draftCount > 0 && !canEdit"
-                    variant="warning"
-                    data-testid="notes-no-traject"
-                    text="Selecteer eerst een traject"
-                    supporting-text="Opslaan naar repo werkt pas als er een actief traject is. Exporteer YAML werkt wel."
-                  ></nldd-inline-dialog>
-                  <nldd-inline-dialog
-                    v-if="notesSaveError"
-                    variant="alert"
-                    data-testid="notes-save-error"
-                    text="Notities opslaan mislukt"
-                    :supporting-text="notesSaveError"
-                  ></nldd-inline-dialog>
-                  <nldd-inline-dialog
-                    v-if="notesSaveStatus && !notesSaveError"
-                    variant="success"
-                    data-testid="notes-save-status"
-                    text="Opslaan gelukt"
-                    :supporting-text="notesSaveStatus"
-                  ></nldd-inline-dialog>
-                </template>
+                <!-- Note management + the note list live in the Notities pane. -->
               </nldd-simple-section>
 
               <!-- Machine readable -->
@@ -2103,6 +2141,100 @@ async function handleActionSave() {
                     @input="onYamlInput"
                   ></nldd-code-editor>
                   <nldd-banner v-if="parseError" variant="critical" :text="parseError"></nldd-banner>
+                </template>
+              </nldd-simple-section>
+
+              <!-- Notities — every note for this article, one under the other,
+                   plus the draft-management actions moved from the Tekst pane.
+                   Deliberately minimal for now; to be fine-tuned later. -->
+              <nldd-simple-section v-else-if="view === 'notes'" width="full">
+                <template v-if="canCreateNotes">
+                  <nldd-inline-dialog
+                    v-if="noteIssues.length"
+                    variant="warning"
+                    :text="`${noteIssues.length} notitie(s) niet verankerd`"
+                    :supporting-text="noteIssues.map(i => i.reason).join('; ')"
+                  ></nldd-inline-dialog>
+                  <nldd-inline-dialog
+                    v-if="draftCount > 0"
+                    data-testid="draft-notes-bar"
+                    :text="`${draftCount} concept-notitie(s), nog niet opgeslagen`"
+                  >
+                    <nldd-button
+                      slot="actions"
+                      size="md"
+                      variant="primary"
+                      :text="savingNotes ? 'Opslaan…' : 'Opslaan naar repo'"
+                      :disabled="savingNotes || !canEdit || null"
+                      data-testid="save-notes-btn"
+                      @click="saveNotesToRepo"
+                    ></nldd-button>
+                    <nldd-button
+                      slot="actions"
+                      size="md"
+                      variant="destructive"
+                      text="Concepten wissen"
+                      data-testid="clear-drafts-btn"
+                      @click="askClearDrafts"
+                    ></nldd-button>
+                  </nldd-inline-dialog>
+                  <nldd-inline-dialog
+                    v-if="draftCount > 0 && !canEdit"
+                    variant="warning"
+                    data-testid="notes-no-traject"
+                    text="Selecteer eerst een traject"
+                    supporting-text="Opslaan naar repo werkt pas als er een actief traject is. Exporteer YAML werkt wel."
+                  ></nldd-inline-dialog>
+                  <nldd-inline-dialog
+                    v-if="notesSaveError"
+                    variant="alert"
+                    data-testid="notes-save-error"
+                    text="Notities opslaan mislukt"
+                    :supporting-text="notesSaveError"
+                  ></nldd-inline-dialog>
+                  <nldd-inline-dialog
+                    v-if="notesSaveStatus && !notesSaveError"
+                    variant="success"
+                    data-testid="notes-save-status"
+                    text="Opslaan gelukt"
+                    :supporting-text="notesSaveStatus"
+                  ></nldd-inline-dialog>
+                </template>
+
+                <nldd-inline-dialog
+                  v-if="notesForArticle.length === 0"
+                  text="Geen notities voor dit artikel"
+                ></nldd-inline-dialog>
+                <template v-else>
+                  <nldd-spacer size="16"></nldd-spacer>
+                  <template v-for="(group, gi) in noteGroups" :key="gi">
+                    <nldd-spacer v-if="gi > 0" size="24"></nldd-spacer>
+                    <div class="note-group">
+                      <p class="note-group__quote" :class="{ 'note-group__quote--none': !group.quote }">
+                        <i v-if="group.quote">{{ group.quote }}</i>
+                        <template v-else>Zonder verankering</template>
+                      </p>
+                      <div
+                        v-for="(note, ni) in group.notes"
+                        :key="ni"
+                        class="note-list-item"
+                      >
+                        <div class="note-list-item__head">
+                          <span class="annotation-note__type">{{ noteMotivationLabel(note) }}</span>
+                          <nldd-icon-button
+                            v-if="canDeleteNote(note)"
+                            icon="trash"
+                            text="Verwijderen"
+                            variant="critical-transparent"
+                            size="sm"
+                            @click="deleteNote(note)"
+                          ></nldd-icon-button>
+                        </div>
+                        <p class="annotation-note__body">{{ noteDetailText(note) || '—' }}</p>
+                        <span v-if="noteCreatorName(note)" class="annotation-note__author">{{ noteCreatorName(note) }}</span>
+                      </div>
+                    </div>
+                  </template>
                 </template>
               </nldd-simple-section>
             </nldd-page>
@@ -2244,5 +2376,38 @@ async function handleActionSave() {
 .annotation-note__author {
   font-size: 0.78rem;
   opacity: 0.7;
+}
+
+/* Notities pane: notes grouped under the fragment they annotate. The quote is
+   the group header; each note is a bordered block indented beneath it. */
+.note-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.note-group__quote {
+  margin: 0;
+  font-size: 0.9rem;
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+.note-group__quote--none {
+  font-style: normal;
+  opacity: 0.6;
+}
+.note-list-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-left: 12px;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+}
+.note-list-item__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 </style>
