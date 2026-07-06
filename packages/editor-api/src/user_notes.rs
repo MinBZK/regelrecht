@@ -30,9 +30,9 @@ const ALLOWED_FORMATS: &[&str] = &["text/markdown", "text/plain"];
 /// context, small enough that the table cannot be used as blob storage.
 const MAX_BODY_VALUE_BYTES: usize = 64 * 1024;
 
-/// Upper bound on notes per user per law. Far above real use, so the
-/// silent `LIMIT` in `list` is unreachable and an account cannot grow
-/// unbounded rows (each up to 64 KiB).
+/// Upper bound on notes per user per law. Far above real use, so an
+/// account cannot grow unbounded rows (each up to 64 KiB). Also bound as
+/// the `LIMIT` in `list`, so the list can never silently truncate.
 const MAX_NOTES_PER_LAW: i64 = 200;
 
 /// Request body for creating or updating a note. `format` and
@@ -154,10 +154,11 @@ pub async fn list(
     let rows: Vec<NoteRow> = sqlx::query_as(
         "SELECT id, motivation, body_value, body_format, created_at, updated_at \
          FROM user_notes WHERE account_id = $1 AND law_id = $2 \
-         ORDER BY created_at LIMIT 1000",
+         ORDER BY created_at LIMIT $3",
     )
     .bind(account.id)
     .bind(&law_id)
+    .bind(MAX_NOTES_PER_LAW)
     .fetch_all(pool)
     .await
     .map_err(|e| {
@@ -186,23 +187,12 @@ pub async fn create(
     let motivation = motivation.unwrap_or_else(|| "commenting".to_string());
     let pool = get_pool(&state)?;
 
-    let (count,): (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM user_notes WHERE account_id = $1 AND law_id = $2")
-            .bind(account.id)
-            .bind(&law_id)
-            .fetch_one(pool)
-            .await
-            .map_err(|e| {
-                tracing::error!(error = %e, "failed to count user notes");
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-    if count >= MAX_NOTES_PER_LAW {
-        return Err(StatusCode::CONFLICT);
-    }
-
-    let row: NoteRow = sqlx::query_as(
+    // Cap check and insert in one statement so two concurrent creates
+    // cannot both pass a separate count check and overshoot the cap.
+    let row: Option<NoteRow> = sqlx::query_as(
         "INSERT INTO user_notes (account_id, law_id, motivation, body_value, body_format) \
-         VALUES ($1, $2, $3, $4, $5) \
+         SELECT $1, $2, $3, $4, $5 \
+         WHERE (SELECT COUNT(*) FROM user_notes WHERE account_id = $1 AND law_id = $2) < $6 \
          RETURNING id, motivation, body_value, body_format, created_at, updated_at",
     )
     .bind(account.id)
@@ -210,14 +200,18 @@ pub async fn create(
     .bind(&motivation)
     .bind(&value)
     .bind(&format)
-    .fetch_one(pool)
+    .bind(MAX_NOTES_PER_LAW)
+    .fetch_optional(pool)
     .await
     .map_err(|e| {
         tracing::error!(error = %e, "failed to create user note");
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    Ok((StatusCode::CREATED, Json(UserNote::from_row(&law_id, row))))
+    match row {
+        Some(row) => Ok((StatusCode::CREATED, Json(UserNote::from_row(&law_id, row)))),
+        None => Err(StatusCode::CONFLICT),
+    }
 }
 
 /// PUT /api/user/notes/{law_id}/{note_id} — update a note's body;

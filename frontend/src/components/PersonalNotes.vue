@@ -46,8 +46,11 @@ function modeValue(e, fallback) {
 const dateFormat = new Intl.DateTimeFormat('nl-NL', { dateStyle: 'long', timeStyle: 'short' });
 
 function noteMeta(note) {
-  const modified = note.modified ? dateFormat.format(new Date(note.modified)) : '';
-  return modified ? `Bewerkt ${modified}` : '';
+  if (!note.modified) return '';
+  // A never-edited note has identical created/modified timestamps — label
+  // it as created rather than edited.
+  const label = note.created === note.modified ? 'Aangemaakt' : 'Bewerkt';
+  return `${label} ${dateFormat.format(new Date(note.modified))}`;
 }
 
 async function saveNew() {
