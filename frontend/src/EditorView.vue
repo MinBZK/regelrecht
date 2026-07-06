@@ -25,6 +25,7 @@ import { humanizeLawId } from './lib/lawName.js';
 import { useLatest } from './lib/useLatest.js';
 import ArticleText from './components/ArticleText.vue';
 import AnnotatedText from './components/AnnotatedText.vue';
+import PersonalNotes from './components/PersonalNotes.vue';
 import ArticleTextEditor from './components/ArticleTextEditor.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
@@ -1824,6 +1825,13 @@ async function handleActionSave() {
                     text="Opslaan gelukt"
                     :supporting-text="notesSaveStatus"
                   ></nldd-inline-dialog>
+                  <!-- Persoonlijke notities: private per-user, server-side
+                       (Postgres via /api/user/notes) — a separate storage
+                       path from the shared sidecar notes above, so they
+                       never end up in a git repo. Law-level, independent
+                       of the selected article. Hidden for anonymous
+                       sessions (the component checks availability). -->
+                  <PersonalNotes :law-id="lawId" />
                 </template>
               </nldd-simple-section>
 
