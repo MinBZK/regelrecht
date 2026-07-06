@@ -75,8 +75,11 @@ if (!page.includes(expectedUrl)) {
 }
 
 // 3. The Version History table must have a row for the latest version, so the
-//    thing that changed is actually described (with its RFC).
-const historyRow = new RegExp(`^\\|\\s*${latest.replace(/\./g, '\\.')}\\s*\\|`, 'm');
+//    thing that changed is actually described (with its RFC). `latest` is a
+//    validated vX.Y.Z string, but escape every regex metacharacter (not just
+//    the dots) so the pattern stays literal regardless of its shape.
+const escaped = latest.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const historyRow = new RegExp(`^\\|\\s*${escaped}\\s*\\|`, 'm');
 if (!historyRow.test(page)) {
   problems.push(`the Version History table has no row for ${latest}`);
 }
