@@ -31,9 +31,9 @@ This table is the single source of truth for which schema version introduced whi
 | v0.5.1 | Tag-based immutable schema URLs; refinements within the v0.5.x line | [RFC-013](/rfcs/rfc-013) |
 | v0.5.0 | `hooks`, `overrides` (reactive execution); `procedure`, `procedure_id` (Awb lifecycle); Woo support | [RFC-007](/rfcs/rfc-007), [RFC-008](/rfcs/rfc-008) |
 | v0.4.0 | `open_terms`, `implements` (IoC); `legal_character`; `date` and `array` value types | [RFC-003](/rfcs/rfc-003) |
-| v0.3.2 | Minor fixes | |
-| v0.3.1 | Patch release | |
-| v0.3.0 | Cross-law reference refinements | |
+| v0.3.2 | `SUBTRACT_DATE` split into its own date operation with a `unit` (`days`, `months`, `years`) | |
+| v0.3.1 | Structured `references` on articles (`bwb_id`, `artikel`, `lid`, `onderdeel`, ...) for runtime cross-reference resolution | |
+| v0.3.0 | Typed operation definitions (arithmetic, logical, comparison, conditional, switch) with semantic operands and `legal_basis`, replacing the single untyped operation | [RFC-004](/rfcs/rfc-004) |
 | v0.2.0 | Initial public schema: `regulatory_layer`, `competent_authority`, `execution.produces`, cross-law references (`source`) | [RFC-001](/rfcs/rfc-001), [RFC-002](/rfcs/rfc-002) |
 
 Multi-organization execution ([RFC-009](/rfcs/rfc-009)) reuses `competent_authority` (v0.2.0) and adds no schema construct of its own.
