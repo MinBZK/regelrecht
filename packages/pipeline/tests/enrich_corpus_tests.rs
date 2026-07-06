@@ -110,7 +110,9 @@ async fn create_enrich_corpus_fails_on_drifted_base() {
     //    provenance, and applies the freshness decision.
     let result = create_enrich_corpus(&base_config, "enrich/test", Uuid::new_v4(), law_path).await;
 
-    // 5. Stale provenance -> a loud, retryable failure, never a silent overwrite.
+    // 5. Stale provenance -> a loud, terminal failure (requires human
+    //    re-enrich; handled via fail_job_terminal, never retried), never a
+    //    silent overwrite.
     match result {
         Err(PipelineError::BaseDrift {
             yaml_path,

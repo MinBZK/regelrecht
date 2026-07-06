@@ -52,9 +52,19 @@ fn pick_enrich_base(preferred: &str, preferred_exists: bool) -> &str {
 pub(crate) enum BaseAction {
     /// Law not yet on the enrich branch — check it out fresh from the base.
     CheckoutFresh,
-    /// Law present and its base is unchanged — keep the existing enrichment.
+    /// Law present and its recorded base matches the current base — unchanged,
+    /// keep the existing enrichment (no fresh checkout).
     Skip,
-    /// Law present but its base moved (or provenance is missing) — fail loudly.
+    /// Law present but with no usable recorded provenance — a "legacy"
+    /// enrichment written before the freshness guard existed. Adopt the current
+    /// base blob SHA as its baseline (recorded on the next metadata write) and
+    /// proceed without a fresh checkout, rather than failing. This grandfathers
+    /// every pre-guard enrichment so introducing the guard does not turn them
+    /// all into an immediate `Drift` on first re-enrichment.
+    AdoptBaseline,
+    /// Law present and its *recorded* base moved — fail loudly rather than
+    /// silently re-enriching on top of a base that differs from the one the
+    /// enrichment was generated against.
     Drift,
 }
 
@@ -70,8 +80,14 @@ pub(crate) fn decide_base_action(
         return BaseAction::CheckoutFresh;
     }
     match stored_source_hash {
-        Some(h) if !h.is_empty() && h == base_sha => BaseAction::Skip,
-        _ => BaseAction::Drift,
+        // No usable provenance recorded (absent or empty) — a pre-guard
+        // enrichment. Grandfather it by adopting the current base as its
+        // baseline instead of treating the unknown as drift.
+        None | Some("") => BaseAction::AdoptBaseline,
+        // Recorded base matches the current base — unchanged.
+        Some(h) if h == base_sha => BaseAction::Skip,
+        // Recorded base differs from the current base — genuine drift.
+        Some(_) => BaseAction::Drift,
     }
 }
 
@@ -1070,8 +1086,9 @@ async fn resolve_enrich_base(
 
     // Freshness guard: compare the target law's base version against the
     // provenance recorded in a prior enrichment. New law -> check out fresh;
-    // unchanged base -> keep existing enrichment; changed/unknown base ->
-    // fail loudly (do NOT auto-overwrite a possibly-validated enrichment).
+    // unchanged base -> keep existing enrichment; missing provenance (a legacy,
+    // pre-guard enrichment) -> adopt the current base as baseline and proceed;
+    // changed base -> fail loudly (do NOT auto-overwrite on a moved base).
     let base_sha = client.fetch_base_blob_sha(base_branch, normalized).await?;
     let tracked = client.is_tracked(normalized).await?;
     let stored = read_stored_source_hash(client.repo_path(), normalized).await;
@@ -1083,6 +1100,18 @@ async fn resolve_enrich_base(
         }
         BaseAction::Skip => {
             tracing::debug!(path = %normalized, "base unchanged, no fresh checkout needed");
+        }
+        BaseAction::AdoptBaseline => {
+            // Legacy enrichment with no recorded provenance. Keep the existing
+            // enrichment (no fresh checkout, like Skip); the current base blob
+            // SHA returned below is stamped as `source_hash` on the next
+            // `.enrichment.yaml` write, establishing the baseline so subsequent
+            // runs can detect real drift.
+            tracing::info!(
+                path = %normalized,
+                base = %base_branch,
+                "no recorded provenance for tracked law; adopting current base as baseline (legacy enrichment grandfathered)"
+            );
         }
         BaseAction::Drift => {
             return Err(PipelineError::BaseDrift {
@@ -1507,11 +1536,18 @@ mod tests {
     }
 
     #[test]
-    fn decide_base_action_missing_or_empty_provenance_is_drift() {
-        assert_eq!(decide_base_action(true, None, "sha_new"), BaseAction::Drift);
+    fn decide_base_action_missing_or_empty_provenance_adopts_baseline() {
+        // A tracked law with no recorded provenance is a pre-guard "legacy"
+        // enrichment: grandfather it by adopting the current base as baseline,
+        // never a terminal drift (that would fail every existing enrichment the
+        // moment the guard ships).
+        assert_eq!(
+            decide_base_action(true, None, "sha_new"),
+            BaseAction::AdoptBaseline
+        );
         assert_eq!(
             decide_base_action(true, Some(""), "sha_new"),
-            BaseAction::Drift
+            BaseAction::AdoptBaseline
         );
     }
 
