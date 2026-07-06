@@ -7,12 +7,12 @@ The law format is defined by a JSON Schema. All law YAML files in the corpus mus
 
 ## Current Version
 
-The current schema version is **v0.5.4**.
+The current schema version is **v0.5.6**.
 
 Schema URLs use immutable git tags to guarantee reproducibility. The format is:
 
 ```
-https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.4/schema/v0.5.4/schema.json
+https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
 ```
 
 The tag `schema-vX.Y.Z` is created when a schema version is released. Using tags instead of `refs/heads/main` ensures that the schema a law file references can never change underneath it. See [RFC-013](/rfcs/rfc-013) for the rationale.
@@ -23,6 +23,8 @@ This table is the single source of truth for which schema version introduced whi
 
 | Version | Introduces | RFC |
 |---------|-----------|-----|
+| v0.5.6 | Quantity `unit` labels (`euro`, `ratio`, `percentage`) and structured `definitions` constants carrying `type`/`type_spec` | [RFC-023](/rfcs/rfc-023) |
+| v0.5.5 | `ROUND`, `CEIL`, `FLOOR` rounding operations (explicit statutory rounding) | [RFC-024](/rfcs/rfc-024) |
 | v0.5.4 | `DATE_DIFF` operation; date operands for the comparison operators | [RFC-021](/rfcs/rfc-021) |
 | v0.5.3 | `valid_to` (law end date) | [RFC-019](/rfcs/rfc-019) |
 | v0.5.2 | `annotation-schema.json` for stand-off notes | [RFC-005](/rfcs/rfc-005), [RFC-018](/rfcs/rfc-018) |

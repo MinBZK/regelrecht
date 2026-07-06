@@ -42,6 +42,10 @@ jobs:
               - corpus/regulation/**
               - schema/**
               - script/**
+              # The schema reference doc is version-locked to schema/latest by
+              # provenance-checks; edit it and that guard must re-run.
+              - docs/src/content/docs/reference/schema.md
+              - docs/scripts/check-schema-version.mjs
               - Justfile
               - .pre-commit-config.yaml
               - .yamllint
@@ -198,6 +202,19 @@ jobs:
             exit 1
           fi
           echo "schema/latest correctly points to $HIGHEST"
+
+      # The schema reference doc hand-states the current version; this asserts
+      # it tracks schema/latest so a schema bump can't leave the docs behind.
+      # Node-only, reads source files (no astro build).
+      - name: Setup Node.js
+        if: needs.changes.outputs.ci == 'true'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
+        with:
+          node-version: '22'
+
+      - name: Check schema reference doc tracks schema/latest
+        if: needs.changes.outputs.ci == 'true'
+        run: node docs/scripts/check-schema-version.mjs
 
       - name: Check engine version bump on source changes
         if: needs.changes.outputs.ci == 'true' && github.event_name == 'pull_request'
