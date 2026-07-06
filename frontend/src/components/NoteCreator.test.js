@@ -231,7 +231,9 @@ describe('NoteCreator', () => {
     const { person } = useAuth();
     const w = mountCreator();
     await nextTick();
-    person.value = { id: 'u1', name: 'J. de Vries' };
+    // `/auth/status` returns the identity as `sub` (no `id` field); creator.id
+    // is derived from it.
+    person.value = { sub: 'u1', name: 'J. de Vries' };
     w.vm.commentText = 'x';
     await nextTick();
     w.vm.save();

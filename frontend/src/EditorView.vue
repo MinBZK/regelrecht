@@ -38,7 +38,7 @@ import ScenarioBuilder from './components/ScenarioBuilder.vue';
 import ExecutionTraceView from './components/ExecutionTraceView.vue';
 import LawGraphView from './components/LawGraphView.vue';
 
-const { authenticated, oidcConfigured, person } = useAuth();
+const { authenticated, oidcConfigured } = useAuth();
 const { isEnabled } = useFeatureFlags();
 
 // Per-pane view selection. Each pane independently picks one of the
@@ -246,10 +246,10 @@ const {
   draftCount,
   addDraft,
   removeDraft,
-  clearDrafts,
   exportYaml,
   exportYamlFromNotes,
   saveToRepo,
+  publishNote,
 } = useDraftNotes(lawId, activeTrajectRef);
 const { draftNotesForArticle } = useResolvedDraftNotes(
   draftNotes,
@@ -389,13 +389,18 @@ function noteDetailText(note) {
 // resolvable span falls into a trailing "unanchored" group.
 const noteGroups = computed(() => {
   const text = selectedArticle.value?.text || '';
+  const textLen = [...text].length; // codepoint length; spans are codepoint offsets
   const groups = new Map();
   for (const entry of notesForArticle.value) {
     const span = entry?.spans?.[0];
     const key = span ? `${span.start}-${span.end}` : 'unanchored';
     if (!groups.has(key)) {
       const quote = span ? text.slice(cpToUtf16(text, span.start), cpToUtf16(text, span.end)) : '';
-      groups.set(key, { start: span?.start ?? Number.MAX_SAFE_INTEGER, quote, notes: [] });
+      // Ellipses show the quote is a fragment, mirroring NoteCreator: only where
+      // real text sits before/after the span, not at the article's own edges.
+      const hasBefore = span ? span.start > 0 : false;
+      const hasAfter = span ? span.end < textLen : false;
+      groups.set(key, { start: span?.start ?? Number.MAX_SAFE_INTEGER, quote, hasBefore, hasAfter, notes: [] });
     }
     groups.get(key).notes.push(entry.note);
   }
@@ -405,21 +410,42 @@ const noteGroups = computed(() => {
 function noteCreatorName(note) {
   return note?.creator?.name ?? note?.creator ?? '';
 }
-// True when the note was authored by the signed-in user (creator id matches).
-function isOwnNote(note) {
-  const uid = person.value?.id;
-  const cid = note?.creator?.id;
-  return !!(uid && cid && uid === cid);
-}
-// Only the user's own, still-unsaved drafts can be removed: committed notes live
-// in the repo sidecar with no delete path yet, and you can't remove someone
-// else's note. Drafts are local, so removeDraft (by index) is enough.
+// A draft note lives in this browser's own localStorage, so it is the user's
+// by construction — every draft is deletable. Ownership (creator.id) is only
+// meaningful for committed notes in the shared repo; gating drafts on it broke
+// per-note delete for pre-login drafts (no creator) and legacy drafts (whose
+// creator.id was stored undefined by an earlier bug), leaving only the bulk
+// wipe. Committed notes are not __draft, so they still have no delete path.
 function canDeleteNote(note) {
-  return !!note?.__draft && isOwnNote(note);
+  return !!note?.__draft;
 }
 function deleteNote(note) {
   const i = draftNotes.value.indexOf(note);
   if (i >= 0) removeDraft(i);
+}
+// Publish ("publiek maken") applies to your still-local drafts (a committed
+// note is already on the repo) and needs a traject to write to.
+function canPublishNote(note) {
+  return !!note?.__draft && canEdit.value;
+}
+async function publishOneNote(note) {
+  if (savingNotes.value) return;
+  savingNotes.value = true;
+  notesSaveError.value = null;
+  notesSaveStatus.value = null;
+  try {
+    const { pr, noChange } = await publishNote(note);
+    notesSaveStatus.value = noChange
+      ? 'Notitie was al opgeslagen.'
+      : pr
+        ? `Gepubliceerd in PR #${pr.number}.`
+        : 'Notitie gepubliceerd.';
+    await reloadNotes();
+  } catch (e) {
+    notesSaveError.value = e?.message || 'Publiceren mislukt';
+  } finally {
+    savingNotes.value = false;
+  }
 }
 // The popover is pinned to the badge's viewport rect at click time, so once
 // anything scrolls that anchor is stale and the popover floats free of its
@@ -445,31 +471,6 @@ function onAnnotationPopoverClose() {
   activeNotes.value = [];
   annotationScrollCleanup?.();
   annotationScrollCleanup = null;
-}
-
-// Wiping drafts is irreversible (local-only until exported), so it goes
-// through a confirm modal. nldd-modal-dialog's API is show()/hide() (there
-// is no close()); a flag drives those via a watch, and @close just clears
-// the flag — same pattern as MachineReadable's delete confirm, which avoids
-// the hide() -> @close -> hide() recursion.
-const clearDraftsModalEl = ref(null);
-const clearDraftsPending = ref(false);
-watch(clearDraftsPending, (open) => {
-  const el = clearDraftsModalEl.value;
-  if (!el) return;
-  if (open && typeof el.show === 'function') el.show();
-  else if (!open && typeof el.hide === 'function') el.hide();
-});
-function askClearDrafts() {
-  clearDraftsPending.value = true;
-}
-function cancelClearDrafts() {
-  if (clearDraftsPending.value === false) return; // idempotent: @close + button
-  clearDraftsPending.value = false;
-}
-function confirmClearDrafts() {
-  clearDrafts();
-  clearDraftsPending.value = false;
 }
 
 const exporting = ref(false);
@@ -2009,12 +2010,12 @@ async function handleActionSave() {
                       :popovertarget="`notes-export-menu-${idx}`"
                     ></nldd-icon-button>
                     <nldd-menu :id="`notes-export-menu-${idx}`" :anchor="`notes-export-btn-${idx}`">
-                      <nldd-menu-item text="Download artikel-notities als YAML" @select="exportArticleNotes"></nldd-menu-item>
-                      <nldd-menu-item text="Download wet-notities als YAML" @select="exportNotes"></nldd-menu-item>
+                      <nldd-menu-item icon="document" text="Artikel-notities als YAML" @select="exportArticleNotes"></nldd-menu-item>
+                      <nldd-menu-item icon="document" text="Wet-notities als YAML" @select="exportNotes"></nldd-menu-item>
                     </nldd-menu>
                     <nldd-menu-group slot="overflow" text="Notities downloaden">
-                      <nldd-menu-item text="Download artikel-notities als YAML" @select="exportArticleNotes"></nldd-menu-item>
-                      <nldd-menu-item text="Download wet-notities als YAML" @select="exportNotes"></nldd-menu-item>
+                      <nldd-menu-item icon="document" text="Artikel-notities als YAML" @select="exportArticleNotes"></nldd-menu-item>
+                      <nldd-menu-item icon="document" text="Wet-notities als YAML" @select="exportNotes"></nldd-menu-item>
                     </nldd-menu-group>
                   </nldd-toolbar-item>
                   <!-- YAML parse-status (Machine-readable pane). -->
@@ -2169,14 +2170,6 @@ async function handleActionSave() {
                       data-testid="save-notes-btn"
                       @click="saveNotesToRepo"
                     ></nldd-button>
-                    <nldd-button
-                      slot="actions"
-                      size="md"
-                      variant="destructive"
-                      text="Concepten wissen"
-                      data-testid="clear-drafts-btn"
-                      @click="askClearDrafts"
-                    ></nldd-button>
                   </nldd-inline-dialog>
                   <nldd-inline-dialog
                     v-if="draftCount > 0 && !canEdit"
@@ -2206,34 +2199,54 @@ async function handleActionSave() {
                   text="Geen notities voor dit artikel"
                 ></nldd-inline-dialog>
                 <template v-else>
-                  <nldd-spacer size="16"></nldd-spacer>
                   <template v-for="(group, gi) in noteGroups" :key="gi">
-                    <nldd-spacer v-if="gi > 0" size="24"></nldd-spacer>
-                    <div class="note-group">
-                      <p class="note-group__quote" :class="{ 'note-group__quote--none': !group.quote }">
-                        <i v-if="group.quote">{{ group.quote }}</i>
-                        <template v-else>Zonder verankering</template>
-                      </p>
-                      <div
-                        v-for="(note, ni) in group.notes"
-                        :key="ni"
-                        class="note-list-item"
-                      >
-                        <div class="note-list-item__head">
-                          <span class="annotation-note__type">{{ noteMotivationLabel(note) }}</span>
-                          <nldd-icon-button
-                            v-if="canDeleteNote(note)"
-                            icon="trash"
-                            text="Verwijderen"
-                            variant="critical-transparent"
-                            size="sm"
-                            @click="deleteNote(note)"
-                          ></nldd-icon-button>
-                        </div>
-                        <p class="annotation-note__body">{{ noteDetailText(note) || '—' }}</p>
-                        <span v-if="noteCreatorName(note)" class="annotation-note__author">{{ noteCreatorName(note) }}</span>
-                      </div>
-                    </div>
+                    <nldd-spacer size="24"></nldd-spacer>
+                    <!-- Quoted fragment (group header) as rich-text, then a
+                         spacer before the cards. -->
+                    <nldd-rich-text>
+                      <p v-if="group.quote"><i>{{ group.hasBefore ? '… ' : '' }}{{ group.quote }}{{ group.hasAfter ? ' …' : '' }}</i></p>
+                      <p v-else><i>Zonder verankering</i></p>
+                    </nldd-rich-text>
+                    <nldd-spacer size="16"></nldd-spacer>
+                    <nldd-collection layout="stack">
+                      <nldd-card v-for="(note, ni) in group.notes" :key="ni">
+                        <nldd-container padding="16">
+                          <nldd-rich-text>
+                            <p>{{ noteDetailText(note) || '—' }}</p>
+                          </nldd-rich-text>
+                          <template v-if="noteCreatorName(note)">
+                            <nldd-spacer size="8"></nldd-spacer>
+                            <nldd-byline :text="noteCreatorName(note)"></nldd-byline>
+                          </template>
+                          <template v-if="canPublishNote(note) || canDeleteNote(note)">
+                            <nldd-spacer size="12"></nldd-spacer>
+                            <nldd-toolbar size="md" label="Notitie-acties">
+                              <nldd-toolbar-item v-if="canPublishNote(note)" slot="end" label="Publiek maken">
+                                <nldd-icon-button
+                                  icon="globe"
+                                  text="Publiek maken"
+                                  variant="secondary"
+                                  size="md"
+                                  :disabled="savingNotes || undefined"
+                                  @click="publishOneNote(note)"
+                                ></nldd-icon-button>
+                                <nldd-menu-item slot="overflow" icon="globe" text="Publiek maken" @select="publishOneNote(note)"></nldd-menu-item>
+                              </nldd-toolbar-item>
+                              <nldd-toolbar-item v-if="canDeleteNote(note)" slot="end" label="Verwijderen">
+                                <nldd-icon-button
+                                  icon="trash"
+                                  text="Verwijderen"
+                                  variant="critical-transparent"
+                                  size="md"
+                                  @click="deleteNote(note)"
+                                ></nldd-icon-button>
+                                <nldd-menu-item slot="overflow" icon="trash" text="Verwijderen" @select="deleteNote(note)"></nldd-menu-item>
+                              </nldd-toolbar-item>
+                            </nldd-toolbar>
+                          </template>
+                        </nldd-container>
+                      </nldd-card>
+                    </nldd-collection>
                   </template>
                 </template>
               </nldd-simple-section>
@@ -2247,20 +2260,6 @@ async function handleActionSave() {
     @select-law="onSearchSelectLaw"
     @harvest-available="onSearchHarvestAvailable"
   />
-
-  <!-- Drafts are local-only until exported (RFC-018: git is the source of
-       truth). Wiping them is irreversible and the only copy, so confirm. -->
-  <nldd-modal-dialog
-    ref="clearDraftsModalEl"
-    variant="alert"
-    text="Alle concept-notities wissen?"
-    supporting-text="Niet-geëxporteerde concepten gaan definitief verloren. Exporteer eerst als je ze wilt bewaren."
-    data-testid="clear-drafts-confirm"
-    @close="cancelClearDrafts"
-  >
-    <nldd-button slot="actions" variant="primary" text="Behoud concepten" @click="cancelClearDrafts"></nldd-button>
-    <nldd-button slot="actions" variant="destructive" text="Wis alles" data-testid="clear-drafts-confirm-btn" @click="confirmClearDrafts"></nldd-button>
-  </nldd-modal-dialog>
 
   <!-- Trace sheet — execution trace + expected outcomes for the most
        recently executed scenario. Opened from a scenario card's "Toon
@@ -2376,38 +2375,5 @@ async function handleActionSave() {
 .annotation-note__author {
   font-size: 0.78rem;
   opacity: 0.7;
-}
-
-/* Notities pane: notes grouped under the fragment they annotate. The quote is
-   the group header; each note is a bordered block indented beneath it. */
-.note-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.note-group__quote {
-  margin: 0;
-  font-size: 0.9rem;
-  font-style: italic;
-  overflow-wrap: anywhere;
-}
-.note-group__quote--none {
-  font-style: normal;
-  opacity: 0.6;
-}
-.note-list-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-left: 12px;
-  padding: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  border-radius: 8px;
-}
-.note-list-item__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
 }
 </style>

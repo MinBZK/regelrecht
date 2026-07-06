@@ -266,7 +266,10 @@ function save() {
   };
   const p = person.value;
   if (p) {
-    note.creator = { id: p.id, name: p.name };
+    // `/auth/status` returns the Keycloak subject as `sub` (there is no `id`
+    // field); it is the stable per-user identity, so a committed note records
+    // its author via creator.id = sub (creator.name is the display name).
+    note.creator = { id: p.sub, name: p.name };
   }
   // Action status is optional; only attach a concrete open/resolved value.
   if (workflow.value !== 'none') {
