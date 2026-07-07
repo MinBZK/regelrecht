@@ -56,6 +56,7 @@ fn empty_state(pool: PgPool) -> AppState {
         http_client: reqwest::Client::new(),
         pool: Some(pool),
         pipeline_api_url: None,
+        harvest_admin_url: None,
         reload_lock: Arc::new(Mutex::new(())),
         trajects: Arc::new(TrajectCorpusCache::new()),
     }

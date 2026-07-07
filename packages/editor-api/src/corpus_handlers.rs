@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::Json;
+use axum::{Extension, Json};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tower_sessions::Session;
@@ -22,9 +22,11 @@ use regelrecht_corpus::source_map::{
 };
 use regelrecht_corpus::CorpusError;
 
+use crate::accounts::AccountRecord;
 use crate::state::{AppState, CorpusState};
 use crate::traject_corpus::{TrajectCorpus, TrajectCorpusError};
 use crate::trajects::resolve_traject_ref;
+use crate::user_notes;
 
 /// Response body for a successful save.
 ///
@@ -35,13 +37,22 @@ use crate::trajects::resolve_traject_ref;
 #[derive(Debug, Serialize)]
 pub struct SaveResponse {
     pub pr: Option<SavePrInfo>,
-    /// `true` when a notes save was a no-op: every submitted note was
-    /// already present on the branch, so nothing was written/committed.
-    /// Lets the frontend show "al opgeslagen" and keep any existing PR
-    /// badge instead of treating a PR-less 200 as a lost save (review
-    /// finding NEW-2). Always `false` for law/scenario saves; those
-    /// clients ignore it.
+    /// `true` when the **sidecar/git side** of a notes save was a no-op:
+    /// nothing was written/committed to the branch — either every
+    /// submitted public note was already present, or the save carried no
+    /// public notes at all. It says nothing about personal notes: a save
+    /// can be `no_change: true` AND have `personal_saved > 0`. Clients
+    /// must gate success signals on the combination, not on `!no_change`
+    /// alone. Lets the frontend show "al opgeslagen" and keep any
+    /// existing PR badge instead of treating a PR-less 200 as a lost
+    /// save (review finding NEW-2). Always `false` for law/scenario
+    /// saves; those clients ignore it.
     pub no_change: bool,
+    /// How many notes in an annotations save were routed to the caller's
+    /// personal store (`regelrecht:visibility: personal`) instead of the
+    /// git sidecar. Only set by `save_annotations`; omitted elsewhere.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub personal_saved: Option<usize>,
     /// The new ETag after a law/scenario save — clients keep it for the
     /// next PUT's `If-Match` header (same optimistic-concurrency chain
     /// as [`SaveDocumentResponse::etag`]). `None` for handlers that
@@ -955,10 +966,54 @@ pub async fn get_annotations(
 pub async fn get_traject_annotations(
     State(state): State<AppState>,
     session: Session,
+    Extension(account): Extension<AccountRecord>,
     Path((traject_ref, law_id)): Path<(String, String)>,
 ) -> Result<YamlResponse, (StatusCode, String)> {
     let scope = require_traject_scope(&state, &session, &traject_ref).await?;
-    get_annotations_in_scope(&scope, &law_id).await
+    let sidecar = match get_annotations_in_scope(&scope, &law_id).await {
+        Ok((_, _, content)) => Some(content),
+        // Absent sidecar is fine here: the caller may still have personal
+        // notes, which then make up the whole document.
+        Err((StatusCode::NOT_FOUND, _)) => None,
+        Err(other) => return Err(other),
+    };
+
+    // Unified read: merge the caller's personal notes (marked
+    // `regelrecht:visibility: personal`) into the returned document, so
+    // the client sees one list of notes regardless of where each one is
+    // stored. The sidecar bytes stay verbatim; personal notes are
+    // appended the same way a save would append public ones.
+    let personal = match &state.pool {
+        Some(pool) => user_notes::personal_annotation_values(pool, account.id, &law_id)
+            .await
+            .map_err(|status| (status, "Failed to read personal notes".to_string()))?,
+        None => Vec::new(),
+    };
+
+    let content = if personal.is_empty() {
+        sidecar.ok_or((StatusCode::NOT_FOUND, "Annotations not found".to_string()))?
+    } else {
+        match append_notes_to_sidecar(sidecar.as_deref(), &personal, ANNOTATION_SCHEMA_URL) {
+            Ok(AppendOutcome::Write(text)) => text,
+            // Every personal value carries a unique `id`, so dedup can
+            // only fire on a pathological sidecar; fall back to it.
+            Ok(AppendOutcome::NoChange) => {
+                sidecar.ok_or((StatusCode::NOT_FOUND, "Annotations not found".to_string()))?
+            }
+            Err(e) => {
+                // A sidecar too broken to merge into must still be
+                // readable; serve it unmerged rather than failing the GET.
+                tracing::warn!(law_id = %law_id, error = %e, "could not merge personal notes into sidecar");
+                sidecar.ok_or((StatusCode::NOT_FOUND, "Annotations not found".to_string()))?
+            }
+        }
+    };
+
+    Ok((
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "text/yaml; charset=utf-8")],
+        content,
+    ))
 }
 
 async fn get_annotations_in_scope(
@@ -1575,6 +1630,7 @@ fn save_response_from_traject(outcome: PersistOutcome) -> SaveResponse {
             number: pr.number,
         }),
         no_change: false,
+        personal_saved: None,
         etag: None,
     }
 }
@@ -1646,21 +1702,67 @@ const ANNOTATION_SCHEMA_URL: &str = "https://raw.githubusercontent.com/MinBZK/re
 /// cannot append an unreasonable number of notes in one commit.
 const MAX_NOTES_PER_SAVE: usize = 500;
 
+/// Property a submitted note carries to choose its storage side in the
+/// unified save (and that the unified GET stamps on merged-in personal
+/// notes). Vendor-prefixed like `regelrecht:hint` in the selector.
+const VISIBILITY_KEY: &str = "regelrecht:visibility";
+
+/// Split submitted notes into (public, personal) on
+/// `regelrecht:visibility`. The marker is stripped in both directions —
+/// public notes must stay valid against the annotation schema
+/// (`additionalProperties: false`), personal notes are re-shaped by
+/// `annotation_to_request` anyway. An unrecognised visibility is a 400,
+/// not a silent default: a typo like "privat" must never publish a note
+/// the author meant to keep personal.
+fn partition_notes_by_visibility(
+    notes: Vec<serde_json::Value>,
+) -> Result<(Vec<serde_json::Value>, Vec<serde_json::Value>), (StatusCode, String)> {
+    let mut public = Vec::new();
+    let mut personal = Vec::new();
+    for mut note in notes {
+        let visibility = note.as_object_mut().and_then(|o| o.remove(VISIBILITY_KEY));
+        match &visibility {
+            None => public.push(note),
+            Some(value) => match value.as_str() {
+                Some("public") => public.push(note),
+                Some("personal") => personal.push(note),
+                _ => {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        "regelrecht:visibility must be \"personal\" or \"public\"".to_string(),
+                    ));
+                }
+            },
+        }
+    }
+    Ok((public, personal))
+}
+
 /// PUT /api/trajects/{traject_id}/corpus/laws/{law_id}/annotations —
-/// append stand-off notes. The notes land in the traject's writable
-/// backend (its branch), so a note and a law edit made in the same
-/// session ride the same PR.
+/// the unified note save. The body is a JSON array of *new* notes
+/// (drafts); each note's `regelrecht:visibility` decides where it goes:
 ///
-/// The body is a JSON array of *new* notes (drafts). The handler reads the
-/// sidecar as it stands on the traject branch and appends only the new,
-/// deduped notes, keeping the existing bytes verbatim (RFC-018 Dec. 1 /
-/// RFC-005: per-note `git blame` and the curated motivering comments must
-/// survive). Error bodies are deliberately generic — schema instance paths
-/// can echo attacker-controlled map keys and would flow into an nldd
-/// dialog (the self-XSS vector `save_law` also avoids).
+/// - `"personal"` → the caller's private store (Postgres, account-scoped;
+///   never git), marker and all other handling server-side;
+/// - `"public"` or absent → the stand-off sidecar in the traject's
+///   writable backend (its branch), so a note and a law edit made in the
+///   same session ride the same PR.
+///
+/// A personal-marked note can therefore never end up in git, even when a
+/// client naively round-trips the merged GET document back into a save.
+///
+/// For the public side the handler reads the sidecar as it stands on the
+/// traject branch and appends only the new, deduped notes, keeping the
+/// existing bytes verbatim (RFC-018 Dec. 1 / RFC-005: per-note `git
+/// blame` and the curated motivering comments must survive). Personal
+/// notes are deduped the same way (an identical stored note is skipped)
+/// so retries stay idempotent. Error bodies are deliberately generic —
+/// schema instance paths can echo attacker-controlled map keys and would
+/// flow into an nldd dialog (the self-XSS vector `save_law` also avoids).
 pub async fn save_annotations(
     State(state): State<AppState>,
     session: Session,
+    Extension(account): Extension<AccountRecord>,
     Path((traject_ref, law_id)): Path<(String, String)>,
     body: String,
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
@@ -1682,7 +1784,61 @@ pub async fn save_annotations(
         ));
     }
 
+    let (public_notes, personal_notes) = partition_notes_by_visibility(new_notes)?;
+
+    // Membership gate first: personal notes are the caller's own, but the
+    // endpoint is traject-scoped, so the same access rule applies to both
+    // halves of the save.
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+
+    // Personal notes go to the account-scoped store, never to git. Map
+    // and validate the whole batch first, then insert atomically (one
+    // transaction) — a bad note rejects the batch before anything is
+    // stored, so a 400/409 never leaves a half-saved batch behind.
+    let mut personal_saved = 0usize;
+    if !personal_notes.is_empty() {
+        let pool = state.pool.as_ref().ok_or((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Personal notes need a database".to_string(),
+        ))?;
+        let mut requests = Vec::with_capacity(personal_notes.len());
+        for note in &personal_notes {
+            let req = user_notes::annotation_to_request(&law_id, note)
+                .map_err(|msg| (StatusCode::BAD_REQUEST, msg))?;
+            user_notes::validate(&req).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    "A personal note is not valid".to_string(),
+                )
+            })?;
+            requests.push(req);
+        }
+        let inserted = user_notes::insert_notes(pool, account.id, &law_id, requests, true)
+            .await
+            .map_err(|status| match status {
+                StatusCode::CONFLICT => (
+                    StatusCode::CONFLICT,
+                    "Too many personal notes for this law".to_string(),
+                ),
+                StatusCode::BAD_REQUEST => (
+                    StatusCode::BAD_REQUEST,
+                    "A personal note is not valid".to_string(),
+                ),
+                other => (other, "Failed to save personal notes".to_string()),
+            })?;
+        personal_saved = inserted.iter().filter(|n| n.is_some()).count();
+    }
+
+    // All-personal save: nothing for the sidecar, skip the git machinery.
+    if public_notes.is_empty() {
+        return Ok(Json(SaveResponse {
+            pr: None,
+            no_change: true,
+            personal_saved: Some(personal_saved),
+            etag: None,
+        }));
+    }
+    let new_notes = public_notes;
     let target = resolve_traject_annotation_target(&traject, &law_id).await?;
     let EditorWriteTarget {
         relative_path,
@@ -1747,6 +1903,7 @@ pub async fn save_annotations(
                 return Ok(Json(SaveResponse {
                     pr: None,
                     no_change: true,
+                    personal_saved: Some(personal_saved),
                     etag: None,
                 }));
             }
@@ -1809,7 +1966,9 @@ pub async fn save_annotations(
         .await
         .map_err(corpus_write_error("annotations"))?;
 
-    Ok(Json(save_response_from_traject(outcome)))
+    let mut response = save_response_from_traject(outcome);
+    response.personal_saved = Some(personal_saved);
+    Ok(Json(response))
 }
 
 /// PUT /api/trajects/{traject_id}/corpus/laws/{law_id} — save edited law
@@ -2488,6 +2647,45 @@ mod tests {
     use super::*;
 
     #[test]
+    fn partition_notes_routes_on_visibility_and_strips_the_marker() {
+        let notes = vec![
+            serde_json::json!({"type": "Annotation", "body": {"value": "publiek impliciet"}}),
+            serde_json::json!({
+                "type": "Annotation",
+                "body": {"value": "publiek expliciet"},
+                "regelrecht:visibility": "public"
+            }),
+            serde_json::json!({
+                "type": "Annotation",
+                "body": {"value": "prive"},
+                "regelrecht:visibility": "personal"
+            }),
+        ];
+
+        let (public, personal) = partition_notes_by_visibility(notes).unwrap();
+        assert_eq!(public.len(), 2);
+        assert_eq!(personal.len(), 1);
+        // The marker never reaches the sidecar (schema would reject it)
+        // and is stripped from personal notes too.
+        for note in public.iter().chain(personal.iter()) {
+            assert!(note.get(VISIBILITY_KEY).is_none());
+        }
+    }
+
+    #[test]
+    fn partition_notes_rejects_unknown_visibility() {
+        // A typo must never silently publish a note meant to be personal.
+        for bad in [
+            serde_json::json!({"regelrecht:visibility": "privat"}),
+            serde_json::json!({"regelrecht:visibility": 1}),
+            serde_json::json!({"regelrecht:visibility": null}),
+        ] {
+            let err = partition_notes_by_visibility(vec![bad]).unwrap_err();
+            assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        }
+    }
+
+    #[test]
     fn save_response_from_traject_passes_through_pr_when_set() {
         use regelrecht_corpus::backend::PrInfo;
         let out = PersistOutcome {
@@ -2611,6 +2809,7 @@ mod tests {
         let _: fn(
             axum::extract::State<crate::state::AppState>,
             Session,
+            Extension<AccountRecord>,
             axum::extract::Path<(String, String)>,
             String,
         ) -> _ = save_annotations;

@@ -26,6 +26,7 @@ mod middleware;
 mod state;
 mod traject_corpus;
 mod trajects;
+mod user_notes;
 mod user_settings;
 
 use state::{AppState, CorpusState};
@@ -187,6 +188,9 @@ async fn main() {
     const MAX_SCENARIO_BODY: usize = 1024 * 1024;
     const MAX_LAW_BODY: usize = 5 * 1024 * 1024;
     const MAX_DOCUMENT_BODY: usize = 1024 * 1024;
+    // Twice the 64 KiB note-value cap (user_notes::MAX_BODY_VALUE_BYTES):
+    // room for JSON escaping/overhead while still rejecting blobs early.
+    const MAX_NOTE_BODY: usize = 128 * 1024;
 
     // Reader routes — `editor-reader` covers user-scoped reads (favorites,
     // settings) and harvest search (search is behind auth because it triggers
@@ -226,6 +230,45 @@ async fn main() {
             "/api/harvest/batch",
             axum::routing::post(harvest_proxy::proxy_harvest),
         )
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_role::<AppState>("editor-writer"),
+        ));
+
+    // Persoonlijke notities — private per-user notes on a law (Postgres,
+    // never git). Handlers extract `Extension<AccountRecord>`, so
+    // `account_middleware` must run per request, same as traject routes.
+    // Reads at reader tier, mutations at writer tier, mirroring how
+    // favorites/settings split across `reader_routes`/`writer_routes`
+    // (which stay Session-based and therefore don't carry the account
+    // middleware).
+    let user_notes_reader_routes = Router::new()
+        .route("/api/user/notes/{law_id}", get(user_notes::list))
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            accounts::account_middleware,
+        ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_role::<AppState>("editor-reader"),
+        ));
+
+    let user_notes_writer_routes = Router::new()
+        .route(
+            "/api/user/notes/{law_id}",
+            axum::routing::post(user_notes::create)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_NOTE_BODY)),
+        )
+        .route(
+            "/api/user/notes/{law_id}/{note_id}",
+            axum::routing::put(user_notes::update)
+                .delete(user_notes::remove)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_NOTE_BODY)),
+        )
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            accounts::account_middleware,
+        ))
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
             middleware::require_role::<AppState>("editor-writer"),
@@ -469,6 +512,8 @@ async fn main() {
             .merge(harvest_admin_routes)
             .merge(traject_reader_routes)
             .merge(traject_writer_routes)
+            .merge(user_notes_reader_routes)
+            .merge(user_notes_writer_routes)
             .with_state(app_state)
             // Inside the session layer (session loaded) and outside the route
             // role gates (fresh roles / a dropped auth marker are seen by the
@@ -503,6 +548,8 @@ async fn main() {
             .merge(harvest_admin_routes)
             .merge(traject_reader_routes)
             .merge(traject_writer_routes)
+            .merge(user_notes_reader_routes)
+            .merge(user_notes_writer_routes)
             .with_state(app_state)
             .layer(session_layer)
             .layer(axum_middleware::from_fn(middleware::security_headers))

@@ -27,7 +27,8 @@ tower-sessions.workspace = true
 tower-sessions-sqlx-store.workspace = true
 tower-sessions-memory-store.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid"] }
+sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json"] }
+chrono.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 serde.workspace = true
 serde_json.workspace = true
