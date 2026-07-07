@@ -17,10 +17,14 @@ static REFERENCE_LINK_PATTERN: LazyLock<Regex> =
 static MISSING_SPACE_AFTER_COMMA: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"([a-zA-Z]),([a-zA-Z])").expect("valid regex"));
 
-/// Regex pattern for reference definition lines ([refN]: url) at line start.
+/// Regex pattern for markdown reference definition lines (`[label]: url`) at
+/// line start. Matches any label, not just the `refN` labels the harvester
+/// generates today — the fold invariant is "no line-oriented reference
+/// definitions at all", and an unrecognized label folding into prose would
+/// break the markdown link.
 #[allow(clippy::expect_used)] // Static regex that is guaranteed to be valid
 static REFERENCE_DEFINITION_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)^\[ref\d+\]: ").expect("valid regex"));
+    LazyLock::new(|| Regex::new(r"(?m)^\[[^\]]+\]: ").expect("valid regex"));
 
 /// Check if text contains reference-style links that would be broken by wrapping.
 fn contains_reference_link(text: &str) -> bool {
@@ -52,7 +56,7 @@ pub fn classify_text_style(normalized: &str, emitted: &str) -> TextStyle {
         return TextStyle::Literal;
     }
 
-    // Markdown reference definitions ([refN]: url) are line-oriented: folding
+    // Markdown reference definitions ([label]: url) are line-oriented: folding
     // would join consecutive definitions onto one line and break the markdown.
     if REFERENCE_DEFINITION_PATTERN.is_match(normalized) {
         return TextStyle::Literal;
@@ -375,6 +379,14 @@ mod tests {
     fn test_classify_reference_definitions_are_literal() {
         // [refN]: lines are line-oriented markdown; folding would join them.
         let text = "Zie [artikel 4][ref1] voor de premie die hier verder wordt toegelicht in een lange zin.\n\n[ref1]: https://example.com/a\n[ref2]: https://example.com/b";
+        assert_eq!(classify(text, 60), TextStyle::Literal);
+    }
+
+    #[test]
+    fn test_classify_non_ref_label_definitions_are_literal() {
+        // The invariant covers ANY markdown reference definition label, not
+        // just the `refN` labels the harvester generates today.
+        let text = "Zie [artikel 4][wet] voor de premie die hier verder wordt toegelicht in een lange zin.\n\n[wet]: https://example.com/a";
         assert_eq!(classify(text, 60), TextStyle::Literal);
     }
 

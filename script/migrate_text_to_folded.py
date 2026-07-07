@@ -14,7 +14,7 @@ the original wrap points as fold positions — so the diff is exactly
 
 A field is left untouched (literal) when folding would not be provably safe:
 
-- it contains markdown reference definitions (``[refN]: url`` lines are
+- it contains markdown reference definitions (``[label]: url`` lines are
   line-oriented; folding would join them),
 - any line starts with whitespace (more-indented lines change folded-scalar
   semantics),
@@ -54,7 +54,8 @@ except ImportError:
 # Must match TEXT_WRAP_WIDTH in packages/harvester/src/config.rs.
 WRAP_WIDTH = 115
 
-REF_DEFINITION_RE = re.compile(r"^\[ref\d+\]: ")
+# Any markdown reference definition label, not just the harvester's `refN`.
+REF_DEFINITION_RE = re.compile(r"^\[[^\]]+\]: ")
 
 
 def make_yaml():
