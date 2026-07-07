@@ -54,6 +54,9 @@ const MAX_NOTES_PER_LAW: i64 = 200;
 /// minimal client payload is just `{"value": "..."}`. `selector`
 /// optionally anchors the note to law text (W3C TextQuoteSelector shape,
 /// stored verbatim and echoed back under `target.selector`).
+///
+/// `selector` is a double `Option` to keep absent and explicit `null`
+/// apart on PUT: absent = keep the stored anchoring, `null` = detach it.
 #[derive(Debug, Deserialize)]
 pub struct NoteRequest {
     pub value: String,
@@ -61,8 +64,18 @@ pub struct NoteRequest {
     pub format: Option<String>,
     #[serde(default)]
     pub motivation: Option<String>,
-    #[serde(default)]
-    pub selector: Option<serde_json::Value>,
+    #[serde(default, deserialize_with = "some_if_present")]
+    pub selector: Option<Option<serde_json::Value>>,
+}
+
+/// Deserialize a field so that an absent key stays `None` (via the serde
+/// `default`) while a present key — including an explicit JSON `null` —
+/// becomes `Some(...)`.
+fn some_if_present<'de, D>(de: D) -> Result<Option<Option<serde_json::Value>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<serde_json::Value>::deserialize(de).map(Some)
 }
 
 /// A personal note in W3C Web Annotation shape (RFC-005), so clients can
@@ -159,7 +172,9 @@ fn validate_law_id(law_id: &str) -> Result<(), StatusCode> {
 /// stay `None` when absent: `create` fills in the markdown/commenting
 /// defaults (selector stays law-level), `update` keeps the stored values
 /// (absent = keep, so a client that only sends `{"value": ...}` cannot
-/// silently reset metadata or drop the anchoring).
+/// silently reset metadata or drop the anchoring). An explicit
+/// `"selector": null` is `Some(None)`: valid, and clears the anchoring
+/// on update.
 #[allow(clippy::type_complexity)]
 fn validate_request(
     req: NoteRequest,
@@ -168,7 +183,7 @@ fn validate_request(
         String,
         Option<String>,
         Option<String>,
-        Option<serde_json::Value>,
+        Option<Option<serde_json::Value>>,
     ),
     StatusCode,
 > {
@@ -185,7 +200,7 @@ fn validate_request(
             return Err(StatusCode::BAD_REQUEST);
         }
     }
-    if let Some(selector) = &req.selector {
+    if let Some(Some(selector)) = &req.selector {
         // Stored verbatim (it is the client's anchoring, resolved
         // client-side like sidecar notes), but it must at least be a
         // JSON object with a `type` — the invariant every W3C selector
@@ -217,7 +232,7 @@ pub async fn list(
     let rows: Vec<NoteRow> = sqlx::query_as(&format!(
         "SELECT {RETURNING} \
          FROM user_notes WHERE account_id = $1 AND law_id = $2 \
-         ORDER BY created_at LIMIT $3",
+         ORDER BY created_at ASC LIMIT $3",
     ))
     .bind(account.id)
     .bind(&law_id)
@@ -248,6 +263,8 @@ pub async fn create(
     let (value, format, motivation, selector) = validate_request(req)?;
     let format = format.unwrap_or_else(|| "text/markdown".to_string());
     let motivation = motivation.unwrap_or_else(|| "commenting".to_string());
+    // On create, absent and explicit-null selector both mean "no anchoring".
+    let selector = selector.flatten();
     let pool = get_pool(&state)?;
 
     // The cap check races under READ COMMITTED (two concurrent creates
@@ -302,10 +319,9 @@ pub async fn create(
 
 /// PUT /api/user/notes/{law_id}/{note_id} — update a note's body;
 /// `format`/`motivation`/`selector` are only changed when present in the
-/// request (absent = keep; to detach a note from its anchoring, delete
-/// and recreate it). 404 for a note that does not exist or belongs to
-/// another account, so foreign note ids are indistinguishable from
-/// absent ones.
+/// request (absent = keep; an explicit `"selector": null` detaches the
+/// anchoring). 404 for a note that does not exist or belongs to another
+/// account, so foreign note ids are indistinguishable from absent ones.
 pub async fn update(
     State(state): State<AppState>,
     Extension(account): Extension<AccountRecord>,
@@ -316,9 +332,15 @@ pub async fn update(
     let (value, format, motivation, selector) = validate_request(req)?;
     let pool = get_pool(&state)?;
 
+    // `selector` cannot use COALESCE (NULL is a meaningful new value:
+    // detach), so a separate presence flag drives the CASE.
+    let selector_present = selector.is_some();
+    let selector_value = selector.flatten();
+
     let row: Option<NoteRow> = sqlx::query_as(&format!(
         "UPDATE user_notes SET motivation = COALESCE($4, motivation), body_value = $5, \
-         body_format = COALESCE($6, body_format), selector = COALESCE($7, selector) \
+         body_format = COALESCE($6, body_format), \
+         selector = CASE WHEN $8 THEN $7 ELSE selector END \
          WHERE id = $1 AND account_id = $2 AND law_id = $3 \
          RETURNING {RETURNING}",
     ))
@@ -328,7 +350,8 @@ pub async fn update(
     .bind(&motivation)
     .bind(&value)
     .bind(&format)
-    .bind(&selector)
+    .bind(&selector_value)
+    .bind(selector_present)
     .fetch_optional(pool)
     .await
     .map_err(|e| {

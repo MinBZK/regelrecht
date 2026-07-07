@@ -108,6 +108,25 @@ async fn list_notes(state: &AppState, account: &AccountRecord, law_id: &str) -> 
 // Tests
 // ---------------------------------------------------------------------------
 
+#[test]
+fn note_request_distinguishes_absent_and_null_selector() {
+    // Absent key -> None (keep on update); explicit null -> Some(None)
+    // (detach on update). This is the wire contract the double Option
+    // in NoteRequest exists for.
+    let absent: NoteRequest = serde_json::from_str(r#"{"value":"x"}"#).unwrap();
+    assert_eq!(absent.selector, None);
+
+    let null: NoteRequest = serde_json::from_str(r#"{"value":"x","selector":null}"#).unwrap();
+    assert_eq!(null.selector, Some(None));
+
+    let set: NoteRequest =
+        serde_json::from_str(r#"{"value":"x","selector":{"type":"TextQuoteSelector"}}"#).unwrap();
+    assert_eq!(
+        set.selector,
+        Some(Some(serde_json::json!({"type": "TextQuoteSelector"})))
+    );
+}
+
 #[tokio::test]
 async fn create_returns_w3c_annotation_shape_with_markdown_default() {
     let db = TestDb::new().await;
@@ -244,7 +263,7 @@ async fn selector_roundtrips_and_is_kept_on_value_only_update() {
             value: "verankerde notitie".to_string(),
             format: None,
             motivation: None,
-            selector: Some(selector.clone()),
+            selector: Some(Some(selector.clone())),
         }),
     )
     .await
@@ -265,7 +284,24 @@ async fn selector_roundtrips_and_is_kept_on_value_only_update() {
 
     // And the selector survives a list read.
     let notes = list_notes(&state, &alice, "test_wet").await;
-    assert_eq!(notes[0].target.selector, Some(selector));
+    assert_eq!(notes[0].target.selector, Some(selector.clone()));
+
+    // An explicit `"selector": null` detaches the anchoring. Serde maps a
+    // present-but-null field to `Some(None)` via the double Option.
+    let Json(detached) = user_notes::update(
+        State(state.clone()),
+        Extension(alice.clone()),
+        Path(("test_wet".to_string(), note.id)),
+        Json(NoteRequest {
+            value: "los van de tekst".to_string(),
+            format: None,
+            motivation: None,
+            selector: Some(None),
+        }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(detached.target.selector, None);
 
     // Invalid selectors are rejected: not an object / missing type.
     for bad in [
@@ -280,7 +316,7 @@ async fn selector_roundtrips_and_is_kept_on_value_only_update() {
                 value: "x".to_string(),
                 format: None,
                 motivation: None,
-                selector: Some(bad),
+                selector: Some(Some(bad)),
             }),
         )
         .await
@@ -297,10 +333,10 @@ async fn selector_roundtrips_and_is_kept_on_value_only_update() {
             value: "x".to_string(),
             format: None,
             motivation: None,
-            selector: Some(serde_json::json!({
+            selector: Some(Some(serde_json::json!({
                 "type": "TextQuoteSelector",
                 "exact": "a".repeat(8 * 1024 + 1)
-            })),
+            }))),
         }),
     )
     .await
@@ -429,7 +465,8 @@ async fn rejects_invalid_input() {
     .unwrap_err();
     assert_eq!(err, StatusCode::BAD_REQUEST);
 
-    // Empty, oversized, and non-slug law ids (spaces, uppercase, slashes).
+    // Empty, oversized, and non-slug law ids (spaces, uppercase, slashes)
+    // are rejected by every handler that takes one.
     for law_id in [
         String::new(),
         "x".repeat(257),
@@ -437,9 +474,32 @@ async fn rejects_invalid_input() {
         "Wet_Hoofdletter".to_string(),
         "wet/../elders".to_string(),
     ] {
-        let err = user_notes::list(State(state.clone()), Extension(alice.clone()), Path(law_id))
-            .await
-            .unwrap_err();
+        let err = user_notes::list(
+            State(state.clone()),
+            Extension(alice.clone()),
+            Path(law_id.clone()),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err, StatusCode::BAD_REQUEST);
+
+        let err = user_notes::create(
+            State(state.clone()),
+            Extension(alice.clone()),
+            Path(law_id.clone()),
+            Json(note_req("x")),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err, StatusCode::BAD_REQUEST);
+
+        let err = user_notes::remove(
+            State(state.clone()),
+            Extension(alice.clone()),
+            Path((law_id, Uuid::new_v4())),
+        )
+        .await
+        .unwrap_err();
         assert_eq!(err, StatusCode::BAD_REQUEST);
     }
 }
