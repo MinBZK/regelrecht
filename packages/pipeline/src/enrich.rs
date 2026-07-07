@@ -46,6 +46,51 @@ fn pick_enrich_base(preferred: &str, preferred_exists: bool) -> &str {
     }
 }
 
+/// Outcome of comparing a target law's base version against the enrichment's
+/// recorded provenance. Pure decision so it can be unit-tested without git.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BaseAction {
+    /// Law not yet on the enrich branch — check it out fresh from the base.
+    CheckoutFresh,
+    /// Law present and its recorded base matches the current base — unchanged,
+    /// keep the existing enrichment (no fresh checkout).
+    Skip,
+    /// Law present but with no usable recorded provenance — a "legacy"
+    /// enrichment written before the freshness guard existed. Adopt the current
+    /// base blob SHA as its baseline (recorded on the next metadata write) and
+    /// proceed without a fresh checkout, rather than failing. This grandfathers
+    /// every pre-guard enrichment so introducing the guard does not turn them
+    /// all into an immediate `Drift` on first re-enrichment.
+    AdoptBaseline,
+    /// Law present and its *recorded* base moved — fail loudly rather than
+    /// silently re-enriching on top of a base that differs from the one the
+    /// enrichment was generated against.
+    Drift,
+}
+
+/// Decide what to do for a target law given whether it is already tracked on
+/// the enrich branch, the `source_hash` recorded in its `.enrichment.yaml`
+/// (if any), and the current base-branch blob SHA of the law.
+pub(crate) fn decide_base_action(
+    tracked: bool,
+    stored_source_hash: Option<&str>,
+    base_sha: &str,
+) -> BaseAction {
+    if !tracked {
+        return BaseAction::CheckoutFresh;
+    }
+    match stored_source_hash {
+        // No usable provenance recorded (absent or empty) — a pre-guard
+        // enrichment. Grandfather it by adopting the current base as its
+        // baseline instead of treating the unknown as drift.
+        None | Some("") => BaseAction::AdoptBaseline,
+        // Recorded base matches the current base — unchanged.
+        Some(h) if h == base_sha => BaseAction::Skip,
+        // Recorded base differs from the current base — genuine drift.
+        Some(_) => BaseAction::Drift,
+    }
+}
+
 /// Trait abstracting the LLM invocation so `execute_enrich` can be tested
 /// with a fake provider that doesn't spawn real processes.
 #[async_trait::async_trait]
@@ -516,6 +561,10 @@ pub struct EnrichmentMetadata {
     pub articles_total: usize,
     /// Total articles with a `machine_readable` section after enrichment.
     pub articles_with_machine_readable: usize,
+    /// Git blob SHA of the base-branch law YAML this enrichment was generated
+    /// from. Empty when unknown (files written before this field existed).
+    #[serde(default)]
+    pub source_hash: String,
 }
 
 /// Supported LLM providers for enrichment.
@@ -888,6 +937,33 @@ fn build_command(
     cmd
 }
 
+/// Result of preparing the per-job enrichment checkout: the client plus the
+/// base-branch blob SHA of the target law (recorded into `.enrichment.yaml`
+/// as `source_hash`).
+pub struct EnrichCorpus {
+    pub client: CorpusClient,
+    pub source_hash: String,
+}
+
+/// Read the `source_hash` recorded in the target law's `.enrichment.yaml`, if
+/// present and non-empty. Returns `None` when the file is absent/unparseable
+/// or the field is empty (both treated as "unknown provenance").
+async fn read_stored_source_hash(repo_path: &Path, normalized_law_path: &str) -> Option<String> {
+    #[derive(serde::Deserialize)]
+    struct Provenance {
+        #[serde(default)]
+        source_hash: String,
+    }
+    let meta_rel = Path::new(normalized_law_path)
+        .parent()?
+        .join(".enrichment.yaml");
+    let content = tokio::fs::read_to_string(repo_path.join(meta_rel))
+        .await
+        .ok()?;
+    let prov: Provenance = serde_yaml_ng::from_str(&content).ok()?;
+    (!prov.source_hash.is_empty()).then_some(prov.source_hash)
+}
+
 /// Create a `CorpusClient` for the enrichment branch.
 ///
 /// Clones the base corpus config but sets the branch to the enrichment branch.
@@ -905,7 +981,7 @@ pub async fn create_enrich_corpus(
     branch: &str,
     job_id: Uuid,
     yaml_path: &str,
-) -> Result<CorpusClient> {
+) -> Result<EnrichCorpus> {
     let mut config = base_config.clone();
     config.branch = branch.into();
 
@@ -938,6 +1014,46 @@ pub async fn create_enrich_corpus(
     let mut client = CorpusClient::new(config);
     client.ensure_repo().await?;
 
+    // Past `ensure_repo()` a per-job git clone exists on disk. Resolving the
+    // base branch, checking freshness, or checking out the law can all fail —
+    // including a deliberate `BaseDrift` bail-out. The worker's shared cleanup
+    // only captures the checkout path on the success path, so on any error we
+    // must remove the clone here; otherwise an errored (and especially a
+    // drifted, awaiting-human) job leaks its clone on a disk/OOM-sensitive
+    // worker.
+    let checkout_dir = client.repo_path().to_path_buf();
+    let source_hash = match resolve_enrich_base(&client, base_config, &normalized).await {
+        Ok(source_hash) => source_hash,
+        Err(e) => {
+            if let Err(rm) = tokio::fs::remove_dir_all(&checkout_dir).await {
+                tracing::warn!(
+                    path = %checkout_dir.display(),
+                    error = %rm,
+                    "failed to clean up per-job corpus checkout after enrich setup error"
+                );
+            }
+            return Err(e);
+        }
+    };
+
+    Ok(EnrichCorpus {
+        client,
+        source_hash,
+    })
+}
+
+/// Resolve the enrichment base branch and materialize the target law from it,
+/// returning the base blob SHA to record as provenance (`source_hash`).
+///
+/// Split out from [`create_enrich_corpus`] so that every error it can raise — a
+/// git probe failure, a checkout failure, or a [`PipelineError::BaseDrift`]
+/// bail-out — flows through a single caller-side cleanup that removes the
+/// per-job clone. Only `&self` methods are used; the clone already exists.
+async fn resolve_enrich_base(
+    client: &CorpusClient,
+    base_config: &CorpusConfig,
+    normalized: &str,
+) -> Result<String> {
     // Prefer the worker's own base branch (e.g. `pr574`) so PR deployments
     // enrich their own harvested YAML, not production's. Probe the remote
     // first and fall back to `development` only when the branch doesn't
@@ -946,9 +1062,10 @@ pub async fn create_enrich_corpus(
     // prevents an unrelated `checkout` or `reset` failure from silently
     // dropping the enrichment back to production's branch.
     //
-    // Pass the exact file path (not the directory) so the `ls-files` guard
-    // inside `checkout_from_branch` doesn't match sibling files and skip
-    // fetching a newly harvested version of an already-known law.
+    // The freshness guard below works on the exact file path (not the
+    // directory): `is_tracked` and `fetch_base_blob_sha` resolve a single blob,
+    // so a newly harvested version of an already-known law is judged on its own
+    // path rather than being masked by a sibling version in the same directory.
     let preferred_base = base_config.branch.as_str();
     let preferred_exists = if preferred_base == "development" || branch_is_known(preferred_base) {
         true
@@ -967,11 +1084,46 @@ pub async fn create_enrich_corpus(
         );
     }
 
-    client
-        .checkout_from_branch(base_branch, &[&normalized])
-        .await?;
+    // Freshness guard: compare the target law's base version against the
+    // provenance recorded in a prior enrichment. New law -> check out fresh;
+    // unchanged base -> keep existing enrichment; missing provenance (a legacy,
+    // pre-guard enrichment) -> adopt the current base as baseline and proceed;
+    // changed base -> fail loudly (do NOT auto-overwrite on a moved base).
+    let base_sha = client.fetch_base_blob_sha(base_branch, normalized).await?;
+    let tracked = client.is_tracked(normalized).await?;
+    let stored = read_stored_source_hash(client.repo_path(), normalized).await;
 
-    Ok(client)
+    match decide_base_action(tracked, stored.as_deref(), &base_sha) {
+        BaseAction::CheckoutFresh => {
+            client.checkout_path_from_fetch_head(normalized).await?;
+            tracing::info!(base = %base_branch, path = %normalized, "checked out law fresh from base");
+        }
+        BaseAction::Skip => {
+            tracing::debug!(path = %normalized, "base unchanged, no fresh checkout needed");
+        }
+        BaseAction::AdoptBaseline => {
+            // Legacy enrichment with no recorded provenance. Keep the existing
+            // enrichment (no fresh checkout, like Skip); the current base blob
+            // SHA returned below is stamped as `source_hash` on the next
+            // `.enrichment.yaml` write, establishing the baseline so subsequent
+            // runs can detect real drift.
+            tracing::info!(
+                path = %normalized,
+                base = %base_branch,
+                "no recorded provenance for tracked law; adopting current base as baseline (legacy enrichment grandfathered)"
+            );
+        }
+        BaseAction::Drift => {
+            return Err(PipelineError::BaseDrift {
+                yaml_path: normalized.to_string(),
+                base: base_branch.to_string(),
+                expected: stored.unwrap_or_else(|| "(none recorded)".to_string()),
+                actual: base_sha,
+            });
+        }
+    }
+
+    Ok(base_sha)
 }
 
 /// Ensure `.claude/skills/` exist in the target repo directory.
@@ -1084,8 +1236,9 @@ pub async fn execute_enrich(
     payload: &EnrichPayload,
     repo_path: &Path,
     config: &EnrichConfig,
+    source_hash: &str,
 ) -> Result<(EnrichResult, Vec<PathBuf>)> {
-    execute_enrich_with_runner(payload, repo_path, config, &ProcessLlmRunner).await
+    execute_enrich_with_runner(payload, repo_path, config, source_hash, &ProcessLlmRunner).await
 }
 
 /// Execute the enrichment: call the LLM runner to generate machine_readable sections.
@@ -1096,6 +1249,7 @@ pub async fn execute_enrich_with_runner(
     payload: &EnrichPayload,
     repo_path: &Path,
     config: &EnrichConfig,
+    source_hash: &str,
     runner: &dyn LlmRunner,
 ) -> Result<(EnrichResult, Vec<PathBuf>)> {
     let normalized_path = normalize_yaml_path(&payload.yaml_path)?;
@@ -1171,6 +1325,7 @@ pub async fn execute_enrich_with_runner(
         coverage_score,
         articles_total: articles_before,
         articles_with_machine_readable,
+        source_hash: source_hash.to_string(),
     };
 
     let metadata_path = yaml_abs
@@ -1349,6 +1504,51 @@ mod tests {
         // remote-exists bool is moot and we always use `development`.
         assert_eq!(pick_enrich_base("development", true), "development");
         assert_eq!(pick_enrich_base("development", false), "development");
+    }
+
+    #[test]
+    fn decide_base_action_new_law_checks_out_fresh() {
+        assert_eq!(
+            decide_base_action(false, None, "sha_new"),
+            BaseAction::CheckoutFresh
+        );
+        // Even if a stored hash somehow exists, an untracked path is a fresh checkout.
+        assert_eq!(
+            decide_base_action(false, Some("sha_old"), "sha_new"),
+            BaseAction::CheckoutFresh
+        );
+    }
+
+    #[test]
+    fn decide_base_action_unchanged_base_skips() {
+        assert_eq!(
+            decide_base_action(true, Some("sha"), "sha"),
+            BaseAction::Skip
+        );
+    }
+
+    #[test]
+    fn decide_base_action_changed_base_is_drift() {
+        assert_eq!(
+            decide_base_action(true, Some("sha_old"), "sha_new"),
+            BaseAction::Drift
+        );
+    }
+
+    #[test]
+    fn decide_base_action_missing_or_empty_provenance_adopts_baseline() {
+        // A tracked law with no recorded provenance is a pre-guard "legacy"
+        // enrichment: grandfather it by adopting the current base as baseline,
+        // never a terminal drift (that would fail every existing enrichment the
+        // moment the guard ships).
+        assert_eq!(
+            decide_base_action(true, None, "sha_new"),
+            BaseAction::AdoptBaseline
+        );
+        assert_eq!(
+            decide_base_action(true, Some(""), "sha_new"),
+            BaseAction::AdoptBaseline
+        );
     }
 
     #[test]
@@ -1633,6 +1833,7 @@ related_legislation:
             coverage_score: 0.7,
             articles_total: 10,
             articles_with_machine_readable: 7,
+            source_hash: String::new(),
         };
 
         let yaml = serde_yaml_ng::to_string(&meta).unwrap();
@@ -1641,6 +1842,33 @@ related_legislation:
 
         let deserialized: EnrichmentMetadata = serde_yaml_ng::from_str(&yaml).unwrap();
         assert_eq!(deserialized.articles_with_machine_readable, 7);
+    }
+
+    #[test]
+    fn enrichment_metadata_source_hash_defaults_when_absent() {
+        // A .enrichment.yaml written before this field existed.
+        let legacy = "law_id: BWBR0001\ntimestamp: '2026-01-01T00:00:00Z'\nprovider: claude\nmodel: m\nprompt_hash: p\ncode_commit: c\ncoverage_score: 1.0\narticles_total: 1\narticles_with_machine_readable: 1\n";
+        let meta: EnrichmentMetadata = serde_yaml_ng::from_str(legacy).unwrap();
+        assert_eq!(meta.source_hash, "");
+    }
+
+    #[test]
+    fn enrichment_metadata_source_hash_roundtrips() {
+        let meta = EnrichmentMetadata {
+            law_id: "BWBR0001".into(),
+            timestamp: "2026-01-01T00:00:00Z".into(),
+            provider: "claude".into(),
+            model: "m".into(),
+            prompt_hash: "p".into(),
+            code_commit: "c".into(),
+            coverage_score: 1.0,
+            articles_total: 1,
+            articles_with_machine_readable: 1,
+            source_hash: "abc123".into(),
+        };
+        let yaml = serde_yaml_ng::to_string(&meta).unwrap();
+        let back: EnrichmentMetadata = serde_yaml_ng::from_str(&yaml).unwrap();
+        assert_eq!(back.source_hash, "abc123");
     }
 
     #[test]
@@ -1911,7 +2139,7 @@ articles:
         });
 
         let (result, written_files) =
-            execute_enrich_with_runner(&payload, dir.path(), &config, &FakeLlmRunner)
+            execute_enrich_with_runner(&payload, dir.path(), &config, "", &FakeLlmRunner)
                 .await
                 .unwrap();
 
@@ -1975,7 +2203,7 @@ articles:
             model: None,
         });
 
-        let err = execute_enrich_with_runner(&payload, dir.path(), &config, &FailingLlmRunner)
+        let err = execute_enrich_with_runner(&payload, dir.path(), &config, "", &FailingLlmRunner)
             .await
             .unwrap_err();
 
@@ -2023,7 +2251,7 @@ articles:
             model: None,
         });
 
-        let err = execute_enrich_with_runner(&payload, dir.path(), &config, &NoopLlmRunner)
+        let err = execute_enrich_with_runner(&payload, dir.path(), &config, "", &NoopLlmRunner)
             .await
             .unwrap_err();
 

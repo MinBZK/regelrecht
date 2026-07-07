@@ -306,10 +306,15 @@ where
 /// Mark a job as permanently failed regardless of remaining attempts.
 ///
 /// Unlike [`fail_job`], this never reschedules for retry: it sets `failed`
-/// immediately even when `attempts < max_attempts`. Used for deterministic
-/// failures (e.g. the enrichment LLM produced no machine_readable sections, or
-/// its output failed to parse) where retrying the same input reproduces the
-/// same failure and only burns budget and blocks the serial queue.
+/// immediately even when `attempts < max_attempts`. Use this for deterministic
+/// failures that cannot succeed on retry against the same inputs, where
+/// retrying only burns budget and blocks the serial queue. Examples:
+/// - the enrichment LLM produced no machine_readable sections, or its output
+///   failed to parse; or
+/// - enrichment base drift, where the base is stale relative to the recorded
+///   provenance and every retry would re-fail against the same base (and, on
+///   each non-final attempt, flip-flop the law status Enriching -> Harvested
+///   before finally landing on Failed).
 #[tracing::instrument(skip(executor, error_result))]
 pub async fn fail_job_terminal<'e, E>(
     executor: E,

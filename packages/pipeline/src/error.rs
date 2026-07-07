@@ -35,6 +35,14 @@ pub enum PipelineError {
     #[error("enrichment error: {0}")]
     Enrich(String),
 
+    #[error("base drift for {yaml_path}: base branch {base} changed (was {expected}, now {actual}); human review / re-enrich required")]
+    BaseDrift {
+        yaml_path: String,
+        base: String,
+        expected: String,
+        actual: String,
+    },
+
     #[error("worker error: {0}")]
     Worker(String),
 

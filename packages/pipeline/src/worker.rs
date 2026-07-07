@@ -1208,9 +1208,49 @@ async fn process_next_enrich_job(
     let branch = enrich_branch_name(effective_config.provider.name());
     let enrich_corpus = if let Some(base_config) = corpus_config {
         match create_enrich_corpus(base_config, &branch, job.id, &payload.yaml_path).await {
-            Ok(client) => {
+            Ok(enrich_corpus) => {
                 tracing::info!(branch = %branch, "created enrichment branch corpus");
-                Some(client)
+                Some(enrich_corpus)
+            }
+            Err(e @ PipelineError::BaseDrift { .. }) => {
+                // A previously-enriched law's base moved. Do NOT enrich on a
+                // stale base and do NOT overwrite the existing enrichment —
+                // fail the job loudly for human review / re-enrich.
+                tracing::error!(error = %e, law_id = %job.law_id, branch = %branch, "base drift detected; failing enrich job");
+                let error_json =
+                    serde_json::json!({ "error": e.to_string(), "kind": "base_drift" });
+                // Terminal-fail (not fail_job): base drift is deterministic
+                // against the same base, so it must NOT re-enter the job-level
+                // retry loop. fail_job_terminal marks the job Failed in one shot
+                // instead of bouncing it back to 'pending' up to max_attempts —
+                // which would deterministically re-fail against the same base
+                // and flip-flop the law status Enriching -> Harvested on each
+                // non-final attempt before finally landing on Failed.
+                match job_queue::fail_job_terminal(pool, job.id, Some(error_json)).await {
+                    Ok(_failed_job) => {
+                        if let Err(se) = sqlx::query(
+                            "UPDATE law_entries SET status = 'enrich_failed'::law_status, updated_at = now() \
+                             WHERE law_id = $1 AND status NOT IN ('enriched', 'enrich_exhausted')",
+                        )
+                        .bind(&job.law_id)
+                        .execute(pool)
+                        .await
+                        {
+                            tracing::warn!(error = %se, law_id = %job.law_id, "failed to update law status to enrich_failed");
+                        }
+                        // Deliberately NOT calling handle_enrich_exhausted_or_retry here,
+                        // and the job was terminal-failed above: unlike the other enrich
+                        // failures (timeout, commit failure, enrich error), base drift is
+                        // part of neither the job-level retry loop nor the law-level
+                        // exhaust loop. The base is unchanged-but-stale relative to the
+                        // recorded provenance, so any retry would just re-fail against the
+                        // same base. Drift requires a human to review and re-enrich.
+                    }
+                    Err(fe) => {
+                        tracing::error!(error = %fe, "failed to mark base-drift enrich job as failed")
+                    }
+                }
+                return Ok(JobOutcome::Processed);
             }
             Err(e) => {
                 tracing::warn!(error = %e, branch = %branch, "failed to create enrichment branch corpus, proceeding without");
@@ -1224,7 +1264,7 @@ async fn process_next_enrich_job(
     // Use the enrichment branch repo if available, otherwise the base repo
     let effective_repo = enrich_corpus
         .as_ref()
-        .map(|c| c.repo_path().to_path_buf())
+        .map(|c| c.client.repo_path().to_path_buf())
         .unwrap_or_else(|| repo_path.to_path_buf());
 
     // Ensure skill files are available in the repo checkout so the LLM can
@@ -1235,7 +1275,9 @@ async fn process_next_enrich_job(
     }
 
     // Capture the per-job checkout path for cleanup after the job completes.
-    let checkout_path = enrich_corpus.as_ref().map(|c| c.repo_path().to_path_buf());
+    let checkout_path = enrich_corpus
+        .as_ref()
+        .map(|c| c.client.repo_path().to_path_buf());
 
     // Compute the progress file path and spawn a background polling task.
     // The LLM writes phase info to this file; we relay it to the DB every 10s.
@@ -1272,9 +1314,14 @@ async fn process_next_enrich_job(
         );
     }
 
+    let source_hash = enrich_corpus
+        .as_ref()
+        .map(|c| c.source_hash.clone())
+        .unwrap_or_default();
+
     let enrich_outcome = tokio::time::timeout(
         job_timeout,
-        execute_enrich(&payload, &effective_repo, &bounded_config),
+        execute_enrich(&payload, &effective_repo, &bounded_config, &source_hash),
     )
     .await;
 
@@ -1346,6 +1393,7 @@ async fn process_next_enrich_job(
                         result.provider, result.law_id, result.yaml_path
                     );
                     corpus
+                        .client
                         .commit_and_push(&written_files, &message)
                         .await
                         .map_err(|e| PipelineError::Enrich(format!("corpus push failed: {e}")))?;
