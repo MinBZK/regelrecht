@@ -97,6 +97,9 @@ pub fn classify_text_style(normalized: &str, emitted: &str) -> TextStyle {
     let unsafe_line = lines.iter().any(|l| {
         l.starts_with(' ') || l.starts_with('\t') || (!l.is_empty() && l.trim_end() != *l)
     });
+    // Redundant with the newline-run check on `normalized` above; kept to
+    // catch the hypothetical case where normalize_text/wrap_text_default
+    // would inject back-to-back blank lines that were not in the source.
     let double_blank = lines.windows(2).any(|w| w[0].is_empty() && w[1].is_empty());
     if first_last_blank || unsafe_line || double_blank {
         return TextStyle::Literal;

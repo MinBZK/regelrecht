@@ -39,6 +39,7 @@ import io
 import re
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 try:
     from ruamel.yaml import YAML
@@ -189,7 +190,7 @@ def verify(original_text: str, new_text: str, migrated: dict, path: Path):
         fail(path, "transform is not idempotent on its own output")
 
 
-def fail(path: Path, message: str, *details):
+def fail(path: Path, message: str, *details) -> NoReturn:
     print(f"ERROR: {path}: {message}", file=sys.stderr)
     for detail in details:
         print(detail, file=sys.stderr)

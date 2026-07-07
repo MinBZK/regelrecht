@@ -389,7 +389,8 @@ fn fix_yaml_quoting(yaml: &str) -> String {
 /// indicator (`text: |N-`, emitted when the first content line starts with
 /// whitespace) deliberately do NOT match: such blocks always classify as
 /// `Literal` anyway, so they are passed through verbatim without consuming a
-/// plan entry.
+/// plan entry. The clip form (`text: |`, emitted for text ending in a
+/// newline) is excluded for the same reason — a safe literal pass-through.
 #[allow(clippy::expect_used)]
 static TEXT_BLOCK_HEADER_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(\s*)text: \|-$").expect("valid regex"));
@@ -454,6 +455,10 @@ fn fold_text_blocks(yaml: &str, plan: &[(String, TextStyle)]) -> Result<String> 
         // text, and any genuinely deeper-indented source line keeps its extra
         // spaces. Blank lines → empty string; join with '\n' (chomping `-`: no
         // trailing newline).
+        // Stripping the minimum indent recovers the emitted text exactly
+        // because indent_yaml_sequences shifts all content lines of a block
+        // uniformly (frozen at the header). If that invariant ever breaks,
+        // reconstruction diverges and the alignment below fails loudly.
         let block_indent = block_lines
             .iter()
             .filter(|l| !l.trim().is_empty())
