@@ -503,3 +503,109 @@ async fn rejects_invalid_input() {
         assert_eq!(err, StatusCode::BAD_REQUEST);
     }
 }
+
+#[test]
+fn annotation_to_request_maps_w3c_shape() {
+    let annotation = serde_json::json!({
+        "type": "Annotation",
+        "motivation": "questioning",
+        "target": {
+            "source": "regelrecht://test_wet",
+            "selector": {"type": "TextQuoteSelector", "exact": "zorgtoeslag"}
+        },
+        "body": {
+            "type": "TextualBody",
+            "value": "**waarom** geldt dit?",
+            "format": "text/markdown",
+            "purpose": "questioning"
+        },
+        "creator": "genegeerd — server kent de auteur"
+    });
+
+    let req = user_notes::annotation_to_request("test_wet", &annotation).unwrap();
+    assert_eq!(req.value, "**waarom** geldt dit?");
+    assert_eq!(req.format.as_deref(), Some("text/markdown"));
+    assert_eq!(req.motivation.as_deref(), Some("questioning"));
+    assert_eq!(
+        req.selector,
+        Some(Some(serde_json::json!({
+            "type": "TextQuoteSelector",
+            "exact": "zorgtoeslag"
+        })))
+    );
+}
+
+#[test]
+fn annotation_to_request_rejects_unsupported_shapes() {
+    // Wrong law target.
+    let wrong_law = serde_json::json!({
+        "target": {"source": "regelrecht://andere_wet"},
+        "body": {"type": "TextualBody", "value": "x"}
+    });
+    assert!(user_notes::annotation_to_request("test_wet", &wrong_law).is_err());
+
+    // Linking body (SpecificResource) is public-only.
+    let linking = serde_json::json!({
+        "body": {"type": "SpecificResource", "source": "regelrecht://test_wet/x"}
+    });
+    assert!(user_notes::annotation_to_request("test_wet", &linking).is_err());
+
+    // Array bodies are public-only.
+    let multi = serde_json::json!({
+        "body": [{"type": "TextualBody", "value": "x"}]
+    });
+    assert!(user_notes::annotation_to_request("test_wet", &multi).is_err());
+}
+
+#[tokio::test]
+async fn insert_note_dedupes_identical_notes_for_unified_save() {
+    let db = TestDb::new().await;
+    let alice = seed_account(&db.pool, "alice@example.org", "Alice").await;
+
+    let first = user_notes::insert_note(&db.pool, alice.id, "test_wet", note_req("zelfde"), true)
+        .await
+        .unwrap();
+    assert!(first.is_some());
+
+    // A retried unified save re-submits the same note: skipped, no dup row.
+    let second = user_notes::insert_note(&db.pool, alice.id, "test_wet", note_req("zelfde"), true)
+        .await
+        .unwrap();
+    assert!(second.is_none());
+
+    // Without dedupe (item POST) the same content is a new note.
+    let third = user_notes::insert_note(&db.pool, alice.id, "test_wet", note_req("zelfde"), false)
+        .await
+        .unwrap();
+    assert!(third.is_some());
+
+    let state = empty_state(db.pool.clone());
+    assert_eq!(list_notes(&state, &alice, "test_wet").await.len(), 2);
+}
+
+#[tokio::test]
+async fn personal_annotation_values_carry_the_visibility_marker() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@example.org", "Alice").await;
+    create_note(&state, &alice, "test_wet", "prive context").await;
+
+    let values = user_notes::personal_annotation_values(&db.pool, alice.id, "test_wet")
+        .await
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    let note = &values[0];
+    assert_eq!(
+        note.get("regelrecht:visibility").and_then(|v| v.as_str()),
+        Some("personal")
+    );
+    assert_eq!(
+        note.get("type").and_then(|v| v.as_str()),
+        Some("Annotation")
+    );
+    assert!(note.get("id").is_some());
+    assert_eq!(
+        note.pointer("/body/value").and_then(|v| v.as_str()),
+        Some("prive context")
+    );
+}

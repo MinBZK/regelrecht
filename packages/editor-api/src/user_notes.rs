@@ -1,14 +1,18 @@
 //! Persoonlijke notities: private per-user notes on a law.
 //!
-//! This is the **personal** half of the note-saving contract; the
-//! **public** half is the existing traject-annotations flow. A client
-//! chooses visibility by endpoint:
+//! The primary client contract is the **unified** annotations endpoint
+//! (`corpus_handlers`): `PUT/GET /api/trajects/{ref}/corpus/laws/{law_id}/annotations`.
+//! There a note's `regelrecht:visibility` property decides storage —
+//! `"personal"` routes to this module's Postgres store (keyed by
+//! `accounts.id`, never git), anything else goes to the shared sidecar
+//! YAML on the traject's git branch (RFC-018 Decision 1) — and the GET
+//! merges the caller's personal notes, so marked, into the returned
+//! document. The UI never needs to know where a note lives.
 //!
-//! - personal → `POST /api/user/notes/{law_id}` (this module): Postgres,
-//!   keyed by `accounts.id`, never leaves the database;
-//! - public → `PUT /api/trajects/{ref}/corpus/laws/{law_id}/annotations`
-//!   (`corpus_handlers::save_annotations`): shared sidecar YAML committed
-//!   to the traject's git branch (RFC-018 Decision 1).
+//! This module additionally exposes item-level routes for the personal
+//! store (`/api/user/notes/{law_id}`, GET/POST/PUT/DELETE), which the
+//! sidecar side has no analogue for: editing or deleting an individual
+//! personal note.
 //!
 //! Rows mirror the W3C Web Annotation model of RFC-005: each note
 //! serializes as an `Annotation` with a `TextualBody` (markdown by
@@ -219,23 +223,22 @@ fn validate_request(
     Ok((req.value, req.format, req.motivation, req.selector))
 }
 
-/// GET /api/user/notes/{law_id} — the authenticated user's notes for a law,
-/// oldest first.
-pub async fn list(
-    State(state): State<AppState>,
-    Extension(account): Extension<AccountRecord>,
-    Path(law_id): Path<String>,
-) -> Result<Json<Vec<UserNote>>, StatusCode> {
-    validate_law_id(&law_id)?;
-    let pool = get_pool(&state)?;
+/// Fetch the account's notes for a law, oldest first. Store-level so the
+/// item endpoint and the unified annotations GET share one query.
+pub async fn fetch_notes(
+    pool: &sqlx::PgPool,
+    account_id: Uuid,
+    law_id: &str,
+) -> Result<Vec<UserNote>, StatusCode> {
+    validate_law_id(law_id)?;
 
     let rows: Vec<NoteRow> = sqlx::query_as(&format!(
         "SELECT {RETURNING} \
          FROM user_notes WHERE account_id = $1 AND law_id = $2 \
          ORDER BY created_at ASC LIMIT $3",
     ))
-    .bind(account.id)
-    .bind(&law_id)
+    .bind(account_id)
+    .bind(law_id)
     .bind(MAX_NOTES_PER_LAW)
     .fetch_all(pool)
     .await
@@ -244,41 +247,140 @@ pub async fn list(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    Ok(Json(
-        rows.into_iter()
-            .map(|row| UserNote::from_row(&law_id, row))
-            .collect(),
-    ))
+    Ok(rows
+        .into_iter()
+        .map(|row| UserNote::from_row(law_id, row))
+        .collect())
 }
 
-/// POST /api/user/notes/{law_id} — create a note, returns it as 201.
-/// 409 when the per-law cap is reached.
-pub async fn create(
-    State(state): State<AppState>,
-    Extension(account): Extension<AccountRecord>,
-    Path(law_id): Path<String>,
-    Json(req): Json<NoteRequest>,
-) -> Result<(StatusCode, Json<UserNote>), StatusCode> {
-    validate_law_id(&law_id)?;
+/// The account's notes for a law as W3C annotation JSON values, each
+/// marked `"regelrecht:visibility": "personal"` — the shape the unified
+/// annotations GET merges into the sidecar document.
+pub async fn personal_annotation_values(
+    pool: &sqlx::PgPool,
+    account_id: Uuid,
+    law_id: &str,
+) -> Result<Vec<serde_json::Value>, StatusCode> {
+    let notes = fetch_notes(pool, account_id, law_id).await?;
+    notes
+        .into_iter()
+        .map(|note| {
+            let mut value = serde_json::to_value(&note).map_err(|e| {
+                tracing::error!(error = %e, "failed to serialize personal note");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+            if let Some(map) = value.as_object_mut() {
+                map.insert(
+                    "regelrecht:visibility".to_string(),
+                    serde_json::Value::String("personal".to_string()),
+                );
+            }
+            Ok(value)
+        })
+        .collect()
+}
+
+/// Map a W3C annotation (as submitted to the unified annotations save) to
+/// a personal-note request. Personal notes hold a single `TextualBody`
+/// with a commenting/questioning motivation; other shapes get a concrete
+/// error so the client knows the note must go the public route instead.
+pub fn annotation_to_request(
+    law_id: &str,
+    annotation: &serde_json::Value,
+) -> Result<NoteRequest, String> {
+    let obj = annotation
+        .as_object()
+        .ok_or("a note must be a JSON object")?;
+
+    if let Some(kind) = obj.get("type") {
+        if kind.as_str() != Some("Annotation") {
+            return Err("a note's type must be \"Annotation\"".to_string());
+        }
+    }
+
+    let body = obj.get("body").ok_or("a personal note needs a body")?;
+    let body_obj = body
+        .as_object()
+        .ok_or("a personal note supports a single TextualBody (multiple bodies are public-only)")?;
+    if body_obj.get("type").and_then(|t| t.as_str()) != Some("TextualBody") {
+        return Err(
+            "a personal note's body must be a TextualBody (linking notes are public-only)"
+                .to_string(),
+        );
+    }
+    let value = body_obj
+        .get("value")
+        .and_then(|v| v.as_str())
+        .ok_or("a personal note's body needs a string value")?
+        .to_string();
+    let format = body_obj
+        .get("format")
+        .and_then(|f| f.as_str())
+        .map(str::to_string);
+
+    let motivation = obj
+        .get("motivation")
+        .and_then(|m| m.as_str())
+        .map(str::to_string);
+
+    let mut selector = None;
+    if let Some(target) = obj.get("target") {
+        let target_obj = target
+            .as_object()
+            .ok_or("a note's target must be an object")?;
+        if let Some(source) = target_obj.get("source").and_then(|s| s.as_str()) {
+            if source != format!("regelrecht://{law_id}") {
+                return Err(
+                    "a note's target does not match the law it is being saved to".to_string(),
+                );
+            }
+        }
+        selector = match target_obj.get("selector") {
+            // A JSON-null or absent selector is simply an unanchored note.
+            None | Some(serde_json::Value::Null) => None,
+            Some(value) => Some(Some(value.clone())),
+        };
+    }
+
+    Ok(NoteRequest {
+        value,
+        format,
+        motivation,
+        selector,
+    })
+}
+
+/// Insert a note for the account, enforcing the per-law cap atomically.
+///
+/// The cap check races under READ COMMITTED (two concurrent creates can
+/// both see count = cap-1), so creates are serialized per (account, law)
+/// with a transaction-scoped advisory lock. With `dedupe`, a note whose
+/// (motivation, value, format, selector) already exists is skipped and
+/// `Ok(None)` is returned — the unified annotations save uses this so a
+/// retried request is idempotent, mirroring the sidecar's dedup.
+/// `Err(CONFLICT)` = cap reached.
+pub async fn insert_note(
+    pool: &sqlx::PgPool,
+    account_id: Uuid,
+    law_id: &str,
+    req: NoteRequest,
+    dedupe: bool,
+) -> Result<Option<UserNote>, StatusCode> {
+    validate_law_id(law_id)?;
     let (value, format, motivation, selector) = validate_request(req)?;
     let format = format.unwrap_or_else(|| "text/markdown".to_string());
     let motivation = motivation.unwrap_or_else(|| "commenting".to_string());
     // On create, absent and explicit-null selector both mean "no anchoring".
     let selector = selector.flatten();
-    let pool = get_pool(&state)?;
 
-    // The cap check races under READ COMMITTED (two concurrent creates
-    // can both see count = cap-1), so serialize creates per (account,
-    // law) with a transaction-scoped advisory lock. The lock releases on
-    // commit/rollback; other (account, law) pairs are unaffected.
     let mut tx = pool.begin().await.map_err(|e| {
         tracing::error!(error = %e, "failed to begin transaction for user note create");
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2, 0))")
-        .bind(account.id)
-        .bind(&law_id)
+        .bind(account_id)
+        .bind(law_id)
         .execute(&mut *tx)
         .await
         .map_err(|e| {
@@ -286,14 +388,38 @@ pub async fn create(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
+    if dedupe {
+        let (exists,): (bool,) = sqlx::query_as(
+            "SELECT EXISTS(SELECT 1 FROM user_notes \
+             WHERE account_id = $1 AND law_id = $2 AND motivation = $3 \
+             AND body_value = $4 AND body_format = $5 \
+             AND selector IS NOT DISTINCT FROM $6)",
+        )
+        .bind(account_id)
+        .bind(law_id)
+        .bind(&motivation)
+        .bind(&value)
+        .bind(&format)
+        .bind(&selector)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to dedupe user note");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+        if exists {
+            return Ok(None);
+        }
+    }
+
     let row: Option<NoteRow> = sqlx::query_as(&format!(
         "INSERT INTO user_notes (account_id, law_id, motivation, body_value, body_format, selector) \
          SELECT $1, $2, $3, $4, $5, $6 \
          WHERE (SELECT COUNT(*) FROM user_notes WHERE account_id = $1 AND law_id = $2) < $7 \
          RETURNING {RETURNING}",
     ))
-    .bind(account.id)
-    .bind(&law_id)
+    .bind(account_id)
+    .bind(law_id)
     .bind(&motivation)
     .bind(&value)
     .bind(&format)
@@ -312,7 +438,34 @@ pub async fn create(
     })?;
 
     match row {
-        Some(row) => Ok((StatusCode::CREATED, Json(UserNote::from_row(&law_id, row)))),
+        Some(row) => Ok(Some(UserNote::from_row(law_id, row))),
+        None => Err(StatusCode::CONFLICT),
+    }
+}
+
+/// GET /api/user/notes/{law_id} — the authenticated user's notes for a law,
+/// oldest first.
+pub async fn list(
+    State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
+    Path(law_id): Path<String>,
+) -> Result<Json<Vec<UserNote>>, StatusCode> {
+    let pool = get_pool(&state)?;
+    Ok(Json(fetch_notes(pool, account.id, &law_id).await?))
+}
+
+/// POST /api/user/notes/{law_id} — create a note, returns it as 201.
+/// 409 when the per-law cap is reached.
+pub async fn create(
+    State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
+    Path(law_id): Path<String>,
+    Json(req): Json<NoteRequest>,
+) -> Result<(StatusCode, Json<UserNote>), StatusCode> {
+    let pool = get_pool(&state)?;
+    match insert_note(pool, account.id, &law_id, req, false).await? {
+        Some(note) => Ok((StatusCode::CREATED, Json(note))),
+        // Unreachable without dedupe, but keep a sane mapping.
         None => Err(StatusCode::CONFLICT),
     }
 }
