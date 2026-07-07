@@ -37,12 +37,16 @@ use crate::user_notes;
 #[derive(Debug, Serialize)]
 pub struct SaveResponse {
     pub pr: Option<SavePrInfo>,
-    /// `true` when a notes save was a no-op: every submitted note was
-    /// already present on the branch, so nothing was written/committed.
-    /// Lets the frontend show "al opgeslagen" and keep any existing PR
-    /// badge instead of treating a PR-less 200 as a lost save (review
-    /// finding NEW-2). Always `false` for law/scenario saves; those
-    /// clients ignore it.
+    /// `true` when the **sidecar/git side** of a notes save was a no-op:
+    /// nothing was written/committed to the branch — either every
+    /// submitted public note was already present, or the save carried no
+    /// public notes at all. It says nothing about personal notes: a save
+    /// can be `no_change: true` AND have `personal_saved > 0`. Clients
+    /// must gate success signals on the combination, not on `!no_change`
+    /// alone. Lets the frontend show "al opgeslagen" and keep any
+    /// existing PR badge instead of treating a PR-less 200 as a lost
+    /// save (review finding NEW-2). Always `false` for law/scenario
+    /// saves; those clients ignore it.
     pub no_change: bool,
     /// How many notes in an annotations save were routed to the caller's
     /// personal store (`regelrecht:visibility: personal`) instead of the
@@ -1787,33 +1791,42 @@ pub async fn save_annotations(
     // halves of the save.
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
 
-    // Personal notes go to the account-scoped store, never to git.
+    // Personal notes go to the account-scoped store, never to git. Map
+    // and validate the whole batch first, then insert atomically (one
+    // transaction) — a bad note rejects the batch before anything is
+    // stored, so a 400/409 never leaves a half-saved batch behind.
     let mut personal_saved = 0usize;
     if !personal_notes.is_empty() {
         let pool = state.pool.as_ref().ok_or((
             StatusCode::SERVICE_UNAVAILABLE,
             "Personal notes need a database".to_string(),
         ))?;
+        let mut requests = Vec::with_capacity(personal_notes.len());
         for note in &personal_notes {
             let req = user_notes::annotation_to_request(&law_id, note)
                 .map_err(|msg| (StatusCode::BAD_REQUEST, msg))?;
-            let inserted = user_notes::insert_note(pool, account.id, &law_id, req, true)
-                .await
-                .map_err(|status| match status {
-                    StatusCode::CONFLICT => (
-                        StatusCode::CONFLICT,
-                        "Too many personal notes for this law".to_string(),
-                    ),
-                    StatusCode::BAD_REQUEST => (
-                        StatusCode::BAD_REQUEST,
-                        "A personal note is not valid".to_string(),
-                    ),
-                    other => (other, "Failed to save personal notes".to_string()),
-                })?;
-            if inserted.is_some() {
-                personal_saved += 1;
-            }
+            user_notes::validate(&req).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    "A personal note is not valid".to_string(),
+                )
+            })?;
+            requests.push(req);
         }
+        let inserted = user_notes::insert_notes(pool, account.id, &law_id, requests, true)
+            .await
+            .map_err(|status| match status {
+                StatusCode::CONFLICT => (
+                    StatusCode::CONFLICT,
+                    "Too many personal notes for this law".to_string(),
+                ),
+                StatusCode::BAD_REQUEST => (
+                    StatusCode::BAD_REQUEST,
+                    "A personal note is not valid".to_string(),
+                ),
+                other => (other, "Failed to save personal notes".to_string()),
+            })?;
+        personal_saved = inserted.iter().filter(|n| n.is_some()).count();
     }
 
     // All-personal save: nothing for the sidecar, skip the git machinery.

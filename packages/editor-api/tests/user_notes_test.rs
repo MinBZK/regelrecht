@@ -609,3 +609,52 @@ async fn personal_annotation_values_carry_the_visibility_marker() {
         Some("prive context")
     );
 }
+
+#[tokio::test]
+async fn insert_notes_batch_is_all_or_nothing() {
+    let db = TestDb::new().await;
+    let alice = seed_account(&db.pool, "alice@example.org", "Alice").await;
+
+    // A batch with an invalid note stores nothing at all.
+    let err = user_notes::insert_notes(
+        &db.pool,
+        alice.id,
+        "test_wet",
+        vec![note_req("geldig"), note_req("   ")],
+        true,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err, StatusCode::BAD_REQUEST);
+    assert!(user_notes::fetch_notes(&db.pool, alice.id, "test_wet")
+        .await
+        .unwrap()
+        .is_empty());
+
+    // A batch that crosses the cap mid-way rolls back entirely.
+    sqlx::query(
+        "INSERT INTO user_notes (account_id, law_id, body_value) \
+         SELECT $1, 'test_wet', 'notitie ' || n FROM generate_series(1, 199) n",
+    )
+    .bind(alice.id)
+    .execute(&db.pool)
+    .await
+    .unwrap();
+    let err = user_notes::insert_notes(
+        &db.pool,
+        alice.id,
+        "test_wet",
+        vec![note_req("past nog"), note_req("past niet meer")],
+        true,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err, StatusCode::CONFLICT);
+    assert_eq!(
+        user_notes::fetch_notes(&db.pool, alice.id, "test_wet")
+            .await
+            .unwrap()
+            .len(),
+        199
+    );
+}

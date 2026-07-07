@@ -179,18 +179,9 @@ fn validate_law_id(law_id: &str) -> Result<(), StatusCode> {
 /// silently reset metadata or drop the anchoring). An explicit
 /// `"selector": null` is `Some(None)`: valid, and clears the anchoring
 /// on update.
-#[allow(clippy::type_complexity)]
-fn validate_request(
-    req: NoteRequest,
-) -> Result<
-    (
-        String,
-        Option<String>,
-        Option<String>,
-        Option<Option<serde_json::Value>>,
-    ),
-    StatusCode,
-> {
+/// Borrowing validation of a request, so callers with a batch can reject
+/// the whole batch up front before anything is stored.
+pub fn validate(req: &NoteRequest) -> Result<(), StatusCode> {
     if req.value.trim().is_empty() || req.value.len() > MAX_BODY_VALUE_BYTES {
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -220,6 +211,22 @@ fn validate_request(
             return Err(StatusCode::BAD_REQUEST);
         }
     }
+    Ok(())
+}
+
+#[allow(clippy::type_complexity)]
+fn validate_request(
+    req: NoteRequest,
+) -> Result<
+    (
+        String,
+        Option<String>,
+        Option<String>,
+        Option<Option<serde_json::Value>>,
+    ),
+    StatusCode,
+> {
+    validate(&req)?;
     Ok((req.value, req.format, req.motivation, req.selector))
 }
 
@@ -366,12 +373,27 @@ pub async fn insert_note(
     req: NoteRequest,
     dedupe: bool,
 ) -> Result<Option<UserNote>, StatusCode> {
+    let mut notes = insert_notes(pool, account_id, law_id, vec![req], dedupe).await?;
+    Ok(notes.pop().flatten())
+}
+
+/// Insert a batch of notes atomically: one transaction, one advisory
+/// lock, all-or-nothing. A failure anywhere (validation, cap) rolls the
+/// whole batch back, so a caller can never end up with a half-saved
+/// batch. Returns one entry per input, `None` where dedup skipped.
+pub async fn insert_notes(
+    pool: &sqlx::PgPool,
+    account_id: Uuid,
+    law_id: &str,
+    reqs: Vec<NoteRequest>,
+    dedupe: bool,
+) -> Result<Vec<Option<UserNote>>, StatusCode> {
     validate_law_id(law_id)?;
-    let (value, format, motivation, selector) = validate_request(req)?;
-    let format = format.unwrap_or_else(|| "text/markdown".to_string());
-    let motivation = motivation.unwrap_or_else(|| "commenting".to_string());
-    // On create, absent and explicit-null selector both mean "no anchoring".
-    let selector = selector.flatten();
+    // Validate the whole batch before touching the database, so a bad
+    // note rejects the batch without any store work.
+    for req in &reqs {
+        validate(req)?;
+    }
 
     let mut tx = pool.begin().await.map_err(|e| {
         tracing::error!(error = %e, "failed to begin transaction for user note create");
@@ -388,59 +410,73 @@ pub async fn insert_note(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    if dedupe {
-        let (exists,): (bool,) = sqlx::query_as(
-            "SELECT EXISTS(SELECT 1 FROM user_notes \
-             WHERE account_id = $1 AND law_id = $2 AND motivation = $3 \
-             AND body_value = $4 AND body_format = $5 \
-             AND selector IS NOT DISTINCT FROM $6)",
-        )
+    let mut results = Vec::with_capacity(reqs.len());
+    for req in reqs {
+        let (value, format, motivation, selector) = validate_request(req)?;
+        let format = format.unwrap_or_else(|| "text/markdown".to_string());
+        let motivation = motivation.unwrap_or_else(|| "commenting".to_string());
+        // On create, absent and explicit-null selector both mean "no anchoring".
+        let selector = selector.flatten();
+
+        if dedupe {
+            let (exists,): (bool,) = sqlx::query_as(
+                "SELECT EXISTS(SELECT 1 FROM user_notes \
+                 WHERE account_id = $1 AND law_id = $2 AND motivation = $3 \
+                 AND body_value = $4 AND body_format = $5 \
+                 AND selector IS NOT DISTINCT FROM $6)",
+            )
+            .bind(account_id)
+            .bind(law_id)
+            .bind(&motivation)
+            .bind(&value)
+            .bind(&format)
+            .bind(&selector)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "failed to dedupe user note");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+            if exists {
+                results.push(None);
+                continue;
+            }
+        }
+
+        let row: Option<NoteRow> = sqlx::query_as(&format!(
+            "INSERT INTO user_notes (account_id, law_id, motivation, body_value, body_format, selector) \
+             SELECT $1, $2, $3, $4, $5, $6 \
+             WHERE (SELECT COUNT(*) FROM user_notes WHERE account_id = $1 AND law_id = $2) < $7 \
+             RETURNING {RETURNING}",
+        ))
         .bind(account_id)
         .bind(law_id)
         .bind(&motivation)
         .bind(&value)
         .bind(&format)
         .bind(&selector)
-        .fetch_one(&mut *tx)
+        .bind(MAX_NOTES_PER_LAW)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "failed to dedupe user note");
+            tracing::error!(error = %e, "failed to create user note");
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
-        if exists {
-            return Ok(None);
+
+        match row {
+            Some(row) => results.push(Some(UserNote::from_row(law_id, row))),
+            // Cap reached: bail out; the dropped transaction rolls back
+            // every insert already made in this batch.
+            None => return Err(StatusCode::CONFLICT),
         }
     }
-
-    let row: Option<NoteRow> = sqlx::query_as(&format!(
-        "INSERT INTO user_notes (account_id, law_id, motivation, body_value, body_format, selector) \
-         SELECT $1, $2, $3, $4, $5, $6 \
-         WHERE (SELECT COUNT(*) FROM user_notes WHERE account_id = $1 AND law_id = $2) < $7 \
-         RETURNING {RETURNING}",
-    ))
-    .bind(account_id)
-    .bind(law_id)
-    .bind(&motivation)
-    .bind(&value)
-    .bind(&format)
-    .bind(&selector)
-    .bind(MAX_NOTES_PER_LAW)
-    .fetch_optional(&mut *tx)
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, "failed to create user note");
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
 
     tx.commit().await.map_err(|e| {
         tracing::error!(error = %e, "failed to commit user note create");
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    match row {
-        Some(row) => Ok(Some(UserNote::from_row(law_id, row))),
-        None => Err(StatusCode::CONFLICT),
-    }
+    Ok(results)
 }
 
 /// GET /api/user/notes/{law_id} — the authenticated user's notes for a law,
