@@ -82,9 +82,12 @@ struct YamlLaw {
     articles: Vec<YamlArticle>,
 }
 
-/// Normalize and wrap a text field, recording the block scalar style for
-/// every multi-line emission in `fold_plan` (document order).
-fn prepare_text(raw: &str, fold_plan: &mut Vec<TextStyle>) -> String {
+/// Normalize and wrap a text field, recording the emitted text and its block
+/// scalar style for every multi-line emission in `fold_plan` (document order).
+///
+/// The stored `String` is the exact emitted (wrapped) text; [`fold_text_blocks`]
+/// aligns it against the `text: |-` blocks serde actually emitted.
+fn prepare_text(raw: &str, fold_plan: &mut Vec<(String, TextStyle)>) -> String {
     // First normalize the text to fix typographical issues from source XML
     let normalized = normalize_text(raw);
 
@@ -95,21 +98,25 @@ fn prepare_text(raw: &str, fold_plan: &mut Vec<TextStyle>) -> String {
         normalized.clone()
     };
 
-    // Multi-line strings serialize as block scalars; record which style
-    // fold_text_blocks must apply to this block.
+    // Multi-line strings usually serialize as block scalars; record the emitted
+    // text plus which style fold_text_blocks should apply. serde may instead
+    // emit a quoted single-line scalar (e.g. when the text has an interior tab
+    // or control character); such entries simply find no matching block and are
+    // skipped during alignment.
     if text.contains('\n') {
-        fold_plan.push(classify_text_style(&normalized, &text));
+        fold_plan.push((text.clone(), classify_text_style(&normalized, &text)));
     }
     text
 }
 
 /// Generate a schema-compliant YAML structure from a Law object, plus the
-/// fold plan: one [`TextStyle`] per multi-line text field in document order
-/// (preamble first, then articles — matching serde's emission order).
-fn generate_yaml_struct(law: &Law, effective_date: &str) -> (YamlLaw, Vec<TextStyle>) {
+/// fold plan: one `(emitted_text, TextStyle)` per multi-line text field in
+/// document order (preamble first, then articles — matching serde's emission
+/// order).
+fn generate_yaml_struct(law: &Law, effective_date: &str) -> (YamlLaw, Vec<(String, TextStyle)>) {
     let law_id = law.metadata.to_slug();
     let is_cvdr = law.metadata.cvdr_id.is_some();
-    let mut fold_plan: Vec<TextStyle> = Vec::new();
+    let mut fold_plan: Vec<(String, TextStyle)> = Vec::new();
 
     // Convert preamble if present (normalize and wrap like articles)
     let preamble = law.preamble.as_ref().map(|p| YamlPreamble {
@@ -174,6 +181,16 @@ fn generate_yaml_struct(law: &Law, effective_date: &str) -> (YamlLaw, Vec<TextSt
     (yaml_law, fold_plan)
 }
 
+/// Regex matching the end of a block scalar header line (the value is a literal
+/// `|` or folded `>` indicator, with an optional explicit indentation digit and
+/// an optional chomping indicator). Applied to the *trimmed* line, e.g.
+/// `text: |-`, `text: >`, `text: |2-`, `foo: >+`. The `: ` anchor keeps a plain
+/// scalar that merely ends in `|`/`>` (which YAML would quote anyway) from
+/// matching.
+#[allow(clippy::expect_used)]
+static BLOCK_SCALAR_HEADER_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r": [|>]\d*[+-]?$").expect("valid regex"));
+
 /// Indent YAML sequences to comply with `indent-sequences: true`.
 ///
 /// serde_yaml_ng places sequence items (`- `) at the same indent as their parent key.
@@ -185,21 +202,48 @@ fn generate_yaml_struct(law: &Law, effective_date: &str) -> (YamlLaw, Vec<TextSt
 /// - number: '1'        - number: '1'
 ///   text: foo            text: foo
 /// ```
+///
+/// It is block-scalar-aware: content lines inside a `|`/`>` block are shifted by
+/// exactly the same amount as their header line and are NOT interpreted as
+/// sequence items, even when they start with `- `. Treating a `- ` block-content
+/// line as a sequence item would over-indent it non-uniformly (only dashed lines
+/// shift), corrupting the literal text and breaking [`fold_text_blocks`]'s
+/// min-indent reconstruction.
 fn indent_yaml_sequences(yaml: &str) -> String {
     let mut result: Vec<String> = Vec::new();
     // Stack of indent levels where sequences start
     let mut seq_indents: Vec<usize> = Vec::new();
+    // When inside a block scalar: (header's original indent, the extra shift
+    // frozen at the header line). Content lines reuse this shift verbatim.
+    let mut block: Option<(usize, usize)> = None;
 
     for line in yaml.lines() {
         let trimmed = line.trim_start();
 
-        // Pass empty lines through unchanged
+        // Pass empty lines through unchanged (blank lines inside a block scalar
+        // keep the block open — they carry no indentation to compare).
         if trimmed.is_empty() {
             result.push(line.to_string());
             continue;
         }
 
         let indent = line.len() - trimmed.len();
+
+        // Inside a block scalar: a line indented deeper than the header is block
+        // content — emit it with the frozen shift, never as a sequence item. A
+        // line at or below the header's indent ends the block; fall through to
+        // normal processing.
+        if let Some((header_indent, frozen_extra)) = block {
+            if indent > header_indent {
+                if frozen_extra > 0 {
+                    result.push(format!("{}{}", " ".repeat(indent + frozen_extra), trimmed));
+                } else {
+                    result.push(line.to_string());
+                }
+                continue;
+            }
+            block = None;
+        }
 
         // Pop sequences we've exited: either moved to a shallower indent,
         // or returned to the same indent but not as a sequence continuation.
@@ -221,6 +265,14 @@ fn indent_yaml_sequences(yaml: &str) -> String {
 
         // Apply extra indentation
         let extra = seq_indents.len() * 2;
+
+        // Detect a block scalar header (`key: |`, `key: >-`, …). The header line
+        // itself is indented normally below; subsequent deeper lines are block
+        // content shifted by this same `extra`.
+        if BLOCK_SCALAR_HEADER_RE.is_match(trimmed) {
+            block = Some((indent, extra));
+        }
+
         if extra > 0 {
             result.push(format!("{}{}", " ".repeat(indent + extra), trimmed));
         } else {
@@ -332,30 +384,42 @@ fn fix_yaml_quoting(yaml: &str) -> String {
         .join("\n")
 }
 
-/// Regex matching the header line of a multi-line `text:` block scalar as
-/// serde_yaml_ng emits it (`text: |-`, or `text: |N-` when the first content
-/// line starts with whitespace and needs an explicit indentation indicator).
+/// Regex matching the header line of a plain multi-line `text:` block scalar as
+/// serde_yaml_ng emits it (`text: |-`). Headers with an explicit indentation
+/// indicator (`text: |N-`, emitted when the first content line starts with
+/// whitespace) deliberately do NOT match: such blocks always classify as
+/// `Literal` anyway, so they are passed through verbatim without consuming a
+/// plan entry.
 #[allow(clippy::expect_used)]
 static TEXT_BLOCK_HEADER_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^(\s*)text: \|\d*-$").expect("valid regex"));
+    LazyLock::new(|| Regex::new(r"^(\s*)text: \|-$").expect("valid regex"));
 
 /// Rewrite `text: |-` literal blocks to folded (`>-`) blocks per the fold plan.
 ///
-/// The plan is produced by [`generate_yaml_struct`]: one entry per multi-line
-/// text field in document order. `text` is the only multi-line field the
-/// writer emits, so the blocks encountered here correspond 1:1 to the plan;
-/// any count mismatch means that invariant broke and we fail loudly rather
-/// than guess which block gets which style.
+/// The plan is produced by [`generate_yaml_struct`]: one `(emitted_text, style)`
+/// entry per multi-line text field in document order. The emitted `text: |-`
+/// blocks are an *ordered subsequence* of that plan: serde emits most multi-line
+/// texts as a `|-` block, but chooses a double-quoted single-line scalar for a
+/// text that contains an interior tab or other control character — that field
+/// then appears in the plan with no corresponding block.
+///
+/// Alignment is therefore positional + content-based: for each `|-` block we
+/// reconstruct its original text and advance a plan pointer, skipping any plan
+/// entries whose text does not match (those were emitted as quoted scalars).
+/// A block that matches no remaining plan entry means the emission invariant
+/// broke and we fail loudly (`FoldPlanMismatch`) rather than guess which style
+/// applies. Leftover plan entries after the scan are legal — they are the
+/// quoted-scalar emissions.
 ///
 /// Folded semantics: a single line break loads as a space (undoing the
 /// cosmetic wrap), and N consecutive breaks load as N-1 newlines — so each
 /// blank line (a `\n\n` paragraph break in the source) must become two blank
 /// lines to survive the round trip. [`classify_text_style`] only marks a
 /// block `Folded` when its content makes that transformation exact.
-fn fold_text_blocks(yaml: &str, plan: &[TextStyle]) -> Result<String> {
+fn fold_text_blocks(yaml: &str, plan: &[(String, TextStyle)]) -> Result<String> {
     let lines: Vec<&str> = yaml.lines().collect();
     let mut out: Vec<String> = Vec::with_capacity(lines.len() + plan.len());
-    let mut next_block = 0usize;
+    let mut k = 0usize;
     let mut i = 0usize;
 
     while i < lines.len() {
@@ -366,14 +430,6 @@ fn fold_text_blocks(yaml: &str, plan: &[TextStyle]) -> Result<String> {
             continue;
         };
         let key_indent = caps.get(1).map_or(0, |m| m.as_str().len());
-        let style =
-            plan.get(next_block)
-                .copied()
-                .ok_or_else(|| HarvesterError::FoldPlanMismatch {
-                    expected: plan.len(),
-                    found: next_block + 1,
-                })?;
-        next_block += 1;
 
         // Collect the block: lines that are blank or indented deeper than the key.
         let mut end = i + 1;
@@ -385,11 +441,54 @@ fn fold_text_blocks(yaml: &str, plan: &[TextStyle]) -> Result<String> {
             }
             end += 1;
         }
+        let block_lines = &lines[i + 1..end];
+
+        // Reconstruct the original emitted text. The block indentation is the
+        // minimum leading whitespace over the non-blank lines — exactly what a
+        // YAML parser auto-detects. `indent_yaml_sequences` shifts every block
+        // line (dashed or not) by the same amount, so the content is uniformly
+        // indented here; stripping the detected minimum recovers the wrapped
+        // text, and any genuinely deeper-indented source line keeps its extra
+        // spaces. Blank lines → empty string; join with '\n' (chomping `-`: no
+        // trailing newline).
+        let block_indent = block_lines
+            .iter()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| l.len() - l.trim_start().len())
+            .min()
+            .unwrap_or(key_indent + 2);
+        let reconstructed = block_lines
+            .iter()
+            .map(|l| {
+                if l.trim().is_empty() {
+                    ""
+                } else {
+                    &l[block_indent..]
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // Advance the plan pointer past quoted-scalar emissions until the text
+        // matches; a block with no matching plan entry fails loudly.
+        while k < plan.len() && plan[k].0 != reconstructed {
+            k += 1;
+        }
+        let style =
+            plan.get(k)
+                .map(|(_, s)| *s)
+                .ok_or_else(|| HarvesterError::FoldPlanMismatch {
+                    detail: format!(
+                    "serialized `text: |-` block did not match any remaining fold-plan entry: {:?}",
+                    reconstructed.chars().take(60).collect::<String>()
+                ),
+                })?;
+        k += 1;
 
         match style {
             TextStyle::Folded => {
                 out.push(format!("{}text: >-", " ".repeat(key_indent)));
-                for l in &lines[i + 1..end] {
+                for l in block_lines {
                     if l.trim().is_empty() {
                         // Paragraph break: fold semantics eat one line break,
                         // so a blank line must double to keep `\n\n`.
@@ -402,18 +501,12 @@ fn fold_text_blocks(yaml: &str, plan: &[TextStyle]) -> Result<String> {
             }
             TextStyle::Literal => {
                 out.push(line.to_string());
-                out.extend(lines[i + 1..end].iter().map(|l| l.to_string()));
+                out.extend(block_lines.iter().map(|l| l.to_string()));
             }
         }
         i = end;
     }
 
-    if next_block != plan.len() {
-        return Err(HarvesterError::FoldPlanMismatch {
-            expected: plan.len(),
-            found: next_block,
-        });
-    }
     Ok(out.join("\n"))
 }
 
@@ -603,6 +696,21 @@ mod tests {
         assert_eq!(
             result,
             "top: val\nitems:\n  - name: a\n    val: 1\n  - name: b\n    nested:\n      - id: x\n        v: 1"
+        );
+    }
+
+    #[test]
+    fn test_indent_yaml_sequences_block_scalar_content() {
+        // A literal block whose content mixes a non-dashed line, a blank line,
+        // and `- ` lines must be shifted uniformly by the enclosing sequence's
+        // extra (+2) — the `- ` content lines must NOT be treated as sequence
+        // items (which would over-indent them to +4).
+        let input =
+            "articles:\n- number: '1'\n  text: |-\n    intro:\n\n    - item een\n    - item twee\n  url: x";
+        let result = indent_yaml_sequences(input);
+        assert_eq!(
+            result,
+            "articles:\n  - number: '1'\n    text: |-\n      intro:\n\n      - item een\n      - item twee\n    url: x"
         );
     }
 
@@ -850,6 +958,33 @@ articles:
                 expect_wrapped: false,
                 expect_indicator: None,
             },
+            Case {
+                // Regression: a long single-paragraph text with an interior tab
+                // makes serde emit a double-quoted single-line scalar instead of
+                // a block. The fold plan then has an entry with no matching
+                // block; content-subsequence alignment must skip it rather than
+                // fail generation. serde's quoted scalar preserves the wrap
+                // newlines, so the loaded text is the wrapped text.
+                name: "long text with interior tab emits a quoted scalar",
+                source: "Indien de normpremie voor een verzekerde in het berekeningsjaar minder bedraagt dan de\tstandaardpremie in dat jaar, heeft de verzekerde aanspraak op een zorgtoeslag.",
+                owned_source: None,
+                expect_wrapped: true,
+                expect_indicator: None,
+            },
+            Case {
+                // Regression: a chapeau/intro line followed by `- ` bullet lines
+                // in a literal block. `indent_yaml_sequences` must NOT treat the
+                // dashed content lines as sequence items — a non-uniform
+                // over-indent would leave stray spaces after min-indent
+                // reconstruction, breaking the fold-plan match and failing
+                // generation entirely. The single `\n` between bullets keeps the
+                // block Literal (`|-`). Loads back verbatim, bullets at column 0.
+                name: "chapeau then dash list stays literal and round-trips exactly",
+                source: "1 In deze regeling wordt verstaan onder:\n\n- *accountant:* een accountant als bedoeld in artikel 393 van Boek 2 van het Burgerlijk Wetboek en nog wat woorden om de tekst lang te maken;\n- *btw:* omzetbelasting",
+                owned_source: None,
+                expect_wrapped: true,
+                expect_indicator: Some("|-"),
+            },
         ];
 
         for case in &cases {
@@ -892,6 +1027,22 @@ articles:
                 }
             }
 
+            // Column-0 list content must survive without injected leading
+            // spaces: `indent_yaml_sequences` used to over-indent `- ` block
+            // lines (mistaking them for sequence items), which the min-indent
+            // reconstruction then leaked back as stray leading spaces.
+            if matches!(
+                case.name,
+                "chapeau then dash list stays literal and round-trips exactly"
+                    | "column-0 list stays literal"
+            ) {
+                assert!(
+                    !loaded.lines().any(|l| l.starts_with(' ')),
+                    "case '{}': loaded text has an injected leading space\n{loaded}",
+                    case.name
+                );
+            }
+
             // Output hygiene: yamllint limits (empty-lines max 2) and folded
             // blocks free of accidental more-indented lines.
             let lines: Vec<&str> = yaml.lines().collect();
@@ -905,8 +1056,8 @@ articles:
 
     #[test]
     fn test_fold_text_blocks_plan_mismatch_errors() {
-        // One multi-line text block in the YAML, but an empty plan: the
-        // writer invariant broke and folding must refuse to guess.
+        // A `text: |-` block whose reconstructed content matches no plan entry
+        // (here: empty plan) means the emission invariant broke — fail loudly.
         let yaml = "articles:\n  - number: '1'\n    text: |-\n      regel een\n      regel twee\n";
         let err = fold_text_blocks(yaml, &[]).unwrap_err();
         assert!(
@@ -914,8 +1065,26 @@ articles:
             "unexpected error: {err}"
         );
 
-        // More plan entries than blocks must also fail.
-        let err = fold_text_blocks("key: value\n", &[TextStyle::Folded]).unwrap_err();
+        // Plan entries with NO matching block are legal now: serde may emit a
+        // text as a quoted scalar (tabs/control chars). Leftovers must NOT
+        // error, and the input passes through unchanged.
+        let input = "key: value\n";
+        let out = fold_text_blocks(
+            input,
+            &[("some emitted\ntext".to_string(), TextStyle::Folded)],
+        )
+        .unwrap();
+        assert_eq!(out, "key: value");
+
+        // Misassignment safety: a block whose content is B cannot be silently
+        // matched to a plan entry for A — it must fail rather than fold the
+        // wrong block.
+        let yaml_b = "text: |-\n  regel B\n  regel B twee\n";
+        let err = fold_text_blocks(
+            yaml_b,
+            &[("regel A\nregel A twee".to_string(), TextStyle::Folded)],
+        )
+        .unwrap_err();
         assert!(
             err.to_string().contains("fold plan mismatch"),
             "unexpected error: {err}"
