@@ -46,9 +46,12 @@ const STATS = {
 const openDetail = vi.fn();
 const closeDetail = vi.fn();
 
+// Per-mount stats value — tests can swap it to mount with a variant payload.
+let currentStats = STATS;
+
 vi.mock('../composables/useDashboardStats.js', () => ({
   useDashboardStats: () => ({
-    stats: ref(STATS),
+    stats: ref(currentStats),
     loading: ref(false),
     error: ref(null),
   }),
@@ -104,17 +107,30 @@ describe('OverviewView', () => {
     const charts = w.findAllComponents(DailyJobsChart);
     expect(charts).toHaveLength(2);
 
-    expect(charts[0].props('title')).toBe('Harvest per dag');
+    // Charts sit in the right column of their type's half/half section.
+    expect(charts[0].attributes('slot')).toBe('right');
     expect(charts[0].props('entries')).toEqual([
       { date: '2026-07-06', added: 4, succeeded: 3, failed: 1 },
       { date: '2026-07-07', added: 1, succeeded: 0, failed: 0 },
     ]);
 
-    expect(charts[1].props('title')).toBe('Enrich per dag');
     expect(charts[1].props('entries')).toEqual([
       { date: '2026-07-06', added: 2, succeeded: 2, failed: 0 },
       { date: '2026-07-07', added: 0, succeeded: 1, failed: 1 },
     ]);
+  });
+
+  it('hides the charts (but keeps the panels) when the API has no daily block', () => {
+    const stripped = { ...STATS };
+    delete stripped.daily;
+    currentStats = stripped;
+    try {
+      const w = shallowMount(OverviewView);
+      expect(w.findAllComponents(DailyJobsChart)).toHaveLength(0);
+      expect(w.html()).toContain('Harvest');
+    } finally {
+      currentStats = STATS;
+    }
   });
 
   it('wires the failures DataTable with the recent_failures data', () => {

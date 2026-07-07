@@ -35,10 +35,13 @@ const topKpis = computed(() => {
 });
 
 // Harvest and enrich are treated as two separate kinds, each with its own
-// status breakdown and executed counts.
+// titled section: status breakdown + executed counts next to the daily chart.
+// `daily` is absent while an older API is deployed — then chartEntries stays
+// empty and the chart simply doesn't render.
 const typePanels = computed(() => {
   const s = stats.value;
   if (!s) return [];
+  const daily = s.daily ?? [];
   return [
     { key: 'harvest', label: 'Harvest' },
     { key: 'enrich', label: 'Enrich' },
@@ -52,21 +55,7 @@ const typePanels = computed(() => {
     })),
     today: s.executed.today[key] ?? 0,
     last7d: s.executed.last_7d[key] ?? 0,
-  }));
-});
-
-// Daily chart data per type, mapped from the shared `daily` block. `daily` is
-// absent while an older API is deployed — then the charts simply don't render.
-const dailyCharts = computed(() => {
-  const daily = stats.value?.daily ?? [];
-  if (!daily.length) return [];
-  return [
-    { key: 'harvest', title: 'Harvest per dag' },
-    { key: 'enrich', title: 'Enrich per dag' },
-  ].map(({ key, title }) => ({
-    key,
-    title,
-    entries: daily.map((d) => ({ date: d.date, ...d[key] })),
+    chartEntries: daily.map((d) => ({ date: d.date, ...d[key] })),
   }));
 });
 
@@ -97,72 +86,66 @@ async function onFailureClick(row) {
   </nldd-simple-section>
 
   <template v-else-if="stats">
-    <!-- Top-level totals -->
-    <nldd-simple-section>
-      <nldd-collection item-width="240px">
-        <nldd-card v-for="kpi in topKpis" :key="kpi.label">
-          <nldd-container padding="16">
-            <nldd-title size="2">
-              <span slot="overline">{{ kpi.label }}</span>
-              {{ formatNumber(kpi.value) }}
-            </nldd-title>
-          </nldd-container>
-        </nldd-card>
-      </nldd-collection>
-    </nldd-simple-section>
+    <!-- Top-level totals: same half/half rhythm as the per-type sections
+         below, so every card on the page shares one width -->
+    <nldd-one-half-one-half-section>
+      <nldd-card v-for="(kpi, i) in topKpis" :key="kpi.label" :slot="i === 0 ? 'left' : 'right'">
+        <nldd-container padding="16">
+          <nldd-title size="2">
+            <span slot="overline">{{ kpi.label }}</span>
+            {{ formatNumber(kpi.value) }}
+          </nldd-title>
+        </nldd-container>
+      </nldd-card>
+    </nldd-one-half-one-half-section>
 
-    <!-- Per-type detail: harvest and enrich as two separate kinds -->
-    <nldd-simple-section>
-      <nldd-collection item-width="320px">
-        <nldd-card v-for="panel in typePanels" :key="panel.key">
-          <nldd-container padding="16">
-            <nldd-title size="3">
-              <span slot="overline">{{ panel.label }}</span>
-              {{ formatNumber(panel.total) }}
-              <span slot="subtitle">jobs totaal</span>
-            </nldd-title>
+    <!-- Per type (harvest/enrich) one titled section: details next to the
+         daily chart -->
+    <nldd-one-half-one-half-section v-for="panel in typePanels" :key="panel.key">
+      <nldd-title slot="header" size="6"><h3>{{ panel.label }}</h3></nldd-title>
 
-            <nldd-spacer size="16"></nldd-spacer>
+      <nldd-card slot="left">
+        <nldd-container padding="16">
+          <nldd-title size="3">
+            {{ formatNumber(panel.total) }}
+            <span slot="subtitle">jobs totaal</span>
+          </nldd-title>
 
-            <nldd-list variant="simple">
-              <nldd-list-item v-for="item in panel.statuses" :key="item.status">
-                <nldd-cell width="fit-content">
-                  <StatusBadge :status="item.status" size="md" />
-                </nldd-cell>
-                <nldd-text-cell :text="formatNumber(item.count)" horizontal-alignment="right" />
-              </nldd-list-item>
-            </nldd-list>
+          <nldd-spacer size="16"></nldd-spacer>
 
-            <nldd-spacer size="12"></nldd-spacer>
-            <nldd-divider></nldd-divider>
-            <nldd-spacer size="12"></nldd-spacer>
+          <nldd-list variant="simple">
+            <nldd-list-item v-for="item in panel.statuses" :key="item.status">
+              <nldd-cell width="fit-content">
+                <StatusBadge :status="item.status" size="md" />
+              </nldd-cell>
+              <nldd-text-cell :text="formatNumber(item.count)" horizontal-alignment="right" />
+            </nldd-list-item>
+          </nldd-list>
 
-            <nldd-list variant="simple">
-              <nldd-list-item>
-                <nldd-text-cell text="Uitgevoerd vandaag" color="secondary" />
-                <nldd-text-cell :text="formatNumber(panel.today)" horizontal-alignment="right" />
-              </nldd-list-item>
-              <nldd-list-item>
-                <nldd-text-cell text="Afgelopen 7 dagen" color="secondary" />
-                <nldd-text-cell :text="formatNumber(panel.last7d)" horizontal-alignment="right" />
-              </nldd-list-item>
-            </nldd-list>
-          </nldd-container>
-        </nldd-card>
-      </nldd-collection>
-    </nldd-simple-section>
+          <nldd-spacer size="12"></nldd-spacer>
+          <nldd-divider></nldd-divider>
+          <nldd-spacer size="12"></nldd-spacer>
 
-    <!-- Daily added/succeeded/failed charts, one per job type -->
-    <nldd-simple-section v-if="dailyCharts.length">
-      <nldd-collection item-width="420px">
-        <DailyJobsChart
-          v-for="chart in dailyCharts"
-          :key="chart.key"
-          :title="chart.title"
-          :entries="chart.entries"
-        />
-      </nldd-collection>
-    </nldd-simple-section>
+          <nldd-list variant="simple">
+            <nldd-list-item>
+              <nldd-text-cell text="Uitgevoerd vandaag" color="secondary" />
+              <nldd-text-cell :text="formatNumber(panel.today)" horizontal-alignment="right" />
+            </nldd-list-item>
+            <nldd-list-item>
+              <nldd-text-cell text="Afgelopen 7 dagen" color="secondary" />
+              <nldd-text-cell :text="formatNumber(panel.last7d)" horizontal-alignment="right" />
+            </nldd-list-item>
+          </nldd-list>
+        </nldd-container>
+      </nldd-card>
+
+      <DailyJobsChart
+        v-if="panel.chartEntries.length"
+        slot="right"
+        :title="'Per dag'"
+        :entries="panel.chartEntries"
+      />
+    </nldd-one-half-one-half-section>
 
     <!-- Recent failures -->
     <nldd-simple-section>
