@@ -429,8 +429,14 @@ async fn rejects_invalid_input() {
     .unwrap_err();
     assert_eq!(err, StatusCode::BAD_REQUEST);
 
-    // Empty and oversized law id.
-    for law_id in [String::new(), "x".repeat(257)] {
+    // Empty, oversized, and non-slug law ids (spaces, uppercase, slashes).
+    for law_id in [
+        String::new(),
+        "x".repeat(257),
+        "wet met spatie".to_string(),
+        "Wet_Hoofdletter".to_string(),
+        "wet/../elders".to_string(),
+    ] {
         let err = user_notes::list(State(state.clone()), Extension(alice.clone()), Path(law_id))
             .await
             .unwrap_err();

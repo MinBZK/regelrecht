@@ -141,8 +141,15 @@ fn get_pool(state: &AppState) -> Result<&sqlx::PgPool, StatusCode> {
 }
 
 fn validate_law_id(law_id: &str) -> Result<(), StatusCode> {
-    // .len() returns bytes, which equals character count for ASCII-only law IDs.
-    if law_id.is_empty() || law_id.len() > 256 {
+    // Corpus law `$id`s are lowercase snake_case slugs; dot and hyphen are
+    // allowed as slug variants. The allowlist keeps junk (spaces, control
+    // chars, arbitrary Unicode) out of storage and out of the
+    // `regelrecht://` URI echoed in every response. `.len()` is bytes,
+    // which equals character count for this ASCII-only alphabet.
+    let valid_slug = law_id
+        .bytes()
+        .all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'_' | b'.' | b'-'));
+    if law_id.is_empty() || law_id.len() > 256 || !valid_slug {
         return Err(StatusCode::BAD_REQUEST);
     }
     Ok(())
@@ -243,8 +250,25 @@ pub async fn create(
     let motivation = motivation.unwrap_or_else(|| "commenting".to_string());
     let pool = get_pool(&state)?;
 
-    // Cap check and insert in one statement so two concurrent creates
-    // cannot both pass a separate count check and overshoot the cap.
+    // The cap check races under READ COMMITTED (two concurrent creates
+    // can both see count = cap-1), so serialize creates per (account,
+    // law) with a transaction-scoped advisory lock. The lock releases on
+    // commit/rollback; other (account, law) pairs are unaffected.
+    let mut tx = pool.begin().await.map_err(|e| {
+        tracing::error!(error = %e, "failed to begin transaction for user note create");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2, 0))")
+        .bind(account.id)
+        .bind(&law_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to take user note advisory lock");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
     let row: Option<NoteRow> = sqlx::query_as(&format!(
         "INSERT INTO user_notes (account_id, law_id, motivation, body_value, body_format, selector) \
          SELECT $1, $2, $3, $4, $5, $6 \
@@ -258,10 +282,15 @@ pub async fn create(
     .bind(&format)
     .bind(&selector)
     .bind(MAX_NOTES_PER_LAW)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(|e| {
         tracing::error!(error = %e, "failed to create user note");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    tx.commit().await.map_err(|e| {
+        tracing::error!(error = %e, "failed to commit user note create");
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
