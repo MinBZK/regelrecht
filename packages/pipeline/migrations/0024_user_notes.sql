@@ -7,6 +7,9 @@
 -- `motivation` and a `TextualBody` (`value` + `format`, markdown by default).
 -- The law-level target (`regelrecht://{law_id}`) is derived from `law_id`
 -- when the row is serialized as an annotation.
+-- `selector` optionally carries the W3C target selector (TextQuoteSelector
+-- shape) as JSON, so a text-anchored note can be saved personally with the
+-- same fidelity as publicly; NULL = a law-level note without anchoring.
 CREATE TABLE user_notes (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     account_id   UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -14,6 +17,7 @@ CREATE TABLE user_notes (
     motivation   TEXT NOT NULL DEFAULT 'commenting',
     body_value   TEXT NOT NULL,
     body_format  TEXT NOT NULL DEFAULT 'text/markdown',
+    selector     JSONB,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );

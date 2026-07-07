@@ -71,6 +71,7 @@ fn note_req(value: &str) -> NoteRequest {
         value: value.to_string(),
         format: None,
         motivation: None,
+        selector: None,
     }
 }
 
@@ -194,6 +195,7 @@ async fn update_changes_body_and_bumps_modified() {
             value: "nieuw".to_string(),
             format: Some("text/plain".to_string()),
             motivation: Some("questioning".to_string()),
+            selector: None,
         }),
     )
     .await
@@ -220,6 +222,90 @@ async fn update_changes_body_and_bumps_modified() {
     assert_eq!(again.body.value, "nog nieuwer");
     assert_eq!(again.body.format, "text/plain");
     assert_eq!(again.motivation, "questioning");
+}
+
+#[tokio::test]
+async fn selector_roundtrips_and_is_kept_on_value_only_update() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@example.org", "Alice").await;
+
+    let selector = serde_json::json!({
+        "type": "TextQuoteSelector",
+        "exact": "zorgtoeslag",
+        "prefix": "aanspraak op een ",
+        "suffix": " ter grootte van"
+    });
+    let (status, Json(note)) = user_notes::create(
+        State(state.clone()),
+        Extension(alice.clone()),
+        Path("test_wet".to_string()),
+        Json(NoteRequest {
+            value: "verankerde notitie".to_string(),
+            format: None,
+            motivation: None,
+            selector: Some(selector.clone()),
+        }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(note.target.selector, Some(selector.clone()));
+
+    // A value-only PUT keeps the anchoring.
+    let Json(updated) = user_notes::update(
+        State(state.clone()),
+        Extension(alice.clone()),
+        Path(("test_wet".to_string(), note.id)),
+        Json(note_req("aangepaste tekst")),
+    )
+    .await
+    .unwrap();
+    assert_eq!(updated.target.selector, Some(selector.clone()));
+
+    // And the selector survives a list read.
+    let notes = list_notes(&state, &alice, "test_wet").await;
+    assert_eq!(notes[0].target.selector, Some(selector));
+
+    // Invalid selectors are rejected: not an object / missing type.
+    for bad in [
+        serde_json::json!("tekst"),
+        serde_json::json!({"exact": "x"}),
+    ] {
+        let err = user_notes::create(
+            State(state.clone()),
+            Extension(alice.clone()),
+            Path("test_wet".to_string()),
+            Json(NoteRequest {
+                value: "x".to_string(),
+                format: None,
+                motivation: None,
+                selector: Some(bad),
+            }),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err, StatusCode::BAD_REQUEST);
+    }
+
+    // Oversized selector (> 8 KiB serialized) is rejected.
+    let err = user_notes::create(
+        State(state.clone()),
+        Extension(alice),
+        Path("test_wet".to_string()),
+        Json(NoteRequest {
+            value: "x".to_string(),
+            format: None,
+            motivation: None,
+            selector: Some(serde_json::json!({
+                "type": "TextQuoteSelector",
+                "exact": "a".repeat(8 * 1024 + 1)
+            })),
+        }),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err, StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
@@ -310,6 +396,7 @@ async fn rejects_invalid_input() {
             value: "x".to_string(),
             format: Some("text/html".to_string()),
             motivation: None,
+            selector: None,
         }),
     )
     .await
@@ -324,6 +411,7 @@ async fn rejects_invalid_input() {
             value: "x".to_string(),
             format: None,
             motivation: Some("linking".to_string()),
+            selector: None,
         }),
     )
     .await

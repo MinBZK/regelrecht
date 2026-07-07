@@ -1,11 +1,20 @@
 //! Persoonlijke notities: private per-user notes on a law.
 //!
-//! Unlike traject annotations (shared sidecar YAML committed to git,
-//! RFC-018 Decision 1), these notes are private working context for one
-//! user and live only in Postgres, keyed by `accounts.id`. Rows mirror
-//! the W3C Web Annotation model of RFC-005: each note serializes as an
-//! `Annotation` with a law-level target and a `TextualBody` whose
-//! `format` is `text/markdown` by default.
+//! This is the **personal** half of the note-saving contract; the
+//! **public** half is the existing traject-annotations flow. A client
+//! chooses visibility by endpoint:
+//!
+//! - personal → `POST /api/user/notes/{law_id}` (this module): Postgres,
+//!   keyed by `accounts.id`, never leaves the database;
+//! - public → `PUT /api/trajects/{ref}/corpus/laws/{law_id}/annotations`
+//!   (`corpus_handlers::save_annotations`): shared sidecar YAML committed
+//!   to the traject's git branch (RFC-018 Decision 1).
+//!
+//! Rows mirror the W3C Web Annotation model of RFC-005: each note
+//! serializes as an `Annotation` with a `TextualBody` (markdown by
+//! default) and a law-level target that optionally carries the same
+//! selector shape (TextQuoteSelector) as public notes — so one and the
+//! same note object can be saved to either side.
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -30,6 +39,11 @@ const ALLOWED_FORMATS: &[&str] = &["text/markdown", "text/plain"];
 /// context, small enough that the table cannot be used as blob storage.
 const MAX_BODY_VALUE_BYTES: usize = 64 * 1024;
 
+/// Upper bound on the serialized target selector in bytes. Real
+/// TextQuoteSelectors (exact + prefix + suffix + position hint) are well
+/// under 1 KiB; the cap only blocks blob abuse.
+const MAX_SELECTOR_BYTES: usize = 8 * 1024;
+
 /// Upper bound on notes per user per law. Far above real use, so an
 /// account cannot grow unbounded rows (each up to 64 KiB). Also bound as
 /// the `LIMIT` in `list`, so the list can never silently truncate.
@@ -37,7 +51,9 @@ const MAX_NOTES_PER_LAW: i64 = 200;
 
 /// Request body for creating or updating a note. `format` and
 /// `motivation` fall back to the markdown/commenting defaults so the
-/// minimal client payload is just `{"value": "..."}`.
+/// minimal client payload is just `{"value": "..."}`. `selector`
+/// optionally anchors the note to law text (W3C TextQuoteSelector shape,
+/// stored verbatim and echoed back under `target.selector`).
 #[derive(Debug, Deserialize)]
 pub struct NoteRequest {
     pub value: String,
@@ -45,6 +61,8 @@ pub struct NoteRequest {
     pub format: Option<String>,
     #[serde(default)]
     pub motivation: Option<String>,
+    #[serde(default)]
+    pub selector: Option<serde_json::Value>,
 }
 
 /// A personal note in W3C Web Annotation shape (RFC-005), so clients can
@@ -65,6 +83,8 @@ pub struct UserNote {
 #[derive(Debug, Serialize)]
 pub struct NoteTarget {
     pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selector: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -76,19 +96,29 @@ pub struct NoteBody {
     pub format: String,
 }
 
-type NoteRow = (Uuid, String, String, String, DateTime<Utc>, DateTime<Utc>);
+type NoteRow = (
+    Uuid,
+    String,
+    String,
+    String,
+    Option<serde_json::Value>,
+    DateTime<Utc>,
+    DateTime<Utc>,
+);
+
+/// Columns every read/write returns, in `NoteRow` order.
+const RETURNING: &str = "id, motivation, body_value, body_format, selector, created_at, updated_at";
 
 impl UserNote {
-    /// Build the annotation view from a
-    /// `(id, motivation, body_value, body_format, created_at, updated_at)`
-    /// row for the given law.
+    /// Build the annotation view from a [`NoteRow`] for the given law.
     fn from_row(law_id: &str, row: NoteRow) -> Self {
-        let (id, motivation, body_value, body_format, created_at, updated_at) = row;
+        let (id, motivation, body_value, body_format, selector, created_at, updated_at) = row;
         UserNote {
             id,
             note_type: "Annotation",
             target: NoteTarget {
                 source: format!("regelrecht://{law_id}"),
+                selector,
             },
             body: NoteBody {
                 body_type: "TextualBody",
@@ -118,13 +148,23 @@ fn validate_law_id(law_id: &str) -> Result<(), StatusCode> {
     Ok(())
 }
 
-/// Validate a create/update request. `format`/`motivation` stay `None`
-/// when absent: `create` fills in the markdown/commenting defaults,
-/// `update` keeps the stored values (absent = keep, so a client that
-/// only sends `{"value": ...}` cannot silently reset metadata).
+/// Validate a create/update request. `format`/`motivation`/`selector`
+/// stay `None` when absent: `create` fills in the markdown/commenting
+/// defaults (selector stays law-level), `update` keeps the stored values
+/// (absent = keep, so a client that only sends `{"value": ...}` cannot
+/// silently reset metadata or drop the anchoring).
+#[allow(clippy::type_complexity)]
 fn validate_request(
     req: NoteRequest,
-) -> Result<(String, Option<String>, Option<String>), StatusCode> {
+) -> Result<
+    (
+        String,
+        Option<String>,
+        Option<String>,
+        Option<serde_json::Value>,
+    ),
+    StatusCode,
+> {
     if req.value.trim().is_empty() || req.value.len() > MAX_BODY_VALUE_BYTES {
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -138,7 +178,23 @@ fn validate_request(
             return Err(StatusCode::BAD_REQUEST);
         }
     }
-    Ok((req.value, req.format, req.motivation))
+    if let Some(selector) = &req.selector {
+        // Stored verbatim (it is the client's anchoring, resolved
+        // client-side like sidecar notes), but it must at least be a
+        // JSON object with a `type` — the invariant every W3C selector
+        // shares — and stay within the size cap.
+        let is_object_with_type = selector
+            .as_object()
+            .is_some_and(|o| o.get("type").is_some_and(|t| t.is_string()));
+        if !is_object_with_type {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+        let serialized_len = selector.to_string().len();
+        if serialized_len > MAX_SELECTOR_BYTES {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
+    Ok((req.value, req.format, req.motivation, req.selector))
 }
 
 /// GET /api/user/notes/{law_id} — the authenticated user's notes for a law,
@@ -151,11 +207,11 @@ pub async fn list(
     validate_law_id(&law_id)?;
     let pool = get_pool(&state)?;
 
-    let rows: Vec<NoteRow> = sqlx::query_as(
-        "SELECT id, motivation, body_value, body_format, created_at, updated_at \
+    let rows: Vec<NoteRow> = sqlx::query_as(&format!(
+        "SELECT {RETURNING} \
          FROM user_notes WHERE account_id = $1 AND law_id = $2 \
          ORDER BY created_at LIMIT $3",
-    )
+    ))
     .bind(account.id)
     .bind(&law_id)
     .bind(MAX_NOTES_PER_LAW)
@@ -182,24 +238,25 @@ pub async fn create(
     Json(req): Json<NoteRequest>,
 ) -> Result<(StatusCode, Json<UserNote>), StatusCode> {
     validate_law_id(&law_id)?;
-    let (value, format, motivation) = validate_request(req)?;
+    let (value, format, motivation, selector) = validate_request(req)?;
     let format = format.unwrap_or_else(|| "text/markdown".to_string());
     let motivation = motivation.unwrap_or_else(|| "commenting".to_string());
     let pool = get_pool(&state)?;
 
     // Cap check and insert in one statement so two concurrent creates
     // cannot both pass a separate count check and overshoot the cap.
-    let row: Option<NoteRow> = sqlx::query_as(
-        "INSERT INTO user_notes (account_id, law_id, motivation, body_value, body_format) \
-         SELECT $1, $2, $3, $4, $5 \
-         WHERE (SELECT COUNT(*) FROM user_notes WHERE account_id = $1 AND law_id = $2) < $6 \
-         RETURNING id, motivation, body_value, body_format, created_at, updated_at",
-    )
+    let row: Option<NoteRow> = sqlx::query_as(&format!(
+        "INSERT INTO user_notes (account_id, law_id, motivation, body_value, body_format, selector) \
+         SELECT $1, $2, $3, $4, $5, $6 \
+         WHERE (SELECT COUNT(*) FROM user_notes WHERE account_id = $1 AND law_id = $2) < $7 \
+         RETURNING {RETURNING}",
+    ))
     .bind(account.id)
     .bind(&law_id)
     .bind(&motivation)
     .bind(&value)
     .bind(&format)
+    .bind(&selector)
     .bind(MAX_NOTES_PER_LAW)
     .fetch_optional(pool)
     .await
@@ -215,8 +272,9 @@ pub async fn create(
 }
 
 /// PUT /api/user/notes/{law_id}/{note_id} — update a note's body;
-/// `format`/`motivation` are only changed when present in the request
-/// (absent = keep). 404 for a note that does not exist or belongs to
+/// `format`/`motivation`/`selector` are only changed when present in the
+/// request (absent = keep; to detach a note from its anchoring, delete
+/// and recreate it). 404 for a note that does not exist or belongs to
 /// another account, so foreign note ids are indistinguishable from
 /// absent ones.
 pub async fn update(
@@ -226,21 +284,22 @@ pub async fn update(
     Json(req): Json<NoteRequest>,
 ) -> Result<Json<UserNote>, StatusCode> {
     validate_law_id(&law_id)?;
-    let (value, format, motivation) = validate_request(req)?;
+    let (value, format, motivation, selector) = validate_request(req)?;
     let pool = get_pool(&state)?;
 
-    let row: Option<NoteRow> = sqlx::query_as(
+    let row: Option<NoteRow> = sqlx::query_as(&format!(
         "UPDATE user_notes SET motivation = COALESCE($4, motivation), body_value = $5, \
-         body_format = COALESCE($6, body_format) \
+         body_format = COALESCE($6, body_format), selector = COALESCE($7, selector) \
          WHERE id = $1 AND account_id = $2 AND law_id = $3 \
-         RETURNING id, motivation, body_value, body_format, created_at, updated_at",
-    )
+         RETURNING {RETURNING}",
+    ))
     .bind(note_id)
     .bind(account.id)
     .bind(&law_id)
     .bind(&motivation)
     .bind(&value)
     .bind(&format)
+    .bind(&selector)
     .fetch_optional(pool)
     .await
     .map_err(|e| {
