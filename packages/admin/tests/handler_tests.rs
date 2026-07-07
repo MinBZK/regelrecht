@@ -701,6 +701,12 @@ async fn dashboard_stats_on_empty_db() {
     assert_eq!(json["executed"]["today"]["total"], 0);
     assert_eq!(json["open_untranslatables"], 0);
     assert_eq!(json["recent_failures"].as_array().unwrap().len(), 0);
+    // The daily series always spans 14 days, all zeros on an empty DB.
+    let daily = json["daily"].as_array().unwrap();
+    assert_eq!(daily.len(), 14);
+    assert!(daily
+        .iter()
+        .all(|d| d["harvest"]["added"] == 0 && d["enrich"]["failed"] == 0));
 }
 
 #[tokio::test]
@@ -884,4 +890,101 @@ async fn dashboard_stats_failure_reason_falls_back_when_no_error_key() {
     let failures = json["recent_failures"].as_array().unwrap();
     assert_eq!(failures.len(), 1);
     assert_eq!(failures[0]["error"], "onbekend");
+}
+
+#[tokio::test]
+async fn dashboard_stats_daily_series_fourteen_days() {
+    let db = TestDb::new().await;
+    let pool = db.pool.clone();
+
+    // Harvest job created today, still pending → counts as added only.
+    job_queue::create_job(
+        &pool,
+        CreateJobRequest::new(JobType::Harvest, "BWBR0000040"),
+    )
+    .await
+    .unwrap();
+
+    // Enrich job created and completed today → added + succeeded today.
+    job_queue::create_job(&pool, CreateJobRequest::new(JobType::Enrich, "BWBR0000041"))
+        .await
+        .unwrap();
+    let claimed = job_queue::claim_job(&pool, Some(JobType::Enrich))
+        .await
+        .unwrap()
+        .unwrap();
+    job_queue::complete_job(&pool, claimed.id, None)
+        .await
+        .unwrap();
+
+    // Harvest job created 5 days ago, failed 3 days ago: added counts on the
+    // creation day, failed on the completion day.
+    let failed = job_queue::create_job(
+        &pool,
+        CreateJobRequest::new(JobType::Harvest, "BWBR0000042"),
+    )
+    .await
+    .unwrap();
+    sqlx::query(
+        "UPDATE jobs SET status = 'failed', \
+         created_at = now() - interval '5 days', \
+         completed_at = now() - interval '3 days' WHERE id = $1",
+    )
+    .bind(failed.id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Harvest job created and completed 20 days ago → outside the window.
+    let old = job_queue::create_job(
+        &pool,
+        CreateJobRequest::new(JobType::Harvest, "BWBR0000043"),
+    )
+    .await
+    .unwrap();
+    sqlx::query(
+        "UPDATE jobs SET status = 'completed', \
+         created_at = now() - interval '20 days', \
+         completed_at = now() - interval '20 days' WHERE id = $1",
+    )
+    .bind(old.id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let json = get_dashboard_stats(&pool).await;
+    let daily = json["daily"].as_array().unwrap();
+    assert_eq!(daily.len(), 14);
+
+    // Dates ascend and the last entry is today's Europe/Amsterdam date (same
+    // source of truth as the query: Postgres).
+    let today: String = sqlx::query_scalar(
+        "SELECT to_char((now() AT TIME ZONE 'Europe/Amsterdam')::date, 'YYYY-MM-DD')",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(daily[13]["date"], today.as_str());
+    for pair in daily.windows(2) {
+        assert!(pair[0]["date"].as_str().unwrap() < pair[1]["date"].as_str().unwrap());
+    }
+
+    // Today (index 13): 1 harvest added, 1 enrich added + succeeded.
+    assert_eq!(daily[13]["harvest"]["added"], 1);
+    assert_eq!(daily[13]["harvest"]["succeeded"], 0);
+    assert_eq!(daily[13]["harvest"]["failed"], 0);
+    assert_eq!(daily[13]["enrich"]["added"], 1);
+    assert_eq!(daily[13]["enrich"]["succeeded"], 1);
+
+    // 5 days ago (index 8): the failed harvest counts as added there;
+    // 3 days ago (index 10): it counts as failed there.
+    assert_eq!(daily[8]["harvest"]["added"], 1);
+    assert_eq!(daily[10]["harvest"]["failed"], 1);
+
+    // The 20-day-old job appears nowhere in the window.
+    let total_harvest_added: i64 = daily
+        .iter()
+        .map(|d| d["harvest"]["added"].as_i64().unwrap())
+        .sum();
+    assert_eq!(total_harvest_added, 2);
 }
