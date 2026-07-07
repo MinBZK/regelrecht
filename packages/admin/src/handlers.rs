@@ -818,38 +818,40 @@ pub async fn dashboard_stats(
     // 5. Daily series for the last 14 Europe/Amsterdam days: jobs added
     //    (created_at) and jobs finished (completed_at, split by outcome), per
     //    type. Days without activity come back as explicit zero rows so the
-    //    frontend never fills gaps. The `recent` pre-filter keeps the join off
-    //    the full jobs table; 15 days gives slack for the UTC↔Amsterdam offset.
+    //    frontend never fills gaps. Pre-aggregate per (day, type, kind) first —
+    //    a day-skeleton joined directly against the jobs rows degrades into an
+    //    O(days × rows) nested loop. The 15-day cutoffs give slack for the
+    //    UTC↔Amsterdam offset; at most 6 aggregate rows join per day, so the
+    //    SUM FILTER never double-counts.
     let daily_rows = sqlx::query_as::<_, (String, i64, i64, i64, i64, i64, i64)>(
         "WITH days AS ( \
              SELECT ((now() AT TIME ZONE 'Europe/Amsterdam')::date - offs) AS day \
              FROM generate_series(13, 0, -1) AS offs \
-         ), recent AS ( \
-             SELECT job_type::text AS job_type, status::text AS status, \
-                    created_at, completed_at \
+         ), events AS ( \
+             SELECT (created_at AT TIME ZONE 'Europe/Amsterdam')::date AS day, \
+                    job_type::text AS job_type, 'added' AS kind, COUNT(*) AS n \
              FROM jobs \
              WHERE created_at >= now() - INTERVAL '15 days' \
-                OR (status IN ('completed', 'failed') \
-                    AND completed_at >= now() - INTERVAL '15 days') \
+             GROUP BY 1, 2 \
+             UNION ALL \
+             SELECT (completed_at AT TIME ZONE 'Europe/Amsterdam')::date, \
+                    job_type::text, \
+                    CASE status::text WHEN 'completed' THEN 'succeeded' ELSE 'failed' END, \
+                    COUNT(*) \
+             FROM jobs \
+             WHERE status IN ('completed', 'failed') \
+               AND completed_at >= now() - INTERVAL '15 days' \
+             GROUP BY 1, 2, 3 \
          ) \
          SELECT to_char(days.day, 'YYYY-MM-DD'), \
-             COUNT(*) FILTER (WHERE r.job_type = 'harvest' \
-                 AND (r.created_at AT TIME ZONE 'Europe/Amsterdam')::date = days.day), \
-             COUNT(*) FILTER (WHERE r.job_type = 'harvest' AND r.status = 'completed' \
-                 AND (r.completed_at AT TIME ZONE 'Europe/Amsterdam')::date = days.day), \
-             COUNT(*) FILTER (WHERE r.job_type = 'harvest' AND r.status = 'failed' \
-                 AND (r.completed_at AT TIME ZONE 'Europe/Amsterdam')::date = days.day), \
-             COUNT(*) FILTER (WHERE r.job_type = 'enrich' \
-                 AND (r.created_at AT TIME ZONE 'Europe/Amsterdam')::date = days.day), \
-             COUNT(*) FILTER (WHERE r.job_type = 'enrich' AND r.status = 'completed' \
-                 AND (r.completed_at AT TIME ZONE 'Europe/Amsterdam')::date = days.day), \
-             COUNT(*) FILTER (WHERE r.job_type = 'enrich' AND r.status = 'failed' \
-                 AND (r.completed_at AT TIME ZONE 'Europe/Amsterdam')::date = days.day) \
+             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'harvest' AND e.kind = 'added'), 0)::bigint, \
+             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'harvest' AND e.kind = 'succeeded'), 0)::bigint, \
+             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'harvest' AND e.kind = 'failed'), 0)::bigint, \
+             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'enrich' AND e.kind = 'added'), 0)::bigint, \
+             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'enrich' AND e.kind = 'succeeded'), 0)::bigint, \
+             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'enrich' AND e.kind = 'failed'), 0)::bigint \
          FROM days \
-         LEFT JOIN recent r \
-             ON (r.created_at AT TIME ZONE 'Europe/Amsterdam')::date = days.day \
-             OR (r.status IN ('completed', 'failed') \
-                 AND (r.completed_at AT TIME ZONE 'Europe/Amsterdam')::date = days.day) \
+         LEFT JOIN events e ON e.day = days.day \
          GROUP BY days.day \
          ORDER BY days.day",
     )

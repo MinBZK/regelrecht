@@ -60,10 +60,8 @@ export default defineConfig({
       // them in the test context instead. The @regelrecht/frontend-shared
       // workspace package (ESM) hits the same issue when a test transitively
       // imports it (e.g. usePollingFetch → apiFetch), so inline it too.
-      // echarts/vue-echarts/zrender are also pure ESM (imported by the
-      // harvester dashboard charts).
       deps: {
-        inline: [/@cucumber\//, /@regelrecht\//, /^echarts/, /^vue-echarts/, /^zrender/],
+        inline: [/@cucumber\//, /@regelrecht\//],
       },
     },
   },

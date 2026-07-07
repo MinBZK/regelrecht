@@ -704,9 +704,13 @@ async fn dashboard_stats_on_empty_db() {
     // The daily series always spans 14 days, all zeros on an empty DB.
     let daily = json["daily"].as_array().unwrap();
     assert_eq!(daily.len(), 14);
-    assert!(daily
-        .iter()
-        .all(|d| d["harvest"]["added"] == 0 && d["enrich"]["failed"] == 0));
+    assert!(daily.iter().all(|d| {
+        ["harvest", "enrich"].iter().all(|t| {
+            ["added", "succeeded", "failed"]
+                .iter()
+                .all(|k| d[t][k] == 0)
+        })
+    }));
 }
 
 #[tokio::test]

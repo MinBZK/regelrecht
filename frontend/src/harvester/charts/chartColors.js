@@ -45,7 +45,15 @@ export function resolveChartColors(referenceEl = document.body) {
         continue;
       }
       ctx.clearRect(0, 0, 1, 1);
+      // Canvas silently keeps the previous fillStyle on a parse failure; seed
+      // a sentinel so an unparseable value falls back to the computed string
+      // instead of leaking the previous token's color.
+      ctx.fillStyle = '#010203';
       ctx.fillStyle = resolved;
+      if (ctx.fillStyle === '#010203' && resolved !== '#010203') {
+        colors[key] = resolved;
+        continue;
+      }
       ctx.fillRect(0, 0, 1, 1);
       const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
       colors[key] = `rgb(${r}, ${g}, ${b})`;

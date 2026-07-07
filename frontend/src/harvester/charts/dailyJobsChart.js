@@ -59,6 +59,10 @@ export function buildDailyJobsOption(entries, colors) {
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
+      // Theme the tooltip too — the ECharts default is white-on-light only.
+      backgroundColor: colors.surface,
+      borderColor: colors.grid,
+      textStyle: { color: colors.text },
     },
     xAxis: {
       type: 'category',
