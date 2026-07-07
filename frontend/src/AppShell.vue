@@ -75,6 +75,16 @@ const editorPanelFlags = [
   ['panel.notes', 'Tekst viewer + notities'],
 ];
 
+// The "Functies" menu group: the panel flags, plus the GitHub-koppeling
+// toggle when this deployment has a GitHub OAuth App configured. The flag
+// (off by default) hides the Koppel/Ontkoppel items below so the spike is
+// opt-in per user.
+const functieFlags = computed(() =>
+  githubStatus.value?.configured
+    ? [...editorPanelFlags, ['github.user_oauth', 'GitHub-koppeling']]
+    : editorPanelFlags,
+);
+
 const route = useRoute();
 const router = useRouter();
 
@@ -200,7 +210,7 @@ const hasDocumentTabs = computed(
                 <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
                 <nldd-menu-group text="Functies">
                 <nldd-menu-item
-                  v-for="[key, label] in editorPanelFlags"
+                  v-for="[key, label] in functieFlags"
                   :key="key"
                   type="checkbox"
                   :selected="isEnabled(key) || undefined"
@@ -219,8 +229,8 @@ const hasDocumentTabs = computed(
                 ></nldd-menu-item>
                 </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
-                <nldd-menu-item v-if="authenticated && githubStatus?.configured && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
-                <nldd-menu-item v-else-if="authenticated && githubStatus?.configured" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
+                <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
+                <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
                 <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
               </nldd-menu>
@@ -269,7 +279,7 @@ const hasDocumentTabs = computed(
                 <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
                 <nldd-menu-group text="Functies">
                 <nldd-menu-item
-                  v-for="[key, label] in editorPanelFlags"
+                  v-for="[key, label] in functieFlags"
                   :key="key"
                   type="checkbox"
                   :selected="isEnabled(key) || undefined"
@@ -288,8 +298,8 @@ const hasDocumentTabs = computed(
                 ></nldd-menu-item>
                 </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
-                <nldd-menu-item v-if="authenticated && githubStatus?.configured && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
-                <nldd-menu-item v-else-if="authenticated && githubStatus?.configured" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
+                <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
+                <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
                 <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
               </nldd-menu>
@@ -450,7 +460,7 @@ const hasDocumentTabs = computed(
                 <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
                 <nldd-menu-group text="Functies">
                 <nldd-menu-item
-                  v-for="[key, label] in editorPanelFlags"
+                  v-for="[key, label] in functieFlags"
                   :key="key"
                   type="checkbox"
                   :selected="isEnabled(key) || undefined"
@@ -469,8 +479,8 @@ const hasDocumentTabs = computed(
                 ></nldd-menu-item>
                 </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
-                <nldd-menu-item v-if="authenticated && githubStatus?.configured && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
-                <nldd-menu-item v-else-if="authenticated && githubStatus?.configured" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
+                <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
+                <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
                 <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
               </nldd-menu>
