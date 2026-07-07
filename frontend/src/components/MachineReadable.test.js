@@ -312,24 +312,8 @@ describe('MachineReadable', () => {
     });
   });
 
-  describe('save error dialog', () => {
-    it('renders save error dialog when saveError is set', () => {
-      const err = new Error('Forbidden: read-only backend');
-      const wrapper = mount(MachineReadable, {
-        props: { article: createArticle(), editable: true, saveError: err },
-      });
-      const dialog = wrapper.find('[data-testid="save-mr-error"]');
-      expect(dialog.exists()).toBe(true);
-      expect(dialog.attributes('supporting-text')).toBe('Forbidden: read-only backend');
-    });
-
-    it('does not render save error dialog when saveError is null', () => {
-      const wrapper = mount(MachineReadable, {
-        props: { article: createArticle(), editable: true, saveError: null },
-      });
-      expect(wrapper.find('[data-testid="save-mr-error"]').exists()).toBe(false);
-    });
-  });
+  // Save failures no longer render inline here; EditorView surfaces lawSaveError
+  // as a single modal over the whole editor.
 
   describe('delete row buttons', () => {
     function findDeleteByTestId(wrapper, testid) {

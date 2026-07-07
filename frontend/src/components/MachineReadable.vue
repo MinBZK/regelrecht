@@ -13,7 +13,6 @@ const props = defineProps({
   /** True while a save PUT is in flight */
   saving: { type: Boolean, default: false },
   /** Error from the most recent save attempt (Error instance or null) */
-  saveError: { type: Object, default: null },
   /** Active traject ref — scopes the corpus-laws lookup so display
    *  names reflect the traject's view (including its in-progress edits). */
   trajectRef: { type: String, default: null },
@@ -259,18 +258,6 @@ function addOutput() {
   </nldd-inline-dialog>
 
   <div v-else data-testid="machine-readable">
-    <!-- Save error surfaces inline; the actual save button lives in the
-         parent pane's footer. -->
-    <template v-if="editable && saveError">
-      <nldd-inline-dialog
-        variant="alert"
-        text="Opslaan mislukt"
-        :supporting-text="saveError.message || String(saveError)"
-        data-testid="save-mr-error"
-      ></nldd-inline-dialog>
-      <nldd-spacer size="12"></nldd-spacer>
-    </template>
-
     <!-- Metadata: produces -->
     <nldd-list v-if="produces" variant="box">
       <nldd-list-item v-if="produces.legal_character || editable" size="md">
