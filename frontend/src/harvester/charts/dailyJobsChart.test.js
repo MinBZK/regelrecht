@@ -51,6 +51,14 @@ describe('buildDailyJobsOption', () => {
   });
 });
 
+describe('formatAxisNumber', () => {
+  it('formats with nl-NL grouping', async () => {
+    const { formatAxisNumber } = await import('./dailyJobsChart.js');
+    expect(formatAxisNumber(1500)).toBe('1.500');
+    expect(formatAxisNumber(0)).toBe('0');
+  });
+});
+
 describe('formatAxisDate', () => {
   it('formats YYYY-MM-DD as a short Dutch date', () => {
     expect(formatAxisDate('2026-07-06')).toBe('6 jul');

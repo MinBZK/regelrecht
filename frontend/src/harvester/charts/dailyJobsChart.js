@@ -17,6 +17,13 @@ const AXIS_DATE_FORMAT = new Intl.DateTimeFormat('nl-NL', {
   month: 'short',
 });
 
+// nl-NL grouping (1.500, not the ECharts default 1,500), consistent with
+// formatNumber elsewhere on the dashboard.
+const AXIS_NUMBER_FORMAT = new Intl.NumberFormat('nl-NL');
+export function formatAxisNumber(value) {
+  return AXIS_NUMBER_FORMAT.format(value);
+}
+
 // 'YYYY-MM-DD' → short Dutch axis label, e.g. '6 jul'.
 export function formatAxisDate(isoDate) {
   const date = new Date(`${isoDate}T00:00:00`);
@@ -59,6 +66,7 @@ export function buildDailyJobsOption(entries, colors) {
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
+      valueFormatter: formatAxisNumber,
       // Theme the tooltip too — the ECharts default is white-on-light only.
       backgroundColor: colors.surface,
       borderColor: colors.grid,
@@ -75,7 +83,11 @@ export function buildDailyJobsOption(entries, colors) {
       type: 'value',
       minInterval: 1,
       splitLine: { lineStyle: { color: colors.grid } },
-      axisLabel: { color: colors.textSecondary, fontSize: 11 },
+      axisLabel: {
+        color: colors.textSecondary,
+        fontSize: 11,
+        formatter: formatAxisNumber,
+      },
     },
     series: [
       bar('succeeded'),
