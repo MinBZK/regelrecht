@@ -15,10 +15,10 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@regelrecht/frontend-shared": "*",
     "@cucumber/gherkin": "^41.0.0",
     "@cucumber/messages": "^33.0.2",
     "@nldd/design-system": "file:../../storybook/.worktrees/feat/codemirror-editors/nldd-design-system-0.8.64.tgz",
+    "@regelrecht/frontend-shared": "*",
     "@tiptap/core": "^3.27.1",
     "@tiptap/starter-kit": "^3.27.1",
     "@tiptap/vue-3": "^3.27.1",
