@@ -416,6 +416,9 @@ static TEXT_BLOCK_HEADER_RE: LazyLock<Regex> =
 /// blank line (a `\n\n` paragraph break in the source) must become two blank
 /// lines to survive the round trip. [`classify_text_style`] only marks a
 /// block `Folded` when its content makes that transformation exact.
+///
+/// Note: a trailing newline in `yaml` is not preserved in the output; the
+/// caller is responsible for any required terminal newline.
 fn fold_text_blocks(yaml: &str, plan: &[(String, TextStyle)]) -> Result<String> {
     let lines: Vec<&str> = yaml.lines().collect();
     let mut out: Vec<String> = Vec::with_capacity(lines.len() + plan.len());
