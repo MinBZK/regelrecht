@@ -29,6 +29,7 @@ import ArticleText from './components/ArticleText.vue';
 import ArticleTextEditor from './components/ArticleTextEditor.vue';
 import NoteCreator from './components/NoteCreator.vue';
 import NoteCard from './components/NoteCard.vue';
+import QuotedFragment from './components/QuotedFragment.vue';
 import { cpToUtf16 } from './composables/useNotesHighlight.js';
 import { utf16ToCp } from './composables/useTextSelection.js';
 import ActionSheet from './components/ActionSheet.vue';
@@ -2177,9 +2178,7 @@ async function handleActionSave() {
                         @dismiss="noteSheetEl?.hide?.()"
                       ></nldd-top-title-bar>
                       <nldd-container padding="16" data-testid="note-detail">
-                        <nldd-rich-text v-if="activeGroup && activeGroup.quote">
-                          <p>{{ activeGroup.ellipsisBefore }}{{ activeGroup.before }}<i>{{ activeGroup.quote }}</i>{{ activeGroup.after }}{{ activeGroup.ellipsisAfter }}</p>
-                        </nldd-rich-text>
+                        <QuotedFragment :fragment="activeGroup" />
                         <nldd-spacer v-if="activeGroup && activeGroup.quote" size="12"></nldd-spacer>
                         <nldd-collection layout="stack" gap="12px">
                           <nldd-card v-for="(note, i) in activeNotes" :key="i">
@@ -2370,9 +2369,9 @@ async function handleActionSave() {
                     <nldd-spacer v-if="gi > 0" size="24"></nldd-spacer>
                     <!-- Quoted fragment (group header) as rich-text, then a
                          spacer before the cards. -->
-                    <nldd-rich-text>
-                      <p v-if="group.quote">{{ group.ellipsisBefore }}{{ group.before }}<i>{{ group.quote }}</i>{{ group.after }}{{ group.ellipsisAfter }}</p>
-                      <p v-else><i>Zonder verankering</i></p>
+                    <QuotedFragment v-if="group.quote" :fragment="group" />
+                    <nldd-rich-text v-else>
+                      <p><i>Zonder verankering</i></p>
                     </nldd-rich-text>
                     <nldd-spacer size="10"></nldd-spacer>
                     <nldd-collection layout="stack" gap="12px">

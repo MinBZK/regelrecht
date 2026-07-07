@@ -16,6 +16,9 @@ import { useAmbiguityVocabulary } from '../composables/useAmbiguityVocabulary.js
 import { documentsListUrl } from '../composables/corpusUrls.js';
 import { apiFetchJson } from '../lib/apiFetch.js';
 import { useAuth } from '../composables/useAuth.js';
+import { quoteContext } from '../lib/quoteContext.js';
+import { cpToUtf16 } from '../composables/useNotesHighlight.js';
+import QuotedFragment from './QuotedFragment.vue';
 
 const props = defineProps({
   // Raw char range from selectionToRawRange(), or null when closed.
@@ -157,13 +160,15 @@ const selectorResult = computed(() => {
 
 const exact = computed(() => selectorResult.value?.exact ?? '');
 
-// Ellipses signal there's more text around the fragment; omitted at the very
-// start / end of the editor text so the quote reads honestly. `range` is in
-// code points (see EditorView), so measure the text the same way.
-const hasTextBefore = computed(() => (props.range?.start ?? 0) > 0);
-const hasTextAfter = computed(() => {
-  const len = [...(props.rawText ?? '')].length;
-  return (props.range?.end ?? len) < len;
+// The referenced fragment with a little context, rendered the same way as in
+// the note sheet and pane (see QuotedFragment). `range` is in code points.
+const referencedFragment = computed(() => {
+  if (!props.range || !props.rawText) return null;
+  return quoteContext(
+    props.rawText,
+    cpToUtf16(props.rawText, props.range.start),
+    cpToUtf16(props.rawText, props.range.end),
+  );
 });
 const selectorStatus = computed(() => selectorResult.value?.status ?? null);
 const selectorReason = computed(() => selectorResult.value?.reason ?? null);
@@ -364,11 +369,8 @@ const statusInfo = computed(() => {
 
 <template>
   <nldd-container v-if="range" padding="16" data-testid="note-creator">
-      <!-- Selected fragment as an italic inline quote; ellipses show there is
-           more text on either side, omitted at the very start / end. -->
-      <nldd-rich-text>
-        <p><i>{{ hasTextBefore ? '… ' : '' }}{{ exact }}{{ hasTextAfter ? ' …' : '' }}</i></p>
-      </nldd-rich-text>
+      <!-- Referenced fragment, shown the same way as everywhere else. -->
+      <QuotedFragment :fragment="referencedFragment" />
 
       <!-- Unusable selection (ambiguous/orphaned): show just the warning; the
            user dismisses by clicking outside. The full form appears once the
