@@ -83,28 +83,52 @@ describe('NoteCreator', () => {
     expect(note.__draft).toBe(true);
   });
 
-  it('builds a linking note with a SpecificResource body', async () => {
-    const w = mountCreator();
+  it('builds a linking note with a SpecificResource body per linked target', async () => {
+    const w = mountCreator({ trajectRef: 't-123' });
     await nextTick();
-    w.vm.linkMode = 'element';
-    w.vm.linkTarget = 'hoogte_zorgtoeslag';
+    // One element link and one document link -> two SpecificResource bodies.
+    w.vm.links = [
+      { type: 'element', value: 'hoogte_zorgtoeslag', label: 'hoogte_zorgtoeslag' },
+      { type: 'document', value: 'mvt/concept.md', label: 'mvt/concept.md' },
+    ];
     await nextTick();
     w.vm.save();
     const [[note]] = w.emitted('create');
     expect(note.motivation).toBe('linking');
-    expect(note.body).toEqual({
-      type: 'SpecificResource',
-      source: 'regelrecht://wet_op_de_zorgtoeslag/hoogte_zorgtoeslag#hoogte_zorgtoeslag',
-      purpose: 'linking',
-    });
+    expect(note.body).toEqual([
+      {
+        type: 'SpecificResource',
+        source: 'regelrecht://wet_op_de_zorgtoeslag/hoogte_zorgtoeslag#hoogte_zorgtoeslag',
+        purpose: 'linking',
+      },
+      {
+        type: 'SpecificResource',
+        source: 'regelrecht://doc/t-123/mvt/concept.md',
+        purpose: 'linking',
+      },
+    ]);
+  });
+
+  it('maps the task switches to the workflow and reveals "done" only for a task', async () => {
+    const w = mountCreator();
+    await nextTick();
+    // "Afgehandeld" is hidden until the note is a task.
+    expect(w.find('[data-testid="note-task-done"]').exists()).toBe(false);
+    w.vm.commentText = 'x';
+    w.vm.isTask = true;
+    w.vm.taskDone = true;
+    await nextTick();
+    expect(w.find('[data-testid="note-task-done"]').exists()).toBe(true);
+    w.vm.save();
+    expect(w.emitted('create')[0][0].workflow).toBe('resolved');
   });
 
   it('combines a comment, ambiguity tag and open action into one note', async () => {
     const w = mountCreator();
     await nextTick();
     w.vm.commentText = 'is dit een open norm?';
-    w.vm.ambiguityTag = 'open-norm-partial';
-    w.vm.workflow = 'open';
+    w.vm.ambiguityTags = ['open-norm-partial'];
+    w.vm.isTask = true; // a task, not done -> workflow 'open'
     await nextTick();
     w.vm.save();
     const [[note]] = w.emitted('create');
@@ -117,18 +141,17 @@ describe('NoteCreator', () => {
     });
   });
 
-  it('builds a tagging note with just the tag', async () => {
+  it('builds a tagging note with multiple ambiguity labels', async () => {
     const w = mountCreator();
     await nextTick();
-    w.vm.ambiguityTag = 'missing-document';
+    w.vm.ambiguityTags = ['missing-document', 'open-norm-partial'];
     await nextTick();
     w.vm.save();
     const [[note]] = w.emitted('create');
-    expect(note.body).toEqual({
-      type: 'TextualBody',
-      value: 'missing-document',
-      purpose: 'tagging',
-    });
+    expect(note.body).toEqual([
+      { type: 'TextualBody', value: 'missing-document', purpose: 'tagging' },
+      { type: 'TextualBody', value: 'open-norm-partial', purpose: 'tagging' },
+    ]);
   });
 
   it('does not save while the selector is ambiguous', async () => {
@@ -167,66 +190,6 @@ describe('NoteCreator', () => {
     expect(w.find('[data-testid="note-save"]').exists()).toBe(true);
   });
 
-  // nldd-popover is popover="auto": clicking outside (or Esc) light-dismisses
-  // it in the browser without going through cancel(). The component fires
-  // `close` on every dismissal; NoteCreator must treat a close while the form
-  // is still open as a cancel, or the parent keeps creatorOpen=true and the
-  // "Notitie" button never reappears on a new selection.
-  it('emits cancel when the popover closes via light-dismiss', async () => {
-    const w = mountCreator();
-    await nextTick();
-    // Same shape as the real nldd close event (bubbles + composed).
-    w.element.dispatchEvent(new Event('close', { bubbles: true, composed: true }));
-    await nextTick();
-    expect(w.emitted('cancel')).toHaveLength(1);
-  });
-
-  it('does not emit cancel for the close that follows its own teardown', async () => {
-    const w = mountCreator();
-    await nextTick();
-    await w.setProps({ range: null }); // parent already tore the flow down
-    w.element.dispatchEvent(new Event('close', { bubbles: true, composed: true }));
-    await nextTick();
-    expect(w.emitted('cancel')).toBeUndefined();
-  });
-
-  // A future nested nldd component in the form slot would dispatch its own
-  // bubbling `close`; that must not cancel the half-filled form.
-  it('ignores a close event bubbling up from inside the form', async () => {
-    const w = mountCreator();
-    await nextTick();
-    w.find('[data-testid="note-creator"]').element.dispatchEvent(
-      new Event('close', { bubbles: true, composed: true }),
-    );
-    await nextTick();
-    expect(w.emitted('cancel')).toBeUndefined();
-  });
-
-  // If an nldd-popover implementation ever dispatched close synchronously
-  // from hidePopover() (instead of the spec's queued toggle task), save()
-  // must still not read as a cancel. The stub simulates that regime.
-  it('does not emit cancel when save() itself hides the popover', async () => {
-    const w = mountCreator({}, {
-      'nldd-popover': {
-        template: '<div><slot/></div>',
-        methods: {
-          showPopover() {},
-          hidePopover() {
-            this.$el.dispatchEvent(new Event('close', { bubbles: true, composed: true }));
-          },
-          matches() { return false; },
-        },
-      },
-    });
-    await nextTick();
-    w.vm.commentText = 'uitleg';
-    await nextTick();
-    w.vm.save();
-    await nextTick();
-    expect(w.emitted('cancel')).toBeUndefined();
-    expect(w.emitted('create')).toHaveLength(1);
-  });
-
   it('sets the creator to the signed-in user (id + name)', async () => {
     const { person } = useAuth();
     const w = mountCreator();
@@ -240,5 +203,42 @@ describe('NoteCreator', () => {
     const note = w.emitted('create')[0][0];
     expect(note.creator).toEqual({ id: 'u1', name: 'J. de Vries' });
     person.value = null; // reset shared module state for other tests
+  });
+
+  it('emits the share intent as the second create arg (default off)', async () => {
+    const w = mountCreator({ trajectRef: 't-123' });
+    await nextTick();
+    w.vm.commentText = 'x';
+    await nextTick();
+    w.vm.save();
+    expect(w.emitted('create')[0][1]).toBe(false);
+
+    const w2 = mountCreator({ trajectRef: 't-123' });
+    await nextTick();
+    w2.vm.commentText = 'x';
+    w2.vm.shareWithTraject = true;
+    await nextTick();
+    w2.vm.save();
+    expect(w2.emitted('create')[0][1]).toBe(true);
+  });
+
+  it('shows the irreversible-share warning only when the switch is on', async () => {
+    const w = mountCreator({ trajectRef: 't-123' });
+    await nextTick();
+    expect(w.find('[data-testid="note-share-warning"]').exists()).toBe(false);
+    w.vm.shareWithTraject = true;
+    await nextTick();
+    expect(w.find('[data-testid="note-share-warning"]').exists()).toBe(true);
+  });
+
+  it('the share switch change event drives the ref and the warning', async () => {
+    const w = mountCreator({ trajectRef: 't-123' });
+    await nextTick();
+    w.find('[data-testid="note-share"]').element.dispatchEvent(
+      new CustomEvent('change', { detail: { checked: true }, bubbles: true, composed: true }),
+    );
+    await nextTick();
+    expect(w.vm.shareWithTraject).toBe(true);
+    expect(w.find('[data-testid="note-share-warning"]').exists()).toBe(true);
   });
 });

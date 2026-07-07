@@ -22,12 +22,13 @@ import {
 import { SUPPORT_EMAIL } from './constants.js';
 import { apiFetch, apiFetchJson } from './lib/apiFetch.js';
 import { RETRY_MIN_SPINNER_MS } from './lib/retryFeedback.js';
-import { dismissPopoverOnScroll } from './lib/dismissOnScroll.js';
 import { humanizeLawId } from './lib/lawName.js';
+import { quoteContext } from './lib/quoteContext.js';
 import { useLatest } from './lib/useLatest.js';
 import ArticleText from './components/ArticleText.vue';
 import ArticleTextEditor from './components/ArticleTextEditor.vue';
 import NoteCreator from './components/NoteCreator.vue';
+import NoteCard from './components/NoteCard.vue';
 import { cpToUtf16 } from './composables/useNotesHighlight.js';
 import { utf16ToCp } from './composables/useTextSelection.js';
 import ActionSheet from './components/ActionSheet.vue';
@@ -248,7 +249,6 @@ const {
   removeDraft,
   exportYaml,
   exportYamlFromNotes,
-  saveToRepo,
   publishNote,
 } = useDraftNotes(lawId, activeTrajectRef);
 const { draftNotesForArticle } = useResolvedDraftNotes(
@@ -269,10 +269,6 @@ const notesForArticle = computed(() => [
   ...committedNotesForArticle.value,
   ...draftNotesForArticle.value,
 ]);
-
-function onCreateNote(note) {
-  addDraft(note);
-}
 
 // A stable id per note so an annotation-click maps back to it. Committed notes
 // carry a W3C id; a draft may not, so fall back to its position.
@@ -304,112 +300,156 @@ const editorAnnotations = computed(() => {
 
 // NoteCreator (authoring popover) state, opened by the toolbar comment button
 // on the current editor selection.
-const noteCreator = reactive({ open: false, range: null, anchor: null });
+const noteCreator = reactive({ open: false, range: null, editing: null, initialNote: null });
 
-// Anchor the note popover to the SELECTED TEXT, not the toolbar button. The DS
-// popover needs a real element, so we position an invisible one at the
-// selection's viewport rect (nldd-text-editor's getSelection().rect) and use it
-// as the anchor. One reused element, repositioned per note.
-let noteAnchorEl = null;
-let annotationAnchorEl = null;
-function makeAnchorEl() {
-  const el = document.createElement('div');
-  el.setAttribute('aria-hidden', 'true');
-  el.style.cssText = 'position:fixed;pointer-events:none;z-index:-1;';
-  document.body.appendChild(el);
-  return el;
-}
-function positionAnchor(el, rect) {
-  el.style.left = `${rect.left}px`;
-  el.style.top = `${rect.top}px`;
-  el.style.width = `${rect.width}px`;
-  el.style.height = `${rect.height}px`;
-}
-function selectionAnchor(rect) {
-  if (!noteAnchorEl) noteAnchorEl = makeAnchorEl();
-  positionAnchor(noteAnchorEl, rect);
-  return noteAnchorEl;
-}
-// Separate element from the authoring anchor: viewing an annotation and
-// authoring a new one are distinct actions, so the two popovers never share
-// (and fight over) one position.
-function annotationAnchor(rect) {
-  if (!annotationAnchorEl) annotationAnchorEl = makeAnchorEl();
-  positionAnchor(annotationAnchorEl, rect);
-  return annotationAnchorEl;
-}
-onBeforeUnmount(() => {
-  noteAnchorEl?.remove();
-  noteAnchorEl = null;
-  annotationAnchorEl?.remove();
-  annotationAnchorEl = null;
-  annotationScrollCleanup?.();
-  annotationScrollCleanup = null;
-});
+// — Note sheet (a right sheet hosting the badge note list and the editor) ——————
+// The editor (NoteCreator) is rendered as sheet content. Two entry points:
+// - annotation badge → open at the 'list' view (referenced text + note cards),
+//   from which editing/adding pushes the 'edit' view with a back button;
+// - notities pane → open directly at 'edit' (the pane is already the list), whose
+//   top bar shows a close button, not a back button.
+const noteSheetEl = ref(null);
+const noteSheetView = ref('list'); // 'list' | 'edit'
+const noteEditFromList = ref(false); // edit entered from the in-sheet list
 
-function startNoteFromSelection(idx, ev) {
+function openNoteEditor({ range, editing, initialNote, fromList }) {
+  noteCreator.range = range;
+  noteCreator.editing = editing;
+  noteCreator.initialNote = initialNote;
+  noteCreator.open = true;
+  noteEditFromList.value = fromList;
+  noteSheetView.value = 'edit';
+  noteSheetEl.value?.show?.(); // no-op when already open (came from the list)
+}
+function resetNoteCreator() {
+  noteCreator.open = false;
+  noteCreator.range = null;
+  noteCreator.editing = null;
+  noteCreator.initialNote = null;
+}
+// Back button (edit → list): only offered when editing started from the list.
+function noteEditorBack() {
+  resetNoteCreator();
+  noteSheetView.value = 'list';
+}
+// Cancel the editor: back to the list if that is where it came from, else close.
+function noteEditCancel() {
+  if (noteEditFromList.value) noteEditorBack();
+  else noteSheetEl.value?.hide?.();
+}
+// The sheet finished closing (dismiss/Esc/backdrop or our own hide()).
+function onNoteSheetClose() {
+  resetNoteCreator();
+  noteSheetView.value = 'list';
+  activeNotes.value = [];
+}
+// After a create/edit, re-read the badge list's notes for the group so a new or
+// edited note shows immediately.
+function refreshActiveNotes(span) {
+  if (!span) return;
+  const g = noteGroups.value.find((gr) => gr.start === span.start && gr.end === span.end);
+  if (g) activeNotes.value = [...g.notes];
+}
+
+function startNoteFromSelection(idx) {
   const refs = textEditorRefs[idx];
   if (!refs) return;
   const sel = refs.getSelection();
   if (sel.empty) return;
   const text = editedText.value || '';
-  noteCreator.range = { start: utf16ToCp(text, sel.start), end: utf16ToCp(text, sel.end) };
-  // Anchor to the selection rect; fall back to the click target (e.g. when
-  // invoked from the overflow menu, where there is no selection rect handy).
-  noteCreator.anchor = sel.rect ? selectionAnchor(sel.rect) : (ev?.currentTarget ?? null);
-  noteCreator.open = true;
+  openNoteEditor({
+    range: { start: utf16ToCp(text, sel.start), end: utf16ToCp(text, sel.end) },
+    editing: null,
+    initialNote: null,
+    fromList: false,
+  });
 }
-function onNoteCreated(note) {
-  onCreateNote(note);
-  noteCreator.open = false;
+function onNoteCreated(note, share) {
+  const span = noteCreator.range;
+  const backToList = noteEditFromList.value;
+  let stored;
+  if (noteCreator.editing) {
+    // Edit: replace the draft in place. Keep the original authorship/timestamp
+    // (and id, if any); take the freshly built body/target/workflow.
+    const orig = noteCreator.editing;
+    const merged = { ...note, __draft: true };
+    if (orig.creator) merged.creator = orig.creator;
+    if (orig.created) merged.created = orig.created;
+    if (orig.id) merged.id = orig.id;
+    const i = draftNotes.value.indexOf(orig);
+    if (i >= 0) removeDraft(i);
+    stored = addDraft(merged);
+  } else {
+    stored = addDraft(note);
+  }
+  resetNoteCreator();
+  // "Deel met anderen binnen dit traject" was on: commit the just-created draft
+  // to the traject right away. No extra confirm — the switch was the deliberate,
+  // default-off opt-in. Needs traject write access (the switch only shows then).
+  if (share && stored && canEdit.value) {
+    void publishOneNote(stored);
+  }
+  // From the badge list: return to it (refreshed). Otherwise close the sheet.
+  if (backToList) {
+    refreshActiveNotes(span);
+    noteSheetView.value = 'list';
+  } else {
+    noteSheetEl.value?.hide?.();
+  }
+}
+// "Nog een notitie" on a note group: open the editor pre-set to that group's
+// existing fragment (its span, already in codepoint offsets), so the new note
+// targets the same quoted text without re-selecting. `fromList` marks the
+// in-sheet badge list as the origin (back returns there).
+function startNoteForGroup(group, fromList = false) {
+  if (group?.start == null || group?.end == null) return; // unanchored group
+  openNoteEditor({
+    range: { start: group.start, end: group.end },
+    editing: null,
+    initialNote: null,
+    fromList,
+  });
+}
+// Edit an existing draft note: open the editor pre-filled, anchored to its span.
+function startEditNote(group, note, fromList = false) {
+  if (group?.start == null || group?.end == null) return;
+  openNoteEditor({
+    range: { start: group.start, end: group.end },
+    editing: note,
+    initialNote: note,
+    fromList,
+  });
 }
 
-// Clicking an annotation's badge opens a popover listing every note that badge
-// covers (a merged badge can carry several ids), anchored to the badge itself
-// via the rect the DS text-editor hands along with the click.
-let annotationPopEl = null; // plain ref: the popover is driven imperatively
 const activeNotes = ref([]);
-const NOTE_MOTIVATION_LABELS = {
-  commenting: 'Opmerking',
-  questioning: 'Vraag',
-  linking: 'Koppeling',
-  tagging: 'Label',
-};
-function noteMotivationLabel(note) {
-  return NOTE_MOTIVATION_LABELS[note?.motivation] || 'Notitie';
-}
-function noteDetailText(note) {
-  if (!note) return '';
-  const body = Array.isArray(note.body) ? note.body[0] : note.body;
-  return body?.value || body?.source || '';
-}
 // Notes grouped by the fragment they annotate (their primary span), so every
 // comment on the same quote sits together under one quote header. Groups are
 // ordered by where the fragment starts in the article text; a note without a
 // resolvable span falls into a trailing "unanchored" group.
 const noteGroups = computed(() => {
   const text = selectedArticle.value?.text || '';
-  const textLen = [...text].length; // codepoint length; spans are codepoint offsets
   const groups = new Map();
   for (const entry of notesForArticle.value) {
     const span = entry?.spans?.[0];
     const key = span ? `${span.start}-${span.end}` : 'unanchored';
     if (!groups.has(key)) {
-      const quote = span ? text.slice(cpToUtf16(text, span.start), cpToUtf16(text, span.end)) : '';
-      // Ellipses show the quote is a fragment, mirroring NoteCreator: only where
-      // real text sits before/after the span, not at the article's own edges.
-      const hasBefore = span ? span.start > 0 : false;
-      const hasAfter = span ? span.end < textLen : false;
-      groups.set(key, { start: span?.start ?? Number.MAX_SAFE_INTEGER, quote, hasBefore, hasAfter, notes: [] });
+      // A little sentence-aware context around the fragment. Only the fragment
+      // itself is italicised in the template; the context words and the ellipses
+      // are not.
+      const ctx = span
+        ? quoteContext(text, cpToUtf16(text, span.start), cpToUtf16(text, span.end))
+        : { quote: '', before: '', after: '', ellipsisBefore: '', ellipsisAfter: '' };
+      groups.set(key, {
+        start: span?.start ?? Number.MAX_SAFE_INTEGER,
+        end: span?.end ?? null,
+        ...ctx,
+        notes: [],
+      });
     }
     groups.get(key).notes.push(entry.note);
   }
   return [...groups.values()].sort((a, b) => a.start - b.start);
 });
-// Author display name, tolerating the new { id, name } shape and legacy strings.
-function noteCreatorName(note) {
-  return note?.creator?.name ?? note?.creator ?? '';
-}
 // A draft note lives in this browser's own localStorage, so it is the user's
 // by construction — every draft is deletable. Ownership (creator.id) is only
 // meaningful for committed notes in the shared repo; gating drafts on it broke
@@ -423,10 +463,66 @@ function deleteNote(note) {
   const i = draftNotes.value.indexOf(note);
   if (i >= 0) removeDraft(i);
 }
-// Publish ("publiek maken") applies to your still-local drafts (a committed
-// note is already on the repo) and needs a traject to write to.
+// Deleting a draft is irreversible (it is the only copy), so confirm first. Same
+// pending-ref + show()/hide() pattern as the share modal.
+const deleteModalEl = ref(null);
+const deletePending = ref(null);
+watch(deletePending, (note) => {
+  const el = deleteModalEl.value;
+  if (!el) return;
+  if (note && typeof el.show === 'function') el.show();
+  else if (!note && typeof el.hide === 'function') el.hide();
+});
+function askDeleteNote(note) {
+  deletePending.value = note;
+}
+function cancelDelete() {
+  if (deletePending.value === null) return; // idempotent: @close + button
+  deletePending.value = null;
+}
+function confirmDelete() {
+  const note = deletePending.value;
+  deletePending.value = null;
+  if (note) deleteNote(note);
+}
+// The note group (with its span) a given note belongs to, so the badge popover
+// can drive an edit's re-anchoring the same way the Notities pane does.
+function groupForNote(note) {
+  return noteGroups.value.find((g) => g.notes.includes(note)) ?? null;
+}
+// The group the open badge sheet shows (all its notes share one span), so the
+// sheet can offer "Notitie toevoegen" on that same fragment.
+const activeGroup = computed(() =>
+  activeNotes.value.length ? groupForNote(activeNotes.value[0]) : null,
+);
+// Sharing ("Delen") applies to your still-local drafts (a committed note is
+// already on the traject branch) and needs a traject to write to.
 function canPublishNote(note) {
   return !!note?.__draft && canEdit.value;
+}
+// Publishing writes the note to the repo (Git) and can't be undone — it can't
+// be made private again — so it goes through a confirm modal. Same show()/hide()
+// pattern as other DS modal dialogs: a pending ref (the note to publish) drives
+// the open/close via a watch, and @close just clears it.
+const publishModalEl = ref(null);
+const publishPending = ref(null);
+watch(publishPending, (note) => {
+  const el = publishModalEl.value;
+  if (!el) return;
+  if (note && typeof el.show === 'function') el.show();
+  else if (!note && typeof el.hide === 'function') el.hide();
+});
+function askPublishNote(note) {
+  publishPending.value = note;
+}
+function cancelPublish() {
+  if (publishPending.value === null) return; // idempotent: @close + button
+  publishPending.value = null;
+}
+function confirmPublish() {
+  const note = publishPending.value;
+  publishPending.value = null;
+  if (note) publishOneNote(note);
 }
 async function publishOneNote(note) {
   if (savingNotes.value) return;
@@ -436,42 +532,71 @@ async function publishOneNote(note) {
   try {
     const { pr, noChange } = await publishNote(note);
     notesSaveStatus.value = noChange
-      ? 'Notitie was al opgeslagen.'
+      ? 'Notitie was al gedeeld.'
       : pr
-        ? `Gepubliceerd in PR #${pr.number}.`
-        : 'Notitie gepubliceerd.';
+        ? `Gedeeld in PR #${pr.number}.`
+        : 'Notitie gedeeld.';
     await reloadNotes();
   } catch (e) {
-    notesSaveError.value = e?.message || 'Publiceren mislukt';
+    notesSaveError.value = e?.message || 'Delen mislukt';
   } finally {
     savingNotes.value = false;
   }
 }
-// The popover is pinned to the badge's viewport rect at click time, so once
-// anything scrolls that anchor is stale and the popover floats free of its
-// annotation (the badge may even scroll out of view). Dismiss on scroll instead
-// — re-click the badge to reopen.
-let annotationScrollCleanup = null;
+// Look-ahead popover shown on a badge click: a flat preview of the comments with
+// a CTA into the full sheet. The DS popover positions against a real element, so
+// we anchor it to the badge's viewport rect via one reused invisible element.
+const annotationPopEl = ref(null);
+let annotationAnchorEl = null;
+// A note's comment text and author, mirroring NoteCard, for the preview.
+function noteText(note) {
+  const body = Array.isArray(note?.body) ? note.body[0] : note?.body;
+  return body?.value || body?.source || '';
+}
+function noteAuthor(note) {
+  return note?.creator?.name ?? note?.creator ?? '';
+}
+// Clicking an annotation's badge opens the look-ahead popover anchored to the
+// badge; its CTA then opens the full sheet at the list view. A merged badge can
+// carry several ids.
 function onEditorAnnotationClick(ids, rect) {
   const idList = [...new Set(Array.isArray(ids) ? ids : [ids])];
   activeNotes.value = idList.map((id) => noteById.value.get(id)).filter(Boolean);
-  if (!annotationPopEl) return;
-  if (activeNotes.value.length && rect) {
-    annotationPopEl.anchorElement = annotationAnchor(rect);
-    try {
-      if (!annotationPopEl.matches?.(':popover-open')) annotationPopEl.showPopover?.();
-    } catch { /* already open */ }
-    annotationScrollCleanup?.();
-    annotationScrollCleanup = dismissPopoverOnScroll(annotationPopEl);
-  } else {
-    annotationPopEl.hidePopover?.();
+  if (!activeNotes.value.length) return;
+  if (!rect) {
+    // No rect to anchor to (e.g. keyboard activation) — skip the popover.
+    openNoteListSheet();
+    return;
+  }
+  if (!annotationAnchorEl) {
+    annotationAnchorEl = document.createElement('div');
+    annotationAnchorEl.setAttribute('aria-hidden', 'true');
+    annotationAnchorEl.style.cssText = 'position:fixed;pointer-events:none;z-index:-1;';
+    document.body.appendChild(annotationAnchorEl);
+  }
+  annotationAnchorEl.style.left = `${rect.left}px`;
+  annotationAnchorEl.style.top = `${rect.top}px`;
+  annotationAnchorEl.style.width = `${rect.width}px`;
+  annotationAnchorEl.style.height = `${rect.height}px`;
+  const pop = annotationPopEl.value;
+  if (pop) {
+    pop.anchorElement = annotationAnchorEl;
+    pop.show?.();
   }
 }
-function onAnnotationPopoverClose() {
-  activeNotes.value = [];
-  annotationScrollCleanup?.();
-  annotationScrollCleanup = null;
+function openNoteListSheet() {
+  noteSheetView.value = 'list';
+  noteSheetEl.value?.show?.();
 }
+// CTA in the look-ahead popover: close it and open the full sheet.
+function openSheetFromAnnotation() {
+  annotationPopEl.value?.hide?.();
+  openNoteListSheet();
+}
+onBeforeUnmount(() => {
+  annotationAnchorEl?.remove();
+  annotationAnchorEl = null;
+});
 
 const exporting = ref(false);
 // Local YYYY-MM-DD-HH-mm-ss stamp for download filenames — hyphens throughout
@@ -538,45 +663,18 @@ const notesSaveError = ref(null);
 // Explicit success signal: a PR-less / NoChange save must not look like
 // the work vanished (the drafts get cleared either way).
 const notesSaveStatus = ref(null);
-// The save status/error describe the LAST save. A NEW draft appearing
-// after that save makes the confirmation stale ("Opslaan gelukt" next to
-// "1 concept, nog niet opgeslagen" is contradictory), so clear it then.
-// But a successful save itself drains drafts to zero — clearing on a
-// DECREASE would wipe the very confirmation `saveNotesToRepo` is about to
-// set, a race that previously only worked by microtask-ordering luck.
-// Only react to an increase; the count going down is the save completing.
+// The save status/error describe the LAST publish. A NEW draft appearing
+// afterwards makes the confirmation stale ("Notitie gedeeld" next to a fresh
+// unsaved draft is contradictory), so clear it then. Sharing itself removes the
+// just-shared draft — clearing on a DECREASE would wipe the very confirmation
+// publishOneNote is about to set. Only react to an increase; the count going
+// down is a share/delete completing.
 watch(draftCount, (count, prev) => {
   if (count > prev) {
     notesSaveStatus.value = null;
     notesSaveError.value = null;
   }
 });
-async function saveNotesToRepo() {
-  if (savingNotes.value) return;
-  savingNotes.value = true;
-  notesSaveError.value = null;
-  notesSaveStatus.value = null;
-  try {
-    const { pr, noChange } = await saveToRepo();
-    if (noChange) {
-      notesSaveStatus.value = 'Notities waren al opgeslagen.';
-    } else if (pr) {
-      notesSaveStatus.value = `Opgeslagen in PR #${pr.number}.`;
-    } else {
-      notesSaveStatus.value = 'Notities opgeslagen.';
-    }
-    // After save, drafts are cleared but useNotes still serves the
-    // pre-save cached resolution (typically []). Force a refetch so
-    // the just-committed notes show up immediately instead of only
-    // after the user navigates away and back. NoChange also refetches
-    // — it's cheap and keeps the post-save state consistent.
-    await reloadNotes();
-  } catch (e) {
-    notesSaveError.value = e?.message || 'Opslaan mislukt';
-  } finally {
-    savingNotes.value = false;
-  }
-}
 
 const resultSheetOpen = ref(false);
 const graphSheetOpen = ref(false);
@@ -1270,15 +1368,19 @@ async function handleLawSave() {
   }
 }
 
-// Per-pane scoped views of lawSaveError. The error is only visible in the
-// pane that contributed to the failing save, even though the underlying
-// failure (and lawSaveError itself) is the same for both panes.
-const articleTextSaveError = computed(() =>
-  lastSaveTouchedText.value ? lawSaveError.value : null,
-);
-const machineReadableSaveError = computed(() =>
-  lastSaveTouchedMachine.value ? lawSaveError.value : null,
-);
+// Whole-law save failures surface as a single modal over the editor (not an
+// inline dialog buried in one pane). lawSaveError drives it: a new failure
+// (a fresh Error) re-opens it via the watch, a successful save (null) closes it.
+const saveErrorModalEl = ref(null);
+watch(lawSaveError, (err) => {
+  const el = saveErrorModalEl.value;
+  if (!el) return;
+  if (err && typeof el.show === 'function') el.show();
+  else if (!err && typeof el.hide === 'function') el.hide();
+});
+function dismissSaveError() {
+  saveErrorModalEl.value?.hide?.();
+}
 
 // Alias kept to minimise template churn; both panes ultimately call the
 // same whole-law save.
@@ -1929,24 +2031,27 @@ async function handleActionSave() {
                     label="Inspringen"
                     :priority="0"
                   >
-                    <nldd-icon-button
-                      icon="indent-increase"
-                      text="Inspringen vergroten"
-                      variant="secondary"
-                      size="md"
-                      :disabled="!canEditArticleText || !textEditorRefs[idx].activeFormats.canIndent || undefined"
-                      @mousedown.prevent
-                      @click="textEditorRefs[idx].indent()"
-                    ></nldd-icon-button>
-                    <nldd-icon-button
-                      icon="indent-decrease"
-                      text="Inspringen verkleinen"
-                      variant="secondary"
-                      size="md"
-                      :disabled="!canEditArticleText || !textEditorRefs[idx].activeFormats.canOutdent || undefined"
-                      @mousedown.prevent
-                      @click="textEditorRefs[idx].outdent()"
-                    ></nldd-icon-button>
+                    <!-- Grouped as a button-bar: the bar draws the divider and
+                         propagates size/variant to its children. Individual
+                         disabled stays per-button (canIndent vs canOutdent) since
+                         the bar itself is never disabled. -->
+                    <nldd-button-bar size="md">
+                      <nldd-icon-button
+                        icon="indent-increase"
+                        text="Inspringen vergroten"
+                        :disabled="!canEditArticleText || !textEditorRefs[idx].activeFormats.canIndent || undefined"
+                        @mousedown.prevent
+                        @click="textEditorRefs[idx].indent()"
+                      ></nldd-icon-button>
+                      <nldd-button-bar-divider></nldd-button-bar-divider>
+                      <nldd-icon-button
+                        icon="indent-decrease"
+                        text="Inspringen verkleinen"
+                        :disabled="!canEditArticleText || !textEditorRefs[idx].activeFormats.canOutdent || undefined"
+                        @mousedown.prevent
+                        @click="textEditorRefs[idx].outdent()"
+                      ></nldd-icon-button>
+                    </nldd-button-bar>
                     <nldd-menu-group slot="overflow" text="Inspringen">
                       <nldd-menu-item
                         icon="indent-increase"
@@ -1979,7 +2084,7 @@ async function handleActionSave() {
                       size="md"
                       :disabled="textEditorRefs[idx].selectionEmpty || undefined"
                       @mousedown.prevent
-                      @click="startNoteFromSelection(idx, $event)"
+                      @click="startNoteFromSelection(idx)"
                     ></nldd-icon-button>
                     <!-- No :disabled here: the toolbar clones overflow items, so
                          a live-changing disabled (selectionEmpty) would freeze at
@@ -1989,7 +2094,7 @@ async function handleActionSave() {
                       slot="overflow"
                       icon="comment"
                       text="Notitie toevoegen"
-                      @select="startNoteFromSelection(idx, $event)"
+                      @select="startNoteFromSelection(idx)"
                     ></nldd-menu-item>
                   </nldd-toolbar-item>
                   <!-- Notities downloaden — expandable icon-button (area end) met
@@ -2040,7 +2145,6 @@ async function handleActionSave() {
                   :ref="setTextEditorRef(idx)"
                   :article="selectedArticle"
                   :editable="canEditArticleText"
-                  :save-error="articleTextSaveError"
                   :model-value="editedText"
                   :annotations="editorAnnotations"
                   @update:model-value="editedText = $event"
@@ -2049,39 +2153,116 @@ async function handleActionSave() {
                 />
                 <ArticleText v-else :article="selectedArticle" />
 
-                <!-- Note authoring popover, opened by the toolbar "Reactie"
-                     button on the current editor selection. -->
-                <NoteCreator
-                  v-if="noteCreator.open"
-                  :range="noteCreator.range"
-                  :raw-text="editedText"
-                  :law-id="lawId"
-                  :article="selectedArticle"
-                  :engine="noteEngine"
-                  :anchor="noteCreator.anchor"
-                  :traject-ref="activeTrajectRef || ''"
-                  @create="onNoteCreated"
-                  @cancel="noteCreator.open = false"
-                />
+                <!-- The note editor and list live in one right sheet (the badge
+                     look-ahead popover, below, is the lightweight step before it).
+                     The badge list is the root view; editing/adding pushes an
+                     editor view (with a back button) or, from the notities pane,
+                     opens it as the root (with a close button). -->
+                <nldd-sheet
+                  :ref="(el) => (noteSheetEl = el)"
+                  placement="right"
+                  width="480px"
+                  accessible-label="Notities"
+                  @close="onNoteSheetClose"
+                >
+                  <!-- List view: the referenced text, a card per note, then add.
+                       A sheet always hosts an nldd-page; the title bar is its
+                       header (sticky) and carries the close button. -->
+                  <template v-if="noteSheetView === 'list'">
+                    <nldd-page sticky-header>
+                      <nldd-top-title-bar
+                        slot="header"
+                        text="Notities"
+                        dismiss-text="Sluit"
+                        @dismiss="noteSheetEl?.hide?.()"
+                      ></nldd-top-title-bar>
+                      <nldd-container padding="16" data-testid="note-detail">
+                        <nldd-rich-text v-if="activeGroup && activeGroup.quote">
+                          <p>{{ activeGroup.ellipsisBefore }}{{ activeGroup.before }}<i>{{ activeGroup.quote }}</i>{{ activeGroup.after }}{{ activeGroup.ellipsisAfter }}</p>
+                        </nldd-rich-text>
+                        <nldd-spacer v-if="activeGroup && activeGroup.quote" size="12"></nldd-spacer>
+                        <nldd-collection layout="stack" gap="12px">
+                          <nldd-card v-for="(note, i) in activeNotes" :key="i">
+                            <nldd-container padding="10">
+                              <NoteCard
+                                :note="note"
+                                :can-edit="canEdit"
+                                :saving="savingNotes"
+                                @edit="startEditNote(groupForNote(note), note, true)"
+                                @share="askPublishNote(note)"
+                                @delete="askDeleteNote(note)"
+                              />
+                            </nldd-container>
+                          </nldd-card>
+                        </nldd-collection>
+                        <template v-if="canCreateNotes && activeGroup && activeGroup.quote">
+                          <nldd-spacer size="12"></nldd-spacer>
+                          <nldd-button
+                            variant="secondary"
+                            size="md"
+                            width="full"
+                            start-icon="add"
+                            text="Notitie toevoegen"
+                            @click="startNoteForGroup(activeGroup, true)"
+                          ></nldd-button>
+                        </template>
+                      </nldd-container>
+                    </nldd-page>
+                  </template>
 
-                <!-- Every note the clicked annotation badge covers, anchored to
-                     the badge via the rect from the DS annotation-click event. -->
+                  <!-- Editor view: back button when it came from the list, plus
+                       the close button on the right in every case. -->
+                  <template v-else>
+                    <nldd-page sticky-header>
+                      <nldd-top-title-bar
+                        slot="header"
+                        text="Notitie"
+                        :back-text="noteEditFromList ? 'Notities' : ''"
+                        dismiss-text="Annuleer"
+                        @back="noteEditorBack"
+                        @dismiss="noteSheetEl?.hide?.()"
+                      ></nldd-top-title-bar>
+                      <NoteCreator
+                        v-if="noteCreator.open"
+                        :range="noteCreator.range"
+                        :raw-text="editedText"
+                        :law-id="lawId"
+                        :article="selectedArticle"
+                        :engine="noteEngine"
+                        :traject-ref="activeTrajectRef || ''"
+                        :initial-note="noteCreator.initialNote"
+                        @create="onNoteCreated"
+                        @cancel="noteEditCancel"
+                      />
+                    </nldd-page>
+                  </template>
+                </nldd-sheet>
+
+                <!-- Look-ahead popover on a badge click: a flat preview of the
+                     comments (no referenced text) with a CTA into the sheet. -->
                 <nldd-popover
                   :ref="(el) => (annotationPopEl = el)"
                   accessible-label="Notities"
-                  width="360px"
                   placement="bottom-start"
-                  @close="onAnnotationPopoverClose"
                 >
-                  <nldd-container padding="16" data-testid="note-detail">
+                  <nldd-container padding="16">
                     <template v-for="(note, i) in activeNotes" :key="i">
                       <nldd-spacer v-if="i > 0" size="16"></nldd-spacer>
-                      <div class="annotation-note">
-                        <span class="annotation-note__type">{{ noteMotivationLabel(note) }}</span>
-                        <p class="annotation-note__body">{{ noteDetailText(note) || '—' }}</p>
-                        <span v-if="note.creator" class="annotation-note__author">{{ note.creator?.name ?? note.creator }}</span>
-                      </div>
+                      <nldd-rich-text>
+                        <p>{{ noteText(note) || '—' }}</p>
+                      </nldd-rich-text>
+                      <template v-if="noteAuthor(note)">
+                        <nldd-spacer size="4"></nldd-spacer>
+                        <nldd-byline :text="noteAuthor(note)"></nldd-byline>
+                      </template>
                     </template>
+                    <nldd-spacer size="16"></nldd-spacer>
+                    <nldd-button
+                      variant="secondary"
+                      width="full"
+                      text="Bijdragen of bewerken"
+                      @click="openSheetFromAnnotation"
+                    ></nldd-button>
                   </nldd-container>
                 </nldd-popover>
 
@@ -2095,7 +2276,6 @@ async function handleActionSave() {
                   :editable="canEdit"
                   :dirty="isMachineReadableDirty"
                   :saving="lawSaving"
-                  :save-error="machineReadableSaveError"
                   :traject-ref="activeTrajectRef"
                   @open-action="handleOpenAction"
                   @open-edit="activeEditItem = $event"
@@ -2157,26 +2337,11 @@ async function handleActionSave() {
                     :supporting-text="noteIssues.map(i => i.reason).join('; ')"
                   ></nldd-inline-dialog>
                   <nldd-inline-dialog
-                    v-if="draftCount > 0"
-                    data-testid="draft-notes-bar"
-                    :text="`${draftCount} concept-notitie(s), nog niet opgeslagen`"
-                  >
-                    <nldd-button
-                      slot="actions"
-                      size="md"
-                      variant="primary"
-                      :text="savingNotes ? 'Opslaan…' : 'Opslaan naar repo'"
-                      :disabled="savingNotes || !canEdit || null"
-                      data-testid="save-notes-btn"
-                      @click="saveNotesToRepo"
-                    ></nldd-button>
-                  </nldd-inline-dialog>
-                  <nldd-inline-dialog
                     v-if="draftCount > 0 && !canEdit"
                     variant="warning"
                     data-testid="notes-no-traject"
                     text="Selecteer eerst een traject"
-                    supporting-text="Opslaan naar repo werkt pas als er een actief traject is. Exporteer YAML werkt wel."
+                    supporting-text="Delen werkt pas als er een actief traject is. Notities downloaden als YAML werkt wel."
                   ></nldd-inline-dialog>
                   <nldd-inline-dialog
                     v-if="notesSaveError"
@@ -2200,53 +2365,43 @@ async function handleActionSave() {
                 ></nldd-inline-dialog>
                 <template v-else>
                   <template v-for="(group, gi) in noteGroups" :key="gi">
-                    <nldd-spacer size="24"></nldd-spacer>
+                    <!-- Gap between groups only; the list must not open with a
+                         spacer (no leading whitespace at the top of the pane). -->
+                    <nldd-spacer v-if="gi > 0" size="24"></nldd-spacer>
                     <!-- Quoted fragment (group header) as rich-text, then a
                          spacer before the cards. -->
                     <nldd-rich-text>
-                      <p v-if="group.quote"><i>{{ group.hasBefore ? '… ' : '' }}{{ group.quote }}{{ group.hasAfter ? ' …' : '' }}</i></p>
+                      <p v-if="group.quote">{{ group.ellipsisBefore }}{{ group.before }}<i>{{ group.quote }}</i>{{ group.after }}{{ group.ellipsisAfter }}</p>
                       <p v-else><i>Zonder verankering</i></p>
                     </nldd-rich-text>
-                    <nldd-spacer size="16"></nldd-spacer>
-                    <nldd-collection layout="stack">
+                    <nldd-spacer size="10"></nldd-spacer>
+                    <nldd-collection layout="stack" gap="12px">
                       <nldd-card v-for="(note, ni) in group.notes" :key="ni">
-                        <nldd-container padding="16">
-                          <nldd-rich-text>
-                            <p>{{ noteDetailText(note) || '—' }}</p>
-                          </nldd-rich-text>
-                          <template v-if="noteCreatorName(note)">
-                            <nldd-spacer size="8"></nldd-spacer>
-                            <nldd-byline :text="noteCreatorName(note)"></nldd-byline>
-                          </template>
-                          <template v-if="canPublishNote(note) || canDeleteNote(note)">
-                            <nldd-spacer size="12"></nldd-spacer>
-                            <nldd-toolbar size="md" label="Notitie-acties">
-                              <nldd-toolbar-item v-if="canPublishNote(note)" slot="end" label="Publiek maken">
-                                <nldd-icon-button
-                                  icon="globe"
-                                  text="Publiek maken"
-                                  variant="secondary"
-                                  size="md"
-                                  :disabled="savingNotes || undefined"
-                                  @click="publishOneNote(note)"
-                                ></nldd-icon-button>
-                                <nldd-menu-item slot="overflow" icon="globe" text="Publiek maken" @select="publishOneNote(note)"></nldd-menu-item>
-                              </nldd-toolbar-item>
-                              <nldd-toolbar-item v-if="canDeleteNote(note)" slot="end" label="Verwijderen">
-                                <nldd-icon-button
-                                  icon="trash"
-                                  text="Verwijderen"
-                                  variant="critical-transparent"
-                                  size="md"
-                                  @click="deleteNote(note)"
-                                ></nldd-icon-button>
-                                <nldd-menu-item slot="overflow" icon="trash" text="Verwijderen" @select="deleteNote(note)"></nldd-menu-item>
-                              </nldd-toolbar-item>
-                            </nldd-toolbar>
-                          </template>
+                        <nldd-container padding="10">
+                          <NoteCard
+                            :note="note"
+                            :can-edit="canEdit"
+                            :saving="savingNotes"
+                            @edit="startEditNote(group, note)"
+                            @share="askPublishNote(note)"
+                            @delete="askDeleteNote(note)"
+                          />
                         </nldd-container>
                       </nldd-card>
                     </nldd-collection>
+                    <!-- Add another note anchored to this same fragment, without
+                         re-selecting the text in the editor. -->
+                    <template v-if="canCreateNotes && group.quote">
+                      <nldd-spacer size="12"></nldd-spacer>
+                      <nldd-button
+                        variant="secondary"
+                        size="md"
+                        width="full"
+                        start-icon="add"
+                        text="Notitie toevoegen"
+                        @click="startNoteForGroup(group)"
+                      ></nldd-button>
+                    </template>
                   </template>
                 </template>
               </nldd-simple-section>
@@ -2260,6 +2415,46 @@ async function handleActionSave() {
     @select-law="onSearchSelectLaw"
     @harvest-available="onSearchHarvestAvailable"
   />
+
+  <!-- Publishing a note is irreversible (it lands in the repo and can't be made
+       private again), so confirm before the write. -->
+  <nldd-modal-dialog
+    ref="publishModalEl"
+    text="Notitie delen?"
+    supporting-text="Deze notitie wordt vastgelegd op de traject-branch in Git en is dan zichtbaar voor de andere traject-leden. Delen kan niet ongedaan worden gemaakt: de notitie kan daarna niet meer privé worden gemaakt."
+    data-testid="publish-confirm"
+    @close="cancelPublish"
+  >
+    <nldd-button slot="actions" variant="primary" text="Houd privé" @click="cancelPublish"></nldd-button>
+    <nldd-button slot="actions" variant="secondary" text="Deel binnen traject" data-testid="publish-confirm-btn" @click="confirmPublish"></nldd-button>
+  </nldd-modal-dialog>
+
+  <!-- Deleting a draft is irreversible (it is the only copy), so confirm. The
+       safe option (Annuleren) is the primary action. -->
+  <nldd-modal-dialog
+    ref="deleteModalEl"
+    variant="alert"
+    text="Notitie verwijderen?"
+    supporting-text="Deze notitie wordt definitief verwijderd. Dit kan niet ongedaan worden gemaakt."
+    data-testid="delete-confirm"
+    @close="cancelDelete"
+  >
+    <nldd-button slot="actions" variant="primary" text="Behoud notitie" @click="cancelDelete"></nldd-button>
+    <nldd-button slot="actions" variant="destructive" text="Verwijder" data-testid="delete-confirm-btn" @click="confirmDelete"></nldd-button>
+  </nldd-modal-dialog>
+
+  <!-- Whole-law save failure, shown over the whole editor rather than inline in
+       one pane. -->
+  <nldd-modal-dialog
+    ref="saveErrorModalEl"
+    variant="alert"
+    text="Opslaan mislukt"
+    :supporting-text="lawSaveError ? (lawSaveError.message || String(lawSaveError)) : ''"
+    data-testid="save-error-modal"
+    @close="dismissSaveError"
+  >
+    <nldd-button slot="actions" variant="primary" text="Sluiten" @click="dismissSaveError"></nldd-button>
+  </nldd-modal-dialog>
 
   <!-- Trace sheet — execution trace + expected outcomes for the most
        recently executed scenario. Opened from a scenario card's "Toon
@@ -2353,27 +2548,4 @@ async function handleActionSave() {
   border-radius: 6px;
 }
 
-/* Annotation-detail popover: one block per note the badge covers. */
-.annotation-note {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-family: var(--primitives-font-family-body);
-}
-.annotation-note__type {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  opacity: 0.6;
-}
-.annotation-note__body {
-  margin: 0;
-  font-size: 0.9rem;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.annotation-note__author {
-  font-size: 0.78rem;
-  opacity: 0.7;
-}
 </style>

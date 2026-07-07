@@ -4,8 +4,6 @@ import { ref, reactive } from 'vue';
 const props = defineProps({
   article: { type: Object, default: null },
   editable: { type: Boolean, default: false },
-  /** Error from the most recent save attempt (Error instance or null) */
-  saveError: { type: Object, default: null },
   /**
    * Markdown source, v-model-bound to the parent editor state. The
    * nldd-text-editor works in Markdown directly: its `value` is the Markdown
@@ -143,33 +141,21 @@ defineExpose({
        (AnnotatedText/ArticleText do the same). -->
   <nldd-inline-dialog v-if="!article" text="Geen artikel geselecteerd"></nldd-inline-dialog>
   <div v-else class="article-text-editor" data-testid="article-text-editor">
-    <div class="article-text-editor__body-wrap">
-      <template v-if="editable && saveError">
-        <nldd-inline-dialog
-          variant="alert"
-          text="Opslaan mislukt"
-          :supporting-text="saveError.message || String(saveError)"
-          data-testid="save-text-error"
-        ></nldd-inline-dialog>
-        <nldd-spacer size="12"></nldd-spacer>
-      </template>
-      <nldd-text-editor
-        ref="editorRef"
-        class="article-text-editor__body"
-        variant="simple"
-        :rows="8"
-        resize="auto"
-        annotatable
-        :value="modelValue"
-        :annotations="annotations"
-        :readonly="!editable"
-        accessible-label="Artikeltekst"
-        @input="onInput"
-        @focusin="onFocusIn"
-        @nldd-text-editor-state="onState"
-        @nldd-text-editor-annotation-click="onAnnotationClick"
-      ></nldd-text-editor>
-    </div>
+    <nldd-text-editor
+      ref="editorRef"
+      variant="simple"
+      :rows="8"
+      resize="auto"
+      annotatable
+      :value="modelValue"
+      :annotations="annotations"
+      :readonly="!editable"
+      accessible-label="Artikeltekst"
+      @input="onInput"
+      @focusin="onFocusIn"
+      @nldd-text-editor-state="onState"
+      @nldd-text-editor-annotation-click="onAnnotationClick"
+    ></nldd-text-editor>
   </div>
 </template>
 
@@ -178,10 +164,5 @@ defineExpose({
   display: flex;
   flex-direction: column;
   min-height: 0;
-}
-
-.article-text-editor__body {
-  display: block;
-  width: 100%;
 }
 </style>
