@@ -49,6 +49,10 @@ function refreshColors(attemptsLeft = 30) {
     colors.value = resolved;
   } else if (attemptsLeft > 0) {
     retryFrame = requestAnimationFrame(() => refreshColors(attemptsLeft - 1));
+  } else {
+    console.warn(
+      'DailyJobsChart: color-scheme never left "normal"; chart not rendered',
+    );
   }
 }
 
