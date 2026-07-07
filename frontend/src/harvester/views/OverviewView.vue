@@ -6,6 +6,7 @@ import { useJobDetail } from '../composables/useJobDetail.js';
 import { JOB_STATUSES } from '../constants.js';
 import { formatNumber, formatStatus } from '../formatters.js';
 import DataTable from '../components/DataTable.vue';
+import DailyJobsChart from '../components/DailyJobsChart.vue';
 import DetailPanel from '../components/DetailPanel.vue';
 import StatusBadge from '../components/StatusBadge.vue';
 
@@ -51,6 +52,21 @@ const typePanels = computed(() => {
     })),
     today: s.executed.today[key] ?? 0,
     last7d: s.executed.last_7d[key] ?? 0,
+  }));
+});
+
+// Daily chart data per type, mapped from the shared `daily` block. `daily` is
+// absent while an older API is deployed — then the charts simply don't render.
+const dailyCharts = computed(() => {
+  const daily = stats.value?.daily ?? [];
+  if (!daily.length) return [];
+  return [
+    { key: 'harvest', title: 'Harvest per dag' },
+    { key: 'enrich', title: 'Enrich per dag' },
+  ].map(({ key, title }) => ({
+    key,
+    title,
+    entries: daily.map((d) => ({ date: d.date, ...d[key] })),
   }));
 });
 
@@ -133,6 +149,18 @@ async function onFailureClick(row) {
             </nldd-list>
           </nldd-container>
         </nldd-card>
+      </nldd-collection>
+    </nldd-simple-section>
+
+    <!-- Daily added/succeeded/failed charts, one per job type -->
+    <nldd-simple-section v-if="dailyCharts.length">
+      <nldd-collection item-width="420px">
+        <DailyJobsChart
+          v-for="chart in dailyCharts"
+          :key="chart.key"
+          :title="chart.title"
+          :entries="chart.entries"
+        />
       </nldd-collection>
     </nldd-simple-section>
 
