@@ -8,7 +8,7 @@ import { resolveChartColors } from './chartColors.js';
 // probe cleaned up.
 describe('resolveChartColors', () => {
   it('returns a string for every chart slot', () => {
-    const colors = resolveChartColors(document.body);
+    const colors = resolveChartColors();
     for (const key of [
       'succeeded',
       'failed',
@@ -24,7 +24,7 @@ describe('resolveChartColors', () => {
 
   it('removes the probe element again', () => {
     const before = document.body.childElementCount;
-    resolveChartColors(document.body);
+    resolveChartColors();
     expect(document.body.childElementCount).toBe(before);
   });
 });

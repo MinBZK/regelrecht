@@ -5,6 +5,13 @@
  * light-dark() directly. Each token is resolved by computing it on a probe
  * element and normalizing through a 1×1 canvas — which also converts oklch()
  * (the NLDD primitive format, unsupported by zrender) to plain rgb.
+ *
+ * The probe hangs off document.body, NOT the chart's own container: freshly
+ * mounted NLDD subtrees compute `color-scheme: normal` until the custom
+ * elements upgrade, and under `normal` every light-dark() is invalid and
+ * resolves to black. body already carries the design system's `light dark`
+ * at mount, and it follows the data-scheme switch, so probing there is both
+ * correct and available immediately.
  */
 
 // succeeded/failed use the same expressions as the .status-bar__segment--*
@@ -21,13 +28,16 @@ const TOKEN_EXPRESSIONS = {
   text: 'var(--semantics-content-color)',
   textSecondary: 'var(--semantics-content-secondary-color)',
   grid: 'light-dark(var(--primitives-color-neutral-150), var(--primitives-color-neutral-250))',
-  surface: 'var(--semantics-surfaces-background-color)',
 };
 
-export function resolveChartColors(referenceEl = document.body) {
+/**
+ * @returns {object|null} The resolved colors, or null when the page's color
+ *   scheme isn't established yet (caller should retry on a later frame).
+ */
+export function resolveChartColors() {
   const probe = document.createElement('span');
   probe.style.display = 'none';
-  referenceEl.appendChild(probe);
+  document.body.appendChild(probe);
 
   const canvas = document.createElement('canvas');
   canvas.width = 1;
@@ -36,13 +46,16 @@ export function resolveChartColors(referenceEl = document.body) {
 
   const colors = {};
   try {
-    for (const [key, expression] of Object.entries(TOKEN_EXPRESSIONS)) {
-      probe.style.color = expression;
-      const resolved = getComputedStyle(probe).color;
+    if (ctx && getComputedStyle(document.body).colorScheme === 'normal') {
+      // light-dark() is invalid under color-scheme: normal — the design
+      // system's scheme isn't applied yet. Signal "not ready".
+      return null;
+    }
+
+    const toRgb = (resolved) => {
       if (!ctx) {
         // No 2D context (test environments): fall back to the computed string.
-        colors[key] = resolved;
-        continue;
+        return resolved;
       }
       ctx.clearRect(0, 0, 1, 1);
       // Canvas silently keeps the previous fillStyle on a parse failure; seed
@@ -51,13 +64,21 @@ export function resolveChartColors(referenceEl = document.body) {
       ctx.fillStyle = '#010203';
       ctx.fillStyle = resolved;
       if (ctx.fillStyle === '#010203' && resolved !== '#010203') {
-        colors[key] = resolved;
-        continue;
+        return resolved;
       }
       ctx.fillRect(0, 0, 1, 1);
       const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-      colors[key] = `rgb(${r}, ${g}, ${b})`;
+      return `rgb(${r}, ${g}, ${b})`;
+    };
+
+    for (const [key, expression] of Object.entries(TOKEN_EXPRESSIONS)) {
+      probe.style.color = expression;
+      colors[key] = toRgb(getComputedStyle(probe).color);
     }
+    // The charts sit on transparent nldd-cards, so the visible surface behind
+    // the marks is the page background (there is no NLDD surface token that
+    // resolves at :root level).
+    colors.surface = toRgb(getComputedStyle(document.body).backgroundColor);
   } finally {
     probe.remove();
   }
