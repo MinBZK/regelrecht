@@ -8,9 +8,11 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde::Serialize;
 
-use super::text::{normalize_text, should_wrap_text, wrap_text_default};
+use super::text::{
+    classify_text_style, normalize_text, should_wrap_text, wrap_text_default, TextStyle,
+};
 use crate::config::SCHEMA_URL;
-use crate::error::Result;
+use crate::error::{HarvesterError, Result};
 use crate::types::{Law, Reference};
 
 /// Regex matching a single-quoted YAML scalar value on a key line.
@@ -80,46 +82,49 @@ struct YamlLaw {
     articles: Vec<YamlArticle>,
 }
 
-/// Generate a schema-compliant YAML structure from a Law object.
-fn generate_yaml_struct(law: &Law, effective_date: &str) -> YamlLaw {
+/// Normalize and wrap a text field, recording the block scalar style for
+/// every multi-line emission in `fold_plan` (document order).
+fn prepare_text(raw: &str, fold_plan: &mut Vec<TextStyle>) -> String {
+    // First normalize the text to fix typographical issues from source XML
+    let normalized = normalize_text(raw);
+
+    // Then wrap if needed
+    let text = if should_wrap_text(&normalized) {
+        wrap_text_default(&normalized)
+    } else {
+        normalized.clone()
+    };
+
+    // Multi-line strings serialize as block scalars; record which style
+    // fold_text_blocks must apply to this block.
+    if text.contains('\n') {
+        fold_plan.push(classify_text_style(&normalized, &text));
+    }
+    text
+}
+
+/// Generate a schema-compliant YAML structure from a Law object, plus the
+/// fold plan: one [`TextStyle`] per multi-line text field in document order
+/// (preamble first, then articles — matching serde's emission order).
+fn generate_yaml_struct(law: &Law, effective_date: &str) -> (YamlLaw, Vec<TextStyle>) {
     let law_id = law.metadata.to_slug();
     let is_cvdr = law.metadata.cvdr_id.is_some();
+    let mut fold_plan: Vec<TextStyle> = Vec::new();
 
-    // Convert preamble if present
-    let preamble = law.preamble.as_ref().map(|p| {
-        // Normalize and wrap preamble text like articles
-        let normalized = normalize_text(&p.text);
-        let text = if should_wrap_text(&normalized) {
-            wrap_text_default(&normalized)
-        } else {
-            normalized
-        };
-        YamlPreamble {
-            text,
-            url: p.url.clone(),
-        }
+    // Convert preamble if present (normalize and wrap like articles)
+    let preamble = law.preamble.as_ref().map(|p| YamlPreamble {
+        text: prepare_text(&p.text, &mut fold_plan),
+        url: p.url.clone(),
     });
 
     let articles: Vec<YamlArticle> = law
         .articles
         .iter()
-        .map(|article| {
-            // First normalize the text to fix typographical issues from source XML
-            let normalized = normalize_text(&article.text);
-
-            // Then wrap if needed
-            let text = if should_wrap_text(&normalized) {
-                wrap_text_default(&normalized)
-            } else {
-                normalized
-            };
-
-            YamlArticle {
-                number: article.number.clone(),
-                text,
-                url: article.url.clone(),
-                references: article.references.clone(),
-            }
+        .map(|article| YamlArticle {
+            number: article.number.clone(),
+            text: prepare_text(&article.text, &mut fold_plan),
+            url: article.url.clone(),
+            references: article.references.clone(),
         })
         .collect();
 
@@ -147,7 +152,7 @@ fn generate_yaml_struct(law: &Law, effective_date: &str) -> YamlLaw {
         )
     };
 
-    YamlLaw {
+    let yaml_law = YamlLaw {
         schema: SCHEMA_URL.to_string(),
         id: law_id,
         regulatory_layer: law.metadata.regulatory_layer.as_str().to_string(),
@@ -165,7 +170,8 @@ fn generate_yaml_struct(law: &Law, effective_date: &str) -> YamlLaw {
         url,
         preamble,
         articles,
-    }
+    };
+    (yaml_law, fold_plan)
 }
 
 /// Indent YAML sequences to comply with `indent-sequences: true`.
@@ -326,14 +332,100 @@ fn fix_yaml_quoting(yaml: &str) -> String {
         .join("\n")
 }
 
+/// Regex matching the header line of a multi-line `text:` block scalar as
+/// serde_yaml_ng emits it (`text: |-`, or `text: |N-` when the first content
+/// line starts with whitespace and needs an explicit indentation indicator).
+#[allow(clippy::expect_used)]
+static TEXT_BLOCK_HEADER_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(\s*)text: \|\d*-$").expect("valid regex"));
+
+/// Rewrite `text: |-` literal blocks to folded (`>-`) blocks per the fold plan.
+///
+/// The plan is produced by [`generate_yaml_struct`]: one entry per multi-line
+/// text field in document order. `text` is the only multi-line field the
+/// writer emits, so the blocks encountered here correspond 1:1 to the plan;
+/// any count mismatch means that invariant broke and we fail loudly rather
+/// than guess which block gets which style.
+///
+/// Folded semantics: a single line break loads as a space (undoing the
+/// cosmetic wrap), and N consecutive breaks load as N-1 newlines — so each
+/// blank line (a `\n\n` paragraph break in the source) must become two blank
+/// lines to survive the round trip. [`classify_text_style`] only marks a
+/// block `Folded` when its content makes that transformation exact.
+fn fold_text_blocks(yaml: &str, plan: &[TextStyle]) -> Result<String> {
+    let lines: Vec<&str> = yaml.lines().collect();
+    let mut out: Vec<String> = Vec::with_capacity(lines.len() + plan.len());
+    let mut next_block = 0usize;
+    let mut i = 0usize;
+
+    while i < lines.len() {
+        let line = lines[i];
+        let Some(caps) = TEXT_BLOCK_HEADER_RE.captures(line) else {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        };
+        let key_indent = caps.get(1).map_or(0, |m| m.as_str().len());
+        let style =
+            plan.get(next_block)
+                .copied()
+                .ok_or_else(|| HarvesterError::FoldPlanMismatch {
+                    expected: plan.len(),
+                    found: next_block + 1,
+                })?;
+        next_block += 1;
+
+        // Collect the block: lines that are blank or indented deeper than the key.
+        let mut end = i + 1;
+        while end < lines.len() {
+            let l = lines[end];
+            let trimmed = l.trim_start();
+            if !trimmed.is_empty() && l.len() - trimmed.len() <= key_indent {
+                break;
+            }
+            end += 1;
+        }
+
+        match style {
+            TextStyle::Folded => {
+                out.push(format!("{}text: >-", " ".repeat(key_indent)));
+                for l in &lines[i + 1..end] {
+                    if l.trim().is_empty() {
+                        // Paragraph break: fold semantics eat one line break,
+                        // so a blank line must double to keep `\n\n`.
+                        out.push(String::new());
+                        out.push(String::new());
+                    } else {
+                        out.push((*l).to_string());
+                    }
+                }
+            }
+            TextStyle::Literal => {
+                out.push(line.to_string());
+                out.extend(lines[i + 1..end].iter().map(|l| l.to_string()));
+            }
+        }
+        i = end;
+    }
+
+    if next_block != plan.len() {
+        return Err(HarvesterError::FoldPlanMismatch {
+            expected: plan.len(),
+            found: next_block,
+        });
+    }
+    Ok(out.join("\n"))
+}
+
 /// Generate YAML string from a Law object.
 pub fn generate_yaml(law: &Law, effective_date: &str) -> Result<String> {
-    let yaml_struct = generate_yaml_struct(law, effective_date);
+    let (yaml_struct, fold_plan) = generate_yaml_struct(law, effective_date);
     let yaml_string = serde_yaml_ng::to_string(&yaml_struct)?;
 
     // Post-process for yamllint compliance
     let yaml_string = fix_yaml_quoting(&yaml_string);
     let yaml_string = indent_yaml_sequences(&yaml_string);
+    let yaml_string = fold_text_blocks(&yaml_string, &fold_plan)?;
 
     // Add document start marker and clean up trailing whitespace
     let lines: Vec<&str> = yaml_string.lines().map(|l| l.trim_end()).collect();
@@ -639,6 +731,7 @@ articles:
         for (law, date) in [
             (create_test_law(), "2025-01-01"),
             (create_test_cvdr_law(), "2024-01-01"),
+            (create_test_folded_law(), "2026-01-01"),
         ] {
             let yaml = generate_yaml(&law, date).unwrap();
             let parsed: regelrecht_law_model::ArticleBasedLaw = serde_yaml_ng::from_str(&yaml)
@@ -648,5 +741,184 @@ articles:
             assert_eq!(parsed.articles.len(), law.articles.len());
             assert_eq!(parsed.regulatory_layer, law.metadata.regulatory_layer);
         }
+    }
+
+    /// Long multi-paragraph prose that must wrap (>115 chars) and fold back
+    /// to the unwrapped source on load.
+    const FOLDABLE_PROSE: &str = "Indien de normpremie voor een verzekerde in het berekeningsjaar minder bedraagt dan de standaardpremie in dat jaar, heeft de verzekerde aanspraak op een zorgtoeslag ter grootte van dat verschil.\n\nDe normpremie bedraagt een percentage van het drempelinkomen in het berekeningsjaar, vermeerderd met een percentage van het toetsingsinkomen van de verzekerde (artikel 2, tweede lid).";
+
+    fn create_test_folded_law() -> Law {
+        let mut law = create_test_law();
+        law.add_article(Article::new(
+            "2",
+            FOLDABLE_PROSE,
+            "https://wetten.overheid.nl/BWBR0018451/2026-01-01#Artikel2",
+        ));
+        law
+    }
+
+    /// Golden byte-identity test for a folded (`>-`) text block: wrapped
+    /// lines, and a doubled blank line for the paragraph break so the
+    /// `\n\n` survives the folded round trip.
+    #[test]
+    fn test_generate_yaml_golden_folded() {
+        let law = create_test_folded_law();
+        let yaml = generate_yaml(&law, "2026-01-01").unwrap();
+        let expected = format!(
+            "---
+$schema: {SCHEMA_URL}
+$id: wet_op_de_zorgtoeslag
+regulatory_layer: WET
+publication_date: '2005-12-29'
+valid_from: '2026-01-01'
+bwb_id: BWBR0018451
+url: https://wetten.overheid.nl/BWBR0018451/2026-01-01
+articles:
+  - number: '1'
+    text: 'In deze wet wordt verstaan onder toeslagpartner: partner.'
+    url: https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel1
+  - number: '2'
+    text: >-
+      Indien de normpremie voor een verzekerde in het berekeningsjaar minder bedraagt dan de standaardpremie in dat jaar,
+      heeft de verzekerde aanspraak op een zorgtoeslag ter grootte van dat verschil.
+
+
+      De normpremie bedraagt een percentage van het drempelinkomen in het berekeningsjaar, vermeerderd met een percentage
+      van het toetsingsinkomen van de verzekerde (artikel 2, tweede lid).
+    url: https://wetten.overheid.nl/BWBR0018451/2026-01-01#Artikel2
+"
+        );
+        assert_eq!(yaml, expected);
+    }
+
+    /// Round-trip property over representative text shapes: emitting and
+    /// re-parsing must yield exactly the expected string — the unwrapped
+    /// source for foldable prose, the wrapped text for literal fallbacks.
+    /// Also pins output hygiene: no 3+ consecutive blank lines anywhere, and
+    /// no folded content line starting with whitespace.
+    #[test]
+    fn test_fold_round_trip_property() {
+        let long_url = format!(
+            "https://example.com/{}",
+            "zeer-lange-url-component/".repeat(6)
+        );
+        struct Case {
+            name: &'static str,
+            source: &'static str,
+            owned_source: Option<String>,
+            /// None = round trip must return the source unchanged (folded or
+            /// short). Some(f) = expected loaded text derived from the source.
+            expect_wrapped: bool,
+            expect_indicator: Option<&'static str>,
+        }
+        let ref_heavy_source = format!(
+            "Zie [artikel 4 van de Wet op de zorgtoeslag][ref1] en [artikel 2.18 van de Wet inkomstenbelasting 2001][ref2] voor de berekening van de premie.\n\n[ref1]: {long_url}\n[ref2]: https://example.com/b\n[ref3]: https://example.com/c\n[ref4]: https://example.com/d"
+        );
+        let cases = [
+            Case {
+                name: "multi-paragraph unicode prose folds to unwrapped source",
+                source: "Indien de normpremie voor een verzekerde in het berekeningsjaar minder bedraagt dan de standaardpremie (€ 1,50 per maand, 3\u{00b0} categorie) in dat jaar, heeft de verzekerd\u{00eb} aanspraak op een zorgtoeslag.\n\nDe pensioengerechtigde leeftijd, bedoeld in artikel 7a van de Algemene Ouderdomswet, wordt verhoogd met drie maanden per kalenderjaar tot de leeftijd van zeventig jaar is bereikt.",
+                owned_source: None,
+                expect_wrapped: false,
+                expect_indicator: Some(">-"),
+            },
+            Case {
+                name: "reference definitions stay literal, each on its own line",
+                source: "",
+                owned_source: Some(ref_heavy_source),
+                expect_wrapped: true,
+                expect_indicator: Some("|-"),
+            },
+            Case {
+                name: "column-0 list stays literal",
+                source: "- eerste onderdeel van de opsomming met voldoende lengte om de wrap-drempel te halen zodat er gewrapt wordt\n- tweede onderdeel van de opsomming met voldoende lengte om de wrap-drempel te halen",
+                owned_source: None,
+                expect_wrapped: true,
+                expect_indicator: Some("|-"),
+            },
+            Case {
+                name: "triple newline stays literal",
+                source: "Eerste stuk tekst dat ruim voldoende lengte heeft om de wrap-drempel van tachtig tekens te overschrijden.\n\n\nTweede stuk tekst na een dubbele lege regel, eveneens lang genoeg om te wrappen.",
+                owned_source: None,
+                expect_wrapped: true,
+                expect_indicator: Some("|-"),
+            },
+            Case {
+                name: "short text stays a plain scalar",
+                source: "Begripsbepalingen.",
+                owned_source: None,
+                expect_wrapped: false,
+                expect_indicator: None,
+            },
+        ];
+
+        for case in &cases {
+            let source: &str = case.owned_source.as_deref().unwrap_or(case.source);
+            let mut law = create_test_law();
+            law.add_article(Article::new("2", source, "https://example.com/#2"));
+            let yaml = generate_yaml(&law, "2026-01-01").unwrap();
+            let parsed: regelrecht_law_model::ArticleBasedLaw = serde_yaml_ng::from_str(&yaml)
+                .unwrap_or_else(|e| panic!("case '{}': output must parse: {e}\n{yaml}", case.name));
+            let loaded = &parsed.articles[1].text;
+
+            let normalized = normalize_text(source);
+            let expected = if case.expect_wrapped {
+                wrap_text_default(&normalized)
+            } else {
+                normalized.clone()
+            };
+            assert_eq!(
+                loaded, &expected,
+                "case '{}': loaded text mismatch\n{yaml}",
+                case.name
+            );
+
+            if let Some(indicator) = case.expect_indicator {
+                assert!(
+                    yaml.contains(&format!("text: {indicator}\n")),
+                    "case '{}': expected `text: {indicator}` block\n{yaml}",
+                    case.name
+                );
+            }
+
+            // Reference definitions must each keep their own line after load.
+            if source.contains("]: ") {
+                for line in normalized.lines().filter(|l| l.starts_with("[ref")) {
+                    assert!(
+                        loaded.lines().any(|l| l == line),
+                        "case '{}': ref definition line lost: {line}\n{loaded}",
+                        case.name
+                    );
+                }
+            }
+
+            // Output hygiene: yamllint limits (empty-lines max 2) and folded
+            // blocks free of accidental more-indented lines.
+            let lines: Vec<&str> = yaml.lines().collect();
+            assert!(
+                !lines.windows(3).any(|w| w.iter().all(|l| l.is_empty())),
+                "case '{}': 3+ consecutive blank lines\n{yaml}",
+                case.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_fold_text_blocks_plan_mismatch_errors() {
+        // One multi-line text block in the YAML, but an empty plan: the
+        // writer invariant broke and folding must refuse to guess.
+        let yaml = "articles:\n  - number: '1'\n    text: |-\n      regel een\n      regel twee\n";
+        let err = fold_text_blocks(yaml, &[]).unwrap_err();
+        assert!(
+            err.to_string().contains("fold plan mismatch"),
+            "unexpected error: {err}"
+        );
+
+        // More plan entries than blocks must also fail.
+        let err = fold_text_blocks("key: value\n", &[TextStyle::Folded]).unwrap_err();
+        assert!(
+            err.to_string().contains("fold plan mismatch"),
+            "unexpected error: {err}"
+        );
     }
 }

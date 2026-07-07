@@ -83,6 +83,13 @@ pub enum HarvesterError {
     #[error("YAML serialization failed: {0}")]
     YamlSerialization(#[from] serde_yaml_ng::Error),
 
+    /// The number of multi-line `text:` blocks in the serialized YAML does not
+    /// match the fold plan built during struct generation. This means the
+    /// writer's emission invariant broke; folding must never guess which block
+    /// gets which style, so the write fails instead.
+    #[error("YAML text-block fold plan mismatch: planned {expected} multi-line text blocks, found {found}")]
+    FoldPlanMismatch { expected: usize, found: usize },
+
     /// No BWB ID found in JCI reference.
     #[error("No BWB ID found in JCI reference: {0}")]
     InvalidJciReference(String),
