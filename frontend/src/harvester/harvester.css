@@ -55,3 +55,8 @@
 .status-bar__segment--failed {
   background: var(--primitives-color-critical-450);
 }
+
+/* Daily jobs charts (Overzicht) — ECharts needs an explicit height to render. */
+.daily-jobs-chart {
+  height: 260px;
+}

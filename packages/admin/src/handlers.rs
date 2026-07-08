@@ -696,12 +696,30 @@ pub struct RecentFailure {
     pub error: String,
 }
 
+/// Per-day counts for one job type: jobs created that day (`added`) and jobs
+/// that reached a terminal status that day (`succeeded`/`failed`).
+#[derive(Serialize, Default)]
+pub struct DailyCounts {
+    pub added: i64,
+    pub succeeded: i64,
+    pub failed: i64,
+}
+
+/// One Europe/Amsterdam calendar day (`YYYY-MM-DD`) in the 14-day window.
+#[derive(Serialize)]
+pub struct DailyEntry {
+    pub date: String,
+    pub harvest: DailyCounts,
+    pub enrich: DailyCounts,
+}
+
 #[derive(Serialize)]
 pub struct DashboardStats {
     pub jobs: JobsBlock,
     pub executed: ExecutedBlock,
     pub open_untranslatables: i64,
     pub recent_failures: Vec<RecentFailure>,
+    pub daily: Vec<DailyEntry>,
 }
 
 /// Aggregate snapshot for the harvester "Overzicht" dashboard: job counts by
@@ -797,11 +815,75 @@ pub async fn dashboard_stats(
     .await
     .map_err(db_err("dashboard recent-failures query failed"))?;
 
+    // 5. Daily series for the last 14 Europe/Amsterdam days: jobs added
+    //    (created_at) and jobs finished (completed_at, split by outcome), per
+    //    type. Days without activity come back as explicit zero rows so the
+    //    frontend never fills gaps. Pre-aggregate per (day, type, kind) first —
+    //    a day-skeleton joined directly against the jobs rows degrades into an
+    //    O(days × rows) nested loop. The 15-day cutoffs give slack for the
+    //    UTC↔Amsterdam offset; at most 6 aggregate rows join per day, so the
+    //    SUM FILTER never double-counts.
+    let daily_rows = sqlx::query_as::<_, (String, i64, i64, i64, i64, i64, i64)>(
+        "WITH days AS ( \
+             SELECT ((now() AT TIME ZONE 'Europe/Amsterdam')::date - offs) AS day \
+             FROM generate_series(13, 0, -1) AS offs \
+         ), events AS ( \
+             SELECT (created_at AT TIME ZONE 'Europe/Amsterdam')::date AS day, \
+                    job_type::text AS job_type, 'added' AS kind, COUNT(*) AS n \
+             FROM jobs \
+             WHERE created_at >= now() - INTERVAL '15 days' \
+             GROUP BY 1, 2 \
+             UNION ALL \
+             SELECT (completed_at AT TIME ZONE 'Europe/Amsterdam')::date, \
+                    job_type::text, \
+                    CASE status::text WHEN 'completed' THEN 'succeeded' ELSE 'failed' END, \
+                    COUNT(*) \
+             FROM jobs \
+             WHERE status IN ('completed', 'failed') \
+               AND completed_at >= now() - INTERVAL '15 days' \
+             GROUP BY 1, 2, 3 \
+         ) \
+         SELECT to_char(days.day, 'YYYY-MM-DD'), \
+             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'harvest' AND e.kind = 'added'), 0)::bigint, \
+             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'harvest' AND e.kind = 'succeeded'), 0)::bigint, \
+             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'harvest' AND e.kind = 'failed'), 0)::bigint, \
+             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'enrich' AND e.kind = 'added'), 0)::bigint, \
+             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'enrich' AND e.kind = 'succeeded'), 0)::bigint, \
+             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'enrich' AND e.kind = 'failed'), 0)::bigint \
+         FROM days \
+         LEFT JOIN events e ON e.day = days.day \
+         GROUP BY days.day \
+         ORDER BY days.day",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(db_err("dashboard daily-series query failed"))?;
+
+    let daily: Vec<DailyEntry> = daily_rows
+        .into_iter()
+        .map(
+            |(date, h_added, h_succeeded, h_failed, e_added, e_succeeded, e_failed)| DailyEntry {
+                date,
+                harvest: DailyCounts {
+                    added: h_added,
+                    succeeded: h_succeeded,
+                    failed: h_failed,
+                },
+                enrich: DailyCounts {
+                    added: e_added,
+                    succeeded: e_succeeded,
+                    failed: e_failed,
+                },
+            },
+        )
+        .collect();
+
     Ok(Json(DashboardStats {
         jobs,
         executed,
         open_untranslatables,
         recent_failures,
+        daily,
     }))
 }
 

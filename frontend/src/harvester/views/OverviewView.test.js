@@ -3,6 +3,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { ref } from 'vue';
 import OverviewView from './OverviewView.vue';
 import DataTable from '../components/DataTable.vue';
+import DailyJobsChart from '../components/DailyJobsChart.vue';
 
 const STATS = {
   jobs: {
@@ -19,6 +20,18 @@ const STATS = {
     last_7d: { total: 210, harvest: 140, enrich: 70 },
   },
   open_untranslatables: 23,
+  daily: [
+    {
+      date: '2026-07-06',
+      harvest: { added: 4, succeeded: 3, failed: 1 },
+      enrich: { added: 2, succeeded: 2, failed: 0 },
+    },
+    {
+      date: '2026-07-07',
+      harvest: { added: 1, succeeded: 0, failed: 0 },
+      enrich: { added: 0, succeeded: 1, failed: 1 },
+    },
+  ],
   recent_failures: [
     {
       id: 'job-1',
@@ -33,9 +46,12 @@ const STATS = {
 const openDetail = vi.fn();
 const closeDetail = vi.fn();
 
+// Per-mount stats value — tests can swap it to mount with a variant payload.
+let currentStats = STATS;
+
 vi.mock('../composables/useDashboardStats.js', () => ({
   useDashboardStats: () => ({
-    stats: ref(STATS),
+    stats: ref(currentStats),
     loading: ref(false),
     error: ref(null),
   }),
@@ -84,6 +100,37 @@ describe('OverviewView', () => {
     // harvest.completed = 830, enrich.completed = 350
     expect(html).toContain('text="830"');
     expect(html).toContain('text="350"');
+  });
+
+  it('renders one daily chart per job type with mapped entries', () => {
+    const w = shallowMount(OverviewView);
+    const charts = w.findAllComponents(DailyJobsChart);
+    expect(charts).toHaveLength(2);
+
+    // Charts sit in the right column of their type's half/half section.
+    expect(charts[0].attributes('slot')).toBe('right');
+    expect(charts[0].props('entries')).toEqual([
+      { date: '2026-07-06', added: 4, succeeded: 3, failed: 1 },
+      { date: '2026-07-07', added: 1, succeeded: 0, failed: 0 },
+    ]);
+
+    expect(charts[1].props('entries')).toEqual([
+      { date: '2026-07-06', added: 2, succeeded: 2, failed: 0 },
+      { date: '2026-07-07', added: 0, succeeded: 1, failed: 1 },
+    ]);
+  });
+
+  it('hides the charts (but keeps the panels) when the API has no daily block', () => {
+    const stripped = { ...STATS };
+    delete stripped.daily;
+    currentStats = stripped;
+    try {
+      const w = shallowMount(OverviewView);
+      expect(w.findAllComponents(DailyJobsChart)).toHaveLength(0);
+      expect(w.html()).toContain('Harvest');
+    } finally {
+      currentStats = STATS;
+    }
   });
 
   it('wires the failures DataTable with the recent_failures data', () => {
