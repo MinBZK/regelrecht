@@ -181,6 +181,44 @@ tx.commit().await?;
 | `LawStatusValue` | `Unknown`, `Queued`, `Harvesting`, `Harvested`, `HarvestFailed`, `Enriching`, `Enriched`, `EnrichFailed` |
 | `Priority` | 0–100 (default: 50, higher = processed first) |
 
+## Job priorities
+
+Workers claim the next job with `ORDER BY priority DESC, created_at ASC`
+(`job_queue::claim_job`). **A higher priority number is picked up first**; equal
+priorities are served oldest-first. `Priority` clamps to `0–100` (default 50).
+
+Priorities are chosen so that work a human explicitly asked for runs ahead of
+speculative work the pipeline discovered on its own (referenced laws pulled in by
+harvesting, related legislation pulled in by enrichment).
+
+| Job | Created by | Priority |
+|-----|-----------|----------|
+| Harvest — editor request (BWB search / dependency walker) | `api/harvest.rs` (`EDITOR_HARVEST_PRIORITY`) | 80 |
+| Harvest — admin `POST /api/harvest-jobs` | `admin::handlers` | 50 default (caller may override) |
+| Harvest — recursive follow-up (referenced laws) | `worker.rs` | 30 |
+| Harvest — related legislation (spawned by enrichment) | `worker.rs` (`related_harvest_priority`) | 39 and below (`RELATED_HARVEST_BASE 40 − (depth + 1)`) |
+| Enrich — admin `POST /api/enrich-jobs` | `admin::handlers` | 50 default (caller may override) |
+| Enrich — auto after a **direct** harvest | `worker.rs` (`auto_enrich_priority`) | 50 |
+| Enrich — auto after a **recursive** harvest | `worker.rs` (`RECURSIVE_ENRICH_PRIORITY`) | 10 |
+| Enrich — auto-retry after failure | `worker.rs` | inherits the failed job's priority |
+
+### Auto-enrich priority by harvest depth
+
+When `ENRICH_AUTO_ENQUEUE` is on, a successful harvest auto-creates one enrich
+job per provider. The priority of that enrich job depends on the harvest's
+recursion `depth` (from the `HarvestPayload`):
+
+- **Direct / root harvest** (`depth` `None` or `0`) — the enrich job uses the
+  default priority (**50**), same as a manually requested enrich.
+- **Recursive follow-up harvest** (`depth` `>= 1`) — the enrich job uses
+  `RECURSIVE_ENRICH_PRIORITY` (**10**), so recursively-discovered laws are
+  enriched only after everything directly or manually requested has been
+  processed.
+
+`ENRICH_AUTO_ENQUEUE` remains the global on/off switch — when off, no enrich job
+is auto-created for either case. A byte-identical re-harvest (`changed = false`)
+and an `enrich_exhausted` law still skip auto-enrich entirely.
+
 ## Database
 
 ### Requirements
