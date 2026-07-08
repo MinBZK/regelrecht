@@ -1207,6 +1207,17 @@ async fn process_next_document_convert_job(
         Err(e) => {
             let msg = format!("invalid document_convert payload: {e}");
             tracing::error!(job_id = %job.id, error = %msg);
+            // Best-effort: if the raw payload still yields a usable upload id,
+            // drop the orphaned bytes so a malformed job doesn't leak them.
+            if let Some(id) = job
+                .payload
+                .as_ref()
+                .and_then(|p| p.get("upload_id"))
+                .and_then(|v| v.as_str())
+                .and_then(|s| uuid::Uuid::parse_str(s).ok())
+            {
+                let _ = document_convert::delete_upload(pool, id).await;
+            }
             job_queue::fail_job_terminal(pool, job.id, Some(serde_json::json!({ "error": msg })))
                 .await?;
             return Ok(JobOutcome::Processed);

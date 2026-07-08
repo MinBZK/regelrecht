@@ -2607,11 +2607,19 @@ pub async fn upload_traject_document(
     // Derive a collision-safe target markdown path against the existing docs.
     let backend = resolve_traject_documents_writer(&traject).await?;
     let base = traject_documents_base(&traject_ref);
-    let existing: Vec<String> = backend
+    let mut existing: Vec<String> = backend
         .list_files_recursive(&base, None)
         .await
         .map(|entries| entries.into_iter().map(|e| e.relative_path).collect())
         .unwrap_or_default();
+    // Also avoid colliding with conversions that are enqueued but haven't
+    // committed their `.md` yet — otherwise two same-named uploads both derive
+    // e.g. `report.md` and the second conversion overwrites the first.
+    existing.extend(
+        regelrecht_pipeline::document_convert::pending_target_paths(pool, &traject_ref)
+            .await
+            .unwrap_or_default(),
+    );
     let target_path = derive_markdown_target(&filename, &existing);
 
     // Persist the bytes and enqueue the conversion job in one transaction.

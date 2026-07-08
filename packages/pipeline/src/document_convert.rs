@@ -224,6 +224,28 @@ pub async fn list_traject_document_jobs(
     Ok(rows)
 }
 
+/// Target `.md` paths of the traject's still-pending/processing document-convert
+/// jobs. Used by the upload handler to make the derived target collision-safe
+/// against conversions that are enqueued but haven't committed their `.md` yet —
+/// without this, two uploads that derive the same name (e.g. two `report.pdf`)
+/// would both target `report.md` and the second conversion would overwrite the
+/// first once both commit.
+pub async fn pending_target_paths(pool: &PgPool, traject_ref: &str) -> Result<Vec<String>> {
+    let rows = sqlx::query_as::<_, (Option<String>,)>(
+        r#"
+        SELECT payload->>'target_path'
+        FROM jobs
+        WHERE traject_ref = $1
+          AND job_type = 'document_convert'
+          AND status IN ('pending', 'processing')
+        "#,
+    )
+    .bind(traject_ref)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().filter_map(|(p,)| p).collect())
+}
+
 /// Abstraction over the actual document→markdown conversion so the orchestration
 /// can be unit-tested without spawning a real LLM subprocess (mirrors the
 /// [`crate::enrich::LlmRunner`] seam).
