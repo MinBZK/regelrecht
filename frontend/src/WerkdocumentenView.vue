@@ -36,8 +36,10 @@ const jobsPoller = useTrajectDocumentJobs(activeTrajectRef);
 const { jobs: conversionJobs } = jobsPoller;
 
 // Hidden native file input + upload trigger (shared with the launcher sheet).
+// Polling is already running (started on mount), so just refresh to surface the
+// new job immediately — restarting would reset() and briefly flash the list empty.
 const { fileInput, uploadError, onUpload, onFileChange } = useDocumentUpload(uploadDocument, () =>
-  jobsPoller.startPolling(),
+  jobsPoller.refresh(),
 );
 
 const colorSchemeOptions = [

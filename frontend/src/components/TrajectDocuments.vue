@@ -27,8 +27,10 @@ const jobsPoller = useTrajectDocumentJobs(activeTrajectRef);
 const { jobs: conversionJobs } = jobsPoller;
 
 const browserEl = ref(null);
+// Polling is already running (started when the sheet opened), so just refresh to
+// surface the new job immediately — restarting would reset() and flash the list.
 const { fileInput, uploadError, onUpload, onFileChange } = useDocumentUpload(uploadDocument, () =>
-  jobsPoller.startPolling(),
+  jobsPoller.refresh(),
 );
 
 watch(browserOpen, async (o) => {
