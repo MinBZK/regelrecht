@@ -14,10 +14,10 @@ function mountList(props = {}) {
 }
 
 describe('DocumentList', () => {
-  it('renders one row per document plus the "Nieuw document" row', () => {
+  it('renders one row per document plus the "Nieuw document" and "uploaden" rows', () => {
     const wrapper = mountList();
     const items = wrapper.findAll('nldd-list-item');
-    expect(items).toHaveLength(DOCS.length + 1);
+    expect(items).toHaveLength(DOCS.length + 2);
   });
 
   it('hides the .md extension but keeps .txt visible', () => {
@@ -34,11 +34,18 @@ describe('DocumentList', () => {
     expect(wrapper.emitted('select')[0]).toEqual(['beleid.md']);
   });
 
-  it('emits new when the last row is clicked', async () => {
+  it('emits new when the "Nieuw document" row (second to last) is clicked', async () => {
+    const wrapper = mountList();
+    const items = wrapper.findAll('nldd-list-item');
+    await items[items.length - 2].trigger('click');
+    expect(wrapper.emitted('new')).toBeTruthy();
+  });
+
+  it('emits upload when the last row (uploaden) is clicked', async () => {
     const wrapper = mountList();
     const items = wrapper.findAll('nldd-list-item');
     await items[items.length - 1].trigger('click');
-    expect(wrapper.emitted('new')).toBeTruthy();
+    expect(wrapper.emitted('upload')).toBeTruthy();
   });
 
   it('marks the selected document row', () => {
@@ -65,10 +72,11 @@ describe('DocumentList', () => {
     expect(first.attributes('target')).toBe('_blank');
     expect(first.attributes('rel')).toBe('noopener');
 
-    // Last row: the "Nieuw document" action is a button (no href), but its @new
-    // handler opens the page in a new tab, so it mirrors the doc rows with the
-    // open-new-page icon rather than a chevron.
-    const newRow = rows[rows.length - 1];
+    // Second-to-last row: the "Nieuw document" action is a button (no href), but
+    // its @new handler opens the page in a new tab, so it mirrors the doc rows
+    // with the open-new-page icon rather than a chevron. (The last row is the
+    // upload action, which always uses a chevron.)
+    const newRow = rows[rows.length - 2];
     expect(newRow.attributes('href')).toBeUndefined();
     const newRowIcons = newRow.findAll('nldd-icon').map((i) => i.attributes('name'));
     expect(newRowIcons).toContain('open-new-page');

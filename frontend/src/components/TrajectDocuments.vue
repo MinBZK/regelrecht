@@ -13,24 +13,46 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { useTrajects } from '../composables/useTrajects.js';
 import { useDocumentsSheet } from '../composables/useDocumentsSheet.js';
 import { useTrajectDocuments } from '../composables/useTrajectDocuments.js';
+import { useTrajectDocumentJobs } from '../composables/useTrajectDocumentJobs.js';
 import DocumentList from './DocumentList.vue';
+import ConversionStatus from './ConversionStatus.vue';
 
 const { activeTrajectRef, activeTraject } = useTrajects();
 const { isOpen: browserOpen, close: closeBrowser } = useDocumentsSheet();
-const { documents, loading: listLoading, listError, fetchList } = useTrajectDocuments(activeTrajectRef);
+const { documents, loading: listLoading, listError, fetchList, uploadDocument } =
+  useTrajectDocuments(activeTrajectRef);
+
+const jobsPoller = useTrajectDocumentJobs(activeTrajectRef);
+const { jobs: conversionJobs } = jobsPoller;
 
 const browserEl = ref(null);
+const fileInput = ref(null);
 
 watch(browserOpen, async (o) => {
   await nextTick();
   if (o) {
     browserEl.value?.show();
-    // Re-fetch on open so documents created in a page tab show up here.
+    // Re-fetch on open so documents created in a page tab show up here, and
+    // poll conversion jobs while the sheet is open.
     fetchList();
+    jobsPoller.startPolling();
   } else {
     browserEl.value?.hide();
+    jobsPoller.stopPolling();
   }
 });
+
+// Hidden native file input (no NLDD upload component exists — reported in PR).
+function onUpload() {
+  fileInput.value?.click();
+}
+async function onFileChange(e) {
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  if (!file) return;
+  const result = await uploadDocument(file);
+  if (result?.ok) jobsPoller.startPolling();
+}
 
 function pageUrl(path) {
   const ref = activeTrajectRef.value;
@@ -65,6 +87,7 @@ const sheetTitle = computed(() =>
         ></nldd-top-title-bar>
 
         <nldd-simple-section>
+          <ConversionStatus :jobs="conversionJobs"></ConversionStatus>
           <nldd-activity-indicator v-if="listLoading" text="Documenten laden" show-text></nldd-activity-indicator>
           <nldd-inline-dialog
             v-else-if="listError"
@@ -78,7 +101,15 @@ const sheetTitle = computed(() =>
             :documents="documents"
             :href-for="pageUrl"
             @new="openNew"
+            @upload="onUpload"
           ></DocumentList>
+          <input
+            ref="fileInput"
+            type="file"
+            accept=".pdf,.doc,.docx"
+            hidden
+            @change="onFileChange"
+          />
         </nldd-simple-section>
       </nldd-page>
     </nldd-sheet>

@@ -10,14 +10,16 @@
  * it carries its own compact top bar — title + traject subtitle on the left,
  * a focused account menu (theme + logout) on the right.
  */
-import { computed, onMounted, watch, watchEffect } from 'vue';
+import { computed, onMounted, ref, watch, watchEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTrajects } from './composables/useTrajects.js';
 import { useDocumentsManager } from './composables/useDocumentsManager.js';
+import { useTrajectDocumentJobs } from './composables/useTrajectDocumentJobs.js';
 import { useAuth } from './composables/useAuth.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import DocumentList from './components/DocumentList.vue';
 import DocumentEditor from './components/DocumentEditor.vue';
+import ConversionStatus from './components/ConversionStatus.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -26,7 +28,25 @@ const { authenticated, oidcConfigured, person, loading: authLoading, login, logo
 const { colorScheme, setColorScheme } = useColorScheme();
 
 const mgr = useDocumentsManager(activeTrajectRef);
-const { documents, listLoading, listError, currentPath, displayTitle, open, startNew, close } = mgr;
+const { documents, listLoading, listError, currentPath, displayTitle, open, startNew, close, uploadDocument } = mgr;
+
+// Conversion-status poller for uploaded documents being converted to markdown.
+const jobsPoller = useTrajectDocumentJobs(activeTrajectRef);
+const { jobs: conversionJobs } = jobsPoller;
+
+// Hidden native file input (no NLDD upload component exists — reported in PR).
+const fileInput = ref(null);
+function onUpload() {
+  fileInput.value?.click();
+}
+async function onFileChange(e) {
+  const file = e.target.files?.[0];
+  // Reset the input so re-picking the same file fires `change` again.
+  e.target.value = '';
+  if (!file) return;
+  const result = await uploadDocument(file);
+  if (result?.ok) jobsPoller.startPolling();
+}
 
 const colorSchemeOptions = [
   ['auto', 'Systeem'],
@@ -51,6 +71,10 @@ watchEffect(() => {
 // Open the document addressed by the URL on first load (deep link / refresh),
 // or start a fresh document when the launcher opened us with `?new=1`.
 onMounted(() => {
+  // Surface any conversions already running/failed for this traject, and keep
+  // polling while the page is open (the composable stops on unmount).
+  jobsPoller.startPolling();
+
   const initial = route.params.docPath;
   if (initial) {
     open(String(initial));
@@ -136,6 +160,7 @@ function backToList() {
           <nldd-split-view-pane slot="sidebar" has-content>
             <nldd-page>
               <nldd-simple-section>
+                <ConversionStatus :jobs="conversionJobs"></ConversionStatus>
                 <nldd-activity-indicator v-if="listLoading" text="Documenten laden" show-text></nldd-activity-indicator>
                 <nldd-inline-dialog
                   v-else-if="listError"
@@ -149,7 +174,15 @@ function backToList() {
                   :selected-path="currentPath"
                   @select="onSelect"
                   @new="onNew"
+                  @upload="onUpload"
                 ></DocumentList>
+                <input
+                  ref="fileInput"
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  hidden
+                  @change="onFileChange"
+                />
               </nldd-simple-section>
             </nldd-page>
           </nldd-split-view-pane>
