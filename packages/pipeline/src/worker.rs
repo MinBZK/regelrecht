@@ -17,7 +17,7 @@ use crate::error::{PipelineError, Result};
 use crate::harvest::{execute_harvest, HarvestPayload, HarvestResult, MAX_HARVEST_DEPTH};
 use crate::job_queue::{self, CreateJobRequest};
 use crate::law_status;
-use crate::models::{JobStatus, JobType, LawStatusValue, Priority};
+use crate::models::{JobType, LawStatusValue, Priority};
 
 /// Local night window (Europe/Amsterdam) as a half-open hour-of-day range
 /// `[start, end)`. Hours in this range get the multiplied enrich cap.
@@ -1244,19 +1244,18 @@ async fn process_next_document_convert_job(
         Err(e) => {
             let msg = e.to_string();
             tracing::error!(job_id = %job.id, error = %msg, "document-convert job failed");
-            let failed = job_queue::fail_job(
+            // Document-convert jobs are single-attempt (the upload handler sets
+            // max_attempts=1): a retry would re-run the expensive LLM conversion
+            // and most failures are deterministic. Fail terminally and always
+            // drop the transient upload bytes — there is no retry to feed them to.
+            job_queue::fail_job_terminal(
                 pool,
                 job.id,
                 Some(serde_json::json!({ "error": msg.clone() })),
             )
             .await?;
-            // Once a job is terminally failed there is no retry to feed, so drop
-            // the upload bytes. A still-retryable failure keeps them for the
-            // next attempt.
-            if failed.status == JobStatus::Failed {
-                if let Err(e) = document_convert::delete_upload(pool, payload.upload_id).await {
-                    tracing::warn!(job_id = %job.id, error = %e, "failed to delete document upload after terminal failure");
-                }
+            if let Err(e) = document_convert::delete_upload(pool, payload.upload_id).await {
+                tracing::warn!(job_id = %job.id, error = %e, "failed to delete document upload after terminal failure");
             }
             Ok(outcome_for_error(&msg))
         }

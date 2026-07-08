@@ -297,7 +297,12 @@ impl DocumentConverter for LlmDocumentConverter {
         run_llm_subprocess(
             &config.provider,
             &prompt,
-            Some(input_file),
+            // Deliberately NOT passed as OpenCode's `-f`: the input is a binary
+            // PDF/Word file, and `-f` feeds a file as text context (enrich only
+            // ever passed text YAML). The agent instead reads the file — named in
+            // the prompt — from its working directory, which works for both the
+            // opencode (`--dir`) and claude (`current_dir`) providers.
+            None,
             work_dir,
             config,
             // The agent may run/install a converter (e.g. pdftotext, pandoc),
