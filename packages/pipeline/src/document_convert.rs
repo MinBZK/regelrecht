@@ -230,6 +230,10 @@ pub async fn list_traject_document_jobs(
           AND job_type = 'document_convert'
           AND status <> 'completed'
         ORDER BY created_at DESC
+        -- Bound the result: failed jobs are not auto-cleaned (phase 1), so a
+        -- traject with many failed uploads would otherwise grow this list (and
+        -- the status block that renders every row) without limit.
+        LIMIT 100
         "#,
     )
     .bind(traject_ref)

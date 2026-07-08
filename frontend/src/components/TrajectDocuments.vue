@@ -14,6 +14,7 @@ import { useTrajects } from '../composables/useTrajects.js';
 import { useDocumentsSheet } from '../composables/useDocumentsSheet.js';
 import { useTrajectDocuments } from '../composables/useTrajectDocuments.js';
 import { useTrajectDocumentJobs } from '../composables/useTrajectDocumentJobs.js';
+import { useDocumentUpload } from '../composables/useDocumentUpload.js';
 import DocumentList from './DocumentList.vue';
 import ConversionStatus from './ConversionStatus.vue';
 
@@ -26,7 +27,9 @@ const jobsPoller = useTrajectDocumentJobs(activeTrajectRef);
 const { jobs: conversionJobs } = jobsPoller;
 
 const browserEl = ref(null);
-const fileInput = ref(null);
+const { fileInput, onUpload, onFileChange } = useDocumentUpload(uploadDocument, () =>
+  jobsPoller.startPolling(),
+);
 
 watch(browserOpen, async (o) => {
   await nextTick();
@@ -41,18 +44,6 @@ watch(browserOpen, async (o) => {
     jobsPoller.stopPolling();
   }
 });
-
-// Hidden native file input (no NLDD upload component exists — reported in PR).
-function onUpload() {
-  fileInput.value?.click();
-}
-async function onFileChange(e) {
-  const file = e.target.files?.[0];
-  e.target.value = '';
-  if (!file) return;
-  const result = await uploadDocument(file);
-  if (result?.ok) jobsPoller.startPolling();
-}
 
 function pageUrl(path) {
   const ref = activeTrajectRef.value;

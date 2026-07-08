@@ -10,11 +10,12 @@
  * it carries its own compact top bar — title + traject subtitle on the left,
  * a focused account menu (theme + logout) on the right.
  */
-import { computed, onMounted, ref, watch, watchEffect } from 'vue';
+import { computed, onMounted, watch, watchEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTrajects } from './composables/useTrajects.js';
 import { useDocumentsManager } from './composables/useDocumentsManager.js';
 import { useTrajectDocumentJobs } from './composables/useTrajectDocumentJobs.js';
+import { useDocumentUpload } from './composables/useDocumentUpload.js';
 import { useAuth } from './composables/useAuth.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import DocumentList from './components/DocumentList.vue';
@@ -34,19 +35,10 @@ const { documents, listLoading, listError, currentPath, displayTitle, open, star
 const jobsPoller = useTrajectDocumentJobs(activeTrajectRef);
 const { jobs: conversionJobs } = jobsPoller;
 
-// Hidden native file input (no NLDD upload component exists — reported in PR).
-const fileInput = ref(null);
-function onUpload() {
-  fileInput.value?.click();
-}
-async function onFileChange(e) {
-  const file = e.target.files?.[0];
-  // Reset the input so re-picking the same file fires `change` again.
-  e.target.value = '';
-  if (!file) return;
-  const result = await uploadDocument(file);
-  if (result?.ok) jobsPoller.startPolling();
-}
+// Hidden native file input + upload trigger (shared with the launcher sheet).
+const { fileInput, onUpload, onFileChange } = useDocumentUpload(uploadDocument, () =>
+  jobsPoller.startPolling(),
+);
 
 const colorSchemeOptions = [
   ['auto', 'Systeem'],
