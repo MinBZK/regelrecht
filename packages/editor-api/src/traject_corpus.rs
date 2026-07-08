@@ -30,6 +30,7 @@ use std::time::{Duration, Instant};
 use regelrecht_corpus::backend::create_backend;
 use regelrecht_corpus::models::{GitHubSource, LocalSource, Source, SourceType};
 use regelrecht_corpus::source_map::collect_law_implements;
+use regelrecht_corpus::timing;
 use regelrecht_corpus::{CorpusRegistry, SourceMap};
 use sqlx::PgPool;
 use tokio::sync::{Mutex, RwLock};
@@ -929,7 +930,8 @@ impl TrajectCorpusCache {
             let state = slot.state.read().await;
             match state.as_ref() {
                 Some(cached) if cached.is_fresh(self.index_ttl) => {
-                    return Ok(cached.corpus.clone())
+                    tracing::debug!(traject = %traject_id, cache = "hit", "traject corpus served from cache");
+                    return Ok(cached.corpus.clone());
                 }
                 Some(cached) => Some(cached.corpus.clone()),
                 None => None,
@@ -953,7 +955,8 @@ impl TrajectCorpusCache {
             let state = slot.state.read().await;
             match state.as_ref() {
                 Some(cached) if cached.is_fresh(self.index_ttl) => {
-                    return Ok(cached.corpus.clone())
+                    tracing::debug!(traject = %traject_id, cache = "hit", "traject corpus served from cache");
+                    return Ok(cached.corpus.clone());
                 }
                 Some(cached) => Some(cached.corpus.clone()),
                 None => None,
@@ -961,40 +964,49 @@ impl TrajectCorpusCache {
         };
 
         let corpus = match stale {
-            None => build_traject_corpus(pool, traject_id, auth_file.as_deref()).await?,
-            Some(old) => match refresh_traject_corpus(&old, traject_id).await {
-                Ok(refreshed) => refreshed,
-                Err(e) => {
-                    // Serve (and re-arm) the stale snapshot rather than
-                    // failing reads on a transient enumeration error; the
-                    // re-armed `built_at` stops every subsequent request
-                    // from re-attempting against a throttled upstream.
-                    // Rate-limit the warn: a permanently broken source
-                    // fails every TTL window, and repeating the same warn
-                    // each minute drowns the log without new signal.
-                    let failures = slot.refresh_failures.fetch_add(1, Ordering::SeqCst) + 1;
-                    if failures == 1 || failures % FAILED_REFRESH_WARN_EVERY == 0 {
-                        tracing::warn!(
-                            traject = %traject_id,
-                            error = %e,
-                            consecutive_failures = failures,
-                            "traject index refresh failed; serving stale snapshot for another TTL"
-                        );
-                    } else {
-                        tracing::debug!(
-                            traject = %traject_id,
-                            error = %e,
-                            consecutive_failures = failures,
-                            "traject index refresh failed again; serving stale snapshot for another TTL"
-                        );
+            None => {
+                tracing::debug!(traject = %traject_id, cache = "cold", "building traject corpus (cold)");
+                timing::measure(
+                    "build",
+                    build_traject_corpus(pool, traject_id, auth_file.as_deref()),
+                )
+                .await?
+            }
+            Some(old) => {
+                match timing::measure("refresh", refresh_traject_corpus(&old, traject_id)).await {
+                    Ok(refreshed) => refreshed,
+                    Err(e) => {
+                        // Serve (and re-arm) the stale snapshot rather than
+                        // failing reads on a transient enumeration error; the
+                        // re-armed `built_at` stops every subsequent request
+                        // from re-attempting against a throttled upstream.
+                        // Rate-limit the warn: a permanently broken source
+                        // fails every TTL window, and repeating the same warn
+                        // each minute drowns the log without new signal.
+                        let failures = slot.refresh_failures.fetch_add(1, Ordering::SeqCst) + 1;
+                        if failures == 1 || failures % FAILED_REFRESH_WARN_EVERY == 0 {
+                            tracing::warn!(
+                                traject = %traject_id,
+                                error = %e,
+                                consecutive_failures = failures,
+                                "traject index refresh failed; serving stale snapshot for another TTL"
+                            );
+                        } else {
+                            tracing::debug!(
+                                traject = %traject_id,
+                                error = %e,
+                                consecutive_failures = failures,
+                                "traject index refresh failed again; serving stale snapshot for another TTL"
+                            );
+                        }
+                        *slot.state.write().await = Some(CachedCorpus {
+                            corpus: old.clone(),
+                            built_at: Instant::now(),
+                        });
+                        return Ok(old);
                     }
-                    *slot.state.write().await = Some(CachedCorpus {
-                        corpus: old.clone(),
-                        built_at: Instant::now(),
-                    });
-                    return Ok(old);
                 }
-            },
+            }
         };
 
         slot.refresh_failures.store(0, Ordering::SeqCst);
@@ -1048,6 +1060,7 @@ impl From<regelrecht_corpus::error::CorpusError> for TrajectCorpusError {
 
 /// Build a fresh [`TrajectCorpus`]: load sources from DB, clone backends,
 /// produce a [`SourceMap`].
+#[tracing::instrument(name = "build_traject_corpus", skip_all, fields(traject = %traject_id))]
 async fn build_traject_corpus(
     pool: &PgPool,
     traject_id: Uuid,
@@ -1237,29 +1250,30 @@ async fn build_traject_corpus(
     // failing entirely on what is usually a transient GitHub hiccup. The hard
     // failure path is the writable-own *backend* init above, which returns
     // `Err` so a broken write target never opens silently.
-    let source_map = match registry.index_all_sources_async(auth_file).await {
-        Ok((map, failed)) => {
-            if failed.iter().any(|id| id == &writable_own_source_id) {
-                tracing::error!(
-                    traject = %traject_id,
-                    source_id = %writable_own_source_id,
-                    "traject writable-own source failed to load — the traject's own laws \
-                     will be missing from the bibliotheek until the corpus is rebuilt"
-                );
+    let source_map =
+        match timing::measure("index", registry.index_all_sources_async(auth_file)).await {
+            Ok((map, failed)) => {
+                if failed.iter().any(|id| id == &writable_own_source_id) {
+                    tracing::error!(
+                        traject = %traject_id,
+                        source_id = %writable_own_source_id,
+                        "traject writable-own source failed to load — the traject's own laws \
+                         will be missing from the bibliotheek until the corpus is rebuilt"
+                    );
+                }
+                map
             }
-            map
-        }
-        Err(e) => {
-            tracing::warn!(
-                traject = %traject_id,
-                error = %e,
-                "traject corpus load failed, falling back to local-only"
-            );
-            registry
-                .load_local_sources()
-                .unwrap_or_else(|_| SourceMap::new())
-        }
-    };
+            Err(e) => {
+                tracing::warn!(
+                    traject = %traject_id,
+                    error = %e,
+                    "traject corpus load failed, falling back to local-only"
+                );
+                registry
+                    .load_local_sources()
+                    .unwrap_or_else(|_| SourceMap::new())
+            }
+        };
 
     Ok(Arc::new(TrajectCorpus {
         corpus: CorpusState {

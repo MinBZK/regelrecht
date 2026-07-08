@@ -36,6 +36,7 @@ use crate::backend::{FileEntry, PersistOutcome, RecursiveFileEntry, RepoBackend,
 use crate::error::{CorpusError, Result};
 use crate::github::{Committer, GitHubFetcher};
 use crate::models::GitHubSource;
+use crate::timing;
 
 /// Pending change buffered between `write_file`/`delete_file` and
 /// `persist`. `base_sha` is `Some` when the caller read the file first
@@ -200,18 +201,22 @@ fn validate_relative(path: &Path) -> Result<()> {
 
 #[async_trait]
 impl RepoBackend for GitHubApiBackend {
+    #[tracing::instrument(name = "gh_read_file", skip_all, fields(path = %relative_path.display()))]
     async fn read_file(&self, relative_path: &Path) -> Result<Option<String>> {
         let api_path = self.api_path(relative_path)?;
         let mut inner = self.inner.lock().await;
-        let outcome = inner
-            .fetcher
-            .fetch_file_with_sha(
+        // One Contents API GET — the If-Match precondition read on the save
+        // path lands here, so it feeds the `gh_get` Server-Timing phase.
+        let outcome = timing::measure(
+            "gh_get",
+            inner.fetcher.fetch_file_with_sha(
                 &self.full_repo(),
                 &self.branch,
                 &api_path,
                 self.token.as_deref(),
-            )
-            .await?;
+            ),
+        )
+        .await?;
         match outcome {
             Some((content, sha)) => {
                 inner.sha_cache.insert(relative_path.to_path_buf(), sha);
@@ -411,6 +416,7 @@ impl RepoBackend for GitHubApiBackend {
         Ok(out)
     }
 
+    #[tracing::instrument(name = "gh_persist", skip_all)]
     async fn persist(&self, ctx: &WriteContext) -> Result<PersistOutcome> {
         let pending: Vec<(PathBuf, PendingWrite)> = {
             let mut inner = self.inner.lock().await;
@@ -419,6 +425,9 @@ impl RepoBackend for GitHubApiBackend {
         if pending.is_empty() {
             return Ok(PersistOutcome::default());
         }
+        // Wall-clock of the whole Contents API commit (PUT/DELETE, plus any
+        // sha-refresh retry) — the `gh_put` Server-Timing phase.
+        let put_start = std::time::Instant::now();
 
         // Committer falls back to a service identity when no human is
         // attached — same shape as `GitBackend` (the trailer/co-author
@@ -504,6 +513,8 @@ impl RepoBackend for GitHubApiBackend {
             inner.sha_cache.insert(path, sha);
         }
 
+        timing::record("gh_put", put_start.elapsed());
+
         // Contents API commits straight to the configured branch — no
         // PR is opened. The trajectflow already accepted `pr: None`
         // from the previous `GitBackend` impl, so this is wire-
@@ -511,6 +522,7 @@ impl RepoBackend for GitHubApiBackend {
         Ok(PersistOutcome::default())
     }
 
+    #[tracing::instrument(name = "gh_ensure_ready", skip_all, fields(branch = %self.branch))]
     async fn ensure_ready(&mut self) -> Result<()> {
         // Read-only backends have nothing to bootstrap — the branch
         // either exists (reads work) or it doesn't (reads 404 as
@@ -519,6 +531,9 @@ impl RepoBackend for GitHubApiBackend {
         if self.token.is_none() {
             return Ok(());
         }
+        // Branch-check (+ lazy create) round-trips against GitHub; feeds
+        // the `ensure_ready` Server-Timing phase on the cold-build path.
+        let ready_start = std::time::Instant::now();
         let inner = self.inner.get_mut();
         let repo = format!("{}/{}", self.owner, self.repo);
         let exists = inner
@@ -526,6 +541,7 @@ impl RepoBackend for GitHubApiBackend {
             .branch_exists(&repo, &self.branch, self.token.as_deref())
             .await?;
         if exists {
+            timing::record("ensure_ready", ready_start.elapsed());
             return Ok(());
         }
         let base = self.base_branch.as_deref().ok_or_else(|| {
@@ -572,6 +588,7 @@ impl RepoBackend for GitHubApiBackend {
                 }
             }
         }
+        timing::record("ensure_ready", ready_start.elapsed());
         Ok(())
     }
 
@@ -651,8 +668,13 @@ async fn try_put(
             // A PUT without `sha` against an existing file returns 422
             // ("sha was not supplied"). Resolve the SHA and retry once
             // — covers `save_law` / `save_scenario` which call
-            // `write_file` without a preceding `read_file`.
-            tracing::debug!(repo = %repo, path = %path, "PUT 422 — fetching sha and retrying as update");
+            // `write_file` without a preceding `read_file`. This is the
+            // extra GET→PUT round-trip a cold sha-cache pays; logged at
+            // info with `gh_put_retry=422` so it can be counted in
+            // `zad logs`. It stays inside the enclosing `gh_put` phase
+            // (no separate header phase) so the Server-Timing breakdown
+            // does not double-count this leg.
+            tracing::info!(repo = %repo, path = %path, gh_put_retry = 422, "PUT 422 — fetching sha and retrying as update");
             let fresh = fetcher
                 .fetch_file_with_sha(repo, branch, path, token)
                 .await?

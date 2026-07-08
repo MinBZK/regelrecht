@@ -20,6 +20,7 @@ use regelrecht_corpus::dto::{build_source_summaries, PaginationParams, SourceSum
 use regelrecht_corpus::source_map::{
     collect_law_outputs, extract_law_id, validate_yaml_syntax, LoadedLaw,
 };
+use regelrecht_corpus::timing;
 use regelrecht_corpus::CorpusError;
 
 use crate::accounts::AccountRecord;
@@ -1457,7 +1458,10 @@ async fn resolve_traject_law_write(
     if !entry.writable {
         return Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()));
     }
-    let backend = entry.backend.clone().lock_owned().await;
+    // Per-source write mutex: every save to the same traject source
+    // serialises here, so contention (a second save waiting out the
+    // first's GitHub round-trips) shows up as a fat `lock` phase.
+    let backend = timing::measure("lock", entry.backend.clone().lock_owned()).await;
     Ok(TrajectLawWrite {
         law,
         write_source_id: write_target_source_id,

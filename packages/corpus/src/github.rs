@@ -603,6 +603,7 @@ mod inner {
         /// Fetch a single file's content **plus** its blob SHA. The SHA is
         /// what the Contents API expects on a subsequent update PUT for
         /// optimistic concurrency. Returns `Ok(None)` on 404.
+        #[tracing::instrument(name = "gh_http", skip_all, fields(method = "GET", kind = "contents", repo = %repo))]
         pub async fn fetch_file_with_sha(
             &mut self,
             repo: &str,
@@ -623,6 +624,7 @@ mod inner {
                 .await
                 .map_err(|e| CorpusError::Git(format!("GitHub API request failed: {}", e)))?;
             self.track_rate_limit(&response);
+            tracing::debug!(status = %response.status(), "gh contents GET response");
 
             if response.status() == reqwest::StatusCode::NOT_FOUND {
                 return Ok(None);
@@ -665,6 +667,7 @@ mod inner {
         /// codeload URL (carrying its own token), which reqwest follows
         /// automatically — so this works for private repos with just the
         /// Bearer token on the initial request.
+        #[tracing::instrument(name = "gh_http", skip_all, fields(method = "GET", kind = "tarball", repo = %repo))]
         pub async fn fetch_archive_implements(
             &mut self,
             repo: &str,
@@ -712,6 +715,7 @@ mod inner {
         /// directory we return an empty list (404). Files only — sub-
         /// directories, symlinks and submodules are filtered out by the
         /// caller via [`DirectoryEntry::entry_type`].
+        #[tracing::instrument(name = "gh_http", skip_all, fields(method = "GET", kind = "contents_dir", repo = %repo))]
         pub async fn list_directory(
             &mut self,
             repo: &str,
@@ -780,6 +784,7 @@ mod inner {
         /// Maps 409 to [`CorpusError::Conflict`] so backends can detect a
         /// concurrent-write race and retry; everything else is `Git`.
         #[allow(clippy::too_many_arguments)]
+        #[tracing::instrument(name = "gh_http", skip_all, fields(method = "PUT", kind = "contents", repo = %repo))]
         pub async fn put_file(
             &mut self,
             repo: &str,
@@ -817,6 +822,7 @@ mod inner {
             self.track_rate_limit(&response);
 
             let status = response.status();
+            tracing::debug!(status = %status, "gh contents PUT response");
             if status == reqwest::StatusCode::CONFLICT {
                 return Err(CorpusError::Conflict(format!(
                     "Contents API PUT {} hit a 409 (stale sha)",
@@ -842,6 +848,7 @@ mod inner {
         /// blob SHA. 404 is treated as "already gone" (idempotent — same
         /// shape as [`crate::backend::RepoBackend::delete_file`]).
         #[allow(clippy::too_many_arguments)]
+        #[tracing::instrument(name = "gh_http", skip_all, fields(method = "DELETE", kind = "contents", repo = %repo))]
         pub async fn delete_file_via_api(
             &mut self,
             repo: &str,
@@ -897,6 +904,7 @@ mod inner {
 
         /// Check whether a branch exists. Returns `Ok(true)` on 200,
         /// `Ok(false)` on 404, error on anything else.
+        #[tracing::instrument(name = "gh_http", skip_all, fields(method = "GET", kind = "ref", repo = %repo))]
         pub async fn branch_exists(
             &mut self,
             repo: &str,
@@ -915,6 +923,7 @@ mod inner {
             self.track_rate_limit(&response);
 
             let status = response.status();
+            tracing::debug!(status = %status, "gh ref GET response");
             if status.is_success() {
                 return Ok(true);
             }
@@ -933,6 +942,7 @@ mod inner {
         /// Create `branch` pointing at the tip of `base_branch`. The base
         /// branch must already exist; the target branch must NOT exist
         /// (GitHub returns 422 otherwise — surfaced as `Git`).
+        #[tracing::instrument(name = "gh_http", skip_all, fields(method = "POST", kind = "create_branch", repo = %repo))]
         pub async fn create_branch(
             &mut self,
             repo: &str,
@@ -1010,6 +1020,7 @@ mod inner {
         /// beyond that. A traject realistically edits a handful of laws, so
         /// we read the first page only; a diff larger than 300 files would
         /// be under-reported (acceptable for the curated-sidebar use case).
+        #[tracing::instrument(name = "gh_http", skip_all, fields(method = "GET", kind = "compare", repo = %repo))]
         pub async fn compare_files(
             &mut self,
             repo: &str,

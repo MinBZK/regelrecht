@@ -4,6 +4,7 @@ use tokio::process::Command;
 
 use crate::config::CorpusConfig;
 use crate::error::{CorpusError, Result};
+use crate::timing;
 
 /// Best-effort: write the snapshot contents back to disk after a failed
 /// `checkout -B`. Used only on the error path so the working tree does not
@@ -73,17 +74,22 @@ impl CorpusClient {
     ///
     /// If the repo directory doesn't exist, clones it (shallow, single branch).
     /// If it exists, fetches and resets to the remote branch.
+    #[tracing::instrument(name = "corpus_ensure_repo", skip(self))]
     pub async fn ensure_repo(&mut self) -> Result<()> {
         self.ensure_askpass_script()?;
 
         let repo_path = &self.config.repo_path;
 
+        // `clone` / `git_fetch` feed the Server-Timing phases of the same
+        // name: the cold clone is the dominant cost of a traject's first
+        // access (seconds), so it is worth isolating from the GitHub API
+        // round-trips in the breakdown.
         if repo_path.join(".git").exists() {
             tracing::info!(path = %repo_path.display(), "corpus repo exists, updating");
-            self.git_fetch_reset().await?;
+            timing::measure("git_fetch", self.git_fetch_reset()).await?;
         } else {
             tracing::info!(path = %repo_path.display(), "cloning corpus repo");
-            self.git_clone().await?;
+            timing::measure("clone", self.git_clone()).await?;
         }
 
         Ok(())
@@ -508,6 +514,7 @@ impl CorpusClient {
         Ok(true)
     }
 
+    #[tracing::instrument(name = "git_clone", skip(self), fields(branch = %self.config.branch))]
     async fn git_clone(&self) -> Result<()> {
         let url = self.config.clone_url();
         let path_str = self.config.repo_path.to_string_lossy().to_string();
@@ -668,6 +675,7 @@ impl CorpusClient {
         Ok(())
     }
 
+    #[tracing::instrument(name = "git_fetch_reset", skip(self), fields(branch = %self.config.branch))]
     async fn git_fetch_reset(&self) -> Result<()> {
         self.run_git(&["fetch", "--depth", "1", "origin", &self.config.branch])
             .await?;
