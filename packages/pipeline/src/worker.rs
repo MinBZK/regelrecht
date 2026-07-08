@@ -477,6 +477,7 @@ async fn process_next_job(
                         }
                     };
                     let enrich_req = CreateJobRequest::new(JobType::Enrich, &job.law_id)
+                        .with_priority(auto_enrich_priority(payload.depth))
                         .with_payload(payload_json);
                     match job_queue::create_enrich_job_if_not_exists(pool, enrich_req).await {
                         Ok(Some(enrich_job)) => {
@@ -940,6 +941,23 @@ const RELATED_HARVEST_BASE: i32 = 40;
 /// result into the valid `0..=100` range.
 fn related_harvest_priority(enrich_depth: u32) -> Priority {
     Priority::new(RELATED_HARVEST_BASE - (enrich_depth as i32 + 1))
+}
+
+/// Priority for enrich jobs auto-created after a *recursive* (follow-up)
+/// harvest. Well below the default (50) so speculative, recursively-discovered
+/// enrichments always yield to directly/manually requested enrich work.
+const RECURSIVE_ENRICH_PRIORITY: i32 = 10;
+
+/// Auto-enrich priority for a harvest at the given `depth`. Root/direct harvests
+/// (depth `None`/`0`) keep the default priority; recursive follow-up harvests
+/// (depth `>= 1`) drop to [`RECURSIVE_ENRICH_PRIORITY`] so they are claimed only
+/// after all directly/manually requested enrich jobs.
+fn auto_enrich_priority(depth: Option<u32>) -> Priority {
+    if depth.unwrap_or(0) == 0 {
+        Priority::default()
+    } else {
+        Priority::new(RECURSIVE_ENRICH_PRIORITY)
+    }
 }
 
 /// True when `s` is a syntactically valid BWB regulation id (`^BWBR\d{7}$`).
@@ -1828,6 +1846,29 @@ mod tests {
         assert_eq!(hourly_cap(4, 1, 3), 4);
         // Saturating: a huge multiplier can't overflow.
         assert_eq!(hourly_cap(u32::MAX, 5, 3), u32::MAX);
+    }
+
+    #[test]
+    fn auto_enrich_priority_by_depth() {
+        // Root/direct harvests keep the default priority.
+        assert_eq!(
+            auto_enrich_priority(None).value(),
+            Priority::default().value()
+        );
+        assert_eq!(
+            auto_enrich_priority(Some(0)).value(),
+            Priority::default().value()
+        );
+        // Recursive follow-up harvests (depth >= 1) drop to the low priority so
+        // they yield to directly/manually requested enrich work.
+        assert_eq!(
+            auto_enrich_priority(Some(1)).value(),
+            RECURSIVE_ENRICH_PRIORITY
+        );
+        assert_eq!(
+            auto_enrich_priority(Some(5)).value(),
+            RECURSIVE_ENRICH_PRIORITY
+        );
     }
 
     #[test]
