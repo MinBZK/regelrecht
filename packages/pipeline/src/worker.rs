@@ -1242,6 +1242,15 @@ async fn process_next_document_convert_job(
             if let Err(e) = document_convert::delete_upload(pool, payload.upload_id).await {
                 tracing::warn!(job_id = %job.id, error = %e, "failed to delete document upload after success");
             }
+            if let Err(e) = &complete_result {
+                // The markdown is already committed to git, but the status update
+                // failed. The job will show as in-progress until the orphan reaper
+                // reclaims it; log loudly so an operator can correlate.
+                tracing::error!(
+                    job_id = %job.id, error = %e, target = %payload.target_path,
+                    "document converted + committed, but marking the job completed failed"
+                );
+            }
             complete_result?;
             Ok(JobOutcome::Processed)
         }

@@ -46,12 +46,15 @@ export function useTrajectDocumentJobs(trajectRef, { interval = DEFAULT_INTERVAL
     }
   }
 
-  function startPolling() {
+  async function startPolling() {
     stopPolling();
     // Fresh start: drop any jobs from a previous traject and re-arm the
     // initial-load flag so `loading` reflects this (re)start, not a stale run.
     reset();
-    refresh();
+    // Await the first fetch before arming the interval so a rapid
+    // close/reopen can't let a stale in-flight response repopulate the list
+    // after `reset()` cleared it.
+    await refresh();
     timer = setInterval(refresh, interval);
   }
 

@@ -2512,16 +2512,25 @@ fn derive_markdown_target(filename: &str, existing: &[String]) -> String {
         .and_then(|s| s.to_str())
         .unwrap_or("document");
     let mut sanitized = String::with_capacity(raw_stem.len());
-    let mut prev_dash = false;
+    let mut last: Option<char> = None;
     for ch in raw_stem.chars() {
         let c = ch.to_ascii_lowercase();
-        if c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-' {
-            sanitized.push(c);
-            prev_dash = false;
-        } else if !prev_dash {
-            sanitized.push('-');
-            prev_dash = true;
+        // Map to the allowed alphabet: alphanumerics and `_` pass through, any
+        // other character becomes a `-`. `.` is kept (extensions read naturally).
+        let mapped = if c.is_ascii_alphanumeric() || c == '_' {
+            c
+        } else if c == '.' {
+            '.'
+        } else {
+            '-'
+        };
+        // Collapse consecutive separators so a run of spaces or dots (e.g.
+        // `rapport..2024`) reduces to a single `-`/`.` rather than repeating.
+        if (mapped == '-' || mapped == '.') && last == Some(mapped) {
+            continue;
         }
+        sanitized.push(mapped);
+        last = Some(mapped);
     }
     let trimmed = sanitized.trim_matches(|c| c == '-' || c == '.');
     let stem = if trimmed.is_empty() {
@@ -3144,6 +3153,20 @@ mod tests {
             derive_markdown_target("report.pdf", &existing),
             "report-3.md"
         );
+    }
+
+    #[test]
+    fn derive_markdown_target_collapses_consecutive_separators() {
+        // Consecutive dots and spaces collapse to a single separator.
+        assert_eq!(
+            derive_markdown_target("rapport..2024.pdf", &[]),
+            "rapport.2024.md"
+        );
+        assert_eq!(
+            derive_markdown_target("mijn   brief.docx", &[]),
+            "mijn-brief.md"
+        );
+        assert!(validate_document_path(&derive_markdown_target("a...b   c.doc", &[])).is_ok());
     }
 
     #[test]
