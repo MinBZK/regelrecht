@@ -1234,11 +1234,15 @@ async fn process_next_document_convert_job(
 
     match run_document_convert(pool, &payload, &job_config).await {
         Ok(()) => {
-            job_queue::complete_job(pool, job.id, None).await?;
-            // Transient bytes are no longer needed once the markdown is committed.
+            // The markdown is already committed to git at this point. Drop the
+            // transient upload bytes BEFORE propagating any complete_job error —
+            // otherwise a failed status update would `?`-return past the cleanup
+            // and leak the (up to 25 MiB) BYTEA row.
+            let complete_result = job_queue::complete_job(pool, job.id, None).await;
             if let Err(e) = document_convert::delete_upload(pool, payload.upload_id).await {
                 tracing::warn!(job_id = %job.id, error = %e, "failed to delete document upload after success");
             }
+            complete_result?;
             Ok(JobOutcome::Processed)
         }
         Err(e) => {
