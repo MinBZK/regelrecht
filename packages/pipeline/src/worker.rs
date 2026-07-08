@@ -137,6 +137,18 @@ fn spawn_reaper(
             if let Err(e) = job_queue::reap_orphaned_jobs(&pool, orphan_timeout).await {
                 tracing::warn!(error = %e, "failed to reap orphaned jobs");
             }
+            // GC upload bytes orphaned when a worker died mid-conversion: the
+            // generic reaper above fails such a job without running the
+            // type-specific delete_upload, so sweep them here.
+            match document_convert::cleanup_orphaned_uploads(&pool).await {
+                Ok(n) if n > 0 => {
+                    tracing::info!(removed = n, "cleaned up orphaned document uploads")
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to clean up orphaned document uploads")
+                }
+            }
             tokio::select! {
                 _ = cancel.cancelled() => break,
                 _ = tokio::time::sleep(REAPER_INTERVAL) => {}

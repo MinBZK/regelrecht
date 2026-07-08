@@ -78,6 +78,33 @@ pub async fn delete_upload(pool: &PgPool, upload_id: Uuid) -> Result<()> {
     Ok(())
 }
 
+/// Delete upload rows no longer referenced by an active (`pending`/`processing`)
+/// document_convert job. This garbage-collects bytes orphaned when a worker
+/// crashed mid-conversion and the generic orphan reaper failed the job without
+/// running the type-specific [`delete_upload`]. Returns the number of rows
+/// removed.
+///
+/// Safe because editor-api inserts the upload row and its job in a single
+/// transaction, so a row with no active job is genuinely orphaned — the short
+/// age grace is only belt-and-suspenders against clock/visibility skew.
+pub async fn cleanup_orphaned_uploads(pool: &PgPool) -> Result<u64> {
+    let result = sqlx::query(
+        r#"
+        DELETE FROM document_uploads du
+        WHERE du.created_at < now() - interval '15 minutes'
+          AND NOT EXISTS (
+              SELECT 1 FROM jobs j
+              WHERE j.job_type = 'document_convert'
+                AND j.status IN ('pending', 'processing')
+                AND j.payload->>'upload_id' = du.id::text
+          )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected())
+}
+
 /// Row for a traject's writable-own corpus source, from `traject_corpus_sources`.
 #[derive(sqlx::FromRow)]
 struct WritableOwnSourceRow {
@@ -134,6 +161,10 @@ async fn load_writable_own_source(pool: &PgPool, traject_id: Uuid) -> Result<Sou
                priority, auth_ref
         FROM traject_corpus_sources
         WHERE traject_id = $1 AND is_writable_own = TRUE
+        -- A partial unique index already guarantees at most one such row per
+        -- traject; the deterministic order + LIMIT is defensive belt-and-braces.
+        ORDER BY priority DESC, source_id
+        LIMIT 1
         "#,
     )
     .bind(traject_id)

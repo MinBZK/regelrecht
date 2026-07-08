@@ -20,6 +20,9 @@ export function useTrajectDocumentJobs(trajectRef, { interval = DEFAULT_INTERVAL
 
   let timer = null;
   let initialLoad = true;
+  // Guards the async gap in `startPolling`: if the component unmounts during the
+  // awaited first refresh, don't arm an interval that nothing would clear.
+  let mounted = true;
 
   async function refresh() {
     const ref_ = trajectRef.value;
@@ -55,6 +58,8 @@ export function useTrajectDocumentJobs(trajectRef, { interval = DEFAULT_INTERVAL
     // close/reopen can't let a stale in-flight response repopulate the list
     // after `reset()` cleared it.
     await refresh();
+    // Unmounted during the await → don't arm an orphan interval.
+    if (!mounted) return;
     timer = setInterval(refresh, interval);
   }
 
@@ -71,7 +76,10 @@ export function useTrajectDocumentJobs(trajectRef, { interval = DEFAULT_INTERVAL
     error.value = null;
   }
 
-  onUnmounted(stopPolling);
+  onUnmounted(() => {
+    mounted = false;
+    stopPolling();
+  });
 
   return { jobs, loading, error, refresh, startPolling, stopPolling, reset };
 }
