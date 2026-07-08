@@ -165,6 +165,19 @@ pub async fn write_markdown_to_traject(
     let auth_key = source.auth_ref.clone().unwrap_or_else(|| source.id.clone());
     let token = regelrecht_corpus::auth::resolve_token_strict(&auth_key, None)?;
 
+    // A GitHub source with no push token would only commit into the worker's
+    // throwaway checkout (GitBackend goes local-only) and never reach the
+    // traject — silent data loss. Fail loudly instead, so the failure is visible
+    // in the werkdocumenten status block and the ops fix (set the token) is
+    // obvious. Local sources need no token (the local write IS the persistence).
+    if token.is_none() && matches!(source.source_type, SourceType::GitHub { .. }) {
+        return Err(PipelineError::Enrich(format!(
+            "no push token for traject source '{auth_key}' (expected env {}); the converted \
+             document cannot be persisted to the traject repository",
+            regelrecht_corpus::auth::token_env_name(&auth_key),
+        )));
+    }
+
     let mut backend = create_backend(&source, token.as_deref())?;
     backend.ensure_ready().await?;
 
