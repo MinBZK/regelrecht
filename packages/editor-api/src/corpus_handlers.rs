@@ -2653,6 +2653,12 @@ pub async fn upload_traject_document(
         format!("doc:{traject_ref}/{target_path}"),
     )
     .with_traject_ref(traject_ref.clone())
+    // Single attempt: a retry would re-run the (expensive) LLM conversion from
+    // scratch, and most failures here are deterministic (bad content, write
+    // config). A failed conversion stays visible in the status block for the
+    // user to re-upload. (Caching the produced markdown across retries is a
+    // possible future refinement.)
+    .with_max_attempts(1)
     .with_payload(payload_json);
     regelrecht_pipeline::job_queue::create_job(&mut *tx, req)
         .await

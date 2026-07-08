@@ -129,8 +129,9 @@ impl WritableOwnSourceRow {
 async fn load_writable_own_source(pool: &PgPool, traject_id: Uuid) -> Result<Source> {
     let row = sqlx::query_as::<_, WritableOwnSourceRow>(
         r#"
-        SELECT source_id, name, source_type, gh_owner, gh_repo, gh_branch,
-               gh_path, gh_ref, local_path, priority, auth_ref
+        SELECT source_id, name, source_type::text AS source_type,
+               gh_owner, gh_repo, gh_branch, gh_path, gh_ref, local_path,
+               priority, auth_ref
         FROM traject_corpus_sources
         WHERE traject_id = $1 AND is_writable_own = TRUE
         "#,
