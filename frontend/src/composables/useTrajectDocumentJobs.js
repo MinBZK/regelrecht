@@ -48,6 +48,9 @@ export function useTrajectDocumentJobs(trajectRef, { interval = DEFAULT_INTERVAL
 
   function startPolling() {
     stopPolling();
+    // Fresh start: drop any jobs from a previous traject and re-arm the
+    // initial-load flag so `loading` reflects this (re)start, not a stale run.
+    reset();
     refresh();
     timer = setInterval(refresh, interval);
   }

@@ -27,7 +27,7 @@ const jobsPoller = useTrajectDocumentJobs(activeTrajectRef);
 const { jobs: conversionJobs } = jobsPoller;
 
 const browserEl = ref(null);
-const { fileInput, onUpload, onFileChange } = useDocumentUpload(uploadDocument, () =>
+const { fileInput, uploadError, onUpload, onFileChange } = useDocumentUpload(uploadDocument, () =>
   jobsPoller.startPolling(),
 );
 
@@ -78,6 +78,12 @@ const sheetTitle = computed(() =>
         ></nldd-top-title-bar>
 
         <nldd-simple-section>
+          <nldd-inline-dialog
+            v-if="uploadError"
+            variant="alert"
+            text="Uploaden mislukt"
+            :supporting-text="uploadError"
+          ></nldd-inline-dialog>
           <ConversionStatus :jobs="conversionJobs"></ConversionStatus>
           <nldd-activity-indicator v-if="listLoading" text="Documenten laden" show-text></nldd-activity-indicator>
           <nldd-inline-dialog

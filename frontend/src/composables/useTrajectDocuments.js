@@ -356,8 +356,9 @@ export function useTrajectDocuments(trajectRef) {
       });
       if (!res.ok) {
         const text = await safeText(res);
-        saveError.value = new Error(text || `Uploaden mislukt: ${res.status}`);
-        return { ok: false };
+        const err = new Error(text || `Uploaden mislukt: ${res.status}`);
+        saveError.value = err;
+        return { ok: false, error: err.message };
       }
       const json = await safeJson(res);
       // Refresh the list so the poller (and, once converted, the .md) show up.
@@ -365,7 +366,7 @@ export function useTrajectDocuments(trajectRef) {
       return { ok: true, targetPath: json?.target_path ?? null };
     } catch (e) {
       saveError.value = e;
-      return { ok: false };
+      return { ok: false, error: e.message };
     }
   }
 

@@ -159,168 +159,166 @@ pub(crate) async fn run_llm_subprocess(
     config: &EnrichConfig,
     allow_bash: bool,
 ) -> Result<()> {
-    {
-        let provider_name = provider.name().to_string();
+    let provider_name = provider.name().to_string();
 
-        let mut cmd = build_command(provider, prompt, file_arg, cwd, allow_bash);
+    let mut cmd = build_command(provider, prompt, file_arg, cwd, allow_bash);
 
-        // Both streams are piped and drained. stdout is drained-and-discarded: a
-        // verbose agent (e.g. opencode `--format json`) inlines the full body of
-        // every fetched page into its event stream, which would flood container
-        // logs. stderr is drained too — we MUST keep reading both or a full 64 KB
-        // OS pipe buffer blocks the child — but for stderr we also keep a bounded
-        // tail and re-log previews, so the LLM's real error (e.g. an auth 401) is
-        // both visible in the logs and attached to the job's failure.
-        cmd.stderr(std::process::Stdio::piped());
-        cmd.stdout(std::process::Stdio::piped());
-        let mut child = cmd.spawn().map_err(|e| {
-            PipelineError::Enrich(format!("failed to spawn {}: {e}", provider_name))
-        })?;
+    // Both streams are piped and drained. stdout is drained-and-discarded: a
+    // verbose agent (e.g. opencode `--format json`) inlines the full body of
+    // every fetched page into its event stream, which would flood container
+    // logs. stderr is drained too — we MUST keep reading both or a full 64 KB
+    // OS pipe buffer blocks the child — but for stderr we also keep a bounded
+    // tail and re-log previews, so the LLM's real error (e.g. an auth 401) is
+    // both visible in the logs and attached to the job's failure.
+    cmd.stderr(std::process::Stdio::piped());
+    cmd.stdout(std::process::Stdio::piped());
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| PipelineError::Enrich(format!("failed to spawn {}: {e}", provider_name)))?;
 
-        // Capture the PID before any wait reaps the child; the memory watchdog
-        // and process-group kill both need it.
-        let pid = child.id();
+    // Capture the PID before any wait reaps the child; the memory watchdog
+    // and process-group kill both need it.
+    let pid = child.id();
 
-        // Drain stderr, retaining the last `MAX_STDERR_CAPTURE` bytes for the
-        // error message and re-logging bounded previews so it stays visible.
-        let stderr_tail = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
-        let stderr_task = child.stderr.take().map(|mut stderr| {
-            let tail = stderr_tail.clone();
-            let stderr_provider = provider_name.clone();
-            tokio::spawn(async move {
-                let mut buf = [0u8; 8192];
-                loop {
-                    match stderr.read(&mut buf).await {
-                        Ok(0) | Err(_) => break, // EOF or pipe gone
-                        Ok(n) => {
-                            let text = String::from_utf8_lossy(&buf[..n]);
-                            let preview: String = text.trim().chars().take(500).collect();
-                            if !preview.is_empty() {
-                                tracing::warn!(provider = %stderr_provider, %preview, "agent stderr");
-                            }
-                            if let Ok(mut t) = tail.lock() {
-                                t.push_str(&text);
-                                if t.len() > MAX_STDERR_CAPTURE {
-                                    let mut cut = t.len() - MAX_STDERR_CAPTURE;
-                                    while cut < t.len() && !t.is_char_boundary(cut) {
-                                        cut += 1;
-                                    }
-                                    *t = t[cut..].to_string();
+    // Drain stderr, retaining the last `MAX_STDERR_CAPTURE` bytes for the
+    // error message and re-logging bounded previews so it stays visible.
+    let stderr_tail = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    let stderr_task = child.stderr.take().map(|mut stderr| {
+        let tail = stderr_tail.clone();
+        let stderr_provider = provider_name.clone();
+        tokio::spawn(async move {
+            let mut buf = [0u8; 8192];
+            loop {
+                match stderr.read(&mut buf).await {
+                    Ok(0) | Err(_) => break, // EOF or pipe gone
+                    Ok(n) => {
+                        let text = String::from_utf8_lossy(&buf[..n]);
+                        let preview: String = text.trim().chars().take(500).collect();
+                        if !preview.is_empty() {
+                            tracing::warn!(provider = %stderr_provider, %preview, "agent stderr");
+                        }
+                        if let Ok(mut t) = tail.lock() {
+                            t.push_str(&text);
+                            if t.len() > MAX_STDERR_CAPTURE {
+                                let mut cut = t.len() - MAX_STDERR_CAPTURE;
+                                while cut < t.len() && !t.is_char_boundary(cut) {
+                                    cut += 1;
                                 }
+                                *t = t[cut..].to_string();
                             }
                         }
                     }
                 }
-            })
+            }
+        })
+    });
+    // Read the retained stderr tail, formatted as a "; stderr: …" suffix.
+    let stderr_suffix = || {
+        stderr_tail
+            .lock()
+            .ok()
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .map(|t| format!("; stderr: {t}"))
+            .unwrap_or_default()
+    };
+
+    // Drain the agent's stdout so it never reaches container logs. We MUST
+    // keep reading it: if the OS pipe buffer (64 KB) fills, the child blocks
+    // indefinitely — the same deadlock the stderr comment above warns about.
+    // The task ends on EOF when the process exits or is killed.
+    if let Some(mut stdout) = child.stdout.take() {
+        let drain_provider = provider_name.clone();
+        tokio::spawn(async move {
+            // Drain in fixed-size chunks rather than whole lines: opencode
+            // inlines multi-MB page bodies as a single JSON line, so a
+            // line reader would allocate the entire body just to log a
+            // 200-char preview — a heap spike on the very worker this
+            // watchdog exists to protect. Reading into a fixed buffer keeps
+            // the pipe empty without ever holding more than `buf`.
+            let mut buf = [0u8; 8192];
+            loop {
+                match stdout.read(&mut buf).await {
+                    Ok(0) | Err(_) => break, // EOF or pipe gone (process exited/killed)
+                    Ok(n) => {
+                        // Bounded preview at debug only (off under the
+                        // default "info" subscriber). The leading bytes of a
+                        // read carry the event type and ids, not the large
+                        // inlined bodies; lossy is fine for a log preview.
+                        let preview = String::from_utf8_lossy(&buf[..n.min(200)]);
+                        let preview = preview.trim_end();
+                        if !preview.is_empty() {
+                            tracing::debug!(provider = %drain_provider, %preview, "agent stdout");
+                        }
+                    }
+                }
+            }
         });
-        // Read the retained stderr tail, formatted as a "; stderr: …" suffix.
-        let stderr_suffix = || {
-            stderr_tail
-                .lock()
-                .ok()
-                .map(|t| t.trim().to_string())
-                .filter(|t| !t.is_empty())
-                .map(|t| format!("; stderr: {t}"))
-                .unwrap_or_default()
-        };
+    }
 
-        // Drain the agent's stdout so it never reaches container logs. We MUST
-        // keep reading it: if the OS pipe buffer (64 KB) fills, the child blocks
-        // indefinitely — the same deadlock the stderr comment above warns about.
-        // The task ends on EOF when the process exits or is killed.
-        if let Some(mut stdout) = child.stdout.take() {
-            let drain_provider = provider_name.clone();
-            tokio::spawn(async move {
-                // Drain in fixed-size chunks rather than whole lines: opencode
-                // inlines multi-MB page bodies as a single JSON line, so a
-                // line reader would allocate the entire body just to log a
-                // 200-char preview — a heap spike on the very worker this
-                // watchdog exists to protect. Reading into a fixed buffer keeps
-                // the pipe empty without ever holding more than `buf`.
-                let mut buf = [0u8; 8192];
-                loop {
-                    match stdout.read(&mut buf).await {
-                        Ok(0) | Err(_) => break, // EOF or pipe gone (process exited/killed)
-                        Ok(n) => {
-                            // Bounded preview at debug only (off under the
-                            // default "info" subscriber). The leading bytes of a
-                            // read carry the event type and ids, not the large
-                            // inlined bodies; lossy is fine for a log preview.
-                            let preview = String::from_utf8_lossy(&buf[..n.min(200)]);
-                            let preview = preview.trim_end();
-                            if !preview.is_empty() {
-                                tracing::debug!(provider = %drain_provider, %preview, "agent stdout");
-                            }
-                        }
-                    }
-                }
-            });
+    let status = tokio::select! {
+        result = child.wait() => {
+            result.map_err(|e| {
+                PipelineError::Enrich(format!("failed to wait for {}: {e}", provider_name))
+            })?
         }
-
-        let status = tokio::select! {
-            result = child.wait() => {
-                result.map_err(|e| {
-                    PipelineError::Enrich(format!("failed to wait for {}: {e}", provider_name))
-                })?
-            }
-            _ = tokio::time::sleep(config.timeout) => {
-                terminate(&mut child, pid).await;
-                // Abort the drain task rather than leaving it detached: if a
-                // grandchild inherited fd 2 and survived terminate(), the task
-                // would otherwise leak. The tail read below is already populated.
-                if let Some(t) = &stderr_task {
-                    t.abort();
-                }
-                return Err(PipelineError::Enrich(format!(
-                    "{} timed out after {:?}{}",
-                    provider_name, config.timeout, stderr_suffix()
-                )));
-            }
-            observed_mb = watch_memory(pid, config.max_rss_mb) => {
-                tracing::error!(
-                    provider = %provider_name,
-                    pid = ?pid,
-                    observed_mb,
-                    limit_mb = config.max_rss_mb,
-                    "LLM subprocess exceeded memory limit, killing to protect the container"
-                );
-                terminate(&mut child, pid).await;
-                if let Some(t) = &stderr_task {
-                    t.abort();
-                }
-                return Err(PipelineError::Enrich(format!(
-                    "{provider_name} exceeded memory limit of {} MB (RSS {observed_mb} MB), killed{}",
-                    config.max_rss_mb, stderr_suffix()
-                )));
-            }
-        };
-
-        if !status.success() {
-            // Give the stderr drain a moment to finish so the tail is complete,
-            // but bound the wait: the child has exited, yet a leaked grandchild
-            // that inherited fd 2 could keep the pipe open and never EOF. Without
-            // a bound this await (outside the timeout/memory select!) would wedge
-            // the worker loop. Best-effort, like the tail in the other paths.
-            if let Some(task) = stderr_task {
-                let _ = tokio::time::timeout(Duration::from_secs(2), task).await;
+        _ = tokio::time::sleep(config.timeout) => {
+            terminate(&mut child, pid).await;
+            // Abort the drain task rather than leaving it detached: if a
+            // grandchild inherited fd 2 and survived terminate(), the task
+            // would otherwise leak. The tail read below is already populated.
+            if let Some(t) = &stderr_task {
+                t.abort();
             }
             return Err(PipelineError::Enrich(format!(
-                "{} exited with {}{}",
-                provider_name,
-                status,
-                stderr_suffix()
+                "{} timed out after {:?}{}",
+                provider_name, config.timeout, stderr_suffix()
             )));
         }
-
-        // Success: abort the drain task instead of leaving it detached — same
-        // fd-2/grandchild-leak guard as the timeout/OOM paths. Normally it has
-        // already finished (the child closed stderr on exit); aborting a finished
-        // task is a no-op.
-        if let Some(t) = &stderr_task {
-            t.abort();
+        observed_mb = watch_memory(pid, config.max_rss_mb) => {
+            tracing::error!(
+                provider = %provider_name,
+                pid = ?pid,
+                observed_mb,
+                limit_mb = config.max_rss_mb,
+                "LLM subprocess exceeded memory limit, killing to protect the container"
+            );
+            terminate(&mut child, pid).await;
+            if let Some(t) = &stderr_task {
+                t.abort();
+            }
+            return Err(PipelineError::Enrich(format!(
+                "{provider_name} exceeded memory limit of {} MB (RSS {observed_mb} MB), killed{}",
+                config.max_rss_mb, stderr_suffix()
+            )));
         }
-        Ok(())
+    };
+
+    if !status.success() {
+        // Give the stderr drain a moment to finish so the tail is complete,
+        // but bound the wait: the child has exited, yet a leaked grandchild
+        // that inherited fd 2 could keep the pipe open and never EOF. Without
+        // a bound this await (outside the timeout/memory select!) would wedge
+        // the worker loop. Best-effort, like the tail in the other paths.
+        if let Some(task) = stderr_task {
+            let _ = tokio::time::timeout(Duration::from_secs(2), task).await;
+        }
+        return Err(PipelineError::Enrich(format!(
+            "{} exited with {}{}",
+            provider_name,
+            status,
+            stderr_suffix()
+        )));
     }
+
+    // Success: abort the drain task instead of leaving it detached — same
+    // fd-2/grandchild-leak guard as the timeout/OOM paths. Normally it has
+    // already finished (the child closed stderr on exit); aborting a finished
+    // task is a no-op.
+    if let Some(t) = &stderr_task {
+        t.abort();
+    }
+    Ok(())
 }
 
 /// Kill the LLM subprocess and reap it.

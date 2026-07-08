@@ -12,6 +12,9 @@ import { ref } from 'vue';
 
 export function useDocumentUpload(uploadFn, onUploaded) {
   const fileInput = ref(null);
+  // Surfaced to the consumer so a failed upload (400/413/503/network) is shown,
+  // not silently swallowed when the file picker closes.
+  const uploadError = ref(null);
 
   function onUpload() {
     fileInput.value?.click();
@@ -22,9 +25,14 @@ export function useDocumentUpload(uploadFn, onUploaded) {
     // Reset the input so re-picking the same file fires `change` again.
     e.target.value = '';
     if (!file) return;
+    uploadError.value = null;
     const result = await uploadFn(file);
-    if (result?.ok && onUploaded) onUploaded();
+    if (result?.ok) {
+      if (onUploaded) onUploaded();
+    } else {
+      uploadError.value = result?.error || 'Uploaden mislukt.';
+    }
   }
 
-  return { fileInput, onUpload, onFileChange };
+  return { fileInput, uploadError, onUpload, onFileChange };
 }

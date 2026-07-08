@@ -36,7 +36,7 @@ const jobsPoller = useTrajectDocumentJobs(activeTrajectRef);
 const { jobs: conversionJobs } = jobsPoller;
 
 // Hidden native file input + upload trigger (shared with the launcher sheet).
-const { fileInput, onUpload, onFileChange } = useDocumentUpload(uploadDocument, () =>
+const { fileInput, uploadError, onUpload, onFileChange } = useDocumentUpload(uploadDocument, () =>
   jobsPoller.startPolling(),
 );
 
@@ -152,6 +152,12 @@ function backToList() {
           <nldd-split-view-pane slot="sidebar" has-content>
             <nldd-page>
               <nldd-simple-section>
+                <nldd-inline-dialog
+                  v-if="uploadError"
+                  variant="alert"
+                  text="Uploaden mislukt"
+                  :supporting-text="uploadError"
+                ></nldd-inline-dialog>
                 <ConversionStatus :jobs="conversionJobs"></ConversionStatus>
                 <nldd-activity-indicator v-if="listLoading" text="Documenten laden" show-text></nldd-activity-indicator>
                 <nldd-inline-dialog
