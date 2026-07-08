@@ -8,6 +8,7 @@ use tokio::signal::unix::{signal, SignalKind};
 
 use crate::config::WorkerConfig;
 use crate::db;
+use crate::document_convert::{self, DocumentConvertPayload, LlmDocumentConverter};
 use crate::enrich::{
     create_enrich_corpus, enrich_branch_name, execute_enrich, progress_file_path, EnrichConfig,
     EnrichPayload, RelatedLegislation,
@@ -16,7 +17,7 @@ use crate::error::{PipelineError, Result};
 use crate::harvest::{execute_harvest, HarvestPayload, HarvestResult, MAX_HARVEST_DEPTH};
 use crate::job_queue::{self, CreateJobRequest};
 use crate::law_status;
-use crate::models::{JobType, LawStatusValue, Priority};
+use crate::models::{JobStatus, JobType, LawStatusValue, Priority};
 
 /// Local night window (Europe/Amsterdam) as a half-open hour-of-day range
 /// `[start, end)`. Hours in this range get the multiplied enrich cap.
@@ -816,6 +817,35 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
             }
         }
 
+        // Document-convert jobs run BEFORE the enrich hourly-cap gate: they are
+        // interactive, user-initiated uploads (naturally rate-limited) and must
+        // not be blocked when bulk enrichment has hit its budget cap. They still
+        // share this worker's LLM CLI environment and OAuth token.
+        match process_next_document_convert_job(&pool, &enrich_config, config.job_timeout).await {
+            Ok(JobOutcome::Processed) => {
+                consecutive_resource_failures = 0;
+                current_interval = config.poll_interval;
+                continue;
+            }
+            Ok(JobOutcome::ResourceExhausted) => {
+                handle_resource_exhaustion(
+                    &mut consecutive_resource_failures,
+                    config.max_consecutive_resource_failures,
+                    "document-convert",
+                );
+                current_interval = config.poll_interval;
+                continue;
+            }
+            Ok(JobOutcome::Idle) => { /* no document-convert job — continue to enrich */ }
+            Err(e) => {
+                tracing::error!(error = %e, "error processing document-convert job");
+                current_interval = (current_interval * 2)
+                    .max(config.poll_interval)
+                    .min(config.max_poll_interval);
+                continue;
+            }
+        }
+
         // Enforce the per-provider hourly run cap before claiming a job. The cap
         // is multiplied during the local night window (00:00–08:00 Europe/
         // Amsterdam) by ENRICH_NIGHT_MULTIPLIER, so bulk enrichment runs mostly
@@ -1145,6 +1175,94 @@ async fn harvest_related_legislation(
         unresolved,
         "related-legislation harvest summary"
     );
+}
+
+/// Process the next available document-convert job: convert an uploaded
+/// document to markdown (via the LLM agent) and write it back to the traject's
+/// corpus as a werkdocument.
+///
+/// Runs in the enrich worker so it reuses the LLM CLI environment, OAuth token
+/// and hourly budget. Returns `Idle` when no job is pending.
+async fn process_next_document_convert_job(
+    pool: &PgPool,
+    enrich_config: &EnrichConfig,
+    job_timeout: Duration,
+) -> Result<JobOutcome> {
+    let job = match job_queue::claim_job(pool, Some(JobType::DocumentConvert)).await? {
+        Some(job) => job,
+        None => return Ok(JobOutcome::Idle),
+    };
+
+    // Parse the payload. A malformed payload is deterministic — fail terminally
+    // (no retry) and still drop the transient upload if we can recover its id.
+    let payload: DocumentConvertPayload = match job
+        .payload
+        .as_ref()
+        .ok_or_else(|| PipelineError::Worker("document_convert job has no payload".to_string()))
+        .and_then(|p| {
+            serde_json::from_value(p.clone())
+                .map_err(|e| PipelineError::Worker(format!("payload deserialization failed: {e}")))
+        }) {
+        Ok(payload) => payload,
+        Err(e) => {
+            let msg = format!("invalid document_convert payload: {e}");
+            tracing::error!(job_id = %job.id, error = %msg);
+            job_queue::fail_job_terminal(pool, job.id, Some(serde_json::json!({ "error": msg })))
+                .await?;
+            return Ok(JobOutcome::Processed);
+        }
+    };
+
+    // Apply the payload's provider override (if any) and bound the run by the
+    // worker's job timeout, mirroring the enrich path.
+    let mut job_config = match &payload.provider {
+        Some(provider) => enrich_config.with_provider_override(provider),
+        None => enrich_config.clone(),
+    };
+    job_config.timeout = job_timeout;
+
+    match run_document_convert(pool, &payload, &job_config).await {
+        Ok(()) => {
+            job_queue::complete_job(pool, job.id, None).await?;
+            // Transient bytes are no longer needed once the markdown is committed.
+            if let Err(e) = document_convert::delete_upload(pool, payload.upload_id).await {
+                tracing::warn!(job_id = %job.id, error = %e, "failed to delete document upload after success");
+            }
+            Ok(JobOutcome::Processed)
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            tracing::error!(job_id = %job.id, error = %msg, "document-convert job failed");
+            let failed = job_queue::fail_job(
+                pool,
+                job.id,
+                Some(serde_json::json!({ "error": msg.clone() })),
+            )
+            .await?;
+            // Once a job is terminally failed there is no retry to feed, so drop
+            // the upload bytes. A still-retryable failure keeps them for the
+            // next attempt.
+            if failed.status == JobStatus::Failed {
+                if let Err(e) = document_convert::delete_upload(pool, payload.upload_id).await {
+                    tracing::warn!(job_id = %job.id, error = %e, "failed to delete document upload after terminal failure");
+                }
+            }
+            Ok(outcome_for_error(&msg))
+        }
+    }
+}
+
+/// Convert the uploaded document to markdown and commit it to the traject.
+async fn run_document_convert(
+    pool: &PgPool,
+    payload: &DocumentConvertPayload,
+    config: &EnrichConfig,
+) -> Result<()> {
+    let markdown =
+        document_convert::execute_document_convert(pool, payload, config, &LlmDocumentConverter)
+            .await?;
+    document_convert::write_markdown_to_traject(pool, payload, &markdown).await?;
+    Ok(())
 }
 
 /// Process the next available enrich job.

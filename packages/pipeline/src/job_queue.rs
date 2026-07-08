@@ -52,6 +52,9 @@ struct ReapedRow {
 pub struct CreateJobRequest {
     pub job_type: JobType,
     pub law_id: String,
+    /// Owning traject ref for traject-scoped jobs; `None` for corpus-wide
+    /// harvest/enrich jobs.
+    pub traject_ref: Option<String>,
     pub priority: Priority,
     pub payload: Option<serde_json::Value>,
     pub max_attempts: i32,
@@ -65,11 +68,18 @@ impl CreateJobRequest {
         Self {
             job_type,
             law_id: law_id.into(),
+            traject_ref: None,
             priority: Priority::default(),
             payload: None,
             max_attempts: 3,
             initial_delay: None,
         }
+    }
+
+    /// Associate the job with an owning traject.
+    pub fn with_traject_ref(mut self, traject_ref: impl Into<String>) -> Self {
+        self.traject_ref = Some(traject_ref.into());
+        self
     }
 
     pub fn with_priority(mut self, priority: Priority) -> Self {
@@ -102,13 +112,14 @@ where
     let initial_delay = req.initial_delay.map(to_pg_interval).transpose()?;
     let job = sqlx::query_as::<_, Job>(
         r#"
-        INSERT INTO jobs (job_type, law_id, priority, payload, max_attempts, scheduled_at)
-        VALUES ($1, $2, $3, $4, $5, now() + $6::interval)
+        INSERT INTO jobs (job_type, law_id, traject_ref, priority, payload, max_attempts, scheduled_at)
+        VALUES ($1, $2, $3, $4, $5, $6, now() + $7::interval)
         RETURNING *
         "#,
     )
     .bind(req.job_type)
     .bind(&req.law_id)
+    .bind(&req.traject_ref)
     .bind(req.priority.value())
     .bind(&req.payload)
     .bind(req.max_attempts)

@@ -126,9 +126,30 @@ impl LlmRunner for ProcessLlmRunner {
     ) -> Result<()> {
         let progress_path = progress_file_path(yaml_abs);
         let prompt = build_prompt(&payload.yaml_path, &progress_path.to_string_lossy());
-        let provider_name = config.provider.name().to_string();
+        run_llm_subprocess(&config.provider, &prompt, Some(yaml_abs), repo_path, config).await
+    }
+}
 
-        let mut cmd = build_command(&config.provider, &prompt, yaml_abs, repo_path);
+/// Spawn and supervise an LLM agent subprocess, provider-agnostically.
+///
+/// This is the reusable core lifted out of [`ProcessLlmRunner::run`]: it builds
+/// the command, drains stdout/stderr (retaining a bounded stderr tail for the
+/// error message), and races the child against the configured timeout and the
+/// RSS memory watchdog, killing the whole process group on either. `cwd` is the
+/// working directory the agent runs in (and writes its output into); `file_arg`
+/// is the optional single input file (OpenCode's `-f`). Callers supply their own
+/// `prompt` — enrich and document-convert differ only in that prompt.
+pub(crate) async fn run_llm_subprocess(
+    provider: &LlmProvider,
+    prompt: &str,
+    file_arg: Option<&Path>,
+    cwd: &Path,
+    config: &EnrichConfig,
+) -> Result<()> {
+    {
+        let provider_name = provider.name().to_string();
+
+        let mut cmd = build_command(provider, prompt, file_arg, cwd);
 
         // Both streams are piped and drained. stdout is drained-and-discarded: a
         // verbose agent (e.g. opencode `--format json`) inlines the full body of
@@ -628,6 +649,36 @@ pub struct EnrichConfig {
     provider_configs: std::collections::HashMap<String, LlmProvider>,
 }
 
+#[cfg(test)]
+impl EnrichConfig {
+    /// Build a config for tests (crate-internal), without reading the
+    /// environment. Shared by the enrich and document-convert test suites.
+    pub(crate) fn for_test(provider: LlmProvider) -> Self {
+        let mut provider_configs = std::collections::HashMap::new();
+        provider_configs.insert(
+            "opencode".to_string(),
+            LlmProvider::OpenCode {
+                path: "opencode".into(),
+                model: None,
+            },
+        );
+        provider_configs.insert(
+            "claude".to_string(),
+            LlmProvider::Claude {
+                path: "claude".into(),
+                model: Some("opus".into()),
+            },
+        );
+        EnrichConfig {
+            provider,
+            timeout: Duration::from_secs(600),
+            code_commit: "abc123".to_string(),
+            max_rss_mb: 3500,
+            provider_configs,
+        }
+    }
+}
+
 impl EnrichConfig {
     pub fn from_env() -> Self {
         let provider_name = std::env::var("LLM_PROVIDER").unwrap_or_else(|_| "opencode".into());
@@ -827,11 +878,15 @@ fn select_claude_token(raw: &str, bucket: u64) -> Option<(usize, usize, &str)> {
 /// The subprocess gets a stripped environment: only variables on
 /// `LLM_ENV_ALLOWLIST` are forwarded.  This prevents leaking DATABASE_URL
 /// and other secrets to the LLM process (which may have shell access).
+///
+/// `file_arg` is passed to OpenCode as its `-f` input file (the Claude provider
+/// ignores it and reads via its own tools from `cwd`). Enrich passes the law
+/// YAML; a caller with no single input file passes `None`.
 fn build_command(
     provider: &LlmProvider,
     prompt: &str,
-    yaml_abs: &Path,
-    repo_path: &Path,
+    file_arg: Option<&Path>,
+    cwd: &Path,
 ) -> tokio::process::Command {
     // Collect allowed env vars before creating the command.
     let safe_env: Vec<(String, String)> =
@@ -875,14 +930,11 @@ fn build_command(
             cmd.env_clear();
             cmd.envs(safe_env);
             cmd.env("NODE_OPTIONS", "--max-old-space-size=512");
-            cmd.arg("run")
-                .arg(prompt)
-                .arg("-f")
-                .arg(yaml_abs)
-                .arg("--format")
-                .arg("json")
-                .arg("--dir")
-                .arg(repo_path);
+            cmd.arg("run").arg(prompt);
+            if let Some(f) = file_arg {
+                cmd.arg("-f").arg(f);
+            }
+            cmd.arg("--format").arg("json").arg("--dir").arg(cwd);
             if let Some(ref m) = model {
                 cmd.arg("-m").arg(m);
             }
@@ -920,7 +972,7 @@ fn build_command(
                 .arg(prompt)
                 .arg("--allowedTools")
                 .arg("Read,Edit,Write,Grep,Glob")
-                .current_dir(repo_path);
+                .current_dir(cwd);
             if let Some(ref m) = model {
                 cmd.arg("--model").arg(m);
             }
@@ -1704,28 +1756,7 @@ related_legislation:
     }
 
     fn test_config(provider: LlmProvider) -> EnrichConfig {
-        let mut provider_configs = std::collections::HashMap::new();
-        provider_configs.insert(
-            "opencode".to_string(),
-            LlmProvider::OpenCode {
-                path: "opencode".into(),
-                model: None,
-            },
-        );
-        provider_configs.insert(
-            "claude".to_string(),
-            LlmProvider::Claude {
-                path: "claude".into(),
-                model: Some("opus".into()),
-            },
-        );
-        EnrichConfig {
-            provider,
-            timeout: Duration::from_secs(600),
-            code_commit: "abc123".to_string(),
-            max_rss_mb: 3500,
-            provider_configs,
-        }
+        EnrichConfig::for_test(provider)
     }
 
     #[test]
