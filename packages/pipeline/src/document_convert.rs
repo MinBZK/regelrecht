@@ -296,6 +296,9 @@ impl DocumentConverter for LlmDocumentConverter {
             Some(input_file),
             work_dir,
             config,
+            // The agent may run/install a converter (e.g. pdftotext, pandoc),
+            // so the claude provider needs shell access here.
+            true,
         )
         .await
     }

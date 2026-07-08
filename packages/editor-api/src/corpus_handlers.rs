@@ -2605,20 +2605,35 @@ pub async fn upload_traject_document(
     }
 
     // Derive a collision-safe target markdown path against the existing docs.
+    // A failed listing must NOT be swallowed: an empty `existing` set would let
+    // the derivation hand back a name that already exists, and the worker's
+    // unconditional write would silently overwrite that document. Fail the
+    // upload instead.
     let backend = resolve_traject_documents_writer(&traject).await?;
     let base = traject_documents_base(&traject_ref);
     let mut existing: Vec<String> = backend
         .list_files_recursive(&base, None)
         .await
-        .map(|entries| entries.into_iter().map(|e| e.relative_path).collect())
-        .unwrap_or_default();
+        .map_err(|e| upload_internal_error("list documents for collision check", e))?
+        .into_iter()
+        .map(|e| e.relative_path)
+        .collect();
+    // Release the writable-backend lock before the DB work below — the backend
+    // is only needed for the listing, and holding its mutex through the
+    // transaction would serialize every writable-document op on this traject.
+    drop(backend);
     // Also avoid colliding with conversions that are enqueued but haven't
     // committed their `.md` yet — otherwise two same-named uploads both derive
-    // e.g. `report.md` and the second conversion overwrites the first.
+    // e.g. `report.md` and the second conversion overwrites the first. (This
+    // narrows but does not fully close a concurrent-upload window: two requests
+    // can both read the pending set before either commits its job — an
+    // acceptable residual TOCTOU for same-traject same-name simultaneous uploads.)
     existing.extend(
         regelrecht_pipeline::document_convert::pending_target_paths(pool, &traject_ref)
             .await
-            .unwrap_or_default(),
+            .map_err(|e| {
+                upload_internal_error("list pending conversions for collision check", e)
+            })?,
     );
     let target_path = derive_markdown_target(&filename, &existing);
 

@@ -126,7 +126,16 @@ impl LlmRunner for ProcessLlmRunner {
     ) -> Result<()> {
         let progress_path = progress_file_path(yaml_abs);
         let prompt = build_prompt(&payload.yaml_path, &progress_path.to_string_lossy());
-        run_llm_subprocess(&config.provider, &prompt, Some(yaml_abs), repo_path, config).await
+        run_llm_subprocess(
+            &config.provider,
+            &prompt,
+            Some(yaml_abs),
+            repo_path,
+            config,
+            // Enrich edits YAML in place; it does not need shell access.
+            false,
+        )
+        .await
     }
 }
 
@@ -139,17 +148,21 @@ impl LlmRunner for ProcessLlmRunner {
 /// working directory the agent runs in (and writes its output into); `file_arg`
 /// is the optional single input file (OpenCode's `-f`). Callers supply their own
 /// `prompt` — enrich and document-convert differ only in that prompt.
+/// `allow_bash` widens the `claude` provider's tool allowlist to include `Bash`
+/// (enrich keeps it off; document-convert needs it so the agent can run/install
+/// a converter). It has no effect on `opencode`, which has its own tool model.
 pub(crate) async fn run_llm_subprocess(
     provider: &LlmProvider,
     prompt: &str,
     file_arg: Option<&Path>,
     cwd: &Path,
     config: &EnrichConfig,
+    allow_bash: bool,
 ) -> Result<()> {
     {
         let provider_name = provider.name().to_string();
 
-        let mut cmd = build_command(provider, prompt, file_arg, cwd);
+        let mut cmd = build_command(provider, prompt, file_arg, cwd, allow_bash);
 
         // Both streams are piped and drained. stdout is drained-and-discarded: a
         // verbose agent (e.g. opencode `--format json`) inlines the full body of
@@ -887,6 +900,7 @@ fn build_command(
     prompt: &str,
     file_arg: Option<&Path>,
     cwd: &Path,
+    allow_bash: bool,
 ) -> tokio::process::Command {
     // Collect allowed env vars before creating the command.
     let safe_env: Vec<(String, String)> =
@@ -968,10 +982,17 @@ fn build_command(
                     }
                 }
             }
+            // `Bash` is only granted when the caller asks for it (document-convert
+            // may need to run/install a converter); enrich keeps the shell off.
+            let allowed_tools = if allow_bash {
+                "Bash,Read,Edit,Write,Grep,Glob"
+            } else {
+                "Read,Edit,Write,Grep,Glob"
+            };
             cmd.arg("-p")
                 .arg(prompt)
                 .arg("--allowedTools")
-                .arg("Read,Edit,Write,Grep,Glob")
+                .arg(allowed_tools)
                 .current_dir(cwd);
             if let Some(ref m) = model {
                 cmd.arg("--model").arg(m);
