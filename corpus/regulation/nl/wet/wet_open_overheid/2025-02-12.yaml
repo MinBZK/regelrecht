@@ -11,23 +11,27 @@ competent_authority: '#bevoegd_gezag'
 articles:
   # Hoofdstuk 1 - Rechten
   - number: '1.1'
-    text: |-
+    text: >-
       Eenieder heeft recht op toegang tot publieke informatie zonder daartoe een belang te hoeven stellen, behoudens bij
       deze wet gestelde beperkingen.
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel1.1
 
   # Hoofdstuk 2 - Algemene bepalingen
   - number: '2.1'
-    text: |-
+    text: >-
       In deze wet en de daarop berustende bepalingen wordt verstaan onder:
+
 
       a. document: een door een orgaan, persoon of college als bedoeld in artikel 2.2, eerste lid, opgemaakt of ontvangen
       schriftelijk stuk of ander geheel van vastgelegde gegevens dat naar zijn aard verband houdt met de publieke taak van
       dat orgaan, die persoon of dat college;
 
+
       b. milieu-informatie: hetgeen daaronder wordt verstaan in artikel 19.1a van de Wet milieubeheer;
 
+
       c. Onze Minister: Onze Minister van Binnenlandse Zaken en Koninkrijksrelaties;
+
 
       d. publieke informatie: informatie neergelegd in documenten die berusten bij een orgaan, persoon of college als
       bedoeld in artikel 2.2, eerste lid, of informatie die krachtens artikel 2.3 door een bestuursorgaan kan worden
@@ -94,14 +98,14 @@ articles:
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel2.4
 
   - number: '2.5'
-    text: |-
+    text: >-
       Bij de toepassing van deze wet wordt uitgegaan van het algemeen belang van openbaarheid van publieke informatie voor
       de democratische samenleving.
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel2.5
 
   # Hoofdstuk 3 - Openbaarmaking uit eigen beweging
   - number: '3.1'
-    text: |-
+    text: >-
       1. Het bestuursorgaan dat het rechtstreeks aangaat, maakt bij de uitvoering van zijn taak uit eigen beweging de bij
       het bestuursorgaan berustende informatie neergelegd in documenten voor eenieder openbaar, indien dit zonder
       onevenredige inspanning of kosten redelijkerwijs mogelijk is, behoudens voor zover de artikelen 5.1, eerste, tweede en
@@ -109,12 +113,15 @@ articles:
       Deze informatie betreft in ieder geval informatie over het beleid, inclusief de voorbereiding, uitvoering, naleving,
       handhaving en evaluatie.
 
+
       2. Het bestuursorgaan doet bij een gedeeltelijke niet-openbaarmaking hiervan mededeling gelijktijdig met de
       openbaarmaking.
+
 
       3. Documenten als bedoeld in het eerste lid worden niet openbaar gemaakt dan nadat belanghebbenden die naar
       verwachting bedenkingen zullen hebben tegen openbaarmaking, in de gelegenheid zijn gesteld binnen een door het
       bestuursorgaan gestelde termijn hun zienswijze naar voren te brengen.
+
 
       4. Het bestuursorgaan deelt een belanghebbende mede dat toepassing wordt gegeven aan het eerste lid, onder vermelding
       van het tijdstip van openbaarmaking en de openbaar te maken documenten. De mededeling wordt gelijkgesteld met een
@@ -256,21 +263,21 @@ articles:
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel3.3a
 
   - number: 3.3b
-    text: |-
+    text: >-
       De openbaarmaking van de in de artikelen 3.3 en 3.3a genoemde documenten geschiedt elektronisch op een algemeen
       toegankelijke wijze door middel van een door Onze Minister in stand gehouden digitale infrastructuur. Deze
       infrastructuur is beschikbaar voor de openbaarmaking van andere documenten.
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel3.3b
 
   - number: '3.4'
-    text: |-
+    text: >-
       In afwijking van de artikelen 5.1 en 5.2 kan een bestuursorgaan informatie uit eigen beweging openbaar maken, wanneer
       een ander zwaarwegend algemeen belang, daaronder begrepen het belang van openbare veiligheid, de volksgezondheid of
       het milieu of de bescherming van de democratische rechtsorde, dat in een concreet geval vergt.
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel3.4
 
   - number: '3.5'
-    text: |-
+    text: >-
       Een bestuursorgaan besteedt in de jaarlijkse begroting dan wel de jaarlijkse begroting van het openbaar lichaam of de
       rechtspersoon waarvan het bestuursorgaan deel uit maakt, aandacht aan de beleidsvoornemens inzake de uitvoering van
       deze wet en doet in de jaarlijkse verantwoording verslag van de uitvoering ervan, mede in relatie tot de
@@ -279,26 +286,32 @@ articles:
 
   # Hoofdstuk 4 - Openbaarmaking op verzoek
   - number: '4.1'
-    text: |-
+    text: >-
       1. Eenieder kan een verzoek om publieke informatie richten tot een bestuursorgaan of een onder verantwoordelijkheid
       van een bestuursorgaan werkzame instelling, dienst of bedrijf. In het laatste geval beslist het verantwoordelijke
       bestuursorgaan op het verzoek.
 
+
       2. Een verzoek kan mondeling of schriftelijk worden ingediend en kan elektronisch worden verzonden op de door het
       bestuursorgaan aangegeven wijze.
 
+
       3. De verzoeker behoeft bij zijn verzoek geen belang te stellen.
+
 
       4. De verzoeker vermeldt bij zijn verzoek de aangelegenheid of het daarop betrekking hebbende document, waarover hij
       informatie wenst te ontvangen.
 
+
       5. Indien een verzoek te algemeen geformuleerd is, verzoekt het bestuursorgaan binnen twee weken na ontvangst van het
       verzoek de verzoeker om het verzoek te preciseren en is het de verzoeker daarbij behulpzaam.
+
 
       6. Het bestuursorgaan kan besluiten een verzoek niet te behandelen, indien de verzoeker niet meewerkt aan een verzoek
       tot precisering als bedoeld het vijfde lid. In afwijking van artikel 4:5, vierde lid, van de Algemene wet
       bestuursrecht wordt het besluit om het verzoek niet te behandelen aan de verzoeker bekendgemaakt binnen twee weken
       nadat het verzoek is gepreciseerd of nadat de daarvoor gestelde termijn ongebruikt is verstreken.
+
 
       7. Een verzoek om informatie wordt ingewilligd met inachtneming van het bepaalde in hoofdstuk 5.
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel4.1
@@ -309,16 +322,18 @@ articles:
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel4.1a
 
   - number: '4.2'
-    text: |-
+    text: >-
       1. Voor zover het verzoek betrekking heeft op informatie die berust bij een ander bestuursorgaan dan dat waarbij het
       verzoek is ingediend, wordt de verzoeker zo nodig naar dat bestuursorgaan verwezen. Is het verzoek schriftelijk
       gedaan, dan wordt het voor zover betrekking hebbend op informatie die bij een ander bestuursorgaan berust, onverwijld
       doorgezonden aan dat bestuursorgaan, onder mededeling van de doorzending aan de verzoeker.
 
+
       2. Indien het verzoek betrekking heeft op informatie die op grond van enig wettelijk voorschrift bij het
       bestuursorgaan had behoren te berusten, vordert het bestuursorgaan de gevraagde informatie van degene die over de
       informatie beschikt. Degene die over de gevraagde informatie beschikt, verstrekt deze per omgaande aan het
       bestuursorgaan.
+
 
       3. Voor zover een verzoek als bedoeld in artikel 4.1, eerste lid, dat is gericht aan een der Kamers of de verenigde
       vergadering der Staten-Generaal, betrekking heeft op informatie die door de regering vertrouwelijk aan de
@@ -327,7 +342,7 @@ articles:
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel4.2
 
   - number: 4.2a
-    text: |-
+    text: >-
       Indien een voldoende gespecificeerd verzoek zodanig omvangrijk is dat niet binnen de termijn van artikel 4.4, eerste
       lid, kan worden beslist, treedt het bestuursorgaan voor het einde van die termijn in overleg met de verzoeker over de
       prioritering van de afhandeling van het verzoek. Het bestuursorgaan verstrekt de gevraagde documenten zo veel mogelijk
@@ -351,27 +366,32 @@ articles:
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel4.3
 
   - number: '4.4'
-    text: |-
+    text: >-
       1. Het bestuursorgaan beslist op het verzoek om informatie zo spoedig mogelijk, doch uiterlijk binnen vier weken
       gerekend vanaf de dag na die waarop het verzoek is ontvangen.
+
 
       2. Het bestuursorgaan kan de beslissing voor ten hoogste twee weken verdagen, indien de omvang of de gecompliceerdheid
       van de informatie een verlenging rechtvaardigt. Van de verdaging wordt voor de afloop van de eerste termijn
       schriftelijk gemotiveerd mededeling gedaan aan de verzoeker.
+
 
       3. Onverminderd artikel 4:15 van de Algemene wet bestuursrecht wordt de termijn voor het geven van een beschikking
       opgeschort gerekend vanaf de dag na die waarop het bestuursorgaan de verzoeker meedeelt dat toepassing is gegeven aan
       artikel 4:8 van de Algemene wet bestuursrecht, tot en met de dag waarop door de belanghebbende of belanghebbenden een
       zienswijze naar voren is gebracht of de daarvoor gestelde termijn ongebruikt is verstreken.
 
+
       4. Indien de opschorting, bedoeld in het derde lid, eindigt, doet het bestuursorgaan daarvan zo spoedig mogelijk
       mededeling aan de verzoeker, onder vermelding van de termijn binnen welke de beschikking alsnog moet worden gegeven.
+
 
       5. Indien het bestuursorgaan heeft besloten informatie te verstrekken, wordt de informatie verstrekt tegelijk met de
       bekendmaking van het besluit, tenzij naar verwachting een belanghebbende bezwaar daartegen heeft, in welk geval de
       informatie wordt verstrekt twee weken nadat de beslissing is bekendgemaakt. Indien wordt verzocht om een voorlopige
       voorziening als bedoeld in artikel 8:81 van de Algemene wet bestuursrecht, wordt de openbaarmaking opgeschort totdat
       de voorzieningenrechter uitspraak heeft gedaan of het verzoek is ingetrokken.
+
 
       6. Indien het bestuursorgaan heeft besloten informatie te verstrekken die rechtstreeks betrekking heeft op een derde
       of die van een derde afkomstig is, deelt het bestuursorgaan dit besluit gelijktijdig mede aan deze derde.
@@ -445,16 +465,17 @@ articles:
               default: $uiterste_beslisdatum
 
   - number: '4.5'
-    text: |-
+    text: >-
       1. Het bestuursorgaan verstrekt de informatie in de door verzoeker verzochte vorm of, indien dit redelijkerwijs niet
       gevergd kan worden, met inachtneming van het bepaalde in artikel 2.4, derde lid.
+
 
       2. Indien de informatie reeds in een voor de verzoeker gemakkelijk toegankelijke vorm voor het publiek beschikbaar is,
       wijst het bestuursorgaan de verzoeker daarop.
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel4.5
 
   - number: '4.6'
-    text: |-
+    text: >-
       Indien de verzoeker kennelijk een ander doel heeft dan het verkrijgen van publieke informatie of indien het verzoek
       evident geen bestuurlijke aangelegenheid betreft, kan het bestuursorgaan binnen twee weken na ontvangst van het
       verzoek, dan wel onverwijld nadat is gebleken dat de verzoeker kennelijk een ander doel heeft dan het verkrijgen van
@@ -462,7 +483,7 @@ articles:
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel4.6
 
   - number: '4.7'
-    text: |-
+    text: >-
       Ter beantwoording van vragen over de beschikbaarheid van publieke informatie wijst het bestuursorgaan een of meer
       contactpersonen aan.
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel4.7
@@ -697,23 +718,26 @@ articles:
                   value: $heeft_lid5_weigeringsgrond
 
   - number: '5.2'
-    text: |-
+    text: >-
       1. In geval van een verzoek om informatie uit documenten, opgesteld ten behoeve van intern beraad, wordt geen
       informatie verstrekt over daarin opgenomen persoonlijke beleidsopvattingen. Onder persoonlijke beleidsopvattingen
       worden verstaan ambtelijke adviezen, visies, standpunten en overwegingen ten behoeve van intern beraad, niet zijnde
       feiten, prognoses, beleidsalternatieven, de gevolgen van een bepaald beleidsalternatief of andere onderdelen met een
       overwegend objectief karakter.
 
+
       2. Het bestuursorgaan kan over persoonlijke beleidsopvattingen met het oog op een goede en democratische
       bestuursvoering informatie verstrekken in niet tot personen herleidbare vorm. Indien degene die deze opvattingen heeft
       geuit of zich erachter heeft gesteld, daarmee heeft ingestemd, kan de informatie in tot personen herleidbare vorm
       worden verstrekt.
+
 
       3. Onverminderd het eerste en tweede lid wordt uit documenten opgesteld ten behoeve van formele bestuurlijke
       besluitvorming door een minister, een commissaris van de Koning, Gedeputeerde Staten, een gedeputeerde, het college
       van burgemeester en wethouders, een burgemeester, een wethouder, het dagelijks bestuur van een waterschap of een lid
       van dat bestuur, informatie verstrekt over persoonlijke beleidsopvattingen in niet tot personen herleidbare vorm,
       tenzij het kunnen voeren van intern beraad onevenredig wordt geschaad.
+
 
       4. In afwijking van het eerste lid wordt bij milieu-informatie het belang van de bescherming van de persoonlijke
       beleidsopvattingen afgewogen tegen het belang van openbaarmaking. Informatie over persoonlijke beleidsopvattingen kan
@@ -722,7 +746,7 @@ articles:
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel5.2
 
   - number: '5.3'
-    text: |-
+    text: >-
       Bij een verzoek om informatie die ouder is dan vijf jaar motiveert het bestuursorgaan bij een weigering van die
       informatie waarom de in artikel 5.1, tweede of vijfde lid, of artikel 5.2 bedoelde belangen ondanks het tijdsverloop
       zwaarder wegen dan het algemeen belang van openbaarheid.
@@ -759,18 +783,19 @@ articles:
               value: 5
 
   - number: '5.4'
-    text: |-
+    text: >-
       In afwijking van de artikelen 5.1 en 5.2 is informatie die berust bij de formateur of de informateur, dan wel
       informatie die door een bestuursorgaan aan de formateur of de informateur is gezonden niet openbaar totdat de formatie
       is afgerond.
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel5.4
 
   - number: 5.4a
-    text: |-
+    text: >-
       1. In afwijking van de artikelen 5.1 en 5.2 is niet openbaar de informatie betreffende de ondersteuning van
       individuele leden van de Eerste Kamer of de Tweede Kamer der Staten-Generaal, provinciale staten of de gemeenteraad
       door ambtenaren werkzaam bij de Eerste Kamer of de Tweede Kamer, de griffie van provinciale staten of de griffie van
       de gemeenteraad.
+
 
       2. In afwijking van artikel 5.2, eerste lid, wordt met betrekking tot informatie die aan individuele Kamerleden wordt
       verstrekt onder persoonlijke beleidsopvattingen verstaan ambtelijke adviezen, visies, standpunten en overwegingen ten
@@ -778,7 +803,7 @@ articles:
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel5.4a
 
   - number: '5.5'
-    text: |-
+    text: >-
       1. Onverminderd het elders bij wet bepaalde, verstrekt een bestuursorgaan iedere natuurlijke of rechtspersoon op diens
       verzoek de op de verzoeker betrekking hebbende in documenten neergelegde informatie, tenzij een in artikel 5.1, eerste
       lid, onderdelen a, b en c, alsmede d en e, voor zover betrekking hebbend op derden, genoemd belang aan de orde is of
@@ -786,11 +811,14 @@ articles:
       bij toegang tot op hem betrekking hebbende informatie. De verzoeker vermeldt bij zijn verzoek de aangelegenheid of het
       daarop betrekking hebbende document, waarover hij informatie wenst te ontvangen.
 
+
       2. Het eerste lid is van overeenkomstige toepassing op een verzoek met betrekking tot gegevens ten aanzien van een
       overleden echtgenoot, geregistreerd partner, kind of ouder van de verzoeker, tenzij een schriftelijke wilsverklaring
       van de overledene aan de verstrekking in de weg staat.
 
+
       3. Het bestuursorgaan draagt zorg voor een deugdelijke vaststelling van de identiteit van de verzoeker.
+
 
       4. Het bestuursorgaan kan aan de verstrekking voorwaarden verbinden ter bescherming van een van de belangen, genoemd
       in de artikelen 5.1 en 5.2, tenzij de gevraagde informatie met toepassing van de artikelen 5.1 en 5.2 openbaar voor
@@ -798,12 +826,14 @@ articles:
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel5.5
 
   - number: '5.6'
-    text: |-
+    text: >-
       1. Het bestuursorgaan kan, in geval informatie ingevolge de artikelen 5.1 en 5.2 niet openbaar gemaakt kan worden,
       besluiten de informatie uitsluitend aan de verzoeker te verstrekken, indien er klemmende redenen zijn om de verzoeker
       niettegenstaande de toepasselijke uitzonderingsgrond of -gronden de gevraagde informatie niet te onthouden.
 
+
       2. Het eerste lid vindt slechts toepassing voor zover dit niet in strijd is met een toepasselijke geheimhoudingsplicht.
+
 
       3. Het bestuursorgaan kan aan de verstrekking voorwaarden verbinden ter bescherming van een van de belangen, genoemd
       in de artikelen 5.1 en 5.2.
@@ -826,22 +856,25 @@ articles:
 
   # Hoofdstuk 6 - Digitale informatiehuishouding
   - number: '6.1'
-    text: |-
+    text: >-
       Het bestuursorgaan treft maatregelen ten behoeve van het duurzaam toegankelijk maken van de digitale documenten,
       bedoeld in artikel 2.4, eerste lid.
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel6.1
 
   - number: '6.2'
-    text: |-
+    text: >-
       1. Onze Minister, in overeenstemming met Onze Minister van Onderwijs, Cultuur en Wetenschap, zendt een meerjarenplan
       naar de Staten-Generaal over de wijze waarop bestuursorganen hun digitale overheidsinformatie duurzaam toegankelijk
       maken.
 
+
       2. Het meerjarenplan bevat langetermijndoelen voor de verbetering van de wijze waarop digitale documenten worden
       vervaardigd, geordend, bewaard, vernietigd en ontsloten alsmede de stappen die daartoe op korte termijn worden gezet.
 
+
       3. Het meerjarenplan voorziet in stappen waarmee wordt bereikt dat eenieder zo veel mogelijk inzicht kan hebben in de
       aanwezigheid van publieke informatie bij een orgaan, persoon of college als bedoeld in artikel 2.2, eerste lid.
+
 
       4. Onze Minister, in overeenstemming met Onze Minister van Onderwijs, Cultuur en Wetenschap, vult het meerjarenplan
       aan met de nodige maatregelen tot de digitale overheidsinformatie voldoende duurzaam toegankelijk is.
@@ -849,13 +882,16 @@ articles:
 
   # Hoofdstuk 7 - Het adviescollege openbaarheid en informatiehuishouding
   - number: '7.1'
-    text: |-
+    text: >-
       1. Er is een Adviescollege openbaarheid en informatiehuishouding.
+
 
       2. Het college bestaat uit een voorzitter en ten hoogste vier andere leden.
 
+
       3. De benoeming van de leden bij koninklijk besluit geschiedt op voordracht van Onze Minister, in overeenstemming met
       Onze Minister van Onderwijs, Cultuur en Wetenschap.
+
 
       4. De artikelen 13, 16 en 19 van de Kaderwet zelfstandige bestuursorganen zijn van overeenkomstige toepassing.
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel7.1
@@ -887,9 +923,10 @@ articles:
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel7.2
 
   - number: '7.3'
-    text: |-
+    text: >-
       1. Alvorens een advies als bedoeld in artikel 7.2, vierde lid, uit te brengen, bemiddelt het college tussen het
       bestuursorgaan en de klager. Het bestuursorgaan werkt aan de bemiddeling mee.
+
 
       2. Indien de klacht mede betrekking heeft op een besluit op grond van deze wet waartegen bezwaar open staat, wordt de
       termijn voor het indienen van bezwaar, bedoeld in artikel 6:7 van de Algemene wet bestuursrecht, opgeschort tot het
@@ -897,9 +934,11 @@ articles:
       uitgebracht. De opschorting van de bezwaartermijn vangt aan met ingang van de dag nadat de klager de klacht aan het
       college heeft gezonden.
 
+
       3. Indien de klager bezwaar maakt tegen het besluit, bedoeld in het tweede lid, beslist het bestuursorgaan in
       afwijking van artikel 7:10, eerste lid, van de Algemene wet bestuursrecht binnen twee weken nadat het college advies
       heeft uitgebracht, dan wel aan de klager en het bestuursorgaan heeft bericht dat geen advies zal worden uitgebracht.
+
 
       4. Bij algemene maatregel van bestuur kunnen nadere regels worden gesteld over de wijze waarop klachten worden
       ingediend en het college tussen het bestuursorgaan en de klager bemiddelt als bedoeld in het eerste lid.
@@ -911,10 +950,11 @@ articles:
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel7.4
 
   - number: '7.5'
-    text: |-
+    text: >-
       1. De leden van het college alsmede de ambtenaren van zijn bureau zijn tot geheimhouding verplicht voor zover zij
       krachtens deze wet beschikken over documenten die door het bestuursorgaan waarvan zij afkomstig zijn niet openbaar
       zijn gemaakt.
+
 
       2. Voor zover een aan het college gericht verzoek op grond van deze wet betrekking heeft op door een bestuursorgaan
       aan het college verstrekte informatie, zendt het college het verzoek ter behandeling door aan het bestuursorgaan.
@@ -922,16 +962,17 @@ articles:
 
   # Hoofdstuk 8 - Overige bepalingen
   - number: '8.1'
-    text: |-
+    text: >-
       1. Overtreding van een voorwaarde die op grond van artikel 5.5, vierde lid, 5.6, derde lid, of artikel 5.7, tweede of
       derde lid, aan een verstrekking is verbonden, wordt gestraft met gevangenisstraf van ten hoogste een jaar of geldboete
       van de vierde categorie.
+
 
       2. Het in het eerste lid strafbaar gestelde feit is een misdrijf.
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel8.1
 
   - number: '8.2'
-    text: |-
+    text: >-
       Paragraaf 4.1.3.2 van de Algemene wet bestuursrecht is niet van toepassing op besluiten op grond van deze wet en op
       beslissingen op bezwaar tegen deze besluiten.
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel8.2
@@ -979,32 +1020,35 @@ articles:
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel8.5
 
   - number: '8.6'
-    text: |-
+    text: >-
       1. De openbaarmaking van informatie op grond van deze wet is kosteloos.
+
 
       2. Voor de vervaardiging van kopieen van documenten kan een bestuursorgaan een redelijke vergoeding vragen, die de
       kostprijs van de verstrekte informatiedragers niet overstijgt.
+
 
       3. Op voordracht van Onze Minister kunnen bij of krachtens algemene maatregel van bestuur regels worden gesteld met
       betrekking tot het tweede lid.
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel8.6
 
   - number: '8.7'
-    text: |-
+    text: >-
       Op voordracht van Onze Minister kunnen bij of krachtens algemene maatregel van bestuur regels worden gesteld over de
       wijze waarop een bestuursorgaan de uitvoering van deze wet organiseert.
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel8.7
 
   - number: '8.8'
-    text: |-
+    text: >-
       De artikelen 3.1, 3.3, 4.1, 5.1, eerste, tweede en vijfde lid, en 5.2 zijn niet van toepassing op informatie waarvoor
       een bepaling geldt die is opgenomen in de bijlage bij deze wet.
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel8.8
 
   - number: '8.9'
-    text: |-
+    text: >-
       1. Onze Minister zendt binnen vijf jaar na de inwerkingtreding van deze wet aan de Staten-Generaal een verslag over de
       doeltreffendheid en de effecten van deze wet in de praktijk.
+
 
       2. In deze evaluatie wordt in ieder geval aandacht besteed aan de vraag of het noodzakelijk is om een
       Informatiecommissaris in te stellen.
@@ -1017,30 +1061,31 @@ articles:
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel10.1
 
   - number: '10.2'
-    text: |-
+    text: >-
       1. Documenten die voor de inwerkingtreding van deze wet zijn opgesteld, worden niet openbaar gemaakt op grond van
       artikel 3.1, eerste lid, of artikel 3.3, eerste of tweede lid, tenzij het bestuursorgaan dat redelijkerwijs mogelijk
       acht.
+
 
       2. Het eerste lid is niet van toepassing op documenten die voor de datum van inwerkingtreding van deze wet zijn
       opgesteld en waarvan de aktieve openbaarmaking reeds op grond van de Wet openbaarheid van bestuur plaatsvond.
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel10.2
 
   - number: 10.2a
-    text: |-
+    text: >-
       Voor documenten die voor de inwerkingtreding van deze wet zijn opgesteld en waarop een verzoek betrekking heeft, zijn
       de bepalingen van deze wet van toepassing, tenzij toepassing daarvan onredelijk bezwarend is voor het betrokken
       bestuursorgaan.
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel10.2a
 
   - number: 10.2b
-    text: |-
+    text: >-
       De bepalingen van deze wet zijn niet van toepassing op adviezen van de Afdeling advisering van de Raad van State die
       voor de inwerkingtreding van deze wet zijn uitgebracht.
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel10.2b
 
   - number: 10.2c
-    text: |-
+    text: >-
       De bepalingen van deze wet zijn niet van toepassing op documenten waarop artikel 8.8 van toepassing is die voor de
       inwerkingtreding van deze wet zijn opgesteld.
     url: https://wetten.overheid.nl/BWBR0045754/2025-02-12#Artikel10.2c
