@@ -1252,15 +1252,18 @@ async fn process_next_document_convert_job(
             // max_attempts=1): a retry would re-run the expensive LLM conversion
             // and most failures are deterministic. Fail terminally and always
             // drop the transient upload bytes — there is no retry to feed them to.
-            job_queue::fail_job_terminal(
+            // Delete BEFORE propagating a fail_job_terminal error, so a failed
+            // status update can't `?`-return past the cleanup and leak the row.
+            let fail_result = job_queue::fail_job_terminal(
                 pool,
                 job.id,
                 Some(serde_json::json!({ "error": msg.clone() })),
             )
-            .await?;
+            .await;
             if let Err(e) = document_convert::delete_upload(pool, payload.upload_id).await {
                 tracing::warn!(job_id = %job.id, error = %e, "failed to delete document upload after terminal failure");
             }
+            fail_result?;
             Ok(outcome_for_error(&msg))
         }
     }
