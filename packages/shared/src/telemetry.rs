@@ -3,6 +3,8 @@
 //! Each binary previously hand-rolled the same `tracing_subscriber::fmt()`
 //! initialization. [`init_subscriber`] consolidates that pattern.
 
+use std::env::VarError;
+
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::EnvFilter;
 
@@ -54,8 +56,9 @@ pub fn init_subscriber_with_spans(default_level: &str, default_span_events: bool
     }
 }
 
-/// Resolve the [`FmtSpan`] mask: `LOG_SPAN_EVENTS` wins when set, otherwise
-/// fall back to the caller's `default_on` (CLOSE when on, NONE when off).
+/// Resolve the [`FmtSpan`] mask: a *set* `LOG_SPAN_EVENTS` always wins;
+/// only a genuinely absent variable falls back to the caller's `default_on`
+/// (CLOSE when on, NONE when off).
 fn resolve_span_events(default_on: bool) -> FmtSpan {
     match std::env::var("LOG_SPAN_EVENTS") {
         Ok(raw) => match raw.to_ascii_lowercase().as_str() {
@@ -66,7 +69,12 @@ fn resolve_span_events(default_on: bool) -> FmtSpan {
             // Explicit off (or any unrecognised value) — never span events.
             _ => FmtSpan::NONE,
         },
-        Err(_) if default_on => FmtSpan::CLOSE,
-        Err(_) => FmtSpan::NONE,
+        // The variable is set but not valid UTF-8: it is still an explicit
+        // (if garbled) override, so treat it as "unrecognised" → off, never
+        // silently fall back to `default_on`.
+        Err(VarError::NotUnicode(_)) => FmtSpan::NONE,
+        // Genuinely unset: honour the per-service default.
+        Err(VarError::NotPresent) if default_on => FmtSpan::CLOSE,
+        Err(VarError::NotPresent) => FmtSpan::NONE,
     }
 }

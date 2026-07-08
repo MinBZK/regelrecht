@@ -426,7 +426,11 @@ impl RepoBackend for GitHubApiBackend {
             return Ok(PersistOutcome::default());
         }
         // Wall-clock of the whole Contents API commit (PUT/DELETE, plus any
-        // sha-refresh retry) — the `gh_put` Server-Timing phase.
+        // sha-refresh retry) — the `gh_put` Server-Timing phase. Best-effort,
+        // same as `ensure_ready`: recorded only on the success path below, so
+        // a `persist` that fails via `?` (e.g. a `try_put` error) yields a
+        // response with no `gh_put` phase. `persist` is not a single future,
+        // so it can't use the record-on-both-paths `timing::measure` wrapper.
         let put_start = std::time::Instant::now();
 
         // Committer falls back to a service identity when no human is
