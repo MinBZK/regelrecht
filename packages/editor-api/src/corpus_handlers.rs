@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Multipart, Path, Query, State};
 use axum::http::StatusCode;
 use axum::{Extension, Json};
 use serde::{Deserialize, Serialize};
@@ -2477,6 +2477,211 @@ pub async fn list_traject_documents(
     Ok(Json(TrajectDocumentList { documents }))
 }
 
+/// Upload formats accepted in fase 1: PDF and Word.
+const UPLOAD_DOCUMENT_EXTENSIONS: &[&str] = &["pdf", "doc", "docx"];
+
+#[derive(Debug, Serialize)]
+pub struct UploadDocumentResponse {
+    /// The `.md` path the converted document will appear at once its
+    /// conversion job completes.
+    pub target_path: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TrajectJobList {
+    pub jobs: Vec<regelrecht_pipeline::document_convert::TrajectJobView>,
+}
+
+/// Uniform 500 for the upload/jobs endpoints — logs the real cause, returns a
+/// generic Dutch message.
+fn upload_internal_error(context: &str, e: impl std::fmt::Display) -> (StatusCode, String) {
+    tracing::error!(error = %e, context, "document upload/jobs handler failed");
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "Er ging iets mis bij het verwerken van de upload.".to_string(),
+    )
+}
+
+/// Derive a collision-safe `<name>.md` target path from an uploaded filename,
+/// sanitized to the document-path rules (`[a-z0-9._-]`, no hidden/empty
+/// segments). Appends `-2`, `-3`, … when a document with the derived name
+/// already exists in the traject.
+fn derive_markdown_target(filename: &str, existing: &[String]) -> String {
+    let raw_stem = std::path::Path::new(filename)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("document");
+    let mut sanitized = String::with_capacity(raw_stem.len());
+    let mut prev_dash = false;
+    for ch in raw_stem.chars() {
+        let c = ch.to_ascii_lowercase();
+        if c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-' {
+            sanitized.push(c);
+            prev_dash = false;
+        } else if !prev_dash {
+            sanitized.push('-');
+            prev_dash = true;
+        }
+    }
+    let trimmed = sanitized.trim_matches(|c| c == '-' || c == '.');
+    let stem = if trimmed.is_empty() {
+        "document"
+    } else {
+        trimmed
+    };
+
+    let mut candidate = format!("{stem}.md");
+    let mut n = 2;
+    while existing.iter().any(|p| p == &candidate) {
+        candidate = format!("{stem}-{n}.md");
+        n += 1;
+    }
+    candidate
+}
+
+/// POST /api/trajects/{traject_ref}/corpus/documents/upload
+///
+/// Accept a multipart upload of a PDF/Word document, store its bytes in
+/// `document_uploads`, and enqueue a `document_convert` job that converts it to
+/// a markdown werkdocument. Responds `202 Accepted` with the target `.md` path
+/// the converted document will appear at.
+pub async fn upload_traject_document(
+    State(state): State<AppState>,
+    session: Session,
+    Path(traject_ref): Path<String>,
+    mut multipart: Multipart,
+) -> Result<(StatusCode, Json<UploadDocumentResponse>), (StatusCode, String)> {
+    let pool = state.pool.as_ref().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "database not configured".to_string(),
+    ))?;
+    // Membership guard (also resolves the traject); the id feeds the job payload.
+    let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let traject_id = resolve_traject_ref(pool, &traject_ref).await?;
+
+    // Pull the uploaded file out of the multipart body (the `file` field).
+    let mut filename: Option<String> = None;
+    let mut content_type: Option<String> = None;
+    let mut data: Option<Vec<u8>> = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Ongeldige upload: {e}")))?
+    {
+        if field.name() == Some("file") {
+            filename = field.file_name().map(|s| s.to_string());
+            content_type = field.content_type().map(|s| s.to_string());
+            let bytes = field.bytes().await.map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    format!("Kon het bestand niet lezen: {e}"),
+                )
+            })?;
+            data = Some(bytes.to_vec());
+            break;
+        }
+    }
+    let filename = filename.ok_or((
+        StatusCode::BAD_REQUEST,
+        "Geen bestand in de upload (het 'file'-veld ontbreekt).".to_string(),
+    ))?;
+    let data = data.filter(|d| !d.is_empty()).ok_or((
+        StatusCode::BAD_REQUEST,
+        "Het geüploade bestand is leeg.".to_string(),
+    ))?;
+    let content_type = content_type.unwrap_or_else(|| "application/octet-stream".to_string());
+
+    // Only PDF/Word in fase 1.
+    let ext = std::path::Path::new(&filename)
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .unwrap_or_default();
+    if !UPLOAD_DOCUMENT_EXTENSIONS.contains(&ext.as_str()) {
+        return Err((
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "Alleen PDF- en Word-documenten (.pdf, .doc, .docx) worden ondersteund.".to_string(),
+        ));
+    }
+
+    // Derive a collision-safe target markdown path against the existing docs.
+    let backend = resolve_traject_documents_writer(&traject).await?;
+    let base = traject_documents_base(&traject_ref);
+    let existing: Vec<String> = backend
+        .list_files_recursive(&base, None)
+        .await
+        .map(|entries| entries.into_iter().map(|e| e.relative_path).collect())
+        .unwrap_or_default();
+    let target_path = derive_markdown_target(&filename, &existing);
+
+    // Persist the bytes and enqueue the conversion job in one transaction.
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| upload_internal_error("begin tx", e))?;
+    let (upload_id,): (uuid::Uuid,) = sqlx::query_as(
+        "INSERT INTO document_uploads (traject_ref, filename, content_type, bytes) \
+         VALUES ($1, $2, $3, $4) RETURNING id",
+    )
+    .bind(&traject_ref)
+    .bind(&filename)
+    .bind(&content_type)
+    .bind(&data)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| upload_internal_error("insert upload", e))?;
+
+    let payload = regelrecht_pipeline::document_convert::DocumentConvertPayload {
+        upload_id,
+        traject_id,
+        traject_ref: traject_ref.clone(),
+        target_path: target_path.clone(),
+        provider: None,
+    };
+    let payload_json = serde_json::to_value(&payload)
+        .map_err(|e| upload_internal_error("serialize payload", e))?;
+    let req = regelrecht_pipeline::job_queue::CreateJobRequest::new(
+        regelrecht_pipeline::JobType::DocumentConvert,
+        format!("doc:{traject_ref}/{target_path}"),
+    )
+    .with_traject_ref(traject_ref.clone())
+    .with_payload(payload_json);
+    regelrecht_pipeline::job_queue::create_job(&mut *tx, req)
+        .await
+        .map_err(|e| upload_internal_error("create job", e))?;
+    tx.commit()
+        .await
+        .map_err(|e| upload_internal_error("commit tx", e))?;
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(UploadDocumentResponse { target_path }),
+    ))
+}
+
+/// GET /api/trajects/{traject_ref}/corpus/documents/jobs
+///
+/// List the traject's document-convert jobs that are still relevant to show
+/// (running or failed — completed ones are represented by the actual `.md` in
+/// the documents list). Backs the werkdocumenten conversion-status block.
+pub async fn list_traject_document_convert_jobs(
+    State(state): State<AppState>,
+    session: Session,
+    Path(traject_ref): Path<String>,
+) -> Result<Json<TrajectJobList>, (StatusCode, String)> {
+    let pool = state.pool.as_ref().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "database not configured".to_string(),
+    ))?;
+    // Membership guard.
+    require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let jobs =
+        regelrecht_pipeline::document_convert::list_traject_document_jobs(pool, &traject_ref)
+            .await
+            .map_err(|e| upload_internal_error("list document jobs", e))?;
+    Ok(Json(TrajectJobList { jobs }))
+}
+
 /// GET /api/trajects/{traject_ref}/corpus/documents/{*doc_path}
 ///
 /// Returns the raw markdown/text body, an appropriate `Content-Type`,
@@ -2884,6 +3089,32 @@ mod tests {
         assert!(validate_document_path("").is_err());
         assert!(validate_document_path("/").is_err());
         assert!(validate_document_path("a//b.md").is_err());
+    }
+
+    #[test]
+    fn derive_markdown_target_sanitizes_and_appends_md() {
+        assert_eq!(derive_markdown_target("Report.pdf", &[]), "report.md");
+        assert_eq!(
+            derive_markdown_target("Mijn Brief.docx", &[]),
+            "mijn-brief.md"
+        );
+        // Every derived target must satisfy the document-path rules.
+        assert!(validate_document_path(&derive_markdown_target("Béépje 2024!.doc", &[])).is_ok());
+    }
+
+    #[test]
+    fn derive_markdown_target_falls_back_when_stem_empty() {
+        let target = derive_markdown_target("...pdf", &[]);
+        assert!(validate_document_path(&target).is_ok());
+    }
+
+    #[test]
+    fn derive_markdown_target_resolves_collisions() {
+        let existing = vec!["report.md".to_string(), "report-2.md".to_string()];
+        assert_eq!(
+            derive_markdown_target("report.pdf", &existing),
+            "report-3.md"
+        );
     }
 
     #[test]

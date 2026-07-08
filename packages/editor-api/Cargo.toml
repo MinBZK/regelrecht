@@ -16,7 +16,7 @@ name = "regelrecht-editor-api"
 path = "src/main.rs"
 
 [dependencies]
-axum.workspace = true
+axum = { workspace = true, features = ["multipart"] }
 regelrecht-auth = { path = "../auth" }
 regelrecht-shared = { path = "../shared", features = ["telemetry"] }
 regelrecht-corpus = { path = "../corpus", features = ["github", "annotation-validation"] }
