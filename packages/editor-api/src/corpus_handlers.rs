@@ -3279,7 +3279,6 @@ mod tests {
             axum::extract::State<crate::state::AppState>,
             axum::extract::Extension<crate::accounts::AccountRecord>,
             Session,
-            Extension<AccountRecord>,
             axum::extract::Path<(String, String)>,
             String,
         ) -> _ = save_annotations;
