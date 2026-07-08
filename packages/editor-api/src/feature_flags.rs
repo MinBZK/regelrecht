@@ -34,6 +34,12 @@ static DEFAULTS: LazyLock<HashMap<String, bool>> = LazyLock::new(|| {
         // so the editor would stay read-only no matter how many times the
         // menu toggle is flipped.
         ("editor.article_text_edit".into(), false),
+        // Per-user GitHub OAuth link (spike, PR #887). Gates the "Koppel
+        // GitHub-account" affordance in the account menu; default off so the
+        // spike stays invisible until opted in. Same allow-list rule: without
+        // this key the toggle PUT 400s and the frontend silently reverts it,
+        // so the toggle would never stick.
+        ("github.user_oauth".into(), false),
     ])
 });
 
