@@ -280,9 +280,21 @@ fn validate_return_url(url: Option<&str>) -> Option<String> {
 /// react (e.g. a toast). The SPA re-fetches `/auth/github/status` on load, so the
 /// connected/expired state is already reflected without reading this flag; wiring
 /// a toast off it is a spike follow-up.
+///
+/// `validate_return_url` permits a `#fragment` (the frontend includes
+/// `window.location.hash`), so split it off and insert the marker into the
+/// query *before* the fragment — otherwise `?github=…` lands inside the
+/// fragment and is invisible to query-string parsers.
 fn with_marker(base_url: &str, path: &str, marker: &str) -> String {
+    let (path, fragment) = match path.split_once('#') {
+        Some((p, f)) => (p, Some(f)),
+        None => (path, None),
+    };
     let sep = if path.contains('?') { '&' } else { '?' };
-    format!("{base_url}{path}{sep}github={marker}")
+    match fragment {
+        Some(f) => format!("{base_url}{path}{sep}github={marker}#{f}"),
+        None => format!("{base_url}{path}{sep}github={marker}"),
+    }
 }
 
 #[derive(Deserialize)]
@@ -646,8 +658,18 @@ pub async fn user_write_token(
         return Ok(None);
     }
 
+    // From here `require_user_token` is on, so the contract is "never silently
+    // fall back to the service token". A missing pool must therefore fail
+    // closed (503), not return `Ok(None)` — otherwise the write would go out
+    // on the backend's all-access token, the exact bypass this mode forbids.
+    // In practice `account_middleware` already requires the pool to resolve an
+    // account before any handler runs, so this is defense in depth.
     let Some(pool) = state.pool.as_ref() else {
-        return Ok(None);
+        tracing::error!("user_write_token: pool absent while require_user_token is set");
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "GitHub-tokenopslag niet beschikbaar".to_string(),
+        ));
     };
 
     let missing = || {
@@ -832,6 +854,20 @@ mod tests {
         assert_eq!(
             with_marker("https://h", "/editor/x?tab=y", "error"),
             "https://h/editor/x?tab=y&github=error"
+        );
+    }
+
+    #[test]
+    fn with_marker_inserts_before_fragment() {
+        // Fragment present: marker goes into the query, before the '#'.
+        assert_eq!(
+            with_marker("https://h", "/editor/x#section", "connected"),
+            "https://h/editor/x?github=connected#section"
+        );
+        // Existing query + fragment: marker appended with '&', still before '#'.
+        assert_eq!(
+            with_marker("https://h", "/editor/x?tab=y#section", "denied"),
+            "https://h/editor/x?tab=y&github=denied#section"
         );
     }
 
