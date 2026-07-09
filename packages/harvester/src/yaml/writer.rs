@@ -330,6 +330,23 @@ fn needs_yaml_quoting(value: &str) -> bool {
         }
     }
 
+    // Scientific-notation float, e.g. "24e1", "1e5", "2E-3", "1.5e3". The dotted
+    // check above misses these (there is no dot, or a dot *plus* an exponent),
+    // yet serde_yaml_ng resolves them to floats on read — so without quotes an
+    // article number like "24e1" round-trips into the float 240.0 and breaks the
+    // schema's `string` requirement. The mantissa may carry a single optional
+    // dot; the exponent is digits with an optional sign.
+    if let Some((mantissa, exponent)) = num_part.split_once(['e', 'E']) {
+        let exponent = exponent.strip_prefix(['+', '-']).unwrap_or(exponent);
+        let mantissa_ok = mantissa.bytes().any(|b| b.is_ascii_digit())
+            && mantissa.bytes().all(|b| b.is_ascii_digit() || b == b'.')
+            && mantissa.bytes().filter(|&b| b == b'.').count() <= 1;
+        let exponent_ok = !exponent.is_empty() && exponent.bytes().all(|b| b.is_ascii_digit());
+        if mantissa_ok && exponent_ok {
+            return true;
+        }
+    }
+
     // Date: YYYY-MM-DD
     let date_parts: Vec<&str> = value.split('-').collect();
     if date_parts.len() == 3
@@ -684,6 +701,14 @@ mod tests {
         assert!(needs_yaml_quoting("")); // empty
         assert!(needs_yaml_quoting("foo: bar")); // contains ": "
         assert!(needs_yaml_quoting("end:")); // ends with ":"
+                                             // Scientific-notation floats: YAML resolves these to numbers on read,
+                                             // so a string like the article number "24e1" must stay quoted or it
+                                             // round-trips into the float 240.0.
+        assert!(needs_yaml_quoting("24e1"));
+        assert!(needs_yaml_quoting("1e5"));
+        assert!(needs_yaml_quoting("2E10"));
+        assert!(needs_yaml_quoting("2E-3"));
+        assert!(needs_yaml_quoting("1.5e3"));
 
         // Values that don't need quoting
         assert!(!needs_yaml_quoting("1.1.a"));
@@ -691,9 +716,11 @@ mod tests {
         assert!(!needs_yaml_quoting("18d"));
         assert!(!needs_yaml_quoting("3.3.1"));
         assert!(!needs_yaml_quoting("4a.1"));
-        assert!(!needs_yaml_quoting("ref1"));
+        assert!(!needs_yaml_quoting("ref1")); // 'e' inside, but no numeric mantissa
         assert!(!needs_yaml_quoting("BWBR0018451"));
         assert!(!needs_yaml_quoting("hello"));
+        assert!(!needs_yaml_quoting("24e")); // trailing 'e', no exponent → stays a string
+        assert!(!needs_yaml_quoting("e5")); // no mantissa digit → stays a string
     }
 
     #[test]
@@ -730,6 +757,21 @@ mod tests {
             result,
             "number: 1.1.a\ndate: '2024-10-16'\nartikel: 68b\ncount: '1'"
         );
+    }
+
+    #[test]
+    fn test_fix_yaml_quoting_scientific_notation_article_number() {
+        // An article number like "24e1" (WVO, BWBR0002399) parses as the float
+        // 240.0 unless quoted. Whether serde emits it quoted or bare, the pass
+        // must leave it quoted so the value round-trips as a string.
+        assert_eq!(fix_yaml_quoting("number: 24e1"), "number: '24e1'");
+        assert_eq!(fix_yaml_quoting("artikel: 24e1"), "artikel: '24e1'");
+        assert_eq!(fix_yaml_quoting("number: '24e1'"), "number: '24e1'");
+
+        // And the quoted value survives a real serde_yaml_ng round trip as a string.
+        let parsed: serde_yaml_ng::Value =
+            serde_yaml_ng::from_str(&fix_yaml_quoting("number: 24e1")).unwrap();
+        assert_eq!(parsed.get("number").and_then(|v| v.as_str()), Some("24e1"));
     }
 
     /// A CVDR (local-regulation) law that exercises the writer-only projection
