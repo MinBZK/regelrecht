@@ -360,9 +360,11 @@ fn build_convert_prompt(input_file: &Path, output_path: &Path) -> String {
          The document is the file `{input}` in your current working directory.\n\n\
          Do the following:\n\
          1. Inspect `{input}` and determine its format (for example PDF or Word).\n\
-         2. Decide on and carry out the best way to convert it to Markdown. You may use \
-            any command-line tool you consider suitable — and install one if needed \
-            (for example via `pip install --user`) — or read the document yourself and \
+         2. Decide on and carry out the best way to convert it to Markdown. The tools \
+            `pandoc` (Word/HTML/… → Markdown, e.g. `pandoc {input} -t gfm --wrap=none -o {output}`) \
+            and `pdftotext` (PDF → text) are already installed — prefer them. Do NOT rely on \
+            network access: this environment has no internet egress, so do not try to install \
+            packages (e.g. via `pip`). If no tool fits, read the document yourself and \
             transcribe it. Choose whatever yields the most faithful result.\n\
          3. Produce clean, well-structured GitHub-flavored Markdown that preserves the \
             document's headings, lists, tables and paragraph structure. Do NOT summarize, \

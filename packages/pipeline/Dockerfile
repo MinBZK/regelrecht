@@ -98,7 +98,13 @@ ENTRYPOINT ["/sbin/tini", "--", "entrypoint.sh"]
 # which orphans its child processes — without an init those accumulate against
 # the container's low pids limit and eventually cause fork()/EAGAIN failures.
 FROM runtime-base AS enrich-worker
-RUN apk add --no-cache git nodejs npm tini
+# `pandoc-cli` (docx/html/…) and `poppler-utils` (pdftotext) give the
+# document-convert agent real, pre-installed converters. Without them the agent's
+# only route on this network-restricted Alpine image is to install a tool at
+# runtime (e.g. `pip install pypandoc-binary`) — but there is no pip/python here
+# and egress is locked down, so it flails and produces no output. Baking the
+# tools in makes docx/PDF conversion deterministic and needs no runtime egress.
+RUN apk add --no-cache git nodejs npm tini pandoc-cli poppler-utils
 
 # Install opencode and claude CLI globally (pinned versions for reproducibility)
 RUN npm install -g --ignore-scripts opencode-ai@1.2.25 @anthropic-ai/claude-code@2.1.74 && \
