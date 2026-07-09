@@ -1,13 +1,15 @@
 //! Document-convert jobs: turn an uploaded PDF/Word document into a clean
 //! markdown werkdocument.
 //!
-//! The heavy lifting is done by the same LLM agent subprocess that enrich uses
-//! (see [`crate::enrich::run_llm_subprocess`]); the agent decides for itself how
-//! to convert the document (pick/install a tool, or read it directly). This
-//! module owns the payload type, the transient upload storage helpers, the
-//! status-list query for the editor, and the conversion orchestration. The
-//! worker (see `worker.rs`) drives it and writes the produced markdown back to
-//! the traject's git corpus.
+//! Known formats (docx/office via `pandoc`, PDF via `pdftotext`) are converted
+//! deterministically with a real tool — reliable, offline, and keeping the
+//! untrusted document away from the Bash-enabled LLM. Only when no tool fits
+//! does it fall back to the LLM agent subprocess that enrich uses (see
+//! [`crate::enrich::run_llm_subprocess`]), which decides for itself how to
+//! convert (pick a tool, or read it directly). This module owns the payload
+//! type, the transient upload storage helpers, the status-list query for the
+//! editor, and the conversion orchestration. The worker (see `worker.rs`) drives
+//! it and writes the produced markdown back to the traject's git corpus.
 
 use std::path::{Path, PathBuf};
 
@@ -418,6 +420,54 @@ pub async fn execute_document_convert(
     result
 }
 
+/// Try to convert `input_file` to markdown at `output_path` with a deterministic
+/// command-line tool, chosen by extension. Returns `Some(markdown)` on success,
+/// or `None` when the format is not handled, the tool is absent, it exits
+/// non-zero, or it produces empty output — every `None` case falls through to the
+/// agentic converter, so a missing tool or an odd file never hard-fails here.
+///
+/// `pandoc` handles the office/markup formats; `pdftotext` (poppler) handles
+/// PDF. Both are baked into the enrich-worker image.
+async fn try_deterministic_convert(
+    input_file: &Path,
+    ext: &str,
+    output_path: &Path,
+) -> Option<String> {
+    let mut cmd = match ext {
+        // pandoc reads these natively and emits GitHub-flavored Markdown.
+        "docx" | "odt" | "rtf" | "html" | "htm" | "epub" | "fb2" => {
+            let mut c = tokio::process::Command::new("pandoc");
+            c.arg(input_file)
+                .arg("-t")
+                .arg("gfm")
+                .arg("--wrap=none")
+                .arg("-o")
+                .arg(output_path);
+            c
+        }
+        // pandoc cannot read PDF; poppler's pdftotext extracts the text layer.
+        "pdf" => {
+            let mut c = tokio::process::Command::new("pdftotext");
+            c.arg("-layout").arg(input_file).arg(output_path);
+            c
+        }
+        _ => return None,
+    };
+
+    match cmd.status().await {
+        Ok(status) if status.success() => {
+            let markdown = tokio::fs::read_to_string(output_path).await.ok()?;
+            if markdown.trim().is_empty() {
+                None
+            } else {
+                Some(markdown)
+            }
+        }
+        // Tool missing (spawn error) or a non-zero exit → let the agent try.
+        _ => None,
+    }
+}
+
 /// The pure filesystem half of the conversion, split out so it can be unit-tested
 /// with a fake converter and a synthetic upload (no DB, no LLM).
 async fn convert_in_dir(
@@ -436,6 +486,16 @@ async fn convert_in_dir(
         .and_then(|s| s.to_str())
         .unwrap_or("output.md");
     let output_path: PathBuf = work_dir.join(output_name);
+
+    // Deterministic-first: for known formats convert with a real tool
+    // (`pandoc`/`pdftotext`) instead of the agent. This is reliable (the agent
+    // proved flaky at reliably writing the output file), needs no network, and —
+    // crucially — keeps the untrusted document away from the Bash-enabled LLM,
+    // shrinking the prompt-injection surface. The agentic path stays as a
+    // fallback for formats the tools don't handle (or when they are absent).
+    if let Some(markdown) = try_deterministic_convert(&input_file, &ext, &output_path).await {
+        return Ok(markdown);
+    }
 
     converter
         .convert(&input_file, work_dir, &output_path, config)
@@ -539,10 +599,12 @@ mod tests {
     #[tokio::test]
     async fn convert_in_dir_returns_produced_markdown() {
         let dir = tempfile::tempdir().unwrap();
+        // A `.bin` extension no deterministic tool handles, so the agentic
+        // fallback (the FakeConverter) runs and we test that orchestration.
         let upload = Upload {
-            filename: "report.pdf".to_string(),
-            content_type: "application/pdf".to_string(),
-            bytes: b"%PDF-1.4 fake".to_vec(),
+            filename: "report.bin".to_string(),
+            content_type: "application/octet-stream".to_string(),
+            bytes: b"raw bytes".to_vec(),
         };
         let converter = FakeConverter {
             markdown: "# Report\n\nBody.\n".to_string(),
@@ -566,8 +628,8 @@ mod tests {
     async fn convert_in_dir_errors_on_empty_output() {
         let dir = tempfile::tempdir().unwrap();
         let upload = Upload {
-            filename: "report.pdf".to_string(),
-            content_type: "application/pdf".to_string(),
+            filename: "report.bin".to_string(),
+            content_type: "application/octet-stream".to_string(),
             bytes: b"x".to_vec(),
         };
         let converter = FakeConverter {
@@ -586,5 +648,18 @@ mod tests {
         .await
         .unwrap_err();
         assert!(err.to_string().contains("empty markdown"));
+    }
+
+    #[tokio::test]
+    async fn deterministic_convert_returns_none_for_unhandled_format() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("input.bin");
+        tokio::fs::write(&input, b"data").await.unwrap();
+        let output = dir.path().join("out.md");
+        // Unknown extension → no tool is even spawned → None (agentic fallback).
+        assert!(try_deterministic_convert(&input, "bin", &output)
+            .await
+            .is_none());
+        assert!(!output.exists());
     }
 }
