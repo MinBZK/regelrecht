@@ -89,6 +89,7 @@ async fn create_traject(state: &AppState, owner: &AccountRecord, name: &str) -> 
     let (status, Json(summary)) = trajects::create(
         State(state.clone()),
         Extension(owner.clone()),
+        axum::http::HeaderMap::new(),
         Json(create_req(name)),
     )
     .await
@@ -134,6 +135,7 @@ async fn create_inserts_traject_with_creator_as_owner_and_writable_own_source() 
     let (status, Json(summary)) = trajects::create(
         State(state.clone()),
         Extension(alice.clone()),
+        axum::http::HeaderMap::new(),
         Json(create_req("Tarief")),
     )
     .await
@@ -179,9 +181,14 @@ async fn create_rejects_empty_name() {
 
     let mut req = create_req("");
     req.name = "   ".to_string();
-    let (status, _msg) = trajects::create(State(state), Extension(alice), Json(req))
-        .await
-        .unwrap_err();
+    let (status, _msg) = trajects::create(
+        State(state),
+        Extension(alice),
+        axum::http::HeaderMap::new(),
+        Json(req),
+    )
+    .await
+    .unwrap_err();
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 

@@ -23,7 +23,6 @@ mod crypto;
 mod favorites;
 mod feature_flags;
 mod github_oauth;
-mod github_tokens;
 mod harvest_proxy;
 mod middleware;
 mod state;
@@ -467,9 +466,10 @@ async fn main() {
         ));
 
     // GitHub user-OAuth link flow (spike). Requires an authenticated editor
-    // session with a resolved account (to key the stored token), so it sits
-    // behind the same account_middleware + writer-role gate as traject writes.
-    // When the feature is unconfigured the handlers themselves return 501.
+    // session with a resolved account (the sealed token cookie is bound to
+    // it), so it sits behind the same account_middleware + writer-role gate as
+    // traject writes. When the feature is unconfigured the handlers themselves
+    // return 501.
     let github_oauth_routes = github_oauth::github_oauth_routes()
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
@@ -838,33 +838,10 @@ fn resolve_harvest_admin_url(hostname: Option<&str>, env_url: Option<String>) ->
         .or(env_url)
 }
 
-/// True when `base_url` is an http (not https) origin pointing at the local
-/// machine. Used to drop the session cookie's `Secure` flag for local SSO dev
-/// (`just editor-sso` over http://localhost) so Safari — which, unlike Chrome
-/// and Firefox, refuses Secure cookies over http://localhost — completes the
-/// OIDC handshake. Production always serves over an https BASE_URL, so this is
-/// false there and cookies stay Secure. A missing or unparseable BASE_URL is
-/// treated as non-local (Secure stays on) — the safe default.
-///
-/// Parses with `url::Url` (the same crate that validates `BASE_URL` at startup)
-/// so the scheme/host extraction matches WHATWG rules: the host is exact (a
-/// look-alike like `http://localhost.attacker.example` or userinfo like
-/// `http://localhost@evil.com` resolves to a non-loopback host and is rejected)
-/// and IPv6 loopback is handled via the typed `Host` enum.
-fn is_http_localhost(base_url: Option<&str>) -> bool {
-    let Some(url) = base_url.and_then(|u| url::Url::parse(u).ok()) else {
-        return false;
-    };
-    if url.scheme() != "http" {
-        return false;
-    }
-    matches!(
-        url.host(),
-        Some(url::Host::Domain("localhost"))
-            | Some(url::Host::Ipv4(std::net::Ipv4Addr::LOCALHOST))
-            | Some(url::Host::Ipv6(std::net::Ipv6Addr::LOCALHOST))
-    )
-}
+// `is_http_localhost` (drop the cookie `Secure` flag only for http-localhost
+// local dev) lives in `github_oauth` — the token cookie there and the session
+// cookie here must make the same call. Its exhaustive tests stay below.
+use github_oauth::is_http_localhost;
 
 #[cfg(test)]
 mod pipeline_api_url_tests {

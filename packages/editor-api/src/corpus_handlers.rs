@@ -1797,7 +1797,7 @@ pub async fn save_scenario(
     use axum::response::IntoResponse;
     validate_scenario_filename(&filename)?;
     let author = Some(require_editor_user(&session).await?);
-    let token_override = github_oauth::user_write_token(&state, account.id).await?;
+    let token_override = github_oauth::user_write_token(&state, account.id, &headers)?;
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let write = resolve_traject_law_write(&traject, &law_id).await?;
@@ -1919,10 +1919,11 @@ pub async fn save_annotations(
     Extension(account): Extension<AccountRecord>,
     session: Session,
     Path((traject_ref, law_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
     body: String,
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
     let author = Some(require_editor_user(&session).await?);
-    let token_override = github_oauth::user_write_token(&state, account.id).await?;
+    let token_override = github_oauth::user_write_token(&state, account.id, &headers)?;
 
     // Body is a JSON array of new notes. Parse + bound it before touching
     // the backend.
@@ -2159,7 +2160,7 @@ pub async fn save_law(
 ) -> Result<axum::response::Response, (StatusCode, String)> {
     use axum::response::IntoResponse;
     let author = Some(require_editor_user(&session).await?);
-    let token_override = github_oauth::user_write_token(&state, account.id).await?;
+    let token_override = github_oauth::user_write_token(&state, account.id, &headers)?;
 
     // Validation:
     //   1. Body must parse as well-formed YAML. extract_law_id below is a
@@ -2271,10 +2272,11 @@ pub async fn delete_scenario(
     Extension(account): Extension<AccountRecord>,
     session: Session,
     Path((traject_ref, law_id, filename)): Path<(String, String, String)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
     validate_scenario_filename(&filename)?;
     let author = Some(require_editor_user(&session).await?);
-    let token_override = github_oauth::user_write_token(&state, account.id).await?;
+    let token_override = github_oauth::user_write_token(&state, account.id, &headers)?;
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let write = resolve_traject_law_write(&traject, &law_id).await?;
@@ -2989,7 +2991,7 @@ pub async fn save_traject_document(
     use axum::response::IntoResponse;
     validate_document_path(&doc_path)?;
     let author = Some(require_editor_user(&session).await?);
-    let token_override = github_oauth::user_write_token(&state, account.id).await?;
+    let token_override = github_oauth::user_write_token(&state, account.id, &headers)?;
 
     // The body is always text in fase 1. A *missing* Content-Type is
     // allowed because browsers occasionally omit it on
@@ -3075,7 +3077,7 @@ pub async fn delete_traject_document(
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
     validate_document_path(&doc_path)?;
     let author = Some(require_editor_user(&session).await?);
-    let token_override = github_oauth::user_write_token(&state, account.id).await?;
+    let token_override = github_oauth::user_write_token(&state, account.id, &headers)?;
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let backend = resolve_traject_documents_writer(&traject).await?;
@@ -3280,6 +3282,7 @@ mod tests {
             axum::extract::Extension<crate::accounts::AccountRecord>,
             Session,
             axum::extract::Path<(String, String)>,
+            axum::http::HeaderMap,
             String,
         ) -> _ = save_annotations;
         let _: fn(
@@ -3296,6 +3299,7 @@ mod tests {
             axum::extract::Extension<crate::accounts::AccountRecord>,
             Session,
             axum::extract::Path<(String, String, String)>,
+            axum::http::HeaderMap,
         ) -> _ = delete_scenario;
     }
 

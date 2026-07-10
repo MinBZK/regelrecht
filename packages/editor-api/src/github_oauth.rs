@@ -9,9 +9,9 @@
 //!
 //! Endpoints (authenticated editor session, except the public relay):
 //!   * `GET  /auth/github/login`      → redirect to GitHub's consent screen
-//!   * `GET  /auth/github/callback`   → exchange code, store the token, bounce back
+//!   * `GET  /auth/github/callback`   → exchange code, seal the token into a cookie, bounce back
 //!   * `GET  /auth/github/status`     → `{ connected, github_login, scopes, expired }`
-//!   * `POST /auth/github/disconnect` → revoke + delete the stored token
+//!   * `POST /auth/github/disconnect` → revoke at GitHub + clear the cookie
 //!   * `GET  /auth/github/relay`      → **public** forwarder (relay mode)
 //!
 //! ## One OAuth App for every preview (relay mode)
@@ -24,16 +24,28 @@
 //! that deployment's own `/callback` (validated against an allowlist so it can't
 //! become an open redirect). One App, one secret, every preview + production.
 //!
-//! The token itself is sealed at rest (see [`crate::crypto`]) and threaded
-//! into the corpus write path via `WriteContext::token_override`.
+//! ## No token at rest — it lives in the browser
+//!
+//! The editor deliberately stores **no** GitHub credential server-side (no DB
+//! row, no session-store entry — the tower-sessions store is Postgres-backed,
+//! so "in the session" would still mean "in the database"). Instead the
+//! callback seals the token with [`crate::crypto`] into an HttpOnly,
+//! session-scoped browser cookie, bound to the editor account that linked it.
+//! Every write request carries the cookie; the server opens it transiently and
+//! threads the token into the corpus write path via
+//! `WriteContext::token_override`. Disconnect = revoke at GitHub + clear the
+//! cookie. Consequences: linking is per browser (and gone when the browser
+//! session ends), and the token is only available *during a request* — a
+//! background job can never write as the user.
 
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 
 use axum::extract::{Extension, Query, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Json, Redirect, Response};
 use axum::routing::{get, post};
 use axum::Router;
@@ -44,7 +56,6 @@ use uuid::Uuid;
 
 use crate::accounts::AccountRecord;
 use crate::crypto::TokenCipher;
-use crate::github_tokens;
 use crate::state::AppState;
 
 const SESSION_KEY_CSRF: &str = "github_oauth_csrf";
@@ -67,7 +78,7 @@ pub struct GithubOAuth {
     pub client_id: String,
     client_secret: String,
     pub scopes: String,
-    /// Cipher for sealing/opening stored tokens.
+    /// Cipher for sealing/opening the browser token cookie.
     pub cipher: Arc<TokenCipher>,
     /// Master switch for routing traject writes through the acting user's own
     /// token ("editor is not in the middle" mode).
@@ -240,6 +251,153 @@ impl GithubOAuth {
             None => format!("{origin}/auth/github/callback"),
         }
     }
+}
+
+// --- Sealed token cookie -----------------------------------------------------
+//
+// The user's GitHub token is never persisted server-side. It lives in this
+// HttpOnly, session-scoped cookie, sealed (encrypted + authenticated) with the
+// server-held `GITHUB_TOKEN_ENC_KEY` so the browser carries an opaque blob it
+// can neither read nor forge, and a leaked cookie value is useless without the
+// server key.
+
+/// Cookie holding the sealed token. Not `__Host-` prefixed because local http
+/// dev needs the non-`Secure` variant (see [`is_http_localhost`]).
+const TOKEN_COOKIE: &str = "github_user_token";
+
+/// Plaintext of the sealed cookie: the token plus the metadata `status` and
+/// the write path need. Bound to the editor account that linked it, so a
+/// cookie replayed under another user's editor session reads as "not linked".
+#[derive(Serialize, Deserialize)]
+struct UserTokenCookie {
+    /// Editor account id (`Uuid` string form) the token was linked under.
+    account: String,
+    /// The GitHub access token.
+    access_token: String,
+    /// GitHub login (handle) — shown in the UI so the user can confirm which
+    /// account is linked, never used for authorization.
+    github_login: String,
+    /// Space-separated granted scopes, as reported by the token endpoint.
+    scopes: String,
+    /// Absolute expiry (unix seconds) when the provider reported one. Classic
+    /// OAuth App `repo` tokens never expire, so usually `None`.
+    expires_at: Option<u64>,
+}
+
+impl UserTokenCookie {
+    fn expired(&self) -> bool {
+        self.expires_at.is_some_and(|e| now_unix() >= e)
+    }
+}
+
+fn now_unix() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// Seal a token payload into the base64url cookie value.
+fn seal_token_cookie(oauth: &GithubOAuth, payload: &UserTokenCookie) -> Result<String, String> {
+    let json = serde_json::to_string(payload)
+        .map_err(|e| format!("failed to serialize token cookie: {e}"))?;
+    Ok(URL_SAFE_NO_PAD.encode(oauth.cipher.encrypt(&json)?))
+}
+
+/// Read and open the sealed token cookie for `account_id`. Returns `None` on
+/// *any* failure — an absent, undecodable, tampered, wrong-key or
+/// foreign-account cookie all simply mean "not linked". The account check is a
+/// plain compare: both sides are server-derived (session account vs sealed
+/// payload), not attacker-supplied secrets, so no constant-time is needed.
+fn open_token_cookie(
+    oauth: &GithubOAuth,
+    headers: &HeaderMap,
+    account_id: Uuid,
+) -> Option<UserTokenCookie> {
+    let value = cookie_value(headers, TOKEN_COOKIE)?;
+    let blob = URL_SAFE_NO_PAD.decode(value.as_bytes()).ok()?;
+    let json = oauth.cipher.decrypt(&blob).ok()?;
+    let payload: UserTokenCookie = serde_json::from_str(&json).ok()?;
+    if payload.account != account_id.to_string() {
+        tracing::warn!("github token cookie is bound to a different account — ignoring");
+        return None;
+    }
+    Some(payload)
+}
+
+/// Extract a cookie value from the request's `Cookie` header(s).
+fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
+    for header in headers.get_all(axum::http::header::COOKIE) {
+        let Ok(s) = header.to_str() else { continue };
+        for pair in s.split(';') {
+            if let Some(value) = pair
+                .trim()
+                .strip_prefix(name)
+                .and_then(|v| v.strip_prefix('='))
+            {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// `Set-Cookie` storing the sealed token. Session-scoped on purpose (no
+/// `Max-Age`/`Expires`): the link lives exactly as long as the browser
+/// session, and nothing outlives it anywhere.
+fn token_cookie_header(sealed: &str, secure: bool) -> String {
+    let secure = if secure { "; Secure" } else { "" };
+    format!("{TOKEN_COOKIE}={sealed}; Path=/; HttpOnly; SameSite=Lax{secure}")
+}
+
+/// `Set-Cookie` deleting the token cookie (disconnect).
+fn clear_token_cookie_header(secure: bool) -> String {
+    let secure = if secure { "; Secure" } else { "" };
+    format!("{TOKEN_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0{secure}")
+}
+
+/// Append a `Set-Cookie` header to a response.
+fn append_set_cookie(response: &mut Response, header: &str) {
+    match HeaderValue::from_str(header) {
+        Ok(value) => {
+            response
+                .headers_mut()
+                .append(axum::http::header::SET_COOKIE, value);
+        }
+        // Unreachable in practice (the value is base64url + fixed attributes),
+        // but never fail the response over a cookie.
+        Err(e) => tracing::error!(error = %e, "failed to build Set-Cookie header"),
+    }
+}
+
+/// True when `base_url` is an http (not https) origin pointing at the local
+/// machine. Used to drop the `Secure` flag on the session cookie (`main.rs`)
+/// and the token cookie (here) for local SSO dev (`just editor-sso` over
+/// http://localhost) so Safari — which, unlike Chrome and Firefox, refuses
+/// Secure cookies over http://localhost — completes the OIDC handshake.
+/// Production always serves over an https BASE_URL, so this is false there and
+/// cookies stay Secure. A missing or unparseable BASE_URL is treated as
+/// non-local (Secure stays on) — the safe default.
+///
+/// Parses with `url::Url` (the same crate that validates `BASE_URL` at startup)
+/// so the scheme/host extraction matches WHATWG rules: the host is exact (a
+/// look-alike like `http://localhost.attacker.example` or userinfo like
+/// `http://localhost@evil.com` resolves to a non-loopback host and is rejected)
+/// and IPv6 loopback is handled via the typed `Host` enum. Exhaustive tests
+/// live in `main.rs` (`http_localhost_tests`).
+pub fn is_http_localhost(base_url: Option<&str>) -> bool {
+    let Some(url) = base_url.and_then(|u| url::Url::parse(u).ok()) else {
+        return false;
+    };
+    if url.scheme() != "http" {
+        return false;
+    }
+    matches!(
+        url.host(),
+        Some(url::Host::Domain("localhost"))
+            | Some(url::Host::Ipv4(std::net::Ipv4Addr::LOCALHOST))
+            | Some(url::Host::Ipv6(std::net::Ipv6Addr::LOCALHOST))
+    )
 }
 
 /// Derive the externally-visible base URL, preferring configured `BASE_URL`
@@ -466,28 +624,32 @@ pub async fn callback(
         }
     };
 
-    let Some(pool) = state.pool.as_ref() else {
-        tracing::error!("github callback: no DB pool");
-        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    // Seal the token into the browser cookie — the editor persists nothing
+    // server-side. Bound to the acting editor account so the cookie is inert
+    // under any other account's session.
+    let payload = UserTokenCookie {
+        account: account.id.to_string(),
+        access_token: token.access_token,
+        github_login: login.clone(),
+        scopes: token.scope,
+        expires_at: token
+            .expires_in
+            .map(|secs| now_unix().saturating_add(secs.max(0) as u64)),
     };
-    if let Err(e) = github_tokens::upsert(
-        pool,
-        &oauth.cipher,
-        account.id,
-        &token.access_token,
-        token.refresh_token.as_deref(),
-        token.expires_in,
-        &login,
-        &token.scope,
-    )
-    .await
-    {
-        tracing::error!(error = %e, "failed to persist GitHub token");
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
-    }
+    let sealed = match seal_token_cookie(oauth, &payload) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!(error = %e, "failed to seal GitHub token cookie");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
 
     tracing::info!(github_login = %login, "linked GitHub account for editor user");
-    Ok(Redirect::temporary(&with_marker(&base_url, &return_path, "connected")).into_response())
+    let mut response =
+        Redirect::temporary(&with_marker(&base_url, &return_path, "connected")).into_response();
+    let secure = !is_http_localhost(Some(&base_url));
+    append_set_cookie(&mut response, &token_cookie_header(&sealed, secure));
+    Ok(response)
 }
 
 /// `GET /auth/github/relay` — **public** forwarder for relay mode.
@@ -556,10 +718,12 @@ pub struct GithubStatus {
     pub required: bool,
 }
 
-/// `GET /auth/github/status` — non-secret link state for the frontend.
+/// `GET /auth/github/status` — non-secret link state for the frontend, read
+/// from the sealed cookie on this very request (nothing is stored elsewhere).
 pub async fn status(
     State(state): State<AppState>,
     Extension(account): Extension<AccountRecord>,
+    headers: HeaderMap,
 ) -> Result<Json<GithubStatus>, StatusCode> {
     let Some(oauth) = state.config.github_oauth.as_ref() else {
         return Ok(Json(GithubStatus {
@@ -571,22 +735,13 @@ pub async fn status(
             required: false,
         }));
     };
-    let Some(pool) = state.pool.as_ref() else {
-        return Err(StatusCode::SERVICE_UNAVAILABLE);
-    };
-    let link = github_tokens::get_status(pool, account.id)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "failed to read github link status");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-    Ok(Json(match link {
-        Some(l) => GithubStatus {
+    Ok(Json(match open_token_cookie(oauth, &headers, account.id) {
+        Some(link) => GithubStatus {
             connected: true,
             configured: true,
-            github_login: Some(l.github_login),
-            scopes: Some(l.scopes),
-            expired: l.expired,
+            expired: link.expired(),
+            github_login: Some(link.github_login),
+            scopes: Some(link.scopes),
             required: oauth.require_user_token,
         },
         None => GithubStatus {
@@ -600,36 +755,37 @@ pub async fn status(
     }))
 }
 
-/// `POST /auth/github/disconnect` — best-effort revoke, then delete the row.
+/// `POST /auth/github/disconnect` — best-effort revoke at GitHub, then clear
+/// the cookie (our only copy of the token rides on this request).
 pub async fn disconnect(
     State(state): State<AppState>,
     Extension(account): Extension<AccountRecord>,
-) -> Result<StatusCode, StatusCode> {
+    headers: HeaderMap,
+) -> Result<Response, StatusCode> {
     let Some(oauth) = state.config.github_oauth.as_ref() else {
         return Err(StatusCode::NOT_IMPLEMENTED);
     };
-    let Some(pool) = state.pool.as_ref() else {
-        return Err(StatusCode::SERVICE_UNAVAILABLE);
-    };
 
-    // Best-effort: revoke at GitHub so the token dies immediately, then drop
-    // our copy. A revoke failure (e.g. token already gone) must not block the
-    // local delete — the user asked to disconnect.
-    if let Ok(Some(stored)) = github_tokens::get_token(pool, &oauth.cipher, account.id).await {
-        if let Err(e) = revoke(&state.http_client, oauth, &stored.access_token).await {
-            tracing::warn!(error = %e, "GitHub token revoke failed; deleting local copy anyway");
+    // Best-effort: revoke at GitHub so the token dies immediately. A revoke
+    // failure (e.g. token already gone) must not block the disconnect —
+    // clearing the cookie is what the user asked for.
+    if let Some(link) = open_token_cookie(oauth, &headers, account.id) {
+        if let Err(e) = revoke(&state.http_client, oauth, &link.access_token).await {
+            tracing::warn!(error = %e, "GitHub token revoke failed; clearing cookie anyway");
         }
     }
-    if let Err(e) = github_tokens::delete(pool, account.id).await {
-        tracing::error!(error = %e, "failed to delete github token");
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
-    }
-    Ok(StatusCode::NO_CONTENT)
+
+    let base_url = base_url_from_config_or_request(&state, &headers);
+    let secure = !is_http_localhost(Some(&base_url));
+    let mut response = StatusCode::NO_CONTENT.into_response();
+    append_set_cookie(&mut response, &clear_token_cookie_header(secure));
+    Ok(response)
 }
 
 // --- Write-path helper -----------------------------------------------------
 
-/// Resolve the per-user GitHub credential to attach to an editor write.
+/// Resolve the per-user GitHub credential to attach to an editor write, read
+/// from the sealed token cookie riding on this request.
 ///
 /// * `Ok(None)` — no override; the write uses the backend's configured token
 ///   (pre-spike behaviour, or the user simply hasn't linked GitHub and this
@@ -638,9 +794,10 @@ pub async fn disconnect(
 /// * `Err((428, msg))` — this deployment requires a user token but the user
 ///   hasn't linked one (or it expired); the frontend turns this into a
 ///   "connect GitHub" call to action.
-pub async fn user_write_token(
+pub fn user_write_token(
     state: &AppState,
     account_id: Uuid,
+    headers: &HeaderMap,
 ) -> Result<Option<String>, (StatusCode, String)> {
     let Some(oauth) = state.config.github_oauth.as_ref() else {
         return Ok(None);
@@ -659,58 +816,39 @@ pub async fn user_write_token(
     }
 
     // From here `require_user_token` is on, so the contract is "never silently
-    // fall back to the service token". A missing pool must therefore fail
-    // closed (503), not return `Ok(None)` — otherwise the write would go out
-    // on the backend's all-access token, the exact bypass this mode forbids.
-    // In practice `account_middleware` already requires the pool to resolve an
-    // account before any handler runs, so this is defense in depth.
-    let Some(pool) = state.pool.as_ref() else {
-        tracing::error!("user_write_token: pool absent while require_user_token is set");
-        return Err((
-            StatusCode::SERVICE_UNAVAILABLE,
-            "GitHub-tokenopslag niet beschikbaar".to_string(),
-        ));
-    };
-
-    let missing = || {
-        (
-            StatusCode::PRECONDITION_REQUIRED,
-            "Koppel je GitHub-account om in dit traject op te slaan. \
-             De wijziging wordt met jouw eigen GitHub-toegang weggeschreven."
-                .to_string(),
-        )
-    };
-
-    match github_tokens::get_token(pool, &oauth.cipher, account_id).await {
-        Ok(Some(t)) if !t.expired => {
+    // fall back to the service token": the only outcomes are the user's own
+    // token or a 428. `open_token_cookie` folds every failure mode (absent,
+    // tampered, wrong key, foreign account) into `None` = not linked, which
+    // fails closed into the 428 below.
+    match open_token_cookie(oauth, headers, account_id) {
+        Some(link) if !link.expired() => {
             tracing::debug!(
-                github_login = %t.github_login,
+                github_login = %link.github_login,
                 "authorizing traject write as the linked GitHub user"
             );
-            Ok(Some(t.access_token))
+            Ok(Some(link.access_token))
         }
-        Ok(Some(_expired)) => Err((
+        Some(_expired) => Err((
             StatusCode::PRECONDITION_REQUIRED,
             "Je GitHub-koppeling is verlopen. Koppel je account opnieuw om op te slaan."
                 .to_string(),
         )),
-        Ok(None) => Err(missing()),
-        Err(e) => {
-            tracing::error!(error = %e, "failed to load user github token for write");
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Kon GitHub-token niet laden".to_string(),
-            ))
-        }
+        None => Err((
+            StatusCode::PRECONDITION_REQUIRED,
+            "Koppel je GitHub-account om in dit traject op te slaan. \
+             De wijziging wordt met jouw eigen GitHub-toegang weggeschreven."
+                .to_string(),
+        )),
     }
 }
 
 // --- GitHub HTTP calls -----------------------------------------------------
 
-/// Minimal shape we consume from GitHub's token endpoint.
+/// Minimal shape we consume from GitHub's token endpoint. No `refresh_token`:
+/// the classic OAuth `repo` tokens this spike uses don't expire, and a refresh
+/// flow would anyway have to live in the cookie alongside the access token.
 struct ExchangedToken {
     access_token: String,
-    refresh_token: Option<String>,
     expires_in: Option<i64>,
     scope: String,
 }
@@ -718,7 +856,6 @@ struct ExchangedToken {
 #[derive(Deserialize)]
 struct TokenEndpointResponse {
     access_token: Option<String>,
-    refresh_token: Option<String>,
     expires_in: Option<i64>,
     scope: Option<String>,
     error: Option<String>,
@@ -764,7 +901,6 @@ async fn exchange_code(
         .ok_or_else(|| "token endpoint returned no access_token".to_string())?;
     Ok(ExchangedToken {
         access_token,
-        refresh_token: body.refresh_token,
         expires_in: body.expires_in,
         scope: body.scope.unwrap_or_default(),
     })
@@ -892,6 +1028,82 @@ mod tests {
         }
     }
 
+    fn headers_with_cookie(value: &str) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            axum::http::header::COOKIE,
+            HeaderValue::from_str(&format!("other=x; {TOKEN_COOKIE}={value}; theme=dark"))
+                .expect("valid header"),
+        );
+        headers
+    }
+
+    fn test_payload(account: Uuid) -> UserTokenCookie {
+        UserTokenCookie {
+            account: account.to_string(),
+            access_token: "gho_exampletoken".to_string(),
+            github_login: "octocat".to_string(),
+            scopes: "repo".to_string(),
+            expires_at: None,
+        }
+    }
+
+    #[test]
+    fn token_cookie_roundtrip() {
+        let oauth = test_oauth("https://gh", "https://api");
+        let account = Uuid::new_v4();
+        let sealed = seal_token_cookie(&oauth, &test_payload(account)).expect("seals");
+        // The cookie value must be opaque: no token material in the clear.
+        assert!(!sealed.contains("gho_exampletoken"));
+
+        let opened = open_token_cookie(&oauth, &headers_with_cookie(&sealed), account)
+            .expect("opens for the linking account");
+        assert_eq!(opened.access_token, "gho_exampletoken");
+        assert_eq!(opened.github_login, "octocat");
+        assert!(!opened.expired());
+    }
+
+    #[test]
+    fn token_cookie_bound_to_account() {
+        let oauth = test_oauth("https://gh", "https://api");
+        let sealed = seal_token_cookie(&oauth, &test_payload(Uuid::new_v4())).expect("seals");
+        // Same sealed cookie under a different editor account: not linked.
+        assert!(open_token_cookie(&oauth, &headers_with_cookie(&sealed), Uuid::new_v4()).is_none());
+    }
+
+    #[test]
+    fn token_cookie_rejects_garbage_and_absence() {
+        let oauth = test_oauth("https://gh", "https://api");
+        let account = Uuid::new_v4();
+        // Tampered/garbage value → not linked, never an error.
+        assert!(open_token_cookie(&oauth, &headers_with_cookie("AAAAaaaa"), account).is_none());
+        // No cookie header at all.
+        assert!(open_token_cookie(&oauth, &HeaderMap::new(), account).is_none());
+    }
+
+    #[test]
+    fn token_cookie_expiry() {
+        let mut payload = test_payload(Uuid::new_v4());
+        assert!(!payload.expired(), "no provider expiry = never expires");
+        payload.expires_at = Some(now_unix() - 10);
+        assert!(payload.expired());
+        payload.expires_at = Some(now_unix() + 3600);
+        assert!(!payload.expired());
+    }
+
+    #[test]
+    fn cookie_headers_have_expected_attributes() {
+        let set = token_cookie_header("abc", true);
+        assert!(set.contains("HttpOnly") && set.contains("Secure"));
+        assert!(
+            !set.contains("Max-Age") && !set.contains("Expires"),
+            "token cookie must be session-scoped"
+        );
+        // Local http dev: Secure dropped, mirroring the session cookie.
+        assert!(!token_cookie_header("abc", false).contains("Secure"));
+        assert!(clear_token_cookie_header(true).contains("Max-Age=0"));
+    }
+
     #[test]
     fn state_roundtrip() {
         let s = encode_state("csrf-123", "https://editor-pr9.example.rijksapps.nl");
@@ -967,7 +1179,7 @@ mod tests {
         .expect("exchange should succeed");
         assert_eq!(token.access_token, "gho_exampletoken");
         assert_eq!(token.scope, "repo,read:org");
-        assert!(token.refresh_token.is_none());
+        assert!(token.expires_in.is_none());
     }
 
     #[tokio::test]

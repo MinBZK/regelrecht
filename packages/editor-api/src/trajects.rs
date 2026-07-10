@@ -749,6 +749,7 @@ async fn resolve_writable_target(
     state: &AppState,
     req: &CreateTrajectRequest,
     account_id: Uuid,
+    headers: &axum::http::HeaderMap,
 ) -> Result<WritableTarget, (StatusCode, String)> {
     let owner = req
         .repo_owner
@@ -867,7 +868,7 @@ async fn resolve_writable_target(
             // token to a user-picked repo, a token-exfiltration vector).
             // `user_write_token` returns 428 when a linked token is required
             // but absent.
-            let token = match crate::github_oauth::user_write_token(state, account_id).await? {
+            let token = match crate::github_oauth::user_write_token(state, account_id, headers)? {
                 Some(user_token) => user_token,
                 None => {
                     let auth_file = {
@@ -1011,6 +1012,7 @@ fn repo_access_error_to_status(
 pub async fn create(
     State(state): State<AppState>,
     Extension(account): Extension<AccountRecord>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<CreateTrajectRequest>,
 ) -> Result<(StatusCode, Json<TrajectSummary>), (StatusCode, String)> {
     let name = req.name.trim();
@@ -1022,7 +1024,7 @@ pub async fn create(
     // to talk to GitHub (which can fail with a helpful 4xx); we do that
     // *before* opening the DB transaction so a network blip doesn't leak a
     // half-rolled row.
-    let target = resolve_writable_target(&state, &req, account.id).await?;
+    let target = resolve_writable_target(&state, &req, account.id, &headers).await?;
 
     let pool = get_pool_msg(&state)?;
     let mut tx = pool.begin().await.map_err(db_err_msg("begin tx"))?;

@@ -1,11 +1,14 @@
-//! Authenticated encryption for secrets at rest.
+//! Authenticated encryption for secrets that leave the server.
 //!
-//! Per-user GitHub OAuth tokens are stored in Postgres, and ZAD offers no
-//! keyvault — so the column must never hold a plaintext credential. This
-//! module seals tokens with ChaCha20-Poly1305 (AEAD) under a single
-//! application key supplied via `GITHUB_TOKEN_ENC_KEY` (a base64-encoded
-//! 32-byte key). The stored blob is `nonce (12 bytes) || ciphertext+tag`, so
-//! each row is self-describing and a fresh random nonce is used per write.
+//! Per-user GitHub OAuth tokens are deliberately not persisted anywhere
+//! server-side; they live in a browser cookie (see [`crate::github_oauth`]).
+//! That cookie crosses the trust boundary on every request, so it must be
+//! opaque and unforgeable. This module seals it with ChaCha20-Poly1305 (AEAD)
+//! under a single application key supplied via `GITHUB_TOKEN_ENC_KEY` (a
+//! base64-encoded 32-byte key): the client can neither read the token nor
+//! craft a valid blob, and tampering fails the Poly1305 tag check. The sealed
+//! blob is `nonce (12 bytes) || ciphertext+tag`, self-describing, with a fresh
+//! random nonce per seal.
 //!
 //! This is deliberately a thin, purpose-built helper rather than a general
 //! crypto layer: one key, one algorithm, one blob format.
