@@ -25,7 +25,7 @@ use regelrecht_corpus::CorpusError;
 
 use crate::accounts::AccountRecord;
 use crate::state::{AppState, CorpusState};
-use crate::traject_corpus::{TrajectCorpus, TrajectCorpusError};
+use crate::traject_corpus::{ScenarioListEntry, TrajectCorpus, TrajectCorpusError};
 use crate::trajects::resolve_traject_ref;
 use crate::user_notes;
 
@@ -684,11 +684,33 @@ async fn list_scenarios_in_scope(
         // were never copied to the branch keep showing up (their GET
         // falls back to the seed the same way).
         ReadScope::Traject(traject) => {
+            // Per-snapshot cache: the editor requests this listing on
+            // every law open, and a rebuild costs one `list_files` per
+            // backend plus a read per scenario file — the most GitHub-
+            // round-trip-heavy read on the law-open path. Scenario
+            // save/delete invalidate the entry (read-your-writes);
+            // upstream edits converge at the next snapshot.
+            if let Some(cached) = traject.cached_scenario_list(law_id).await {
+                return Ok(Json(
+                    cached
+                        .into_iter()
+                        .map(|e| ScenarioEntry {
+                            filename: e.filename,
+                            target_law_ids: e.target_law_ids,
+                        })
+                        .collect(),
+                ));
+            }
             let law = traject_law(traject, law_id)?;
             let scenarios_dir = match law_relative_dir(law) {
                 Ok(dir) => dir.join("scenarios"),
                 Err(_) => return Ok(Json(Vec::new())),
             };
+            // Captured before any backend I/O: a scenario save/delete
+            // landing while this listing is computed bumps the write
+            // generation and the store below is dropped, so the (older)
+            // listing can never mask the mutation.
+            let gen_before = traject.sidecar_write_generation();
             let write_source_id = traject_write_source_id(traject, law);
             let mut names = std::collections::BTreeSet::new();
             // Lock order: write target first, released before the seed
@@ -710,40 +732,56 @@ async fn list_scenarios_in_scope(
             }
             // Content goes through the same write-target-with-seed-fallback
             // per-file routing as the scenario GET, so the extracted targets
-            // reflect exactly the bytes the editor serves. Cost: one
-            // sequential read per file in this law's `scenarios/` dir —
-            // O(folder), typically 1-3 files, NOT the O(corpus) scan that
-            // hung federated trajects before (#762). Revisit with a batch
-            // read or index only if per-law scenario counts grow.
+            // reflect exactly the bytes the editor serves — and lands in the
+            // same per-file cache, so a subsequent scenario GET is free.
+            // Cost on a cache miss: one sequential read per file in this
+            // law's `scenarios/` dir — O(folder), typically 1-3 files, NOT
+            // the O(corpus) scan that hung federated trajects before
+            // (#762). Revisit with a batch read or index only if per-law
+            // scenario counts grow.
             let mut out = Vec::with_capacity(names.len());
+            let mut complete = true;
             for filename in names {
                 let relative_path = scenarios_dir.join(&filename);
-                let target_law_ids = match read_traject_file_via_write_target(
-                    traject,
-                    law,
-                    &relative_path,
-                    "scenario",
-                )
-                .await
-                {
-                    Ok(Some(content)) => extract_target_law_ids(&content),
-                    Ok(None) => Vec::new(),
-                    Err((_, err)) => {
-                        tracing::warn!(
-                            law_id = %law_id,
-                            file = %filename,
-                            error = %err,
-                            "scenario read failed during listing"
-                        );
-                        Vec::new()
-                    }
-                };
+                let target_law_ids =
+                    match read_traject_scenario_cached(traject, law, &relative_path).await {
+                        Ok(Some(content)) => extract_target_law_ids(&content),
+                        Ok(None) => Vec::new(),
+                        Err((_, err)) => {
+                            tracing::warn!(
+                                law_id = %law_id,
+                                file = %filename,
+                                error = %err,
+                                "scenario read failed during listing"
+                            );
+                            complete = false;
+                            Vec::new()
+                        }
+                    };
                 out.push(ScenarioEntry {
                     filename,
                     target_law_ids,
                 });
             }
-            // BTreeSet iteration is already sorted by filename.
+            // BTreeSet iteration is already sorted by filename. Only a
+            // fully-read listing is cached: a transient per-file read
+            // failure keeps its degraded (empty-targets) entry out of the
+            // snapshot cache, so the next request retries instead of
+            // serving the degraded listing for the whole window.
+            if complete {
+                traject
+                    .store_scenario_list_read(
+                        law_id.to_string(),
+                        out.iter()
+                            .map(|e| ScenarioListEntry {
+                                filename: e.filename.clone(),
+                                target_law_ids: e.target_law_ids.clone(),
+                            })
+                            .collect(),
+                        gen_before,
+                    )
+                    .await;
+            }
             out
         }
         // Global: no write target exists; keep the read-only resolution.
@@ -822,11 +860,12 @@ async fn get_scenario_in_scope(
         // fallback routing the save's `If-Match` check uses, so the GET
         // serves (and ETags) exactly the bytes a subsequent save is
         // checked against. See `read_traject_file_via_write_target` for
-        // the 412-loop this prevents.
+        // the 412-loop this prevents. Cached per snapshot; saves keep the
+        // entry coherent (see `read_traject_scenario_cached`).
         ReadScope::Traject(traject) => {
             let law = traject_law(traject, law_id)?;
             let relative_path = scenario_relative_path(law, filename)?;
-            read_traject_file_via_write_target(traject, law, &relative_path, "scenario").await?
+            read_traject_scenario_cached(traject, law, &relative_path).await?
         }
         // Global: no write target exists; keep the read-only resolution.
         ReadScope::Global(_) => {
@@ -1021,6 +1060,51 @@ async fn get_annotations_in_scope(
     scope: &ReadScope,
     law_id: &str,
 ) -> Result<YamlResponse, (StatusCode, String)> {
+    let content = read_annotations_in_scope(scope, law_id)
+        .await?
+        .ok_or((StatusCode::NOT_FOUND, "Annotations not found".to_string()))?;
+
+    Ok((
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "text/yaml; charset=utf-8")],
+        content,
+    ))
+}
+
+/// Cache key for a law's annotations sidecar in
+/// [`TrajectCorpus::cached_sidecar`]. Prefixed so it can never collide
+/// with the scenario-file keys ([`scenario_cache_key`]) sharing the map.
+fn annotations_cache_key(law_id: &str) -> String {
+    format!("ann:{law_id}")
+}
+
+/// Read the raw annotations sidecar bytes for `law_id` within a scope.
+/// `Ok(None)` = the law exists but has no sidecar (the normal case).
+///
+/// Traject-scoped reads are cached per index snapshot — including the
+/// `None` outcome: the editor requests annotations on every law open,
+/// and rediscovering "no notes yet" would otherwise cost a full GitHub
+/// round-trip each time. `save_annotations` keeps the entry coherent
+/// within the snapshot window by storing the just-written body
+/// (read-your-writes); cross-replica edits converge at the next snapshot,
+/// like law bodies. Global (no-traject) reads stay uncached: they serve
+/// anonymous browsing against the central source, whose backend does its
+/// own ETag handling.
+async fn read_annotations_in_scope(
+    scope: &ReadScope,
+    law_id: &str,
+) -> Result<Option<String>, (StatusCode, String)> {
+    // Captured before the backend read: `store_sidecar_read` drops the
+    // store when a save bumped the generation while this (potentially
+    // slow) read was in flight, so it can never mask fresher content.
+    let mut gen_before = 0;
+    if let ReadScope::Traject(traject) = scope {
+        if let Some(cached) = traject.cached_sidecar(&annotations_cache_key(law_id)).await {
+            return Ok(cached);
+        }
+        gen_before = traject.sidecar_write_generation();
+    }
+
     let backend = resolve_annotation_read_backend(scope, law_id)?;
 
     // RFC-018 §1: keyed by law id at the source root, regardless of where
@@ -1029,25 +1113,24 @@ async fn get_annotations_in_scope(
         .join(law_id)
         .join("annotations.yaml");
 
-    let backend = backend.lock().await;
-    let content = backend
-        .read_file(&relative_path)
-        .await
-        .map_err(|e| {
+    let content = {
+        let backend = backend.lock().await;
+        backend.read_file(&relative_path).await.map_err(|e| {
             tracing::warn!(law_id = %law_id, error = %e, "get_annotations backend read failed");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to read annotations".to_string(),
             )
         })?
-        .ok_or((StatusCode::NOT_FOUND, "Annotations not found".to_string()))?;
-    drop(backend);
+    };
 
-    Ok((
-        StatusCode::OK,
-        [(axum::http::header::CONTENT_TYPE, "text/yaml; charset=utf-8")],
-        content,
-    ))
+    if let ReadScope::Traject(traject) = scope {
+        traject
+            .store_sidecar_read(annotations_cache_key(law_id), content.clone(), gen_before)
+            .await;
+    }
+
+    Ok(content)
 }
 
 // ---------------------------------------------------------------------------
@@ -1589,6 +1672,49 @@ async fn read_traject_file_via_write_target(
     read_seed_fallback(traject, law, &write_source_id, relative_path, kind).await
 }
 
+/// Cache key for one scenario file's content in
+/// [`TrajectCorpus::cached_sidecar`]. The relative path is unique across
+/// laws (it lives under the law's own directory), and the prefix keeps it
+/// disjoint from the annotations keys sharing the map.
+fn scenario_cache_key(relative_path: &std::path::Path) -> String {
+    format!("scn:{}", relative_path.display())
+}
+
+/// [`read_traject_file_via_write_target`] with a per-snapshot cache in
+/// front, for **GET-path scenario reads only** (the single-file GET and
+/// the listing's target extraction). `None` results are cached too — a
+/// seed-only law's write-target miss costs a GitHub round-trip to
+/// rediscover. Write-path preconditions (`current_content_for_write`,
+/// the `If-Match` checks) deliberately bypass this cache: they must
+/// compare against the branch as it *is*, under the write lock, not
+/// against a snapshot-aged copy.
+///
+/// Coherence: `save_scenario` stores the just-written body under this
+/// key, `delete_scenario` drops the entry (the next read may
+/// legitimately fall back to a seed copy, so a negative entry would be
+/// wrong). Cross-replica edits converge at the next snapshot, like law
+/// bodies.
+async fn read_traject_scenario_cached(
+    traject: &Arc<TrajectCorpus>,
+    law: &LoadedLaw,
+    relative_path: &std::path::Path,
+) -> Result<Option<String>, (StatusCode, String)> {
+    let key = scenario_cache_key(relative_path);
+    if let Some(cached) = traject.cached_sidecar(&key).await {
+        return Ok(cached);
+    }
+    // Generation captured before the read: a save/delete landing while
+    // the read is in flight bumps it, and the store below is then
+    // dropped so these (older) bytes can't mask the write's entry.
+    let gen_before = traject.sidecar_write_generation();
+    let content =
+        read_traject_file_via_write_target(traject, law, relative_path, "scenario").await?;
+    traject
+        .store_sidecar_read(key, content.clone(), gen_before)
+        .await;
+    Ok(content)
+}
+
 async fn resolve_traject_scenario_target(
     traject: &Arc<TrajectCorpus>,
     law_id: &str,
@@ -1689,6 +1815,15 @@ pub async fn save_scenario(
         })
         .await
         .map_err(corpus_write_error("scenario"))?;
+
+    // Keep the per-snapshot read caches coherent with the save
+    // (read-your-writes): the file's content cache gets the new body, the
+    // law's listing is dropped so the next listing picks the file up (or
+    // its changed targets) without waiting out the snapshot TTL.
+    traject
+        .store_sidecar(scenario_cache_key(&relative_path), Some(body.clone()))
+        .await;
+    traject.invalidate_scenario_list(&law_id).await;
 
     let new_etag = document_etag(&body);
     let mut response = save_response_from_traject(outcome);
@@ -1970,6 +2105,13 @@ pub async fn save_annotations(
         .await
         .map_err(corpus_write_error("annotations"))?;
 
+    // Read-your-writes for the per-snapshot annotations cache: the next
+    // GET serves the just-committed sidecar (replacing a possibly cached
+    // "no annotations yet") without a GitHub round-trip.
+    traject
+        .store_sidecar(annotations_cache_key(&law_id), Some(new_text))
+        .await;
+
     let mut response = save_response_from_traject(outcome);
     response.personal_saved = Some(personal_saved);
     Ok(Json(response))
@@ -2089,11 +2231,12 @@ pub async fn save_law(
     // the read-your-writes follow-up that used to be punted.
     traject.record_save(law_id.clone(), body).await;
 
-    // This save added (or kept) this law on the traject branch, so the
-    // cached changed-laws diff is now stale — drop it so the sidebar's
-    // "Bewerkt in dit traject" section reflects the edit on the next load
-    // instead of waiting out the TTL.
-    traject.invalidate_changed_cache().await;
+    // This save added (or kept) this law on the traject branch — fold it
+    // into the cached changed-laws diff so the sidebar's "Bewerkt in dit
+    // traject" section reflects the edit on the next load, without the
+    // synchronous GitHub Compare call a cache invalidation would cost
+    // that load.
+    traject.record_changed_law(&law_id).await;
 
     let mut response = save_response_from_traject(outcome);
     response.etag = Some(new_etag.clone());
@@ -2129,6 +2272,15 @@ pub async fn delete_scenario(
         })
         .await
         .map_err(corpus_write_error("scenario"))?;
+
+    // Drop (don't negative-cache) the file's read-cache entry: after a
+    // branch-side delete the next read may legitimately fall back to a
+    // seed copy of the scenario. The listing is dropped for the same
+    // reason.
+    traject
+        .invalidate_sidecar(&scenario_cache_key(&relative_path))
+        .await;
+    traject.invalidate_scenario_list(&law_id).await;
 
     Ok(Json(save_response_from_traject(outcome)))
 }
