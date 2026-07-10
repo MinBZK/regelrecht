@@ -224,6 +224,7 @@ pub async fn write_markdown_to_traject(
         .persist(&WriteContext {
             message,
             author: None,
+            token_override: None,
         })
         .await?;
     Ok(())
