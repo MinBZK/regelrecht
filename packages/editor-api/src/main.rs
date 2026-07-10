@@ -33,7 +33,11 @@ use state::{AppState, CorpusState};
 
 #[tokio::main]
 async fn main() {
-    regelrecht_shared::telemetry::init_subscriber("info");
+    // The editor is the service that wants the write/build-path latency
+    // breakdown, so it opts *itself* into span-close timing logs (passing
+    // `true`), while the shared subscriber leaves them off by default for
+    // the hot-path workers. `LOG_SPAN_EVENTS` still overrides at runtime.
+    regelrecht_shared::telemetry::init_subscriber_with_spans("info", true);
 
     let app_config = config::AppConfig::from_env();
 
@@ -515,6 +519,11 @@ async fn main() {
             .merge(user_notes_reader_routes)
             .merge(user_notes_writer_routes)
             .with_state(app_state)
+            // Innermost custom layer: wraps the routed handlers most
+            // tightly, so the request-scoped timing recorder is installed
+            // (and read back into the `Server-Timing` header) around the
+            // exact code that records the phases.
+            .layer(axum_middleware::from_fn(middleware::server_timing))
             // Inside the session layer (session loaded) and outside the route
             // role gates (fresh roles / a dropped auth marker are seen by the
             // gate). Innermost .layer() so session_layer wraps it.
@@ -551,6 +560,9 @@ async fn main() {
             .merge(user_notes_reader_routes)
             .merge(user_notes_writer_routes)
             .with_state(app_state)
+            // See the auth branch above: innermost layer so the timing
+            // recorder wraps the routed handlers.
+            .layer(axum_middleware::from_fn(middleware::server_timing))
             .layer(session_layer)
             .layer(axum_middleware::from_fn(middleware::security_headers))
             .layer(TraceLayer::new_for_http())
