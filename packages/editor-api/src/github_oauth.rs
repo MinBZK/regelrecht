@@ -210,7 +210,13 @@ fn encode_state(csrf: &str, origin: &str) -> String {
         c: csrf.to_string(),
         o: origin.to_string(),
     };
-    let json = serde_json::to_vec(&payload).unwrap_or_default();
+    // Serializing two plain strings can't fail in practice; if it somehow
+    // does, log it — the resulting empty `state` surfaces to the user as an
+    // opaque "state mismatch" bounce, which is undebuggable without this.
+    let json = serde_json::to_vec(&payload).unwrap_or_else(|e| {
+        tracing::error!(error = %e, "failed to serialize OAuth state parameter");
+        Vec::new()
+    });
     URL_SAFE_NO_PAD.encode(json)
 }
 
@@ -385,7 +391,7 @@ fn append_set_cookie(response: &mut Response, header: &str) {
 /// `http://localhost@evil.com` resolves to a non-loopback host and is rejected)
 /// and IPv6 loopback is handled via the typed `Host` enum. Exhaustive tests
 /// live in `main.rs` (`http_localhost_tests`).
-pub fn is_http_localhost(base_url: Option<&str>) -> bool {
+pub(crate) fn is_http_localhost(base_url: Option<&str>) -> bool {
     let Some(url) = base_url.and_then(|u| url::Url::parse(u).ok()) else {
         return false;
     };
