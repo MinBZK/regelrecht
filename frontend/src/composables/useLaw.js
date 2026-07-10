@@ -161,6 +161,10 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
         const res = await apiFetch(initialDirectUrl, lawFetchInit);
         if (!isCurrent()) return;
         const text = await res.text();
+        // Deliberately no second staleness check between `.text()` and the
+        // parse (the original had one): the content is fresh either way, so
+        // parsing + caching it mirrors `fetchLawFresh` semantics, and the
+        // final `isCurrent()` below still guards all component state.
         const parsed = yaml.load(text);
         entry = makeEntry(parsed, text, res.headers.get('ETag'));
         const resolvedId = parsed?.$id || lawParam;
