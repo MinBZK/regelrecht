@@ -3,7 +3,7 @@ import { ref, computed, reactive, watch, watchEffect, nextTick, onBeforeUnmount 
 import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
 import * as yaml from 'js-yaml';
 import { useLaw, fetchLaw } from './composables/useLaw.js';
-import { lawsListUrl } from './composables/corpusUrls.js';
+import { useCorpusLaws } from './composables/useCorpusLaws.js';
 import { useEngine } from './composables/useEngine.js';
 import { useAuth } from './composables/useAuth.js';
 import { useTrajects } from './composables/useTrajects.js';
@@ -20,7 +20,7 @@ import {
   clearEditorChrome,
 } from './composables/useAppChrome.js';
 import { SUPPORT_EMAIL } from './constants.js';
-import { apiFetch, apiFetchJson } from './lib/apiFetch.js';
+import { apiFetch } from './lib/apiFetch.js';
 import { humanizeLawId } from './lib/lawName.js';
 import { useLatest } from './lib/useLatest.js';
 import ArticleText from './components/ArticleText.vue';
@@ -369,34 +369,26 @@ const resultSheetOpen = ref(false);
 const graphSheetOpen = ref(false);
 
 // --- Corpus search (reuse the shared SearchPopover) ---
-const corpusLaws = ref([]);
 const searchPopoverRef = ref(null);
 // The toolbar search control lives in the AppShell; register our popover so
 // the shell's search button/field opens it.
 registerSearchPopover(searchPopoverRef);
 
-// Discards stale responses across rapid traject switches.
-const claimCorpusLaws = useLatest();
-
-async function loadCorpusLaws() {
-  const isCurrent = claimCorpusLaws();
-  try {
-    const list = await apiFetchJson(lawsListUrl(activeTrajectRef.value, 'limit=1000'));
-    if (!isCurrent()) return; // stale response, discard
-    corpusLaws.value = list.sort((a, b) => a.law_id.localeCompare(b.law_id));
-  } catch { /* ignore HTTP and network failures alike — search is a convenience */ }
-}
-loadCorpusLaws();
+// Shared corpus list via `useCorpusLaws` — the same per-scope cache
+// MachineReadable reads, so an editor mount fires ONE laws-list fetch
+// instead of a private duplicate GET. Traject switches re-scope
+// reactively; fetch failures degrade to the humanized law id.
+const { displayName: corpusDisplayName } = useCorpusLaws(activeTrajectRef);
 
 /**
  * Display name for the failed law on the error inline-dialog. Tries the
- * corpus index (loaded for the search popover) first; falls back to the
- * URL slug so the user always sees a concrete identifier.
+ * corpus index first; falls back to the URL slug (via `humanizeLawId`
+ * inside `displayName`) so the user always sees a concrete identifier.
  */
 const failedLawName = computed(() => {
   const id = lawId.value;
   if (!id) return '';
-  return corpusLaws.value.find(l => l.law_id === id)?.name || humanizeLawId(id);
+  return corpusDisplayName(id);
 });
 
 // True when the law fetch errored with 404 (law missing or not in active traject's corpus).
