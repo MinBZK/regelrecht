@@ -15,8 +15,8 @@
     "@astrojs/markdown-remark": "^7.2.1",
     "@astrojs/mdx": "^7.0.2",
     "@nldd/design-system": "^0.8.62",
-    "astro": "^7.0.6",
-    "astro-pagefind": "^2.0.0",
+    "astro": "^7.0.7",
+    "astro-pagefind": "^2.0.1",
     "rehype-mermaid": "^3",
     "remark-gfm": "^4"
   },
