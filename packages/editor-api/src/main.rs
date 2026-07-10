@@ -195,6 +195,10 @@ async fn main() {
     // Twice the 64 KiB note-value cap (user_notes::MAX_BODY_VALUE_BYTES):
     // room for JSON escaping/overhead while still rejecting blobs early.
     const MAX_NOTE_BODY: usize = 128 * 1024;
+    // Uploaded PDF/Word documents (converted to markdown async). Much larger
+    // than the text caps since it carries a binary; still bounded to reject
+    // oversized files early (Postgres stores the bytes transiently).
+    const MAX_UPLOAD_BODY: usize = 25 * 1024 * 1024;
 
     // Reader routes — `editor-reader` covers user-scoped reads (favorites,
     // settings) and harvest search (search is behind auth because it triggers
@@ -378,6 +382,10 @@ async fn main() {
             get(corpus_handlers::list_traject_documents),
         )
         .route(
+            "/api/trajects/{traject_ref}/corpus/documents/jobs",
+            get(corpus_handlers::list_traject_document_convert_jobs),
+        )
+        .route(
             "/api/trajects/{traject_ref}/corpus/documents/{*doc_path}",
             get(corpus_handlers::get_traject_document),
         )
@@ -434,6 +442,11 @@ async fn main() {
             "/api/trajects/{traject_ref}/corpus/laws/{law_id}",
             axum::routing::put(corpus_handlers::save_law)
                 .layer(axum::extract::DefaultBodyLimit::max(MAX_LAW_BODY)),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/documents/upload",
+            axum::routing::post(corpus_handlers::upload_traject_document)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_UPLOAD_BODY)),
         )
         .route(
             "/api/trajects/{traject_ref}/corpus/documents/{*doc_path}",

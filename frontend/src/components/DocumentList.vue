@@ -15,7 +15,7 @@ const props = defineProps({
   // List style: 'box' in the launcher sheet, 'simple' on the standalone page.
   variant: { type: String, default: 'simple' },
 });
-const emit = defineEmits(['select', 'new']);
+const emit = defineEmits(['select', 'new', 'upload']);
 
 function title(path) {
   return path ? path.replace(/\.md$/, '') : '';
@@ -53,6 +53,14 @@ function onRowClick(path) {
       <nldd-text-cell text="Nieuw document"></nldd-text-cell>
       <nldd-spacer-cell size="8"></nldd-spacer-cell>
       <nldd-icon-cell size="20"><nldd-icon :name="hrefFor ? 'open-new-page' : 'chevron-right'"></nldd-icon></nldd-icon-cell>
+    </nldd-list-item>
+    <nldd-list-item size="md" button @click="$emit('upload')">
+      <nldd-spacer-cell slot="start" size="12"></nldd-spacer-cell>
+      <nldd-icon-cell slot="start" size="20"><nldd-icon name="cloud-arrow-up"></nldd-icon></nldd-icon-cell>
+      <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+      <nldd-text-cell text="Document uploaden (PDF/Word)"></nldd-text-cell>
+      <nldd-spacer-cell size="8"></nldd-spacer-cell>
+      <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
     </nldd-list-item>
   </nldd-list>
 </template>

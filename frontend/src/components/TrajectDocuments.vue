@@ -13,22 +13,37 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { useTrajects } from '../composables/useTrajects.js';
 import { useDocumentsSheet } from '../composables/useDocumentsSheet.js';
 import { useTrajectDocuments } from '../composables/useTrajectDocuments.js';
+import { useTrajectDocumentJobs } from '../composables/useTrajectDocumentJobs.js';
+import { useDocumentUpload } from '../composables/useDocumentUpload.js';
 import DocumentList from './DocumentList.vue';
+import ConversionStatus from './ConversionStatus.vue';
 
 const { activeTrajectRef, activeTraject } = useTrajects();
 const { isOpen: browserOpen, close: closeBrowser } = useDocumentsSheet();
-const { documents, loading: listLoading, listError, fetchList } = useTrajectDocuments(activeTrajectRef);
+const { documents, loading: listLoading, listError, fetchList, uploadDocument } =
+  useTrajectDocuments(activeTrajectRef);
+
+const jobsPoller = useTrajectDocumentJobs(activeTrajectRef);
+const { jobs: conversionJobs } = jobsPoller;
 
 const browserEl = ref(null);
+// Polling is already running (started when the sheet opened), so just refresh to
+// surface the new job immediately — restarting would reset() and flash the list.
+const { fileInput, uploadError, onUpload, onFileChange } = useDocumentUpload(uploadDocument, () =>
+  jobsPoller.refresh(),
+);
 
 watch(browserOpen, async (o) => {
   await nextTick();
   if (o) {
     browserEl.value?.show();
-    // Re-fetch on open so documents created in a page tab show up here.
+    // Re-fetch on open so documents created in a page tab show up here, and
+    // poll conversion jobs while the sheet is open.
     fetchList();
+    jobsPoller.startPolling();
   } else {
     browserEl.value?.hide();
+    jobsPoller.stopPolling();
   }
 });
 
@@ -65,6 +80,13 @@ const sheetTitle = computed(() =>
         ></nldd-top-title-bar>
 
         <nldd-simple-section>
+          <nldd-inline-dialog
+            v-if="uploadError"
+            variant="alert"
+            text="Uploaden mislukt"
+            :supporting-text="uploadError"
+          ></nldd-inline-dialog>
+          <ConversionStatus :jobs="conversionJobs"></ConversionStatus>
           <nldd-activity-indicator v-if="listLoading" text="Documenten laden" show-text></nldd-activity-indicator>
           <nldd-inline-dialog
             v-else-if="listError"
@@ -78,7 +100,15 @@ const sheetTitle = computed(() =>
             :documents="documents"
             :href-for="pageUrl"
             @new="openNew"
+            @upload="onUpload"
           ></DocumentList>
+          <input
+            ref="fileInput"
+            type="file"
+            accept=".pdf,.doc,.docx"
+            hidden
+            @change="onFileChange"
+          />
         </nldd-simple-section>
       </nldd-page>
     </nldd-sheet>

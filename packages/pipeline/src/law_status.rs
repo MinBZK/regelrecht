@@ -294,6 +294,13 @@ fn fail_count_column(job_type: crate::models::JobType) -> &'static str {
     match job_type {
         crate::models::JobType::Harvest => "harvest_fail_count",
         crate::models::JobType::Enrich => "enrich_fail_count",
+        // document_convert jobs are traject-scoped, not law-scoped: they have no
+        // `law_entries` row and never go through the per-law fail-count / exhaust
+        // path (the worker fails them with plain `fail_job`). Reaching here is a
+        // programming error.
+        crate::models::JobType::DocumentConvert => {
+            unreachable!("document_convert jobs have no law-status fail counter")
+        }
     }
 }
 
@@ -359,6 +366,10 @@ where
             LawStatusValue::EnrichFailed,
             LawStatusValue::EnrichExhausted,
         ),
+        // See `fail_count_column`: document_convert is not law-scoped.
+        crate::models::JobType::DocumentConvert => {
+            unreachable!("document_convert jobs are not law-scoped and cannot be exhausted")
+        }
     };
     // Only exhaust if status is still the corresponding failed state,
     // preventing a race with admin reset.

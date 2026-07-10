@@ -32,6 +32,7 @@ export function useDocumentsManager(trajectRef) {
     saveCurrent,
     reloadCurrent,
     createDocument,
+    uploadDocument,
     deleteDocument,
     dropDraft,
   } = docs;
@@ -225,7 +226,7 @@ export function useDocumentsManager(trajectRef) {
     // derived helpers
     displayTitle,
     // actions
-    open, startNew, close,
+    open, startNew, close, uploadDocument,
     onBodyInput, onTitleInput, onViewModeChange,
     handleSave, undoChanges, overwriteServer,
     reloadCurrent, dropDraft,
