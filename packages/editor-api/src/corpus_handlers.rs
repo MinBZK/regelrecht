@@ -690,6 +690,16 @@ async fn list_scenarios_in_scope(
             // round-trip-heavy read on the law-open path. Scenario
             // save/delete invalidate the entry (read-your-writes);
             // upstream edits converge at the next snapshot.
+            // Captured before the cache probe (not merely before the
+            // backend I/O): a scenario save/delete landing while this
+            // listing is computed bumps the write generation and the
+            // store below is dropped, so the (older) listing can never
+            // mask the mutation. Capturing after the probe would leave a
+            // window — a write landing between probe and capture would
+            // hand us the post-write generation, letting a rebuild from
+            // GitHub's eventually-consistent (pre-write) directory view
+            // pass the guard.
+            let gen_before = traject.scenario_list_write_generation();
             if let Some(cached) = traject.cached_scenario_list(law_id).await {
                 return Ok(Json(
                     cached
@@ -706,11 +716,6 @@ async fn list_scenarios_in_scope(
                 Ok(dir) => dir.join("scenarios"),
                 Err(_) => return Ok(Json(Vec::new())),
             };
-            // Captured before any backend I/O: a scenario save/delete
-            // landing while this listing is computed bumps the write
-            // generation and the store below is dropped, so the (older)
-            // listing can never mask the mutation.
-            let gen_before = traject.sidecar_write_generation();
             let write_source_id = traject_write_source_id(traject, law);
             let mut names = std::collections::BTreeSet::new();
             // Lock order: write target first, released before the seed
@@ -1101,15 +1106,19 @@ async fn read_annotations_in_scope(
     scope: &ReadScope,
     law_id: &str,
 ) -> Result<Option<String>, (StatusCode, String)> {
-    // Captured before the backend read: `store_sidecar_read` drops the
+    // Captured before the cache probe: `store_sidecar_read` drops the
     // store when a save bumped the generation while this (potentially
     // slow) read was in flight, so it can never mask fresher content.
+    // Capturing after the probe would leave a window — a save landing
+    // between probe and capture would hand us the post-save generation,
+    // letting a stale backend read pass the guard and overwrite the
+    // save's fresh entry.
     let mut gen_before = 0;
     if let ReadScope::Traject(traject) = scope {
+        gen_before = traject.sidecar_write_generation();
         if let Some(cached) = traject.cached_sidecar(&annotations_cache_key(law_id)).await {
             return Ok(cached);
         }
-        gen_before = traject.sidecar_write_generation();
     }
 
     let backend = resolve_annotation_read_backend(scope, law_id)?;
@@ -1707,13 +1716,17 @@ async fn read_traject_scenario_cached(
     relative_path: &std::path::Path,
 ) -> Result<Option<String>, (StatusCode, String)> {
     let key = scenario_cache_key(relative_path);
+    // Generation captured before the cache probe: a save/delete landing
+    // while the read is in flight bumps it, and the store below is then
+    // dropped so these (older) bytes can't mask the write's entry.
+    // Capturing after the probe would leave a window — a save landing
+    // between probe and capture would hand us the post-save generation,
+    // letting a stale backend read pass the guard and overwrite the
+    // save's fresh entry.
+    let gen_before = traject.sidecar_write_generation();
     if let Some(cached) = traject.cached_sidecar(&key).await {
         return Ok(cached);
     }
-    // Generation captured before the read: a save/delete landing while
-    // the read is in flight bumps it, and the store below is then
-    // dropped so these (older) bytes can't mask the write's entry.
-    let gen_before = traject.sidecar_write_generation();
     let content =
         read_traject_file_via_write_target(traject, law, relative_path, "scenario").await?;
     traject

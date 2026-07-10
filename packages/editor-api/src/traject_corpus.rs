@@ -120,16 +120,28 @@ pub struct TrajectCorpus {
     /// GitHub-round-trip-heavy read. Per-snapshot; invalidated by
     /// scenario save/delete.
     scenario_list_cache: RwLock<BoundedCache<Vec<ScenarioListEntry>>>,
-    /// Write-generation counter guarding `sidecar_cache` +
-    /// `scenario_list_cache` against a read/write race: a GET-path
-    /// backend read can take seconds, and a save/delete that lands in
-    /// the cache meanwhile must not be overwritten when that older read
-    /// finally completes — the pre-save bytes would then serve (with a
-    /// pre-save ETag, 412-looping the saver's next If-Match) until the
-    /// snapshot swap. Write-initiated mutations bump this under the
-    /// cache write lock; read-path stores capture it *before* their
-    /// backend read and insert only while it is unchanged.
+    /// Write-generation counter guarding `sidecar_cache` against a
+    /// read/write race: a GET-path backend read can take seconds, and a
+    /// save/delete that lands in the cache meanwhile must not be
+    /// overwritten when that older read finally completes — the pre-save
+    /// bytes would then serve (with a pre-save ETag, 412-looping the
+    /// saver's next If-Match) until the snapshot swap. Write-initiated
+    /// mutations bump this under the cache write lock; read-path stores
+    /// capture it *before* their cache probe (a capture after the probe
+    /// would let a write landing in between go unnoticed — the read
+    /// would see the post-write generation and re-cache possibly stale
+    /// backend bytes over the write's entry) and insert only while it is
+    /// unchanged. One counter per cache family (see
+    /// `scenario_list_write_gen`) so a write in one family never drops a
+    /// concurrent read-path store in the other.
     sidecar_write_gen: AtomicU64,
+    /// Write-generation counter guarding `scenario_list_cache` — the
+    /// listing analogue of `sidecar_write_gen`, with the same capture-
+    /// before-probe contract. Bumped by [`Self::record_scenario_saved`] /
+    /// [`Self::record_scenario_deleted`] so an in-flight listing rebuild
+    /// discards its (possibly pre-write) result instead of masking the
+    /// mutation.
+    scenario_list_write_gen: AtomicU64,
     /// "Law → laws it `implements`" index, built on demand by
     /// [`implementors_of`]. A TTL refresh carries the previous snapshot's
     /// index over as a *stale* value (see `implements_index_stale`) and
@@ -559,13 +571,20 @@ impl TrajectCorpus {
         self.sidecar_cache.read().await.get(key).cloned()
     }
 
-    /// Current write-generation of the sidecar caches. GET-path callers
-    /// capture this *before* their backend read and pass it to
-    /// [`Self::store_sidecar_read`] / [`Self::store_scenario_list_read`],
-    /// which then drop the store when a save/delete bumped the counter in
-    /// between — see `sidecar_write_gen`.
+    /// Current write-generation of `sidecar_cache`. GET-path callers
+    /// capture this *before* their cache probe + backend read and pass it
+    /// to [`Self::store_sidecar_read`], which then drops the store when a
+    /// save/delete bumped the counter in between — see
+    /// `sidecar_write_gen`.
     pub fn sidecar_write_generation(&self) -> u64 {
         self.sidecar_write_gen.load(Ordering::SeqCst)
+    }
+
+    /// Current write-generation of `scenario_list_cache` — the listing
+    /// counterpart of [`Self::sidecar_write_generation`], consumed by
+    /// [`Self::store_scenario_list_read`].
+    pub fn scenario_list_write_generation(&self) -> u64 {
+        self.scenario_list_write_gen.load(Ordering::SeqCst)
     }
 
     /// Store a GET-path sidecar read result for `key`, unless a
@@ -617,7 +636,7 @@ impl TrajectCorpus {
         gen_before: u64,
     ) {
         let mut cache = self.scenario_list_cache.write().await;
-        if self.sidecar_write_gen.load(Ordering::SeqCst) == gen_before {
+        if self.scenario_list_write_gen.load(Ordering::SeqCst) == gen_before {
             cache.insert(law_id, entries);
         }
     }
@@ -638,7 +657,7 @@ impl TrajectCorpus {
         target_law_ids: Vec<String>,
     ) {
         let mut cache = self.scenario_list_cache.write().await;
-        self.sidecar_write_gen.fetch_add(1, Ordering::SeqCst);
+        self.scenario_list_write_gen.fetch_add(1, Ordering::SeqCst);
         if let Some(mut entries) = cache.get(law_id).cloned() {
             match entries.iter_mut().find(|e| e.filename == filename) {
                 Some(entry) => entry.target_law_ids = target_law_ids,
@@ -662,7 +681,7 @@ impl TrajectCorpus {
     /// in-flight rebuild discards its result.
     pub async fn record_scenario_deleted(&self, law_id: &str, filename: &str) {
         let mut cache = self.scenario_list_cache.write().await;
-        self.sidecar_write_gen.fetch_add(1, Ordering::SeqCst);
+        self.scenario_list_write_gen.fetch_add(1, Ordering::SeqCst);
         if let Some(mut entries) = cache.get(law_id).cloned() {
             entries.retain(|e| e.filename != filename);
             cache.insert(law_id.to_string(), entries);
@@ -1596,6 +1615,7 @@ async fn build_traject_corpus(
         sidecar_cache: RwLock::new(BoundedCache::default()),
         scenario_list_cache: RwLock::new(BoundedCache::default()),
         sidecar_write_gen: AtomicU64::new(0),
+        scenario_list_write_gen: AtomicU64::new(0),
     }))
 }
 
@@ -1683,6 +1703,7 @@ async fn next_snapshot(old: &Arc<TrajectCorpus>, source_map: SourceMap) -> Arc<T
         sidecar_cache: RwLock::new(BoundedCache::default()),
         scenario_list_cache: RwLock::new(BoundedCache::default()),
         sidecar_write_gen: AtomicU64::new(0),
+        scenario_list_write_gen: AtomicU64::new(0),
     })
 }
 
@@ -1979,6 +2000,7 @@ mod tests {
             sidecar_cache: RwLock::new(BoundedCache::default()),
             scenario_list_cache: RwLock::new(BoundedCache::default()),
             sidecar_write_gen: AtomicU64::new(0),
+            scenario_list_write_gen: AtomicU64::new(0),
         }
     }
 
@@ -2318,6 +2340,7 @@ mod tests {
             sidecar_cache: RwLock::new(BoundedCache::default()),
             scenario_list_cache: RwLock::new(BoundedCache::default()),
             sidecar_write_gen: AtomicU64::new(0),
+            scenario_list_write_gen: AtomicU64::new(0),
         })
     }
 
@@ -2829,7 +2852,7 @@ mod tests {
                     filename: "x.feature".to_string(),
                     target_law_ids: vec!["wet_a".to_string()],
                 }],
-                corpus.sidecar_write_generation(),
+                corpus.scenario_list_write_generation(),
             )
             .await;
         assert_eq!(
@@ -2931,10 +2954,10 @@ mod tests {
                     filename: "deleted.feature".to_string(),
                     target_law_ids: vec![],
                 }],
-                corpus.sidecar_write_generation(),
+                corpus.scenario_list_write_generation(),
             )
             .await;
-        let gen_before = corpus.sidecar_write_generation();
+        let gen_before = corpus.scenario_list_write_generation();
         corpus
             .record_scenario_deleted("wet_a", "deleted.feature")
             .await;
@@ -2960,6 +2983,38 @@ mod tests {
             .store_sidecar_read("ann:wet_a".to_string(), None, gen_before)
             .await;
         assert_eq!(corpus.cached_sidecar("ann:wet_a").await, Some(None));
+
+        // The two cache families have independent generations: a scenario
+        // save/delete (listing counter) must not drop a concurrent
+        // sidecar read, and an annotation save (sidecar counter) must not
+        // drop a concurrent listing rebuild.
+        let gen_before = corpus.sidecar_write_generation();
+        corpus
+            .record_scenario_saved("wet_a", "b.feature", vec![])
+            .await;
+        corpus
+            .store_sidecar_read(
+                "ann:wet_b".to_string(),
+                Some("notes: []\n".to_string()),
+                gen_before,
+            )
+            .await;
+        assert_eq!(
+            corpus.cached_sidecar("ann:wet_b").await,
+            Some(Some("notes: []\n".to_string()))
+        );
+        let gen_before = corpus.scenario_list_write_generation();
+        corpus
+            .store_sidecar("ann:wet_b".to_string(), Some("notes: [x]\n".to_string()))
+            .await;
+        corpus
+            .store_scenario_list_read("wet_b".to_string(), Vec::new(), gen_before)
+            .await;
+        assert!(corpus
+            .cached_scenario_list("wet_b")
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
