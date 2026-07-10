@@ -622,14 +622,51 @@ impl TrajectCorpus {
         }
     }
 
-    /// Drop the cached scenario listing for `law_id` after a scenario
-    /// save/delete, so the next listing reflects the mutation. Bumps the
-    /// write generation so an in-flight listing computation discards its
-    /// result.
-    pub async fn invalidate_scenario_list(&self, law_id: &str) {
+    /// Fold a just-saved scenario into the cached listing for `law_id`
+    /// (upsert, keeping the filename sort) instead of invalidating it.
+    /// Surgical on purpose: a full rebuild right after the commit would
+    /// re-list GitHub's Contents API, whose directory view is eventually
+    /// consistent — the rebuild can capture the pre-save view and cache
+    /// it for the rest of the snapshot window. No cached listing → no-op
+    /// (the next listing rebuilds and the file is on the branch). Bumps
+    /// the write generation so an in-flight rebuild discards its
+    /// (possibly pre-save) result.
+    pub async fn record_scenario_saved(
+        &self,
+        law_id: &str,
+        filename: &str,
+        target_law_ids: Vec<String>,
+    ) {
         let mut cache = self.scenario_list_cache.write().await;
         self.sidecar_write_gen.fetch_add(1, Ordering::SeqCst);
-        cache.remove(law_id);
+        if let Some(mut entries) = cache.get(law_id).cloned() {
+            match entries.iter_mut().find(|e| e.filename == filename) {
+                Some(entry) => entry.target_law_ids = target_law_ids,
+                None => {
+                    entries.push(ScenarioListEntry {
+                        filename: filename.to_string(),
+                        target_law_ids,
+                    });
+                    entries.sort_by(|a, b| a.filename.cmp(&b.filename));
+                }
+            }
+            cache.insert(law_id.to_string(), entries);
+        }
+    }
+
+    /// Remove a just-deleted scenario from the cached listing for
+    /// `law_id`. Surgical for the same eventual-consistency reason as
+    /// [`Self::record_scenario_saved`]: a rebuild racing GitHub's lagging
+    /// directory view would resurrect the deleted file in the cache for
+    /// up to a snapshot window. Bumps the write generation so an
+    /// in-flight rebuild discards its result.
+    pub async fn record_scenario_deleted(&self, law_id: &str, filename: &str) {
+        let mut cache = self.scenario_list_cache.write().await;
+        self.sidecar_write_gen.fetch_add(1, Ordering::SeqCst);
+        if let Some(mut entries) = cache.get(law_id).cloned() {
+            entries.retain(|e| e.filename != filename);
+            cache.insert(law_id.to_string(), entries);
+        }
     }
 
     /// Law ids whose articles declare `implements` for `law_id` (the IoC
@@ -2805,8 +2842,40 @@ mod tests {
                 .filename,
             "x.feature"
         );
-        corpus.invalidate_scenario_list("wet_a").await;
-        assert!(corpus.cached_scenario_list("wet_a").await.is_none());
+
+        // Saves upsert the cached listing in place (sorted), deletes
+        // remove the one entry — never a drop-and-rebuild, which would
+        // race GitHub's eventually-consistent directory view.
+        corpus
+            .record_scenario_saved("wet_a", "a.feature", vec!["wet_a".to_string()])
+            .await;
+        corpus
+            .record_scenario_saved("wet_a", "x.feature", vec!["wet_b".to_string()])
+            .await;
+        let listing = corpus.cached_scenario_list("wet_a").await.unwrap();
+        assert_eq!(
+            listing
+                .iter()
+                .map(|e| e.filename.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a.feature", "x.feature"]
+        );
+        assert_eq!(listing[1].target_law_ids, vec!["wet_b".to_string()]);
+        corpus.record_scenario_deleted("wet_a", "x.feature").await;
+        let listing = corpus.cached_scenario_list("wet_a").await.unwrap();
+        assert_eq!(
+            listing
+                .iter()
+                .map(|e| e.filename.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a.feature"]
+        );
+        // Without a cached listing both records are no-ops: nothing to
+        // update, the next listing rebuilds from the branch.
+        corpus
+            .record_scenario_saved("wet_other", "y.feature", vec![])
+            .await;
+        assert!(corpus.cached_scenario_list("wet_other").await.is_none());
 
         // A snapshot swap starts with empty sidecar caches: upstream
         // sidecar edits become visible within one TTL window, like law
@@ -2852,10 +2921,23 @@ mod tests {
             Some(Some("saved".to_string()))
         );
 
-        // Same guard for the listing cache, against delete-invalidation:
-        // a listing computed before the delete must not resurrect.
+        // Same guard for the listing cache: a listing computed before a
+        // delete's in-place update must not overwrite it (the deleted
+        // file would resurrect).
+        corpus
+            .store_scenario_list_read(
+                "wet_a".to_string(),
+                vec![ScenarioListEntry {
+                    filename: "deleted.feature".to_string(),
+                    target_law_ids: vec![],
+                }],
+                corpus.sidecar_write_generation(),
+            )
+            .await;
         let gen_before = corpus.sidecar_write_generation();
-        corpus.invalidate_scenario_list("wet_a").await;
+        corpus
+            .record_scenario_deleted("wet_a", "deleted.feature")
+            .await;
         corpus
             .store_scenario_list_read(
                 "wet_a".to_string(),
@@ -2866,7 +2948,11 @@ mod tests {
                 gen_before,
             )
             .await;
-        assert!(corpus.cached_scenario_list("wet_a").await.is_none());
+        assert!(corpus
+            .cached_scenario_list("wet_a")
+            .await
+            .unwrap()
+            .is_empty());
 
         // An undisturbed read (no write in between) stores normally.
         let gen_before = corpus.sidecar_write_generation();

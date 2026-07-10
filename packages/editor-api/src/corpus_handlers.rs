@@ -746,7 +746,14 @@ async fn list_scenarios_in_scope(
                 let target_law_ids =
                     match read_traject_scenario_cached(traject, law, &relative_path).await {
                         Ok(Some(content)) => extract_target_law_ids(&content),
-                        Ok(None) => Vec::new(),
+                        // Listed but unreadable on every routing leg: a
+                        // ghost. GitHub's directory listing is eventually
+                        // consistent, so right after a delete commit the
+                        // (stale) listing can still name the file while
+                        // its content GET already 404s. Skip it — keeping
+                        // it would serve a listing entry whose GET can
+                        // only 404.
+                        Ok(None) => continue,
                         Err((_, err)) => {
                             tracing::warn!(
                                 law_id = %law_id,
@@ -1715,18 +1722,6 @@ async fn read_traject_scenario_cached(
     Ok(content)
 }
 
-async fn resolve_traject_scenario_target(
-    traject: &Arc<TrajectCorpus>,
-    law_id: &str,
-    filename: &str,
-) -> Result<EditorWriteTarget, (StatusCode, String)> {
-    let write = resolve_traject_law_write(traject, law_id).await?;
-    Ok(EditorWriteTarget {
-        relative_path: scenario_relative_path(&write.law, filename)?,
-        backend: write.backend,
-    })
-}
-
 /// Resolve the write target for a law's stand-off notes sidecar.
 ///
 /// The path is `annotations/{law_id}/annotations.yaml` at the source root,
@@ -1817,13 +1812,17 @@ pub async fn save_scenario(
         .map_err(corpus_write_error("scenario"))?;
 
     // Keep the per-snapshot read caches coherent with the save
-    // (read-your-writes): the file's content cache gets the new body, the
-    // law's listing is dropped so the next listing picks the file up (or
-    // its changed targets) without waiting out the snapshot TTL.
+    // (read-your-writes): the file's content cache gets the new body and
+    // the cached listing is updated in place. Surgical (not invalidate +
+    // rebuild): a rebuild would re-list GitHub's eventually-consistent
+    // directory view, which right after the commit can still miss this
+    // save and would then be cached for the rest of the snapshot window.
     traject
         .store_sidecar(scenario_cache_key(&relative_path), Some(body.clone()))
         .await;
-    traject.invalidate_scenario_list(&law_id).await;
+    traject
+        .record_scenario_saved(&law_id, &filename, extract_target_law_ids(&body))
+        .await;
 
     let new_etag = document_etag(&body);
     let mut response = save_response_from_traject(outcome);
@@ -2254,18 +2253,17 @@ pub async fn delete_scenario(
     let author = Some(require_editor_user(&session).await?);
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let target = resolve_traject_scenario_target(&traject, &law_id, &filename).await?;
-    let EditorWriteTarget {
-        relative_path,
-        backend,
-    } = target;
+    let write = resolve_traject_law_write(&traject, &law_id).await?;
+    let relative_path = scenario_relative_path(&write.law, &filename)?;
 
-    backend
+    write
+        .backend
         .delete_file(&relative_path)
         .await
         .map_err(corpus_write_error("scenario"))?;
 
-    let outcome = backend
+    let outcome = write
+        .backend
         .persist(&WriteContext {
             message: format!("Delete scenario {} for {}", filename, law_id),
             author,
@@ -2275,12 +2273,49 @@ pub async fn delete_scenario(
 
     // Drop (don't negative-cache) the file's read-cache entry: after a
     // branch-side delete the next read may legitimately fall back to a
-    // seed copy of the scenario. The listing is dropped for the same
-    // reason.
+    // seed copy of the scenario.
     traject
         .invalidate_sidecar(&scenario_cache_key(&relative_path))
         .await;
-    traject.invalidate_scenario_list(&law_id).await;
+
+    // Update the cached listing in place — an invalidate-and-rebuild
+    // races GitHub's eventually-consistent directory view, which can
+    // still list the deleted file right after the commit and would then
+    // resurrect it in the cache for the rest of the snapshot window.
+    // What "in place" means depends on whether a seed copy remains: a
+    // federated law's scenario that was overridden on the branch falls
+    // back to the seed after the branch delete (same routing as the GET),
+    // so it stays listed with the seed's targets. The seed probe is one
+    // read, only for federated laws, on the rare delete path — and the
+    // legal writable-own → seed lock order is respected (`write.backend`
+    // holds the write-target guard). On a probe error we still remove
+    // the entry: the delete is the user's intent, and a hidden seed copy
+    // reappears at the next snapshot swap.
+    match read_seed_fallback(
+        &traject,
+        &write.law,
+        &write.write_source_id,
+        &relative_path,
+        "scenario",
+    )
+    .await
+    {
+        Ok(Some(seed_content)) => {
+            traject
+                .record_scenario_saved(&law_id, &filename, extract_target_law_ids(&seed_content))
+                .await;
+        }
+        Ok(None) => traject.record_scenario_deleted(&law_id, &filename).await,
+        Err((_, err)) => {
+            tracing::warn!(
+                law_id = %law_id,
+                file = %filename,
+                error = %err,
+                "seed probe after scenario delete failed; removing from cached listing"
+            );
+            traject.record_scenario_deleted(&law_id, &filename).await;
+        }
+    }
 
     Ok(Json(save_response_from_traject(outcome)))
 }
