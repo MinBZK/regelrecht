@@ -48,6 +48,14 @@ export const lawFetchInit = Object.freeze({
   errorMessage: (status) => `Failed to fetch: ${status}`,
 });
 
+// The single cache-entry shape shared by every producer (fresh fetch,
+// direct-URL load, save). The `etag` is echoed back as `If-Match` on the
+// next save so a concurrent edit by another traject member surfaces as a
+// 412 instead of a silent overwrite (same chain as useTrajectDocuments).
+function makeEntry(law, rawYaml, etag) {
+  return { law, rawYaml, lawName: resolveLawName(law), etag };
+}
+
 // In-flight law GETs, keyed like `lawCache`. Simultaneous callers share
 // one request instead of racing duplicate GETs against an empty cache —
 // which is exactly what an editor mount does: `useLaw().load()` fetches
@@ -71,15 +79,7 @@ function fetchLawFresh(trajectRef, lawId) {
     const res = await apiFetch(lawUrl(trajectRef, lawId), lawFetchInit);
     const text = await res.text();
     const law = yaml.load(text);
-    const entry = {
-      law,
-      rawYaml: text,
-      lawName: resolveLawName(law),
-      // Echoed back as `If-Match` on the next save so a concurrent edit
-      // by another traject member surfaces as a 412 instead of a silent
-      // overwrite (same chain as useTrajectDocuments).
-      etag: res.headers.get('ETag'),
-    };
+    const entry = makeEntry(law, text, res.headers.get('ETag'));
     // Always overwrite: this is fresh content, so any pre-existing entry
     // is by definition stale (older body and/or ETag) — keeping it would
     // hand `fetchLaw`/`switchLaw` callers outdated YAML and a
@@ -162,12 +162,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
         if (!isCurrent()) return;
         const text = await res.text();
         const parsed = yaml.load(text);
-        entry = {
-          law: parsed,
-          rawYaml: text,
-          lawName: resolveLawName(parsed),
-          etag: res.headers.get('ETag'),
-        };
+        entry = makeEntry(parsed, text, res.headers.get('ETag'));
         const resolvedId = parsed?.$id || lawParam;
         lawCache.set(lawCacheKey(currentTrajectRef, resolvedId), entry);
       } else {
@@ -321,12 +316,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
       }
       const resolvedId = parsed?.$id || savedLawId;
       const savedKey = lawCacheKey(savedTrajectRef, resolvedId);
-      lawCache.set(savedKey, {
-        law: parsed,
-        rawYaml: yamlText,
-        lawName: resolveLawName(parsed),
-        etag: newEtag,
-      });
+      lawCache.set(savedKey, makeEntry(parsed, yamlText, newEtag));
     } catch (e) {
       if (lawId.value === savedLawId && currentTrajectRef === savedTrajectRef) {
         saveError.value = e;

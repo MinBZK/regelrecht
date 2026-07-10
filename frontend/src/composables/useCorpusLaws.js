@@ -140,5 +140,26 @@ export function useCorpusLaws(trajectRef) {
     return humanizeLawId(lawId);
   }
 
-  return { laws, displayName };
+  /**
+   * Bust the active scope's cache and re-fetch (e.g. after a corpus
+   * reload added a law server-side). Updates this consumer's `laws`;
+   * other already-mounted consumers of the same scope keep their
+   * current snapshot until they re-scope or remount (the shared scope
+   * Ref is updated, so any *new* consumer sees the fresh list).
+   */
+  async function refresh() {
+    const key = scopeKey(refSource.value);
+    fetchByScope.delete(key);
+    const p = ensureFetched(refSource.value);
+    const capturedRef = lawsByScope.peek(key);
+    await p;
+    // Same stale-scope guard as the watcher: only commit if the caller's
+    // scope is still the active one by the time the fetch resolves.
+    if (capturedRef && scopeKey(refSource.value) === key) {
+      laws.value = capturedRef.value;
+    }
+    return laws.value;
+  }
+
+  return { laws, displayName, refresh };
 }
