@@ -31,7 +31,7 @@ strsim = "0.11"
 tracing.workspace = true
 
 [dependencies.jsonschema]
-version = "0.46"
+version = "0.47"
 optional = true
 
 [dependencies.wasm-bindgen]
