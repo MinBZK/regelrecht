@@ -80,17 +80,23 @@ pub struct GithubOAuth {
     pub scopes: String,
     /// Cipher for sealing/opening the browser token cookie.
     pub cipher: Arc<TokenCipher>,
-    /// Master switch for routing traject writes through the acting user's own
-    /// token ("editor is not in the middle" mode).
+    /// Static (env: `GITHUB_USER_TOKEN_REQUIRED`) switch for routing traject
+    /// writes through the acting user's own token ("editor is not in the
+    /// middle" mode). This is one of TWO switches: the `github.user_oauth`
+    /// feature flag enforces the same thing at runtime, so enabling the
+    /// GitHub-koppeling UI also enables enforcement — linking is never
+    /// offered-but-inert. See [`write_requires_user_token`] for the combined
+    /// decision; this env var remains as a deployment-wide override that wins
+    /// regardless of the flag.
     ///
-    /// * `false` (default): writes **always** use the backend's configured
-    ///   token — byte-identical to pre-spike behaviour for every user, linked
-    ///   or not. Linking is still offered (and shown in the UI) but is inert
-    ///   for writes, so a linked user's saves to the operator-managed central
-    ///   repo can't start 403-ing because their personal token lacks access.
-    /// * `true`: every traject write uses the acting user's token; a save with
-    ///   no linked (or an expired) token is refused with 428 rather than
-    ///   silently falling back to the configured token.
+    /// * required off (both switches): writes **always** use the backend's
+    ///   configured token — byte-identical to pre-spike behaviour for every
+    ///   user, linked or not, so a linked user's saves to the operator-managed
+    ///   central repo can't start 403-ing because their personal token lacks
+    ///   access.
+    /// * required on (either switch): every traject write uses the acting
+    ///   user's token; a save with no linked (or an expired) token is refused
+    ///   with 428 rather than silently falling back to the configured token.
     pub require_user_token: bool,
     /// Relay mode. When set, `/login` sends GitHub a **fixed** `redirect_uri`
     /// of `{callback_base}/auth/github/relay` instead of the deployment's own
@@ -741,6 +747,11 @@ pub async fn status(
             required: false,
         }));
     };
+    // Effective requiredness (env var OR feature flag), so the frontend's
+    // `required` mirrors what the write path will actually enforce.
+    let required = write_requires_user_token(&state, oauth)
+        .await
+        .map_err(|(code, _)| code)?;
     Ok(Json(match open_token_cookie(oauth, &headers, account.id) {
         Some(link) => GithubStatus {
             connected: true,
@@ -748,7 +759,7 @@ pub async fn status(
             expired: link.expired(),
             github_login: Some(link.github_login),
             scopes: Some(link.scopes),
-            required: oauth.require_user_token,
+            required,
         },
         None => GithubStatus {
             connected: false,
@@ -756,7 +767,7 @@ pub async fn status(
             github_login: None,
             scopes: None,
             expired: false,
-            required: oauth.require_user_token,
+            required,
         },
     }))
 }
@@ -790,6 +801,43 @@ pub async fn disconnect(
 
 // --- Write-path helper -----------------------------------------------------
 
+/// Whether traject writes must carry the acting user's own GitHub token.
+///
+/// Two switches, OR-ed:
+/// * the `GITHUB_USER_TOKEN_REQUIRED` env var — static, deployment-wide
+///   override;
+/// * the `github.user_oauth` feature flag — the same toggle that shows the
+///   GitHub-koppeling UI, so switching the feature on in the Functies menu
+///   also switches enforcement on. Linking is never offered-but-inert.
+///
+/// A flag-read failure propagates as 500: on the write path the contract is
+/// "never silently fall back to the service token", and that includes not
+/// guessing when the flag store is unreadable. (In practice the session
+/// store shares the same database, so requests rarely get this far with a
+/// broken pool.)
+pub async fn write_requires_user_token(
+    state: &AppState,
+    oauth: &GithubOAuth,
+) -> Result<bool, (StatusCode, String)> {
+    if oauth.require_user_token {
+        return Ok(true);
+    }
+    // Without a database there is no flag store either (the toggle PUT 503s),
+    // so the env var is the only switch — e.g. OIDC-off local dev.
+    let Some(pool) = &state.pool else {
+        return Ok(false);
+    };
+    crate::feature_flags::flag_enabled(pool, crate::feature_flags::GITHUB_USER_OAUTH)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to read github.user_oauth feature flag");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Kon de feature-flags niet lezen; probeer het opnieuw.".to_string(),
+            )
+        })
+}
+
 /// Resolve the per-user GitHub credential to attach to an editor write, read
 /// from the sealed token cookie riding on this request.
 ///
@@ -798,9 +846,9 @@ pub async fn disconnect(
 ///   deployment doesn't require it).
 /// * `Ok(Some(token))` — use the acting user's own token for this write.
 /// * `Err((428, msg))` — this deployment requires a user token but the user
-///   hasn't linked one (or it expired); the frontend turns this into a
-///   "connect GitHub" call to action.
-pub fn user_write_token(
+///   hasn't linked one (or it expired); the frontend bounces this straight
+///   into the GitHub connect flow (`apiAuthGuard.js`).
+pub async fn user_write_token(
     state: &AppState,
     account_id: Uuid,
     headers: &HeaderMap,
@@ -809,15 +857,16 @@ pub fn user_write_token(
         return Ok(None);
     };
 
-    // The override is gated *entirely* on `require_user_token`. With it off
-    // (the default), every write keeps using the backend's configured token —
-    // byte-identical to pre-spike behaviour, and crucially this holds even for
-    // users who HAVE linked GitHub. That matters for the operator-managed
-    // central repo: routing a linked user's write there through their personal
-    // token would 403 if they lack direct push access, silently breaking saves
-    // that worked before. So linking is inert for writes until a deployment
-    // opts into the "editor is not in the middle" mode by setting the flag.
-    if !oauth.require_user_token {
+    // The override is gated *entirely* on the requiredness decision. With it
+    // off (the default), every write keeps using the backend's configured
+    // token — byte-identical to pre-spike behaviour, and crucially this holds
+    // even for users who HAVE linked GitHub. That matters for the
+    // operator-managed central repo: routing a linked user's write there
+    // through their personal token would 403 if they lack direct push access,
+    // silently breaking saves that worked before. So linking is inert for
+    // writes until this deployment opts into the "editor is not in the
+    // middle" mode via the feature flag or the env var.
+    if !write_requires_user_token(state, oauth).await? {
         return Ok(None);
     }
 

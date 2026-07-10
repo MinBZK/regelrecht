@@ -77,8 +77,11 @@ const editorPanelFlags = [
 
 // The "Functies" menu group: the panel flags, plus the GitHub-koppeling
 // toggle when this deployment has a GitHub OAuth App configured. The flag
-// (off by default) hides the Koppel/Ontkoppel items below so the spike is
-// opt-in per user.
+// (off by default, deployment-wide like all flags) is one switch with two
+// effects: it shows the Koppel/Ontkoppel items below AND makes the backend
+// require the acting user's own GitHub token for traject writes (a save
+// without a linked token then 428s, which apiAuthGuard.js turns into a
+// redirect through the connect flow).
 const functieFlags = computed(() =>
   githubStatus.value?.configured
     ? [...editorPanelFlags, ['github.user_oauth', 'GitHub-koppeling']]

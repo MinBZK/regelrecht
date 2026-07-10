@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// Hoisted shared state: the login spy and the mutable auth refs the guard reads.
-const { loginSpy, authState } = vi.hoisted(() => ({
+// Hoisted shared state: the login/connect spies and the mutable auth refs the
+// guard reads.
+const { loginSpy, connectSpy, authState } = vi.hoisted(() => ({
   loginSpy: vi.fn(),
+  connectSpy: vi.fn(),
   authState: { authenticated: true, oidcConfigured: true },
 }));
 
@@ -14,6 +16,10 @@ vi.mock('../composables/useAuth.js', () => ({
     oidcConfigured: { value: authState.oidcConfigured },
     login: loginSpy,
   }),
+}));
+
+vi.mock('../composables/useGithubAuth.js', () => ({
+  useGithubAuth: () => ({ connect: connectSpy }),
 }));
 
 import { isApiUrl } from './apiAuthGuard.js';
@@ -30,6 +36,7 @@ const ORIGIN = window.location.origin;
 async function freshGuard(status, auth = {}) {
   vi.resetModules();
   loginSpy.mockClear();
+  connectSpy.mockClear();
   authState.authenticated = auth.authenticated ?? true;
   authState.oidcConfigured = auth.oidcConfigured ?? true;
   const original = vi.fn().mockResolvedValue({ status });
@@ -126,5 +133,39 @@ describe('installApiAuthGuard', () => {
     expect(res.status).toBe(200);
     expect(original).toHaveBeenCalledWith('/api/trajects', { method: 'POST' });
     expect(loginSpy).not.toHaveBeenCalled();
+  });
+
+  it('redirects into the GitHub connect flow on a 428 from an /api/ call', async () => {
+    const { wrapped } = await freshGuard(428);
+    const res = await wrapped('/api/trajects/t/laws/x/save');
+    expect(connectSpy).toHaveBeenCalledTimes(1);
+    // No explicit returnUrl: connect() defaults to the current location.
+    expect(connectSpy).toHaveBeenCalledWith();
+    expect(loginSpy).not.toHaveBeenCalled();
+    // The response still reaches the call site (its own error handling may run
+    // briefly before navigation commits).
+    expect(res.status).toBe(428);
+  });
+
+  it('does NOT redirect on a 428 from a non-/api/ or cross-origin call', async () => {
+    const { wrapped } = await freshGuard(428);
+    await wrapped('/auth/github/status');
+    await wrapped('https://other.example/api/x');
+    expect(connectSpy).not.toHaveBeenCalled();
+  });
+
+  it('redirects only once for multiple concurrent 428s (loop guard)', async () => {
+    const { wrapped } = await freshGuard(428);
+    await Promise.all([wrapped('/api/a'), wrapped('/api/b'), wrapped('/api/c')]);
+    expect(connectSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares the redirect latch between 401 and 428 (one navigation wins)', async () => {
+    const { wrapped, original } = await freshGuard(401);
+    await wrapped('/api/a'); // 401 → login redirect, latch set
+    original.mockResolvedValue({ status: 428 });
+    await wrapped('/api/b'); // 428 while leaving the page — no second redirect
+    expect(loginSpy).toHaveBeenCalledTimes(1);
+    expect(connectSpy).not.toHaveBeenCalled();
   });
 });

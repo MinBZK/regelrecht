@@ -868,7 +868,9 @@ async fn resolve_writable_target(
             // token to a user-picked repo, a token-exfiltration vector).
             // `user_write_token` returns 428 when a linked token is required
             // but absent.
-            let token = match crate::github_oauth::user_write_token(state, account_id, headers)? {
+            let token = match crate::github_oauth::user_write_token(state, account_id, headers)
+                .await?
+            {
                 Some(user_token) => user_token,
                 None => {
                     let auth_file = {
