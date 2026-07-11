@@ -211,6 +211,16 @@ const hasDocumentTabs = computed(
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
                 <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
                 <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
+                <nldd-menu-group text="Thema">
+                <nldd-menu-item
+                  v-for="[value, label] in colorSchemeOptions"
+                  :key="`scheme-md-${value}`"
+                  type="radio"
+                  :selected="colorScheme === value || undefined"
+                  :text="label"
+                  @select="setColorScheme(value)"
+                ></nldd-menu-item>
+                </nldd-menu-group>
                 <nldd-menu-item text="Functies" icon="puzzle-piece">
                   <nldd-menu>
                     <nldd-menu-item
@@ -223,16 +233,6 @@ const hasDocumentTabs = computed(
                     ></nldd-menu-item>
                   </nldd-menu>
                 </nldd-menu-item>
-                <nldd-menu-group text="Thema">
-                <nldd-menu-item
-                  v-for="[value, label] in colorSchemeOptions"
-                  :key="`scheme-md-${value}`"
-                  type="radio"
-                  :selected="colorScheme === value || undefined"
-                  :text="label"
-                  @select="setColorScheme(value)"
-                ></nldd-menu-item>
-                </nldd-menu-group>
                 <template v-if="!authLoading && authenticated">
                   <nldd-menu-divider></nldd-menu-divider>
                   <nldd-menu-item text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
@@ -284,6 +284,16 @@ const hasDocumentTabs = computed(
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
                 <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
                 <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
+                <nldd-menu-group text="Thema">
+                <nldd-menu-item
+                  v-for="[value, label] in colorSchemeOptions"
+                  :key="`scheme-lg-${value}`"
+                  type="radio"
+                  :selected="colorScheme === value || undefined"
+                  :text="label"
+                  @select="setColorScheme(value)"
+                ></nldd-menu-item>
+                </nldd-menu-group>
                 <nldd-menu-item text="Functies" icon="puzzle-piece">
                   <nldd-menu>
                     <nldd-menu-item
@@ -296,16 +306,6 @@ const hasDocumentTabs = computed(
                     ></nldd-menu-item>
                   </nldd-menu>
                 </nldd-menu-item>
-                <nldd-menu-group text="Thema">
-                <nldd-menu-item
-                  v-for="[value, label] in colorSchemeOptions"
-                  :key="`scheme-lg-${value}`"
-                  type="radio"
-                  :selected="colorScheme === value || undefined"
-                  :text="label"
-                  @select="setColorScheme(value)"
-                ></nldd-menu-item>
-                </nldd-menu-group>
                 <template v-if="!authLoading && authenticated">
                   <nldd-menu-divider></nldd-menu-divider>
                   <nldd-menu-item text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
@@ -468,6 +468,16 @@ const hasDocumentTabs = computed(
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
                 <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
                 <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
+                <nldd-menu-group text="Thema">
+                <nldd-menu-item
+                  v-for="[value, label] in colorSchemeOptions"
+                  :key="`scheme-sm-${value}`"
+                  type="radio"
+                  :selected="colorScheme === value || undefined"
+                  :text="label"
+                  @select="setColorScheme(value)"
+                ></nldd-menu-item>
+                </nldd-menu-group>
                 <nldd-menu-item text="Functies" icon="puzzle-piece">
                   <nldd-menu>
                     <nldd-menu-item
@@ -480,16 +490,6 @@ const hasDocumentTabs = computed(
                     ></nldd-menu-item>
                   </nldd-menu>
                 </nldd-menu-item>
-                <nldd-menu-group text="Thema">
-                <nldd-menu-item
-                  v-for="[value, label] in colorSchemeOptions"
-                  :key="`scheme-sm-${value}`"
-                  type="radio"
-                  :selected="colorScheme === value || undefined"
-                  :text="label"
-                  @select="setColorScheme(value)"
-                ></nldd-menu-item>
-                </nldd-menu-group>
                 <template v-if="!authLoading && authenticated">
                   <nldd-menu-divider></nldd-menu-divider>
                   <nldd-menu-item text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
