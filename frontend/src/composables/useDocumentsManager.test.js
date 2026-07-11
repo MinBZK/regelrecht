@@ -9,9 +9,6 @@ const h = vi.hoisted(() => ({ api: null }));
 vi.mock('./useTrajectDocuments.js', () => ({
   useTrajectDocuments: () => h.api,
 }));
-vi.mock('./useArticleMarkdown.js', () => ({
-  renderArticleHtml: (s) => `<p>${s ?? ''}</p>`,
-}));
 
 import { useDocumentsManager } from './useDocumentsManager.js';
 
@@ -26,6 +23,7 @@ function makeApi(overrides = {}) {
     listError: ref(null),
     currentPath,
     currentBody,
+    savedBody: ref(''),
     currentEtag,
     docLoading: ref(false),
     docError: ref(null),
@@ -61,12 +59,29 @@ describe('useDocumentsManager', () => {
     expect(m.displayTitle(null)).toBe('');
   });
 
+  it('onTitleInput sanitizes the name to a valid path (no error shown)', () => {
+    m.onTitleInput({ target: { value: 'Beleid Nota' } });
+    expect(m.titleDraft.value).toBe('beleid-nota'); // uppercase -> lower, space -> '-'
+    m.onTitleInput({ target: { value: 'ABC_123.def' } });
+    expect(m.titleDraft.value).toBe('abc_123.def'); // letters/digits/._ kept
+    m.onTitleInput({ target: { value: 'map/Sub Doc' } });
+    expect(m.titleDraft.value).toBe('map/sub-doc'); // '/' kept as folder separator
+    m.onTitleInput({ detail: { value: 'Rare!!Tekens@hier' } });
+    expect(m.titleDraft.value).toBe('rare-tekens-hier'); // runs of invalid chars -> single '-'
+    expect(m.titleError.value).toBe(null);
+  });
+
+  it('typing the name clears a stale title error', () => {
+    m.titleError.value = 'Een document met deze naam bestaat al.';
+    m.onTitleInput({ target: { value: 'nieuwe-naam' } });
+    expect(m.titleError.value).toBe(null);
+  });
+
   it('startNew creates the next free untitled path and returns it', async () => {
     h.api.documents.value = [{ path: 'untitled.md' }, { path: 'untitled-2.md' }];
     const path = await m.startNew();
     expect(path).toBe('untitled-3.md');
     expect(h.api.createDocument).toHaveBeenCalledWith('untitled-3.md');
-    expect(m.viewMode.value).toBe('editor');
   });
 
   it('handleSave without a rename just saves the current path', async () => {
@@ -146,13 +161,18 @@ describe('useDocumentsManager', () => {
     expect(m.deleteNotice.value).toMatch(/gewijzigd/i);
   });
 
-  it('close clears the open document back to nothing-selected', () => {
+  it('close clears the open document and resets the dirty baseline', () => {
     h.api.currentPath.value = 'open.md';
     h.api.currentBody.value = '# hi';
+    h.api.savedBody.value = '# hi';
     h.api.currentEtag.value = 'etag-1';
     m.close();
     expect(h.api.currentPath.value).toBeNull();
     expect(h.api.currentBody.value).toBe('');
+    expect(h.api.savedBody.value).toBe('');
     expect(h.api.currentEtag.value).toBeNull();
+    // Without resetting savedBody, hasChanges would stay true and the next
+    // navigation would trip the unsaved-changes guard.
+    expect(m.hasChanges.value).toBe(false);
   });
 });

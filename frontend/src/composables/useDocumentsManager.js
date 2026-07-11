@@ -11,7 +11,6 @@
  */
 import { computed, ref, watch } from 'vue';
 import { useTrajectDocuments } from './useTrajectDocuments.js';
-import { renderArticleHtml } from './useArticleMarkdown.js';
 
 export function useDocumentsManager(trajectRef) {
   const docs = useTrajectDocuments(trajectRef);
@@ -21,6 +20,7 @@ export function useDocumentsManager(trajectRef) {
     listError,
     currentPath,
     currentBody,
+    savedBody,
     currentEtag,
     docLoading,
     docError,
@@ -36,15 +36,21 @@ export function useDocumentsManager(trajectRef) {
     dropDraft,
   } = docs;
 
-  // Editor/preview toggle; every freshly opened document starts in the editor.
-  const viewMode = ref('editor');
-  function onViewModeChange(e) {
-    viewMode.value = e.detail?.value ?? viewMode.value;
-  }
-  const previewHtml = computed(() => renderArticleHtml(currentBody.value));
+  // The body flows straight to currentBody; the nldd-text-editor is a hybrid
+  // Markdown editor (live-styled source), so there is no separate preview mode.
   function onBodyInput(e) {
     currentBody.value = e.detail?.value ?? e.target?.value ?? currentBody.value;
   }
+
+  // Unsaved changes: the live body differs from the last-saved baseline. Drives
+  // the editor's footer toolbar (shown only when dirty) and the navigate-away
+  // guard. Guard on docError and docLoading: a document that failed to load or is
+  // still loading can never be dirty. While loading, currentPath is already set
+  // (so the shell shows) but currentBody still holds the previous document, which
+  // would otherwise register as a change and flash the Save button + leave-guard.
+  const hasChanges = computed(
+    () => !docError.value && !docLoading.value && currentBody.value !== savedBody.value,
+  );
 
   // --- Titels ---
   // '.md' blijft verborgen voor de gebruiker; '.txt' wijkt af van de default en
@@ -75,7 +81,6 @@ export function useDocumentsManager(trajectRef) {
 
   // --- Open / nieuw ---
   async function open(path) {
-    viewMode.value = 'editor';
     await openDocument(path);
   }
 
@@ -92,7 +97,6 @@ export function useDocumentsManager(trajectRef) {
   async function startNew() {
     if (creating.value) return null;
     creating.value = true;
-    viewMode.value = 'editor';
     const path = nextUntitledPath();
     try {
       await createDocument(path);
@@ -108,6 +112,10 @@ export function useDocumentsManager(trajectRef) {
   function close() {
     currentPath.value = null;
     currentBody.value = '';
+    // Reset the saved baseline too — otherwise hasChanges stays true (empty
+    // body vs the just-closed document's body) and the next navigation trips
+    // the unsaved-changes guard spuriously.
+    savedBody.value = '';
     currentEtag.value = null;
   }
 
@@ -119,7 +127,15 @@ export function useDocumentsManager(trajectRef) {
     titleError.value = null;
   });
   function onTitleInput(e) {
-    titleDraft.value = e.detail?.value ?? e.target?.value ?? titleDraft.value;
+    const raw = e.detail?.value ?? e.target?.value ?? titleDraft.value;
+    // Sanitize to a valid path as the user types instead of rejecting invalid
+    // input: lowercase everything and turn any space or other disallowed
+    // character into '-'. '/' is kept as a folder separator. This keeps the name
+    // always valid, so the "Gebruik alleen kleine letters…" error never appears.
+    titleDraft.value = raw.toLowerCase().replace(/[^a-z0-9._/-]+/g, '-');
+    // Editing the name clears any stale validation notice (e.g. a duplicate-name
+    // error from a prior save attempt).
+    titleError.value = null;
   }
 
   async function handleSave() {
@@ -170,7 +186,7 @@ export function useDocumentsManager(trajectRef) {
     return true;
   }
 
-  // "Maak wijzigingen ongedaan": gooi de lokale draft weg, laad de server-versie.
+  // "Maak alle wijzigingen ongedaan": gooi de lokale draft weg, laad de server-versie.
   function undoChanges() {
     titleDraft.value = displayTitle(currentPath.value);
     titleError.value = null;
@@ -217,16 +233,16 @@ export function useDocumentsManager(trajectRef) {
   return {
     // state
     documents, listLoading, listError,
-    currentPath, currentBody, docLoading, docError,
+    currentPath, currentBody, hasChanges, docLoading, docError,
     saving, saveError, conflict, deletedRemotely,
-    viewMode, previewHtml, creating,
+    creating,
     titleDraft, titleError,
     pendingDeletePath, deleteNotice,
     // derived helpers
     displayTitle,
     // actions
     open, startNew, close,
-    onBodyInput, onTitleInput, onViewModeChange,
+    onBodyInput, onTitleInput,
     handleSave, undoChanges, overwriteServer,
     reloadCurrent, dropDraft,
     askDelete, cancelDelete, confirmDelete,

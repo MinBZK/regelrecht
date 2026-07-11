@@ -64,6 +64,9 @@ export function useTrajectDocuments(trajectRef) {
   // a time; switching to another document overwrites these.
   const currentPath = ref(null);
   const currentBody = ref('');
+  // The last body known to be persisted on the server — the baseline for the
+  // "unsaved changes" (hasChanges) check. Set on load and after a save.
+  const savedBody = ref('');
   // The ETag we received on the last successful read or save. Sent back
   // as `If-Match` on the next PUT/DELETE so the server can detect a
   // concurrent edit from another tab/user.
@@ -116,6 +119,14 @@ export function useTrajectDocuments(trajectRef) {
     saveError.value = null;
     conflict.value = null;
     deletedRemotely.value = null;
+    // Show the document shell immediately: adopt the path now, before the fetch,
+    // so hasOpenDoc flips true and the editor renders its "Document laden"
+    // indicator right away instead of leaving the user on the old view until a
+    // (possibly slow) fetch resolves. The body follows when the fetch lands; the
+    // editor stays behind the indicator while docLoading, so the previous
+    // document's stale body is never shown. Only currentPath changes here (not
+    // currentBody), so the draft watch doesn't fire.
+    currentPath.value = path;
     // Cancel any debounce that was scheduled by the previous document's
     // last keystroke: when the watch fires after we swap `currentPath`
     // it would otherwise persist the new body under the old path.
@@ -131,6 +142,9 @@ export function useTrajectDocuments(trajectRef) {
       if (res.status === 404) {
         currentPath.value = path;
         currentBody.value = '';
+        // Reset the baseline too so an empty body isn't seen as a change vs the
+        // previous document's saved content (spurious dirty state).
+        savedBody.value = '';
         currentEtag.value = null;
         docError.value = {
           kind: 'load-error',
@@ -144,6 +158,9 @@ export function useTrajectDocuments(trajectRef) {
         // subsequent Save can't PUT stale content back to the old path.
         currentPath.value = path;
         currentBody.value = '';
+        // Reset the baseline too (see 404 branch) so the failed load doesn't
+        // register as unsaved changes against the previous document.
+        savedBody.value = '';
         currentEtag.value = null;
         docError.value = {
           kind: 'load-error',
@@ -162,6 +179,7 @@ export function useTrajectDocuments(trajectRef) {
       cancelDraftTimer();
       currentPath.value = path;
       currentEtag.value = serverEtag;
+      savedBody.value = serverBody;
       // If the user had an unsaved draft for this document, prefer it
       // over the server body but flag the divergence so the editor can
       // offer "drop draft, keep server version".
@@ -289,6 +307,7 @@ export function useTrajectDocuments(trajectRef) {
       // convenience for clients that can't read headers.
       currentEtag.value = res.headers.get('ETag') ?? json?.etag ?? currentEtag.value;
       clearDraft(trajectRef.value, currentPath.value);
+      savedBody.value = currentBody.value;
       // Reload the list — a freshly created document needs to appear
       // in the sidebar without a manual refresh.
       if (res.status === 201) {
@@ -451,6 +470,7 @@ export function useTrajectDocuments(trajectRef) {
     listError,
     currentPath,
     currentBody,
+    savedBody,
     currentEtag,
     docLoading,
     docError,
