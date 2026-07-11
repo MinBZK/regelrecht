@@ -130,6 +130,25 @@ describe('sectionTarget — traject preserved across tab switches', () => {
     expect(t.params.lawId).toBe('foo');
   });
 
+  it('preserves the werkdocumenten sub-mode across a tab switch', () => {
+    const t = sectionTarget(router, `/trajecten/${REF}/werkdocumenten/besluit.md`, REF);
+    expect(t.name).toBe('werkdocumenten-traject');
+    expect(t.params.trajectRef).toBe(REF);
+    expect(t.params.docPath).toBe('besluit.md');
+  });
+
+  it('re-stamps the active traject onto a stored werkdocumenten path', () => {
+    const t = sectionTarget(router, '/trajecten/old-deadbeef/werkdocumenten/x.md', REF);
+    expect(t.name).toBe('werkdocumenten-traject');
+    expect(t.params.trajectRef).toBe(REF);
+    expect(t.params.docPath).toBe('x.md');
+  });
+
+  it('drops the werkdocumenten sub-mode when no traject is active', () => {
+    const t = sectionTarget(router, `/trajecten/${REF}/werkdocumenten/x.md`, null);
+    expect(t.name).toBe('home');
+  });
+
   it('sends the Editor tab to the chooser when no traject is active', () => {
     // The editor requires a traject: with none active, the stored editor
     // path collapses to the chooser and the law travels along as query.

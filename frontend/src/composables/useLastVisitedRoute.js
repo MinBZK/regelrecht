@@ -120,8 +120,20 @@ export function sectionTarget(router, storedPath, activeRef) {
     return { name: 'editor', params: {}, query };
   }
 
-  // Home section — the active traject scope wins over whatever the stored path
-  // carried (re-stamped, or dropped when browsing without a traject).
+  // Werkdocumenten sub-mode of Home: preserve it (re-stamp the active traject,
+  // keep the open document) so a Home↔Editor tab switch returns to the open
+  // werkdocument. Without a traject the werkdoc route doesn't apply, so it falls
+  // through to the corpus shapes below.
+  const isWerkdoc = name === 'werkdocumenten-traject'
+    || (name == null && storedPath.includes('/werkdocumenten'));
+  if (isWerkdoc && activeRef) {
+    const target = { name: 'werkdocumenten-traject', params: { trajectRef: activeRef } };
+    if (params.docPath) target.params.docPath = params.docPath;
+    return target;
+  }
+
+  // Home section (corpus) — the active traject scope wins over whatever the
+  // stored path carried (re-stamped, or dropped when browsing without a traject).
   return homeTarget({
     trajectRef: activeRef || undefined,
     lawId: params.lawId,

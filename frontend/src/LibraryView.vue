@@ -1068,7 +1068,8 @@ watch(activeTrajectRef, () => {
               ></nldd-top-title-bar>
 
               <nldd-simple-section width="full" v-if="!selectedLawId">
-                <nldd-inline-dialog text="Selecteer een wet"></nldd-inline-dialog>
+                <!-- Generic: from Home you can also open a werkdocument, not just a law. -->
+                <nldd-inline-dialog text="Geen selectie"></nldd-inline-dialog>
               </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="selectedLawLoading">
                 <!-- Loading takes precedence over `lawError` to avoid flashing a stale error during a refetch. -->
