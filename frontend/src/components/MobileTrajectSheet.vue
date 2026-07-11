@@ -39,11 +39,17 @@ const buttonText = computed(() => {
     return `Artikel ${tab.articleNumber} · ${tabActions.value.displayName(tab)}`;
   }
   if (activeTraject.value) return activeTraject.value.name;
-  if (loading.value && authenticated.value) return 'Traject…';
+  if (menuLoading.value) return 'Trajecten';
   // Logged in without a traject = the global corpus scope.
   if (authenticated.value) return 'Corpus juris';
   return 'Trajecten';
 });
+// A traject in the URL whose name hasn't resolved yet: the trigger shows a
+// spinner (see :loading) with the neutral 'Trajecten' label, not a '…'
+// placeholder. Corpus juris (no ref) is known immediately, so no spinner there.
+const menuLoading = computed(
+  () => !!activeTrajectRef.value && loading.value && !activeTraject.value,
+);
 const buttonSupporting = computed(() =>
   activeDocumentTab.value && activeTraject.value ? activeTraject.value.name : undefined,
 );
@@ -212,6 +218,7 @@ onBeforeUnmount(() => {
   <nldd-button
     size="md"
     expandable
+    :loading="menuLoading || undefined"
     start-icon="traject"
     width="full"
     horizontal-alignment="left"
@@ -276,10 +283,15 @@ onBeforeUnmount(() => {
             </nldd-list-item>
           </nldd-list>
 
-          <!-- Trajecten-switcher + nieuw traject — eigen lijst met titel. -->
-          <nldd-spacer v-if="activeTraject" size="24"></nldd-spacer>
-          <nldd-title size="5"><h2>Trajecten</h2></nldd-title>
-          <nldd-spacer size="8"></nldd-spacer>
+          <!-- Trajecten-switcher + nieuw traject. The "Trajecten" section title
+               only shows when the traject actions precede it (activeTraject); on
+               Corpus juris nothing is above it, so it would just duplicate the
+               sheet header. -->
+          <template v-if="activeTraject">
+            <nldd-spacer size="24"></nldd-spacer>
+            <nldd-title size="5"><h2>Trajecten</h2></nldd-title>
+            <nldd-spacer size="8"></nldd-spacer>
+          </template>
           <nldd-list variant="box" arrow-navigation>
             <!-- "Corpus juris" = the traject-less global scope, the default
                  option (like `main` among the branches). -->

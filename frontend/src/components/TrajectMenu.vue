@@ -83,10 +83,15 @@ async function goToTraject(trajectRef) {
 const menuBtnId = computed(() => `traject-menu-btn-${props.idSuffix}`);
 const menuId = computed(() => `traject-menu-${props.idSuffix}`);
 
+// A traject in the URL whose name hasn't resolved yet: the button shows a
+// spinner (see :loading) with the neutral 'Trajecten' label, not a '…'
+// placeholder. Corpus juris (no ref) is known immediately, so no spinner there.
+const menuLoading = computed(
+  () => !!activeTrajectRef.value && loading.value && !activeTraject.value,
+);
 const activeLabel = computed(() => {
   if (activeTraject.value) return activeTraject.value.name;
-  // While the list is still loading for a logged-in user, show a placeholder.
-  if (loading.value && authenticated.value) return 'Traject…';
+  if (menuLoading.value) return 'Trajecten';
   // Logged in without a traject = the global corpus scope (a peer of the
   // trajecten). Logged out, the button just invites you to sign in.
   if (authenticated.value) return 'Corpus juris';
@@ -215,6 +220,7 @@ async function submitCreate() {
     :id="menuBtnId"
     size="md"
     expandable
+    :loading="menuLoading || undefined"
     :start-icon="fullWidth ? 'traject' : undefined"
     :text="activeLabel"
     :popovertarget="menuId"
