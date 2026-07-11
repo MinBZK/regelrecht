@@ -211,16 +211,18 @@ const hasDocumentTabs = computed(
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
                 <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
                 <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
-                <nldd-menu-group text="Functies">
-                <nldd-menu-item
-                  v-for="[key, label] in editorPanelFlags"
-                  :key="key"
-                  type="checkbox"
-                  :selected="isEnabled(key) || undefined"
-                  :text="label"
-                  @select="toggleFlag(key)"
-                ></nldd-menu-item>
-                </nldd-menu-group>
+                <nldd-menu-item text="Functies" icon="puzzle-piece">
+                  <nldd-menu>
+                    <nldd-menu-item
+                      v-for="[key, label] in editorPanelFlags"
+                      :key="key"
+                      type="checkbox"
+                      :selected="isEnabled(key) || undefined"
+                      :text="label"
+                      @select="toggleFlag(key)"
+                    ></nldd-menu-item>
+                  </nldd-menu>
+                </nldd-menu-item>
                 <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"
@@ -282,16 +284,18 @@ const hasDocumentTabs = computed(
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
                 <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
                 <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
-                <nldd-menu-group text="Functies">
-                <nldd-menu-item
-                  v-for="[key, label] in editorPanelFlags"
-                  :key="key"
-                  type="checkbox"
-                  :selected="isEnabled(key) || undefined"
-                  :text="label"
-                  @select="toggleFlag(key)"
-                ></nldd-menu-item>
-                </nldd-menu-group>
+                <nldd-menu-item text="Functies" icon="puzzle-piece">
+                  <nldd-menu>
+                    <nldd-menu-item
+                      v-for="[key, label] in editorPanelFlags"
+                      :key="key"
+                      type="checkbox"
+                      :selected="isEnabled(key) || undefined"
+                      :text="label"
+                      @select="toggleFlag(key)"
+                    ></nldd-menu-item>
+                  </nldd-menu>
+                </nldd-menu-item>
                 <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"
@@ -464,16 +468,18 @@ const hasDocumentTabs = computed(
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
                 <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
                 <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
-                <nldd-menu-group text="Functies">
-                <nldd-menu-item
-                  v-for="[key, label] in editorPanelFlags"
-                  :key="key"
-                  type="checkbox"
-                  :selected="isEnabled(key) || undefined"
-                  :text="label"
-                  @select="toggleFlag(key)"
-                ></nldd-menu-item>
-                </nldd-menu-group>
+                <nldd-menu-item text="Functies" icon="puzzle-piece">
+                  <nldd-menu>
+                    <nldd-menu-item
+                      v-for="[key, label] in editorPanelFlags"
+                      :key="key"
+                      type="checkbox"
+                      :selected="isEnabled(key) || undefined"
+                      :text="label"
+                      @select="toggleFlag(key)"
+                    ></nldd-menu-item>
+                  </nldd-menu>
+                </nldd-menu-item>
                 <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"

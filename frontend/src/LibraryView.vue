@@ -911,12 +911,6 @@ watch(activeTrajectRef, () => {
                     </nldd-list>
                     <nldd-spacer size="24"></nldd-spacer>
                   </template>
-                  <!-- In a traject, the curated corpus groups sit under a
-                       'Corpus {traject}' heading. Public Home shows no heading. -->
-                  <template v-if="activeTraject?.name && sidebarSections.length > 0">
-                    <nldd-title size="4"><h4>Corpus {{ activeTraject.name }}</h4></nldd-title>
-                    <nldd-spacer size="12"></nldd-spacer>
-                  </template>
                   <template
                     v-for="(section, sectionIndex) in sidebarSections"
                     :key="section.key"
