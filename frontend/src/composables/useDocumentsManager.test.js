@@ -175,4 +175,29 @@ describe('useDocumentsManager', () => {
     // navigation would trip the unsaved-changes guard.
     expect(m.hasChanges.value).toBe(false);
   });
+
+  it('hasChanges is true when the body diverges from the saved baseline', () => {
+    h.api.currentBody.value = '# edited';
+    h.api.savedBody.value = '# original';
+    expect(m.hasChanges.value).toBe(true);
+  });
+
+  it('hasChanges stays false while loading or on a blocking load error', () => {
+    h.api.currentBody.value = '# edited';
+    h.api.savedBody.value = '# original';
+    h.api.docLoading.value = true;
+    expect(m.hasChanges.value).toBe(false);
+    h.api.docLoading.value = false;
+    h.api.docError.value = { kind: 'load-error', message: 'x' };
+    expect(m.hasChanges.value).toBe(false);
+  });
+
+  it('hasChanges stays true on a draft-present notice (Save button must show)', () => {
+    // A local draft diverging from the server is unsaved changes, not a blocking
+    // error — mirrors DocumentEditor.blockingError, which does not block on it.
+    h.api.currentBody.value = '# draft';
+    h.api.savedBody.value = '# server';
+    h.api.docError.value = { kind: 'draft-present', message: 'x', serverBody: '# server' };
+    expect(m.hasChanges.value).toBe(true);
+  });
 });

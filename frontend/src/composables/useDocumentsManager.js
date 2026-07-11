@@ -43,13 +43,20 @@ export function useDocumentsManager(trajectRef) {
   }
 
   // Unsaved changes: the live body differs from the last-saved baseline. Drives
-  // the editor's footer toolbar (shown only when dirty) and the navigate-away
-  // guard. Guard on docError and docLoading: a document that failed to load or is
-  // still loading can never be dirty. While loading, currentPath is already set
-  // (so the shell shows) but currentBody still holds the previous document, which
-  // would otherwise register as a change and flash the Save button + leave-guard.
+  // the editor's Save button + footer toolbar (shown only when dirty) and the
+  // navigate-away guard. A document that is still loading, or that failed to
+  // load, can never be dirty. The exception is a 'draft-present' docError: it
+  // means a local draft diverges from the server, which IS unsaved changes, so
+  // it must stay dirty — mirroring DocumentEditor.blockingError, which likewise
+  // does not block on draft-present (otherwise the Save button the draft notice
+  // tells the user to click is hidden). While loading, currentPath is already
+  // set (so the shell shows) but currentBody still holds the previous document,
+  // which would otherwise register as a change and flash the Save button.
   const hasChanges = computed(
-    () => !docError.value && !docLoading.value && currentBody.value !== savedBody.value,
+    () =>
+      !docLoading.value
+      && !(docError.value && docError.value.kind !== 'draft-present')
+      && currentBody.value !== savedBody.value,
   );
 
   // --- Titels ---
