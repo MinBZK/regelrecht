@@ -40,6 +40,8 @@ const buttonText = computed(() => {
   }
   if (activeTraject.value) return activeTraject.value.name;
   if (loading.value && authenticated.value) return 'Traject…';
+  // Logged in without a traject = the global corpus scope.
+  if (authenticated.value) return 'Corpus juris';
   return 'Trajecten';
 });
 const buttonSupporting = computed(() =>
@@ -72,6 +74,17 @@ async function goToTraject(trajectRef) {
     ? homeTarget({ trajectRef, lawId, articleNumber })
     : { name: 'editor-traject', params: { trajectRef, lawId, articleNumber } };
   await router.push(target);
+}
+
+// Switch to the traject-less global corpus ("Corpus juris") — a peer of the
+// trajecten in the switcher. Closes the sheet and carries the open law.
+function goToCorpusJuris() {
+  closeSheet();
+  if (!activeTrajectRef.value) return; // already on Corpus juris
+  router.push(homeTarget({
+    lawId: route.params.lawId || undefined,
+    articleNumber: route.params.articleNumber || undefined,
+  }));
 }
 
 async function selectTraject(t) {
@@ -268,6 +281,20 @@ onBeforeUnmount(() => {
           <nldd-title size="5"><h2>Trajecten</h2></nldd-title>
           <nldd-spacer size="8"></nldd-spacer>
           <nldd-list variant="box" arrow-navigation>
+            <!-- "Corpus juris" = the traject-less global scope, the default
+                 option (like `main` among the branches). -->
+            <nldd-list-item
+              size="md"
+              button
+              :selected="!activeTrajectRef || undefined"
+              @click="goToCorpusJuris"
+            >
+              <nldd-spacer-cell slot="start" size="12"></nldd-spacer-cell>
+              <nldd-icon-cell v-if="!activeTrajectRef" slot="start" size="20"><nldd-icon name="check-mark"></nldd-icon></nldd-icon-cell>
+              <nldd-spacer-cell v-else slot="start" size="20"></nldd-spacer-cell>
+              <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+              <nldd-text-cell text="Corpus juris"></nldd-text-cell>
+            </nldd-list-item>
             <nldd-list-item
               v-for="t in trajects"
               :key="t.id"

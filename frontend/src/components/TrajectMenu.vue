@@ -51,6 +51,17 @@ function goToWerkdocumenten() {
   router.push({ name: 'werkdocumenten-traject', params: { trajectRef: activeTrajectRef.value } });
 }
 
+// Switch to the traject-less global corpus ("Corpus juris"): not a real traject,
+// but mutually exclusive with them, so it lives in the same switcher. Carries
+// the open law so you land on the same law, globally (homeTarget's no-traject
+// shapes). Editing from here still routes through the chooser (editorRouteFor).
+function goToCorpusJuris() {
+  router.push(homeTarget({
+    lawId: route.params.lawId || undefined,
+    articleNumber: route.params.articleNumber || undefined,
+  }));
+}
+
 /**
  * Navigate to a traject — push the user into the traject-scoped view of
  * the section they are currently in (bibliotheek or editor), at the same
@@ -74,9 +85,11 @@ const menuId = computed(() => `traject-menu-${props.idSuffix}`);
 
 const activeLabel = computed(() => {
   if (activeTraject.value) return activeTraject.value.name;
-  // No traject selected → the button invites you to pick one. While the
-  // list is still loading for a logged-in user, show a placeholder.
+  // While the list is still loading for a logged-in user, show a placeholder.
   if (loading.value && authenticated.value) return 'Traject…';
+  // Logged in without a traject = the global corpus scope (a peer of the
+  // trajecten). Logged out, the button just invites you to sign in.
+  if (authenticated.value) return 'Corpus juris';
   return 'Trajecten';
 });
 
@@ -208,9 +221,8 @@ async function submitCreate() {
     :width="fullWidth ? 'full' : undefined"
     :horizontal-alignment="fullWidth ? 'left' : undefined"
   ></nldd-button>
-  <!-- Logged in: the active traject's actions first, then the traject switcher
-       + create below a divider. "Geen traject" is not an option — you leave
-       traject scope by navigating, not from this menu. -->
+  <!-- Logged in: the active traject's actions first, then the scope switcher
+       (Corpus juris + the trajecten) + create below a divider. -->
   <nldd-menu v-if="authenticated" :id="menuId" :anchor="menuBtnId">
     <nldd-menu-item
       v-if="activeTraject"
@@ -234,6 +246,15 @@ async function submitCreate() {
          first child, i.e. no active-traject actions precede it), so no manual
          nldd-menu-divider here. -->
     <nldd-menu-group text="Trajecten">
+      <!-- "Corpus juris" is the traject-less global scope: not a real traject,
+           but mutually exclusive with them, so it's the default option here
+           (like `main` among the branches). -->
+      <nldd-menu-item
+        type="radio"
+        :selected="!activeTrajectRef || undefined"
+        text="Corpus juris"
+        @select="goToCorpusJuris"
+      ></nldd-menu-item>
       <nldd-menu-item
         v-for="t in trajects"
         :key="t.id"
