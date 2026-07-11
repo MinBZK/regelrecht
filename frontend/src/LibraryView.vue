@@ -28,11 +28,10 @@ const showLoginWarning = inject('showLoginWarning', null);
 // actions that don't originate from a click on the button itself.
 const editButton = ref(null);
 
-// Library home title (sidebar header + home heading) and the label of
-// the back-button that returns to it from underlying pages. They differ
-// intentionally: the page is titled "RegelRecht", but a back-button
-// reads more naturally as "Home".
-const LIBRARY_HOME_TITLE = 'RegelRecht';
+// Label of the back-button that returns to the Home sidebar from underlying
+// pages. Kept fixed as "Home" even though the sidebar's own heading is now
+// traject-aware (see sidebarTitle) — a back-button reads more naturally as
+// "Home" than as the traject name.
 const LIBRARY_HOME_BACK_TEXT = 'Home';
 
 const route = useRoute();
@@ -42,6 +41,13 @@ const router = useRouter();
 // `route.params.trajectRef`, so the new `library-traject` route makes the
 // bibliotheek traject-aware without any extra plumbing.
 const { activeTrajectRef, activeTraject } = useTrajects();
+
+// Primary-sidebar heading: the active traject's name, or 'Corpus juris' for the
+// public/global corpus (logged-out, or logged-in without a chosen traject).
+// Replaces the old fixed 'RegelRecht' now that Home is traject-aware.
+const sidebarTitle = computed(() =>
+  activeTrajectRef.value ? activeTraject.value?.name || 'Traject…' : 'Corpus juris',
+);
 
 // Keep the user's traject scope across in-app navigations. A traject with a law
 // stays on `library-traject`, a traject without one on `traject-home`; publicly,
@@ -750,13 +756,20 @@ watch(activeTrajectRef, () => {
 
           <nldd-split-view-pane slot="sidebar" has-content>
             <nldd-page sticky-header>
-              <nldd-top-title-bar v-if="!loading" slot="header" :text="LIBRARY_HOME_TITLE" collapse-anchor="home-titel"></nldd-top-title-bar>
+              <nldd-top-title-bar v-if="!loading" slot="header" :text="sidebarTitle" collapse-anchor="home-titel"></nldd-top-title-bar>
 
               <nldd-simple-section width="full">
-                <nldd-title v-if="!loading" id="home-titel" size="3"><h3>{{ LIBRARY_HOME_TITLE }}</h3></nldd-title>
+                <nldd-title v-if="!loading" id="home-titel" size="3"><h3>{{ sidebarTitle }}</h3></nldd-title>
                 <nldd-spacer v-if="!loading" size="16"></nldd-spacer>
                 <nldd-activity-indicator v-if="loading" timing="instant" text="Laden" show-text></nldd-activity-indicator>
                 <template v-else>
+                  <!-- In a traject, the curated corpus groups sit under a
+                       'Corpus {traject}' heading — the peer of the (Fase 4)
+                       Werkdocumenten group. Public Home shows no such heading. -->
+                  <template v-if="activeTraject?.name && sidebarSections.length > 0">
+                    <nldd-title size="4"><h4>Corpus {{ activeTraject.name }}</h4></nldd-title>
+                    <nldd-spacer size="12"></nldd-spacer>
+                  </template>
                   <template
                     v-for="(section, sectionIndex) in sidebarSections"
                     :key="section.key"
