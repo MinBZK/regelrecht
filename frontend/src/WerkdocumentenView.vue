@@ -10,7 +10,7 @@
  * it carries its own compact top bar — title + traject subtitle on the left,
  * a focused account menu (theme + logout) on the right.
  */
-import { computed, onMounted, watch, watchEffect } from 'vue';
+import { computed, onMounted, ref, watch, watchEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTrajects } from './composables/useTrajects.js';
 import { useDocumentsManager } from './composables/useDocumentsManager.js';
@@ -26,7 +26,7 @@ const { authenticated, oidcConfigured, person, loading: authLoading, login, logo
 const { colorScheme, setColorScheme } = useColorScheme();
 
 const mgr = useDocumentsManager(activeTrajectRef);
-const { documents, listLoading, listError, currentPath, displayTitle, open, startNew, close } = mgr;
+const { documents, listLoading, listError, currentPath, hasChanges, displayTitle, open, startNew, close, saving } = mgr;
 
 const colorSchemeOptions = [
   ['auto', 'Systeem'],
@@ -36,7 +36,6 @@ const colorSchemeOptions = [
 
 const trajectName = computed(() => activeTraject.value?.name || '');
 const hasOpenDoc = computed(() => !!currentPath.value);
-const docTitle = computed(() => displayTitle(currentPath.value) || 'Document');
 
 // HTML-titel: {werkdocument indien open} · {traject} · RegelRecht. Lege delen
 // (traject nog niet geladen, geen document open) vallen weg.
@@ -83,21 +82,58 @@ watch(currentPath, (p) => {
   }
 });
 
+// Navigate-away guard: warn before leaving a document with unsaved changes.
+// Covers in-view navigation (picking another document, "nieuw", back); the run
+// callback performs the actual navigation once the user confirms.
+const navGuardEl = ref(null);
+const editorEl = ref(null);
+let pendingNav = null;
+function guardedNavigate(run) {
+  if (hasChanges.value) {
+    pendingNav = run;
+    navGuardEl.value?.show?.();
+  } else {
+    run();
+  }
+}
+function confirmLeave() {
+  const run = pendingNav;
+  pendingNav = null;
+  navGuardEl.value?.hide?.();
+  run?.();
+}
+function cancelLeave() {
+  pendingNav = null;
+  navGuardEl.value?.hide?.();
+}
+async function saveAndLeave() {
+  // Save through the editor (resets titleDraft + surfaces save errors via its
+  // own modal). Only proceed with the pending navigation when the save actually
+  // succeeded; on failure we stay on the document and the error is shown.
+  const run = pendingNav;
+  const ok = await editorEl.value?.saveDocument();
+  if (!ok) return;
+  pendingNav = null;
+  navGuardEl.value?.hide?.();
+  run?.();
+}
+
 function onSelect(path) {
-  open(path);
+  if (path === currentPath.value) return;
+  guardedNavigate(() => open(path));
 }
 function onNew() {
-  startNew();
+  guardedNavigate(() => startNew());
 }
 function backToList() {
-  close();
+  guardedNavigate(() => close());
 }
 </script>
 
 <template>
   <nldd-app-view>
-    <div class="werkdocumenten-view">
-      <nldd-container padding="8" padding-left="16">
+    <nldd-bar-split-view>
+      <nldd-container slot="toolbar" padding="8" padding-left="16">
         <nldd-toolbar size="md">
           <nldd-toolbar-title slot="start" text="Werkdocumenten" :supporting-text="trajectName"></nldd-toolbar-title>
           <nldd-toolbar-item slot="end">
@@ -129,10 +165,8 @@ function backToList() {
           </nldd-toolbar-item>
         </nldd-toolbar>
       </nldd-container>
-      <nldd-divider></nldd-divider>
 
-      <div class="werkdocumenten-view__body">
-        <nldd-navigation-split-view sidebar-accessible-label="Werkdocumenten">
+      <nldd-navigation-split-view slot="main" sidebar-accessible-label="Werkdocumenten">
           <nldd-split-view-pane slot="sidebar" has-content>
             <nldd-page>
               <nldd-simple-section>
@@ -155,14 +189,13 @@ function backToList() {
           </nldd-split-view-pane>
 
           <nldd-split-view-pane slot="main" :has-content="hasOpenDoc || undefined">
-            <nldd-page v-if="hasOpenDoc" sticky-header>
-              <nldd-top-title-bar
-                slot="header"
-                :text="docTitle"
-                back-text="Werkdocumenten"
+            <nldd-page v-if="hasOpenDoc" sticky-header sticky-footer>
+              <DocumentEditor
+                ref="editorEl"
+                :manager="mgr"
+                :traject-name="trajectName"
                 @back="backToList"
-              ></nldd-top-title-bar>
-              <DocumentEditor :manager="mgr"></DocumentEditor>
+              ></DocumentEditor>
             </nldd-page>
             <nldd-page v-else>
               <nldd-simple-section>
@@ -171,20 +204,20 @@ function backToList() {
             </nldd-page>
           </nldd-split-view-pane>
         </nldd-navigation-split-view>
-      </div>
-    </div>
+    </nldd-bar-split-view>
+
+    <Teleport to="body">
+      <nldd-modal-dialog
+        ref="navGuardEl"
+        variant="alert"
+        text="Niet-opgeslagen wijzigingen"
+        supporting-text="Dit document heeft wijzigingen die nog niet zijn opgeslagen. Als je verdergaat, gaan ze verloren."
+        @close="cancelLeave"
+      >
+        <nldd-button slot="actions" variant="primary" text="Blijf document bewerken" @click="cancelLeave"></nldd-button>
+        <nldd-button slot="actions" variant="secondary" text="Sla wijzigingen op en sluit" :loading="saving || undefined" @click="saveAndLeave"></nldd-button>
+        <nldd-button slot="actions" variant="destructive" text="Negeer wijzigingen en sluit" @click="confirmLeave"></nldd-button>
+      </nldd-modal-dialog>
+    </Teleport>
   </nldd-app-view>
 </template>
-
-<style scoped>
-.werkdocumenten-view {
-  display: flex;
-  min-height: 0;
-  flex-direction: column;
-}
-.werkdocumenten-view__body {
-  display: flex;
-  min-height: 0;
-  flex-grow: 1;
-}
-</style>

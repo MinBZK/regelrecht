@@ -39,7 +39,9 @@ function onRowClick(path) {
       :selected="doc.path === selectedPath || undefined"
       @click="onRowClick(doc.path)"
     >
-      <nldd-spacer-cell slot="start" size="12"></nldd-spacer-cell>
+      <!-- Box variant (sheet) needs leading indent from the box edge; the simple
+           variant (standalone page) aligns flush to the section, so no spacer. -->
+      <nldd-spacer-cell v-if="variant === 'box'" slot="start" size="12"></nldd-spacer-cell>
       <nldd-icon-cell slot="start" size="20"><nldd-icon name="document"></nldd-icon></nldd-icon-cell>
       <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
       <nldd-text-cell :text="title(doc.path)"></nldd-text-cell>
@@ -47,7 +49,7 @@ function onRowClick(path) {
       <nldd-icon-cell size="20"><nldd-icon :name="hrefFor ? 'open-new-page' : 'chevron-right'"></nldd-icon></nldd-icon-cell>
     </nldd-list-item>
     <nldd-list-item size="md" button @click="$emit('new')">
-      <nldd-spacer-cell slot="start" size="12"></nldd-spacer-cell>
+      <nldd-spacer-cell v-if="variant === 'box'" slot="start" size="12"></nldd-spacer-cell>
       <nldd-icon-cell slot="start" size="20"><nldd-icon name="plus"></nldd-icon></nldd-icon-cell>
       <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
       <nldd-text-cell text="Nieuw document"></nldd-text-cell>

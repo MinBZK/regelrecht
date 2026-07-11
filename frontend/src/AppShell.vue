@@ -407,14 +407,14 @@ const hasDocumentTabs = computed(
                 variant="primary"
                 size="md"
                 width="full"
-                :disabled="editorChanges.saving || undefined"
-                :text="editorChanges.saving ? 'Opslaan…' : 'Opslaan'"
+                text="Opslaan"
+                :loading="editorChanges.saving || undefined"
                 @click="editorActions?.save?.()"
               ></nldd-button>
               <nldd-menu-item
                 slot="overflow"
                 icon="save"
-                :text="editorChanges.saving ? 'Opslaan…' : 'Opslaan'"
+                text="Opslaan"
                 :disabled="editorChanges.saving || undefined"
                 @select="editorActions?.save?.()"
               ></nldd-menu-item>
