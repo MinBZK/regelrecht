@@ -965,13 +965,19 @@ watch(activeTrajectRef, () => {
           <!-- Secondary Sidebar (werkdoc mode): the document list. -->
           <nldd-split-view-pane v-if="isWerkdocMode" slot="secondary-sidebar" has-content>
             <nldd-page sticky-header>
-              <nldd-top-title-bar slot="header" text="Werkdocumenten" :back-text="LIBRARY_HOME_BACK_TEXT"></nldd-top-title-bar>
+              <nldd-top-title-bar slot="header" text="Werkdocumenten" :back-text="LIBRARY_HOME_BACK_TEXT" collapse-anchor="werkdoc-titel"></nldd-top-title-bar>
               <nldd-simple-section width="full">
-                <nldd-title size="3"><h3>Werkdocumenten</h3></nldd-title>
+                <nldd-title id="werkdoc-titel" size="3"><h3>Werkdocumenten</h3></nldd-title>
+                <nldd-spacer size="16"></nldd-spacer>
+                <nldd-toolbar label="Documentacties">
+                  <nldd-toolbar-item slot="start">
+                    <nldd-icon-button icon="plus-small" text="Nieuw document" @click="onDocNew"></nldd-icon-button>
+                  </nldd-toolbar-item>
+                </nldd-toolbar>
                 <nldd-spacer size="16"></nldd-spacer>
                 <nldd-activity-indicator v-if="docsLoading" timing="instant" text="Documenten laden" show-text></nldd-activity-indicator>
                 <nldd-inline-dialog v-else-if="docsError" variant="alert" text="Documenten niet geladen" :supporting-text="docsError.message"></nldd-inline-dialog>
-                <DocumentList v-else :documents="docList" :selected-path="openDocPath" @select="onDocSelect" @new="onDocNew"></DocumentList>
+                <DocumentList v-else :documents="docList" :selected-path="openDocPath" @select="onDocSelect"></DocumentList>
               </nldd-simple-section>
             </nldd-page>
           </nldd-split-view-pane>
