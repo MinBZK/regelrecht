@@ -33,6 +33,7 @@ use regelrecht_editor_api::corpus_handlers::{
     get_corpus_law, get_traject_corpus_law, get_traject_scenario, list_traject_corpus_laws,
     list_traject_scenarios, save_law, save_scenario,
 };
+use regelrecht_editor_api::github_oauth::GithubOAuth;
 use regelrecht_editor_api::state::{AppState, CorpusState};
 use regelrecht_editor_api::traject_corpus::TrajectCorpusCache;
 
@@ -180,9 +181,10 @@ async fn read_law(state: AppState, session: Session, tref: &str) -> (String, Str
     (etag, body)
 }
 
-/// A throwaway account for direct handler calls. These tests build
-/// `AppConfig` with `github_oauth: None`, so the write path never reads
-/// `account.id` (user-OAuth is disabled) — any value is fine.
+/// A throwaway account for direct handler calls. These tests either build
+/// `AppConfig` with `github_oauth: None` (user-OAuth disabled) or write to
+/// a local backend that never demands a user token, so the write path
+/// never resolves a token for `account.id` — any value is fine.
 fn test_account() -> AccountRecord {
     AccountRecord {
         id: Uuid::new_v4(),
@@ -902,4 +904,57 @@ async fn scenario_list_unions_write_target_and_seed() {
         vec!["basis.feature", "extra.feature"],
         "list must union the branch's saves with the seed's remaining scenarios"
     );
+}
+
+// ---------------------------------------------------------------------------
+// User-token enforcement vs local writable-own backends
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn user_token_enforcement_skips_local_backed_trajects() {
+    // `require_user_token` demands the acting user's own GitHub token on
+    // traject writes — but only the GitHub Contents-API backend can use one.
+    // A traject whose writable-own source is `local` (the supported
+    // preview/local-stack configuration) writes without any token, so
+    // enforcement must not 428 its saves: linking GitHub could never
+    // satisfy the requirement there. This pins the requiredness decision
+    // to the *resolved* backend, not the deployment switch alone.
+    let db = TestDb::new().await;
+    let mut state = empty_state(db.pool.clone());
+    state.config = Arc::new(AppConfig {
+        oidc: None,
+        base_url: None,
+        github_oauth: Some(GithubOAuth::for_tests(true)),
+    });
+    let (owner, sub) = seed_account(&db.pool, "alice@test.local").await;
+
+    let corpus = tempfile::tempdir().unwrap();
+    write_law(corpus.path(), "VOOR_ENFORCEMENT");
+    let traject = local_traject(&db.pool, owner, corpus.path()).await;
+    let tref = traject_ref(traject);
+
+    // No GitHub-link cookie on the request: with the pre-fix ordering this
+    // 428'd before the write target was even resolved.
+    let (status, _etag) = save_law_with(
+        state.clone(),
+        session_for(&sub).await,
+        &tref,
+        HeaderMap::new(),
+        format!("$id: {LAW_ID}\nname: NA_ENFORCEMENT\n"),
+    )
+    .await
+    .expect("save on a local-backed traject must not demand a GitHub link");
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, _etag) = save_scenario_with(
+        state,
+        session_for(&sub).await,
+        &tref,
+        "basis.feature",
+        HeaderMap::new(),
+        "Feature: lokaal-zonder-koppeling\n",
+    )
+    .await
+    .expect("scenario save on a local-backed traject must not demand a GitHub link");
+    assert_eq!(status, StatusCode::OK);
 }

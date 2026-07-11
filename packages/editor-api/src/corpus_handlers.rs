@@ -1797,10 +1797,14 @@ pub async fn save_scenario(
     use axum::response::IntoResponse;
     validate_scenario_filename(&filename)?;
     let author = Some(require_editor_user(&session).await?);
-    let token_override = github_oauth::user_write_token(&state, account.id, &headers).await?;
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let write = resolve_traject_law_write(&traject, &law_id).await?;
+    // Resolved-backend-aware: a local writable-own backend ignores the
+    // override, so enforcement must not 428 a save that never reaches GitHub.
+    let token_override =
+        github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**write.backend)
+            .await?;
     let relative_path = scenario_relative_path(&write.law, &filename)?;
 
     // Optimistic concurrency, same semantics as documents. Only read the
@@ -1923,7 +1927,6 @@ pub async fn save_annotations(
     body: String,
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
     let author = Some(require_editor_user(&session).await?);
-    let token_override = github_oauth::user_write_token(&state, account.id, &headers).await?;
 
     // Body is a JSON array of new notes. Parse + bound it before touching
     // the backend.
@@ -2001,6 +2004,13 @@ pub async fn save_annotations(
         relative_path,
         backend,
     } = target;
+    // Checked here — after the all-personal early return and against the
+    // resolved backend — so enforcement only fires for notes that actually
+    // commit to GitHub: personal notes go to the database, and a local
+    // writable-own backend never uses a token at all.
+    let token_override =
+        github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**backend)
+            .await?;
 
     // Read the current sidecar from the traject backend (the branch this
     // traject's PR is built on — read-your-writes within the traject).
@@ -2160,7 +2170,6 @@ pub async fn save_law(
 ) -> Result<axum::response::Response, (StatusCode, String)> {
     use axum::response::IntoResponse;
     let author = Some(require_editor_user(&session).await?);
-    let token_override = github_oauth::user_write_token(&state, account.id, &headers).await?;
 
     // Validation:
     //   1. Body must parse as well-formed YAML. extract_law_id below is a
@@ -2209,6 +2218,9 @@ pub async fn save_law(
     // overlay after `persist` succeeds.
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let write = resolve_traject_law_write(&traject, &law_id).await?;
+    let token_override =
+        github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**write.backend)
+            .await?;
     let relative_path = PathBuf::from(&write.law.relative_path);
 
     // Optimistic concurrency, same semantics as the document PUT: a
@@ -2276,10 +2288,12 @@ pub async fn delete_scenario(
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
     validate_scenario_filename(&filename)?;
     let author = Some(require_editor_user(&session).await?);
-    let token_override = github_oauth::user_write_token(&state, account.id, &headers).await?;
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let write = resolve_traject_law_write(&traject, &law_id).await?;
+    let token_override =
+        github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**write.backend)
+            .await?;
     let relative_path = scenario_relative_path(&write.law, &filename)?;
 
     write
@@ -2788,8 +2802,15 @@ pub async fn upload_traject_document(
     // exactly the silent service-token fallback `require_user_token` forbids —
     // refuse the upload fail-closed. Deliberately NOT a 428: linking GitHub
     // would not change anything here, so the koppel-flow redirect would loop.
+    // Only for a backend that honors the override, though: a local writable-own
+    // (preview/local-stack) writes without any token, so there is no service-
+    // token fallback to forbid.
     if let Some(oauth) = state.config.github_oauth.as_ref() {
-        if github_oauth::write_requires_user_token(&state, oauth).await? {
+        if github_oauth::write_requires_user_token(&state, oauth).await?
+            && resolve_traject_documents_writer(&traject)
+                .await?
+                .supports_token_override()
+        {
             return Err((
                 StatusCode::FORBIDDEN,
                 "Documenten uploaden is niet beschikbaar wanneer schrijven met je \
@@ -3009,7 +3030,6 @@ pub async fn save_traject_document(
     use axum::response::IntoResponse;
     validate_document_path(&doc_path)?;
     let author = Some(require_editor_user(&session).await?);
-    let token_override = github_oauth::user_write_token(&state, account.id, &headers).await?;
 
     // The body is always text in fase 1. A *missing* Content-Type is
     // allowed because browsers occasionally omit it on
@@ -3033,6 +3053,9 @@ pub async fn save_traject_document(
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let backend = resolve_traject_documents_writer(&traject).await?;
+    let token_override =
+        github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**backend)
+            .await?;
     let relative_path = traject_documents_base(&traject_ref).join(&doc_path);
 
     let if_match = extract_if_match(&headers);
@@ -3095,10 +3118,12 @@ pub async fn delete_traject_document(
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
     validate_document_path(&doc_path)?;
     let author = Some(require_editor_user(&session).await?);
-    let token_override = github_oauth::user_write_token(&state, account.id, &headers).await?;
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let backend = resolve_traject_documents_writer(&traject).await?;
+    let token_override =
+        github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**backend)
+            .await?;
     let relative_path = traject_documents_base(&traject_ref).join(&doc_path);
 
     let if_match = extract_if_match(&headers);

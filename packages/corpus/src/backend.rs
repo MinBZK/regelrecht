@@ -190,6 +190,17 @@ pub trait RepoBackend: Send + Sync {
     /// by a session-mode `GitBackend`).
     async fn persist(&self, ctx: &WriteContext) -> Result<PersistOutcome>;
 
+    /// Whether [`RepoBackend::persist`] honors [`WriteContext::token_override`].
+    ///
+    /// Only a backend that authenticates each persist against GitHub can
+    /// route a write through the acting user's own credential. Backends that
+    /// ignore the override — local checkouts, clone-based git backends with a
+    /// baked-in remote credential — must return `false`, so callers never
+    /// demand a per-user token for a write that could not use one anyway.
+    fn supports_token_override(&self) -> bool {
+        false
+    }
+
     /// Prepare the backend for use (validate directories, clone repos, etc.).
     async fn ensure_ready(&mut self) -> Result<()>;
 

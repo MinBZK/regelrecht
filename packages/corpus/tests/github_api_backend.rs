@@ -42,10 +42,7 @@ fn backend(server: &MockServer) -> GitHubApiBackend {
 }
 
 fn ctx() -> WriteContext {
-    WriteContext {
-        message: "test commit".to_string(),
-        author: None,
-    }
+    WriteContext::new("test commit".to_string(), None)
 }
 
 #[tokio::test]

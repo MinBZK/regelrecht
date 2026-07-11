@@ -54,6 +54,8 @@ use subtle::ConstantTimeEq;
 use tower_sessions::Session;
 use uuid::Uuid;
 
+use regelrecht_corpus::backend::RepoBackend;
+
 use crate::accounts::AccountRecord;
 use crate::crypto::TokenCipher;
 use crate::state::AppState;
@@ -180,6 +182,32 @@ impl GithubOAuth {
                  GITHUB_OAUTH_CLIENT_ID, GITHUB_OAUTH_CLIENT_SECRET and \
                  GITHUB_TOKEN_ENC_KEY, or none of them"
                 .to_string()),
+        }
+    }
+
+    /// Fully-formed config with dummy GitHub credentials, for tests only.
+    /// Integration tests live in a separate crate, so a `#[cfg(test)]`
+    /// constructor can't reach them and `client_secret` is deliberately
+    /// private. Production wiring goes through [`GithubOAuth::from_env`].
+    // Only called from integration tests; the bin target (main.rs includes
+    // these modules directly) would otherwise flag it as dead code, and the
+    // expect on a static test key is fine outside production paths.
+    #[allow(dead_code, clippy::expect_used)]
+    #[doc(hidden)]
+    pub fn for_tests(require_user_token: bool) -> Self {
+        use base64::engine::general_purpose::STANDARD;
+        let cipher = TokenCipher::from_base64_key(&STANDARD.encode([9u8; 32]))
+            .expect("static 32-byte test key is valid");
+        Self {
+            client_id: "test-client-id".to_string(),
+            client_secret: "test-client-secret".to_string(),
+            scopes: "repo".to_string(),
+            cipher: Arc::new(cipher),
+            require_user_token,
+            callback_base: None,
+            allowed_origin_suffixes: Vec::new(),
+            github_base: "https://github.invalid".to_string(),
+            api_base: "https://api.github.invalid".to_string(),
         }
     }
 }
@@ -848,6 +876,9 @@ pub async fn write_requires_user_token(
 /// * `Err((428, msg))` — this deployment requires a user token but the user
 ///   hasn't linked one (or it expired); the frontend bounces this straight
 ///   into the GitHub connect flow (`apiAuthGuard.js`).
+///
+/// Write handlers should prefer [`user_write_token_for_backend`], which
+/// additionally skips enforcement for backends that ignore the override.
 pub async fn user_write_token(
     state: &AppState,
     account_id: Uuid,
@@ -895,6 +926,27 @@ pub async fn user_write_token(
                 .to_string(),
         )),
     }
+}
+
+/// [`user_write_token`], scoped to the backend the write actually goes to.
+///
+/// Enforcement only makes sense for a backend whose `persist` honors
+/// `WriteContext::token_override` (the GitHub Contents-API backend). A
+/// writable-own source can also be `SourceType::Local` — the supported
+/// preview/local-stack configuration — whose backend never touches GitHub or
+/// any token at all. Demanding a linked GitHub account there would 428 every
+/// save with a requirement linking can never satisfy. So: resolve the write
+/// target first, then call this with the resolved backend.
+pub async fn user_write_token_for_backend(
+    state: &AppState,
+    account_id: Uuid,
+    headers: &HeaderMap,
+    backend: &dyn RepoBackend,
+) -> Result<Option<String>, (StatusCode, String)> {
+    if !backend.supports_token_override() {
+        return Ok(None);
+    }
+    user_write_token(state, account_id, headers).await
 }
 
 // --- GitHub HTTP calls -----------------------------------------------------

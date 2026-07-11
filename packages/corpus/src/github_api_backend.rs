@@ -536,6 +536,13 @@ impl RepoBackend for GitHubApiBackend {
         Ok(PersistOutcome::default())
     }
 
+    // `persist` above authenticates every Contents-API call with
+    // `ctx.token_override` when present — this is the one backend where a
+    // per-user GitHub token actually changes who the write authenticates as.
+    fn supports_token_override(&self) -> bool {
+        true
+    }
+
     #[tracing::instrument(name = "gh_ensure_ready", skip_all, fields(branch = %self.branch))]
     async fn ensure_ready(&mut self) -> Result<()> {
         // Read-only backends have nothing to bootstrap — the branch
