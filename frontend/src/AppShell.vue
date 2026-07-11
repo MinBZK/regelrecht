@@ -209,8 +209,6 @@ const hasDocumentTabs = computed(
                 <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
-                <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
-                <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
                 <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"
@@ -221,6 +219,7 @@ const hasDocumentTabs = computed(
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
                 </nldd-menu-group>
+                <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
                 <nldd-menu-item text="Functies" icon="puzzle-piece">
                   <nldd-menu>
                     <nldd-menu-item
@@ -282,8 +281,6 @@ const hasDocumentTabs = computed(
                 <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
-                <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
-                <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
                 <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"
@@ -294,6 +291,7 @@ const hasDocumentTabs = computed(
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
                 </nldd-menu-group>
+                <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
                 <nldd-menu-item text="Functies" icon="puzzle-piece">
                   <nldd-menu>
                     <nldd-menu-item
@@ -466,8 +464,6 @@ const hasDocumentTabs = computed(
                 <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
-                <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
-                <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
                 <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"
@@ -478,6 +474,7 @@ const hasDocumentTabs = computed(
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
                 </nldd-menu-group>
+                <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
                 <nldd-menu-item text="Functies" icon="puzzle-piece">
                   <nldd-menu>
                     <nldd-menu-item
