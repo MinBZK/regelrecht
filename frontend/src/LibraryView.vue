@@ -49,6 +49,15 @@ const sidebarTitle = computed(() =>
   activeTrajectRef.value ? activeTraject.value?.name || 'Traject…' : 'Corpus juris',
 );
 
+// "Account aanvragen" affordance for the favoriet login popover (mirrors the
+// editor/bewerken login popover in AppShell): to the public account-request
+// page. /account-aanvragen is a top-level route, so navigating there unmounts
+// the popover along with the shell.
+const accountRequestHref = computed(() => router.resolve({ name: 'account-aanvragen' }).href);
+function goToAccountRequest() {
+  router.push({ name: 'account-aanvragen' });
+}
+
 // Keep the user's traject scope across in-app navigations. A traject with a law
 // stays on `library-traject`, a traject without one on `traject-home`; publicly,
 // a law drills into `corpus-juris`, otherwise the bare `home`. See homeTarget.
@@ -851,6 +860,7 @@ watch(activeTrajectRef, () => {
                       supporting-text="Zodra je bent ingelogd kun je wetten bewaren en snel terugvinden."
                     >
                       <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
+                      <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
                     </nldd-inline-dialog>
                   </nldd-container>
                 </nldd-popover>

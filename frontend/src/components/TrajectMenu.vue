@@ -39,6 +39,14 @@ const documentsSheet = useDocumentsSheet();
 // section + law/article (shared composable, see also MobileTrajectSheet).
 const loginToChooser = useLoginToChooser();
 
+// "Account aanvragen" op de niet-ingelogd-popover (zoals de editor/bewerken
+// login-popover): naar de publieke aanvraagpagina. /account-aanvragen is een
+// top-level route, dus de popover verdwijnt met de shell.
+const accountRequestHref = computed(() => router.resolve({ name: 'account-aanvragen' }).href);
+function goToAccountRequest() {
+  router.push({ name: 'account-aanvragen' });
+}
+
 /**
  * Navigate to a traject — push the user into the traject-scoped view of
  * the section they are currently in (bibliotheek or editor), at the same
@@ -258,6 +266,13 @@ async function submitCreate() {
           variant="primary"
           text="Inloggen"
           @click="loginToChooser"
+        ></nldd-button>
+        <nldd-button
+          slot="actions"
+          variant="secondary"
+          text="Account aanvragen"
+          :href="accountRequestHref"
+          @click.prevent="goToAccountRequest"
         ></nldd-button>
       </nldd-inline-dialog>
     </nldd-container>
