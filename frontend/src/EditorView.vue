@@ -10,7 +10,7 @@ import { useTrajects } from './composables/useTrajects.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useNotes, useResolvedDraftNotes } from './composables/useNotes.js';
 import { useDraftNotes } from './composables/useDraftNotes.js';
-import { lastLibraryPath, sectionTarget } from './composables/useLastVisitedRoute.js';
+import { lastLibraryPath, sectionTarget, homeTarget } from './composables/useLastVisitedRoute.js';
 import {
   registerSearchPopover,
   setEditorChrome,
@@ -812,11 +812,7 @@ function editorRouteFor(lawIdVal, articleNumber) {
  * follows the user instead of being dropped.
  */
 function libraryRouteFor(lawIdVal) {
-  const trajectRef = route.params.trajectRef;
-  if (trajectRef) {
-    return { name: 'library-traject', params: { trajectRef, lawId: lawIdVal } };
-  }
-  return lawIdVal ? { name: 'corpus-juris', params: { lawId: lawIdVal } } : { name: 'home', params: {} };
+  return homeTarget({ trajectRef: route.params.trajectRef, lawId: lawIdVal });
 }
 
 const openTabs = ref(loadSavedTabs());

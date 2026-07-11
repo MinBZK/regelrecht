@@ -12,6 +12,7 @@ import {
   lastLibraryPath,
   lastEditorPath,
   sectionTarget,
+  isHomeSection,
 } from './composables/useLastVisitedRoute.js';
 import { useAppChrome, openSearch, onBarSearchKeydown } from './composables/useAppChrome.js';
 
@@ -70,11 +71,10 @@ const router = useRouter();
 // always rendered; the active one shows `selected` and does not navigate,
 // the other carries the cross-section target (traject re-stamped via
 // sectionTarget) — matching the previous per-app behaviour.
-// True on the Home section (public landing, a public law, or the traject
-// bibliotheek). Kept named isLibraryRoute to limit this refactor's blast radius.
-const isLibraryRoute = computed(
-  () => route.name === 'home' || route.name === 'corpus-juris' || route.name === 'library-traject',
-);
+// True on the Home section (public landing, a public law, the traject landing,
+// or a traject law). Kept named isLibraryRoute to limit this refactor's blast
+// radius.
+const isLibraryRoute = computed(() => isHomeSection(route.name));
 const libraryTabTarget = computed(() =>
   sectionTarget(router, lastLibraryPath.value, activeTrajectRef.value),
 );

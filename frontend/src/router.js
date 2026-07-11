@@ -33,15 +33,23 @@ const router = createRouter({
           meta: { title: 'Home' },
         },
         {
-          // Traject-scoped bibliotheek: the same library UI, but reading
-          // through `/api/trajects/{trajectRef}/corpus/...` so the active
-          // traject survives a Home↔Editor tab switch. The active traject
-          // lives in the URL (per-tab state), never a server session.
+          // Traject-scoped Home landing: the same LibraryView, read through
+          // `/api/trajects/{trajectRef}/corpus/...` so the active traject
+          // survives a Home↔Editor tab switch. The active traject lives in the
+          // URL (per-tab state), never a server session.
           //
-          // The `:trajectRef` regex pins the param to `{slug}-{8hex}` so a
-          // plain law-id slug like `wet_op_de_zorgtoeslag` does NOT match
-          // here. (Flattened to /trajecten/{traject}/... in a later phase.)
-          path: 'library/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:lawId?/:articleNumber?',
+          // The `:trajectRef` regex pins the param to `{slug}-{8hex}` so a plain
+          // law-id slug like `wet_op_de_zorgtoeslag` can never be mistaken for a
+          // traject ref. Bare `/trajecten/{ref}` is the traject landing.
+          path: 'trajecten/:trajectRef([a-z0-9-]+-[0-9a-f]{8})',
+          name: 'traject-home',
+          component: LibraryView,
+          meta: { title: 'Home', requiresAuth: true },
+        },
+        {
+          // A law opened within a traject: `/trajecten/{ref}/corpus/{lawId}`.
+          // Kept named 'library-traject' so existing navigations keep working.
+          path: 'trajecten/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/corpus/:lawId/:articleNumber?',
           name: 'library-traject',
           component: LibraryView,
           meta: { title: 'Home', requiresAuth: true },
@@ -51,6 +59,22 @@ const router = createRouter({
         // the traject route rather than these plain-law redirects.
         { path: 'corpus-juris', redirect: '/' },
         { path: 'library', redirect: '/' },
+        {
+          // Old traject bibliotheek: /library/{ref}[/{law}[/{art}]] ->
+          // /trajecten/{ref}[/corpus/{law}[/{art}]]. Regex-pinned so it matches a
+          // {slug}-{8hex} ref; declared BEFORE the plain-law redirect below.
+          path: 'library/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:lawId?/:articleNumber?',
+          redirect: (to) => (to.params.lawId
+            ? {
+                name: 'library-traject',
+                params: {
+                  trajectRef: to.params.trajectRef,
+                  lawId: to.params.lawId,
+                  articleNumber: to.params.articleNumber || undefined,
+                },
+              }
+            : { name: 'traject-home', params: { trajectRef: to.params.trajectRef } }),
+        },
         {
           path: 'library/:lawId/:articleNumber?',
           redirect: (to) => ({
@@ -65,7 +89,7 @@ const router = createRouter({
           // **Invariant**: law `$id` slugs must not match the `{slug}-{8hex}`
           // regex (they use underscores, e.g. `wet_op_de_zorgtoeslag`), so a
           // plain law id can never be mistaken for a traject ref.
-          path: 'editor/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:lawId?/:articleNumber?',
+          path: 'trajecten/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/editor/:lawId?/:articleNumber?',
           name: 'editor-traject',
           component: () => import('./EditorView.vue'),
           meta: { title: 'Editor', requiresAuth: true },
@@ -79,6 +103,21 @@ const router = createRouter({
           path: 'editor',
           name: 'editor',
           redirect: (to) => ({ name: 'trajecten', query: { sectie: 'editor', ...to.query } }),
+        },
+        {
+          // Old traject editor: /editor/{ref}[/{law}[/{art}]] ->
+          // /trajecten/{ref}/editor[/{law}[/{art}]]. Regex-pinned, declared
+          // BEFORE the plain-law editor redirect below so a {slug}-{8hex} ref
+          // matches the traject path, not a law path.
+          path: 'editor/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:lawId?/:articleNumber?',
+          redirect: (to) => ({
+            name: 'editor-traject',
+            params: {
+              trajectRef: to.params.trajectRef,
+              lawId: to.params.lawId || undefined,
+              articleNumber: to.params.articleNumber || undefined,
+            },
+          }),
         },
         {
           // Editor-links zonder traject (de vroegere read-only editor): er is

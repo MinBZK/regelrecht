@@ -5,6 +5,7 @@ import { useTrajects } from '../composables/useTrajects.js';
 import { useDocumentsSheet } from '../composables/useDocumentsSheet.js';
 import { useAuth } from '../composables/useAuth.js';
 import { useLoginToChooser } from '../composables/useLoginToChooser.js';
+import { homeTarget, isHomeSection } from '../composables/useLastVisitedRoute.js';
 import TrajectMembersDialog from './TrajectMembersDialog.vue';
 import TrajectInfoDialog from './TrajectInfoDialog.vue';
 import TrajectCreateForm from './TrajectCreateForm.vue';
@@ -48,12 +49,12 @@ const loginToChooser = useLoginToChooser();
 async function goToTraject(trajectRef) {
   const lawId = route.params.lawId || undefined;
   const articleNumber = route.params.articleNumber || undefined;
-  const inLibrary =
-    route.name === 'library' || route.name === 'library-traject';
-  await router.push({
-    name: inLibrary ? 'library-traject' : 'editor-traject',
-    params: { trajectRef, lawId, articleNumber },
-  });
+  // Stay in the section you're in: Home keeps you on Home (bare traject or its
+  // corpus, per homeTarget); the editor keeps you in the editor.
+  const target = isHomeSection(route.name)
+    ? homeTarget({ trajectRef, lawId, articleNumber })
+    : { name: 'editor-traject', params: { trajectRef, lawId, articleNumber } };
+  await router.push(target);
 }
 
 const menuBtnId = computed(() => `traject-menu-btn-${props.idSuffix}`);
@@ -125,7 +126,7 @@ function onTrajectDeleted(deletedId) {
   const ref = activeTrajectRef.value;
   const tail = String(deletedId).replace(/-/g, '').slice(-8);
   if (!ref || !ref.endsWith(`-${tail}`)) return;
-  const inLibrary = route.name === 'home' || route.name === 'corpus-juris' || route.name === 'library-traject';
+  const inLibrary = isHomeSection(route.name);
   router.push(inLibrary ? { name: 'home' } : { name: 'editor' });
 }
 

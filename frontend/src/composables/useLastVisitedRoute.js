@@ -27,19 +27,34 @@ function save() {
   }
 }
 
-// Normalise each section's traject / no-traject route names to a single
-// storage key per section: `editor`/`editor-traject` → `editor`,
-// `library`/`library-traject` → `library`. Either way it's "the editor
-// tab" / "the bibliotheek tab" semantically; keeping them separate would
-// mean a `??` fallback chain has to pick a winner regardless of which
-// was visited more recently. With one shared key, the last write wins by
-// definition.
+// Home-section route names: the public landing + a public law, and the traject
+// landing + its corpus. Kept in one place so every "am I on Home?" check and
+// "build a Home target" stays in sync as routes are added.
+export const HOME_ROUTE_NAMES = ['home', 'corpus-juris', 'traject-home', 'library-traject'];
+export function isHomeSection(routeName) {
+  return HOME_ROUTE_NAMES.includes(routeName);
+}
+
+// Build a Home-section route location. With a traject: the bare traject home, or
+// its corpus when a law is open. Without one: the public bare landing, or a
+// public law. Centralises the with/without-law + with/without-traject split used
+// by every Home navigation (tab switch, traject switch, chooser, in-view nav).
+export function homeTarget({ trajectRef, lawId, articleNumber } = {}) {
+  if (trajectRef) {
+    return lawId
+      ? { name: 'library-traject', params: { trajectRef, lawId, articleNumber } }
+      : { name: 'traject-home', params: { trajectRef } };
+  }
+  return lawId
+    ? { name: 'corpus-juris', params: { lawId, articleNumber } }
+    : { name: 'home', params: {} };
+}
+
 function storageKeyFor(routeName) {
   if (routeName === 'editor-traject') return 'editor';
-  // Home section: the public landing ('home'), a public law ('corpus-juris')
-  // and the traject bibliotheek ('library-traject') all share one key so the
-  // last write wins regardless of which shape the user was last on.
-  if (routeName === 'corpus-juris' || routeName === 'library-traject') return 'home';
+  // The whole Home section shares one key so the last write wins regardless of
+  // which shape (landing / law / traject) the user was last on.
+  if (isHomeSection(routeName)) return 'home';
   return routeName; // 'home', 'editor'
 }
 
@@ -77,8 +92,9 @@ export function sectionTarget(router, storedPath, activeRef) {
   const params = { ...loc.params };
   const name = loc.name;
 
-  // Editor section = /editor* paths (or an unresolved path under /editor);
-  // everything else is the Home section (home / corpus-juris / library-traject).
+  // Editor section = /editor* or /trajecten/{ref}/editor* (or an unresolved
+  // path under /editor); everything else is the Home section (home /
+  // corpus-juris / traject-home / library-traject).
   const isEditor = name === 'editor' || name === 'editor-traject'
     || (name == null && storedPath.startsWith('/editor'));
 
@@ -100,11 +116,9 @@ export function sectionTarget(router, storedPath, activeRef) {
 
   // Home section — the active traject scope wins over whatever the stored path
   // carried (re-stamped, or dropped when browsing without a traject).
-  if (activeRef) {
-    params.trajectRef = activeRef;
-    return { name: 'library-traject', params };
-  }
-  delete params.trajectRef;
-  // Public Home: a law drills into corpus-juris; otherwise the bare landing.
-  return { name: params.lawId ? 'corpus-juris' : 'home', params };
+  return homeTarget({
+    trajectRef: activeRef || undefined,
+    lawId: params.lawId,
+    articleNumber: params.articleNumber,
+  });
 }

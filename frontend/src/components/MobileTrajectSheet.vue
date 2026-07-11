@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useTrajects } from '../composables/useTrajects.js';
 import { useAuth } from '../composables/useAuth.js';
 import { useLoginToChooser } from '../composables/useLoginToChooser.js';
+import { homeTarget, isHomeSection } from '../composables/useLastVisitedRoute.js';
 import { useDocumentsSheet } from '../composables/useDocumentsSheet.js';
 import { useAppChrome } from '../composables/useAppChrome.js';
 import TrajectMembersDialog from './TrajectMembersDialog.vue';
@@ -69,11 +70,10 @@ function onSheetClose() {
 async function goToTraject(trajectRef) {
   const lawId = route.params.lawId || undefined;
   const articleNumber = route.params.articleNumber || undefined;
-  const inLibrary = route.name === 'library' || route.name === 'library-traject';
-  await router.push({
-    name: inLibrary ? 'library-traject' : 'editor-traject',
-    params: { trajectRef, lawId, articleNumber },
-  });
+  const target = isHomeSection(route.name)
+    ? homeTarget({ trajectRef, lawId, articleNumber })
+    : { name: 'editor-traject', params: { trajectRef, lawId, articleNumber } };
+  await router.push(target);
 }
 
 async function selectTraject(t) {
@@ -117,7 +117,7 @@ function onTrajectDeleted(deletedId) {
   const activeRef = activeTrajectRef.value;
   const tail = String(deletedId).replace(/-/g, '').slice(-8);
   if (!activeRef || !activeRef.endsWith(`-${tail}`)) return;
-  const inLibrary = route.name === 'home' || route.name === 'corpus-juris' || route.name === 'library-traject';
+  const inLibrary = isHomeSection(route.name);
   router.push(inLibrary ? { name: 'home' } : { name: 'editor' });
 }
 

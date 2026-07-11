@@ -3,6 +3,7 @@ import { ref, watchEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import TrajectCreateForm from './components/TrajectCreateForm.vue';
 import { createTraject } from './composables/useTrajects.js';
+import { homeTarget } from './composables/useLastVisitedRoute.js';
 
 // Nieuw-traject-pagina — bereikbaar vanaf de trajectkeuze-pagina. Gebruikt
 // hetzelfde gedeelde formulier als de TrajectMenu-sheet; na het aanmaken ga je
@@ -46,14 +47,13 @@ async function submitCreate() {
         'Traject aangemaakt maar kon niet worden geopend. Ga terug en selecteer het.';
       return;
     }
-    await router.push({
-      name: route.query.sectie === 'library' ? 'library-traject' : 'editor-traject',
-      params: {
-        trajectRef: created.ref,
-        lawId: route.query.law || undefined,
-        articleNumber: route.query.article || undefined,
-      },
-    });
+    const lawId = route.query.law || undefined;
+    const articleNumber = route.query.article || undefined;
+    await router.push(
+      route.query.sectie === 'library'
+        ? homeTarget({ trajectRef: created.ref, lawId, articleNumber })
+        : { name: 'editor-traject', params: { trajectRef: created.ref, lawId, articleNumber } },
+    );
   } catch (e) {
     createError.value = e.message || 'Aanmaken mislukt';
   } finally {

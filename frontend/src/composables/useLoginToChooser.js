@@ -1,5 +1,6 @@
 import { useRoute, useRouter } from 'vue-router';
 import { useAuth } from './useAuth.js';
+import { isHomeSection } from './useLastVisitedRoute.js';
 
 // Shared "log in, then land on the traject chooser" redirect. Used by TrajectMenu
 // and MobileTrajectSheet so the return target (scoped to library vs editor, and
@@ -10,7 +11,7 @@ export function useLoginToChooser() {
   const { login } = useAuth();
 
   return function loginToChooser() {
-    const inLibrary = route.name === 'library' || route.name === 'library-traject';
+    const inLibrary = isHomeSection(route.name);
     const target = router.resolve({
       name: 'trajecten',
       query: {

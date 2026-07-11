@@ -13,6 +13,7 @@ import { useTrajects } from './composables/useTrajects.js';
 import { lawsListUrl, lawUrl, changedLawsUrl } from './composables/corpusUrls.js';
 import { SUPPORT_EMAIL } from './constants.js';
 import { registerSearchPopover, setLibraryEmpty } from './composables/useAppChrome.js';
+import { homeTarget } from './composables/useLastVisitedRoute.js';
 import { humanizeLawId } from './lib/lawName.js';
 import { apiFetch, apiFetchJson, ApiError } from './lib/apiFetch.js';
 import { useLatest } from './lib/useLatest.js';
@@ -42,15 +43,15 @@ const router = useRouter();
 // bibliotheek traject-aware without any extra plumbing.
 const { activeTrajectRef, activeTraject } = useTrajects();
 
-// Keep the user's traject scope across in-app navigations. With a traject
-// in the URL we stay on `library-traject` / `editor-traject`; without one
-// on the plain `library` / `editor`. Mirrors EditorApp.editorRouteFor.
+// Keep the user's traject scope across in-app navigations. A traject with a law
+// stays on `library-traject`, a traject without one on `traject-home`; publicly,
+// a law drills into `corpus-juris`, otherwise the bare `home`. See homeTarget.
 function libraryRouteFor(params = {}) {
-  if (activeTrajectRef.value) {
-    return { name: 'library-traject', params: { ...params, trajectRef: activeTrajectRef.value } };
-  }
-  // Public Home: bare '/' until a law is picked, then '/corpus-juris/{lawId}'.
-  return params.lawId ? { name: 'corpus-juris', params } : { name: 'home', params: {} };
+  return homeTarget({
+    trajectRef: activeTrajectRef.value || undefined,
+    lawId: params.lawId,
+    articleNumber: params.articleNumber,
+  });
 }
 function editorRouteFor(lawIdVal, articleNumber) {
   // Without an active traject the editor isn't reachable directly — the

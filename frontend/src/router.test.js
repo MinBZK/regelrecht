@@ -7,8 +7,15 @@ import { sectionTarget } from './composables/useLastVisitedRoute.js';
 const REF = 'mijn-traject-1a2b3c4d';
 
 describe('route disambiguation (traject vs no-traject)', () => {
-  it('routes a {slug}-{8hex} library URL to library-traject', () => {
-    const r = router.resolve(`/library/${REF}/zorgtoeslagwet/3`);
+  it('routes a bare {slug}-{8hex} traject URL to traject-home', () => {
+    const r = router.resolve(`/trajecten/${REF}`);
+    expect(r.name).toBe('traject-home');
+    expect(r.params.trajectRef).toBe(REF);
+    expect(r.params.lawId).toBeUndefined();
+  });
+
+  it('routes a traject corpus URL to library-traject', () => {
+    const r = router.resolve(`/trajecten/${REF}/corpus/zorgtoeslagwet/3`);
     expect(r.name).toBe('library-traject');
     expect(r.params.trajectRef).toBe(REF);
     expect(r.params.lawId).toBe('zorgtoeslagwet');
@@ -33,8 +40,29 @@ describe('route disambiguation (traject vs no-traject)', () => {
     });
   });
 
+  it('redirects the old traject library URLs onto /trajecten/{ref}', () => {
+    // Bare old traject library -> traject-home.
+    let matched = router.resolve(`/library/${REF}`).matched;
+    let redirect = matched[matched.length - 1].redirect;
+    expect(redirect).toBeTruthy();
+    expect(redirect({ params: { trajectRef: REF } })).toMatchObject({
+      name: 'traject-home',
+      params: { trajectRef: REF },
+    });
+    // With a law -> library-traject (the /corpus/{law} segment).
+    matched = router.resolve(`/library/${REF}/zorgtoeslagwet/3`).matched;
+    redirect = matched[matched.length - 1].redirect;
+    expect(redirect).toBeTruthy();
+    expect(
+      redirect({ params: { trajectRef: REF, lawId: 'zorgtoeslagwet', articleNumber: '3' } }),
+    ).toMatchObject({
+      name: 'library-traject',
+      params: { trajectRef: REF, lawId: 'zorgtoeslagwet' },
+    });
+  });
+
   it('mirrors the same split for the editor routes', () => {
-    expect(router.resolve(`/editor/${REF}/foo`).name).toBe('editor-traject');
+    expect(router.resolve(`/trajecten/${REF}/editor/foo`).name).toBe('editor-traject');
     // The chooser lives at its own section-neutral URL (/trajecten); the bare
     // /editor redirects onto it with sectie=editor, and a no-traject law URL
     // does the same with the law carried as query.
@@ -51,6 +79,16 @@ describe('route disambiguation (traject vs no-traject)', () => {
       query: { sectie: 'editor', law: 'wet_op_de_zorgtoeslag' },
     });
   });
+
+  it('redirects the old traject editor URLs onto /trajecten/{ref}/editor', () => {
+    const matched = router.resolve(`/editor/${REF}/foo`).matched;
+    const redirect = matched[matched.length - 1].redirect;
+    expect(redirect).toBeTruthy();
+    expect(redirect({ params: { trajectRef: REF, lawId: 'foo' } })).toMatchObject({
+      name: 'editor-traject',
+      params: { trajectRef: REF, lawId: 'foo' },
+    });
+  });
 });
 
 describe('sectionTarget — traject preserved across tab switches', () => {
@@ -62,14 +100,14 @@ describe('sectionTarget — traject preserved across tab switches', () => {
   });
 
   it('re-stamps a stale stored traject with the currently active one', () => {
-    const t = sectionTarget(router, '/editor/old-deadbeef/foo', REF);
+    const t = sectionTarget(router, '/trajecten/old-deadbeef/editor/foo', REF);
     expect(t.name).toBe('editor-traject');
     expect(t.params.trajectRef).toBe(REF);
     expect(t.params.lawId).toBe('foo');
   });
 
   it('strips the traject when none is active (Geen traject)', () => {
-    const t = sectionTarget(router, `/library/${REF}/foo`, null);
+    const t = sectionTarget(router, `/trajecten/${REF}/corpus/foo`, null);
     expect(t.name).toBe('corpus-juris');
     expect(t.params.trajectRef).toBeUndefined();
     expect(t.params.lawId).toBe('foo');
@@ -78,7 +116,7 @@ describe('sectionTarget — traject preserved across tab switches', () => {
   it('sends the Editor tab to the chooser when no traject is active', () => {
     // The editor requires a traject: with none active, the stored editor
     // path collapses to the chooser and the law travels along as query.
-    const t = sectionTarget(router, `/editor/${REF}/foo/3`, null);
+    const t = sectionTarget(router, `/trajecten/${REF}/editor/foo/3`, null);
     expect(t.name).toBe('editor');
     expect(t.params.trajectRef).toBeUndefined();
     expect(t.query).toEqual({ law: 'foo', article: '3' });
@@ -93,7 +131,7 @@ describe('sectionTarget — traject preserved across tab switches', () => {
 
   it('falls back to the section root for an unresolvable stored path', () => {
     // A corrupted/stale sessionStorage value must not crash router.push.
-    expect(sectionTarget(router, '/totally/unknown', REF).name).toBe('library-traject');
+    expect(sectionTarget(router, '/totally/unknown', REF).name).toBe('traject-home');
     expect(sectionTarget(router, '/totally/unknown', null).name).toBe('home');
     // Section is derived from the path prefix so the right tab is kept.
     expect(sectionTarget(router, '/editor-bogus/x', null).name).toBe('editor');
