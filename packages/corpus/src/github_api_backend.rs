@@ -304,18 +304,23 @@ impl RepoBackend for GitHubApiBackend {
         Ok(())
     }
 
+    #[tracing::instrument(name = "gh_list_files", skip_all, fields(dir = %dir.display()))]
     async fn list_files(&self, dir: &Path, extension: Option<&str>) -> Result<Vec<FileEntry>> {
         let api_dir = self.api_path(dir)?;
         let mut inner = self.inner.lock().await;
-        let entries = inner
-            .fetcher
-            .list_directory(
+        // One Contents API directory GET — feeds the `gh_list` Server-
+        // Timing phase so listing round-trips (scenario listings) are
+        // visible next to `gh_get` instead of vanishing into `total`.
+        let entries = timing::measure(
+            "gh_list",
+            inner.fetcher.list_directory(
                 &self.full_repo(),
                 &self.branch,
                 &api_dir,
                 self.token.as_deref(),
-            )
-            .await?;
+            ),
+        )
+        .await?;
         let mut out: Vec<FileEntry> = entries
             .into_iter()
             .filter(|e| e.entry_type == "file")
