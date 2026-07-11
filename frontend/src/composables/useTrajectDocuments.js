@@ -203,14 +203,18 @@ export function useTrajectDocuments(trajectRef) {
     }
   }
 
+  // Discard local changes for the open document: drop the saved draft AND
+  // revert the in-memory body to the last-saved baseline, so a discard truly
+  // reverts instead of only clearing localStorage (otherwise the in-memory edit
+  // lingers, re-drafts on the next keystroke, and trips the leave-guard again).
   function dropDraft() {
     if (!currentPath.value) return;
+    // Cancel a pending debounced flush so it can't re-create the row we clear.
+    cancelDraftTimer();
     clearDraft(trajectRef.value, currentPath.value);
-    // If we kept a serverBody on the docError we can restore it
-    // immediately; otherwise the user can refetch.
-    if (docError.value?.serverBody !== undefined) {
-      currentBody.value = docError.value.serverBody;
-    }
+    // savedBody is the server version (set on open/save); on a draft-present
+    // notice it equals docError.serverBody, so "keep server version" still holds.
+    currentBody.value = savedBody.value;
     docError.value = null;
   }
 

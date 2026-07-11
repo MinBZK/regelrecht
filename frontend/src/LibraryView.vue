@@ -143,7 +143,12 @@ function resolveDocGuard(proceed) {
   else if (proceed) p.run();
 }
 function cancelDocLeave() { resolveDocGuard(false); }
-function confirmDocLeave() { resolveDocGuard(true); }
+function confirmDocLeave() {
+  // "Negeer wijzigingen en sluit" = truly discard: drop the local draft and
+  // revert the body, so reopening the document doesn't resurrect the changes.
+  docsMgr.dropDraft();
+  resolveDocGuard(true);
+}
 async function saveDocAndLeave() {
   const ok = await docEditorEl.value?.saveDocument();
   if (!ok) return; // save failed — stay open, DocumentEditor shows the error
