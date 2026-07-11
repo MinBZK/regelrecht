@@ -54,6 +54,16 @@ const router = createRouter({
           component: LibraryView,
           meta: { title: 'Home', requiresAuth: true },
         },
+        {
+          // Werkdocumenten within a traject: `/trajecten/{ref}/werkdocumenten/{docPath?}`.
+          // Rendered by the same LibraryView (Home), which shows the document list
+          // in its secondary sidebar and the editor in main. `docPath` uses `(.*)`
+          // so folder paths (a/b.md) match, mirroring the old standalone route.
+          path: 'trajecten/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/werkdocumenten/:docPath(.*)?',
+          name: 'werkdocumenten-traject',
+          component: LibraryView,
+          meta: { title: 'Werkdocumenten', requiresAuth: true },
+        },
         // Back-compat: the old public library URLs redirect to the new paths.
         // Declared AFTER library-traject so a {slug}-{8hex} ref still matches
         // the traject route rather than these plain-law redirects.
@@ -209,17 +219,13 @@ const router = createRouter({
       meta: { title: 'Account aanvragen' },
     },
     {
-      // Standalone full-page werkdocumenten editor, opened in a new tab from
-      // the in-sheet editor ("Open in nieuw tabblad"). Deliberately a top-level
-      // route, NOT a child of AppShell: it carries its own minimal top bar
-      // instead of the app chrome, giving the document a full navigation-split-
-      // view (list + editor). `:trajectRef` is pinned to `{slug}-{8hex}` like
-      // the other traject routes; `:docPath(.*)` captures nested document paths
-      // (slashes allowed) and is optional so the bare page opens on the list.
+      // Back-compat: the old standalone /werkdocumenten/{ref}/{docPath} URLs now
+      // live inside Home at /trajecten/{ref}/werkdocumenten/{docPath}.
       path: '/werkdocumenten/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:docPath(.*)?',
-      name: 'werkdocumenten',
-      component: () => import('./WerkdocumentenView.vue'),
-      meta: { title: 'Werkdocumenten', requiresAuth: true },
+      redirect: (to) => ({
+        name: 'werkdocumenten-traject',
+        params: { trajectRef: to.params.trajectRef, docPath: to.params.docPath || undefined },
+      }),
     },
     {
       path: '/editor.html',

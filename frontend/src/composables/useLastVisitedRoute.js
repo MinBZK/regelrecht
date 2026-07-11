@@ -30,7 +30,13 @@ function save() {
 // Home-section route names: the public landing + a public law, and the traject
 // landing + its corpus. Kept in one place so every "am I on Home?" check and
 // "build a Home target" stays in sync as routes are added.
-export const HOME_ROUTE_NAMES = ['home', 'corpus-juris', 'traject-home', 'library-traject'];
+export const HOME_ROUTE_NAMES = [
+  'home',
+  'corpus-juris',
+  'traject-home',
+  'library-traject',
+  'werkdocumenten-traject',
+];
 export function isHomeSection(routeName) {
   return HOME_ROUTE_NAMES.includes(routeName);
 }

@@ -2,7 +2,6 @@
 import { computed, ref, onMounted, onBeforeUnmount, provide } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import TrajectMenu from './components/TrajectMenu.vue';
-import TrajectDocuments from './components/TrajectDocuments.vue';
 import MobileTrajectSheet from './components/MobileTrajectSheet.vue';
 import { useAuth } from './composables/useAuth.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
@@ -496,10 +495,6 @@ const hasDocumentTabs = computed(
       </nldd-split-view-pane>
     </nldd-bar-split-view>
   </nldd-app-view>
-
-  <!-- Traject-documents browser sheet + edit window, opened from TrajectMenu.
-       Shared by both sections, so it lives in the shell (mounted once). -->
-  <TrajectDocuments />
 
   <!-- Editor requires login: a heads-up popover anchored to the clicked Editor
        tab (sm/md/lg) so the SSO screen never appears unannounced. -->

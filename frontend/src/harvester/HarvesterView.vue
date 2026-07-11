@@ -4,7 +4,7 @@
  *
  * Top-level route (sibling of AppShell, not nested) so it carries its own
  * compact chrome instead of the editor's app chrome — mirroring the other
- * standalone views (WerkdocumentenView, TrajectChooserView). It hosts the two
+ * standalone views (TrajectChooserView). It hosts the two
  * sub-screens (Law Entries / Jobs) via a nested <router-view>, matching the
  * original standalone admin dashboard's App shell.
  *

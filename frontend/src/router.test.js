@@ -22,6 +22,23 @@ describe('route disambiguation (traject vs no-traject)', () => {
     expect(r.params.articleNumber).toBe('3');
   });
 
+  it('routes a traject werkdocumenten URL to werkdocumenten-traject', () => {
+    const r = router.resolve(`/trajecten/${REF}/werkdocumenten/map/besluit.md`);
+    expect(r.name).toBe('werkdocumenten-traject');
+    expect(r.params.trajectRef).toBe(REF);
+    expect(r.params.docPath).toBe('map/besluit.md');
+  });
+
+  it('redirects the old standalone werkdocumenten URL into Home', () => {
+    const matched = router.resolve(`/werkdocumenten/${REF}/besluit.md`).matched;
+    const redirect = matched[matched.length - 1].redirect;
+    expect(redirect).toBeTruthy();
+    expect(redirect({ params: { trajectRef: REF, docPath: 'besluit.md' } })).toMatchObject({
+      name: 'werkdocumenten-traject',
+      params: { trajectRef: REF, docPath: 'besluit.md' },
+    });
+  });
+
   it('routes a plain law-id corpus URL to corpus-juris (no traject)', () => {
     const r = router.resolve('/corpus-juris/wet_op_de_zorgtoeslag');
     expect(r.name).toBe('corpus-juris');

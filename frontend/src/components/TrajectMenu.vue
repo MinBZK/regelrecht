@@ -2,7 +2,6 @@
 import { computed, nextTick, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTrajects } from '../composables/useTrajects.js';
-import { useDocumentsSheet } from '../composables/useDocumentsSheet.js';
 import { useAuth } from '../composables/useAuth.js';
 import { useLoginToChooser } from '../composables/useLoginToChooser.js';
 import { homeTarget, isHomeSection } from '../composables/useLastVisitedRoute.js';
@@ -33,7 +32,6 @@ const {
 const { authenticated } = useAuth();
 const route = useRoute();
 const router = useRouter();
-const documentsSheet = useDocumentsSheet();
 
 // Not logged in: log in, then land on the trajectchooser carrying the current
 // section + law/article (shared composable, see also MobileTrajectSheet).
@@ -45,6 +43,12 @@ const loginToChooser = useLoginToChooser();
 const accountRequestHref = computed(() => router.resolve({ name: 'account-aanvragen' }).href);
 function goToAccountRequest() {
   router.push({ name: 'account-aanvragen' });
+}
+
+// Open the active traject's werkdocumenten (now folded into Home, not a sheet).
+function goToWerkdocumenten() {
+  if (!activeTrajectRef.value) return;
+  router.push({ name: 'werkdocumenten-traject', params: { trajectRef: activeTrajectRef.value } });
 }
 
 /**
@@ -212,7 +216,7 @@ async function submitCreate() {
       v-if="activeTraject"
       text="Werkdocumenten"
       icon="documents"
-      @click="documentsSheet.open()"
+      @click="goToWerkdocumenten"
     ></nldd-menu-item>
     <nldd-menu-item
       v-if="activeTraject"

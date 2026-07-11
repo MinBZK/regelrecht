@@ -1,12 +1,14 @@
 <script setup>
 import { ref, computed, shallowRef, nextTick, watch, watchEffect, onBeforeUnmount, inject } from 'vue';
-import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
+import { useRoute, useRouter, onBeforeRouteUpdate, onBeforeRouteLeave } from 'vue-router';
 import * as yaml from 'js-yaml';
 import ArticleText from './components/ArticleText.vue';
 import MachineReadable from './components/MachineReadable.vue';
 import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
+import DocumentList from './components/DocumentList.vue';
+import DocumentEditor from './components/DocumentEditor.vue';
 import { useAuth } from './composables/useAuth.js';
 import { lawFetchInit } from './composables/useLaw.js';
 import { useTrajects } from './composables/useTrajects.js';
@@ -14,6 +16,7 @@ import { lawsListUrl, lawUrl, changedLawsUrl } from './composables/corpusUrls.js
 import { SUPPORT_EMAIL } from './constants.js';
 import { registerSearchPopover, setLibraryEmpty } from './composables/useAppChrome.js';
 import { homeTarget } from './composables/useLastVisitedRoute.js';
+import { useDocumentsManager } from './composables/useDocumentsManager.js';
 import { humanizeLawId } from './lib/lawName.js';
 import { apiFetch, apiFetchJson, ApiError } from './lib/apiFetch.js';
 import { useLatest } from './lib/useLatest.js';
@@ -56,6 +59,105 @@ const sidebarTitle = computed(() =>
 const accountRequestHref = computed(() => router.resolve({ name: 'account-aanvragen' }).href);
 function goToAccountRequest() {
   router.push({ name: 'account-aanvragen' });
+}
+
+// --- Werkdocumenten (folded into Home) ----------------------------------
+// The active traject's werkdocumenten live inside Home: a "Werkdocumenten"
+// entry in the primary sidebar opens the document list in the secondary sidebar
+// and the editor in main (route `werkdocumenten-traject`). Ported from the old
+// standalone WerkdocumentenView; DocumentEditor self-contains the rename / save
+// / delete / conflict UI, so LibraryView only wires the manager, list and the
+// unsaved-changes guard.
+const docsMgr = useDocumentsManager(activeTrajectRef);
+const {
+  documents: docList,
+  listLoading: docsLoading,
+  listError: docsError,
+  currentPath: openDocPath,
+  hasChanges: docHasChanges,
+  saving: docSaving,
+  open: openDoc,
+  startNew: startNewDoc,
+  close: closeDoc,
+} = docsMgr;
+
+const isWerkdocMode = computed(() => route.name === 'werkdocumenten-traject');
+const trajectName = computed(() => activeTraject.value?.name || '');
+const hasOpenDoc = computed(() => !!openDocPath.value);
+
+// Enter the werkdocumenten section (from the primary sidebar / traject menu).
+function goToWerkdocumenten() {
+  if (!activeTrajectRef.value) return;
+  router.push({ name: 'werkdocumenten-traject', params: { trajectRef: activeTrajectRef.value } });
+}
+
+// Mirror the open document into the URL (refresh / bookmark / back). Guard the
+// redundant replace the initial open would trigger (URL already names the doc).
+watch(openDocPath, (p) => {
+  if (!isWerkdocMode.value) return;
+  const target = {
+    name: 'werkdocumenten-traject',
+    params: { trajectRef: activeTrajectRef.value, docPath: p || '' },
+  };
+  if (router.resolve(target).href !== route.fullPath) {
+    router.replace(target).catch(() => {});
+  }
+});
+
+// Unsaved-changes guard for in-view document navigation (pick another document,
+// "nieuw", back). Mirrors the old WerkdocumentenView.
+const docNavGuardEl = ref(null);
+const docEditorEl = ref(null);
+// One guard, two triggers, one modal (blijven / opslaan / negeren): in-view
+// actions (pick another document, "nieuw", back) queue a `run` callback;
+// route-level leaves (pick a law, switch tab/traject, browser back) queue a
+// `resolve` for the paused navigation.
+let pendingLeave = null; // { type: 'inview', run } | { type: 'route', resolve }
+function guardedDocNavigate(run) {
+  if (docHasChanges.value) {
+    pendingLeave = { type: 'inview', run };
+    docNavGuardEl.value?.show?.();
+  } else {
+    run();
+  }
+}
+// Route guard: true = proceed now, Promise<boolean> = ask first (the modal
+// resolves it). Lets the open document's own URL sync (same doc) through.
+function guardDirtyDoc(to) {
+  if (!docHasChanges.value) return true;
+  if (to.name === 'werkdocumenten-traject'
+      && String(to.params.docPath || '') === (openDocPath.value || '')) {
+    return true;
+  }
+  return new Promise((resolve) => {
+    pendingLeave = { type: 'route', resolve };
+    docNavGuardEl.value?.show?.();
+  });
+}
+function resolveDocGuard(proceed) {
+  const p = pendingLeave;
+  pendingLeave = null;
+  docNavGuardEl.value?.hide?.();
+  if (!p) return;
+  if (p.type === 'route') p.resolve(proceed);
+  else if (proceed) p.run();
+}
+function cancelDocLeave() { resolveDocGuard(false); }
+function confirmDocLeave() { resolveDocGuard(true); }
+async function saveDocAndLeave() {
+  const ok = await docEditorEl.value?.saveDocument();
+  if (!ok) return; // save failed — stay open, DocumentEditor shows the error
+  resolveDocGuard(true);
+}
+function onDocSelect(path) {
+  if (path === openDocPath.value) return;
+  guardedDocNavigate(() => openDoc(path));
+}
+function onDocNew() {
+  guardedDocNavigate(() => startNewDoc());
+}
+function onDocBack() {
+  guardedDocNavigate(() => closeDoc());
 }
 
 // Keep the user's traject scope across in-app navigations. A traject with a law
@@ -216,10 +318,10 @@ const sidebarSections = computed(() => {
 // width rather than the narrow sidebar. isInitialLoading covers the first load
 // before anything resolves; indexError is handled at the same top level.
 const isInitialLoading = computed(
-  () => loading.value && !selectedLawId.value && sidebarSections.value.length === 0,
+  () => loading.value && !selectedLawId.value && sidebarSections.value.length === 0 && !isWerkdocMode.value,
 );
 const isEmptyLibrary = computed(
-  () => !loading.value && !indexError.value && !selectedLawId.value && sidebarSections.value.length === 0,
+  () => !loading.value && !indexError.value && !selectedLawId.value && sidebarSections.value.length === 0 && !isWerkdocMode.value,
 );
 
 // Tell the shell whether the library is empty so it can show the just-in-time
@@ -656,7 +758,19 @@ function clearRecent() {
 }
 
 // Handle browser back/forward navigation
-onBeforeRouteUpdate((to) => {
+onBeforeRouteUpdate(async (to) => {
+  if (!(await guardDirtyDoc(to))) return false;
+
+  // Werkdocumenten section: open the addressed document (or clear to the list).
+  // The corpus state falls through to the no-lawId branch below and is cleared.
+  if (to.name === 'werkdocumenten-traject') {
+    const p = to.params.docPath ? String(to.params.docPath) : null;
+    if (p !== openDocPath.value) {
+      if (p) openDoc(p);
+      else closeDoc();
+    }
+  }
+
   const newLawId = to.params.lawId;
   const newArticle = to.params.articleNumber;
 
@@ -688,6 +802,12 @@ onBeforeRouteUpdate((to) => {
   }
 });
 
+// Leaving a dirty document by any route change (a law in the sidebar, the tab
+// bar, browser back) prompts the same save/discard guard as the in-view actions.
+onBeforeRouteLeave(async (to) => {
+  if (!(await guardDirtyDoc(to))) return false;
+});
+
 // When a harvested law becomes available, reload the corpus and select it.
 async function onHarvestAvailable(slug) {
   // Best-effort reload — a failure just means the index below may not
@@ -708,6 +828,10 @@ if (route.params.lawId) {
     selectedArticleNumber.value = String(route.params.articleNumber);
   }
   loadLaw(route.params.lawId);
+}
+// Werkdocumenten deep-link on first load: open the addressed document.
+if (isWerkdocMode.value && route.params.docPath) {
+  openDoc(String(route.params.docPath));
 }
 loadIndex();
 
@@ -772,9 +896,23 @@ watch(activeTrajectRef, () => {
                 <nldd-spacer v-if="!loading" size="16"></nldd-spacer>
                 <nldd-activity-indicator v-if="loading" timing="instant" text="Laden" show-text></nldd-activity-indicator>
                 <template v-else>
+                  <!-- Werkdocumenten (in a traject): a single entry that opens
+                       the document list in the secondary sidebar + editor in
+                       main, mirroring how a law drills into its articles. -->
+                  <template v-if="activeTrajectRef">
+                    <nldd-list variant="simple" arrow-navigation>
+                      <nldd-list-item size="md" button :selected="isWerkdocMode || undefined" @click="goToWerkdocumenten">
+                        <nldd-icon-cell size="20"><nldd-icon name="documents"></nldd-icon></nldd-icon-cell>
+                        <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                        <nldd-text-cell text="Werkdocumenten"></nldd-text-cell>
+                        <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                        <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+                      </nldd-list-item>
+                    </nldd-list>
+                    <nldd-spacer size="24"></nldd-spacer>
+                  </template>
                   <!-- In a traject, the curated corpus groups sit under a
-                       'Corpus {traject}' heading — the peer of the (Fase 4)
-                       Werkdocumenten group. Public Home shows no such heading. -->
+                       'Corpus {traject}' heading. Public Home shows no heading. -->
                   <template v-if="activeTraject?.name && sidebarSections.length > 0">
                     <nldd-title size="4"><h4>Corpus {{ activeTraject.name }}</h4></nldd-title>
                     <nldd-spacer size="12"></nldd-spacer>
@@ -825,11 +963,25 @@ watch(activeTrajectRef, () => {
             </nldd-page>
           </nldd-split-view-pane>
 
+          <!-- Secondary Sidebar (werkdoc mode): the document list. -->
+          <nldd-split-view-pane v-if="isWerkdocMode" slot="secondary-sidebar" has-content>
+            <nldd-page sticky-header>
+              <nldd-top-title-bar slot="header" text="Werkdocumenten" :back-text="LIBRARY_HOME_BACK_TEXT"></nldd-top-title-bar>
+              <nldd-simple-section width="full">
+                <nldd-title size="3"><h3>Werkdocumenten</h3></nldd-title>
+                <nldd-spacer size="16"></nldd-spacer>
+                <nldd-activity-indicator v-if="docsLoading" timing="instant" text="Documenten laden" show-text></nldd-activity-indicator>
+                <nldd-inline-dialog v-else-if="docsError" variant="alert" text="Documenten niet geladen" :supporting-text="docsError.message"></nldd-inline-dialog>
+                <DocumentList v-else :documents="docList" :selected-path="openDocPath" @select="onDocSelect" @new="onDocNew"></DocumentList>
+              </nldd-simple-section>
+            </nldd-page>
+          </nldd-split-view-pane>
+
           <!-- Secondary Sidebar: Artikelen Lijst — only when a law is
                selected. When deselected the pane is removed from the DOM
                so the navigation-split-view reflows to spatial mode and
                shows the sidebar (Wetten Browser) alongside main. -->
-          <nldd-split-view-pane v-if="selectedLawId && !lawError" slot="secondary-sidebar" has-content>
+          <nldd-split-view-pane v-else-if="selectedLawId && !lawError" slot="secondary-sidebar" has-content>
             <nldd-page sticky-header>
               <nldd-top-title-bar
                 v-if="!selectedLawLoading"
@@ -887,8 +1039,20 @@ watch(activeTrajectRef, () => {
             </nldd-page>
           </nldd-split-view-pane>
 
+          <!-- Main (werkdoc mode): the document editor, or a placeholder. -->
+          <nldd-split-view-pane v-if="isWerkdocMode" slot="main" :has-content="hasOpenDoc || undefined">
+            <nldd-page v-if="hasOpenDoc" sticky-header sticky-footer>
+              <DocumentEditor ref="docEditorEl" :manager="docsMgr" :traject-name="trajectName" @back="onDocBack"></DocumentEditor>
+            </nldd-page>
+            <nldd-page v-else>
+              <nldd-simple-section width="full">
+                <nldd-inline-dialog text="Selecteer een document"></nldd-inline-dialog>
+              </nldd-simple-section>
+            </nldd-page>
+          </nldd-split-view-pane>
+
           <!-- Main: Artikel Detail -->
-          <nldd-split-view-pane slot="main" :has-content="selectedArticle || lawError || articleNotFound ? true : undefined">
+          <nldd-split-view-pane v-else slot="main" :has-content="selectedArticle || lawError || articleNotFound ? true : undefined">
             <nldd-page sticky-header>
               <nldd-top-title-bar
                 slot="header"
@@ -978,6 +1142,20 @@ watch(activeTrajectRef, () => {
     @select-law="(lawId) => selectLaw(lawId, true)"
     @harvest-available="onHarvestAvailable"
   />
+  <!-- Unsaved-changes guard for in-view werkdocument navigation. -->
+  <Teleport to="body">
+    <nldd-modal-dialog
+      ref="docNavGuardEl"
+      variant="alert"
+      text="Niet-opgeslagen wijzigingen"
+      supporting-text="Dit document heeft wijzigingen die nog niet zijn opgeslagen. Als je verdergaat, gaan ze verloren."
+      @close="cancelDocLeave"
+    >
+      <nldd-button slot="actions" variant="primary" text="Blijf document bewerken" @click="cancelDocLeave"></nldd-button>
+      <nldd-button slot="actions" variant="secondary" text="Sla wijzigingen op en sluit" :loading="docSaving || undefined" @click="saveDocAndLeave"></nldd-button>
+      <nldd-button slot="actions" variant="destructive" text="Negeer wijzigingen en sluit" @click="confirmDocLeave"></nldd-button>
+    </nldd-modal-dialog>
+  </Teleport>
 </template>
 
 <style>

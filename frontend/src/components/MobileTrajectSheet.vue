@@ -5,7 +5,6 @@ import { useTrajects } from '../composables/useTrajects.js';
 import { useAuth } from '../composables/useAuth.js';
 import { useLoginToChooser } from '../composables/useLoginToChooser.js';
 import { homeTarget, isHomeSection } from '../composables/useLastVisitedRoute.js';
-import { useDocumentsSheet } from '../composables/useDocumentsSheet.js';
 import { useAppChrome } from '../composables/useAppChrome.js';
 import TrajectMembersDialog from './TrajectMembersDialog.vue';
 import TrajectInfoDialog from './TrajectInfoDialog.vue';
@@ -18,7 +17,6 @@ import TrajectCreateForm from './TrajectCreateForm.vue';
 // document-tab-bar. Hergebruikt dezelfde composables/handlers als TrajectMenu.
 const { trajects, activeTrajectRef, activeTraject, loading, createTraject } = useTrajects();
 const { authenticated } = useAuth();
-const documentsSheet = useDocumentsSheet();
 const { documentTabs, activeDocumentTab, tabActions } = useAppChrome();
 const route = useRoute();
 const router = useRouter();
@@ -89,7 +87,9 @@ async function selectTraject(t) {
 // --- Traject-acties (sluiten dan openen — geen sheet-over-sheet) ---
 function openDocuments() {
   closeSheet();
-  documentsSheet.open();
+  if (activeTrajectRef.value) {
+    router.push({ name: 'werkdocumenten-traject', params: { trajectRef: activeTrajectRef.value } });
+  }
 }
 
 const showMembers = ref(false);
