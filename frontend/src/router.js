@@ -16,27 +16,47 @@ const router = createRouter({
       path: '/',
       component: AppShell,
       children: [
-        { path: '', redirect: '/library' },
+        // Home (public): the bare landing shows Corpus juris with a clean URL;
+        // picking a law drills into /corpus-juris/{lawId}. Both render the same
+        // LibraryView, so selecting/clearing a law reuses the component instead
+        // of remounting.
+        {
+          path: '',
+          name: 'home',
+          component: LibraryView,
+          meta: { title: 'Home' },
+        },
+        {
+          path: 'corpus-juris/:lawId/:articleNumber?',
+          name: 'corpus-juris',
+          component: LibraryView,
+          meta: { title: 'Home' },
+        },
         {
           // Traject-scoped bibliotheek: the same library UI, but reading
           // through `/api/trajects/{trajectRef}/corpus/...` so the active
-          // traject survives a Bibliotheek↔Editor tab switch. The active
-          // traject lives in the URL (per-tab state), never a server session.
+          // traject survives a Home↔Editor tab switch. The active traject
+          // lives in the URL (per-tab state), never a server session.
           //
           // The `:trajectRef` regex pins the param to `{slug}-{8hex}` so a
           // plain law-id slug like `wet_op_de_zorgtoeslag` does NOT match
-          // here — it falls through to the no-traject library below.
+          // here. (Flattened to /trajecten/{traject}/... in a later phase.)
           path: 'library/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:lawId?/:articleNumber?',
           name: 'library-traject',
           component: LibraryView,
-          meta: { title: 'Bibliotheek', requiresAuth: true },
+          meta: { title: 'Home', requiresAuth: true },
         },
+        // Back-compat: the old public library URLs redirect to the new paths.
+        // Declared AFTER library-traject so a {slug}-{8hex} ref still matches
+        // the traject route rather than these plain-law redirects.
+        { path: 'corpus-juris', redirect: '/' },
+        { path: 'library', redirect: '/' },
         {
-          // No-traject bibliotheek: public, global browse (no auth).
-          path: 'library/:lawId?/:articleNumber?',
-          name: 'library',
-          component: LibraryView,
-          meta: { title: 'Bibliotheek' },
+          path: 'library/:lawId/:articleNumber?',
+          redirect: (to) => ({
+            name: 'corpus-juris',
+            params: { lawId: to.params.lawId, articleNumber: to.params.articleNumber || undefined },
+          }),
         },
         {
           // Traject-scoped editor: full read + write. Per-tab active traject
@@ -201,7 +221,7 @@ router.beforeEach(async (to) => {
   // acceptable roles; holding any one grants access. `meta` is merged across
   // matched records, so a child inherits its parent's `requiresRole`.
   if (to.meta.requiresRole && !hasAnyRole(to.meta.requiresRole)) {
-    return { path: '/library' };
+    return { path: '/' };
   }
   return true;
 });

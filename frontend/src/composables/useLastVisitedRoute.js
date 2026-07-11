@@ -36,8 +36,11 @@ function save() {
 // definition.
 function storageKeyFor(routeName) {
   if (routeName === 'editor-traject') return 'editor';
-  if (routeName === 'library-traject') return 'library';
-  return routeName;
+  // Home section: the public landing ('home'), a public law ('corpus-juris')
+  // and the traject bibliotheek ('library-traject') all share one key so the
+  // last write wins regardless of which shape the user was last on.
+  if (routeName === 'corpus-juris' || routeName === 'library-traject') return 'home';
+  return routeName; // 'home', 'editor'
 }
 
 export function recordLastVisited(routeName, fullPath) {
@@ -49,7 +52,10 @@ export function recordLastVisited(routeName, fullPath) {
   save();
 }
 
-export const lastLibraryPath = computed(() => _lastVisited.value.library ?? '/library');
+// The Home section's last-visited path (the public landing, a public law, or
+// the traject bibliotheek — all stored under the 'home' key). The export name
+// is kept for now to limit this refactor's blast radius across importers.
+export const lastLibraryPath = computed(() => _lastVisited.value.home ?? '/');
 
 // `/editor` (no traject) is the read-only editor. The first visit
 // lands there; subsequent visits restore the most-recently-seen
@@ -69,39 +75,36 @@ export const lastEditorPath = computed(
 export function sectionTarget(router, storedPath, activeRef) {
   const loc = router.resolve(storedPath);
   const params = { ...loc.params };
-  let name = loc.name;
-  if (activeRef) {
-    params.trajectRef = activeRef;
-    if (name === 'library') name = 'library-traject';
-    else if (name === 'editor') {
-      // Upgrade a stored chooser path to the active traject's editor; a
-      // law carried in the chooser query becomes the editor's law param.
-      name = 'editor-traject';
+  const name = loc.name;
+
+  // Editor section = /editor* paths (or an unresolved path under /editor);
+  // everything else is the Home section (home / corpus-juris / library-traject).
+  const isEditor = name === 'editor' || name === 'editor-traject'
+    || (name == null && storedPath.startsWith('/editor'));
+
+  if (isEditor) {
+    if (activeRef) {
+      params.trajectRef = activeRef;
+      // A stored chooser path carries the intended law as query.
       if (loc.query?.law) params.lawId = loc.query.law;
       if (loc.query?.article) params.articleNumber = loc.query.article;
+      return { name: 'editor-traject', params };
     }
-  } else {
-    delete params.trajectRef;
-    if (name === 'library-traject') name = 'library';
-    else if (name === 'editor-traject' || name === 'editor') {
-      // The editor requires a traject: without an active one the Editor
-      // tab goes to the traject chooser. A law from the stored path
-      // travels along as query so it opens right after a traject is
-      // picked.
-      const query = { ...(loc.query ?? {}) };
-      if (params.lawId) query.law = params.lawId;
-      if (params.articleNumber) query.article = params.articleNumber;
-      return { name: 'editor', params: {}, query };
-    }
+    // The editor requires a traject: without one the Editor tab goes to the
+    // chooser, carrying any law as query so it opens after a traject is picked.
+    const query = { ...(loc.query ?? {}) };
+    if (params.lawId) query.law = params.lawId;
+    if (params.articleNumber) query.article = params.articleNumber;
+    return { name: 'editor', params: {}, query };
   }
-  // Defensive: a corrupted or extremely stale sessionStorage path can
-  // resolve to an unrecognised (or null) route name, which would make the
-  // downstream router.push throw. Fall back to the section root, deriving
-  // the section from the stored path's prefix so the correct tab is kept.
-  const KNOWN = ['library', 'library-traject', 'editor', 'editor-traject'];
-  if (!KNOWN.includes(name)) {
-    const section = storedPath.startsWith('/editor') ? 'editor' : 'library';
-    name = activeRef ? `${section}-traject` : section;
+
+  // Home section — the active traject scope wins over whatever the stored path
+  // carried (re-stamped, or dropped when browsing without a traject).
+  if (activeRef) {
+    params.trajectRef = activeRef;
+    return { name: 'library-traject', params };
   }
-  return { name, params };
+  delete params.trajectRef;
+  // Public Home: a law drills into corpus-juris; otherwise the bare landing.
+  return { name: params.lawId ? 'corpus-juris' : 'home', params };
 }

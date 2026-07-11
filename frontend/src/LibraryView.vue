@@ -46,9 +46,11 @@ const { activeTrajectRef, activeTraject } = useTrajects();
 // in the URL we stay on `library-traject` / `editor-traject`; without one
 // on the plain `library` / `editor`. Mirrors EditorApp.editorRouteFor.
 function libraryRouteFor(params = {}) {
-  return activeTrajectRef.value
-    ? { name: 'library-traject', params: { ...params, trajectRef: activeTrajectRef.value } }
-    : { name: 'library', params };
+  if (activeTrajectRef.value) {
+    return { name: 'library-traject', params: { ...params, trajectRef: activeTrajectRef.value } };
+  }
+  // Public Home: bare '/' until a law is picked, then '/corpus-juris/{lawId}'.
+  return params.lawId ? { name: 'corpus-juris', params } : { name: 'home', params: {} };
 }
 function editorRouteFor(lawIdVal, articleNumber) {
   // Without an active traject the editor isn't reachable directly — the
@@ -287,7 +289,7 @@ watchEffect(() => {
   if (activeTraject.value?.name) detail.push(activeTraject.value.name);
   document.title = detail.length > 0
     ? `${detail.join(' · ')} · RegelRecht`
-    : 'Bibliotheek · RegelRecht';
+    : 'Home · RegelRecht';
 });
 
 function displayName(law) {

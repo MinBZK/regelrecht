@@ -23,7 +23,7 @@ watchEffect(() => {
 // het terug op de bibliotheek-home.
 function goBack() {
   if (window.history.length > 1) router.back();
-  else router.push({ name: 'library' });
+  else router.push({ name: 'home' });
 }
 </script>
 

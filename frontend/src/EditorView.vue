@@ -813,9 +813,10 @@ function editorRouteFor(lawIdVal, articleNumber) {
  */
 function libraryRouteFor(lawIdVal) {
   const trajectRef = route.params.trajectRef;
-  return trajectRef
-    ? { name: 'library-traject', params: { trajectRef, lawId: lawIdVal } }
-    : { name: 'library', params: { lawId: lawIdVal } };
+  if (trajectRef) {
+    return { name: 'library-traject', params: { trajectRef, lawId: lawIdVal } };
+  }
+  return lawIdVal ? { name: 'corpus-juris', params: { lawId: lawIdVal } } : { name: 'home', params: {} };
 }
 
 const openTabs = ref(loadSavedTabs());
@@ -1780,8 +1781,8 @@ async function handleActionSave() {
              empty state on the next pane. -->
         <nldd-page v-else-if="!activeTab">
           <nldd-simple-section width="full">
-            <nldd-inline-dialog text="Open een artikel vanuit de tabbalk of de bibliotheek om te bewerken.">
-              <nldd-button slot="actions" variant="secondary" text="Ga naar bibliotheek" :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)"></nldd-button>
+            <nldd-inline-dialog text="Open een artikel vanuit de tabbalk of Home om te bewerken.">
+              <nldd-button slot="actions" variant="secondary" text="Naar Home" :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)"></nldd-button>
             </nldd-inline-dialog>
           </nldd-simple-section>
         </nldd-page>
@@ -1806,7 +1807,7 @@ async function handleActionSave() {
               :text="`${failedLawName} is niet beschikbaar in dit traject`"
               supporting-text="Wissel van traject via het menu rechtsboven of ga terug naar het overzicht."
             >
-              <nldd-button slot="actions" variant="primary" text="Naar bibliotheek" :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)"></nldd-button>
+              <nldd-button slot="actions" variant="primary" text="Naar Home" :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)"></nldd-button>
               <nldd-button slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryLoadLaw"></nldd-button>
             </nldd-inline-dialog>
             <nldd-inline-dialog

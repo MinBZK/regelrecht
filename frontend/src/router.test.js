@@ -15,11 +15,22 @@ describe('route disambiguation (traject vs no-traject)', () => {
     expect(r.params.articleNumber).toBe('3');
   });
 
-  it('routes a plain law-id library URL to library (no traject)', () => {
-    const r = router.resolve('/library/wet_op_de_zorgtoeslag');
-    expect(r.name).toBe('library');
+  it('routes a plain law-id corpus URL to corpus-juris (no traject)', () => {
+    const r = router.resolve('/corpus-juris/wet_op_de_zorgtoeslag');
+    expect(r.name).toBe('corpus-juris');
     expect(r.params.lawId).toBe('wet_op_de_zorgtoeslag');
     expect(r.params.trajectRef).toBeUndefined();
+  });
+
+  it('serves Home at the clean root and redirects the old public library URLs', () => {
+    expect(router.resolve('/').name).toBe('home');
+    const matched = router.resolve('/library/wet_op_de_zorgtoeslag').matched;
+    const redirect = matched[matched.length - 1].redirect;
+    expect(redirect).toBeTruthy();
+    expect(redirect({ params: { lawId: 'wet_op_de_zorgtoeslag' } })).toMatchObject({
+      name: 'corpus-juris',
+      params: { lawId: 'wet_op_de_zorgtoeslag' },
+    });
   });
 
   it('mirrors the same split for the editor routes', () => {
@@ -44,7 +55,7 @@ describe('route disambiguation (traject vs no-traject)', () => {
 
 describe('sectionTarget — traject preserved across tab switches', () => {
   it('stamps the active traject when entering a section without one', () => {
-    const t = sectionTarget(router, '/library/wet_op_de_zorgtoeslag', REF);
+    const t = sectionTarget(router, '/corpus-juris/wet_op_de_zorgtoeslag', REF);
     expect(t.name).toBe('library-traject');
     expect(t.params.trajectRef).toBe(REF);
     expect(t.params.lawId).toBe('wet_op_de_zorgtoeslag');
@@ -59,7 +70,7 @@ describe('sectionTarget — traject preserved across tab switches', () => {
 
   it('strips the traject when none is active (Geen traject)', () => {
     const t = sectionTarget(router, `/library/${REF}/foo`, null);
-    expect(t.name).toBe('library');
+    expect(t.name).toBe('corpus-juris');
     expect(t.params.trajectRef).toBeUndefined();
     expect(t.params.lawId).toBe('foo');
   });
@@ -83,7 +94,7 @@ describe('sectionTarget — traject preserved across tab switches', () => {
   it('falls back to the section root for an unresolvable stored path', () => {
     // A corrupted/stale sessionStorage value must not crash router.push.
     expect(sectionTarget(router, '/totally/unknown', REF).name).toBe('library-traject');
-    expect(sectionTarget(router, '/totally/unknown', null).name).toBe('library');
+    expect(sectionTarget(router, '/totally/unknown', null).name).toBe('home');
     // Section is derived from the path prefix so the right tab is kept.
     expect(sectionTarget(router, '/editor-bogus/x', null).name).toBe('editor');
   });

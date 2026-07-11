@@ -51,7 +51,7 @@ const tabs = [
 const activeTab = computed(() => route.name);
 
 function goToLibrary() {
-  router.push('/library');
+  router.push('/');
 }
 </script>
 

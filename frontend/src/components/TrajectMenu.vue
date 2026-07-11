@@ -125,8 +125,8 @@ function onTrajectDeleted(deletedId) {
   const ref = activeTrajectRef.value;
   const tail = String(deletedId).replace(/-/g, '').slice(-8);
   if (!ref || !ref.endsWith(`-${tail}`)) return;
-  const inLibrary = route.name === 'library' || route.name === 'library-traject';
-  router.push(inLibrary ? { name: 'library' } : { name: 'editor' });
+  const inLibrary = route.name === 'home' || route.name === 'corpus-juris' || route.name === 'library-traject';
+  router.push(inLibrary ? { name: 'home' } : { name: 'editor' });
 }
 
 function closeCreate() {
