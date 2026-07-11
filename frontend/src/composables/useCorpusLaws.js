@@ -31,6 +31,10 @@ const FETCH_LIMIT = 1000;
 const SCOPE_CACHE_MAX = 5;
 
 const fetchByScope = new Map(); // scopeKey -> Promise
+// In-flight `refresh()` per scope. A second refresh while one is running
+// joins it instead of deleting the first one's promise out of
+// `fetchByScope` mid-flight and firing yet another request.
+const refreshByScope = new Map(); // scopeKey -> Promise
 const lawsByScope = createLruMap(SCOPE_CACHE_MAX, {
   onEvict: (key) => fetchByScope.delete(key), // scopeKey -> Ref<Array>
 });
@@ -148,9 +152,29 @@ export function useCorpusLaws(trajectRef) {
    * Ref is updated, so any *new* consumer sees the fresh list).
    */
   async function refresh() {
-    const key = scopeKey(refSource.value);
-    fetchByScope.delete(key);
-    const p = ensureFetched(refSource.value);
+    // Snapshot the scope at call time; `refSource` may re-scope while the
+    // awaits below are in flight, and the bust/re-fetch must stay on the
+    // scope the caller asked to refresh.
+    const scope = refSource.value;
+    const key = scopeKey(scope);
+    // Single-flight per scope: concurrent refreshes share one re-fetch
+    // instead of each busting the slot and stacking duplicate GETs.
+    let p = refreshByScope.get(key);
+    if (!p) {
+      p = (async () => {
+        // Serialize behind whatever fetch currently owns the slot (a
+        // settled promise resolves immediately). Busting an *in-flight*
+        // fetch would orphan it — firing the duplicate concurrent GET
+        // this file exists to avoid — and let its late settle race the
+        // refreshed list with stale data.
+        const current = fetchByScope.get(key);
+        if (current) await current;
+        fetchByScope.delete(key);
+        return ensureFetched(scope);
+      })();
+      refreshByScope.set(key, p);
+      p.catch(() => {}).finally(() => refreshByScope.delete(key));
+    }
     const capturedRef = lawsByScope.peek(key);
     await p;
     // Same stale-scope guard as the watcher: only commit if the caller's

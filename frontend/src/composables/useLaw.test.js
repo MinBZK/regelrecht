@@ -115,6 +115,34 @@ describe('useLaw fetch dedup (single-flight)', () => {
     expect(callCount).toBe(1);
   });
 
+  it('shares one GET between load() and a concurrent fetchLaw (editor mount)', async () => {
+    // The exact regression this PR fixes: on editor mount, useLaw().load()
+    // fetches the routed law while the persisted-tab label loader
+    // fetchLaw()s the same id in parallel against an empty cache.
+    let callCount = 0;
+    let release;
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      callCount += 1;
+      // Hold the GET open so the second caller arrives while it's in flight.
+      await new Promise((resolve) => { release = resolve; });
+      return res({ body: '$id: wet_mount_race\nname: V1\n', etag: '"v1"' });
+    });
+
+    const law = useLaw('wet_mount_race', null, 'tr-dedupe');
+    const labelFetch = fetchLaw('tr-dedupe', 'wet_mount_race');
+    expect(callCount).toBe(1);
+
+    release();
+    const entry = await labelFetch;
+    await waitForLoaded(law);
+
+    expect(callCount).toBe(1);
+    expect(entry.law.$id).toBe('wet_mount_race');
+    // Both consumers converge on the same fetched content.
+    expect(law.rawYaml.value).toBe(entry.rawYaml);
+    expect(law.currentEtag.value).toBe('"v1"');
+  });
+
   it('clears the pending entry on settle so a later fresh load re-fetches', async () => {
     let callCount = 0;
     globalThis.fetch = vi.fn().mockImplementation(async () => {
@@ -151,6 +179,43 @@ describe('useLaw fetch dedup (single-flight)', () => {
     const byId = await fetchLaw('tr-dedupe', 'wet_canonical');
     expect(byId).toBe(bySlug);
     expect(callCount).toBe(1);
+  });
+
+  it('a traject switch during a direct-URL load cannot poison the new traject cache', async () => {
+    // The direct-URL branch caches under the traject the load was issued
+    // for. If a cross-traject switchLaw lands while the response body is
+    // still streaming, the late cache write must go to the OLD traject's
+    // key — never the new one, where it would shadow the real law.
+    let releaseText;
+    const calls = [];
+    globalThis.fetch = vi.fn().mockImplementation(async (url) => {
+      calls.push(url);
+      if (url === '/direct/wet_direct.yaml') {
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: (k) => (k.toLowerCase() === 'etag' ? '"d1"' : null) },
+          // Body held open so the traject switch can land mid-flight.
+          text: () => new Promise((resolve) => { releaseText = resolve; }),
+        };
+      }
+      return res({ body: `$id: ${url.split('/').pop()}\nname: X\n`, etag: '"x1"' });
+    });
+
+    const law = useLaw('/direct/wet_direct.yaml', null, 'tr-old');
+    await vi.waitFor(() => expect(releaseText).toBeDefined());
+    // Cross-traject navigation while the direct body is still streaming.
+    await law.switchLaw('wet_other', null, 'tr-new');
+    releaseText('$id: wet_direct\nname: Direct\n');
+    await waitForLoaded(law);
+
+    // Fetching the same id in the new traject must go to the network —
+    // a cache hit here would serve the direct-URL body as tr-new content.
+    const before = calls.length;
+    const entry = await fetchLaw('tr-new', 'wet_direct');
+    expect(calls.length).toBe(before + 1);
+    expect(calls[calls.length - 1]).toBe('/api/trajects/tr-new/corpus/laws/wet_direct');
+    expect(entry.law.$id).toBe('wet_direct');
   });
 
   it('does not pin a rejected fetch — the next call retries', async () => {

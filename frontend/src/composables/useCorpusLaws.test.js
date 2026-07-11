@@ -59,4 +59,51 @@ describe('useCorpusLaws', () => {
     expect(laws.value).toHaveLength(2);
     expect(displayName('wet_b')).toBe('Wet B (officieel)');
   });
+
+  it('joins a concurrent refresh() instead of firing a duplicate re-fetch', async () => {
+    const useCorpusLaws = await freshUseCorpusLaws();
+    apiFetchJson.mockResolvedValueOnce([{ law_id: 'wet_a', name: 'Wet A' }]);
+
+    const { laws, refresh } = useCorpusLaws(ref('tr-1'));
+    await flush();
+    expect(apiFetchJson).toHaveBeenCalledTimes(1);
+
+    apiFetchJson.mockResolvedValue([
+      { law_id: 'wet_a', name: 'Wet A' },
+      { law_id: 'wet_b', name: 'Wet B' },
+    ]);
+    // Two concurrent refreshes share one re-fetch (the second must not
+    // orphan the first one's in-flight promise and fire a third GET).
+    await Promise.all([refresh(), refresh()]);
+
+    expect(apiFetchJson).toHaveBeenCalledTimes(2);
+    expect(laws.value).toHaveLength(2);
+  });
+
+  it('refresh() during the initial in-flight fetch serializes instead of duplicating the GET', async () => {
+    const useCorpusLaws = await freshUseCorpusLaws();
+    const resolvers = [];
+    apiFetchJson.mockImplementation(
+      () => new Promise((resolve) => resolvers.push(resolve)),
+    );
+
+    const { laws, refresh } = useCorpusLaws(ref('tr-1'));
+    expect(resolvers).toHaveLength(1);
+
+    // Refresh while the initial fetch is still in flight: it must not
+    // orphan that request and fire a concurrent duplicate GET.
+    const refreshed = refresh();
+    await flush();
+    expect(resolvers).toHaveLength(1);
+
+    // Once the initial fetch settles, the refresh busts the slot and
+    // re-fetches — its result wins, never the pre-refresh list.
+    resolvers[0]([{ law_id: 'wet_old' }]);
+    await flush();
+    expect(resolvers).toHaveLength(2);
+    resolvers[1]([{ law_id: 'wet_old' }, { law_id: 'wet_new' }]);
+
+    await refreshed;
+    expect(laws.value.map((l) => l.law_id)).toEqual(['wet_old', 'wet_new']);
+  });
 });

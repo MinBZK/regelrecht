@@ -152,6 +152,11 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
 
   async function load() {
     const isCurrent = claimSwitch();
+    // Snapshot before any await: a concurrent `switchLaw` mutates
+    // `currentTrajectRef`, and the direct-URL cache write below must key
+    // on the traject this load was issued for — not whichever traject the
+    // user has navigated to by the time the response body arrives.
+    const loadTrajectRef = currentTrajectRef;
     try {
       loading.value = true;
       let entry;
@@ -162,18 +167,19 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
         if (!isCurrent()) return;
         const text = await res.text();
         // Deliberately no second staleness check between `.text()` and the
-        // parse (the original had one): the content is fresh either way, so
-        // parsing + caching it mirrors `fetchLawFresh` semantics, and the
-        // final `isCurrent()` below still guards all component state.
+        // parse (the original had one): the content is fresh either way and
+        // the cache key is snapshotted above, so caching it mirrors
+        // `fetchLawFresh` semantics even if this load went stale mid-flight;
+        // the final `isCurrent()` below still guards all component state.
         const parsed = yaml.load(text);
         entry = makeEntry(parsed, text, res.headers.get('ETag'));
         const resolvedId = parsed?.$id || lawParam;
-        lawCache.set(lawCacheKey(currentTrajectRef, resolvedId), entry);
+        lawCache.set(lawCacheKey(loadTrajectRef, resolvedId), entry);
       } else {
         // Fresh fetch (never the cache), shared with any concurrent
         // `fetchLaw` for the same law so a mount doesn't fire duplicate
         // GETs. Cache writes happen inside `fetchLawFresh`.
-        entry = await fetchLawFresh(currentTrajectRef, lawParam);
+        entry = await fetchLawFresh(loadTrajectRef, lawParam);
       }
       if (!isCurrent()) return;
       rawYaml.value = entry.rawYaml;
