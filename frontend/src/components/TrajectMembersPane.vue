@@ -17,7 +17,7 @@ const {
   loading,
   error: loadError,
   load,
-  invite,
+  inviteMany,
   updateRole,
   removeMember,
   removeInvite,
@@ -46,19 +46,22 @@ function onRoleChange(e) {
 // Invite form (in its own sheet)
 const inviteSheetEl = ref(null);
 const inviteInputRef = ref(null);
-const inviteEmail = ref('');
+const inviteEmails = ref([]); // committed tokens
+const invitePending = ref(''); // uncommitted input text
 const inviteRole = ref('contributor');
 const inviteBusy = ref(false);
 const inviteError = ref(null);
 const inviteResult = ref(null);
 
 async function openInvite() {
-  inviteEmail.value = '';
+  inviteEmails.value = [];
+  invitePending.value = '';
   inviteRole.value = 'contributor';
   inviteError.value = null;
   inviteResult.value = null;
   await nextTick();
   inviteSheetEl.value?.show?.();
+  if (inviteInputRef.value) inviteInputRef.value.values = [];
   await nextTick();
   inviteInputRef.value?.focus?.();
 }
@@ -85,18 +88,24 @@ function setRowError(key, message) {
 async function submitInvite() {
   inviteError.value = null;
   inviteResult.value = null;
-  if (!inviteEmail.value.trim()) {
-    inviteError.value = 'E-mailadres is verplicht';
+  // Include the current (uncommitted) input text alongside the committed tokens,
+  // so a last address typed without pressing Enter isn't silently dropped.
+  const raw = [...inviteEmails.value];
+  const pending = invitePending.value.trim();
+  if (pending) raw.push(pending);
+  const emails = [...new Set(raw.map((e) => e.trim()).filter(Boolean))];
+  if (emails.length === 0) {
+    inviteError.value = 'Voer minstens één e-mailadres in';
     return;
   }
   inviteBusy.value = true;
   try {
-    const body = await invite(props.trajectId, inviteEmail.value.trim(), inviteRole.value);
-    inviteEmail.value = '';
-    inviteResult.value =
-      body.status === 'pending'
-        ? `Uitnodiging klaargezet voor ${body.email}. Toegang wordt actief bij de eerste login.`
-        : `${body.email} is toegevoegd.`;
+    const { succeeded, failed } = await inviteMany(props.trajectId, emails, inviteRole.value);
+    inviteResult.value = { succeeded, failed };
+    // Keep only the failures in the field so the user can fix and retry.
+    inviteEmails.value = failed.map((f) => f.email);
+    invitePending.value = '';
+    if (inviteInputRef.value) inviteInputRef.value.values = inviteEmails.value;
   } catch (e) {
     inviteError.value = e.message || 'Uitnodigen mislukt';
   } finally {
@@ -242,21 +251,22 @@ async function clickRemoveInvite(inv) {
         <nldd-simple-section width="full">
           <nldd-form>
             <form novalidate @submit.prevent="submitInvite">
-              <nldd-form-field label="E-mail">
-                <nldd-text-field
+              <nldd-form-field label="E-mailadressen">
+                <nldd-token-field
                   ref="inviteInputRef"
-                  size="md"
+                  allow-custom
                   type="email"
-                  name="email"
-                  :value="inviteEmail"
+                  name="emails"
+                  accessible-label="E-mailadressen"
+                  placeholder="naam@voorbeeld.nl"
                   :invalid="inviteError ? true : undefined"
-                  :error-message="inviteError ? 'invite-email-error' : undefined"
-                  @input="inviteEmail = $event.target?.value ?? $event.detail?.value ?? inviteEmail"
-                ></nldd-text-field>
+                  @change="inviteEmails = $event.detail?.values ?? inviteEmails"
+                  @input="invitePending = $event.detail?.value ?? invitePending"
+                ></nldd-token-field>
                 <nldd-form-field-help-text>
-                  Toegang wordt actief bij de eerste login als er nog geen account bestaat.
+                  Typ een adres en druk op Enter of komma. Toegang wordt actief bij de eerste login als er nog geen account bestaat.
                 </nldd-form-field-help-text>
-                <nldd-form-field-error-text id="invite-email-error">
+                <nldd-form-field-error-text v-if="inviteError" id="invite-email-error">
                   {{ inviteError }}
                 </nldd-form-field-error-text>
               </nldd-form-field>
@@ -268,7 +278,15 @@ async function clickRemoveInvite(inv) {
                 </nldd-toggle-button-group>
               </nldd-form-field>
 
-              <div v-if="inviteResult" class="members-info">{{ inviteResult }}</div>
+              <div v-if="inviteResult" class="members-info">
+                <div v-if="inviteResult.succeeded.length">
+                  {{ inviteResult.succeeded.length }} uitnodiging{{ inviteResult.succeeded.length === 1 ? '' : 'en' }} verstuurd. Toegang wordt actief bij de eerste login.
+                </div>
+                <div v-if="inviteResult.failed.length" class="members-invite-failed">
+                  Mislukt:
+                  <span v-for="(f, i) in inviteResult.failed" :key="f.email">{{ f.email }} ({{ f.message }}){{ i < inviteResult.failed.length - 1 ? ', ' : '' }}</span>
+                </div>
+              </div>
 
               <nldd-form-actions>
                 <nldd-button
@@ -276,7 +294,7 @@ async function clickRemoveInvite(inv) {
                   size="md"
                   type="submit"
                   width="full"
-                  :text="inviteBusy ? 'Bezig…' : 'Nodig lid uit'"
+                  :text="inviteBusy ? 'Bezig…' : 'Verstuur uitnodigingen'"
                   :disabled="inviteBusy || undefined"
                 ></nldd-button>
               </nldd-form-actions>
@@ -303,6 +321,10 @@ async function clickRemoveInvite(inv) {
   color: var(--nldd-color-text-error, #c62828);
   font-size: 13px;
   margin-top: 8px;
+}
+.members-invite-failed {
+  color: var(--nldd-color-text-error, #c62828);
+  margin-top: 4px;
 }
 .members-pending-role {
   font-size: 13px;
