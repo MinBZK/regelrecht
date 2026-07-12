@@ -60,7 +60,7 @@ function goToLibrary() {
 <template>
   <nldd-app-view>
     <div class="harvesting-view">
-      <nldd-container padding="8" padding-left="16">
+      <nldd-container padding="8">
         <nldd-toolbar size="md">
           <nldd-toolbar-item slot="start">
             <nldd-icon-button
