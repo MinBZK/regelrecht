@@ -126,9 +126,10 @@ function onEditorTab(e) {
 // View-specific toolbar bits published by the active view.
 const { lastSavedPr, documentTabs, activeDocumentTab, tabActions, editorChanges, editorActions, libraryEmpty } = useAppChrome();
 
-// Just-in-time coach-mark on the toolbar search affordance: shown only while the
-// library is empty (nothing curated yet) and never dismissable — the app drives
-// it, and it disappears by itself once the library has content. Each breakpoint
+// Just-in-time coach-mark on the toolbar search affordance: shown while the
+// library is empty (nothing curated yet). In the bare corpus it's app-driven and
+// non-dismissable (it disappears once there's content); inside a traject it's
+// dismissable, since there are other functions to discover. Each breakpoint
 // renders its search control in a different bar (sm icon-button, md text button,
 // lg search field), each in a pane that is display:none off-breakpoint. So we
 // resolve the active breakpoint and activate only the coach-mark whose control
@@ -156,9 +157,30 @@ onBeforeUnmount(() => {
   mdQuery?.removeEventListener?.('change', updateViewport);
   lgQuery?.removeEventListener?.('change', updateViewport);
 });
-const showSearchHintSm = computed(() => libraryEmpty.value && viewport.value === 'sm');
-const showSearchHintMd = computed(() => libraryEmpty.value && viewport.value === 'md');
-const showSearchHintLg = computed(() => libraryEmpty.value && viewport.value === 'lg');
+// Inside a traject the coach-mark is dismissable (other functions to discover —
+// Instellingen, Werkdocumenten): the dismiss button persists so it won't nag
+// again; a click outside hides it for the session. In the bare corpus it stays
+// non-dismissable until content appears.
+const JIT_DISMISS_KEY = 'regelrecht:jit-traject-search-dismissed';
+function loadJitDismissed() {
+  try { return localStorage.getItem(JIT_DISMISS_KEY) === '1'; } catch { return false; }
+}
+const trajectActive = computed(() => !!activeTrajectRef.value);
+const jitDismissed = ref(loadJitDismissed());
+const jitHiddenSession = ref(false);
+const searchHintActive = computed(
+  () => libraryEmpty.value && !(trajectActive.value && (jitDismissed.value || jitHiddenSession.value)),
+);
+const showSearchHintSm = computed(() => searchHintActive.value && viewport.value === 'sm');
+const showSearchHintMd = computed(() => searchHintActive.value && viewport.value === 'md');
+const showSearchHintLg = computed(() => searchHintActive.value && viewport.value === 'lg');
+function onSearchHintClose(e) {
+  jitHiddenSession.value = true;
+  if (e?.detail?.reason === 'dismissed') {
+    jitDismissed.value = true;
+    try { localStorage.setItem(JIT_DISMISS_KEY, '1'); } catch { /* ignore */ }
+  }
+}
 
 // Editor with open tabs → the mobile traject row splits 50/50 to fit a tabs
 // button next to the traject menu, and the md+ document-tab-bar shows. The
@@ -198,6 +220,8 @@ const hasDocumentTabs = computed(
                 text="Zoek een wet om te openen"
                 supporting-text="Markeer een wet als favoriet om die later snel terug te vinden."
                 :active="showSearchHintMd || undefined"
+                :dismissable="trajectActive || undefined"
+                @nldd-close="onSearchHintClose"
               >
                 <nldd-button size="md" start-icon="search" text="Zoeken" @click="openSearch"></nldd-button>
               </nldd-just-in-time-education>
@@ -262,6 +286,8 @@ const hasDocumentTabs = computed(
                 text="Zoek een wet om te openen"
                 supporting-text="Markeer een wet als favoriet om die later snel terug te vinden."
                 :active="showSearchHintLg || undefined"
+                :dismissable="trajectActive || undefined"
+                @nldd-close="onSearchHintClose"
               >
                 <nldd-search-field
                   size="md"
@@ -457,6 +483,8 @@ const hasDocumentTabs = computed(
                 text="Zoek een wet om te openen"
                 supporting-text="Markeer een wet als favoriet om die later snel terug te vinden."
                 :active="showSearchHintSm || undefined"
+                :dismissable="trajectActive || undefined"
+                @nldd-close="onSearchHintClose"
               >
                 <nldd-icon-button size="lg" icon="search" text="Zoeken" @click="openSearch"></nldd-icon-button>
               </nldd-just-in-time-education>
