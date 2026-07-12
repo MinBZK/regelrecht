@@ -266,7 +266,7 @@ async function clickRemoveInvite(inv) {
                   @input="invitePending = $event.detail?.value ?? invitePending"
                 ></nldd-token-field>
                 <nldd-form-field-help-text>
-                  Typ een adres en druk op Enter of komma. Toegang tot {{ trajectName }} wordt actief bij de eerste login.
+                  Typ een adres en gebruik een komma om nog een adres in te voeren. Toegang tot {{ trajectName }} wordt actief bij de eerste login.
                 </nldd-form-field-help-text>
                 <nldd-form-field-error-text v-if="inviteError" id="invite-email-error">
                   {{ inviteError }}
