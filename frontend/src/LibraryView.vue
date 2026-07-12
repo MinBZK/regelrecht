@@ -793,7 +793,18 @@ function clearRecent() {
   const deselect = !!sel && recentLaws.value.some(r => r.law_id === sel) && !stillShown;
   recentLaws.value = [];
   try { localStorage.removeItem(RECENT_LAWS_KEY); } catch { /* ignore */ }
-  if (deselect) goToLibraryRoot();
+  if (deselect) {
+    // Clear the open law up front so the article sidebar + main reflow to the
+    // empty state now. `selectedLawId` is a manual ref, not route-derived; a
+    // plain router.push doesn't re-run setup (only a refresh does), so without
+    // this the deselected law would linger until reload.
+    selectedLawId.value = null;
+    selectedLaw.value = null;
+    selectedArticleNumber.value = null;
+    activeAction.value = null;
+    lawError.value = null;
+    goToLibraryRoot();
+  }
 }
 
 // Handle browser back/forward navigation
