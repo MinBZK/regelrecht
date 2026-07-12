@@ -958,3 +958,50 @@ async fn user_token_enforcement_skips_local_backed_trajects() {
     .expect("scenario save on a local-backed traject must not demand a GitHub link");
     assert_eq!(status, StatusCode::OK);
 }
+
+#[tokio::test]
+async fn feature_flag_row_drives_user_token_requirement() {
+    // `write_requires_user_token` OR-s two switches: the static env-var field
+    // (covered above via `for_tests(true)`) and the DB-backed
+    // `github.user_oauth` feature flag — the switch an admin actually flips
+    // through the "Functies" menu. Drive the requirement through that DB row:
+    // the env switch stays OFF, so any 428 below can only come from the flag.
+    let db = TestDb::new().await;
+    let mut state = empty_state(db.pool.clone());
+    state.config = Arc::new(AppConfig {
+        oidc: None,
+        base_url: None,
+        github_oauth: Some(GithubOAuth::for_tests(false)),
+    });
+    let account_id = Uuid::new_v4();
+
+    // Flag row absent (default off): pre-spike behaviour, no override demanded.
+    let token = regelrecht_editor_api::github_oauth::user_write_token(
+        &state,
+        account_id,
+        &HeaderMap::new(),
+    )
+    .await
+    .expect("without the flag no user token may be demanded");
+    assert_eq!(token, None);
+
+    // Flip the DB row — the same write the "Functies" toggle PUT performs.
+    regelrecht_pipeline::feature_flags::upsert_flag(
+        &db.pool,
+        regelrecht_editor_api::feature_flags::GITHUB_USER_OAUTH,
+        true,
+        None,
+    )
+    .await
+    .expect("flag upsert must succeed");
+
+    // Flag on + no linked token cookie → 428 on the GitHub-capable write path.
+    let err = regelrecht_editor_api::github_oauth::user_write_token(
+        &state,
+        account_id,
+        &HeaderMap::new(),
+    )
+    .await
+    .expect_err("flag on without a linked token must refuse the write");
+    assert_eq!(err.0, StatusCode::PRECONDITION_REQUIRED);
+}
