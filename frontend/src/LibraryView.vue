@@ -9,6 +9,7 @@ import ActionSheet from './components/ActionSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
 import DocumentList from './components/DocumentList.vue';
 import DocumentEditor from './components/DocumentEditor.vue';
+import ConversionStatus from './components/ConversionStatus.vue';
 import TrajectDetailsPane from './components/TrajectDetailsPane.vue';
 import TrajectMembersPane from './components/TrajectMembersPane.vue';
 import { useAuth } from './composables/useAuth.js';
@@ -19,6 +20,8 @@ import { SUPPORT_EMAIL } from './constants.js';
 import { registerSearchPopover, setLibraryEmpty } from './composables/useAppChrome.js';
 import { homeTarget } from './composables/useLastVisitedRoute.js';
 import { useDocumentsManager } from './composables/useDocumentsManager.js';
+import { useTrajectDocumentJobs } from './composables/useTrajectDocumentJobs.js';
+import { useDocumentUpload } from './composables/useDocumentUpload.js';
 import { humanizeLawId } from './lib/lawName.js';
 import { apiFetch, apiFetchJson, ApiError } from './lib/apiFetch.js';
 import { useLatest } from './lib/useLatest.js';
@@ -86,6 +89,25 @@ const {
 const isWerkdocMode = computed(() => route.name === 'werkdocumenten-traject');
 const trajectName = computed(() => activeTraject.value?.name || '');
 const hasOpenDoc = computed(() => !!openDocPath.value);
+
+// Werkdocumenten upload (ported from main #918): file picker -> server-side
+// markdown conversion -> poll the conversion jobs and show progress. Wired to
+// the upload button next to "+" in the werkdoc toolbar.
+const docJobs = useTrajectDocumentJobs(activeTrajectRef);
+const { jobs: conversionJobs } = docJobs;
+const {
+  fileInput: docFileInput,
+  uploadError: docUploadError,
+  onUpload: onDocUpload,
+  onFileChange: onDocFileChange,
+} = useDocumentUpload(docsMgr.uploadDocument, () => docJobs.refresh());
+// Poll conversion jobs only while the werkdocumenten sidebar is open.
+watch(
+  isWerkdocMode,
+  (on) => (on ? docJobs.startPolling() : docJobs.stopPolling()),
+  { immediate: true },
+);
+onBeforeUnmount(() => docJobs.stopPolling());
 
 // Name the open document in the unsaved-changes guard so it's clear what's at
 // risk (falls back to a generic phrasing if the name isn't resolved yet).
@@ -1062,9 +1084,13 @@ watch(activeTrajectRef, () => {
                 <nldd-toolbar label="Documentacties">
                   <nldd-toolbar-item slot="start">
                     <nldd-icon-button icon="plus-small" text="Nieuw document" @click="onDocNew"></nldd-icon-button>
+                    <nldd-icon-button icon="upload" text="Document uploaden" @click="onDocUpload"></nldd-icon-button>
                   </nldd-toolbar-item>
                 </nldd-toolbar>
                 <nldd-spacer size="16"></nldd-spacer>
+                <nldd-inline-dialog v-if="docUploadError" variant="alert" text="Uploaden mislukt" :supporting-text="docUploadError"></nldd-inline-dialog>
+                <ConversionStatus :jobs="conversionJobs"></ConversionStatus>
+                <input ref="docFileInput" type="file" accept=".pdf,.doc,.docx" hidden @change="onDocFileChange" />
                 <nldd-activity-indicator v-if="docsLoading" timing="instant" text="Documenten laden" show-text></nldd-activity-indicator>
                 <nldd-inline-dialog v-else-if="docsError" variant="alert" text="Documenten niet geladen" :supporting-text="docsError.message"></nldd-inline-dialog>
                 <DocumentList v-else :documents="docList" :selected-path="openDocPath" @select="onDocSelect"></DocumentList>
