@@ -935,7 +935,7 @@ watch(activeTrajectRef, () => {
                        main, mirroring how a law drills into its articles. -->
                   <template v-if="activeTrajectRef">
                     <nldd-list variant="simple" arrow-navigation>
-                      <nldd-list-item size="md" button :selected="isInstellingenMode || undefined" @click="goToInstellingen('details')">
+                      <nldd-list-item size="md" button :selected="isInstellingenMode || undefined" @click="goToInstellingen()">
                         <nldd-icon-cell size="20"><nldd-icon name="gear"></nldd-icon></nldd-icon-cell>
                         <nldd-spacer-cell size="8"></nldd-spacer-cell>
                         <nldd-text-cell text="Instellingen"></nldd-text-cell>
@@ -1104,7 +1104,7 @@ watch(activeTrajectRef, () => {
           </nldd-split-view-pane>
 
           <!-- Main (instellingen mode): the selected settings pane. -->
-          <nldd-split-view-pane v-if="isInstellingenMode" slot="main" has-content>
+          <nldd-split-view-pane v-if="isInstellingenMode" slot="main" :has-content="instellingenTab || undefined">
             <nldd-page sticky-header>
               <nldd-top-title-bar
                 slot="header"
