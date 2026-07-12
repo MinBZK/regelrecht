@@ -119,6 +119,10 @@ watch(docUploadError, async (err) => {
 function dismissUploadError() {
   docUploadError.value = null;
 }
+function retryUpload() {
+  docUploadError.value = null;
+  nextTick(() => onDocUpload());
+}
 
 // Name the open document in the unsaved-changes guard so it's clear what's at
 // risk (falls back to a generic phrasing if the name isn't resolved yet).
@@ -1325,6 +1329,7 @@ watch(activeTrajectRef, () => {
       @close="dismissUploadError"
     >
       <nldd-button slot="actions" variant="primary" text="Sluit" @click="dismissUploadError"></nldd-button>
+      <nldd-button slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryUpload"></nldd-button>
     </nldd-modal-dialog>
   </Teleport>
 </template>
