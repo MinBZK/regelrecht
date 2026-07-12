@@ -269,7 +269,7 @@ const hasDocumentTabs = computed(
                     ></nldd-menu-item>
                   </nldd-menu>
                 </nldd-menu-item>
-                <nldd-menu-item text="Over RegelRecht" icon="info-circle" @click="openAbout"></nldd-menu-item>
+                <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
                 <template v-if="!authLoading && authenticated">
                   <nldd-menu-divider></nldd-menu-divider>
                   <nldd-menu-item text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
@@ -344,7 +344,7 @@ const hasDocumentTabs = computed(
                     ></nldd-menu-item>
                   </nldd-menu>
                 </nldd-menu-item>
-                <nldd-menu-item text="Over RegelRecht" icon="info-circle" @click="openAbout"></nldd-menu-item>
+                <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
                 <template v-if="!authLoading && authenticated">
                   <nldd-menu-divider></nldd-menu-divider>
                   <nldd-menu-item text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
@@ -530,7 +530,7 @@ const hasDocumentTabs = computed(
                     ></nldd-menu-item>
                   </nldd-menu>
                 </nldd-menu-item>
-                <nldd-menu-item text="Over RegelRecht" icon="info-circle" @click="openAbout"></nldd-menu-item>
+                <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
                 <template v-if="!authLoading && authenticated">
                   <nldd-menu-divider></nldd-menu-divider>
                   <nldd-menu-item text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>

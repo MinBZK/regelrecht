@@ -22,7 +22,7 @@ defineExpose({ show, hide });
       <nldd-page sticky-header>
         <nldd-top-title-bar slot="header" text="Over RegelRecht" dismiss-text="Sluit" @dismiss="hide"></nldd-top-title-bar>
         <nldd-simple-section width="full">
-          <div class="about-prose">
+          <nldd-rich-text>
             <p>
               RegelRecht is een verkenning van het Ministerie van Binnenlandse Zaken naar wetgeving als
               uitvoerbare code. Het onderzoekt of verschillende organisaties dezelfde wet ook hetzelfde
@@ -41,7 +41,7 @@ defineExpose({ show, hide });
               RegelRecht is geen bindend juridisch instrument, maar een hulpmiddel voor controleerbaarheid en
               consistentie.
             </p>
-          </div>
+          </nldd-rich-text>
           <nldd-spacer size="24"></nldd-spacer>
           <nldd-link
             size="md"
@@ -56,13 +56,3 @@ defineExpose({ show, hide });
     </nldd-sheet>
   </Teleport>
 </template>
-
-<style scoped>
-.about-prose p {
-  margin: 0 0 16px;
-  line-height: 1.6;
-}
-.about-prose p:last-child {
-  margin-bottom: 0;
-}
-</style>
