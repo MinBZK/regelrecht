@@ -45,18 +45,22 @@ function onRoleChange(e) {
 
 // Invite form (in its own sheet)
 const inviteSheetEl = ref(null);
+const inviteInputRef = ref(null);
 const inviteEmail = ref('');
 const inviteRole = ref('contributor');
 const inviteBusy = ref(false);
 const inviteError = ref(null);
 const inviteResult = ref(null);
 
-function openInvite() {
+async function openInvite() {
   inviteEmail.value = '';
   inviteRole.value = 'contributor';
   inviteError.value = null;
   inviteResult.value = null;
-  nextTick(() => inviteSheetEl.value?.show?.());
+  await nextTick();
+  inviteSheetEl.value?.show?.();
+  await nextTick();
+  inviteInputRef.value?.focus?.();
 }
 function closeInvite() {
   inviteSheetEl.value?.hide?.();
@@ -240,6 +244,7 @@ async function clickRemoveInvite(inv) {
             <form novalidate @submit.prevent="submitInvite">
               <nldd-form-field label="E-mail">
                 <nldd-text-field
+                  ref="inviteInputRef"
                   size="md"
                   type="email"
                   name="email"
