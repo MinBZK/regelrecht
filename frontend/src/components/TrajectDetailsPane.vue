@@ -116,15 +116,13 @@ async function confirmLeave() {
 </script>
 
 <template>
-  <nldd-simple-section v-if="loading" width="full">
-    <nldd-activity-indicator text="Traject laden" show-text></nldd-activity-indicator>
-  </nldd-simple-section>
+  <nldd-simple-section width="full">
+    <nldd-title id="instellingen-titel" size="3"><h3>Traject details</h3></nldd-title>
+    <nldd-spacer size="16"></nldd-spacer>
 
-  <nldd-simple-section v-else-if="loadError" width="full">
-    <nldd-inline-dialog variant="alert" :text="loadError.message || 'Fout bij laden'"></nldd-inline-dialog>
-  </nldd-simple-section>
-
-  <nldd-simple-section v-else-if="detail" width="full">
+    <nldd-activity-indicator v-if="loading" text="Traject laden" show-text></nldd-activity-indicator>
+    <nldd-inline-dialog v-else-if="loadError" variant="alert" :text="loadError.message || 'Fout bij laden'"></nldd-inline-dialog>
+    <template v-else-if="detail">
     <nldd-list variant="box">
       <nldd-list-item size="md">
         <nldd-text-cell text="Naam" max-width="180px"></nldd-text-cell>
@@ -189,6 +187,7 @@ async function confirmLeave() {
     <template v-else-if="detail.role">
       <nldd-spacer size="24"></nldd-spacer>
       <nldd-button variant="destructive" size="md" text="Traject verlaten" @click="askLeave"></nldd-button>
+    </template>
     </template>
   </nldd-simple-section>
 

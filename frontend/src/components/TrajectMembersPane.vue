@@ -139,15 +139,19 @@ async function clickRemoveInvite(inv) {
 </script>
 
 <template>
-  <nldd-simple-section v-if="loading" width="full">
-    <nldd-activity-indicator text="Leden laden" show-text></nldd-activity-indicator>
-  </nldd-simple-section>
+  <nldd-simple-section width="full">
+    <nldd-title id="instellingen-titel" size="3"><h3>Leden</h3></nldd-title>
+    <nldd-spacer size="16"></nldd-spacer>
+    <nldd-toolbar v-if="isOwner" label="Ledenacties">
+      <nldd-toolbar-item slot="start">
+        <nldd-icon-button icon="new-account" text="Lid uitnodigen" @click="openInvite"></nldd-icon-button>
+      </nldd-toolbar-item>
+    </nldd-toolbar>
+    <nldd-spacer v-if="isOwner" size="16"></nldd-spacer>
 
-  <nldd-simple-section v-else-if="loadError" width="full">
-    <nldd-inline-dialog variant="alert" text="Leden niet geladen" :supporting-text="loadError.message"></nldd-inline-dialog>
-  </nldd-simple-section>
-
-  <nldd-simple-section v-else width="full">
+    <nldd-activity-indicator v-if="loading" text="Leden laden" show-text></nldd-activity-indicator>
+    <nldd-inline-dialog v-else-if="loadError" variant="alert" text="Leden niet geladen" :supporting-text="loadError.message"></nldd-inline-dialog>
+    <template v-else>
     <nldd-list variant="box">
       <template v-for="m in members" :key="m.account_id">
         <nldd-list-item size="md">
@@ -189,14 +193,6 @@ async function clickRemoveInvite(inv) {
           {{ rowError.get(m.account_id) }}
         </div>
       </template>
-      <nldd-list-item v-if="isOwner" size="md" button @click="openInvite">
-        <nldd-spacer-cell slot="start" size="12"></nldd-spacer-cell>
-        <nldd-icon-cell slot="start" size="20"><nldd-icon name="plus"></nldd-icon></nldd-icon-cell>
-        <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
-        <nldd-text-cell text="Lid uitnodigen"></nldd-text-cell>
-        <nldd-spacer-cell size="8"></nldd-spacer-cell>
-        <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
-      </nldd-list-item>
     </nldd-list>
 
     <template v-if="pendingInvites.length > 0">
@@ -230,6 +226,7 @@ async function clickRemoveInvite(inv) {
           </div>
         </template>
       </nldd-list>
+    </template>
     </template>
   </nldd-simple-section>
 

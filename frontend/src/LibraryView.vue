@@ -139,7 +139,7 @@ const docEditorEl = ref(null);
 // `resolve` for the paused navigation.
 let pendingLeave = null; // { type: 'inview', run } | { type: 'route', resolve }
 function guardedDocNavigate(run) {
-  if (docHasChanges.value) {
+  if (hasOpenDoc.value && docHasChanges.value) {
     pendingLeave = { type: 'inview', run };
     docNavGuardEl.value?.show?.();
   } else {
@@ -149,11 +149,11 @@ function guardedDocNavigate(run) {
 // Route guard: true = proceed now, Promise<boolean> = ask first (the modal
 // resolves it). Lets the open document's own URL sync (same doc) through.
 function guardDirtyDoc(to) {
-  // Only guard while a werkdocument is actually open (werkdoc mode). The manager
-  // keeps a left-open document's dirty state in memory, but that must never block
-  // corpus navigation (e.g. switching articles) once you've moved on.
-  if (!isWerkdocMode.value) return true;
-  if (!docHasChanges.value) return true;
+  // Guard ONLY when a werkdocument is actually open in werkdoc mode AND dirty —
+  // i.e. exactly "an open, edited document, navigating away". Never on the
+  // document list, never in corpus mode, never on a stale in-memory doc (the
+  // manager can keep a left-open doc's state without it being on screen).
+  if (!isWerkdocMode.value || !hasOpenDoc.value || !docHasChanges.value) return true;
   if (to.name === 'werkdocumenten-traject'
       && String(to.params.docPath || '') === (openDocPath.value || '')) {
     return true;
@@ -1110,6 +1110,7 @@ watch(activeTrajectRef, () => {
                 slot="header"
                 :text="instellingenTab === 'leden' ? 'Leden' : (instellingenTab === 'details' ? 'Traject details' : 'Instellingen')"
                 :back-text="LIBRARY_HOME_BACK_TEXT"
+                :collapse-anchor="instellingenTab ? 'instellingen-titel' : undefined"
               ></nldd-top-title-bar>
               <TrajectDetailsPane
                 v-if="instellingenTab === 'details'"
