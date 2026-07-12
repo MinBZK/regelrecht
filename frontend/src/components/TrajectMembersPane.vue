@@ -234,7 +234,7 @@ async function clickRemoveInvite(inv) {
   <Teleport to="body">
     <nldd-sheet ref="inviteSheetEl" placement="right" width="480px" full-height @close="closeInvite">
       <nldd-page sticky-header sticky-footer>
-        <nldd-top-title-bar slot="header" text="Lid uitnodigen" dismiss-text="Sluit" @dismiss="closeInvite"></nldd-top-title-bar>
+        <nldd-top-title-bar slot="header" text="Lid uitnodigen" dismiss-text="Annuleer" @dismiss="closeInvite"></nldd-top-title-bar>
         <nldd-simple-section width="full">
           <nldd-form>
             <form novalidate @submit.prevent="submitInvite">
