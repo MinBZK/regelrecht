@@ -763,7 +763,12 @@ function onPaneBack(e) {
   // specific law failed (lawError) — back from the main pane should
   // return to the library root, not /library/<lawId>. The latter would
   // route the user back into the same error they just dismissed.
-  if (slot === 'main') return (lawError.value || indexError.value) ? goToLibraryRoot() : goToLawRoot();
+  if (slot === 'main') {
+    // Instellingen: back from a tab's content returns to the tab list
+    // (bare /instellingen), which collapses to the secondary sidebar on narrow.
+    if (isInstellingenMode.value) return goToInstellingen();
+    return (lawError.value || indexError.value) ? goToLibraryRoot() : goToLawRoot();
+  }
   if (slot === 'secondary-sidebar') return goToLibraryRoot();
 }
 
@@ -1109,8 +1114,8 @@ watch(activeTrajectRef, () => {
               <nldd-top-title-bar
                 slot="header"
                 :text="instellingenTab === 'leden' ? 'Leden' : (instellingenTab === 'details' ? 'Traject details' : 'Instellingen')"
-                :back-text="LIBRARY_HOME_BACK_TEXT"
-                :collapse-anchor="instellingenTab ? 'instellingen-titel' : undefined"
+                back-text="Instellingen"
+                :collapse-anchor="instellingenTab ? 'instellingen-pane-titel' : undefined"
               ></nldd-top-title-bar>
               <TrajectDetailsPane
                 v-if="instellingenTab === 'details'"
