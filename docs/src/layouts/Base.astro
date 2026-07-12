@@ -943,20 +943,25 @@ const legalLinks = [
     </style>
 
     <style>
-      /* nldd-page owns the scroll: it is the scroll container (height: 100%,
-         overflow-y: auto) and also provides the layout-container so page
-         sections size to it via container queries. */
+      /* Root-scroll mode: the DOCUMENT scrolls, not nldd-page, so native
+         overscroll bounce works and Safari on iOS collapses its toolbar (both
+         only fire on the root scroller). Opting in with --context-scroll-mode:
+         root makes nldd-page flow and turn its own sticky-header into a real
+         position:sticky layer — the DS owns this now, no consumer CSS hack. */
       html {
         /* Reserve the scrollbar's space permanently so opening the search
            modal does not shift the viewport ~15px and jump content. */
         scrollbar-gutter: stable;
+        --context-scroll-mode: root;
       }
       html,
       body {
         margin: 0;
-        /* nldd-page is the scroll container (height: 100%); give it a full
-           viewport box to fill. */
-        height: 100%;
+      }
+      nldd-page {
+        /* Fill the viewport so the footer sits at the bottom of short pages
+           (the page flows in root mode, so it needs a min-height floor). */
+        min-height: 100dvh;
       }
       nldd-top-navigation-bar {
         display: block;
