@@ -24,7 +24,7 @@ function title(path) {
       :selected="doc.path === selectedPath || undefined"
       @click="$emit('select', doc.path)"
     >
-      <nldd-icon-cell slot="start" size="20"><nldd-icon name="document"></nldd-icon></nldd-icon-cell>
+      <nldd-icon-cell slot="start" size="20"><nldd-icon name="text-document"></nldd-icon></nldd-icon-cell>
       <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
       <nldd-text-cell :text="title(doc.path)"></nldd-text-cell>
       <nldd-spacer-cell size="8"></nldd-spacer-cell>
