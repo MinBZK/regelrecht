@@ -12,6 +12,7 @@ import {
   lastEditorPath,
   sectionTarget,
   isHomeSection,
+  rememberHarvesterOrigin,
 } from './composables/useLastVisitedRoute.js';
 import { useAppChrome, openSearch, onBarSearchKeydown } from './composables/useAppChrome.js';
 
@@ -40,6 +41,8 @@ const canViewHarvesting = computed(
   () => authenticated.value && hasAnyRole(HARVESTER_ROLES),
 );
 function goToHarvesting() {
+  // Remember where we came from so the harvester's back button returns here.
+  rememberHarvesterOrigin(route.fullPath);
   router.push("/harvesting");
 }
 const { colorScheme, setColorScheme } = useColorScheme();

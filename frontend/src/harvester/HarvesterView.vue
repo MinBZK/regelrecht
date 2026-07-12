@@ -19,6 +19,7 @@ import { useAuth } from '../composables/useAuth.js';
 import { useColorScheme } from '../composables/useColorScheme.js';
 import { usePlatformInfo } from './composables/usePlatformInfo.js';
 import { useNewHarvestJob } from './composables/useNewHarvestJob.js';
+import { harvesterReturnPath } from '../composables/useLastVisitedRoute.js';
 import NewHarvestJobSheet from './components/NewHarvestJobSheet.vue';
 import './harvester.css';
 
@@ -51,7 +52,8 @@ const tabs = [
 const activeTab = computed(() => route.name);
 
 function goToLibrary() {
-  router.push('/');
+  // Return to whichever page (Home or Editor) the user came from.
+  router.push(harvesterReturnPath());
 }
 </script>
 
@@ -63,7 +65,7 @@ function goToLibrary() {
           <nldd-toolbar-item slot="start">
             <nldd-icon-button
               icon="arrow-left"
-              text="Terug naar bibliotheek"
+              text="Terug"
               tooltip-timing="never"
               variant="neutral-tinted"
               @click="goToLibrary"

@@ -86,6 +86,25 @@ export const lastEditorPath = computed(
   () => _lastVisited.value.editor ?? '/editor',
 );
 
+// The page to return to when leaving the harvester — the route you were on when
+// you entered it (Home or Editor). Backed by sessionStorage so a refresh inside
+// the harvester still remembers where to go back; falls back to the root.
+const HARVESTER_RETURN_KEY = 'regelrecht:harvester-return';
+export function rememberHarvesterOrigin(fullPath) {
+  try {
+    sessionStorage.setItem(HARVESTER_RETURN_KEY, fullPath);
+  } catch {
+    /* storage disabled / quota — the fallback path handles it */
+  }
+}
+export function harvesterReturnPath() {
+  try {
+    return sessionStorage.getItem(HARVESTER_RETURN_KEY) || '/';
+  } catch {
+    return '/';
+  }
+}
+
 // Build a router target for the *other* top-level section (Bibliotheek /
 // Editor) from its last-visited path, but re-stamp the trajectRef to the
 // CURRENTLY active traject. The stored path can carry a stale trajectRef
