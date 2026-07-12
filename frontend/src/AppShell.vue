@@ -151,6 +151,14 @@ function confirmUserOauthEnforcement() {
   enforcementConfirm.value?.hide();
   toggleFlag('github.user_oauth');
 }
+// Release the anchor when the popover closes (confirm, cancel, or light
+// dismiss). nldd-popover toggles itself on EVERY subsequent click on its
+// anchor element (popover.js `_handleDocumentClick`) — leaving the settings
+// button as anchor would hijack it: the next account-menu click opens this
+// popover and (auto-popover exclusivity) closes the menu.
+function onEnforcementConfirmClose() {
+  if (enforcementConfirm.value) enforcementConfirm.value.anchorElement = null;
+}
 
 // View-specific toolbar bits published by the active view.
 const { lastSavedPr, documentTabs, activeDocumentTab, tabActions, editorChanges, editorActions, libraryEmpty } = useAppChrome();
@@ -545,7 +553,7 @@ const hasDocumentTabs = computed(
        switch, not a personal preference like its neighbours in the Functies
        list — confirm before every writer's saves start requiring a linked
        GitHub account (see onFunctieFlagSelect). -->
-  <nldd-popover ref="enforcementConfirm" accessible-label="GitHub-koppeling inschakelen" width="360px">
+  <nldd-popover ref="enforcementConfirm" accessible-label="GitHub-koppeling inschakelen" width="360px" @close="onEnforcementConfirmClose">
     <nldd-container padding="16">
       <nldd-inline-dialog
         icon="exclamation-triangle"
