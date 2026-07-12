@@ -5,8 +5,6 @@ import { useTrajects } from '../composables/useTrajects.js';
 import { useAuth } from '../composables/useAuth.js';
 import { useLoginToChooser } from '../composables/useLoginToChooser.js';
 import { homeTarget, isHomeSection } from '../composables/useLastVisitedRoute.js';
-import TrajectMembersDialog from './TrajectMembersDialog.vue';
-import TrajectInfoDialog from './TrajectInfoDialog.vue';
 import TrajectCreateForm from './TrajectCreateForm.vue';
 
 const props = defineProps({
@@ -124,40 +122,10 @@ function openCreate() {
   showCreate.value = true;
 }
 
-// --- Members dialog state ---
-const showMembers = ref(false);
-const membersTrajectId = ref(null);
-const membersTrajectName = ref('');
-
-function openMembersForActive() {
-  if (!activeTraject.value) return;
-  membersTrajectId.value = activeTraject.value.id;
-  membersTrajectName.value = activeTraject.value.name;
-  showMembers.value = true;
-}
-
-// --- Info dialog state ---
-const showInfo = ref(false);
-const infoTrajectId = ref(null);
-const infoTrajectName = ref('');
-
-function openInfoForActive() {
-  if (!activeTraject.value) return;
-  infoTrajectId.value = activeTraject.value.id;
-  infoTrajectName.value = activeTraject.value.name;
-  showInfo.value = true;
-}
-
-// Na een verwijderd traject: stond je erin (de actieve ref eindigt op de
-// laatste 8 hex-tekens van het uuid), navigeer dan naar de sectie-root —
-// editor → trajectkeuze, bibliotheek → gewone bibliotheek. De trajectlijst
-// zelf is al ververst door deleteTraject.
-function onTrajectDeleted(deletedId) {
-  const ref = activeTrajectRef.value;
-  const tail = String(deletedId).replace(/-/g, '').slice(-8);
-  if (!ref || !ref.endsWith(`-${tail}`)) return;
-  const inLibrary = isHomeSection(route.name);
-  router.push(inLibrary ? { name: 'home' } : { name: 'editor' });
+// Open the active traject's settings (details / leden) in Home.
+function goToInstellingen(tab) {
+  if (!activeTrajectRef.value) return;
+  router.push({ name: 'instellingen-traject', params: { trajectRef: activeTrajectRef.value, tab } });
 }
 
 function closeCreate() {
@@ -240,13 +208,13 @@ async function submitCreate() {
       v-if="activeTraject"
       text="Leden"
       icon="person-2"
-      @click="openMembersForActive"
+      @click="goToInstellingen('leden')"
     ></nldd-menu-item>
     <nldd-menu-item
       v-if="activeTraject"
       text="Traject details"
       icon="traject"
-      @click="openInfoForActive"
+      @click="goToInstellingen('details')"
     ></nldd-menu-item>
     <!-- The group draws its own divider above (auto-suppressed when it's the
          first child, i.e. no active-traject actions precede it), so no manual
@@ -308,20 +276,6 @@ async function submitCreate() {
       </nldd-inline-dialog>
     </nldd-container>
   </nldd-popover>
-
-  <TrajectMembersDialog
-    v-model="showMembers"
-    :traject-id="membersTrajectId"
-    :traject-name="membersTrajectName"
-  />
-
-  <TrajectInfoDialog
-    v-model="showInfo"
-    :traject-id="infoTrajectId"
-    :traject-name="infoTrajectName"
-    @deleted="onTrajectDeleted"
-    @left="onTrajectDeleted"
-  />
 
   <!-- Teleport the sheet out of the toolbar so it doesn't inherit the
        toolbar's positioning / clipping. Matches the ScenarioBuilder

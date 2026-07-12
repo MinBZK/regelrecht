@@ -6,8 +6,6 @@ import { useAuth } from '../composables/useAuth.js';
 import { useLoginToChooser } from '../composables/useLoginToChooser.js';
 import { homeTarget, isHomeSection } from '../composables/useLastVisitedRoute.js';
 import { useAppChrome } from '../composables/useAppChrome.js';
-import TrajectMembersDialog from './TrajectMembersDialog.vue';
-import TrajectInfoDialog from './TrajectInfoDialog.vue';
 import TrajectCreateForm from './TrajectCreateForm.vue';
 
 // Mobiele (sm) samenvoeging van de traject-knop en de artikel-tabbladen-knop:
@@ -111,33 +109,11 @@ function openDocuments() {
   }
 }
 
-const showMembers = ref(false);
-const membersTrajectId = ref(null);
-const membersTrajectName = ref('');
-function openMembers() {
-  if (!activeTraject.value) return;
-  membersTrajectId.value = activeTraject.value.id;
-  membersTrajectName.value = activeTraject.value.name;
+// Open the active traject's settings (details / leden) in Home.
+function goToInstellingen(tab) {
   closeSheet();
-  showMembers.value = true;
-}
-
-const showInfo = ref(false);
-const infoTrajectId = ref(null);
-const infoTrajectName = ref('');
-function openInfo() {
-  if (!activeTraject.value) return;
-  infoTrajectId.value = activeTraject.value.id;
-  infoTrajectName.value = activeTraject.value.name;
-  closeSheet();
-  showInfo.value = true;
-}
-function onTrajectDeleted(deletedId) {
-  const activeRef = activeTrajectRef.value;
-  const tail = String(deletedId).replace(/-/g, '').slice(-8);
-  if (!activeRef || !activeRef.endsWith(`-${tail}`)) return;
-  const inLibrary = isHomeSection(route.name);
-  router.push(inLibrary ? { name: 'home' } : { name: 'editor' });
+  if (!activeTrajectRef.value) return;
+  router.push({ name: 'instellingen-traject', params: { trajectRef: activeTrajectRef.value, tab } });
 }
 
 // --- Nieuw traject: het gedeelde formulier in dezelfde sheet ---
@@ -271,12 +247,12 @@ onBeforeUnmount(() => {
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell text="Werkdocumenten"></nldd-text-cell>
             </nldd-list-item>
-            <nldd-list-item size="md" button @click="openMembers">
+            <nldd-list-item size="md" button @click="goToInstellingen('leden')">
               <nldd-icon-cell size="20"><nldd-icon name="person-2"></nldd-icon></nldd-icon-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell text="Leden"></nldd-text-cell>
             </nldd-list-item>
-            <nldd-list-item size="md" button @click="openInfo">
+            <nldd-list-item size="md" button @click="goToInstellingen('details')">
               <nldd-icon-cell size="20"><nldd-icon name="traject"></nldd-icon></nldd-icon-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell text="Traject details"></nldd-text-cell>
@@ -365,16 +341,4 @@ onBeforeUnmount(() => {
     </nldd-sheet>
   </Teleport>
 
-  <TrajectMembersDialog
-    v-model="showMembers"
-    :traject-id="membersTrajectId"
-    :traject-name="membersTrajectName"
-  />
-  <TrajectInfoDialog
-    v-model="showInfo"
-    :traject-id="infoTrajectId"
-    :traject-name="infoTrajectName"
-    @deleted="onTrajectDeleted"
-    @left="onTrajectDeleted"
-  />
 </template>

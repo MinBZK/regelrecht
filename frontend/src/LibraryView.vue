@@ -9,9 +9,11 @@ import ActionSheet from './components/ActionSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
 import DocumentList from './components/DocumentList.vue';
 import DocumentEditor from './components/DocumentEditor.vue';
+import TrajectDetailsPane from './components/TrajectDetailsPane.vue';
+import TrajectMembersPane from './components/TrajectMembersPane.vue';
 import { useAuth } from './composables/useAuth.js';
 import { lawFetchInit } from './composables/useLaw.js';
-import { useTrajects } from './composables/useTrajects.js';
+import { useTrajects, refreshTrajects } from './composables/useTrajects.js';
 import { lawsListUrl, lawUrl, changedLawsUrl } from './composables/corpusUrls.js';
 import { SUPPORT_EMAIL } from './constants.js';
 import { registerSearchPopover, setLibraryEmpty } from './composables/useAppChrome.js';
@@ -98,6 +100,20 @@ const docNavGuardText = computed(() => {
 function goToWerkdocumenten() {
   if (!activeTrajectRef.value) return;
   router.push({ name: 'werkdocumenten-traject', params: { trajectRef: activeTrajectRef.value } });
+}
+
+// --- Instellingen (traject details + leden, folded into Home) ---------------
+const isInstellingenMode = computed(() => route.name === 'instellingen-traject');
+const instellingenTab = computed(() => route.params.tab || null);
+function goToInstellingen(tab) {
+  if (!activeTrajectRef.value) return;
+  router.push({ name: 'instellingen-traject', params: { trajectRef: activeTrajectRef.value, tab } });
+}
+// Deleting or leaving the traject drops your access — go to the public Home
+// (Corpus juris) and refresh the traject list.
+function onTrajectGone() {
+  refreshTrajects();
+  router.push({ name: 'home' });
 }
 
 // Mirror the open document into the URL (refresh / bookmark / back). Guard the
@@ -336,10 +352,10 @@ const sidebarSections = computed(() => {
 // width rather than the narrow sidebar. isInitialLoading covers the first load
 // before anything resolves; indexError is handled at the same top level.
 const isInitialLoading = computed(
-  () => loading.value && !selectedLawId.value && sidebarSections.value.length === 0 && !isWerkdocMode.value,
+  () => loading.value && !selectedLawId.value && sidebarSections.value.length === 0 && !isWerkdocMode.value && !isInstellingenMode.value,
 );
 const isEmptyLibrary = computed(
-  () => !loading.value && !indexError.value && !selectedLawId.value && sidebarSections.value.length === 0 && !isWerkdocMode.value,
+  () => !loading.value && !indexError.value && !selectedLawId.value && sidebarSections.value.length === 0 && !isWerkdocMode.value && !isInstellingenMode.value,
 );
 
 // Tell the shell whether the library is empty so it can show the just-in-time
@@ -919,6 +935,13 @@ watch(activeTrajectRef, () => {
                        main, mirroring how a law drills into its articles. -->
                   <template v-if="activeTrajectRef">
                     <nldd-list variant="simple" arrow-navigation>
+                      <nldd-list-item size="md" button :selected="isInstellingenMode || undefined" @click="goToInstellingen('details')">
+                        <nldd-icon-cell size="20"><nldd-icon name="gear"></nldd-icon></nldd-icon-cell>
+                        <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                        <nldd-text-cell text="Instellingen"></nldd-text-cell>
+                        <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                        <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+                      </nldd-list-item>
                       <nldd-list-item size="md" button :selected="isWerkdocMode || undefined" @click="goToWerkdocumenten">
                         <nldd-icon-cell size="20"><nldd-icon name="documents"></nldd-icon></nldd-icon-cell>
                         <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -975,8 +998,31 @@ watch(activeTrajectRef, () => {
             </nldd-page>
           </nldd-split-view-pane>
 
+          <!-- Secondary Sidebar (instellingen mode): the settings tabs. -->
+          <nldd-split-view-pane v-if="isInstellingenMode" slot="secondary-sidebar" has-content>
+            <nldd-page sticky-header>
+              <nldd-top-title-bar slot="header" text="Instellingen" :back-text="LIBRARY_HOME_BACK_TEXT" collapse-anchor="instellingen-titel"></nldd-top-title-bar>
+              <nldd-simple-section width="full">
+                <nldd-title id="instellingen-titel" size="3"><h3>Instellingen</h3></nldd-title>
+                <nldd-spacer size="16"></nldd-spacer>
+                <nldd-list variant="simple" arrow-navigation>
+                  <nldd-list-item size="md" button :selected="instellingenTab === 'details' || undefined" @click="goToInstellingen('details')">
+                    <nldd-text-cell text="Traject details"></nldd-text-cell>
+                    <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                    <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+                  </nldd-list-item>
+                  <nldd-list-item size="md" button :selected="instellingenTab === 'leden' || undefined" @click="goToInstellingen('leden')">
+                    <nldd-text-cell text="Leden"></nldd-text-cell>
+                    <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                    <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+                  </nldd-list-item>
+                </nldd-list>
+              </nldd-simple-section>
+            </nldd-page>
+          </nldd-split-view-pane>
+
           <!-- Secondary Sidebar (werkdoc mode): the document list. -->
-          <nldd-split-view-pane v-if="isWerkdocMode" slot="secondary-sidebar" has-content>
+          <nldd-split-view-pane v-else-if="isWerkdocMode" slot="secondary-sidebar" has-content>
             <nldd-page sticky-header>
               <nldd-top-title-bar slot="header" text="Werkdocumenten" :back-text="LIBRARY_HOME_BACK_TEXT" collapse-anchor="werkdoc-titel"></nldd-top-title-bar>
               <nldd-simple-section width="full">
@@ -1057,8 +1103,33 @@ watch(activeTrajectRef, () => {
             </nldd-page>
           </nldd-split-view-pane>
 
+          <!-- Main (instellingen mode): the selected settings pane. -->
+          <nldd-split-view-pane v-if="isInstellingenMode" slot="main" has-content>
+            <nldd-page sticky-header>
+              <nldd-top-title-bar
+                slot="header"
+                :text="instellingenTab === 'leden' ? 'Leden' : (instellingenTab === 'details' ? 'Traject details' : 'Instellingen')"
+                :back-text="LIBRARY_HOME_BACK_TEXT"
+              ></nldd-top-title-bar>
+              <TrajectDetailsPane
+                v-if="instellingenTab === 'details'"
+                :traject-id="activeTraject?.id"
+                :traject-name="activeTraject?.name || ''"
+                @deleted="onTrajectGone"
+                @left="onTrajectGone"
+              ></TrajectDetailsPane>
+              <TrajectMembersPane
+                v-else-if="instellingenTab === 'leden'"
+                :traject-id="activeTraject?.id"
+              ></TrajectMembersPane>
+              <nldd-simple-section v-else width="full">
+                <nldd-inline-dialog text="Kies een instelling"></nldd-inline-dialog>
+              </nldd-simple-section>
+            </nldd-page>
+          </nldd-split-view-pane>
+
           <!-- Main (werkdoc mode): the document editor, or a placeholder. -->
-          <nldd-split-view-pane v-if="isWerkdocMode" slot="main" :has-content="hasOpenDoc || undefined">
+          <nldd-split-view-pane v-else-if="isWerkdocMode" slot="main" :has-content="hasOpenDoc || undefined">
             <nldd-page v-if="hasOpenDoc" sticky-header sticky-footer>
               <DocumentEditor ref="docEditorEl" :manager="docsMgr" :traject-name="trajectName" @back="onDocBack"></DocumentEditor>
             </nldd-page>

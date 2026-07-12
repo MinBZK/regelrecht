@@ -36,6 +36,7 @@ export const HOME_ROUTE_NAMES = [
   'traject-home',
   'library-traject',
   'werkdocumenten-traject',
+  'instellingen-traject',
 ];
 export function isHomeSection(routeName) {
   return HOME_ROUTE_NAMES.includes(routeName);

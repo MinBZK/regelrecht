@@ -64,6 +64,15 @@ const router = createRouter({
           component: LibraryView,
           meta: { title: 'Werkdocumenten', requiresAuth: true },
         },
+        {
+          // Traject settings within a traject: details + members, rendered by the
+          // same LibraryView (Instellingen entry -> secondary-sidebar tabs ->
+          // content in main). `:tab` is pinned to the two panes.
+          path: 'trajecten/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/instellingen/:tab(details|leden)?',
+          name: 'instellingen-traject',
+          component: LibraryView,
+          meta: { title: 'Instellingen', requiresAuth: true },
+        },
         // Back-compat: the old public library URLs redirect to the new paths.
         // Declared AFTER library-traject so a {slug}-{8hex} ref still matches
         // the traject route rather than these plain-law redirects.
