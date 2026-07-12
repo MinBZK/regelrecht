@@ -344,6 +344,28 @@ fn seal_token_cookie(oauth: &GithubOAuth, payload: &UserTokenCookie) -> Result<S
     Ok(URL_SAFE_NO_PAD.encode(oauth.cipher.encrypt(&json)?))
 }
 
+/// `Cookie`-header value (`name=value`) with a validly sealed token, for
+/// tests only — integration tests live in a separate crate and need a linked
+/// state without walking the OAuth dance. See [`GithubOAuth::for_tests`].
+#[allow(dead_code, clippy::expect_used)]
+#[doc(hidden)]
+pub fn seal_token_cookie_for_tests(
+    oauth: &GithubOAuth,
+    account_id: Uuid,
+    access_token: &str,
+) -> String {
+    let payload = UserTokenCookie {
+        account: account_id.to_string(),
+        access_token: access_token.to_string(),
+        github_login: "test-user".to_string(),
+        scopes: "repo".to_string(),
+        expires_at: None,
+    };
+    let sealed =
+        seal_token_cookie(oauth, &payload).expect("sealing a static test payload cannot fail");
+    format!("{TOKEN_COOKIE}={sealed}")
+}
+
 /// Read and open the sealed token cookie for `account_id`. Returns `None` on
 /// *any* failure — an absent, undecodable, tampered, wrong-key or
 /// foreign-account cookie all simply mean "not linked". The account check is a
@@ -883,6 +905,12 @@ pub async fn write_requires_user_token(
 /// * `Err((428, msg))` — this deployment requires a user token but the user
 ///   hasn't linked one (or it expired); the frontend bounces this straight
 ///   into the GitHub connect flow (`apiAuthGuard.js`).
+///
+/// **428 is reserved editor-wide for this flow.** `apiAuthGuard.js` redirects
+/// every same-origin `/api/*` response with status 428 into the GitHub
+/// connect flow, keyed on nothing but the status code — an endpoint that
+/// returns 428 for any other reason would silently hijack its callers into
+/// the koppel-flow. Pick a different status for other preconditions.
 ///
 /// Write handlers should prefer [`user_write_token_for_backend`], which
 /// additionally skips enforcement for backends that ignore the override.

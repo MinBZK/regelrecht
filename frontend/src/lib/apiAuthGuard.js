@@ -87,9 +87,14 @@ export function installApiAuthGuard() {
       }
     }
     if (response.status === 428 && !redirecting && isApiUrl(input)) {
-      // Only the GitHub write-token requirement produces a 428, and only for
-      // an authenticated session on a deployment with the OAuth App
-      // configured — so no auth/configured re-checks are needed here.
+      // CONTRACT: 428 is reserved editor-wide for the GitHub write-token
+      // requirement (documented on `github_oauth::user_write_token` in the
+      // editor-api). This guard keys on nothing but the status code, so a
+      // backend endpoint returning 428 for any other precondition would
+      // silently hijack its callers into the koppel-flow — use a different
+      // status there instead. The requirement only fires for an
+      // authenticated session on a deployment with the OAuth App configured,
+      // so no auth/configured re-checks are needed here.
       redirecting = true;
       // No explicit returnUrl, same reasoning as the 401 branch: connect()
       // defaults to the page the user is on, and the callback bounces back

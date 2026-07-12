@@ -903,8 +903,18 @@ async fn resolve_writable_target(
                 }
             };
 
+            // The OAuth config's `api_base` (a pub field, overridable in
+            // tests with a wiremock server) wins over the real default, so
+            // the preflight — including WHICH token it authenticates with —
+            // is testable without touching github.com.
+            let api_base = state
+                .config
+                .github_oauth
+                .as_ref()
+                .map(|o| o.api_base.as_str())
+                .unwrap_or("https://api.github.com");
             let info = regelrecht_corpus::repo_access::validate_repo_access(
-                "https://api.github.com",
+                api_base,
                 owner,
                 repo,
                 base_branch,

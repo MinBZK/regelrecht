@@ -22,6 +22,7 @@ use uuid::Uuid;
 
 use regelrecht_editor_api::accounts::AccountRecord;
 use regelrecht_editor_api::config::AppConfig;
+use regelrecht_editor_api::github_oauth::{self, GithubOAuth};
 use regelrecht_editor_api::state::{AppState, CorpusState};
 use regelrecht_editor_api::traject_corpus::TrajectCorpusCache;
 use regelrecht_editor_api::trajects::{
@@ -209,6 +210,119 @@ async fn normal_traject_is_writable_with_github_own() {
     .await
     .unwrap();
     assert_eq!(src_type, "github");
+}
+
+/// Create-request with user-supplied repo coords — the variant whose
+/// preflight resolves a per-user GitHub token.
+fn custom_repo_req(name: &str) -> CreateTrajectRequest {
+    CreateTrajectRequest {
+        name: name.to_string(),
+        description: String::new(),
+        scope: String::new(),
+        repo_owner: Some("example-org".to_string()),
+        repo_name: Some("regelrecht-corpus-example".to_string()),
+        base_branch: Some("main".to_string()),
+        repo_path: None,
+    }
+}
+
+#[tokio::test]
+async fn create_custom_repo_requires_linked_github_when_enforced() {
+    // With user-token enforcement on and no linked GitHub account, the
+    // create-traject preflight must refuse with 428 — before any GitHub
+    // round-trip (no mock server needed) and before any DB row is written.
+    let db = TestDb::new().await;
+    let mut state = empty_state(db.pool.clone());
+    state.config = Arc::new(AppConfig {
+        oidc: None,
+        base_url: None,
+        github_oauth: Some(GithubOAuth::for_tests(true)),
+    });
+    let owner = seed_account(&db.pool, "owner-enforced@example.com", "Owner").await;
+
+    let err = trajects::create(
+        State(state.clone()),
+        Extension(owner.clone()),
+        axum::http::HeaderMap::new(),
+        Json(custom_repo_req("Repo traject")),
+    )
+    .await
+    .expect_err("create with enforcement on and no linked token must refuse");
+    assert_eq!(err.0, StatusCode::PRECONDITION_REQUIRED);
+
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM trajects")
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0, "a refused create must not leave a traject behind");
+}
+
+#[tokio::test]
+async fn create_custom_repo_preflights_with_the_linked_user_token() {
+    // The linked branch: the repo preflight must authenticate as the acting
+    // user (their sealed-cookie token), not the operator token. Matching on
+    // the Authorization header pins that — an operator-token request would
+    // not match the mocks and the preflight would fail on the 404.
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let db = TestDb::new().await;
+    let server = MockServer::start().await;
+
+    let mut oauth = GithubOAuth::for_tests(true);
+    oauth.api_base = server.uri();
+    let mut state = empty_state(db.pool.clone());
+    state.config = Arc::new(AppConfig {
+        oidc: None,
+        base_url: None,
+        github_oauth: Some(oauth.clone()),
+    });
+    let owner = seed_account(&db.pool, "owner-linked@example.com", "Owner").await;
+
+    Mock::given(method("GET"))
+        .and(path("/repos/example-org/regelrecht-corpus-example"))
+        .and(header("authorization", "Bearer user-token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "default_branch": "main",
+            "private": true,
+            "permissions": { "push": true, "pull": true },
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(
+            "/repos/example-org/regelrecht-corpus-example/branches/main",
+        ))
+        .and(header("authorization", "Bearer user-token"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({ "name": "main" })),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        axum::http::header::COOKIE,
+        axum::http::HeaderValue::from_str(&github_oauth::seal_token_cookie_for_tests(
+            &oauth,
+            owner.id,
+            "user-token",
+        ))
+        .unwrap(),
+    );
+
+    let (status, Json(summary)) = trajects::create(
+        State(state.clone()),
+        Extension(owner.clone()),
+        headers,
+        Json(custom_repo_req("Repo traject")),
+    )
+    .await
+    .expect("create with a linked token must pass the preflight");
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(summary.name, "Repo traject");
 }
 
 // ---------------------------------------------------------------------------
