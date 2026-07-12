@@ -1,6 +1,6 @@
 <script setup>
 /**
- * TrajectDocuments — the werkdocumenten launcher sheet, opened from the traject
+ * TrajectDocuments - the werkdocumenten launcher sheet, opened from the traject
  * menu. It only lists the documents; opening or creating one always happens in
  * a separate browser tab on the standalone WerkdocumentenView page (there is no
  * in-sheet editing anymore). That keeps a single edit surface per document and
@@ -28,7 +28,7 @@ const { jobs: conversionJobs } = jobsPoller;
 
 const browserEl = ref(null);
 // Polling is already running (started when the sheet opened), so just refresh to
-// surface the new job immediately — restarting would reset() and flash the list.
+// surface the new job immediately - restarting would reset() and flash the list.
 const { fileInput, uploadError, onUpload, onFileChange } = useDocumentUpload(uploadDocument, () =>
   jobsPoller.refresh(),
 );

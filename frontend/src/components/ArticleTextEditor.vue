@@ -17,7 +17,7 @@ const props = defineProps({
    * tags in the incoming markdown (e.g. `<em>`, `<sup>`, `<br>` from a
    * harvested corpus entry) are silently dropped on load. Editing such an
    * article and saving will strip the HTML from the persisted YAML even if
-   * the user typed nothing — the diff at the first save will be larger than
+   * the user typed nothing - the diff at the first save will be larger than
    * the "numbered-prose normalization" framing in the PR description
    * suggests. The engine ignores `text` so this is functionally lossless,
    * but the rendered output in downstream readers will change.
@@ -32,7 +32,7 @@ const editor = useEditor({
   editable: props.editable,
   extensions: [
     StarterKit,
-    // Strict commonmark — HTML embedded in source markdown is dropped rather
+    // Strict commonmark - HTML embedded in source markdown is dropped rather
     // than partially mapping into the prosemirror schema.
     //
     // Side effect: editing an article whose stored `text` already contains
@@ -67,7 +67,7 @@ watch(editor, (inst) => {
   const bump = () => { selectionTick.value++; };
   // `selectionUpdate` alone misses Ctrl+B style commands that change marks
   // without moving the cursor. `transaction` covers those, but fires on
-  // every keystroke too — gate it on a doc-or-selection change so the
+  // every keystroke too - gate it on a doc-or-selection change so the
   // toolbar re-render doesn't run on pure cursor motion within a paragraph.
   const onTransaction = ({ transaction: tr }) => {
     if (tr.docChanged || tr.selectionSet) bump();
@@ -84,14 +84,14 @@ watch(editor, (inst) => {
 }, { immediate: true });
 
 // Re-seed content when the parent swaps articles or a save completes. Skip if
-// the markdown already matches what the editor holds — calling setContent on
+// the markdown already matches what the editor holds - calling setContent on
 // every keystroke would reset the cursor.
 //
 // Track the previously-rendered article so we only reset the cursor on an
 // actual article switch. ProseMirror otherwise keeps the previous cursor
 // offset, which can land in the middle of the new article (or snap to the
 // end) and confuses the user. Within a single article we leave the selection
-// alone — e.g. a server-side save that round-trips an unchanged markdown
+// alone - e.g. a server-side save that round-trips an unchanged markdown
 // string should not yank the cursor to position 0.
 let lastArticleNumber = props.article ? String(props.article.number) : null;
 watch(() => props.modelValue, (next) => {
@@ -153,7 +153,7 @@ function redo() { editor.value?.chain().focus().redo().run(); }
 // Drop the undo/redo history. StarterKit (v3) exposes no clearHistory command,
 // so drop and re-add the ProseMirror history plugin: a fresh instance re-inits
 // with empty undo/redo stacks. Both steps go through Tiptap's own reconfigure
-// (registerPlugin/unregisterPlugin) so editor.state stays in sync — a bare
+// (registerPlugin/unregisterPlugin) so editor.state stays in sync - a bare
 // view.updateState leaves Tiptap's cached state untouched. Used after a discard
 // so Ctrl+Z can't step back into the thrown-away edits and re-dirty the article.
 function clearHistory() {

@@ -1,5 +1,5 @@
 /**
- * useFeatureFlags — singleton feature flag store with API sync.
+ * useFeatureFlags - singleton feature flag store with API sync.
  *
  * Fetches flags from /api/feature-flags on first use, falls back to
  * hardcoded defaults when the API is unavailable (e.g. no database).
@@ -86,7 +86,7 @@ async function toggle(key) {
       saveLocal({ ...loadLocal(), [key]: newValue });
       return;
     }
-    // Clear any stale local override for this key — server is now authoritative.
+    // Clear any stale local override for this key - server is now authoritative.
     const local = loadLocal();
     if (key in local) {
       delete local[key];

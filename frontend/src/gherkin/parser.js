@@ -1,5 +1,5 @@
 /**
- * Gherkin parser — wraps @cucumber/gherkin to produce a simplified AST.
+ * Gherkin parser - wraps @cucumber/gherkin to produce a simplified AST.
  *
  * Returns { feature, scenarios[] } where each scenario has steps[]
  * and optional dataTables.

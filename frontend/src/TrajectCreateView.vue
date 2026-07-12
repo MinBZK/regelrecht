@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import TrajectCreateForm from './components/TrajectCreateForm.vue';
 import { createTraject } from './composables/useTrajects.js';
 
-// Nieuw-traject-pagina — bereikbaar vanaf de trajectkeuze-pagina. Gebruikt
+// Nieuw-traject-pagina - bereikbaar vanaf de trajectkeuze-pagina. Gebruikt
 // hetzelfde gedeelde formulier als de TrajectMenu-sheet; na het aanmaken ga je
 // direct de editor (of traject-scoped bibliotheek) in op het nieuwe traject,
 // met een eventueel meegekregen wet (query `law`/`article`) voorgeselecteerd.

@@ -43,7 +43,7 @@ describe('planSegments', () => {
   });
 
   it('splits a partial overlap into three segments, both visible in the middle', () => {
-    // A:[10,20) and B:[15,25) — neither contains the other, both render in
+    // A:[10,20) and B:[15,25) - neither contains the other, both render in
     // the overlap. Primary in the overlap is A (earlier start).
     expect(
       planSegments([
@@ -85,7 +85,7 @@ describe('planSegments', () => {
     ]);
   });
 
-  it('renders identical spans layered — neither strictly contains the other', () => {
+  it('renders identical spans layered - neither strictly contains the other', () => {
     // Two notes on exactly the same span: both visible, primary by lowest idx.
     expect(
       planSegments([
@@ -166,7 +166,7 @@ describe('planSegments', () => {
   });
 
   it('deduplicates a note that contributes two spans to one segment', () => {
-    // A single note (idx 0) has two spans that both cover [15,20) — could
+    // A single note (idx 0) has two spans that both cover [15,20) - could
     // happen if a TextQuoteSelector matches two adjacent occurrences. The
     // visibleIdx/coveringIdx lists must dedupe so the renderer paints one
     // background layer, not two of the same colour.
@@ -185,7 +185,7 @@ describe('planSegments', () => {
   it('merges adjacent segments with identical coverage', () => {
     // A:[10,40) and B:[20,30) inside A produce 3 segments, but if another
     // unrelated note D:[50,60) is added it should NOT introduce extra
-    // boundaries in A's region — already true; this test guards against a
+    // boundaries in A's region - already true; this test guards against a
     // regression where stray boundaries got injected.
     const plan = planSegments([
       { start: 10, end: 40, idx: 0 },

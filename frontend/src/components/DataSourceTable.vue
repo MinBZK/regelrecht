@@ -120,11 +120,11 @@ const showBody = computed(() => props.drilledIn || expanded.value);
     </template>
 
     <template v-if="showBody">
-      <nldd-inline-dialog v-if="rows.length === 0" text="Geen gegevens — vul in indien relevant">
+      <nldd-inline-dialog v-if="rows.length === 0" text="Geen gegevens - vul in indien relevant">
         <nldd-button v-if="!readonly" slot="actions" size="md" start-icon="plus-small" @click="addRow" text="Voeg toe"></nldd-button>
       </nldd-inline-dialog>
 
-      <!-- One box list per row — identical layout regardless of row count,
+      <!-- One box list per row - identical layout regardless of row count,
            with the delete button at the bottom of each list. Spacers (not a
            flex-gap container) separate the stacked lists. -->
       <template v-for="(row, ri) in rows" :key="row._id ?? ri">
@@ -184,7 +184,7 @@ const showBody = computed(() => props.drilledIn || expanded.value);
 </template>
 
 <style scoped>
-/* The component needs a single root, but it must not generate a box —
+/* The component needs a single root, but it must not generate a box -
  * otherwise it blocks the nldd flex layout (flex-grow / centering of the
  * empty-state inline-dialog) of the enclosing simple-section. */
 .ds-root {

@@ -1,5 +1,5 @@
 /**
- * useBwbHarvest — request and track harvesting of external laws.
+ * useBwbHarvest - request and track harvesting of external laws.
  *
  * Manages the lifecycle of harvest requests: submitting, polling for status,
  * and determining when a law becomes available. Works with the pipeline-api
@@ -19,7 +19,7 @@ const POLLING_STATUSES = new Set(['queued', 'already_queued', 'harvesting', 'enr
 const POLL_INTERVAL_MS = 5000;
 const POLL_MAX_MS = 10 * 60 * 1000; // 10 minutes
 
-// Module-level shared state — all callers of useBwbHarvest() share these refs.
+// Module-level shared state - all callers of useBwbHarvest() share these refs.
 /** @type {import('vue').Ref<Record<string, string>>} Status per BWB ID */
 const harvestStatus = ref({});
 /** @type {import('vue').Ref<Record<string, string>>} Resolved slug per BWB ID */
@@ -87,7 +87,7 @@ async function pollHarvestStatus() {
     const stillActive = Object.values(updatedStatus).some(s => POLLING_STATUSES.has(s));
     if (!stillActive) stopPolling();
   } catch {
-    // Poll is best-effort — HTTP errors and network failures alike just
+    // Poll is best-effort - HTTP errors and network failures alike just
     // wait for the next tick.
   }
 }

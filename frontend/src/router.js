@@ -11,8 +11,8 @@ const router = createRouter({
       // Persistent shell: holds the shared chrome (toolbars, tab-bar,
       // settings menu, traject-switcher) and a nested <router-view> for the
       // section bodies. Editor and library are children of this one record,
-      // so switching between them reuses the shell instance — only the nested
-      // router-view swaps — and the chrome never rebuilds on a tab switch.
+      // so switching between them reuses the shell instance - only the nested
+      // router-view swaps - and the chrome never rebuilds on a tab switch.
       path: '/',
       component: AppShell,
       children: [
@@ -25,7 +25,7 @@ const router = createRouter({
           //
           // The `:trajectRef` regex pins the param to `{slug}-{8hex}` so a
           // plain law-id slug like `wet_op_de_zorgtoeslag` does NOT match
-          // here — it falls through to the no-traject library below.
+          // here - it falls through to the no-traject library below.
           path: 'library/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:lawId?/:articleNumber?',
           name: 'library-traject',
           component: LibraryView,
@@ -81,7 +81,7 @@ const router = createRouter({
       ],
     },
     {
-      // Trajectchooser — sectie-neutrale URL (library|editor via `sectie`,
+      // Trajectchooser - sectie-neutrale URL (library|editor via `sectie`,
       // default editor) zodat zowel de bibliotheek als de editor 'm gebruiken;
       // `law`/`article` dragen de beoogde bestemming mee. Top-level route (geen
       // AppShell-child), zoals werkdocumenten: geen app-chrome, de pagina draagt
@@ -92,7 +92,7 @@ const router = createRouter({
       meta: { title: 'Trajecten', requiresAuth: true },
     },
     {
-      // Nieuw traject aanmaken — eigen pagina met het gedeelde aanmaakformulier
+      // Nieuw traject aanmaken - eigen pagina met het gedeelde aanmaakformulier
       // (TrajectCreateForm). Ook top-level (geen app-chrome). Het statische pad
       // `/editor/nieuw-traject` scoort boven de dynamische `/editor/...`-routes
       // in de AppShell, dus een traject-ref of wet-id matcht deze nooit.
@@ -102,9 +102,9 @@ const router = createRouter({
       meta: { title: 'Nieuw traject', requiresAuth: true },
     },
     {
-      // Harvester-admin "Corpusinwinning" section — the merged harvester dashboard.
+      // Harvester-admin "Corpusinwinning" section - the merged harvester dashboard.
       // Top-level route (sibling of AppShell, not nested) so it carries its own
-      // chrome (HarvesterView), with the two sub-screens as nested children —
+      // chrome (HarvesterView), with the two sub-screens as nested children -
       // mirroring the original standalone admin dashboard. Gated on any
       // harvester-* role via `meta.requiresRole` (checked in `beforeEach`);
       // write actions inside are enforced server-side by the harvester-admin
@@ -176,7 +176,7 @@ const router = createRouter({
 // block the client-side navigation until `/auth/status` has resolved, so the
 // target component never mounts until we know the user may enter.
 // Unauthenticated users are always sent to `/auth/login` and the navigation
-// is cancelled — the previous route stays visible until the browser leaves,
+// is cancelled - the previous route stays visible until the browser leaves,
 // instead of flashing the protected UI. Deliberately NOT conditional on
 // `oidcConfigured`: the editor must never open without login, including
 // environments without OIDC (there `/auth/login` either serves the dev login
@@ -209,6 +209,6 @@ router.afterEach((to) => {
 });
 
 // document.title is owned by the route components (they reflect law + article
-// state) via watchEffect — see the note that used to live here on main.
+// state) via watchEffect - see the note that used to live here on main.
 
 export default router;

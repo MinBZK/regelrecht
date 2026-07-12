@@ -88,7 +88,7 @@ describe('useLaw optimistic concurrency', () => {
       /door iemand anders gewijzigd/i,
     );
     expect(law.saveError.value?.message).toMatch(/herlaad/i);
-    // The stale ETag is kept — the user reloads to pick up a fresh one.
+    // The stale ETag is kept - the user reloads to pick up a fresh one.
     expect(law.currentEtag.value).toBe('"v1"');
   });
 });
@@ -155,7 +155,7 @@ describe('useLaw fetch dedup (single-flight)', () => {
     await waitForLoaded(a);
     expect(callCount).toBe(1);
 
-    // A subsequent fresh load (load() never reads the cache) fires a new GET —
+    // A subsequent fresh load (load() never reads the cache) fires a new GET -
     // proving the settled promise wasn't pinned in the pending map.
     const b = useLaw('wet_pending_clear', null, 'tr-dedupe');
     await waitForLoaded(b);
@@ -175,7 +175,7 @@ describe('useLaw fetch dedup (single-flight)', () => {
     expect(bySlug.law.$id).toBe('wet_canonical');
 
     // The dual-cache write under the resolved `$id` means a later fetch by
-    // the canonical id is served from cache — no extra GET.
+    // the canonical id is served from cache - no extra GET.
     const byId = await fetchLaw('tr-dedupe', 'wet_canonical');
     expect(byId).toBe(bySlug);
     expect(callCount).toBe(1);
@@ -185,7 +185,7 @@ describe('useLaw fetch dedup (single-flight)', () => {
     // The direct-URL branch caches under the traject the load was issued
     // for. If a cross-traject switchLaw lands while the response body is
     // still streaming, the late cache write must go to the OLD traject's
-    // key — never the new one, where it would shadow the real law.
+    // key - never the new one, where it would shadow the real law.
     let releaseText;
     const calls = [];
     globalThis.fetch = vi.fn().mockImplementation(async (url) => {
@@ -209,7 +209,7 @@ describe('useLaw fetch dedup (single-flight)', () => {
     releaseText('$id: wet_direct\nname: Direct\n');
     await waitForLoaded(law);
 
-    // Fetching the same id in the new traject must go to the network —
+    // Fetching the same id in the new traject must go to the network -
     // a cache hit here would serve the direct-URL body as tr-new content.
     const before = calls.length;
     const entry = await fetchLaw('tr-new', 'wet_direct');
@@ -218,7 +218,7 @@ describe('useLaw fetch dedup (single-flight)', () => {
     expect(entry.law.$id).toBe('wet_direct');
   });
 
-  it('does not pin a rejected fetch — the next call retries', async () => {
+  it('does not pin a rejected fetch - the next call retries', async () => {
     let callCount = 0;
     globalThis.fetch = vi.fn().mockImplementation(async () => {
       callCount += 1;

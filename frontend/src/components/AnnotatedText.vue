@@ -27,7 +27,7 @@ const props = defineProps({
 const emit = defineEmits(['create-note']);
 
 // Render the law text as markdown, identical to the Tekst pane with notes
-// off (shared pipeline so the two cannot drift — #646). The resolver matched
+// off (shared pipeline so the two cannot drift - #646). The resolver matched
 // char-offsets into the *raw* text; after rendering we re-anchor those onto
 // the DOM's text nodes and wrap each resolved span in a <mark> imperatively,
 // because the spans cross marked's generated <li>/<p> structure and cannot be
@@ -44,12 +44,12 @@ const noteByIdx = computed(() => props.notesForArticle.map((n) => n.note));
 // noteIdx -> all marks whose segment is covered by that note (visible or
 // suppressed by encapsulation). Built fresh by applyHighlights and consumed by
 // the hover handler to "bridge" a hovered note's full span across the marks it
-// is encapsulated within — the inner segment renders the inner note only by
+// is encapsulated within - the inner segment renders the inner note only by
 // default, but hover should still show the outer's extent.
 const hoverBridge = new Map();
 // Currently hover-bridged note idx, so .note-hovered can be removed cleanly
 // when the cursor leaves the bridged region. Declared alongside hoverBridge
-// because clearHighlights resets both together — a re-render mid-hover (e.g.
+// because clearHighlights resets both together - a re-render mid-hover (e.g.
 // a draft added while the cursor sits on a mark) must drop both the lookup
 // table and the tracker, or the next pointerover early-exits in
 // applyHoverBridge and .note-hovered never lands on the new marks.
@@ -76,12 +76,12 @@ function motivationClass(note) {
   return 'note-other';
 }
 
-// Same scheme but as a CSS colour — used for the inline layered backgrounds
+// Same scheme but as a CSS colour - used for the inline layered backgrounds
 // in segments with multiple visible notes. The values mirror these CSS rules
 // (search the file for each selector if you change one side): `:deep(mark.
 // note-linking)`, `note-commenting`, `note-questioning`, `note-tagging`,
-// `note-other`. Note the `questioning` row is 0.30 by design — slightly more
-// opaque so orange reads against light text — keep both sides in sync.
+// `note-other`. Note the `questioning` row is 0.30 by design - slightly more
+// opaque so orange reads against light text - keep both sides in sync.
 const MOTIVATION_COLOR = {
   linking: 'rgba(59, 130, 246, 0.28)',
   commenting: 'rgba(234, 179, 8, 0.28)',
@@ -114,7 +114,7 @@ function authorityClass(note) {
 //                         encapsulation segment)
 //   - data-cover-idx      comma-separated covering note indices (visible
 //                         plus any encapsulating outer suppressed in this
-//                         segment) — used by the hover-bridge to highlight a
+//                         segment) - used by the hover-bridge to highlight a
 //                         hovered note across regions where it is suppressed
 //   - data-primary-idx    the single note whose popover opens on hover
 //                         (earliest-start visible note in the segment)
@@ -179,7 +179,7 @@ function wrapSegmentSlice(slice, seg, notes) {
 
 // Unwrap every <mark> we added, restoring the original text nodes. v-html
 // resets the DOM when `html` changes, but a notes-only change (article
-// unchanged — e.g. once notes become editable) leaves the prior marks in
+// unchanged - e.g. once notes become editable) leaves the prior marks in
 // place, so applyHighlights must be idempotent and clean up first.
 function clearHighlights(root) {
   for (const mark of root.querySelectorAll('mark[data-primary-idx]')) {
@@ -323,7 +323,7 @@ function closePopoverNow() {
 function onDocPointerDown(event) {
   if (event.button !== 0) return; // only primary-button drags select text
   // A press inside the popover panel itself is interacting with the
-  // popover, not starting a new selection — closing it on its own mousedown
+  // popover, not starting a new selection - closing it on its own mousedown
   // would swallow any click inside (currently moot, the popover holds only
   // a `@click.prevent` link, but cheap insurance for any future control).
   const pop = popoverEl.value;
@@ -336,7 +336,7 @@ function onDocPointerDown(event) {
 function onDocPointerUp(event) {
   // Match the button filter from onDocPointerDown: a secondary-button
   // pointerup while the primary-button drag is still in flight must not
-  // consume the drag's start coords or clear isDragging — otherwise the
+  // consume the drag's start coords or clear isDragging - otherwise the
   // remaining drag falls through to only the isSelectingInRoot() guard.
   // pointercancel is exempt: any cancel aborts the whole gesture, primary
   // or not.
@@ -427,7 +427,7 @@ function openFor(el, note, idx) {
   try {
     if (!pop.matches?.(':popover-open')) pop.showPopover?.();
   } catch {
-    /* already open against another anchor — anchorElement moved it */
+    /* already open against another anchor - anchorElement moved it */
   }
 }
 
@@ -505,8 +505,8 @@ const selAnchorEl = useTemplateRef('selAnchorEl');
 // nodes); if the DOM->raw mapping were deferred to openCreator() a draft
 // resolving between selection and click would collapse the selection and the
 // note could not be created while any other note is highlighted. Mapping the
-// selection the instant it is made — while the live selection and the DOM it
-// was made against are still in sync — removes that race entirely.
+// selection the instant it is made - while the live selection and the DOM it
+// was made against are still in sync - removes that race entirely.
 const pendingRange = ref(null);
 
 function clearSelectionUi() {
@@ -542,7 +542,7 @@ function onSelectionChange() {
   const range = rawText ? selectionToRawRange(rawText, root) : null;
   if (!range) {
     // Unmappable selection (spans only stripped structure, or the render
-    // desynced) — no actionable note, drop the UI.
+    // desynced) - no actionable note, drop the UI.
     clearSelectionUi();
     return;
   }
@@ -589,7 +589,7 @@ function onCreatorCancel() {
 // The selected article can change while the creator is open (router nav).
 // selectionRange holds offsets into the OLD article text; NoteCreator's
 // :raw-text would switch to the new article and buildSelector would slice a
-// garbage substring at stale offsets — potentially persisting a note on the
+// garbage substring at stale offsets - potentially persisting a note on the
 // wrong text. Tear the creation flow down on any article change.
 watch(
   () => props.article,
@@ -769,7 +769,7 @@ onBeforeUnmount(() => {
 /* Multi-visible-note segments (partial overlap, layered backgrounds). The
    class is a marker only; the inline style on the mark stacks one
    linear-gradient layer per visible note so two 28%-opaque colours composite
-   into a third — see motivationColor() in the script. The single border-bottom
+   into a third - see motivationColor() in the script. The single border-bottom
    from the primary's authority class stays. */
 .annotated-wrap :deep(mark.note-multi) {
   background: none;

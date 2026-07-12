@@ -77,9 +77,9 @@ export const GROUPED_COLUMNS = [
 ];
 
 // Untranslatables (RFC-012): one row per legal construct the enrichment agent
-// could not express with the engine's current operation set. Atomic grain —
+// could not express with the engine's current operation set. Atomic grain -
 // grouped views (per construct / per law) are aggregation over this same list.
-// Keep in sync with ENRICH_PROVIDERS in packages/pipeline/src/enrich.rs — a
+// Keep in sync with ENRICH_PROVIDERS in packages/pipeline/src/enrich.rs - a
 // provider added there but not here still displays, only its filter option is missing.
 export const UNTRANSLATABLE_PROVIDERS = ['opencode', 'claude'];
 
@@ -131,7 +131,7 @@ export const UNTRANSLATABLE_COLUMNS = [
   },
 ];
 
-// Sort menus are independent from visible columns — users should be able to
+// Sort menus are independent from visible columns - users should be able to
 // sort by fields that aren't shown as a separate column.
 // `directionLabels` controls which directions appear in the menu:
 //  - both keys → menu has both ascending + descending items
@@ -143,7 +143,7 @@ const DIR_DATE    = { desc: 'new - old', asc: 'old - new' };
 const DIR_NUMERIC = { desc: 'high - low', asc: 'low - high' };
 const DIR_TEXT    = { asc: 'a - z', desc: 'z - a' };
 
-// Sort options are ordered by relevance — most useful pivots first.
+// Sort options are ordered by relevance - most useful pivots first.
 export const JOB_SORT_OPTIONS = [
   { key: 'created_at', label: 'Recent changes' },
   { key: 'status', label: 'Status' },
@@ -201,7 +201,7 @@ export const STATUS_BADGE_MAP = {
   pending: 'neutral',
   unknown: 'neutral',
   queued: 'neutral',
-  // No consolidated text to harvest — informational, terminal, not a failure.
+  // No consolidated text to harvest - informational, terminal, not a failure.
   not_harvestable: 'neutral',
   // Untranslatables (RFC-012): the human-review `accepted` flag rendered as a
   // badge. `accepted` is a review gate that defaults to false, so false means

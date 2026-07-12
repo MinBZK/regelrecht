@@ -97,7 +97,7 @@ describe('useCorpusLaws', () => {
     expect(resolvers).toHaveLength(1);
 
     // Once the initial fetch settles, the refresh busts the slot and
-    // re-fetches — its result wins, never the pre-refresh list.
+    // re-fetches - its result wins, never the pre-refresh list.
     resolvers[0]([{ law_id: 'wet_old' }]);
     await flush();
     expect(resolvers).toHaveLength(2);

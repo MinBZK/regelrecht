@@ -34,7 +34,7 @@ export const OPERATION_LABELS = {
 const DATE_DIFF_UNIT_LABELS = { days: 'dagen', months: 'maanden', years: 'jaren' };
 
 export function collectAvailableVariables(article) {
-  // Engine built-in context variables — always available regardless of
+  // Engine built-in context variables - always available regardless of
   // article content. `referencedate` is the calculation date injected by
   // the engine from the scenario's "Given the calculation date is ..."
   const vars = [
@@ -88,7 +88,7 @@ export function buildOperationTree(action) {
     return [];
   }
 
-  // Onderwerp/Waarde rows keep YAML form verbatim — identifiers must match
+  // Onderwerp/Waarde rows keep YAML form verbatim - identifiers must match
   // their `$VAR` references. But the Titel row is a human-readable LABEL,
   // not a snippet of YAML; if the user later adds a `title:` field on the
   // operation, it'd never have `$` or underscores, and a derived title
@@ -175,7 +175,7 @@ function isOperationNode(v) {
   return v != null && typeof v === 'object' && v.operation;
 }
 
-// Subtitle generation — produces a compact, infix-style description of what
+// Subtitle generation - produces a compact, infix-style description of what
 // an operation node does. Examples:
 //   EQUALS  → "$x = 0"
 //   AND (3) → "$a en $b en $c"
@@ -255,7 +255,7 @@ export function describeSubtitle(node) {
     return labels.join(' + ');
   }
 
-  // IF/SWITCH have no single subject and multiple branches — any one-line
+  // IF/SWITCH have no single subject and multiple branches - any one-line
   // summary leaves out important parts of the operation. The structural
   // count ("1 conditie + standaard") was technically accurate but confusing
   // because it doesn't tell the reader what the operation actually returns.
@@ -293,7 +293,7 @@ function formatArgName(v) {
   if (typeof v === 'number') return String(v);
   if (typeof v === 'boolean') return String(v);
   if (isOperationNode(v)) {
-    // Prefer the first variable inside the nested op — much more informative
+    // Prefer the first variable inside the nested op - much more informative
     // than the operation label. So `AND( IN($a, ...), IN($b, ...) )` reads
     // as `$a en $b` instead of `(in lijst) en (in lijst)`. Falls back to
     // `(label)` only when the nested op holds no variable refs at all.
@@ -308,7 +308,7 @@ function formatArgName(v) {
 /**
  * Operand renderer for compositional ops (AND/OR/ADD/SUBTRACT/MIN/MAX/etc.).
  * Returns a clean label when the operand can be cleanly named, or `null`
- * when it's a nameless nested op — `null` signals the caller to fall back
+ * when it's a nameless nested op - `null` signals the caller to fall back
  * to the count-summary form rather than emit half-information like
  * `$a − (als/dan)` where the right side carries multiple operands but only
  * the wrapper type is shown.
@@ -332,10 +332,10 @@ function nameableOperand(v) {
  * all-caps idents) so the result reads like prose. Used as the Titel row in
  * OperationSettings, the row text in ActionSheet's parent-ops list, and the
  * (operatie) suffix on dropdown nested options. Falls through to the user-
- * supplied `node.title` (no derivation) when present — that's handled at
+ * supplied `node.title` (no derivation) when present - that's handled at
  * the buildOperationTree layer.
  *
- * Per-token regex (`$IDENT`) so each variable is humanised independently —
+ * Per-token regex (`$IDENT`) so each variable is humanised independently -
  * a string like `$PERCENTAGE_LID_5 + $aantal_dagen` becomes
  * `percentage lid 5 + aantal dagen` instead of inheriting the all-caps state
  * from one of its tokens.

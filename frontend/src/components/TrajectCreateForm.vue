@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue';
 
-// Gedeeld aanmaakformulier voor een traject — gebruikt door de
+// Gedeeld aanmaakformulier voor een traject - gebruikt door de
 // TrajectMenu-sheet en de /editor/nieuw-traject-pagina. Gebouwd op de
 // NLDD-formulierfamilie: nldd-form (light-DOM <form>), nldd-form-field
 // met help-teksten en nldd-form-actions met de submit-knop. Het formulier
@@ -11,7 +11,7 @@ import { ref } from 'vue';
 // krijgt `{ payload }` of `{ error }` terug; `reset()` maakt de velden
 // leeg.
 defineProps({
-  // Foutmelding van de host (validatie of mislukte create) — boven de
+  // Foutmelding van de host (validatie of mislukte create) - boven de
   // acties getoond zodat de melding bij de velden staat.
   error: { type: String, default: null },
   // Create-call onderweg: toont de busy-regel en blokkeert de knop.
@@ -25,14 +25,14 @@ function emptyForm() {
     name: '',
     description: '',
     // When `useCustomRepo` is false the create call omits the repo
-    // fields and the backend falls back to the default MinBZK repo —
+    // fields and the backend falls back to the default MinBZK repo -
     // existing trajects keep their behaviour unchanged.
     useCustomRepo: false,
     repo_owner: '',
     repo_name: '',
     base_branch: 'main',
     // Sub-path within the repo where regulation YAML files live. Empty
-    // means "everything under repo root" — the right default for user
+    // means "everything under repo root" - the right default for user
     // repos dedicated to regulations. Set to e.g. `regulation/nl` when
     // the YAMLs live in a sub-directory.
     repo_path: '',
@@ -46,7 +46,7 @@ function reset() {
 }
 
 // Build the request body. Only attach the repo fields when the toggle
-// is on — leaving them out lets the backend pick the MinBZK default
+// is on - leaving them out lets the backend pick the MinBZK default
 // so existing flows are unchanged for users who don't need a custom
 // repo. Returns { payload } on success or { error } when validation
 // fails.
@@ -174,7 +174,7 @@ function bind(field) {
             <code>{{ form.repo_owner || '…' }}/{{ form.repo_name || '…' }}</code>
             (basis: <code>{{ form.base_branch || 'main' }}</code>).
             Je beheerder moet voor deze repo een <code>CORPUS_AUTH_*_TOKEN</code>
-            env-var hebben gezet — anders krijg je een foutmelding bij aanmaken.
+            env-var hebben gezet - anders krijg je een foutmelding bij aanmaken.
             Commits verschijnen onder je eigen naam (uit je SSO-account), niet
             onder het service-account.
           </p>
@@ -196,7 +196,7 @@ function bind(field) {
       <nldd-activity-indicator
         v-if="busy"
         show-text
-        text="Traject wordt aangemaakt en branch wordt op de remote gezet — dit kan even duren."
+        text="Traject wordt aangemaakt en branch wordt op de remote gezet - dit kan even duren."
       ></nldd-activity-indicator>
 
       <nldd-form-actions>

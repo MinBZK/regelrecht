@@ -1,5 +1,5 @@
 /**
- * useScenarios — fetch, manage, and save scenario files for a law.
+ * useScenarios - fetch, manage, and save scenario files for a law.
  *
  * Reads pick the global or traject-scoped URL based on `trajectRef`;
  * writes only succeed with a traject, matching the backend invariant
@@ -18,7 +18,7 @@ import { apiFetch } from '../lib/apiFetch.js';
 
 /**
  * True when the scenario file declares execution targets and none of
- * them is the opened law — running it would evaluate a different law.
+ * them is the opened law - running it would evaluate a different law.
  * Files without a parseable execution step (`target_law_ids` empty)
  * count as "unknown", not as a mismatch.
  */
@@ -58,7 +58,7 @@ export function useScenarios(lawId, trajectRef = ref(null)) {
       const res = await fetch(scenariosListUrl(trajectRef.value, lawId.value));
       if (!res.ok) {
         // Deliberately raw fetch + silent branch: a law without scenarios
-        // is normal, not an error — every non-ok status maps to an empty
+        // is normal, not an error - every non-ok status maps to an empty
         // list without surfacing anything.
         scenarios.value = [];
         return;
@@ -69,7 +69,7 @@ export function useScenarios(lawId, trajectRef = ref(null)) {
       // then prefer files whose targets are unknown (no parseable
       // execution step) over known mismatches; finally fall back to the
       // first file. Folder placement is no longer the source of truth
-      // for the law↔scenario binding — the file's execution steps are.
+      // for the law↔scenario binding - the file's execution steps are.
       if (scenarios.value.length > 0 && !selectedScenario.value) {
         const preferred =
           scenarios.value.find((s) => s.target_law_ids?.includes(lawId.value)) ||
@@ -117,7 +117,7 @@ export function useScenarios(lawId, trajectRef = ref(null)) {
 
     // Snapshot the scope before the await (mirrors useLaw.saveLaw): if
     // the user switches law/traject while the PUT is in flight, the
-    // watch below clears `scenarioEtags` for the new scope — the stale
+    // watch below clears `scenarioEtags` for the new scope - the stale
     // completion must not re-insert its ETag (keys are bare filenames
     // like `basis.feature`, which recur across laws, so the entry would
     // poison the new law's same-named scenario with a foreign
@@ -161,10 +161,10 @@ export function useScenarios(lawId, trajectRef = ref(null)) {
         json = await res.json();
         lastSavedPr.value = sanitizeSavedPr(json?.pr);
       } catch {
-        // Older deployments returned a bare 200 — keep the prior PR.
+        // Older deployments returned a bare 200 - keep the prior PR.
       }
       // Bail on the success path if the user switched law/traject
-      // mid-flight — the new scope's state must not absorb this save.
+      // mid-flight - the new scope's state must not absorb this save.
       if (lawId.value !== savedLawId || trajectRef.value !== savedTrajectRef) return;
       // Chain the new ETag for the next save of this scenario. Header
       // is authoritative; body echo is the fallback.
@@ -189,7 +189,7 @@ export function useScenarios(lawId, trajectRef = ref(null)) {
   watch([lawId, trajectRef], () => {
     selectedScenario.value = null;
     featureText.value = '';
-    // ETags belong to the previous law/traject's files — a save in the
+    // ETags belong to the previous law/traject's files - a save in the
     // new scope must not carry a stale precondition.
     scenarioEtags.clear();
     fetchScenarios().catch(() => {});

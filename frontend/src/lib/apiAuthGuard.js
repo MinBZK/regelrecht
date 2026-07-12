@@ -14,7 +14,7 @@ import { ensureAuthReady, useAuth } from '../composables/useAuth.js';
 // `useAuth().login()` redirect so there is one auth path, not two.
 //
 // Deliberately NOT handled here:
-// - 403 (authenticated but missing role) is not a re-login case — redirecting
+// - 403 (authenticated but missing role) is not a re-login case - redirecting
 //   would loop. Call sites show their own "no access" message.
 // - Only same-origin `/api/*` responses are intercepted, so `/auth/*` (incl.
 //   `/auth/status`), `/data/*`, `/wasm/*` and cross-origin fetches pass through.
@@ -22,7 +22,7 @@ import { ensureAuthReady, useAuth } from '../composables/useAuth.js';
 //   call `/api/*` endpoints that 401 without a session (e.g. `/library` loads
 //   `/api/favorites`, which the editor tolerates as "no favorites"), and local
 //   dev runs with OIDC disabled. We only redirect a session that loaded
-//   authenticated against a configured IdP and then got a 401 — i.e. its
+//   authenticated against a configured IdP and then got a 401 - i.e. its
 //   session expired. This mirrors the router guard's `oidcConfigured` gate.
 
 /**
@@ -36,7 +36,7 @@ export function isApiUrl(input) {
   let url;
   try {
     // Resolve against the full current URL (not just the origin) so bare
-    // relative paths resolve exactly as the browser's fetch does — e.g. on
+    // relative paths resolve exactly as the browser's fetch does - e.g. on
     // `/trajects/123`, `fetch('api/x')` hits `/trajects/api/x`, not `/api/x`.
     url = new URL(raw, window.location.href);
   } catch {
@@ -68,7 +68,7 @@ export function installApiAuthGuard() {
       if (oidcConfigured.value && authenticated.value && !redirecting) {
         redirecting = true;
         // No explicit returnUrl: the navigation has already committed, so
-        // window.location reflects the page the user is actually on — exactly
+        // window.location reflects the page the user is actually on - exactly
         // where they should return after re-auth.
         login();
       }

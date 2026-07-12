@@ -31,7 +31,7 @@ const { job: detailJob, isOpen: detailOpen, open: openDetail, close: closeDetail
 const { isOpen: lawJobsSheetOpen, open: openLawJobs } = useLawJobsSheet();
 
 // Sync viewMode to URL so a refresh keeps the selected view. Grouped is the
-// default — omit the param in that case to keep the URL clean.
+// default - omit the param in that case to keep the URL clean.
 watch(viewMode, (mode) => {
   const { view, ...rest } = route.query;
   router.replace({ query: mode === 'flat' ? { ...rest, view: 'flat' } : rest });

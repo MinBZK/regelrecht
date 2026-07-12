@@ -38,7 +38,7 @@ describe('useLatest', () => {
       writes.push(value);
     }
 
-    // Slow "old" load resolves after the fast "new" one — only the
+    // Slow "old" load resolves after the fast "new" one - only the
     // newest may write.
     await Promise.all([load('old', 20), load('new', 0)]);
     expect(writes).toEqual(['new']);

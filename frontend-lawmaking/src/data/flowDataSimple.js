@@ -2,11 +2,11 @@
  * Simple view: Dutch law-making process as GitFlow.
  *
  * Branch model:
- *   col 0 — main (Corpus Juris, geldend recht)
- *   col 1 — develop (Wetgevingskalender, voorstellen in procedure)
- *   col 2 — fork: wetsvoorstel (ministry / fraction workspace)
- *   col 3 — topic branch within the wetsvoorstel fork
- *   col 4 — fork: advisory (Raad van State / toetsende organen)
+ *   col 0 - main (Corpus Juris, geldend recht)
+ *   col 1 - develop (Wetgevingskalender, voorstellen in procedure)
+ *   col 2 - fork: wetsvoorstel (ministry / fraction workspace)
+ *   col 3 - topic branch within the wetsvoorstel fork
+ *   col 4 - fork: advisory (Raad van State / toetsende organen)
  */
 
 export const branches = [
@@ -67,7 +67,7 @@ export const stages = [
     lawLabel: 'Corpus Juris',
     subtitle: 'Geldend recht',
     description:
-      'Het geheel van alle geldende Nederlandse wetgeving — de "main branch". ' +
+      'Het geheel van alle geldende Nederlandse wetgeving - de "main branch". ' +
       'Wat hier staat, is geldend recht.',
     col: 0, step: 0,
   },
@@ -80,7 +80,7 @@ export const stages = [
     subtitle: 'Main gaat door',
     description:
       'Terwijl het wetsvoorstel in procedure is, gaan andere wetten gewoon door. ' +
-      'Main verandert voortdurend — daarom zijn rebases nodig.',
+      'Main verandert voortdurend - daarom zijn rebases nodig.',
     col: 0, step: 5,
   },
 
@@ -145,7 +145,7 @@ export const stages = [
     lawLabel: 'Eerste concept',
     subtitle: 'Juridische tekst',
     description:
-      'Het eerste concept van de wettekst. Er volgen nog vele iteraties — ' +
+      'Het eerste concept van de wettekst. Er volgen nog vele iteraties - ' +
       'net als bij code wordt er voortdurend herzien en verbeterd.',
     col: 3, step: 6,
   },
@@ -207,7 +207,7 @@ export const stages = [
     lawLabel: 'Memorie van Toelichting',
     subtitle: 'Uitleg bij het voorstel',
     description:
-      'De Memorie van Toelichting legt uit waarom de wet er zo uitziet — ' +
+      'De Memorie van Toelichting legt uit waarom de wet er zo uitziet - ' +
       'vergelijkbaar met design docs en ADRs bij de code.',
     col: 2, step: 11,
   },
@@ -220,7 +220,7 @@ export const stages = [
     subtitle: 'Andere ministeries reageren',
     description:
       'Het voorstel circuleert langs alle relevante ministeries. ' +
-      'Hun feedback wordt verwerkt — cross-team review.',
+      'Hun feedback wordt verwerkt - cross-team review.',
     col: 2, step: 12,
   },
   {
@@ -231,7 +231,7 @@ export const stages = [
     lawLabel: 'Internetconsultatie',
     subtitle: '4+ weken publiek commentaar',
     description:
-      'Het voorstel gaat op internetconsultatie.nl — een publieke RFC. ' +
+      'Het voorstel gaat op internetconsultatie.nl - een publieke RFC. ' +
       'Burgers, NGOs en bedrijven geven feedback.',
     col: 2, step: 13,
   },
@@ -345,7 +345,7 @@ export const stages = [
     lawLabel: 'Tweede Kamer',
     subtitle: 'Behandeling & stemming',
     description:
-      'De Tweede Kamer behandelt het voorstel — vergelijkbaar met een PR review. ' +
+      'De Tweede Kamer behandelt het voorstel - vergelijkbaar met een PR review. ' +
       'Kamerleden dienen amendementen in, debatteren, en stemmen.',
     col: 1, step: 22,
   },
@@ -357,7 +357,7 @@ export const stages = [
     lawLabel: 'Amendementen TK',
     subtitle: 'Wijzigingen door Kamer',
     description:
-      'Amendementen van Kamerleden worden verwerkt — vergelijkbaar met ' +
+      'Amendementen van Kamerleden worden verwerkt - vergelijkbaar met ' +
       'reviewer-submitted patches die gemerged worden in de branch.',
     col: 1, step: 23,
   },
@@ -383,7 +383,7 @@ export const stages = [
     lawLabel: 'Koninklijk Besluit',
     subtitle: 'Bekrachtiging door de Koning',
     description:
-      'De Koning is de enige maintainer van het Corpus Juris — alleen hij kan mergen ' +
+      'De Koning is de enige maintainer van het Corpus Juris - alleen hij kan mergen ' +
       'naar main, met de Minister als co-author op elke commit. ' +
       'Publicatie in het Staatsblad en inwerkingtreding volgen automatisch.',
     tags: [
@@ -401,7 +401,7 @@ export const stages = [
     subtitle: 'Bijgewerkt',
     description:
       'Het Corpus Juris is bijgewerkt met de nieuwe wet. ' +
-      'Main gaat door — klaar voor het volgende wetsvoorstel.',
+      'Main gaat door - klaar voor het volgende wetsvoorstel.',
     col: 0, step: 26,
   },
 ];

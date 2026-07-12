@@ -1,5 +1,5 @@
 /**
- * Editor BDD semantics — the single JS dispatch file (mirror of Rust dispatch.rs).
+ * Editor BDD semantics - the single JS dispatch file (mirror of Rust dispatch.rs).
  *
  * One `dispatch(ctx, engine, action, args, table, { loadDependency })` runs the
  * effect for a canonical grammar action. The generated grammar
@@ -228,6 +228,6 @@ export async function dispatch(ctx, engine, action, args, table, { loadDependenc
       throw tierUnsupported('notes');
 
     default:
-      throw new Error(`unknown action '${action}' — grammar/dispatch out of sync`);
+      throw new Error(`unknown action '${action}' - grammar/dispatch out of sync`);
   }
 }

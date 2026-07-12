@@ -7,7 +7,7 @@ const props = defineProps({
   action: { type: Object, default: null },
   article: { type: Object, default: null },
   editable: { type: Boolean, default: false },
-  /** A freshly added action — Save is always offered (you opened the
+  /** A freshly added action - Save is always offered (you opened the
    *  sheet to create it), regardless of the dirty snapshot. */
   isNew: { type: Boolean, default: false },
 });
@@ -62,7 +62,7 @@ const selectedOperation = computed(() => operationTree.value[selectedOpIndex.val
 
 // When the action has no operation (e.g. `value: $PERCENTAGE_LID_5`), the
 // operation tree is empty and the sheet would otherwise show a blank body.
-// Show the value verbatim from the YAML — `$VAR` refs stay in their CAPS +
+// Show the value verbatim from the YAML - `$VAR` refs stay in their CAPS +
 // underscore form because the `$` is a code-marker that pairs visually
 // with code-style identifiers (humanizing them to `$percentage lid 5`
 // reads inconsistently).
@@ -125,13 +125,13 @@ onUnmounted(() => {
       <nldd-simple-section>
         <!-- Output binding lives inside the operation's settings list (via
              OperationSettings' lead-row slot) at the top level, or in the
-             direct-value list below — so it sits in the same box as the
+             direct-value list below - so it sits in the same box as the
              other root rows instead of a separate box. -->
 
         <!-- Section A: Bovenliggende operaties -->
         <template v-if="parentOperations.length">
           <nldd-list variant="box" arrow-navigation>
-            <!-- Back/up navigation — clickable parent rows with a
+            <!-- Back/up navigation - clickable parent rows with a
                  chevron-left, identical in view and edit: click any
                  ancestor to jump up one or more levels. -->
             <nldd-list-item

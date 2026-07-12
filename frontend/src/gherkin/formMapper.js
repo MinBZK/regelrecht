@@ -11,7 +11,7 @@ import { GRAMMAR } from './grammar.generated.js';
 // --- Generated grammar lookups (single source of truth for phrasing) ---
 
 // Emit-templates keyed by grammar entry id, and a capitalized keyword prefix
-// (Given/When/Then) per entry id — both derived from GRAMMAR so phrasing and
+// (Given/When/Then) per entry id - both derived from GRAMMAR so phrasing and
 // keyword stay single-sourced.
 const TPL = Object.fromEntries(GRAMMAR.map((e) => [e.id, e.template]));
 const KW = Object.fromEntries(
@@ -290,7 +290,7 @@ export function syncEditedValues(formState, scenarioIndex, values) {
       // Update existing scenario-level parameter
       scenario.setup.parameters[scenarioParamMap.get(name)].value = value;
     } else if (bgParamMap.has(name)) {
-      // Background param — add scenario override only if value differs
+      // Background param - add scenario override only if value differs
       const bgValue = bgParamMap.get(name).value;
       if (String(bgValue) !== String(value)) {
         scenario.setup.parameters.push({ name, value });
@@ -298,7 +298,7 @@ export function syncEditedValues(formState, scenarioIndex, values) {
     }
   }
 
-  // Drop scenario-level overrides that now match the background — otherwise
+  // Drop scenario-level overrides that now match the background - otherwise
   // a save/edit/save cycle accumulates redundant `Given parameter ...` steps.
   scenario.setup.parameters = scenario.setup.parameters.filter((p) => {
     if (!bgParamMap.has(p.name)) return true;
@@ -320,12 +320,12 @@ export function syncEditedValues(formState, scenarioIndex, values) {
         // Update existing scenario-level data source in place
         scenario.setup.dataSources[scenarioDsMap.get(stateDs.sourceName)] = stateDs;
       } else if (bgDsMap.has(stateDs.sourceName)) {
-        // Background data source — add scenario override only if it differs
+        // Background data source - add scenario override only if it differs
         if (!dataSourcesEqual(bgDsMap.get(stateDs.sourceName), stateDs)) {
           scenario.setup.dataSources.push(stateDs);
         }
       } else {
-        // Wholly new data source — add at scenario level
+        // Wholly new data source - add at scenario level
         scenario.setup.dataSources.push(stateDs);
       }
     }
@@ -339,7 +339,7 @@ export function syncEditedValues(formState, scenarioIndex, values) {
 
   // Sync calculation date (scenario-level override).
   // Treat `null`, `undefined` and `""` as "user cleared the field" so that
-  // a clear is not silently dropped — otherwise the next save would write
+  // a clear is not silently dropped - otherwise the next save would write
   // the stale date back to the .feature file.
   if (calculationDate !== undefined) {
     const cleared = calculationDate === null || calculationDate === '';
@@ -489,6 +489,6 @@ function formatAssertion(assertion) {
     case 'contains':
       return ['assert_contains', TPL.assert_contains([assertion.outputName, assertion.value])];
     default:
-      throw new Error(`formatAssertion: unhandled assertionType '${assertion.assertionType}' — classifier/serializer out of sync`);
+      throw new Error(`formatAssertion: unhandled assertionType '${assertion.assertionType}' - classifier/serializer out of sync`);
   }
 }

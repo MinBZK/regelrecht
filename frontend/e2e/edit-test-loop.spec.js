@@ -4,7 +4,7 @@
  * Verifies the demo flow the editor was built for:
  *   1. Open wet_op_de_zorgtoeslag in the editor.
  *   2. Observe the *Minderjarige heeft geen recht op zorgtoeslag* scenario is
- *      red (badge = ✗) — age check isn't in the law's machine_readable.
+ *      red (badge = ✗) - age check isn't in the law's machine_readable.
  *   3. Edit article 2's machine_readable via the middle-pane YAML editor to
  *      add a leeftijd input + an AGE-based condition to the existing AND.
  *   4. ScenarioBuilder auto-reexecutes against the edited YAML.
@@ -49,11 +49,11 @@ test.describe('Edit → re-execute loop', () => {
       scenarioText,
     );
 
-    // Navigate directly to article 2 via the route param — that's where
+    // Navigate directly to article 2 via the route param - that's where
     // heeft_recht_op_zorgtoeslag lives and where we need to edit.
     await page.goto('/editor/wet_op_de_zorgtoeslag/2');
 
-    // Wait for the document tab bar to render — articles loaded.
+    // Wait for the document tab bar to render - articles loaded.
     await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 15_000 });
 
     const minorHeader = page
@@ -61,7 +61,7 @@ test.describe('Edit → re-execute loop', () => {
       .filter({ hasText: 'Minderjarige' });
     await expect(minorHeader).toBeVisible({ timeout: 30_000 });
 
-    // Wait until the badge appears (either ✓ or ✗) — meaning execution
+    // Wait until the badge appears (either ✓ or ✗) - meaning execution
     // completed. The badge span has class sb-badge--pass or sb-badge--fail.
     await minorHeader
       .locator('.sb-badge--pass, .sb-badge--fail')
@@ -97,7 +97,7 @@ test.describe('Edit → re-execute loop', () => {
     // BRP art 1.2 requires both bsn and peildatum; we use the scenario's
     // calculation date as a literal here.
     //
-    // NOTE: a literal date is intentional for test isolation — the spec must
+    // NOTE: a literal date is intentional for test isolation - the spec must
     // remain stable regardless of the real calculation date at CI time. The
     // canonical production pattern (see `kieswet`) references a parameter
     // like `peildatum: $verkiezingsdatum` so the date tracks the runtime

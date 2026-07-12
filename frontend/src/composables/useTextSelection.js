@@ -1,9 +1,9 @@
 /**
- * useTextSelection — turn a DOM selection in the rendered article into a
+ * useTextSelection - turn a DOM selection in the rendered article into a
  * TextQuoteSelector against the *raw* law text (RFC-018 write path, step 2).
  *
  * The Tekst pane renders the raw article text through marked (list prefixes
- * stripped, whitespace collapsed — see useNotesHighlight.js). A user selecting
+ * stripped, whitespace collapsed - see useNotesHighlight.js). A user selecting
  * "zorgtoeslag" with the mouse selects it in that rendered DOM, but a note's
  * TextQuoteSelector must quote the *raw* text the resolver matches against, or
  * it will not round-trip. So a selection is mapped DOM -> raw using the same
@@ -321,7 +321,7 @@ export function buildSelector(rawText, range, lawId, engine, articleNumber) {
     try {
       result = engine.resolveNote(lawId, selector);
     } catch {
-      // Resolver threw (law not loaded etc.) — caller surfaces it.
+      // Resolver threw (law not loaded etc.) - caller surfaces it.
       return { selector, exact, status: 'orphaned', reason: 'not-found' };
     }
     if (isExactlyOurSelection(result)) {

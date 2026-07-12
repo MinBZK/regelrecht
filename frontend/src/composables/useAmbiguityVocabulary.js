@@ -1,5 +1,5 @@
 /**
- * useAmbiguityVocabulary — the controlled tag list for questioning notes.
+ * useAmbiguityVocabulary - the controlled tag list for questioning notes.
  *
  * RFC-018 Decision 9: a questioning note over an open norm carries a tagging
  * body whose value is one of these ids. The list is deliberately *not* a JSON

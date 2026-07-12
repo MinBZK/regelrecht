@@ -22,7 +22,7 @@ export function usePollingFetch(buildUrl, options = {}) {
     try {
       // 401 is handled by the editor's global apiAuthGuard (redirect to
       // login); return early on it so we don't flash an error state before the
-      // redirect — matching the mutation call sites (RowActions etc.). apiFetch
+      // redirect - matching the mutation call sites (RowActions etc.). apiFetch
       // throws ApiError on other non-ok statuses, caught below.
       const response = await apiFetch(url, { allowStatuses: [401] });
       if (response.status === 401) return;

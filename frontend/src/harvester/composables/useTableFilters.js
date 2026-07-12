@@ -16,7 +16,7 @@ export function useTableFilters(getFilters, emit) {
     Object.values(getFilters() || {}).some((v) => v !== '' && v != null),
   );
 
-  // Clear every active filter by emitting an empty value per key — the
+  // Clear every active filter by emitting an empty value per key - the
   // parent's setFilter handler deletes a filter when given a falsy value.
   function clearFilters() {
     for (const key of Object.keys(getFilters() || {})) {

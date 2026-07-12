@@ -23,7 +23,7 @@ function save() {
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(_lastVisited.value));
   } catch {
-    /* storage may be disabled / quota exceeded — fall back to memory only */
+    /* storage may be disabled / quota exceeded - fall back to memory only */
   }
 }
 
@@ -53,7 +53,7 @@ export const lastLibraryPath = computed(() => _lastVisited.value.library ?? '/li
 
 // `/editor` (no traject) is the read-only editor. The first visit
 // lands there; subsequent visits restore the most-recently-seen
-// editor URL — the traject chooser OR a traject-scoped editor,
+// editor URL - the traject chooser OR a traject-scoped editor,
 // whichever the user was on last.
 export const lastEditorPath = computed(
   () => _lastVisited.value.editor ?? '/editor',

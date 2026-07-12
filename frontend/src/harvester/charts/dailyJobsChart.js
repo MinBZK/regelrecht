@@ -35,7 +35,7 @@ export function formatAxisDate(isoDate) {
  *   One entry per day, ascending (as served by dashboard-stats `daily`).
  * @param {{succeeded: string, failed: string, added: string, text: string,
  *          textSecondary: string, grid: string, surface: string}} colors
- *   Resolved concrete colors (rgb/hex — canvas can't read CSS variables).
+ *   Resolved concrete colors (rgb/hex - canvas can't read CSS variables).
  */
 export function buildDailyJobsOption(entries, colors) {
   // Succeeded under, failed on top: the stack totals "finished that day" and
@@ -67,7 +67,7 @@ export function buildDailyJobsOption(entries, colors) {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
       valueFormatter: formatAxisNumber,
-      // Theme the tooltip too — the ECharts default is white-on-light only.
+      // Theme the tooltip too - the ECharts default is white-on-light only.
       backgroundColor: colors.surface,
       borderColor: colors.grid,
       textStyle: { color: colors.text },

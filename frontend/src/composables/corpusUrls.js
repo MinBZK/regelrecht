@@ -1,13 +1,13 @@
 // Centralised URL builders for the editor's corpus endpoints. The two
-// shapes — global (`/api/corpus/...`, read-only) and traject-scoped
-// (`/api/trajects/{ref}/corpus/...`, read + write) — are picked by
+// shapes - global (`/api/corpus/...`, read-only) and traject-scoped
+// (`/api/trajects/{ref}/corpus/...`, read + write) - are picked by
 // whether a traject ref is present at call time. Putting the choice in
 // one place keeps composables aligned and prevents the pattern from
 // drifting per file.
 //
 // The `trajectRef` is the URL-form identifier `{slug}-{8hex}` returned
 // by the backend on `t.ref`. The backend resolves it back to a UUID via
-// `resolve_traject_ref` — frontend code never needs to know the UUID
+// `resolve_traject_ref` - frontend code never needs to know the UUID
 // shape, only the ref string.
 
 function corpusBase(trajectRef) {
@@ -23,7 +23,7 @@ export function lawUrl(trajectRef, lawId) {
 // All versions of a law (newest-first), as a JSON array of YAML strings.
 // Unlike `lawUrl` (one "best for today" body), the scenario dependency loader
 // feeds every version to the engine so its date-aware version selection can
-// pick the one in force on the scenario's calculation date — otherwise a
+// pick the one in force on the scenario's calculation date - otherwise a
 // referenced law that has a future-dated version would load only that future
 // version and fail "not yet in force" for a past-dated scenario.
 export function lawVersionsUrl(trajectRef, lawId) {
@@ -36,7 +36,7 @@ export function lawsListUrl(trajectRef, query = '') {
 }
 
 // Law ids edited in a traject (branch-vs-base diff). Only exists under the
-// traject prefix — there is no global "changed laws" notion — so this is
+// traject prefix - there is no global "changed laws" notion - so this is
 // traject-only, like the documents builders. Callers already short-circuit
 // the no-traject case (see `fetchChangedLawIds`); the guard here documents
 // that contract and fails loudly if a future caller forgets it.
@@ -68,7 +68,7 @@ export function annotationsUrl(trajectRef, lawId) {
 // Documents live under the traject-scope only. The list endpoint
 // returns every document in the traject's documents folder, the file
 // endpoint reads/writes one specific path. Both forms require a
-// trajectRef — there is no global-scope counterpart by design.
+// trajectRef - there is no global-scope counterpart by design.
 export function documentsListUrl(trajectRef) {
   requireTraject(trajectRef, 'documents listing');
   return `${corpusBase(trajectRef)}/documents`;
@@ -76,7 +76,7 @@ export function documentsListUrl(trajectRef) {
 
 // The document path is hierarchical (e.g. "mvt/concept.md"), so each
 // segment is encoded individually instead of `encodeURIComponent`-ing
-// the whole thing — that would turn `/` into `%2F` and break the
+// the whole thing - that would turn `/` into `%2F` and break the
 // axum wildcard match.
 export function documentFileUrl(trajectRef, docPath) {
   requireTraject(trajectRef, 'document access');

@@ -1,4 +1,4 @@
-/* Harvester "Corpusinwinning" section styles — the component-specific hooks ported from
+/* Harvester "Corpusinwinning" section styles - the component-specific hooks ported from
    the standalone admin dashboard (packages/admin/frontend-src/css/admin.css).
    These target light-DOM class hooks in the ported table/toolbar components, so
    they must be global (an SFC `<style scoped>` on HarvesterView would not reach
@@ -56,7 +56,7 @@
   background: var(--primitives-color-critical-450);
 }
 
-/* Daily jobs charts (Overzicht) — ECharts needs an explicit height to render. */
+/* Daily jobs charts (Overzicht) - ECharts needs an explicit height to render. */
 .daily-jobs-chart {
   height: 260px;
 }

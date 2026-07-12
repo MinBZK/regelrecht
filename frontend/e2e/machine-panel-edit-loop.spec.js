@@ -34,7 +34,7 @@ async function waitForSheetOpen(page, hostSelector) {
 
 /**
  * Wait for an nldd-sheet to be closed (host present + shadow `<dialog>`'s
- * `open` no longer true). The host MUST be present — otherwise a typo in
+ * `open` no longer true). The host MUST be present - otherwise a typo in
  * the selector or a test ordering bug would let this helper resolve
  * immediately and silently mask the error. Pair every `waitForSheetClosed`
  * call with an opening event so the host has been mounted at least once.
@@ -115,7 +115,7 @@ test.describe('Edit → re-execute loop via Machine panel', () => {
     // light-DOM `input` element is reachable via the locator's `>> input`
     // descendant, but Vue listens to the host's `input` event. Set value
     // and dispatch the input event so Vue's @input handler updates the
-    // model — same trick the existing helpers.fillSheetTextField uses.
+    // model - same trick the existing helpers.fillSheetTextField uses.
     async function setSheetField(label, value) {
       const listItem = editSheet.locator('nldd-list-item').filter({
         hasText: label,
@@ -199,7 +199,7 @@ test.describe('Edit → re-execute loop via Machine panel', () => {
     // The ActionSheet selects the LAST operation in the tree on open.
     // For the heeft_recht AND that's one of the leaf comparisons, not the
     // AND itself. We need to navigate up to the AND root (number "1") via
-    // the "Bovenliggende operaties" list — each row carries a stable
+    // the "Bovenliggende operaties" list - each row carries a stable
     // data-testid keyed off the operation number.
     await actionSheet
       .locator('[data-testid="parent-op-1-edit-btn"]')

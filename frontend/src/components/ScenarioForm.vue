@@ -115,7 +115,7 @@ const errorTraceText = ref(null);
 // All edits live in these refs and are only written back to formState on
 // save, so re-initialising here fully discards unsaved edits. Used both
 // when the scenario/setup props change and when the parent discards edits
-// (cancel / click-away) without replacing formState — see ScenarioBuilder.
+// (cancel / click-away) without replacing formState - see ScenarioBuilder.
 function discardEdits() {
   calculationDate.value = props.setup.calculationDate || new Date().toISOString().slice(0, 10);
   parameterValues.value = Object.fromEntries(
@@ -144,7 +144,7 @@ watch([() => props.setup, () => props.scenario], discardEdits, { deep: true });
 
 // Column types come from the dependency graph, which loads asynchronously after
 // the panel mounts. Re-type the data-source columns in place when the map
-// arrives — without rebuilding rows, so unsaved cell edits survive.
+// arrives - without rebuilding rows, so unsaved cell edits survive.
 watch(() => props.externalFieldTypeMap, () => {
   for (const ds of dataSources.value) {
     ds.fields = ds.fields.map((f) => typeField(f.name));
@@ -154,7 +154,7 @@ watch(() => props.externalFieldTypeMap, () => {
 // CONTRACT: execute() must stay fully synchronous. The WASM engine runs
 // in-process with no I/O, so `result`/`error`/`running` are all settled
 // (running reset in finally) before this returns, and callers read them
-// back immediately from the return value or getExecutionData() — e.g.
+// back immediately from the return value or getExecutionData() - e.g.
 // ScenarioBuilder.reExecute() / onSaveAndShow() and the auto-execute
 // loop. Introducing any await/timer/microtask here would make those
 // callers observe `running: true` and stale data. If async execution is
@@ -285,11 +285,11 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 // Minimal field-level validation: a missing date, or an empty input that
 // caused an execution error, is marked invalid so the user sees which
 // field to fill (the raw engine message still shows as context). No
-// auto-revert — the input stays. We deliberately do NOT map engine error
+// auto-revert - the input stays. We deliberately do NOT map engine error
 // strings onto fields (incl. substring-matching the error against a param
 // name): that produced confusing cross-field invalid states (changing bsn
 // flagged loon_uit_dienstbetrekking) and was explicitly reverted. The
-// broad "any error + this field empty" mark is the accepted trade — it
+// broad "any error + this field empty" mark is the accepted trade - it
 // can over-mark a legitimately-blank optional param, but it never
 // mis-points at an unrelated field, which was the worse failure.
 const dateInvalid = computed(() => !calculationDate.value);
@@ -412,7 +412,7 @@ const dateErrorId = useId();
 
 <style scoped>
 /* Single component root required for v-show, but it must not generate a
- * box — otherwise it blocks the enclosing simple-section's nldd flex
+ * box - otherwise it blocks the enclosing simple-section's nldd flex
  * layout (flex-grow / centering of an empty data source's dialog). */
 .sf-root {
   display: contents;

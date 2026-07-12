@@ -1,5 +1,5 @@
 /**
- * useEngine — singleton WasmEngine instance with lazy initialization.
+ * useEngine - singleton WasmEngine instance with lazy initialization.
  *
  * Provides the engine and helpers for loading laws and dependencies.
  */
@@ -13,7 +13,7 @@ let initPromise = null;
 
 // Per-law tracking of which traject scope a YAML was loaded under. The
 // WASM engine itself only knows law id, so without this every scope
-// would see whichever copy happened to be loaded first — switching
+// would see whichever copy happened to be loaded first - switching
 // trajects then runs scenarios against a stale dependency. Keyed by
 // `lawId`, value is the `trajectRef || ''` the load used.
 //
@@ -24,7 +24,7 @@ let initPromise = null;
 // change. Cap mirrors `lawCache`'s order of magnitude (`useLaw.js`).
 const loadedScopes = createLruMap(50, {
   onEvict: (lawId) => {
-    // Drop the WASM-side copy alongside the tracking entry — without
+    // Drop the WASM-side copy alongside the tracking entry - without
     // this the engine retains the law in memory even though our
     // scope-tracking forgot it, defeating the whole "safety net" of
     // the cap. `hasLaw` guards an unloadLaw call that the engine
@@ -75,14 +75,14 @@ async function initEngine() {
  *
  * Loads **every** version of the law (not just today's-best) so the
  * engine's date-aware resolution can pick the one in force on a given
- * calculation date — the same contract the scenario dependency walker
+ * calculation date - the same contract the scenario dependency walker
  * uses. This keeps a single "load a law into the engine" semantic: any
  * caller (notes, gherkin steps) that brings a law into the shared engine
  * brings its full version set, so the `engine.hasLaw` skip guard never
  * leaves a law with only one (possibly future-dated) version loaded.
  *
  * If the law was previously loaded under a *different* scope, unload the
- * stale copy first (`unloadLaw` drops all of its versions) — otherwise
+ * stale copy first (`unloadLaw` drops all of its versions) - otherwise
  * scenario runs after a traject switch would evaluate against the
  * previous scope's dependencies.
  */
@@ -98,7 +98,7 @@ async function loadDependency(lawId, trajectRef = null) {
     errorMessage: (status) => `Failed to fetch versions of law '${lawId}': ${status}`,
   });
   // Only record the scope once a body actually loaded, so an empty result
-  // (unknown law) — or one whose every version was unloadable — stays
+  // (unknown law) - or one whose every version was unloadable - stays
   // retryable rather than masking the law as "loaded under this scope".
   if (loadLawVersions(engine, yamls, lawId)) {
     loadedScopes.set(lawId, scope);
@@ -143,7 +143,7 @@ export function loadLawVersions(engine, yamls, lawId) {
  * another scope is still valid.
  *
  * Re-loads (same `lawId`) unload the previous copy first so the
- * engine sees the new YAML — `engine.loadLaw` on a known id is a no-op
+ * engine sees the new YAML - `engine.loadLaw` on a known id is a no-op
  * in the WASM binding.
  */
 async function loadLawYaml(yaml, lawId = null, trajectRef = null) {
@@ -185,9 +185,9 @@ function unloadAllLaws() {
 
 export function useEngine() {
   return {
-    /** Ref<boolean> — true when the WASM engine is ready */
+    /** Ref<boolean> - true when the WASM engine is ready */
     ready,
-    /** Ref<Error|null> — set if init failed */
+    /** Ref<Error|null> - set if init failed */
     initError,
     /** Initialize and return the engine instance */
     initEngine,
@@ -197,7 +197,7 @@ export function useEngine() {
     loadLawYaml,
     /** Unload a single law from the engine */
     unloadLaw,
-    /** Unload every tracked law — used on traject switch to flush stale deps */
+    /** Unload every tracked law - used on traject switch to flush stale deps */
     unloadAllLaws,
     /** Get the engine instance (must be initialized first) */
     getEngine: () => engineInstance,

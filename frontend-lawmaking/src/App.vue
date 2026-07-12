@@ -14,7 +14,7 @@
           <nldd-toolbar-title
             slot="start"
             text="Wetgevingsproces"
-            supporting-text="Van wetsvoorstel tot geldend recht — het wetgevingsproces als GitFlow"
+            supporting-text="Van wetsvoorstel tot geldend recht - het wetgevingsproces als GitFlow"
           ></nldd-toolbar-title>
 
           <!-- Playback: step navigation -->
@@ -95,7 +95,7 @@
       </nldd-container>
 
       <!-- Main content: the hand-rolled SVG GitFlow canvas (documented design-
-           system exception — no nldd equivalent for a graph canvas). -->
+           system exception - no nldd equivalent for a graph canvas). -->
       <nldd-full-bleed-section>
         <div class="diagram-area" @click="selectedStageId = null">
           <FlowDiagram

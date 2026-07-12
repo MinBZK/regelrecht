@@ -153,7 +153,7 @@ describe('NoteCreator', () => {
       },
     });
     await nextTick();
-    // Only the warning + a single "Annuleren" — no type picker, no save.
+    // Only the warning + a single "Annuleren" - no type picker, no save.
     expect(w.find('[data-testid="note-creator-status"]').exists()).toBe(true);
     expect(w.find('[data-testid="note-save"]').exists()).toBe(false);
     expect(w.find('[data-testid="note-comment-text"]').exists()).toBe(false);

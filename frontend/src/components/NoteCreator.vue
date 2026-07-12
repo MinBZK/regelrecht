@@ -1,13 +1,13 @@
 <script setup>
 /**
- * NoteCreator — the note authoring form (RFC-018 write path, steps 3-5).
+ * NoteCreator - the note authoring form (RFC-018 write path, steps 3-5).
  *
  * Opened by AnnotatedText when the user selects text and clicks "Notitie".
  * Receives the raw [start,end) range the selection mapped to (selectionToRaw
  * already did the DOM->raw work). This component builds the TextQuoteSelector
  * (growing context until it is unique), lets the user pick a motivation and
  * fill the matching body, and emits a complete W3C Annotation object. It does
- * not persist — useDraftNotes (owned by EditorApp) does, so the new note
+ * not persist - useDraftNotes (owned by EditorApp) does, so the new note
  * highlights live alongside committed ones.
  */
 import { ref, computed, watch } from 'vue';
@@ -28,7 +28,7 @@ const props = defineProps({
   // Anchor element for the popover (the <mark>-less selection rectangle is
   // gone once the form opens, so AnnotatedText passes a stable anchor).
   anchor: { type: Object, default: null },
-  // Active traject ref. Required to surface the "Document" link mode —
+  // Active traject ref. Required to surface the "Document" link mode -
   // without a traject there is no documents folder to pick from.
   trajectRef: { type: String, default: '' },
 });
@@ -166,7 +166,7 @@ function reset() {
 // True while our own cancel()/save() is inside hidePopover(), so a `close`
 // dispatched synchronously from that call is recognized as self-inflicted.
 // The native popover spec queues toggle (and thus nldd's close) as a task,
-// which lands after the parent nulled `range` — the range guard below covers
+// which lands after the parent nulled `range` - the range guard below covers
 // that regime. This flag covers the synchronous regime, so onPopoverClose
 // stays correct regardless of how nldd-popover dispatches.
 let selfClosing = false;
@@ -189,7 +189,7 @@ function cancel() {
 // nldd-popover is popover="auto": the browser light-dismisses it on an
 // outside click or Esc without going through cancel(). The component fires
 // `close` on every dismissal, so a close that arrives while the form is
-// still open (range set) is an external dismiss and must cancel — otherwise
+// still open (range set) is an external dismiss and must cancel - otherwise
 // the parent keeps creatorOpen=true and suppresses the "Notitie" button for
 // every later selection. Closes from our own save()/cancel()/teardown are
 // filtered by the selfClosing flag (synchronous dispatch) or arrive after
@@ -272,7 +272,7 @@ function buildBody() {
   return text;
 }
 
-// One sharp line per failure reason — what went wrong + the single most
+// One sharp line per failure reason - what went wrong + the single most
 // useful fix. No bullet wall: the reason from buildSelector already
 // distinguishes "too common" from "not located", so the message can be
 // precise instead of listing every possibility.

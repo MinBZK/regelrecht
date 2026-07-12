@@ -2,9 +2,9 @@
  * Advanced flow data: the full Dutch legislative process.
  *
  * Branch model (GitFlow):
- *   col 0: main (Corpus Juris — geldend recht)
- *   col 1: develop (Wetgevingskalender — voorstellen in procedure)
- *   col 2: ministry fork (wetsvoorstel — eigen omgeving ministerie)
+ *   col 0: main (Corpus Juris - geldend recht)
+ *   col 1: develop (Wetgevingskalender - voorstellen in procedure)
+ *   col 2: ministry fork (wetsvoorstel - eigen omgeving ministerie)
  *   col 3: internal sub-branch (beleid + juridisch team)
  *   col 4-8: parallel advisory/check forks (toetsen, consultatie)
  *   col 3-7: amendment branches (elk amendement eigen branch)
@@ -455,7 +455,7 @@ export const stages = [
     col: 1, step: 22,
   },
 
-  // === Koninklijke Boodschap — indiening bij TK ===
+  // === Koninklijke Boodschap - indiening bij TK ===
   {
     id: 'koninklijke-boodschap',
     branch: 'develop',
@@ -476,7 +476,7 @@ export const stages = [
     lawLabel: 'Initiatiefwetsvoorstel',
     subtitle: 'Voorstel vanuit de Kamer',
     description:
-      'Elk Tweede Kamerlid kan zelf een wetsvoorstel indienen — zonder regering. ' +
+      'Elk Tweede Kamerlid kan zelf een wetsvoorstel indienen - zonder regering. ' +
       'Vergelijkbaar met een external contributor die een PR opent.',
     col: 3, step: 23,
   },
@@ -560,9 +560,9 @@ export const stages = [
     type: 'commit',
     gitLabel: 'patch (Van der Berg)',
     lawLabel: 'Amendement A',
-    subtitle: 'Art. 3 lid 2 wijzigen — aangenomen',
+    subtitle: 'Art. 3 lid 2 wijzigen - aangenomen',
     description:
-      'Elk Kamerlid kan amendementen indienen — reviewer-submitted patches. ' +
+      'Elk Kamerlid kan amendementen indienen - reviewer-submitted patches. ' +
       'Dit amendement wijzigt artikel 3 lid 2.',
     col: 3, step: 31,
   },
@@ -570,23 +570,23 @@ export const stages = [
     id: 'amendement-b',
     branch: 'amend-b-branch',
     type: 'commit',
-    gitLabel: 'patch (Jansen) — overgenomen',
+    gitLabel: 'patch (Jansen) - overgenomen',
     lawLabel: 'Amendement B',
-    subtitle: 'Nieuw art. 5a — cherry-picked',
+    subtitle: 'Nieuw art. 5a - cherry-picked',
     description:
       'De minister neemt dit amendement over (cherry-pick). ' +
-      'Het wordt direct onderdeel van het voorstel — geen stemming nodig.',
+      'Het wordt direct onderdeel van het voorstel - geen stemming nodig.',
     col: 4, step: 31,
   },
   {
     id: 'amendement-c',
     branch: 'amend-c-branch',
     type: 'commit',
-    gitLabel: 'patch (De Vries) — conflicterend',
+    gitLabel: 'patch (De Vries) - conflicterend',
     lawLabel: 'Amendement C',
-    subtitle: 'Conflicteert met A — aangenomen',
+    subtitle: 'Conflicteert met A - aangenomen',
     description:
-      'Dit amendement wijzigt hetzelfde artikellid als A — een merge conflict. ' +
+      'Dit amendement wijzigt hetzelfde artikellid als A - een merge conflict. ' +
       'Bureau Wetgeving bepaalt de stemvolgorde: verste strekking eerst.',
     col: 5, step: 31,
   },
@@ -596,7 +596,7 @@ export const stages = [
     type: 'commit',
     gitLabel: 'patch/sub (op A)',
     lawLabel: 'Subamendement op A',
-    subtitle: 'Max 1 niveau diep — eerst gestemd',
+    subtitle: 'Max 1 niveau diep - eerst gestemd',
     description:
       'Een subamendement: wijziging op het amendement. Maximaal één niveau diep. ' +
       'Wordt altijd eerst in stemming gebracht.',
@@ -606,9 +606,9 @@ export const stages = [
     id: 'amendement-rejected',
     branch: 'rejected-branch',
     type: 'commit',
-    gitLabel: 'patch (Smit) — verworpen',
+    gitLabel: 'patch (Smit) - verworpen',
     lawLabel: 'Amendement verworpen',
-    subtitle: 'Dead end — geen merge',
+    subtitle: 'Dead end - geen merge',
     description: 'Dit amendement wordt verworpen bij stemming. De branch stopt hier.',
     col: 7, step: 31,
   },
@@ -630,7 +630,7 @@ export const stages = [
     id: 'stemmingen',
     branch: 'develop',
     type: 'merge',
-    gitLabel: 'merge queue — stemming',
+    gitLabel: 'merge queue - stemming',
     lawLabel: 'Stemmingen Tweede Kamer',
     subtitle: 'Per artikel, dan geheel',
     description:
@@ -671,7 +671,7 @@ export const stages = [
     gitLabel: 'approve / reject',
     lawLabel: 'Stemming Eerste Kamer',
     subtitle: 'Aannemen of verwerpen',
-    description: 'Aannemen of verwerpen — zonder wijziging. Protected branch: alleen approve/reject.',
+    description: 'Aannemen of verwerpen - zonder wijziging. Protected branch: alleen approve/reject.',
     col: 1, step: 36,
   },
 
@@ -730,7 +730,7 @@ export const stages = [
     lawLabel: 'Koninklijk Besluit',
     subtitle: 'Bekrachtiging door de Koning',
     description:
-      'De Koning is de enige maintainer van het Corpus Juris — alleen hij kan mergen ' +
+      'De Koning is de enige maintainer van het Corpus Juris - alleen hij kan mergen ' +
       'naar main, met de Minister als co-author op elke commit.',
     tags: [
       { label: 'Staatsblad', color: 'var(--color-branch-advisory)' },
