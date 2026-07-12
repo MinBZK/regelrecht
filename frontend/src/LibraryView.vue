@@ -1297,14 +1297,20 @@ watch(activeTrajectRef, () => {
           </nldd-split-view-pane>
 
         </nldd-navigation-split-view>
-  <!-- LibraryApp is a read-only browser; ActionSheet is mounted without editable
-       so the output field is hidden and the footer button just closes the sheet. -->
-  <ActionSheet :action="activeAction" :article="selectedArticle" :editable="false" @close="activeAction = null" @save="activeAction = null" @edit="editInEditor" />
-  <SearchPopover
-    ref="searchPopoverRef"
-    @select-law="(lawId) => selectLaw(lawId, true)"
-    @harvest-available="onHarvestAvailable"
-  />
+  <!-- Overlays teleported to body: as light-DOM siblings of the split view they
+       would be slotted into the main pane and pick up its ::slotted flex-grow,
+       stealing height from the pane content (a short page's sticky footer then
+       floats mid-screen in document-scroll mode). -->
+  <Teleport to="body">
+    <!-- LibraryApp is a read-only browser; ActionSheet is mounted without editable
+         so the output field is hidden and the footer button just closes the sheet. -->
+    <ActionSheet :action="activeAction" :article="selectedArticle" :editable="false" @close="activeAction = null" @save="activeAction = null" @edit="editInEditor" />
+    <SearchPopover
+      ref="searchPopoverRef"
+      @select-law="(lawId) => selectLaw(lawId, true)"
+      @harvest-available="onHarvestAvailable"
+    />
+  </Teleport>
   <!-- Unsaved-changes guard for in-view werkdocument navigation. -->
   <Teleport to="body">
     <nldd-modal-dialog

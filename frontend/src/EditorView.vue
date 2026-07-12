@@ -2399,13 +2399,18 @@ async function handleActionSave() {
             </nldd-page>
           </nldd-split-view-pane>
         </nldd-side-by-side-split-view>
-  <ActionSheet :action="activeAction" :article="editedArticle" :editable="canEdit" :is-new="activeActionIsNew" @close="handleActionClose" @save="handleActionSave" />
-  <EditSheet :item="activeEditItem" :article="editedArticle" :traject-ref="activeTrajectRef" @save="handleSave" @close="activeEditItem = null" />
-  <SearchPopover
-    ref="searchPopoverRef"
-    @select-law="onSearchSelectLaw"
-    @harvest-available="onSearchHarvestAvailable"
-  />
+  <!-- Overlays teleported to body: as light-DOM siblings of the split view they
+       would be slotted into the main pane and pick up its ::slotted flex-grow,
+       stealing height from the pane content. -->
+  <Teleport to="body">
+    <ActionSheet :action="activeAction" :article="editedArticle" :editable="canEdit" :is-new="activeActionIsNew" @close="handleActionClose" @save="handleActionSave" />
+    <EditSheet :item="activeEditItem" :article="editedArticle" :traject-ref="activeTrajectRef" @save="handleSave" @close="activeEditItem = null" />
+    <SearchPopover
+      ref="searchPopoverRef"
+      @select-law="onSearchSelectLaw"
+      @harvest-available="onSearchHarvestAvailable"
+    />
+  </Teleport>
 
   <!-- Publishing a note is irreversible (it lands in the repo and can't be made
        private again), so confirm before the write. -->
