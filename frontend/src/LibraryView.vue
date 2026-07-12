@@ -1063,7 +1063,7 @@ watch(activeTrajectRef, () => {
               <nldd-simple-section width="full">
                 <nldd-title v-if="!selectedLawLoading" id="wet-titel" size="3"><h3>{{ lawName }}</h3></nldd-title>
                 <nldd-spacer v-if="!selectedLawLoading" size="16"></nldd-spacer>
-                <nldd-toolbar v-if="selectedLaw" label="Favorieten">
+                <nldd-toolbar v-if="selectedLaw && !selectedLawLoading" label="Favorieten">
                   <nldd-toolbar-item slot="start">
                     <nldd-icon-button
                       :icon="favorites?.has(selectedLawId) ? 'heart-filled' : 'heart'"
@@ -1072,7 +1072,7 @@ watch(activeTrajectRef, () => {
                     ></nldd-icon-button>
                   </nldd-toolbar-item>
                 </nldd-toolbar>
-                <nldd-spacer v-if="selectedLaw" size="16"></nldd-spacer>
+                <nldd-spacer v-if="selectedLaw && !selectedLawLoading" size="16"></nldd-spacer>
                 <nldd-popover ref="favoriteLoginWarning" accessible-label="Inloggen" width="320px">
                   <nldd-container padding="16">
                     <nldd-inline-dialog

@@ -112,8 +112,13 @@ const createError = ref(null);
 // ActionSheet / EditSheet pattern in this app).
 watch(showCreate, async (v) => {
   await nextTick();
-  if (v) sheetEl.value?.show();
-  else sheetEl.value?.hide();
+  if (v) {
+    sheetEl.value?.show();
+    await nextTick();
+    createFormEl.value?.focus?.();
+  } else {
+    sheetEl.value?.hide();
+  }
 });
 
 function openCreate() {
