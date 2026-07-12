@@ -85,6 +85,15 @@ const isWerkdocMode = computed(() => route.name === 'werkdocumenten-traject');
 const trajectName = computed(() => activeTraject.value?.name || '');
 const hasOpenDoc = computed(() => !!openDocPath.value);
 
+// Name the open document in the unsaved-changes guard so it's clear what's at
+// risk (falls back to a generic phrasing if the name isn't resolved yet).
+const docNavGuardText = computed(() => {
+  const name = docsMgr.displayTitle(openDocPath.value);
+  return name
+    ? `'${name}' heeft wijzigingen die nog niet zijn opgeslagen. Als je verdergaat, gaan ze verloren.`
+    : 'Dit document heeft wijzigingen die nog niet zijn opgeslagen. Als je verdergaat, gaan ze verloren.';
+});
+
 // Enter the werkdocumenten section (from the primary sidebar / traject menu).
 function goToWerkdocumenten() {
   if (!activeTrajectRef.value) return;
@@ -124,6 +133,10 @@ function guardedDocNavigate(run) {
 // Route guard: true = proceed now, Promise<boolean> = ask first (the modal
 // resolves it). Lets the open document's own URL sync (same doc) through.
 function guardDirtyDoc(to) {
+  // Only guard while a werkdocument is actually open (werkdoc mode). The manager
+  // keeps a left-open document's dirty state in memory, but that must never block
+  // corpus navigation (e.g. switching articles) once you've moved on.
+  if (!isWerkdocMode.value) return true;
   if (!docHasChanges.value) return true;
   if (to.name === 'werkdocumenten-traject'
       && String(to.params.docPath || '') === (openDocPath.value || '')) {
@@ -1154,7 +1167,7 @@ watch(activeTrajectRef, () => {
       ref="docNavGuardEl"
       variant="alert"
       text="Niet-opgeslagen wijzigingen"
-      supporting-text="Dit document heeft wijzigingen die nog niet zijn opgeslagen. Als je verdergaat, gaan ze verloren."
+      :supporting-text="docNavGuardText"
       @close="cancelDocLeave"
     >
       <nldd-button slot="actions" variant="primary" text="Blijf document bewerken" @click="cancelDocLeave"></nldd-button>
