@@ -219,7 +219,7 @@ const hasDocumentTabs = computed(
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
                 </nldd-menu-group>
-                <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
+                <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvester" @click.stop="goToHarvesting"></nldd-menu-item>
                 <nldd-menu-item text="Functies" icon="puzzle-piece">
                   <nldd-menu>
                     <nldd-menu-item
@@ -291,7 +291,7 @@ const hasDocumentTabs = computed(
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
                 </nldd-menu-group>
-                <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
+                <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvester" @click.stop="goToHarvesting"></nldd-menu-item>
                 <nldd-menu-item text="Functies" icon="puzzle-piece">
                   <nldd-menu>
                     <nldd-menu-item
@@ -474,7 +474,7 @@ const hasDocumentTabs = computed(
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
                 </nldd-menu-group>
-                <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
+                <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvester" @click.stop="goToHarvesting"></nldd-menu-item>
                 <nldd-menu-item text="Functies" icon="puzzle-piece">
                   <nldd-menu>
                     <nldd-menu-item
