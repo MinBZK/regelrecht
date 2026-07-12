@@ -2,7 +2,7 @@
 import { onMounted, watchEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTrajects, refreshTrajects } from './composables/useTrajects.js';
-import { lastLibraryPath, homeTarget } from './composables/useLastVisitedRoute.js';
+import { lastHomePath, homeTarget } from './composables/useLastVisitedRoute.js';
 
 // Trajectkeuze-pagina — de landing wanneer de editor (of een traject-scoped
 // bibliotheek) een traject vereist. Hier kies je een bestaand traject of ga je
@@ -31,7 +31,7 @@ watchEffect(() => {
 // page SSO-redirect die een uitgelogde user naar deze auth-only pagina bracht;
 // een history-pop zou op de login-redirect landen.
 function goBack() {
-  router.push(lastLibraryPath.value);
+  router.push(lastHomePath.value);
 }
 
 // Where picking a traject takes you, from `sectie` (default editor): the

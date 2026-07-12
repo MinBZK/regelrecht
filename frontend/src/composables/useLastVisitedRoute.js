@@ -68,16 +68,17 @@ function storageKeyFor(routeName) {
 export function recordLastVisited(routeName, fullPath) {
   if (!routeName) return;
   // Mutate in place rather than re-spreading. The ref wraps a reactive
-  // object so a property assignment still notifies the lastLibraryPath /
+  // object so a property assignment still notifies the lastHomePath /
   // lastEditorPath computeds. Avoids GC churn if the section list grows.
   _lastVisited.value[storageKeyFor(routeName)] = fullPath;
   save();
 }
 
-// The Home section's last-visited path (the public landing, a public law, or
-// the traject bibliotheek — all stored under the 'home' key). The export name
-// is kept for now to limit this refactor's blast radius across importers.
-export const lastLibraryPath = computed(() => _lastVisited.value.home ?? '/');
+// The Home section's last-visited full path — the public landing, a public law,
+// the traject bibliotheek, werkdocumenten or instellingen — all under the 'home'
+// key. The Home tab restores this verbatim (like the harvester return) so
+// switching back to Home reopens exactly where you were, whatever its scope.
+export const lastHomePath = computed(() => _lastVisited.value.home ?? '/');
 
 // `/editor` (no traject) is the read-only editor. The first visit
 // lands there; subsequent visits restore the most-recently-seen

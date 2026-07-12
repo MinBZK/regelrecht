@@ -10,7 +10,7 @@ import { useTrajects } from './composables/useTrajects.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useNotes, useResolvedDraftNotes } from './composables/useNotes.js';
 import { useDraftNotes } from './composables/useDraftNotes.js';
-import { lastLibraryPath, sectionTarget, homeTarget } from './composables/useLastVisitedRoute.js';
+import { lastHomePath, homeTarget } from './composables/useLastVisitedRoute.js';
 import {
   registerSearchPopover,
   setEditorChrome,
@@ -176,9 +176,7 @@ const router = useRouter();
 // Bibliotheek tab / "naar bibliotheek" buttons: restore the last library
 // position but re-stamp it with the currently active traject, so the
 // traject survives the Editor→Bibliotheek switch (it lives in the URL).
-const libraryTabTarget = computed(() =>
-  sectionTarget(router, lastLibraryPath.value, activeTrajectRef.value),
-);
+const libraryTabTarget = computed(() => lastHomePath.value);
 const libraryTabHref = computed(() => router.resolve(libraryTabTarget.value).href);
 
 // --- Initial law load (from route params) ---
