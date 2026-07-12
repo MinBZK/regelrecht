@@ -1097,7 +1097,7 @@ watch(activeTrajectRef, () => {
                     <nldd-icon-button icon="plus-small" text="Nieuw document" @click="onDocNew"></nldd-icon-button>
                   </nldd-toolbar-item>
                   <nldd-toolbar-item slot="start">
-                    <nldd-icon-button icon="upload" text="Document uploaden" @click="onDocUpload"></nldd-icon-button>
+                    <nldd-icon-button icon="upload" text="Upload PDF of DOCX" @click="onDocUpload"></nldd-icon-button>
                   </nldd-toolbar-item>
                 </nldd-toolbar>
                 <nldd-spacer size="16"></nldd-spacer>
