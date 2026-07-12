@@ -148,7 +148,7 @@ async function clickRemoveInvite(inv) {
     <nldd-spacer size="16"></nldd-spacer>
     <nldd-toolbar v-if="isOwner" label="Ledenacties">
       <nldd-toolbar-item slot="start">
-        <nldd-icon-button icon="plus-small" text="Lid uitnodigen" @click="openInvite"></nldd-icon-button>
+        <nldd-button variant="secondary" size="md" start-icon="plus-small" text="Lid uitnodigen" @click="openInvite"></nldd-button>
       </nldd-toolbar-item>
     </nldd-toolbar>
     <nldd-spacer v-if="isOwner" size="16"></nldd-spacer>
