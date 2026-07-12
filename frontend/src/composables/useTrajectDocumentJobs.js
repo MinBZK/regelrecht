@@ -1,5 +1,5 @@
 /**
- * useTrajectDocumentJobs — poll a traject's document-conversion jobs (running +
+ * useTrajectDocumentJobs - poll a traject's document-conversion jobs (running +
  * failed) for the werkdocumenten conversion-status block.
  *
  * Mirrors the harvester `usePollingFetch` pattern (initial-load-only `loading`,

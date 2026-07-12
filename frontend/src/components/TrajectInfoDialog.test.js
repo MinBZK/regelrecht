@@ -77,7 +77,7 @@ describe('TrajectInfoDialog', () => {
     const texts = cellTexts(wrapper);
     expect(texts).toContain('Tariefswijziging 2026');
     expect(texts).toContain('Waarom dit traject');
-    // Scope is merged into Beschrijving — no separate Scope row.
+    // Scope is merged into Beschrijving - no separate Scope row.
     expect(texts).toContain('Beschrijving');
     expect(texts).not.toContain('Scope');
     expect(texts).toContain('bezig');
@@ -91,7 +91,7 @@ describe('TrajectInfoDialog', () => {
     await flushPromises();
 
     // nldd-link compiles to a raw custom element in the test env (vite
-    // isCustomElement), so assert on its attributes — the underlying <a>,
+    // isCustomElement), so assert on its attributes - the underlying <a>,
     // slot text, and auto-rel only exist once the real Lit component
     // upgrades in the browser. We bind href/target/text/rel explicitly so
     // they are present as attributes here.

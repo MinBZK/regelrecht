@@ -60,7 +60,7 @@ describe('isApiUrl', () => {
   });
 
   it('resolves bare relative paths against the document path, like fetch', () => {
-    // On /trajects/123, fetch('api/x') hits /trajects/api/x — NOT an API call.
+    // On /trajects/123, fetch('api/x') hits /trajects/api/x - NOT an API call.
     window.history.pushState({}, '', '/trajects/123');
     try {
       expect(isApiUrl('api/trajects')).toBe(false);
@@ -84,7 +84,7 @@ describe('installApiAuthGuard', () => {
   });
 
   it('does NOT redirect an unauthenticated session (anonymous public-page 401)', async () => {
-    // e.g. /library loading /api/favorites without a session — tolerated, no bounce.
+    // e.g. /library loading /api/favorites without a session - tolerated, no bounce.
     const { wrapped } = await freshGuard(401, { authenticated: false });
     await wrapped('/api/favorites');
     expect(loginSpy).not.toHaveBeenCalled();

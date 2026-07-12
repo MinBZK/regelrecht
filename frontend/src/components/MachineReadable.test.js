@@ -80,7 +80,7 @@ async function clickBewerk(wrapper, index) {
 }
 
 // Add buttons all carry a stable data-testid (`add-{section}-btn`); using
-// it sidesteps copy churn — we changed labels from "Nieuwe X" to
+// it sidesteps copy churn - we changed labels from "Nieuwe X" to
 // "X toevoegen" and don't want the test to break on the next reword.
 const ADD_BTN_TESTID = {
   definitie: 'add-def-btn',

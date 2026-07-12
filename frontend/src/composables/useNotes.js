@@ -1,5 +1,5 @@
 /**
- * useNotes — fetch a law's note sidecar and resolve it against the loaded law.
+ * useNotes - fetch a law's note sidecar and resolve it against the loaded law.
  *
  * Notes are W3C Web Annotations anchored to legal text via a TextQuoteSelector
  * (RFC-005). The Rust resolver runs in WASM (`engine.resolveNotes`) so the
@@ -22,7 +22,7 @@ import { useLatest } from '../lib/useLatest.js';
 // the note-editing phase): the lawId key part is `law.$id`, which does
 // not encode the law *version*. A save through the editor changes the
 // text without changing `$id`, so the cache is not invalidated on save
-// — editing a law in-session and reopening its Notities pane could show
+// - editing a law in-session and reopening its Notities pane could show
 // offsets resolved against the pre-save text. Once notes become
 // editable, key by `$id` + version and invalidate on save.
 const cache = new Map();
@@ -46,7 +46,7 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
   // Generation guard: each load() call claims a generation; only the latest
   // is allowed to write reactive state. Without this, navigating between laws
   // while a slow annotations fetch is in flight lets the older response
-  // overwrite the newer law's notes — and because article numbers collide
+  // overwrite the newer law's notes - and because article numbers collide
   // across laws ('1','2','3' everywhere) the stale offsets would silently
   // highlight wrong spans. useLaw guards the same race the same way.
   const claimLoad = useLatest();
@@ -84,7 +84,7 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
       // With an active traject the read goes through that traject's
       // backend (where `save_annotations` writes) so a freshly-appended
       // note is visible immediately. Without a traject this falls back
-      // to the global annotation route — the central source's main view.
+      // to the global annotation route - the central source's main view.
       const res = await apiFetch(annotationsUrl(tr, id), {
         allowStatuses: [404],
         errorMessage: (status) => `Kon notities niet laden: ${status}`,
@@ -100,7 +100,7 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
       const engine = await initEngine();
       // The resolver needs the law's articles loaded; mirror how the
       // rest of the editor pulls a law into the engine. Call
-      // `loadDependency` unconditionally — it short-circuits when the
+      // `loadDependency` unconditionally - it short-circuits when the
       // engine already has the law under the same scope, and unloads +
       // refetches when a previous load came from a different traject.
       // A bare `if (!engine.hasLaw(id))` gate here would skip that scope
@@ -121,7 +121,7 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
     }
   }
 
-  // Re-load on either the law or the active-traject changing — the
+  // Re-load on either the law or the active-traject changing - the
   // sidecar lives per traject branch, so a switch needs a fresh fetch
   // even if the law id stayed put.
   const trackers = trajectRef ? [lawId, trajectRef] : [lawId];
@@ -133,7 +133,7 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
    * run `load`. Used after `saveToRepo` so a just-committed note shows
    * up immediately instead of waiting for a navigation away and back.
    *
-   * `load()` alone won't do — it returns the cached `[]` from the
+   * `load()` alone won't do - it returns the cached `[]` from the
    * first pre-save fetch and silently leaves the user looking at an
    * empty notes pane right after they hit "Opslaan".
    */
@@ -180,7 +180,7 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
           ? `parsefout: ${e.error}`
           : e.match.status === 'orphaned'
             ? 'niet gevonden in de wettekst (orphaned)'
-            : 'meerdere matches (ambigu) — voeg context toe',
+            : 'meerdere matches (ambigu) - voeg context toe',
       })),
   );
 
@@ -208,7 +208,7 @@ export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle, trajec
   // Generation guard: resolve() awaits initEngine/loadDependency (slow on a
   // law switch). Without this, a resolve started before a law switch can
   // finish after the one started by the switch and overwrite it with stale
-  // data — and because draft selectors resolve per-law, that would highlight
+  // data - and because draft selectors resolve per-law, that would highlight
   // the previous law's drafts on the new law. useNotes.load() guards the same
   // race the same way.
   const claimResolve = useLatest();
@@ -226,7 +226,7 @@ export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle, trajec
     try {
       const engine = await initEngine();
       // Pass the scope so the engine cache can detect a stale copy
-      // from a previous traject and refetch — without this a switch
+      // from a previous traject and refetch - without this a switch
       // would keep highlighting drafts against the old law content.
       await loadDependency(id, tr);
       const out = [];
@@ -278,7 +278,7 @@ export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle, trajec
  * Overlap handling: marks are sorted by start (longest first on ties); a mark
  * that starts inside an already-emitted mark is dropped. The resolver
  * de-duplicates a single selector's matches, but two *different* notes
- * annotating overlapping spans is a legitimate RFC-018 case — the later one
+ * annotating overlapping spans is a legitimate RFC-018 case - the later one
  * is silently not rendered here (it is not surfaced in `issues` either, since
  * it resolved fine). Acceptable for display-only; the note-editing phase will
  * need layered rendering instead of a flat partition.

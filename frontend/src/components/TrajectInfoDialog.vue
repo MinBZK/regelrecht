@@ -118,7 +118,7 @@ async function confirmDelete() {
   }
 }
 
-// --- Verlaten (bijdrager) — zelfde bevestigingsmodal als verwijderen. ---
+// --- Verlaten (bijdrager) - zelfde bevestigingsmodal als verwijderen. ---
 const leaveModalEl = ref(null);
 const confirmingLeave = ref(false);
 const leaveBusy = ref(false);
@@ -285,7 +285,7 @@ async function confirmLeave() {
     </nldd-sheet>
   </Teleport>
 
-  <!-- Delete confirmation — NLDD modal, consistent with TrajectDocuments'
+  <!-- Delete confirmation - NLDD modal, consistent with TrajectDocuments'
        delete dialog. -->
   <Teleport to="body">
     <nldd-modal-dialog
@@ -307,7 +307,7 @@ async function confirmLeave() {
     </nldd-modal-dialog>
   </Teleport>
 
-  <!-- Leave confirmation — same NLDD modal pattern as delete, from the
+  <!-- Leave confirmation - same NLDD modal pattern as delete, from the
        contributor's side. -->
   <Teleport to="body">
     <nldd-modal-dialog

@@ -75,7 +75,7 @@ watch(
     // Render the v-if="shownStage" content before opening so the sheet never
     // animates in empty. `{ flush: 'post' }` wouldn't suffice here: this watcher
     // itself sets `shownStage`, so the content render is still pending when the
-    // callback runs — awaiting nextTick flushes it first.
+    // callback runs - awaiting nextTick flushes it first.
     await nextTick();
     sheetEl.value?.show();
   },

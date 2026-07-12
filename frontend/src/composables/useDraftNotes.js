@@ -1,11 +1,11 @@
 /**
- * useDraftNotes — local-only note authoring store (RFC-018 write path, MVP).
+ * useDraftNotes - local-only note authoring store (RFC-018 write path, MVP).
  *
  * Notes a user creates in the editor live in `localStorage`, keyed per law,
  * until they are written back. Two ways out: `exportYaml` produces a YAML
  * document for a manual commit (the original RFC-018 §10 MVP, still here for
  * the offline case), and `saveToRepo` PUTs that same document to editor-api,
- * which validates it and opens a PR against the chosen source — the same
+ * which validates it and opens a PR against the chosen source - the same
  * traject branch+PR path law and scenario edits already use.
  *
  * Draft notes are merged into the resolved-notes list by the caller so they
@@ -39,7 +39,7 @@ function persist(lawId, list) {
   try {
     localStorage.setItem(storageKey(lawId), JSON.stringify(list));
   } catch {
-    /* quota/full or disabled — drafts are best-effort in the MVP */
+    /* quota/full or disabled - drafts are best-effort in the MVP */
   }
 }
 
@@ -54,8 +54,8 @@ export function useDraftNotes(lawId, trajectRef) {
 
   // Re-read from storage whenever the law changes. A real watch (not a lazy
   // resync inside every method/computed) keeps `drafts` authoritative for the
-  // current law at all times, so useResolvedDraftNotes — which watches lawId
-  // independently — never resolves the previous law's selectors against the
+  // current law at all times, so useResolvedDraftNotes - which watches lawId
+  // independently - never resolves the previous law's selectors against the
   // new law between a law switch and the next store method call.
   watch(lawId, (id) => {
     drafts.value = loadFor(id);
@@ -105,13 +105,13 @@ export function useDraftNotes(lawId, trajectRef) {
    *
    * The committed notes are read from the *raw sidecar file*, not from the
    * resolver output. The WASM resolver drops notes whose target.source names a
-   * different law (federated sidecars may carry notes for several laws — see
+   * different law (federated sidecars may carry notes for several laws - see
    * resolveNotes in wasm.rs); rebuilding the export from resolved notes would
    * silently truncate those on commit. Re-parsing the original file preserves
    * every committed note verbatim and only appends the drafts.
    *
    * Async because it fetches the sidecar; a missing sidecar (404) is normal
-   * for a law that has no committed notes yet — the export is then just the
+   * for a law that has no committed notes yet - the export is then just the
    * drafts.
    */
   async function exportYaml(lawIdOverride) {
@@ -122,7 +122,7 @@ export function useDraftNotes(lawId, trajectRef) {
     // Snapshot drafts BEFORE the await: watch(lawId) swaps drafts.value
     // synchronously on a law switch, so reading it after the fetch could mix
     // law A's committed notes with law B's drafts. Drafts are the only copy
-    // of unsaved work — silent loss is the worst outcome here.
+    // of unsaved work - silent loss is the worst outcome here.
     const snapshotDrafts = [...drafts.value];
     let committed = [];
     try {
@@ -133,7 +133,7 @@ export function useDraftNotes(lawId, trajectRef) {
       if (Array.isArray(doc?.annotations)) committed = doc.annotations;
     } catch {
       // 404 (no sidecar yet), other HTTP errors, network and parse
-      // failures all fall through to drafts-only — the author still gets
+      // failures all fall through to drafts-only - the author still gets
       // a valid file to commit, so no work is lost.
     }
     const annotations = [
@@ -155,12 +155,12 @@ export function useDraftNotes(lawId, trajectRef) {
    * is routed through the session's active traject (same model as law and
    * scenario edits since #632): the notes land in that traject's writable
    * branch, so a note and a law edit made in the same session ride the
-   * same PR. No source is chosen here — the traject's own corpus config
+   * same PR. No source is chosen here - the traject's own corpus config
    * decides the target. With no active traject the backend returns 403.
    *
    * The request body is **only the new drafts**, not the merged file: the
    * backend reads the current sidecar from the traject branch and appends.
-   * That is why there is no `/data` fetch here — rebuilding the file
+   * That is why there is no `/data` fetch here - rebuilding the file
    * client-side from the stale static mirror was the blind-overwrite bug.
    *
    * On success the saved law's drafts are cleared (they are committed now)
@@ -199,11 +199,11 @@ export function useDraftNotes(lawId, trajectRef) {
       // committed and it skipped the write/commit/PR entirely.
       noChange = json?.no_change === true;
     } catch {
-      // No JSON body — treat as success, pr stays null.
+      // No JSON body - treat as success, pr stays null.
     }
     // Only OVERWRITE the badge when this save produced a PR. A PR-less
     // 200 (local source, or a NoChange re-save) must NOT null an existing
-    // badge — same "keep any prior PR" rule as useLaw.saveLaw. Nulling it
+    // badge - same "keep any prior PR" rule as useLaw.saveLaw. Nulling it
     // here made a re-save look like the work vanished.
     if (pr) {
       lastSavedPr.value = pr;

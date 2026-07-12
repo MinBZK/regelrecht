@@ -25,14 +25,14 @@ const needsLogin = computed(() => oidcConfigured.value && !authenticated.value);
 const search = ref('');
 const popoverRef = ref(null);
 const useCenteredPosition = ref(true);
-// md only: popover anchors below the trigger button — clicking outside closes
+// md only: popover anchors below the trigger button - clicking outside closes
 // it, so an explicit Sluit button is just clutter. On sm (full-height sheet)
 // and lg (centered overlay) the user needs an explicit way to close.
 const isAnchored = ref(false);
 
 // Source of truth: @nldd/design-system's `assets/styles/breakpoints.ts`
 // (smMax: 640px, mdMin: 641px, mdMax: 1007px, lgMin: 1008px). Keep in
-// sync until the design system exports breakpoints publicly — currently
+// sync until the design system exports breakpoints publicly - currently
 // the file isn't listed in the package's `exports` field, so a deep
 // import isn't supported. The previous values used `696` for mdMin
 // which didn't match the design-system at all (probably a typo); aligned
@@ -53,7 +53,7 @@ function displayName(law) {
 
 // Results of the server-side corpus search (`?q=`). The corpus index can
 // hold thousands of laws, so the popover queries the backend rather than
-// filtering a preloaded client-side list — that's the only way the search
+// filtering a preloaded client-side list - that's the only way the search
 // can reach every law, not just the first page. Ordered private-repo-first
 // by the backend; `groupedLaws` sections them by source.
 const serverLaws = ref([]);
@@ -72,7 +72,7 @@ const searchFailed = ref(false);
  * priority 0 sorts above the seeded central corpus) and then alphabetically.
  * The popover renders one labelled section per group so a search surfaces
  * matches from the private repo and the central corpus under their own
- * headers — the external wetten.overheid.nl fallback only kicks in when the
+ * headers - the external wetten.overheid.nl fallback only kicks in when the
  * corpus has no match (see `serverLaws` handling below).
  */
 const groupedLaws = computed(() => {
@@ -109,7 +109,7 @@ watch(search, (q) => {
   const term = q.trim();
   if (term.length < MIN_QUERY_LENGTH) {
     // Claim (and discard) a generation so any fetch already in flight
-    // (debounce fired before this clear) is discarded when it resolves —
+    // (debounce fired before this clear) is discarded when it resolves -
     // otherwise it would repopulate serverLaws for the cleared term and
     // fire a spurious BWB search.
     claimSearch();
@@ -201,7 +201,7 @@ function selectLaw(lawId) {
  * from multiple places (e.g. desktop search-field and mobile icon-button)
  * without each one needing a stable ID.
  *
- * Optional `initialSearch` lets the trigger seed the search value — used
+ * Optional `initialSearch` lets the trigger seed the search value - used
  * for the Spotlight-style "type-to-open" UX where pressing a key on the
  * bar's search-field intercepts the keystroke and forwards it as the
  * initial query in the popover.
@@ -217,7 +217,7 @@ async function show(anchorEl, initialSearch = '') {
   useCenteredPosition.value = window.matchMedia(`(min-width: ${BREAKPOINT_LG_MIN}px)`).matches;
   isAnchored.value = window.matchMedia(`(min-width: ${BREAKPOINT_MD_MIN}px) and (max-width: ${BREAKPOINT_LG_MIN - 1}px)`).matches;
   // Wait for Vue to propagate the new `centered` / `top` / `width` props
-  // onto the popover element before opening — otherwise the first
+  // onto the popover element before opening - otherwise the first
   // reposition() inside the popover's toggle handler runs against the
   // previous breakpoint's props (e.g. centered=true held over from lg)
   // and the popover lands in the wrong position. The Lit-side update on
@@ -234,7 +234,7 @@ async function show(anchorEl, initialSearch = '') {
  * updateComplete and would otherwise steal focus back to the host. The
  * `open` event fires AFTER _manageFocus, so our focus call wins last.
  *
- * The shadow-root vs light-DOM lookup is to be defensive — different
+ * The shadow-root vs light-DOM lookup is to be defensive - different
  * design-system versions may render the <input> differently.
  */
 function onPopoverOpen() {
@@ -248,7 +248,7 @@ defineExpose({ show });
 
 <template>
   <!--
-    Two positioning modes — toggled by `show()` based on viewport:
+    Two positioning modes - toggled by `show()` based on viewport:
     - lg+: free-positioned (centered horizontally, top-aligned). Big
       Spotlight-style overlay regardless of which trigger fired show().
     - md: anchored below the trigger button via Floating UI (default).
@@ -274,7 +274,7 @@ defineExpose({ show });
           @input="search = $event.target.value"
           @keydown="onSearchKeydown"
         ></nldd-search-field>
-        <!-- Op md anchort de popover naast de trigger — naast de popover
+        <!-- Op md anchort de popover naast de trigger - naast de popover
              klikken sluit 'm. Op sm (full-height sheet) en lg (centered
              overlay) heeft de gebruiker een expliciete sluit-knop nodig. -->
         <nldd-button v-if="!isAnchored" size="md" text="Sluit" @click="close"></nldd-button>
@@ -339,7 +339,7 @@ defineExpose({ show });
             >
               <nldd-text-cell
                 :text="result.title"
-                :supporting-text="statusText(result.bwb_id, `${result.type} — ${result.bwb_id}`)"
+                :supporting-text="statusText(result.bwb_id, `${result.type} - ${result.bwb_id}`)"
               >
               </nldd-text-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>

@@ -14,7 +14,7 @@ const emit = defineEmits(['select-step']);
 const listEl = ref(null);
 
 // Tag each visible step with its index in the unfiltered `steps` array
-// so the template can read it directly — avoids an O(n) `steps.indexOf`
+// so the template can read it directly - avoids an O(n) `steps.indexOf`
 // per row, per render (the loop itself was O(visibleSteps × steps)).
 const visibleSteps = computed(() => {
   const all = props.steps;

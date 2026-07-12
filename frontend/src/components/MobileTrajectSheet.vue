@@ -12,7 +12,7 @@ import TrajectCreateForm from './TrajectCreateForm.vue';
 
 // Mobiele (sm) samenvoeging van de traject-knop en de artikel-tabbladen-knop:
 // één full-width knop die een bottom-sheet opent met een "Traject"-lijst (de
-// menu-acties + traject-switcher + nieuw traject) en — in de editor — een
+// menu-acties + traject-switcher + nieuw traject) en - in de editor - een
 // "Artikelen"-lijst (de open tabbladen). md/lg houden TrajectMenu + de
 // document-tab-bar. Hergebruikt dezelfde composables/handlers als TrajectMenu.
 const { trajects, activeTrajectRef, activeTraject, loading, createTraject } = useTrajects();
@@ -86,7 +86,7 @@ async function selectTraject(t) {
   await goToTraject(t.ref);
 }
 
-// --- Traject-acties (sluiten dan openen — geen sheet-over-sheet) ---
+// --- Traject-acties (sluiten dan openen - geen sheet-over-sheet) ---
 function openDocuments() {
   closeSheet();
   documentsSheet.open();
@@ -231,7 +231,7 @@ onBeforeUnmount(() => {
           </nldd-inline-dialog>
         </nldd-simple-section>
 
-        <!-- Nieuw traject — zelfde formulier als de aanmaakpagina, in de sheet -->
+        <!-- Nieuw traject - zelfde formulier als de aanmaakpagina, in de sheet -->
         <nldd-simple-section v-else-if="sheetMode === 'create'">
           <TrajectCreateForm
             ref="createFormEl"
@@ -243,7 +243,7 @@ onBeforeUnmount(() => {
 
         <!-- Lijsten -->
         <nldd-simple-section v-else>
-          <!-- Acties van het actieve traject — bovenaan, zonder titel (de
+          <!-- Acties van het actieve traject - bovenaan, zonder titel (de
                sheet-titel dekt dit al). -->
           <nldd-list v-if="activeTraject" variant="box" arrow-navigation>
             <nldd-list-item size="md" button @click="openDocuments">
@@ -263,7 +263,7 @@ onBeforeUnmount(() => {
             </nldd-list-item>
           </nldd-list>
 
-          <!-- Trajecten-switcher + nieuw traject — eigen lijst met titel. -->
+          <!-- Trajecten-switcher + nieuw traject - eigen lijst met titel. -->
           <nldd-spacer v-if="activeTraject" size="24"></nldd-spacer>
           <nldd-title size="5"><h2>Trajecten</h2></nldd-title>
           <nldd-spacer size="8"></nldd-spacer>
@@ -290,7 +290,7 @@ onBeforeUnmount(() => {
           </nldd-list>
 
           <!-- Lijst 2: Artikelen (editor met open tabbladen). Reorder staat
-               tijdelijk uit op sm — eerst nog wat drag-bugs oplossen. -->
+               tijdelijk uit op sm - eerst nog wat drag-bugs oplossen. -->
           <template v-if="hasArticles">
             <nldd-spacer size="24"></nldd-spacer>
             <nldd-title size="5"><h2>Artikelen</h2></nldd-title>

@@ -42,7 +42,7 @@ describe('route disambiguation (traject vs no-traject)', () => {
   });
 });
 
-describe('sectionTarget — traject preserved across tab switches', () => {
+describe('sectionTarget - traject preserved across tab switches', () => {
   it('stamps the active traject when entering a section without one', () => {
     const t = sectionTarget(router, '/library/wet_op_de_zorgtoeslag', REF);
     expect(t.name).toBe('library-traject');

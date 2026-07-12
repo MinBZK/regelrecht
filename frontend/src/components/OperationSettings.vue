@@ -67,9 +67,9 @@ const canAddValue = computed(() => {
   if (op === 'NOT' || op === 'IF' || op === 'SWITCH') return false;
   // NOT_NULL never takes a value field (it only checks the subject is non-null)
   if (op === 'NOT_NULL') return false;
-  // AGE has a fixed shape (date_of_birth + reference_date) — no add slot.
+  // AGE has a fixed shape (date_of_birth + reference_date) - no add slot.
   if (op === 'AGE') return false;
-  // DATE_DIFF has a fixed shape (from + to + in) — no add slot.
+  // DATE_DIFF has a fixed shape (from + to + in) - no add slot.
   if (op === 'DATE_DIFF') return false;
   // Comparison ops always have exactly subject + value (or just subject for
   // NOT_NULL); operationValues pushes both unconditionally, so addValue() has
@@ -91,7 +91,7 @@ function canRemoveValue(val) {
   if (isComparisonOp.value && (val._kind === 'subject' || val._kind === 'value')) return false;
   // NOT needs value
   if (op === 'NOT' && val._kind === 'value') return false;
-  // AGE has two fixed structural slots — neither can be deleted.
+  // AGE has two fixed structural slots - neither can be deleted.
   if (op === 'AGE' && (val._kind === 'date_of_birth' || val._kind === 'reference_date')) return false;
   if (op === 'DATE_DIFF' && (val._kind === 'from' || val._kind === 'to' || val._kind === 'in')) return false;
   // IF and SWITCH share the cases[]/default schema and both need a default branch
@@ -102,7 +102,7 @@ function canRemoveValue(val) {
     if (op === 'IF') return false;
     if (op === 'SWITCH' && node.cases.length <= 1) return false;
   }
-  // AND/OR/arithmetic ops need at least one entry — block removal of the
+  // AND/OR/arithmetic ops need at least one entry - block removal of the
   // last condition or value so the user can't drain conditions: [] / values: []
   // and produce a semantically undefined node.
   if (val._kind === 'conditions' && Array.isArray(node?.conditions) && node.conditions.length <= 1) return false;
@@ -150,7 +150,7 @@ const operationValues = computed(() => {
     const isSwitch = node.operation === 'SWITCH';
     if (Array.isArray(node.cases)) {
       node.cases.forEach((c, i) => {
-        const prefix = isSwitch ? `Geval ${i + 1} — ` : '';
+        const prefix = isSwitch ? `Geval ${i + 1} - ` : '';
         if (c?.when !== undefined) vals.push({ _label: `${prefix}Als`, _value: c.when, _kind: 'case-when', _caseIndex: i });
         if (c?.then !== undefined) vals.push({ _label: `${prefix}Dan`, _value: c.then, _kind: 'case-then', _caseIndex: i });
       });
@@ -333,7 +333,7 @@ function changeOperationType(newType) {
     delete node.to;
     delete node.in;
   } else if (newType === 'AGE') {
-    // AGE has two fixed structural slots — seed both as empty strings so
+    // AGE has two fixed structural slots - seed both as empty strings so
     // the user can fill them via the form. Strip every other slot so the
     // node is shaped exactly like the engine's `ActionOperation::Age`.
     if (node.date_of_birth === undefined) node.date_of_birth = '';
@@ -398,10 +398,10 @@ function updateValue(val, event) {
 function updateDropdownValue(val, event) {
   const selected = event.target.value;
   // The '__nested__' sentinel is just the current operation's own row in
-  // the list — re-picking it means "keep the operation" (edit it via the
+  // the list - re-picking it means "keep the operation" (edit it via the
   // pencil), so it's a no-op. Picking anything else (a variable, literal,
   // or the empty option) replaces the value, including replacing a nested
-  // operation — otherwise switching e.g. an IF op to $bsn silently does
+  // operation - otherwise switching e.g. an IF op to $bsn silently does
   // nothing and never marks the action dirty. Consequence: picking the
   // empty "Selecteer…" option discards a nested op tree in one click,
   // same destructive trade as changeValueKind(); recovery is the
@@ -413,7 +413,7 @@ function updateDropdownValue(val, event) {
 
 
 // The Type radio (Waarde / Operatie) only applies to value slots that can
-// hold either a literal or a nested operation — not subject/date pickers.
+// hold either a literal or a nested operation - not subject/date pickers.
 function canChangeValueKind(val) {
   return val._kind !== 'subject'
     && val._kind !== 'date_of_birth'
@@ -439,7 +439,7 @@ function changeValueKind(val, kind) {
   } else if (kind === 'value' && isOp) {
     // Replaces the whole nested op with '' in one click. Deliberately
     // unconfirmed: this matches the equally-destructive sibling
-    // removeValue() in the same menu — both rely on the ActionSheet
+    // removeValue() in the same menu - both rely on the ActionSheet
     // "Annuleren" snapshot-restore as the single, consistent undo,
     // rather than introducing a one-off confirm dialog here.
     applyValueMutation(val, '');
@@ -487,7 +487,7 @@ function addValue() {
   // Don't inject values[] into nodes with structural value slots
   // (NOT uses single 'value', IF uses when/then/else, SWITCH uses cases/default)
   if (node.operation === 'NOT' || node.operation === 'IF' || node.operation === 'SWITCH') return;
-  // NOT_NULL is a unary check on subject only — never a value
+  // NOT_NULL is a unary check on subject only - never a value
   if (node.operation === 'NOT_NULL') return;
 
   if (Array.isArray(node.values)) {
@@ -690,7 +690,7 @@ function addValue() {
  * this component. The rule is in an unscoped `<style>` block alongside the
  * rest of the file's selectors (Vue scoped styles can't reach into NLDD
  * shadow DOM), so the class name is the only thing preventing bleed into
- * other components — keep the class unique to this component. */
+ * other components - keep the class unique to this component. */
 .operation-settings__title h4 {
   margin: 0;
 }

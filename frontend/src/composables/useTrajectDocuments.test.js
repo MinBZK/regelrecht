@@ -68,7 +68,7 @@ describe('useTrajectDocuments', () => {
     expect(post.url).toBe('/api/trajects/mig-1a2b3c4d/corpus/documents/upload');
     expect(post.opts.body).toBeInstanceOf(FormData);
     expect(post.opts.body.get('file')).toBeInstanceOf(File);
-    // Content-Type must NOT be set — the browser adds the multipart boundary.
+    // Content-Type must NOT be set - the browser adds the multipart boundary.
     expect(post.opts.headers).toBeUndefined();
     // A successful upload refreshes the document list (GET after the POST).
     expect(

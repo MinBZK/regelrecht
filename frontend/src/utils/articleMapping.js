@@ -61,7 +61,7 @@ export function buildTypeMap(articles) {
 }
 
 /**
- * Builds a fieldName -> { type, unit } map for EXTERNAL data-source fields —
+ * Builds a fieldName -> { type, unit } map for EXTERNAL data-source fields -
  * inputs whose `source` is empty (no `regulation` and no `output`), i.e. raw
  * data the engine resolves by field name (e.g. insurance.verdragsinschrijving).
  * Spans a set of law docs (the current law + its loaded dependencies), because
@@ -79,7 +79,7 @@ export function buildExternalFieldTypeMap(lawDocs) {
         const src = f.source;
         // External data-source fields are declared with an empty `source: {}`
         // (a `regulation` means cross-law, an `output` means internal). Match
-        // exactly that — an empty object — rather than merely "no regulation and
+        // exactly that - an empty object - rather than merely "no regulation and
         // no output", so a malformed source carrying other keys isn't
         // misclassified as external. (versionsCache YAML is not schema-checked.)
         const isExternal = src && typeof src === 'object' && Object.keys(src).length === 0;

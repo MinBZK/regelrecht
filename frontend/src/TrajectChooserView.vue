@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useTrajects, refreshTrajects } from './composables/useTrajects.js';
 import { lastLibraryPath } from './composables/useLastVisitedRoute.js';
 
-// Trajectkeuze-pagina — de landing wanneer de editor (of een traject-scoped
+// Trajectkeuze-pagina - de landing wanneer de editor (of een traject-scoped
 // bibliotheek) een traject vereist. Hier kies je een bestaand traject of ga je
 // door naar de aanmaakpagina. Een meegekregen wet (query `law`/`article`, gezet
 // door de redirect van oude no-traject editor-links) opent na de keuze direct.
@@ -50,7 +50,7 @@ function trajectTarget(trajectRef) {
 
 function selectTraject(t) {
   // `t.ref` serialises to null when the backend builds a TrajectSummary
-  // without fill_ref() — refuse to navigate (same guard as TrajectMenu).
+  // without fill_ref() - refuse to navigate (same guard as TrajectMenu).
   if (!t.ref) {
     console.warn('TrajectChooser: traject has no ref', t);
     return;
@@ -67,7 +67,7 @@ function trajectSupportingText(t) {
   const parts = [];
   if (t.status === 'afgerond') parts.push('Afgerond');
   if (t.description) parts.push(t.description);
-  return parts.join(' — ') || undefined;
+  return parts.join(' - ') || undefined;
 }
 </script>
 

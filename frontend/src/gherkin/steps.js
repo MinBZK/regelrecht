@@ -2,7 +2,7 @@
  * Gherkin step executor for the RegelRecht editor engine.
  *
  * Step definitions are derived from the generated canonical grammar
- * (grammar.generated.js) — never hand-listed here. Each definition is
+ * (grammar.generated.js) - never hand-listed here. Each definition is
  * { pattern: RegExp, tier: string, execute: async (ctx, engine, match, step) => void }.
  * The actual semantics live in actions.js (the single dispatch file). The editor
  * supports only the `core` tier; non-core steps throw via their action arm.

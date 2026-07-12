@@ -3,7 +3,7 @@
  *
  * ECharts renders to canvas, so it can't consume CSS custom properties or
  * light-dark() directly. Each token is resolved by computing it on a probe
- * element and normalizing through a 1×1 canvas — which also converts oklch()
+ * element and normalizing through a 1×1 canvas - which also converts oklch()
  * (the NLDD primitive format, unsupported by zrender) to plain rgb.
  *
  * The probe hangs off document.body, NOT the chart's own container: freshly
@@ -47,7 +47,7 @@ export function resolveChartColors() {
   const colors = {};
   try {
     if (ctx && getComputedStyle(document.body).colorScheme === 'normal') {
-      // light-dark() is invalid under color-scheme: normal — the design
+      // light-dark() is invalid under color-scheme: normal - the design
       // system's scheme isn't applied yet. Signal "not ready".
       return null;
     }

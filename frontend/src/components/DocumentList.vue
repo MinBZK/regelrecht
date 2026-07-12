@@ -2,7 +2,7 @@
 // Presentational werkdocumenten list. Two consumers:
 //  - the launcher sheet: pass `hrefFor` so each document row is a native link
 //    that opens the standalone page in a new tab (open-new-page icon,
-//    target=_blank) — middle-click and modifier-click work as expected;
+//    target=_blank) - middle-click and modifier-click work as expected;
 //  - the standalone page's sidebar: no `hrefFor`, so rows are buttons that
 //    select in place (chevron icon, emits `select`).
 // "Nieuw document" is always a button (it creates, it has no stable URL).

@@ -1,5 +1,5 @@
 /**
- * useDocumentsManager — the full werkdocumenten editing logic (list + active
+ * useDocumentsManager - the full werkdocumenten editing logic (list + active
  * document + title/save/delete/conflict/draft handling), lifted out of the old
  * TrajectDocuments window so it can back BOTH the in-sheet master-detail and
  * the standalone navigation-split-view page.
@@ -103,7 +103,7 @@ export function useDocumentsManager(trajectRef) {
     }
   }
 
-  // Close the open document without deleting it — clears the editor back to
+  // Close the open document without deleting it - clears the editor back to
   // "nothing selected". Used by the standalone page's back affordance (on a
   // narrow viewport the split view stacks, so "terug" returns to the list).
   function close() {
@@ -136,7 +136,7 @@ export function useDocumentsManager(trajectRef) {
       const result = await saveCurrent();
       return !!result?.ok;
     }
-    // Hernoemen: geen rename-API — schrijf eerst onder het nieuwe pad (blind
+    // Hernoemen: geen rename-API - schrijf eerst onder het nieuwe pad (blind
     // create) en verwijder daarna het oude pad. In die volgorde raakt een
     // mislukking nooit inhoud kwijt.
     //

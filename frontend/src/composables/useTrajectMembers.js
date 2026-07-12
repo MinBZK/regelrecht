@@ -59,7 +59,7 @@ export function useTrajectMembers() {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ role }),
-      // 409 is the backend's atomic "can't demote the last owner" guard — only
+      // 409 is the backend's atomic "can't demote the last owner" guard - only
       // reachable when demoting an owner to contributor. Surface the workflow.
       errorMessage: (status, body) =>
         status === 409

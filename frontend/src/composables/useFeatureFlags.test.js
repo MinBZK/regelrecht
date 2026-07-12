@@ -14,7 +14,7 @@ function stubFetch(putResponse) {
     vi.fn((input, init) => {
       const method = init?.method ?? 'GET';
       if (method === 'PUT') return Promise.resolve(putResponse());
-      // GET /api/feature-flags — empty server set, so DEFAULTS apply.
+      // GET /api/feature-flags - empty server set, so DEFAULTS apply.
       return Promise.resolve(
         new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }),
       );
@@ -45,7 +45,7 @@ describe('useFeatureFlags', () => {
     expect(saved['panel.notes']).toBe(true);
   });
 
-  it('reverts the toggle when OIDC is configured and the write fails (prod — no sticky override)', async () => {
+  it('reverts the toggle when OIDC is configured and the write fails (prod - no sticky override)', async () => {
     // With OIDC configured, /auth/status reports it; a failed write must not
     // persist a local override that would beat the server on the next load.
     vi.stubGlobal(
@@ -97,7 +97,7 @@ describe('useFeatureFlags', () => {
     await toggle('panel.notes');
 
     expect(isEnabled('panel.notes')).toBe(true);
-    // Server is authoritative — no lingering local override.
+    // Server is authoritative - no lingering local override.
     const saved = JSON.parse(localStorage.getItem('regelrecht-feature-flags') || '{}');
     expect('panel.notes' in saved).toBe(false);
   });

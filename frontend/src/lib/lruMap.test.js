@@ -46,7 +46,7 @@ describe('createLruMap', () => {
     lru.set('a', 1);
     lru.set('b', 2);
     expect(lru.peek('a')).toBe(1);
-    lru.set('c', 3); // 'a' is still oldest — peek did not bump it
+    lru.set('c', 3); // 'a' is still oldest - peek did not bump it
     expect(lru.has('a')).toBe(false);
   });
 

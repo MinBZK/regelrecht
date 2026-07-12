@@ -1,5 +1,5 @@
 /**
- * Color scheme picker — automatic (follows OS), light, or dark.
+ * Color scheme picker - automatic (follows OS), light, or dark.
  *
  * Thin facade over the shared `useColorScheme`: the editor persists the
  * preference server-side (via `useUserSettings`) and falls back to localStorage

@@ -1,6 +1,6 @@
 <script setup>
 /**
- * UntranslatableDetailPanel — right-side sheet showing one untranslatable
+ * UntranslatableDetailPanel - right-side sheet showing one untranslatable
  * (RFC-012) in full. DetailPanel.vue is job-shaped (hardcoded job fields), so
  * this is a sibling rather than a reuse. The long free-text fields (reason,
  * suggestion, legal text excerpt) don't fit a table cell and live here.

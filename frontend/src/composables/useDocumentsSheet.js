@@ -1,5 +1,5 @@
 /**
- * useDocumentsSheet — shared open/close state for the traject-documents
+ * useDocumentsSheet - shared open/close state for the traject-documents
  * browser sheet.
  *
  * The sheet is triggered from the TrajectMenu ("Documenten…") but rendered

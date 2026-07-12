@@ -1,13 +1,13 @@
 <script setup>
 /**
- * WerkdocumentenView — standalone full-page werkdocumenten editor, opened in a
+ * WerkdocumentenView - standalone full-page werkdocumenten editor, opened in a
  * new browser tab from the in-sheet editor's "Open in nieuw tabblad". Gives the
  * documents a navigation-split-view (list sidebar + editor main) with all the
  * room the right-side sheet can't, while sharing the exact same logic
  * (useDocumentsManager) and presentational pieces (DocumentList/DocumentEditor).
  *
  * Top-level route (sibling of AppShell, not nested) so it has no app chrome;
- * it carries its own compact top bar — title + traject subtitle on the left,
+ * it carries its own compact top bar - title + traject subtitle on the left,
  * a focused account menu (theme + logout) on the right.
  */
 import { computed, onMounted, watch, watchEffect } from 'vue';
@@ -37,7 +37,7 @@ const { jobs: conversionJobs } = jobsPoller;
 
 // Hidden native file input + upload trigger (shared with the launcher sheet).
 // Polling is already running (started on mount), so just refresh to surface the
-// new job immediately — restarting would reset() and briefly flash the list empty.
+// new job immediately - restarting would reset() and briefly flash the list empty.
 const { fileInput, uploadError, onUpload, onFileChange } = useDocumentUpload(uploadDocument, () =>
   jobsPoller.refresh(),
 );

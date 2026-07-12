@@ -18,7 +18,7 @@ import { useAppChrome, openSearch, onBarSearchKeydown } from './composables/useA
 // Persistent shell that owns the shared chrome (tab-bar, search trigger,
 // TrajectMenu, settings menu) and a nested <router-view> for the editor /
 // library bodies. Because both views are children of this one route record,
-// switching between them swaps only the nested router-view — the shell
+// switching between them swaps only the nested router-view - the shell
 // instance is reused, so the chrome never rebuilds (no refresh flash).
 
 const { authenticated, loading: authLoading, oidcConfigured, person, hasAnyRole, login, logout } = useAuth();
@@ -53,7 +53,7 @@ const colorSchemeOptions = [
 
 // Editor panel feature flags, toggled from the settings menu of either
 // section (the menu lives in the shell now, so the full editor set is in one
-// place — the library previously listed only the first four). Toggling from
+// place - the library previously listed only the first four). Toggling from
 // the library affects the editor the next time its panes render.
 const editorPanelFlags = [
   ['panel.article_text', 'Tekst editor'],
@@ -72,7 +72,7 @@ const router = useRouter();
 // Which top-level section is active, derived from the route. Both tabs are
 // always rendered; the active one shows `selected` and does not navigate,
 // the other carries the cross-section target (traject re-stamped via
-// sectionTarget) — matching the previous per-app behaviour.
+// sectionTarget) - matching the previous per-app behaviour.
 const isLibraryRoute = computed(
   () => route.name === 'library' || route.name === 'library-traject',
 );
@@ -105,7 +105,7 @@ function onEditorTab(e) {
 const { lastSavedPr, documentTabs, activeDocumentTab, tabActions, editorChanges, editorActions, libraryEmpty } = useAppChrome();
 
 // Just-in-time coach-mark on the toolbar search affordance: shown only while the
-// library is empty (nothing curated yet) and never dismissable — the app drives
+// library is empty (nothing curated yet) and never dismissable - the app drives
 // it, and it disappears by itself once the library has content. Each breakpoint
 // renders its search control in a different bar (sm icon-button, md text button,
 // lg search field), each in a pane that is display:none off-breakpoint. So we
@@ -116,7 +116,7 @@ let mdQuery = null;
 let lgQuery = null;
 // DS bar breakpoints, mirrored here for matchMedia. Keep in sync with
 // @nldd/design-system (src/assets/styles/breakpoints.ts): md >= 641px, lg >= 1008px.
-// If the DS shifts these thresholds, update them here too — otherwise the
+// If the DS shifts these thresholds, update them here too - otherwise the
 // coach-mark can anchor to a control that is hidden at the current breakpoint.
 const DS_MD_MIN = '(min-width: 641px)';
 const DS_LG_MIN = '(min-width: 1008px)';
@@ -150,7 +150,7 @@ const hasDocumentTabs = computed(
 <template>
   <nldd-app-view>
     <nldd-bar-split-view>
-      <!-- Primary Bar: md only — search and settings as buttons. The bar-split-
+      <!-- Primary Bar: md only - search and settings as buttons. The bar-split-
            view draws the divider automatically where the bar group meets main:
            on the library it sits under this bar; on the editor the document-tab-
            bar sits between, so toolbar + tabs read as one group above the single
@@ -218,7 +218,7 @@ const hasDocumentTabs = computed(
         </nldd-container>
       </nldd-split-view-pane>
 
-      <!-- Primary Bar: lg+ — search as input field in center slot -->
+      <!-- Primary Bar: lg+ - search as input field in center slot -->
       <nldd-split-view-pane slot="primary-bar-lg" above="lg">
         <nldd-container padding="8">
           <nldd-toolbar size="md">
@@ -285,7 +285,7 @@ const hasDocumentTabs = computed(
         </nldd-container>
       </nldd-split-view-pane>
 
-      <!-- Document Tab Bar (editor only, md+). Hidden on sm — there the tabs
+      <!-- Document Tab Bar (editor only, md+). Hidden on sm - there the tabs
            live in the MobileTrajectSheet opened from the traject row. Rendered
            only while the active view publishes open tabs, so the library never
            shows an empty bar. -->
@@ -309,7 +309,7 @@ const hasDocumentTabs = computed(
         </nldd-container>
       </nldd-split-view-pane>
 
-      <!-- Main content area — the active section's body. -->
+      <!-- Main content area - the active section's body. -->
       <nldd-split-view-pane slot="main">
         <router-view />
       </nldd-split-view-pane>

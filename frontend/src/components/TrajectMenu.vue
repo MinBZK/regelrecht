@@ -39,7 +39,7 @@ const documentsSheet = useDocumentsSheet();
 const loginToChooser = useLoginToChooser();
 
 /**
- * Navigate to a traject — push the user into the traject-scoped view of
+ * Navigate to a traject - push the user into the traject-scoped view of
  * the section they are currently in (bibliotheek or editor), at the same
  * law they were viewing. Picking a traject from the bibliotheek keeps you
  * in the bibliotheek; from the editor it keeps you in the editor. Per-tab
@@ -118,7 +118,7 @@ function openInfoForActive() {
 }
 
 // Na een verwijderd traject: stond je erin (de actieve ref eindigt op de
-// laatste 8 hex-tekens van het uuid), navigeer dan naar de sectie-root —
+// laatste 8 hex-tekens van het uuid), navigeer dan naar de sectie-root -
 // editor → trajectkeuze, bibliotheek → gewone bibliotheek. De trajectlijst
 // zelf is al ververst door deleteTraject.
 function onTrajectDeleted(deletedId) {
@@ -137,7 +137,7 @@ function closeCreate() {
 async function selectTraject(t) {
   // `t.ref` is a server-supplied `Option<String>` and serialises to
   // `null` when a `TrajectSummary` is built without calling
-  // `fill_ref()`. Refuse to navigate — silently routing to
+  // `fill_ref()`. Refuse to navigate - silently routing to
   // `/editor/null/...` would just bounce off the trajectRef regex
   // and confuse the user. Treat as a programming error on the
   // backend side, log and bail.
@@ -163,7 +163,7 @@ async function submitCreate() {
   try {
     const created = await createTraject(payload);
     showCreate.value = false;
-    // Jump straight into the new traject — same per-tab navigation as
+    // Jump straight into the new traject - same per-tab navigation as
     // selecting from the dropdown. Mirror the `selectTraject` guard:
     // the backend's `create` handler always calls `fill_ref()` so this
     // shouldn't fire today, but a future refactor that returns a
@@ -196,7 +196,7 @@ async function submitCreate() {
     :horizontal-alignment="fullWidth ? 'left' : undefined"
   ></nldd-button>
   <!-- Logged in: the active traject's actions first, then the traject switcher
-       + create below a divider. "Geen traject" is not an option — you leave
+       + create below a divider. "Geen traject" is not an option - you leave
        traject scope by navigating, not from this menu. -->
   <nldd-menu v-if="authenticated" :id="menuId" :anchor="menuBtnId">
     <nldd-menu-item
@@ -233,7 +233,7 @@ async function submitCreate() {
     ></nldd-menu-item>
   </nldd-menu>
 
-  <!-- Not logged in: no menu — a popover explaining that trajecten unlock
+  <!-- Not logged in: no menu - a popover explaining that trajecten unlock
        once you sign in. -->
   <nldd-popover
     v-else

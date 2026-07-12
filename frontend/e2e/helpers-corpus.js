@@ -90,7 +90,7 @@ export function loadScenario(lawPath, filename) {
  * @param {string} scenarioFile - raw .feature text returned by the scenario fetch
  */
 export async function mockCorpusApi(page, corpus, scenarioLaw, scenarioFile) {
-  // GET /api/corpus/laws — list for dependency discovery (fallback handler).
+  // GET /api/corpus/laws - list for dependency discovery (fallback handler).
   await page.route('**/api/corpus/laws*', (route, request) => {
     const url = new URL(request.url());
     if (url.pathname !== '/api/corpus/laws') {
@@ -113,7 +113,7 @@ export async function mockCorpusApi(page, corpus, scenarioLaw, scenarioFile) {
     });
   });
 
-  // GET /api/corpus/laws/{law_id}/outputs — list outputs from all articles.
+  // GET /api/corpus/laws/{law_id}/outputs - list outputs from all articles.
   await page.route('**/api/corpus/laws/*/outputs', (route, request) => {
     const url = new URL(request.url());
     const match = url.pathname.match(/\/api\/corpus\/laws\/([^/]+)\/outputs$/);
@@ -131,8 +131,8 @@ export async function mockCorpusApi(page, corpus, scenarioLaw, scenarioFile) {
     });
   });
 
-  // GET /api/corpus/laws/{law_id} — serve from the corpus map.
-  // PUT /api/corpus/laws/{law_id} — no-op; useLaw.saveLaw() updates rawYaml
+  // GET /api/corpus/laws/{law_id} - serve from the corpus map.
+  // PUT /api/corpus/laws/{law_id} - no-op; useLaw.saveLaw() updates rawYaml
   // locally on success so the test doesn't need a real backend write.
   await page.route('**/api/corpus/laws/*', (route, request) => {
     const url = new URL(request.url());
@@ -155,7 +155,7 @@ export async function mockCorpusApi(page, corpus, scenarioLaw, scenarioFile) {
     });
   });
 
-  // GET /api/corpus/laws/{law_id}/scenarios — list, only for the target law.
+  // GET /api/corpus/laws/{law_id}/scenarios - list, only for the target law.
   await page.route('**/api/corpus/laws/*/scenarios', (route, request) => {
     const url = new URL(request.url());
     const match = url.pathname.match(/\/api\/corpus\/laws\/([^/]+)\/scenarios$/);
@@ -175,7 +175,7 @@ export async function mockCorpusApi(page, corpus, scenarioLaw, scenarioFile) {
     });
   });
 
-  // GET /api/corpus/laws/{law_id}/scenarios/{filename} — return the
+  // GET /api/corpus/laws/{law_id}/scenarios/{filename} - return the
   // scenario text for any law that asks. We only have one fixture so we
   // serve it for every match; tests that need multiple scenario files can
   // refine this later.
@@ -190,7 +190,7 @@ export async function mockCorpusApi(page, corpus, scenarioLaw, scenarioFile) {
     });
   });
 
-  // /api/sources — corpus source list (used by library page).
+  // /api/sources - corpus source list (used by library page).
   await page.route('**/api/sources', (route) =>
     route.fulfill({
       status: 200,
@@ -201,7 +201,7 @@ export async function mockCorpusApi(page, corpus, scenarioLaw, scenarioFile) {
     }),
   );
 
-  // /auth/status — OIDC disabled in tests; useAuth expects this shape.
+  // /auth/status - OIDC disabled in tests; useAuth expects this shape.
   await page.route('**/auth/status', (route) =>
     route.fulfill({
       status: 200,

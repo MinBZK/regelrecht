@@ -46,7 +46,7 @@ const STATS = {
 const openDetail = vi.fn();
 const closeDetail = vi.fn();
 
-// Per-mount stats value — tests can swap it to mount with a variant payload.
+// Per-mount stats value - tests can swap it to mount with a variant payload.
 let currentStats = STATS;
 
 vi.mock('../composables/useDashboardStats.js', () => ({

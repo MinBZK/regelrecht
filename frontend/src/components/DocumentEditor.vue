@@ -1,11 +1,11 @@
 <script setup>
 /**
- * DocumentEditor — the active-document editor + preview + bottom toolbar,
+ * DocumentEditor - the active-document editor + preview + bottom toolbar,
  * driven by a useDocumentsManager instance passed in as `manager`. The host
  * (sheet master-detail or standalone page) owns the surrounding chrome
  * (title bar / page toolbar) and the list; this is purely the document body.
  *
- * Replaces the old draggable nldd-window: no window, no movable dialog — it
+ * Replaces the old draggable nldd-window: no window, no movable dialog - it
  * renders inline in whatever container the host gives it.
  */
 import { computed, nextTick, ref, watch } from 'vue';
@@ -51,7 +51,7 @@ const {
 // One blocking error at a time, and it replaces the editor body rather than
 // stacking above it: a load failure (docError) that produced no document leaves
 // nothing useful to edit, so it replaces the editor body. A save failure does
-// NOT block — the content is still in openTabs, so it stays an inline notice
+// NOT block - the content is still in openTabs, so it stays an inline notice
 // above the editor (below) and the save can be retried in place. Actionable
 // notices (conflict, draft-present, …) and title validation also stay inline.
 const blockingError = computed(() => {
@@ -77,7 +77,7 @@ async function onConfirmDelete() {
   if (wasOpenDocument) emit('deleted');
 }
 
-// Delete confirmation modal — imperative show()/hide() driven by the manager's
+// Delete confirmation modal - imperative show()/hide() driven by the manager's
 // pendingDeletePath, matching the editor's other NLDD dialogs.
 const deleteModalEl = ref(null);
 watch(pendingDeletePath, async (path) => {

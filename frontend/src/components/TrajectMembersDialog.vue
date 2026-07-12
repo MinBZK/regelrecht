@@ -35,7 +35,7 @@ function roleLabel(role) {
 }
 
 // A traject must always keep at least one owner, so the sole owner can be
-// neither demoted nor removed — they get no actions menu at all. Promote
+// neither demoted nor removed - they get no actions menu at all. Promote
 // someone else first (or delete the traject).
 const ownerCount = computed(() => members.value.filter((m) => m.role === 'owner').length);
 function canManageMember(m) {
@@ -238,8 +238,8 @@ async function clickRemoveInvite(inv) {
                     <nldd-menu :id="`member-menu-${m.account_id}`" :anchor="`member-more-${m.account_id}`">
                       <!-- Een eigenaar kun je niet rechtstreeks verwijderen (een
                            traject houdt altijd minstens één eigenaar). Degradeer
-                           'm eerst naar bijdrager — dat kan pas als er nóg een
-                           eigenaar is — daarna verschijnt 'Verwijder lid'. -->
+                           'm eerst naar bijdrager - dat kan pas als er nóg een
+                           eigenaar is - daarna verschijnt 'Verwijder lid'. -->
                       <nldd-menu-item
                         v-if="m.role === 'owner'"
                         text="Maak bijdrager"

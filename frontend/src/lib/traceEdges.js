@@ -1,5 +1,5 @@
 /**
- * traceEdges — flatten a PathNode trace tree into a linear step list and
+ * traceEdges - flatten a PathNode trace tree into a linear step list and
  * match each step to graph edge / node IDs for highlighting.
  *
  * Ported 1:1 from demo/graph/src/lib/traceEdges.ts on branch
@@ -19,7 +19,7 @@
  *   - delegate: `${lawId}-delegate-${name}`
  *   - impl:     `${lawId}-impl-${name}`
  *
- * If you change either scheme, update BOTH this file and useLawGraph.js —
+ * If you change either scheme, update BOTH this file and useLawGraph.js -
  * the integration test in traceEdges.test.js is the tripwire.
  */
 
@@ -127,14 +127,14 @@ export function flattenTraceSteps(root, rootLawId) {
 /**
  * Pre-index edges so per-step matchers don't have to scan the full edge
  * list. `useTraceStepping.steps` builds this once per (graph) change and
- * passes it to every `edgeIdsForStep` call — cuts step enrichment from
+ * passes it to every `edgeIdsForStep` call - cuts step enrichment from
  * O(steps × edges) to O(steps).
  *
  * Buckets mirror the four switch arms in `edgeIdsForStep`:
- *   - bySource           — `${law}-input-${name}` → edges with that source
- *   - byImplOpenTerm     — open-term name → `impl:` edges ending `:${name}`
- *   - byOvrSourceLaw     — law id → `ovr:${law}:` edges
- *   - byHookPrefix       — `hook:${name}->` → edges with that prefix
+ *   - bySource           - `${law}-input-${name}` → edges with that source
+ *   - byImplOpenTerm     - open-term name → `impl:` edges ending `:${name}`
+ *   - byOvrSourceLaw     - law id → `ovr:${law}:` edges
+ *   - byHookPrefix       - `hook:${name}->` → edges with that prefix
  */
 export function buildEdgeIndex(edges) {
   const bySource = new Map();
@@ -159,7 +159,7 @@ export function buildEdgeIndex(edges) {
       const colon = arrow !== -1 ? e.id.indexOf(':', arrow + 2) : -1;
       if (colon !== -1) push(byImplOpenTerm, e.id.substring(colon + 1), e);
     } else if (e.id.startsWith('ovr:')) {
-      // `ovr:${lawA}:${art}->${lawB}:${art}` — bucket by `lawA`
+      // `ovr:${lawA}:${art}->${lawB}:${art}` - bucket by `lawA`
       const head = e.id.indexOf(':');
       const tail = e.id.indexOf(':', head + 1);
       if (head !== -1 && tail !== -1) {
@@ -210,7 +210,7 @@ function splitQualifiedName(name) {
  * get highlighted.
  *
  * Pass a pre-built `index` from `buildEdgeIndex(edges)` to skip the full
- * edge scan — `useTraceStepping` does this for every step at once.
+ * edge scan - `useTraceStepping` does this for every step at once.
  * Without it, a transient index is built locally so the function still
  * works on its own (test-friendly).
  */
@@ -237,7 +237,7 @@ export function edgeIdsForStep(step, edges, index) {
       return out;
     }
     case 'open_term_resolution': {
-      // `lawId` is ambiguous on open_term steps — `flattenTraceSteps`
+      // `lawId` is ambiguous on open_term steps - `flattenTraceSteps`
       // doesn't switch `descendLawId` on this node type, so the engine
       // emits it under whichever law was active (typically the higher
       // declaring law, not the implementing one). The `impl:` edge id
@@ -265,7 +265,7 @@ export function edgeIdsForStep(step, edges, index) {
     case 'override_resolution': {
       // Edge ID format: `ovr:${lawA}:${art}->${lawB}:${article}`
       // TODO(PR3): step.name carries the overridden output but goes
-      // unused — when one law overrides multiple outputs all `ovr:`
+      // unused - when one law overrides multiple outputs all `ovr:`
       // edges from that law light up simultaneously. A precise match
       // would also constrain by source/target output name once the
       // engine starts emitting the output in the trace node.
@@ -338,7 +338,7 @@ export function graphNodeIdsForStep(step, nodes, nodeIdSet) {
       break;
     }
     case 'requirement':
-      // Just the law root — nothing more specific.
+      // Just the law root - nothing more specific.
       break;
     case 'resolve': {
       const rt = step.resolveType;
