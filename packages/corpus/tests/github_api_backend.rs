@@ -13,7 +13,7 @@ use regelrecht_corpus::backend::{RepoBackend, WriteContext};
 use regelrecht_corpus::github_api_backend::GitHubApiBackend;
 use regelrecht_corpus::models::GitHubSource;
 use serde_json::json;
-use wiremock::matchers::{body_partial_json, method, path};
+use wiremock::matchers::{body_partial_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn b64(s: &str) -> String {
@@ -82,6 +82,61 @@ async fn read_file_returns_content_and_caches_sha_for_later_write() {
     assert_eq!(got.as_deref(), Some("hello\n"));
 
     b.write_file(Path::new("laws/x.yaml"), "goodbye\n")
+        .await
+        .unwrap();
+    b.persist(&ctx()).await.unwrap();
+}
+
+#[tokio::test]
+async fn persist_with_token_override_authenticates_as_the_user() {
+    let server = MockServer::start().await;
+
+    // The PUT must carry the *override* token — the acting user's own
+    // credential — not the backend's baked-in "test-token". Matching on the
+    // Authorization header pins the precedence in `persist`
+    // (`ctx.token_override` before `self.token`); if that regressed, this
+    // mock would not match and persist would fail on the resulting 404.
+    Mock::given(method("PUT"))
+        .and(path("/repos/acme/corpus/contents/laws/x.yaml"))
+        .and(header("authorization", "Bearer user-token"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+            "content": { "sha": "sha-new" }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let b = backend(&server);
+    b.write_file(Path::new("laws/x.yaml"), "als de gebruiker\n")
+        .await
+        .unwrap();
+    b.persist(&WriteContext {
+        message: "user-authored commit".to_string(),
+        author: None,
+        token_override: Some("user-token".to_string()),
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn persist_without_override_keeps_the_backend_token() {
+    let server = MockServer::start().await;
+
+    // The counterpart: no override → the configured backend token, exactly
+    // the pre-spike behaviour every non-editor call site relies on.
+    Mock::given(method("PUT"))
+        .and(path("/repos/acme/corpus/contents/laws/x.yaml"))
+        .and(header("authorization", "Bearer test-token"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+            "content": { "sha": "sha-new" }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let b = backend(&server);
+    b.write_file(Path::new("laws/x.yaml"), "als de service\n")
         .await
         .unwrap();
     b.persist(&ctx()).await.unwrap();
