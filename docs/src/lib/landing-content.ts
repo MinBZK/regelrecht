@@ -142,7 +142,7 @@ const GITHUB = 'https://github.com/MinBZK/regelrecht'
 export const content: Record<'nl' | 'en', LandingContent> = {
   nl: {
     meta: {
-      title: 'RegelRecht · van wet naar digitale werking',
+      title: 'RegelRecht: van wet naar digitale werking',
       description:
         'Een verkenning van het Ministerie van BZK naar transparante, machine-uitvoerbare wetgeving.',
     },
@@ -613,7 +613,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
 
   en: {
     meta: {
-      title: 'RegelRecht · from statute to digital execution',
+      title: 'RegelRecht: from statute to digital execution',
       description:
         'An exploration by the Dutch Ministry of the Interior into transparent, machine-executable legislation.',
     },
