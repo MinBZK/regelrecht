@@ -1120,14 +1120,12 @@ watch(activeTrajectRef, () => {
               <TrajectDetailsPane
                 v-if="instellingenTab === 'details'"
                 :traject-id="activeTraject?.id"
-                :traject-name="activeTraject?.name || ''"
                 @deleted="onTrajectGone"
                 @left="onTrajectGone"
               ></TrajectDetailsPane>
               <TrajectMembersPane
                 v-else-if="instellingenTab === 'leden'"
                 :traject-id="activeTraject?.id"
-                :traject-name="activeTraject?.name || ''"
               ></TrajectMembersPane>
               <nldd-simple-section v-else width="full">
                 <nldd-inline-dialog text="Kies een instelling"></nldd-inline-dialog>

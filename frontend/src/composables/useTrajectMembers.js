@@ -14,6 +14,7 @@ export function useTrajectMembers() {
   const members = ref([]);
   const pendingInvites = ref([]);
   const callerRole = ref(null);
+  const trajectName = ref('');
   const loading = ref(false);
   const error = ref(null);
 
@@ -25,6 +26,7 @@ export function useTrajectMembers() {
     members.value = [];
     pendingInvites.value = [];
     callerRole.value = null;
+    trajectName.value = '';
     try {
       const body = await apiFetchJson(`/api/trajects/${trajectId}`, {
         errorMessage: (status) => `Kon traject niet laden: ${status}`,
@@ -32,6 +34,7 @@ export function useTrajectMembers() {
       members.value = body.members || [];
       pendingInvites.value = body.pending_invites || [];
       callerRole.value = body.role || null;
+      trajectName.value = body.name || '';
     } catch (e) {
       error.value = e;
     } finally {
@@ -117,6 +120,7 @@ export function useTrajectMembers() {
     members,
     pendingInvites,
     callerRole,
+    trajectName,
     loading,
     error,
     load,

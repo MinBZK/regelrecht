@@ -8,14 +8,13 @@ import { useTrajectMembers } from '../composables/useTrajectMembers.js';
 const props = defineProps({
   /** Traject to manage (UUID id). */
   trajectId: { type: String, default: null },
-  /** Traject display name, shown in the invite help text. */
-  trajectName: { type: String, default: '' },
 });
 
 const {
   members,
   pendingInvites,
   callerRole,
+  trajectName,
   loading,
   error: loadError,
   load,
@@ -260,7 +259,7 @@ async function clickRemoveInvite(inv) {
                   type="email"
                   name="emails"
                   accessible-label="E-mailadressen"
-                  placeholder="naam@voorbeeld.nl"
+                  placeholder="Toevoegen..."
                   :invalid="inviteError ? true : undefined"
                   @change="inviteEmails = $event.detail?.values ?? inviteEmails"
                   @input="invitePending = $event.detail?.value ?? invitePending"
