@@ -858,6 +858,21 @@ onBeforeRouteLeave(async (to) => {
   if (!(await guardDirtyDoc(to))) return false;
 });
 
+// selectedLawId is a manual ref, not route-derived. onBeforeRouteUpdate only
+// fires for same-record param changes, so navigating to a no-law route
+// (traject-home / corpus home) via the back button or a tab switch — a
+// different route record — leaves the ref set and the article list lingers
+// until refresh. Sync it reactively so the view reflows on any such navigation.
+watch(() => route.params.lawId, (lawId) => {
+  if (!lawId && selectedLawId.value) {
+    selectedLawId.value = null;
+    selectedLaw.value = null;
+    selectedArticleNumber.value = null;
+    activeAction.value = null;
+    lawError.value = null;
+  }
+});
+
 // When a harvested law becomes available, reload the corpus and select it.
 async function onHarvestAvailable(slug) {
   // Best-effort reload — a failure just means the index below may not
