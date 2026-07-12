@@ -687,7 +687,13 @@ pub async fn callback(
     tracing::info!(github_login = %login, "linked GitHub account for editor user");
     let mut response =
         Redirect::temporary(&with_marker(&base_url, &return_path, "connected")).into_response();
-    let secure = !is_http_localhost(Some(&base_url));
+    // `Secure` comes from static config ONLY — never from the header-derived
+    // `base_url` above (fine for the redirect target, not for a security
+    // attribute): with BASE_URL unset a client-supplied
+    // `X-Forwarded-Host: localhost` + `X-Forwarded-Proto: http` would strip
+    // `Secure` from the sealed-token cookie. Same decision as the session
+    // cookie in `main.rs`: `None` = non-local = Secure stays on.
+    let secure = !is_http_localhost(state.config.base_url.as_deref());
     append_set_cookie(&mut response, &token_cookie_header(&sealed, secure));
     Ok(response)
 }
@@ -820,8 +826,9 @@ pub async fn disconnect(
         }
     }
 
-    let base_url = base_url_from_config_or_request(&state, &headers);
-    let secure = !is_http_localhost(Some(&base_url));
+    // Static config only for `Secure` — see the matching comment in
+    // `callback` (spoofable forwarded headers must not downgrade the cookie).
+    let secure = !is_http_localhost(state.config.base_url.as_deref());
     let mut response = StatusCode::NO_CONTENT.into_response();
     append_set_cookie(&mut response, &clear_token_cookie_header(secure));
     Ok(response)

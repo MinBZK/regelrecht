@@ -2796,31 +2796,6 @@ pub async fn upload_traject_document(
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let traject_id = resolve_traject_ref(pool, &traject_ref).await?;
 
-    // The conversion runs in a background worker that can never carry the
-    // acting user's cookie-bound token, so its write would always fall back to
-    // the backend's configured token. With user-token enforcement on that is
-    // exactly the silent service-token fallback `require_user_token` forbids —
-    // refuse the upload fail-closed. Deliberately NOT a 428: linking GitHub
-    // would not change anything here, so the koppel-flow redirect would loop.
-    // Only for a backend that honors the override, though: a local writable-own
-    // (preview/local-stack) writes without any token, so there is no service-
-    // token fallback to forbid.
-    if let Some(oauth) = state.config.github_oauth.as_ref() {
-        if github_oauth::write_requires_user_token(&state, oauth).await?
-            && resolve_traject_documents_writer(&traject)
-                .await?
-                .supports_token_override()
-        {
-            return Err((
-                StatusCode::FORBIDDEN,
-                "Documenten uploaden is niet beschikbaar wanneer schrijven met je \
-                 persoonlijke GitHub-token vereist is: de conversie schrijft op de \
-                 achtergrond en kan niet namens jou committen."
-                    .to_string(),
-            ));
-        }
-    }
-
     // Pull the uploaded file out of the multipart body (the `file` field).
     let mut filename: Option<String> = None;
     let mut content_type: Option<String> = None;
@@ -2872,6 +2847,32 @@ pub async fn upload_traject_document(
     // unconditional write would silently overwrite that document. Fail the
     // upload instead.
     let backend = resolve_traject_documents_writer(&traject).await?;
+
+    // Enforcement gate, on the writer resolved above (one lock, not two). The
+    // conversion runs in a background worker that can never carry the acting
+    // user's cookie-bound token, so its write would always fall back to the
+    // backend's configured token. With user-token enforcement on that is
+    // exactly the silent service-token fallback `require_user_token` forbids —
+    // refuse the upload fail-closed. Deliberately NOT a 428: linking GitHub
+    // would not change anything here, so the koppel-flow redirect would loop.
+    // Only for a backend that honors the override, though: a local writable-own
+    // (preview/local-stack) writes without any token, so there is no service-
+    // token fallback to forbid. The cheap backend check runs first; the flag
+    // read (a DB round-trip) only fires for GitHub-backed trajects.
+    if backend.supports_token_override() {
+        if let Some(oauth) = state.config.github_oauth.as_ref() {
+            if github_oauth::write_requires_user_token(&state, oauth).await? {
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    "Documenten uploaden is niet beschikbaar wanneer schrijven met je \
+                     persoonlijke GitHub-token vereist is: de conversie schrijft op de \
+                     achtergrond en kan niet namens jou committen."
+                        .to_string(),
+                ));
+            }
+        }
+    }
+
     let base = traject_documents_base(&traject_ref);
     let mut existing: Vec<String> = backend
         .list_files_recursive(&base, None)
