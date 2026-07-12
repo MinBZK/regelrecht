@@ -259,7 +259,7 @@ function dismissDeleteNotice() {
   <!-- Sticky bottom toolbar: the full text-editing palette, shown whenever the
        editor body is available. Formatting toolbar from the DS "Mixed" story;
        controls are uncontrolled and onToolbarState reflects the editor state. -->
-  <nldd-container v-if="editorReady" slot="footer" padding-inline="16" padding-top="0" padding-bottom="16">
+  <nldd-container v-if="editorReady" slot="footer" padding-inline="16" padding-top="0" padding-bottom="16" sm-padding-inline="8" sm-padding-bottom="8">
     <nldd-toolbar size="md">
       <!-- Overflow priority (high stays longest, low overflows first):
            text-formatting > block-type > list > indent > link > quote >
