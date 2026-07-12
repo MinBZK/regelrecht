@@ -380,7 +380,8 @@ export function useTrajectDocuments(trajectRef) {
       if (!res.ok) {
         const text = await safeText(res);
         const err = new Error(text || `Uploaden mislukt: ${res.status}`);
-        saveError.value = err;
+        // Surface via the returned result only (the consumer shows its own
+        // upload dialog); don't also set saveError, which raises a 2nd modal.
         return { ok: false, error: err.message };
       }
       const json = await safeJson(res);
@@ -388,7 +389,6 @@ export function useTrajectDocuments(trajectRef) {
       await fetchList();
       return { ok: true, targetPath: json?.target_path ?? null };
     } catch (e) {
-      saveError.value = e;
       return { ok: false, error: e.message };
     }
   }
