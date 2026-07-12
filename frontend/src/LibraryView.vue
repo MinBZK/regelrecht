@@ -109,6 +109,17 @@ watch(
 );
 onBeforeUnmount(() => docJobs.stopPolling());
 
+// Surface an upload failure in a modal (not inline); dismissing clears it.
+const uploadErrorModalEl = ref(null);
+watch(docUploadError, async (err) => {
+  await nextTick();
+  if (err) uploadErrorModalEl.value?.show?.();
+  else uploadErrorModalEl.value?.hide?.();
+});
+function dismissUploadError() {
+  docUploadError.value = null;
+}
+
 // Name the open document in the unsaved-changes guard so it's clear what's at
 // risk (falls back to a generic phrasing if the name isn't resolved yet).
 const docNavGuardText = computed(() => {
@@ -1090,7 +1101,6 @@ watch(activeTrajectRef, () => {
                   </nldd-toolbar-item>
                 </nldd-toolbar>
                 <nldd-spacer size="16"></nldd-spacer>
-                <nldd-inline-dialog v-if="docUploadError" variant="alert" text="Uploaden mislukt" :supporting-text="docUploadError"></nldd-inline-dialog>
                 <ConversionStatus :jobs="conversionJobs"></ConversionStatus>
                 <input ref="docFileInput" type="file" accept=".pdf,.doc,.docx" hidden @change="onDocFileChange" />
                 <nldd-activity-indicator v-if="docsLoading" timing="instant" text="Documenten laden" show-text></nldd-activity-indicator>
@@ -1303,6 +1313,18 @@ watch(activeTrajectRef, () => {
       <nldd-button slot="actions" variant="primary" text="Blijf document bewerken" @click="cancelDocLeave"></nldd-button>
       <nldd-button slot="actions" variant="secondary" text="Sla wijzigingen op en sluit" :loading="docSaving || undefined" @click="saveDocAndLeave"></nldd-button>
       <nldd-button slot="actions" variant="destructive" text="Negeer wijzigingen en sluit" @click="confirmDocLeave"></nldd-button>
+    </nldd-modal-dialog>
+  </Teleport>
+
+  <Teleport to="body">
+    <nldd-modal-dialog
+      ref="uploadErrorModalEl"
+      variant="alert"
+      text="Uploaden mislukt"
+      :supporting-text="docUploadError || ''"
+      @close="dismissUploadError"
+    >
+      <nldd-button slot="actions" variant="primary" text="Sluit" @click="dismissUploadError"></nldd-button>
     </nldd-modal-dialog>
   </Teleport>
 </template>
