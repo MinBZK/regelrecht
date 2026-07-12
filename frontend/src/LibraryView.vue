@@ -321,7 +321,7 @@ const sidebarSections = computed(() => {
   if (activeTrajectRef.value && changedLawIds.value?.size) {
     const changed = list.filter(law => changedLawIds.value.has(law.law_id));
     if (changed.length > 0) {
-      sections.push({ key: 'changed', title: 'Bewerkt in dit traject', laws: changed });
+      sections.push({ key: 'changed', title: 'Bewerkt', laws: changed });
     }
   }
 
