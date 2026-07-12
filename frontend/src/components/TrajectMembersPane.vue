@@ -8,6 +8,8 @@ import { useTrajectMembers } from '../composables/useTrajectMembers.js';
 const props = defineProps({
   /** Traject to manage (UUID id). */
   trajectId: { type: String, default: null },
+  /** Traject display name, shown in the invite help text. */
+  trajectName: { type: String, default: '' },
 });
 
 const {
@@ -152,12 +154,12 @@ async function clickRemoveInvite(inv) {
 </script>
 
 <template>
-  <nldd-simple-section width="full">
+  <nldd-simple-section>
     <nldd-title id="instellingen-pane-titel" size="3"><h3>Leden</h3></nldd-title>
     <nldd-spacer size="16"></nldd-spacer>
     <nldd-toolbar v-if="isOwner" label="Ledenacties">
       <nldd-toolbar-item slot="start">
-        <nldd-button variant="secondary" size="md" start-icon="plus-small" text="Lid uitnodigen" @click="openInvite"></nldd-button>
+        <nldd-button variant="secondary" size="md" start-icon="plus-small" text="Uitnodigen" @click="openInvite"></nldd-button>
       </nldd-toolbar-item>
     </nldd-toolbar>
     <nldd-spacer v-if="isOwner" size="16"></nldd-spacer>
@@ -247,7 +249,7 @@ async function clickRemoveInvite(inv) {
   <Teleport to="body">
     <nldd-sheet ref="inviteSheetEl" placement="right" width="480px" full-height @close="closeInvite">
       <nldd-page sticky-header sticky-footer>
-        <nldd-top-title-bar slot="header" text="Lid uitnodigen" dismiss-text="Annuleer" @dismiss="closeInvite"></nldd-top-title-bar>
+        <nldd-top-title-bar slot="header" text="Uitnodigen" dismiss-text="Annuleer" @dismiss="closeInvite"></nldd-top-title-bar>
         <nldd-simple-section width="full">
           <nldd-form>
             <form novalidate @submit.prevent="submitInvite">
@@ -264,7 +266,7 @@ async function clickRemoveInvite(inv) {
                   @input="invitePending = $event.detail?.value ?? invitePending"
                 ></nldd-token-field>
                 <nldd-form-field-help-text>
-                  Typ een adres en druk op Enter of komma. Toegang wordt actief bij de eerste login als er nog geen account bestaat.
+                  Typ een adres en druk op Enter of komma. Toegang tot {{ trajectName }} wordt actief bij de eerste login.
                 </nldd-form-field-help-text>
                 <nldd-form-field-error-text v-if="inviteError" id="invite-email-error">
                   {{ inviteError }}
@@ -294,7 +296,7 @@ async function clickRemoveInvite(inv) {
                   size="md"
                   type="submit"
                   width="full"
-                  :text="inviteBusy ? 'Bezig…' : 'Verstuur uitnodigingen'"
+                  :text="inviteBusy ? 'Bezig…' : 'Nodig uit'"
                   :disabled="inviteBusy || undefined"
                 ></nldd-button>
               </nldd-form-actions>

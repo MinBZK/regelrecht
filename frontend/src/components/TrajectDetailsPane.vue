@@ -116,7 +116,7 @@ async function confirmLeave() {
 </script>
 
 <template>
-  <nldd-simple-section width="full">
+  <nldd-simple-section>
     <nldd-title id="instellingen-pane-titel" size="3"><h3>Traject details</h3></nldd-title>
     <nldd-spacer size="16"></nldd-spacer>
 

@@ -1113,7 +1113,7 @@ watch(activeTrajectRef, () => {
             <nldd-page sticky-header>
               <nldd-top-title-bar
                 slot="header"
-                :text="instellingenTab === 'leden' ? 'Leden' : (instellingenTab === 'details' ? 'Traject details' : 'Instellingen')"
+                :text="instellingenTab === 'leden' ? 'Leden' : (instellingenTab === 'details' ? 'Traject details' : undefined)"
                 back-text="Instellingen"
                 :collapse-anchor="instellingenTab ? 'instellingen-pane-titel' : undefined"
               ></nldd-top-title-bar>
@@ -1127,6 +1127,7 @@ watch(activeTrajectRef, () => {
               <TrajectMembersPane
                 v-else-if="instellingenTab === 'leden'"
                 :traject-id="activeTraject?.id"
+                :traject-name="activeTraject?.name || ''"
               ></TrajectMembersPane>
               <nldd-simple-section v-else width="full">
                 <nldd-inline-dialog text="Kies een instelling"></nldd-inline-dialog>
