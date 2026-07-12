@@ -10,15 +10,18 @@ valid_to: '2026-12-31'
 bwb_id: BWBR0047628
 url: https://wetten.overheid.nl/BWBR0047628/2022-12-15
 preamble:
-  text: |-
+  text: >-
     Gelet op Verordening (EU) 2022/1854 van de Raad van 6 oktober 2022 betreffende een noodinterventie in verband met
     de hoge energieprijzen (PbEU 2022 LI 261/1)
+
 
     Handelende in overeenstemming met de mededeling van de Europese Commissie van 9 oktober 2022 betreffende het
     Tijdelijk crisiskader voor staatssteunmaatregelen ter ondersteuning van de economie na de Russische agressie tegen
     Oekraïne (PbEU 2022, C 426/01);
 
+
     Gelet op de artikelen 2, eerste en tweede lid, en 3 van de Kaderwet EZK- en LNV-subsidies;
+
 
     Besluit:
   url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#ArtikelAanhef
@@ -247,12 +250,15 @@ articles:
       kleinverbruikaansluiting achterwege laten, indien de betreffende kleinverbruiker hierom verzoekt.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel2.1
   - number: '2.2'
-    text: |-
+    text: >-
       1 Het plafondtarief voor elektriciteit wordt vastgesteld op: € 0,24755 per kWh.
+
 
       2 Het plafondtarief voor gas wordt vastgesteld op: € 0,85734 per m3(n).
 
+
       3 Het plafondtarief voor warmte wordt vastgesteld op: € 47,38 per GJ.
+
 
       4 De plafondtarieven, bedoeld in de voorgaande leden, zijn exclusief energiebelasting en ODE en inclusief 21% btw.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel2.2
@@ -341,11 +347,13 @@ articles:
       - id: ref1
         bwb_id: BWBR0047628
   - number: '2.6'
-    text: |-
+    text: >-
       De subsidie wordt verleend onder de volgende opschortende voorwaarden:
+
 
       a. goedkeuring van de Europese Commissie in een procedure als bedoeld in artikel 108, derde lid, van het Verdrag
       betreffende de werking van de Europese Unie met betrekking tot deze regeling;
+
 
       b. instemming van de Staten-Generaal met het bij brief van de Minister van Economische Zaken en Klimaat van
       17 november 2022 ingediende voorstel van wet tot wijziging van de begrotingsstaat van het Ministerie van
@@ -353,10 +361,11 @@ articles:
       in verband met hoge energieprijzen), Kamerstukken II, vergaderjaar 2022/23, 36252.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel2.6
   - number: '2.7'
-    text: |-
+    text: >-
       1 De Minister maakt na de datum van subsidieverlening de gegevens bekend, bedoeld in paragraaf 3, onderdeel 76, van
       het Tijdelijk crisiskader voor staatssteunmaatregelen ter ondersteuning van de economie na de Russische agressie
       tegen Oekraïne (PbEU 2022, C 426/01).
+
 
       2 De gegevens, bedoeld in het tweede lid, blijven ten minste tien jaar openbaar beschikbaar.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel2.7
@@ -742,27 +751,30 @@ articles:
         bwb_id: BWBR0011440
         artikel: '37'
   - number: '4.4'
-    text: |-
+    text: >-
       1 De Minister beslist op een aanvraag voor subsidieverlening binnen twee weken na ontvangst van de aanvraag.
+
 
       2 Deze termijn kan eenmaal met ten hoogste twee weken worden verlengd.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel4.4
   - number: '4.5'
-    text: |-
+    text: >-
       In de beschikking tot subsidieverlening wordt geen bedrag opgenomen waarop de subsidie ten hoogste kan worden
       vastgesteld.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel4.5
   - number: '4.6'
-    text: |-
+    text: >-
       De Minister beslist afwijzend op een aanvraag voor subsidie indien:
 
+
       a. de aanvraag niet voldoet aan de bij deze regeling gestelde regels;
+
 
       b. de subsidieaanvrager failliet is verklaard of hem surséance van betaling is verleend, dan wel een verzoek
       daartoe bij de rechtbank is ingediend.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel4.6
   - number: '4.7'
-    text: |-
+    text: >-
       De Minister maakt zo spoedig mogelijk na een besluit tot subsidieverlening de naam van de subsidieontvanger en het
       inschrijvingsnummer in het handelsregister bekend.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel4.7
@@ -817,15 +829,16 @@ articles:
         artikel: '3.5'
         hoofdstuk: '3'
   - number: '5.3'
-    text: |-
+    text: >-
       1 De subsidieontvanger voert een zodanige administratie dat daaruit op elk moment op een eenvoudige en duidelijke
       wijze is af te leiden dat hij voldoet aan de bij deze regeling gestelde eisen.
+
 
       2 De subsidieontvanger bewaart de administratie tot tien jaar na de datum van de beschikking tot de
       subsidievaststelling.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel5.3
   - number: '5.4'
-    text: |-
+    text: >-
       De subsidieontvanger verleent gedurende vijf jaar na de datum van de beschikking tot subsidievaststelling
       medewerking aan een evaluatie door de Minister van de doeltreffendheid en de effecten van de aan hem verleende
       subsidie, voor zover medewerking redelijkerwijs van hem kan worden verlangd.
@@ -898,16 +911,17 @@ articles:
       bevindingen van een accountant verlangen, opgesteld volgens de door de Minister gegeven aanwijzingen.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel5.6
   - number: '5.7'
-    text: |-
+    text: >-
       1 De subsidieontvanger deelt onverwijld de indiening bij de rechtbank van een verzoek tot faillietverklaring van
       hem, tot verlening van surseance van betaling aan hem of tot toepassing van de schuldsaneringsregeling natuurlijke
       personen over hem schriftelijk mee aan de Minister.
+
 
       2 De subsidieontvanger verstrekt op verzoek aan de Minister alle overige bescheiden, gegevens of inlichtingen die
       nodig zijn voor een beslissing over de subsidie.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel5.7
   - number: '5.8'
-    text: |-
+    text: >-
       De subsidieontvanger is aangesloten bij een instantie voor buitengerechtelijke geschilbeslechting die bevoegd is
       klachten te behandelen van kleinverbruikers tegen leveranciers over de toepassing van deze regeling.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel5.8
@@ -934,21 +948,24 @@ articles:
         bwb_id: BWBR0033729
         artikel: '5'
   - number: 6.1.1
-    text: |-
+    text: >-
       De Minister verstrekt in 2023 maandelijks een voorschot voor de toepassing van het prijsplafond voor elektriciteit
       of gas op maandelijks in te dienen aanvragen.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.1.1
   - number: 6.1.2
-    text: |-
+    text: >-
       1 Het cumulatieve voorschot van alle reeds verstrekte voorschotten wordt maandelijks ambtshalve gecorrigeerd aan de
       hand van de eindfacturen die in die kalendermaand zijn verstrekt, totdat het cumulatieve voorschot is gecorrigeerd
       voor alle eindfacturen waarbij toepassing van het prijsplafond aan orde was in de periode waar de eindfactuur op
       ziet.
 
+
       2 Een reeds verstrekt voorschot kan op verzoek van de subsidieontvanger achteraf eenmalig worden gecorrigeerd:
+
 
       a. aan kleinverbruikaansluitingen waarvoor op het moment van indiening van de aanvraag voor dat voorschot nog geen
       sprake was van een leveringsovereenkomst; of
+
 
       b. indien sprake is van andere wijzigingen die substantiële invloed kunnen hebben op de hoogte van dat voorschot,
       met uitzondering van de in het eerste lid bedoelde correcties aan de hand van de eindfacturen.
@@ -1087,8 +1104,9 @@ articles:
       kalendermaand waar de aanvraag voor een voorschot op ziet, omgerekend naar m3(n) gas.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.1.6
   - number: 6.1.7
-    text: |-
+    text: >-
       1 De aanvraag voor eerste voorschot wordt gelijktijdig ingediend met de aanvraag voor subsidieverlening.
+
 
       2 De aanvraag voor het tweede en het daaropvolgende voorschot wordt ingediend uiterlijk op de vijftiende dag, om
       17:00 uur, van de kalendermaand die voorafgaat aan de kalendermaand waarop het voorschot betrekking heeft.
@@ -1128,19 +1146,20 @@ articles:
       het prijsplafond zal plaatsvinden.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.1.8
   - number: 6.1.9
-    text: |-
+    text: >-
       1 De Minister geeft een beschikking op een aanvraag voor een voorschot binnen twee weken na ontvangst van de
       aanvraag.
+
 
       2 Deze termijn kan eenmaal met ten hoogste twee weken worden verlengd.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.1.9
   - number: 6.2.1
-    text: |-
+    text: >-
       De Minister verstrekt op aanvraag één keer in 2023 een voorschot voor de toepassing van het prijsplafond voor
       warmte.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.2.1
   - number: 6.2.2
-    text: |-
+    text: >-
       Het jaarlijkse voorschot kan op verzoek van de subsidieontvanger worden gecorrigeerd bij wijzigingen van het aantal
       kleinverbruikaansluitingen of een contractueel leveringstarief.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.2.2
@@ -1233,14 +1252,15 @@ articles:
       worden geleverd in 2023, waarvoor de toepassing van het prijsplafond zal plaatsvinden.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.2.6
   - number: 6.2.7
-    text: |-
+    text: >-
       1 De Minister geeft een beschikking op een aanvraag voor een voorschot binnen twee weken na ontvangst van de
       aanvraag.
+
 
       2 Deze termijn kan eenmaal met ten hoogste twee weken worden verlengd.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel6.2.7
   - number: '7.1'
-    text: |-
+    text: >-
       Een subsidieontvanger dient uiterlijk 30 juni 2025, 17:00 uur, een aanvraag in voor subsidievaststelling voor de
       toepassing van het prijsplafond voor elektriciteit, gas of warmte.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel7.1
@@ -1302,9 +1322,10 @@ articles:
     text: De Minister beslist op een aanvraag voor subsidievaststelling binnen dertien weken na ontvangst van de aanvraag.
     url: https://wetten.overheid.nl/BWBR0047628/2022-12-15#Artikel7.3
   - number: '8.1'
-    text: |-
+    text: >-
       1 Deze regeling treedt in werking met ingang van de dag na de datum van uitgifte van de Staatscourant waarin zij
       wordt geplaatst.
+
 
       2 Deze regeling vervalt met ingang van 1 januari 2027, met dien verstande dat zij van toepassing blijft op
       subsidies die voor die datum zijn verstrekt.

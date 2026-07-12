@@ -87,6 +87,21 @@ export function documentFileUrl(trajectRef, docPath) {
   return `${corpusBase(trajectRef)}/documents/${encoded}`;
 }
 
+// Multipart upload of a PDF/Word document; the backend stores the bytes
+// and enqueues an async conversion-to-markdown job. Traject-scoped only,
+// like the other document builders.
+export function documentUploadUrl(trajectRef) {
+  requireTraject(trajectRef, 'document upload');
+  return `${corpusBase(trajectRef)}/documents/upload`;
+}
+
+// Running/failed document-conversion jobs for the traject, backing the
+// werkdocumenten conversion-status block.
+export function documentJobsUrl(trajectRef) {
+  requireTraject(trajectRef, 'document jobs listing');
+  return `${corpusBase(trajectRef)}/documents/jobs`;
+}
+
 // Writes only exist under the traject prefix. Composables call this at
 // the top of their save function so the call-stack failure is "no
 // traject" instead of a malformed URL.

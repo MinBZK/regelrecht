@@ -49,6 +49,54 @@ export const lawFetchInit = Object.freeze({
   errorMessage: (status) => `Failed to fetch: ${status}`,
 });
 
+// The single cache-entry shape shared by every producer (fresh fetch,
+// direct-URL load, save). The `etag` is echoed back as `If-Match` on the
+// next save so a concurrent edit by another traject member surfaces as a
+// 412 instead of a silent overwrite (same chain as useTrajectDocuments).
+function makeEntry(law, rawYaml, etag) {
+  return { law, rawYaml, lawName: resolveLawName(law), etag };
+}
+
+// In-flight law GETs, keyed like `lawCache`. Simultaneous callers share
+// one request instead of racing duplicate GETs against an empty cache —
+// which is exactly what an editor mount does: `useLaw().load()` fetches
+// the routed law while the persisted-tab label loader `fetchLaw`s the
+// same id in parallel. Entries are removed when the request settles, so
+// a failed fetch never pins a rejected promise (retries hit the network).
+const pendingLawFetches = new Map();
+
+/**
+ * The network leg shared by `fetchLaw` and `useLaw().load()`: always
+ * fetches (no cache read — `load()` relies on that for freshness),
+ * single-flighted per cache key, and stores the entry in `lawCache`
+ * under the requested id (and the body's resolved `$id`, when the two
+ * differ) before resolving.
+ */
+function fetchLawFresh(trajectRef, lawId) {
+  const key = lawCacheKey(trajectRef, lawId);
+  const pending = pendingLawFetches.get(key);
+  if (pending) return pending;
+  const p = (async () => {
+    const res = await apiFetch(lawUrl(trajectRef, lawId), lawFetchInit);
+    const text = await res.text();
+    const law = yaml.load(text);
+    const entry = makeEntry(law, text, res.headers.get('ETag'));
+    // Always overwrite: this is fresh content, so any pre-existing entry
+    // is by definition stale (older body and/or ETag) — keeping it would
+    // hand `fetchLaw`/`switchLaw` callers outdated YAML and a
+    // precondition doomed to 412.
+    lawCache.set(key, entry);
+    const resolvedId = law?.$id;
+    if (resolvedId && resolvedId !== lawId) {
+      lawCache.set(lawCacheKey(trajectRef, resolvedId), entry);
+    }
+    return entry;
+  })();
+  pendingLawFetches.set(key, p);
+  p.catch(() => {}).finally(() => pendingLawFetches.delete(key));
+  return p;
+}
+
 /**
  * Fetch a law's YAML, possibly from cache. The traject id is part of
  * the cache key so this never returns content from a different traject
@@ -61,20 +109,7 @@ export async function fetchLaw(trajectRef, lawId) {
   const key = lawCacheKey(trajectRef, lawId);
   const cached = lawCache.get(key);
   if (cached) return cached;
-  const res = await apiFetch(lawUrl(trajectRef, lawId), lawFetchInit);
-  const text = await res.text();
-  const law = yaml.load(text);
-  const entry = {
-    law,
-    rawYaml: text,
-    lawName: resolveLawName(law),
-    // Echoed back as `If-Match` on the next save so a concurrent edit
-    // by another traject member surfaces as a 412 instead of a silent
-    // overwrite (same chain as useTrajectDocuments).
-    etag: res.headers.get('ETag'),
-  };
-  lawCache.set(key, entry);
-  return entry;
+  return fetchLawFresh(trajectRef, lawId);
 }
 
 export function useLaw(lawParam, articleParam, trajectRefParam) {
@@ -118,28 +153,39 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
 
   async function load() {
     const isCurrent = claimSwitch();
+    // Snapshot before any await: a concurrent `switchLaw` mutates
+    // `currentTrajectRef`, and the direct-URL cache write below must key
+    // on the traject this load was issued for — not whichever traject the
+    // user has navigated to by the time the response body arrives.
+    const loadTrajectRef = currentTrajectRef;
     try {
       loading.value = true;
-      const url = initialDirectUrl ?? lawUrl(currentTrajectRef, lawParam);
-      const res = await apiFetch(url, lawFetchInit);
+      let entry;
+      if (initialDirectUrl) {
+        // Direct URL: no law id to key the shared in-flight map on, so
+        // fetch inline and cache under the body's resolved `$id`.
+        const res = await apiFetch(initialDirectUrl, lawFetchInit);
+        if (!isCurrent()) return;
+        const text = await res.text();
+        // Deliberately no second staleness check between `.text()` and the
+        // parse (the original had one): the content is fresh either way and
+        // the cache key is snapshotted above, so caching it mirrors
+        // `fetchLawFresh` semantics even if this load went stale mid-flight;
+        // the final `isCurrent()` below still guards all component state.
+        const parsed = yaml.load(text);
+        entry = makeEntry(parsed, text, res.headers.get('ETag'));
+        const resolvedId = parsed?.$id || lawParam;
+        lawCache.set(lawCacheKey(loadTrajectRef, resolvedId), entry);
+      } else {
+        // Fresh fetch (never the cache), shared with any concurrent
+        // `fetchLaw` for the same law so a mount doesn't fire duplicate
+        // GETs. Cache writes happen inside `fetchLawFresh`.
+        entry = await fetchLawFresh(loadTrajectRef, lawParam);
+      }
       if (!isCurrent()) return;
-      const text = await res.text();
-      if (!isCurrent()) return;
-      rawYaml.value = text;
-      law.value = yaml.load(text);
-      currentEtag.value = res.headers.get('ETag');
-      const resolvedId = law.value?.$id || lawParam;
-      const key = lawCacheKey(currentTrajectRef, resolvedId);
-      // Always overwrite: `load()` just fetched fresh content, so any
-      // pre-existing entry is by definition stale (older body and/or
-      // ETag) — keeping it would hand `fetchLaw`/`switchLaw` callers
-      // outdated YAML and a precondition doomed to 412.
-      lawCache.set(key, {
-        law: law.value,
-        rawYaml: text,
-        lawName: resolveLawName(law.value),
-        etag: currentEtag.value,
-      });
+      rawYaml.value = entry.rawYaml;
+      law.value = entry.law;
+      currentEtag.value = entry.etag;
       if (articles.value.length > 0 && !selectedArticleNumber.value) {
         if (initialArticle && articles.value.some(a => String(a.number) === initialArticle)) {
           selectedArticleNumber.value = initialArticle;
@@ -287,12 +333,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
       }
       const resolvedId = parsed?.$id || savedLawId;
       const savedKey = lawCacheKey(savedTrajectRef, resolvedId);
-      lawCache.set(savedKey, {
-        law: parsed,
-        rawYaml: yamlText,
-        lawName: resolveLawName(parsed),
-        etag: newEtag,
-      });
+      lawCache.set(savedKey, makeEntry(parsed, yamlText, newEtag));
     } catch (e) {
       if (lawId.value === savedLawId && currentTrajectRef === savedTrajectRef) {
         saveError.value = e;

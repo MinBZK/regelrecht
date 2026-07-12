@@ -13,23 +13,27 @@
 //! other.
 //!
 //! The cached index snapshot expires after [`TRAJECT_INDEX_TTL`]: the
-//! first request past the TTL re-enumerates the sources and swaps in a
-//! fresh [`SourceMap`] (new laws merged upstream, re-harvests, saves on
-//! another replica become visible without a process restart), while the
-//! backends, the post-save overlay (reconciled against the branch — see
-//! [`reconcile_overlay`]), the implements index/memo and the
-//! changed-laws cache carry over so in-flight saves, read-your-writes
-//! semantics and implementor lookups are unaffected.
+//! first request past the TTL kicks off a background re-enumeration of
+//! the sources that swaps in a fresh [`SourceMap`] (new laws merged
+//! upstream, re-harvests, saves on another replica become visible
+//! without a process restart) while every request — including that first
+//! one — keeps being served the stale snapshot (stale-while-revalidate;
+//! nobody waits out the GitHub round-trips). The backends, the post-save
+//! overlay (reconciled against the branch — see [`reconcile_overlay`]),
+//! the implements index/memo and the changed-laws cache carry over so
+//! in-flight saves, read-your-writes semantics and implementor lookups
+//! are unaffected.
 
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use regelrecht_corpus::backend::create_backend;
 use regelrecht_corpus::models::{GitHubSource, LocalSource, Source, SourceType};
 use regelrecht_corpus::source_map::collect_law_implements;
+use regelrecht_corpus::timing;
 use regelrecht_corpus::{CorpusRegistry, SourceMap};
 use sqlx::PgPool;
 use tokio::sync::{Mutex, RwLock};
@@ -97,7 +101,47 @@ pub struct TrajectCorpus {
     /// process restart. Bounded at [`BODY_CACHE_MAX_ENTRIES`] with FIFO
     /// eviction so a crawl across a large federated corpus can't grow it
     /// without limit.
-    body_cache: RwLock<BoundedBodyCache>,
+    body_cache: RwLock<BoundedCache<String>>,
+    /// Law-scoped sidecar files (annotations, individual scenario
+    /// `.feature` files) fetched lazily on first read, keyed by a
+    /// caller-prefixed string (see `corpus_handlers`). `None` entries are
+    /// cached too — "this law has no annotations" costs a full GitHub
+    /// round-trip to rediscover, and the editor asks on every law open.
+    ///
+    /// Per-snapshot like `body_cache` (upstream edits become visible
+    /// within [`TRAJECT_INDEX_TTL`]); writes keep it correct within the
+    /// window via [`Self::store_sidecar`] / [`Self::invalidate_sidecar`]
+    /// (read-your-writes, like the law-body `overlay`).
+    sidecar_cache: RwLock<BoundedCache<Option<String>>>,
+    /// Per-law scenario listing (filenames + extracted target law ids),
+    /// the result of the union-listing in `list_scenarios_in_scope`. One
+    /// entry costs 2 `list_files` calls plus a read per scenario file to
+    /// rebuild, so the editor's per-law-open listing is the single most
+    /// GitHub-round-trip-heavy read. Per-snapshot; invalidated by
+    /// scenario save/delete.
+    scenario_list_cache: RwLock<BoundedCache<Vec<ScenarioListEntry>>>,
+    /// Write-generation counter guarding `sidecar_cache` against a
+    /// read/write race: a GET-path backend read can take seconds, and a
+    /// save/delete that lands in the cache meanwhile must not be
+    /// overwritten when that older read finally completes — the pre-save
+    /// bytes would then serve (with a pre-save ETag, 412-looping the
+    /// saver's next If-Match) until the snapshot swap. Write-initiated
+    /// mutations bump this under the cache write lock; read-path stores
+    /// capture it *before* their cache probe (a capture after the probe
+    /// would let a write landing in between go unnoticed — the read
+    /// would see the post-write generation and re-cache possibly stale
+    /// backend bytes over the write's entry) and insert only while it is
+    /// unchanged. One counter per cache family (see
+    /// `scenario_list_write_gen`) so a write in one family never drops a
+    /// concurrent read-path store in the other.
+    sidecar_write_gen: AtomicU64,
+    /// Write-generation counter guarding `scenario_list_cache` — the
+    /// listing analogue of `sidecar_write_gen`, with the same capture-
+    /// before-probe contract. Bumped by [`Self::record_scenario_saved`] /
+    /// [`Self::record_scenario_deleted`] so an in-flight listing rebuild
+    /// discards its (possibly pre-write) result instead of masking the
+    /// mutation.
+    scenario_list_write_gen: AtomicU64,
     /// "Law → laws it `implements`" index, built on demand by
     /// [`implementors_of`]. A TTL refresh carries the previous snapshot's
     /// index over as a *stale* value (see `implements_index_stale`) and
@@ -142,8 +186,24 @@ pub struct TrajectCorpus {
     /// fallback when a fresh Compare call fails (e.g. token throttled), so
     /// the section degrades to slightly-stale rather than vanishing.
     /// Shared (via the `Arc`) across TTL index refreshes, like `overlay`:
-    /// a refresh must not undo `save_law`'s invalidation of this cache.
+    /// a refresh must not undo `save_law`'s update of this cache.
     changed_cache: Arc<RwLock<Option<ChangedLawsCache>>>,
+    /// Single-flight gate for the *background* changed-laws recompute
+    /// spawned by [`Self::changed_law_ids`] when the cache entry has
+    /// expired: only one task per traject recomputes, everyone else keeps
+    /// serving the stale ids. Shared across snapshots like the cache it
+    /// guards, so a refresh mid-recompute cannot admit a second Compare
+    /// call.
+    changed_refresh_in_flight: Arc<AtomicBool>,
+}
+
+/// One scenario file in a law's cached listing: the filename plus the law
+/// ids its `I evaluate … of "…"` steps target (the data
+/// `corpus_handlers::ScenarioEntry` is serialised from).
+#[derive(Clone)]
+pub struct ScenarioListEntry {
+    pub filename: String,
+    pub target_law_ids: Vec<String>,
 }
 
 /// Cached result of [`TrajectCorpus::changed_law_ids`] with the instant it
@@ -153,6 +213,17 @@ struct ChangedLawsCache {
     law_ids: Vec<String>,
 }
 
+/// RAII reset for a single-flight `AtomicBool` held by a spawned task:
+/// clears the flag when the task ends, *including* on panic — a latched
+/// flag would permanently disable the background path it guards.
+struct ResetOnDrop(Arc<AtomicBool>);
+
+impl Drop for ResetOnDrop {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+
 /// How long a cached changed-laws diff is served before a fresh GitHub
 /// Compare call is made. Short enough that another member's save shows up
 /// promptly in the sidebar, long enough to collapse a burst of library
@@ -160,12 +231,14 @@ struct ChangedLawsCache {
 const CHANGED_LAWS_TTL: Duration = Duration::from_secs(60);
 
 /// How long a traject's cached index snapshot (its [`SourceMap`] plus the
-/// derived body / implements caches) is served before the first request
-/// past the deadline re-enumerates the sources. Same convergence target
-/// as [`CHANGED_LAWS_TTL`]: upstream changes (new laws merged, re-harvests,
-/// saves on another replica) show up within a minute instead of requiring
-/// a process restart, while a burst of library loads still hits the
-/// snapshot. The refresh keeps backends, the post-save overlay and the
+/// derived body / sidecar / implements caches) is served before the first
+/// request past the deadline triggers a *background* re-enumeration of
+/// the sources (stale-while-revalidate — the triggering request itself
+/// keeps serving the stale snapshot). Same convergence target as
+/// [`CHANGED_LAWS_TTL`]: upstream changes (new laws merged, re-harvests,
+/// saves on another replica) show up within roughly a minute instead of
+/// requiring a process restart, while a burst of library loads still hits
+/// the snapshot. The refresh keeps backends, the post-save overlay and the
 /// changed-laws cache (see [`TrajectCorpusCache::get_or_build`]).
 const TRAJECT_INDEX_TTL: Duration = Duration::from_secs(60);
 
@@ -187,34 +260,47 @@ const BODY_CACHE_MAX_ENTRIES: usize = 1024;
 /// [`RepoBackend::read_all_implements`]: regelrecht_corpus::backend::RepoBackend::read_all_implements
 const BULK_FETCH_THRESHOLD: usize = 16;
 
-/// Lazily-fetched law bodies with a FIFO size cap. FIFO (not LRU) keeps
-/// reads lock-cheap: a cache hit only needs the outer `RwLock`'s read
-/// guard, no per-hit reordering under a write lock. Eviction order only
-/// matters once a traject's read set exceeds [`BODY_CACHE_MAX_ENTRIES`],
-/// which is already crawl territory.
+/// Lazily-fetched per-snapshot values with a FIFO size cap, keyed by a
+/// caller-chosen string (law id for bodies, a prefixed key for sidecar
+/// files). FIFO (not LRU) keeps reads lock-cheap: a cache hit only needs
+/// the outer `RwLock`'s read guard, no per-hit reordering under a write
+/// lock. Eviction order only matters once a traject's read set exceeds
+/// [`BODY_CACHE_MAX_ENTRIES`], which is already crawl territory.
 #[derive(Default)]
-struct BoundedBodyCache {
-    map: HashMap<String, String>,
+struct BoundedCache<V> {
+    map: HashMap<String, V>,
     /// Insertion order of the keys in `map`, oldest first.
     order: VecDeque<String>,
 }
 
-impl BoundedBodyCache {
-    fn get(&self, law_id: &str) -> Option<&String> {
-        self.map.get(law_id)
+impl<V> BoundedCache<V> {
+    fn get(&self, key: &str) -> Option<&V> {
+        self.map.get(key)
     }
 
-    fn insert(&mut self, law_id: String, body: String) {
-        if !self.map.contains_key(&law_id) {
+    fn insert(&mut self, key: String, value: V) {
+        if !self.map.contains_key(&key) {
             while self.map.len() >= BODY_CACHE_MAX_ENTRIES {
                 let Some(oldest) = self.order.pop_front() else {
                     break;
                 };
                 self.map.remove(&oldest);
             }
-            self.order.push_back(law_id.clone());
+            self.order.push_back(key.clone());
         }
-        self.map.insert(law_id, body);
+        self.map.insert(key, value);
+    }
+
+    /// Drop one key, including its `order` entry. The O(n) deque scan is
+    /// fine — invalidations are save/delete-driven, so rare. Leaving the
+    /// order entry behind would be subtly wrong at capacity: a re-insert
+    /// of the same key appends a duplicate, and eviction popping the
+    /// stale front duplicate would `map.remove` the *live* re-inserted
+    /// value while its newer order entry survives.
+    fn remove(&mut self, key: &str) {
+        if self.map.remove(key).is_some() {
+            self.order.retain(|k| k != key);
+        }
     }
 }
 
@@ -471,6 +557,134 @@ impl TrajectCorpus {
             } else {
                 index.implements_by_law.insert(law_id, implements);
             }
+        }
+    }
+
+    /// Cached sidecar file content for `key` (annotations / scenario
+    /// files; the caller prefixes the key by kind — see
+    /// `corpus_handlers`). The outer `Option` is the cache verdict
+    /// (miss vs hit), the inner one the cached read result — `Some(None)`
+    /// means "we asked GitHub and the file does not exist", which is as
+    /// expensive to rediscover as a hit and far more common (most laws
+    /// have no annotations yet).
+    pub async fn cached_sidecar(&self, key: &str) -> Option<Option<String>> {
+        self.sidecar_cache.read().await.get(key).cloned()
+    }
+
+    /// Current write-generation of `sidecar_cache`. GET-path callers
+    /// capture this *before* their cache probe + backend read and pass it
+    /// to [`Self::store_sidecar_read`], which then drops the store when a
+    /// save/delete bumped the counter in between — see
+    /// `sidecar_write_gen`.
+    pub fn sidecar_write_generation(&self) -> u64 {
+        self.sidecar_write_gen.load(Ordering::SeqCst)
+    }
+
+    /// Current write-generation of `scenario_list_cache` — the listing
+    /// counterpart of [`Self::sidecar_write_generation`], consumed by
+    /// [`Self::store_scenario_list_read`].
+    pub fn scenario_list_write_generation(&self) -> u64 {
+        self.scenario_list_write_gen.load(Ordering::SeqCst)
+    }
+
+    /// Store a GET-path sidecar read result for `key`, unless a
+    /// write-initiated mutation happened since the caller captured
+    /// `gen_before` — a slow read completing after a save must not
+    /// re-cache the pre-save bytes over the save's fresher entry.
+    pub async fn store_sidecar_read(&self, key: String, content: Option<String>, gen_before: u64) {
+        let mut cache = self.sidecar_cache.write().await;
+        if self.sidecar_write_gen.load(Ordering::SeqCst) == gen_before {
+            cache.insert(key, content);
+        }
+    }
+
+    /// Store a just-written sidecar body for `key` — the sidecar analogue
+    /// of [`Self::record_save`]'s read-your-writes. Bumps the write
+    /// generation (under the cache write lock) so an in-flight GET-path
+    /// read discards its possibly pre-save result instead of overwriting
+    /// this entry.
+    pub async fn store_sidecar(&self, key: String, content: Option<String>) {
+        let mut cache = self.sidecar_cache.write().await;
+        self.sidecar_write_gen.fetch_add(1, Ordering::SeqCst);
+        cache.insert(key, content);
+    }
+
+    /// Drop one sidecar cache entry so the next read resolves through the
+    /// real backend routing again. Used by scenario delete, where the
+    /// next read may legitimately fall back to a seed copy — a negative
+    /// cache entry would hide it. Bumps the write generation for the same
+    /// reason [`Self::store_sidecar`] does.
+    pub async fn invalidate_sidecar(&self, key: &str) {
+        let mut cache = self.sidecar_cache.write().await;
+        self.sidecar_write_gen.fetch_add(1, Ordering::SeqCst);
+        cache.remove(key);
+    }
+
+    /// Cached scenario listing for `law_id` (see `scenario_list_cache`).
+    pub async fn cached_scenario_list(&self, law_id: &str) -> Option<Vec<ScenarioListEntry>> {
+        self.scenario_list_cache.read().await.get(law_id).cloned()
+    }
+
+    /// Store the scenario listing computed for `law_id` on the GET path,
+    /// unless a write-initiated mutation happened since `gen_before` was
+    /// captured (same guard as [`Self::store_sidecar_read`] — a listing
+    /// computed before a save/delete must not mask it).
+    pub async fn store_scenario_list_read(
+        &self,
+        law_id: String,
+        entries: Vec<ScenarioListEntry>,
+        gen_before: u64,
+    ) {
+        let mut cache = self.scenario_list_cache.write().await;
+        if self.scenario_list_write_gen.load(Ordering::SeqCst) == gen_before {
+            cache.insert(law_id, entries);
+        }
+    }
+
+    /// Fold a just-saved scenario into the cached listing for `law_id`
+    /// (upsert, keeping the filename sort) instead of invalidating it.
+    /// Surgical on purpose: a full rebuild right after the commit would
+    /// re-list GitHub's Contents API, whose directory view is eventually
+    /// consistent — the rebuild can capture the pre-save view and cache
+    /// it for the rest of the snapshot window. No cached listing → no-op
+    /// (the next listing rebuilds and the file is on the branch). Bumps
+    /// the write generation so an in-flight rebuild discards its
+    /// (possibly pre-save) result.
+    pub async fn record_scenario_saved(
+        &self,
+        law_id: &str,
+        filename: &str,
+        target_law_ids: Vec<String>,
+    ) {
+        let mut cache = self.scenario_list_cache.write().await;
+        self.scenario_list_write_gen.fetch_add(1, Ordering::SeqCst);
+        if let Some(mut entries) = cache.get(law_id).cloned() {
+            match entries.iter_mut().find(|e| e.filename == filename) {
+                Some(entry) => entry.target_law_ids = target_law_ids,
+                None => {
+                    entries.push(ScenarioListEntry {
+                        filename: filename.to_string(),
+                        target_law_ids,
+                    });
+                    entries.sort_by(|a, b| a.filename.cmp(&b.filename));
+                }
+            }
+            cache.insert(law_id.to_string(), entries);
+        }
+    }
+
+    /// Remove a just-deleted scenario from the cached listing for
+    /// `law_id`. Surgical for the same eventual-consistency reason as
+    /// [`Self::record_scenario_saved`]: a rebuild racing GitHub's lagging
+    /// directory view would resurrect the deleted file in the cache for
+    /// up to a snapshot window. Bumps the write generation so an
+    /// in-flight rebuild discards its result.
+    pub async fn record_scenario_deleted(&self, law_id: &str, filename: &str) {
+        let mut cache = self.scenario_list_cache.write().await;
+        self.scenario_list_write_gen.fetch_add(1, Ordering::SeqCst);
+        if let Some(mut entries) = cache.get(law_id).cloned() {
+            entries.retain(|e| e.filename != filename);
+            cache.insert(law_id.to_string(), entries);
         }
     }
 
@@ -751,15 +965,37 @@ impl TrajectCorpus {
     /// any, is served rather than propagating the error — the sidebar keeps
     /// showing the last-known edit set instead of dropping the section.
     pub async fn changed_law_ids(
-        &self,
+        self: &Arc<Self>,
     ) -> Result<Vec<String>, regelrecht_corpus::error::CorpusError> {
-        // Fast path: a fresh cache entry serves without any GitHub call.
+        // Fresh or expired, a cached entry is always served immediately.
+        // Past the TTL the first caller additionally kicks off ONE
+        // background recompute (stale-while-revalidate) — nobody waits
+        // out the GitHub Compare round-trip on the request path, and
+        // convergence stays within one extra TTL window.
         if let Some(cached) = self.changed_cache.read().await.as_ref() {
-            if cached.computed_at.elapsed() < CHANGED_LAWS_TTL {
-                return Ok(cached.law_ids.clone());
+            if cached.computed_at.elapsed() >= CHANGED_LAWS_TTL
+                && self
+                    .changed_refresh_in_flight
+                    .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                    .is_ok()
+            {
+                let corpus = self.clone();
+                tokio::spawn(async move {
+                    // RAII reset (not a trailing `store`): a panic inside
+                    // the recompute must not leave the flag latched true,
+                    // or no request would ever recompute again and the
+                    // stale ids would serve until process restart — the
+                    // AtomicBool analogue of the snapshot refresh's
+                    // OwnedMutexGuard.
+                    let _reset = ResetOnDrop(corpus.changed_refresh_in_flight.clone());
+                    corpus.recompute_changed_cache().await;
+                });
             }
+            return Ok(cached.law_ids.clone());
         }
 
+        // Nothing cached (first call of the process): compute on the
+        // request path — there is nothing stale to serve instead.
         match self.compute_changed_law_ids().await {
             Ok(ids) => {
                 *self.changed_cache.write().await = Some(ChangedLawsCache {
@@ -768,28 +1004,62 @@ impl TrajectCorpus {
                 });
                 Ok(ids)
             }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// The background leg of [`changed_law_ids`]'s stale-while-revalidate:
+    /// recompute the diff and swap it in. On failure the *stale* entry is
+    /// re-armed for another TTL window (matching the snapshot refresh's
+    /// degrade-to-stale stance) so a throttled upstream isn't re-hit by
+    /// every subsequent request.
+    ///
+    /// Known bounded race: the wholesale swap can undo a concurrent
+    /// [`Self::record_changed_law`] fold — a save that commits while the
+    /// Compare call is in flight may briefly drop out of the diff (the
+    /// Compare predates the save's commit, and the path→id mapping runs
+    /// through this possibly-older snapshot's `source_map`). Self-heals
+    /// at the next recompute, ≤ one [`CHANGED_LAWS_TTL`] window; the
+    /// pre-existing invalidate-based code had the same window around a
+    /// save.
+    async fn recompute_changed_cache(&self) {
+        match self.compute_changed_law_ids().await {
+            Ok(ids) => {
+                *self.changed_cache.write().await = Some(ChangedLawsCache {
+                    computed_at: Instant::now(),
+                    law_ids: ids,
+                });
+            }
             Err(e) => {
-                // Serve a stale entry (if we have one) rather than dropping
-                // the section when GitHub is momentarily unavailable /
-                // rate-limited. Only propagate when there's nothing cached.
-                if let Some(cached) = self.changed_cache.read().await.as_ref() {
-                    tracing::warn!(
-                        error = %e,
-                        "changed-laws compute failed; serving stale cached value"
-                    );
-                    return Ok(cached.law_ids.clone());
+                tracing::warn!(
+                    error = %e,
+                    "changed-laws recompute failed; serving stale cached value for another TTL"
+                );
+                if let Some(cached) = self.changed_cache.write().await.as_mut() {
+                    cached.computed_at = Instant::now();
                 }
-                Err(e)
             }
         }
     }
 
-    /// Drop the cached changed-laws diff so the next [`changed_law_ids`]
-    /// call recomputes against GitHub. Called by `save_law` so the saving
-    /// user's new edit shows up in the sidebar immediately instead of after
-    /// the TTL — the changed-laws analogue of [`record_save`].
-    pub async fn invalidate_changed_cache(&self) {
-        *self.changed_cache.write().await = None;
+    /// Fold a just-saved law into the cached changed-laws diff so the
+    /// saving user sees their edit in the sidebar immediately
+    /// (read-your-writes, the changed-laws analogue of [`record_save`]) —
+    /// without the synchronous GitHub Compare call that invalidating the
+    /// cache used to cost the next sidebar load. The entry's TTL clock is
+    /// deliberately NOT reset: the next recompute reconciles against the
+    /// real branch diff on schedule (covering e.g. a save that reverts a
+    /// law back to its base content, which should eventually disappear
+    /// from the list).
+    pub async fn record_changed_law(&self, law_id: &str) {
+        if let Some(cached) = self.changed_cache.write().await.as_mut() {
+            if !cached.law_ids.iter().any(|id| id == law_id) {
+                cached.law_ids.push(law_id.to_string());
+                cached.law_ids.sort();
+            }
+        }
+        // No cache entry yet: leave it absent — the next changed-laws
+        // request computes the real diff (which includes this save).
     }
 
     /// Uncached computation behind [`changed_law_ids`]: ask the writable-own
@@ -842,11 +1112,13 @@ impl CachedCorpus {
 /// Per-traject cache slot. `state` holds the current snapshot (None until
 /// first build); `build_lock` single-flights both the initial build and
 /// TTL refreshes so concurrent first-touches share one clone and a
-/// refresh herd collapses to one source enumeration.
+/// refresh herd collapses to one source enumeration. Behind an `Arc` so
+/// the background refresh task can carry its `OwnedMutexGuard` across
+/// `tokio::spawn`.
 #[derive(Default)]
 struct TrajectSlot {
     state: RwLock<Option<CachedCorpus>>,
-    build_lock: Mutex<()>,
+    build_lock: Arc<Mutex<()>>,
     /// Consecutive failed TTL refreshes. Serving stale stays correct
     /// indefinitely, but a permanently broken source would otherwise
     /// re-warn every TTL window — the count rate-limits the warn to the
@@ -902,12 +1174,14 @@ impl TrajectCorpusCache {
     /// `ensure_ready`), and stitches them into a [`CorpusState`].
     ///
     /// When the cached snapshot is older than the index TTL, the first
-    /// request past the deadline re-enumerates the sources and swaps in a
-    /// refreshed [`TrajectCorpus`] (see [`refresh_traject_corpus`] for
-    /// what carries over); concurrent requests keep being served the
-    /// stale snapshot while one refresh is in flight, and a failed
-    /// refresh extends the stale snapshot for another TTL window instead
-    /// of erroring reads (same degrade-to-stale stance as
+    /// request past the deadline kicks off a *background* refresh (see
+    /// [`refresh_traject_corpus`] for what carries over) and — like every
+    /// concurrent request while that refresh is in flight — keeps being
+    /// served the stale snapshot. No request ever waits out the source
+    /// re-enumeration (stale-while-revalidate); only the very first build
+    /// of a traject blocks, because there is nothing to serve yet. A
+    /// failed refresh extends the stale snapshot for another TTL window
+    /// instead of erroring reads (same degrade-to-stale stance as
     /// [`TrajectCorpus::changed_law_ids`]).
     pub async fn get_or_build(
         &self,
@@ -923,79 +1197,52 @@ impl TrajectCorpusCache {
         };
 
         // Fast path: a fresh snapshot serves without touching the build
-        // lock. A stale-but-present snapshot is remembered so it can be
-        // served when another task is already refreshing.
-        let stale = {
+        // lock. A stale snapshot is served just as fast — expiry only
+        // decides whether a background refresh is kicked off first.
+        {
             let state = slot.state.read().await;
             match state.as_ref() {
                 Some(cached) if cached.is_fresh(self.index_ttl) => {
-                    return Ok(cached.corpus.clone())
+                    tracing::debug!(traject = %traject_id, cache = "hit", "traject corpus served from cache");
+                    return Ok(cached.corpus.clone());
                 }
-                Some(cached) => Some(cached.corpus.clone()),
-                None => None,
-            }
-        };
-
-        let _build = match &stale {
-            // Nothing cached: every caller must wait for the one build.
-            None => slot.build_lock.lock().await,
-            // Stale: only one task refreshes; the rest serve stale rather
-            // than queueing up behind a network round-trip.
-            Some(stale_corpus) => match slot.build_lock.try_lock() {
-                Ok(guard) => guard,
-                Err(_) => return Ok(stale_corpus.clone()),
-            },
-        };
-
-        // Re-check under the build lock: the previous holder may have
-        // built/refreshed while we waited.
-        let stale = {
-            let state = slot.state.read().await;
-            match state.as_ref() {
-                Some(cached) if cached.is_fresh(self.index_ttl) => {
-                    return Ok(cached.corpus.clone())
-                }
-                Some(cached) => Some(cached.corpus.clone()),
-                None => None,
-            }
-        };
-
-        let corpus = match stale {
-            None => build_traject_corpus(pool, traject_id, auth_file.as_deref()).await?,
-            Some(old) => match refresh_traject_corpus(&old, traject_id).await {
-                Ok(refreshed) => refreshed,
-                Err(e) => {
-                    // Serve (and re-arm) the stale snapshot rather than
-                    // failing reads on a transient enumeration error; the
-                    // re-armed `built_at` stops every subsequent request
-                    // from re-attempting against a throttled upstream.
-                    // Rate-limit the warn: a permanently broken source
-                    // fails every TTL window, and repeating the same warn
-                    // each minute drowns the log without new signal.
-                    let failures = slot.refresh_failures.fetch_add(1, Ordering::SeqCst) + 1;
-                    if failures == 1 || failures % FAILED_REFRESH_WARN_EVERY == 0 {
-                        tracing::warn!(
-                            traject = %traject_id,
-                            error = %e,
-                            consecutive_failures = failures,
-                            "traject index refresh failed; serving stale snapshot for another TTL"
-                        );
-                    } else {
-                        tracing::debug!(
-                            traject = %traject_id,
-                            error = %e,
-                            consecutive_failures = failures,
-                            "traject index refresh failed again; serving stale snapshot for another TTL"
+                Some(cached) => {
+                    let stale = cached.corpus.clone();
+                    drop(state);
+                    // Stale: only one task refreshes (`try_lock`); everyone
+                    // else — including the winner — serves stale rather than
+                    // queueing up behind a network round-trip.
+                    if let Ok(guard) = slot.build_lock.clone().try_lock_owned() {
+                        spawn_background_refresh(
+                            guard,
+                            slot.clone(),
+                            stale.clone(),
+                            traject_id,
+                            self.index_ttl,
                         );
                     }
-                    *slot.state.write().await = Some(CachedCorpus {
-                        corpus: old.clone(),
-                        built_at: Instant::now(),
-                    });
-                    return Ok(old);
+                    return Ok(stale);
                 }
-            },
-        };
+                None => {}
+            }
+        }
+
+        // Nothing cached: every caller must wait for the one build.
+        let _build = slot.build_lock.clone().lock_owned().await;
+
+        // Re-check under the build lock: the previous holder may have
+        // built while we waited.
+        if let Some(cached) = slot.state.read().await.as_ref() {
+            tracing::debug!(traject = %traject_id, cache = "hit", "traject corpus served from cache");
+            return Ok(cached.corpus.clone());
+        }
+
+        tracing::debug!(traject = %traject_id, cache = "cold", "building traject corpus (cold)");
+        let corpus = timing::measure(
+            "build",
+            build_traject_corpus(pool, traject_id, auth_file.as_deref()),
+        )
+        .await?;
 
         slot.refresh_failures.store(0, Ordering::SeqCst);
         *slot.state.write().await = Some(CachedCorpus {
@@ -1010,6 +1257,91 @@ impl TrajectCorpusCache {
     /// served further.
     pub async fn invalidate(&self, traject_id: Uuid) {
         self.cells.write().await.remove(&traject_id);
+    }
+}
+
+/// The background leg of [`TrajectCorpusCache::get_or_build`]'s
+/// stale-while-revalidate: refresh the index snapshot off the request
+/// path and swap it into the slot. `guard` is the slot's build lock,
+/// won by `try_lock` on the request path and held until the swap so a
+/// concurrent expiry cannot start a second enumeration.
+///
+/// On failure the stale snapshot is re-armed for another TTL window —
+/// the re-armed `built_at` stops every subsequent request from
+/// re-attempting against a throttled upstream. The warn is rate-limited
+/// via `refresh_failures`: a permanently broken source fails every TTL
+/// window, and repeating the same warn each minute drowns the log
+/// without new signal.
+///
+/// Races it tolerates: a [`TrajectCorpusCache::invalidate`] between
+/// spawn and swap orphans the slot (it's no longer in `cells`), so the
+/// swap writes into state nobody reads again — the next request builds
+/// cold, which is exactly what invalidation asks for.
+fn spawn_background_refresh(
+    guard: tokio::sync::OwnedMutexGuard<()>,
+    slot: Arc<TrajectSlot>,
+    old: Arc<TrajectCorpus>,
+    traject_id: Uuid,
+    index_ttl: Duration,
+) {
+    tokio::spawn(async move {
+        let _guard = guard;
+        // Between losing the state read lock and winning the build lock a
+        // previous holder may already have refreshed — don't enumerate the
+        // sources twice within one TTL window.
+        if let Some(cached) = slot.state.read().await.as_ref() {
+            if cached.is_fresh(index_ttl) {
+                return;
+            }
+        }
+
+        let span = tracing::info_span!("traject_index_refresh", traject = %traject_id);
+        let outcome =
+            tracing::Instrument::instrument(refresh_traject_corpus(&old, traject_id), span).await;
+        apply_refresh_outcome(&slot, old, traject_id, outcome).await;
+    });
+}
+
+/// Swap a refresh outcome into the slot: a fresh snapshot on success, the
+/// re-armed stale one on failure. Factored out of
+/// [`spawn_background_refresh`] so the failure stance is unit-testable
+/// without needing a source that fails to enumerate.
+async fn apply_refresh_outcome(
+    slot: &TrajectSlot,
+    old: Arc<TrajectCorpus>,
+    traject_id: Uuid,
+    outcome: Result<Arc<TrajectCorpus>, TrajectCorpusError>,
+) {
+    match outcome {
+        Ok(refreshed) => {
+            slot.refresh_failures.store(0, Ordering::SeqCst);
+            *slot.state.write().await = Some(CachedCorpus {
+                corpus: refreshed,
+                built_at: Instant::now(),
+            });
+        }
+        Err(e) => {
+            let failures = slot.refresh_failures.fetch_add(1, Ordering::SeqCst) + 1;
+            if failures == 1 || failures.is_multiple_of(FAILED_REFRESH_WARN_EVERY) {
+                tracing::warn!(
+                    traject = %traject_id,
+                    error = %e,
+                    consecutive_failures = failures,
+                    "traject index refresh failed; serving stale snapshot for another TTL"
+                );
+            } else {
+                tracing::debug!(
+                    traject = %traject_id,
+                    error = %e,
+                    consecutive_failures = failures,
+                    "traject index refresh failed again; serving stale snapshot for another TTL"
+                );
+            }
+            *slot.state.write().await = Some(CachedCorpus {
+                corpus: old,
+                built_at: Instant::now(),
+            });
+        }
     }
 }
 
@@ -1048,6 +1380,7 @@ impl From<regelrecht_corpus::error::CorpusError> for TrajectCorpusError {
 
 /// Build a fresh [`TrajectCorpus`]: load sources from DB, clone backends,
 /// produce a [`SourceMap`].
+#[tracing::instrument(name = "build_traject_corpus", skip_all, fields(traject = %traject_id))]
 async fn build_traject_corpus(
     pool: &PgPool,
     traject_id: Uuid,
@@ -1237,29 +1570,30 @@ async fn build_traject_corpus(
     // failing entirely on what is usually a transient GitHub hiccup. The hard
     // failure path is the writable-own *backend* init above, which returns
     // `Err` so a broken write target never opens silently.
-    let source_map = match registry.index_all_sources_async(auth_file).await {
-        Ok((map, failed)) => {
-            if failed.iter().any(|id| id == &writable_own_source_id) {
-                tracing::error!(
-                    traject = %traject_id,
-                    source_id = %writable_own_source_id,
-                    "traject writable-own source failed to load — the traject's own laws \
-                     will be missing from the bibliotheek until the corpus is rebuilt"
-                );
+    let source_map =
+        match timing::measure("index", registry.index_all_sources_async(auth_file)).await {
+            Ok((map, failed)) => {
+                if failed.iter().any(|id| id == &writable_own_source_id) {
+                    tracing::error!(
+                        traject = %traject_id,
+                        source_id = %writable_own_source_id,
+                        "traject writable-own source failed to load — the traject's own laws \
+                         will be missing from the bibliotheek until the corpus is rebuilt"
+                    );
+                }
+                map
             }
-            map
-        }
-        Err(e) => {
-            tracing::warn!(
-                traject = %traject_id,
-                error = %e,
-                "traject corpus load failed, falling back to local-only"
-            );
-            registry
-                .load_local_sources()
-                .unwrap_or_else(|_| SourceMap::new())
-        }
-    };
+            Err(e) => {
+                tracing::warn!(
+                    traject = %traject_id,
+                    error = %e,
+                    "traject corpus load failed, falling back to local-only"
+                );
+                registry
+                    .load_local_sources()
+                    .unwrap_or_else(|_| SourceMap::new())
+            }
+        };
 
     Ok(Arc::new(TrajectCorpus {
         corpus: CorpusState {
@@ -1271,12 +1605,17 @@ async fn build_traject_corpus(
         write_target_for_source,
         writable_own_source_id,
         overlay: Arc::new(RwLock::new(HashMap::new())),
-        body_cache: RwLock::new(BoundedBodyCache::default()),
+        body_cache: RwLock::new(BoundedCache::default()),
         implements_index: RwLock::new(None),
         implements_index_stale: AtomicBool::new(false),
         implements_build_lock: Mutex::new(()),
         implements_memo: Arc::new(RwLock::new(HashMap::new())),
         changed_cache: Arc::new(RwLock::new(None)),
+        changed_refresh_in_flight: Arc::new(AtomicBool::new(false)),
+        sidecar_cache: RwLock::new(BoundedCache::default()),
+        scenario_list_cache: RwLock::new(BoundedCache::default()),
+        sidecar_write_gen: AtomicU64::new(0),
+        scenario_list_write_gen: AtomicU64::new(0),
     }))
 }
 
@@ -1354,12 +1693,17 @@ async fn next_snapshot(old: &Arc<TrajectCorpus>, source_map: SourceMap) -> Arc<T
         write_target_for_source: old.write_target_for_source.clone(),
         writable_own_source_id: old.writable_own_source_id.clone(),
         overlay: old.overlay.clone(),
-        body_cache: RwLock::new(BoundedBodyCache::default()),
+        body_cache: RwLock::new(BoundedCache::default()),
         implements_index: RwLock::new(carried_index),
         implements_index_stale: AtomicBool::new(true),
         implements_build_lock: Mutex::new(()),
         implements_memo: old.implements_memo.clone(),
         changed_cache: old.changed_cache.clone(),
+        changed_refresh_in_flight: old.changed_refresh_in_flight.clone(),
+        sidecar_cache: RwLock::new(BoundedCache::default()),
+        scenario_list_cache: RwLock::new(BoundedCache::default()),
+        sidecar_write_gen: AtomicU64::new(0),
+        scenario_list_write_gen: AtomicU64::new(0),
     })
 }
 
@@ -1606,6 +1950,12 @@ mod tests {
         async fn list_files(&self, _: &Path, _: Option<&str>) -> CorpusResult<Vec<FileEntry>> {
             Ok(Vec::new())
         }
+        async fn changed_files(&self) -> CorpusResult<Vec<String>> {
+            if self.fail_reads {
+                return Err(CorpusError::Git("simulated throttle".to_string()));
+            }
+            Ok(Vec::new())
+        }
         async fn persist(&self, _: &CorpusWriteContext) -> CorpusResult<PersistOutcome> {
             Ok(PersistOutcome::default())
         }
@@ -1640,12 +1990,17 @@ mod tests {
             write_target_for_source: HashMap::new(),
             writable_own_source_id: "own".to_string(),
             overlay: Arc::new(RwLock::new(HashMap::new())),
-            body_cache: RwLock::new(BoundedBodyCache::default()),
+            body_cache: RwLock::new(BoundedCache::default()),
             implements_index: RwLock::new(None),
             implements_index_stale: AtomicBool::new(false),
             implements_build_lock: Mutex::new(()),
             implements_memo: Arc::new(RwLock::new(HashMap::new())),
             changed_cache: Arc::new(RwLock::new(None)),
+            changed_refresh_in_flight: Arc::new(AtomicBool::new(false)),
+            sidecar_cache: RwLock::new(BoundedCache::default()),
+            scenario_list_cache: RwLock::new(BoundedCache::default()),
+            sidecar_write_gen: AtomicU64::new(0),
+            scenario_list_write_gen: AtomicU64::new(0),
         }
     }
 
@@ -1682,11 +2037,11 @@ mod tests {
         }
     }
 
-    // ---- BoundedBodyCache ----
+    // ---- BoundedCache ----
 
     #[test]
     fn body_cache_evicts_oldest_at_cap() {
-        let mut cache = BoundedBodyCache::default();
+        let mut cache = BoundedCache::default();
         for i in 0..BODY_CACHE_MAX_ENTRIES + 10 {
             cache.insert(format!("law_{i}"), "body".to_string());
         }
@@ -1702,7 +2057,7 @@ mod tests {
 
     #[test]
     fn body_cache_overwrite_does_not_grow_or_evict() {
-        let mut cache = BoundedBodyCache::default();
+        let mut cache = BoundedCache::default();
         cache.insert("a".to_string(), "v1".to_string());
         cache.insert("b".to_string(), "v1".to_string());
         cache.insert("a".to_string(), "v2".to_string());
@@ -1713,7 +2068,7 @@ mod tests {
 
     #[test]
     fn body_cache_overwrite_at_cap_does_not_evict() {
-        let mut cache = BoundedBodyCache::default();
+        let mut cache = BoundedCache::default();
         // Fill exactly to capacity.
         for i in 0..BODY_CACHE_MAX_ENTRIES {
             cache.insert(format!("law_{i}"), "v1".to_string());
@@ -1975,12 +2330,17 @@ mod tests {
             write_target_for_source: HashMap::new(),
             writable_own_source_id: "own".to_string(),
             overlay: Arc::new(RwLock::new(HashMap::new())),
-            body_cache: RwLock::new(BoundedBodyCache::default()),
+            body_cache: RwLock::new(BoundedCache::default()),
             implements_index: RwLock::new(None),
             implements_index_stale: AtomicBool::new(false),
             implements_build_lock: Mutex::new(()),
             implements_memo: Arc::new(RwLock::new(HashMap::new())),
             changed_cache: Arc::new(RwLock::new(None)),
+            changed_refresh_in_flight: Arc::new(AtomicBool::new(false)),
+            sidecar_cache: RwLock::new(BoundedCache::default()),
+            scenario_list_cache: RwLock::new(BoundedCache::default()),
+            sidecar_write_gen: AtomicU64::new(0),
+            scenario_list_write_gen: AtomicU64::new(0),
         })
     }
 
@@ -2243,6 +2603,439 @@ mod tests {
             refreshed.law_yaml("wet_a").await.unwrap().as_deref(),
             Some("$id: wet_a\nname: saved\n")
         );
+    }
+
+    /// Poll `probe` until it returns `Some` or ~2s elapse — the background
+    /// tasks under test swap state asynchronously, so assertions await
+    /// convergence instead of racing the spawn.
+    async fn wait_for<T, F, Fut>(mut probe: F) -> T
+    where
+        F: FnMut() -> Fut,
+        Fut: std::future::Future<Output = Option<T>>,
+    {
+        for _ in 0..200 {
+            if let Some(v) = probe().await {
+                return v;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        panic!("background task did not converge within 2s");
+    }
+
+    #[tokio::test]
+    async fn background_refresh_swaps_in_a_fresh_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        write_law_file(dir.path(), "wet_a", "$id: wet_a\nname: v1\n");
+        let old = local_corpus(dir.path()).await;
+
+        let slot = Arc::new(TrajectSlot::default());
+        *slot.state.write().await = Some(CachedCorpus {
+            corpus: old.clone(),
+            // Expired: eligible for refresh.
+            built_at: Instant::now() - Duration::from_secs(3600),
+        });
+
+        // Upstream gains a law the stale snapshot misses.
+        write_law_file(dir.path(), "wet_b", "$id: wet_b\nname: nieuw\n");
+
+        let guard = slot.build_lock.clone().try_lock_owned().unwrap();
+        spawn_background_refresh(
+            guard,
+            slot.clone(),
+            old.clone(),
+            Uuid::new_v4(),
+            Duration::from_secs(60),
+        );
+
+        let refreshed = wait_for(|| {
+            let slot = slot.clone();
+            let old = old.clone();
+            async move {
+                let state = slot.state.read().await;
+                let cached = state.as_ref().unwrap();
+                (!Arc::ptr_eq(&cached.corpus, &old)).then(|| cached.corpus.clone())
+            }
+        })
+        .await;
+
+        assert!(refreshed.corpus.source_map.get_law("wet_b").is_some());
+        // The build lock is free again: the next expiry can refresh.
+        assert!(slot.build_lock.clone().try_lock_owned().is_ok());
+    }
+
+    #[tokio::test]
+    async fn failed_refresh_outcome_rearms_the_stale_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        write_law_file(dir.path(), "wet_a", "$id: wet_a\nname: v1\n");
+        let old = local_corpus(dir.path()).await;
+
+        let slot = TrajectSlot::default();
+        let expired = Instant::now() - Duration::from_secs(3600);
+        *slot.state.write().await = Some(CachedCorpus {
+            corpus: old.clone(),
+            built_at: expired,
+        });
+
+        apply_refresh_outcome(
+            &slot,
+            old.clone(),
+            Uuid::new_v4(),
+            Err(TrajectCorpusError::Corpus(
+                regelrecht_corpus::error::CorpusError::Config("enumeration failed".to_string()),
+            )),
+        )
+        .await;
+
+        // The stale snapshot is re-armed (fresh `built_at`), not replaced
+        // and not dropped: reads keep working against the last good state,
+        // and the fresh TTL window stops every subsequent request from
+        // re-attempting against a broken upstream.
+        let state = slot.state.read().await;
+        let cached = state.as_ref().unwrap();
+        assert!(Arc::ptr_eq(&cached.corpus, &old));
+        assert!(cached.built_at > expired);
+        assert_eq!(slot.refresh_failures.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn expired_changed_cache_serves_stale_and_recomputes_in_background() {
+        let mut map = SourceMap::new();
+        metadata_entry(&mut map, "wet_a", "own");
+        let corpus = Arc::new(test_corpus(
+            map,
+            HashMap::from([(
+                "own".to_string(),
+                backend_entry(StubBackend::with_files(&[])),
+            )]),
+        ));
+
+        // An expired cache entry with a value the real diff (empty — the
+        // stub's `changed_files` default) no longer contains.
+        *corpus.changed_cache.write().await = Some(ChangedLawsCache {
+            computed_at: Instant::now() - Duration::from_secs(3600),
+            law_ids: vec!["wet_a".to_string()],
+        });
+
+        // Served immediately, stale value and all — no Compare round-trip
+        // on the request path.
+        let ids = corpus.changed_law_ids().await.unwrap();
+        assert_eq!(ids, vec!["wet_a".to_string()]);
+
+        // …while the background recompute converges to the real diff and
+        // releases the single-flight flag (checked inside the same poll:
+        // the flag reset runs after the cache write, so asserting it
+        // outside the wait would race a multi-threaded runtime).
+        wait_for(|| {
+            let corpus = corpus.clone();
+            async move {
+                let cache = corpus.changed_cache.read().await;
+                let cached = cache.as_ref().unwrap();
+                (cached.law_ids.is_empty()
+                    && !corpus.changed_refresh_in_flight.load(Ordering::SeqCst))
+                .then_some(())
+            }
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn failed_changed_recompute_rearms_stale_and_releases_the_flag() {
+        let mut map = SourceMap::new();
+        metadata_entry(&mut map, "wet_a", "own");
+        let corpus = Arc::new(test_corpus(
+            map,
+            HashMap::from([("own".to_string(), backend_entry(StubBackend::failing()))]),
+        ));
+
+        let expired = Instant::now() - Duration::from_secs(3600);
+        *corpus.changed_cache.write().await = Some(ChangedLawsCache {
+            computed_at: expired,
+            law_ids: vec!["wet_a".to_string()],
+        });
+
+        // Stale value serves; the background recompute fails against the
+        // throttled backend.
+        let ids = corpus.changed_law_ids().await.unwrap();
+        assert_eq!(ids, vec!["wet_a".to_string()]);
+
+        // Failure stance: the stale ids survive, the TTL clock is
+        // re-armed (no per-request re-attempts against a broken
+        // upstream), and the single-flight flag is released so a later
+        // expiry can retry.
+        wait_for(|| {
+            let corpus = corpus.clone();
+            async move {
+                let cache = corpus.changed_cache.read().await;
+                let cached = cache.as_ref().unwrap();
+                (cached.computed_at > expired
+                    && cached.law_ids == vec!["wet_a".to_string()]
+                    && !corpus.changed_refresh_in_flight.load(Ordering::SeqCst))
+                .then_some(())
+            }
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn record_changed_law_folds_a_save_into_the_cached_diff() {
+        let mut map = SourceMap::new();
+        metadata_entry(&mut map, "wet_a", "own");
+        let corpus = Arc::new(test_corpus(
+            map,
+            HashMap::from([(
+                "own".to_string(),
+                backend_entry(StubBackend::with_files(&[])),
+            )]),
+        ));
+
+        // No cache entry yet: recording is a no-op (the next request
+        // computes the real diff, which already includes the save).
+        corpus.record_changed_law("wet_a").await;
+        assert!(corpus.changed_cache.read().await.is_none());
+
+        // With a cached diff the saved law is appended once, sorted, and
+        // the TTL clock is untouched.
+        let computed_at = Instant::now() - Duration::from_secs(30);
+        *corpus.changed_cache.write().await = Some(ChangedLawsCache {
+            computed_at,
+            law_ids: vec!["wet_b".to_string()],
+        });
+        corpus.record_changed_law("wet_a").await;
+        corpus.record_changed_law("wet_a").await;
+        let cache = corpus.changed_cache.read().await;
+        let cached = cache.as_ref().unwrap();
+        assert_eq!(
+            cached.law_ids,
+            vec!["wet_a".to_string(), "wet_b".to_string()]
+        );
+        assert_eq!(cached.computed_at, computed_at);
+    }
+
+    #[tokio::test]
+    async fn sidecar_cache_round_trips_and_resets_per_snapshot() {
+        let mut map = SourceMap::new();
+        metadata_entry(&mut map, "wet_a", "own");
+        let corpus = Arc::new(test_corpus(
+            map,
+            HashMap::from([(
+                "own".to_string(),
+                backend_entry(StubBackend::with_files(&[])),
+            )]),
+        ));
+
+        // Miss, then positive and *negative* results both cache.
+        assert!(corpus.cached_sidecar("ann:wet_a").await.is_none());
+        corpus
+            .store_sidecar("ann:wet_a".to_string(), Some("notes: []\n".to_string()))
+            .await;
+        corpus
+            .store_sidecar("scn:wet_a/x.feature".to_string(), None)
+            .await;
+        assert_eq!(
+            corpus.cached_sidecar("ann:wet_a").await,
+            Some(Some("notes: []\n".to_string()))
+        );
+        assert_eq!(
+            corpus.cached_sidecar("scn:wet_a/x.feature").await,
+            Some(None)
+        );
+
+        // Invalidation drops a single key.
+        corpus.invalidate_sidecar("ann:wet_a").await;
+        assert!(corpus.cached_sidecar("ann:wet_a").await.is_none());
+
+        // Scenario listings follow the same shape.
+        corpus
+            .store_scenario_list_read(
+                "wet_a".to_string(),
+                vec![ScenarioListEntry {
+                    filename: "x.feature".to_string(),
+                    target_law_ids: vec!["wet_a".to_string()],
+                }],
+                corpus.scenario_list_write_generation(),
+            )
+            .await;
+        assert_eq!(
+            corpus
+                .cached_scenario_list("wet_a")
+                .await
+                .unwrap()
+                .first()
+                .unwrap()
+                .filename,
+            "x.feature"
+        );
+
+        // Saves upsert the cached listing in place (sorted), deletes
+        // remove the one entry — never a drop-and-rebuild, which would
+        // race GitHub's eventually-consistent directory view.
+        corpus
+            .record_scenario_saved("wet_a", "a.feature", vec!["wet_a".to_string()])
+            .await;
+        corpus
+            .record_scenario_saved("wet_a", "x.feature", vec!["wet_b".to_string()])
+            .await;
+        let listing = corpus.cached_scenario_list("wet_a").await.unwrap();
+        assert_eq!(
+            listing
+                .iter()
+                .map(|e| e.filename.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a.feature", "x.feature"]
+        );
+        assert_eq!(listing[1].target_law_ids, vec!["wet_b".to_string()]);
+        corpus.record_scenario_deleted("wet_a", "x.feature").await;
+        let listing = corpus.cached_scenario_list("wet_a").await.unwrap();
+        assert_eq!(
+            listing
+                .iter()
+                .map(|e| e.filename.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a.feature"]
+        );
+        // Without a cached listing both records are no-ops: nothing to
+        // update, the next listing rebuilds from the branch.
+        corpus
+            .record_scenario_saved("wet_other", "y.feature", vec![])
+            .await;
+        assert!(corpus.cached_scenario_list("wet_other").await.is_none());
+
+        // A snapshot swap starts with empty sidecar caches: upstream
+        // sidecar edits become visible within one TTL window, like law
+        // bodies.
+        corpus
+            .store_sidecar("scn:wet_a/y.feature".to_string(), None)
+            .await;
+        let mut next_map = SourceMap::new();
+        metadata_entry(&mut next_map, "wet_a", "own");
+        let next = next_snapshot(&corpus, next_map).await;
+        assert!(next.cached_sidecar("scn:wet_a/y.feature").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn stale_read_store_is_dropped_after_a_write_bumps_the_generation() {
+        let mut map = SourceMap::new();
+        metadata_entry(&mut map, "wet_a", "own");
+        let corpus = Arc::new(test_corpus(
+            map,
+            HashMap::from([(
+                "own".to_string(),
+                backend_entry(StubBackend::with_files(&[])),
+            )]),
+        ));
+
+        // A GET-path read starts (generation captured), then a save lands
+        // before the read completes: the read's store must be dropped so
+        // the pre-save bytes cannot mask the save (they'd otherwise serve
+        // — with a pre-save ETag — until the snapshot swap).
+        let gen_before = corpus.sidecar_write_generation();
+        corpus
+            .store_sidecar("scn:wet_a/x.feature".to_string(), Some("saved".to_string()))
+            .await;
+        corpus
+            .store_sidecar_read(
+                "scn:wet_a/x.feature".to_string(),
+                Some("pre-save".to_string()),
+                gen_before,
+            )
+            .await;
+        assert_eq!(
+            corpus.cached_sidecar("scn:wet_a/x.feature").await,
+            Some(Some("saved".to_string()))
+        );
+
+        // Same guard for the listing cache: a listing computed before a
+        // delete's in-place update must not overwrite it (the deleted
+        // file would resurrect).
+        corpus
+            .store_scenario_list_read(
+                "wet_a".to_string(),
+                vec![ScenarioListEntry {
+                    filename: "deleted.feature".to_string(),
+                    target_law_ids: vec![],
+                }],
+                corpus.scenario_list_write_generation(),
+            )
+            .await;
+        let gen_before = corpus.scenario_list_write_generation();
+        corpus
+            .record_scenario_deleted("wet_a", "deleted.feature")
+            .await;
+        corpus
+            .store_scenario_list_read(
+                "wet_a".to_string(),
+                vec![ScenarioListEntry {
+                    filename: "deleted.feature".to_string(),
+                    target_law_ids: vec![],
+                }],
+                gen_before,
+            )
+            .await;
+        assert!(corpus
+            .cached_scenario_list("wet_a")
+            .await
+            .unwrap()
+            .is_empty());
+
+        // An undisturbed read (no write in between) stores normally.
+        let gen_before = corpus.sidecar_write_generation();
+        corpus
+            .store_sidecar_read("ann:wet_a".to_string(), None, gen_before)
+            .await;
+        assert_eq!(corpus.cached_sidecar("ann:wet_a").await, Some(None));
+
+        // The two cache families have independent generations: a scenario
+        // save/delete (listing counter) must not drop a concurrent
+        // sidecar read, and an annotation save (sidecar counter) must not
+        // drop a concurrent listing rebuild.
+        let gen_before = corpus.sidecar_write_generation();
+        corpus
+            .record_scenario_saved("wet_a", "b.feature", vec![])
+            .await;
+        corpus
+            .store_sidecar_read(
+                "ann:wet_b".to_string(),
+                Some("notes: []\n".to_string()),
+                gen_before,
+            )
+            .await;
+        assert_eq!(
+            corpus.cached_sidecar("ann:wet_b").await,
+            Some(Some("notes: []\n".to_string()))
+        );
+        let gen_before = corpus.scenario_list_write_generation();
+        corpus
+            .store_sidecar("ann:wet_b".to_string(), Some("notes: [x]\n".to_string()))
+            .await;
+        corpus
+            .store_scenario_list_read("wet_b".to_string(), Vec::new(), gen_before)
+            .await;
+        assert!(corpus
+            .cached_scenario_list("wet_b")
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn bounded_cache_remove_purges_the_order_entry() {
+        let mut cache: BoundedCache<String> = BoundedCache::default();
+        cache.insert("victim".to_string(), "v1".to_string());
+        cache.remove("victim");
+        cache.insert("victim".to_string(), "v2".to_string());
+        // Fill to capacity; evictions must pop genuinely-oldest keys, not
+        // a stale order duplicate of the re-inserted key (which would
+        // evict the live value while its newer order entry survives).
+        for i in 0..(BODY_CACHE_MAX_ENTRIES - 1) {
+            cache.insert(format!("filler-{i}"), "x".to_string());
+        }
+        assert_eq!(cache.get("victim"), Some(&"v2".to_string()));
+        // One past capacity: the oldest key ("victim", re-inserted first)
+        // is evicted exactly once — no double-eviction from a stale
+        // duplicate.
+        cache.insert("overflow".to_string(), "x".to_string());
+        assert!(cache.get("victim").is_none());
+        assert_eq!(cache.get("filler-0"), Some(&"x".to_string()));
     }
 }
 

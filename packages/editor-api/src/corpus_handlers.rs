@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Multipart, Path, Query, State};
 use axum::http::StatusCode;
-use axum::Json;
+use axum::{Extension, Json};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tower_sessions::Session;
@@ -20,11 +20,14 @@ use regelrecht_corpus::dto::{build_source_summaries, PaginationParams, SourceSum
 use regelrecht_corpus::source_map::{
     collect_law_outputs, extract_law_id, validate_yaml_syntax, LoadedLaw,
 };
+use regelrecht_corpus::timing;
 use regelrecht_corpus::CorpusError;
 
+use crate::accounts::AccountRecord;
 use crate::state::{AppState, CorpusState};
-use crate::traject_corpus::{TrajectCorpus, TrajectCorpusError};
+use crate::traject_corpus::{ScenarioListEntry, TrajectCorpus, TrajectCorpusError};
 use crate::trajects::resolve_traject_ref;
+use crate::user_notes;
 
 /// Response body for a successful save.
 ///
@@ -35,13 +38,22 @@ use crate::trajects::resolve_traject_ref;
 #[derive(Debug, Serialize)]
 pub struct SaveResponse {
     pub pr: Option<SavePrInfo>,
-    /// `true` when a notes save was a no-op: every submitted note was
-    /// already present on the branch, so nothing was written/committed.
-    /// Lets the frontend show "al opgeslagen" and keep any existing PR
-    /// badge instead of treating a PR-less 200 as a lost save (review
-    /// finding NEW-2). Always `false` for law/scenario saves; those
-    /// clients ignore it.
+    /// `true` when the **sidecar/git side** of a notes save was a no-op:
+    /// nothing was written/committed to the branch — either every
+    /// submitted public note was already present, or the save carried no
+    /// public notes at all. It says nothing about personal notes: a save
+    /// can be `no_change: true` AND have `personal_saved > 0`. Clients
+    /// must gate success signals on the combination, not on `!no_change`
+    /// alone. Lets the frontend show "al opgeslagen" and keep any
+    /// existing PR badge instead of treating a PR-less 200 as a lost
+    /// save (review finding NEW-2). Always `false` for law/scenario
+    /// saves; those clients ignore it.
     pub no_change: bool,
+    /// How many notes in an annotations save were routed to the caller's
+    /// personal store (`regelrecht:visibility: personal`) instead of the
+    /// git sidecar. Only set by `save_annotations`; omitted elsewhere.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub personal_saved: Option<usize>,
     /// The new ETag after a law/scenario save — clients keep it for the
     /// next PUT's `If-Match` header (same optimistic-concurrency chain
     /// as [`SaveDocumentResponse::etag`]). `None` for handlers that
@@ -672,6 +684,33 @@ async fn list_scenarios_in_scope(
         // were never copied to the branch keep showing up (their GET
         // falls back to the seed the same way).
         ReadScope::Traject(traject) => {
+            // Per-snapshot cache: the editor requests this listing on
+            // every law open, and a rebuild costs one `list_files` per
+            // backend plus a read per scenario file — the most GitHub-
+            // round-trip-heavy read on the law-open path. Scenario
+            // save/delete invalidate the entry (read-your-writes);
+            // upstream edits converge at the next snapshot.
+            // Captured before the cache probe (not merely before the
+            // backend I/O): a scenario save/delete landing while this
+            // listing is computed bumps the write generation and the
+            // store below is dropped, so the (older) listing can never
+            // mask the mutation. Capturing after the probe would leave a
+            // window — a write landing between probe and capture would
+            // hand us the post-write generation, letting a rebuild from
+            // GitHub's eventually-consistent (pre-write) directory view
+            // pass the guard.
+            let gen_before = traject.scenario_list_write_generation();
+            if let Some(cached) = traject.cached_scenario_list(law_id).await {
+                return Ok(Json(
+                    cached
+                        .into_iter()
+                        .map(|e| ScenarioEntry {
+                            filename: e.filename,
+                            target_law_ids: e.target_law_ids,
+                        })
+                        .collect(),
+                ));
+            }
             let law = traject_law(traject, law_id)?;
             let scenarios_dir = match law_relative_dir(law) {
                 Ok(dir) => dir.join("scenarios"),
@@ -698,40 +737,63 @@ async fn list_scenarios_in_scope(
             }
             // Content goes through the same write-target-with-seed-fallback
             // per-file routing as the scenario GET, so the extracted targets
-            // reflect exactly the bytes the editor serves. Cost: one
-            // sequential read per file in this law's `scenarios/` dir —
-            // O(folder), typically 1-3 files, NOT the O(corpus) scan that
-            // hung federated trajects before (#762). Revisit with a batch
-            // read or index only if per-law scenario counts grow.
+            // reflect exactly the bytes the editor serves — and lands in the
+            // same per-file cache, so a subsequent scenario GET is free.
+            // Cost on a cache miss: one sequential read per file in this
+            // law's `scenarios/` dir — O(folder), typically 1-3 files, NOT
+            // the O(corpus) scan that hung federated trajects before
+            // (#762). Revisit with a batch read or index only if per-law
+            // scenario counts grow.
             let mut out = Vec::with_capacity(names.len());
+            let mut complete = true;
             for filename in names {
                 let relative_path = scenarios_dir.join(&filename);
-                let target_law_ids = match read_traject_file_via_write_target(
-                    traject,
-                    law,
-                    &relative_path,
-                    "scenario",
-                )
-                .await
-                {
-                    Ok(Some(content)) => extract_target_law_ids(&content),
-                    Ok(None) => Vec::new(),
-                    Err((_, err)) => {
-                        tracing::warn!(
-                            law_id = %law_id,
-                            file = %filename,
-                            error = %err,
-                            "scenario read failed during listing"
-                        );
-                        Vec::new()
-                    }
-                };
+                let target_law_ids =
+                    match read_traject_scenario_cached(traject, law, &relative_path).await {
+                        Ok(Some(content)) => extract_target_law_ids(&content),
+                        // Listed but unreadable on every routing leg: a
+                        // ghost. GitHub's directory listing is eventually
+                        // consistent, so right after a delete commit the
+                        // (stale) listing can still name the file while
+                        // its content GET already 404s. Skip it — keeping
+                        // it would serve a listing entry whose GET can
+                        // only 404.
+                        Ok(None) => continue,
+                        Err((_, err)) => {
+                            tracing::warn!(
+                                law_id = %law_id,
+                                file = %filename,
+                                error = %err,
+                                "scenario read failed during listing"
+                            );
+                            complete = false;
+                            Vec::new()
+                        }
+                    };
                 out.push(ScenarioEntry {
                     filename,
                     target_law_ids,
                 });
             }
-            // BTreeSet iteration is already sorted by filename.
+            // BTreeSet iteration is already sorted by filename. Only a
+            // fully-read listing is cached: a transient per-file read
+            // failure keeps its degraded (empty-targets) entry out of the
+            // snapshot cache, so the next request retries instead of
+            // serving the degraded listing for the whole window.
+            if complete {
+                traject
+                    .store_scenario_list_read(
+                        law_id.to_string(),
+                        out.iter()
+                            .map(|e| ScenarioListEntry {
+                                filename: e.filename.clone(),
+                                target_law_ids: e.target_law_ids.clone(),
+                            })
+                            .collect(),
+                        gen_before,
+                    )
+                    .await;
+            }
             out
         }
         // Global: no write target exists; keep the read-only resolution.
@@ -810,11 +872,12 @@ async fn get_scenario_in_scope(
         // fallback routing the save's `If-Match` check uses, so the GET
         // serves (and ETags) exactly the bytes a subsequent save is
         // checked against. See `read_traject_file_via_write_target` for
-        // the 412-loop this prevents.
+        // the 412-loop this prevents. Cached per snapshot; saves keep the
+        // entry coherent (see `read_traject_scenario_cached`).
         ReadScope::Traject(traject) => {
             let law = traject_law(traject, law_id)?;
             let relative_path = scenario_relative_path(law, filename)?;
-            read_traject_file_via_write_target(traject, law, &relative_path, "scenario").await?
+            read_traject_scenario_cached(traject, law, &relative_path).await?
         }
         // Global: no write target exists; keep the read-only resolution.
         ReadScope::Global(_) => {
@@ -955,16 +1018,109 @@ pub async fn get_annotations(
 pub async fn get_traject_annotations(
     State(state): State<AppState>,
     session: Session,
+    Extension(account): Extension<AccountRecord>,
     Path((traject_ref, law_id)): Path<(String, String)>,
 ) -> Result<YamlResponse, (StatusCode, String)> {
     let scope = require_traject_scope(&state, &session, &traject_ref).await?;
-    get_annotations_in_scope(&scope, &law_id).await
+    let sidecar = match get_annotations_in_scope(&scope, &law_id).await {
+        Ok((_, _, content)) => Some(content),
+        // Absent sidecar is fine here: the caller may still have personal
+        // notes, which then make up the whole document.
+        Err((StatusCode::NOT_FOUND, _)) => None,
+        Err(other) => return Err(other),
+    };
+
+    // Unified read: merge the caller's personal notes (marked
+    // `regelrecht:visibility: personal`) into the returned document, so
+    // the client sees one list of notes regardless of where each one is
+    // stored. The sidecar bytes stay verbatim; personal notes are
+    // appended the same way a save would append public ones.
+    let personal = match &state.pool {
+        Some(pool) => user_notes::personal_annotation_values(pool, account.id, &law_id)
+            .await
+            .map_err(|status| (status, "Failed to read personal notes".to_string()))?,
+        None => Vec::new(),
+    };
+
+    let content = if personal.is_empty() {
+        sidecar.ok_or((StatusCode::NOT_FOUND, "Annotations not found".to_string()))?
+    } else {
+        match append_notes_to_sidecar(sidecar.as_deref(), &personal, ANNOTATION_SCHEMA_URL) {
+            Ok(AppendOutcome::Write(text)) => text,
+            // Every personal value carries a unique `id`, so dedup can
+            // only fire on a pathological sidecar; fall back to it.
+            Ok(AppendOutcome::NoChange) => {
+                sidecar.ok_or((StatusCode::NOT_FOUND, "Annotations not found".to_string()))?
+            }
+            Err(e) => {
+                // A sidecar too broken to merge into must still be
+                // readable; serve it unmerged rather than failing the GET.
+                tracing::warn!(law_id = %law_id, error = %e, "could not merge personal notes into sidecar");
+                sidecar.ok_or((StatusCode::NOT_FOUND, "Annotations not found".to_string()))?
+            }
+        }
+    };
+
+    Ok((
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "text/yaml; charset=utf-8")],
+        content,
+    ))
 }
 
 async fn get_annotations_in_scope(
     scope: &ReadScope,
     law_id: &str,
 ) -> Result<YamlResponse, (StatusCode, String)> {
+    let content = read_annotations_in_scope(scope, law_id)
+        .await?
+        .ok_or((StatusCode::NOT_FOUND, "Annotations not found".to_string()))?;
+
+    Ok((
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "text/yaml; charset=utf-8")],
+        content,
+    ))
+}
+
+/// Cache key for a law's annotations sidecar in
+/// [`TrajectCorpus::cached_sidecar`]. Prefixed so it can never collide
+/// with the scenario-file keys ([`scenario_cache_key`]) sharing the map.
+fn annotations_cache_key(law_id: &str) -> String {
+    format!("ann:{law_id}")
+}
+
+/// Read the raw annotations sidecar bytes for `law_id` within a scope.
+/// `Ok(None)` = the law exists but has no sidecar (the normal case).
+///
+/// Traject-scoped reads are cached per index snapshot — including the
+/// `None` outcome: the editor requests annotations on every law open,
+/// and rediscovering "no notes yet" would otherwise cost a full GitHub
+/// round-trip each time. `save_annotations` keeps the entry coherent
+/// within the snapshot window by storing the just-written body
+/// (read-your-writes); cross-replica edits converge at the next snapshot,
+/// like law bodies. Global (no-traject) reads stay uncached: they serve
+/// anonymous browsing against the central source, whose backend does its
+/// own ETag handling.
+async fn read_annotations_in_scope(
+    scope: &ReadScope,
+    law_id: &str,
+) -> Result<Option<String>, (StatusCode, String)> {
+    // Captured before the cache probe: `store_sidecar_read` drops the
+    // store when a save bumped the generation while this (potentially
+    // slow) read was in flight, so it can never mask fresher content.
+    // Capturing after the probe would leave a window — a save landing
+    // between probe and capture would hand us the post-save generation,
+    // letting a stale backend read pass the guard and overwrite the
+    // save's fresh entry.
+    let mut gen_before = 0;
+    if let ReadScope::Traject(traject) = scope {
+        gen_before = traject.sidecar_write_generation();
+        if let Some(cached) = traject.cached_sidecar(&annotations_cache_key(law_id)).await {
+            return Ok(cached);
+        }
+    }
+
     let backend = resolve_annotation_read_backend(scope, law_id)?;
 
     // RFC-018 §1: keyed by law id at the source root, regardless of where
@@ -973,25 +1129,24 @@ async fn get_annotations_in_scope(
         .join(law_id)
         .join("annotations.yaml");
 
-    let backend = backend.lock().await;
-    let content = backend
-        .read_file(&relative_path)
-        .await
-        .map_err(|e| {
+    let content = {
+        let backend = backend.lock().await;
+        backend.read_file(&relative_path).await.map_err(|e| {
             tracing::warn!(law_id = %law_id, error = %e, "get_annotations backend read failed");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to read annotations".to_string(),
             )
         })?
-        .ok_or((StatusCode::NOT_FOUND, "Annotations not found".to_string()))?;
-    drop(backend);
+    };
 
-    Ok((
-        StatusCode::OK,
-        [(axum::http::header::CONTENT_TYPE, "text/yaml; charset=utf-8")],
-        content,
-    ))
+    if let ReadScope::Traject(traject) = scope {
+        traject
+            .store_sidecar_read(annotations_cache_key(law_id), content.clone(), gen_before)
+            .await;
+    }
+
+    Ok(content)
 }
 
 // ---------------------------------------------------------------------------
@@ -1402,7 +1557,10 @@ async fn resolve_traject_law_write(
     if !entry.writable {
         return Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()));
     }
-    let backend = entry.backend.clone().lock_owned().await;
+    // Per-source write mutex: every save to the same traject source
+    // serialises here, so contention (a second save waiting out the
+    // first's GitHub round-trips) shows up as a fat `lock` phase.
+    let backend = timing::measure("lock", entry.backend.clone().lock_owned()).await;
     Ok(TrajectLawWrite {
         law,
         write_source_id: write_target_source_id,
@@ -1530,16 +1688,51 @@ async fn read_traject_file_via_write_target(
     read_seed_fallback(traject, law, &write_source_id, relative_path, kind).await
 }
 
-async fn resolve_traject_scenario_target(
+/// Cache key for one scenario file's content in
+/// [`TrajectCorpus::cached_sidecar`]. The relative path is unique across
+/// laws (it lives under the law's own directory), and the prefix keeps it
+/// disjoint from the annotations keys sharing the map.
+fn scenario_cache_key(relative_path: &std::path::Path) -> String {
+    format!("scn:{}", relative_path.display())
+}
+
+/// [`read_traject_file_via_write_target`] with a per-snapshot cache in
+/// front, for **GET-path scenario reads only** (the single-file GET and
+/// the listing's target extraction). `None` results are cached too — a
+/// seed-only law's write-target miss costs a GitHub round-trip to
+/// rediscover. Write-path preconditions (`current_content_for_write`,
+/// the `If-Match` checks) deliberately bypass this cache: they must
+/// compare against the branch as it *is*, under the write lock, not
+/// against a snapshot-aged copy.
+///
+/// Coherence: `save_scenario` stores the just-written body under this
+/// key, `delete_scenario` drops the entry (the next read may
+/// legitimately fall back to a seed copy, so a negative entry would be
+/// wrong). Cross-replica edits converge at the next snapshot, like law
+/// bodies.
+async fn read_traject_scenario_cached(
     traject: &Arc<TrajectCorpus>,
-    law_id: &str,
-    filename: &str,
-) -> Result<EditorWriteTarget, (StatusCode, String)> {
-    let write = resolve_traject_law_write(traject, law_id).await?;
-    Ok(EditorWriteTarget {
-        relative_path: scenario_relative_path(&write.law, filename)?,
-        backend: write.backend,
-    })
+    law: &LoadedLaw,
+    relative_path: &std::path::Path,
+) -> Result<Option<String>, (StatusCode, String)> {
+    let key = scenario_cache_key(relative_path);
+    // Generation captured before the cache probe: a save/delete landing
+    // while the read is in flight bumps it, and the store below is then
+    // dropped so these (older) bytes can't mask the write's entry.
+    // Capturing after the probe would leave a window — a save landing
+    // between probe and capture would hand us the post-save generation,
+    // letting a stale backend read pass the guard and overwrite the
+    // save's fresh entry.
+    let gen_before = traject.sidecar_write_generation();
+    if let Some(cached) = traject.cached_sidecar(&key).await {
+        return Ok(cached);
+    }
+    let content =
+        read_traject_file_via_write_target(traject, law, relative_path, "scenario").await?;
+    traject
+        .store_sidecar_read(key, content.clone(), gen_before)
+        .await;
+    Ok(content)
 }
 
 /// Resolve the write target for a law's stand-off notes sidecar.
@@ -1575,6 +1768,7 @@ fn save_response_from_traject(outcome: PersistOutcome) -> SaveResponse {
             number: pr.number,
         }),
         no_change: false,
+        personal_saved: None,
         etag: None,
     }
 }
@@ -1630,6 +1824,19 @@ pub async fn save_scenario(
         .await
         .map_err(corpus_write_error("scenario"))?;
 
+    // Keep the per-snapshot read caches coherent with the save
+    // (read-your-writes): the file's content cache gets the new body and
+    // the cached listing is updated in place. Surgical (not invalidate +
+    // rebuild): a rebuild would re-list GitHub's eventually-consistent
+    // directory view, which right after the commit can still miss this
+    // save and would then be cached for the rest of the snapshot window.
+    traject
+        .store_sidecar(scenario_cache_key(&relative_path), Some(body.clone()))
+        .await;
+    traject
+        .record_scenario_saved(&law_id, &filename, extract_target_law_ids(&body))
+        .await;
+
     let new_etag = document_etag(&body);
     let mut response = save_response_from_traject(outcome);
     response.etag = Some(new_etag.clone());
@@ -1646,21 +1853,67 @@ const ANNOTATION_SCHEMA_URL: &str = "https://raw.githubusercontent.com/MinBZK/re
 /// cannot append an unreasonable number of notes in one commit.
 const MAX_NOTES_PER_SAVE: usize = 500;
 
+/// Property a submitted note carries to choose its storage side in the
+/// unified save (and that the unified GET stamps on merged-in personal
+/// notes). Vendor-prefixed like `regelrecht:hint` in the selector.
+const VISIBILITY_KEY: &str = "regelrecht:visibility";
+
+/// Split submitted notes into (public, personal) on
+/// `regelrecht:visibility`. The marker is stripped in both directions —
+/// public notes must stay valid against the annotation schema
+/// (`additionalProperties: false`), personal notes are re-shaped by
+/// `annotation_to_request` anyway. An unrecognised visibility is a 400,
+/// not a silent default: a typo like "privat" must never publish a note
+/// the author meant to keep personal.
+fn partition_notes_by_visibility(
+    notes: Vec<serde_json::Value>,
+) -> Result<(Vec<serde_json::Value>, Vec<serde_json::Value>), (StatusCode, String)> {
+    let mut public = Vec::new();
+    let mut personal = Vec::new();
+    for mut note in notes {
+        let visibility = note.as_object_mut().and_then(|o| o.remove(VISIBILITY_KEY));
+        match &visibility {
+            None => public.push(note),
+            Some(value) => match value.as_str() {
+                Some("public") => public.push(note),
+                Some("personal") => personal.push(note),
+                _ => {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        "regelrecht:visibility must be \"personal\" or \"public\"".to_string(),
+                    ));
+                }
+            },
+        }
+    }
+    Ok((public, personal))
+}
+
 /// PUT /api/trajects/{traject_id}/corpus/laws/{law_id}/annotations —
-/// append stand-off notes. The notes land in the traject's writable
-/// backend (its branch), so a note and a law edit made in the same
-/// session ride the same PR.
+/// the unified note save. The body is a JSON array of *new* notes
+/// (drafts); each note's `regelrecht:visibility` decides where it goes:
 ///
-/// The body is a JSON array of *new* notes (drafts). The handler reads the
-/// sidecar as it stands on the traject branch and appends only the new,
-/// deduped notes, keeping the existing bytes verbatim (RFC-018 Dec. 1 /
-/// RFC-005: per-note `git blame` and the curated motivering comments must
-/// survive). Error bodies are deliberately generic — schema instance paths
-/// can echo attacker-controlled map keys and would flow into an nldd
-/// dialog (the self-XSS vector `save_law` also avoids).
+/// - `"personal"` → the caller's private store (Postgres, account-scoped;
+///   never git), marker and all other handling server-side;
+/// - `"public"` or absent → the stand-off sidecar in the traject's
+///   writable backend (its branch), so a note and a law edit made in the
+///   same session ride the same PR.
+///
+/// A personal-marked note can therefore never end up in git, even when a
+/// client naively round-trips the merged GET document back into a save.
+///
+/// For the public side the handler reads the sidecar as it stands on the
+/// traject branch and appends only the new, deduped notes, keeping the
+/// existing bytes verbatim (RFC-018 Dec. 1 / RFC-005: per-note `git
+/// blame` and the curated motivering comments must survive). Personal
+/// notes are deduped the same way (an identical stored note is skipped)
+/// so retries stay idempotent. Error bodies are deliberately generic —
+/// schema instance paths can echo attacker-controlled map keys and would
+/// flow into an nldd dialog (the self-XSS vector `save_law` also avoids).
 pub async fn save_annotations(
     State(state): State<AppState>,
     session: Session,
+    Extension(account): Extension<AccountRecord>,
     Path((traject_ref, law_id)): Path<(String, String)>,
     body: String,
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
@@ -1682,7 +1935,61 @@ pub async fn save_annotations(
         ));
     }
 
+    let (public_notes, personal_notes) = partition_notes_by_visibility(new_notes)?;
+
+    // Membership gate first: personal notes are the caller's own, but the
+    // endpoint is traject-scoped, so the same access rule applies to both
+    // halves of the save.
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+
+    // Personal notes go to the account-scoped store, never to git. Map
+    // and validate the whole batch first, then insert atomically (one
+    // transaction) — a bad note rejects the batch before anything is
+    // stored, so a 400/409 never leaves a half-saved batch behind.
+    let mut personal_saved = 0usize;
+    if !personal_notes.is_empty() {
+        let pool = state.pool.as_ref().ok_or((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Personal notes need a database".to_string(),
+        ))?;
+        let mut requests = Vec::with_capacity(personal_notes.len());
+        for note in &personal_notes {
+            let req = user_notes::annotation_to_request(&law_id, note)
+                .map_err(|msg| (StatusCode::BAD_REQUEST, msg))?;
+            user_notes::validate(&req).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    "A personal note is not valid".to_string(),
+                )
+            })?;
+            requests.push(req);
+        }
+        let inserted = user_notes::insert_notes(pool, account.id, &law_id, requests, true)
+            .await
+            .map_err(|status| match status {
+                StatusCode::CONFLICT => (
+                    StatusCode::CONFLICT,
+                    "Too many personal notes for this law".to_string(),
+                ),
+                StatusCode::BAD_REQUEST => (
+                    StatusCode::BAD_REQUEST,
+                    "A personal note is not valid".to_string(),
+                ),
+                other => (other, "Failed to save personal notes".to_string()),
+            })?;
+        personal_saved = inserted.iter().filter(|n| n.is_some()).count();
+    }
+
+    // All-personal save: nothing for the sidecar, skip the git machinery.
+    if public_notes.is_empty() {
+        return Ok(Json(SaveResponse {
+            pr: None,
+            no_change: true,
+            personal_saved: Some(personal_saved),
+            etag: None,
+        }));
+    }
+    let new_notes = public_notes;
     let target = resolve_traject_annotation_target(&traject, &law_id).await?;
     let EditorWriteTarget {
         relative_path,
@@ -1747,6 +2054,7 @@ pub async fn save_annotations(
                 return Ok(Json(SaveResponse {
                     pr: None,
                     no_change: true,
+                    personal_saved: Some(personal_saved),
                     etag: None,
                 }));
             }
@@ -1809,7 +2117,16 @@ pub async fn save_annotations(
         .await
         .map_err(corpus_write_error("annotations"))?;
 
-    Ok(Json(save_response_from_traject(outcome)))
+    // Read-your-writes for the per-snapshot annotations cache: the next
+    // GET serves the just-committed sidecar (replacing a possibly cached
+    // "no annotations yet") without a GitHub round-trip.
+    traject
+        .store_sidecar(annotations_cache_key(&law_id), Some(new_text))
+        .await;
+
+    let mut response = save_response_from_traject(outcome);
+    response.personal_saved = Some(personal_saved);
+    Ok(Json(response))
 }
 
 /// PUT /api/trajects/{traject_id}/corpus/laws/{law_id} — save edited law
@@ -1926,11 +2243,12 @@ pub async fn save_law(
     // the read-your-writes follow-up that used to be punted.
     traject.record_save(law_id.clone(), body).await;
 
-    // This save added (or kept) this law on the traject branch, so the
-    // cached changed-laws diff is now stale — drop it so the sidebar's
-    // "Bewerkt in dit traject" section reflects the edit on the next load
-    // instead of waiting out the TTL.
-    traject.invalidate_changed_cache().await;
+    // This save added (or kept) this law on the traject branch — fold it
+    // into the cached changed-laws diff so the sidebar's "Bewerkt in dit
+    // traject" section reflects the edit on the next load, without the
+    // synchronous GitHub Compare call a cache invalidation would cost
+    // that load.
+    traject.record_changed_law(&law_id).await;
 
     let mut response = save_response_from_traject(outcome);
     response.etag = Some(new_etag.clone());
@@ -1948,24 +2266,69 @@ pub async fn delete_scenario(
     let author = Some(require_editor_user(&session).await?);
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let target = resolve_traject_scenario_target(&traject, &law_id, &filename).await?;
-    let EditorWriteTarget {
-        relative_path,
-        backend,
-    } = target;
+    let write = resolve_traject_law_write(&traject, &law_id).await?;
+    let relative_path = scenario_relative_path(&write.law, &filename)?;
 
-    backend
+    write
+        .backend
         .delete_file(&relative_path)
         .await
         .map_err(corpus_write_error("scenario"))?;
 
-    let outcome = backend
+    let outcome = write
+        .backend
         .persist(&WriteContext {
             message: format!("Delete scenario {} for {}", filename, law_id),
             author,
         })
         .await
         .map_err(corpus_write_error("scenario"))?;
+
+    // Drop (don't negative-cache) the file's read-cache entry: after a
+    // branch-side delete the next read may legitimately fall back to a
+    // seed copy of the scenario.
+    traject
+        .invalidate_sidecar(&scenario_cache_key(&relative_path))
+        .await;
+
+    // Update the cached listing in place — an invalidate-and-rebuild
+    // races GitHub's eventually-consistent directory view, which can
+    // still list the deleted file right after the commit and would then
+    // resurrect it in the cache for the rest of the snapshot window.
+    // What "in place" means depends on whether a seed copy remains: a
+    // federated law's scenario that was overridden on the branch falls
+    // back to the seed after the branch delete (same routing as the GET),
+    // so it stays listed with the seed's targets. The seed probe is one
+    // read, only for federated laws, on the rare delete path — and the
+    // legal writable-own → seed lock order is respected (`write.backend`
+    // holds the write-target guard). On a probe error we still remove
+    // the entry: the delete is the user's intent, and a hidden seed copy
+    // reappears at the next snapshot swap.
+    match read_seed_fallback(
+        &traject,
+        &write.law,
+        &write.write_source_id,
+        &relative_path,
+        "scenario",
+    )
+    .await
+    {
+        Ok(Some(seed_content)) => {
+            traject
+                .record_scenario_saved(&law_id, &filename, extract_target_law_ids(&seed_content))
+                .await;
+        }
+        Ok(None) => traject.record_scenario_deleted(&law_id, &filename).await,
+        Err((_, err)) => {
+            tracing::warn!(
+                law_id = %law_id,
+                file = %filename,
+                error = %err,
+                "seed probe after scenario delete failed; removing from cached listing"
+            );
+            traject.record_scenario_deleted(&law_id, &filename).await;
+        }
+    }
 
     Ok(Json(save_response_from_traject(outcome)))
 }
@@ -2314,6 +2677,249 @@ pub async fn list_traject_documents(
     Ok(Json(TrajectDocumentList { documents }))
 }
 
+/// Upload formats accepted in fase 1: PDF and Word.
+const UPLOAD_DOCUMENT_EXTENSIONS: &[&str] = &["pdf", "doc", "docx"];
+
+#[derive(Debug, Serialize)]
+pub struct UploadDocumentResponse {
+    /// The `.md` path the converted document will appear at once its
+    /// conversion job completes.
+    pub target_path: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TrajectJobList {
+    pub jobs: Vec<regelrecht_pipeline::document_convert::TrajectJobView>,
+}
+
+/// Uniform 500 for the upload/jobs endpoints — logs the real cause, returns a
+/// generic Dutch message.
+fn upload_internal_error(context: &str, e: impl std::fmt::Display) -> (StatusCode, String) {
+    tracing::error!(error = %e, context, "document upload/jobs handler failed");
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "Er ging iets mis bij het verwerken van de upload.".to_string(),
+    )
+}
+
+/// Derive a collision-safe `<name>.md` target path from an uploaded filename,
+/// sanitized to the document-path rules (`[a-z0-9._-]`, no hidden/empty
+/// segments). Appends `-2`, `-3`, … when a document with the derived name
+/// already exists in the traject.
+fn derive_markdown_target(filename: &str, existing: &[String]) -> String {
+    let raw_stem = std::path::Path::new(filename)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("document");
+    let mut sanitized = String::with_capacity(raw_stem.len());
+    let mut last: Option<char> = None;
+    for ch in raw_stem.chars() {
+        let c = ch.to_ascii_lowercase();
+        // Map to the allowed alphabet: alphanumerics and `_` pass through, any
+        // other character becomes a `-`. `.` is kept (extensions read naturally).
+        let mapped = if c.is_ascii_alphanumeric() || c == '_' {
+            c
+        } else if c == '.' {
+            '.'
+        } else {
+            '-'
+        };
+        // Collapse consecutive separators so a run of spaces or dots (e.g.
+        // `rapport..2024`) reduces to a single `-`/`.` rather than repeating.
+        if (mapped == '-' || mapped == '.') && last == Some(mapped) {
+            continue;
+        }
+        sanitized.push(mapped);
+        last = Some(mapped);
+    }
+    let trimmed = sanitized.trim_matches(|c| c == '-' || c == '.');
+    let stem = if trimmed.is_empty() {
+        "document"
+    } else {
+        trimmed
+    };
+
+    let mut candidate = format!("{stem}.md");
+    let mut n = 2;
+    while existing.iter().any(|p| p == &candidate) {
+        candidate = format!("{stem}-{n}.md");
+        n += 1;
+    }
+    candidate
+}
+
+/// POST /api/trajects/{traject_ref}/corpus/documents/upload
+///
+/// Accept a multipart upload of a PDF/Word document, store its bytes in
+/// `document_uploads`, and enqueue a `document_convert` job that converts it to
+/// a markdown werkdocument. Responds `202 Accepted` with the target `.md` path
+/// the converted document will appear at.
+pub async fn upload_traject_document(
+    State(state): State<AppState>,
+    session: Session,
+    Path(traject_ref): Path<String>,
+    mut multipart: Multipart,
+) -> Result<(StatusCode, Json<UploadDocumentResponse>), (StatusCode, String)> {
+    let pool = state.pool.as_ref().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "database not configured".to_string(),
+    ))?;
+    // Membership guard (also resolves the traject); the id feeds the job payload.
+    let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let traject_id = resolve_traject_ref(pool, &traject_ref).await?;
+
+    // Pull the uploaded file out of the multipart body (the `file` field).
+    let mut filename: Option<String> = None;
+    let mut content_type: Option<String> = None;
+    let mut data: Option<Vec<u8>> = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Ongeldige upload: {e}")))?
+    {
+        if field.name() == Some("file") {
+            filename = field.file_name().map(|s| s.to_string());
+            content_type = field.content_type().map(|s| s.to_string());
+            let bytes = field.bytes().await.map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    format!("Kon het bestand niet lezen: {e}"),
+                )
+            })?;
+            data = Some(bytes.to_vec());
+            break;
+        }
+    }
+    let filename = filename.ok_or((
+        StatusCode::BAD_REQUEST,
+        "Geen bestand in de upload (het 'file'-veld ontbreekt).".to_string(),
+    ))?;
+    let data = data.filter(|d| !d.is_empty()).ok_or((
+        StatusCode::BAD_REQUEST,
+        "Het geüploade bestand is leeg.".to_string(),
+    ))?;
+    let content_type = content_type.unwrap_or_else(|| "application/octet-stream".to_string());
+
+    // Only PDF/Word in fase 1.
+    let ext = std::path::Path::new(&filename)
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .unwrap_or_default();
+    if !UPLOAD_DOCUMENT_EXTENSIONS.contains(&ext.as_str()) {
+        return Err((
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "Alleen PDF- en Word-documenten (.pdf, .doc, .docx) worden ondersteund.".to_string(),
+        ));
+    }
+
+    // Derive a collision-safe target markdown path against the existing docs.
+    // A failed listing must NOT be swallowed: an empty `existing` set would let
+    // the derivation hand back a name that already exists, and the worker's
+    // unconditional write would silently overwrite that document. Fail the
+    // upload instead.
+    let backend = resolve_traject_documents_writer(&traject).await?;
+    let base = traject_documents_base(&traject_ref);
+    let mut existing: Vec<String> = backend
+        .list_files_recursive(&base, None)
+        .await
+        .map_err(|e| upload_internal_error("list documents for collision check", e))?
+        .into_iter()
+        .map(|e| e.relative_path)
+        .collect();
+    // Release the writable-backend lock before the DB work below — the backend
+    // is only needed for the listing, and holding its mutex through the
+    // transaction would serialize every writable-document op on this traject.
+    drop(backend);
+    // Also avoid colliding with conversions that are enqueued but haven't
+    // committed their `.md` yet — otherwise two same-named uploads both derive
+    // e.g. `report.md` and the second conversion overwrites the first. (This
+    // narrows but does not fully close a concurrent-upload window: two requests
+    // can both read the pending set before either commits its job — an
+    // acceptable residual TOCTOU for same-traject same-name simultaneous uploads.)
+    existing.extend(
+        regelrecht_pipeline::document_convert::pending_target_paths(pool, &traject_ref)
+            .await
+            .map_err(|e| {
+                upload_internal_error("list pending conversions for collision check", e)
+            })?,
+    );
+    let target_path = derive_markdown_target(&filename, &existing);
+
+    // Persist the bytes and enqueue the conversion job in one transaction.
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| upload_internal_error("begin tx", e))?;
+    let (upload_id,): (uuid::Uuid,) = sqlx::query_as(
+        "INSERT INTO document_uploads (traject_ref, filename, content_type, bytes) \
+         VALUES ($1, $2, $3, $4) RETURNING id",
+    )
+    .bind(&traject_ref)
+    .bind(&filename)
+    .bind(&content_type)
+    .bind(&data)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| upload_internal_error("insert upload", e))?;
+
+    let payload = regelrecht_pipeline::document_convert::DocumentConvertPayload {
+        upload_id,
+        traject_id,
+        traject_ref: traject_ref.clone(),
+        target_path: target_path.clone(),
+        provider: None,
+    };
+    let payload_json = serde_json::to_value(&payload)
+        .map_err(|e| upload_internal_error("serialize payload", e))?;
+    let req = regelrecht_pipeline::job_queue::CreateJobRequest::new(
+        regelrecht_pipeline::JobType::DocumentConvert,
+        format!("doc:{traject_ref}/{target_path}"),
+    )
+    .with_traject_ref(traject_ref.clone())
+    // Single attempt: a retry would re-run the (expensive) LLM conversion from
+    // scratch, and most failures here are deterministic (bad content, write
+    // config). A failed conversion stays visible in the status block for the
+    // user to re-upload. (Caching the produced markdown across retries is a
+    // possible future refinement.)
+    .with_max_attempts(1)
+    .with_payload(payload_json);
+    regelrecht_pipeline::job_queue::create_job(&mut *tx, req)
+        .await
+        .map_err(|e| upload_internal_error("create job", e))?;
+    tx.commit()
+        .await
+        .map_err(|e| upload_internal_error("commit tx", e))?;
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(UploadDocumentResponse { target_path }),
+    ))
+}
+
+/// GET /api/trajects/{traject_ref}/corpus/documents/jobs
+///
+/// List the traject's document-convert jobs that are still relevant to show
+/// (running or failed — completed ones are represented by the actual `.md` in
+/// the documents list). Backs the werkdocumenten conversion-status block.
+pub async fn list_traject_document_convert_jobs(
+    State(state): State<AppState>,
+    session: Session,
+    Path(traject_ref): Path<String>,
+) -> Result<Json<TrajectJobList>, (StatusCode, String)> {
+    let pool = state.pool.as_ref().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "database not configured".to_string(),
+    ))?;
+    // Membership guard.
+    require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let jobs =
+        regelrecht_pipeline::document_convert::list_traject_document_jobs(pool, &traject_ref)
+            .await
+            .map_err(|e| upload_internal_error("list document jobs", e))?;
+    Ok(Json(TrajectJobList { jobs }))
+}
+
 /// GET /api/trajects/{traject_ref}/corpus/documents/{*doc_path}
 ///
 /// Returns the raw markdown/text body, an appropriate `Content-Type`,
@@ -2488,6 +3094,45 @@ mod tests {
     use super::*;
 
     #[test]
+    fn partition_notes_routes_on_visibility_and_strips_the_marker() {
+        let notes = vec![
+            serde_json::json!({"type": "Annotation", "body": {"value": "publiek impliciet"}}),
+            serde_json::json!({
+                "type": "Annotation",
+                "body": {"value": "publiek expliciet"},
+                "regelrecht:visibility": "public"
+            }),
+            serde_json::json!({
+                "type": "Annotation",
+                "body": {"value": "prive"},
+                "regelrecht:visibility": "personal"
+            }),
+        ];
+
+        let (public, personal) = partition_notes_by_visibility(notes).unwrap();
+        assert_eq!(public.len(), 2);
+        assert_eq!(personal.len(), 1);
+        // The marker never reaches the sidecar (schema would reject it)
+        // and is stripped from personal notes too.
+        for note in public.iter().chain(personal.iter()) {
+            assert!(note.get(VISIBILITY_KEY).is_none());
+        }
+    }
+
+    #[test]
+    fn partition_notes_rejects_unknown_visibility() {
+        // A typo must never silently publish a note meant to be personal.
+        for bad in [
+            serde_json::json!({"regelrecht:visibility": "privat"}),
+            serde_json::json!({"regelrecht:visibility": 1}),
+            serde_json::json!({"regelrecht:visibility": null}),
+        ] {
+            let err = partition_notes_by_visibility(vec![bad]).unwrap_err();
+            assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        }
+    }
+
+    #[test]
     fn save_response_from_traject_passes_through_pr_when_set() {
         use regelrecht_corpus::backend::PrInfo;
         let out = PersistOutcome {
@@ -2611,6 +3256,7 @@ mod tests {
         let _: fn(
             axum::extract::State<crate::state::AppState>,
             Session,
+            Extension<AccountRecord>,
             axum::extract::Path<(String, String)>,
             String,
         ) -> _ = save_annotations;
@@ -2681,6 +3327,46 @@ mod tests {
         assert!(validate_document_path("").is_err());
         assert!(validate_document_path("/").is_err());
         assert!(validate_document_path("a//b.md").is_err());
+    }
+
+    #[test]
+    fn derive_markdown_target_sanitizes_and_appends_md() {
+        assert_eq!(derive_markdown_target("Report.pdf", &[]), "report.md");
+        assert_eq!(
+            derive_markdown_target("Mijn Brief.docx", &[]),
+            "mijn-brief.md"
+        );
+        // Every derived target must satisfy the document-path rules.
+        assert!(validate_document_path(&derive_markdown_target("Béépje 2024!.doc", &[])).is_ok());
+    }
+
+    #[test]
+    fn derive_markdown_target_falls_back_when_stem_empty() {
+        let target = derive_markdown_target("...pdf", &[]);
+        assert!(validate_document_path(&target).is_ok());
+    }
+
+    #[test]
+    fn derive_markdown_target_resolves_collisions() {
+        let existing = vec!["report.md".to_string(), "report-2.md".to_string()];
+        assert_eq!(
+            derive_markdown_target("report.pdf", &existing),
+            "report-3.md"
+        );
+    }
+
+    #[test]
+    fn derive_markdown_target_collapses_consecutive_separators() {
+        // Consecutive dots and spaces collapse to a single separator.
+        assert_eq!(
+            derive_markdown_target("rapport..2024.pdf", &[]),
+            "rapport.2024.md"
+        );
+        assert_eq!(
+            derive_markdown_target("mijn   brief.docx", &[]),
+            "mijn-brief.md"
+        );
+        assert!(validate_document_path(&derive_markdown_target("a...b   c.doc", &[])).is_ok());
     }
 
     #[test]

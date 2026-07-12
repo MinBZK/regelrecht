@@ -17,9 +17,95 @@ static REFERENCE_LINK_PATTERN: LazyLock<Regex> =
 static MISSING_SPACE_AFTER_COMMA: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"([a-zA-Z]),([a-zA-Z])").expect("valid regex"));
 
+/// Regex pattern for markdown reference definition lines (`[label]: url`) at
+/// line start. Matches any label, not just the `refN` labels the harvester
+/// generates today — the fold invariant is "no line-oriented reference
+/// definitions at all", and an unrecognized label folding into prose would
+/// break the markdown link.
+#[allow(clippy::expect_used)] // Static regex that is guaranteed to be valid
+static REFERENCE_DEFINITION_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^\[[^\]]+\]: ").expect("valid regex"));
+
 /// Check if text contains reference-style links that would be broken by wrapping.
 fn contains_reference_link(text: &str) -> bool {
     REFERENCE_LINK_PATTERN.is_match(text)
+}
+
+/// Block scalar style for a multi-line text field in the emitted YAML.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextStyle {
+    /// Literal block scalar (`|-`): every newline in the emitted string is a
+    /// real newline after loading.
+    Literal,
+    /// Folded block scalar (`>-`): wrap newlines fold back to spaces on load,
+    /// so only paragraph breaks (`\n\n`) survive in the loaded string.
+    Folded,
+}
+
+/// Decide the block scalar style for a text field.
+///
+/// `normalized` is the unwrapped source text (after [`normalize_text`]);
+/// `emitted` is the (possibly wrapped) string that goes into the YAML struct.
+/// Folding is only safe when every newline that wrapping introduced is
+/// cosmetic — i.e. the source itself contains no deliberate hard line breaks
+/// and nothing that folded-scalar semantics would corrupt. When in doubt this
+/// returns [`TextStyle::Literal`], which keeps today's byte-identical output.
+pub fn classify_text_style(normalized: &str, emitted: &str) -> TextStyle {
+    // Single-line emission: serde writes a plain/quoted scalar, nothing to fold.
+    if !emitted.contains('\n') {
+        return TextStyle::Literal;
+    }
+
+    // Markdown reference definitions ([label]: url) are line-oriented: folding
+    // would join consecutive definitions onto one line and break the markdown.
+    if REFERENCE_DEFINITION_PATTERN.is_match(normalized) {
+        return TextStyle::Literal;
+    }
+
+    // Every maximal newline run in the source must be exactly 2 (a paragraph
+    // break). A run of 1 is a deliberate hard line break (e.g. a `- ` list
+    // built by the splitter) that folding would join into prose; a run of 3+
+    // would need 3+ blank lines in the folded block (yamllint empty-lines max).
+    let mut run = 0usize;
+    for ch in normalized.chars().chain(std::iter::once('\0')) {
+        if ch == '\n' {
+            run += 1;
+        } else {
+            if run != 0 && run != 2 {
+                return TextStyle::Literal;
+            }
+            run = 0;
+        }
+    }
+
+    // "More-indented" lines do not fold and switch folded-scalar semantics.
+    if normalized
+        .lines()
+        .any(|l| l.starts_with(' ') || l.starts_with('\t'))
+    {
+        return TextStyle::Literal;
+    }
+
+    // Defensive re-checks on the emitted string. These should all follow from
+    // the rules above plus textwrap behavior, but folding an unexpected shape
+    // would corrupt legal text, so verify at runtime and fall back instead.
+    let lines: Vec<&str> = emitted.lines().collect();
+    let first_last_blank = lines
+        .first()
+        .zip(lines.last())
+        .is_none_or(|(f, l)| f.trim().is_empty() || l.trim().is_empty());
+    let unsafe_line = lines.iter().any(|l| {
+        l.starts_with(' ') || l.starts_with('\t') || (!l.is_empty() && l.trim_end() != *l)
+    });
+    // Redundant with the newline-run check on `normalized` above; kept to
+    // catch the hypothetical case where normalize_text/wrap_text_default
+    // would inject back-to-back blank lines that were not in the source.
+    let double_blank = lines.windows(2).any(|w| w[0].is_empty() && w[1].is_empty());
+    if first_last_blank || unsafe_line || double_blank {
+        return TextStyle::Literal;
+    }
+
+    TextStyle::Folded
 }
 
 /// Normalize common typographical issues in source text.
@@ -261,5 +347,72 @@ mod tests {
     fn test_normalize_text_multiple_occurrences() {
         // Should fix multiple occurrences
         assert_eq!(normalize_text("a,b,c,d"), "a, b, c, d");
+    }
+
+    /// Convenience: classify a source text through the same normalize+wrap
+    /// path the writer uses.
+    fn classify(source: &str, width: usize) -> TextStyle {
+        let normalized = normalize_text(source);
+        let emitted = wrap_text(&normalized, width);
+        classify_text_style(&normalized, &emitted)
+    }
+
+    #[test]
+    fn test_classify_single_line_emission_is_literal() {
+        // Nothing to fold when the emitted string has no newlines.
+        assert_eq!(
+            classify_text_style("korte tekst", "korte tekst"),
+            TextStyle::Literal
+        );
+    }
+
+    #[test]
+    fn test_classify_wrapped_prose_is_folded() {
+        let prose = "Indien de normpremie voor een verzekerde in het berekeningsjaar minder bedraagt dan de standaardpremie in dat jaar, heeft de verzekerde aanspraak op een zorgtoeslag.";
+        assert_eq!(classify(prose, 60), TextStyle::Folded);
+    }
+
+    #[test]
+    fn test_classify_multi_paragraph_prose_is_folded() {
+        let prose = "Eerste paragraaf die lang genoeg is om over de wrap-breedte heen te gaan bij het serialiseren.\n\nTweede paragraaf die eveneens lang genoeg is om gewrapt te worden door de writer.";
+        assert_eq!(classify(prose, 60), TextStyle::Folded);
+    }
+
+    #[test]
+    fn test_classify_reference_definitions_are_literal() {
+        // [refN]: lines are line-oriented markdown; folding would join them.
+        let text = "Zie [artikel 4][ref1] voor de premie die hier verder wordt toegelicht in een lange zin.\n\n[ref1]: https://example.com/a\n[ref2]: https://example.com/b";
+        assert_eq!(classify(text, 60), TextStyle::Literal);
+    }
+
+    #[test]
+    fn test_classify_non_ref_label_definitions_are_literal() {
+        // The invariant covers ANY markdown reference definition label, not
+        // just the `refN` labels the harvester generates today.
+        let text = "Zie [artikel 4][wet] voor de premie die hier verder wordt toegelicht in een lange zin.\n\n[wet]: https://example.com/a";
+        assert_eq!(classify(text, 60), TextStyle::Literal);
+    }
+
+    #[test]
+    fn test_classify_hard_single_newline_is_literal() {
+        // A single \n in the source is a deliberate hard break (e.g. a list
+        // the splitter built); folding would join it into prose.
+        let text = "- eerste onderdeel van de opsomming die hier staat\n- tweede onderdeel van de opsomming die hier staat";
+        assert_eq!(classify(text, 60), TextStyle::Literal);
+    }
+
+    #[test]
+    fn test_classify_indented_line_is_literal() {
+        // More-indented lines switch folded-scalar semantics; never fold them.
+        let text = "Aanhef van het artikel dat lang genoeg is om te wrappen op de ingestelde breedte:\n\n  - *onderdeel* met inspringing";
+        assert_eq!(classify(text, 60), TextStyle::Literal);
+    }
+
+    #[test]
+    fn test_classify_triple_newline_is_literal() {
+        // \n\n\n would need three blank lines in a folded block (yamllint
+        // empty-lines max 2), so it must stay literal.
+        let text = "Eerste stuk tekst dat lang genoeg is om gewrapt te worden door de yaml writer.\n\n\nTweede stuk tekst na een dubbele lege regel dat ook lang genoeg is.";
+        assert_eq!(classify(text, 60), TextStyle::Literal);
     }
 }

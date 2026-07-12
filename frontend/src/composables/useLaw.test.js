@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { useLaw } from './useLaw.js';
+import { useLaw, fetchLaw } from './useLaw.js';
 
 // Helper: shape a Response-like object with headers + body + status.
 // Mirrors the harness in useTrajectDocuments.test.js.
@@ -90,5 +90,152 @@ describe('useLaw optimistic concurrency', () => {
     expect(law.saveError.value?.message).toMatch(/herlaad/i);
     // The stale ETag is kept — the user reloads to pick up a fresh one.
     expect(law.currentEtag.value).toBe('"v1"');
+  });
+});
+
+describe('useLaw fetch dedup (single-flight)', () => {
+  it('shares one GET between concurrent callers for the same key', async () => {
+    let callCount = 0;
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      callCount += 1;
+      return res({ body: '$id: wet_single_flight\nname: V1\n', etag: '"v1"' });
+    });
+
+    // Two concurrent fetches for the same key (mirrors an editor mount:
+    // useLaw().load() and fetchLaw() racing the same id against an empty cache).
+    const p1 = fetchLaw('tr-dedupe', 'wet_single_flight');
+    const p2 = fetchLaw('tr-dedupe', 'wet_single_flight');
+    // The second caller joins the in-flight request instead of firing its own.
+    expect(callCount).toBe(1);
+
+    const [e1, e2] = await Promise.all([p1, p2]);
+    // Both callers get the same resolved entry, from one GET.
+    expect(e1).toBe(e2);
+    expect(e1.law.$id).toBe('wet_single_flight');
+    expect(callCount).toBe(1);
+  });
+
+  it('shares one GET between load() and a concurrent fetchLaw (editor mount)', async () => {
+    // The exact regression this PR fixes: on editor mount, useLaw().load()
+    // fetches the routed law while the persisted-tab label loader
+    // fetchLaw()s the same id in parallel against an empty cache.
+    let callCount = 0;
+    let release;
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      callCount += 1;
+      // Hold the GET open so the second caller arrives while it's in flight.
+      await new Promise((resolve) => { release = resolve; });
+      return res({ body: '$id: wet_mount_race\nname: V1\n', etag: '"v1"' });
+    });
+
+    const law = useLaw('wet_mount_race', null, 'tr-dedupe');
+    const labelFetch = fetchLaw('tr-dedupe', 'wet_mount_race');
+    expect(callCount).toBe(1);
+
+    release();
+    const entry = await labelFetch;
+    await waitForLoaded(law);
+
+    expect(callCount).toBe(1);
+    expect(entry.law.$id).toBe('wet_mount_race');
+    // Both consumers converge on the same fetched content.
+    expect(law.rawYaml.value).toBe(entry.rawYaml);
+    expect(law.currentEtag.value).toBe('"v1"');
+  });
+
+  it('clears the pending entry on settle so a later fresh load re-fetches', async () => {
+    let callCount = 0;
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      callCount += 1;
+      return res({ body: '$id: wet_pending_clear\nname: V1\n', etag: '"v1"' });
+    });
+
+    // First fresh load fires GET #1 and settles.
+    const a = useLaw('wet_pending_clear', null, 'tr-dedupe');
+    await waitForLoaded(a);
+    expect(callCount).toBe(1);
+
+    // A subsequent fresh load (load() never reads the cache) fires a new GET —
+    // proving the settled promise wasn't pinned in the pending map.
+    const b = useLaw('wet_pending_clear', null, 'tr-dedupe');
+    await waitForLoaded(b);
+    expect(callCount).toBe(2);
+  });
+
+  it('caches under the resolved $id so a later fetch by canonical id is a hit', async () => {
+    let callCount = 0;
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      callCount += 1;
+      return res({ body: '$id: wet_canonical\nname: V1\n', etag: '"v1"' });
+    });
+
+    // Requested by a slug that differs from the body's `$id`.
+    const bySlug = await fetchLaw('tr-dedupe', 'wet-canonical-slug');
+    expect(callCount).toBe(1);
+    expect(bySlug.law.$id).toBe('wet_canonical');
+
+    // The dual-cache write under the resolved `$id` means a later fetch by
+    // the canonical id is served from cache — no extra GET.
+    const byId = await fetchLaw('tr-dedupe', 'wet_canonical');
+    expect(byId).toBe(bySlug);
+    expect(callCount).toBe(1);
+  });
+
+  it('a traject switch during a direct-URL load cannot poison the new traject cache', async () => {
+    // The direct-URL branch caches under the traject the load was issued
+    // for. If a cross-traject switchLaw lands while the response body is
+    // still streaming, the late cache write must go to the OLD traject's
+    // key — never the new one, where it would shadow the real law.
+    let releaseText;
+    const calls = [];
+    globalThis.fetch = vi.fn().mockImplementation(async (url) => {
+      calls.push(url);
+      if (url === '/direct/wet_direct.yaml') {
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: (k) => (k.toLowerCase() === 'etag' ? '"d1"' : null) },
+          // Body held open so the traject switch can land mid-flight.
+          text: () => new Promise((resolve) => { releaseText = resolve; }),
+        };
+      }
+      return res({ body: `$id: ${url.split('/').pop()}\nname: X\n`, etag: '"x1"' });
+    });
+
+    const law = useLaw('/direct/wet_direct.yaml', null, 'tr-old');
+    await vi.waitFor(() => expect(releaseText).toBeDefined());
+    // Cross-traject navigation while the direct body is still streaming.
+    await law.switchLaw('wet_other', null, 'tr-new');
+    releaseText('$id: wet_direct\nname: Direct\n');
+    await waitForLoaded(law);
+
+    // Fetching the same id in the new traject must go to the network —
+    // a cache hit here would serve the direct-URL body as tr-new content.
+    const before = calls.length;
+    const entry = await fetchLaw('tr-new', 'wet_direct');
+    expect(calls.length).toBe(before + 1);
+    expect(calls[calls.length - 1]).toBe('/api/trajects/tr-new/corpus/laws/wet_direct');
+    expect(entry.law.$id).toBe('wet_direct');
+  });
+
+  it('does not pin a rejected fetch — the next call retries', async () => {
+    let callCount = 0;
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      callCount += 1;
+      if (callCount === 1) throw new Error('network down');
+      return res({ body: '$id: wet_retry\nname: V1\n', etag: '"v1"' });
+    });
+
+    // First call fails; a failed fetch must not pin a rejected promise.
+    await expect(fetchLaw('tr-dedupe', 'wet_retry')).rejects.toThrow(
+      /network down/i,
+    );
+    expect(callCount).toBe(1);
+
+    // The retry gets a fresh GET (nothing was cached, nothing pinned) and
+    // succeeds.
+    const entry = await fetchLaw('tr-dedupe', 'wet_retry');
+    expect(entry.law.$id).toBe('wet_retry');
+    expect(callCount).toBe(2);
   });
 });

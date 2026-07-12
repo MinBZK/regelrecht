@@ -2,6 +2,7 @@ pub mod api;
 mod api_state;
 pub mod config;
 pub mod db;
+pub mod document_convert;
 pub mod enrich;
 pub mod error;
 pub mod feature_flags;

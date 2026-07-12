@@ -17,6 +17,7 @@ import { ref, watch } from 'vue';
 import {
   documentsListUrl,
   documentFileUrl,
+  documentUploadUrl,
   requireTraject,
 } from './corpusUrls.js';
 import { apiFetchJson } from '../lib/apiFetch.js';
@@ -358,6 +359,40 @@ export function useTrajectDocuments(trajectRef) {
     return result;
   }
 
+  /**
+   * Upload a PDF/Word document. Stores the bytes server-side and enqueues an
+   * async conversion-to-markdown job; the resulting `.md` appears in the list
+   * once the job completes (surfaced meanwhile by the conversion-status
+   * poller). Returns a result object `{ ok, targetPath }`.
+   */
+  async function uploadDocument(file) {
+    requireTraject(trajectRef.value, 'document upload');
+    saveError.value = null;
+    const form = new FormData();
+    form.append('file', file);
+    try {
+      // Raw fetch, result-object style like `saveCurrent`. Do NOT set
+      // Content-Type — the browser adds the multipart boundary itself.
+      const res = await fetch(documentUploadUrl(trajectRef.value), {
+        method: 'POST',
+        body: form,
+      });
+      if (!res.ok) {
+        const text = await safeText(res);
+        const err = new Error(text || `Uploaden mislukt: ${res.status}`);
+        saveError.value = err;
+        return { ok: false, error: err.message };
+      }
+      const json = await safeJson(res);
+      // Refresh the list so the poller (and, once converted, the .md) show up.
+      await fetchList();
+      return { ok: true, targetPath: json?.target_path ?? null };
+    } catch (e) {
+      saveError.value = e;
+      return { ok: false, error: e.message };
+    }
+  }
+
   async function deleteDocument(path) {
     requireTraject(trajectRef.value, 'document delete');
     // Same reasoning as in `saveCurrent`: if the doc being deleted is
@@ -487,6 +522,7 @@ export function useTrajectDocuments(trajectRef) {
     saveCurrent,
     reloadCurrent,
     createDocument,
+    uploadDocument,
     deleteDocument,
     dropDraft,
   };

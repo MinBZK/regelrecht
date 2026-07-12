@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d  # v4.0.1
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706  # v4.0.2
         id: filter
         with:
           filters: |
@@ -42,6 +42,10 @@ jobs:
               - corpus/regulation/**
               - schema/**
               - script/**
+              # The schema reference doc is version-locked to schema/latest by
+              # provenance-checks; edit it and that guard must re-run.
+              - docs/src/content/docs/reference/schema.md
+              - docs/scripts/check-schema-version.mjs
               - Justfile
               - .pre-commit-config.yaml
               - .yamllint
@@ -199,6 +203,19 @@ jobs:
           fi
           echo "schema/latest correctly points to $HIGHEST"
 
+      # The schema reference doc hand-states the current version; this asserts
+      # it tracks schema/latest so a schema bump can't leave the docs behind.
+      # Node-only, reads source files (no astro build).
+      - name: Setup Node.js
+        if: needs.changes.outputs.ci == 'true'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
+        with:
+          node-version: '22'
+
+      - name: Check schema reference doc tracks schema/latest
+        if: needs.changes.outputs.ci == 'true'
+        run: node docs/scripts/check-schema-version.mjs
+
       - name: Check engine version bump on source changes
         if: needs.changes.outputs.ci == 'true' && github.event_name == 'pull_request'
         run: |
@@ -287,7 +304,7 @@ jobs:
         uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696  # v0.0.10
 
       - name: Cache cargo registry (shared)
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8  # v6.0.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -345,7 +362,7 @@ jobs:
 
       - name: Cache cargo registry (shared)
         if: needs.changes.outputs.ci == 'true'
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8  # v6.0.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -416,7 +433,7 @@ jobs:
 
       - name: Cache cargo registry (shared)
         if: needs.changes.outputs.ci == 'true'
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8  # v6.0.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -449,7 +466,7 @@ jobs:
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
 
       - name: Cache cargo registry (shared)
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8  # v6.0.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -523,7 +540,7 @@ jobs:
 
       - name: Cache cargo registry (shared)
         if: needs.changes.outputs[matrix.package] == 'true'
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8  # v6.0.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry

@@ -156,6 +156,7 @@ async fn main() {
         .route("/api/law_entries", get(handlers::list_law_entries))
         .route("/api/jobs", get(handlers::list_jobs))
         .route("/api/jobs/summary", get(handlers::list_jobs_summary))
+        .route("/api/dashboard-stats", get(handlers::dashboard_stats))
         .route("/api/jobs/{job_id}", get(handlers::get_job))
         .route("/api/untranslatables", get(handlers::list_untranslatables))
         .route("/api/sources", get(corpus_handlers::list_sources))

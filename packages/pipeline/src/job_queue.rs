@@ -52,6 +52,9 @@ struct ReapedRow {
 pub struct CreateJobRequest {
     pub job_type: JobType,
     pub law_id: String,
+    /// Owning traject ref for traject-scoped jobs; `None` for corpus-wide
+    /// harvest/enrich jobs.
+    pub traject_ref: Option<String>,
     pub priority: Priority,
     pub payload: Option<serde_json::Value>,
     pub max_attempts: i32,
@@ -65,11 +68,18 @@ impl CreateJobRequest {
         Self {
             job_type,
             law_id: law_id.into(),
+            traject_ref: None,
             priority: Priority::default(),
             payload: None,
             max_attempts: 3,
             initial_delay: None,
         }
+    }
+
+    /// Associate the job with an owning traject.
+    pub fn with_traject_ref(mut self, traject_ref: impl Into<String>) -> Self {
+        self.traject_ref = Some(traject_ref.into());
+        self
     }
 
     pub fn with_priority(mut self, priority: Priority) -> Self {
@@ -102,13 +112,14 @@ where
     let initial_delay = req.initial_delay.map(to_pg_interval).transpose()?;
     let job = sqlx::query_as::<_, Job>(
         r#"
-        INSERT INTO jobs (job_type, law_id, priority, payload, max_attempts, scheduled_at)
-        VALUES ($1, $2, $3, $4, $5, now() + $6::interval)
+        INSERT INTO jobs (job_type, law_id, traject_ref, priority, payload, max_attempts, scheduled_at)
+        VALUES ($1, $2, $3, $4, $5, $6, now() + $7::interval)
         RETURNING *
         "#,
     )
     .bind(req.job_type)
     .bind(&req.law_id)
+    .bind(&req.traject_ref)
     .bind(req.priority.value())
     .bind(&req.payload)
     .bind(req.max_attempts)
@@ -300,6 +311,48 @@ where
         }
         _ => {}
     }
+    Ok(job)
+}
+
+/// Mark a job as permanently failed regardless of remaining attempts.
+///
+/// Unlike [`fail_job`], this never reschedules for retry: it sets `failed`
+/// immediately even when `attempts < max_attempts`. Use this for deterministic
+/// failures that cannot succeed on retry against the same inputs, where
+/// retrying only burns budget and blocks the serial queue. Examples:
+/// - the enrichment LLM produced no machine_readable sections, or its output
+///   failed to parse; or
+/// - enrichment base drift, where the base is stale relative to the recorded
+///   provenance and every retry would re-fail against the same base (and, on
+///   each non-final attempt, flip-flop the law status Enriching -> Harvested
+///   before finally landing on Failed).
+#[tracing::instrument(skip(executor, error_result))]
+pub async fn fail_job_terminal<'e, E>(
+    executor: E,
+    job_id: Uuid,
+    error_result: Option<serde_json::Value>,
+) -> Result<Job>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let job = sqlx::query_as::<_, Job>(
+        r#"
+        UPDATE jobs
+        SET status = 'failed'::job_status,
+            result = $2,
+            completed_at = now(),
+            scheduled_at = NULL
+        WHERE id = $1 AND status = 'processing'
+        RETURNING *
+        "#,
+    )
+    .bind(job_id)
+    .bind(&error_result)
+    .fetch_optional(executor)
+    .await?
+    .ok_or(PipelineError::JobNotProcessing(job_id))?;
+
+    tracing::warn!(job_id = %job.id, attempts = job.attempts, "job terminally failed (non-retryable)");
     Ok(job)
 }
 

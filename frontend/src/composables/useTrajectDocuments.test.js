@@ -46,6 +46,36 @@ describe('useTrajectDocuments', () => {
     ]);
   });
 
+  it('uploads a document as multipart and refreshes the list', async () => {
+    const calls = [];
+    globalThis.fetch = vi.fn().mockImplementation(async (url, opts) => {
+      calls.push({ url, opts: opts ?? {} });
+      if (opts?.method === 'POST') {
+        return res({ status: 202, json: { target_path: 'rapport.md' } });
+      }
+      return res({ json: { documents: [] } });
+    });
+
+    const trajectRef = ref('mig-1a2b3c4d');
+    const { uploadDocument } = useTrajectDocuments(trajectRef);
+    const file = new File([new Uint8Array([1, 2, 3])], 'Rapport.pdf', {
+      type: 'application/pdf',
+    });
+    const result = await uploadDocument(file);
+
+    expect(result).toEqual({ ok: true, targetPath: 'rapport.md' });
+    const post = calls.find((c) => c.opts.method === 'POST');
+    expect(post.url).toBe('/api/trajects/mig-1a2b3c4d/corpus/documents/upload');
+    expect(post.opts.body).toBeInstanceOf(FormData);
+    expect(post.opts.body.get('file')).toBeInstanceOf(File);
+    // Content-Type must NOT be set — the browser adds the multipart boundary.
+    expect(post.opts.headers).toBeUndefined();
+    // A successful upload refreshes the document list (GET after the POST).
+    expect(
+      calls.some((c) => c.url.endsWith('/corpus/documents') && c.opts.method !== 'POST'),
+    ).toBe(true);
+  });
+
   it('captures the ETag on open and sends it back as If-Match on save', async () => {
     const trajectRef = ref('mig-1a2b3c4d');
     // 1st call: openDocument GET.

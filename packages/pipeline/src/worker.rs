@@ -8,6 +8,7 @@ use tokio::signal::unix::{signal, SignalKind};
 
 use crate::config::WorkerConfig;
 use crate::db;
+use crate::document_convert::{self, DocumentConvertPayload, LlmDocumentConverter};
 use crate::enrich::{
     create_enrich_corpus, enrich_branch_name, execute_enrich, progress_file_path, EnrichConfig,
     EnrichPayload, RelatedLegislation,
@@ -91,6 +92,29 @@ fn is_resource_exhaustion(err: &str) -> bool {
     MARKERS.iter().any(|m| e.contains(m))
 }
 
+/// Returns true when an enrichment error is deterministic — re-running the same
+/// law with the same provider reproduces it, so retrying wastes LLM budget and
+/// blocks the serial queue. These are content/output faults: the LLM produced no
+/// machine_readable sections at all, or its output failed to parse/validate
+/// against the schema (malformed YAML, wrong types, missing fields — all
+/// surfaced as `PipelineError::Yaml`, i.e. "YAML error: …").
+///
+/// Transient faults (timeouts, reaped/stuck jobs, corpus/git-push failures,
+/// resource exhaustion, network errors) are deliberately excluded — those can
+/// succeed on a later attempt and must stay retryable.
+fn is_deterministic_content_failure(err: &str) -> bool {
+    let e = err.to_ascii_lowercase();
+    // These markers track PipelineError's `#[error(...)]` Display formats
+    // ("YAML error: …" on `Yaml`, and the `Enrich` message from enrich.rs). The
+    // `deterministic_markers_track_error_display_format` test constructs the real
+    // errors so a format change fails loudly instead of silently regressing.
+    const MARKERS: &[&str] = &[
+        "no machine_readable sections", // LLM returned nothing usable
+        "yaml error",                   // parse / deserialize / schema-validation failure
+    ];
+    MARKERS.iter().any(|m| e.contains(m))
+}
+
 /// Interval between orphaned-job reaper runs.
 const REAPER_INTERVAL: Duration = Duration::from_secs(60);
 
@@ -112,6 +136,18 @@ fn spawn_reaper(
         loop {
             if let Err(e) = job_queue::reap_orphaned_jobs(&pool, orphan_timeout).await {
                 tracing::warn!(error = %e, "failed to reap orphaned jobs");
+            }
+            // GC upload bytes orphaned when a worker died mid-conversion: the
+            // generic reaper above fails such a job without running the
+            // type-specific delete_upload, so sweep them here.
+            match document_convert::cleanup_orphaned_uploads(&pool).await {
+                Ok(n) if n > 0 => {
+                    tracing::info!(removed = n, "cleaned up orphaned document uploads")
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to clean up orphaned document uploads")
+                }
             }
             tokio::select! {
                 _ = cancel.cancelled() => break,
@@ -454,6 +490,7 @@ async fn process_next_job(
                         }
                     };
                     let enrich_req = CreateJobRequest::new(JobType::Enrich, &job.law_id)
+                        .with_priority(auto_enrich_priority(payload.depth))
                         .with_payload(payload_json);
                     match job_queue::create_enrich_job_if_not_exists(pool, enrich_req).await {
                         Ok(Some(enrich_job)) => {
@@ -792,6 +829,35 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
             }
         }
 
+        // Document-convert jobs run BEFORE the enrich hourly-cap gate: they are
+        // interactive, user-initiated uploads (naturally rate-limited) and must
+        // not be blocked when bulk enrichment has hit its budget cap. They still
+        // share this worker's LLM CLI environment and OAuth token.
+        match process_next_document_convert_job(&pool, &enrich_config, config.job_timeout).await {
+            Ok(JobOutcome::Processed) => {
+                consecutive_resource_failures = 0;
+                current_interval = config.poll_interval;
+                continue;
+            }
+            Ok(JobOutcome::ResourceExhausted) => {
+                handle_resource_exhaustion(
+                    &mut consecutive_resource_failures,
+                    config.max_consecutive_resource_failures,
+                    "document-convert",
+                );
+                current_interval = config.poll_interval;
+                continue;
+            }
+            Ok(JobOutcome::Idle) => { /* no document-convert job — continue to enrich */ }
+            Err(e) => {
+                tracing::error!(error = %e, "error processing document-convert job");
+                current_interval = (current_interval * 2)
+                    .max(config.poll_interval)
+                    .min(config.max_poll_interval);
+                continue;
+            }
+        }
+
         // Enforce the per-provider hourly run cap before claiming a job. The cap
         // is multiplied during the local night window (00:00–08:00 Europe/
         // Amsterdam) by ENRICH_NIGHT_MULTIPLIER, so bulk enrichment runs mostly
@@ -917,6 +983,23 @@ const RELATED_HARVEST_BASE: i32 = 40;
 /// result into the valid `0..=100` range.
 fn related_harvest_priority(enrich_depth: u32) -> Priority {
     Priority::new(RELATED_HARVEST_BASE - (enrich_depth as i32 + 1))
+}
+
+/// Priority for enrich jobs auto-created after a *recursive* (follow-up)
+/// harvest. Well below the default (50) so speculative, recursively-discovered
+/// enrichments always yield to directly/manually requested enrich work.
+const RECURSIVE_ENRICH_PRIORITY: i32 = 10;
+
+/// Auto-enrich priority for a harvest at the given `depth`. Root/direct harvests
+/// (depth `None`/`0`) keep the default priority; recursive follow-up harvests
+/// (depth `>= 1`) drop to [`RECURSIVE_ENRICH_PRIORITY`] so they are claimed only
+/// after all directly/manually requested enrich jobs.
+fn auto_enrich_priority(depth: Option<u32>) -> Priority {
+    if depth.unwrap_or(0) == 0 {
+        Priority::default()
+    } else {
+        Priority::new(RECURSIVE_ENRICH_PRIORITY)
+    }
 }
 
 /// True when `s` is a syntactically valid BWB regulation id (`^BWBR\d{7}$`).
@@ -1106,6 +1189,120 @@ async fn harvest_related_legislation(
     );
 }
 
+/// Process the next available document-convert job: convert an uploaded
+/// document to markdown (via the LLM agent) and write it back to the traject's
+/// corpus as a werkdocument.
+///
+/// Runs in the enrich worker so it reuses the LLM CLI environment, OAuth token
+/// and hourly budget. Returns `Idle` when no job is pending.
+async fn process_next_document_convert_job(
+    pool: &PgPool,
+    enrich_config: &EnrichConfig,
+    job_timeout: Duration,
+) -> Result<JobOutcome> {
+    let job = match job_queue::claim_job(pool, Some(JobType::DocumentConvert)).await? {
+        Some(job) => job,
+        None => return Ok(JobOutcome::Idle),
+    };
+
+    // Parse the payload. A malformed payload is deterministic — fail terminally
+    // (no retry) and still drop the transient upload if we can recover its id.
+    let payload: DocumentConvertPayload = match job
+        .payload
+        .as_ref()
+        .ok_or_else(|| PipelineError::Worker("document_convert job has no payload".to_string()))
+        .and_then(|p| {
+            serde_json::from_value(p.clone())
+                .map_err(|e| PipelineError::Worker(format!("payload deserialization failed: {e}")))
+        }) {
+        Ok(payload) => payload,
+        Err(e) => {
+            let msg = format!("invalid document_convert payload: {e}");
+            tracing::error!(job_id = %job.id, error = %msg);
+            // Best-effort: if the raw payload still yields a usable upload id,
+            // drop the orphaned bytes so a malformed job doesn't leak them.
+            if let Some(id) = job
+                .payload
+                .as_ref()
+                .and_then(|p| p.get("upload_id"))
+                .and_then(|v| v.as_str())
+                .and_then(|s| uuid::Uuid::parse_str(s).ok())
+            {
+                let _ = document_convert::delete_upload(pool, id).await;
+            }
+            job_queue::fail_job_terminal(pool, job.id, Some(serde_json::json!({ "error": msg })))
+                .await?;
+            return Ok(JobOutcome::Processed);
+        }
+    };
+
+    // Apply the payload's provider override (if any) and bound the run by the
+    // worker's job timeout, mirroring the enrich path.
+    let mut job_config = match &payload.provider {
+        Some(provider) => enrich_config.with_provider_override(provider),
+        None => enrich_config.clone(),
+    };
+    job_config.timeout = job_timeout;
+
+    match run_document_convert(pool, &payload, &job_config).await {
+        Ok(()) => {
+            // The markdown is already committed to git at this point. Drop the
+            // transient upload bytes BEFORE propagating any complete_job error —
+            // otherwise a failed status update would `?`-return past the cleanup
+            // and leak the (up to 25 MiB) BYTEA row.
+            let complete_result = job_queue::complete_job(pool, job.id, None).await;
+            if let Err(e) = document_convert::delete_upload(pool, payload.upload_id).await {
+                tracing::warn!(job_id = %job.id, error = %e, "failed to delete document upload after success");
+            }
+            if let Err(e) = &complete_result {
+                // The markdown is already committed to git, but the status update
+                // failed. The job will show as in-progress until the orphan reaper
+                // reclaims it; log loudly so an operator can correlate.
+                tracing::error!(
+                    job_id = %job.id, error = %e, target = %payload.target_path,
+                    "document converted + committed, but marking the job completed failed"
+                );
+            }
+            complete_result?;
+            Ok(JobOutcome::Processed)
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            tracing::error!(job_id = %job.id, error = %msg, "document-convert job failed");
+            // Document-convert jobs are single-attempt (the upload handler sets
+            // max_attempts=1): a retry would re-run the expensive LLM conversion
+            // and most failures are deterministic. Fail terminally and always
+            // drop the transient upload bytes — there is no retry to feed them to.
+            // Delete BEFORE propagating a fail_job_terminal error, so a failed
+            // status update can't `?`-return past the cleanup and leak the row.
+            let fail_result = job_queue::fail_job_terminal(
+                pool,
+                job.id,
+                Some(serde_json::json!({ "error": msg.clone() })),
+            )
+            .await;
+            if let Err(e) = document_convert::delete_upload(pool, payload.upload_id).await {
+                tracing::warn!(job_id = %job.id, error = %e, "failed to delete document upload after terminal failure");
+            }
+            fail_result?;
+            Ok(outcome_for_error(&msg))
+        }
+    }
+}
+
+/// Convert the uploaded document to markdown and commit it to the traject.
+async fn run_document_convert(
+    pool: &PgPool,
+    payload: &DocumentConvertPayload,
+    config: &EnrichConfig,
+) -> Result<()> {
+    let markdown =
+        document_convert::execute_document_convert(pool, payload, config, &LlmDocumentConverter)
+            .await?;
+    document_convert::write_markdown_to_traject(pool, payload, &markdown).await?;
+    Ok(())
+}
+
 /// Process the next available enrich job.
 ///
 /// Returns the [`JobOutcome`]: `Processed` when a job was handled, `Idle` when
@@ -1185,9 +1382,49 @@ async fn process_next_enrich_job(
     let branch = enrich_branch_name(effective_config.provider.name());
     let enrich_corpus = if let Some(base_config) = corpus_config {
         match create_enrich_corpus(base_config, &branch, job.id, &payload.yaml_path).await {
-            Ok(client) => {
+            Ok(enrich_corpus) => {
                 tracing::info!(branch = %branch, "created enrichment branch corpus");
-                Some(client)
+                Some(enrich_corpus)
+            }
+            Err(e @ PipelineError::BaseDrift { .. }) => {
+                // A previously-enriched law's base moved. Do NOT enrich on a
+                // stale base and do NOT overwrite the existing enrichment —
+                // fail the job loudly for human review / re-enrich.
+                tracing::error!(error = %e, law_id = %job.law_id, branch = %branch, "base drift detected; failing enrich job");
+                let error_json =
+                    serde_json::json!({ "error": e.to_string(), "kind": "base_drift" });
+                // Terminal-fail (not fail_job): base drift is deterministic
+                // against the same base, so it must NOT re-enter the job-level
+                // retry loop. fail_job_terminal marks the job Failed in one shot
+                // instead of bouncing it back to 'pending' up to max_attempts —
+                // which would deterministically re-fail against the same base
+                // and flip-flop the law status Enriching -> Harvested on each
+                // non-final attempt before finally landing on Failed.
+                match job_queue::fail_job_terminal(pool, job.id, Some(error_json)).await {
+                    Ok(_failed_job) => {
+                        if let Err(se) = sqlx::query(
+                            "UPDATE law_entries SET status = 'enrich_failed'::law_status, updated_at = now() \
+                             WHERE law_id = $1 AND status NOT IN ('enriched', 'enrich_exhausted')",
+                        )
+                        .bind(&job.law_id)
+                        .execute(pool)
+                        .await
+                        {
+                            tracing::warn!(error = %se, law_id = %job.law_id, "failed to update law status to enrich_failed");
+                        }
+                        // Deliberately NOT calling handle_enrich_exhausted_or_retry here,
+                        // and the job was terminal-failed above: unlike the other enrich
+                        // failures (timeout, commit failure, enrich error), base drift is
+                        // part of neither the job-level retry loop nor the law-level
+                        // exhaust loop. The base is unchanged-but-stale relative to the
+                        // recorded provenance, so any retry would just re-fail against the
+                        // same base. Drift requires a human to review and re-enrich.
+                    }
+                    Err(fe) => {
+                        tracing::error!(error = %fe, "failed to mark base-drift enrich job as failed")
+                    }
+                }
+                return Ok(JobOutcome::Processed);
             }
             Err(e) => {
                 tracing::warn!(error = %e, branch = %branch, "failed to create enrichment branch corpus, proceeding without");
@@ -1201,7 +1438,7 @@ async fn process_next_enrich_job(
     // Use the enrichment branch repo if available, otherwise the base repo
     let effective_repo = enrich_corpus
         .as_ref()
-        .map(|c| c.repo_path().to_path_buf())
+        .map(|c| c.client.repo_path().to_path_buf())
         .unwrap_or_else(|| repo_path.to_path_buf());
 
     // Ensure skill files are available in the repo checkout so the LLM can
@@ -1212,7 +1449,9 @@ async fn process_next_enrich_job(
     }
 
     // Capture the per-job checkout path for cleanup after the job completes.
-    let checkout_path = enrich_corpus.as_ref().map(|c| c.repo_path().to_path_buf());
+    let checkout_path = enrich_corpus
+        .as_ref()
+        .map(|c| c.client.repo_path().to_path_buf());
 
     // Compute the progress file path and spawn a background polling task.
     // The LLM writes phase info to this file; we relay it to the DB every 10s.
@@ -1249,9 +1488,14 @@ async fn process_next_enrich_job(
         );
     }
 
+    let source_hash = enrich_corpus
+        .as_ref()
+        .map(|c| c.source_hash.clone())
+        .unwrap_or_default();
+
     let enrich_outcome = tokio::time::timeout(
         job_timeout,
-        execute_enrich(&payload, &effective_repo, &bounded_config),
+        execute_enrich(&payload, &effective_repo, &bounded_config, &source_hash),
     )
     .await;
 
@@ -1272,14 +1516,7 @@ async fn process_next_enrich_job(
                 Ok(failed_job) => {
                     if failed_job.status == crate::models::JobStatus::Failed {
                         // Set EnrichFailed only if not already Enriched or EnrichExhausted.
-                        if let Err(e) = sqlx::query(
-                            "UPDATE law_entries SET status = 'enrich_failed'::law_status, updated_at = now() \
-                             WHERE law_id = $1 AND status NOT IN ('enriched', 'enrich_exhausted')",
-                        )
-                        .bind(&job.law_id)
-                        .execute(pool)
-                        .await
-                        {
+                        if let Err(e) = law_status::mark_enrich_failed(pool, &job.law_id).await {
                             tracing::warn!(error = %e, law_id = %job.law_id, "failed to update law status to enrich_failed");
                         }
 
@@ -1330,6 +1567,7 @@ async fn process_next_enrich_job(
                         result.provider, result.law_id, result.yaml_path
                     );
                     corpus
+                        .client
                         .commit_and_push(&written_files, &message)
                         .await
                         .map_err(|e| PipelineError::Enrich(format!("corpus push failed: {e}")))?;
@@ -1374,13 +1612,7 @@ async fn process_next_enrich_job(
                     match job_queue::fail_job(pool, job.id, Some(error_json)).await {
                         Ok(failed_job) if failed_job.status == crate::models::JobStatus::Failed => {
                             // Set EnrichFailed only if not already Enriched or EnrichExhausted.
-                            if let Err(e) = sqlx::query(
-                                "UPDATE law_entries SET status = 'enrich_failed'::law_status, updated_at = now() \
-                                 WHERE law_id = $1 AND status NOT IN ('enriched', 'enrich_exhausted')",
-                            )
-                            .bind(&job.law_id)
-                            .execute(pool)
-                            .await
+                            if let Err(e) = law_status::mark_enrich_failed(pool, &job.law_id).await
                             {
                                 tracing::warn!(error = %e, law_id = %job.law_id, "failed to update law status to enrich_failed");
                             }
@@ -1466,7 +1698,8 @@ async fn process_next_enrich_job(
             }
         }
         Ok(Err(e)) => {
-            let outcome = outcome_for_error(&e.to_string());
+            let err_str = e.to_string();
+            let outcome = outcome_for_error(&err_str);
             tracing::error!(
                 job_id = %job.id,
                 law_id = %job.law_id,
@@ -1474,47 +1707,91 @@ async fn process_next_enrich_job(
                 "enrichment failed"
             );
 
-            let error_json = serde_json::json!({ "error": e.to_string() });
-            match job_queue::fail_job(pool, job.id, Some(error_json)).await {
-                Ok(failed_job) => {
-                    if failed_job.status == crate::models::JobStatus::Failed {
-                        // Set EnrichFailed only if not already Enriched or EnrichExhausted.
-                        if let Err(status_err) = sqlx::query(
-                            "UPDATE law_entries SET status = 'enrich_failed'::law_status, updated_at = now() \
-                             WHERE law_id = $1 AND status NOT IN ('enriched', 'enrich_exhausted')",
-                        )
-                        .bind(&job.law_id)
-                        .execute(pool)
-                        .await
-                        {
-                            tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to set status to enrich_failed");
-                        }
+            let error_json = serde_json::json!({ "error": &err_str });
 
-                        handle_enrich_exhausted_or_retry(
-                            pool,
-                            &job.law_id,
-                            &payload,
-                            job.priority,
-                            exhausted_threshold,
-                        )
-                        .await;
-                    } else {
-                        // Job will be retried — atomically reset to Harvested only if
-                        // status is currently Enriching. Cannot regress from Enriched.
-                        if let Err(status_err) = law_status::update_status_if(
-                            pool,
-                            &job.law_id,
-                            LawStatusValue::Enriching,
-                            LawStatusValue::Harvested,
-                        )
-                        .await
-                        {
-                            tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to reset status to harvested for retry");
+            if is_deterministic_content_failure(&err_str) {
+                // Deterministic content failure (LLM produced no machine_readable
+                // sections, or its output failed to parse/validate). Re-running the
+                // same law with the same provider reproduces it, so the normal
+                // retry ladder (3 inner attempts × up to EXHAUSTED_THRESHOLD
+                // recreated jobs) only wastes LLM budget and blocks the serial
+                // queue behind ~30 doomed runs. Fail terminally and exhaust the law
+                // in one step. The exhaust is guarded (enrich_failed → enrich_exhausted
+                // only), so a provider that already enriched this law keeps 'enriched'.
+                // Terminal-fail the job and transition the law atomically: if any
+                // step errors, the transaction rolls back and the job is left in
+                // 'processing' for the reaper to reclaim and retry (self-healing
+                // once the DB recovers) — never a law stranded in 'enriching' with
+                // a failed job and no follow-up. `mark_enrich_failed` is guarded
+                // (NOT IN enriched/enrich_exhausted), so 0 rows means another
+                // provider already reached a terminal state — keep it, skip the
+                // exhaust.
+                let fast_fail = async {
+                    let mut tx = pool.begin().await?;
+                    job_queue::fail_job_terminal(&mut *tx, job.id, Some(error_json)).await?;
+                    let rows = law_status::mark_enrich_failed(&mut *tx, &job.law_id).await?;
+                    if rows > 0 {
+                        law_status::exhaust_law(&mut *tx, &job.law_id, JobType::Enrich).await?;
+                    }
+                    tx.commit().await?;
+                    Ok::<u64, PipelineError>(rows)
+                }
+                .await;
+                match fast_fail {
+                    Ok(0) => tracing::warn!(
+                        job_id = %job.id,
+                        law_id = %job.law_id,
+                        "deterministic content failure — job failed without retry; law already in a terminal state, status kept"
+                    ),
+                    Ok(_) => tracing::warn!(
+                        job_id = %job.id,
+                        law_id = %job.law_id,
+                        "deterministic content failure — marked enrich_exhausted without retry"
+                    ),
+                    Err(e) => tracing::error!(
+                        job_id = %job.id,
+                        law_id = %job.law_id,
+                        error = %e,
+                        "fast-fail transaction rolled back; job left in 'processing' for the reaper to retry"
+                    ),
+                }
+            } else {
+                match job_queue::fail_job(pool, job.id, Some(error_json)).await {
+                    Ok(failed_job) => {
+                        if failed_job.status == crate::models::JobStatus::Failed {
+                            // Set EnrichFailed only if not already Enriched or EnrichExhausted.
+                            if let Err(status_err) =
+                                law_status::mark_enrich_failed(pool, &job.law_id).await
+                            {
+                                tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to set status to enrich_failed");
+                            }
+
+                            handle_enrich_exhausted_or_retry(
+                                pool,
+                                &job.law_id,
+                                &payload,
+                                job.priority,
+                                exhausted_threshold,
+                            )
+                            .await;
+                        } else {
+                            // Job will be retried — atomically reset to Harvested only if
+                            // status is currently Enriching. Cannot regress from Enriched.
+                            if let Err(status_err) = law_status::update_status_if(
+                                pool,
+                                &job.law_id,
+                                LawStatusValue::Enriching,
+                                LawStatusValue::Harvested,
+                            )
+                            .await
+                            {
+                                tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to reset status to harvested for retry");
+                            }
                         }
                     }
-                }
-                Err(fail_err) => {
-                    tracing::error!(job_id = %job.id, error = %fail_err, "failed to mark job as failed");
+                    Err(fail_err) => {
+                        tracing::error!(job_id = %job.id, error = %fail_err, "failed to mark job as failed");
+                    }
                 }
             }
 
@@ -1728,6 +2005,29 @@ mod tests {
     }
 
     #[test]
+    fn auto_enrich_priority_by_depth() {
+        // Root/direct harvests keep the default priority.
+        assert_eq!(
+            auto_enrich_priority(None).value(),
+            Priority::default().value()
+        );
+        assert_eq!(
+            auto_enrich_priority(Some(0)).value(),
+            Priority::default().value()
+        );
+        // Recursive follow-up harvests (depth >= 1) drop to the low priority so
+        // they yield to directly/manually requested enrich work.
+        assert_eq!(
+            auto_enrich_priority(Some(1)).value(),
+            RECURSIVE_ENRICH_PRIORITY
+        );
+        assert_eq!(
+            auto_enrich_priority(Some(5)).value(),
+            RECURSIVE_ENRICH_PRIORITY
+        );
+    }
+
+    #[test]
     fn classifies_fork_eagain_errors_as_resource_exhaustion() {
         // Real strings observed from failed harvest jobs.
         assert!(is_resource_exhaustion(
@@ -1766,6 +2066,68 @@ mod tests {
         assert!(!is_resource_exhaustion(
             "YAML error: did not find expected key at line 5 column 3"
         ));
+    }
+
+    #[test]
+    fn classifies_content_failures_as_deterministic() {
+        // Real strings observed from failed enrich jobs (opencode) — retrying
+        // these reproduces the same failure, so they must fail fast.
+        assert!(is_deterministic_content_failure(
+            "enrichment error: LLM produced no machine_readable sections (159 articles needed enrichment)"
+        ));
+        assert!(is_deterministic_content_failure(
+            "YAML error: articles[4].machine_readable.untranslatables[0]: missing field `construct` at line 445 column 11"
+        ));
+        assert!(is_deterministic_content_failure(
+            "YAML error: articles[9].machine_readable: invalid type: sequence, expected struct MachineReadable at line 395 column 7"
+        ));
+        assert!(is_deterministic_content_failure(
+            "YAML error: did not find expected key at line 177 column 3"
+        ));
+    }
+
+    #[test]
+    fn does_not_classify_transient_failures_as_deterministic() {
+        // Transient faults must stay retryable — a later attempt can succeed.
+        assert!(!is_deterministic_content_failure(
+            "reaped: job stuck in processing"
+        ));
+        assert!(!is_deterministic_content_failure(
+            "job timed out after 600s"
+        ));
+        assert!(!is_deterministic_content_failure(
+            "enrichment error: corpus push failed: git command failed: could not read from remote"
+        ));
+        assert!(!is_deterministic_content_failure(
+            "enrichment error: claude exited with exit status: 1"
+        ));
+        assert!(!is_deterministic_content_failure(
+            "IO error: Resource temporarily unavailable (os error 11)"
+        ));
+    }
+
+    #[test]
+    fn deterministic_markers_track_error_display_format() {
+        // The classifier matches on error Display strings, so its markers are
+        // coupled to PipelineError's `#[error(...)]` formats. Construct the real
+        // errors and run them through the classifier: if a format string drifts
+        // (e.g. "YAML error:" is renamed), this fails instead of silently
+        // regressing content failures back to the 30-retry ladder.
+        let yaml_err: PipelineError = serde_yaml_ng::from_str::<i32>("[1, 2]")
+            .expect_err("deserializing a sequence into i32 must fail")
+            .into();
+        assert!(
+            is_deterministic_content_failure(&yaml_err.to_string()),
+            "PipelineError::Yaml Display must still match a classifier marker"
+        );
+
+        let enrich_err = PipelineError::Enrich(
+            "LLM produced no machine_readable sections (3 articles needed enrichment)".to_string(),
+        );
+        assert!(
+            is_deterministic_content_failure(&enrich_err.to_string()),
+            "PipelineError::Enrich Display must preserve the message the classifier keys on"
+        );
     }
 
     #[test]

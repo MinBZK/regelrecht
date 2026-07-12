@@ -8,6 +8,11 @@ use uuid::Uuid;
 pub enum JobType {
     Harvest,
     Enrich,
+    /// Convert an uploaded document (PDF/Word) to a markdown werkdocument via
+    /// the LLM agent. Scoped to a traject (see [`Job::traject_ref`]).
+    #[sqlx(rename = "document_convert")]
+    #[serde(rename = "document_convert")]
+    DocumentConvert,
 }
 
 #[derive(

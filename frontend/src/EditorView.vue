@@ -3,7 +3,7 @@ import { ref, computed, reactive, watch, watchEffect, nextTick, onBeforeUnmount 
 import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
 import * as yaml from 'js-yaml';
 import { useLaw, fetchLaw } from './composables/useLaw.js';
-import { lawsListUrl } from './composables/corpusUrls.js';
+import { useCorpusLaws } from './composables/useCorpusLaws.js';
 import { useEngine } from './composables/useEngine.js';
 import { useAuth } from './composables/useAuth.js';
 import { useTrajects } from './composables/useTrajects.js';
@@ -198,10 +198,11 @@ const {
 } = useLaw(route.params.lawId, route.params.articleNumber, route.params.trajectRef);
 
 // When the active traject changes (router.push to /editor/{otherRef}/…)
-// the URL stays on the same component; refresh the corpus index and
-// re-fetch the open law through the new traject's backends. `switchLaw`
-// crosses trajects too via its third argument so the law cache key
-// stays correct.
+// the URL stays on the same component; re-fetch the open law through the
+// new traject's backends. The corpus list needs no handling here —
+// `useCorpusLaws(activeTrajectRef)` re-scopes reactively on the same
+// change. `switchLaw` crosses trajects too via its third argument so the
+// law cache key stays correct.
 //
 // Also flush the WASM engine: it caches loaded laws by id only, so
 // without this a scenario run after a traject switch would evaluate
@@ -210,7 +211,6 @@ const {
 // `unloadAllLaws` is enough — no per-dep bookkeeping needed.
 watch(activeTrajectRef, (next) => {
   unloadAllLaws();
-  loadCorpusLaws();
   if (lawId.value) {
     switchLaw(lawId.value, selectedArticleNumber.value, next);
   }
@@ -679,34 +679,29 @@ const resultSheetOpen = ref(false);
 const graphSheetOpen = ref(false);
 
 // --- Corpus search (reuse the shared SearchPopover) ---
-const corpusLaws = ref([]);
 const searchPopoverRef = ref(null);
 // The toolbar search control lives in the AppShell; register our popover so
 // the shell's search button/field opens it.
 registerSearchPopover(searchPopoverRef);
 
-// Discards stale responses across rapid traject switches.
-const claimCorpusLaws = useLatest();
-
-async function loadCorpusLaws() {
-  const isCurrent = claimCorpusLaws();
-  try {
-    const list = await apiFetchJson(lawsListUrl(activeTrajectRef.value, 'limit=1000'));
-    if (!isCurrent()) return; // stale response, discard
-    corpusLaws.value = list.sort((a, b) => a.law_id.localeCompare(b.law_id));
-  } catch { /* ignore HTTP and network failures alike — search is a convenience */ }
-}
-loadCorpusLaws();
+// Shared corpus list via `useCorpusLaws` — the same per-scope cache
+// MachineReadable reads, so an editor mount fires ONE laws-list fetch
+// instead of a private duplicate GET. Traject switches re-scope
+// reactively; fetch failures degrade to the humanized law id.
+const {
+  displayName: corpusDisplayName,
+  refresh: refreshCorpusLaws,
+} = useCorpusLaws(activeTrajectRef);
 
 /**
  * Display name for the failed law on the error inline-dialog. Tries the
- * corpus index (loaded for the search popover) first; falls back to the
- * URL slug so the user always sees a concrete identifier.
+ * corpus index first; falls back to the URL slug (via `humanizeLawId`
+ * inside `displayName`) so the user always sees a concrete identifier.
  */
 const failedLawName = computed(() => {
   const id = lawId.value;
   if (!id) return '';
-  return corpusLaws.value.find(l => l.law_id === id)?.name || humanizeLawId(id);
+  return corpusDisplayName(id);
 });
 
 // True when the law fetch errored with 404 (law missing or not in active traject's corpus).
@@ -737,7 +732,9 @@ async function onSearchHarvestAvailable(slug) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ law_ids: [slug] }),
   }).catch(() => {});
-  await loadCorpusLaws();
+  // Bust the shared per-scope cache so the fresh law shows up with its
+  // real display name instead of the humanized slug fallback.
+  await refreshCorpusLaws();
   router.push(libraryRouteFor(slug));
 }
 const resultSheetEl = ref(null);
@@ -898,7 +895,7 @@ if (!route.params.articleNumber && openTabs.value.length > 0) {
 //
 // trajectRef-only changes are intentionally NOT handled here: the
 // `watch(activeTrajectRef)` above already does `unloadAllLaws` +
-// `loadCorpusLaws` + `switchLaw`, and triggering switchLaw twice in
+// `switchLaw`, and triggering switchLaw twice in
 // the same tick would burn an extra fetch (the first await loses
 // useLaw's stale-switch race, but still hits the network). This guard
 // handles the law / article portion only.
