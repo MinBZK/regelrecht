@@ -145,6 +145,10 @@ See `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` for a worki
 
 **All user interface MUST be built with components from the MinBZK design system: https://github.com/MinBZK/storybook** (the NDD `ndd-*` web components). Do not hand-roll custom UI elements when a design-system component exists. For the required component hierarchy, nesting rules, and layout patterns, use the `storybook-component-hierarchy` skill.
 
+### Icon names
+
+When an icon has an alias, prefer the **alias name** over the canonical name — e.g. `icon="harvest"` not `wheat`, `icon="info"` not `info-circle`, `icon="new-account"` not `person-circle-badge-plus`. Aliases are more meaningful and stable; the alias list lives in the design system at `src/components/content/icon/icon-aliases.js`.
+
 ### When you can't build what you want with these components
 
 Do **not** silently improvise. Follow these steps in order:
