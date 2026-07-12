@@ -1,8 +1,9 @@
 <script setup>
-import { computed, ref, onMounted, onBeforeUnmount, provide } from 'vue';
+import { computed, ref, nextTick, onMounted, onBeforeUnmount, provide } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import TrajectMenu from './components/TrajectMenu.vue';
 import MobileTrajectSheet from './components/MobileTrajectSheet.vue';
+import AboutSheet from './components/AboutSheet.vue';
 import { useAuth } from './composables/useAuth.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
@@ -47,6 +48,13 @@ function goToHarvesting() {
 }
 const { colorScheme, setColorScheme } = useColorScheme();
 const { activeTrajectRef } = useTrajects();
+
+// "Over RegelRecht" about sheet, opened from the account menu.
+const aboutSheet = ref(null);
+function openAbout() {
+  // Let the account menu popover close first, then raise the sheet.
+  nextTick(() => aboutSheet.value?.show?.());
+}
 
 const colorSchemeOptions = [
   ['auto', 'Systeem'],
@@ -261,6 +269,7 @@ const hasDocumentTabs = computed(
                     ></nldd-menu-item>
                   </nldd-menu>
                 </nldd-menu-item>
+                <nldd-menu-item text="Over RegelRecht" icon="info-circle" @click="openAbout"></nldd-menu-item>
                 <template v-if="!authLoading && authenticated">
                   <nldd-menu-divider></nldd-menu-divider>
                   <nldd-menu-item text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
@@ -335,6 +344,7 @@ const hasDocumentTabs = computed(
                     ></nldd-menu-item>
                   </nldd-menu>
                 </nldd-menu-item>
+                <nldd-menu-item text="Over RegelRecht" icon="info-circle" @click="openAbout"></nldd-menu-item>
                 <template v-if="!authLoading && authenticated">
                   <nldd-menu-divider></nldd-menu-divider>
                   <nldd-menu-item text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
@@ -520,6 +530,7 @@ const hasDocumentTabs = computed(
                     ></nldd-menu-item>
                   </nldd-menu>
                 </nldd-menu-item>
+                <nldd-menu-item text="Over RegelRecht" icon="info-circle" @click="openAbout"></nldd-menu-item>
                 <template v-if="!authLoading && authenticated">
                   <nldd-menu-divider></nldd-menu-divider>
                   <nldd-menu-item text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
@@ -530,6 +541,8 @@ const hasDocumentTabs = computed(
         </nldd-container>
       </nldd-split-view-pane>
     </nldd-bar-split-view>
+
+    <AboutSheet ref="aboutSheet"></AboutSheet>
   </nldd-app-view>
 
   <!-- Editor requires login: a heads-up popover anchored to the clicked Editor
