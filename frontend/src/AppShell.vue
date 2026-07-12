@@ -223,7 +223,7 @@ const hasDocumentTabs = computed(
                 ></nldd-menu-item>
                 </nldd-menu-group>
                 <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvester" @click.stop="goToHarvesting"></nldd-menu-item>
-                <nldd-menu-item text="Functies" icon="puzzle-piece">
+                <nldd-menu-item v-if="!authLoading && authenticated" text="Functies" icon="puzzle-piece">
                   <nldd-menu>
                     <nldd-menu-item
                       v-for="[key, label] in editorPanelFlags"
@@ -295,7 +295,7 @@ const hasDocumentTabs = computed(
                 ></nldd-menu-item>
                 </nldd-menu-group>
                 <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvester" @click.stop="goToHarvesting"></nldd-menu-item>
-                <nldd-menu-item text="Functies" icon="puzzle-piece">
+                <nldd-menu-item v-if="!authLoading && authenticated" text="Functies" icon="puzzle-piece">
                   <nldd-menu>
                     <nldd-menu-item
                       v-for="[key, label] in editorPanelFlags"
@@ -478,7 +478,7 @@ const hasDocumentTabs = computed(
                 ></nldd-menu-item>
                 </nldd-menu-group>
                 <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvester" @click.stop="goToHarvesting"></nldd-menu-item>
-                <nldd-menu-item text="Functies" icon="puzzle-piece">
+                <nldd-menu-item v-if="!authLoading && authenticated" text="Functies" icon="puzzle-piece">
                   <nldd-menu>
                     <nldd-menu-item
                       v-for="[key, label] in editorPanelFlags"
