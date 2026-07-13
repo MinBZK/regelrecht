@@ -245,7 +245,9 @@ pub struct TrajectJobView {
 /// documents list, so it drops out of this view; a terminally failed job is no
 /// longer shown here either — the uploader instead gets a wegklikbare
 /// `job_failed` taak (see `worker::process_next_document_convert_job`), so a
-/// failure no longer lingers forever in the werkdocumenten status block.
+/// failure no longer lingers forever in the werkdocumenten status block. This
+/// only holds for jobs with a `requested_by` on their payload; jobs enqueued
+/// before that field existed have no uploader to notify and get no task.
 pub async fn list_traject_document_jobs(
     pool: &PgPool,
     traject_ref: &str,

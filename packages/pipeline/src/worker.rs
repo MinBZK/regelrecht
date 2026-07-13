@@ -1298,44 +1298,57 @@ async fn process_next_document_convert_job(
             // max_attempts=1): a retry would re-run the expensive LLM conversion
             // and most failures are deterministic. Fail terminally and always
             // drop the transient upload bytes — there is no retry to feed them to.
-            // Delete BEFORE propagating a fail_job_terminal error, so a failed
-            // status update can't `?`-return past the cleanup and leak the row.
-            let fail_result = job_queue::fail_job_terminal(
-                pool,
-                job.id,
-                Some(serde_json::json!({ "error": msg.clone() })),
-            )
+            // Delete BEFORE propagating a fail-path error, so a failed status
+            // update (or task-creation error) can't `?`-return past the cleanup
+            // and leak the row. This deletion intentionally stays OUTSIDE the
+            // transaction below: it targets a separate `document_uploads` row,
+            // not the job/task tables, and must run regardless of whether the
+            // fail+task transaction commits.
+            //
+            // The fail-marking and the informative `job_failed` task (so the
+            // mislukking niet stil in de eeuwigheid verdwijnt — the job is also
+            // filtered out of the documenten-jobs-lijst by then) are committed
+            // together in one transaction: a crash or DB error between them
+            // would otherwise leave a terminally-failed job with no task ever
+            // to notify the uploader. This is no longer best-effort: if task
+            // creation fails, the whole transaction (including the fail
+            // marking) rolls back, so the job stays 'processing' and the
+            // orphan reaper reclaims it for another attempt — preferable to a
+            // silent, permanent failure.
+            let fail_result: Result<()> = async {
+                let mut tx = pool.begin().await?;
+                job_queue::fail_job_terminal(
+                    &mut *tx,
+                    job.id,
+                    Some(serde_json::json!({ "error": msg.clone() })),
+                )
+                .await?;
+                if let Some(account_id) = payload.requested_by {
+                    crate::tasks::create_task(
+                        &mut *tx,
+                        crate::tasks::NewTask {
+                            task_type: crate::tasks::TaskType::JobFailed,
+                            assignee_account_id: Some(account_id),
+                            traject_id: Some(payload.traject_id),
+                            job_id: Some(job.id),
+                            title: format!("Conversie mislukt: {}", payload.target_path),
+                            payload: Some(serde_json::json!({
+                                "traject_ref": payload.traject_ref,
+                                "target_path": payload.target_path,
+                                "error": msg.clone(),
+                            })),
+                        },
+                    )
+                    .await?;
+                }
+                tx.commit().await?;
+                Ok(())
+            }
             .await;
             if let Err(e) = document_convert::delete_upload(pool, payload.upload_id).await {
                 tracing::warn!(job_id = %job.id, error = %e, "failed to delete document upload after terminal failure");
             }
             fail_result?;
-
-            // Informatieve taak voor de uploader, zodat de mislukking niet
-            // stil in de eeuwigheid verdwijnt (hij is nu ook uit de
-            // documenten-jobs-lijst gefilterd). Best-effort: een taak-fout mag
-            // het faalpad niet blokkeren.
-            if let Some(account_id) = payload.requested_by {
-                let task = crate::tasks::create_task(
-                    pool,
-                    crate::tasks::NewTask {
-                        task_type: crate::tasks::TaskType::JobFailed,
-                        assignee_account_id: Some(account_id),
-                        traject_id: Some(payload.traject_id),
-                        job_id: Some(job.id),
-                        title: format!("Conversie mislukt: {}", payload.target_path),
-                        payload: Some(serde_json::json!({
-                            "traject_ref": payload.traject_ref,
-                            "target_path": payload.target_path,
-                            "error": msg.clone(),
-                        })),
-                    },
-                )
-                .await;
-                if let Err(e) = task {
-                    tracing::error!(job_id = %job.id, error = %e, "faal-taak aanmaken mislukt");
-                }
-            }
 
             Ok(outcome_for_error(&msg))
         }
@@ -1444,21 +1457,22 @@ pub async fn finish_enrich_task_job(
 
 /// Taak+blob-opruiming die hoort bij een definitief gefaalde taak-job: ruim
 /// de input-blobs op en maak een informatieve `job_failed`-taak aan zodat de
-/// aanvrager het ziet. Gedeeld door [`fail_enrich_task_job`] (altijd
-/// terminaal) en [`fail_enrich_task_job_with_retry`] (alleen wanneer
-/// `fail_job` de job daadwerkelijk op `Failed` zet).
-async fn finalize_failed_task_job(
-    pool: &PgPool,
+/// aanvrager het ziet. Werkt op een bestaande transactie zodat de aanroeper
+/// dit samen met de fail-markering atomair kan committen (of terugrollen) —
+/// zie [`fail_enrich_task_job`] (altijd terminaal) en
+/// [`fail_enrich_task_job_with_retry`] (alleen wanneer `fail_job` de job
+/// daadwerkelijk op `Failed` zet).
+async fn finalize_failed_task_job_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     job: &crate::models::Job,
     error: &str,
 ) -> Result<()> {
     let payload: EnrichPayload = serde_json::from_value(job.payload.clone().unwrap_or_default())
         .map_err(|e| PipelineError::Enrich(format!("invalid enrich payload: {e}")))?;
 
-    let mut tx = pool.begin().await?;
-    crate::tasks::delete_blobs_for_job(&mut *tx, job.id).await?;
+    crate::tasks::delete_blobs_for_job(&mut **tx, job.id).await?;
     crate::tasks::create_task(
-        &mut *tx,
+        &mut **tx,
         crate::tasks::NewTask {
             task_type: crate::tasks::TaskType::JobFailed,
             assignee_account_id: payload.requested_by,
@@ -1473,36 +1487,55 @@ async fn finalize_failed_task_job(
         },
     )
     .await?;
-    tx.commit().await?;
     Ok(())
 }
 
 /// Taak-flow falen (terminaal): faal de job onvoorwaardelijk en ruim
-/// taak+blobs op. Voor deterministische content-fouten (dezelfde input
-/// reproduceert dezelfde fout, retrying verspilt alleen LLM-budget).
+/// taak+blobs op, atomair in één transactie — een crash of DB-fout tussen de
+/// fail-markering en de taak-aanmaak zou anders een definitief gefaalde job
+/// zonder `job_failed`-taak achterlaten (onzichtbaar voor de aanvrager). Voor
+/// deterministische content-fouten (dezelfde input reproduceert dezelfde
+/// fout, retrying verspilt alleen LLM-budget).
 pub async fn fail_enrich_task_job(
     pool: &PgPool,
     job: &crate::models::Job,
     error: &str,
 ) -> Result<()> {
-    job_queue::fail_job_terminal(pool, job.id, Some(serde_json::json!({ "error": error }))).await?;
-    finalize_failed_task_job(pool, job, error).await
+    let mut tx = pool.begin().await?;
+    job_queue::fail_job_terminal(
+        &mut *tx,
+        job.id,
+        Some(serde_json::json!({ "error": error })),
+    )
+    .await?;
+    finalize_failed_task_job_tx(&mut tx, job, error).await?;
+    tx.commit().await?;
+    Ok(())
 }
 
 /// Taak-flow falen met retry-semantiek: `fail_job` bepaalt pending-met-backoff
 /// (attempts over) versus definitief Failed. Pas bij definitief falen krijgt
 /// de aanvrager de `job_failed`-taak en gaan de input-blobs weg — eerder niet,
-/// want een retry her-materialiseert uit die blobs.
+/// want een retry her-materialiseert uit die blobs. De fail-markering en de
+/// (eventuele) finalize zitten in dezelfde transactie, zodat een fout tussen
+/// beide de fail-markering meeneemt in de rollback — de job blijft dan
+/// 'processing' voor de reaper, in plaats van definitief gefaald zonder taak.
 pub async fn fail_enrich_task_job_with_retry(
     pool: &PgPool,
     job: &crate::models::Job,
     error: &str,
 ) -> Result<()> {
-    let failed_job =
-        job_queue::fail_job(pool, job.id, Some(serde_json::json!({ "error": error }))).await?;
+    let mut tx = pool.begin().await?;
+    let failed_job = job_queue::fail_job(
+        &mut *tx,
+        job.id,
+        Some(serde_json::json!({ "error": error })),
+    )
+    .await?;
     if failed_job.status == crate::models::JobStatus::Failed {
-        finalize_failed_task_job(pool, job, error).await?;
+        finalize_failed_task_job_tx(&mut tx, job, error).await?;
     }
+    tx.commit().await?;
     Ok(())
 }
 
