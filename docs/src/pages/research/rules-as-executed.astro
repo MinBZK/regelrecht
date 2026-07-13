@@ -66,37 +66,3 @@ const description =
     </div>
   </nldd-one-third-two-thirds-section>
 </Base>
-
-<script>
-  // Re-anchor after the page settles. The browser scrolls to the #fragment
-  // before RijksSans swaps in and before the nldd-code-viewer blocks
-  // upgrade; on a document this long the accumulated height change puts the
-  // target a section off. Once fonts and custom elements are ready, scroll
-  // to the fragment again — unless the reader has scrolled in the meantime.
-  function reanchor() {
-    if (!location.hash || !location.pathname.startsWith('/research/')) return;
-    let el: Element | null = null;
-    try {
-      el = document.getElementById(decodeURIComponent(location.hash.slice(1)));
-    } catch {
-      return;
-    }
-    if (!el) return;
-    let userScrolled = false;
-    const markScrolled = () => {
-      userScrolled = true;
-    };
-    ['wheel', 'touchmove', 'keydown'].forEach((t) =>
-      window.addEventListener(t, markScrolled, { passive: true, once: true })
-    );
-    Promise.all([
-      document.fonts ? document.fonts.ready : Promise.resolve(),
-      customElements.whenDefined('nldd-code-viewer'),
-    ]).then(() => {
-      requestAnimationFrame(() => {
-        if (!userScrolled && el) el.scrollIntoView();
-      });
-    });
-  }
-  document.addEventListener('astro:page-load', reanchor);
-</script>

@@ -847,6 +847,47 @@ const legalLinks = [
       });
     </script>
 
+    <script>
+      // Re-anchor after the page settles. The browser scrolls to the
+      // #fragment before RijksSans swaps in and before the nldd-code-viewer
+      // blocks upgrade; the accumulated height change above the target puts
+      // it off — a full section off on a long page like the research paper,
+      // tens of pixels on a docs page reached through a search deep link.
+      // Once fonts and custom elements are ready, scroll to the fragment
+      // again, unless the reader has scrolled in the meantime.
+      function reanchor() {
+        if (!location.hash) return;
+        let el: Element | null = null;
+        try {
+          el = document.getElementById(
+            decodeURIComponent(location.hash.slice(1))
+          );
+        } catch {
+          return;
+        }
+        if (!el) return;
+        let userScrolled = false;
+        const markScrolled = () => {
+          userScrolled = true;
+        };
+        ['wheel', 'touchmove', 'keydown'].forEach((t) =>
+          window.addEventListener(t, markScrolled, {
+            passive: true,
+            once: true,
+          })
+        );
+        Promise.all([
+          document.fonts ? document.fonts.ready : Promise.resolve(),
+          customElements.whenDefined('nldd-code-viewer'),
+        ]).then(() => {
+          requestAnimationFrame(() => {
+            if (!userScrolled && el) el.scrollIntoView();
+          });
+        });
+      }
+      document.addEventListener('astro:page-load', reanchor);
+    </script>
+
     <!-- Select lines in a doc/RFC, jump to GitHub edit at that source range.
          Pure chrome, no hydration: one floating nldd-button wired to the
          current text selection. Active only on pages whose content wrapper
