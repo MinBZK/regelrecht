@@ -14,6 +14,7 @@ export function useTrajectMembers() {
   const members = ref([]);
   const pendingInvites = ref([]);
   const callerRole = ref(null);
+  const trajectName = ref('');
   const loading = ref(false);
   const error = ref(null);
 
@@ -25,6 +26,7 @@ export function useTrajectMembers() {
     members.value = [];
     pendingInvites.value = [];
     callerRole.value = null;
+    trajectName.value = '';
     try {
       const body = await apiFetchJson(`/api/trajects/${trajectId}`, {
         errorMessage: (status) => `Kon traject niet laden: ${status}`,
@@ -32,6 +34,7 @@ export function useTrajectMembers() {
       members.value = body.members || [];
       pendingInvites.value = body.pending_invites || [];
       callerRole.value = body.role || null;
+      trajectName.value = body.name || '';
     } catch (e) {
       error.value = e;
     } finally {
@@ -52,6 +55,31 @@ export function useTrajectMembers() {
     });
     await load(trajectId);
     return body;
+  }
+
+  // Invite several addresses in one action: POST each (sequentially, so a rate
+  // limit or one bad address doesn't abort the rest), collect per-address
+  // outcomes, then reload the roster once. Never rejects — read `failed`.
+  async function inviteMany(trajectId, emails, role) {
+    const succeeded = [];
+    const failed = [];
+    for (const email of emails) {
+      try {
+        const body = await apiFetchJson(`/api/trajects/${trajectId}/members`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email, role }),
+          errorMessage: (status, reason) =>
+            reason ||
+            (status === 400 ? 'Ongeldig e-mailadres of rol' : `Mislukt: ${status}`),
+        });
+        succeeded.push(body.email || email);
+      } catch (e) {
+        failed.push({ email, message: e.message || 'Uitnodigen mislukt' });
+      }
+    }
+    await load(trajectId);
+    return { succeeded, failed };
   }
 
   async function updateRole(trajectId, accountId, role) {
@@ -92,10 +120,12 @@ export function useTrajectMembers() {
     members,
     pendingInvites,
     callerRole,
+    trajectName,
     loading,
     error,
     load,
     invite,
+    inviteMany,
     updateRole,
     removeMember,
     removeInvite,

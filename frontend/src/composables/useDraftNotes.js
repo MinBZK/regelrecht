@@ -151,6 +151,22 @@ export function useDraftNotes(lawId, trajectRef) {
   }
 
   /**
+   * Serialise an explicit set of notes to the same sidecar YAML shape as
+   * `exportYaml`, for a caller that already holds the notes it wants (e.g. the
+   * article-scoped export, where EditorView passes the notes resolved to the
+   * open article). Strips the `__draft` marker; committed and draft notes mix
+   * freely.
+   */
+  function exportYamlFromNotes(notes) {
+    const doc = {
+      $schema:
+        'https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.3/annotation-schema.json',
+      annotations: notes.map(stripDraftMarker),
+    };
+    return yaml.dump(doc, { lineWidth: -1, noRefs: true });
+  }
+
+  /**
    * Append the local drafts to the law's sidecar via editor-api. The save
    * is routed through the session's active traject (same model as law and
    * scenario edits since #632): the notes land in that traject's writable
@@ -168,21 +184,20 @@ export function useDraftNotes(lawId, trajectRef) {
    * updated so EditorApp's badge shows it. Throws with the editor-api
    * message on failure; drafts are left untouched so no work is lost.
    */
-  async function saveToRepo() {
+  // Shared PUT: send W3C annotations to the traject sidecar and read back the
+  // PR. Captures the law id synchronously (before the await) so a law switch
+  // mid-request can't misroute the caller's follow-up draft cleanup.
+  async function putNotesToRepo(notesToSend) {
     const id = lawId.value;
     const tr = trajectRef?.value ?? null;
     requireTraject(tr, 'notes save');
-    // Snapshot drafts BEFORE any await (watch(lawId) swaps drafts.value on
-    // a law switch). Strip the internal __draft marker; the backend gets
-    // clean W3C Annotation objects.
-    const newNotes = drafts.value.map(stripDraftMarker);
     const url = annotationsUrl(tr, id);
     const res = await apiFetch(url, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(newNotes),
+      body: JSON.stringify(notesToSend),
       // Same content-type guard as useLaw.saveLaw: only render the body
       // when it's editor-api's own text/plain error, never a proxy's HTML.
       errorMessage: (status, body, contentType) =>
@@ -203,16 +218,31 @@ export function useDraftNotes(lawId, trajectRef) {
     }
     // Only OVERWRITE the badge when this save produced a PR. A PR-less
     // 200 (local source, or a NoChange re-save) must NOT null an existing
-    // badge - same "keep any prior PR" rule as useLaw.saveLaw. Nulling it
-    // here made a re-save look like the work vanished.
+    // badge - same "keep any prior PR" rule as useLaw.saveLaw.
     if (pr) {
       lastSavedPr.value = pr;
     }
-    // Clear the law we saved, not lawId.value, which may have switched
-    // during the await.
+    return { id, pr, noChange };
+  }
+
+  async function saveToRepo() {
+    // Snapshot drafts BEFORE the await (watch(lawId) swaps drafts.value on a
+    // law switch). Strip the internal __draft marker; the backend gets clean
+    // W3C Annotation objects.
+    const newNotes = drafts.value.map(stripDraftMarker);
+    const { id, pr, noChange } = await putNotesToRepo(newNotes);
+    // Clear the law we saved, not lawId.value, which may have switched.
     clearDrafts(id);
-    // Caller shows an explicit "opgeslagen (PR #N)" vs "waren al
-    // opgeslagen" instead of silently emptying drafts with no signal.
+    // Caller shows an explicit "opgeslagen (PR #N)" vs "waren al opgeslagen".
+    return { pr, noChange };
+  }
+
+  // Per-note "publiek maken": publish a single draft to the repo. On success
+  // it's committed, so drop just that draft - not the whole set.
+  async function publishNote(note) {
+    const { pr, noChange } = await putNotesToRepo([stripDraftMarker(note)]);
+    const i = drafts.value.indexOf(note);
+    if (i >= 0) removeDraft(i);
     return { pr, noChange };
   }
 
@@ -223,9 +253,11 @@ export function useDraftNotes(lawId, trajectRef) {
     draftCount,
     addDraft,
     removeDraft,
+    exportYamlFromNotes,
     clearDrafts,
     exportYaml,
     saveToRepo,
+    publishNote,
   };
 }
 

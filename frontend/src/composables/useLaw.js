@@ -6,6 +6,7 @@ import { apiFetch } from '../lib/apiFetch.js';
 import { createLruMap } from '../lib/lruMap.js';
 import { useLatest } from '../lib/useLatest.js';
 import { humanizeLawId } from '../lib/lawName.js';
+import { holdRetryFloor } from '../lib/retryFeedback.js';
 
 // Shared law cache, keyed by `${trajectRef || ''}::${lawId}` so a law
 // opened in traject A and in traject B (or globally) returns the
@@ -213,8 +214,10 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
    * cross-traject URL change drives a fresh fetch (and the cache key
    * keeps the previous traject's copy untouched).
    */
-  async function switchLaw(newLawId, articleNumber, newTrajectRef) {
+  async function switchLaw(newLawId, articleNumber, newTrajectRef, { minLoadingMs = 0 } = {}) {
     const isCurrent = claimSwitch();
+    const startedAt = Date.now();
+    let failed = false;
     try {
       loading.value = true;
       error.value = null;
@@ -235,10 +238,14 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
       }
     } catch (e) {
       if (!isCurrent()) return;
+      failed = true;
       error.value = e;
     } finally {
       if (isCurrent()) {
-        loading.value = false;
+        // On a failed retry, hold the spinner briefly so the click reads as
+        // feedback instead of the error dialog snapping straight back.
+        await holdRetryFloor({ startedAt, minMs: minLoadingMs, failed });
+        if (isCurrent()) loading.value = false;
       }
     }
   }

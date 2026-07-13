@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@regelrecht/frontend-shared": "*",
-    "@nldd/design-system": "^0.8.63",
+    "@nldd/design-system": "^0.8.66",
     "vue": "^3.5.38"
   },
   "devDependencies": {

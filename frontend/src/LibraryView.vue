@@ -1,29 +1,48 @@
 <script setup>
-import { ref, computed, shallowRef, nextTick, watch, watchEffect, onBeforeUnmount } from 'vue';
-import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
+import { ref, computed, shallowRef, nextTick, watch, watchEffect, onBeforeUnmount, inject } from 'vue';
+import { useRoute, useRouter, onBeforeRouteUpdate, onBeforeRouteLeave } from 'vue-router';
 import * as yaml from 'js-yaml';
 import ArticleText from './components/ArticleText.vue';
 import MachineReadable from './components/MachineReadable.vue';
 import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
+import DocumentList from './components/DocumentList.vue';
+import DocumentEditor from './components/DocumentEditor.vue';
+import ConversionStatus from './components/ConversionStatus.vue';
+import TrajectDetailsPane from './components/TrajectDetailsPane.vue';
+import TrajectMembersPane from './components/TrajectMembersPane.vue';
 import { useAuth } from './composables/useAuth.js';
 import { lawFetchInit } from './composables/useLaw.js';
-import { useTrajects } from './composables/useTrajects.js';
+import { useTrajects, refreshTrajects } from './composables/useTrajects.js';
 import { lawsListUrl, lawUrl, changedLawsUrl } from './composables/corpusUrls.js';
 import { SUPPORT_EMAIL } from './constants.js';
 import { registerSearchPopover, setLibraryEmpty } from './composables/useAppChrome.js';
+import { homeTarget } from './composables/useLastVisitedRoute.js';
+import { useDocumentsManager } from './composables/useDocumentsManager.js';
+import { useTrajectDocumentJobs } from './composables/useTrajectDocumentJobs.js';
+import { useDocumentUpload } from './composables/useDocumentUpload.js';
 import { humanizeLawId } from './lib/lawName.js';
 import { apiFetch, apiFetchJson, ApiError } from './lib/apiFetch.js';
 import { useLatest } from './lib/useLatest.js';
+import { holdRetryFloor, RETRY_MIN_SPINNER_MS } from './lib/retryFeedback.js';
 
 const { authenticated, login } = useAuth();
 
-// Library home title (sidebar header + home heading) and the label of
-// the back-button that returns to it from underlying pages. They differ
-// intentionally: the page is titled "RegelRecht", but a back-button
-// reads more naturally as "Home".
-const LIBRARY_HOME_TITLE = 'RegelRecht';
+// Provided by AppShell: shows the login-warning popover anchored to an element,
+// so "Bewerken" gates on login the same way the Editor tab does.
+const showLoginWarning = inject('showLoginWarning', null);
+// Wire on the trigger's @pointerdown.capture so a re-tap on "Bewerken" toggles
+// the login warning closed instead of reopening it (see AppShell). No-op default.
+const onLoginTriggerPointerdown = inject('onLoginTriggerPointerdown', () => {});
+// The detail-pane "Bewerken" button, used as the popover anchor for edit
+// actions that don't originate from a click on the button itself.
+const editButton = ref(null);
+
+// Label of the back-button that returns to the Home sidebar from underlying
+// pages. Kept fixed as "Home" even though the sidebar's own heading is now
+// traject-aware (see sidebarTitle) - a back-button reads more naturally as
+// "Home" than as the traject name.
 const LIBRARY_HOME_BACK_TEXT = 'Home';
 
 const route = useRoute();
@@ -34,13 +53,197 @@ const router = useRouter();
 // bibliotheek traject-aware without any extra plumbing.
 const { activeTrajectRef, activeTraject } = useTrajects();
 
-// Keep the user's traject scope across in-app navigations. With a traject
-// in the URL we stay on `library-traject` / `editor-traject`; without one
-// on the plain `library` / `editor`. Mirrors EditorApp.editorRouteFor.
+// Primary-sidebar heading: the active traject's name, or 'Corpus juris' for the
+// public/global corpus (logged-out, or logged-in without a chosen traject).
+// Replaces the old fixed 'RegelRecht' now that Home is traject-aware.
+const sidebarTitle = computed(() =>
+  activeTrajectRef.value ? activeTraject.value?.name || 'Traject…' : 'Corpus juris',
+);
+
+// "Account aanvragen" affordance for the favoriet login popover (mirrors the
+// editor/bewerken login popover in AppShell): to the public account-request
+// page. /account-aanvragen is a top-level route, so navigating there unmounts
+// the popover along with the shell.
+const accountRequestHref = computed(() => router.resolve({ name: 'account-aanvragen' }).href);
+function goToAccountRequest() {
+  router.push({ name: 'account-aanvragen' });
+}
+
+// --- Werkdocumenten (folded into Home) ----------------------------------
+// The active traject's werkdocumenten live inside Home: a "Werkdocumenten"
+// entry in the primary sidebar opens the document list in the secondary sidebar
+// and the editor in main (route `werkdocumenten-traject`). Ported from the old
+// standalone WerkdocumentenView; DocumentEditor self-contains the rename / save
+// / delete / conflict UI, so LibraryView only wires the manager, list and the
+// unsaved-changes guard.
+const docsMgr = useDocumentsManager(activeTrajectRef);
+const {
+  documents: docList,
+  listLoading: docsLoading,
+  listError: docsError,
+  currentPath: openDocPath,
+  hasChanges: docHasChanges,
+  saving: docSaving,
+  open: openDoc,
+  startNew: startNewDoc,
+  close: closeDoc,
+} = docsMgr;
+
+const isWerkdocMode = computed(() => route.name === 'werkdocumenten-traject');
+const trajectName = computed(() => activeTraject.value?.name || '');
+const hasOpenDoc = computed(() => !!openDocPath.value);
+
+// Werkdocumenten upload (ported from main #918): file picker -> server-side
+// markdown conversion -> poll the conversion jobs and show progress. Wired to
+// the upload button next to "+" in the werkdoc toolbar.
+const docJobs = useTrajectDocumentJobs(activeTrajectRef);
+const { jobs: conversionJobs } = docJobs;
+const {
+  fileInput: docFileInput,
+  uploadError: docUploadError,
+  uploadRetryable: docUploadRetryable,
+  onUpload: onDocUpload,
+  onFileChange: onDocFileChange,
+} = useDocumentUpload(docsMgr.uploadDocument, () => docJobs.refresh());
+// Poll conversion jobs only while the werkdocumenten sidebar is open.
+watch(
+  isWerkdocMode,
+  (on) => (on ? docJobs.startPolling() : docJobs.stopPolling()),
+  { immediate: true },
+);
+onBeforeUnmount(() => docJobs.stopPolling());
+
+// Surface an upload failure in a modal (not inline); dismissing clears it.
+const uploadErrorModalEl = ref(null);
+watch(docUploadError, async (err) => {
+  await nextTick();
+  if (err) uploadErrorModalEl.value?.show?.();
+  else uploadErrorModalEl.value?.hide?.();
+});
+function dismissUploadError() {
+  docUploadError.value = null;
+}
+function retryUpload() {
+  docUploadError.value = null;
+  nextTick(() => onDocUpload());
+}
+
+// Name the open document in the unsaved-changes guard so it's clear what's at
+// risk (falls back to a generic phrasing if the name isn't resolved yet).
+const docNavGuardText = computed(() => {
+  const name = docsMgr.displayTitle(openDocPath.value);
+  return name
+    ? `'${name}' heeft wijzigingen die nog niet zijn opgeslagen. Als je verdergaat, gaan ze verloren.`
+    : 'Dit document heeft wijzigingen die nog niet zijn opgeslagen. Als je verdergaat, gaan ze verloren.';
+});
+
+// Enter the werkdocumenten section (from the primary sidebar / traject menu).
+function goToWerkdocumenten() {
+  if (!activeTrajectRef.value) return;
+  router.push({ name: 'werkdocumenten-traject', params: { trajectRef: activeTrajectRef.value } });
+}
+
+// --- Instellingen (traject details + leden, folded into Home) ---------------
+const isInstellingenMode = computed(() => route.name === 'instellingen-traject');
+const instellingenTab = computed(() => route.params.tab || null);
+function goToInstellingen(tab) {
+  if (!activeTrajectRef.value) return;
+  router.push({ name: 'instellingen-traject', params: { trajectRef: activeTrajectRef.value, tab } });
+}
+// Deleting or leaving the traject drops your access - go to the public Home
+// (Corpus juris) and refresh the traject list.
+function onTrajectGone() {
+  refreshTrajects();
+  router.push({ name: 'home' });
+}
+
+// Mirror the open document into the URL (refresh / bookmark / back). Guard the
+// redundant replace the initial open would trigger (URL already names the doc).
+watch(openDocPath, (p) => {
+  if (!isWerkdocMode.value) return;
+  const target = {
+    name: 'werkdocumenten-traject',
+    params: { trajectRef: activeTrajectRef.value, docPath: p || '' },
+  };
+  if (router.resolve(target).href !== route.fullPath) {
+    router.replace(target).catch(() => {});
+  }
+});
+
+// Unsaved-changes guard for in-view document navigation (pick another document,
+// "nieuw", back). Mirrors the old WerkdocumentenView.
+const docNavGuardEl = ref(null);
+const docEditorEl = ref(null);
+// One guard, two triggers, one modal (blijven / opslaan / negeren): in-view
+// actions (pick another document, "nieuw", back) queue a `run` callback;
+// route-level leaves (pick a law, switch tab/traject, browser back) queue a
+// `resolve` for the paused navigation.
+let pendingLeave = null; // { type: 'inview', run } | { type: 'route', resolve }
+function guardedDocNavigate(run) {
+  if (hasOpenDoc.value && docHasChanges.value) {
+    pendingLeave = { type: 'inview', run };
+    docNavGuardEl.value?.show?.();
+  } else {
+    run();
+  }
+}
+// Route guard: true = proceed now, Promise<boolean> = ask first (the modal
+// resolves it). Lets the open document's own URL sync (same doc) through.
+function guardDirtyDoc(to) {
+  // Guard ONLY when a werkdocument is actually open in werkdoc mode AND dirty -
+  // i.e. exactly "an open, edited document, navigating away". Never on the
+  // document list, never in corpus mode, never on a stale in-memory doc (the
+  // manager can keep a left-open doc's state without it being on screen).
+  if (!isWerkdocMode.value || !hasOpenDoc.value || !docHasChanges.value) return true;
+  if (to.name === 'werkdocumenten-traject'
+      && String(to.params.docPath || '') === (openDocPath.value || '')) {
+    return true;
+  }
+  return new Promise((resolve) => {
+    pendingLeave = { type: 'route', resolve };
+    docNavGuardEl.value?.show?.();
+  });
+}
+function resolveDocGuard(proceed) {
+  const p = pendingLeave;
+  pendingLeave = null;
+  docNavGuardEl.value?.hide?.();
+  if (!p) return;
+  if (p.type === 'route') p.resolve(proceed);
+  else if (proceed) p.run();
+}
+function cancelDocLeave() { resolveDocGuard(false); }
+function confirmDocLeave() {
+  // "Negeer wijzigingen en sluit" = truly discard: drop the local draft and
+  // revert the body, so reopening the document doesn't resurrect the changes.
+  docsMgr.dropDraft();
+  resolveDocGuard(true);
+}
+async function saveDocAndLeave() {
+  const ok = await docEditorEl.value?.saveDocument();
+  if (!ok) return; // save failed - stay open, DocumentEditor shows the error
+  resolveDocGuard(true);
+}
+function onDocSelect(path) {
+  if (path === openDocPath.value) return;
+  guardedDocNavigate(() => openDoc(path));
+}
+function onDocNew() {
+  guardedDocNavigate(() => startNewDoc());
+}
+function onDocBack() {
+  guardedDocNavigate(() => closeDoc());
+}
+
+// Keep the user's traject scope across in-app navigations. A traject with a law
+// stays on `library-traject`, a traject without one on `traject-home`; publicly,
+// a law drills into `corpus-juris`, otherwise the bare `home`. See homeTarget.
 function libraryRouteFor(params = {}) {
-  return activeTrajectRef.value
-    ? { name: 'library-traject', params: { ...params, trajectRef: activeTrajectRef.value } }
-    : { name: 'library', params };
+  return homeTarget({
+    trajectRef: activeTrajectRef.value || undefined,
+    lawId: params.lawId,
+    articleNumber: params.articleNumber,
+  });
 }
 function editorRouteFor(lawIdVal, articleNumber) {
   // Without an active traject the editor isn't reachable directly - the
@@ -124,6 +327,18 @@ const detailView = computed({
     }
   },
 });
+// nldd-tab-bar fires `tabchange` on BOTH pointer click and arrow-key
+// activation (content-switching tabs auto-activate on arrow - the ARIA
+// pattern). Driving detailView from this single event keeps the keyboard, the
+// selected tab, and the visible panel in lockstep; a per-item @click never
+// fired on arrow, which is why the highlight moved but the view lagged.
+// `:selected` stays the controlled-in binding so a hash-driven detailView
+// change (e.g. a deep link to #yaml) still reflects on the tabs.
+function onDetailTabChange(e) {
+  const view = e.detail?.item?.dataset?.view;
+  if (view) detailView.value = view;
+}
+
 const activeAction = ref(null);
 
 // Curated sidebar sections (in render order). Each entry is
@@ -147,7 +362,7 @@ const sidebarSections = computed(() => {
   if (activeTrajectRef.value && changedLawIds.value?.size) {
     const changed = list.filter(law => changedLawIds.value.has(law.law_id));
     if (changed.length > 0) {
-      sections.push({ key: 'changed', title: 'Bewerkt in dit traject', laws: changed });
+      sections.push({ key: 'changed', title: 'Bewerkt', laws: changed });
     }
   }
 
@@ -178,10 +393,10 @@ const sidebarSections = computed(() => {
 // width rather than the narrow sidebar. isInitialLoading covers the first load
 // before anything resolves; indexError is handled at the same top level.
 const isInitialLoading = computed(
-  () => loading.value && !selectedLawId.value && sidebarSections.value.length === 0,
+  () => loading.value && !selectedLawId.value && sidebarSections.value.length === 0 && !isWerkdocMode.value && !isInstellingenMode.value,
 );
 const isEmptyLibrary = computed(
-  () => !loading.value && !indexError.value && !selectedLawId.value && sidebarSections.value.length === 0,
+  () => !loading.value && !indexError.value && !selectedLawId.value && sidebarSections.value.length === 0 && !isWerkdocMode.value && !isInstellingenMode.value,
 );
 
 // Tell the shell whether the library is empty so it can show the just-in-time
@@ -267,7 +482,7 @@ watchEffect(() => {
   if (activeTraject.value?.name) detail.push(activeTraject.value.name);
   document.title = detail.length > 0
     ? `${detail.join(' · ')} · RegelRecht`
-    : 'Bibliotheek · RegelRecht';
+    : 'Home · RegelRecht';
 });
 
 function displayName(law) {
@@ -416,8 +631,10 @@ async function loadIndex() {
 
 const claimLoadLaw = useLatest();
 
-async function loadLaw(lawId) {
+async function loadLaw(lawId, { minLoadingMs = 0 } = {}) {
   const isCurrent = claimLoadLaw();
+  const startedAt = Date.now();
+  let failed = false;
   try {
     selectedLawLoading.value = true;
     const res = await apiFetch(lawUrl(activeTrajectRef.value, lawId), lawFetchInit);
@@ -432,11 +649,15 @@ async function loadLaw(lawId) {
     // stripped from the URL.
   } catch (e) {
     if (!isCurrent()) return;
+    failed = true;
     selectedLaw.value = null;
     lawError.value = e;
   } finally {
     if (isCurrent()) {
-      selectedLawLoading.value = false;
+      // On a failed retry, hold the spinner briefly so the click reads as
+      // feedback instead of the error dialog snapping straight back.
+      await holdRetryFloor({ startedAt, minMs: minLoadingMs, failed });
+      if (isCurrent()) selectedLawLoading.value = false;
     }
   }
 }
@@ -451,7 +672,7 @@ function retryLoadLaw() {
   // template can't briefly fall through to the "Selecteer een wet"
   // empty state.
   lawError.value = null;
-  loadLaw(selectedLawId.value);
+  loadLaw(selectedLawId.value, { minLoadingMs: RETRY_MIN_SPINNER_MS });
 }
 
 function retryLoadCorpus() {
@@ -468,6 +689,10 @@ function retryLoadCorpus() {
 function editInEditor() {
   if (!selectedLawId.value || !selectedArticleNumber.value) return;
   activeAction.value = null;
+  if (!authenticated.value) {
+    gateEditorLogin(editButton.value);
+    return;
+  }
   // Carry the active traject so "Bewerken" opens the editable
   // editor-traject view instead of the read-only editor.
   router.push(editorRouteFor(selectedLawId.value, selectedArticleNumber.value));
@@ -480,6 +705,21 @@ const editLawTarget = computed(() =>
   editorRouteFor(selectedLawId.value, selectedArticleNumber.value || undefined),
 );
 const editLawHref = computed(() => router.resolve(editLawTarget.value).href);
+
+// Editor requires login. Instead of letting the route guard bounce an
+// unauthenticated user to SSO, show the same login-warning popover the Editor
+// tab uses (anchored to `anchorEl`), returning to this article after login.
+function gateEditorLogin(anchorEl) {
+  showLoginWarning?.(anchorEl, editLawHref.value);
+}
+
+function onEditClick(e) {
+  if (!authenticated.value) {
+    gateEditorLogin(e.currentTarget);
+    return;
+  }
+  router.push(editLawTarget.value);
+}
 
 function selectLaw(lawId, focusAfter = false) {
   // Default to no section context (search / programmatic); selectLawFromSection
@@ -564,7 +804,12 @@ function onPaneBack(e) {
   // specific law failed (lawError) - back from the main pane should
   // return to the library root, not /library/<lawId>. The latter would
   // route the user back into the same error they just dismissed.
-  if (slot === 'main') return (lawError.value || indexError.value) ? goToLibraryRoot() : goToLawRoot();
+  if (slot === 'main') {
+    // Instellingen: back from a tab's content returns to the tab list
+    // (bare /instellingen), which collapses to the secondary sidebar on narrow.
+    if (isInstellingenMode.value) return goToInstellingen();
+    return (lawError.value || indexError.value) ? goToLibraryRoot() : goToLawRoot();
+  }
   if (slot === 'secondary-sidebar') return goToLibraryRoot();
 }
 
@@ -589,11 +834,34 @@ function clearRecent() {
   const deselect = !!sel && recentLaws.value.some(r => r.law_id === sel) && !stillShown;
   recentLaws.value = [];
   try { localStorage.removeItem(RECENT_LAWS_KEY); } catch { /* ignore */ }
-  if (deselect) goToLibraryRoot();
+  if (deselect) {
+    // Clear the open law up front so the article sidebar + main reflow to the
+    // empty state now. `selectedLawId` is a manual ref, not route-derived; a
+    // plain router.push doesn't re-run setup (only a refresh does), so without
+    // this the deselected law would linger until reload.
+    selectedLawId.value = null;
+    selectedLaw.value = null;
+    selectedArticleNumber.value = null;
+    activeAction.value = null;
+    lawError.value = null;
+    goToLibraryRoot();
+  }
 }
 
 // Handle browser back/forward navigation
-onBeforeRouteUpdate((to) => {
+onBeforeRouteUpdate(async (to) => {
+  if (!(await guardDirtyDoc(to))) return false;
+
+  // Werkdocumenten section: open the addressed document (or clear to the list).
+  // The corpus state falls through to the no-lawId branch below and is cleared.
+  if (to.name === 'werkdocumenten-traject') {
+    const p = to.params.docPath ? String(to.params.docPath) : null;
+    if (p !== openDocPath.value) {
+      if (p) openDoc(p);
+      else closeDoc();
+    }
+  }
+
   const newLawId = to.params.lawId;
   const newArticle = to.params.articleNumber;
 
@@ -625,6 +893,27 @@ onBeforeRouteUpdate((to) => {
   }
 });
 
+// Leaving a dirty document by any route change (a law in the sidebar, the tab
+// bar, browser back) prompts the same save/discard guard as the in-view actions.
+onBeforeRouteLeave(async (to) => {
+  if (!(await guardDirtyDoc(to))) return false;
+});
+
+// selectedLawId is a manual ref, not route-derived. onBeforeRouteUpdate only
+// fires for same-record param changes, so navigating to a no-law route
+// (traject-home / corpus home) via the back button or a tab switch - a
+// different route record - leaves the ref set and the article list lingers
+// until refresh. Sync it reactively so the view reflows on any such navigation.
+watch(() => route.params.lawId, (lawId) => {
+  if (!lawId && selectedLawId.value) {
+    selectedLawId.value = null;
+    selectedLaw.value = null;
+    selectedArticleNumber.value = null;
+    activeAction.value = null;
+    lawError.value = null;
+  }
+});
+
 // When a harvested law becomes available, reload the corpus and select it.
 async function onHarvestAvailable(slug) {
   // Best-effort reload - a failure just means the index below may not
@@ -645,6 +934,10 @@ if (route.params.lawId) {
     selectedArticleNumber.value = String(route.params.articleNumber);
   }
   loadLaw(route.params.lawId);
+}
+// Werkdocumenten deep-link on first load: open the addressed document.
+if (isWerkdocMode.value && route.params.docPath) {
+  openDoc(String(route.params.docPath));
 }
 loadIndex();
 
@@ -689,7 +982,7 @@ watch(activeTrajectRef, () => {
 
         <nldd-page v-else-if="isInitialLoading">
           <nldd-simple-section width="full">
-            <nldd-activity-indicator text="Laden" show-text></nldd-activity-indicator>
+            <nldd-activity-indicator timing="instant" text="Laden" show-text></nldd-activity-indicator>
           </nldd-simple-section>
         </nldd-page>
 
@@ -702,13 +995,35 @@ watch(activeTrajectRef, () => {
 
           <nldd-split-view-pane slot="sidebar" has-content>
             <nldd-page sticky-header>
-              <nldd-top-title-bar v-if="!loading" slot="header" :text="LIBRARY_HOME_TITLE" collapse-anchor="home-titel"></nldd-top-title-bar>
+              <nldd-top-title-bar v-if="!loading" slot="header" :text="sidebarTitle" collapse-anchor="home-titel"></nldd-top-title-bar>
 
               <nldd-simple-section width="full">
-                <nldd-title v-if="!loading" id="home-titel" size="3"><h3>{{ LIBRARY_HOME_TITLE }}</h3></nldd-title>
+                <nldd-title v-if="!loading" id="home-titel" size="3"><h3>{{ sidebarTitle }}</h3></nldd-title>
                 <nldd-spacer v-if="!loading" size="16"></nldd-spacer>
-                <nldd-activity-indicator v-if="loading" text="Laden" show-text></nldd-activity-indicator>
+                <nldd-activity-indicator v-if="loading" timing="instant" text="Laden" show-text></nldd-activity-indicator>
                 <template v-else>
+                  <!-- Werkdocumenten (in a traject): a single entry that opens
+                       the document list in the secondary sidebar + editor in
+                       main, mirroring how a law drills into its articles. -->
+                  <template v-if="activeTrajectRef">
+                    <nldd-list variant="simple" arrow-navigation>
+                      <nldd-list-item size="md" button :selected="isInstellingenMode || undefined" @click="goToInstellingen()">
+                        <nldd-icon-cell size="20"><nldd-icon name="gear"></nldd-icon></nldd-icon-cell>
+                        <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                        <nldd-text-cell text="Instellingen"></nldd-text-cell>
+                        <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                        <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+                      </nldd-list-item>
+                      <nldd-list-item size="md" button :selected="isWerkdocMode || undefined" @click="goToWerkdocumenten">
+                        <nldd-icon-cell size="20"><nldd-icon name="documents"></nldd-icon></nldd-icon-cell>
+                        <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                        <nldd-text-cell text="Werkdocumenten"></nldd-text-cell>
+                        <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                        <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+                      </nldd-list-item>
+                    </nldd-list>
+                    <nldd-spacer size="24"></nldd-spacer>
+                  </template>
                   <template
                     v-for="(section, sectionIndex) in sidebarSections"
                     :key="section.key"
@@ -755,11 +1070,59 @@ watch(activeTrajectRef, () => {
             </nldd-page>
           </nldd-split-view-pane>
 
+          <!-- Secondary Sidebar (instellingen mode): the settings tabs. -->
+          <nldd-split-view-pane v-if="isInstellingenMode" slot="secondary-sidebar" has-content>
+            <nldd-page sticky-header>
+              <nldd-top-title-bar slot="header" text="Instellingen" :back-text="LIBRARY_HOME_BACK_TEXT" collapse-anchor="instellingen-titel"></nldd-top-title-bar>
+              <nldd-simple-section width="full">
+                <nldd-title id="instellingen-titel" size="3"><h3>Instellingen</h3></nldd-title>
+                <nldd-spacer size="16"></nldd-spacer>
+                <nldd-list variant="simple" arrow-navigation>
+                  <nldd-list-item size="md" button :selected="instellingenTab === 'details' || undefined" @click="goToInstellingen('details')">
+                    <nldd-text-cell text="Traject details"></nldd-text-cell>
+                    <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                    <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+                  </nldd-list-item>
+                  <nldd-list-item size="md" button :selected="instellingenTab === 'leden' || undefined" @click="goToInstellingen('leden')">
+                    <nldd-text-cell text="Leden"></nldd-text-cell>
+                    <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                    <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+                  </nldd-list-item>
+                </nldd-list>
+              </nldd-simple-section>
+            </nldd-page>
+          </nldd-split-view-pane>
+
+          <!-- Secondary Sidebar (werkdoc mode): the document list. -->
+          <nldd-split-view-pane v-else-if="isWerkdocMode" slot="secondary-sidebar" has-content>
+            <nldd-page sticky-header>
+              <nldd-top-title-bar slot="header" text="Werkdocumenten" :back-text="LIBRARY_HOME_BACK_TEXT" collapse-anchor="werkdoc-titel"></nldd-top-title-bar>
+              <nldd-simple-section width="full">
+                <nldd-title id="werkdoc-titel" size="3"><h3>Werkdocumenten</h3></nldd-title>
+                <nldd-spacer size="16"></nldd-spacer>
+                <nldd-toolbar label="Documentacties">
+                  <nldd-toolbar-item slot="start">
+                    <nldd-icon-button icon="plus-small" text="Nieuw document" @click="onDocNew"></nldd-icon-button>
+                  </nldd-toolbar-item>
+                  <nldd-toolbar-item slot="start">
+                    <nldd-icon-button icon="upload-to-cloud" text="Upload PDF of DOCX" @click="onDocUpload"></nldd-icon-button>
+                  </nldd-toolbar-item>
+                </nldd-toolbar>
+                <nldd-spacer size="16"></nldd-spacer>
+                <ConversionStatus :jobs="conversionJobs"></ConversionStatus>
+                <input ref="docFileInput" type="file" accept=".pdf,.doc,.docx" hidden @change="onDocFileChange" />
+                <nldd-activity-indicator v-if="docsLoading" timing="instant" text="Documenten laden" show-text></nldd-activity-indicator>
+                <nldd-inline-dialog v-else-if="docsError" variant="alert" text="Documenten niet geladen" :supporting-text="docsError.message"></nldd-inline-dialog>
+                <DocumentList v-else :documents="docList" :selected-path="openDocPath" @select="onDocSelect"></DocumentList>
+              </nldd-simple-section>
+            </nldd-page>
+          </nldd-split-view-pane>
+
           <!-- Secondary Sidebar: Artikelen Lijst - only when a law is
                selected. When deselected the pane is removed from the DOM
                so the navigation-split-view reflows to spatial mode and
                shows the sidebar (Wetten Browser) alongside main. -->
-          <nldd-split-view-pane v-if="selectedLawId && !lawError" slot="secondary-sidebar" has-content>
+          <nldd-split-view-pane v-else-if="selectedLawId && !lawError" slot="secondary-sidebar" has-content>
             <nldd-page sticky-header>
               <nldd-top-title-bar
                 v-if="!selectedLawLoading"
@@ -772,7 +1135,7 @@ watch(activeTrajectRef, () => {
               <nldd-simple-section width="full">
                 <nldd-title v-if="!selectedLawLoading" id="wet-titel" size="3"><h3>{{ lawName }}</h3></nldd-title>
                 <nldd-spacer v-if="!selectedLawLoading" size="16"></nldd-spacer>
-                <nldd-toolbar v-if="selectedLaw" label="Favorieten">
+                <nldd-toolbar v-if="selectedLaw && !selectedLawLoading" label="Favorieten">
                   <nldd-toolbar-item slot="start">
                     <nldd-icon-button
                       :icon="favorites?.has(selectedLawId) ? 'heart-filled' : 'heart'"
@@ -781,7 +1144,7 @@ watch(activeTrajectRef, () => {
                     ></nldd-icon-button>
                   </nldd-toolbar-item>
                 </nldd-toolbar>
-                <nldd-spacer v-if="selectedLaw" size="16"></nldd-spacer>
+                <nldd-spacer v-if="selectedLaw && !selectedLawLoading" size="16"></nldd-spacer>
                 <nldd-popover ref="favoriteLoginWarning" accessible-label="Inloggen" width="320px">
                   <nldd-container padding="16">
                     <nldd-inline-dialog
@@ -790,10 +1153,11 @@ watch(activeTrajectRef, () => {
                       supporting-text="Zodra je bent ingelogd kun je wetten bewaren en snel terugvinden."
                     >
                       <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
+                      <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
                     </nldd-inline-dialog>
                   </nldd-container>
                 </nldd-popover>
-                <nldd-activity-indicator v-if="selectedLawLoading" text="Wet laden" show-text></nldd-activity-indicator>
+                <nldd-activity-indicator v-if="selectedLawLoading" timing="instant" text="Wet laden" show-text></nldd-activity-indicator>
                 <nldd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een wet"></nldd-inline-dialog>
                 <nldd-list v-else variant="simple" arrow-navigation>
                   <nldd-list-item
@@ -816,8 +1180,45 @@ watch(activeTrajectRef, () => {
             </nldd-page>
           </nldd-split-view-pane>
 
+          <!-- Main (instellingen mode): the selected settings pane. -->
+          <nldd-split-view-pane v-if="isInstellingenMode" slot="main" :has-content="instellingenTab || undefined">
+            <nldd-page sticky-header>
+              <nldd-top-title-bar
+                slot="header"
+                :text="instellingenTab === 'leden' ? 'Leden' : (instellingenTab === 'details' ? 'Traject details' : undefined)"
+                back-text="Instellingen"
+                :collapse-anchor="instellingenTab ? 'instellingen-pane-titel' : undefined"
+              ></nldd-top-title-bar>
+              <TrajectDetailsPane
+                v-if="instellingenTab === 'details'"
+                :traject-id="activeTraject?.id"
+                @deleted="onTrajectGone"
+                @left="onTrajectGone"
+              ></TrajectDetailsPane>
+              <TrajectMembersPane
+                v-else-if="instellingenTab === 'leden'"
+                :traject-id="activeTraject?.id"
+              ></TrajectMembersPane>
+              <nldd-simple-section v-else width="full">
+                <nldd-inline-dialog text="Kies een instelling"></nldd-inline-dialog>
+              </nldd-simple-section>
+            </nldd-page>
+          </nldd-split-view-pane>
+
+          <!-- Main (werkdoc mode): the document editor, or a placeholder. -->
+          <nldd-split-view-pane v-else-if="isWerkdocMode" slot="main" :has-content="hasOpenDoc || undefined">
+            <nldd-page v-if="hasOpenDoc" sticky-header sticky-footer>
+              <DocumentEditor ref="docEditorEl" :manager="docsMgr" :traject-name="trajectName" @back="onDocBack"></DocumentEditor>
+            </nldd-page>
+            <nldd-page v-else>
+              <nldd-simple-section width="full">
+                <nldd-inline-dialog text="Selecteer een document"></nldd-inline-dialog>
+              </nldd-simple-section>
+            </nldd-page>
+          </nldd-split-view-pane>
+
           <!-- Main: Artikel Detail -->
-          <nldd-split-view-pane slot="main" :has-content="selectedArticle || lawError || articleNotFound ? true : undefined">
+          <nldd-split-view-pane v-else slot="main" :has-content="selectedArticle || lawError || articleNotFound ? true : undefined">
             <nldd-page sticky-header>
               <nldd-top-title-bar
                 slot="header"
@@ -828,11 +1229,12 @@ watch(activeTrajectRef, () => {
               ></nldd-top-title-bar>
 
               <nldd-simple-section width="full" v-if="!selectedLawId">
-                <nldd-inline-dialog text="Selecteer een wet"></nldd-inline-dialog>
+                <!-- Generic: from Home you can also open a werkdocument, not just a law. -->
+                <nldd-inline-dialog text="Geen selectie"></nldd-inline-dialog>
               </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="selectedLawLoading">
                 <!-- Loading takes precedence over `lawError` to avoid flashing a stale error during a refetch. -->
-                <nldd-activity-indicator text="Artikel laden" show-text></nldd-activity-indicator>
+                <nldd-activity-indicator timing="instant" text="Artikel laden" show-text></nldd-activity-indicator>
               </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="lawError">
                 <!-- 404 = law not in active traject; give the user an exit instead of a generic error. -->
@@ -877,14 +1279,14 @@ watch(activeTrajectRef, () => {
                   <nldd-spacer size="16"></nldd-spacer>
                   <nldd-toolbar>
                     <nldd-toolbar-item slot="start">
-                      <nldd-tab-bar size="md">
-                        <nldd-tab-bar-item :selected="detailView === 'tekst' || undefined" text="Tekst" @click="detailView = 'tekst'"></nldd-tab-bar-item>
-                        <nldd-tab-bar-item :selected="detailView === 'machine' || undefined" text="Machine" @click="detailView = 'machine'"></nldd-tab-bar-item>
-                        <nldd-tab-bar-item :selected="detailView === 'yaml' || undefined" text="YAML" @click="detailView = 'yaml'"></nldd-tab-bar-item>
+                      <nldd-tab-bar size="md" @tabchange="onDetailTabChange">
+                        <nldd-tab-bar-item data-view="tekst" :selected="detailView === 'tekst' || undefined" text="Tekst"></nldd-tab-bar-item>
+                        <nldd-tab-bar-item data-view="machine" :selected="detailView === 'machine' || undefined" text="Machine"></nldd-tab-bar-item>
+                        <nldd-tab-bar-item data-view="yaml" :selected="detailView === 'yaml' || undefined" text="YAML"></nldd-tab-bar-item>
                       </nldd-tab-bar>
                     </nldd-toolbar-item>
                     <nldd-toolbar-item slot="end">
-                      <nldd-button v-if="selectedLawId" variant="secondary" text="Bewerken" :href="editLawHref" @click.prevent="router.push(editLawTarget)"></nldd-button>
+                      <nldd-button ref="editButton" v-if="selectedLawId" variant="secondary" text="Bewerken" :href="authenticated ? editLawHref : undefined" @click.prevent="onEditClick" @pointerdown.capture="onLoginTriggerPointerdown"></nldd-button>
                     </nldd-toolbar-item>
                   </nldd-toolbar>
                   <nldd-spacer size="24"></nldd-spacer>
@@ -899,14 +1301,47 @@ watch(activeTrajectRef, () => {
           </nldd-split-view-pane>
 
         </nldd-navigation-split-view>
-  <!-- LibraryApp is a read-only browser; ActionSheet is mounted without editable
-       so the output field is hidden and the footer button just closes the sheet. -->
-  <ActionSheet :action="activeAction" :article="selectedArticle" :editable="false" @close="activeAction = null" @save="activeAction = null" @edit="editInEditor" />
-  <SearchPopover
-    ref="searchPopoverRef"
-    @select-law="(lawId) => selectLaw(lawId, true)"
-    @harvest-available="onHarvestAvailable"
-  />
+  <!-- Overlays teleported to body: as light-DOM siblings of the split view they
+       would be slotted into the main pane and pick up its ::slotted flex-grow,
+       stealing height from the pane content (a short page's sticky footer then
+       floats mid-screen in document-scroll mode). -->
+  <Teleport to="body">
+    <!-- LibraryApp is a read-only browser; ActionSheet is mounted without editable
+         so the output field is hidden and the footer button just closes the sheet. -->
+    <ActionSheet :action="activeAction" :article="selectedArticle" :editable="false" @close="activeAction = null" @save="activeAction = null" @edit="editInEditor" />
+    <SearchPopover
+      ref="searchPopoverRef"
+      @select-law="(lawId) => selectLaw(lawId, true)"
+      @harvest-available="onHarvestAvailable"
+    />
+  </Teleport>
+  <!-- Unsaved-changes guard for in-view werkdocument navigation. -->
+  <Teleport to="body">
+    <nldd-modal-dialog
+      ref="docNavGuardEl"
+      variant="alert"
+      text="Niet-opgeslagen wijzigingen"
+      :supporting-text="docNavGuardText"
+      @close="cancelDocLeave"
+    >
+      <nldd-button slot="actions" variant="primary" text="Blijf document bewerken" @click="cancelDocLeave"></nldd-button>
+      <nldd-button slot="actions" variant="secondary" text="Sla wijzigingen op en sluit" :loading="docSaving || undefined" @click="saveDocAndLeave"></nldd-button>
+      <nldd-button slot="actions" variant="destructive" text="Negeer wijzigingen en sluit" @click="confirmDocLeave"></nldd-button>
+    </nldd-modal-dialog>
+  </Teleport>
+
+  <Teleport to="body">
+    <nldd-modal-dialog
+      ref="uploadErrorModalEl"
+      variant="alert"
+      text="Uploaden mislukt"
+      :supporting-text="docUploadError || ''"
+      @close="dismissUploadError"
+    >
+      <nldd-button slot="actions" variant="primary" text="Sluit" @click="dismissUploadError"></nldd-button>
+      <nldd-button v-if="docUploadRetryable" slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryUpload"></nldd-button>
+    </nldd-modal-dialog>
+  </Teleport>
 </template>
 
 <style>

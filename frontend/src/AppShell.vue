@@ -1,18 +1,21 @@
 <script setup>
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
+import { computed, ref, nextTick, onMounted, onBeforeUnmount, provide } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import TrajectMenu from './components/TrajectMenu.vue';
-import TrajectDocuments from './components/TrajectDocuments.vue';
 import MobileTrajectSheet from './components/MobileTrajectSheet.vue';
+import AboutSheet from './components/AboutSheet.vue';
+import SupportSheet from './components/SupportSheet.vue';
 import { useAuth } from './composables/useAuth.js';
 import { useGithubAuth } from './composables/useGithubAuth.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import { useTrajects } from './composables/useTrajects.js';
 import {
-  lastLibraryPath,
+  lastHomePath,
   lastEditorPath,
   sectionTarget,
+  isHomeSection,
+  rememberHarvesterOrigin,
 } from './composables/useLastVisitedRoute.js';
 import { useAppChrome, openSearch, onBarSearchKeydown } from './composables/useAppChrome.js';
 
@@ -49,10 +52,26 @@ const canViewHarvesting = computed(
   () => authenticated.value && hasAnyRole(HARVESTER_ROLES),
 );
 function goToHarvesting() {
+  // Remember where we came from so the harvester's back button returns here.
+  rememberHarvesterOrigin(route.fullPath);
   router.push("/harvesting");
 }
 const { colorScheme, setColorScheme } = useColorScheme();
 const { activeTrajectRef } = useTrajects();
+
+// "Over RegelRecht" about sheet, opened from the account menu.
+const aboutSheet = ref(null);
+function openAbout() {
+  // Let the account menu popover close first, then raise the sheet.
+  nextTick(() => aboutSheet.value?.show?.());
+}
+
+// "Ondersteuning" support sheet, opened from the account menu.
+const supportSheet = ref(null);
+function openSupport() {
+  // Let the account menu popover close first, then raise the sheet.
+  nextTick(() => supportSheet.value?.show?.());
+}
 
 const colorSchemeOptions = [
   ['auto', 'Systeem'],
@@ -69,10 +88,7 @@ const editorPanelFlags = [
   ['panel.machine_readable', 'Machine editor'],
   ['panel.scenario_form', 'Scenario editor'],
   ['panel.yaml_editor', 'YAML editor'],
-  // A read-only article-text pane with resolved note highlights + inline note
-  // authoring. Kept separate from the Tekst editor so both can be shown side by
-  // side for comparison.
-  ['panel.notes', 'Tekst viewer + notities'],
+  ['panel.notes', 'Notities'],
 ];
 
 // The "Functies" menu group: the panel flags, plus the GitHub-koppeling
@@ -95,12 +111,15 @@ const router = useRouter();
 // always rendered; the active one shows `selected` and does not navigate,
 // the other carries the cross-section target (traject re-stamped via
 // sectionTarget) - matching the previous per-app behaviour.
-const isLibraryRoute = computed(
-  () => route.name === 'library' || route.name === 'library-traject',
-);
-const libraryTabTarget = computed(() =>
-  sectionTarget(router, lastLibraryPath.value, activeTrajectRef.value),
-);
+// True on the Home section (public landing, a public law, the traject landing,
+// or a traject law). Kept named isLibraryRoute to limit this refactor's blast
+// radius.
+const isLibraryRoute = computed(() => isHomeSection(route.name));
+// Home tab restores the last home path verbatim (its own scope), like the
+// harvester return - so you continue exactly where you were. The Editor tab
+// keeps re-stamping the active traject (it carries the editor's traject logic:
+// chooser + law-as-query when no traject is active).
+const libraryTabTarget = computed(() => lastHomePath.value);
 const editorTabTarget = computed(() =>
   sectionTarget(router, lastEditorPath.value, activeTrajectRef.value),
 );
@@ -112,12 +131,54 @@ const editorTabHref = computed(() => router.resolve(editorTabTarget.value).href)
 // intercept the Editor tab and first show a small login-warning popover anchored
 // to the clicked tab. Authenticated users navigate as before.
 const loginWarning = ref(null);
+// Where the "Inloggen" button returns after SSO. Defaults to the editor tab;
+// callers (e.g. the Bibliotheek "Bewerken" button) point it at a specific
+// article so login lands straight on the page being edited.
+const loginRedirect = ref(null);
+
+// The login-warning popover is popover=auto: a re-tap on the trigger that opened
+// it light-dismisses it on pointerdown, but showLoginWarning would then reopen
+// it right away. Snapshot the open state at pointerdown (capture, before the
+// dismiss) so a re-tap toggles it closed. Every login trigger (the Editor tabs,
+// the Bibliotheek "Bewerken" button) wires @pointerdown.capture to this.
+let loginWarningWasOpen = false;
+function onLoginTriggerPointerdown() {
+  loginWarningWasOpen = loginWarning.value?.open ?? false;
+}
+provide('onLoginTriggerPointerdown', onLoginTriggerPointerdown);
+
+// Show the login-warning popover anchored to `anchorEl`. Provided to the nested
+// views so every editor entry point (the Editor tab, the Bibliotheek
+// "Bewerken" button) shows the same heads-up instead of bouncing to SSO.
+function showLoginWarning(anchorEl, redirectHref) {
+  if (!loginWarning.value) return;
+  // Consume the pointerdown snapshot so a later programmatic call (no pointerdown,
+  // e.g. gating on navigation) still shows instead of inheriting a stale flag.
+  const wasOpen = loginWarningWasOpen;
+  loginWarningWasOpen = false;
+  // Re-tap on the trigger that opened it: close instead of reopening. hide() is a
+  // no-op if native light-dismiss already closed it on pointerdown.
+  if (wasOpen) {
+    loginWarning.value.hide();
+    return;
+  }
+  loginRedirect.value = redirectHref ?? editorTabHref.value;
+  loginWarning.value.anchorElement = anchorEl;
+  loginWarning.value.show();
+}
+provide('showLoginWarning', showLoginWarning);
+
+// Secondary action on the login popover: to the public "Account aanvragen"
+// page. Close the popover first so it isn't left hanging over the new page.
+const accountRequestHref = computed(() => router.resolve({ name: 'account-aanvragen' }).href);
+function goToAccountRequest() {
+  loginWarning.value?.hide();
+  router.push({ name: 'account-aanvragen' });
+}
+
 function onEditorTab(e) {
   if (!authenticated.value) {
-    if (loginWarning.value) {
-      loginWarning.value.anchorElement = e.currentTarget;
-      loginWarning.value.show();
-    }
+    showLoginWarning(e.currentTarget);
     return;
   }
   if (isLibraryRoute.value) router.push(editorTabTarget.value);
@@ -163,9 +224,10 @@ function onEnforcementConfirmClose() {
 // View-specific toolbar bits published by the active view.
 const { lastSavedPr, documentTabs, activeDocumentTab, tabActions, editorChanges, editorActions, libraryEmpty } = useAppChrome();
 
-// Just-in-time coach-mark on the toolbar search affordance: shown only while the
-// library is empty (nothing curated yet) and never dismissable - the app drives
-// it, and it disappears by itself once the library has content. Each breakpoint
+// Just-in-time coach-mark on the toolbar search affordance: shown while the
+// library is empty (nothing curated yet). In the bare corpus it's app-driven and
+// non-dismissable (it disappears once there's content); inside a traject it's
+// dismissable, since there are other functions to discover. Each breakpoint
 // renders its search control in a different bar (sm icon-button, md text button,
 // lg search field), each in a pane that is display:none off-breakpoint. So we
 // resolve the active breakpoint and activate only the coach-mark whose control
@@ -193,9 +255,30 @@ onBeforeUnmount(() => {
   mdQuery?.removeEventListener?.('change', updateViewport);
   lgQuery?.removeEventListener?.('change', updateViewport);
 });
-const showSearchHintSm = computed(() => libraryEmpty.value && viewport.value === 'sm');
-const showSearchHintMd = computed(() => libraryEmpty.value && viewport.value === 'md');
-const showSearchHintLg = computed(() => libraryEmpty.value && viewport.value === 'lg');
+// Inside a traject the coach-mark is dismissable (other functions to discover -
+// Instellingen, Werkdocumenten): the dismiss button persists so it won't nag
+// again; a click outside hides it for the session. In the bare corpus it stays
+// non-dismissable until content appears.
+const JIT_DISMISS_KEY = 'regelrecht:jit-traject-search-dismissed';
+function loadJitDismissed() {
+  try { return localStorage.getItem(JIT_DISMISS_KEY) === '1'; } catch { return false; }
+}
+const trajectActive = computed(() => !!activeTrajectRef.value);
+const jitDismissed = ref(loadJitDismissed());
+const jitHiddenSession = ref(false);
+const searchHintActive = computed(
+  () => libraryEmpty.value && !(trajectActive.value && (jitDismissed.value || jitHiddenSession.value)),
+);
+const showSearchHintSm = computed(() => searchHintActive.value && viewport.value === 'sm');
+const showSearchHintMd = computed(() => searchHintActive.value && viewport.value === 'md');
+const showSearchHintLg = computed(() => searchHintActive.value && viewport.value === 'lg');
+function onSearchHintClose(e) {
+  jitHiddenSession.value = true;
+  if (e?.detail?.reason === 'dismissed') {
+    jitDismissed.value = true;
+    try { localStorage.setItem(JIT_DISMISS_KEY, '1'); } catch { /* ignore */ }
+  }
+}
 
 // Editor with open tabs → the mobile traject row splits 50/50 to fit a tabs
 // button next to the traject menu, and the md+ document-tab-bar shows. The
@@ -219,8 +302,8 @@ const hasDocumentTabs = computed(
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar size="md" navigation>
-                <nldd-tab-bar-item :selected="isLibraryRoute || undefined" :href="isLibraryRoute ? undefined : libraryTabHref" @click.prevent="isLibraryRoute || router.push(libraryTabTarget)" text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="authenticated && isLibraryRoute ? editorTabHref : undefined" @click.prevent="onEditorTab" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="isLibraryRoute || undefined" :href="isLibraryRoute ? undefined : libraryTabHref" @click.prevent="isLibraryRoute || router.push(libraryTabTarget)" text="Home"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="authenticated && isLibraryRoute ? editorTabHref : undefined" @click.prevent="onEditorTab" @pointerdown.capture="onLoginTriggerPointerdown" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item v-if="lastSavedPr" slot="end">
@@ -235,29 +318,22 @@ const hasDocumentTabs = computed(
                 text="Zoek een wet om te openen"
                 supporting-text="Markeer een wet als favoriet om die later snel terug te vinden."
                 :active="showSearchHintMd || undefined"
+                :dismissable="trajectActive || undefined"
+                @nldd-close="onSearchHintClose"
               >
                 <nldd-button size="md" start-icon="search" text="Zoeken" @click="openSearch"></nldd-button>
               </nldd-just-in-time-education>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <TrajectMenu id-suffix="md" />
-            </nldd-toolbar-item>
-            <nldd-toolbar-item slot="end">
-              <nldd-icon-button id="settings-menu-btn-md" size="md" icon="account" text="Account" tooltip-timing="never" expandable popovertarget="settings-menu-md"></nldd-icon-button>
+              <nldd-button-bar size="md">
+                <TrajectMenu id-suffix="md" />
+                <nldd-button-bar-divider></nldd-button-bar-divider>
+                <nldd-icon-button id="settings-menu-btn-md" size="md" icon="account" text="Account" tooltip-timing="never" expandable popovertarget="settings-menu-md"></nldd-icon-button>
+              </nldd-button-bar>
               <nldd-menu id="settings-menu-md" anchor="settings-menu-btn-md">
+                <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
+                <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
-                <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
-                <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
-                <nldd-menu-group text="Functies">
-                <nldd-menu-item
-                  v-for="[key, label] in functieFlags"
-                  :key="key"
-                  type="checkbox"
-                  :selected="isEnabled(key) || undefined"
-                  :text="label"
-                  @select="onFunctieFlagSelect(key, $event)"
-                ></nldd-menu-item>
-                </nldd-menu-group>
                 <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"
@@ -268,11 +344,28 @@ const hasDocumentTabs = computed(
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
                 </nldd-menu-group>
+                <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvest" @click.stop="goToHarvesting"></nldd-menu-item>
+                <nldd-menu-item v-if="!authLoading && authenticated" text="Feature flags" icon="flag">
+                  <nldd-menu>
+                    <nldd-menu-item
+                      v-for="[key, label] in functieFlags"
+                      :key="key"
+                      type="checkbox"
+                      :selected="isEnabled(key) || undefined"
+                      :text="label"
+                      @select="onFunctieFlagSelect(key, $event)"
+                    ></nldd-menu-item>
+                  </nldd-menu>
+                </nldd-menu-item>
                 <nldd-menu-divider></nldd-menu-divider>
+                <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
+                <nldd-menu-item text="Ondersteuning" icon="support" @click="openSupport"></nldd-menu-item>
                 <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
                 <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
-                <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
-                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
+                <template v-if="!authLoading && authenticated">
+                  <nldd-menu-divider></nldd-menu-divider>
+                  <nldd-menu-item text="Log uit" icon="logout" @click="logout"></nldd-menu-item>
+                </template>
               </nldd-menu>
             </nldd-toolbar-item>
           </nldd-toolbar>
@@ -285,8 +378,8 @@ const hasDocumentTabs = computed(
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar size="md" navigation>
-                <nldd-tab-bar-item :selected="isLibraryRoute || undefined" :href="isLibraryRoute ? undefined : libraryTabHref" @click.prevent="isLibraryRoute || router.push(libraryTabTarget)" text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="authenticated && isLibraryRoute ? editorTabHref : undefined" @click.prevent="onEditorTab" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="isLibraryRoute || undefined" :href="isLibraryRoute ? undefined : libraryTabHref" @click.prevent="isLibraryRoute || router.push(libraryTabTarget)" text="Home"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="authenticated && isLibraryRoute ? editorTabHref : undefined" @click.prevent="onEditorTab" @pointerdown.capture="onLoginTriggerPointerdown" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="center" min-width="240px" width="33%" max-width="480px">
@@ -296,6 +389,8 @@ const hasDocumentTabs = computed(
                 text="Zoek een wet om te openen"
                 supporting-text="Markeer een wet als favoriet om die later snel terug te vinden."
                 :active="showSearchHintLg || undefined"
+                :dismissable="trajectActive || undefined"
+                @nldd-close="onSearchHintClose"
               >
                 <nldd-search-field
                   size="md"
@@ -309,24 +404,15 @@ const hasDocumentTabs = computed(
               <nldd-button size="md" start-icon="external-link" :text="`PR #${lastSavedPr.number}`" :href="lastSavedPr.url" target="_blank" rel="noopener"></nldd-button>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <TrajectMenu id-suffix="lg" />
-            </nldd-toolbar-item>
-            <nldd-toolbar-item slot="end">
-              <nldd-icon-button id="settings-menu-btn-lg" size="md" icon="account" text="Account" tooltip-timing="never" expandable popovertarget="settings-menu-lg"></nldd-icon-button>
+              <nldd-button-bar size="md">
+                <TrajectMenu id-suffix="lg" />
+                <nldd-button-bar-divider></nldd-button-bar-divider>
+                <nldd-icon-button id="settings-menu-btn-lg" size="md" icon="account" text="Account" tooltip-timing="never" expandable popovertarget="settings-menu-lg"></nldd-icon-button>
+              </nldd-button-bar>
               <nldd-menu id="settings-menu-lg" anchor="settings-menu-btn-lg">
+                <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
+                <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
-                <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
-                <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
-                <nldd-menu-group text="Functies">
-                <nldd-menu-item
-                  v-for="[key, label] in functieFlags"
-                  :key="key"
-                  type="checkbox"
-                  :selected="isEnabled(key) || undefined"
-                  :text="label"
-                  @select="onFunctieFlagSelect(key, $event)"
-                ></nldd-menu-item>
-                </nldd-menu-group>
                 <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"
@@ -337,11 +423,28 @@ const hasDocumentTabs = computed(
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
                 </nldd-menu-group>
+                <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvest" @click.stop="goToHarvesting"></nldd-menu-item>
+                <nldd-menu-item v-if="!authLoading && authenticated" text="Feature flags" icon="flag">
+                  <nldd-menu>
+                    <nldd-menu-item
+                      v-for="[key, label] in functieFlags"
+                      :key="key"
+                      type="checkbox"
+                      :selected="isEnabled(key) || undefined"
+                      :text="label"
+                      @select="onFunctieFlagSelect(key, $event)"
+                    ></nldd-menu-item>
+                  </nldd-menu>
+                </nldd-menu-item>
                 <nldd-menu-divider></nldd-menu-divider>
+                <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
+                <nldd-menu-item text="Ondersteuning" icon="support" @click="openSupport"></nldd-menu-item>
                 <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
                 <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
-                <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
-                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
+                <template v-if="!authLoading && authenticated">
+                  <nldd-menu-divider></nldd-menu-divider>
+                  <nldd-menu-item text="Log uit" icon="logout" @click="logout"></nldd-menu-item>
+                </template>
               </nldd-menu>
             </nldd-toolbar-item>
           </nldd-toolbar>
@@ -446,14 +549,14 @@ const hasDocumentTabs = computed(
                 variant="primary"
                 size="md"
                 width="full"
-                :disabled="editorChanges.saving || undefined"
-                :text="editorChanges.saving ? 'Opslaan…' : 'Opslaan'"
+                text="Opslaan"
+                :loading="editorChanges.saving || undefined"
                 @click="editorActions?.save?.()"
               ></nldd-button>
               <nldd-menu-item
                 slot="overflow"
                 icon="save"
-                :text="editorChanges.saving ? 'Opslaan…' : 'Opslaan'"
+                text="Opslaan"
                 :disabled="editorChanges.saving || undefined"
                 @select="editorActions?.save?.()"
               ></nldd-menu-item>
@@ -477,8 +580,8 @@ const hasDocumentTabs = computed(
           <nldd-toolbar size="lg">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar navigation>
-                <nldd-tab-bar-item :selected="isLibraryRoute || undefined" :href="isLibraryRoute ? undefined : libraryTabHref" @click.prevent="isLibraryRoute || router.push(libraryTabTarget)" icon="books" text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="authenticated && isLibraryRoute ? editorTabHref : undefined" @click.prevent="onEditorTab" icon="edit" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="isLibraryRoute || undefined" :href="isLibraryRoute ? undefined : libraryTabHref" @click.prevent="isLibraryRoute || router.push(libraryTabTarget)" icon="home" text="Home"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="authenticated && isLibraryRoute ? editorTabHref : undefined" @click.prevent="onEditorTab" @pointerdown.capture="onLoginTriggerPointerdown" icon="edit" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
@@ -488,6 +591,8 @@ const hasDocumentTabs = computed(
                 text="Zoek een wet om te openen"
                 supporting-text="Markeer een wet als favoriet om die later snel terug te vinden."
                 :active="showSearchHintSm || undefined"
+                :dismissable="trajectActive || undefined"
+                @nldd-close="onSearchHintClose"
               >
                 <nldd-icon-button size="lg" icon="search" text="Zoeken" @click="openSearch"></nldd-icon-button>
               </nldd-just-in-time-education>
@@ -495,19 +600,9 @@ const hasDocumentTabs = computed(
             <nldd-toolbar-item slot="end">
               <nldd-icon-button id="settings-menu-btn-sm" size="lg" icon="account" text="Account" tooltip-timing="never" popovertarget="settings-menu-sm"></nldd-icon-button>
               <nldd-menu id="settings-menu-sm" anchor="settings-menu-btn-sm">
+                <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
+                <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
-                <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="gear" @click.stop="goToHarvesting"></nldd-menu-item>
-                <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
-                <nldd-menu-group text="Functies">
-                <nldd-menu-item
-                  v-for="[key, label] in functieFlags"
-                  :key="key"
-                  type="checkbox"
-                  :selected="isEnabled(key) || undefined"
-                  :text="label"
-                  @select="onFunctieFlagSelect(key, $event)"
-                ></nldd-menu-item>
-                </nldd-menu-group>
                 <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"
@@ -518,22 +613,38 @@ const hasDocumentTabs = computed(
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
                 </nldd-menu-group>
+                <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvest" @click.stop="goToHarvesting"></nldd-menu-item>
+                <nldd-menu-item v-if="!authLoading && authenticated" text="Feature flags" icon="flag">
+                  <nldd-menu>
+                    <nldd-menu-item
+                      v-for="[key, label] in functieFlags"
+                      :key="key"
+                      type="checkbox"
+                      :selected="isEnabled(key) || undefined"
+                      :text="label"
+                      @select="onFunctieFlagSelect(key, $event)"
+                    ></nldd-menu-item>
+                  </nldd-menu>
+                </nldd-menu-item>
                 <nldd-menu-divider></nldd-menu-divider>
+                <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
+                <nldd-menu-item text="Ondersteuning" icon="support" @click="openSupport"></nldd-menu-item>
                 <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
                 <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
-                <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
-                <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
+                <template v-if="!authLoading && authenticated">
+                  <nldd-menu-divider></nldd-menu-divider>
+                  <nldd-menu-item text="Log uit" icon="logout" @click="logout"></nldd-menu-item>
+                </template>
               </nldd-menu>
             </nldd-toolbar-item>
           </nldd-toolbar>
         </nldd-container>
       </nldd-split-view-pane>
     </nldd-bar-split-view>
-  </nldd-app-view>
 
-  <!-- Traject-documents browser sheet + edit window, opened from TrajectMenu.
-       Shared by both sections, so it lives in the shell (mounted once). -->
-  <TrajectDocuments />
+    <AboutSheet ref="aboutSheet"></AboutSheet>
+    <SupportSheet ref="supportSheet"></SupportSheet>
+  </nldd-app-view>
 
   <!-- Editor requires login: a heads-up popover anchored to the clicked Editor
        tab (sm/md/lg) so the SSO screen never appears unannounced. -->
@@ -544,7 +655,8 @@ const hasDocumentTabs = computed(
         text="Log in om de editor te gebruiken"
         supporting-text="Zodra je bent ingelogd kies je een traject en kun je aan de slag."
       >
-        <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login(editorTabHref)"></nldd-button>
+        <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login(loginRedirect || editorTabHref)"></nldd-button>
+        <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
       </nldd-inline-dialog>
     </nldd-container>
   </nldd-popover>

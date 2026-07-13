@@ -65,6 +65,9 @@ export function useTrajectDocuments(trajectRef) {
   // a time; switching to another document overwrites these.
   const currentPath = ref(null);
   const currentBody = ref('');
+  // The last body known to be persisted on the server - the baseline for the
+  // "unsaved changes" (hasChanges) check. Set on load and after a save.
+  const savedBody = ref('');
   // The ETag we received on the last successful read or save. Sent back
   // as `If-Match` on the next PUT/DELETE so the server can detect a
   // concurrent edit from another tab/user.
@@ -117,6 +120,14 @@ export function useTrajectDocuments(trajectRef) {
     saveError.value = null;
     conflict.value = null;
     deletedRemotely.value = null;
+    // Show the document shell immediately: adopt the path now, before the fetch,
+    // so hasOpenDoc flips true and the editor renders its "Document laden"
+    // indicator right away instead of leaving the user on the old view until a
+    // (possibly slow) fetch resolves. The body follows when the fetch lands; the
+    // editor stays behind the indicator while docLoading, so the previous
+    // document's stale body is never shown. Only currentPath changes here (not
+    // currentBody), so the draft watch doesn't fire.
+    currentPath.value = path;
     // Cancel any debounce that was scheduled by the previous document's
     // last keystroke: when the watch fires after we swap `currentPath`
     // it would otherwise persist the new body under the old path.
@@ -132,6 +143,9 @@ export function useTrajectDocuments(trajectRef) {
       if (res.status === 404) {
         currentPath.value = path;
         currentBody.value = '';
+        // Reset the baseline too so an empty body isn't seen as a change vs the
+        // previous document's saved content (spurious dirty state).
+        savedBody.value = '';
         currentEtag.value = null;
         docError.value = {
           kind: 'load-error',
@@ -145,6 +159,9 @@ export function useTrajectDocuments(trajectRef) {
         // subsequent Save can't PUT stale content back to the old path.
         currentPath.value = path;
         currentBody.value = '';
+        // Reset the baseline too (see 404 branch) so the failed load doesn't
+        // register as unsaved changes against the previous document.
+        savedBody.value = '';
         currentEtag.value = null;
         docError.value = {
           kind: 'load-error',
@@ -163,6 +180,7 @@ export function useTrajectDocuments(trajectRef) {
       cancelDraftTimer();
       currentPath.value = path;
       currentEtag.value = serverEtag;
+      savedBody.value = serverBody;
       // If the user had an unsaved draft for this document, prefer it
       // over the server body but flag the divergence so the editor can
       // offer "drop draft, keep server version".
@@ -186,14 +204,18 @@ export function useTrajectDocuments(trajectRef) {
     }
   }
 
+  // Discard local changes for the open document: drop the saved draft AND
+  // revert the in-memory body to the last-saved baseline, so a discard truly
+  // reverts instead of only clearing localStorage (otherwise the in-memory edit
+  // lingers, re-drafts on the next keystroke, and trips the leave-guard again).
   function dropDraft() {
     if (!currentPath.value) return;
+    // Cancel a pending debounced flush so it can't re-create the row we clear.
+    cancelDraftTimer();
     clearDraft(trajectRef.value, currentPath.value);
-    // If we kept a serverBody on the docError we can restore it
-    // immediately; otherwise the user can refetch.
-    if (docError.value?.serverBody !== undefined) {
-      currentBody.value = docError.value.serverBody;
-    }
+    // savedBody is the server version (set on open/save); on a draft-present
+    // notice it equals docError.serverBody, so "keep server version" still holds.
+    currentBody.value = savedBody.value;
     docError.value = null;
   }
 
@@ -290,6 +312,7 @@ export function useTrajectDocuments(trajectRef) {
       // convenience for clients that can't read headers.
       currentEtag.value = res.headers.get('ETag') ?? json?.etag ?? currentEtag.value;
       clearDraft(trajectRef.value, currentPath.value);
+      savedBody.value = currentBody.value;
       // Reload the list - a freshly created document needs to appear
       // in the sidebar without a manual refresh.
       if (res.status === 201) {
@@ -355,17 +378,24 @@ export function useTrajectDocuments(trajectRef) {
         body: form,
       });
       if (!res.ok) {
+        // 404/405/501 mean the backend doesn't offer the upload endpoint (the
+        // conversion feature isn't enabled yet) - a human message, and retrying
+        // won't help. Other statuses keep the server's text (or the code) and
+        // stay retryable.
+        const unsupported = res.status === 404 || res.status === 405 || res.status === 501;
         const text = await safeText(res);
-        const err = new Error(text || `Uploaden mislukt: ${res.status}`);
-        saveError.value = err;
-        return { ok: false, error: err.message };
+        const error = unsupported
+          ? 'Uploaden wordt door de server nog niet ondersteund.'
+          : (text || `Uploaden mislukt (foutcode ${res.status}).`);
+        // Surface via the returned result only (the consumer shows its own
+        // upload dialog); don't also set saveError, which raises a 2nd modal.
+        return { ok: false, error, retryable: !unsupported };
       }
       const json = await safeJson(res);
       // Refresh the list so the poller (and, once converted, the .md) show up.
       await fetchList();
       return { ok: true, targetPath: json?.target_path ?? null };
     } catch (e) {
-      saveError.value = e;
       return { ok: false, error: e.message };
     }
   }
@@ -486,6 +516,7 @@ export function useTrajectDocuments(trajectRef) {
     listError,
     currentPath,
     currentBody,
+    savedBody,
     currentEtag,
     docLoading,
     docError,

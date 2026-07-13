@@ -153,4 +153,27 @@ describe('useTrajectDocuments', () => {
       '/api/trajects/mig-1a2b3c4d/corpus/documents/mvt/concept-v2.md',
     );
   });
+
+  it('dropDraft discards local edits by reverting the body to the saved baseline', async () => {
+    const trajectRef = ref('mig-1a2b3c4d');
+    globalThis.fetch = vi.fn().mockImplementation(async (url) => {
+      if (url.endsWith('/documents')) return res({ json: { documents: [] } });
+      return res({ body: '# Server', etag: '"v1"' });
+    });
+
+    const docs = useTrajectDocuments(trajectRef);
+    await docs.openDocument('notes.md');
+    expect(docs.currentBody.value).toBe('# Server');
+
+    // Simulate an edit that diverges from the saved (server) baseline.
+    docs.currentBody.value = '# Local edit';
+    docs.dropDraft();
+
+    // The edit is reverted, not just the localStorage draft cleared — so the
+    // document is clean again and won't re-trip the leave-guard on reopen
+    // ("Negeer wijzigingen en sluit" truly discards).
+    expect(docs.currentBody.value).toBe('# Server');
+    expect(docs.savedBody.value).toBe('# Server');
+    expect(docs.docError.value).toBeNull();
+  });
 });

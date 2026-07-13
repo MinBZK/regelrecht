@@ -15,6 +15,10 @@ export function useDocumentUpload(uploadFn, onUploaded) {
   // Surfaced to the consumer so a failed upload (400/413/503/network) is shown,
   // not silently swallowed when the file picker closes.
   const uploadError = ref(null);
+  // Whether an "opnieuw proberen" retry makes sense. False for a permanent
+  // server-side gap (e.g. the upload endpoint isn't supported yet), so the
+  // consumer can drop its retry action.
+  const uploadRetryable = ref(true);
 
   function onUpload() {
     fileInput.value?.click();
@@ -26,13 +30,17 @@ export function useDocumentUpload(uploadFn, onUploaded) {
     e.target.value = '';
     if (!file) return;
     uploadError.value = null;
+    uploadRetryable.value = true;
     const result = await uploadFn(file);
     if (result?.ok) {
       if (onUploaded) onUploaded();
     } else {
+      // Set retryability before the message so a consumer watching the error
+      // reads the matching value. A result without `retryable` defaults to true.
+      uploadRetryable.value = result?.retryable !== false;
       uploadError.value = result?.error || 'Uploaden mislukt.';
     }
   }
 
-  return { fileInput, uploadError, onUpload, onFileChange };
+  return { fileInput, uploadError, uploadRetryable, onUpload, onFileChange };
 }

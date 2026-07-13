@@ -2,7 +2,7 @@
 import { onMounted, watchEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTrajects, refreshTrajects } from './composables/useTrajects.js';
-import { lastLibraryPath } from './composables/useLastVisitedRoute.js';
+import { lastHomePath, homeTarget } from './composables/useLastVisitedRoute.js';
 
 // Trajectkeuze-pagina - de landing wanneer de editor (of een traject-scoped
 // bibliotheek) een traject vereist. Hier kies je een bestaand traject of ga je
@@ -31,21 +31,20 @@ watchEffect(() => {
 // page SSO-redirect die een uitgelogde user naar deze auth-only pagina bracht;
 // een history-pop zou op de login-redirect landen.
 function goBack() {
-  router.push(lastLibraryPath.value);
+  router.push(lastHomePath.value);
 }
 
 // Where picking a traject takes you, from `sectie` (default editor): the
 // library or editor traject-scoped route, carrying the law/article the user was
 // heading for so they land on their intended destination.
 function trajectTarget(trajectRef) {
-  return {
-    name: route.query.sectie === 'library' ? 'library-traject' : 'editor-traject',
-    params: {
-      trajectRef,
-      lawId: route.query.law || undefined,
-      articleNumber: route.query.article || undefined,
-    },
-  };
+  const lawId = route.query.law || undefined;
+  const articleNumber = route.query.article || undefined;
+  // `sectie=library` came from the Home section; editor otherwise. Home splits
+  // into traject-home / library-traject on whether a law is carried.
+  return route.query.sectie === 'library'
+    ? homeTarget({ trajectRef, lawId, articleNumber })
+    : { name: 'editor-traject', params: { trajectRef, lawId, articleNumber } };
 }
 
 function selectTraject(t) {
@@ -77,7 +76,7 @@ function trajectSupportingText(t) {
       <nldd-top-title-bar
         slot="header"
         text="Trajecten"
-        back-text="Bibliotheek"
+        back-text="Home"
         collapse-anchor="kies-traject-titel"
         @back="goBack"
       ></nldd-top-title-bar>

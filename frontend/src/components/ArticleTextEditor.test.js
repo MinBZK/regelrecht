@@ -33,7 +33,7 @@ describe('ArticleTextEditor', () => {
     // activeFormats reflects the editor's current selection - only the shape
     // is part of the contract with the parent toolbar.
     expect(Object.keys(exposed.activeFormats).sort()).toEqual([
-      'bold', 'bulletList', 'italic', 'orderedList',
+      'bold', 'bulletList', 'canIndent', 'canOutdent', 'italic', 'orderedList',
     ]);
   });
 
@@ -46,30 +46,8 @@ describe('ArticleTextEditor', () => {
     expect(empty.attributes('text')).toContain('Geen artikel geselecteerd');
   });
 
-  it('renders the save error dialog when saveError is set and editable', () => {
-    const err = new Error('Forbidden: read-only backend');
-    const wrapper = mountEditor({ saveError: err });
-    const dialog = wrapper.find('[data-testid="save-text-error"]');
-    expect(dialog.exists()).toBe(true);
-    expect(dialog.attributes('supporting-text')).toBe('Forbidden: read-only backend');
-  });
-
-  it('does not render the save error dialog in read-only mode', () => {
-    const err = new Error('boom');
-    const wrapper = mountEditor({ editable: false, saveError: err });
-    expect(wrapper.find('[data-testid="save-text-error"]').exists()).toBe(false);
-  });
-
-  it('does not render the save error dialog when no article is selected', () => {
-    // Without the article guard the error and the empty-state inline-dialog
-    // would render side-by-side after a save failure followed by a deselect.
-    const err = new Error('Forbidden: read-only backend');
-    const wrapper = mount(ArticleTextEditor, {
-      props: { article: null, editable: true, saveError: err, modelValue: '' },
-    });
-    expect(wrapper.find('[data-testid="save-text-error"]').exists()).toBe(false);
-    expect(wrapper.find('nldd-inline-dialog').attributes('text')).toContain('Geen artikel geselecteerd');
-  });
+  // Save failures no longer render inline here; EditorView surfaces lawSaveError
+  // as a single modal over the whole editor.
 
   // The remaining tests exercise tiptap under happy-dom. If the editor instance
   // doesn't initialise (e.g. because happy-dom lacks a DOM API tiptap depends

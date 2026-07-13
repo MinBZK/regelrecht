@@ -560,12 +560,14 @@ defineExpose({ save: onSave });
         </select>
       </nldd-dropdown>
 
-      <nldd-inline-dialog
-        v-if="selectedScenarioMismatchTargets"
-        variant="alert"
-        text="Scenario hoort bij een andere wet"
-        :supporting-text="mismatchSupportingText"
-      ></nldd-inline-dialog>
+      <template v-if="selectedScenarioMismatchTargets">
+        <nldd-banner
+          variant="warning"
+          text="Scenario hoort bij een andere wet"
+          :supporting-text="mismatchSupportingText"
+        ></nldd-banner>
+        <nldd-spacer size="16"></nldd-spacer>
+      </template>
 
       <nldd-inline-dialog v-if="saveSuccess" text="Opgeslagen"></nldd-inline-dialog>
       <nldd-inline-dialog v-if="saveError" variant="alert" text="Opslaan mislukt" :supporting-text="saveError.message || String(saveError)"></nldd-inline-dialog>

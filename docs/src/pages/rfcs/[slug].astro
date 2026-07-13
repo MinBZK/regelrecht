@@ -47,7 +47,8 @@ const title = pageTitle + ' · RegelRecht';
 ---
 
 <Base lang="en" kind="docs" pathname={pathname} title={title}>
-  <nldd-one-third-two-thirds-section
+  <nldd-sidebar-section
+    no-collapse
     sm-padding-bottom="32"
     md-padding-bottom="64"
     lg-padding-bottom="96"
@@ -56,54 +57,62 @@ const title = pageTitle + ' · RegelRecht';
       <nldd-title size="1">
         <h1>{pageTitle}</h1>
       </nldd-title>
-      {(authors?.length || date) && (
-        <>
-          <nldd-spacer size="4" />
-          <nldd-byline text={authors?.join(', ')} supporting-text={date}></nldd-byline>
-        </>
-      )}
-    </div>
-    <div slot="left">
-      <DocsOutline headings={headings} />
-      <nldd-spacer size="24" sm-size="16" />
-      <EditLink filePath={entry.filePath} />
-    </div>
-    <div slot="right">
       {status && (
         <>
+          <nldd-spacer size="4" />
           <nldd-container layout="wrap" gap="4">
             <nldd-tag color={rfcStatusColor(status)} size="md">{status}</nldd-tag>
             {implementation && (
               <nldd-tag color="neutral" size="md">{implementation}</nldd-tag>
             )}
           </nldd-container>
-          {(relations.dependsOn.length > 0 || relations.requiredBy.length > 0) && (
-            <nldd-rich-text spacing="flat">
-              <p>
-                {relations.dependsOn.length > 0 && (
-                  <>
-                    Depends on: {relations.dependsOn.map((r, i) => (
+        </>
+      )}
+      {(authors?.length || date) && (
+        <>
+          <nldd-spacer size="6" />
+          <nldd-byline text={authors?.join(', ')} supporting-text={date}></nldd-byline>
+        </>
+      )}
+    </div>
+    <nldd-container slot="sidebar" padding="16" padding-top="8">
+      <DocsOutline headings={headings} />
+      <nldd-spacer size="16" />
+      <EditLink filePath={entry.filePath} />
+    </nldd-container>
+    <div>
+      {(relations.dependsOn.length > 0 || relations.requiredBy.length > 0) && (
+        <>
+          <nldd-rich-text centered>
+            <dl>
+              {relations.dependsOn.length > 0 && (
+                <>
+                  <dt>Depends on</dt>
+                  <dd>
+                    {relations.dependsOn.map((r, i) => (
                       <span>{i > 0 ? ', ' : ''}<a href={r.link}>{r.id}</a> ({r.title})</span>
                     ))}
-                  </>
-                )}
-                {relations.dependsOn.length > 0 && relations.requiredBy.length > 0 && <br />}
-                {relations.requiredBy.length > 0 && (
-                  <>
-                    Required by: {relations.requiredBy.map((r, i) => (
+                  </dd>
+                </>
+              )}
+              {relations.requiredBy.length > 0 && (
+                <>
+                  <dt>Required by</dt>
+                  <dd>
+                    {relations.requiredBy.map((r, i) => (
                       <span>{i > 0 ? ', ' : ''}<a href={r.link}>{r.id}</a> ({r.title})</span>
                     ))}
-                  </>
-                )}
-              </p>
-            </nldd-rich-text>
-          )}
+                  </dd>
+                </>
+              )}
+            </dl>
+          </nldd-rich-text>
           <nldd-spacer size="16" />
         </>
       )}
-      <nldd-rich-text data-edit-base={editBase}>
+      <nldd-rich-text data-edit-base={editBase} centered>
         <Content />
       </nldd-rich-text>
     </div>
-  </nldd-one-third-two-thirds-section>
+  </nldd-sidebar-section>
 </Base>

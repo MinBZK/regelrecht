@@ -40,9 +40,15 @@ function emptyForm() {
 }
 
 const form = ref(emptyForm());
+const nameFieldEl = ref(null);
 
 function reset() {
   form.value = emptyForm();
+}
+
+// The host focuses the first field once the sheet/page has opened.
+function focus() {
+  nameFieldEl.value?.focus?.();
 }
 
 // Build the request body. Only attach the repo fields when the toggle
@@ -83,7 +89,7 @@ function buildPayload() {
   return { payload };
 }
 
-defineExpose({ reset, buildPayload });
+defineExpose({ reset, buildPayload, focus });
 
 // Input event handlers: NDD text-field/text-area dispatch on the bare
 // <input>/<textarea> element, so target.value is set; some custom-element
@@ -104,6 +110,7 @@ function bind(field) {
     <form @submit.prevent="emit('submit')">
       <nldd-form-field label="Naam">
         <nldd-text-field
+          ref="nameFieldEl"
           size="md"
           required
           :value="form.name"

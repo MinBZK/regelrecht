@@ -16,27 +16,90 @@ const router = createRouter({
       path: '/',
       component: AppShell,
       children: [
-        { path: '', redirect: '/library' },
+        // Home (public): the bare landing shows Corpus juris with a clean URL;
+        // picking a law drills into /corpus-juris/{lawId}. Both render the same
+        // LibraryView, so selecting/clearing a law reuses the component instead
+        // of remounting.
         {
-          // Traject-scoped bibliotheek: the same library UI, but reading
-          // through `/api/trajects/{trajectRef}/corpus/...` so the active
-          // traject survives a Bibliotheek↔Editor tab switch. The active
-          // traject lives in the URL (per-tab state), never a server session.
-          //
-          // The `:trajectRef` regex pins the param to `{slug}-{8hex}` so a
-          // plain law-id slug like `wet_op_de_zorgtoeslag` does NOT match
-          // here - it falls through to the no-traject library below.
-          path: 'library/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:lawId?/:articleNumber?',
-          name: 'library-traject',
+          path: '',
+          name: 'home',
           component: LibraryView,
-          meta: { title: 'Bibliotheek', requiresAuth: true },
+          meta: { title: 'Home' },
         },
         {
-          // No-traject bibliotheek: public, global browse (no auth).
-          path: 'library/:lawId?/:articleNumber?',
-          name: 'library',
+          path: 'corpus-juris/:lawId/:articleNumber?',
+          name: 'corpus-juris',
           component: LibraryView,
-          meta: { title: 'Bibliotheek' },
+          meta: { title: 'Home' },
+        },
+        {
+          // Traject-scoped Home landing: the same LibraryView, read through
+          // `/api/trajects/{trajectRef}/corpus/...` so the active traject
+          // survives a Home↔Editor tab switch. The active traject lives in the
+          // URL (per-tab state), never a server session.
+          //
+          // The `:trajectRef` regex pins the param to `{slug}-{8hex}` so a plain
+          // law-id slug like `wet_op_de_zorgtoeslag` can never be mistaken for a
+          // traject ref. Bare `/trajecten/{ref}` is the traject landing.
+          path: 'trajecten/:trajectRef([a-z0-9-]+-[0-9a-f]{8})',
+          name: 'traject-home',
+          component: LibraryView,
+          meta: { title: 'Home', requiresAuth: true },
+        },
+        {
+          // A law opened within a traject: `/trajecten/{ref}/corpus/{lawId}`.
+          // Kept named 'library-traject' so existing navigations keep working.
+          path: 'trajecten/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/corpus/:lawId/:articleNumber?',
+          name: 'library-traject',
+          component: LibraryView,
+          meta: { title: 'Home', requiresAuth: true },
+        },
+        {
+          // Werkdocumenten within a traject: `/trajecten/{ref}/werkdocumenten/{docPath?}`.
+          // Rendered by the same LibraryView (Home), which shows the document list
+          // in its secondary sidebar and the editor in main. `docPath` uses `(.*)`
+          // so folder paths (a/b.md) match, mirroring the old standalone route.
+          path: 'trajecten/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/werkdocumenten/:docPath(.*)?',
+          name: 'werkdocumenten-traject',
+          component: LibraryView,
+          meta: { title: 'Werkdocumenten', requiresAuth: true },
+        },
+        {
+          // Traject settings within a traject: details + members, rendered by the
+          // same LibraryView (Instellingen entry -> secondary-sidebar tabs ->
+          // content in main). `:tab` is pinned to the two panes.
+          path: 'trajecten/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/instellingen/:tab(details|leden)?',
+          name: 'instellingen-traject',
+          component: LibraryView,
+          meta: { title: 'Instellingen', requiresAuth: true },
+        },
+        // Back-compat: the old public library URLs redirect to the new paths.
+        // Declared AFTER library-traject so a {slug}-{8hex} ref still matches
+        // the traject route rather than these plain-law redirects.
+        { path: 'corpus-juris', redirect: '/' },
+        { path: 'library', redirect: '/' },
+        {
+          // Old traject bibliotheek: /library/{ref}[/{law}[/{art}]] ->
+          // /trajecten/{ref}[/corpus/{law}[/{art}]]. Regex-pinned so it matches a
+          // {slug}-{8hex} ref; declared BEFORE the plain-law redirect below.
+          path: 'library/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:lawId?/:articleNumber?',
+          redirect: (to) => (to.params.lawId
+            ? {
+                name: 'library-traject',
+                params: {
+                  trajectRef: to.params.trajectRef,
+                  lawId: to.params.lawId,
+                  articleNumber: to.params.articleNumber || undefined,
+                },
+              }
+            : { name: 'traject-home', params: { trajectRef: to.params.trajectRef } }),
+        },
+        {
+          path: 'library/:lawId/:articleNumber?',
+          redirect: (to) => ({
+            name: 'corpus-juris',
+            params: { lawId: to.params.lawId, articleNumber: to.params.articleNumber || undefined },
+          }),
         },
         {
           // Traject-scoped editor: full read + write. Per-tab active traject
@@ -45,7 +108,7 @@ const router = createRouter({
           // **Invariant**: law `$id` slugs must not match the `{slug}-{8hex}`
           // regex (they use underscores, e.g. `wet_op_de_zorgtoeslag`), so a
           // plain law id can never be mistaken for a traject ref.
-          path: 'editor/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:lawId?/:articleNumber?',
+          path: 'trajecten/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/editor/:lawId?/:articleNumber?',
           name: 'editor-traject',
           component: () => import('./EditorView.vue'),
           meta: { title: 'Editor', requiresAuth: true },
@@ -59,6 +122,21 @@ const router = createRouter({
           path: 'editor',
           name: 'editor',
           redirect: (to) => ({ name: 'trajecten', query: { sectie: 'editor', ...to.query } }),
+        },
+        {
+          // Old traject editor: /editor/{ref}[/{law}[/{art}]] ->
+          // /trajecten/{ref}/editor[/{law}[/{art}]]. Regex-pinned, declared
+          // BEFORE the plain-law editor redirect below so a {slug}-{8hex} ref
+          // matches the traject path, not a law path.
+          path: 'editor/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:lawId?/:articleNumber?',
+          redirect: (to) => ({
+            name: 'editor-traject',
+            params: {
+              trajectRef: to.params.trajectRef,
+              lawId: to.params.lawId || undefined,
+              articleNumber: to.params.articleNumber || undefined,
+            },
+          }),
         },
         {
           // Editor-links zonder traject (de vroegere read-only editor): er is
@@ -146,17 +224,22 @@ const router = createRouter({
       ],
     },
     {
-      // Standalone full-page werkdocumenten editor, opened in a new tab from
-      // the in-sheet editor ("Open in nieuw tabblad"). Deliberately a top-level
-      // route, NOT a child of AppShell: it carries its own minimal top bar
-      // instead of the app chrome, giving the document a full navigation-split-
-      // view (list + editor). `:trajectRef` is pinned to `{slug}-{8hex}` like
-      // the other traject routes; `:docPath(.*)` captures nested document paths
-      // (slashes allowed) and is optional so the bare page opens on the list.
+      // Account aanvragen - publieke uitlegpagina (geen requiresAuth),
+      // bereikbaar vanaf de login-warning-popover. Top-level route met een
+      // eigen top-title-bar, geen app-chrome (net als de trajecten-pagina's).
+      path: '/account-aanvragen',
+      name: 'account-aanvragen',
+      component: () => import('./AccountRequestView.vue'),
+      meta: { title: 'Account aanvragen' },
+    },
+    {
+      // Back-compat: the old standalone /werkdocumenten/{ref}/{docPath} URLs now
+      // live inside Home at /trajecten/{ref}/werkdocumenten/{docPath}.
       path: '/werkdocumenten/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:docPath(.*)?',
-      name: 'werkdocumenten',
-      component: () => import('./WerkdocumentenView.vue'),
-      meta: { title: 'Werkdocumenten', requiresAuth: true },
+      redirect: (to) => ({
+        name: 'werkdocumenten-traject',
+        params: { trajectRef: to.params.trajectRef, docPath: to.params.docPath || undefined },
+      }),
     },
     {
       path: '/editor.html',
@@ -197,7 +280,7 @@ router.beforeEach(async (to) => {
   // acceptable roles; holding any one grants access. `meta` is merged across
   // matched records, so a child inherits its parent's `requiresRole`.
   if (to.meta.requiresRole && !hasAnyRole(to.meta.requiresRole)) {
-    return { path: '/library' };
+    return { path: '/' };
   }
   return true;
 });
