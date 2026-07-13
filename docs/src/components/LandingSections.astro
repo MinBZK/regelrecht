@@ -108,9 +108,9 @@ function exampleImage(key: string): ImageMetadata {
           <nldd-button-group orientation="horizontal">
             <nldd-button
               variant="inherit-filled"
-              href={home + '#what-is-it'}
-              start-icon="explore"
-              text={t.hero.cta}
+              href={t.feedback.ctaHref}
+              start-icon="notification"
+              text={t.feedback.cta}
             />
             <nldd-button
               variant="inherit-tinted"
@@ -123,12 +123,6 @@ function exampleImage(key: string): ImageMetadata {
               href="/research/"
               start-icon="file-text"
               text={t.nav.research}
-            />
-            <nldd-button
-              variant="inherit-tinted"
-              href={t.feedback.ctaHref}
-              start-icon="notification"
-              text={t.feedback.cta}
             />
           </nldd-button-group>
         </nldd-hero>
