@@ -91,7 +91,7 @@ export function useTrajectMembers() {
       // reachable when demoting an owner to contributor. Surface the workflow.
       errorMessage: (status, body) =>
         status === 409
-          ? 'Een traject moet minstens één eigenaar houden. Maak eerst een ander lid eigenaar.'
+          ? 'Een traject moet minstens één beheerder houden. Maak eerst een ander lid beheerder.'
           : body || `Rol wijzigen mislukt: ${status}`,
     });
     await load(trajectId);

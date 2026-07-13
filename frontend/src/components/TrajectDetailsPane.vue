@@ -214,7 +214,7 @@ async function confirmLeave() {
       ref="leaveModalEl"
       variant="alert"
       :text="`Traject ${detail?.name || ''} verlaten?`"
-      supporting-text="Je verlaat dit traject definitief en verliest meteen je toegang. Wil je later weer bijdragen, dan moet een eigenaar je opnieuw uitnodigen."
+      supporting-text="Je verlaat dit traject definitief en verliest meteen je toegang. Wil je later weer bijdragen, dan moet een beheerder je opnieuw uitnodigen."
       @close="cancelLeave"
     >
       <nldd-inline-dialog v-if="leaveError" variant="alert" :text="leaveError"></nldd-inline-dialog>
