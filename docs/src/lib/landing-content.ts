@@ -383,8 +383,16 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     references: {
       title: 'Relevante rapporten en bronnen',
-      lede: 'Een overzicht van belangrijke rapporten, onderzoeken en bronnen die de noodzaak voor machine-uitvoerbare wetgeving onderbouwen.',
+      lede: 'Ons position paper legt de argumentatie achter RegelRecht vast, gevolgd door rapporten en bronnen die de noodzaak voor machine-uitvoerbare wetgeving onderbouwen.',
       items: [
+        {
+          title:
+            'Rules as Executed: Publishing Machine-Executable Law to Rebalance the Powers',
+          meta: 'Eelco Hotting & Anne Schuth (Ministerie van BZK) • 12 juli 2026',
+          text: 'Betoogt dat de overheid haar wetsuitvoering moet publiceren als machine-uitvoerbare specificatie, en dat elk besluit vastlegt met welke versie het is genomen. Wie een besluit ontvangt kan het narekenen, en het parlement kan de regel zelf analyseren.',
+          href: '/research/rules-as-executed',
+          linkLabel: 'position paper (Engels)',
+        },
         {
           title: 'Factsheet digitale uitvoering van wetgeving',
           meta: 'Prof. Corien Prins (WRR) & Prof. Johan Wolswinkel (Tilburg University) • 23 januari 2025',
@@ -855,8 +863,16 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     references: {
       title: 'Relevant reports and sources',
-      lede: 'An overview of key reports, research and sources that underpin the need for machine-executable legislation.',
+      lede: 'Our position paper sets out the argument behind RegelRecht, followed by reports and sources that underpin the need for machine-executable legislation.',
       items: [
+        {
+          title:
+            'Rules as Executed: Publishing Machine-Executable Law to Rebalance the Powers',
+          meta: 'Eelco Hotting & Anne Schuth (Ministry of the Interior) • 12 July 2026',
+          text: 'Argues that government should publish its law execution as machine-executable specifications, with every decision recording the version that produced it. The recipient of a decision can then recompute it, and Parliament can analyze the rule itself.',
+          href: '/research/rules-as-executed',
+          linkLabel: 'position paper',
+        },
         {
           title: 'Factsheet on the digital execution of legislation',
           meta: 'Prof. Corien Prins (WRR) & Prof. Johan Wolswinkel (Tilburg University) • 23 January 2025',
