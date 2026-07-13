@@ -114,11 +114,32 @@ const loginWarning = ref(null);
 // article so login lands straight on the page being edited.
 const loginRedirect = ref(null);
 
+// The login-warning popover is popover=auto: a re-tap on the trigger that opened
+// it light-dismisses it on pointerdown, but showLoginWarning would then reopen
+// it right away. Snapshot the open state at pointerdown (capture, before the
+// dismiss) so a re-tap toggles it closed. Every login trigger (the Editor tabs,
+// the Bibliotheek "Bewerken" button) wires @pointerdown.capture to this.
+let loginWarningWasOpen = false;
+function onLoginTriggerPointerdown() {
+  loginWarningWasOpen = loginWarning.value?.open ?? false;
+}
+provide('onLoginTriggerPointerdown', onLoginTriggerPointerdown);
+
 // Show the login-warning popover anchored to `anchorEl`. Provided to the nested
 // views so every editor entry point (the Editor tab, the Bibliotheek
 // "Bewerken" button) shows the same heads-up instead of bouncing to SSO.
 function showLoginWarning(anchorEl, redirectHref) {
   if (!loginWarning.value) return;
+  // Consume the pointerdown snapshot so a later programmatic call (no pointerdown,
+  // e.g. gating on navigation) still shows instead of inheriting a stale flag.
+  const wasOpen = loginWarningWasOpen;
+  loginWarningWasOpen = false;
+  // Re-tap on the trigger that opened it: close instead of reopening. hide() is a
+  // no-op if native light-dismiss already closed it on pointerdown.
+  if (wasOpen) {
+    loginWarning.value.hide();
+    return;
+  }
   loginRedirect.value = redirectHref ?? editorTabHref.value;
   loginWarning.value.anchorElement = anchorEl;
   loginWarning.value.show();
@@ -223,7 +244,7 @@ const hasDocumentTabs = computed(
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar size="md" navigation>
                 <nldd-tab-bar-item :selected="isLibraryRoute || undefined" :href="isLibraryRoute ? undefined : libraryTabHref" @click.prevent="isLibraryRoute || router.push(libraryTabTarget)" text="Home"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="authenticated && isLibraryRoute ? editorTabHref : undefined" @click.prevent="onEditorTab" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="authenticated && isLibraryRoute ? editorTabHref : undefined" @click.prevent="onEditorTab" @pointerdown.capture="onLoginTriggerPointerdown" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item v-if="lastSavedPr" slot="end">
@@ -297,7 +318,7 @@ const hasDocumentTabs = computed(
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar size="md" navigation>
                 <nldd-tab-bar-item :selected="isLibraryRoute || undefined" :href="isLibraryRoute ? undefined : libraryTabHref" @click.prevent="isLibraryRoute || router.push(libraryTabTarget)" text="Home"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="authenticated && isLibraryRoute ? editorTabHref : undefined" @click.prevent="onEditorTab" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="authenticated && isLibraryRoute ? editorTabHref : undefined" @click.prevent="onEditorTab" @pointerdown.capture="onLoginTriggerPointerdown" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="center" min-width="240px" width="33%" max-width="480px">
@@ -497,7 +518,7 @@ const hasDocumentTabs = computed(
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar navigation>
                 <nldd-tab-bar-item :selected="isLibraryRoute || undefined" :href="isLibraryRoute ? undefined : libraryTabHref" @click.prevent="isLibraryRoute || router.push(libraryTabTarget)" icon="home" text="Home"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="authenticated && isLibraryRoute ? editorTabHref : undefined" @click.prevent="onEditorTab" icon="edit" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="authenticated && isLibraryRoute ? editorTabHref : undefined" @click.prevent="onEditorTab" @pointerdown.capture="onLoginTriggerPointerdown" icon="edit" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">

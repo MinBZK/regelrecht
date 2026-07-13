@@ -32,6 +32,9 @@ const { authenticated, login } = useAuth();
 // Provided by AppShell: shows the login-warning popover anchored to an element,
 // so "Bewerken" gates on login the same way the Editor tab does.
 const showLoginWarning = inject('showLoginWarning', null);
+// Wire on the trigger's @pointerdown.capture so a re-tap on "Bewerken" toggles
+// the login warning closed instead of reopening it (see AppShell). No-op default.
+const onLoginTriggerPointerdown = inject('onLoginTriggerPointerdown', () => {});
 // The detail-pane "Bewerken" button, used as the popover anchor for edit
 // actions that don't originate from a click on the button itself.
 const editButton = ref(null);
@@ -1283,7 +1286,7 @@ watch(activeTrajectRef, () => {
                       </nldd-tab-bar>
                     </nldd-toolbar-item>
                     <nldd-toolbar-item slot="end">
-                      <nldd-button ref="editButton" v-if="selectedLawId" variant="secondary" text="Bewerken" :href="authenticated ? editLawHref : undefined" @click.prevent="onEditClick"></nldd-button>
+                      <nldd-button ref="editButton" v-if="selectedLawId" variant="secondary" text="Bewerken" :href="authenticated ? editLawHref : undefined" @click.prevent="onEditClick" @pointerdown.capture="onLoginTriggerPointerdown"></nldd-button>
                     </nldd-toolbar-item>
                   </nldd-toolbar>
                   <nldd-spacer size="24"></nldd-spacer>
