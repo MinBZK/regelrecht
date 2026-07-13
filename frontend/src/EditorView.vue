@@ -1453,7 +1453,9 @@ const reviewSupportingText = computed(() => {
     );
   }
   return (
-    'Opslaan keurt het volledige voorstel goed (de hele wet); Verwerpen wijst het af.' +
+    'Opslaan keurt het volledige voorstel goed (de hele wet); Verwerpen wijst het af. ' +
+    'Handmatige aanpassingen worden daarbij niet meegenomen — wil je zelf bewerken, ' +
+    'verwerp dan eerst het voorstel.' +
     (reviewHasHiddenChanges.value ? ` ${REVIEW_HIDDEN_CHANGES_NOTE}` : '')
   );
 });
