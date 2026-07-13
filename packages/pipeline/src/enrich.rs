@@ -456,7 +456,9 @@ pub struct EnrichPayload {
     /// root enrichment; the child harvests it enqueues get `depth + 1`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub depth: Option<u32>,
-    /// Account dat deze enrichment aanvroeg; aanwezig ⇒ taak-flow.
+    /// Account dat de taak-flow-enrichment aanvroeg (gezet wanneer
+    /// `deliver == "task"`); bepaalt de assignee van de review-taak.
+    /// De taak-flow-gate zelf is `deliver_as_task()`, niet dit veld.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requested_by: Option<Uuid>,
     /// `"task"` ⇒ resultaat als job_blobs + taak, géén push (taak-flow).
@@ -465,6 +467,8 @@ pub struct EnrichPayload {
     /// Eigenaar-traject van de taak-flow (voor de tasks-rij + save-URL's).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub traject_id: Option<Uuid>,
+    /// URL-vorm van het traject (`{slug}-{8hex}`), voor de task-payload
+    /// zodat de frontend er review-URL's mee kan bouwen.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub traject_ref: Option<String>,
     /// `document_etag()` van de wet-YAML op aanvraagmoment (staleness-check).
