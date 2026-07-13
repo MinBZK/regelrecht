@@ -2308,6 +2308,7 @@ async function handleActionSave() {
                 <template v-else>
                   <nldd-code-editor
                     resize="auto"
+                    language="yaml"
                     accessible-label="YAML"
                     :value="yamlSource"
                     @input="onYamlInput"
