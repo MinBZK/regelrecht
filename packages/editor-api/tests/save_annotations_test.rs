@@ -160,11 +160,10 @@ async fn local_traject(pool: &PgPool, owner_id: Uuid, corpus_dir: &std::path::Pa
     traject_id
 }
 
-/// URL form of a traject reference: `{slug}-{first 8 hex of the UUID}`
-/// (see `trajects::resolve_traject_ref`). All trajects here are named
-/// `Test`, hence the fixed slug.
+/// URL form of a traject reference, via the production helper. All
+/// trajects here are named `Test`.
 fn traject_ref(traject_id: Uuid) -> String {
-    format!("test-{}", &traject_id.to_string()[..8])
+    regelrecht_editor_api::trajects::traject_ref("Test", traject_id)
 }
 
 /// A session with a verified editor identity — `save_annotations`
