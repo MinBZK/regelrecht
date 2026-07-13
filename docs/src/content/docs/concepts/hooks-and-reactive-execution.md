@@ -155,3 +155,4 @@ The engine yields between stages, returning accumulated outputs and indicating w
 - [Temporal Validity and Dates](./temporal-and-dates) - the date arithmetic behind the objection-deadline chain
 - [RFC-007: Cross-Law Execution](/rfcs/rfc-007) - hooks and overrides specification
 - [RFC-008: Bestuursrecht/Awb](/rfcs/rfc-008) - the administrative procedure model
+- [Rules as Executed, section 4.9](/research/rules-as-executed#sec:modes) - the hook relation as one of the position paper's four execution modes

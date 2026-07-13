@@ -41,3 +41,4 @@ A single law can name a different authority per article, because different artic
 - [Multi-Org Execution](./multi-org-execution) - how the competent authority decides execute-vs-accept
 - [Notes and Annotations](./notes-and-annotations) - how note authority is derived from the competent authority
 - [RFC-002: Bevoegdheid](/rfcs/rfc-002) - full specification
+- [Rules as Executed, section 4.6](/research/rules-as-executed#sec:overrides) - the position paper on overrides and discretion
