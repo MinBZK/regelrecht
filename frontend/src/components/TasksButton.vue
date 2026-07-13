@@ -29,7 +29,7 @@ const btnId = computed(() => `tasks-btn-${props.idSuffix}`);
     <nldd-icon-button
       :id="btnId"
       size="md"
-      icon="check-list"
+      icon="tasks"
       text="Taken"
       tooltip-timing="never"
       @click="open"

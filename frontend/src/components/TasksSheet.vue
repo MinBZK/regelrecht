@@ -1,7 +1,7 @@
 <script setup>
 /**
  * TasksSheet - de takenlijst (job_review + job_failed) van de ingelogde
- * gebruiker. Zelfde sheet-opzet als TrajectDocuments.vue: een
+ * gebruiker. Zelfde sheet-opzet als AboutSheet.vue/SupportSheet.vue: een
  * `nldd-sheet` geteleporteerd naar body, imperatief show()/hide() op
  * `useTasksSheet().isOpen`.
  *

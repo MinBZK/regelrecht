@@ -20,18 +20,14 @@ describe('ConversionStatus', () => {
     expect(indicator.exists()).toBe(true);
     expect(indicator.attributes('text')).toContain('report');
     expect(indicator.attributes('text')).not.toContain('.md');
-    // A running job is not an error dialog.
-    expect(wrapper.find('nldd-inline-dialog').exists()).toBe(false);
   });
 
-  it('shows the failure reason for a failed conversion', () => {
+  it('shows a spinner per running job, no error dialog (failures are now tasks)', () => {
     const wrapper = mountStatus([
-      { id: '2', target_path: 'brief.md', status: 'failed', error: 'boom' },
+      { id: '1', target_path: 'report.md', status: 'processing' },
+      { id: '2', target_path: 'brief.md', status: 'processing' },
     ]);
-    const dialog = wrapper.find('nldd-inline-dialog');
-    expect(dialog.exists()).toBe(true);
-    expect(dialog.attributes('variant')).toBe('alert');
-    expect(dialog.attributes('text')).toContain('brief');
-    expect(dialog.attributes('supporting-text')).toBe('boom');
+    expect(wrapper.findAll('nldd-activity-indicator')).toHaveLength(2);
+    expect(wrapper.find('nldd-inline-dialog').exists()).toBe(false);
   });
 });
