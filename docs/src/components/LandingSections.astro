@@ -68,6 +68,7 @@ const toc = [
   { text: t.tools.title, href: '#tools' },
   { text: t.example.title, href: '#example' },
   { text: t.innovation.title, href: '#innovation' },
+  { text: t.research.title, href: '#research' },
   { text: t.references.title, href: '#references' },
   { text: t.faq.title, href: '#faq' },
 ];
@@ -131,6 +132,12 @@ const toc = [
                 href="/docs/"
                 start-icon="books"
                 text={t.nav.docs}
+              />
+              <nldd-button
+                variant="secondary"
+                href="/research/"
+                start-icon="file-text"
+                text={t.nav.research}
               />
               <nldd-button
                 variant="secondary"
@@ -510,6 +517,47 @@ const toc = [
                   <nldd-rich-text>
                     <p>{c.p}</p>
                   </nldd-rich-text>
+                </nldd-container>
+              </nldd-card>
+            ))}
+          </nldd-collection>
+        </nldd-simple-section>
+
+        <nldd-simple-section
+          id="research"
+          sm-padding-block="32"
+          md-padding-block="64"
+          lg-padding-block="96"
+        >
+          <nldd-title size="2">
+            <h2>{t.research.title}</h2>
+          </nldd-title>
+          <nldd-spacer size="8" />
+          <nldd-rich-text>
+            <p>{t.research.lede}</p>
+          </nldd-rich-text>
+          <nldd-spacer size="24" />
+          <nldd-collection layout="grid" item-width="320px">
+            {t.research.items.map((item) => (
+              <nldd-card accessible-label={item.title}>
+                <nldd-container padding="20" padding-bottom="12">
+                  <nldd-title size="3">
+                    <h3>{item.title}</h3>
+                    <p slot="subtitle">{item.meta}</p>
+                  </nldd-title>
+                  <nldd-spacer size="12" />
+                  <nldd-rich-text>
+                    <p>{item.text}</p>
+                  </nldd-rich-text>
+                </nldd-container>
+                <nldd-container slot="footer" padding="20" padding-top="0">
+                  <nldd-button
+                    variant="secondary"
+                    width="full"
+                    href={item.href}
+                    text={`${lang === 'en' ? 'Read' : 'Lees'} ${item.linkLabel}`}
+                    accessible-label={`${lang === 'en' ? 'Read' : 'Lees'} ${item.linkLabel}: ${item.title}`}
+                  />
                 </nldd-container>
               </nldd-card>
             ))}
