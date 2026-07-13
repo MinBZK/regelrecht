@@ -24,6 +24,7 @@ export interface LandingContent {
     jobs: string
     signup: string
     docs: string
+    research: string
   }
   hero: { title: string; intro: string; cta: string }
   whatIsIt: { title: string; lede: string; cards: { h: string; p: string }[] }
@@ -57,6 +58,17 @@ export interface LandingContent {
   innovation: {
     title: string
     cards: { meta: string; h: string; p: string }[]
+  }
+  research: {
+    title: string
+    lede: string
+    items: {
+      title: string
+      meta: string
+      text: string
+      href: string
+      linkLabel: string
+    }[]
   }
   references: {
     title: string
@@ -149,6 +161,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       jobs: 'Werken bij',
       signup: 'Aanmelden',
       docs: 'Documentatie',
+      research: 'Onderzoek',
     },
     hero: {
       title: 'Van wet naar digitale werking',
@@ -352,17 +365,23 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
       ],
     },
-    references: {
-      title: 'Belangrijke rapporten, onderzoeken en bronnen over de noodzaak van machine-uitvoerbare wetgeving',
+    research: {
+      title: 'Onderzoek',
+      lede: 'Het denkwerk achter RegelRecht schrijven we ook op voor een academisch publiek.',
       items: [
         {
           title:
             'Rules as Executed: Publishing Machine-Executable Law to Rebalance the Powers',
-          meta: 'Eelco Hotting & Anne Schuth (Ministerie van BZK) • 12 juli 2026',
+          meta: 'Position paper • Eelco Hotting & Anne Schuth • 12 juli 2026',
           text: 'Betoogt dat de overheid haar wetsuitvoering moet publiceren als machine-uitvoerbare specificatie, en dat elk besluit vastlegt met welke versie het is genomen. Wie een besluit ontvangt kan het narekenen, en het parlement kan de regel zelf analyseren.',
           href: '/research/rules-as-executed',
           linkLabel: 'position paper (Engels)',
         },
+      ],
+    },
+    references: {
+      title: 'Belangrijke rapporten, onderzoeken en bronnen over de noodzaak van machine-uitvoerbare wetgeving',
+      items: [
         {
           title: 'Factsheet digitale uitvoering van wetgeving',
           meta: 'Prof. Corien Prins (WRR) & Prof. Johan Wolswinkel (Tilburg University) • 23 januari 2025',
@@ -601,6 +620,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       jobs: 'Join us',
       signup: 'Sign up',
       docs: 'Documentation',
+      research: 'Research',
     },
     hero: {
       title: 'From statute to digital execution',
@@ -804,17 +824,23 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
       ],
     },
-    references: {
-      title: 'Important reports, studies, and sources on the need for machine-executable legislation',
+    research: {
+      title: 'Research',
+      lede: 'The thinking behind RegelRecht, also written up for an academic audience.',
       items: [
         {
           title:
             'Rules as Executed: Publishing Machine-Executable Law to Rebalance the Powers',
-          meta: 'Eelco Hotting & Anne Schuth (Ministry of the Interior) • 12 July 2026',
+          meta: 'Position paper • Eelco Hotting & Anne Schuth • 12 July 2026',
           text: 'Argues that government should publish its law execution as machine-executable specifications, with every decision recording the version that produced it. The recipient of a decision can then recompute it, and Parliament can analyze the rule itself.',
           href: '/research/rules-as-executed',
           linkLabel: 'position paper',
         },
+      ],
+    },
+    references: {
+      title: 'Important reports, studies, and sources on the need for machine-executable legislation',
+      items: [
         {
           title: 'Factsheet on the digital execution of legislation',
           meta: 'Prof. Corien Prins (WRR) & Prof. Johan Wolswinkel (Tilburg University) • 23 January 2025',
