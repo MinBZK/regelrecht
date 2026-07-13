@@ -4,6 +4,7 @@ use regelrecht_pipeline::job_queue::{self, CreateJobRequest};
 use regelrecht_pipeline::models::JobType;
 use regelrecht_pipeline::tasks::{self, BlobKind, NewTask, TaskStatus, TaskType};
 use regelrecht_pipeline::test_utils::TestDb;
+use regelrecht_pipeline::worker::{fail_enrich_task_job, finish_enrich_task_job};
 
 /// Maak een account + traject om FK's te vullen. tasks.assignee_account_id
 /// verwijst naar accounts(id); trajects(created_by) idem.
@@ -211,4 +212,117 @@ async fn test_cleanup_orphaned_blobs_keeps_open_task_blobs() {
             .len(),
         1
     );
+}
+
+#[tokio::test]
+async fn test_finish_enrich_task_job_creates_task_and_result_blobs() {
+    let db = TestDb::new().await;
+    let (account_id, traject_id) = seed_account_and_traject(&db).await;
+    let _created = job_queue::create_job(
+        &db.pool,
+        CreateJobRequest::new(JobType::Enrich, "test_wet").with_payload(json!({
+            "law_id": "test_wet",
+            "yaml_path": "laws/test_wet/law.yaml",
+            "provider": "claude",
+            "requested_by": account_id,
+            "deliver": "task",
+            "traject_id": traject_id,
+            "traject_ref": "testtraject-abcd1234",
+            "source_etag": "\"etag-1\""
+        })),
+    )
+    .await
+    .unwrap();
+    // Claim zodat complete_job ('processing' vereist) slaagt.
+    let job = job_queue::claim_job(&db.pool, Some(JobType::Enrich))
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Simuleer een geslaagde enrichment: een werkdirectory met output.
+    let dir = tempfile::tempdir().unwrap();
+    let law_abs = dir.path().join("laws/test_wet/law.yaml");
+    tokio::fs::create_dir_all(law_abs.parent().unwrap())
+        .await
+        .unwrap();
+    tokio::fs::write(&law_abs, "verrijkt: ja").await.unwrap();
+
+    finish_enrich_task_job(
+        &db.pool,
+        &job,
+        dir.path(),
+        &[law_abs.clone()],
+        json!({"coverage_score": 1.0}),
+    )
+    .await
+    .unwrap();
+
+    // Job completed, result-blob + taak aanwezig.
+    let done = job_queue::get_job(&db.pool, job.id).await.unwrap();
+    assert_eq!(
+        done.status,
+        regelrecht_pipeline::models::JobStatus::Completed
+    );
+    let results = tasks::load_blobs(&db.pool, job.id, BlobKind::Result)
+        .await
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].path, "laws/test_wet/law.yaml");
+    assert_eq!(results[0].content, "verrijkt: ja");
+    let open = tasks::list_open_tasks_for_account(&db.pool, account_id)
+        .await
+        .unwrap();
+    assert_eq!(open.len(), 1);
+    assert_eq!(open[0].task_type, "job_review");
+    assert_eq!(open[0].job_id, Some(job.id));
+}
+
+#[tokio::test]
+async fn test_fail_enrich_task_job_creates_failed_task_and_cleans_input() {
+    let db = TestDb::new().await;
+    let (account_id, traject_id) = seed_account_and_traject(&db).await;
+    let _created = job_queue::create_job(
+        &db.pool,
+        CreateJobRequest::new(JobType::Enrich, "test_wet").with_payload(json!({
+            "law_id": "test_wet",
+            "yaml_path": "laws/test_wet/law.yaml",
+            "requested_by": account_id,
+            "deliver": "task",
+            "traject_id": traject_id
+        })),
+    )
+    .await
+    .unwrap();
+    let job = job_queue::claim_job(&db.pool, Some(JobType::Enrich))
+        .await
+        .unwrap()
+        .unwrap();
+    tasks::insert_blob(
+        &db.pool,
+        job.id,
+        BlobKind::Input,
+        "laws/test_wet/law.yaml",
+        "x",
+    )
+    .await
+    .unwrap();
+
+    fail_enrich_task_job(&db.pool, &job, "LLM produceerde niets")
+        .await
+        .unwrap();
+
+    let failed = job_queue::get_job(&db.pool, job.id).await.unwrap();
+    assert_eq!(
+        failed.status,
+        regelrecht_pipeline::models::JobStatus::Failed
+    );
+    assert!(tasks::load_blobs(&db.pool, job.id, BlobKind::Input)
+        .await
+        .unwrap()
+        .is_empty());
+    let open = tasks::list_open_tasks_for_account(&db.pool, account_id)
+        .await
+        .unwrap();
+    assert_eq!(open.len(), 1);
+    assert_eq!(open[0].task_type, "job_failed");
 }

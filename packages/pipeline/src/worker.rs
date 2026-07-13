@@ -149,6 +149,17 @@ fn spawn_reaper(
                     tracing::warn!(error = %e, "failed to clean up orphaned document uploads")
                 }
             }
+            // GC taak-flow blobs orphaned when their job never got an open
+            // review task (crashed worker, dismissed/expired task path).
+            match crate::tasks::cleanup_orphaned_blobs(&pool).await {
+                Ok(n) if n > 0 => {
+                    tracing::info!(removed = n, "cleaned up orphaned job blobs")
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to clean up orphaned job blobs")
+                }
+            }
             tokio::select! {
                 _ = cancel.cancelled() => break,
                 _ = tokio::time::sleep(REAPER_INTERVAL) => {}
@@ -1308,6 +1319,200 @@ async fn run_document_convert(
     Ok(())
 }
 
+/// Taak-flow: materialiseer de input-blob(s) van een enrich-taak-job in een
+/// eigen werkdirectory, zodat `execute_enrich` zonder git-checkout kan
+/// draaien. Retourneert de workdir-root (TempDir houdt hem in leven).
+pub async fn materialize_task_workdir(
+    pool: &PgPool,
+    job_id: uuid::Uuid,
+) -> Result<tempfile::TempDir> {
+    let blobs = crate::tasks::load_blobs(pool, job_id, crate::tasks::BlobKind::Input).await?;
+    if blobs.is_empty() {
+        return Err(PipelineError::Enrich(format!(
+            "taak-job {job_id} heeft geen input-blob"
+        )));
+    }
+    let dir = tempfile::tempdir()
+        .map_err(|e| PipelineError::Enrich(format!("kan werkdirectory niet aanmaken: {e}")))?;
+    for blob in &blobs {
+        // Blob-paden zijn door editor-api gezet (synthetisch, vast formaat);
+        // normaliseer defensief tegen path-traversal vóór het join'en.
+        let rel = crate::enrich::normalize_yaml_path(&blob.path)?;
+        let abs = dir.path().join(&rel);
+        if let Some(parent) = abs.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        tokio::fs::write(&abs, &blob.content).await?;
+    }
+    Ok(dir)
+}
+
+/// Taak-flow succes: schrijf de door de enrichment aangeraakte bestanden als
+/// result-blobs, verwijder de input-blobs, complete de job en maak de
+/// review-taak aan — alles in één transactie.
+pub async fn finish_enrich_task_job(
+    pool: &PgPool,
+    job: &crate::models::Job,
+    workdir: &Path,
+    written_files: &[std::path::PathBuf],
+    result_json: serde_json::Value,
+) -> Result<()> {
+    let payload: EnrichPayload = serde_json::from_value(job.payload.clone().unwrap_or_default())
+        .map_err(|e| PipelineError::Enrich(format!("invalid enrich payload: {e}")))?;
+
+    let mut tx = pool.begin().await?;
+    crate::tasks::delete_blobs_for_job(&mut *tx, job.id).await?;
+    for abs in written_files {
+        let rel = abs
+            .strip_prefix(workdir)
+            .map_err(|_| {
+                PipelineError::Enrich(format!(
+                    "geschreven bestand {} ligt buiten de werkdirectory",
+                    abs.display()
+                ))
+            })?
+            .to_string_lossy()
+            .to_string();
+        let content = tokio::fs::read_to_string(abs).await?;
+        crate::tasks::insert_blob(
+            &mut *tx,
+            job.id,
+            crate::tasks::BlobKind::Result,
+            &rel,
+            &content,
+        )
+        .await?;
+    }
+    job_queue::complete_job(&mut *tx, job.id, Some(result_json)).await?;
+    crate::tasks::create_task(
+        &mut *tx,
+        crate::tasks::NewTask {
+            task_type: crate::tasks::TaskType::JobReview,
+            assignee_account_id: payload.requested_by,
+            traject_id: payload.traject_id,
+            job_id: Some(job.id),
+            title: format!("Verrijking beoordelen: {}", payload.law_id),
+            payload: Some(serde_json::json!({
+                "law_id": payload.law_id,
+                "yaml_path": payload.yaml_path,
+                "traject_ref": payload.traject_ref,
+                "source_etag": payload.source_etag,
+                "provider": payload.provider,
+            })),
+        },
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Taak-flow falen (terminaal): faal de job, ruim de input-blobs op en maak
+/// een informatieve `job_failed`-taak aan zodat de aanvrager het ziet.
+pub async fn fail_enrich_task_job(
+    pool: &PgPool,
+    job: &crate::models::Job,
+    error: &str,
+) -> Result<()> {
+    let payload: EnrichPayload = serde_json::from_value(job.payload.clone().unwrap_or_default())
+        .map_err(|e| PipelineError::Enrich(format!("invalid enrich payload: {e}")))?;
+
+    let mut tx = pool.begin().await?;
+    job_queue::fail_job_terminal(
+        &mut *tx,
+        job.id,
+        Some(serde_json::json!({ "error": error })),
+    )
+    .await?;
+    crate::tasks::delete_blobs_for_job(&mut *tx, job.id).await?;
+    crate::tasks::create_task(
+        &mut *tx,
+        crate::tasks::NewTask {
+            task_type: crate::tasks::TaskType::JobFailed,
+            assignee_account_id: payload.requested_by,
+            traject_id: payload.traject_id,
+            job_id: Some(job.id),
+            title: format!("Verrijking mislukt: {}", payload.law_id),
+            payload: Some(serde_json::json!({
+                "law_id": payload.law_id,
+                "traject_ref": payload.traject_ref,
+                "error": error,
+            })),
+        },
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Taak-flow-verwerking van een enrich-job: werkdirectory uit input-blobs,
+/// enrichment draaien, resultaat als blobs + taak terugschrijven. Raakt
+/// bewust geen law_entries, untranslatables of vervolg-harvests aan: dit is
+/// een traject-persoonlijke enrichment, geen corpus-brede.
+async fn process_enrich_task_job(
+    pool: &PgPool,
+    job: &crate::models::Job,
+    payload: &EnrichPayload,
+    enrich_config: &EnrichConfig,
+    job_timeout: Duration,
+) -> Result<JobOutcome> {
+    let effective_config = match &payload.provider {
+        Some(provider_name) => enrich_config.with_provider_override(provider_name),
+        None => enrich_config.clone(),
+    };
+    tracing::info!(
+        job_id = %job.id,
+        law_id = %job.law_id,
+        attempt = job.attempts,
+        provider = %effective_config.provider.name(),
+        "processing enrich job (task flow)"
+    );
+    let workdir = match materialize_task_workdir(pool, job.id).await {
+        Ok(dir) => dir,
+        Err(e) => {
+            // Geen input = deterministisch kapot: terminaal falen met taak.
+            fail_enrich_task_job(pool, job, &e.to_string()).await?;
+            return Ok(JobOutcome::Processed);
+        }
+    };
+
+    let mut bounded_config = effective_config.clone();
+    if bounded_config.timeout >= job_timeout {
+        bounded_config.timeout = job_timeout.saturating_sub(Duration::from_secs(30));
+    }
+
+    let outcome = tokio::time::timeout(
+        job_timeout,
+        execute_enrich(payload, workdir.path(), &bounded_config, ""),
+    )
+    .await;
+
+    match outcome {
+        Err(_elapsed) => {
+            let msg = format!("verrijking time-out na {}s", job_timeout.as_secs());
+            fail_enrich_task_job(pool, job, &msg).await?;
+        }
+        Ok(Err(e)) => {
+            fail_enrich_task_job(pool, job, &e.to_string()).await?;
+        }
+        Ok(Ok((result, written_files))) => {
+            let result_json = serde_json::to_value(&result).unwrap_or_default();
+            if let Err(e) =
+                finish_enrich_task_job(pool, job, workdir.path(), &written_files, result_json).await
+            {
+                // Persist-fout is retryable (DB-hik): gewone fail_job met backoff.
+                tracing::error!(job_id = %job.id, error = %e, "taak-resultaat wegschrijven mislukt");
+                job_queue::fail_job(
+                    pool,
+                    job.id,
+                    Some(serde_json::json!({ "error": e.to_string() })),
+                )
+                .await?;
+            }
+        }
+    }
+    Ok(JobOutcome::Processed)
+}
+
 /// Process the next available enrich job.
 ///
 /// Returns the [`JobOutcome`]: `Processed` when a job was handled, `Idle` when
@@ -1355,6 +1560,23 @@ async fn process_next_enrich_job(
             return Ok(JobOutcome::Processed);
         }
     };
+
+    if payload.deliver_as_task() {
+        // Ongeldige taak-flow-payload (geen aanvrager/traject): er is geen
+        // geldige assignee, dus een taak zou permanent onzichtbaar zijn.
+        // Terminaal falen zónder taak; de blob-GC ruimt de input op.
+        if payload.requested_by.is_none() || payload.traject_id.is_none() {
+            tracing::error!(job_id = %job.id, law_id = %job.law_id, "taak-flow-payload zonder requested_by/traject_id");
+            job_queue::fail_job_terminal(
+                pool,
+                job.id,
+                Some(serde_json::json!({ "error": "taak-flow-payload zonder requested_by/traject_id" })),
+            )
+            .await?;
+            return Ok(JobOutcome::Processed);
+        }
+        return process_enrich_task_job(pool, &job, &payload, enrich_config, job_timeout).await;
+    }
 
     // Override the provider if the payload specifies one
     let effective_config = match &payload.provider {
