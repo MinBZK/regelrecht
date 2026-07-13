@@ -16,7 +16,7 @@ describe('reviewTarget', () => {
     expect(resolved.params.trajectRef).toBe('mijn-traject-1a2b3c4d');
     expect(resolved.params.lawId).toBe('wet_op_de_zorgtoeslag');
     expect(resolved.fullPath).toBe(
-      '/editor/mijn-traject-1a2b3c4d/wet_op_de_zorgtoeslag?task=t1',
+      '/trajecten/mijn-traject-1a2b3c4d/editor/wet_op_de_zorgtoeslag?task=t1',
     );
   });
 
