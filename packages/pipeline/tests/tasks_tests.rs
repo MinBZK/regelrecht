@@ -74,6 +74,16 @@ async fn test_resolve_task_only_by_assignee_and_only_once() {
     .await
     .unwrap();
 
+    // Detail-gating: vreemd account ziet de taak niet, assignee wel.
+    let stranger_view = tasks::get_task_for_account(&db.pool, task.id, uuid::Uuid::new_v4())
+        .await
+        .unwrap();
+    assert!(stranger_view.is_none());
+    let own_view = tasks::get_task_for_account(&db.pool, task.id, account_id)
+        .await
+        .unwrap();
+    assert_eq!(own_view.expect("assignee ziet eigen taak").id, task.id);
+
     // Vreemd account mag niet resolven → None.
     let stranger = uuid::Uuid::new_v4();
     let denied = tasks::resolve_task(&db.pool, task.id, stranger, TaskStatus::Dismissed)
@@ -95,6 +105,25 @@ async fn test_resolve_task_only_by_assignee_and_only_once() {
         .await
         .unwrap();
     assert!(again.is_none());
+
+    // Resolve naar 'open' is geen afhandeling en wordt geweigerd.
+    let task2 = tasks::create_task(
+        &db.pool,
+        NewTask {
+            task_type: TaskType::JobFailed,
+            assignee_account_id: Some(account_id),
+            traject_id: Some(traject_id),
+            job_id: None,
+            title: "Nog een taak".into(),
+            payload: None,
+        },
+    )
+    .await
+    .unwrap();
+    let reopened = tasks::resolve_task(&db.pool, task2.id, account_id, TaskStatus::Open)
+        .await
+        .unwrap();
+    assert!(reopened.is_none());
 }
 
 #[tokio::test]

@@ -23,7 +23,9 @@ pub enum TaskStatus {
     Dismissed,
 }
 
-/// Taaktype als vrije TEXT-kolom (geen enum-migratie per nieuw type).
+/// Taaktype als TEXT + CHECK i.p.v. PG-enum: een nieuw type is een
+/// CHECK-wijziging in een gewone transactionele migratie, geen
+/// ALTER TYPE-dans (zie migraties 0007/0018/0025).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskType {
     JobReview,
@@ -129,10 +131,11 @@ pub async fn resolve_task(
     account_id: Uuid,
     new_status: TaskStatus,
 ) -> Result<Option<Task>> {
-    debug_assert!(
-        new_status != TaskStatus::Open,
-        "resolve naar 'open' is geen resolve"
-    );
+    if new_status == TaskStatus::Open {
+        // 'open' is geen afhandeling; user input mag audit-velden niet
+        // kunnen stempelen zonder de taak echt te sluiten.
+        return Ok(None);
+    }
     let query = format!(
         "UPDATE tasks SET status = $3, resolved_at = now(), resolved_by = $2 \
          WHERE id = $1 AND assignee_account_id = $2 AND status = 'open' \
@@ -144,6 +147,9 @@ pub async fn resolve_task(
         .bind(new_status)
         .fetch_optional(pool)
         .await?;
+    if let Some(ref t) = task {
+        tracing::info!(task_id = %t.id, status = ?t.status, "task resolved");
+    }
     Ok(task)
 }
 
@@ -191,6 +197,9 @@ where
     Ok(())
 }
 
+/// Blobs van een job, per soort. Geen account-gating hier: de autorisatie
+/// ligt bij de taak-laag — handlers mogen blobs uitsluitend ophalen via een
+/// taak die al met `get_task_for_account` voor dit account is geverifieerd.
 pub async fn load_blobs(pool: &PgPool, job_id: Uuid, kind: BlobKind) -> Result<Vec<JobBlob>> {
     let blobs = sqlx::query_as::<_, JobBlob>(
         "SELECT id, job_id, kind, path, content FROM job_blobs \

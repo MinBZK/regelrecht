@@ -40,4 +40,7 @@ CREATE TABLE job_blobs (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_job_blobs_job ON job_blobs (job_id);
+-- Uniek per (job, kind, path): een dubbele blob is altijd een
+-- programmeerfout; laat hem luid falen i.p.v. stil dubbel toepassen.
+-- Dekt ook de job_id-lookups (leftmost kolom).
+CREATE UNIQUE INDEX idx_job_blobs_job_kind_path ON job_blobs (job_id, kind, path);
