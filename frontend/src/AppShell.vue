@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import TrajectMenu from './components/TrajectMenu.vue';
 import MobileTrajectSheet from './components/MobileTrajectSheet.vue';
 import AboutSheet from './components/AboutSheet.vue';
+import SupportSheet from './components/SupportSheet.vue';
 import { useAuth } from './composables/useAuth.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
@@ -54,6 +55,13 @@ const aboutSheet = ref(null);
 function openAbout() {
   // Let the account menu popover close first, then raise the sheet.
   nextTick(() => aboutSheet.value?.show?.());
+}
+
+// "Ondersteuning" support sheet, opened from the account menu.
+const supportSheet = ref(null);
+function openSupport() {
+  // Let the account menu popover close first, then raise the sheet.
+  nextTick(() => supportSheet.value?.show?.());
 }
 
 const colorSchemeOptions = [
@@ -269,10 +277,12 @@ const hasDocumentTabs = computed(
                     ></nldd-menu-item>
                   </nldd-menu>
                 </nldd-menu-item>
+                <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
+                <nldd-menu-item text="Ondersteuning" icon="support" @click="openSupport"></nldd-menu-item>
                 <template v-if="!authLoading && authenticated">
                   <nldd-menu-divider></nldd-menu-divider>
-                  <nldd-menu-item text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
+                  <nldd-menu-item text="Log uit" icon="logout" @click="logout"></nldd-menu-item>
                 </template>
               </nldd-menu>
             </nldd-toolbar-item>
@@ -344,10 +354,12 @@ const hasDocumentTabs = computed(
                     ></nldd-menu-item>
                   </nldd-menu>
                 </nldd-menu-item>
+                <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
+                <nldd-menu-item text="Ondersteuning" icon="support" @click="openSupport"></nldd-menu-item>
                 <template v-if="!authLoading && authenticated">
                   <nldd-menu-divider></nldd-menu-divider>
-                  <nldd-menu-item text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
+                  <nldd-menu-item text="Log uit" icon="logout" @click="logout"></nldd-menu-item>
                 </template>
               </nldd-menu>
             </nldd-toolbar-item>
@@ -530,10 +542,12 @@ const hasDocumentTabs = computed(
                     ></nldd-menu-item>
                   </nldd-menu>
                 </nldd-menu-item>
+                <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
+                <nldd-menu-item text="Ondersteuning" icon="support" @click="openSupport"></nldd-menu-item>
                 <template v-if="!authLoading && authenticated">
                   <nldd-menu-divider></nldd-menu-divider>
-                  <nldd-menu-item text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
+                  <nldd-menu-item text="Log uit" icon="logout" @click="logout"></nldd-menu-item>
                 </template>
               </nldd-menu>
             </nldd-toolbar-item>
@@ -543,6 +557,7 @@ const hasDocumentTabs = computed(
     </nldd-bar-split-view>
 
     <AboutSheet ref="aboutSheet"></AboutSheet>
+    <SupportSheet ref="supportSheet"></SupportSheet>
   </nldd-app-view>
 
   <!-- Editor requires login: a heads-up popover anchored to the clicked Editor
