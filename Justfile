@@ -101,8 +101,8 @@ pipeline-test:
 pipeline-integration-test:
     cd packages/pipeline && {{ci_flags}} cargo test --test '*'
 
-# Run all tests (engine + harvester + pipeline unit + pipeline integration)
-test-all: test harvester-test pipeline-test pipeline-integration-test
+# Run all tests (engine + harvester + pipeline unit + pipeline integration + editor-api)
+test-all: test harvester-test pipeline-test pipeline-integration-test editor-api-test
 
 # --- Mutation testing ---
 
@@ -189,8 +189,14 @@ editor-api-lint:
 editor-api-fmt:
     cd packages && cargo fmt --check --package regelrecht-editor-api
 
-# Run editor API integration tests (requires Docker for testcontainers).
-# Excluded from `just check` for the same reason `pipeline-integration-test` is.
+# Run ALL editor API tests: src unit tests + tests/*.rs integration tests
+# (the latter require Docker for testcontainers). This is what CI runs on
+# editor-api changes; excluded from `just check` for the same reason
+# `pipeline-integration-test` is.
+editor-api-test:
+    cd packages && {{ci_flags}} cargo test --package regelrecht-editor-api
+
+# Run editor API integration tests only (requires Docker for testcontainers).
 editor-api-integration-test:
     cd packages && {{ci_flags}} cargo test --package regelrecht-editor-api --test '*'
 
