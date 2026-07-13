@@ -1,10 +1,10 @@
 /**
- * useDependencies — recursive dependency graph walker for law YAML files.
+ * useDependencies - recursive dependency graph walker for law YAML files.
  *
  * Parses a law's YAML structure to find all `source.regulation` references,
  * fetches each dependency via the API, loads it into the engine, and recurses.
  * Implementing regulations (the IoC reverse link) are loaded separately via
- * `loadImplementors`, which calls the backend `implementors` endpoint — kept
+ * `loadImplementors`, which calls the backend `implementors` endpoint - kept
  * OFF the critical path because that corpus scan can be slow on a large
  * federated corpus and scenarios already declare the regulations they need.
  */
@@ -63,7 +63,7 @@ export function useDependencies() {
    * traject ref is needed here. It returns **all** versions of a law (the
    * engine keys versions by `($id, valid_from)`, so several bodies of one law
    * coexist), and the engine picks the version in force on the scenario's
-   * calculation date — a referenced law that has a future-dated version would
+   * calculation date - a referenced law that has a future-dated version would
    * otherwise load only that future version and fail "not yet in force".
    *
    * @param {string} lawYamlText - Raw YAML text of the main law
@@ -93,7 +93,7 @@ export function useDependencies() {
       const missingDeps = [];
 
       for (const lawId of toLoad) {
-        // Fetch the version YAMLs unconditionally — even for a law already in
+        // Fetch the version YAMLs unconditionally - even for a law already in
         // the engine. They feed two consumers that are independent of engine
         // state: the transitive-ref scan below, and (via `versionsCache` in
         // ScenarioBuilder) the data-source column type map. The WASM engine is
@@ -105,16 +105,16 @@ export function useDependencies() {
         let yamls = [];
         // Whether this law is sound enough to scan for transitive deps: already
         // in the engine, or newly loaded without error. A law that was fetched
-        // but failed to load into the engine is broken/missing — we must NOT
+        // but failed to load into the engine is broken/missing - we must NOT
         // chase its transitive refs (would queue deps of a law that can't run).
         let usable = alreadyLoaded;
         try {
           yamls = await fetchLawVersions(lawId);
           // Load every version (isolating each) so the engine's date-aware
           // selection can pick the one in force on the scenario's calculation
-          // date. Skip the engine load when the law is already present — only
+          // date. Skip the engine load when the law is already present - only
           // its YAML (cached above) is still needed. For a not-yet-loaded law,
-          // no loadable version — empty list or every version unloadable — is a
+          // no loadable version - empty list or every version unloadable - is a
           // missing dependency (harvest requested below).
           if (!alreadyLoaded && !loadLawVersions(engine, yamls, lawId)) {
             throw new Error(`no loadable version for '${lawId}'`);
@@ -139,13 +139,13 @@ export function useDependencies() {
         }
 
         // Recurse for transitive deps of a usable law only. Collect from every
-        // version — a `source.regulation` reference can appear in one version
+        // version - a `source.regulation` reference can appear in one version
         // and not another, and a scenario may be evaluated at any calculation
         // date (including a future one), so a reference introduced only by a
         // future version must still be loadable. Runs for already-loaded laws
         // too, so a dep reachable only through one is still discovered and
         // cached. This can over-fetch a transitive law that no in-force version
-        // needs; that's an accepted, bounded cost — `select_in` never selects a
+        // needs; that's an accepted, bounded cost - `select_in` never selects a
         // not-yet-in-force version.
         if (usable) {
           const newDeps = [];

@@ -6,7 +6,7 @@ import vue from '@vitejs/plugin-vue';
 // at import time (a Node-only API). In the browser build that throws and
 // crashes every view importing the gherkin parser, so alias `node:module` to a
 // browser shim that provides a harmless `createRequire`. Scope it to the build
-// only — under vitest (Node) the real `node:module` works, so we leave it.
+// only - under vitest (Node) the real `node:module` works, so we leave it.
 const isVitest = !!process.env.VITEST;
 const nodeModuleShim = fileURLToPath(
   new URL('./src/shims/node-module.js', import.meta.url),

@@ -1,6 +1,6 @@
 <script>
 // Parsed-version cache, MODULE-scoped (shared across all ScenarioBuilder
-// instances) so it survives remounts — switching the panel view away and back,
+// instances) so it survives remounts - switching the panel view away and back,
 // or opening another article, remounts this component. The data-source column
 // type map (`rebuildExternalFieldTypeMap`) is derived from these YAMLs, while
 // the WASM engine that gates whether `loadAllDependencies` re-fetches a dep is
@@ -81,7 +81,7 @@ const {
 
 // Mismatch warning: the selected scenario file declares execution targets
 // that do not include the opened law. Running it would evaluate that other
-// law — surface this instead of letting the run fail confusingly.
+// law - surface this instead of letting the run fail confusingly.
 const selectedScenarioEntry = computed(
   () => scenarioFiles.value.find((sf) => sf.filename === selectedScenarioFile.value) || null,
 );
@@ -194,7 +194,7 @@ async function fetchLawVersions(lawId) {
   const list = Array.isArray(yamls) ? yamls : [];
   // Only cache a non-empty result. An empty array (unknown/not-yet-harvested
   // law) must stay uncached so a retry after harvest re-fetches rather than
-  // returning the stale `[]` — `[]` is truthy, so caching it would short-
+  // returning the stale `[]` - `[]` is truthy, so caching it would short-
   // circuit the `if (versionsCache[lawId])` guard forever.
   if (list.length > 0) versionsCache[lawId] = list;
   return list;
@@ -209,7 +209,7 @@ const claimDependencyLoad = useLatest();
 // Debounced mirror of props.lawYaml. While the user types in the text or
 // machine pane, `lawYaml` changes on every keystroke (currentLawYaml re-dumps
 // the whole doc), which would re-run the expensive dependency reload + corpus
-// scan and toggle depsReady — making the scenario panel flicker. We only let
+// scan and toggle depsReady - making the scenario panel flicker. We only let
 // the cascade below fire ~300ms after the last edit. Same setTimeout debounce
 // pattern as ScenarioForm.vue's execute.
 const debouncedLawYaml = ref(props.lawYaml);
@@ -218,8 +218,8 @@ let lawYamlDebounce = null;
 watch(() => props.lawYaml, (val, prev) => {
   // First population or cleared→set (no prior law loaded): apply immediately so
   // the initial dependency load isn't delayed by 300ms. Any change from an
-  // existing value — keystroke edits, but also switching to another article of
-  // the already-open law — debounces.
+  // existing value - keystroke edits, but also switching to another article of
+  // the already-open law - debounces.
   clearTimeout(lawYamlDebounce);
   if (!prev) {
     debouncedLawYaml.value = val;
@@ -273,7 +273,7 @@ async function runDependencyLoad() {
     for (const depId of allDeps) {
       try {
         // Fetch versions unconditionally to populate versionsCache for the
-        // data-source type map (same rationale as loadAllDependencies — the
+        // data-source type map (same rationale as loadAllDependencies - the
         // map is built from cached YAMLs, independent of engine state); load
         // into the shared engine only if it isn't already present.
         const yamls = await fetchLawVersions(depId);
@@ -287,13 +287,13 @@ async function runDependencyLoad() {
   }
 
   if (isCurrent()) {
-    // The explicitly-declared deps are loaded — the panel is usable now, so
+    // The explicitly-declared deps are loaded - the panel is usable now, so
     // mark ready and let scenarios auto-execute. Implementing regulations
     // (IoC) load in the background: their corpus scan can be slow and is
     // best-effort, so it must not gate the panel. `loadImplementors` is
     // guarded to run at most once per law.
     //
-    // Deliberately fire-and-forget — there is no AbortController. If this
+    // Deliberately fire-and-forget - there is no AbortController. If this
     // component unmounts mid-scan the promise keeps running, which is safe:
     // Vue ignores ref writes after unmount, the shared WASM engine outlives
     // the component, and the guard resets on error so a fresh mount retries.
@@ -314,7 +314,7 @@ async function runDependencyLoad() {
 
 // `debouncedLawYaml`, `props.ready` and `formState` settle on separate ticks
 // during the initial load. Without coalescing, each settle fires this watch
-// and starts (then abandons, via the latest-guard) a full dependency scan — up
+// and starts (then abandons, via the latest-guard) a full dependency scan - up
 // to four overlapping corpus-wide reloads per open. A short debounce collapses
 // the burst into a single run after the inputs have settled.
 let depsScheduleTimer = null;
@@ -404,7 +404,7 @@ watch(
 // the execution-trace sheet (default), 'graph' for the law-graph sheet.
 function onShowDetails(index, view = 'trace') {
   // Prefer fresh data from the form ref, but its state may have been reset
-  // after a save/reload — fall back to the cached result in that case.
+  // after a save/reload - fall back to the cached result in that case.
   const formRef = scenarioRefs.value[index];
   const fresh = formRef?.getExecutionData?.();
   const hasFresh = fresh && (fresh.result || fresh.traceText || fresh.error);
@@ -421,7 +421,7 @@ function onShowDetails(index, view = 'trace') {
     // note on ScenarioForm.execute) so `running` is reset in its finally
     // before getExecutionData() is read here. The "Bezig met uitvoeren…"
     // branch in ExecutionTraceView and the lastRunning/lastReload
-    // scaffolding in EditorApp are therefore unreachable *by design* —
+    // scaffolding in EditorApp are therefore unreachable *by design* -
     // deliberately kept so the async path lights up for free if that
     // contract is ever lifted. Not dead code to be removed in isolation.
     running: !!fresh?.running,
@@ -438,7 +438,7 @@ function onShowDetails(index, view = 'trace') {
     // Known limitation: `index` is captured by value and the result
     // sheet can outlive the scenario sheet. It stays correct in practice
     // because scenario count/order is stable across an inputs-only save
-    // and cancelEdits() no longer replaces formState — so nothing
+    // and cancelEdits() no longer replaces formState - so nothing
     // reindexes scenarios while the sheet is open, and the UI has no
     // reorder/delete-scenario affordance. If the index ever did go out
     // of bounds, reExecute()'s optional chaining makes it a safe no-op
@@ -527,12 +527,12 @@ async function onSaveAndShow() {
 
 function cancelEdits() {
   // Discard unsaved edits *without* replacing formState. Re-parsing it
-  // remounts the whole overview — clearing cached results/refs (via the
+  // remounts the whole overview - clearing cached results/refs (via the
   // formState watcher) and resetting the scenarios-pane scroll position.
   // Edits live entirely in the edited ScenarioForm's local refs (only
   // synced into formState on save), so asking that form to re-init from
-  // its unchanged props discards them while leaving the overview — and
-  // its scroll position — intact, exactly as when nothing was edited.
+  // its unchanged props discards them while leaving the overview - and
+  // its scroll position - intact, exactly as when nothing was edited.
   const idx = selectedScenarioIndex.value;
   if (isDirty.value && idx !== null) {
     scenarioRefs.value[idx]?.discardEdits?.();
@@ -660,7 +660,7 @@ defineExpose({ save: onSave });
           dismiss-text="Annuleer"
           @dismiss="cancelEdits"
         ></nldd-top-title-bar>
-        <!-- Drilled-in header: its own bar — a back button to the scenario
+        <!-- Drilled-in header: its own bar - a back button to the scenario
              overview (the data-source heading lives in the content). -->
         <nldd-top-title-bar
           v-else
@@ -721,7 +721,7 @@ defineExpose({ save: onSave });
 /* Positioning context for the full-pane loading overlay. min-height fills the
    pane's scroll viewport so the backdrop covers the whole area, not just the
    (possibly empty) content. Flex column so the simple-section grows to the full
-   height — its empty-state inline-dialog then self-centers like elsewhere,
+   height - its empty-state inline-dialog then self-centers like elsewhere,
    instead of sitting at the top. The absolute overlay is unaffected. */
 .sb-pane {
   display: flex;

@@ -1,6 +1,7 @@
 import { ensureAuthReady, useAuth } from '../composables/useAuth.js';
+import { useGithubAuth } from '../composables/useGithubAuth.js';
 
-// Global 401 interceptor for the editor SPA.
+// Global 401/428 interceptor for the editor SPA.
 //
 // The backend runs a BFF/session model: the browser holds an opaque HttpOnly
 // session cookie, never a token. When the session expires the backend answers
@@ -13,8 +14,19 @@ import { ensureAuthReady, useAuth } from '../composables/useAuth.js';
 // closes the gap for fetch calls fired while a page is open. We reuse the same
 // `useAuth().login()` redirect so there is one auth path, not two.
 //
+// 428 (Precondition Required) gets the same treatment for the GitHub link:
+// the backend answers a traject write with 428 when this deployment requires
+// the acting user's own GitHub token (`github.user_oauth` flag or
+// GITHUB_USER_TOKEN_REQUIRED) and the user hasn't linked (or it expired).
+// Instead of a dead-end error toast, the guard bounces straight into the
+// GitHub consent flow via `useGithubAuth().connect()`, which returns to the
+// current page with a `?github=connected|error|denied` marker. Note the
+// redirect leaves the page, so work not yet accepted by the backend stays
+// behind - the 428 write itself was refused, and the linking flow is a
+// one-time detour per user.
+//
 // Deliberately NOT handled here:
-// - 403 (authenticated but missing role) is not a re-login case — redirecting
+// - 403 (authenticated but missing role) is not a re-login case - redirecting
 //   would loop. Call sites show their own "no access" message.
 // - Only same-origin `/api/*` responses are intercepted, so `/auth/*` (incl.
 //   `/auth/status`), `/data/*`, `/wasm/*` and cross-origin fetches pass through.
@@ -22,7 +34,7 @@ import { ensureAuthReady, useAuth } from '../composables/useAuth.js';
 //   call `/api/*` endpoints that 401 without a session (e.g. `/library` loads
 //   `/api/favorites`, which the editor tolerates as "no favorites"), and local
 //   dev runs with OIDC disabled. We only redirect a session that loaded
-//   authenticated against a configured IdP and then got a 401 — i.e. its
+//   authenticated against a configured IdP and then got a 401 - i.e. its
 //   session expired. This mirrors the router guard's `oidcConfigured` gate.
 
 /**
@@ -36,7 +48,7 @@ export function isApiUrl(input) {
   let url;
   try {
     // Resolve against the full current URL (not just the origin) so bare
-    // relative paths resolve exactly as the browser's fetch does — e.g. on
+    // relative paths resolve exactly as the browser's fetch does - e.g. on
     // `/trajects/123`, `fetch('api/x')` hits `/trajects/api/x`, not `/api/x`.
     url = new URL(raw, window.location.href);
   } catch {
@@ -45,13 +57,14 @@ export function isApiUrl(input) {
   return url.origin === window.location.origin && url.pathname.startsWith('/api/');
 }
 
-// Module-level latch: once a 401 triggers the login redirect we are leaving the
-// page, so further 401s from in-flight calls must not fire a second redirect.
+// Module-level latch: once a 401/428 triggers a redirect we are leaving the
+// page, so further hits from in-flight calls must not fire a second redirect.
 let redirecting = false;
 
 /**
  * Wrap `window.fetch` so a 401 on a same-origin `/api/*` call redirects to the
- * OIDC login. Idempotent-safe to call once at app start (before mount).
+ * OIDC login, and a 428 redirects into the GitHub connect flow. Idempotent-safe
+ * to call once at app start (before mount).
  */
 export function installApiAuthGuard() {
   const originalFetch = window.fetch.bind(window);
@@ -68,10 +81,25 @@ export function installApiAuthGuard() {
       if (oidcConfigured.value && authenticated.value && !redirecting) {
         redirecting = true;
         // No explicit returnUrl: the navigation has already committed, so
-        // window.location reflects the page the user is actually on — exactly
+        // window.location reflects the page the user is actually on - exactly
         // where they should return after re-auth.
         login();
       }
+    }
+    if (response.status === 428 && !redirecting && isApiUrl(input)) {
+      // CONTRACT: 428 is reserved editor-wide for the GitHub write-token
+      // requirement (documented on `github_oauth::user_write_token` in the
+      // editor-api). This guard keys on nothing but the status code, so a
+      // backend endpoint returning 428 for any other precondition would
+      // silently hijack its callers into the koppel-flow - use a different
+      // status there instead. The requirement only fires for an
+      // authenticated session on a deployment with the OAuth App configured,
+      // so no auth/configured re-checks are needed here.
+      redirecting = true;
+      // No explicit returnUrl, same reasoning as the 401 branch: connect()
+      // defaults to the page the user is on, and the callback bounces back
+      // to it with a `?github=...` marker.
+      useGithubAuth().connect();
     }
     return response;
   };

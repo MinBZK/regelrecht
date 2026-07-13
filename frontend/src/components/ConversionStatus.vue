@@ -1,8 +1,8 @@
 <script setup>
 /**
- * ConversionStatus — presentational list of a traject's in-progress and failed
+ * ConversionStatus - presentational list of a traject's in-progress and failed
  * document-conversion jobs. A running job shows a spinner; a failed job shows
- * its reason. Completed jobs are not shown here — they appear as the actual
+ * its reason. Completed jobs are not shown here - they appear as the actual
  * `.md` in the documents list. Renders nothing when there are no such jobs.
  */
 defineProps({
@@ -26,7 +26,7 @@ function title(job) {
       ></nldd-inline-dialog>
       <nldd-activity-indicator
         v-else
-        :text="`Wordt geconverteerd… — ${title(job)}`"
+        :text="`Wordt geconverteerd… - ${title(job)}`"
         show-text
       ></nldd-activity-indicator>
     </template>
@@ -35,7 +35,7 @@ function title(job) {
 
 <style scoped>
 /* Stack the status rows with a small gap. Custom spacing on top of the design
-   system — reported in the PR. */
+   system - reported in the PR. */
 .conversion-status {
   display: flex;
   flex-direction: column;

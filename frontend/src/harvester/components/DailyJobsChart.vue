@@ -4,7 +4,7 @@
  * single job type. Data comes in as plain entries; colors are resolved from
  * the NLDD tokens at mount and re-resolved when the color scheme flips
  * (data-scheme attribute for the explicit picker, the media query for
- * 'auto') — the tokens are light-dark() pairs the canvas can't track itself.
+ * 'auto') - the tokens are light-dark() pairs the canvas can't track itself.
  */
 import { computed, onMounted, onUnmounted, shallowRef } from 'vue';
 import { use } from 'echarts/core';

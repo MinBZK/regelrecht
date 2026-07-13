@@ -36,7 +36,7 @@ const topKpis = computed(() => {
 
 // Harvest and enrich are treated as two separate kinds, each with its own
 // titled section: status breakdown + executed counts next to the daily chart.
-// `daily` is absent while an older API is deployed — then chartEntries stays
+// `daily` is absent while an older API is deployed - then chartEntries stays
 // empty and the chart simply doesn't render.
 const typePanels = computed(() => {
   const s = stats.value;

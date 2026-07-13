@@ -8,7 +8,7 @@ const props = defineProps({
    * Markdown source, v-model-bound to the parent editor state. The
    * nldd-text-editor works in Markdown directly: its `value` is the Markdown
    * document (annotation sentinels stripped), so this round-trips
-   * Markdown ↔ Markdown with no HTML intermediate — unlike the previous
+   * Markdown ↔ Markdown with no HTML intermediate - unlike the previous
    * Tiptap editor, raw HTML in the source is preserved as literal text.
    */
   modelValue: { type: String, default: '' },

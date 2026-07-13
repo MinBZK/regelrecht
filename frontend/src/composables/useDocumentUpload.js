@@ -1,5 +1,5 @@
 /**
- * useDocumentUpload — the shared "hidden native file input + trigger" wiring for
+ * useDocumentUpload - the shared "hidden native file input + trigger" wiring for
  * the werkdocumenten upload affordance, used by both the launcher sheet and the
  * standalone page. No NLDD file-upload component exists, so the picker is a
  * hidden `<input type="file">`; this keeps that one bit of non-design-system

@@ -9,7 +9,7 @@ import { centsToEuros, eurosToCents } from '../utils/currency.js';
 //
 // Round-trip is handled here: scenario values often arrive as strings parsed
 // from Gherkin ("true" / "1500" / "2025-01-01"), and downstream consumers
-// (engine execute + Gherkin re-serialisation) accept real JS types — so we
+// (engine execute + Gherkin re-serialisation) accept real JS types - so we
 // coerce to the right type on the way out. See ScenarioForm.execute() and
 // formMapper.syncEditedValues().
 const props = defineProps({

@@ -175,7 +175,7 @@ describe('NoteCreator', () => {
       },
     });
     await nextTick();
-    // Only the warning — no type picker, no save. The user dismisses by
+    // Only the warning - no type picker, no save. The user dismisses by
     // clicking outside (no in-form cancel button anymore).
     expect(w.find('[data-testid="note-creator-status"]').exists()).toBe(true);
     expect(w.find('[data-testid="note-save"]').exists()).toBe(false);

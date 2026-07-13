@@ -13,7 +13,7 @@ const props = defineProps({
   /** True while a save PUT is in flight */
   saving: { type: Boolean, default: false },
   /** Error from the most recent save attempt (Error instance or null) */
-  /** Active traject ref — scopes the corpus-laws lookup so display
+  /** Active traject ref - scopes the corpus-laws lookup so display
    *  names reflect the traject's view (including its in-progress edits). */
   trajectRef: { type: String, default: null },
 });
@@ -25,12 +25,12 @@ const emit = defineEmits([
   'open-edit',
   'init-mr',
   'add-action',
-  // The Machine-pane "Opslaan" button — a real backend save of the law.
+  // The Machine-pane "Opslaan" button - a real backend save of the law.
   'save',
   /**
    * Patch a single machine_readable field in place (no backend save, just
    * marks the model dirty). Same `{ section, key, data }` shape the parent's
-   * handleSave dispatches on — used for inline edits like the produces
+   * handleSave dispatches on - used for inline edits like the produces
    * dropdowns. Distinct from `save` (which is the law PUT).
    */
   'patch',
@@ -159,7 +159,7 @@ function editOutput(index) {
   if (raw) emit('open-edit', { section: 'output', index, data: snapshot(raw) });
 }
 
-// Delete handlers — stage a confirmation in `pendingDelete`, then on
+// Delete handlers - stage a confirmation in `pendingDelete`, then on
 // confirm emit the delete event with the section + identity of the row.
 // The parent (EditorApp) is the source of truth for machineReadable,
 // so all mutations live there. The modal-dialog confirmation is here
@@ -181,7 +181,7 @@ const pendingSectionLabel = computed(
 watch(pendingDelete, async (val) => {
   await nextTick();
   // Guard against test envs where the modal-dialog custom element isn't
-  // upgraded — the ref then holds a plain HTMLElement without show/hide.
+  // upgraded - the ref then holds a plain HTMLElement without show/hide.
   // Optional-chaining on `?.show()` would still throw because it only
   // skips when `.value` is nullish, not when `.show` itself is undefined.
   const el = deleteModalEl.value;

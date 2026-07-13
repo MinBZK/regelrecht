@@ -1,5 +1,5 @@
 /**
- * useLatest — the "generation counter" guard against stale async writes.
+ * useLatest - the "generation counter" guard against stale async writes.
  *
  * The editor re-implemented this pattern at every place where a slow
  * response could land after a newer request superseded it (law switch,
@@ -9,7 +9,7 @@
  *   async function load() {
  *     const gen = ++generation;
  *     const res = await fetch(...);
- *     if (gen !== generation) return; // stale — discard
+ *     if (gen !== generation) return; // stale - discard
  *   }
  *
  * `useLatest()` captures that counter. Each call to the returned `claim`
@@ -27,7 +27,7 @@
  * supersede each other (e.g. `load()` and `switchLaw()` writing the same
  * refs) share one instance; independent resources get their own.
  *
- * @returns {() => () => boolean} claim — starts a new generation,
+ * @returns {() => () => boolean} claim - starts a new generation,
  *   returns its `isCurrent` predicate.
  */
 export function useLatest() {

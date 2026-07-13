@@ -1,5 +1,5 @@
 /**
- * createLruMap — a Map with least-recently-used eviction.
+ * createLruMap - a Map with least-recently-used eviction.
  *
  * Consolidates the copy-pasted "Map insertion order IS the LRU order"
  * caches (law cache in `useLaw`, per-scope laws list in `useCorpusLaws`,
@@ -9,7 +9,7 @@
  *
  * `onEvict(key, value)` lets a cache keep companion state in sync when
  * an entry falls out (drop a paired promise, unload a law from the WASM
- * engine, …). It only fires for capacity evictions — not for explicit
+ * engine, …). It only fires for capacity evictions - not for explicit
  * `delete`/`clear`, where the caller is already managing the entry.
  *
  * @template K, V

@@ -25,7 +25,7 @@ const needsLogin = computed(() => oidcConfigured.value && !authenticated.value);
 const search = ref('');
 const popoverRef = ref(null);
 const useCenteredPosition = ref(true);
-// md only: popover anchors below the trigger button — clicking outside closes
+// md only: popover anchors below the trigger button - clicking outside closes
 // it, so an explicit Sluit button is just clutter. On sm (full-height sheet)
 // and lg (centered overlay) the user needs an explicit way to close.
 const isAnchored = ref(false);
@@ -36,7 +36,7 @@ const pendingSearch = ref('');
 
 // Source of truth: @nldd/design-system's `assets/styles/breakpoints.ts`
 // (smMax: 640px, mdMin: 641px, mdMax: 1007px, lgMin: 1008px). Keep in
-// sync until the design system exports breakpoints publicly — currently
+// sync until the design system exports breakpoints publicly - currently
 // the file isn't listed in the package's `exports` field, so a deep
 // import isn't supported. The previous values used `696` for mdMin
 // which didn't match the design-system at all (probably a typo); aligned
@@ -57,7 +57,7 @@ function displayName(law) {
 
 // Results of the server-side corpus search (`?q=`). The corpus index can
 // hold thousands of laws, so the popover queries the backend rather than
-// filtering a preloaded client-side list — that's the only way the search
+// filtering a preloaded client-side list - that's the only way the search
 // can reach every law, not just the first page. Ordered private-repo-first
 // by the backend; `sortedLaws` keeps that order as a flat option list.
 const serverLaws = ref([]);
@@ -99,7 +99,7 @@ watch(search, (q) => {
   const term = q.trim();
   if (term.length < MIN_QUERY_LENGTH) {
     // Claim (and discard) a generation so any fetch already in flight
-    // (debounce fired before this clear) is discarded when it resolves —
+    // (debounce fired before this clear) is discarded when it resolves -
     // otherwise it would repopulate serverLaws for the cleared term and
     // fire a spurious BWB search.
     claimSearch();
@@ -156,7 +156,7 @@ function close() {
 }
 
 /**
- * The listbox emits its own `input` ({ detail: { value } }) — it does NOT
+ * The listbox emits its own `input` ({ detail: { value } }) - it does NOT
  * filter internally, so we drive the corpus query straight off it. The watch
  * on `search` debounces and runs the backend query.
  */
@@ -189,10 +189,10 @@ function onPopoverClose() {
 }
 
 // The chosen law id, emitted on 'select-law' only once the popover has fully
-// closed (see onPopoverClose) — not here. The native popover restores focus to
+// closed (see onPopoverClose) - not here. The native popover restores focus to
 // its trigger (_returnFocus) inside its async close task, just BEFORE it
 // dispatches 'close'. By emitting after that, the parent's "focus the opened
-// law" (scheduled on its own nextTick) runs last and wins — so focus lands on
+// law" (scheduled on its own nextTick) runs last and wins - so focus lands on
 // the law instead of snapping back to the search trigger.
 let pendingSelectLawId = null;
 
@@ -209,7 +209,7 @@ function selectLaw(lawId) {
  * from multiple places (e.g. desktop search-field and mobile icon-button)
  * without each one needing a stable ID.
  *
- * Optional `initialSearch` lets the trigger seed the search value — used
+ * Optional `initialSearch` lets the trigger seed the search value - used
  * for the Spotlight-style "type-to-open" UX where pressing a key on the
  * bar's search-field intercepts the keystroke and forwards it as the
  * initial query in the popover. Stashed in `pendingSearch` and applied by
@@ -226,7 +226,7 @@ async function show(anchorEl, initialSearch = '') {
   useCenteredPosition.value = window.matchMedia(`(min-width: ${BREAKPOINT_LG_MIN}px)`).matches;
   isAnchored.value = window.matchMedia(`(min-width: ${BREAKPOINT_MD_MIN}px) and (max-width: ${BREAKPOINT_LG_MIN - 1}px)`).matches;
   // Wait for Vue to propagate the new `centered` / `top` / `width` props
-  // onto the popover element before opening — otherwise the first
+  // onto the popover element before opening - otherwise the first
   // reposition() inside the popover's toggle handler runs against the
   // previous breakpoint's props (e.g. centered=true held over from lg)
   // and the popover lands in the wrong position. The Lit-side update on
@@ -241,7 +241,7 @@ async function show(anchorEl, initialSearch = '') {
  *
  * The listbox owns its input and exposes no `value` prop, so we drive the
  * seed through a real `input` event: the list reads the input, updates its
- * internal `_searchValue`, and re-emits its `{ detail: { value } }` input —
+ * internal `_searchValue`, and re-emits its `{ detail: { value } }` input -
  * which onListInput turns into the corpus query. An empty `pendingSearch`
  * clears any stale value left from a previous open (the popover keeps the
  * list mounted between opens). Setting `.value` directly would be overwritten
@@ -268,7 +268,7 @@ defineExpose({ show });
 
 <template>
   <!--
-    Two positioning modes — toggled by `show()` based on viewport:
+    Two positioning modes - toggled by `show()` based on viewport:
     - lg+: free-positioned (centered horizontally, top-aligned). Big
       Spotlight-style overlay regardless of which trigger fired show().
     - md: anchored below the trigger button via Floating UI (default).
@@ -290,7 +290,7 @@ defineExpose({ show });
         The listbox IS the search UI: it renders its own search field
         (combobox pattern), the close button sits inline in `search-bar-end`,
         and the results are its options. It does NOT filter the options itself
-        — onListInput drives the server-side corpus query and we slot exactly
+        - onListInput drives the server-side corpus query and we slot exactly
         the matched options back in. `height` pins the search field and scrolls
         the options below it.
       -->
@@ -304,7 +304,7 @@ defineExpose({ show });
         @input="onListInput"
         @keydown="onListKeydown"
       >
-        <!-- Op md anchort de popover naast de trigger — naast de popover
+        <!-- Op md anchort de popover naast de trigger - naast de popover
              klikken sluit 'm. Op sm (full-height sheet) en lg (centered
              overlay) heeft de gebruiker een expliciete sluit-knop nodig. -->
         <nldd-button
@@ -344,7 +344,7 @@ defineExpose({ show });
         >
           <nldd-text-cell
             :text="result.title"
-            :supporting-text="statusText(result.bwb_id, `${result.type} — ${result.bwb_id}`)"
+            :supporting-text="statusText(result.bwb_id, `${result.type} - ${result.bwb_id}`)"
           ></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-icon-cell size="20">

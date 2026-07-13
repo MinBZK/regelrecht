@@ -1,5 +1,5 @@
 /**
- * ExecutionContext — holds state for a single scenario execution.
+ * ExecutionContext - holds state for a single scenario execution.
  */
 export class ExecutionContext {
   constructor() {

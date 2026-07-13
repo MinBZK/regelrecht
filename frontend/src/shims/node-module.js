@@ -8,7 +8,7 @@
 //
 // `createRequire` is a Node-only API; in the browser the bundler stubs
 // `node:module` to an empty object, so `createRequire` is undefined and the
-// call throws `TypeError: createRequire is not a function` at module load —
+// call throws `TypeError: createRequire is not a function` at module load -
 // crashing every view that imports the gherkin parser (the whole editor).
 //
 // We never use that version string, so provide a minimal `createRequire` whose

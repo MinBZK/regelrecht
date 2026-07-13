@@ -41,7 +41,7 @@ const editButton = ref(null);
 
 // Label of the back-button that returns to the Home sidebar from underlying
 // pages. Kept fixed as "Home" even though the sidebar's own heading is now
-// traject-aware (see sidebarTitle) — a back-button reads more naturally as
+// traject-aware (see sidebarTitle) - a back-button reads more naturally as
 // "Home" than as the traject name.
 const LIBRARY_HOME_BACK_TEXT = 'Home';
 
@@ -150,7 +150,7 @@ function goToInstellingen(tab) {
   if (!activeTrajectRef.value) return;
   router.push({ name: 'instellingen-traject', params: { trajectRef: activeTrajectRef.value, tab } });
 }
-// Deleting or leaving the traject drops your access — go to the public Home
+// Deleting or leaving the traject drops your access - go to the public Home
 // (Corpus juris) and refresh the traject list.
 function onTrajectGone() {
   refreshTrajects();
@@ -190,7 +190,7 @@ function guardedDocNavigate(run) {
 // Route guard: true = proceed now, Promise<boolean> = ask first (the modal
 // resolves it). Lets the open document's own URL sync (same doc) through.
 function guardDirtyDoc(to) {
-  // Guard ONLY when a werkdocument is actually open in werkdoc mode AND dirty —
+  // Guard ONLY when a werkdocument is actually open in werkdoc mode AND dirty -
   // i.e. exactly "an open, edited document, navigating away". Never on the
   // document list, never in corpus mode, never on a stale in-memory doc (the
   // manager can keep a left-open doc's state without it being on screen).
@@ -221,7 +221,7 @@ function confirmDocLeave() {
 }
 async function saveDocAndLeave() {
   const ok = await docEditorEl.value?.saveDocument();
-  if (!ok) return; // save failed — stay open, DocumentEditor shows the error
+  if (!ok) return; // save failed - stay open, DocumentEditor shows the error
   resolveDocGuard(true);
 }
 function onDocSelect(path) {
@@ -246,7 +246,7 @@ function libraryRouteFor(params = {}) {
   });
 }
 function editorRouteFor(lawIdVal, articleNumber) {
-  // Without an active traject the editor isn't reachable directly — the
+  // Without an active traject the editor isn't reachable directly - the
   // editor requires a traject. Send the user to the chooser, carrying the
   // law as query so it opens right after a traject is picked.
   return activeTrajectRef.value
@@ -278,8 +278,8 @@ const lawError = ref(null);
 const selectedArticleNumber = ref(null);
 
 // Recently-viewed laws (most-recent-first), persisted across sessions. Stored
-// as { law_id, name } so a law that fails to load in the active traject — and
-// therefore never enters the corpus index — still stays reachable + labelled.
+// as { law_id, name } so a law that fails to load in the active traject - and
+// therefore never enters the corpus index - still stays reachable + labelled.
 const RECENT_LAWS_KEY = 'regelrecht-recent-laws';
 const MAX_RECENT_LAWS = 12;
 function loadRecentLaws() {
@@ -297,7 +297,7 @@ function recordRecentLaw(lawId, name) {
   recentLaws.value = [entry, ...recentLaws.value.filter(r => r.law_id !== lawId)].slice(0, MAX_RECENT_LAWS);
   try {
     localStorage.setItem(RECENT_LAWS_KEY, JSON.stringify(recentLaws.value));
-  } catch { /* storage unavailable — keep the in-memory list */ }
+  } catch { /* storage unavailable - keep the in-memory list */ }
 }
 // Detail view (tekst/machine/yaml) is reflected in the URL hash so the
 // state is bookmarkable and shareable. English keys in the hash because
@@ -311,7 +311,7 @@ const detailView = computed({
   },
   set(value) {
     // Reject anything we don't recognise rather than silently stripping
-    // the hash — every call site today hard-codes a literal, so an
+    // the hash - every call site today hard-codes a literal, so an
     // unknown value is a programmer error. Warn in dev so a future
     // contributor adding a tab without updating VIEW_TO_HASH catches
     // it immediately; production silently no-ops to avoid console noise.
@@ -328,7 +328,7 @@ const detailView = computed({
   },
 });
 // nldd-tab-bar fires `tabchange` on BOTH pointer click and arrow-key
-// activation (content-switching tabs auto-activate on arrow — the ARIA
+// activation (content-switching tabs auto-activate on arrow - the ARIA
 // pattern). Driving detailView from this single event keeps the keyboard, the
 // selected tab, and the visible panel in lockstep; a per-item @click never
 // fired on arrow, which is why the highlight moved but the view lagged.
@@ -353,7 +353,7 @@ const activeAction = ref(null);
 // There is deliberately NO full-corpus fallback: the central corpus is the
 // full BWB corpus (thousands of laws), so dumping it into the sidebar isn't
 // useful and is exactly the "huge pile" we don't want loaded here. When
-// nothing is curated yet, the template shows a search CTA instead — full
+// nothing is curated yet, the template shows a search CTA instead - full
 // browse lives in the search popover.
 const sidebarSections = computed(() => {
   const list = laws.value;
@@ -432,7 +432,7 @@ const indexedLawName = computed(() => {
   return law ? displayName(law) : humanizeLawId(selectedLawId.value);
 });
 
-// Track the active law in "Recent bekeken" — including one that fails to load,
+// Track the active law in "Recent bekeken" - including one that fails to load,
 // so the sidebar reflects what the user is looking at even when nothing is
 // curated yet. Re-runs as the name resolves to upgrade the label from the
 // humanized id to the real name.
@@ -464,11 +464,11 @@ const lawErrorIs404 = computed(() => lawError.value?.status === 404);
 // On a traject-scoped browse the active traject name is appended (like the
 // editor) so the browser tab and history show which traject you are viewing.
 // Most-specific first so browser tab truncation preserves the article number.
-// We deliberately omit the "Bibliotheek:" prefix here (unlike the editor) —
+// We deliberately omit the "Bibliotheek:" prefix here (unlike the editor) -
 // browsing laws is the implicit default, and the law name carries enough
 // context. The editor still prefixes because "Wijzig:" disambiguates the
 // edit context from the read-only browse.
-// Always set (no early return) — router.afterEach used to set a static
+// Always set (no early return) - router.afterEach used to set a static
 // fallback but it raced with this effect on tab/article switches.
 watchEffect(() => {
   const detail = [];
@@ -508,7 +508,7 @@ async function loadFavorites() {
     });
     favorites.value = new Set(favIds);
   } catch (e) {
-    // Not authenticated (401/403) or endpoint unavailable — no favorites.
+    // Not authenticated (401/403) or endpoint unavailable - no favorites.
     // Only server errors are worth a console trace.
     if (e instanceof ApiError && e.status >= 500) console.warn(e.message);
   }
@@ -516,7 +516,7 @@ async function loadFavorites() {
 
 // Fetch the set of law ids edited in the active traject. Returns `null`
 // when there's no traject (global browse has no "changed" notion) or on
-// any failure — the "Bewerkt in dit traject" section then simply stays
+// any failure - the "Bewerkt in dit traject" section then simply stays
 // hidden instead of surfacing an error in the sidebar. The backend returns
 // an empty array (not an error) when nothing has been saved yet, which maps
 // to an empty Set and a hidden section all the same.
@@ -525,7 +525,7 @@ async function fetchChangedLawIds(trajectRef) {
   try {
     return new Set(await apiFetchJson(changedLawsUrl(trajectRef)));
   } catch {
-    // Any failure (HTTP or network) just hides the section — see above.
+    // Any failure (HTTP or network) just hides the section - see above.
     return null;
   }
 }
@@ -575,7 +575,7 @@ async function toggleFavorite(lawId) {
     // id) appears in the Favorieten section without a manual reload.
     loadIndex();
   } catch {
-    // HTTP or network failure — roll the optimistic toggle back.
+    // HTTP or network failure - roll the optimistic toggle back.
     revert();
   } finally {
     togglingFavorites.value.delete(lawId);
@@ -600,7 +600,7 @@ async function loadIndex() {
     if (!isCurrent()) return;
     changedLawIds.value = changedIds;
 
-    // Fetch metadata for just those ids via `?ids=` — never the whole corpus.
+    // Fetch metadata for just those ids via `?ids=` - never the whole corpus.
     // The central corpus is the full BWB corpus (thousands of laws); loading
     // it here only to filter out a handful would be wasteful and would miss
     // any favorite/edit that sorts past a page cap. Full browse lives in the
@@ -677,7 +677,7 @@ function retryLoadLaw() {
 
 function retryLoadCorpus() {
   indexError.value = null;
-  // loadIndex only flips loading back to false in its finally block —
+  // loadIndex only flips loading back to false in its finally block -
   // it never sets it to true. So after the first failure (loading is
   // false, indexError is truthy) we have to flip the spinner back on
   // here, otherwise the retry shows the error pane until the next
@@ -735,7 +735,7 @@ function selectLaw(lawId, focusAfter = false) {
   }
 
   // When triggered from the search popover we want focus to land on the
-  // newly-selected sidebar item — not on the popover trigger that
+  // newly-selected sidebar item - not on the popover trigger that
   // popover._returnFocus restores to. Schedule on nextTick so the popover
   // has fully closed (sync) and Vue has rendered the selected state, then
   // walk the list-item shadow DOM to focus its inner button (the host
@@ -759,7 +759,7 @@ function selectLawFromSection(lawId, sectionKey) {
 }
 
 // The single sidebar instance to highlight: the clicked section (when it still
-// holds the law), else the law's first occurrence — so exactly one instance is
+// holds the law), else the law's first occurrence - so exactly one instance is
 // selected, including on a deep-link where no section was clicked.
 const highlightSection = computed(() => {
   const id = selectedLawId.value;
@@ -782,7 +782,7 @@ function selectArticle(number) {
 }
 
 /**
- * Pane back-button handlers — URL-driven so browser back works the same
+ * Pane back-button handlers - URL-driven so browser back works the same
  * way as clicking the in-pane back button. Pushing the URL one level up
  * lets `onBeforeRouteUpdate` reactively pull the right local state into
  * sync. On sm the navigation-split-view shows the deepest pane with
@@ -793,15 +793,15 @@ function selectArticle(number) {
  * to identify which pane the back originated from and route accordingly.
  *
  * `back` is the event fired by nldd-top-title-bar's back-button (not
- * `dismiss` — that's the X-style close button on the right).
+ * `dismiss` - that's the X-style close button on the right).
  */
 function onPaneBack(e) {
   const path = e.composedPath();
   const pane = path.find(el => el.tagName === 'NLDD-SPLIT-VIEW-PANE');
   if (!pane) return;
   const slot = pane.getAttribute('slot');
-  // On any error state — corpus load failed (indexError) or this
-  // specific law failed (lawError) — back from the main pane should
+  // On any error state - corpus load failed (indexError) or this
+  // specific law failed (lawError) - back from the main pane should
   // return to the library root, not /library/<lawId>. The latter would
   // route the user back into the same error they just dismissed.
   if (slot === 'main') {
@@ -866,7 +866,7 @@ onBeforeRouteUpdate(async (to) => {
   const newArticle = to.params.articleNumber;
 
   if (!newLawId) {
-    // Navigated to /library with no lawId — clear state. No auto-select:
+    // Navigated to /library with no lawId - clear state. No auto-select:
     // the empty state (Wetten Browser only) is a valid landing view.
     selectedLawId.value = null;
     selectedLaw.value = null;
@@ -901,8 +901,8 @@ onBeforeRouteLeave(async (to) => {
 
 // selectedLawId is a manual ref, not route-derived. onBeforeRouteUpdate only
 // fires for same-record param changes, so navigating to a no-law route
-// (traject-home / corpus home) via the back button or a tab switch — a
-// different route record — leaves the ref set and the article list lingers
+// (traject-home / corpus home) via the back button or a tab switch - a
+// different route record - leaves the ref set and the article list lingers
 // until refresh. Sync it reactively so the view reflows on any such navigation.
 watch(() => route.params.lawId, (lawId) => {
   if (!lawId && selectedLawId.value) {
@@ -916,7 +916,7 @@ watch(() => route.params.lawId, (lawId) => {
 
 // When a harvested law becomes available, reload the corpus and select it.
 async function onHarvestAvailable(slug) {
-  // Best-effort reload — a failure just means the index below may not
+  // Best-effort reload - a failure just means the index below may not
   // include the fresh law yet.
   await apiFetch('/api/corpus/reload', {
     method: 'POST',
@@ -946,7 +946,7 @@ loadIndex();
 // depending on `activeTrajectRef`. When the user switches traject in-place
 // (e.g. picking another traject from the TrajectMenu while staying in the
 // library, or "Geen traject"), the route param changes but the component
-// stays mounted — so refetch the index and the open law through the new
+// stays mounted - so refetch the index and the open law through the new
 // scope. Mirrors EditorApp's `watch(activeTrajectRef)`.
 watch(activeTrajectRef, () => {
   // Drop the previous traject's changed-set immediately so the
@@ -987,7 +987,7 @@ watch(activeTrajectRef, () => {
         </nldd-page>
 
         <!-- Nothing curated yet (no favorites, no traject edits, no open law):
-             leave the canvas blank — the just-in-time coach-mark on the toolbar
+             leave the canvas blank - the just-in-time coach-mark on the toolbar
              search field (AppShell) points the user at search. -->
         <nldd-page v-else-if="isEmptyLibrary"></nldd-page>
 
@@ -1118,7 +1118,7 @@ watch(activeTrajectRef, () => {
             </nldd-page>
           </nldd-split-view-pane>
 
-          <!-- Secondary Sidebar: Artikelen Lijst — only when a law is
+          <!-- Secondary Sidebar: Artikelen Lijst - only when a law is
                selected. When deselected the pane is removed from the DOM
                so the navigation-split-view reflows to spatial mode and
                shows the sidebar (Wetten Browser) alongside main. -->

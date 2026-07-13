@@ -58,7 +58,7 @@ function makeEntry(law, rawYaml, etag) {
 }
 
 // In-flight law GETs, keyed like `lawCache`. Simultaneous callers share
-// one request instead of racing duplicate GETs against an empty cache —
+// one request instead of racing duplicate GETs against an empty cache -
 // which is exactly what an editor mount does: `useLaw().load()` fetches
 // the routed law while the persisted-tab label loader `fetchLaw`s the
 // same id in parallel. Entries are removed when the request settles, so
@@ -67,7 +67,7 @@ const pendingLawFetches = new Map();
 
 /**
  * The network leg shared by `fetchLaw` and `useLaw().load()`: always
- * fetches (no cache read — `load()` relies on that for freshness),
+ * fetches (no cache read - `load()` relies on that for freshness),
  * single-flighted per cache key, and stores the entry in `lawCache`
  * under the requested id (and the body's resolved `$id`, when the two
  * differ) before resolving.
@@ -82,7 +82,7 @@ function fetchLawFresh(trajectRef, lawId) {
     const law = yaml.load(text);
     const entry = makeEntry(law, text, res.headers.get('ETag'));
     // Always overwrite: this is fresh content, so any pre-existing entry
-    // is by definition stale (older body and/or ETag) — keeping it would
+    // is by definition stale (older body and/or ETag) - keeping it would
     // hand `fetchLaw`/`switchLaw` callers outdated YAML and a
     // precondition doomed to 412.
     lawCache.set(key, entry);
@@ -155,7 +155,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
     const isCurrent = claimSwitch();
     // Snapshot before any await: a concurrent `switchLaw` mutates
     // `currentTrajectRef`, and the direct-URL cache write below must key
-    // on the traject this load was issued for — not whichever traject the
+    // on the traject this load was issued for - not whichever traject the
     // user has navigated to by the time the response body arrives.
     const loadTrajectRef = currentTrajectRef;
     try {
@@ -317,7 +317,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
         json = await res.json();
         lastSavedPr.value = sanitizeSavedPr(json?.pr);
       } catch {
-        // Older deployments return a bare 200 without JSON — keep the
+        // Older deployments return a bare 200 without JSON - keep the
         // existing PR (if any) and treat the save as successful.
       }
       // Chain the new ETag for the next save. The header is

@@ -19,8 +19,10 @@ use tower_sessions_sqlx_store::PostgresStore;
 mod accounts;
 mod config;
 mod corpus_handlers;
+mod crypto;
 mod favorites;
 mod feature_flags;
+mod github_oauth;
 mod harvest_proxy;
 mod middleware;
 mod state;
@@ -463,6 +465,21 @@ async fn main() {
             middleware::require_role::<AppState>("editor-writer"),
         ));
 
+    // GitHub user-OAuth link flow (spike). Requires an authenticated editor
+    // session with a resolved account (the sealed token cookie is bound to
+    // it), so it sits behind the same account_middleware + writer-role gate as
+    // traject writes. When the feature is unconfigured the handlers themselves
+    // return 501.
+    let github_oauth_routes = github_oauth::github_oauth_routes()
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            accounts::account_middleware,
+        ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_role::<AppState>("editor-writer"),
+        ));
+
     // --- Build app with session layer ---
     // SessionManagerLayer is generic over the store type, so we build the
     // router in two branches depending on whether auth is enabled.
@@ -531,6 +548,11 @@ async fn main() {
             .merge(traject_writer_routes)
             .merge(user_notes_reader_routes)
             .merge(user_notes_writer_routes)
+            .merge(github_oauth_routes)
+            // Relay is public (no session/account): GitHub redirects the
+            // browser here on the fixed callback host and we 302 it on to the
+            // originating deployment. Must sit OUTSIDE the auth layer.
+            .merge(github_oauth::github_relay_route())
             .with_state(app_state)
             // Innermost custom layer: wraps the routed handlers most
             // tightly, so the request-scoped timing recorder is installed
@@ -816,33 +838,10 @@ fn resolve_harvest_admin_url(hostname: Option<&str>, env_url: Option<String>) ->
         .or(env_url)
 }
 
-/// True when `base_url` is an http (not https) origin pointing at the local
-/// machine. Used to drop the session cookie's `Secure` flag for local SSO dev
-/// (`just editor-sso` over http://localhost) so Safari — which, unlike Chrome
-/// and Firefox, refuses Secure cookies over http://localhost — completes the
-/// OIDC handshake. Production always serves over an https BASE_URL, so this is
-/// false there and cookies stay Secure. A missing or unparseable BASE_URL is
-/// treated as non-local (Secure stays on) — the safe default.
-///
-/// Parses with `url::Url` (the same crate that validates `BASE_URL` at startup)
-/// so the scheme/host extraction matches WHATWG rules: the host is exact (a
-/// look-alike like `http://localhost.attacker.example` or userinfo like
-/// `http://localhost@evil.com` resolves to a non-loopback host and is rejected)
-/// and IPv6 loopback is handled via the typed `Host` enum.
-fn is_http_localhost(base_url: Option<&str>) -> bool {
-    let Some(url) = base_url.and_then(|u| url::Url::parse(u).ok()) else {
-        return false;
-    };
-    if url.scheme() != "http" {
-        return false;
-    }
-    matches!(
-        url.host(),
-        Some(url::Host::Domain("localhost"))
-            | Some(url::Host::Ipv4(std::net::Ipv4Addr::LOCALHOST))
-            | Some(url::Host::Ipv6(std::net::Ipv6Addr::LOCALHOST))
-    )
-}
+// `is_http_localhost` (drop the cookie `Secure` flag only for http-localhost
+// local dev) lives in `github_oauth` — the token cookie there and the session
+// cookie here must make the same call. Its exhaustive tests stay below.
+use github_oauth::is_http_localhost;
 
 #[cfg(test)]
 mod pipeline_api_url_tests {

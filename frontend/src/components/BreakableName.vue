@@ -5,7 +5,7 @@ import { computed } from 'vue';
  * Renders an identifier so the browser may wrap *after* each underscore.
  *
  * Long snake_case names (e.g. `geldige_partnertypen`) have no native break
- * opportunity, so a narrow column breaks them mid-word — one character per
+ * opportunity, so a narrow column breaks them mid-word - one character per
  * line in the worst case. Splitting on `_` and emitting a real <wbr> just
  * *before* each underscore gives a clean, opt-in break point: the name stays
  * on one line when it fits, and wraps only at underscores when it doesn't,
@@ -13,7 +13,7 @@ import { computed } from 'vue';
  * continues" signal than a trailing underscore). Unlike a zero-width space
  * this leaves nothing behind in copied text.
  *
- * Read-only display only — editable fields keep the raw value.
+ * Read-only display only - editable fields keep the raw value.
  */
 const props = defineProps({
   name: { type: String, required: true },

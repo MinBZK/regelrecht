@@ -6,6 +6,7 @@ import MobileTrajectSheet from './components/MobileTrajectSheet.vue';
 import AboutSheet from './components/AboutSheet.vue';
 import SupportSheet from './components/SupportSheet.vue';
 import { useAuth } from './composables/useAuth.js';
+import { useGithubAuth } from './composables/useGithubAuth.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import { useTrajects } from './composables/useTrajects.js';
@@ -21,10 +22,18 @@ import { useAppChrome, openSearch, onBarSearchKeydown } from './composables/useA
 // Persistent shell that owns the shared chrome (tab-bar, search trigger,
 // TrajectMenu, settings menu) and a nested <router-view> for the editor /
 // library bodies. Because both views are children of this one route record,
-// switching between them swaps only the nested router-view — the shell
+// switching between them swaps only the nested router-view - the shell
 // instance is reused, so the chrome never rebuilds (no refresh flash).
 
 const { authenticated, loading: authLoading, oidcConfigured, person, hasAnyRole, login, logout } = useAuth();
+// GitHub user-OAuth (spike): let a user link their own GitHub account so
+// traject writes go out under their credential. `status` is reactive and may
+// be null until loaded; the template guards on `githubStatus?.configured`.
+const {
+  status: githubStatus,
+  connect: connectGithub,
+  disconnect: disconnectGithub,
+} = useGithubAuth();
 const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
 
 // Roles that may reach the harvester-admin "Corpusinwinning" section. Any harvester-*
@@ -72,7 +81,7 @@ const colorSchemeOptions = [
 
 // Editor panel feature flags, toggled from the settings menu of either
 // section (the menu lives in the shell now, so the full editor set is in one
-// place — the library previously listed only the first four). Toggling from
+// place - the library previously listed only the first four). Toggling from
 // the library affects the editor the next time its panes render.
 const editorPanelFlags = [
   ['panel.article_text', 'Tekst editor'],
@@ -82,19 +91,32 @@ const editorPanelFlags = [
   ['panel.notes', 'Notities'],
 ];
 
+// The "Functies" menu group: the panel flags, plus the GitHub-koppeling
+// toggle when this deployment has a GitHub OAuth App configured. The flag
+// (off by default, deployment-wide like all flags) is one switch with two
+// effects: it shows the Koppel/Ontkoppel items below AND makes the backend
+// require the acting user's own GitHub token for traject writes (a save
+// without a linked token then 428s, which apiAuthGuard.js turns into a
+// redirect through the connect flow).
+const functieFlags = computed(() =>
+  githubStatus.value?.configured
+    ? [...editorPanelFlags, ['github.user_oauth', 'GitHub-koppeling']]
+    : editorPanelFlags,
+);
+
 const route = useRoute();
 const router = useRouter();
 
 // Which top-level section is active, derived from the route. Both tabs are
 // always rendered; the active one shows `selected` and does not navigate,
 // the other carries the cross-section target (traject re-stamped via
-// sectionTarget) — matching the previous per-app behaviour.
+// sectionTarget) - matching the previous per-app behaviour.
 // True on the Home section (public landing, a public law, the traject landing,
 // or a traject law). Kept named isLibraryRoute to limit this refactor's blast
 // radius.
 const isLibraryRoute = computed(() => isHomeSection(route.name));
 // Home tab restores the last home path verbatim (its own scope), like the
-// harvester return — so you continue exactly where you were. The Editor tab
+// harvester return - so you continue exactly where you were. The Editor tab
 // keeps re-stamping the active traject (it carries the editor's traject logic:
 // chooser + law-as-query when no traject is active).
 const libraryTabTarget = computed(() => lastHomePath.value);
@@ -162,6 +184,43 @@ function onEditorTab(e) {
   if (isLibraryRoute.value) router.push(editorTabTarget.value);
 }
 
+// Enabling `github.user_oauth` is not a personal display preference like the
+// panel flags listed around it: the flag is deployment-wide AND doubles as the
+// backend's write-enforcement switch (`write_requires_user_token`), so turning
+// it on makes every editor-writer's next traject save require a linked
+// personal GitHub account (an unlinked user's save 428s into the connect
+// flow). Intercept the enable with an explicit confirmation popover - same
+// pattern as the login warning above. Disabling restores the pre-existing
+// service-token behaviour and stays a plain toggle.
+const enforcementConfirm = ref(null);
+function onFunctieFlagSelect(key, e) {
+  if (key === 'github.user_oauth' && !isEnabled(key)) {
+    if (enforcementConfirm.value) {
+      // Anchor to the settings button of whichever breakpoint menu fired the
+      // select: the menu itself closes on select, and a popover must never be
+      // anchored to a hidden element.
+      const anchorId = e.currentTarget.closest('nldd-menu')?.getAttribute('anchor');
+      enforcementConfirm.value.anchorElement =
+        (anchorId && document.getElementById(anchorId)) || e.currentTarget;
+      enforcementConfirm.value.show();
+    }
+    return;
+  }
+  toggleFlag(key);
+}
+function confirmUserOauthEnforcement() {
+  enforcementConfirm.value?.hide();
+  toggleFlag('github.user_oauth');
+}
+// Release the anchor when the popover closes (confirm, cancel, or light
+// dismiss). nldd-popover toggles itself on EVERY subsequent click on its
+// anchor element (popover.js `_handleDocumentClick`) - leaving the settings
+// button as anchor would hijack it: the next account-menu click opens this
+// popover and (auto-popover exclusivity) closes the menu.
+function onEnforcementConfirmClose() {
+  if (enforcementConfirm.value) enforcementConfirm.value.anchorElement = null;
+}
+
 // View-specific toolbar bits published by the active view.
 const { lastSavedPr, documentTabs, activeDocumentTab, tabActions, editorChanges, editorActions, libraryEmpty } = useAppChrome();
 
@@ -178,7 +237,7 @@ let mdQuery = null;
 let lgQuery = null;
 // DS bar breakpoints, mirrored here for matchMedia. Keep in sync with
 // @nldd/design-system (src/assets/styles/breakpoints.ts): md >= 641px, lg >= 1008px.
-// If the DS shifts these thresholds, update them here too — otherwise the
+// If the DS shifts these thresholds, update them here too - otherwise the
 // coach-mark can anchor to a control that is hidden at the current breakpoint.
 const DS_MD_MIN = '(min-width: 641px)';
 const DS_LG_MIN = '(min-width: 1008px)';
@@ -196,7 +255,7 @@ onBeforeUnmount(() => {
   mdQuery?.removeEventListener?.('change', updateViewport);
   lgQuery?.removeEventListener?.('change', updateViewport);
 });
-// Inside a traject the coach-mark is dismissable (other functions to discover —
+// Inside a traject the coach-mark is dismissable (other functions to discover -
 // Instellingen, Werkdocumenten): the dismiss button persists so it won't nag
 // again; a click outside hides it for the session. In the bare corpus it stays
 // non-dismissable until content appears.
@@ -233,7 +292,7 @@ const hasDocumentTabs = computed(
 <template>
   <nldd-app-view>
     <nldd-bar-split-view>
-      <!-- Primary Bar: md only — search and settings as buttons. The bar-split-
+      <!-- Primary Bar: md only - search and settings as buttons. The bar-split-
            view draws the divider automatically where the bar group meets main:
            on the library it sits under this bar; on the editor the document-tab-
            bar sits between, so toolbar + tabs read as one group above the single
@@ -301,6 +360,8 @@ const hasDocumentTabs = computed(
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
                 <nldd-menu-item text="Ondersteuning" icon="support" @click="openSupport"></nldd-menu-item>
+                <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
+                <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
                 <template v-if="!authLoading && authenticated">
                   <nldd-menu-divider></nldd-menu-divider>
                   <nldd-menu-item text="Log uit" icon="logout" @click="logout"></nldd-menu-item>
@@ -311,7 +372,7 @@ const hasDocumentTabs = computed(
         </nldd-container>
       </nldd-split-view-pane>
 
-      <!-- Primary Bar: lg+ — search as input field in center slot -->
+      <!-- Primary Bar: lg+ - search as input field in center slot -->
       <nldd-split-view-pane slot="primary-bar-lg" above="lg">
         <nldd-container padding="8">
           <nldd-toolbar size="md">
@@ -378,6 +439,8 @@ const hasDocumentTabs = computed(
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
                 <nldd-menu-item text="Ondersteuning" icon="support" @click="openSupport"></nldd-menu-item>
+                <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
+                <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
                 <template v-if="!authLoading && authenticated">
                   <nldd-menu-divider></nldd-menu-divider>
                   <nldd-menu-item text="Log uit" icon="logout" @click="logout"></nldd-menu-item>
@@ -388,7 +451,7 @@ const hasDocumentTabs = computed(
         </nldd-container>
       </nldd-split-view-pane>
 
-      <!-- Document Tab Bar (editor only, md+). Hidden on sm — there the tabs
+      <!-- Document Tab Bar (editor only, md+). Hidden on sm - there the tabs
            live in the MobileTrajectSheet opened from the traject row. Rendered
            only while the active view publishes open tabs, so the library never
            shows an empty bar. -->
@@ -412,7 +475,7 @@ const hasDocumentTabs = computed(
         </nldd-container>
       </nldd-split-view-pane>
 
-      <!-- Main content area — the active section's body. -->
+      <!-- Main content area - the active section's body. -->
       <nldd-split-view-pane slot="main">
         <router-view />
       </nldd-split-view-pane>
@@ -566,6 +629,8 @@ const hasDocumentTabs = computed(
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
                 <nldd-menu-item text="Ondersteuning" icon="support" @click="openSupport"></nldd-menu-item>
+                <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
+                <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
                 <template v-if="!authLoading && authenticated">
                   <nldd-menu-divider></nldd-menu-divider>
                   <nldd-menu-item text="Log uit" icon="logout" @click="logout"></nldd-menu-item>
@@ -592,6 +657,23 @@ const hasDocumentTabs = computed(
       >
         <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login(loginRedirect || editorTabHref)"></nldd-button>
         <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
+      </nldd-inline-dialog>
+    </nldd-container>
+  </nldd-popover>
+
+  <!-- Enabling the GitHub-koppeling flag is a deployment-wide write-path
+       switch, not a personal preference like its neighbours in the Functies
+       list - confirm before every writer's saves start requiring a linked
+       GitHub account (see onFunctieFlagSelect). -->
+  <nldd-popover ref="enforcementConfirm" accessible-label="GitHub-koppeling inschakelen" width="360px" @close="onEnforcementConfirmClose">
+    <nldd-container padding="16">
+      <nldd-inline-dialog
+        icon="exclamation-triangle"
+        text="GitHub-koppeling voor iedereen inschakelen?"
+        supporting-text="Dit geldt voor de hele omgeving, niet alleen voor jou: opslaan in een traject vereist daarna voor elke gebruiker een gekoppeld GitHub-account. Wie nog niet gekoppeld heeft, wordt bij de eerstvolgende opslag naar de koppel-flow geleid."
+      >
+        <nldd-button slot="actions" variant="primary" text="Inschakelen" @click="confirmUserOauthEnforcement"></nldd-button>
+        <nldd-button slot="actions" text="Annuleren" @click="enforcementConfirm?.hide()"></nldd-button>
       </nldd-inline-dialog>
     </nldd-container>
   </nldd-popover>

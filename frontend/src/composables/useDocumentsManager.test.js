@@ -111,7 +111,7 @@ describe('useDocumentsManager', () => {
     await nextTick();
     m.titleDraft.value = 'nieuw';
     const ok = await m.handleSave();
-    // The rename itself succeeded — content is saved under the new name.
+    // The rename itself succeeded - content is saved under the new name.
     expect(ok).toBe(true);
     expect(h.api.currentPath.value).toBe('nieuw.md');
     expect(h.api.deleteDocument).toHaveBeenCalledWith('oud.md');

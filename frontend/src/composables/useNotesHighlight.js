@@ -14,12 +14,12 @@
  * their text, and align that against the raw text with a two-pointer scan.
  *
  * Assumption (not an invariant the code can enforce): the only transforms
- * marked applies to corpus law text are raw-only — numbered-list prefixes
+ * marked applies to corpus law text are raw-only - numbered-list prefixes
  * (`1. `) dropped from the visible text, and whitespace runs collapsed by
  * HTML. Under that assumption every DOM char appears in the raw text in the
  * same order, the scan only ever skips *raw* characters, and a raw span maps
  * to a contiguous DOM range. Inline markdown that *adds* DOM characters
- * (`**bold**`, `[text](url)`, headings) would break this — corpus articles
+ * (`**bold**`, `[text](url)`, headings) would break this - corpus articles
  * are not expected to contain it, but if a DOM char cannot be matched the
  * scan reports `desynced` so the caller can drop highlighting for that
  * article rather than smear every offset onto the wrong words.
@@ -51,7 +51,7 @@ export function buildAlignment(rawText, domNodes) {
   // char (the "\n\n" paragraph break) were allowed to map onto such a node,
   // a span crossing two list items would produce a slice for it and
   // AnnotatedText would wrap a focusable, styled <mark> around a bare "\n"
-  // sitting between <li>s — invalid HTML and an empty highlight blob. The
+  // sitting between <li>s - invalid HTML and an empty highlight blob. The
   // raw paragraph break instead aligns via the normal raw-advance path.
   const dom = [];
   for (const { node, text } of domNodes) {
@@ -67,7 +67,7 @@ export function buildAlignment(rawText, domNodes) {
   let d = 0;
   // Track the longest contiguous run of *significant* (non-whitespace) DOM
   // chars that the scan had to skip. A real divergence this two-pointer scan
-  // cannot model — inline markdown that added visible DOM text — shows up as
+  // cannot model - inline markdown that added visible DOM text - shows up as
   // exactly that: a contiguous block of DOM chars with no raw counterpart,
   // after which every offset is shifted (the "smear"). The legitimate
   // raw-only transforms (list prefixes, collapsed whitespace) never leave

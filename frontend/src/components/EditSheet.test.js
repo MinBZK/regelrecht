@@ -6,13 +6,13 @@ import EditSheet from './EditSheet.vue';
 // Vite is configured with `isCustomElement: tag => tag.startsWith('nldd-')`
 // (vite.config.js), so Vue's compiler emits raw HTML elements for the
 // `<nldd-sheet>` tag rather than Vue components. The Vue Test Utils
-// `stubs:` map doesn't apply to those — the template ref ends up pointing
+// `stubs:` map doesn't apply to those - the template ref ends up pointing
 // at a real HTMLElement in happy-dom, which has no `show()` / `hide()`
 // methods, so EditSheet's `watch(item, ...)` throws an unhandled
 // rejection on every mount.
 //
 // Register a minimal custom element that *does* expose show/hide so the
-// watcher runs cleanly. We don't care about visual rendering — the tests
+// watcher runs cleanly. We don't care about visual rendering - the tests
 // drive the component via `wrapper.vm.values` / `wrapper.vm.save()`.
 beforeAll(() => {
   if (typeof customElements !== 'undefined' && !customElements.get('nldd-sheet')) {
@@ -128,7 +128,7 @@ describe('EditSheet', () => {
       });
 
       // Fill name, sourceRegulation, sourceOutput by mutating the values
-      // ref directly — querying inputs by index is brittle when several
+      // ref directly - querying inputs by index is brittle when several
       // text-field stubs render.
       wrapper.vm.values.name = 'leeftijd';
       wrapper.vm.values.type = 'number';
@@ -290,7 +290,7 @@ describe('EditSheet', () => {
       wrapper.vm.save();
       await nextTick();
       const events = wrapper.emitted('save');
-      // User-typed value emits as a string — we don't second-guess what
+      // User-typed value emits as a string - we don't second-guess what
       // they meant, and the save path treats explicit edits as opaque
       // text.
       expect(events[0][0].data.source.parameters).toEqual({ threshold: '99' });
@@ -425,7 +425,7 @@ describe('EditSheet', () => {
   });
 
   // Tests drive the combo-box change handlers directly; filter/search UX lives in nldd-combo-box.
-  describe('input — law combo-box flow', () => {
+  describe('input - law combo-box flow', () => {
     const mockLaws = [
       { law_id: 'wet_basisregistratie_personen', name: null, display_name: 'Wet basisregistratie personen', source_id: 'local', source_name: 'Local' },
       { law_id: 'wet_op_de_zorgtoeslag', name: null, display_name: 'Wet op de zorgtoeslag', source_id: 'local', source_name: 'Local' },
@@ -505,7 +505,7 @@ describe('EditSheet', () => {
       wrapper.vm.values.name = 'custom_input';
       wrapper.vm.onOutputComboChange({ detail: { value: 'leeftijd' } });
       expect(wrapper.vm.values.name).toBe('custom_input');
-      // Type is still updated — it's determined by the source output, not the user
+      // Type is still updated - it's determined by the source output, not the user
       expect(wrapper.vm.values.type).toBe('number');
     });
 

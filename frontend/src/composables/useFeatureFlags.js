@@ -1,5 +1,5 @@
 /**
- * useFeatureFlags — singleton feature flag store with API sync.
+ * useFeatureFlags - singleton feature flag store with API sync.
  *
  * Fetches flags from /api/feature-flags on first use, falls back to
  * hardcoded defaults when the API is unavailable (e.g. no database).
@@ -14,6 +14,11 @@ const DEFAULTS = {
   'panel.yaml_editor': true,
   'panel.machine_readable': true,
   'panel.notes': true,
+  // Per-user GitHub OAuth link (spike, PR #887): gates the "Koppel
+  // GitHub-account" affordance in the account menu. Off by default so the
+  // spike stays invisible until a user opts in; the backend is independently
+  // gated on GITHUB_OAUTH_* env vars (unconfigured deployments never show it).
+  'github.user_oauth': false,
 };
 
 // Local overrides survive refresh when the backend has no persistence (dev).
@@ -48,7 +53,7 @@ async function loadFlags() {
         errorMessage: (status) => `HTTP ${status}`,
       });
       // The server (DB) is authoritative for any flag it returns, so it wins
-      // over a stale local override — otherwise a client toggle saved during a
+      // over a stale local override - otherwise a client toggle saved during a
       // no-DB session would silently beat a later DB-backed (e.g. admin-set)
       // value. A local override only fills in flags the server does not define,
       // which is the no-DB (503) survival path below.
@@ -85,7 +90,7 @@ async function toggle(key) {
       saveLocal({ ...loadLocal(), [key]: newValue });
       return;
     }
-    // Clear any stale local override for this key — server is now authoritative.
+    // Clear any stale local override for this key - server is now authoritative.
     const local = loadLocal();
     if (key in local) {
       delete local[key];

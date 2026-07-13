@@ -1,6 +1,6 @@
 <script setup>
 /**
- * DocumentEditor — the active-document editor, driven by a useDocumentsManager
+ * DocumentEditor - the active-document editor, driven by a useDocumentsManager
  * instance passed in as `manager`. Renders:
  *  - a sticky top toolbar: document name + rename/delete menu (start), and the
  *    Save button + revert menu (end) shown only while there are unsaved changes;
@@ -193,7 +193,7 @@ function dismissDeleteNotice() {
     <nldd-toolbar size="md">
         <!-- Back to the document list, shown only while the sidebar is stacked
              away. --context-back-button-display comes from the split-view pane
-             ('none' when the sidebar is visible) — the same signal nldd-top-title-bar
+             ('none' when the sidebar is visible) - the same signal nldd-top-title-bar
              uses. :not([hidden]) yields to the toolbar's own overflow hiding. -->
         <nldd-toolbar-item slot="start" class="wd-back">
           <nldd-icon-button icon="chevron-left" text="Terug naar werkdocumenten" tooltip-timing="never" @click="$emit('back')"></nldd-icon-button>

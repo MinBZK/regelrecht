@@ -82,7 +82,7 @@ describe('useDependencies.loadAllDependencies', () => {
   it('loads EVERY version of a dependency (in-force + future), not just one', async () => {
     // Regression for the temporal-federation bug: a referenced law that has a
     // future-dated version must have *all* its versions loaded so the engine
-    // can pick the one in force on the scenario date — loading only the future
+    // can pick the one in force on the scenario date - loading only the future
     // version would fail "not yet in force" for a past-dated scenario.
     const inForce = '$id: zorgverzekeringswet\nvalid_from: \'2025-01-01\'\narticles: []\n';
     const future = '$id: zorgverzekeringswet\nvalid_from: \'2099-01-01\'\narticles: []\n';
@@ -103,7 +103,7 @@ describe('useDependencies.loadAllDependencies', () => {
   it('isolates an unloadable version: a bad version does not drop the good ones', async () => {
     // Regression for the federated-corpus case where a law has an executable
     // version AND an old-schema / text-only harvested version the engine can't
-    // parse. The harvested version must not abort the whole law — the engine
+    // parse. The harvested version must not abort the whole law - the engine
     // must still hold the executable one so select_in can resolve it.
     const bad = '$id: zorgverzekeringswet\nvalid_from: \'2026-02-21\'\nUNLOADABLE: true\n';
     const good = '$id: zorgverzekeringswet\nvalid_from: \'2025-01-01\'\narticles: []\n';
@@ -121,7 +121,7 @@ describe('useDependencies.loadAllDependencies', () => {
   });
 
   it('treats an empty version list as a missing dependency (requests harvest)', async () => {
-    // /versions returning [] means no version is available — the loader must
+    // /versions returning [] means no version is available - the loader must
     // not silently succeed; it routes the id to the harvest request like a
     // fetch failure. The harvest call is the only network request.
     const fetchSpy = vi.fn(async (url) => {
@@ -146,7 +146,7 @@ describe('useDependencies.loadAllDependencies', () => {
     // persists across scenario-panel mounts (and is pre-warmed by the machine
     // view), so a dependency is often already loaded by the time the panel
     // resolves its graph. The data-source column type map is built from the
-    // fetched version YAMLs (versionsCache), NOT from the engine — so an
+    // fetched version YAMLs (versionsCache), NOT from the engine - so an
     // already-loaded dep must STILL have its versions fetched. Gating the fetch
     // on `engine.hasLaw` left the cache empty on a warm engine and collapsed
     // every typed cell (boolean dropdown, euro field, date picker) to a plain
@@ -166,7 +166,7 @@ describe('useDependencies.loadAllDependencies', () => {
   it('does not chase transitive deps of a fetched-but-unloadable (missing) law', async () => {
     // The transitive-ref scan must run only for a "usable" law (already loaded,
     // or newly loaded). A law whose versions are all fetched but unloadable is
-    // missing/broken — chasing its refs would queue deps of a law that can't
+    // missing/broken - chasing its refs would queue deps of a law that can't
     // run. (Regression for moving the scan out of the try/catch.)
     const unloadableZvw = [
       '$id: zorgverzekeringswet',

@@ -33,11 +33,11 @@ defineProps({
   /* Translucent ink so the close button sits on any service colour
    * (light or dark mode) without a per-mode override. color-mix on
    * --semantics-content-color picks up the theme's high-contrast
-   * ink — black-ish in light, white-ish in dark — at 65% opacity.
+   * ink - black-ish in light, white-ish in dark - at 65% opacity.
    *
    * color-mix(in oklch, ...) needs Chrome 111+/FF 113+/Safari 16.2+,
    * which is strictly within the design system's existing light-dark()
-   * floor (Chrome 123+/FF 120+/Safari 17.5+) — anything that can paint
+   * floor (Chrome 123+/FF 120+/Safari 17.5+) - anything that can paint
    * the rest of the page can paint this too. The fallback color
    * declaration below makes the button visible on the (long-defunct)
    * older browsers that load this stylesheet but can't parse color-mix. */

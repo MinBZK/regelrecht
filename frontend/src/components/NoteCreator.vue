@@ -1,13 +1,13 @@
 <script setup>
 /**
- * NoteCreator — the note authoring form (RFC-018 write path, steps 3-5).
+ * NoteCreator - the note authoring form (RFC-018 write path, steps 3-5).
  *
  * Opened by AnnotatedText when the user selects text and clicks "Notitie".
  * Receives the raw [start,end) range the selection mapped to (selectionToRaw
  * already did the DOM->raw work). This component builds the TextQuoteSelector
  * (growing context until it is unique), lets the user pick a motivation and
  * fill the matching body, and emits a complete W3C Annotation object. It does
- * not persist — useDraftNotes (owned by EditorApp) does, so the new note
+ * not persist - useDraftNotes (owned by EditorApp) does, so the new note
  * highlights live alongside committed ones.
  */
 import { ref, computed, watch, onMounted } from 'vue';
@@ -29,7 +29,7 @@ const props = defineProps({
   article: { type: Object, default: null },
   // Loaded WASM engine (resolveNote) for selector uniqueness validation.
   engine: { type: Object, default: null },
-  // Active traject ref. Required to surface the "Document" link mode —
+  // Active traject ref. Required to surface the "Document" link mode -
   // without a traject there is no documents folder to pick from.
   trajectRef: { type: String, default: '' },
   // When set, the form opens in EDIT mode pre-filled from this existing draft
@@ -44,7 +44,7 @@ const emit = defineEmits(['create', 'cancel']);
 // The comment field, autofocused when the form opens so the user can type at once.
 const commentFieldEl = ref(null);
 
-// The note's author is the signed-in user — id for traceability, name for
+// The note's author is the signed-in user - id for traceability, name for
 // display. Not a free-text choice.
 const { person } = useAuth();
 // One flat form: the user fills any combination of a comment, an action
@@ -67,7 +67,7 @@ const isTask = ref(false);
 const taskDone = ref(false);
 const workflow = computed(() => (!isTask.value ? 'none' : taskDone.value ? 'resolved' : 'open'));
 // Share the note with the traject on save (commit to the traject branch) instead
-// of keeping it a private local draft. Default off — sharing is irreversible.
+// of keeping it a private local draft. Default off - sharing is irreversible.
 // Only offered when a traject is active (there is nowhere to share to otherwise).
 const shareWithTraject = ref(false);
 
@@ -182,7 +182,7 @@ const hasLink = computed(() => links.value.length > 0);
 const canSave = computed(() => {
   if (!selectorResult.value) return false;
   if (selectorStatus.value !== 'found') return false; // ambiguous/orphaned: fix first
-  // At least one piece of content — an action status alone isn't a note.
+  // At least one piece of content - an action status alone isn't a note.
   return hasComment.value || hasTag.value || hasLink.value;
 });
 
@@ -206,7 +206,7 @@ function applyRange(range) {
   }
 }
 watch(() => props.range, applyRange);
-// v-if mounts this fresh when editing starts, so the range is already set — run
+// v-if mounts this fresh when editing starts, so the range is already set - run
 // the setup once on mount (the non-immediate watch alone would miss it).
 onMounted(() => {
   applyRange(props.range);
@@ -214,7 +214,7 @@ onMounted(() => {
 });
 
 // EDIT mode: seed the form fields from an existing note's W3C body so the user
-// tweaks rather than retypes. Best-effort reverse of buildBody() — comment, tag,
+// tweaks rather than retypes. Best-effort reverse of buildBody() - comment, tag,
 // link (element vs document) and workflow.
 function prefill(note) {
   const body = note?.body;
@@ -243,7 +243,7 @@ function prefill(note) {
   taskDone.value = wf === 'resolved';
 }
 
-// Toggling "task" off also clears "done" — a non-task has no status.
+// Toggling "task" off also clears "done" - a non-task has no status.
 function onTaskChange(e) {
   isTask.value = e.detail?.checked ?? e.target?.checked ?? false;
   if (!isTask.value) taskDone.value = false;
@@ -309,7 +309,7 @@ function primaryMotivation() {
 
 // A note can combine parts, so the body is whatever was filled: the comment,
 // the ambiguity tag and/or the link. One part returns a single Body; several
-// return an array — both are valid per the annotation schema.
+// return an array - both are valid per the annotation schema.
 function buildBody() {
   const bodies = [];
   if (hasComment.value) {
@@ -341,7 +341,7 @@ function buildBody() {
   return bodies.length === 1 ? bodies[0] : bodies;
 }
 
-// One sharp line per failure reason — what went wrong + the single most
+// One sharp line per failure reason - what went wrong + the single most
 // useful fix. No bullet wall: the reason from buildSelector already
 // distinguishes "too common" from "not located", so the message can be
 // precise instead of listing every possibility.
@@ -464,7 +464,7 @@ const statusInfo = computed(() => {
 
         <!-- 4. Taak + delen. The three switches share one form-field, separated
              by small spacers: task-for-myself, (when a task) done, and (with an
-             active traject) share the note — sharing is irreversible. -->
+             active traject) share the note - sharing is irreversible. -->
         <nldd-spacer size="16"></nldd-spacer>
         <nldd-form-field>
           <nldd-switch-field
@@ -504,7 +504,7 @@ const statusInfo = computed(() => {
 
         <!-- Author is the signed-in user; no field. Full-width primary action;
              the user cancels by clicking outside the popover. The button never
-             disables — an empty submit shows the banner above instead. -->
+             disables - an empty submit shows the banner above instead. -->
         <nldd-spacer size="16"></nldd-spacer>
         <nldd-form-actions>
           <nldd-button

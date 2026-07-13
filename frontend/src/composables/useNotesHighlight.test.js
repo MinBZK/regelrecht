@@ -28,7 +28,7 @@ describe('buildAlignment', () => {
 
   it('skips a numbered-list prefix that marked removed from the DOM', () => {
     // Raw lid text "1. Indien ..."; marked renders <li><p>Indien ...</p></li>,
-    // so the DOM text node is "Indien ..." — the "1. " is raw-only.
+    // so the DOM text node is "Indien ..." - the "1. " is raw-only.
     const raw = '1. Indien de normpremie';
     const domText = 'Indien de normpremie';
     const node = tn(domText);

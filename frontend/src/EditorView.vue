@@ -70,7 +70,7 @@ const paneViews = ref(loadPaneViews());
 function loadPaneViews() {
   try {
     const stored = JSON.parse(localStorage.getItem(PANE_VIEWS_KEY) ?? 'null');
-    // Only accept entries we still recognise — a stale value left over
+    // Only accept entries we still recognise - a stale value left over
     // from a removed view (e.g. 'form' before scenario was renamed) or
     // an externally injected string would otherwise produce a pane with
     // no v-if branch matching it, briefly flashing an empty body before
@@ -100,7 +100,7 @@ watch(paneViews, (val) => {
 // Sync paneViews with availableViews when a flag flips:
 // - Drop panes whose view is no longer available (flag off → pane gone)
 // - Append a pane for any view that was JUST enabled by this change
-//   (in current available, not in previous) — so re-enabling a flag
+//   (in current available, not in previous) - so re-enabling a flag
 //   brings the pane back instead of silently leaving the user without
 //   it. The previous version compared "missing from paneViews" against
 //   the full available set, which spuriously appended every available
@@ -166,7 +166,7 @@ const canEdit = computed(
 );
 // The Tekst editor pane is editable whenever the user has write access. The
 // old `editor.article_text_edit` flag that gated this separately is merged into
-// the pane itself — the pane IS the editable text view, so this now just tracks
+// the pane itself - the pane IS the editable text view, so this now just tracks
 // canEdit (kept as a named alias for the text-edit affordances below).
 const canEditArticleText = computed(() => canEdit.value);
 
@@ -199,7 +199,7 @@ const {
 
 // When the active traject changes (router.push to /editor/{otherRef}/…)
 // the URL stays on the same component; re-fetch the open law through the
-// new traject's backends. The corpus list needs no handling here —
+// new traject's backends. The corpus list needs no handling here -
 // `useCorpusLaws(activeTrajectRef)` re-scopes reactively on the same
 // change. `switchLaw` crosses trajects too via its third argument so the
 // law cache key stays correct.
@@ -208,7 +208,7 @@ const {
 // without this a scenario run after a traject switch would evaluate
 // the open law against the *previous* traject's dependencies. The
 // dependency walker re-loads on demand on the next run, so a single
-// `unloadAllLaws` is enough — no per-dep bookkeeping needed.
+// `unloadAllLaws` is enough - no per-dep bookkeeping needed.
 watch(activeTrajectRef, (next) => {
   unloadAllLaws();
   if (lawId.value) {
@@ -260,7 +260,7 @@ const { draftNotesForArticle } = useResolvedDraftNotes(
 // folded in): wherever the pane is available, you can create notes in it.
 // Note creation is a writer action (it persists to the traject sidecar), so it
 // follows the same write-access gate as law-text editing. The old panel.notes
-// flag is gone — notes now live in the Tekst editor itself.
+// flag is gone - notes now live in the Tekst editor itself.
 const canCreateNotes = computed(() => canEdit.value);
 // Committed + draft notes share the highlight path. Draft entries already
 // carry __draft so the popover can mark them unsaved.
@@ -281,7 +281,7 @@ const noteById = computed(() => {
 });
 // Notes → DS annotations for the editable Tekst editor. Convert the resolver's
 // code-point spans to UTF-16 offsets against the SAVED text (not editedText) so
-// this stays stable while typing — the editor maps the anchors through edits
+// this stays stable while typing - the editor maps the anchors through edits
 // itself. Recomputes on article switch / save, when the notes re-resolve.
 const editorAnnotations = computed(() => {
   const text = selectedArticle.value?.text || '';
@@ -301,7 +301,7 @@ const editorAnnotations = computed(() => {
 // on the current editor selection.
 const noteCreator = reactive({ open: false, range: null, editing: null, initialNote: null });
 
-// — Note sheet (a right sheet hosting the badge note list and the editor) ——————
+// - Note sheet (a right sheet hosting the badge note list and the editor) ------
 // The editor (NoteCreator) is rendered as sheet content. Two entry points:
 // - annotation badge → open at the 'list' view (referenced text + note cards),
 //   from which editing/adding pushes the 'edit' view with a back button;
@@ -383,7 +383,7 @@ function onNoteCreated(note, share) {
   }
   resetNoteCreator();
   // "Deel met anderen binnen dit traject" was on: commit the just-created draft
-  // to the traject right away. No extra confirm — the switch was the deliberate,
+  // to the traject right away. No extra confirm - the switch was the deliberate,
   // default-off opt-in. Needs traject write access (the switch only shows then).
   if (share && stored && canEdit.value) {
     void publishOneNote(stored);
@@ -450,7 +450,7 @@ const noteGroups = computed(() => {
   return [...groups.values()].sort((a, b) => a.start - b.start);
 });
 // A draft note lives in this browser's own localStorage, so it is the user's
-// by construction — every draft is deletable. Ownership (creator.id) is only
+// by construction - every draft is deletable. Ownership (creator.id) is only
 // meaningful for committed notes in the shared repo; gating drafts on it broke
 // per-note delete for pre-login drafts (no creator) and legacy drafts (whose
 // creator.id was stored undefined by an earlier bug), leaving only the bulk
@@ -499,8 +499,8 @@ const activeGroup = computed(() =>
 function canPublishNote(note) {
   return !!note?.__draft && canEdit.value;
 }
-// Publishing writes the note to the repo (Git) and can't be undone — it can't
-// be made private again — so it goes through a confirm modal. Same show()/hide()
+// Publishing writes the note to the repo (Git) and can't be undone - it can't
+// be made private again - so it goes through a confirm modal. Same show()/hide()
 // pattern as other DS modal dialogs: a pending ref (the note to publish) drives
 // the open/close via a watch, and @close just clears it.
 const publishModalEl = ref(null);
@@ -563,7 +563,7 @@ function onEditorAnnotationClick(ids, rect) {
   activeNotes.value = idList.map((id) => noteById.value.get(id)).filter(Boolean);
   if (!activeNotes.value.length) return;
   if (!rect) {
-    // No rect to anchor to (e.g. keyboard activation) — skip the popover.
+    // No rect to anchor to (e.g. keyboard activation) - skip the popover.
     openNoteListSheet();
     return;
   }
@@ -598,7 +598,7 @@ onBeforeUnmount(() => {
 });
 
 const exporting = ref(false);
-// Local YYYY-MM-DD-HH-mm-ss stamp for download filenames — hyphens throughout
+// Local YYYY-MM-DD-HH-mm-ss stamp for download filenames - hyphens throughout
 // (no underscores, no colons), sortable, and unique enough to avoid clobbering
 // an earlier export from the same article.
 function fileTimestamp() {
@@ -653,7 +653,7 @@ function exportArticleNotes() {
 
 // Note write-back: PUT the new drafts to editor-api, which appends them to
 // the sidecar on the active traject's branch (same write model as law and
-// scenario edits since #632). No source picker — the traject's own corpus
+// scenario edits since #632). No source picker - the traject's own corpus
 // config decides where the notes land. The "PR #N" toolbar badge is driven
 // by the shared lastSavedPr ref, so a save that produced a PR lights it up
 // with no extra wiring here.
@@ -665,7 +665,7 @@ const notesSaveStatus = ref(null);
 // The save status/error describe the LAST publish. A NEW draft appearing
 // afterwards makes the confirmation stale ("Notitie gedeeld" next to a fresh
 // unsaved draft is contradictory), so clear it then. Sharing itself removes the
-// just-shared draft — clearing on a DECREASE would wipe the very confirmation
+// just-shared draft - clearing on a DECREASE would wipe the very confirmation
 // publishOneNote is about to set. Only react to an increase; the count going
 // down is a share/delete completing.
 watch(draftCount, (count, prev) => {
@@ -684,7 +684,7 @@ const searchPopoverRef = ref(null);
 // the shell's search button/field opens it.
 registerSearchPopover(searchPopoverRef);
 
-// Shared corpus list via `useCorpusLaws` — the same per-scope cache
+// Shared corpus list via `useCorpusLaws` - the same per-scope cache
 // MachineReadable reads, so an editor mount fires ONE laws-list fetch
 // instead of a private duplicate GET. Traject switches re-scope
 // reactively; fetch failures degrade to the humanized law id.
@@ -718,14 +718,14 @@ function retryLoadLaw() {
 }
 
 function onSearchSelectLaw(lawIdVal) {
-  // Open in the library — search currently only matches law names. As
+  // Open in the library - search currently only matches law names. As
   // soon as article-level search lands, we can route directly into the
   // editor (with the chosen article as the active tab).
   router.push(libraryRouteFor(lawIdVal));
 }
 
 async function onSearchHarvestAvailable(slug) {
-  // Best-effort reload — a failure just means the list below may not
+  // Best-effort reload - a failure just means the list below may not
   // include the fresh law yet.
   await apiFetch('/api/corpus/reload', {
     method: 'POST',
@@ -783,7 +783,7 @@ function saveActiveTab(tab) {
  * traject scope. With a traject in the URL the user stays in
  * `editor-traject` (full edit mode). EditorView only ever mounts under a
  * traject (the editor requires one), so the no-traject branch should not
- * fire here — but for safety it routes to the chooser with the law as
+ * fire here - but for safety it routes to the chooser with the law as
  * query rather than the (now removed) no-traject editor.
  */
 function editorRouteFor(lawIdVal, articleNumber) {
@@ -868,18 +868,18 @@ async function selectTab(tab) {
     lawNames.value = { ...lawNames.value, [tab.lawId]: lawName.value };
   }
   // Sync the URL so deep-linking and browser back/forward stay in step.
-  // `replace` (not `push`) keeps history clean — a tab switch isn't
+  // `replace` (not `push`) keeps history clean - a tab switch isn't
   // navigation the user wants to undo with the back button.
   router.replace(editorRouteFor(tab.lawId, tab.articleNumber));
 }
 
-// On load there may be no article to edit yet — the URL carries no article
+// On load there may be no article to edit yet - the URL carries no article
 // (just a traject, or a law without an article number). Rather than show the
 // empty state while tabs are still open, open one right away: the last active
 // tab when the URL has no law at all (so a refresh returns the user where they
 // were), otherwise simply the first open tab. selectTab sets activeTab
 // synchronously, so the empty state never flashes. With no open tabs we fall
-// through to it — the only case it should appear.
+// through to it - the only case it should appear.
 if (!route.params.articleNumber && openTabs.value.length > 0) {
   const lastActive = loadSavedActiveTab();
   const restored = !route.params.lawId && lastActive?.lawId
@@ -888,7 +888,7 @@ if (!route.params.articleNumber && openTabs.value.length > 0) {
   selectTab(restored || openTabs.value[0]).catch(console.warn);
 }
 
-// Browser back/forward (or any external navigation) — pull state from
+// Browser back/forward (or any external navigation) - pull state from
 // URL. Local mutations from selectTab already match the destination,
 // so the guards below short-circuit; the work only happens for true
 // URL changes.
@@ -1014,7 +1014,7 @@ function handleScenarioExecuted({ result, traceText, error, running, expectation
   lastExpectations.value = expectations || {};
   lastScenarioName.value = scenarioName || '';
   lastOutputName.value = outputName || null;
-  // Open exactly one of the two sheets — opening the second on top of
+  // Open exactly one of the two sheets - opening the second on top of
   // the first would leave the previous one as a stale layer that
   // re-appears when the user dismisses the foreground sheet.
   if (view === 'graph') {
@@ -1026,7 +1026,7 @@ function handleScenarioExecuted({ result, traceText, error, running, expectation
   }
 }
 
-// Clear the captured trace whenever the active law changes — otherwise
+// Clear the captured trace whenever the active law changes - otherwise
 // LawGraphView would re-flatten the old trace under the new lawId,
 // misattribute every step to the new law, and pin the "▶ start" badge
 // to a leaf that just happens to share the previous output's name.
@@ -1059,7 +1059,7 @@ const machineReadable = ref(null);
 // The YAML pane edits the machine-readable as text. There is something to edit
 // when the article carries machine_readable, or one was created/edited this
 // session (the live ref). With neither, the empty code editor is replaced by a
-// message — like the Machine pane and the read-only YAML view. Deliberately not
+// message - like the Machine pane and the read-only YAML view. Deliberately not
 // keyed on the live ref alone: clearing or mid-typing invalid YAML nulls it, and
 // that must not yank the editor out from under the user.
 const hasMachineReadable = computed(
@@ -1093,7 +1093,7 @@ function setTextEditorRef(idx) {
 // toggle-commando's aan. Lezen van activeFormats in de template houdt de
 // controls reactief in sync met de selectie.
 
-// Vet/Schuin: checkbox-control — de geselecteerde waardes zijn de actieve
+// Vet/Schuin: checkbox-control - de geselecteerde waardes zijn de actieve
 // inline-formats (beide kunnen tegelijk aan staan).
 function boldItalicValues(idx) {
   const refs = textEditorRefs[idx];
@@ -1175,13 +1175,13 @@ const parsedRawLaw = computed(() => {
 // into ScenarioBuilder, so in-memory edits re-execute scenarios without a
 // round-trip through the backend.
 //
-// Only the currently selected article's machine_readable is swapped — edits
+// Only the currently selected article's machine_readable is swapped - edits
 // on other articles are not tracked across tab switches (existing behavior
 // of the editor state model).
 //
 // KNOWN LIMITATION: when this value is sent to `saveLaw` (via the Machine
 // panel save button), the body is the `yaml.dump` output of the
-// reconstructed document — which strips YAML comments and may reorder
+// reconstructed document - which strips YAML comments and may reorder
 // top-level keys compared to `rawYaml`. The YAML-pane edit path preserves
 // the user's exact text via `yamlSource`, so it does not have this drift.
 // Today's corpus is harvester-generated and comment-free, so the impact is
@@ -1195,7 +1195,7 @@ const currentLawYaml = computed(() => {
   if (!base) return rawYaml.value;
   try {
     // Shallow-clone the doc and the articles array so our splice doesn't
-    // mutate the memoized `parsedRawLaw` value — Vue would consider the
+    // mutate the memoized `parsedRawLaw` value - Vue would consider the
     // computed still fresh but the next read would see our substituted
     // article instead of the original.
     const doc = { ...base };
@@ -1217,7 +1217,7 @@ const currentLawYaml = computed(() => {
     const mrPristine = baselineMr === currentMr
       || JSON.stringify(baselineMr) === JSON.stringify(currentMr);
     if (textPristine && mrPristine) return rawYaml.value;
-    // Only splice fields that have diverged from the base — passing
+    // Only splice fields that have diverged from the base - passing
     // `machineReadable.value` verbatim when it's null would erase the
     // article's machine_readable from the serialized doc, and similarly
     // for text. The dirty computeds below drive this same contract.
@@ -1245,14 +1245,14 @@ const currentLawYaml = computed(() => {
 // Load current law into engine. Reacts to currentLawYaml so in-memory
 // edits are immediately visible to scenarios. Goes through
 // useEngine.loadLawYaml so the engine's scope-tracking map sees this
-// load under the right traject — otherwise a later loadDependency call
+// load under the right traject - otherwise a later loadDependency call
 // for the same law id would treat it as already-current and skip the
 // refetch on a traject switch.
 // `currentLawYaml` re-dumps on every keystroke, so reacting directly would
 // reload the WASM engine per keystroke. Debounce the reload ~300ms after the
 // last edit; keep the first load (no previous yaml) synchronous so the initial
-// load isn't delayed. Subsequent transitions from an existing yaml — keystroke
-// edits, article switches, traject switches — debounce.
+// load isn't delayed. Subsequent transitions from an existing yaml - keystroke
+// edits, article switches, traject switches - debounce.
 let engineLoadDebounce = null;
 
 async function reloadEngineLaw(lawYaml, isReady) {
@@ -1291,7 +1291,7 @@ onBeforeUnmount(() => clearTimeout(engineLoadDebounce));
 // with a fresh `yaml.load(text)` object whose key order comes from the
 // textarea, so a no-op round-trip can flip this flag to `true` even when
 // the semantic content is unchanged. That's a conservative false positive
-// — the worst case is an enabled save button — so we accept it rather
+// - the worst case is an enabled save button - so we accept it rather
 // than pay for a canonical YAML dump on every keystroke.
 const isMachineReadableDirty = computed(() => {
   if (!selectedArticle.value) return false;
@@ -1312,7 +1312,7 @@ const isArticleTextDirty = computed(() => {
 
 // Tracks which pane(s) had dirty edits at the time of the most recent save
 // attempt. Used to scope `lawSaveError` to the pane that actually triggered
-// the save — without this, a save initiated from the machine pane that
+// the save - without this, a save initiated from the machine pane that
 // fails would surface the "Opslaan mislukt" dialog inside the text-pane
 // body too, blaming a pane the user didn't touch.
 const lastSaveTouchedText = ref(false);
@@ -1336,7 +1336,7 @@ async function handleLawSave() {
     await saveLaw(lawYaml);
     if (lawId.value !== savedLawId) return; // law switched mid-PUT
     // points at the re-parsed article. The `watch(selectedArticle)` above
-    // fires on the next microtask — leaving a window where the dirty
+    // fires on the next microtask - leaving a window where the dirty
     // computeds still see the pre-save values and the save button stays
     // enabled, enabling a double-save click. Reset local state explicitly
     // from the freshly-parsed article so both dirty flags clear
@@ -1352,7 +1352,7 @@ async function handleLawSave() {
     // text was edited orphans (surfaced in the issues list) rather than silently
     // re-attaching. Fire-and-forget.
     if (lastSaveTouchedText.value) void reloadNotes();
-    // Successful save — the dialog flags drop back to false.
+    // Successful save - the dialog flags drop back to false.
     lastSaveTouchedText.value = false;
     lastSaveTouchedMachine.value = false;
   } catch (e) {
@@ -1387,7 +1387,7 @@ const articleDirty = computed(
   () => isArticleTextDirty.value || isMachineReadableDirty.value,
 );
 
-// Throw away every in-memory edit for the selected article — the same reset
+// Throw away every in-memory edit for the selected article - the same reset
 // the post-save cleanup performs, minus the PUT.
 function discardArticle() {
   const fresh = selectedArticle.value;
@@ -1441,10 +1441,10 @@ watchEffect(() => {
 
 // Reflect navigation depth + unsaved state in the document title:
 //   "• Editor: Art. 5 · Wet op de zorgtoeslag · 15 juni test · RegelRecht"
-// A leading dot flags unsaved changes — it stays visible even when the tab
+// A leading dot flags unsaved changes - it stays visible even when the tab
 // title is truncated to its start. Then the mode prefix, then most-specific to
 // least-specific (article, law, traject) with the brand last. Lives here (after
-// articleDirty) and is always set — a static router.afterEach fallback used to
+// articleDirty) and is always set - a static router.afterEach fallback used to
 // race this effect on tab/article switches.
 watchEffect(() => {
   const detail = [];
@@ -1463,12 +1463,12 @@ function onYamlInput(event) {
   // host's `value` property is updated before dispatch so
   // event.target.value would also work, but reading from detail keeps
   // the contract explicit and matches how the storybook docs the API.
-  // `??` skips only null/undefined — a deliberate empty string passes
+  // `??` skips only null/undefined - a deliberate empty string passes
   // through as a valid "user cleared the editor" input.
   const text = event.detail?.value ?? event.target?.value;
   if (text == null) {
     // Structurally broken event (no detail, no value on target). Don't
-    // touch yamlSource — silently overwriting with the previous value
+    // touch yamlSource - silently overwriting with the previous value
     // would swallow keystrokes a user can see in the textarea but
     // never sees committed to the reactive source. Surface it loudly
     // instead so the regression is obvious in dev console.
@@ -1487,7 +1487,7 @@ function onYamlInput(event) {
 
 function handleSave({ section, key, newKey, index, data }) {
   // JSON round-trip clone: Vue reactive proxies aren't structuredClone-able
-  // in all envs. Safe because law YAML is JSON-plain — but Date/undefined
+  // in all envs. Safe because law YAML is JSON-plain - but Date/undefined
   // are NOT preserved, which only matters if a future field becomes
   // date-typed (use an explicit serialiser then).
   const mr = machineReadable.value
@@ -1539,7 +1539,7 @@ function handleSave({ section, key, newKey, index, data }) {
 // array index. Out-of-range indices and missing keys are no-ops so a
 // stale event from the UI can never crash.
 function handleDelete({ section, key, index }) {
-  // JSON clone — see handleSave: Date/undefined not preserved (fine for
+  // JSON clone - see handleSave: Date/undefined not preserved (fine for
   // JSON-plain law data).
   const mr = machineReadable.value
     ? JSON.parse(JSON.stringify(machineReadable.value))
@@ -1667,7 +1667,7 @@ function findIncompleteOperation(value) {
   // NOT wraps a single value/operation; reject the empty-string stub created
   // when transitioning from arithmetic ops via changeOperationType.
   if (op === 'NOT' && (value.value ?? '') === '') return op;
-  // AGE has two structural slots — both must be filled. Empty strings are
+  // AGE has two structural slots - both must be filled. Empty strings are
   // the seed values from changeOperationType('AGE'); reject them so the
   // user can't save a stub.
   if (op === 'AGE') {
@@ -1712,7 +1712,7 @@ async function handleActionSave() {
     }
     // Reject incomplete nested operations (e.g. ADD with empty values[]) that
     // the user inserted via "Voeg operatie toe" but never filled in.
-    // Note: a literal empty-string `value` is permitted at this layer — the
+    // Note: a literal empty-string `value` is permitted at this layer - the
     // schema validator on save handles type-specific validation; rejecting it
     // here would block the legitimate "set output now, fill value via YAML
     // pane later" workflow used by the test suite and the editor's manual
@@ -1727,8 +1727,8 @@ async function handleActionSave() {
   // sheet's "Opslaan" is a real save, so the Machine pane won't show a
   // separate dirty/save affordance for sheet edits. On a failed PUT the
   // edits stay in the model and the Machine pane's normal dirty/save
-  // affordance is the fallback — no data loss either way.
-  // JSON clone — see handleSave: reactive proxy not structuredClone-able;
+  // affordance is the fallback - no data loss either way.
+  // JSON clone - see handleSave: reactive proxy not structuredClone-able;
   // Date/undefined not preserved (fine for JSON-plain law YAML).
   machineReadable.value = JSON.parse(JSON.stringify(machineReadable.value));
   yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
@@ -1736,7 +1736,7 @@ async function handleActionSave() {
   // Close the sheet unconditionally: the mutations are already committed
   // above, so even if handleLawSave() throws the sheet must not stay open
   // showing a now-clean (isDirty === false) state. A failed PUT falls back
-  // to the Machine pane's normal dirty/save affordance — no data loss.
+  // to the Machine pane's normal dirty/save affordance - no data loss.
   try {
     await handleLawSave();
   } finally {
@@ -1785,7 +1785,7 @@ async function handleActionSave() {
           </nldd-simple-section>
         </nldd-page>
 
-        <!-- Error state — mirrors the library's law-load failure pattern.
+        <!-- Error state - mirrors the library's law-load failure pattern.
              404s typically mean "the law isn't part of the active traject"
              (e.g. after a traject switch); we surface a traject-specific
              message and a quick "Naar bibliotheek" exit. Other failures
@@ -1813,7 +1813,7 @@ async function handleActionSave() {
           </nldd-simple-section>
         </nldd-page>
 
-        <!-- All editor flags off — paneViews is empty so the
+        <!-- All editor flags off - paneViews is empty so the
              side-by-side view would render zero pane slots. Surface an
              explicit empty-state with a CTA to the settings menu so
              the user understands the editor isn't broken. -->
@@ -1831,7 +1831,7 @@ async function handleActionSave() {
         <nldd-side-by-side-split-view v-else :panes="String(paneViews.length)">
           <!-- Compound key: when a flag flip shifts which view sits at a
                given index, Vue would otherwise patch the existing pane in
-               place — leaking ScenarioBuilder form state and engine
+               place - leaking ScenarioBuilder form state and engine
                results into a different view. Re-keying on the view id
                forces an unmount + remount on identity change, at the
                (acceptable) cost of losing pane scroll position. -->
@@ -1927,7 +1927,7 @@ async function handleActionSave() {
                       ></nldd-menu-item>
                     </nldd-menu-group>
                   </nldd-toolbar-item>
-                  <!-- Vet/Schuin — checkbox segmented control (beide kunnen
+                  <!-- Vet/Schuin - checkbox segmented control (beide kunnen
                        tegelijk actief zijn). Bron van waarheid: de Tiptap-
                        editor; de control reflecteert de selectie. -->
                   <nldd-toolbar-item
@@ -1967,7 +1967,7 @@ async function handleActionSave() {
                       ></nldd-menu-item>
                     </nldd-menu-group>
                   </nldd-toolbar-item>
-                  <!-- Lijsttype — radio segmented control: geen / opsomming /
+                  <!-- Lijsttype - radio segmented control: geen / opsomming /
                        genummerd. "Geen" (minus-small) heft de actieve lijst op. -->
                   <nldd-toolbar-item
                     v-if="view === 'text' && selectedArticle && textEditorRefs[idx]"
@@ -2015,7 +2015,7 @@ async function handleActionSave() {
                       ></nldd-menu-item>
                     </nldd-menu-group>
                   </nldd-toolbar-item>
-                  <!-- Inspringen — vergroot/verklein de inspringing van de
+                  <!-- Inspringen - vergroot/verklein de inspringing van de
                        geselecteerde regels. Laagste prioriteit (0), dus deze
                        verdwijnt als eerste naar de overflow. -->
                   <nldd-toolbar-item
@@ -2060,7 +2060,7 @@ async function handleActionSave() {
                       ></nldd-menu-item>
                     </nldd-menu-group>
                   </nldd-toolbar-item>
-                  <!-- Notitie toevoegen — annotatie op de huidige selectie.
+                  <!-- Notitie toevoegen - annotatie op de huidige selectie.
                        Prioriteit tussen de mode-switcher (4) en de opmaak-
                        controls (Tekststijl 2, Lijst 1) in, zodat deze primaire
                        actie pas na de opmaak naar de overflow verdwijnt. -->
@@ -2090,7 +2090,7 @@ async function handleActionSave() {
                       @select="startNoteFromSelection(idx)"
                     ></nldd-menu-item>
                   </nldd-toolbar-item>
-                  <!-- Notities downloaden — expandable icon-button (area end) met
+                  <!-- Notities downloaden - expandable icon-button (area end) met
                        een menu: dit artikel, of de hele wet, als YAML. -->
                   <nldd-toolbar-item
                     v-if="view === 'notes' && selectedArticle && notesForArticle.length > 0"
@@ -2128,7 +2128,7 @@ async function handleActionSave() {
                 </nldd-toolbar>
               </nldd-container>
 
-              <!-- Tekst — WYSIWYG editor when the user can edit, otherwise the
+              <!-- Tekst - WYSIWYG editor when the user can edit, otherwise the
                    read-only ArticleText display. The format controls in the
                    header toolbar guard on `textEditorRefs[idx]`, which only the
                    WYSIWYG component populates, so they auto-hide when read-only. -->
@@ -2240,7 +2240,7 @@ async function handleActionSave() {
                     <template v-for="(note, i) in activeNotes" :key="i">
                       <nldd-spacer v-if="i > 0" size="16"></nldd-spacer>
                       <nldd-rich-text>
-                        <p>{{ noteText(note) || '—' }}</p>
+                        <p>{{ noteText(note) || '-' }}</p>
                       </nldd-rich-text>
                       <template v-if="noteAuthor(note)">
                         <nldd-spacer size="4"></nldd-spacer>
@@ -2284,7 +2284,7 @@ async function handleActionSave() {
                   <nldd-inline-dialog
                     variant="alert"
                     text="WASM engine niet geladen"
-                    :supporting-text="`${engineInitError.message} — voer 'just wasm-build' uit om de WASM module te bouwen.`"
+                    :supporting-text="`${engineInitError.message} - voer 'just wasm-build' uit om de WASM module te bouwen.`"
                   ></nldd-inline-dialog>
                 </nldd-simple-section>
                 <ScenarioBuilder
@@ -2317,7 +2317,7 @@ async function handleActionSave() {
                 </template>
               </nldd-simple-section>
 
-              <!-- Notities — every note for this article, one under the other,
+              <!-- Notities - every note for this article, one under the other,
                    plus the draft-management actions moved from the Tekst pane.
                    Deliberately minimal for now; to be fine-tuned later. -->
               <nldd-simple-section v-else-if="view === 'notes'" width="full">
@@ -2453,7 +2453,7 @@ async function handleActionSave() {
     <nldd-button slot="actions" variant="primary" text="Sluiten" @click="dismissSaveError"></nldd-button>
   </nldd-modal-dialog>
 
-  <!-- Trace sheet — execution trace + expected outcomes for the most
+  <!-- Trace sheet - execution trace + expected outcomes for the most
        recently executed scenario. Opened from a scenario card's "Toon
        resultaat" button. -->
   <nldd-sheet
@@ -2479,7 +2479,7 @@ async function handleActionSave() {
     </nldd-page>
   </nldd-sheet>
 
-  <!-- Graph sheet — visual law graph with the scenario's trace overlay.
+  <!-- Graph sheet - visual law graph with the scenario's trace overlay.
        Opened from a scenario card's "Graaf" button. -->
   <nldd-sheet
     ref="graphSheetEl"

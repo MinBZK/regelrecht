@@ -9,6 +9,11 @@ use serde::Deserialize;
 
 use crate::state::AppState;
 
+/// Key of the GitHub user-OAuth flag (PR #887). Shared with the write path
+/// (`github_oauth::write_requires_user_token`), which reads this flag to
+/// decide whether traject writes must carry the acting user's own token.
+pub const GITHUB_USER_OAUTH: &str = "github.user_oauth";
+
 static DEFAULTS: LazyLock<HashMap<String, bool>> = LazyLock::new(|| {
     HashMap::from([
         ("panel.article_text".into(), true),
@@ -28,11 +33,33 @@ static DEFAULTS: LazyLock<HashMap<String, bool>> = LazyLock::new(|| {
         // so the editor would stay read-only no matter how many times the
         // menu toggle is flipped.
         ("editor.article_text_edit".into(), false),
+        // GitHub user-OAuth (spike, PR #887). One switch, two effects: it
+        // shows the "Koppel GitHub-account" affordance in the account menu
+        // AND makes traject writes require the acting user's own GitHub token
+        // (`github_oauth::write_requires_user_token`) — linking is never
+        // offered-but-inert. Default off so the spike stays invisible until
+        // opted in. Same allow-list rule: without this key the toggle PUT
+        // 400s and the frontend silently reverts it, so the toggle would
+        // never stick.
+        (GITHUB_USER_OAUTH.into(), false),
     ])
 });
 
 fn defaults() -> HashMap<String, bool> {
     DEFAULTS.clone()
+}
+
+/// Effective value of a single flag: the stored row when present, else the
+/// registered default. Errors propagate — the write path treats "can't read
+/// the flag" as a failure, never as "assume the default".
+pub async fn flag_enabled(
+    pool: &sqlx::PgPool,
+    key: &str,
+) -> regelrecht_pipeline::error::Result<bool> {
+    Ok(regelrecht_pipeline::feature_flags::get_flag(pool, key)
+        .await?
+        .map(|flag| flag.enabled)
+        .unwrap_or_else(|| DEFAULTS.get(key).copied().unwrap_or(false)))
 }
 
 pub async fn list_feature_flags(State(state): State<AppState>) -> Json<HashMap<String, bool>> {

@@ -76,7 +76,7 @@ function findFeatureFiles(dir) {
 /** Extract metadata from a corpus YAML.
  *
  * Uses js-yaml so block scalars (`>-`, `|`) and quoted strings are decoded
- * correctly — the previous line-based parser captured the literal `>-`
+ * correctly - the previous line-based parser captured the literal `>-`
  * marker as the value, which broke the library entry for any YAML that
  * folded its name across multiple lines.
  */
@@ -178,7 +178,7 @@ for (const source of localSources) {
 // annotation directories are already keyed by the law's $id. The
 // _vocabulary/ dir is also copied: the note creator's ambiguity-tag picker
 // (RFC-018 write path) reads it so the editor's tag list and the CI
-// soft-validation list cannot drift — one source of truth.
+// soft-validation list cannot drift - one source of truth.
 const annotationsSrc = resolve(projectRoot, 'corpus', 'annotations');
 if (existsSync(annotationsSrc)) {
   const annotationsDest = resolve(destDir, 'annotations');

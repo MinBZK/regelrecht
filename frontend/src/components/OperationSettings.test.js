@@ -9,7 +9,7 @@ import OperationSettings from './OperationSettings.vue';
 // via wrapper.vm), so we leave them as raw HTMLElement and only stub the
 // methods that the watcher / lifecycle would otherwise complain about.
 beforeAll(() => {
-  // No custom element registration needed for OperationSettings — it
+  // No custom element registration needed for OperationSettings - it
   // doesn't call show()/hide() on any host the way EditSheet does.
 });
 
@@ -41,7 +41,7 @@ function mountOp(node, { editable = true } = {}) {
   });
 }
 
-describe('OperationSettings — AGE op', () => {
+describe('OperationSettings - AGE op', () => {
   describe('operationValues', () => {
     it('returns date_of_birth and reference_date rows for an AGE node', () => {
       const node = {
@@ -198,7 +198,7 @@ describe('OperationSettings — AGE op', () => {
   });
 });
 
-describe('OperationSettings — DATE_DIFF op', () => {
+describe('OperationSettings - DATE_DIFF op', () => {
   function dateDiffNode() {
     return {
       operation: 'DATE_DIFF',
