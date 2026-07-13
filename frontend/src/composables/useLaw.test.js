@@ -91,6 +91,45 @@ describe('useLaw optimistic concurrency', () => {
     // The stale ETag is kept - the user reloads to pick up a fresh one.
     expect(law.currentEtag.value).toBe('"v1"');
   });
+
+  // Review-modus approval (EditorView's handleLawSave) saves a task's full
+  // proposed YAML instead of the article-scoped splice `currentLawYaml`
+  // builds. `saveLaw` takes arbitrary YAML text and PUTs it verbatim, so no
+  // second save path exists for that - this test pins the contract review
+  // mode relies on: the PUT body is exactly the override text passed in
+  // (here, a full two-article proposal unrelated to the loaded law's single
+  // article), and If-Match still carries the currently loaded ETag.
+  it('sends an arbitrary override YAML verbatim as the PUT body (review-mode full-save)', async () => {
+    const calls = [];
+    globalThis.fetch = vi.fn().mockImplementation(async (url, opts) => {
+      calls.push({ url, opts: opts ?? {} });
+      if (opts?.method === 'PUT') {
+        return res({ etag: '"v2"', json: { pr: null, etag: '"v2"' } });
+      }
+      return res({
+        body: '$id: wet_review\narticles:\n  - number: "1"\n    text: origineel\n',
+        etag: '"v1"',
+      });
+    });
+
+    const law = useLaw('wet_review', null, 'tr-12345678');
+    await waitForLoaded(law);
+    expect(law.currentEtag.value).toBe('"v1"');
+
+    const overrideYaml =
+      '$id: wet_review\narticles:\n  - number: "1"\n    text: voorgesteld\n' +
+      '  - number: "2"\n    text: nieuw artikel\n';
+    await law.saveLaw(overrideYaml);
+
+    const put = calls.find((c) => c.opts?.method === 'PUT');
+    expect(put).toBeTruthy();
+    expect(put.opts.body).toBe(overrideYaml);
+    expect(put.opts.headers['If-Match']).toBe('"v1"');
+    expect(law.currentEtag.value).toBe('"v2"');
+    // The local law state converges on the full override, not a splice -
+    // both articles from the proposal are present after the save.
+    expect(law.articles.value.map((a) => a.number)).toEqual(['1', '2']);
+  });
 });
 
 describe('useLaw fetch dedup (single-flight)', () => {

@@ -1328,10 +1328,12 @@ const lastSaveTouchedMachine = ref(false);
 // diverges from the saved law (seeding `editedText`/`machineReadable`,
 // the same pane-local "current" refs a manual edit would touch), so the
 // existing dirty-tracking and Wijzigingenbalk (Opslaan/Wijzigingen-
-// ongedaan) drive review the same way they drive a manual edit - no
-// separate review-only save path. Like `currentLawYaml` below, this is
-// single-article-scoped: a proposal touching several articles only seeds
-// the first one that differs.
+// ongedaan) drive the review UI the same way they drive a manual edit.
+// The SEEDING is single-article-scoped like `currentLawYaml` below (a
+// proposal touching several articles only seeds the first one that
+// differs into the panes), but the SAVE is not: `handleLawSave` sends the
+// full `reviewProposedContent` when a review is active, so approving
+// always commits the entire proposal - never just the seeded article.
 const {
   reviewTask,
   proposedContent: reviewProposedContent,
@@ -1365,11 +1367,26 @@ function clearReviewQuery() {
 
 // Whether the proposal seeded anything (false when every proposed article
 // matches the saved law, or the only differences are articles the saved
-// law doesn't have - see the comment on the `find` below).
+// law doesn't have - see the comment on the loop below).
 const reviewSeeded = ref(false);
+// Whether the proposal touches article(s) beyond the single one seeded into
+// the editor panes (or, when nothing was seedable, the proposal touches
+// anything at all). The visible editor is always single-article-scoped, but
+// Opslaan now approves the FULL proposal regardless - this only drives the
+// banner copy that points the reviewer at the YAML panel for the rest.
+const reviewHasHiddenChanges = ref(false);
+
+function proposedArticleDiffers(current, proposedArticle) {
+  const sameText = (current?.text ?? '') === (proposedArticle.text ?? '');
+  const sameMr =
+    JSON.stringify(current?.machine_readable ?? null) ===
+    JSON.stringify(proposedArticle.machine_readable ?? null);
+  return !(sameText && sameMr);
+}
 
 function applyProposedContent(proposedYaml) {
   reviewSeeded.value = false;
+  reviewHasHiddenChanges.value = false;
   let proposed;
   try {
     proposed = yaml.load(proposedYaml);
@@ -1377,19 +1394,27 @@ function applyProposedContent(proposedYaml) {
     return; // malformed proposal - leave the saved content in place
   }
   const proposedArticles = Array.isArray(proposed?.articles) ? proposed.articles : [];
-  const target = proposedArticles.find((pa) => {
+  let target = null;
+  let othersDiffer = false;
+  for (const pa of proposedArticles) {
     const current = articles.value.find((a) => String(a.number) === String(pa.number));
     // v1 can only seed an EXISTING article as an unsaved edit (same
     // single-article model as `currentLawYaml`'s KNOWN LIMITATION below,
     // which has no way to splice in an article the saved law doesn't
-    // have) - skip proposals that only add new articles rather than
-    // pointing `selectedArticleNumber` at a number nothing resolves to.
-    if (!current) return false;
-    const sameText = (current.text ?? '') === (pa.text ?? '');
-    const sameMr =
-      JSON.stringify(current.machine_readable ?? null) === JSON.stringify(pa.machine_readable ?? null);
-    return !(sameText && sameMr);
-  });
+    // have) - a proposed article the saved law lacks always counts as a
+    // hidden change, never as the seed target.
+    if (!current) {
+      othersDiffer = true;
+      continue;
+    }
+    if (!proposedArticleDiffers(current, pa)) continue;
+    if (!target) {
+      target = pa;
+    } else {
+      othersDiffer = true;
+    }
+  }
+  reviewHasHiddenChanges.value = othersDiffer;
   if (!target) return; // nothing seedable differs - nothing to seed
   reviewSeeded.value = true;
   selectedArticleNumber.value = String(target.number);
@@ -1403,6 +1428,35 @@ function applyProposedContent(proposedYaml) {
     editedText.value = target.text ?? '';
   });
 }
+
+// Banner copy for the review-mode dialog. Opslaan always approves the FULL
+// proposal (see `handleLawSave`), so the copy says so explicitly; when the
+// proposal touches more than the single seeded article (or nothing could be
+// seeded at all), point the reviewer at the YAML panel (`panel.yaml_editor`)
+// for the parts the article-scoped editor can't show.
+const REVIEW_HIDDEN_CHANGES_NOTE =
+  'Het voorstel kan ook artikelen wijzigen die hier niet zichtbaar zijn — bekijk het YAML-paneel voor het geheel.';
+const reviewSupportingText = computed(() => {
+  if (reviewLoadError.value) return reviewLoadError.value;
+  if (!reviewSeeded.value) {
+    return (
+      'Dit voorstel wijkt niet af van een bestaand artikel dat de editor hier kan tonen, ' +
+      'of raakt alleen artikelen die hier niet zichtbaar zijn. Beoordeel het handmatig via ' +
+      `het YAML-paneel. ${REVIEW_HIDDEN_CHANGES_NOTE} Klik op "Voorstel opslaan en ` +
+      'goedkeuren" om het volledige voorstel te accepteren, of verwerp de taak.'
+    );
+  }
+  if (reviewStale.value) {
+    return (
+      'Let op: de wet is gewijzigd sinds deze verrijking draaide. Controleer het voorstel extra goed.' +
+      (reviewHasHiddenChanges.value ? ` ${REVIEW_HIDDEN_CHANGES_NOTE}` : '')
+    );
+  }
+  return (
+    'Opslaan keurt het volledige voorstel goed (de hele wet); Verwerpen wijst het af.' +
+    (reviewHasHiddenChanges.value ? ` ${REVIEW_HIDDEN_CHANGES_NOTE}` : '')
+  );
+});
 
 // Whether the tasks.job_review flag is on - split out of the watch below
 // as its own reactive source, because `useFeatureFlags` resolves
@@ -1474,8 +1528,16 @@ function dismissEnrichFeedback() {
 // Single save handler shared by the Tekst and Machine panes. The PUT writes
 // the whole law YAML, so one click persists every in-memory edit for the
 // selected article regardless of which pane surfaced the button.
+//
+// Review-modus: Opslaan approves the task, and approval must commit the
+// FULL proposal (spec §5.3/§6), not just the splice `currentLawYaml` makes
+// into the single selected article - a proposal touching several articles
+// would otherwise lose every article besides the one shown in the editor.
+// `saveLaw` already accepts arbitrary full-law YAML text (see its PUT body
+// in useLaw.js), so reusing it with `reviewProposedContent` instead of
+// `currentLawYaml` is the whole fix; no second save path is introduced.
 async function handleLawSave() {
-  const lawYaml = currentLawYaml.value;
+  const lawYaml = reviewActive.value ? reviewProposedContent.value : currentLawYaml.value;
   if (!lawYaml) return;
   // Snapshot the law id before the await. saveLaw itself guards its own
   // reactive writes with the same check, but the post-save cleanup below
@@ -1483,8 +1545,12 @@ async function handleLawSave() {
   // in-progress edits with its pristine article data if the user switched
   // laws mid-flight.
   const savedLawId = lawId.value;
-  lastSaveTouchedText.value = isArticleTextDirty.value;
-  lastSaveTouchedMachine.value = isMachineReadableDirty.value;
+  // In review-modus the saved YAML is the full proposal, not a splice of
+  // the visible pane's edits - always treat it as touching text (notes
+  // re-anchor safely; skipping would risk leaving a note's positions stale
+  // against text the proposal actually changed elsewhere in the law).
+  lastSaveTouchedText.value = reviewActive.value ? true : isArticleTextDirty.value;
+  lastSaveTouchedMachine.value = reviewActive.value ? true : isMachineReadableDirty.value;
   try {
     await saveLaw(lawYaml);
     if (lawId.value !== savedLawId) return; // law switched mid-PUT
@@ -2004,15 +2070,22 @@ async function handleActionSave() {
                 v-if="reviewActive || reviewLoadError"
                 :variant="reviewLoadError || reviewStale || (reviewActive && !reviewSeeded) ? 'alert' : undefined"
                 text="Voorstel uit verrijking"
-                :supporting-text="
-                  reviewLoadError
-                    || (!reviewSeeded
-                      ? 'Dit voorstel wijkt niet af van een bestaand artikel dat de editor kan tonen - beoordeel het handmatig, of verwerp de taak.'
-                      : reviewStale
-                        ? 'Let op: de wet is gewijzigd sinds deze verrijking draaide. Controleer het voorstel extra goed.'
-                        : 'Opslaan keurt het voorstel goed; Verwerpen wijst het af.')
-                "
+                :supporting-text="reviewSupportingText"
               >
+                <!-- Wijzigingenbalk only appears when a pane is dirty, which
+                     `!reviewSeeded` never is (nothing was seeded into the
+                     panes) - give the banner its own primary action so
+                     approving a proposal that touches nothing visible here
+                     is still reachable. -->
+                <nldd-button
+                  v-if="reviewActive && !reviewSeeded"
+                  slot="actions"
+                  variant="primary"
+                  text="Voorstel opslaan en goedkeuren"
+                  :loading="lawSaving || undefined"
+                  :disabled="lawSaving || undefined"
+                  @click="handleLawSave"
+                ></nldd-button>
                 <nldd-button
                   v-if="reviewActive"
                   slot="actions"
