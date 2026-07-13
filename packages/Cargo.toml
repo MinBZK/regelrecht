@@ -24,8 +24,10 @@ panic = "warn"
 async-trait = "0.1"
 axum = "0.8"
 base64 = "0.22"
-# Symmetric AEAD for encrypting per-user GitHub OAuth tokens at rest (ZAD has
-# no keyvault). `getrandom` gives `OsRng` for nonce generation.
+# Symmetric AEAD for sealing per-user GitHub OAuth tokens into the browser
+# cookie - the token is deliberately never stored server-side (no DB row, no
+# session-store entry; see editor-api github_oauth.rs). `getrandom` gives
+# `OsRng` for nonce generation.
 chacha20poly1305 = { version = "0.10", features = ["getrandom"] }
 chrono = { version = "0.4", features = ["serde"] }
 openidconnect = "4.0"
