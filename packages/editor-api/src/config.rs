@@ -61,6 +61,14 @@ impl AppConfig {
             .ok()
             .filter(|s| !s.trim().is_empty())
             .unwrap_or_else(|| "claude".to_string());
+        if !regelrecht_pipeline::enrich::ENRICH_PROVIDERS.contains(&task_enrich_provider.as_str()) {
+            return Err(format!(
+                "TASK_ENRICH_PROVIDER={task_enrich_provider:?} is geen geldige provider \
+                 (verwacht een van {:?}). Een typo hier valt in de worker stil terug op de \
+                 default provider en omzeilt de per-provider-uurcap — fail-fast bij opstarten.",
+                regelrecht_pipeline::enrich::ENRICH_PROVIDERS
+            ));
+        }
 
         Ok(Self {
             oidc,

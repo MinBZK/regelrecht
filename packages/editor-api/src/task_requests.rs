@@ -30,6 +30,11 @@ const MAX_INPUT_BYTES: usize = 2 * 1024 * 1024;
 /// Prioriteit boven de corpus-brede bulk (default 50): een mens wacht erop.
 const TASK_ENRICH_PRIORITY: i32 = 80;
 
+/// Maximum aantal gelijktijdig actieve (pending/processing) taak-flow-jobs
+/// per account. Beschermt de prio-80-queue en het LLM-uurbudget tegen een
+/// scripted flood; ruim boven normaal menselijk gebruik.
+const MAX_ACTIVE_TASK_JOBS_PER_ACCOUNT: i64 = 20;
+
 #[derive(serde::Serialize)]
 pub struct EnrichRequestResponse {
     pub job_id: Uuid,
@@ -78,17 +83,32 @@ pub async fn request_enrich(
         traject_ref: Some(traject_ref.clone()),
         source_etag: Some(source_etag),
     };
-    let payload_json = serde_json::to_value(&payload).map_err(|e| {
-        tracing::error!(error = %e, "enrich-payload serialiseren mislukt");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "interne fout".to_string(),
-        )
-    })?;
+    let payload_json = serde_json::to_value(&payload).map_err(internal("payload serialiseren"))?;
 
     // Input-blob + job in één transactie (patroon document-upload), idempotent
     // op (law_id, provider) via de bestaande unieke actieve-enrich-index.
     let mut tx = pool.begin().await.map_err(internal("begin tx"))?;
+
+    // Per-account-cap: telt actieve taak-flow-jobs van dit account vóórdat we
+    // er nog een bij enqueuen, zodat een scripted flood niet de prio-80-queue
+    // of het LLM-uurbudget kan opsouperen.
+    let (active_count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM jobs \
+         WHERE job_type = 'enrich' AND status IN ('pending', 'processing') \
+           AND payload->>'requested_by' = $1",
+    )
+    .bind(account.id.to_string())
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(internal("actieve taak-jobs tellen"))?;
+    if active_count >= MAX_ACTIVE_TASK_JOBS_PER_ACCOUNT {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "Je hebt te veel verrijkingen tegelijk lopen; wacht tot er een paar klaar zijn."
+                .to_string(),
+        ));
+    }
+
     // max_attempts 3 (default expliciet): transiënte fouten (fork-exhaustion,
     // provider-hiccups) zijn retryable; de input-blob overleeft tot definitief
     // falen, dus een retry her-materialiseert gewoon.
@@ -122,7 +142,24 @@ fn internal<E: std::fmt::Display>(what: &'static str) -> impl FnOnce(E) -> (Stat
         tracing::error!(error = %e, what, "enrich-aanvraag mislukt");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            "interne fout".to_string(),
+            "Er ging iets mis bij het aanvragen van de verrijking.".to_string(),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// De per-account-cap query vergelijkt `payload->>'requested_by'` (een
+    /// JSON-string) met `account.id.to_string()`. Dat is alleen correct als
+    /// serde een `Uuid` als dezelfde lowercase-hyphenated string serialiseert
+    /// als `Uuid::to_string()` — anders telt de query altijd 0 en is de cap
+    /// een no-op. Pin dat aannames hier vast.
+    #[test]
+    fn uuid_serializes_to_same_string_as_to_string() {
+        let id = Uuid::new_v4();
+        let json = serde_json::to_value(id).expect("uuid serialiseert");
+        assert_eq!(json, serde_json::Value::String(id.to_string()));
     }
 }
