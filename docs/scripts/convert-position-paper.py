@@ -400,7 +400,9 @@ def main():
     def put_code(m):
         idx = int(m.group(1))
         lang, code = listings[idx]
-        return (f'<nldd-code-viewer language="{lang}">'
+        # data-width="main" keeps the block on the prose column instead of
+        # the wide bleed nldd-rich-text gives code by default.
+        return (f'<nldd-code-viewer language="{lang}" data-width="main">'
                 f"{html_escape(code)}</nldd-code-viewer>")
 
     html = re.sub(r"<p>RRCODEBLOCK(\d+)</p>", put_code, html)
@@ -443,11 +445,15 @@ def main():
         r"<p>(<strong>(?:Figure|Table) \d+:</strong>)",
         r'<p class="rr-caption">\1', html)
 
-    # meaningful alt text for the one real image
+    # meaningful alt text for the one real image, plus intrinsic dimensions
+    # (from the SVG viewBox) so the browser reserves the space before the
+    # image loads — without them, anchor navigation lands above its target
+    # because the late-loading image pushes everything below it down.
     html = html.replace(
         'alt="image"',
         'alt="Dependency graph: the Wet op de zorgtoeslag at the center, '
-        'with labeled arrows to the ten regulations it draws on"')
+        'with labeled arrows to the ten regulations it draws on" '
+        'width="693" height="552"')
 
     # -- 11. headings for the outline ------------------------------------------------
     headings = [
