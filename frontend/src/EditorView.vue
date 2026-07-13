@@ -2093,7 +2093,7 @@ async function handleActionSave() {
                   <!-- Notities downloaden — expandable icon-button (area end) met
                        een menu: dit artikel, of de hele wet, als YAML. -->
                   <nldd-toolbar-item
-                    v-if="view === 'notes' && selectedArticle"
+                    v-if="view === 'notes' && selectedArticle && notesForArticle.length > 0"
                     slot="end"
                     label="Notities downloaden"
                     :priority="3"
