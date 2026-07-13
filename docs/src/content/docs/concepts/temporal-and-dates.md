@@ -61,3 +61,4 @@ Dates must be in canonical `YYYY-MM-DD` form, zero-padded; `2025-1-1` is rejecte
 - [Cross-Law References](./cross-law-references) - how an expired reference surfaces in a chain
 - [Execution Provenance](./execution-provenance) - validity windows in the receipt
 - [RFC-019: Law End Dates](/rfcs/rfc-019) and [RFC-021: Date Comparison](/rfcs/rfc-021) - full specifications
+- [Rules as Executed, section 9.4](/research/rules-as-executed#sec:versioning) - the position paper on version management and *ex tunc* versus *ex nunc* effects

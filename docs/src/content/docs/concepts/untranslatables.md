@@ -65,3 +65,4 @@ This is the point of the feature, not a side effect. Untranslatables tell us whi
 
 - [Law Format](./law-format) - structure of YAML law files
 - [RFC-012: Untranslatables](/rfcs/rfc-012) - full specification
+- [Rules as Executed, section 5.4](/research/rules-as-executed#sec:untranslatables) - the position paper on publishing what the format cannot yet say

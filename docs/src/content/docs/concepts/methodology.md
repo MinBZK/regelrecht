@@ -50,3 +50,7 @@ The MvT is the explanatory memorandum that accompanies Dutch legislation. It con
 - Edge cases the legislature considered
 
 These examples serve as the primary test cases for machine-readable interpretations.
+
+## Further reading
+
+- [Rules as Executed, section 5.3](/research/rules-as-executed#sec:translation) - the position paper on translating law at scale, with language models doing the labor and people doing the review

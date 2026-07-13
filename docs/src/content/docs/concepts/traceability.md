@@ -118,3 +118,4 @@ In Rust, call `evaluate_law_output_with_trace(...)` and render the `trace` field
 - [Hooks and Reactive Execution](./hooks-and-reactive-execution) - where the hook and override nodes come from
 - [Inversion of Control](./inversion-of-control) - the open-term delegation a trace shows
 - [Execution Provenance](./execution-provenance) - the receipt that wraps a trace for reproducibility
+- [Rules as Executed, section 8.3](/research/rules-as-executed#sec:explaining) - the position paper on explaining decisions from execution traces

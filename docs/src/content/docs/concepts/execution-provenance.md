@@ -80,3 +80,4 @@ A reproducible decision with a sealed receipt is a different animal from an opaq
 - [Multi-Org Execution](./multi-org-execution) - cross-organization value exchange
 - [RFC-013: Execution Provenance](/rfcs/rfc-013) - full specification
 - [RFC-014: Engine Conformance](/rfcs/rfc-014) - conformance test suite
+- [Rules as Executed, sections 4.4 and 4.5](/research/rules-as-executed#sec:attestation) - the position paper's constitutional case for attestation and the recipient's re-execution check
