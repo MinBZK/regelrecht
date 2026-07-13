@@ -395,7 +395,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     research: {
       title: 'Onderzoek',
-      lede: 'Het denkwerk achter RegelRecht schrijven we ook op voor een academisch publiek.',
+      lede: 'De verkenning roept vragen op die verder reiken dan techniek: wat het voor de verhouding tussen de staatsmachten betekent als wetsuitvoering publiek en narekenbaar wordt, en welke juridische status een uitvoerbare specificatie heeft. Dat denkwerk schrijven we op voor een academisch publiek, zodat juristen en bestuurskundigen het kunnen toetsen en aanscherpen.',
       items: [
         {
           title:
@@ -881,7 +881,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     research: {
       title: 'Research',
-      lede: 'The thinking behind RegelRecht, also written up for an academic audience.',
+      lede: 'The exploration raises questions that reach beyond technology: what it means for the balance between the branches of government when law execution becomes public and checkable, and what legal status an executable specification has. We write that thinking up for an academic audience, so that legal and public-administration scholars can test and sharpen it.',
       items: [
         {
           title:
