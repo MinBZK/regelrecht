@@ -237,15 +237,15 @@ pub struct TrajectJobView {
     /// Target `.md` path (from the job payload); `None` only for a malformed payload.
     pub target_path: Option<String>,
     pub status: JobStatus,
-    /// Failure reason (from `jobs.result->>'error'`), present when `status = failed`.
-    pub error: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
-/// List the traject's document-convert jobs that are still relevant to show:
-/// everything that is not `completed` (pending, processing, failed). A completed
-/// job is represented by the actual `.md` in the documents list, so it drops out
-/// of this view.
+/// List the traject's still-active document-convert jobs: `pending` and
+/// `processing`. A completed job is represented by the actual `.md` in the
+/// documents list, so it drops out of this view; a terminally failed job is no
+/// longer shown here either — the uploader instead gets a wegklikbare
+/// `job_failed` taak (see `worker::process_next_document_convert_job`), so a
+/// failure no longer lingers forever in the werkdocumenten status block.
 pub async fn list_traject_document_jobs(
     pool: &PgPool,
     traject_ref: &str,
@@ -255,16 +255,12 @@ pub async fn list_traject_document_jobs(
         SELECT id,
                payload->>'target_path' AS target_path,
                status,
-               result->>'error'        AS error,
                created_at
         FROM jobs
         WHERE traject_ref = $1
           AND job_type = 'document_convert'
-          AND status <> 'completed'
+          AND status IN ('pending', 'processing')
         ORDER BY created_at DESC
-        -- Bound the result: failed jobs are not auto-cleaned (phase 1), so a
-        -- traject with many failed uploads would otherwise grow this list (and
-        -- the status block that renders every row) without limit.
         LIMIT 100
         "#,
     )

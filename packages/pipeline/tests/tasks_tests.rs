@@ -412,3 +412,37 @@ async fn test_fail_with_retry_creates_task_only_when_attempts_exhausted() {
         .unwrap()
         .is_empty());
 }
+
+#[tokio::test]
+async fn test_document_jobs_list_excludes_failed() {
+    let db = TestDb::new().await;
+    let req = CreateJobRequest::new(JobType::DocumentConvert, "doc:testtraject-abcd1234/a.md")
+        .with_traject_ref("testtraject-abcd1234")
+        .with_payload(json!({
+            "upload_id": uuid::Uuid::new_v4(),
+            "traject_id": uuid::Uuid::new_v4(),
+            "traject_ref": "testtraject-abcd1234",
+            "target_path": "a.md"
+        }))
+        .with_max_attempts(1);
+    let job = job_queue::create_job(&db.pool, req).await.unwrap();
+    let claimed = job_queue::claim_job(&db.pool, Some(JobType::DocumentConvert))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(claimed.id, job.id);
+    job_queue::fail_job_terminal(&db.pool, job.id, None)
+        .await
+        .unwrap();
+
+    let views = regelrecht_pipeline::document_convert::list_traject_document_jobs(
+        &db.pool,
+        "testtraject-abcd1234",
+    )
+    .await
+    .unwrap();
+    assert!(
+        views.is_empty(),
+        "failed jobs horen niet meer in de documentenlijst"
+    );
+}

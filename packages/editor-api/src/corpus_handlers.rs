@@ -2784,6 +2784,7 @@ fn derive_markdown_target(filename: &str, existing: &[String]) -> String {
 /// the converted document will appear at.
 pub async fn upload_traject_document(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path(traject_ref): Path<String>,
     mut multipart: Multipart,
@@ -2923,7 +2924,7 @@ pub async fn upload_traject_document(
         traject_ref: traject_ref.clone(),
         target_path: target_path.clone(),
         provider: None,
-        requested_by: None,
+        requested_by: Some(account.id),
     };
     let payload_json = serde_json::to_value(&payload)
         .map_err(|e| upload_internal_error("serialize payload", e))?;

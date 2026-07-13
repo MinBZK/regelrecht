@@ -1310,6 +1310,33 @@ async fn process_next_document_convert_job(
                 tracing::warn!(job_id = %job.id, error = %e, "failed to delete document upload after terminal failure");
             }
             fail_result?;
+
+            // Informatieve taak voor de uploader, zodat de mislukking niet
+            // stil in de eeuwigheid verdwijnt (hij is nu ook uit de
+            // documenten-jobs-lijst gefilterd). Best-effort: een taak-fout mag
+            // het faalpad niet blokkeren.
+            if let Some(account_id) = payload.requested_by {
+                let task = crate::tasks::create_task(
+                    pool,
+                    crate::tasks::NewTask {
+                        task_type: crate::tasks::TaskType::JobFailed,
+                        assignee_account_id: Some(account_id),
+                        traject_id: Some(payload.traject_id),
+                        job_id: Some(job.id),
+                        title: format!("Conversie mislukt: {}", payload.target_path),
+                        payload: Some(serde_json::json!({
+                            "traject_ref": payload.traject_ref,
+                            "target_path": payload.target_path,
+                            "error": msg.clone(),
+                        })),
+                    },
+                )
+                .await;
+                if let Err(e) = task {
+                    tracing::error!(job_id = %job.id, error = %e, "faal-taak aanmaken mislukt");
+                }
+            }
+
             Ok(outcome_for_error(&msg))
         }
     }
