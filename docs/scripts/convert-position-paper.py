@@ -462,9 +462,9 @@ def main():
     ]
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    (OUT_DIR / "rules-as-executed.html").write_text(html)
+    (OUT_DIR / "rules-as-executed.html").write_text(html.rstrip("\n") + "\n")
     (OUT_DIR / "rules-as-executed.headings.json").write_text(
-        json.dumps(headings, indent=2))
+        json.dumps(headings, indent=2) + "\n")
     print(f"sections: {sec}, figures: {fig_no}, tables: {tab_no}, "
           f"headings: {len(headings)}, listings: {len(listings)}")
     print(f"wrote {OUT_DIR}/rules-as-executed.html ({len(html)} bytes)")
