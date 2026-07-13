@@ -356,6 +356,11 @@ export function useTrajectDocuments(trajectRef) {
     currentBody.value = body;
     currentEtag.value = null;
     const result = await saveCurrent({ ifMatch: null });
+    // Refresh the list so the new document shows up in the werkdocumenten pane
+    // right away, instead of only after a manual page refresh (mirrors
+    // uploadDocument). currentPath is already the new path, so its row lands
+    // pre-selected.
+    if (result?.ok) await fetchList();
     return result;
   }
 

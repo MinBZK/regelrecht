@@ -15,7 +15,7 @@ function title(path) {
 </script>
 
 <template>
-  <nldd-list variant="simple" arrow-navigation empty-text="Geen werkdocumenten">
+  <nldd-list variant="simple" arrow-navigation>
     <nldd-list-item
       v-for="doc in documents"
       :key="doc.path"

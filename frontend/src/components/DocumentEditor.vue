@@ -33,8 +33,6 @@ import {
 
 const props = defineProps({
   manager: { type: Object, required: true },
-  // Shown as the subtitle under the document title, for traject context.
-  trajectName: { type: String, default: '' },
 });
 const emit = defineEmits(['deleted', 'back']);
 
@@ -200,7 +198,7 @@ function dismissDeleteNotice() {
         </nldd-toolbar-item>
         <!-- Document title with an integrated xs action button; its rename/delete
              menu is teleported to body and anchored to it by id. -->
-        <nldd-toolbar-title slot="start" :text="docName" :supporting-text="trajectName || undefined">
+        <nldd-toolbar-title slot="start" :text="docName">
           <nldd-icon-button
             slot="action"
             id="document-actions-btn"

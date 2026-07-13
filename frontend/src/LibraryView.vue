@@ -90,7 +90,6 @@ const {
 } = docsMgr;
 
 const isWerkdocMode = computed(() => route.name === 'werkdocumenten-traject');
-const trajectName = computed(() => activeTraject.value?.name || '');
 const hasOpenDoc = computed(() => !!openDocPath.value);
 
 // Werkdocumenten upload (ported from main #918): file picker -> server-side
@@ -459,26 +458,40 @@ const articleNotFound = computed(() =>
 // 404 means the law isn't in the active traject's corpus; the error UI shows a traject-specific message.
 const lawErrorIs404 = computed(() => lawError.value?.status === 404);
 
-// Reflect navigation depth in the document title:
+// Reflect navigation depth in the document title, most-specific first so the
+// browser tab keeps the deepest level when truncated:
 //   "Art. 5 · Wet op de zorgtoeslag · 15 juni test · RegelRecht"
-// On a traject-scoped browse the active traject name is appended (like the
-// editor) so the browser tab and history show which traject you are viewing.
-// Most-specific first so browser tab truncation preserves the article number.
-// We deliberately omit the "Bibliotheek:" prefix here (unlike the editor) -
-// browsing laws is the implicit default, and the law name carries enough
-// context. The editor still prefixes because "Wijzig:" disambiguates the
-// edit context from the read-only browse.
+//   "beleidsnota · 15 juni test · RegelRecht"      (open werkdocument)
+//   "Werkdocumenten · 15 juni test · RegelRecht"   (werkdoc list, none open)
+//   "Leden · 15 juni test · RegelRecht"            (traject-instellingen)
+// The traject name is appended on a traject-scoped browse (like the editor) so
+// the tab and history show which traject you are in; it is null on the public
+// no-traject library, so it drops out there. "Home · RegelRecht" is the
+// fallback. We omit the "Bibliotheek:" prefix (unlike the editor) - browsing is
+// the implicit default and the leaf name carries enough context.
 // Always set (no early return) - router.afterEach used to set a static
 // fallback but it raced with this effect on tab/article switches.
 watchEffect(() => {
   const detail = [];
-  if (selectedArticle.value) detail.push(`Art. ${selectedArticle.value.number}`);
-  // Fall back to indexedLawName so the title reflects the URL even when the
-  // law itself failed to load.
-  const name = lawName.value || indexedLawName.value;
-  if (name) detail.push(name);
-  // Traject-scoped browse: append the traject name (resolves once the trajects
-  // list loads). Null on the public no-traject library, so it drops out there.
+  if (isWerkdocMode.value) {
+    // An open document names the tab; "Werkdocumenten" otherwise. Once a
+    // document is open we drop the section name - the title is context enough.
+    detail.push(hasOpenDoc.value && openDocPath.value
+      ? docsMgr.displayTitle(openDocPath.value)
+      : 'Werkdocumenten');
+  } else if (isInstellingenMode.value) {
+    detail.push(
+      instellingenTab.value === 'leden' ? 'Leden'
+        : instellingenTab.value === 'details' ? 'Traject details'
+          : 'Instellingen',
+    );
+  } else {
+    if (selectedArticle.value) detail.push(`Art. ${selectedArticle.value.number}`);
+    // Fall back to indexedLawName so the title reflects the URL even when the
+    // law itself failed to load.
+    const name = lawName.value || indexedLawName.value;
+    if (name) detail.push(name);
+  }
   if (activeTraject.value?.name) detail.push(activeTraject.value.name);
   document.title = detail.length > 0
     ? `${detail.join(' · ')} · RegelRecht`
@@ -1111,9 +1124,10 @@ watch(activeTrajectRef, () => {
                 <nldd-spacer size="16"></nldd-spacer>
                 <ConversionStatus :jobs="conversionJobs"></ConversionStatus>
                 <input ref="docFileInput" type="file" accept=".pdf,.doc,.docx" hidden @change="onDocFileChange" />
-                <nldd-activity-indicator v-if="docsLoading" timing="instant" text="Documenten laden" show-text></nldd-activity-indicator>
+                <nldd-activity-indicator v-if="docsLoading" text="Documenten laden" show-text></nldd-activity-indicator>
                 <nldd-inline-dialog v-else-if="docsError" variant="alert" text="Documenten niet geladen" :supporting-text="docsError.message"></nldd-inline-dialog>
-                <DocumentList v-else :documents="docList" :selected-path="openDocPath" @select="onDocSelect"></DocumentList>
+                <DocumentList v-else-if="docList.length" :documents="docList" :selected-path="openDocPath" @select="onDocSelect"></DocumentList>
+                <nldd-inline-dialog v-else text="Geen werkdocumenten" supporting-text="Maak een nieuw document of upload een PDF of DOCX."></nldd-inline-dialog>
               </nldd-simple-section>
             </nldd-page>
           </nldd-split-view-pane>
@@ -1208,11 +1222,11 @@ watch(activeTrajectRef, () => {
           <!-- Main (werkdoc mode): the document editor, or a placeholder. -->
           <nldd-split-view-pane v-else-if="isWerkdocMode" slot="main" :has-content="hasOpenDoc || undefined">
             <nldd-page v-if="hasOpenDoc" sticky-header sticky-footer>
-              <DocumentEditor ref="docEditorEl" :manager="docsMgr" :traject-name="trajectName" @back="onDocBack"></DocumentEditor>
+              <DocumentEditor ref="docEditorEl" :manager="docsMgr" @back="onDocBack"></DocumentEditor>
             </nldd-page>
             <nldd-page v-else>
               <nldd-simple-section width="full">
-                <nldd-inline-dialog text="Selecteer een document"></nldd-inline-dialog>
+                <nldd-inline-dialog text="Geen document open"></nldd-inline-dialog>
               </nldd-simple-section>
             </nldd-page>
           </nldd-split-view-pane>
