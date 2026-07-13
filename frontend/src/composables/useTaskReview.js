@@ -8,10 +8,14 @@
  * (doet de caller), dán resolve(approved).
  */
 import { ref } from 'vue';
-import { useTasks } from './useTasks.js';
+import { useTaskActions } from './useTasks.js';
 
 export function useTaskReview() {
-  const { fetchTask, resolveTask } = useTasks();
+  // useTaskActions(), not useTasks(): useTaskReview() is itself called
+  // unconditionally in EditorView's setup(), so joining the polled
+  // useTasks() here would start the 30s poll for every editor visitor
+  // (including anonymous ones) regardless of the tasks.job_review flag.
+  const { fetchTask, resolveTask } = useTaskActions();
   const reviewTask = ref(null);
   const proposedContent = ref(null);
   const stale = ref(false);
@@ -25,11 +29,16 @@ export function useTaskReview() {
         return;
       }
       const lawId = detail.payload?.law_id;
-      // Het law-YAML-resultaat is het bestand met de wet zelf; sidecars
-      // (.enrichment.yaml e.d.) committen we in v1 niet mee.
-      const lawFile = (detail.results || []).find(
-        (f) => !f.path.split('/').pop().startsWith('.')
-      );
+      // Het law-YAML-resultaat is het bestand met de wet zelf. De worker
+      // staged ook `features/*.feature`-bestanden naast `laws/...`, en die
+      // sorteren er soms vóór - dus eerst het exacte pad uit de payload
+      // proberen, en pas als dat niets oplevert terugvallen op de eerste
+      // niet-dot-prefixed file (sidecars als .enrichment.yaml sluiten we
+      // in v1 nog steeds uit).
+      const results = detail.results || [];
+      const lawFile =
+        results.find((f) => f.path === detail.payload?.yaml_path) ||
+        results.find((f) => !f.path.split('/').pop().startsWith('.'));
       if (!lawFile || !lawId) {
         loadError.value = 'Geen resultaat gevonden bij deze taak.';
         return;

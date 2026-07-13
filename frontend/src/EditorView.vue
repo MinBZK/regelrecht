@@ -8,7 +8,7 @@ import { useEngine } from './composables/useEngine.js';
 import { useAuth } from './composables/useAuth.js';
 import { useTrajects } from './composables/useTrajects.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
-import { useTasks } from './composables/useTasks.js';
+import { useTaskActions } from './composables/useTasks.js';
 import { useTaskReview } from './composables/useTaskReview.js';
 import { useNotes, useResolvedDraftNotes } from './composables/useNotes.js';
 import { useDraftNotes } from './composables/useDraftNotes.js';
@@ -1472,10 +1472,14 @@ const taskReviewFlagEnabled = computed(() => isEnabled('tasks.job_review'));
 // Fires once the law + its first article have finished loading (whether
 // that's the initial load or a tab-restore switchLaw), so it works
 // regardless of how the route.query.task navigation happened to arrive.
+// `reviewTaskIdParam` is itself a source: navigating from the TasksSheet
+// to a wet that is ALREADY open (the target law/article is unchanged) is a
+// query-only route change - `loading`/`selectedArticle` never flip, so
+// without this source the watch would simply never re-fire and the review
+// would never activate.
 watch(
-  [loading, selectedArticle, taskReviewFlagEnabled],
-  ([isLoading, article, flagEnabled]) => {
-    const taskId = reviewTaskIdParam.value;
+  [loading, selectedArticle, taskReviewFlagEnabled, reviewTaskIdParam],
+  ([isLoading, article, flagEnabled, taskId]) => {
     if (isLoading || !article || !taskId || !flagEnabled) return;
     if (reviewAttemptedForTaskId === taskId) return;
     reviewAttemptedForTaskId = taskId;
@@ -1497,9 +1501,12 @@ async function rejectReview() {
 
 // --- "Verrijk deze wet" (request a job_review task) ---------------------
 // Fire-and-forget request; the resulting job_review task shows up in the
-// Taken-badge/sheet on its next poll (useTasks already polls every 30s),
-// no extra refresh wired here.
-const { requestEnrich } = useTasks();
+// Taken-badge/sheet on its next poll (TasksButton/TasksSheet already poll
+// via useTasks() every 30s). Use the non-polling useTaskActions() here -
+// EditorView doesn't need the shared task list/badge count, and joining
+// useTasks() unconditionally in setup() would start that poll for every
+// editor visitor, including anonymous ones with the flag off.
+const { requestEnrich } = useTaskActions();
 const enrichFeedback = ref(null); // { variant, text } | null
 // Flag on, an actual traject open (write access implies a traject, see
 // `canEdit` above), and a law loaded - mirrors the gates other write

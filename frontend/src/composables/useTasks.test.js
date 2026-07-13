@@ -61,4 +61,23 @@ describe('useTasks', () => {
     const r2 = await requestEnrich('traject-abcd1234', 'test_wet');
     expect(r2.tooMany).toBe(true);
   });
+
+  it('useTaskActions triggert geen fetch bij aanroep (geen poll voor niet-badge/sheet-callers)', async () => {
+    const { useTaskActions } = await import('./useTasks.js');
+    const actions = useTaskActions();
+    // useTasks() plant zijn initial load een microtask-tick later (zie de
+    // comment daar) - flush een paar ticks om zeker te zijn dat
+    // useTaskActions() zelf geen vergelijkbare refresh plant.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(apiFetch).not.toHaveBeenCalled();
+    expect(actions).toEqual(
+      expect.objectContaining({
+        fetchTask: expect.any(Function),
+        resolveTask: expect.any(Function),
+        requestEnrich: expect.any(Function),
+        refresh: expect.any(Function),
+      })
+    );
+  });
 });

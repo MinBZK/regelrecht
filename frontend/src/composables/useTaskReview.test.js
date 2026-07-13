@@ -4,7 +4,7 @@ import { useTaskReview } from './useTaskReview.js';
 const fetchTask = vi.fn();
 const resolveTask = vi.fn();
 vi.mock('./useTasks.js', () => ({
-  useTasks: () => ({ fetchTask: (...a) => fetchTask(...a), resolveTask: (...a) => resolveTask(...a) }),
+  useTaskActions: () => ({ fetchTask: (...a) => fetchTask(...a), resolveTask: (...a) => resolveTask(...a) }),
 }));
 
 function openTask(overrides = {}) {
@@ -73,6 +73,21 @@ describe('useTaskReview', () => {
     await loadReview('t1', 'etag-1');
     expect(reviewTask.value).toBeNull();
     expect(loadError.value).toBe('Geen resultaat gevonden bij deze taak.');
+  });
+
+  it('kiest het result-bestand op payload.yaml_path, niet de eerste dot-loze file', async () => {
+    fetchTask.mockResolvedValue(
+      openTask({
+        payload: { law_id: 'test_wet', source_etag: 'etag-1', yaml_path: 'laws/w/law.yaml' },
+        results: [
+          { path: 'features/x.feature', content: 'Feature: ...' },
+          { path: 'laws/w/law.yaml', content: 'wet: ja' },
+        ],
+      })
+    );
+    const { proposedContent, loadReview } = useTaskReview();
+    await loadReview('t1', 'etag-1');
+    expect(proposedContent.value).toBe('wet: ja');
   });
 
   it('zet loadError wanneer de taak geen payload heeft', async () => {

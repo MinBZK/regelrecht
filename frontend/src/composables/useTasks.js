@@ -57,7 +57,15 @@ async function requestEnrich(trajectRef, lawId) {
 }
 
 export function useTasks() {
-  consumers += 1;
+  // Increment/register-unmount are both gated on an active component
+  // instance, and both need the SAME gate: a caller without one (e.g. a
+  // plain module/test context) never decrements either, so counting it in
+  // would leak a phantom consumer that keeps the poll interval alive
+  // forever. Non-component callers therefore don't influence the poll
+  // lifecycle at all - use `useTaskActions()` below if you don't want to
+  // join it in the first place.
+  const hasInstance = !!getCurrentInstance();
+  if (hasInstance) consumers += 1;
   if (!timer) {
     // Defer the initial load a microtask tick so a caller that immediately
     // fires its own request (e.g. requestEnrich right after useTasks()) gets
@@ -67,10 +75,7 @@ export function useTasks() {
     Promise.resolve().then(refresh);
     timer = setInterval(refresh, POLL_INTERVAL_MS);
   }
-  // Only register unmount cleanup when called during a component's setup();
-  // useTasks() is also called from plain module/test contexts (no active
-  // component instance) where onUnmounted would otherwise warn and no-op.
-  if (getCurrentInstance()) {
+  if (hasInstance) {
     onUnmounted(() => {
       consumers -= 1;
       if (consumers <= 0 && timer) {
@@ -88,4 +93,16 @@ export function useTasks() {
     resolveTask,
     requestEnrich,
   };
+}
+
+// useTaskActions - the non-polling half of useTasks(): action helpers only,
+// no shared tasks/openCount state and no consumer/timer registration. For
+// callers that only need to fetch/resolve/enrich a task (e.g. EditorView's
+// review mode and "Verrijk deze wet" action) and would otherwise start the
+// 30s poll unconditionally in setup() - including for anonymous visitors -
+// which breaks the AppShell invariant that anonymous visitors or callers
+// with the feature flag disabled never poll. Callers that DO want the
+// shared, polled task list (the Taken-badge/sheet) keep using useTasks().
+export function useTaskActions() {
+  return { fetchTask, resolveTask, requestEnrich, refresh };
 }

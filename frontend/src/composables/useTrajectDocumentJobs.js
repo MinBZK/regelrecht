@@ -1,6 +1,8 @@
 /**
- * useTrajectDocumentJobs - poll a traject's document-conversion jobs (running +
- * failed) for the werkdocumenten conversion-status block.
+ * useTrajectDocumentJobs - poll a traject's document-conversion jobs for the
+ * werkdocumenten conversion-status block. The endpoint only returns jobs
+ * still running - failures surface as job_failed tasks in the taken-sheet,
+ * not here.
  *
  * Mirrors the harvester `usePollingFetch` pattern (initial-load-only `loading`,
  * keep-stale on poll failure, auto-stop on unmount) but for the `{ jobs: [...] }`
