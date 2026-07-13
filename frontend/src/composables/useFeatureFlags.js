@@ -19,6 +19,10 @@ const DEFAULTS = {
   // spike stays invisible until a user opts in; the backend is independently
   // gated on GITHUB_OAUTH_* env vars (unconfigured deployments never show it).
   'github.user_oauth': false,
+  // Taken: verrijking op aanvraag met review-taken. Off by default; same
+  // allow-list rule as the flags above — the backend key must exist or the
+  // toggle PUT 400s and the switch silently reverts.
+  'tasks.job_review': false,
 };
 
 // Local overrides survive refresh when the backend has no persistence (dev).

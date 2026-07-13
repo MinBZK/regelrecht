@@ -42,6 +42,10 @@ static DEFAULTS: LazyLock<HashMap<String, bool>> = LazyLock::new(|| {
         // 400s and the frontend silently reverts it, so the toggle would
         // never stick.
         (GITHUB_USER_OAUTH.into(), false),
+        // Persoonlijke review-taken voor async jobs (verrijk-op-aanvraag +
+        // taken-sheet). Zelfde allow-list-regel: zonder deze key weigert de
+        // toggle-PUT met 400 en klapt de UI-switch stil terug.
+        ("tasks.job_review".into(), false),
     ])
 });
 
