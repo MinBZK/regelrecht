@@ -5,7 +5,7 @@ description: "Legal constructs the engine cannot express yet, why each one is a 
 
 The engine's operation set is deliberately small: arithmetic, comparison, conditional logic, date operations. Dutch law regularly uses constructs that fall outside this set. When a legal construct cannot yet be faithfully expressed with available operations, it is an **untranslatable**.
 
-"Untranslatable" means "not yet", not "never". It is not a verdict that the law is beyond machines. It is a named gap in the engine: a specific operation or schema feature we have not built yet. Every untranslatable is therefore a concrete feature request against the engine, recorded at the exact article that needs it.
+"Untranslatable" means "not yet", not "never". It is not a verdict that the law is beyond machines. It is a named gap in the engine: a specific operation or schema feature we have not built yet. Every untranslatable is therefore a concrete feature request against the engine, recorded at the exact article that needs it. The position paper makes publishing these gaps part of the proposal itself ([Rules as Executed, section 5.4](/research/rules-as-executed#sec:untranslatables)): a reader sees where interpretation still happens outside the format.
 
 The term comes from translation theory. The law-generate process *is* translation, from legal Dutch to machine-readable YAML, and some things do not cross that boundary yet.
 

@@ -72,7 +72,7 @@ When reproducing the decision, the engine uses these **sealed accepted values** 
 
 ## What this enables
 
-A reproducible decision with a sealed receipt is a different animal from an opaque one. A citizen requests their trace and sees which rules applied. An auditor re-runs the computation and gets the same number. A court reconstructs the reasoning step by step. And when a bug surfaces, every affected decision can be found by querying receipts for the engine version and regulation hash.
+A reproducible decision with a sealed receipt is a different animal from an opaque one. A citizen requests their trace and sees which rules applied. An auditor re-runs the computation and gets the same number. A court reconstructs the reasoning step by step. And when a bug surfaces, every affected decision can be found by querying receipts for the engine version and regulation hash. That check by the party with standing is the constitutional core of the position paper ([Rules as Executed, section 4.5](/research/rules-as-executed#sec:traceaccess)).
 
 ## Further reading
 
