@@ -128,7 +128,7 @@ function onEditorTab(e) {
 // backend's write-enforcement switch (`write_requires_user_token`), so turning
 // it on makes every editor-writer's next traject save require a linked
 // personal GitHub account (an unlinked user's save 428s into the connect
-// flow). Intercept the enable with an explicit confirmation popover — same
+// flow). Intercept the enable with an explicit confirmation popover - same
 // pattern as the login warning above. Disabling restores the pre-existing
 // service-token behaviour and stays a plain toggle.
 const enforcementConfirm = ref(null);
@@ -153,7 +153,7 @@ function confirmUserOauthEnforcement() {
 }
 // Release the anchor when the popover closes (confirm, cancel, or light
 // dismiss). nldd-popover toggles itself on EVERY subsequent click on its
-// anchor element (popover.js `_handleDocumentClick`) — leaving the settings
+// anchor element (popover.js `_handleDocumentClick`) - leaving the settings
 // button as anchor would hijack it: the next account-menu click opens this
 // popover and (auto-popover exclusivity) closes the menu.
 function onEnforcementConfirmClose() {
@@ -551,7 +551,7 @@ const hasDocumentTabs = computed(
 
   <!-- Enabling the GitHub-koppeling flag is a deployment-wide write-path
        switch, not a personal preference like its neighbours in the Functies
-       list — confirm before every writer's saves start requiring a linked
+       list - confirm before every writer's saves start requiring a linked
        GitHub account (see onFunctieFlagSelect). -->
   <nldd-popover ref="enforcementConfirm" accessible-label="GitHub-koppeling inschakelen" width="360px" @close="onEnforcementConfirmClose">
     <nldd-container padding="16">

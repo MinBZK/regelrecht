@@ -164,7 +164,7 @@ describe('installApiAuthGuard', () => {
     const { wrapped, original } = await freshGuard(401);
     await wrapped('/api/a'); // 401 → login redirect, latch set
     original.mockResolvedValue({ status: 428 });
-    await wrapped('/api/b'); // 428 while leaving the page — no second redirect
+    await wrapped('/api/b'); // 428 while leaving the page - no second redirect
     expect(loginSpy).toHaveBeenCalledTimes(1);
     expect(connectSpy).not.toHaveBeenCalled();
   });

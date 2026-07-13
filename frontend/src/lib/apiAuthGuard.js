@@ -22,7 +22,7 @@ import { useGithubAuth } from '../composables/useGithubAuth.js';
 // GitHub consent flow via `useGithubAuth().connect()`, which returns to the
 // current page with a `?github=connected|error|denied` marker. Note the
 // redirect leaves the page, so work not yet accepted by the backend stays
-// behind — the 428 write itself was refused, and the linking flow is a
+// behind - the 428 write itself was refused, and the linking flow is a
 // one-time detour per user.
 //
 // Deliberately NOT handled here:
@@ -91,7 +91,7 @@ export function installApiAuthGuard() {
       // requirement (documented on `github_oauth::user_write_token` in the
       // editor-api). This guard keys on nothing but the status code, so a
       // backend endpoint returning 428 for any other precondition would
-      // silently hijack its callers into the koppel-flow — use a different
+      // silently hijack its callers into the koppel-flow - use a different
       // status there instead. The requirement only fires for an
       // authenticated session on a deployment with the OAuth App configured,
       // so no auth/configured re-checks are needed here.
