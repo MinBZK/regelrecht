@@ -17,10 +17,14 @@ mod inner {
     use crate::models::GitHubSource;
 
     /// Commit identity used on Contents/Git Data API writes. Both
-    /// `committer` and `author` accept this shape — currently we set them
-    /// to the same value so the human editor shows up on both sides of the
-    /// git commit, and rely on the GitHub token's account for the actual
-    /// push credentials.
+    /// `committer` and `author` accept this shape — we set them to the
+    /// same value so the human editor shows up on both sides of the git
+    /// commit when the write authenticates with a shared service/bot
+    /// token. When the write authenticates with the acting user's own
+    /// GitHub token, callers pass `None` instead: the Contents API then
+    /// defaults author and committer to the authenticated user, so the
+    /// commit is attributed to their real GitHub account rather than
+    /// overwritten with an identity GitHub can't link to anyone.
     #[derive(Debug, Clone, Serialize)]
     pub struct Committer {
         pub name: String,
@@ -792,7 +796,7 @@ mod inner {
             path: &str,
             content: &str,
             base_sha: Option<&str>,
-            committer: &Committer,
+            committer: Option<&Committer>,
             message: &str,
             token: Option<&str>,
         ) -> Result<String> {
@@ -801,9 +805,11 @@ mod inner {
                 "message": message,
                 "content": base64::engine::general_purpose::STANDARD.encode(content.as_bytes()),
                 "branch": branch,
-                "committer": committer,
-                "author": committer,
             });
+            if let Some(committer) = committer {
+                body["committer"] = serde_json::json!(committer);
+                body["author"] = serde_json::json!(committer);
+            }
             if let Some(sha) = base_sha {
                 body["sha"] = serde_json::Value::String(sha.to_string());
             }
@@ -855,18 +861,20 @@ mod inner {
             branch: &str,
             path: &str,
             sha: &str,
-            committer: &Committer,
+            committer: Option<&Committer>,
             message: &str,
             token: Option<&str>,
         ) -> Result<()> {
             let url = format!("{}/repos/{}/contents/{}", self.api_base, repo, path);
-            let body = serde_json::json!({
+            let mut body = serde_json::json!({
                 "message": message,
                 "sha": sha,
                 "branch": branch,
-                "committer": committer,
-                "author": committer,
             });
+            if let Some(committer) = committer {
+                body["committer"] = serde_json::json!(committer);
+                body["author"] = serde_json::json!(committer);
+            }
 
             let mut headers = self.default_headers(token);
             headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));

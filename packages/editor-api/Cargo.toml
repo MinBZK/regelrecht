@@ -30,6 +30,9 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json"] }
 chrono.workspace = true
 uuid = { workspace = true, features = ["v4"] }
+base64.workspace = true
+chacha20poly1305.workspace = true
+subtle.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml_ng.workspace = true
@@ -43,6 +46,7 @@ regelrecht-pipeline = { path = "../pipeline", features = ["test-utils"] }
 async-trait.workspace = true
 pretty_assertions.workspace = true
 tempfile.workspace = true
+wiremock.workspace = true
 
 [lints]
 workspace = true

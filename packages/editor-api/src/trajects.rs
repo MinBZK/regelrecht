@@ -748,6 +748,8 @@ struct WritableTarget {
 async fn resolve_writable_target(
     state: &AppState,
     req: &CreateTrajectRequest,
+    account_id: Uuid,
+    headers: &axum::http::HeaderMap,
 ) -> Result<WritableTarget, (StatusCode, String)> {
     let owner = req
         .repo_owner
@@ -851,45 +853,68 @@ async fn resolve_writable_target(
                 ));
             }
 
-            // Resolve the token. Use the *strict* resolver here — the
-            // `auth_ref` is derived from user-supplied repo coords, so
-            // an unknown ref must NOT fall back to `CORPUS_GIT_TOKEN`
-            // (that would ship the central token to a repo the user
-            // picked, a token-exfiltration vector). The strict variant
-            // returns `None` when no per-repo env var or auth-file
-            // entry is configured, which we then surface as a clean
-            // 503 with the expected env-var name.
-            let auth_file = {
-                let corpus = state.corpus.read().await;
-                corpus.auth_file.clone()
+            // Resolve the token to preflight the repo with. Prefer the acting
+            // user's OWN GitHub token (user-OAuth spike): the preflight then
+            // validates *their* push access to the chosen repo — the
+            // entitlement check GitHub gives us for free, so the editor never
+            // needs an all-access credential to police repo choice (the gap
+            // that #885 tracks).
+            //
+            // Fall back to the *strict* per-repo operator token when the user
+            // hasn't linked GitHub and this deployment doesn't require it. The
+            // strict resolver (not `resolve_token`) is deliberate: `auth_ref`
+            // derives from user-supplied repo coords, so an unknown ref must
+            // NOT fall back to `CORPUS_GIT_TOKEN` (that would ship the central
+            // token to a user-picked repo, a token-exfiltration vector).
+            // `user_write_token` returns 428 when a linked token is required
+            // but absent.
+            let token = match crate::github_oauth::user_write_token(state, account_id, headers)
+                .await?
+            {
+                Some(user_token) => user_token,
+                None => {
+                    let auth_file = {
+                        let corpus = state.corpus.read().await;
+                        corpus.auth_file.clone()
+                    };
+                    regelrecht_corpus::auth::resolve_token_strict(&auth_ref, auth_file.as_deref())
+                        .map_err(|e| {
+                            tracing::error!(error = %e, "auth lookup failed for new traject repo");
+                            (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                "auth lookup failed".to_string(),
+                            )
+                        })?
+                        .ok_or_else(|| {
+                            let env_name = regelrecht_corpus::auth::token_env_name(&auth_ref);
+                            tracing::warn!(
+                                auth_ref = %auth_ref,
+                                env_name = %env_name,
+                                "no token configured for user-supplied repo"
+                            );
+                            (
+                                StatusCode::SERVICE_UNAVAILABLE,
+                                format!(
+                                    "deze repo is nog niet door je beheerder geconfigureerd \
+                             (verwacht env var {env_name})"
+                                ),
+                            )
+                        })?
+                }
             };
-            let token =
-                regelrecht_corpus::auth::resolve_token_strict(&auth_ref, auth_file.as_deref())
-                    .map_err(|e| {
-                        tracing::error!(error = %e, "auth lookup failed for new traject repo");
-                        (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            "auth lookup failed".to_string(),
-                        )
-                    })?
-                    .ok_or_else(|| {
-                        let env_name = regelrecht_corpus::auth::token_env_name(&auth_ref);
-                        tracing::warn!(
-                            auth_ref = %auth_ref,
-                            env_name = %env_name,
-                            "no token configured for user-supplied repo"
-                        );
-                        (
-                            StatusCode::SERVICE_UNAVAILABLE,
-                            format!(
-                                "deze repo is nog niet door je beheerder geconfigureerd \
-                         (verwacht env var {env_name})"
-                            ),
-                        )
-                    })?;
 
+            // The OAuth config's `api_base` (a pub field, overridable in
+            // tests with a wiremock server) wins over the real default, so
+            // the preflight — including WHICH token it authenticates with —
+            // is testable without touching github.com.
+            let api_base = state
+                .config
+                .github_oauth
+                .as_ref()
+                .map(|o| o.api_base.as_str())
+                .unwrap_or("https://api.github.com");
             let info = regelrecht_corpus::repo_access::validate_repo_access(
-                "https://api.github.com",
+                api_base,
                 owner,
                 repo,
                 base_branch,
@@ -999,6 +1024,7 @@ fn repo_access_error_to_status(
 pub async fn create(
     State(state): State<AppState>,
     Extension(account): Extension<AccountRecord>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<CreateTrajectRequest>,
 ) -> Result<(StatusCode, Json<TrajectSummary>), (StatusCode, String)> {
     let name = req.name.trim();
@@ -1010,7 +1036,7 @@ pub async fn create(
     // to talk to GitHub (which can fail with a helpful 4xx); we do that
     // *before* opening the DB transaction so a network blip doesn't leak a
     // half-rolled row.
-    let target = resolve_writable_target(&state, &req).await?;
+    let target = resolve_writable_target(&state, &req, account.id, &headers).await?;
 
     let pool = get_pool_msg(&state)?;
     let mut tx = pool.begin().await.map_err(db_err_msg("begin tx"))?;

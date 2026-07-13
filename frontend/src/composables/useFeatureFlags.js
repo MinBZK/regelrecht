@@ -18,6 +18,11 @@ const DEFAULTS = {
   // the editable Tekst editor. Off by default until the feature is past the
   // display-only MVP and the corpus has notes for more than one law.
   'panel.notes': false,
+  // Per-user GitHub OAuth link (spike, PR #887): gates the "Koppel
+  // GitHub-account" affordance in the account menu. Off by default so the
+  // spike stays invisible until a user opts in; the backend is independently
+  // gated on GITHUB_OAUTH_* env vars (unconfigured deployments never show it).
+  'github.user_oauth': false,
 };
 
 // Local overrides survive refresh when the backend has no persistence (dev).

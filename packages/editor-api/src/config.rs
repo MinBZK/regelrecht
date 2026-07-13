@@ -1,9 +1,14 @@
 pub use regelrecht_auth::OidcConfig;
 
-#[derive(Clone, Debug)]
+use crate::github_oauth::GithubOAuth;
+
+#[derive(Clone)]
 pub struct AppConfig {
     pub oidc: Option<OidcConfig>,
     pub base_url: Option<String>,
+    /// GitHub user-OAuth config (spike). `None` disables the link flow and
+    /// keeps the corpus write path on its existing service/App token.
+    pub github_oauth: Option<GithubOAuth>,
 }
 
 impl AppConfig {
@@ -37,7 +42,19 @@ impl AppConfig {
             );
         }
 
-        Ok(Self { oidc, base_url })
+        let github_oauth = GithubOAuth::from_env()?;
+        if let Some(gh) = github_oauth.as_ref() {
+            tracing::info!(
+                require_user_token = gh.require_user_token,
+                "GitHub user-OAuth is enabled (per-user traject writes)"
+            );
+        }
+
+        Ok(Self {
+            oidc,
+            base_url,
+            github_oauth,
+        })
     }
 
     pub fn is_auth_enabled(&self) -> bool {

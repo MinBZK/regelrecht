@@ -5,6 +5,7 @@ import TrajectMenu from './components/TrajectMenu.vue';
 import TrajectDocuments from './components/TrajectDocuments.vue';
 import MobileTrajectSheet from './components/MobileTrajectSheet.vue';
 import { useAuth } from './composables/useAuth.js';
+import { useGithubAuth } from './composables/useGithubAuth.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import { useTrajects } from './composables/useTrajects.js';
@@ -22,6 +23,14 @@ import { useAppChrome, openSearch, onBarSearchKeydown } from './composables/useA
 // instance is reused, so the chrome never rebuilds (no refresh flash).
 
 const { authenticated, loading: authLoading, oidcConfigured, person, hasAnyRole, login, logout } = useAuth();
+// GitHub user-OAuth (spike): let a user link their own GitHub account so
+// traject writes go out under their credential. `status` is reactive and may
+// be null until loaded; the template guards on `githubStatus?.configured`.
+const {
+  status: githubStatus,
+  connect: connectGithub,
+  disconnect: disconnectGithub,
+} = useGithubAuth();
 const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
 
 // Roles that may reach the harvester-admin "Corpusinwinning" section. Any harvester-*
@@ -66,6 +75,19 @@ const editorPanelFlags = [
   ['panel.notes', 'Tekst viewer + notities'],
 ];
 
+// The "Functies" menu group: the panel flags, plus the GitHub-koppeling
+// toggle when this deployment has a GitHub OAuth App configured. The flag
+// (off by default, deployment-wide like all flags) is one switch with two
+// effects: it shows the Koppel/Ontkoppel items below AND makes the backend
+// require the acting user's own GitHub token for traject writes (a save
+// without a linked token then 428s, which apiAuthGuard.js turns into a
+// redirect through the connect flow).
+const functieFlags = computed(() =>
+  githubStatus.value?.configured
+    ? [...editorPanelFlags, ['github.user_oauth', 'GitHub-koppeling']]
+    : editorPanelFlags,
+);
+
 const route = useRoute();
 const router = useRouter();
 
@@ -99,6 +121,43 @@ function onEditorTab(e) {
     return;
   }
   if (isLibraryRoute.value) router.push(editorTabTarget.value);
+}
+
+// Enabling `github.user_oauth` is not a personal display preference like the
+// panel flags listed around it: the flag is deployment-wide AND doubles as the
+// backend's write-enforcement switch (`write_requires_user_token`), so turning
+// it on makes every editor-writer's next traject save require a linked
+// personal GitHub account (an unlinked user's save 428s into the connect
+// flow). Intercept the enable with an explicit confirmation popover - same
+// pattern as the login warning above. Disabling restores the pre-existing
+// service-token behaviour and stays a plain toggle.
+const enforcementConfirm = ref(null);
+function onFunctieFlagSelect(key, e) {
+  if (key === 'github.user_oauth' && !isEnabled(key)) {
+    if (enforcementConfirm.value) {
+      // Anchor to the settings button of whichever breakpoint menu fired the
+      // select: the menu itself closes on select, and a popover must never be
+      // anchored to a hidden element.
+      const anchorId = e.currentTarget.closest('nldd-menu')?.getAttribute('anchor');
+      enforcementConfirm.value.anchorElement =
+        (anchorId && document.getElementById(anchorId)) || e.currentTarget;
+      enforcementConfirm.value.show();
+    }
+    return;
+  }
+  toggleFlag(key);
+}
+function confirmUserOauthEnforcement() {
+  enforcementConfirm.value?.hide();
+  toggleFlag('github.user_oauth');
+}
+// Release the anchor when the popover closes (confirm, cancel, or light
+// dismiss). nldd-popover toggles itself on EVERY subsequent click on its
+// anchor element (popover.js `_handleDocumentClick`) - leaving the settings
+// button as anchor would hijack it: the next account-menu click opens this
+// popover and (auto-popover exclusivity) closes the menu.
+function onEnforcementConfirmClose() {
+  if (enforcementConfirm.value) enforcementConfirm.value.anchorElement = null;
 }
 
 // View-specific toolbar bits published by the active view.
@@ -191,12 +250,12 @@ const hasDocumentTabs = computed(
                 <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
                 <nldd-menu-group text="Functies">
                 <nldd-menu-item
-                  v-for="[key, label] in editorPanelFlags"
+                  v-for="[key, label] in functieFlags"
                   :key="key"
                   type="checkbox"
                   :selected="isEnabled(key) || undefined"
                   :text="label"
-                  @select="toggleFlag(key)"
+                  @select="onFunctieFlagSelect(key, $event)"
                 ></nldd-menu-item>
                 </nldd-menu-group>
                 <nldd-menu-group text="Thema">
@@ -210,6 +269,8 @@ const hasDocumentTabs = computed(
                 ></nldd-menu-item>
                 </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
+                <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
+                <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
                 <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
               </nldd-menu>
@@ -258,12 +319,12 @@ const hasDocumentTabs = computed(
                 <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
                 <nldd-menu-group text="Functies">
                 <nldd-menu-item
-                  v-for="[key, label] in editorPanelFlags"
+                  v-for="[key, label] in functieFlags"
                   :key="key"
                   type="checkbox"
                   :selected="isEnabled(key) || undefined"
                   :text="label"
-                  @select="toggleFlag(key)"
+                  @select="onFunctieFlagSelect(key, $event)"
                 ></nldd-menu-item>
                 </nldd-menu-group>
                 <nldd-menu-group text="Thema">
@@ -277,6 +338,8 @@ const hasDocumentTabs = computed(
                 ></nldd-menu-item>
                 </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
+                <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
+                <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
                 <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
               </nldd-menu>
@@ -437,12 +500,12 @@ const hasDocumentTabs = computed(
                 <nldd-menu-divider v-if="canViewHarvesting"></nldd-menu-divider>
                 <nldd-menu-group text="Functies">
                 <nldd-menu-item
-                  v-for="[key, label] in editorPanelFlags"
+                  v-for="[key, label] in functieFlags"
                   :key="key"
                   type="checkbox"
                   :selected="isEnabled(key) || undefined"
                   :text="label"
-                  @select="toggleFlag(key)"
+                  @select="onFunctieFlagSelect(key, $event)"
                 ></nldd-menu-item>
                 </nldd-menu-group>
                 <nldd-menu-group text="Thema">
@@ -456,6 +519,8 @@ const hasDocumentTabs = computed(
                 ></nldd-menu-item>
                 </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
+                <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
+                <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" icon="logout" @click="logout"></nldd-menu-item>
                 <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
               </nldd-menu>
@@ -480,6 +545,23 @@ const hasDocumentTabs = computed(
         supporting-text="Zodra je bent ingelogd kies je een traject en kun je aan de slag."
       >
         <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login(editorTabHref)"></nldd-button>
+      </nldd-inline-dialog>
+    </nldd-container>
+  </nldd-popover>
+
+  <!-- Enabling the GitHub-koppeling flag is a deployment-wide write-path
+       switch, not a personal preference like its neighbours in the Functies
+       list - confirm before every writer's saves start requiring a linked
+       GitHub account (see onFunctieFlagSelect). -->
+  <nldd-popover ref="enforcementConfirm" accessible-label="GitHub-koppeling inschakelen" width="360px" @close="onEnforcementConfirmClose">
+    <nldd-container padding="16">
+      <nldd-inline-dialog
+        icon="exclamation-triangle"
+        text="GitHub-koppeling voor iedereen inschakelen?"
+        supporting-text="Dit geldt voor de hele omgeving, niet alleen voor jou: opslaan in een traject vereist daarna voor elke gebruiker een gekoppeld GitHub-account. Wie nog niet gekoppeld heeft, wordt bij de eerstvolgende opslag naar de koppel-flow geleid."
+      >
+        <nldd-button slot="actions" variant="primary" text="Inschakelen" @click="confirmUserOauthEnforcement"></nldd-button>
+        <nldd-button slot="actions" text="Annuleren" @click="enforcementConfirm?.hide()"></nldd-button>
       </nldd-inline-dialog>
     </nldd-container>
   </nldd-popover>

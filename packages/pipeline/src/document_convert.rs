@@ -220,12 +220,7 @@ pub async fn write_markdown_to_traject(
     backend.write_file(&relative_path, markdown).await?;
 
     let message = format!("document-convert: {}", payload.target_path);
-    backend
-        .persist(&WriteContext {
-            message,
-            author: None,
-        })
-        .await?;
+    backend.persist(&WriteContext::new(message, None)).await?;
     Ok(())
 }
 
