@@ -348,12 +348,12 @@ const hasDocumentTabs = computed(
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Functies" icon="puzzle-piece">
                   <nldd-menu>
                     <nldd-menu-item
-                      v-for="[key, label] in editorPanelFlags"
+                      v-for="[key, label] in functieFlags"
                       :key="key"
                       type="checkbox"
                       :selected="isEnabled(key) || undefined"
                       :text="label"
-                      @select="toggleFlag(key)"
+                      @select="onFunctieFlagSelect(key, $event)"
                     ></nldd-menu-item>
                   </nldd-menu>
                 </nldd-menu-item>
@@ -427,12 +427,12 @@ const hasDocumentTabs = computed(
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Functies" icon="puzzle-piece">
                   <nldd-menu>
                     <nldd-menu-item
-                      v-for="[key, label] in editorPanelFlags"
+                      v-for="[key, label] in functieFlags"
                       :key="key"
                       type="checkbox"
                       :selected="isEnabled(key) || undefined"
                       :text="label"
-                      @select="toggleFlag(key)"
+                      @select="onFunctieFlagSelect(key, $event)"
                     ></nldd-menu-item>
                   </nldd-menu>
                 </nldd-menu-item>
@@ -617,12 +617,12 @@ const hasDocumentTabs = computed(
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Functies" icon="puzzle-piece">
                   <nldd-menu>
                     <nldd-menu-item
-                      v-for="[key, label] in editorPanelFlags"
+                      v-for="[key, label] in functieFlags"
                       :key="key"
                       type="checkbox"
                       :selected="isEnabled(key) || undefined"
                       :text="label"
-                      @select="toggleFlag(key)"
+                      @select="onFunctieFlagSelect(key, $event)"
                     ></nldd-menu-item>
                   </nldd-menu>
                 </nldd-menu-item>
