@@ -98,6 +98,7 @@ const { jobs: conversionJobs } = docJobs;
 const {
   fileInput: docFileInput,
   uploadError: docUploadError,
+  uploadRetryable: docUploadRetryable,
   onUpload: onDocUpload,
   onFileChange: onDocFileChange,
 } = useDocumentUpload(docsMgr.uploadDocument, () => docJobs.refresh());
@@ -1335,7 +1336,7 @@ watch(activeTrajectRef, () => {
       @close="dismissUploadError"
     >
       <nldd-button slot="actions" variant="primary" text="Sluit" @click="dismissUploadError"></nldd-button>
-      <nldd-button slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryUpload"></nldd-button>
+      <nldd-button v-if="docUploadRetryable" slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryUpload"></nldd-button>
     </nldd-modal-dialog>
   </Teleport>
 </template>

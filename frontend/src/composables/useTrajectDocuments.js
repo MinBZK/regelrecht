@@ -378,11 +378,18 @@ export function useTrajectDocuments(trajectRef) {
         body: form,
       });
       if (!res.ok) {
+        // 404/405/501 mean the backend doesn't offer the upload endpoint (the
+        // conversion feature isn't enabled yet) — a human message, and retrying
+        // won't help. Other statuses keep the server's text (or the code) and
+        // stay retryable.
+        const unsupported = res.status === 404 || res.status === 405 || res.status === 501;
         const text = await safeText(res);
-        const err = new Error(text || `Uploaden mislukt: ${res.status}`);
+        const error = unsupported
+          ? 'Uploaden wordt door de server nog niet ondersteund.'
+          : (text || `Uploaden mislukt (foutcode ${res.status}).`);
         // Surface via the returned result only (the consumer shows its own
         // upload dialog); don't also set saveError, which raises a 2nd modal.
-        return { ok: false, error: err.message };
+        return { ok: false, error, retryable: !unsupported };
       }
       const json = await safeJson(res);
       // Refresh the list so the poller (and, once converted, the .md) show up.
