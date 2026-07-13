@@ -45,6 +45,10 @@ pub struct DocumentConvertPayload {
     /// worker default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
+    /// Account dat de upload deed; krijgt bij terminaal falen een
+    /// `job_failed`-taak. `None` voor jobs van vóór dit veld.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_by: Option<Uuid>,
 }
 
 /// An uploaded document loaded from `document_uploads`.
@@ -522,6 +526,7 @@ mod tests {
             traject_ref: "abcd1234".to_string(),
             target_path: "report.md".to_string(),
             provider: Some("claude".to_string()),
+            requested_by: None,
         };
         let json = serde_json::to_value(&payload).unwrap();
         assert_eq!(json["upload_id"], "00000000-0000-0000-0000-000000000000");
@@ -538,6 +543,7 @@ mod tests {
             traject_ref: "abcd1234".to_string(),
             target_path: "report.md".to_string(),
             provider: None,
+            requested_by: None,
         };
         let json = serde_json::to_value(&payload).unwrap();
         assert!(json.get("provider").is_none());

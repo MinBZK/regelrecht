@@ -476,6 +476,11 @@ async fn process_next_job(
                         // shallow laws (the intended case) are unaffected; a
                         // dedicated related-depth counter is the follow-up.
                         depth: payload.depth,
+                        requested_by: None,
+                        deliver: None,
+                        traject_id: None,
+                        traject_ref: None,
+                        source_etag: None,
                     };
                     let payload_json = match serde_json::to_value(&enrich_payload) {
                         Ok(json) => json,

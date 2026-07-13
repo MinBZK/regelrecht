@@ -2923,6 +2923,7 @@ pub async fn upload_traject_document(
         traject_ref: traject_ref.clone(),
         target_path: target_path.clone(),
         provider: None,
+        requested_by: None,
     };
     let payload_json = serde_json::to_value(&payload)
         .map_err(|e| upload_internal_error("serialize payload", e))?;
