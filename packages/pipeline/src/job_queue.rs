@@ -503,16 +503,18 @@ where
 }
 
 /// Create an enrich job if no active (pending/processing) enrich job exists
-/// for this law_id + provider combination.
+/// for this law_id + provider + traject scope.
 ///
 /// Uses `INSERT ... ON CONFLICT DO NOTHING` against the
 /// `idx_unique_active_enrich_job` partial unique index to atomically
-/// prevent duplicates — no TOCTOU race regardless of isolation level. Note
-/// the index keys on `(law_id, job_type, provider)` only — it does *not*
-/// include `traject_ref`, so a traject-scoped enrich request (task-flow)
-/// and a corpus-wide auto-enrich for the same law_id + provider still
-/// collide and one loses with `None` (`Ok(None)`), even though they're
-/// semantically different requests.
+/// prevent duplicates — no TOCTOU race regardless of isolation level. The
+/// index keys on `(law_id, job_type, provider, COALESCE(traject_ref, ''))`,
+/// so uniqueness is scoped per traject: a corpus-wide auto-enrich
+/// (`traject_ref` NULL) and a traject-scoped enrich request (task-flow) for
+/// the same law_id + provider no longer collide, and two different trajects
+/// requesting the same law_id + provider don't block each other either. A
+/// second active request within the *same* scope (same traject, or both
+/// corpus-wide) still collides and loses with `None` (`Ok(None)`).
 ///
 /// Returns `Some(job)` if created, `None` if a duplicate already existed.
 pub async fn create_enrich_job_if_not_exists<'e, E>(
@@ -527,7 +529,7 @@ where
         r#"
         INSERT INTO jobs (job_type, law_id, traject_ref, priority, payload, max_attempts, scheduled_at)
         VALUES ($1, $2, $3, $4, $5, $6, now() + $7::interval)
-        ON CONFLICT (law_id, job_type, (payload->>'provider'))
+        ON CONFLICT (law_id, job_type, (payload->>'provider'), COALESCE(traject_ref, ''))
             WHERE job_type = 'enrich' AND status IN ('pending', 'processing')
         DO NOTHING
         RETURNING *

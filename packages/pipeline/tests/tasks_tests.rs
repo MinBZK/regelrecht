@@ -446,3 +446,54 @@ async fn test_document_jobs_list_excludes_failed() {
         "failed jobs horen niet meer in de documentenlijst"
     );
 }
+
+#[tokio::test]
+async fn test_traject_enrich_not_blocked_by_corpus_enrich() {
+    let db = TestDb::new().await;
+
+    // Corpus-brede enrich-job (geen traject) voor dezelfde wet + provider.
+    let corpus_req = CreateJobRequest::new(JobType::Enrich, "test_wet")
+        .with_payload(json!({"law_id": "test_wet", "yaml_path": "x.yaml", "provider": "claude"}));
+    let corpus_job = job_queue::create_enrich_job_if_not_exists(&db.pool, corpus_req)
+        .await
+        .unwrap();
+    assert!(corpus_job.is_some());
+
+    // Traject-taak-aanvraag voor dezelfde wet + provider: mag NIET blokkeren.
+    let traject_req = CreateJobRequest::new(JobType::Enrich, "test_wet")
+        .with_traject_ref("testtraject-abcd1234")
+        .with_payload(json!({
+            "law_id": "test_wet", "yaml_path": "x.yaml", "provider": "claude",
+            "deliver": "task"
+        }));
+    let traject_job = job_queue::create_enrich_job_if_not_exists(&db.pool, traject_req)
+        .await
+        .unwrap();
+    assert!(
+        traject_job.is_some(),
+        "traject-aanvraag mag niet botsen met corpus-job"
+    );
+
+    // Maar een tweede aanvraag binnen HETZELFDE traject is wél een duplicaat.
+    let dup_req = CreateJobRequest::new(JobType::Enrich, "test_wet")
+        .with_traject_ref("testtraject-abcd1234")
+        .with_payload(json!({
+            "law_id": "test_wet", "yaml_path": "x.yaml", "provider": "claude",
+            "deliver": "task"
+        }));
+    let dup = job_queue::create_enrich_job_if_not_exists(&db.pool, dup_req)
+        .await
+        .unwrap();
+    assert!(
+        dup.is_none(),
+        "duplicaat binnen zelfde traject moet geweigerd worden"
+    );
+
+    // En een tweede corpus-brede job ook (bestaand gedrag blijft).
+    let dup_corpus = CreateJobRequest::new(JobType::Enrich, "test_wet")
+        .with_payload(json!({"law_id": "test_wet", "yaml_path": "x.yaml", "provider": "claude"}));
+    let dup_corpus = job_queue::create_enrich_job_if_not_exists(&db.pool, dup_corpus)
+        .await
+        .unwrap();
+    assert!(dup_corpus.is_none());
+}
