@@ -1,0 +1,86 @@
+---
+/*
+ * Research overview — papers and other research output around RegelRecht.
+ * Follows the /rfcs/ category-page pattern: intro left, item list right.
+ */
+import Base from '~/layouts/Base.astro';
+
+const pathname = '/research/';
+
+interface ResearchItem {
+  overline: string;
+  title: string;
+  authors: string;
+  abstract: string;
+  link: string;
+}
+
+const items: ResearchItem[] = [
+  {
+    overline: 'Position paper · 12 July 2026',
+    title:
+      'Rules as Executed: Publishing Machine-Executable Law to Rebalance the Powers',
+    authors: 'Eelco Hotting and Anne Schuth',
+    // Opening of the paper's abstract, verbatim.
+    abstract:
+      'Government law execution is formalized in software, but that ' +
+      'software is not published. This deepens the executive’s ' +
+      'structural advantage in the separation of powers: it alone can see ' +
+      'how operative law is applied, while Parliament, courts, and ' +
+      'citizens cannot verify, review, or predict its application. This ' +
+      'paper proposes that law execution be published as ' +
+      'machine-executable specifications in a restricted, declarative ' +
+      'format designed to be readable by legal professionals.',
+    link: '/research/rules-as-executed',
+  },
+];
+---
+
+<Base
+  lang="en"
+  kind="docs"
+  pathname={pathname}
+  title="Research · RegelRecht"
+  description="Research output around RegelRecht: papers on machine-executable law."
+>
+  <nldd-one-third-two-thirds-section
+    sm-padding-bottom="32"
+    md-padding-bottom="64"
+    lg-padding-bottom="96"
+  >
+    <div slot="left">
+      <nldd-title size="2">
+        <h1>Research</h1>
+      </nldd-title>
+      <nldd-spacer />
+      <nldd-rich-text>
+        <p>
+          Research output around RegelRecht: the thinking behind publishing
+          machine-executable law, written up for an academic audience.
+        </p>
+      </nldd-rich-text>
+    </div>
+    <div slot="right">
+      <nldd-list type="navigation" variant="box">
+        {
+          items.map((item) => (
+            <nldd-list-item href={item.link}>
+              <nldd-text-cell
+                overline={item.overline}
+                text={item.title}
+                width="full"
+              >
+                <nldd-container slot="supporting-text" gap="4">
+                  <span>{item.authors}</span>
+                  <span>{item.abstract}</span>
+                </nldd-container>
+              </nldd-text-cell>
+              <nldd-spacer-cell />
+              <nldd-icon-cell size="20" icon="chevron-right" />
+            </nldd-list-item>
+          ))
+        }
+      </nldd-list>
+    </div>
+  </nldd-one-third-two-thirds-section>
+</Base>

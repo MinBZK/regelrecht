@@ -1,0 +1,72 @@
+/*
+ * Research paper pages (/research/…): styles for the pandoc-converted paper
+ * body that nldd-rich-text does not cover — figure/table captions, the
+ * hand-built comparison table (its two-row grouped header cannot be expressed
+ * in markdown), the paper figure, footnotes and the citeproc bibliography.
+ * Imported by the paper page only, not globally.
+ */
+
+/* Author block under the title. */
+.rr-paper-byline {
+  margin-bottom: 0;
+}
+.rr-paper-note {
+  font-size: 0.875rem;
+  /* One token, not a light-dark() pair: the primitives are themselves
+     light-dark() pairs that flip with the scheme. */
+  color: var(--primitives-color-neutral-700);
+}
+
+/* Figure/table captions: smaller and muted, like the paper's caption font. */
+.rr-paper .rr-caption {
+  font-size: 0.875rem;
+  /* One token, not a light-dark() pair: the primitives are themselves
+     light-dark() pairs that flip with the scheme. */
+  color: var(--primitives-color-neutral-700);
+}
+
+/* Wide content scrolls inside its own container, never the page. */
+.rr-paper .rr-table-scroll {
+  overflow-x: auto;
+}
+
+/* The prior-approaches comparison table, booktabs-style: horizontal rules
+   only, a heavier rule at top/bottom, a light rule under the header and
+   above the closing "This paper" row. */
+.rr-paper table.rr-landscape {
+  width: 100%;
+  border-collapse: collapse;
+  border-top: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+}
+.rr-paper table.rr-landscape th,
+.rr-paper table.rr-landscape td {
+  padding: var(--primitives-space-4) var(--primitives-space-8);
+  text-align: left;
+}
+.rr-paper table.rr-landscape thead {
+  border-bottom: 1px solid currentColor;
+}
+.rr-paper table.rr-landscape tr.rr-rule td {
+  border-top: 1px solid currentColor;
+}
+
+/* The dependency-graph figure is drawn for a white page; give it a white
+   plate so it stays readable in dark mode. */
+.rr-paper img {
+  max-width: 100%;
+  height: auto;
+  background: #fff;
+  padding: var(--primitives-space-8);
+  border-radius: 4px;
+}
+
+/* Endnotes (pandoc footnotes) and the citeproc bibliography. */
+.rr-paper section.footnotes {
+  font-size: 0.9375rem;
+}
+.rr-paper .csl-bib-body .csl-entry {
+  padding-left: 1.5em;
+  text-indent: -1.5em;
+  margin-bottom: var(--primitives-space-8);
+}

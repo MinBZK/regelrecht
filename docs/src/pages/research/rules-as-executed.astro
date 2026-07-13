@@ -1,0 +1,68 @@
+---
+/*
+ * "Rules as Executed" position paper, rendered in full. The body HTML and the
+ * outline headings are generated from the paper's LaTeX source with pandoc
+ * (citeproc bibliography, glossary first-use expansion, numbered sections);
+ * this page only wraps that output in the site chrome. The PDF in
+ * public/research/ is the authoritative typeset version.
+ */
+import Base from '~/layouts/Base.astro';
+import DocsOutline from '~/components/DocsOutline.astro';
+import paperHtml from '~/research/rules-as-executed.html?raw';
+import headings from '~/research/rules-as-executed.headings.json';
+import '~/styles/research.css';
+
+const pathname = '/research/rules-as-executed';
+const title = 'Rules as Executed · RegelRecht';
+const description =
+  'Publishing Machine-Executable Law to Rebalance the Powers';
+---
+
+<Base
+  lang="en"
+  kind="docs"
+  pathname={pathname}
+  title={title}
+  description={description}
+>
+  <nldd-one-third-two-thirds-section
+    sm-padding-bottom="32"
+    md-padding-bottom="64"
+    lg-padding-bottom="96"
+  >
+    <nldd-title slot="header" size="1">
+      <h1>Rules as Executed</h1>
+      <p slot="subtitle">
+        Publishing Machine-Executable Law to Rebalance the Powers
+      </p>
+    </nldd-title>
+    <div slot="left">
+      <nldd-button
+        href="/research/rules-as-executed.pdf"
+        text="Download PDF"
+        start-icon="download"
+        variant="secondary"
+      ></nldd-button>
+      <nldd-spacer size="24" sm-size="16" />
+      <DocsOutline headings={headings} />
+    </div>
+    <div slot="right" class="rr-min-width-0 rr-paper">
+      <nldd-rich-text>
+        <p class="rr-paper-byline">
+          <strong>Eelco Hotting and Anne Schuth</strong><br />
+          <em>Dutch Ministry of the Interior and Kingdom Relations</em><br />
+          <a href="mailto:eelco.hotting@minbzk.nl">eelco.hotting@minbzk.nl</a>
+          · <a href="mailto:anne.schuth@minbzk.nl">anne.schuth@minbzk.nl</a
+          ><br />
+          Position paper, 12 July 2026
+        </p>
+        <p class="rr-paper-note">
+          Equal contribution. The authors are now with the Dutch Digital
+          Service, Ministry of Economic Affairs and Climate. The work was done
+          at the Ministry of the Interior and Kingdom Relations.
+        </p>
+        <Fragment set:html={paperHtml} />
+      </nldd-rich-text>
+    </div>
+  </nldd-one-third-two-thirds-section>
+</Base>

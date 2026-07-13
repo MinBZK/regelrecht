@@ -82,12 +82,18 @@ if (isStatusPage) {
 } else {
   globalLinks = [];
   const isDocsRoot = pathname === '/docs/' || pathname === '/docs';
+  const isResearchRoot = pathname === '/research/' || pathname === '/research';
+  const inResearch = pathname.startsWith('/research');
   const cat = categoryForPath(pathname);
   const onCategoryPage = cat !== null && pathname === cat.prefix;
-  if (isDocsRoot) {
-    // The documentation root goes up to the site home.
+  if (isDocsRoot || isResearchRoot) {
+    // The documentation and research roots go up to the site home.
     backHref = '/en/';
     backText = 'Home';
+  } else if (inResearch) {
+    // A research paper goes up to the research overview.
+    backHref = '/research/';
+    backText = 'Research';
   } else if (cat && !onCategoryPage) {
     // An article goes up to its category.
     backHref = cat.prefix;
@@ -159,7 +165,20 @@ const docsHref = '/docs/';
 const docsText = 'Documentation';
 const pageTitle = title.replace(/\s·\sRegelRecht$/, '');
 let breadcrumbs: BreadcrumbCrumb[] = [];
-if (!isLanding && !isNotFound) {
+if (!isLanding && !isNotFound && pathname.startsWith('/research')) {
+  // Research pages sit next to the documentation: Home → Research → page.
+  const isResearchRoot =
+    pathname === '/research/' || pathname === '/research';
+  breadcrumbs.push({ text: homeText, href: homeHref });
+  breadcrumbs.push({
+    text: 'Research',
+    href: '/research/',
+    current: isResearchRoot,
+  });
+  if (!isResearchRoot) {
+    breadcrumbs.push({ text: pageTitle, current: true });
+  }
+} else if (!isLanding && !isNotFound) {
   const isDocsRoot = pathname === '/docs/' || pathname === '/docs';
   breadcrumbs.push({ text: homeText, href: homeHref });
   breadcrumbs.push({

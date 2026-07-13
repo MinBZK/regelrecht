@@ -1,0 +1,327 @@
+[
+  {
+    "depth": 2,
+    "slug": "sec:introduction",
+    "text": "1 Introduction"
+  },
+  {
+    "depth": 2,
+    "slug": "sec:history",
+    "text": "2 How We Got Here"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:fieldlab",
+    "text": "2.1 Proactive Service and Known Data"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:fieldlab-to-format",
+    "text": "2.2 From Fieldlab to Format"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:priorwork",
+    "text": "2.3 Prior Approaches to Machine-Readable Law"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:broaderpattern",
+    "text": "2.4 A Broader Pattern"
+  },
+  {
+    "depth": 2,
+    "slug": "sec:constitutional",
+    "text": "3 The Constitutional Problem"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:executivedominance",
+    "text": "3.1 Executive Dominance Through Digitalization"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:intelligibilitygap",
+    "text": "3.2 The Gap Between Publication and Intelligibility"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:substitute",
+    "text": "3.3 Substitute Governance"
+  },
+  {
+    "depth": 2,
+    "slug": "sec:proposal",
+    "text": "4 Proposal: Published Executable Specifications"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:format",
+    "text": "4.1 The Format"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:legalstatus",
+    "text": "4.2 The Legal Status of a Specification"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:whochooses",
+    "text": "4.3 Who Chooses, Who Publishes"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:attestation",
+    "text": "4.4 Attestation"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:traceaccess",
+    "text": "4.5 The Recipient\u2019s Check"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:overrides",
+    "text": "4.6 Overrides and Discretion"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:autooverrides",
+    "text": "4.7 Automated Overrides"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:versionedartifact",
+    "text": "4.8 Law as a Version-Managed Artifact"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:modes",
+    "text": "4.9 Four Execution Modes"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:lifecycle",
+    "text": "4.10 Procedure as a Staged Lifecycle"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:crossorg",
+    "text": "4.11 Executing Across Organizations"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:relying",
+    "text": "4.12 Relying on Another Body\u2019s Decision"
+  },
+  {
+    "depth": 2,
+    "slug": "sec:diagnostic",
+    "text": "5 Diagnostic Value of Encoding"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:depgraphs",
+    "text": "5.1 Dependency Graphs and Cross-Law References"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:structuralanalysis",
+    "text": "5.2 Structural Analysis of Encoded Legislation"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:translation",
+    "text": "5.3 Translating Law at Scale"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:untranslatables",
+    "text": "5.4 Publishing What the Format Cannot Yet Say"
+  },
+  {
+    "depth": 2,
+    "slug": "sec:actors",
+    "text": "6 Implications for Constitutional Actors"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:lawmaking",
+    "text": "6.1 Informed Lawmaking"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:stewarding",
+    "text": "6.2 Stewardship of the Specification"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:court",
+    "text": "6.3 Running the Law in Court"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:runningcase",
+    "text": "6.4 Running Your Own Case"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:gaming",
+    "text": "6.5 The Gaming Objection"
+  },
+  {
+    "depth": 2,
+    "slug": "sec:privacy",
+    "text": "7 Data, Privacy, and Information Asymmetry"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:pathoptimization",
+    "text": "7.1 Execution Path Optimization and Privacy by Design"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:proportionality",
+    "text": "7.2 Proportionality as Executable Requirement"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:european",
+    "text": "7.3 The European Layer"
+  },
+  {
+    "depth": 2,
+    "slug": "sec:conceptual",
+    "text": "8 Conceptual Shifts and New Ways of Thinking"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:entitlements",
+    "text": "8.1 Citizen Entitlements"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:citizencentered",
+    "text": "8.2 Citizen-Centered Execution"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:explaining",
+    "text": "8.3 Explaining Decisions from Execution Traces"
+  },
+  {
+    "depth": 2,
+    "slug": "sec:technical",
+    "text": "9 Technical Foundations and Implementation Requirements"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:engines",
+    "text": "9.1 Multiple Engines and Semantic Equivalence"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:opset",
+    "text": "9.2 Format Design: Restricted Operation Set and Decidability"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:authorization",
+    "text": "9.3 Authorization Derived from Execution"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:versioning",
+    "text": "9.4 Version Management and Temporal Consistency"
+  },
+  {
+    "depth": 2,
+    "slug": "sec:outofscope",
+    "text": "10 Out of Scope: Design Choices Not Taken"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:cnl",
+    "text": "10.1 Controlled Natural Language (RegelSpraak / ALEF)"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:linkeddata",
+    "text": "10.2 Linked Data and Semantic Web Encodings"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:otherboundaries",
+    "text": "10.3 Other Boundaries"
+  },
+  {
+    "depth": 2,
+    "slug": "sec:transition",
+    "text": "11 Transition and Institutional Change"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:scale",
+    "text": "11.1 The Scale of Transition"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:crosscutting",
+    "text": "11.2 Cross-Cutting Laws as Strategic Priority"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:ownership",
+    "text": "11.3 Ownership of Cross-cutting Law Specifications"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:tooling",
+    "text": "11.4 Tooling and Legislative Support"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:readers",
+    "text": "11.5 Organized Readership"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:resistance",
+    "text": "11.6 Institutional Resistance and Transitional Justice"
+  },
+  {
+    "depth": 2,
+    "slug": "sec:agenda",
+    "text": "12 Research Agenda by Discipline"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:agenda-legal",
+    "text": "12.1 Legal-Constitutional Research"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:agenda-cs",
+    "text": "12.2 Computer Science Research"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:agenda-polsci",
+    "text": "12.3 Political Science and Governance Research"
+  },
+  {
+    "depth": 3,
+    "slug": "sec:agenda-philosophy",
+    "text": "12.4 Philosophy of Law and Technology"
+  },
+  {
+    "depth": 2,
+    "slug": "sec:cannotbuildback",
+    "text": "13 What We Cannot Build Back"
+  },
+  {
+    "depth": 2,
+    "slug": "sec:conclusion",
+    "text": "14 Conclusion"
+  }
+]
