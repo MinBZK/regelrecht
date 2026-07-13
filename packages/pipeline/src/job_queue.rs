@@ -507,7 +507,12 @@ where
 ///
 /// Uses `INSERT ... ON CONFLICT DO NOTHING` against the
 /// `idx_unique_active_enrich_job` partial unique index to atomically
-/// prevent duplicates — no TOCTOU race regardless of isolation level.
+/// prevent duplicates — no TOCTOU race regardless of isolation level. Note
+/// the index keys on `(law_id, job_type, provider)` only — it does *not*
+/// include `traject_ref`, so a traject-scoped enrich request (task-flow)
+/// and a corpus-wide auto-enrich for the same law_id + provider still
+/// collide and one loses with `None` (`Ok(None)`), even though they're
+/// semantically different requests.
 ///
 /// Returns `Some(job)` if created, `None` if a duplicate already existed.
 pub async fn create_enrich_job_if_not_exists<'e, E>(
@@ -520,8 +525,8 @@ where
     let initial_delay = req.initial_delay.map(to_pg_interval).transpose()?;
     let job = sqlx::query_as::<_, Job>(
         r#"
-        INSERT INTO jobs (job_type, law_id, priority, payload, max_attempts, scheduled_at)
-        VALUES ($1, $2, $3, $4, $5, now() + $6::interval)
+        INSERT INTO jobs (job_type, law_id, traject_ref, priority, payload, max_attempts, scheduled_at)
+        VALUES ($1, $2, $3, $4, $5, $6, now() + $7::interval)
         ON CONFLICT (law_id, job_type, (payload->>'provider'))
             WHERE job_type = 'enrich' AND status IN ('pending', 'processing')
         DO NOTHING
@@ -530,6 +535,7 @@ where
     )
     .bind(req.job_type)
     .bind(&req.law_id)
+    .bind(&req.traject_ref)
     .bind(req.priority.value())
     .bind(&req.payload)
     .bind(req.max_attempts)

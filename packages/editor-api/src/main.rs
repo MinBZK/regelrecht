@@ -26,6 +26,7 @@ mod github_oauth;
 mod harvest_proxy;
 mod middleware;
 mod state;
+mod task_requests;
 mod traject_corpus;
 mod trajects;
 mod user_notes;
@@ -449,6 +450,10 @@ async fn main() {
             "/api/trajects/{traject_ref}/corpus/documents/upload",
             axum::routing::post(corpus_handlers::upload_traject_document)
                 .layer(axum::extract::DefaultBodyLimit::max(MAX_UPLOAD_BODY)),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}/enrich",
+            axum::routing::post(task_requests::request_enrich),
         )
         .route(
             "/api/trajects/{traject_ref}/corpus/documents/{*doc_path}",

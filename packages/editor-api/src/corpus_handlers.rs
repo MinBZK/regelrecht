@@ -114,7 +114,11 @@ pub struct LawOutputEntry {
 /// `/api/trajects/{tid}/corpus/...` always lands in `Traject` — so a
 /// single handler body can serve both via the route-specific extractor
 /// that produced the scope.
-enum ReadScope {
+///
+/// `pub(crate)` so `task_requests` can build a `Traject` scope from the
+/// `TrajectCorpus` it resolved via `require_traject_corpus_from_ref`, to
+/// snapshot a law's YAML through the same read path the editor uses.
+pub(crate) enum ReadScope {
     Traject(Arc<TrajectCorpus>),
     Global(tokio::sync::OwnedRwLockReadGuard<CorpusState>),
 }
@@ -182,7 +186,13 @@ impl ReadScope {
 /// Read a law's YAML within a scope, mapping the outcome to an HTTP error:
 /// a backend failure (lazy fetch threw) becomes 502 "failed to load" so it's
 /// distinguishable from a genuine 404 miss; the error is logged for operators.
-async fn read_law_yaml(scope: &ReadScope, law_id: &str) -> Result<String, (StatusCode, String)> {
+///
+/// `pub(crate)`: also used by `task_requests` to snapshot the wet-YAML an
+/// enrich-op-aanvraag ships as its input blob.
+pub(crate) async fn read_law_yaml(
+    scope: &ReadScope,
+    law_id: &str,
+) -> Result<String, (StatusCode, String)> {
     scope
         .law_yaml(law_id)
         .await
@@ -1410,7 +1420,11 @@ struct EditorWriteTarget {
 /// `/editor/{ref}/…` route — a member removed (or their traject deleted)
 /// mid-session must immediately stop being able to write to the branch
 /// instead of keeping a stale handle through their open tabs.
-async fn require_traject_corpus_from_ref(
+///
+/// `pub(crate)`: `task_requests` uses this same guard + resolution for the
+/// enrich-op-aanvraag endpoint (identical membership requirement as any
+/// other traject-scoped write).
+pub(crate) async fn require_traject_corpus_from_ref(
     state: &AppState,
     session: &Session,
     traject_ref: &str,
@@ -2473,7 +2487,10 @@ pub struct SaveDocumentResponse {
 /// Compute the document ETag used for optimistic-concurrency checks.
 /// Wrapped in double quotes per RFC 7232 so the header value can be
 /// returned verbatim.
-fn document_etag(content: &str) -> String {
+///
+/// `pub(crate)`: `task_requests` reuses this to stamp `source_etag` on an
+/// enrich-op-aanvraag's payload (same staleness-check chain as saves).
+pub(crate) fn document_etag(content: &str) -> String {
     use sha2::{Digest, Sha256};
     let digest = Sha256::digest(content.as_bytes());
     format!("\"{:x}\"", digest)
