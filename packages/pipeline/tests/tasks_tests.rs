@@ -4,7 +4,9 @@ use regelrecht_pipeline::job_queue::{self, CreateJobRequest};
 use regelrecht_pipeline::models::JobType;
 use regelrecht_pipeline::tasks::{self, BlobKind, NewTask, TaskStatus, TaskType};
 use regelrecht_pipeline::test_utils::TestDb;
-use regelrecht_pipeline::worker::{fail_enrich_task_job, finish_enrich_task_job};
+use regelrecht_pipeline::worker::{
+    fail_enrich_task_job, fail_enrich_task_job_with_retry, finish_enrich_task_job,
+};
 
 /// Maak een account + traject om FK's te vullen. tasks.assignee_account_id
 /// verwijst naar accounts(id); trajects(created_by) idem.
@@ -252,7 +254,7 @@ async fn test_finish_enrich_task_job_creates_task_and_result_blobs() {
         &job,
         dir.path(),
         &[law_abs.clone()],
-        json!({"coverage_score": 1.0}),
+        Some(json!({"coverage_score": 1.0})),
     )
     .await
     .unwrap();
@@ -325,4 +327,88 @@ async fn test_fail_enrich_task_job_creates_failed_task_and_cleans_input() {
         .unwrap();
     assert_eq!(open.len(), 1);
     assert_eq!(open[0].task_type, "job_failed");
+}
+
+#[tokio::test]
+async fn test_fail_with_retry_creates_task_only_when_attempts_exhausted() {
+    let db = TestDb::new().await;
+    let (account_id, traject_id) = seed_account_and_traject(&db).await;
+    let _created = job_queue::create_job(
+        &db.pool,
+        CreateJobRequest::new(JobType::Enrich, "test_wet")
+            .with_max_attempts(2)
+            .with_payload(json!({
+                "law_id": "test_wet",
+                "yaml_path": "laws/test_wet/law.yaml",
+                "requested_by": account_id,
+                "deliver": "task",
+                "traject_id": traject_id
+            })),
+    )
+    .await
+    .unwrap();
+    let job = job_queue::claim_job(&db.pool, Some(JobType::Enrich))
+        .await
+        .unwrap()
+        .unwrap();
+    tasks::insert_blob(
+        &db.pool,
+        job.id,
+        BlobKind::Input,
+        "laws/test_wet/law.yaml",
+        "x",
+    )
+    .await
+    .unwrap();
+
+    // Eerste fout: attempts over → pending met backoff, GEEN taak, blobs blijven.
+    fail_enrich_task_job_with_retry(&db.pool, &job, "transiente fout")
+        .await
+        .unwrap();
+    let after_first = job_queue::get_job(&db.pool, job.id).await.unwrap();
+    assert_eq!(
+        after_first.status,
+        regelrecht_pipeline::models::JobStatus::Pending
+    );
+    assert!(tasks::list_open_tasks_for_account(&db.pool, account_id)
+        .await
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        tasks::load_blobs(&db.pool, job.id, BlobKind::Input)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+
+    // Backoff resetten zodat de job direct claimbaar is voor de tweede poging.
+    sqlx::query("UPDATE jobs SET scheduled_at = NULL WHERE id = $1")
+        .bind(job.id)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    let job = job_queue::claim_job(&db.pool, Some(JobType::Enrich))
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Tweede fout: attempts uitgeput → Failed + taak + blobs weg.
+    fail_enrich_task_job_with_retry(&db.pool, &job, "transiente fout")
+        .await
+        .unwrap();
+    let after_second = job_queue::get_job(&db.pool, job.id).await.unwrap();
+    assert_eq!(
+        after_second.status,
+        regelrecht_pipeline::models::JobStatus::Failed
+    );
+    let open = tasks::list_open_tasks_for_account(&db.pool, account_id)
+        .await
+        .unwrap();
+    assert_eq!(open.len(), 1);
+    assert_eq!(open[0].task_type, "job_failed");
+    assert!(tasks::load_blobs(&db.pool, job.id, BlobKind::Input)
+        .await
+        .unwrap()
+        .is_empty());
 }
