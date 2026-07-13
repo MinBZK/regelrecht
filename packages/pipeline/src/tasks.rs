@@ -106,6 +106,19 @@ pub async fn list_open_tasks_for_account(pool: &PgPool, account_id: Uuid) -> Res
     Ok(tasks)
 }
 
+/// Aantal open taken van een account. Losse COUNT naast de gelimiteerde
+/// lijst-query, zodat de teller ook boven de lijst-LIMIT klopt; gedekt door
+/// de partial index idx_tasks_open_assignee.
+pub async fn count_open_tasks_for_account(pool: &PgPool, account_id: Uuid) -> Result<i64> {
+    let (count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM tasks WHERE assignee_account_id = $1 AND status = 'open'",
+    )
+    .bind(account_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(count)
+}
+
 /// Eén taak op id, ongeacht status (detail-view toont ook net-geresolvede).
 pub async fn get_task_for_account(
     pool: &PgPool,

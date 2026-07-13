@@ -27,8 +27,11 @@ fn db_error<E: std::fmt::Display>(e: E) -> StatusCode {
 
 #[derive(Serialize)]
 pub struct TaskListResponse {
+    /// Gelimiteerde lijst (max 100, nieuwste eerst) — zie
+    /// `list_open_tasks_for_account`.
     pub tasks: Vec<Task>,
-    pub open_count: usize,
+    /// Echte totaal aantal open taken, los van de lijst-LIMIT.
+    pub open_count: i64,
 }
 
 /// GET /api/tasks — open taken van het ingelogde account, nieuwste eerst.
@@ -40,7 +43,9 @@ pub async fn list(
     let tasks = tasks::list_open_tasks_for_account(pool, account.id)
         .await
         .map_err(db_error)?;
-    let open_count = tasks.len();
+    let open_count = tasks::count_open_tasks_for_account(pool, account.id)
+        .await
+        .map_err(db_error)?;
     Ok(Json(TaskListResponse { tasks, open_count }))
 }
 

@@ -57,6 +57,19 @@ async fn test_create_and_list_open_tasks() {
     assert_eq!(open.len(), 1);
     assert_eq!(open[0].id, task.id);
     assert_eq!(open[0].title, "Verrijking beoordelen: test_wet");
+
+    assert_eq!(
+        tasks::count_open_tasks_for_account(&db.pool, account_id)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        tasks::count_open_tasks_for_account(&db.pool, uuid::Uuid::new_v4())
+            .await
+            .unwrap(),
+        0
+    );
 }
 
 #[tokio::test]
