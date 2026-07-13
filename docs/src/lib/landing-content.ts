@@ -26,7 +26,7 @@ export interface LandingContent {
     docs: string
     research: string
   }
-  hero: { titleSmall: string; intro: string; cta: string }
+  hero: { titleSmall: string; intro: string }
   partners: { label: string; items: NavLink[] }
   whatIsIt: { title: string; lede: string; cards: { h: string; p: string }[] }
   whyImportant: {
@@ -175,7 +175,6 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       titleSmall: 'van wet naar digitale werking',
       intro:
         'RegelRecht verkent of wetgeving als uitvoerbare code geschreven kan worden, zodat verschillende organisaties dezelfde wet ook hetzelfde toepassen en burgers kunnen volgen hoe een besluit tot stand komt.',
-      cta: 'Verken de mogelijkheden',
     },
     partners: {
       label: 'Een initiatief van',
@@ -662,7 +661,6 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       titleSmall: 'from statute to digital execution',
       intro:
         'RegelRecht explores whether legislation can be written as executable code, so that different organisations apply the same law the same way and citizens can follow how a decision is reached.',
-      cta: 'Explore the possibilities',
     },
     partners: {
       label: 'An initiative of',
