@@ -22,12 +22,15 @@ import { homeTarget } from './composables/useLastVisitedRoute.js';
 import { useDocumentsManager } from './composables/useDocumentsManager.js';
 import { useTrajectDocumentJobs } from './composables/useTrajectDocumentJobs.js';
 import { useDocumentUpload } from './composables/useDocumentUpload.js';
+import { useDocumentTaskReview } from './composables/useDocumentTaskReview.js';
+import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { humanizeLawId } from './lib/lawName.js';
 import { apiFetch, apiFetchJson, ApiError } from './lib/apiFetch.js';
 import { useLatest } from './lib/useLatest.js';
 import { holdRetryFloor, RETRY_MIN_SPINNER_MS } from './lib/retryFeedback.js';
 
 const { authenticated, login } = useAuth();
+const { isEnabled } = useFeatureFlags();
 
 // Provided by AppShell: shows the login-warning popover anchored to an element,
 // so "Bewerken" gates on login the same way the Editor tab does.
@@ -234,6 +237,106 @@ function onDocNew() {
 function onDocBack() {
   guardedDocNavigate(() => closeDoc());
 }
+
+// --- Review-modus (job_review-taak, payload.kind === 'document') --------
+// `?task=<id>` + the tasks.job_review flag on the werkdocumenten route:
+// show a document-conversion job_review task's proposed markdown as an
+// unsaved edit on the addressed document, the same way EditorView seeds a
+// law-review proposal into the article panes. Mirrors EditorView's
+// `useTaskReview` wiring; see the comment on useDocumentTaskReview.js for
+// why the fetch/resolve logic lives in the composable while the seeding
+// (this component's job, since it owns `docsMgr`) lives here.
+const {
+  reviewTask: docReviewTask,
+  proposedContent: docReviewProposedContent,
+  loadError: docReviewLoadError,
+  loadReview: loadDocReview,
+  approveAfterSave: docReviewApproveAfterSave,
+  reject: docReviewRejectInternal,
+} = useDocumentTaskReview();
+const docReviewActive = computed(() => !!docReviewTask.value);
+// Guards against re-firing loadDocReview for a task id already attempted -
+// approve/reject null out `docReviewTask`, which would otherwise look
+// indistinguishable from "not loaded yet" and re-trigger against the task
+// we just resolved.
+let docReviewAttemptedForTaskId = null;
+
+// Whether the tasks.job_review flag is on, split out as its own reactive
+// source for the same reason as EditorView's `taskReviewFlagEnabled`:
+// useFeatureFlags resolves asynchronously, so a document that finishes
+// loading before that fetch lands must still re-evaluate once it does.
+const taskReviewFlagEnabled = computed(() => isEnabled('tasks.job_review'));
+const docReviewTaskIdParam = computed(() =>
+  isWerkdocMode.value && typeof route.query.task === 'string' ? route.query.task : null,
+);
+
+// Fires once the addressed document has finished its (possibly 404) open -
+// `openDoc(docPath)` (route-driven, see the initial-load/onBeforeRouteUpdate
+// wiring below) already sets `currentPath`/`docError` before this can act,
+// so this only has to wait for the per-document `docLoading` to clear (not
+// `docsLoading`, which tracks the sidebar's document *list* fetch).
+watch(
+  [docsMgr.docLoading, openDocPath, taskReviewFlagEnabled, docReviewTaskIdParam],
+  ([isDocLoading, docPath, flagEnabled, taskId]) => {
+    if (isDocLoading || !docPath || !taskId || !flagEnabled) return;
+    if (docReviewAttemptedForTaskId === taskId) return;
+    docReviewAttemptedForTaskId = taskId;
+    loadDocReview(taskId).then(() => {
+      if (!docReviewProposedContent.value) return;
+      // The target document doesn't exist yet on the branch (the usual
+      // case - a conversion is never pushed) - openDoc's 404 branch left a
+      // 'not-found' docError blocking the editor body (see
+      // useTrajectDocuments.js); clear it so the proposal renders as a
+      // brand-new document instead of a blocking "Document niet gevonden".
+      // When the document DOES already exist, docError is left as-is
+      // (openDoc already loaded the real savedBody/etag) and the proposal
+      // simply overwrites currentBody as a draft-seed, so the existing
+      // conflict mechanism (currentEtag as If-Match on save) keeps working.
+      if (docsMgr.docError.value?.kind === 'not-found') {
+        docsMgr.docError.value = null;
+      }
+      docsMgr.currentBody.value = docReviewProposedContent.value;
+    });
+  },
+  { immediate: true },
+);
+
+// Drop `?task=` from the URL once the review is resolved (approved or
+// rejected) so a refresh/back-navigation doesn't re-open review mode.
+function clearDocReviewQuery() {
+  router.replace({
+    name: 'werkdocumenten-traject',
+    params: { trajectRef: activeTrajectRef.value, docPath: openDocPath.value || '' },
+  });
+}
+
+// "Verwerpen" in the review banner: resolve the task as rejected and
+// re-fetch the document's real server state (whichever it is - still
+// nonexistent, or its unmodified saved body) so the seeded proposal is
+// thrown away, mirroring EditorView's `discardArticle()` on reject.
+async function rejectDocReview() {
+  const path = docReviewTask.value?.payload?.target_path;
+  await docReviewRejectInternal();
+  if (path) await openDoc(path);
+  clearDocReviewQuery();
+}
+
+// A successful save of the exact document under review IS the approval
+// (spec: save first, then resolve) - hooked onto DocumentEditor's 'saved'
+// event, its existing save-success point, rather than duplicating the save
+// path. Ignores saves of any other document (there shouldn't be one open at
+// the same time, but this keeps the check honest).
+async function onDocSaved() {
+  if (!docReviewActive.value) return;
+  if (docReviewTask.value?.payload?.target_path !== openDocPath.value) return;
+  await docReviewApproveAfterSave();
+  clearDocReviewQuery();
+}
+
+const docReviewBannerVariant = computed(() => (docReviewLoadError.value ? 'critical' : 'neutral'));
+const docReviewBannerSupportingText = computed(() =>
+  docReviewLoadError.value || 'Opslaan keurt het voorstel goed, Verwerpen wijst af.',
+);
 
 // Keep the user's traject scope across in-app navigations. A traject with a law
 // stays on `library-traject`, a traject without one on `traject-home`; publicly,
@@ -1208,7 +1311,25 @@ watch(activeTrajectRef, () => {
           <!-- Main (werkdoc mode): the document editor, or a placeholder. -->
           <nldd-split-view-pane v-else-if="isWerkdocMode" slot="main" :has-content="hasOpenDoc || undefined">
             <nldd-page v-if="hasOpenDoc" sticky-header sticky-footer>
-              <DocumentEditor ref="docEditorEl" :manager="docsMgr" :traject-name="trajectName" @back="onDocBack"></DocumentEditor>
+              <!-- Review-modus (job_review-taak, payload.kind === 'document'):
+                   a full-width, low bar above the document editor, same
+                   pattern/variants as EditorView's law-review banner (PR
+                   #935/#936). A bare nldd-container + nldd-banner in
+                   DocumentEditor's default (body) slot, ahead of its own
+                   nldd-simple-section - both land in nldd-page's body area,
+                   in source order, so the banner sits above the editor. -->
+              <nldd-container v-if="docReviewActive || docReviewLoadError" padding="8">
+                <nldd-banner :variant="docReviewBannerVariant" text="Voorstel uit documentconversie" :supporting-text="docReviewBannerSupportingText">
+                  <nldd-button
+                    v-if="docReviewActive"
+                    slot="actions"
+                    variant="secondary"
+                    text="Verwerpen"
+                    @click="rejectDocReview"
+                  ></nldd-button>
+                </nldd-banner>
+              </nldd-container>
+              <DocumentEditor ref="docEditorEl" :manager="docsMgr" :traject-name="trajectName" @back="onDocBack" @saved="onDocSaved"></DocumentEditor>
             </nldd-page>
             <nldd-page v-else>
               <nldd-simple-section width="full">

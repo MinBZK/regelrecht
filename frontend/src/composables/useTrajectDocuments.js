@@ -147,8 +147,14 @@ export function useTrajectDocuments(trajectRef) {
         // previous document's saved content (spurious dirty state).
         savedBody.value = '';
         currentEtag.value = null;
+        // Distinct kind from the generic 'load-error' below: a document-task
+        // review (useDocumentTaskReview) needs to tell "doesn't exist yet -
+        // seed the proposal as a new document" apart from a real fetch
+        // failure. DocumentEditor's blockingError check treats both the same
+        // (`kind !== 'draft-present'`), so this is not a behaviour change for
+        // the normal not-a-review flow.
         docError.value = {
-          kind: 'load-error',
+          kind: 'not-found',
           message: 'Document niet gevonden',
         };
         return;

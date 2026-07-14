@@ -36,7 +36,7 @@ const props = defineProps({
   // Shown as the subtitle under the document title, for traject context.
   trajectName: { type: String, default: '' },
 });
-const emit = defineEmits(['deleted', 'back']);
+const emit = defineEmits(['deleted', 'back', 'saved']);
 
 const m = props.manager;
 const {
@@ -105,10 +105,18 @@ onUnmounted(() => {
 // The top-bar Save (and Ctrl/Cmd+S) only persist the body; renaming happens in
 // the sheet. Reset titleDraft to the current name first so a name left half-
 // edited in a dismissed rename sheet can never trigger an accidental rename.
+// Emits 'saved' on success - the save-success hook a document-task review
+// (useDocumentTaskReview, wired in LibraryView.vue) uses to resolve the task
+// as approved, mirroring how EditorView's law-review approves after its own
+// save succeeds. Not emitted from `saveRename` (the rename sheet), which
+// calls `handleSave` directly - renaming isn't part of the save-and-approve
+// flow a review is watching for.
 async function saveDocument() {
   if (saving.value || !currentPath.value) return false;
   titleDraft.value = displayTitle(currentPath.value);
-  return await handleSave();
+  const ok = await handleSave();
+  if (ok) emit('saved');
+  return ok;
 }
 
 // Exposed so the parent's leave-guard can offer a "save and close" action

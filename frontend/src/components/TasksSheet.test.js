@@ -129,6 +129,24 @@ describe('TasksSheet', () => {
     expect(isOpen.value).toBe(false);
   });
 
+  it('navigeert naar de werkdocumenten-route met ?task= voor een document-review-taak, met het documents-icoon', async () => {
+    const wrapper = await mountSheet([
+      {
+        id: 't5',
+        task_type: 'job_review',
+        title: 'Documentconversie beoordelen: bijv-rapport.md',
+        payload: { kind: 'document', traject_ref: 'traject-abcd1234', target_path: 'bijv-rapport.md' },
+      },
+    ]);
+    expect(wrapper.get('nldd-icon-cell').attributes('icon')).toBe('documents');
+    await wrapper.get('nldd-button').trigger('click');
+    expect(pushMock).toHaveBeenCalledWith({
+      name: 'werkdocumenten-traject',
+      params: { trajectRef: 'traject-abcd1234', docPath: 'bijv-rapport.md' },
+      query: { task: 't5' },
+    });
+  });
+
   it('toont een disabled Beoordelen-knop voor een taak zonder traject_ref/law_id', async () => {
     const wrapper = await mountSheet([
       { id: 't3', task_type: 'job_review', title: 'Verrijking beoordelen: ???', payload: {} },

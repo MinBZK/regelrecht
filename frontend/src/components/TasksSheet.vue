@@ -31,6 +31,17 @@ function dismiss(task) {
   resolveTask(task.id, 'dismissed');
 }
 
+// A failed task always gets the alert icon; an open job_review task's icon
+// depends on what it's reviewing - a document-conversion proposal
+// (payload.kind === 'document') gets the 'documents' alias (icon-aliases.js:
+// 'documents' -> file-text-stack, already used elsewhere e.g. TrajectMenu.vue),
+// anything else (a law-review proposal) keeps the generic 'tasks' icon.
+function taskIcon(task) {
+  if (task.task_type === 'job_failed') return 'alert';
+  if (task.payload?.kind === 'document') return 'documents';
+  return 'tasks';
+}
+
 // "Beoordelen" navigeert naar het artikel in de editor (met de taak-id als
 // query) en sluit de sheet. Taken zonder traject_ref/law_id in de payload
 // tonen een disabled knop (zie :disabled hieronder) in plaats van te
@@ -83,7 +94,7 @@ function review(task) {
               <nldd-icon-cell
                 slot="start"
                 size="20"
-                :icon="task.task_type === 'job_failed' ? 'alert' : 'tasks'"
+                :icon="taskIcon(task)"
                 :color="task.task_type === 'job_failed' ? 'critical' : undefined"
               ></nldd-icon-cell>
               <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
