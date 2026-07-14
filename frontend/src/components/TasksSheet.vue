@@ -5,9 +5,9 @@
  * `nldd-sheet` geteleporteerd naar body, imperatief show()/hide() op
  * `useTasksSheet().isOpen`.
  *
- * Gemount door AppShell, alleen wanneer de `tasks.job_review`-flag aan
- * staat EN de gebruiker ingelogd is (zie TasksButton.vue) - dat is ook de
- * enige plek die `useTasks()` aanroept, dus de 30s-poll start pas dan.
+ * Gemount door AppShell, alleen wanneer de gebruiker ingelogd is (de
+ * taken-UI is GA, zie TasksButton.vue) - dat is ook de enige plek die
+ * `useTasks()` aanroept, dus de 30s-poll start pas dan.
  */
 import { nextTick, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';

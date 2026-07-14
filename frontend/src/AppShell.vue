@@ -40,9 +40,13 @@ const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
 
 // Taken (job_review/job_failed): topbar-knop + sheet komen alleen in de DOM
 // terecht - en dus roept alleen dán `useTasks()` op, wat de 30s-poll start -
-// wanneer de flag aan staat EN de gebruiker ingelogd is. Anonieme bezoekers
-// of een uitgeschakelde flag pollen /api/tasks nooit.
-const showTasks = computed(() => authenticated.value && isEnabled('tasks.job_review'));
+// wanneer de gebruiker ingelogd is. De taken-UI is GA (geen flag): gefaalde
+// documentconversies komen als `job_failed`-taak binnen, en werkdocument-upload
+// is zelf GA, dus de takenlijst moet voor elke ingelogde gebruiker zichtbaar
+// zijn - anders is een mislukte conversie onzichtbaar. Alléén de "Verrijk deze
+// wet"-actie (EditorView) zit nog achter `tasks.job_review`. Anonieme bezoekers
+// pollen /api/tasks nooit.
+const showTasks = computed(() => authenticated.value);
 
 // Roles that may reach the harvester-admin "Corpusinwinning" section. Any harvester-*
 // tier (reader/writer/admin) or the spanning regelrecht-admin sees the menu
@@ -661,8 +665,8 @@ const hasDocumentTabs = computed(
   </nldd-app-view>
 
   <!-- Taken-sheet, opened from TasksButton (md/lg headers). Mounted only
-       behind the same flag+authenticated gate as the button, so useTasks()
-       (called inside) never polls for an anonymous or flag-off visitor. -->
+       behind the same authenticated gate as the button, so useTasks()
+       (called inside) never polls for an anonymous visitor. -->
   <TasksSheet v-if="showTasks" />
 
   <!-- Editor requires login: a heads-up popover anchored to the clicked Editor

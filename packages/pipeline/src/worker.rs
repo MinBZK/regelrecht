@@ -889,6 +889,18 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
         // overnight. Counted from the durable `jobs` table (not an in-memory
         // counter) so the cap holds across restarts/redeploys.
         //
+        // Task-flow enrich jobs (deliver=task, e.g. "Verrijk deze wet") fall
+        // under this cap on purpose: they are LLM runs on the same shared token
+        // budget as bulk enrichment, so the spend guard must cover them too.
+        // Their higher priority (80) means they are claimed first within the
+        // budget, so an interactive request still wins the next available slot —
+        // but if the cap is already exhausted it waits like any other job.
+        // Up-to-an-hour interactive latency is the accepted tradeoff here
+        // (follow-up: a separate budget lane for interactive requests so they
+        // aren't starved by a bulk backlog). Document-convert runs *before* this
+        // gate on purpose — it is not an LLM run and doesn't touch the token
+        // budget, so it must not be throttled by the enrich cap.
+        //
         // Fail-closed: a base limit of 0 (the default when ENRICH_HOURLY_LIMIT is
         // unset) pauses the worker without even querying.
         //
@@ -1296,14 +1308,8 @@ async fn process_next_document_convert_job(
             tracing::error!(job_id = %job.id, error = %msg, "document-convert job failed");
             // Document-convert jobs are single-attempt (the upload handler sets
             // max_attempts=1): a retry would re-run the expensive LLM conversion
-            // and most failures are deterministic. Fail terminally and always
-            // drop the transient upload bytes — there is no retry to feed them to.
-            // Delete BEFORE propagating a fail-path error, so a failed status
-            // update (or task-creation error) can't `?`-return past the cleanup
-            // and leak the row. This deletion intentionally stays OUTSIDE the
-            // transaction below: it targets a separate `document_uploads` row,
-            // not the job/task tables, and must run regardless of whether the
-            // fail+task transaction commits.
+            // and most failures are deterministic. Fail terminally and drop the
+            // transient upload bytes — there is normally no retry to feed them to.
             //
             // The fail-marking and the informative `job_failed` task (so the
             // mislukking niet stil in de eeuwigheid verdwijnt — the job is also
@@ -1312,9 +1318,11 @@ async fn process_next_document_convert_job(
             // would otherwise leave a terminally-failed job with no task ever
             // to notify the uploader. This is no longer best-effort: if task
             // creation fails, the whole transaction (including the fail
-            // marking) rolls back, so the job stays 'processing' and the
-            // orphan reaper reclaims it for another attempt — preferable to a
-            // silent, permanent failure.
+            // marking) rolls back and the job stays 'processing'. With the
+            // current max_attempts=1 the orphan reaper will then mark it
+            // failed without a task (a rare double-fault: a DB error exactly
+            // here) — but the rollback at least keeps the fail-marking and
+            // the task atomic in every case where the DB is healthy.
             let fail_result: Result<()> = async {
                 let mut tx = pool.begin().await?;
                 job_queue::fail_job_terminal(
@@ -1345,8 +1353,20 @@ async fn process_next_document_convert_job(
                 Ok(())
             }
             .await;
-            if let Err(e) = document_convert::delete_upload(pool, payload.upload_id).await {
-                tracing::warn!(job_id = %job.id, error = %e, "failed to delete document upload after terminal failure");
+            // Only drop the upload bytes when the fail+task transaction actually
+            // committed. On rollback (a DB error above) the job stays
+            // 'processing'; under the current max_attempts=1 the orphan reaper
+            // will mark it failed rather than retry it, and
+            // `cleanup_orphaned_uploads` (in the poll loop) sweeps the orphaned
+            // row. Keeping the bytes here is forward-compatible defense: if
+            // max_attempts is ever raised, the reaper's re-queue genuinely
+            // re-reads these bytes. This deletion targets a separate
+            // `document_uploads` row, not the job/task tables, so it stays
+            // outside the transaction above.
+            if fail_result.is_ok() {
+                if let Err(e) = document_convert::delete_upload(pool, payload.upload_id).await {
+                    tracing::warn!(job_id = %job.id, error = %e, "failed to delete document upload after terminal failure");
+                }
             }
             fail_result?;
 

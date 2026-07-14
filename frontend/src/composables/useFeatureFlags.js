@@ -19,9 +19,12 @@ const DEFAULTS = {
   // spike stays invisible until a user opts in; the backend is independently
   // gated on GITHUB_OAUTH_* env vars (unconfigured deployments never show it).
   'github.user_oauth': false,
-  // Taken: verrijking op aanvraag met review-taken. Off by default; same
-  // allow-list rule as the flags above — the backend key must exist or the
-  // toggle PUT 400s and the switch silently reverts.
+  // Verrijking op aanvraag: gates ALLEEN de "Verrijk deze wet"-actie in de
+  // editor (het aanmaken van een nieuwe enrich-job). De taken-UI zelf
+  // (TasksButton/TasksSheet + review-modus) is GA en staat los van deze flag —
+  // gefaalde documentconversies komen immers als job_failed-taak binnen. Off by
+  // default; same allow-list rule as the flags above — the backend key must
+  // exist or the toggle PUT 400s and the switch silently reverts.
   'tasks.job_review': false,
 };
 
