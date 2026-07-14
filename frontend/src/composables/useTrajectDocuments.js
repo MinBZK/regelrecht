@@ -314,9 +314,13 @@ export function useTrajectDocuments(trajectRef) {
       clearDraft(trajectRef.value, currentPath.value);
       savedBody.value = currentBody.value;
       // Reload the list - a freshly created document needs to appear
-      // in the sidebar without a manual refresh.
+      // in the sidebar without a manual refresh (await: the caller may
+      // navigate to it). An updated document refreshes non-blocking so a
+      // changed frontmatter title doesn't linger stale in the sidebar.
       if (res.status === 201) {
         await fetchList();
+      } else {
+        fetchList().catch(() => {});
       }
       return { ok: true, created: res.status === 201, pr: json?.pr ?? null };
     } catch (e) {

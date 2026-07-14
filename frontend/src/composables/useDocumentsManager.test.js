@@ -59,6 +59,29 @@ describe('useDocumentsManager', () => {
     expect(m.displayTitle(null)).toBe('');
   });
 
+  it('titleForPath prefers the frontmatter title from the list, else de-slugs', () => {
+    h.api.documents.value = [
+      { path: 'mijn-brief.md', title: 'Mijn Brief' },
+      { path: 'beleid-nota.md' },
+    ];
+    expect(m.titleForPath('mijn-brief.md')).toBe('Mijn Brief');
+    expect(m.titleForPath('beleid-nota.md')).toBe('Beleid nota');
+    // Not in the list (e.g. just deleted): de-slug the path itself.
+    expect(m.titleForPath('onbekend-doc.md')).toBe('Onbekend doc');
+  });
+
+  it('currentTitle follows a frontmatter edit live and falls back while loading', () => {
+    h.api.currentPath.value = 'mijn-brief.md';
+    h.api.currentBody.value = 'Body zonder frontmatter.';
+    expect(m.currentTitle.value).toBe('Mijn brief');
+    h.api.currentBody.value = '---\ntitle: Mijn Brief aan de Kamer\n---\n\nBody.';
+    expect(m.currentTitle.value).toBe('Mijn Brief aan de Kamer');
+    // While loading, currentBody still holds the previous document; the
+    // path-derived fallback prevents a flash of the wrong title.
+    h.api.docLoading.value = true;
+    expect(m.currentTitle.value).toBe('Mijn brief');
+  });
+
   it('onTitleInput sanitizes the name to a valid path (no error shown)', () => {
     m.onTitleInput({ target: { value: 'Beleid Nota' } });
     expect(m.titleDraft.value).toBe('beleid-nota'); // uppercase -> lower, space -> '-'
