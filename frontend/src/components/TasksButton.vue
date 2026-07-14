@@ -3,10 +3,11 @@
  * TasksButton - topbar-knop met badge (open-takenaantal) die de taken-sheet
  * opent. Kleine eigen component zodat `useTasks()` (start de 30s-poll bij de
  * eerste aanroep) pas gebeurt wanneer dit component daadwerkelijk gemount
- * wordt - AppShell mount het alleen achter `v-if` op authenticated (de
- * taken-UI is GA, zie AppShell.vue). Mounten in twee responsieve headers (md/lg) tegelijk
- * is prima: useTasks() is een module-singleton met een consumers-teller, dus
- * de poll blijft één interval, en onUnmounted telt netjes af.
+ * wordt - AppShell mount het alleen achter `v-if` op authenticated EN de
+ * `tasks.job_review` flag (zie AppShell.vue). Mounten in twee responsieve
+ * headers (md/lg) tegelijk is prima: useTasks() is een module-singleton met
+ * een consumers-teller, dus de poll blijft één interval, en onUnmounted telt
+ * netjes af.
  */
 import { computed } from 'vue';
 import { useTasks } from '../composables/useTasks.js';

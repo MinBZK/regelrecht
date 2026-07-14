@@ -2973,8 +2973,9 @@ pub async fn upload_traject_document(
 /// GET /api/trajects/{traject_ref}/corpus/documents/jobs
 ///
 /// List the traject's document-convert jobs that are still relevant to show
-/// (running or failed — completed ones are represented by the actual `.md` in
-/// the documents list). Backs the werkdocumenten conversion-status block.
+/// (running, and - with `tasks.job_review` off - failed; completed ones are
+/// represented by the actual `.md` in the documents list). Backs the
+/// werkdocumenten conversion-status block.
 pub async fn list_traject_document_convert_jobs(
     State(state): State<AppState>,
     session: Session,
@@ -2986,10 +2987,21 @@ pub async fn list_traject_document_convert_jobs(
     ))?;
     // Membership guard.
     require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let jobs =
-        regelrecht_pipeline::document_convert::list_traject_document_jobs(pool, &traject_ref)
+    // Flag ON -> failed conversions surface as `job_failed` taken, so this
+    // list stays pending/processing-only; flag OFF -> restore the pre-taken-
+    // mechanisme behaviour (failed rows included, with `error`) since the
+    // taken-UI that would otherwise show them is itself gated off.
+    let flag_enabled =
+        crate::feature_flags::flag_enabled(pool, crate::feature_flags::TASKS_JOB_REVIEW)
             .await
-            .map_err(|e| upload_internal_error("list document jobs", e))?;
+            .map_err(|e| upload_internal_error("read tasks.job_review flag", e))?;
+    let jobs = regelrecht_pipeline::document_convert::list_traject_document_jobs(
+        pool,
+        &traject_ref,
+        !flag_enabled,
+    )
+    .await
+    .map_err(|e| upload_internal_error("list document jobs", e))?;
     Ok(Json(TrajectJobList { jobs }))
 }
 

@@ -1323,9 +1323,9 @@ const lastSaveTouchedText = ref(false);
 const lastSaveTouchedMachine = ref(false);
 
 // --- Review-modus (job_review-taak) -----------------------------------
-// `?task=<id>`: show a job_review task's proposed law YAML as an unsaved
-// edit rather than fetching it separately. Flag-independent (the taken-UI
-// is GA); only requesting a new enrichment is still flag-gated. The proposal is applied to the first article where it
+// `?task=<id>` + the tasks.job_review flag: show a job_review task's
+// proposed law YAML as an unsaved edit rather than fetching it
+// separately. The proposal is applied to the first article where it
 // diverges from the saved law (seeding `editedText`/`machineReadable`,
 // the same pane-local "current" refs a manual edit would touch), so the
 // existing dirty-tracking and Wijzigingenbalk (Opslaan/Wijzigingen-
@@ -1440,11 +1440,14 @@ const reviewBannerSupportingText = computed(() => {
   );
 });
 
-// Review-modus is flag-onafhankelijk: een `?task=<id>` deep-link moet altijd
-// werken, want de taak bestaat dan al (hij is via de - GA - taken-sheet
-// geopend, of een job_failed-taak wees hierheen). Alléén het aanvragen van een
-// nieuwe verrijking ("Verrijk deze wet", zie `canEnrichLaw` hieronder) zit nog
-// achter `tasks.job_review`; het beoordelen van een bestaand voorstel niet.
+// Whether the tasks.job_review flag is on - split out of the watch below
+// as its own reactive source, because `useFeatureFlags` resolves
+// asynchronously (starts at its hardcoded default, then the `/api/
+// feature-flags` fetch may flip it). Without this, a law/article that
+// finishes loading before that fetch resolves would evaluate the flag as
+// off, `loading`/`selectedArticle` wouldn't change again on their own,
+// and the `?task=<id>` deep link would never activate review mode.
+const taskReviewFlagEnabled = computed(() => isEnabled('tasks.job_review'));
 
 // Fires once the law + its first article have finished loading (whether
 // that's the initial load or a tab-restore switchLaw), so it works
@@ -1455,9 +1458,9 @@ const reviewBannerSupportingText = computed(() => {
 // without this source the watch would simply never re-fire and the review
 // would never activate.
 watch(
-  [loading, selectedArticle, reviewTaskIdParam],
-  ([isLoading, article, taskId]) => {
-    if (isLoading || !article || !taskId) return;
+  [loading, selectedArticle, taskReviewFlagEnabled, reviewTaskIdParam],
+  ([isLoading, article, flagEnabled, taskId]) => {
+    if (isLoading || !article || !taskId || !flagEnabled) return;
     if (reviewAttemptedForTaskId === taskId) return;
     reviewAttemptedForTaskId = taskId;
     loadReview(taskId, currentEtag.value).then(() => {

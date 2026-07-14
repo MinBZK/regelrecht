@@ -40,13 +40,14 @@ const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
 
 // Taken (job_review/job_failed): topbar-knop + sheet komen alleen in de DOM
 // terecht - en dus roept alleen dán `useTasks()` op, wat de 30s-poll start -
-// wanneer de gebruiker ingelogd is. De taken-UI is GA (geen flag): gefaalde
-// documentconversies komen als `job_failed`-taak binnen, en werkdocument-upload
-// is zelf GA, dus de takenlijst moet voor elke ingelogde gebruiker zichtbaar
-// zijn - anders is een mislukte conversie onzichtbaar. Alléén de "Verrijk deze
-// wet"-actie (EditorView) zit nog achter `tasks.job_review`. Anonieme bezoekers
-// pollen /api/tasks nooit.
-const showTasks = computed(() => authenticated.value);
+// wanneer de flag aan staat EN de gebruiker ingelogd is. Het hele
+// taken-mechanisme (verrijk-op-aanvraag + taken-UI + taak-gebaseerde
+// conversie-mislukkingen) zit achter `tasks.job_review`. Met de flag uit
+// levert het documentconversie-jobs-endpoint geen job_failed-taken meer terug
+// (zie ConversionStatus.vue) - de oude lijstweergave met failed-status komt
+// dan terug, dus er is geen zichtbaarheidsgat voor mislukte conversies.
+// Anonieme bezoekers of een uitgeschakelde flag pollen /api/tasks nooit.
+const showTasks = computed(() => authenticated.value && isEnabled('tasks.job_review'));
 
 // Roles that may reach the harvester-admin "Corpusinwinning" section. Any harvester-*
 // tier (reader/writer/admin) or the spanning regelrecht-admin sees the menu

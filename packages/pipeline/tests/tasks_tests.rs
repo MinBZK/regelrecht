@@ -520,6 +520,10 @@ async fn test_list_running_task_jobs_for_account() {
     assert!(after.is_empty());
 }
 
+/// `include_failed` mirrors `!tasks.job_review`: flag ON (taken-mechanisme
+/// actief) -> `include_failed = false` -> failed jobs excluded, the uploader
+/// gets a `job_failed` task instead. Flag OFF -> `include_failed = true` ->
+/// pre-taken-mechanisme behaviour, failed rows included with their `error`.
 #[tokio::test]
 async fn test_document_jobs_list_excludes_failed() {
     let db = TestDb::new().await;
@@ -538,19 +542,41 @@ async fn test_document_jobs_list_excludes_failed() {
         .unwrap()
         .unwrap();
     assert_eq!(claimed.id, job.id);
-    job_queue::fail_job_terminal(&db.pool, job.id, None)
-        .await
-        .unwrap();
+    job_queue::fail_job_terminal(
+        &db.pool,
+        job.id,
+        Some(json!({ "error": "conversie mislukt" })),
+    )
+    .await
+    .unwrap();
 
-    let views = regelrecht_pipeline::document_convert::list_traject_document_jobs(
+    let views_flag_on = regelrecht_pipeline::document_convert::list_traject_document_jobs(
         &db.pool,
         "testtraject-abcd1234",
+        false,
     )
     .await
     .unwrap();
     assert!(
-        views.is_empty(),
-        "failed jobs horen niet meer in de documentenlijst"
+        views_flag_on.is_empty(),
+        "flag aan: failed jobs horen niet meer in de documentenlijst"
+    );
+
+    let views_flag_off = regelrecht_pipeline::document_convert::list_traject_document_jobs(
+        &db.pool,
+        "testtraject-abcd1234",
+        true,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        views_flag_off.len(),
+        1,
+        "flag uit: failed jobs horen weer in de documentenlijst"
+    );
+    assert_eq!(
+        views_flag_off[0].error.as_deref(),
+        Some("conversie mislukt")
     );
 }
 
