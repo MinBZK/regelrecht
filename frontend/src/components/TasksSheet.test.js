@@ -65,7 +65,7 @@ describe('TasksSheet', () => {
     );
     const indicators = wrapper.findAll('nldd-activity-indicator');
     expect(indicators).toHaveLength(1);
-    expect(indicators[0].attributes('text')).toBe('Verrijking loopt — test_wet');
+    expect(indicators[0].attributes('text')).toBe('Verrijking loopt - test_wet');
     expect(wrapper.find('nldd-inline-dialog').exists()).toBe(false);
   });
 

@@ -1426,7 +1426,7 @@ const reviewBannerVariant = computed(() => {
 const reviewBannerSupportingText = computed(() => {
   if (reviewLoadError.value) return reviewLoadError.value;
   if (!reviewSeeded.value) {
-    return 'Voorstel raakt alleen inhoud die hier niet zichtbaar is — bekijk het YAML-paneel.';
+    return 'Voorstel raakt alleen inhoud die hier niet zichtbaar is - bekijk het YAML-paneel.';
   }
   if (reviewStale.value) {
     return (
@@ -1497,14 +1497,17 @@ async function enrichLaw() {
   try {
     const { alreadyRunning, tooMany } = await requestEnrich(activeTrajectRef.value, lawId.value);
     if (alreadyRunning) {
-      enrichFeedback.value = { variant: 'alert', text: 'Er loopt al een verrijking voor deze wet.' };
+      enrichFeedback.value = { variant: 'warning', text: 'Er loopt al een verrijking voor deze wet.' };
     } else if (tooMany) {
-      enrichFeedback.value = { variant: 'alert', text: 'Je hebt te veel verrijkingen tegelijk lopen.' };
+      enrichFeedback.value = { variant: 'warning', text: 'Je hebt te veel verrijkingen tegelijk lopen.' };
     } else {
-      enrichFeedback.value = { text: 'Verrijking gestart — je krijgt een taak zodra het resultaat klaarstaat.' };
+      enrichFeedback.value = {
+        variant: 'success',
+        text: 'Verrijking gestart - je krijgt een taak zodra het resultaat klaarstaat.',
+      };
     }
   } catch (e) {
-    enrichFeedback.value = { variant: 'alert', text: 'Verrijking aanvragen mislukt.' };
+    enrichFeedback.value = { variant: 'critical', text: 'Verrijking aanvragen mislukt.' };
   }
 }
 function dismissEnrichFeedback() {
@@ -2081,19 +2084,18 @@ async function handleActionSave() {
             </nldd-banner>
           </nldd-container>
 
-          <!-- Feedback from "Verrijk deze wet" (see the pane toolbar below).
-               Left as its own nldd-page/nldd-simple-section, unchanged. -->
-          <nldd-page v-if="enrichFeedback">
-            <nldd-simple-section width="full">
-              <nldd-inline-dialog
-                v-if="enrichFeedback"
-                :variant="enrichFeedback.variant"
-                :text="enrichFeedback.text"
-              >
-                <nldd-button slot="actions" text="Sluiten" @click="dismissEnrichFeedback"></nldd-button>
-              </nldd-inline-dialog>
-            </nldd-simple-section>
-          </nldd-page>
+          <!-- Feedback from "Verrijk deze wet" (see the pane toolbar below):
+               same page-wide banner-in-container pattern as the review notice
+               above, so feedback never pushes the editor into a tall narrow
+               column. -->
+          <nldd-container v-if="enrichFeedback" padding="8">
+            <nldd-banner
+              :variant="enrichFeedback.variant"
+              :text="enrichFeedback.text"
+              dismissible
+              @dismiss="dismissEnrichFeedback"
+            ></nldd-banner>
+          </nldd-container>
 
         <nldd-side-by-side-split-view :panes="String(paneViews.length)">
           <!-- Compound key: when a flag flip shifts which view sits at a

@@ -60,7 +60,7 @@ function review(task) {
             <nldd-activity-indicator
               v-for="job in running"
               :key="job.job_id"
-              :text="`Verrijking loopt — ${job.law_id}`"
+              :text="`Verrijking loopt - ${job.law_id}`"
               show-text
             ></nldd-activity-indicator>
           </div>
