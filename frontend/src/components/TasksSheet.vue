@@ -55,72 +55,64 @@ function review(task) {
         ></nldd-top-title-bar>
 
         <nldd-simple-section>
-          <div v-if="running.length > 0" class="tasks-running">
+          <template v-if="running.length > 0">
             <nldd-rich-text><h3>Bezig</h3></nldd-rich-text>
-            <nldd-activity-indicator
-              v-for="job in running"
-              :key="job.job_id"
-              :text="`Verrijking loopt - ${job.law_id}`"
-              show-text
-            ></nldd-activity-indicator>
-          </div>
+            <nldd-spacer size="8"></nldd-spacer>
+            <nldd-list variant="simple">
+              <nldd-list-item v-for="job in running" :key="job.job_id" size="md">
+                <nldd-icon-cell slot="start" size="20">
+                  <nldd-activity-indicator
+                    size="16"
+                    :text="`Verrijking loopt - ${job.law_id}`"
+                  ></nldd-activity-indicator>
+                </nldd-icon-cell>
+                <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+                <nldd-text-cell :text="`Verrijking loopt - ${job.law_id}`"></nldd-text-cell>
+              </nldd-list-item>
+            </nldd-list>
+            <nldd-spacer size="16"></nldd-spacer>
+          </template>
 
           <nldd-inline-dialog
             v-if="tasks.length === 0 && running.length === 0"
             text="Geen open taken."
           ></nldd-inline-dialog>
 
-          <div v-else-if="tasks.length > 0" class="tasks-list">
-            <nldd-inline-dialog
-              v-for="task in tasks"
-              :key="task.id"
-              :variant="task.task_type === 'job_failed' ? 'alert' : undefined"
-              :text="task.title"
-              :supporting-text="
-                task.task_type === 'job_failed'
-                  ? task.payload?.error
-                  : 'Verrijking is klaar om te beoordelen.'
-              "
-            >
-              <nldd-button
-                v-if="task.task_type === 'job_failed'"
-                slot="actions"
-                size="md"
-                text="Gezien"
-                @click="dismiss(task)"
-              ></nldd-button>
-              <nldd-button
-                v-else
-                slot="actions"
-                variant="primary"
-                size="md"
-                text="Beoordelen"
-                :disabled="!reviewTarget(task) || undefined"
-                @click="review(task)"
-              ></nldd-button>
-            </nldd-inline-dialog>
-          </div>
+          <nldd-list v-else-if="tasks.length > 0" variant="simple">
+            <nldd-list-item v-for="task in tasks" :key="task.id" size="md">
+              <nldd-icon-cell
+                slot="start"
+                size="20"
+                :icon="task.task_type === 'job_failed' ? 'alert' : 'tasks'"
+                :color="task.task_type === 'job_failed' ? 'critical' : undefined"
+              ></nldd-icon-cell>
+              <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+              <nldd-text-cell
+                :text="task.title"
+                :color="task.task_type === 'job_failed' ? 'critical' : undefined"
+                :supporting-text="task.task_type === 'job_failed' ? task.payload?.error : undefined"
+              ></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-cell>
+                <nldd-button
+                  v-if="task.task_type === 'job_failed'"
+                  size="sm"
+                  text="Gezien"
+                  @click="dismiss(task)"
+                ></nldd-button>
+                <nldd-button
+                  v-else
+                  variant="primary"
+                  size="sm"
+                  text="Beoordelen"
+                  :disabled="!reviewTarget(task) || undefined"
+                  @click="review(task)"
+                ></nldd-button>
+              </nldd-cell>
+            </nldd-list-item>
+          </nldd-list>
         </nldd-simple-section>
       </nldd-page>
     </nldd-sheet>
   </Teleport>
 </template>
-
-<style scoped>
-/* Stapel de takenkaarten met een kleine tussenruimte - zelfde patroon als
-   ConversionStatus.vue (daar ook als custom CSS gerapporteerd). */
-.tasks-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* "Bezig"-sectie: zelfde stapel-patroon, met ruimte tot de takenlijst
-   eronder. Custom CSS bovenop het design system, gerapporteerd in de PR. */
-.tasks-running {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-</style>

@@ -75,10 +75,11 @@ describe('TasksSheet', () => {
       [{ job_id: 'j1', law_id: 'test_wet', status: 'processing' }]
     );
     expect(wrapper.findAll('nldd-activity-indicator')).toHaveLength(1);
-    expect(wrapper.findAll('nldd-inline-dialog')).toHaveLength(1);
+    expect(wrapper.findAll('nldd-list-item')).toHaveLength(2); // 1 running-rij + 1 taak-rij
+    expect(wrapper.find('nldd-inline-dialog').exists()).toBe(false);
   });
 
-  it('toont een job_failed-taak als alert met titel + error en een Gezien-knop', async () => {
+  it('toont een job_failed-taak als alert-rij met titel + error als secundaire tekst en een Gezien-knop', async () => {
     const wrapper = await mountSheet([
       {
         id: 't1',
@@ -87,10 +88,12 @@ describe('TasksSheet', () => {
         payload: { error: 'boom', law_id: 'test_wet', traject_ref: 'traject-abcd1234' },
       },
     ]);
-    const dialog = wrapper.get('nldd-inline-dialog');
-    expect(dialog.attributes('variant')).toBe('alert');
-    expect(dialog.attributes('text')).toBe('Verrijking mislukt: test_wet');
-    expect(dialog.attributes('supporting-text')).toBe('boom');
+    expect(wrapper.get('nldd-icon-cell').attributes('icon')).toBe('alert');
+    expect(wrapper.get('nldd-icon-cell').attributes('color')).toBe('critical');
+    const cell = wrapper.get('nldd-text-cell');
+    expect(cell.attributes('color')).toBe('critical');
+    expect(cell.attributes('text')).toBe('Verrijking mislukt: test_wet');
+    expect(cell.attributes('supporting-text')).toBe('boom');
 
     apiFetch.mockResolvedValue({ status: 200, json: async () => ({ tasks: [], open_count: 0 }) });
     await wrapper.get('nldd-button').trigger('click');
@@ -113,8 +116,9 @@ describe('TasksSheet', () => {
     const { isOpen } = useTasksSheet();
     expect(isOpen.value).toBe(true);
 
-    const dialog = wrapper.get('nldd-inline-dialog');
-    expect(dialog.attributes('variant')).toBeUndefined();
+    expect(wrapper.get('nldd-icon-cell').attributes('icon')).toBe('tasks');
+    const cell = wrapper.get('nldd-text-cell');
+    expect(cell.attributes('color')).toBeUndefined();
     await wrapper.get('nldd-button').trigger('click');
 
     expect(pushMock).toHaveBeenCalledWith({
