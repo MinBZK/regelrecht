@@ -202,6 +202,30 @@ pub async fn resolve_task(
     Ok(task)
 }
 
+/// Target paths reserved by OPEN document-review tasks of a traject: a
+/// task-delivered conversion is already `completed` on the underlying job
+/// (see `finish_document_convert_task_job`) while the review itself is still
+/// unresolved and the `.md` doesn't exist on the branch yet. The upload
+/// collision check (`pending_target_paths`, which only looks at
+/// pending/processing jobs) misses this window — a second upload with the
+/// same derived name would collide with a name that's really still "in use"
+/// by the open task. Approving/rejecting the task (or letting it lapse) frees
+/// the name again, since the task's status then stops matching `= 'open'`.
+pub async fn open_document_task_target_paths(
+    pool: &PgPool,
+    traject_id: Uuid,
+) -> Result<Vec<String>> {
+    let rows = sqlx::query_as::<_, (Option<String>,)>(
+        "SELECT payload->>'target_path' FROM tasks \
+         WHERE traject_id = $1 AND status = 'open' AND task_type = 'job_review' \
+           AND payload->>'kind' = 'document' AND payload->>'target_path' IS NOT NULL",
+    )
+    .bind(traject_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().filter_map(|(p,)| p).collect())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlobKind {
     Input,

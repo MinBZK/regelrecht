@@ -357,6 +357,86 @@ async fn test_finish_document_convert_task_job_creates_task_and_result_blob() {
 }
 
 #[tokio::test]
+async fn test_open_document_task_target_paths_reserves_names_until_resolved() {
+    let db = TestDb::new().await;
+    let (account_id, traject_id) = seed_account_and_traject(&db).await;
+    let (other_traject_id,): (uuid::Uuid,) = sqlx::query_as(
+        "INSERT INTO trajects (name, created_by) VALUES ('Ander traject', $1) RETURNING id",
+    )
+    .bind(account_id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+
+    let payload = DocumentConvertPayload {
+        upload_id: uuid::Uuid::new_v4(),
+        traject_id,
+        traject_ref: "testtraject-abcd1234".to_string(),
+        target_path: "report.md".to_string(),
+        provider: None,
+        requested_by: Some(account_id),
+        deliver: Some("task".to_string()),
+    };
+    let _created = job_queue::create_job(
+        &db.pool,
+        CreateJobRequest::new(
+            JobType::DocumentConvert,
+            "doc:testtraject-abcd1234/report.md",
+        )
+        .with_traject_ref("testtraject-abcd1234")
+        .with_payload(serde_json::to_value(&payload).unwrap())
+        .with_max_attempts(1),
+    )
+    .await
+    .unwrap();
+    let job = job_queue::claim_job(&db.pool, Some(JobType::DocumentConvert))
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Nog geen taak - lege reservering.
+    assert!(tasks::open_document_task_target_paths(&db.pool, traject_id)
+        .await
+        .unwrap()
+        .is_empty());
+
+    // Task-delivered conversie: de job is 'completed' (dus buiten
+    // `pending_target_paths`), maar de review is nog open - de naam moet nu
+    // gereserveerd zijn.
+    finish_document_convert_task_job(&db.pool, &job, &payload, "# Report\n\nBody.\n")
+        .await
+        .unwrap();
+
+    let reserved = tasks::open_document_task_target_paths(&db.pool, traject_id)
+        .await
+        .unwrap();
+    assert_eq!(reserved, vec!["report.md".to_string()]);
+
+    // Een ander traject ziet de reservering niet, ongeacht dezelfde naam.
+    assert!(
+        tasks::open_document_task_target_paths(&db.pool, other_traject_id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    // Na goedkeuren (of afwijzen) van de review-taak vervalt de reservering.
+    let open = tasks::list_open_tasks_for_account(&db.pool, account_id)
+        .await
+        .unwrap();
+    assert_eq!(open.len(), 1);
+    tasks::resolve_task(&db.pool, open[0].id, account_id, TaskStatus::Approved)
+        .await
+        .unwrap()
+        .expect("assignee mag resolven");
+
+    assert!(tasks::open_document_task_target_paths(&db.pool, traject_id)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
 async fn test_fail_enrich_task_job_creates_failed_task_and_cleans_input() {
     let db = TestDb::new().await;
     let (account_id, traject_id) = seed_account_and_traject(&db).await;

@@ -2931,6 +2931,18 @@ pub async fn upload_traject_document(
                 upload_internal_error("list pending conversions for collision check", e)
             })?,
     );
+    // Also reserve the target paths of OPEN document-review tasks: a
+    // task-delivered conversion is already `completed` on the job (so it
+    // doesn't show up in `pending_target_paths` above) while the reviewer
+    // hasn't approved/rejected yet - the `.md` doesn't exist, but the name is
+    // still spoken for until the task resolves.
+    existing.extend(
+        regelrecht_pipeline::tasks::open_document_task_target_paths(pool, traject_id)
+            .await
+            .map_err(|e| {
+                upload_internal_error("list open document review tasks for collision check", e)
+            })?,
+    );
     let target_path = derive_markdown_target(&filename, &existing);
 
     // Persist the bytes and enqueue the conversion job in one transaction.

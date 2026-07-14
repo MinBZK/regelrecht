@@ -108,14 +108,16 @@ onUnmounted(() => {
 // Emits 'saved' on success - the save-success hook a document-task review
 // (useDocumentTaskReview, wired in LibraryView.vue) uses to resolve the task
 // as approved, mirroring how EditorView's law-review approves after its own
-// save succeeds. Not emitted from `saveRename` (the rename sheet), which
-// calls `handleSave` directly - renaming isn't part of the save-and-approve
-// flow a review is watching for.
+// save succeeds. The payload is the path that was under review WHEN THE SAVE
+// STARTED (captured before `handleSave`, which can move `currentPath` for a
+// rename) - LibraryView's `onDocSaved` gates on that path matching the
+// task's `target_path`, not on wherever the document ended up.
 async function saveDocument() {
   if (saving.value || !currentPath.value) return false;
+  const savedPath = currentPath.value;
   titleDraft.value = displayTitle(currentPath.value);
   const ok = await handleSave();
-  if (ok) emit('saved');
+  if (ok) emit('saved', savedPath);
   return ok;
 }
 
@@ -142,9 +144,18 @@ async function openRename() {
   await nextTick();
   renameFieldEl.value?.focus?.();
 }
+// Also emits 'saved' (see `saveDocument` above): renaming still commits
+// whatever body was in the editor, so it must still trip the review-approve
+// hook when that body is the one under review - even though the document
+// may end up at a different path than `target_path`, `savedPath` (captured
+// before the rename) is what LibraryView's gate compares against.
 async function saveRename() {
+  const savedPath = currentPath.value;
   const ok = await handleSave();
-  if (ok) renameSheetEl.value?.hide?.();
+  if (ok) {
+    emit('saved', savedPath);
+    renameSheetEl.value?.hide?.();
+  }
 }
 
 // --- Delete ---
@@ -182,9 +193,15 @@ function conflictReload() {
   conflict.value = null;
   reloadCurrent();
 }
-function conflictOverwrite() {
+// Async + emits 'saved' on success (see `saveDocument` above): "Lokaal
+// overschrijven" commits the in-editor body via a force-write, bypassing
+// `handleSave`/`saveDocument` entirely - without this the review-approve
+// hook would never fire for a conflict resolved this way.
+async function conflictOverwrite() {
   conflict.value = null;
-  overwriteServer();
+  const savedPath = currentPath.value;
+  const result = await overwriteServer();
+  if (result?.ok) emit('saved', savedPath);
 }
 
 const deleteNoticeModalEl = ref(null);
