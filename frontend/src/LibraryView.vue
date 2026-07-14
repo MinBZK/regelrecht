@@ -162,11 +162,15 @@ function onTrajectGone() {
 
 // Mirror the open document into the URL (refresh / bookmark / back). Guard the
 // redundant replace the initial open would trigger (URL already names the doc).
+// Only the PATH is normalized: the query rijdt mee, anders zou deze mirror een
+// binnenkomende `?task=<id>` (document-review-taak) direct weer strippen
+// voordat de review-activatie hem heeft kunnen lezen.
 watch(openDocPath, (p) => {
   if (!isWerkdocMode.value) return;
   const target = {
     name: 'werkdocumenten-traject',
     params: { trajectRef: activeTrajectRef.value, docPath: p || '' },
+    query: route.query,
   };
   if (router.resolve(target).href !== route.fullPath) {
     router.replace(target).catch(() => {});
