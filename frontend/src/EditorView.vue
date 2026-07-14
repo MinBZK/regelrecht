@@ -1408,33 +1408,34 @@ function applyProposedContent(proposedYaml) {
   });
 }
 
-// Banner copy for the review-mode dialog. Opslaan always approves the FULL
-// proposal (see `handleLawSave`), so the copy says so explicitly; when the
-// proposal touches more than the single seeded article (or nothing could be
-// seeded at all), point the reviewer at the YAML panel (`panel.yaml_editor`)
-// for the parts the article-scoped editor can't show.
-const REVIEW_HIDDEN_CHANGES_NOTE =
-  'Het voorstel kan ook artikelen wijzigen die hier niet zichtbaar zijn — bekijk het YAML-paneel voor het geheel.';
-const reviewSupportingText = computed(() => {
+// Variant + copy for the review-mode bar (a low, full-width nldd-banner -
+// see PR #935 UX feedback; it used to be a page-height nldd-inline-dialog
+// that ate half the viewport). Opslaan always approves the FULL proposal
+// (see `handleLawSave`), so the copy says so explicitly; when the proposal
+// touches more than the single seeded article (or nothing could be seeded
+// at all), point the reviewer at the YAML panel (`panel.yaml_editor`) for
+// the parts the article-scoped editor can't show. A bar has no room for
+// paragraphs, so copy stays to a heading line + one short supporting line.
+const REVIEW_HIDDEN_CHANGES_NOTE = 'Zie ook het YAML-paneel voor wijzigingen buiten dit artikel.';
+const reviewBannerVariant = computed(() => {
+  if (reviewLoadError.value) return 'critical';
+  if (reviewStale.value) return 'warning';
+  if (reviewActive.value && !reviewSeeded.value) return 'warning';
+  return 'neutral';
+});
+const reviewBannerSupportingText = computed(() => {
   if (reviewLoadError.value) return reviewLoadError.value;
   if (!reviewSeeded.value) {
-    return (
-      'Dit voorstel wijkt niet af van een bestaand artikel dat de editor hier kan tonen, ' +
-      'of raakt alleen artikelen die hier niet zichtbaar zijn. Beoordeel het handmatig via ' +
-      `het YAML-paneel. ${REVIEW_HIDDEN_CHANGES_NOTE} Klik op "Voorstel opslaan en ` +
-      'goedkeuren" om het volledige voorstel te accepteren, of verwerp de taak.'
-    );
+    return 'Voorstel raakt alleen inhoud die hier niet zichtbaar is — bekijk het YAML-paneel.';
   }
   if (reviewStale.value) {
     return (
-      'Let op: de wet is gewijzigd sinds deze verrijking draaide. Controleer het voorstel extra goed.' +
+      'Let op: de wet is intussen gewijzigd; controleer extra goed.' +
       (reviewHasHiddenChanges.value ? ` ${REVIEW_HIDDEN_CHANGES_NOTE}` : '')
     );
   }
   return (
-    'Opslaan keurt het volledige voorstel goed (de hele wet); Verwerpen wijst het af. ' +
-    'Handmatige aanpassingen worden daarbij niet meegenomen — wil je zelf bewerken, ' +
-    'verwerp dan eerst het voorstel.' +
+    'Opslaan keurt het volledige voorstel goed (eigen aanpassingen gaan niet mee), Verwerpen wijst af.' +
     (reviewHasHiddenChanges.value ? ` ${REVIEW_HIDDEN_CHANGES_NOTE}` : '')
   );
 });
@@ -2042,45 +2043,48 @@ async function handleActionSave() {
              stay in the DOM so state is preserved when the viewport
              widens. -->
         <template v-else>
-          <!-- Review-modus (job_review-taak) + "Verrijk deze wet"-feedback,
-               each state's own ndd-page/ndd-simple-section (matching the
-               sibling states above) rather than bare dialogs floating in
-               the split-view's slot. -->
-          <nldd-page v-if="reviewActive || reviewLoadError || enrichFeedback">
-            <nldd-simple-section width="full">
-              <!-- Shown while a task's proposal is seeded as an unsaved
-                   edit, or when loading the task failed (loadError, no
-                   content applied then). -->
-              <nldd-inline-dialog
-                v-if="reviewActive || reviewLoadError"
-                :variant="reviewLoadError || reviewStale || (reviewActive && !reviewSeeded) ? 'alert' : undefined"
-                text="Voorstel uit verrijking"
-                :supporting-text="reviewSupportingText"
-              >
-                <!-- Wijzigingenbalk only appears when a pane is dirty, which
-                     `!reviewSeeded` never is (nothing was seeded into the
-                     panes) - give the banner its own primary action so
-                     approving a proposal that touches nothing visible here
-                     is still reachable. -->
-                <nldd-button
-                  v-if="reviewActive && !reviewSeeded"
-                  slot="actions"
-                  variant="primary"
-                  text="Voorstel opslaan en goedkeuren"
-                  :loading="lawSaving || undefined"
-                  :disabled="lawSaving || undefined"
-                  @click="handleLawSave"
-                ></nldd-button>
-                <nldd-button
-                  v-if="reviewActive"
-                  slot="actions"
-                  variant="secondary"
-                  text="Verwerpen"
-                  @click="rejectReview"
-                ></nldd-button>
-              </nldd-inline-dialog>
+          <!-- Review-modus (job_review-taak): a full-width, low bar above
+               the editor panes rather than a page-height dialog (PR #935 UX
+               feedback - the old nldd-page/nldd-simple-section wrapper made
+               it "too tall and too narrow", pushing real content down). A
+               bare nldd-container + nldd-banner sits directly in the flex
+               column here, outside the narrow-column nldd-simple-section
+               the pane/error states below use, the same way the
+               Wijzigingenbalk (AppShell.vue) is a bare nldd-container
+               outside its page-section too. nldd-banner natively supports
+               a variant colour + an actions slot (nldd-button, wrapped in
+               nldd-button-group), so it carries "Verwerpen"/"Voorstel
+               opslaan en goedkeuren" without any custom CSS. -->
+          <nldd-container v-if="reviewActive || reviewLoadError" padding="8">
+            <nldd-banner :variant="reviewBannerVariant" text="Voorstel uit verrijking" :supporting-text="reviewBannerSupportingText">
+              <!-- Wijzigingenbalk only appears when a pane is dirty, which
+                   `!reviewSeeded` never is (nothing was seeded into the
+                   panes) - give the banner its own primary action so
+                   approving a proposal that touches nothing visible here
+                   is still reachable. -->
+              <nldd-button
+                v-if="reviewActive && !reviewSeeded"
+                slot="actions"
+                variant="primary"
+                text="Voorstel opslaan en goedkeuren"
+                :loading="lawSaving || undefined"
+                :disabled="lawSaving || undefined"
+                @click="handleLawSave"
+              ></nldd-button>
+              <nldd-button
+                v-if="reviewActive"
+                slot="actions"
+                variant="secondary"
+                text="Verwerpen"
+                @click="rejectReview"
+              ></nldd-button>
+            </nldd-banner>
+          </nldd-container>
 
-              <!-- Feedback from "Verrijk deze wet" (see the pane toolbar below). -->
+          <!-- Feedback from "Verrijk deze wet" (see the pane toolbar below).
+               Left as its own nldd-page/nldd-simple-section, unchanged. -->
+          <nldd-page v-if="enrichFeedback">
+            <nldd-simple-section width="full">
               <nldd-inline-dialog
                 v-if="enrichFeedback"
                 :variant="enrichFeedback.variant"
