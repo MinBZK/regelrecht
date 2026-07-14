@@ -27,6 +27,7 @@ import { RETRY_MIN_SPINNER_MS } from './lib/retryFeedback.js';
 import { humanizeLawId } from './lib/lawName.js';
 import { quoteContext } from './lib/quoteContext.js';
 import { useLatest } from './lib/useLatest.js';
+import { proposalDivergence } from './lib/taskReview.js';
 import ArticleText from './components/ArticleText.vue';
 import ArticleTextEditor from './components/ArticleTextEditor.vue';
 import NoteCreator from './components/NoteCreator.vue';
@@ -1376,14 +1377,6 @@ const reviewSeeded = ref(false);
 // banner copy that points the reviewer at the YAML panel for the rest.
 const reviewHasHiddenChanges = ref(false);
 
-function proposedArticleDiffers(current, proposedArticle) {
-  const sameText = (current?.text ?? '') === (proposedArticle.text ?? '');
-  const sameMr =
-    JSON.stringify(current?.machine_readable ?? null) ===
-    JSON.stringify(proposedArticle.machine_readable ?? null);
-  return !(sameText && sameMr);
-}
-
 function applyProposedContent(proposedYaml) {
   reviewSeeded.value = false;
   reviewHasHiddenChanges.value = false;
@@ -1394,27 +1387,13 @@ function applyProposedContent(proposedYaml) {
     return; // malformed proposal - leave the saved content in place
   }
   const proposedArticles = Array.isArray(proposed?.articles) ? proposed.articles : [];
-  let target = null;
-  let othersDiffer = false;
-  for (const pa of proposedArticles) {
-    const current = articles.value.find((a) => String(a.number) === String(pa.number));
-    // v1 can only seed an EXISTING article as an unsaved edit (same
-    // single-article model as `currentLawYaml`'s KNOWN LIMITATION below,
-    // which has no way to splice in an article the saved law doesn't
-    // have) - a proposed article the saved law lacks always counts as a
-    // hidden change, never as the seed target.
-    if (!current) {
-      othersDiffer = true;
-      continue;
-    }
-    if (!proposedArticleDiffers(current, pa)) continue;
-    if (!target) {
-      target = pa;
-    } else {
-      othersDiffer = true;
-    }
-  }
-  reviewHasHiddenChanges.value = othersDiffer;
+  // v1 can only seed an EXISTING article as an unsaved edit (same
+  // single-article model as `currentLawYaml`'s KNOWN LIMITATION below,
+  // which has no way to splice in an article the saved law doesn't have),
+  // and can't show a removed article either - proposalDivergence folds both
+  // into `hiddenChanges` so the banner points at the YAML panel for them.
+  const { target, hiddenChanges } = proposalDivergence(articles.value, proposedArticles);
+  reviewHasHiddenChanges.value = hiddenChanges;
   if (!target) return; // nothing seedable differs - nothing to seed
   reviewSeeded.value = true;
   selectedArticleNumber.value = String(target.number);

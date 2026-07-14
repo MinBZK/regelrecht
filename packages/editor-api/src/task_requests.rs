@@ -89,6 +89,15 @@ pub async fn request_enrich(
     // op (law_id, provider) via de bestaande unieke actieve-enrich-index.
     let mut tx = pool.begin().await.map_err(internal("begin tx"))?;
 
+    // Serialiseer per account: de cap-check hieronder is anders een
+    // COUNT-then-INSERT-race (zelfde TOCTOU-klasse als harvest_request;
+    // zelfde remedie: een xact-scoped advisory lock).
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended('task_enrich:' || $1::text, 0))")
+        .bind(account.id.to_string())
+        .execute(&mut *tx)
+        .await
+        .map_err(internal("account-lock nemen"))?;
+
     // Per-account-cap: telt actieve taak-flow-jobs van dit account vóórdat we
     // er nog een bij enqueuen, zodat een scripted flood niet de prio-80-queue
     // of het LLM-uurbudget kan opsouperen.

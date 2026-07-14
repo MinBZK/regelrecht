@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import router from '../router.js';
-import { reviewTarget } from './taskReview.js';
+import { reviewTarget, proposalDivergence } from './taskReview.js';
 
 describe('reviewTarget', () => {
   it('bouwt de editor-traject-route met ?task= voor een job_review-taak', () => {
@@ -30,5 +30,67 @@ describe('reviewTarget', () => {
 
   it('geeft null voor een taak zonder payload', () => {
     expect(reviewTarget({ id: 't4' })).toBeNull();
+  });
+});
+
+describe('proposalDivergence', () => {
+  it('vindt het enige afwijkende artikel als target zonder hidden changes', () => {
+    const current = [{ number: '1', text: 'oud' }];
+    const proposed = [{ number: '1', text: 'nieuw' }];
+    const result = proposalDivergence(current, proposed);
+    expect(result.target).toEqual(proposed[0]);
+    expect(result.hiddenChanges).toBe(false);
+  });
+
+  it('geeft geen target als niets afwijkt', () => {
+    const current = [{ number: '1', text: 'zelfde' }];
+    const proposed = [{ number: '1', text: 'zelfde' }];
+    const result = proposalDivergence(current, proposed);
+    expect(result.target).toBeNull();
+    expect(result.hiddenChanges).toBe(false);
+  });
+
+  it('markeert een tweede afwijkend artikel als hidden change', () => {
+    const current = [
+      { number: '1', text: 'oud-1' },
+      { number: '2', text: 'oud-2' },
+    ];
+    const proposed = [
+      { number: '1', text: 'nieuw-1' },
+      { number: '2', text: 'nieuw-2' },
+    ];
+    const result = proposalDivergence(current, proposed);
+    expect(result.target).toEqual(proposed[0]);
+    expect(result.hiddenChanges).toBe(true);
+  });
+
+  it('markeert een voorgesteld artikel dat de huidige wet niet heeft als hidden change', () => {
+    const current = [{ number: '1', text: 'oud' }];
+    const proposed = [
+      { number: '1', text: 'oud' },
+      { number: '2', text: 'nieuw artikel' },
+    ];
+    const result = proposalDivergence(current, proposed);
+    expect(result.target).toBeNull();
+    expect(result.hiddenChanges).toBe(true);
+  });
+
+  it('markeert een artikel-verwijdering (huidige wet heeft artikel 2, voorstel niet) als hidden change', () => {
+    const current = [
+      { number: '1', text: 'blijft' },
+      { number: '2', text: 'wordt verwijderd' },
+    ];
+    const proposed = [{ number: '1', text: 'blijft' }];
+    const result = proposalDivergence(current, proposed);
+    expect(result.target).toBeNull();
+    expect(result.hiddenChanges).toBe(true);
+  });
+
+  it('behandelt lege/ontbrekende input als geen divergentie', () => {
+    expect(proposalDivergence(undefined, undefined)).toEqual({
+      target: null,
+      hiddenChanges: false,
+    });
+    expect(proposalDivergence([], [])).toEqual({ target: null, hiddenChanges: false });
   });
 });
