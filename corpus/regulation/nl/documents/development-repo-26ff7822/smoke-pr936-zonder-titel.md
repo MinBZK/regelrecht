@@ -1,1 +1,0 @@
-Alleen body, geen frontmatter.
