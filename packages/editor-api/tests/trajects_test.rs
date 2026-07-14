@@ -44,6 +44,7 @@ fn empty_state(pool: PgPool) -> AppState {
             oidc: None,
             base_url: None,
             github_oauth: None,
+            task_enrich_provider: "claude".to_string(),
         }),
         http_client: reqwest::Client::new(),
         pool: Some(pool),
@@ -237,6 +238,7 @@ async fn create_custom_repo_requires_linked_github_when_enforced() {
         oidc: None,
         base_url: None,
         github_oauth: Some(GithubOAuth::for_tests(true)),
+        task_enrich_provider: "claude".to_string(),
     });
     let owner = seed_account(&db.pool, "owner-enforced@example.com", "Owner").await;
 
@@ -276,6 +278,7 @@ async fn create_custom_repo_preflights_with_the_linked_user_token() {
         oidc: None,
         base_url: None,
         github_oauth: Some(oauth.clone()),
+        task_enrich_provider: "claude".to_string(),
     });
     let owner = seed_account(&db.pool, "owner-linked@example.com", "Owner").await;
 

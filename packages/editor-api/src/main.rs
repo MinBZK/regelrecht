@@ -26,6 +26,8 @@ mod github_oauth;
 mod harvest_proxy;
 mod middleware;
 mod state;
+mod task_requests;
+mod tasks_api;
 mod traject_corpus;
 mod trajects;
 mod user_notes;
@@ -284,6 +286,37 @@ async fn main() {
             middleware::require_role::<AppState>("editor-writer"),
         ));
 
+    // Persoonlijke taken (taken-mechanisme) — review-taken van async jobs,
+    // gekoppeld aan het aanvragende account. Zelfde split als user_notes:
+    // reads at reader tier, de afhandeling (mutatie + audit-stempel) at
+    // writer tier, allebei achter `account_middleware` omdat de handlers
+    // `Extension<AccountRecord>` extracten.
+    let tasks_reader_routes = Router::new()
+        .route("/api/tasks", get(tasks_api::list))
+        .route("/api/tasks/{task_id}", get(tasks_api::detail))
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            accounts::account_middleware,
+        ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_role::<AppState>("editor-reader"),
+        ));
+
+    let tasks_writer_routes = Router::new()
+        .route(
+            "/api/tasks/{task_id}/resolve",
+            axum::routing::post(tasks_api::resolve),
+        )
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            accounts::account_middleware,
+        ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_role::<AppState>("editor-writer"),
+        ));
+
     // Admin routes — `editor-admin` covers destructive/global operations
     // (full corpus reload, feature flag toggles).
     let admin_routes = Router::new()
@@ -451,6 +484,10 @@ async fn main() {
                 .layer(axum::extract::DefaultBodyLimit::max(MAX_UPLOAD_BODY)),
         )
         .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}/enrich",
+            axum::routing::post(task_requests::request_enrich),
+        )
+        .route(
             "/api/trajects/{traject_ref}/corpus/documents/{*doc_path}",
             axum::routing::put(corpus_handlers::save_traject_document)
                 .delete(corpus_handlers::delete_traject_document)
@@ -548,6 +585,8 @@ async fn main() {
             .merge(traject_writer_routes)
             .merge(user_notes_reader_routes)
             .merge(user_notes_writer_routes)
+            .merge(tasks_reader_routes)
+            .merge(tasks_writer_routes)
             .merge(github_oauth_routes)
             // Relay is public (no session/account): GitHub redirects the
             // browser here on the fixed callback host and we 302 it on to the
@@ -594,6 +633,8 @@ async fn main() {
             .merge(traject_writer_routes)
             .merge(user_notes_reader_routes)
             .merge(user_notes_writer_routes)
+            .merge(tasks_reader_routes)
+            .merge(tasks_writer_routes)
             .with_state(app_state)
             // See the auth branch above: innermost layer so the timing
             // recorder wraps the routed handlers.

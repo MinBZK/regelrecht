@@ -1061,6 +1061,11 @@ pub async fn create_enrich_jobs(
             provider: Some((*provider_name).to_string()),
             // Admin-requested enrichments are roots of the related-harvest chain.
             depth: None,
+            requested_by: None,
+            deliver: None,
+            traject_id: None,
+            traject_ref: None,
+            source_etag: None,
         };
 
         let payload_json = serde_json::to_value(&enrich_payload).map_err(|e| {

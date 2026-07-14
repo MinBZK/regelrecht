@@ -8,6 +8,8 @@ import { useEngine } from './composables/useEngine.js';
 import { useAuth } from './composables/useAuth.js';
 import { useTrajects } from './composables/useTrajects.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
+import { useTaskActions } from './composables/useTasks.js';
+import { useTaskReview } from './composables/useTaskReview.js';
 import { useNotes, useResolvedDraftNotes } from './composables/useNotes.js';
 import { useDraftNotes } from './composables/useDraftNotes.js';
 import { lastHomePath, homeTarget } from './composables/useLastVisitedRoute.js';
@@ -25,6 +27,7 @@ import { RETRY_MIN_SPINNER_MS } from './lib/retryFeedback.js';
 import { humanizeLawId } from './lib/lawName.js';
 import { quoteContext } from './lib/quoteContext.js';
 import { useLatest } from './lib/useLatest.js';
+import { proposalDivergence } from './lib/taskReview.js';
 import ArticleText from './components/ArticleText.vue';
 import ArticleTextEditor from './components/ArticleTextEditor.vue';
 import NoteCreator from './components/NoteCreator.vue';
@@ -194,6 +197,7 @@ const {
   saving: lawSaving,
   saveError: lawSaveError,
   saveLaw,
+  currentEtag,
   lastSavedPr,
 } = useLaw(route.params.lawId, route.params.articleNumber, route.params.trajectRef);
 
@@ -1318,11 +1322,214 @@ const isArticleTextDirty = computed(() => {
 const lastSaveTouchedText = ref(false);
 const lastSaveTouchedMachine = ref(false);
 
+// --- Review-modus (job_review-taak) -----------------------------------
+// `?task=<id>` + the tasks.job_review flag: show a job_review task's
+// proposed law YAML as an unsaved edit rather than fetching it
+// separately. The proposal is applied to the first article where it
+// diverges from the saved law (seeding `editedText`/`machineReadable`,
+// the same pane-local "current" refs a manual edit would touch), so the
+// existing dirty-tracking and Wijzigingenbalk (Opslaan/Wijzigingen-
+// ongedaan) drive the review UI the same way they drive a manual edit.
+// The SEEDING is single-article-scoped like `currentLawYaml` below (a
+// proposal touching several articles only seeds the first one that
+// differs into the panes), but the SAVE is not: `handleLawSave` sends the
+// full `reviewProposedContent` when a review is active, so approving
+// always commits the entire proposal - never just the seeded article.
+const {
+  reviewTask,
+  proposedContent: reviewProposedContent,
+  stale: reviewStale,
+  loadError: reviewLoadError,
+  loadReview,
+  approveAfterSave,
+  reject: rejectReviewInternal,
+} = useTaskReview();
+const reviewActive = computed(() => !!reviewTask.value);
+const reviewTaskIdParam = computed(() =>
+  typeof route.query.task === 'string' ? route.query.task : null,
+);
+// Guards against re-firing loadReview for a task id already attempted -
+// approve/reject null out `reviewTask`, which would otherwise look
+// indistinguishable from "not loaded yet" and re-trigger against the
+// task we just resolved.
+let reviewAttemptedForTaskId = null;
+
+// Drop `?task=` from the URL once the review is resolved (approved or
+// rejected) so a refresh/back-navigation doesn't re-open review mode.
+// Rebuilt from the CURRENT law/article (not `route.params`, which still
+// names whatever article the URL originally pointed at): applyProposedContent
+// may have moved `selectedArticleNumber` to the article the proposal
+// actually touches, and `onBeforeRouteUpdate` would otherwise see the
+// stale route param disagree with `selectedArticleNumber` and snap the
+// editor back to the pre-review article right after resolving.
+function clearReviewQuery() {
+  router.replace(editorRouteFor(lawId.value, selectedArticleNumber.value));
+}
+
+// Whether the proposal seeded anything (false when every proposed article
+// matches the saved law, or the only differences are articles the saved
+// law doesn't have - see the comment on the loop below).
+const reviewSeeded = ref(false);
+// Whether the proposal touches article(s) beyond the single one seeded into
+// the editor panes (or, when nothing was seedable, the proposal touches
+// anything at all). The visible editor is always single-article-scoped, but
+// Opslaan now approves the FULL proposal regardless - this only drives the
+// banner copy that points the reviewer at the YAML panel for the rest.
+const reviewHasHiddenChanges = ref(false);
+
+function applyProposedContent(proposedYaml) {
+  reviewSeeded.value = false;
+  reviewHasHiddenChanges.value = false;
+  let proposed;
+  try {
+    proposed = yaml.load(proposedYaml);
+  } catch {
+    return; // malformed proposal - leave the saved content in place
+  }
+  const proposedArticles = Array.isArray(proposed?.articles) ? proposed.articles : [];
+  // v1 can only seed an EXISTING article as an unsaved edit (same
+  // single-article model as `currentLawYaml`'s KNOWN LIMITATION below,
+  // which has no way to splice in an article the saved law doesn't have),
+  // and can't show a removed article either - proposalDivergence folds both
+  // into `hiddenChanges` so the banner points at the YAML panel for them.
+  const { target, hiddenChanges } = proposalDivergence(articles.value, proposedArticles);
+  reviewHasHiddenChanges.value = hiddenChanges;
+  if (!target) return; // nothing seedable differs - nothing to seed
+  reviewSeeded.value = true;
+  selectedArticleNumber.value = String(target.number);
+  // `watch(selectedArticle)` (above) resets editedText/machineReadable to
+  // the (still-saved) newly selected article; wait a tick so the seed
+  // below lands after that reset instead of being clobbered by it.
+  nextTick(() => {
+    const mr = target.machine_readable ?? null;
+    machineReadable.value = mr ? structuredClone(mr) : null;
+    yamlSource.value = mr ? yaml.dump(mr, dumpOpts) : '';
+    editedText.value = target.text ?? '';
+  });
+}
+
+// Variant + copy for the review-mode bar (a low, full-width nldd-banner -
+// see PR #935 UX feedback; it used to be a page-height nldd-inline-dialog
+// that ate half the viewport). Opslaan always approves the FULL proposal
+// (see `handleLawSave`), so the copy says so explicitly; when the proposal
+// touches more than the single seeded article (or nothing could be seeded
+// at all), point the reviewer at the YAML panel (`panel.yaml_editor`) for
+// the parts the article-scoped editor can't show. A bar has no room for
+// paragraphs, so copy stays to a heading line + one short supporting line.
+const REVIEW_HIDDEN_CHANGES_NOTE = 'Zie ook het YAML-paneel voor wijzigingen buiten dit artikel.';
+const reviewBannerVariant = computed(() => {
+  if (reviewLoadError.value) return 'critical';
+  if (reviewStale.value) return 'warning';
+  if (reviewActive.value && !reviewSeeded.value) return 'warning';
+  return 'neutral';
+});
+const reviewBannerSupportingText = computed(() => {
+  if (reviewLoadError.value) return reviewLoadError.value;
+  if (!reviewSeeded.value) {
+    return 'Voorstel raakt alleen inhoud die hier niet zichtbaar is - bekijk het YAML-paneel.';
+  }
+  if (reviewStale.value) {
+    return (
+      'Let op: de wet is intussen gewijzigd; controleer extra goed.' +
+      (reviewHasHiddenChanges.value ? ` ${REVIEW_HIDDEN_CHANGES_NOTE}` : '')
+    );
+  }
+  return (
+    'Opslaan keurt het volledige voorstel goed (eigen aanpassingen gaan niet mee), Verwerpen wijst af.' +
+    (reviewHasHiddenChanges.value ? ` ${REVIEW_HIDDEN_CHANGES_NOTE}` : '')
+  );
+});
+
+// Whether the tasks.job_review flag is on - split out of the watch below
+// as its own reactive source, because `useFeatureFlags` resolves
+// asynchronously (starts at its hardcoded default, then the `/api/
+// feature-flags` fetch may flip it). Without this, a law/article that
+// finishes loading before that fetch resolves would evaluate the flag as
+// off, `loading`/`selectedArticle` wouldn't change again on their own,
+// and the `?task=<id>` deep link would never activate review mode.
+const taskReviewFlagEnabled = computed(() => isEnabled('tasks.job_review'));
+
+// Fires once the law + its first article have finished loading (whether
+// that's the initial load or a tab-restore switchLaw), so it works
+// regardless of how the route.query.task navigation happened to arrive.
+// `reviewTaskIdParam` is itself a source: navigating from the TasksSheet
+// to a wet that is ALREADY open (the target law/article is unchanged) is a
+// query-only route change - `loading`/`selectedArticle` never flip, so
+// without this source the watch would simply never re-fire and the review
+// would never activate.
+watch(
+  [loading, selectedArticle, taskReviewFlagEnabled, reviewTaskIdParam],
+  ([isLoading, article, flagEnabled, taskId]) => {
+    if (isLoading || !article || !taskId || !flagEnabled) return;
+    if (reviewAttemptedForTaskId === taskId) return;
+    reviewAttemptedForTaskId = taskId;
+    loadReview(taskId, currentEtag.value).then(() => {
+      if (reviewProposedContent.value) applyProposedContent(reviewProposedContent.value);
+    });
+  },
+  { immediate: true },
+);
+
+// "Verwerpen" in the review banner: resolve the task as rejected, throw
+// away the seeded edit (same discard the Wijzigingenbalk offers), and
+// leave review mode.
+async function rejectReview() {
+  await rejectReviewInternal();
+  discardArticle();
+  clearReviewQuery();
+}
+
+// --- "Verrijk deze wet" (request a job_review task) ---------------------
+// Fire-and-forget request; the resulting job_review task shows up in the
+// Taken-badge/sheet on its next poll (TasksButton/TasksSheet already poll
+// via useTasks() every 30s). Use the non-polling useTaskActions() here -
+// EditorView doesn't need the shared task list/badge count, and joining
+// useTasks() unconditionally in setup() would start that poll for every
+// editor visitor, including anonymous ones with the flag off.
+const { requestEnrich } = useTaskActions();
+const enrichFeedback = ref(null); // { variant, text } | null
+// Flag on, an actual traject open (write access implies a traject, see
+// `canEdit` above), and a law loaded - mirrors the gates other write
+// actions in this view use.
+const canEnrichLaw = computed(
+  () => isEnabled('tasks.job_review') && canEdit.value && !!activeTrajectRef.value && !!lawId.value,
+);
+
+async function enrichLaw() {
+  if (!activeTrajectRef.value || !lawId.value) return;
+  try {
+    const { alreadyRunning, tooMany } = await requestEnrich(activeTrajectRef.value, lawId.value);
+    if (alreadyRunning) {
+      enrichFeedback.value = { variant: 'warning', text: 'Er loopt al een verrijking voor deze wet.' };
+    } else if (tooMany) {
+      enrichFeedback.value = { variant: 'warning', text: 'Je hebt te veel verrijkingen tegelijk lopen.' };
+    } else {
+      enrichFeedback.value = {
+        variant: 'success',
+        text: 'Verrijking gestart - je krijgt een taak zodra het resultaat klaarstaat.',
+      };
+    }
+  } catch (e) {
+    enrichFeedback.value = { variant: 'critical', text: 'Verrijking aanvragen mislukt.' };
+  }
+}
+function dismissEnrichFeedback() {
+  enrichFeedback.value = null;
+}
+
 // Single save handler shared by the Tekst and Machine panes. The PUT writes
 // the whole law YAML, so one click persists every in-memory edit for the
 // selected article regardless of which pane surfaced the button.
+//
+// Review-modus: Opslaan approves the task, and approval must commit the
+// FULL proposal (spec §5.3/§6), not just the splice `currentLawYaml` makes
+// into the single selected article - a proposal touching several articles
+// would otherwise lose every article besides the one shown in the editor.
+// `saveLaw` already accepts arbitrary full-law YAML text (see its PUT body
+// in useLaw.js), so reusing it with `reviewProposedContent` instead of
+// `currentLawYaml` is the whole fix; no second save path is introduced.
 async function handleLawSave() {
-  const lawYaml = currentLawYaml.value;
+  const lawYaml = reviewActive.value ? reviewProposedContent.value : currentLawYaml.value;
   if (!lawYaml) return;
   // Snapshot the law id before the await. saveLaw itself guards its own
   // reactive writes with the same check, but the post-save cleanup below
@@ -1330,8 +1537,12 @@ async function handleLawSave() {
   // in-progress edits with its pristine article data if the user switched
   // laws mid-flight.
   const savedLawId = lawId.value;
-  lastSaveTouchedText.value = isArticleTextDirty.value;
-  lastSaveTouchedMachine.value = isMachineReadableDirty.value;
+  // In review-modus the saved YAML is the full proposal, not a splice of
+  // the visible pane's edits - always treat it as touching text (notes
+  // re-anchor safely; skipping would risk leaving a note's positions stale
+  // against text the proposal actually changed elsewhere in the law).
+  lastSaveTouchedText.value = reviewActive.value ? true : isArticleTextDirty.value;
+  lastSaveTouchedMachine.value = reviewActive.value ? true : isMachineReadableDirty.value;
   try {
     await saveLaw(lawYaml);
     if (lawId.value !== savedLawId) return; // law switched mid-PUT
@@ -1355,6 +1566,13 @@ async function handleLawSave() {
     // Successful save - the dialog flags drop back to false.
     lastSaveTouchedText.value = false;
     lastSaveTouchedMachine.value = false;
+    // Review-modus: a successful save IS the approval (spec §5.3 - save
+    // first, then resolve). Runs after the dirty-state reset above so the
+    // Wijzigingenbalk has already cleared before the task disappears.
+    if (reviewActive.value) {
+      await approveAfterSave();
+      clearReviewQuery();
+    }
   } catch (e) {
     // saveError is surfaced via lawSaveError; log for dev visibility.
     console.warn('saveLaw failed:', e);
@@ -1823,12 +2041,66 @@ async function handleActionSave() {
           </nldd-simple-section>
         </nldd-page>
 
-        <!-- One pane per entry in `paneViews`. Each pane independently
-             picks its view via the dropdown in its header. The split-view
-             auto-hides panes from the right when the viewport is too narrow.
-             Hidden panes stay in the DOM so state is preserved when the
-             viewport widens. -->
-        <nldd-side-by-side-split-view v-else :panes="String(paneViews.length)">
+        <!-- One pane per entry in `paneViews`, wrapped in a template so the
+             review/enrich banners can sit above it as siblings within this
+             same v-else branch. Each pane independently picks its view via
+             the dropdown in its header. The split-view auto-hides panes
+             from the right when the viewport is too narrow. Hidden panes
+             stay in the DOM so state is preserved when the viewport
+             widens. -->
+        <template v-else>
+          <!-- Review-modus (job_review-taak): a full-width, low bar above
+               the editor panes rather than a page-height dialog (PR #935 UX
+               feedback - the old nldd-page/nldd-simple-section wrapper made
+               it "too tall and too narrow", pushing real content down). A
+               bare nldd-container + nldd-banner sits directly in the flex
+               column here, outside the narrow-column nldd-simple-section
+               the pane/error states below use, the same way the
+               Wijzigingenbalk (AppShell.vue) is a bare nldd-container
+               outside its page-section too. nldd-banner natively supports
+               a variant colour + an actions slot (nldd-button, wrapped in
+               nldd-button-group), so it carries "Verwerpen"/"Voorstel
+               opslaan en goedkeuren" without any custom CSS. -->
+          <nldd-container v-if="reviewActive || reviewLoadError" padding="8">
+            <nldd-banner :variant="reviewBannerVariant" text="Voorstel uit verrijking" :supporting-text="reviewBannerSupportingText">
+              <!-- Wijzigingenbalk only appears when a pane is dirty, which
+                   `!reviewSeeded` never is (nothing was seeded into the
+                   panes) - give the banner its own primary action so
+                   approving a proposal that touches nothing visible here
+                   is still reachable. -->
+              <nldd-button
+                v-if="reviewActive && !reviewSeeded"
+                slot="actions"
+                variant="primary"
+                text="Voorstel opslaan en goedkeuren"
+                :loading="lawSaving || undefined"
+                :disabled="lawSaving || undefined"
+                @click="handleLawSave"
+              ></nldd-button>
+              <nldd-button
+                v-if="reviewActive"
+                slot="actions"
+                variant="secondary"
+                text="Verwerpen"
+                @click="rejectReview"
+              ></nldd-button>
+            </nldd-banner>
+          </nldd-container>
+
+          <!-- Feedback from "Verrijk deze wet" (see the pane toolbar below):
+               same page-wide banner-in-container pattern as the review notice
+               above, so feedback never pushes the editor into a tall narrow
+               column. -->
+          <nldd-container v-if="enrichFeedback" padding="8">
+            <nldd-banner
+              :variant="enrichFeedback.variant"
+              :text="enrichFeedback.text"
+              dismissible
+              @dismiss="dismissEnrichFeedback"
+            ></nldd-banner>
+          </nldd-container>
+
+        <nldd-side-by-side-split-view :panes="String(paneViews.length)">
           <!-- Compound key: when a flag flip shifts which view sits at a
                given index, Vue would otherwise patch the existing pane in
                place - leaking ScenarioBuilder form state and engine
@@ -2125,6 +2397,31 @@ async function handleActionSave() {
                       disabled
                     ></nldd-menu-item>
                   </nldd-toolbar-item>
+                  <!-- Wet-acties: only on the first pane - the action applies to
+                       the whole law, not this one pane, so showing it in every
+                       pane's own toolbar would just duplicate it. -->
+                  <nldd-toolbar-item
+                    v-if="idx === 0 && canEnrichLaw"
+                    slot="end"
+                    label="Wet acties"
+                    :priority="1"
+                  >
+                    <nldd-icon-button
+                      id="law-actions-btn"
+                      icon="ai"
+                      text="Wet acties"
+                      variant="secondary"
+                      size="md"
+                      expandable
+                      popovertarget="law-actions-menu"
+                    ></nldd-icon-button>
+                    <nldd-menu id="law-actions-menu" anchor="law-actions-btn">
+                      <nldd-menu-item icon="ai" text="Verrijk deze wet" @select="enrichLaw"></nldd-menu-item>
+                    </nldd-menu>
+                    <nldd-menu-group slot="overflow" text="Wet acties">
+                      <nldd-menu-item icon="ai" text="Verrijk deze wet" @select="enrichLaw"></nldd-menu-item>
+                    </nldd-menu-group>
+                  </nldd-toolbar-item>
                 </nldd-toolbar>
               </nldd-container>
 
@@ -2400,6 +2697,7 @@ async function handleActionSave() {
             </nldd-page>
           </nldd-split-view-pane>
         </nldd-side-by-side-split-view>
+        </template>
   <!-- Overlays teleported to body: as light-DOM siblings of the split view they
        would be slotted into the main pane and pick up its ::slotted flex-grow,
        stealing height from the pane content. -->

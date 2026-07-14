@@ -1,9 +1,15 @@
 <script setup>
 /**
- * ConversionStatus - presentational list of a traject's in-progress and failed
- * document-conversion jobs. A running job shows a spinner; a failed job shows
- * its reason. Completed jobs are not shown here - they appear as the actual
- * `.md` in the documents list. Renders nothing when there are no such jobs.
+ * ConversionStatus - presentational list of a traject's in-progress and
+ * failed document-conversion jobs. Completed jobs are not shown here - they
+ * appear as the actual `.md` in the documents list.
+ *
+ * With `tasks.job_review` ON, the jobs endpoint only ever returns
+ * pending/processing rows (a failure surfaces as a `job_failed` task in the
+ * Taken sheet instead, see TasksSheet.vue), so the failed-branch below is
+ * inert - `job.status` never equals `'failed'`. With the flag OFF, the
+ * endpoint falls back to including failed rows (with `error`), and this is
+ * the old inline failure UI from before the taken-mechanisme existed.
  */
 defineProps({
   jobs: { type: Array, default: () => [] },

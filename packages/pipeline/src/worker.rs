@@ -115,6 +115,15 @@ fn is_deterministic_content_failure(err: &str) -> bool {
     MARKERS.iter().any(|m| e.contains(m))
 }
 
+/// Returns true when a [`materialize_task_workdir`] error means the task-job
+/// has no input blobs to materialize — deterministic: there is nothing to
+/// find on retry, so it must fail terminally. Any other error from that path
+/// (DB hiccup, tempdir/IO failure) is transient and stays retryable — see
+/// [`process_enrich_task_job`].
+fn is_missing_input_blob_error(err: &str) -> bool {
+    err.contains("heeft geen input-blob")
+}
+
 /// Interval between orphaned-job reaper runs.
 const REAPER_INTERVAL: Duration = Duration::from_secs(60);
 
@@ -147,6 +156,17 @@ fn spawn_reaper(
                 Ok(_) => {}
                 Err(e) => {
                     tracing::warn!(error = %e, "failed to clean up orphaned document uploads")
+                }
+            }
+            // GC taak-flow blobs orphaned when their job never got an open
+            // review task (crashed worker, dismissed/expired task path).
+            match crate::tasks::cleanup_orphaned_blobs(&pool).await {
+                Ok(n) if n > 0 => {
+                    tracing::info!(removed = n, "cleaned up orphaned job blobs")
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to clean up orphaned job blobs")
                 }
             }
             tokio::select! {
@@ -476,6 +496,11 @@ async fn process_next_job(
                         // shallow laws (the intended case) are unaffected; a
                         // dedicated related-depth counter is the follow-up.
                         depth: payload.depth,
+                        requested_by: None,
+                        deliver: None,
+                        traject_id: None,
+                        traject_ref: None,
+                        source_etag: None,
                     };
                     let payload_json = match serde_json::to_value(&enrich_payload) {
                         Ok(json) => json,
@@ -863,6 +888,18 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
         // Amsterdam) by ENRICH_NIGHT_MULTIPLIER, so bulk enrichment runs mostly
         // overnight. Counted from the durable `jobs` table (not an in-memory
         // counter) so the cap holds across restarts/redeploys.
+        //
+        // Task-flow enrich jobs (deliver=task, e.g. "Verrijk deze wet") fall
+        // under this cap on purpose: they are LLM runs on the same shared token
+        // budget as bulk enrichment, so the spend guard must cover them too.
+        // Their higher priority (80) means they are claimed first within the
+        // budget, so an interactive request still wins the next available slot —
+        // but if the cap is already exhausted it waits like any other job.
+        // Up-to-an-hour interactive latency is the accepted tradeoff here
+        // (follow-up: a separate budget lane for interactive requests so they
+        // aren't starved by a bulk backlog). Document-convert runs *before* this
+        // gate on purpose — it is not an LLM run and doesn't touch the token
+        // budget, so it must not be throttled by the enrich cap.
         //
         // Fail-closed: a base limit of 0 (the default when ENRICH_HOURLY_LIMIT is
         // unset) pauses the worker without even querying.
@@ -1271,20 +1308,75 @@ async fn process_next_document_convert_job(
             tracing::error!(job_id = %job.id, error = %msg, "document-convert job failed");
             // Document-convert jobs are single-attempt (the upload handler sets
             // max_attempts=1): a retry would re-run the expensive LLM conversion
-            // and most failures are deterministic. Fail terminally and always
-            // drop the transient upload bytes — there is no retry to feed them to.
-            // Delete BEFORE propagating a fail_job_terminal error, so a failed
-            // status update can't `?`-return past the cleanup and leak the row.
-            let fail_result = job_queue::fail_job_terminal(
-                pool,
-                job.id,
-                Some(serde_json::json!({ "error": msg.clone() })),
-            )
+            // and most failures are deterministic. Fail terminally and drop the
+            // transient upload bytes — there is normally no retry to feed them to.
+            //
+            // The fail-marking and the informative `job_failed` task (so the
+            // mislukking niet stil in de eeuwigheid verdwijnt — the job is also
+            // filtered out of the documenten-jobs-lijst by then) are committed
+            // together in one transaction: a crash or DB error between them
+            // would otherwise leave a terminally-failed job with no task ever
+            // to notify the uploader. This is no longer best-effort: if task
+            // creation fails, the whole transaction (including the fail
+            // marking) rolls back and the job stays 'processing'. With the
+            // current max_attempts=1 the orphan reaper will then mark it
+            // failed without a task (a rare double-fault: a DB error exactly
+            // here) — but the rollback at least keeps the fail-marking and
+            // the task atomic in every case where the DB is healthy.
+            let fail_result: Result<()> = async {
+                let mut tx = pool.begin().await?;
+                job_queue::fail_job_terminal(
+                    &mut *tx,
+                    job.id,
+                    Some(serde_json::json!({ "error": msg.clone() })),
+                )
+                .await?;
+                if let Some(account_id) = payload.requested_by {
+                    // Unconditional - the worker has no notion of the
+                    // `tasks.job_review` flag (deployment-wide, read on the
+                    // editor-api side only). With the flag off the taken-UI is
+                    // hidden and the documenten-jobs-lijst falls back to
+                    // showing failed rows inline instead, so this task is
+                    // simply invisible, not absent - history is preserved and
+                    // shows up in the Taken sheet the moment the flag flips on.
+                    crate::tasks::create_task(
+                        &mut *tx,
+                        crate::tasks::NewTask {
+                            task_type: crate::tasks::TaskType::JobFailed,
+                            assignee_account_id: Some(account_id),
+                            traject_id: Some(payload.traject_id),
+                            job_id: Some(job.id),
+                            title: format!("Conversie mislukt: {}", payload.target_path),
+                            payload: Some(serde_json::json!({
+                                "traject_ref": payload.traject_ref,
+                                "target_path": payload.target_path,
+                                "error": msg.clone(),
+                            })),
+                        },
+                    )
+                    .await?;
+                }
+                tx.commit().await?;
+                Ok(())
+            }
             .await;
-            if let Err(e) = document_convert::delete_upload(pool, payload.upload_id).await {
-                tracing::warn!(job_id = %job.id, error = %e, "failed to delete document upload after terminal failure");
+            // Only drop the upload bytes when the fail+task transaction actually
+            // committed. On rollback (a DB error above) the job stays
+            // 'processing'; under the current max_attempts=1 the orphan reaper
+            // will mark it failed rather than retry it, and
+            // `cleanup_orphaned_uploads` (in the poll loop) sweeps the orphaned
+            // row. Keeping the bytes here is forward-compatible defense: if
+            // max_attempts is ever raised, the reaper's re-queue genuinely
+            // re-reads these bytes. This deletion targets a separate
+            // `document_uploads` row, not the job/task tables, so it stays
+            // outside the transaction above.
+            if fail_result.is_ok() {
+                if let Err(e) = document_convert::delete_upload(pool, payload.upload_id).await {
+                    tracing::warn!(job_id = %job.id, error = %e, "failed to delete document upload after terminal failure");
+                }
             }
             fail_result?;
+
             Ok(outcome_for_error(&msg))
         }
     }
@@ -1301,6 +1393,277 @@ async fn run_document_convert(
             .await?;
     document_convert::write_markdown_to_traject(pool, payload, &markdown).await?;
     Ok(())
+}
+
+/// Taak-flow: materialiseer de input-blob(s) van een enrich-taak-job in een
+/// eigen werkdirectory, zodat `execute_enrich` zonder git-checkout kan
+/// draaien. Retourneert de workdir-root (TempDir houdt hem in leven).
+pub async fn materialize_task_workdir(
+    pool: &PgPool,
+    job_id: uuid::Uuid,
+) -> Result<tempfile::TempDir> {
+    let blobs = crate::tasks::load_blobs(pool, job_id, crate::tasks::BlobKind::Input).await?;
+    if blobs.is_empty() {
+        return Err(PipelineError::Enrich(format!(
+            "taak-job {job_id} heeft geen input-blob"
+        )));
+    }
+    let dir = tempfile::tempdir()
+        .map_err(|e| PipelineError::Enrich(format!("kan werkdirectory niet aanmaken: {e}")))?;
+    for blob in &blobs {
+        // Blob-paden zijn door editor-api gezet (synthetisch, vast formaat);
+        // normaliseer defensief tegen path-traversal vóór het join'en.
+        let rel = crate::enrich::normalize_yaml_path(&blob.path)?;
+        let abs = dir.path().join(&rel);
+        if let Some(parent) = abs.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        tokio::fs::write(&abs, &blob.content).await?;
+    }
+    Ok(dir)
+}
+
+/// Taak-flow succes: schrijf de door de enrichment aangeraakte bestanden als
+/// result-blobs, verwijder de input-blobs, complete de job en maak de
+/// review-taak aan — alles in één transactie.
+pub async fn finish_enrich_task_job(
+    pool: &PgPool,
+    job: &crate::models::Job,
+    workdir: &Path,
+    written_files: &[std::path::PathBuf],
+    result_json: Option<serde_json::Value>,
+) -> Result<()> {
+    let payload: EnrichPayload = serde_json::from_value(job.payload.clone().unwrap_or_default())
+        .map_err(|e| PipelineError::Enrich(format!("invalid enrich payload: {e}")))?;
+
+    let mut tx = pool.begin().await?;
+    crate::tasks::delete_blobs_for_job(&mut *tx, job.id).await?;
+    for abs in written_files {
+        let rel = abs
+            .strip_prefix(workdir)
+            .map_err(|_| {
+                PipelineError::Enrich(format!(
+                    "geschreven bestand {} ligt buiten de werkdirectory",
+                    abs.display()
+                ))
+            })?
+            .to_string_lossy()
+            .to_string();
+        let content = tokio::fs::read_to_string(abs).await?;
+        crate::tasks::insert_blob(
+            &mut *tx,
+            job.id,
+            crate::tasks::BlobKind::Result,
+            &rel,
+            &content,
+        )
+        .await?;
+    }
+    job_queue::complete_job(&mut *tx, job.id, result_json).await?;
+    crate::tasks::create_task(
+        &mut *tx,
+        crate::tasks::NewTask {
+            task_type: crate::tasks::TaskType::JobReview,
+            assignee_account_id: payload.requested_by,
+            traject_id: payload.traject_id,
+            job_id: Some(job.id),
+            title: format!("Verrijking beoordelen: {}", payload.law_id),
+            payload: Some(serde_json::json!({
+                "law_id": payload.law_id,
+                "yaml_path": payload.yaml_path,
+                "traject_ref": payload.traject_ref,
+                "source_etag": payload.source_etag,
+                "provider": payload.provider,
+            })),
+        },
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Taak+blob-opruiming die hoort bij een definitief gefaalde taak-job: ruim
+/// de input-blobs op en maak een informatieve `job_failed`-taak aan zodat de
+/// aanvrager het ziet. Werkt op een bestaande transactie zodat de aanroeper
+/// dit samen met de fail-markering atomair kan committen (of terugrollen) —
+/// zie [`fail_enrich_task_job`] (altijd terminaal) en
+/// [`fail_enrich_task_job_with_retry`] (alleen wanneer `fail_job` de job
+/// daadwerkelijk op `Failed` zet).
+async fn finalize_failed_task_job_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    job: &crate::models::Job,
+    error: &str,
+) -> Result<()> {
+    let payload: EnrichPayload = serde_json::from_value(job.payload.clone().unwrap_or_default())
+        .map_err(|e| PipelineError::Enrich(format!("invalid enrich payload: {e}")))?;
+
+    crate::tasks::delete_blobs_for_job(&mut **tx, job.id).await?;
+    crate::tasks::create_task(
+        &mut **tx,
+        crate::tasks::NewTask {
+            task_type: crate::tasks::TaskType::JobFailed,
+            assignee_account_id: payload.requested_by,
+            traject_id: payload.traject_id,
+            job_id: Some(job.id),
+            title: format!("Verrijking mislukt: {}", payload.law_id),
+            payload: Some(serde_json::json!({
+                "law_id": payload.law_id,
+                "traject_ref": payload.traject_ref,
+                "error": error,
+            })),
+        },
+    )
+    .await?;
+    Ok(())
+}
+
+/// Taak-flow falen (terminaal): faal de job onvoorwaardelijk en ruim
+/// taak+blobs op, atomair in één transactie — een crash of DB-fout tussen de
+/// fail-markering en de taak-aanmaak zou anders een definitief gefaalde job
+/// zonder `job_failed`-taak achterlaten (onzichtbaar voor de aanvrager). Voor
+/// deterministische content-fouten (dezelfde input reproduceert dezelfde
+/// fout, retrying verspilt alleen LLM-budget).
+pub async fn fail_enrich_task_job(
+    pool: &PgPool,
+    job: &crate::models::Job,
+    error: &str,
+) -> Result<()> {
+    let mut tx = pool.begin().await?;
+    job_queue::fail_job_terminal(
+        &mut *tx,
+        job.id,
+        Some(serde_json::json!({ "error": error })),
+    )
+    .await?;
+    finalize_failed_task_job_tx(&mut tx, job, error).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Taak-flow falen met retry-semantiek: `fail_job` bepaalt pending-met-backoff
+/// (attempts over) versus definitief Failed. Pas bij definitief falen krijgt
+/// de aanvrager de `job_failed`-taak en gaan de input-blobs weg — eerder niet,
+/// want een retry her-materialiseert uit die blobs. De fail-markering en de
+/// (eventuele) finalize zitten in dezelfde transactie, zodat een fout tussen
+/// beide de fail-markering meeneemt in de rollback — de job blijft dan
+/// 'processing' voor de reaper, in plaats van definitief gefaald zonder taak.
+pub async fn fail_enrich_task_job_with_retry(
+    pool: &PgPool,
+    job: &crate::models::Job,
+    error: &str,
+) -> Result<()> {
+    let mut tx = pool.begin().await?;
+    let failed_job = job_queue::fail_job(
+        &mut *tx,
+        job.id,
+        Some(serde_json::json!({ "error": error })),
+    )
+    .await?;
+    if failed_job.status == crate::models::JobStatus::Failed {
+        finalize_failed_task_job_tx(&mut tx, job, error).await?;
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Taak-flow-verwerking van een enrich-job: werkdirectory uit input-blobs,
+/// enrichment draaien, resultaat als blobs + taak terugschrijven. Raakt
+/// bewust geen law_entries, untranslatables of vervolg-harvests aan: dit is
+/// een traject-persoonlijke enrichment, geen corpus-brede.
+async fn process_enrich_task_job(
+    pool: &PgPool,
+    job: &crate::models::Job,
+    payload: &EnrichPayload,
+    enrich_config: &EnrichConfig,
+    job_timeout: Duration,
+) -> Result<JobOutcome> {
+    let effective_config = match &payload.provider {
+        Some(provider_name) => enrich_config.with_provider_override(provider_name),
+        None => enrich_config.clone(),
+    };
+    tracing::info!(
+        job_id = %job.id,
+        law_id = %job.law_id,
+        attempt = job.attempts,
+        provider = %effective_config.provider.name(),
+        "processing enrich job (task flow)"
+    );
+    let workdir = match materialize_task_workdir(pool, job.id).await {
+        Ok(dir) => dir,
+        Err(e) => {
+            let msg = e.to_string();
+            if is_missing_input_blob_error(&msg) {
+                // Geen input-blobs = deterministisch kapot: een retry vindt
+                // hetzelfde niets. Terminaal falen met taak.
+                fail_enrich_task_job(pool, job, &msg).await?;
+            } else {
+                // DB/IO-fout tijdens materialiseren is transient: retryable.
+                fail_enrich_task_job_with_retry(pool, job, &msg).await?;
+            }
+            return Ok(JobOutcome::Processed);
+        }
+    };
+
+    // Ensure skill files are available in the workdir so the LLM can read
+    // them. In the container the skills are baked into /opt/skills/; this
+    // symlinks them into the per-job workdir, mirroring the corpus-path setup
+    // below (`ensure_skills` in `process_next_enrich_job`).
+    if let Err(e) = crate::enrich::ensure_skills(workdir.path()).await {
+        tracing::warn!(error = %e, "failed to set up skill symlinks");
+    }
+
+    let mut bounded_config = effective_config.clone();
+    if bounded_config.timeout >= job_timeout {
+        bounded_config.timeout = job_timeout.saturating_sub(Duration::from_secs(30));
+    }
+
+    let outcome = tokio::time::timeout(
+        job_timeout,
+        execute_enrich(payload, workdir.path(), &bounded_config, ""),
+    )
+    .await;
+
+    match outcome {
+        Err(_elapsed) => {
+            // Time-out: retryable. De uur-cap begrenst LLM-spend en
+            // max_attempts=3 begrenst de schade van herhaalde pogingen.
+            let msg = format!("verrijking time-out na {}s", job_timeout.as_secs());
+            fail_enrich_task_job_with_retry(pool, job, &msg).await?;
+            Ok(JobOutcome::Processed)
+        }
+        Ok(Err(e)) => {
+            let err_str = e.to_string();
+            if is_deterministic_content_failure(&err_str) {
+                // Zelfde input reproduceert dezelfde fout: terminaal, spiegelt
+                // het corpus-pad (`is_deterministic_content_failure` daar).
+                fail_enrich_task_job(pool, job, &err_str).await?;
+                Ok(JobOutcome::Processed)
+            } else {
+                // Resource-exhaustion en overige fouten zijn retryable. Geef
+                // hetzelfde JobOutcome terug als het corpus-pad zodat de
+                // fork-exhaustion-circuit-breaker van de worker meetelt.
+                fail_enrich_task_job_with_retry(pool, job, &err_str).await?;
+                Ok(outcome_for_error(&err_str))
+            }
+        }
+        Ok(Ok((result, written_files))) => {
+            let result_json = match serde_json::to_value(&result) {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    tracing::warn!(error = %e, job_id = %job.id, "failed to serialize enrich result");
+                    None
+                }
+            };
+            if let Err(e) =
+                finish_enrich_task_job(pool, job, workdir.path(), &written_files, result_json).await
+            {
+                // Persist-fout is retryable (DB-hik).
+                tracing::error!(job_id = %job.id, error = %e, "taak-resultaat wegschrijven mislukt");
+                fail_enrich_task_job_with_retry(pool, job, &e.to_string()).await?;
+            }
+            Ok(JobOutcome::Processed)
+        }
+    }
 }
 
 /// Process the next available enrich job.
@@ -1350,6 +1713,23 @@ async fn process_next_enrich_job(
             return Ok(JobOutcome::Processed);
         }
     };
+
+    if payload.deliver_as_task() {
+        // Ongeldige taak-flow-payload (geen aanvrager/traject): er is geen
+        // geldige assignee, dus een taak zou permanent onzichtbaar zijn.
+        // Terminaal falen zónder taak; de blob-GC ruimt de input op.
+        if payload.requested_by.is_none() || payload.traject_id.is_none() {
+            tracing::error!(job_id = %job.id, law_id = %job.law_id, "taak-flow-payload zonder requested_by/traject_id");
+            job_queue::fail_job_terminal(
+                pool,
+                job.id,
+                Some(serde_json::json!({ "error": "taak-flow-payload zonder requested_by/traject_id" })),
+            )
+            .await?;
+            return Ok(JobOutcome::Processed);
+        }
+        return process_enrich_task_job(pool, &job, &payload, enrich_config, job_timeout).await;
+    }
 
     // Override the provider if the payload specifies one
     let effective_config = match &payload.provider {

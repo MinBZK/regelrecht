@@ -12,6 +12,7 @@ pub mod health;
 pub mod job_queue;
 pub mod law_status;
 pub mod models;
+pub mod tasks;
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
 pub mod untranslatables;
