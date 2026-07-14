@@ -1,11 +1,13 @@
 use serde_json::json;
 
+use regelrecht_pipeline::document_convert::DocumentConvertPayload;
 use regelrecht_pipeline::job_queue::{self, CreateJobRequest};
 use regelrecht_pipeline::models::JobType;
 use regelrecht_pipeline::tasks::{self, BlobKind, NewTask, TaskStatus, TaskType};
 use regelrecht_pipeline::test_utils::TestDb;
 use regelrecht_pipeline::worker::{
-    fail_enrich_task_job, fail_enrich_task_job_with_retry, finish_enrich_task_job,
+    fail_enrich_task_job, fail_enrich_task_job_with_retry, finish_document_convert_task_job,
+    finish_enrich_task_job,
 };
 
 /// Maak een account + traject om FK's te vullen. tasks.assignee_account_id
@@ -290,6 +292,68 @@ async fn test_finish_enrich_task_job_creates_task_and_result_blobs() {
     assert_eq!(open.len(), 1);
     assert_eq!(open[0].task_type, "job_review");
     assert_eq!(open[0].job_id, Some(job.id));
+}
+
+#[tokio::test]
+async fn test_finish_document_convert_task_job_creates_task_and_result_blob() {
+    let db = TestDb::new().await;
+    let (account_id, traject_id) = seed_account_and_traject(&db).await;
+    let payload = DocumentConvertPayload {
+        upload_id: uuid::Uuid::new_v4(),
+        traject_id,
+        traject_ref: "testtraject-abcd1234".to_string(),
+        target_path: "report.md".to_string(),
+        provider: None,
+        requested_by: Some(account_id),
+        deliver: Some("task".to_string()),
+    };
+    let _created = job_queue::create_job(
+        &db.pool,
+        CreateJobRequest::new(
+            JobType::DocumentConvert,
+            "doc:testtraject-abcd1234/report.md",
+        )
+        .with_traject_ref("testtraject-abcd1234")
+        .with_payload(serde_json::to_value(&payload).unwrap())
+        .with_max_attempts(1),
+    )
+    .await
+    .unwrap();
+    // Claim zodat complete_job ('processing' vereist) slaagt.
+    let job = job_queue::claim_job(&db.pool, Some(JobType::DocumentConvert))
+        .await
+        .unwrap()
+        .unwrap();
+
+    finish_document_convert_task_job(&db.pool, &job, &payload, "# Report\n\nBody.\n")
+        .await
+        .unwrap();
+
+    // Job completed, result-blob met target_path + markdown.
+    let done = job_queue::get_job(&db.pool, job.id).await.unwrap();
+    assert_eq!(
+        done.status,
+        regelrecht_pipeline::models::JobStatus::Completed
+    );
+    let results = tasks::load_blobs(&db.pool, job.id, BlobKind::Result)
+        .await
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].path, "report.md");
+    assert_eq!(results[0].content, "# Report\n\nBody.\n");
+
+    // job_review-taak met kind=document/traject_ref/target_path, juiste assignee.
+    let open = tasks::list_open_tasks_for_account(&db.pool, account_id)
+        .await
+        .unwrap();
+    assert_eq!(open.len(), 1);
+    assert_eq!(open[0].task_type, "job_review");
+    assert_eq!(open[0].job_id, Some(job.id));
+    assert_eq!(open[0].traject_id, Some(traject_id));
+    let task_payload = open[0].payload.as_ref().unwrap();
+    assert_eq!(task_payload["kind"], "document");
+    assert_eq!(task_payload["traject_ref"], "testtraject-abcd1234");
+    assert_eq!(task_payload["target_path"], "report.md");
 }
 
 #[tokio::test]
