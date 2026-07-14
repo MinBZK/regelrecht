@@ -18,10 +18,14 @@ const props = defineProps({
   idSuffix: { type: String, default: '' },
 });
 
-const { openCount } = useTasks();
+const { openCount, running } = useTasks();
 const { open } = useTasksSheet();
 
 const btnId = computed(() => `tasks-btn-${props.idSuffix}`);
+// Stil "bezig"-signaal: geen open taken (actie nodig), maar wel een lopende
+// verrijking - een neutrale dot-badge (geen tekst/getal/icoon -> nldd-badge
+// rendert dan een stip) i.p.v. de rode aantal-badge hierboven.
+const showRunningDot = computed(() => openCount.value === 0 && running.value.length > 0);
 </script>
 
 <template>
@@ -40,6 +44,13 @@ const btnId = computed(() => `tasks-btn-${props.idSuffix}`);
       size="sm"
       :number="openCount"
       accessible-label="Open taken"
+    ></nldd-badge>
+    <nldd-badge
+      v-else-if="showRunningDot"
+      class="tasks-button__badge"
+      size="sm"
+      color="neutral"
+      accessible-label="Verrijking loopt"
     ></nldd-badge>
   </span>
 </template>

@@ -16,7 +16,7 @@ import { useTasksSheet } from '../composables/useTasksSheet.js';
 import { reviewTarget } from '../lib/taskReview.js';
 
 const router = useRouter();
-const { tasks, resolveTask } = useTasks();
+const { tasks, running, resolveTask } = useTasks();
 const { isOpen, close } = useTasksSheet();
 
 const sheetEl = ref(null);
@@ -55,12 +55,22 @@ function review(task) {
         ></nldd-top-title-bar>
 
         <nldd-simple-section>
+          <div v-if="running.length > 0" class="tasks-running">
+            <nldd-rich-text><h3>Bezig</h3></nldd-rich-text>
+            <nldd-activity-indicator
+              v-for="job in running"
+              :key="job.job_id"
+              :text="`Verrijking loopt — ${job.law_id}`"
+              show-text
+            ></nldd-activity-indicator>
+          </div>
+
           <nldd-inline-dialog
-            v-if="tasks.length === 0"
+            v-if="tasks.length === 0 && running.length === 0"
             text="Geen open taken."
           ></nldd-inline-dialog>
 
-          <div v-else class="tasks-list">
+          <div v-else-if="tasks.length > 0" class="tasks-list">
             <nldd-inline-dialog
               v-for="task in tasks"
               :key="task.id"
@@ -103,5 +113,14 @@ function review(task) {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* "Bezig"-sectie: zelfde stapel-patroon, met ruimte tot de takenlijst
+   eronder. Custom CSS bovenop het design system, gerapporteerd in de PR. */
+.tasks-running {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
 }
 </style>

@@ -34,10 +34,10 @@ describe('TasksSheet', () => {
   // useTasks/useTasksSheet are module singletons; re-import both dynamically
   // after resetModules() so each test starts from a clean slate (mirrors
   // useTasks.test.js).
-  async function mountSheet(tasks) {
+  async function mountSheet(tasks, running = []) {
     apiFetch.mockResolvedValue({
       status: 200,
-      json: async () => ({ tasks, open_count: tasks.length }),
+      json: async () => ({ tasks, open_count: tasks.length, running }),
     });
     const { default: TasksSheet } = await import('./TasksSheet.vue');
     const { useTasksSheet } = await import('../composables/useTasksSheet.js');
@@ -56,6 +56,26 @@ describe('TasksSheet', () => {
   it('toont een lege staat zonder open taken', async () => {
     const wrapper = await mountSheet([]);
     expect(wrapper.get('nldd-inline-dialog').attributes('text')).toBe('Geen open taken.');
+  });
+
+  it('toont de Bezig-sectie met een activity-indicator per lopende job en NIET de lege staat', async () => {
+    const wrapper = await mountSheet(
+      [],
+      [{ job_id: 'j1', law_id: 'test_wet', status: 'pending' }]
+    );
+    const indicators = wrapper.findAll('nldd-activity-indicator');
+    expect(indicators).toHaveLength(1);
+    expect(indicators[0].attributes('text')).toBe('Verrijking loopt — test_wet');
+    expect(wrapper.find('nldd-inline-dialog').exists()).toBe(false);
+  });
+
+  it('toont zowel de Bezig-sectie als de takenlijst wanneer beide gevuld zijn', async () => {
+    const wrapper = await mountSheet(
+      [{ id: 't1', task_type: 'job_review', title: 'Verrijking beoordelen: andere_wet', payload: {} }],
+      [{ job_id: 'j1', law_id: 'test_wet', status: 'processing' }]
+    );
+    expect(wrapper.findAll('nldd-activity-indicator')).toHaveLength(1);
+    expect(wrapper.findAll('nldd-inline-dialog')).toHaveLength(1);
   });
 
   it('toont een job_failed-taak als alert met titel + error en een Gezien-knop', async () => {

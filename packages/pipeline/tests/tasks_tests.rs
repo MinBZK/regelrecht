@@ -427,6 +427,100 @@ async fn test_fail_with_retry_creates_task_only_when_attempts_exhausted() {
 }
 
 #[tokio::test]
+async fn test_list_running_task_jobs_for_account() {
+    let db = TestDb::new().await;
+    let (account_id, traject_id) = seed_account_and_traject(&db).await;
+    let (other_account_id,): (uuid::Uuid,) = sqlx::query_as(
+        "INSERT INTO accounts (person_sub, email, name) \
+         VALUES ('sub-test-2', 'tester2@example.org', 'Andere Persoon') RETURNING id",
+    )
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    let (other_traject_id,): (uuid::Uuid,) = sqlx::query_as(
+        "INSERT INTO trajects (name, created_by) VALUES ('Ander traject', $1) RETURNING id",
+    )
+    .bind(other_account_id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+
+    // Eigen taak-flow-job: deliver=task + requested_by=account_id, nog
+    // pending → moet in de "Bezig"-lijst verschijnen.
+    let own_job = job_queue::create_job(
+        &db.pool,
+        CreateJobRequest::new(JobType::Enrich, "test_wet")
+            .with_traject_ref("testtraject-abcd1234")
+            .with_payload(json!({
+                "law_id": "test_wet",
+                "yaml_path": "laws/test_wet/law.yaml",
+                "requested_by": account_id,
+                "deliver": "task",
+                "traject_id": traject_id,
+                "traject_ref": "testtraject-abcd1234"
+            })),
+    )
+    .await
+    .unwrap();
+
+    // Corpus-brede job (geen deliver/requested_by) voor dezelfde wet - hoort
+    // niet in de taak-flow-lijst thuis, ongeacht account.
+    job_queue::create_job(
+        &db.pool,
+        CreateJobRequest::new(JobType::Enrich, "andere_wet")
+            .with_payload(json!({"law_id": "andere_wet", "yaml_path": "x.yaml"})),
+    )
+    .await
+    .unwrap();
+
+    // Taak-flow-job van een ander account - hoort niet in de lijst van
+    // account_id thuis.
+    job_queue::create_job(
+        &db.pool,
+        CreateJobRequest::new(JobType::Enrich, "vreemde_wet").with_payload(json!({
+            "law_id": "vreemde_wet",
+            "yaml_path": "y.yaml",
+            "requested_by": other_account_id,
+            "deliver": "task",
+            "traject_id": other_traject_id
+        })),
+    )
+    .await
+    .unwrap();
+
+    let running = tasks::list_running_task_jobs_for_account(&db.pool, account_id)
+        .await
+        .unwrap();
+    assert_eq!(running.len(), 1);
+    assert_eq!(running[0].job_id, own_job.id);
+    assert_eq!(running[0].law_id, "test_wet");
+    assert_eq!(
+        running[0].traject_ref.as_deref(),
+        Some("testtraject-abcd1234")
+    );
+    assert_eq!(
+        running[0].status,
+        regelrecht_pipeline::models::JobStatus::Pending
+    );
+
+    // Claim + complete de eigen job: eenmaal afgerond hoort hij niet meer in
+    // de "Bezig"-lijst (hij verschijnt dan als job_review-taak i.p.v.).
+    let claimed = job_queue::claim_job(&db.pool, Some(JobType::Enrich))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(claimed.id, own_job.id);
+    job_queue::complete_job(&db.pool, own_job.id, None)
+        .await
+        .unwrap();
+
+    let after = tasks::list_running_task_jobs_for_account(&db.pool, account_id)
+        .await
+        .unwrap();
+    assert!(after.is_empty());
+}
+
+#[tokio::test]
 async fn test_document_jobs_list_excludes_failed() {
     let db = TestDb::new().await;
     let req = CreateJobRequest::new(JobType::DocumentConvert, "doc:testtraject-abcd1234/a.md")

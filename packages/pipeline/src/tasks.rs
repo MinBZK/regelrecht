@@ -12,6 +12,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::error::Result;
+use crate::models::JobStatus;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "task_status", rename_all = "lowercase")]
@@ -117,6 +118,41 @@ pub async fn count_open_tasks_for_account(pool: &PgPool, account_id: Uuid) -> Re
     .fetch_one(pool)
     .await?;
     Ok(count)
+}
+
+/// Eén lopende taak-flow-job voor de "Bezig"-sectie: een enrich-job die deze
+/// gebruiker via `deliver: "task"` heeft aangevraagd en die nog niet is
+/// afgerond (job_review/job_failed-taak bestaat pas na completion/failure).
+#[derive(Debug, Clone, sqlx::FromRow, Serialize)]
+pub struct RunningTaskJob {
+    pub job_id: Uuid,
+    pub law_id: String,
+    pub traject_ref: Option<String>,
+    pub status: JobStatus,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Lopende (pending/processing) taak-flow-jobs van een account, nieuwste
+/// eerst — de "Bezig"-sectie van de takenlijst. Leest de jobs-tabel op
+/// payload-velden; de tabel is klein genoeg dat dit zonder eigen index kan
+/// (zelfde afweging als de cap-check in editor-api, zie task_requests.rs).
+pub async fn list_running_task_jobs_for_account(
+    pool: &PgPool,
+    account_id: Uuid,
+) -> Result<Vec<RunningTaskJob>> {
+    let jobs = sqlx::query_as::<_, RunningTaskJob>(
+        "SELECT id AS job_id, law_id, traject_ref, status, created_at \
+         FROM jobs \
+         WHERE job_type = 'enrich' \
+           AND status IN ('pending', 'processing') \
+           AND payload->>'deliver' = 'task' \
+           AND payload->>'requested_by' = $1 \
+         ORDER BY created_at DESC LIMIT 50",
+    )
+    .bind(account_id.to_string())
+    .fetch_all(pool)
+    .await?;
+    Ok(jobs)
 }
 
 /// Eén taak op id, ongeacht status (detail-view toont ook net-geresolvede).

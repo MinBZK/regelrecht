@@ -15,6 +15,9 @@ const POLL_INTERVAL_MS = 30_000;
 // Module-level shared state - all callers of useTasks() share these refs.
 const tasks = ref([]);
 const openCount = ref(0);
+// Lopende taak-flow-aanvragen (pending/processing) - de "Bezig"-sectie.
+// Zelfde keep-stale-gedrag als tasks/openCount: een poll-fout laat 'm staan.
+const running = ref([]);
 const error = ref(null);
 
 let timer = null;
@@ -27,6 +30,7 @@ async function refresh() {
     const json = await res.json();
     tasks.value = Array.isArray(json?.tasks) ? json.tasks : [];
     openCount.value = Number.isFinite(json?.open_count) ? json.open_count : tasks.value.length;
+    running.value = Array.isArray(json?.running) ? json.running : [];
     error.value = null;
   } catch (e) {
     // Keep-stale: een poll-fout wist de badge/lijst niet.
@@ -86,6 +90,7 @@ export function useTasks() {
   }
   return {
     tasks,
+    running,
     error,
     openCount: computed(() => openCount.value),
     refresh,

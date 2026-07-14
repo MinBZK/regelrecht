@@ -27,6 +27,33 @@ describe('useTasks', () => {
     expect(openCount.value).toBe(5);
   });
 
+  it('parseert running uit de response', async () => {
+    apiFetch.mockResolvedValue({
+      status: 200,
+      json: async () => ({
+        tasks: [],
+        open_count: 0,
+        running: [{ job_id: 'j1', law_id: 'test_wet', status: 'pending' }],
+      }),
+    });
+    const { useTasks } = await import('./useTasks.js');
+    const { running, refresh } = useTasks();
+    await refresh();
+    expect(running.value).toHaveLength(1);
+    expect(running.value[0].law_id).toBe('test_wet');
+  });
+
+  it('valt terug op een lege running-lijst zonder het veld in de response', async () => {
+    apiFetch.mockResolvedValue({
+      status: 200,
+      json: async () => ({ tasks: [], open_count: 0 }),
+    });
+    const { useTasks } = await import('./useTasks.js');
+    const { running, refresh } = useTasks();
+    await refresh();
+    expect(running.value).toEqual([]);
+  });
+
   it('houdt stale taken vast bij een poll-fout', async () => {
     apiFetch.mockResolvedValueOnce({
       status: 200,

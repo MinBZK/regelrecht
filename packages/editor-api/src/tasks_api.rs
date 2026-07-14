@@ -11,7 +11,7 @@ use axum::{Extension, Json};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use regelrecht_pipeline::tasks::{self, BlobKind, Task, TaskStatus};
+use regelrecht_pipeline::tasks::{self, BlobKind, RunningTaskJob, Task, TaskStatus};
 
 use crate::accounts::AccountRecord;
 use crate::state::AppState;
@@ -32,6 +32,10 @@ pub struct TaskListResponse {
     pub tasks: Vec<Task>,
     /// Echte totaal aantal open taken, los van de lijst-LIMIT.
     pub open_count: i64,
+    /// Lopende taak-flow-aanvragen (pending/processing) van dit account —
+    /// nog geen taak, geen actie nodig, puur zichtbaarheid tussen "aanvraag
+    /// gedaan" en "taak verschenen" (zie `list_running_task_jobs_for_account`).
+    pub running: Vec<RunningTaskJob>,
 }
 
 /// GET /api/tasks — open taken van het ingelogde account, nieuwste eerst.
@@ -46,7 +50,14 @@ pub async fn list(
     let open_count = tasks::count_open_tasks_for_account(pool, account.id)
         .await
         .map_err(db_error)?;
-    Ok(Json(TaskListResponse { tasks, open_count }))
+    let running = tasks::list_running_task_jobs_for_account(pool, account.id)
+        .await
+        .map_err(db_error)?;
+    Ok(Json(TaskListResponse {
+        tasks,
+        open_count,
+        running,
+    }))
 }
 
 #[derive(Serialize)]
