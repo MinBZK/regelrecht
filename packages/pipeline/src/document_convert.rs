@@ -510,7 +510,12 @@ fn with_title_frontmatter(markdown: String, original_filename: &str) -> String {
         .trim_start_matches('\u{feff}')
         .lines()
         .next()
-        .is_some_and(|first| first.trim_end() == "---")
+        // A fence line is exactly `---` (only a trailing `\r` tolerated), the
+        // same notion both title extractors use. Do not accept trailing spaces
+        // here: `--- ` is body, not a fence — treating it as "already fenced"
+        // would suppress the title block while the extractors would then find
+        // no frontmatter, leaving the document with no title at all.
+        .is_some_and(|first| first.trim_end_matches('\r') == "---")
     {
         return markdown;
     }
@@ -719,6 +724,18 @@ mod tests {
         // An unusable stem leaves the markdown untouched (frontend falls
         // back to de-slugging the path).
         assert_eq!(with_title_frontmatter("Body.\n".to_string(), ""), "Body.\n");
+    }
+
+    #[test]
+    fn with_title_frontmatter_treats_trailing_space_fence_as_body() {
+        // `--- ` (trailing space) is not a fence line to the title extractors,
+        // so it must not count as "already fenced" — otherwise the title block
+        // is skipped here yet no frontmatter is found downstream, leaving the
+        // document titleless. The block must be prepended.
+        assert_eq!(
+            with_title_frontmatter("--- \nnot really frontmatter\n".to_string(), "Brief.docx"),
+            "---\ntitle: Brief\n---\n\n--- \nnot really frontmatter\n"
+        );
     }
 
     #[tokio::test]

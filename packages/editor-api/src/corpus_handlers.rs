@@ -2495,6 +2495,20 @@ pub struct SaveDocumentResponse {
 /// never an error, so a hand-edited document can't break the list.
 fn frontmatter_title(body: &str) -> Option<String> {
     let body = body.strip_prefix('\u{feff}').unwrap_or(body);
+    // Scan at most the first 8 KiB, matching the editor's `frontmatterTitle`
+    // (`frontend/src/lib/docTitle.js`) so both parsers honour the same
+    // contract: a real frontmatter block is tiny, and a closing fence buried
+    // beyond 8 KiB yields no title in either place rather than only here.
+    const SCAN_CAP: usize = 8192;
+    let body = if body.len() > SCAN_CAP {
+        let mut end = SCAN_CAP;
+        while !body.is_char_boundary(end) {
+            end -= 1;
+        }
+        &body[..end]
+    } else {
+        body
+    };
     let mut lines = body.lines();
     if lines.next()?.trim_end_matches('\r') != "---" {
         return None;
@@ -3568,6 +3582,17 @@ mod tests {
         assert_eq!(frontmatter_title("---\ntitle: \"   \"\n---\n"), None);
         assert_eq!(frontmatter_title("---\ntitle: [a, b]\n---\n"), None);
         assert_eq!(frontmatter_title("---\ntitle: true\n---\n"), None);
+    }
+
+    #[test]
+    fn frontmatter_title_caps_scan_like_the_editor() {
+        // A closing fence buried beyond the 8 KiB scan cap yields no title,
+        // matching the editor's `frontmatterTitle` so both parsers agree.
+        let body = format!("---\ntitle: Diep\n{}\n---\n", "x".repeat(9000));
+        assert_eq!(frontmatter_title(&body), None);
+        // A title well within the cap is still found even with a large body.
+        let body = format!("---\ntitle: Ondiep\n---\n{}", "x".repeat(9000));
+        assert_eq!(frontmatter_title(&body), Some("Ondiep".to_string()));
     }
 
     #[test]
