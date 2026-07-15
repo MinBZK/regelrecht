@@ -572,12 +572,15 @@ jobs:
         if: needs.changes.outputs[matrix.package] == 'true'
         run: just ${{ matrix.package }}-check
 
-      # Admin-only extra step: editor-api has no `just editor-api-test` recipe.
-      # (The admin frontend moved into the editor, so there is no longer an
-      # admin frontend build here either — admin is an API-only Rust binary.)
+      # Uniform per-package test step: `just admin-test` / `just editor-api-test`.
+      # The editor-api recipe covers src unit tests AND tests/*.rs integration
+      # tests (testcontainers — Docker is present on the hosted runner); before
+      # this step existed those tests were never even compiled in CI and rotted
+      # silently. (The admin frontend moved into the editor, so there is no
+      # longer an admin frontend build here — admin is an API-only Rust binary.)
       - name: Run tests
-        if: matrix.package == 'admin' && needs.changes.outputs.admin == 'true'
-        run: just admin-test
+        if: needs.changes.outputs[matrix.package] == 'true'
+        run: just ${{ matrix.package }}-test
 
       - name: Skip (no relevant changes)
         if: needs.changes.outputs[matrix.package] != 'true'

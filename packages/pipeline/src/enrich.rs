@@ -456,6 +456,31 @@ pub struct EnrichPayload {
     /// root enrichment; the child harvests it enqueues get `depth + 1`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub depth: Option<u32>,
+    /// Account dat de taak-flow-enrichment aanvroeg (gezet wanneer
+    /// `deliver == "task"`); bepaalt de assignee van de review-taak.
+    /// De taak-flow-gate zelf is `deliver_as_task()`, niet dit veld.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_by: Option<Uuid>,
+    /// `"task"` ⇒ resultaat als job_blobs + taak, géén push (taak-flow).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deliver: Option<String>,
+    /// Eigenaar-traject van de taak-flow (voor de tasks-rij + save-URL's).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub traject_id: Option<Uuid>,
+    /// URL-vorm van het traject (`{slug}-{8hex}`), voor de task-payload
+    /// zodat de frontend er review-URL's mee kan bouwen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub traject_ref: Option<String>,
+    /// `document_etag()` van de wet-YAML op aanvraagmoment (staleness-check).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_etag: Option<String>,
+}
+
+impl EnrichPayload {
+    /// Taak-flow: resultaat naar Postgres + taak i.p.v. push naar git.
+    pub fn deliver_as_task(&self) -> bool {
+        self.deliver.as_deref() == Some("task")
+    }
 }
 
 /// All known provider names. Used to create one enrich job per provider
@@ -1629,6 +1654,11 @@ mod tests {
             yaml_path: "regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
             provider: Some("claude".to_string()),
             depth: Some(2),
+            requested_by: None,
+            deliver: None,
+            traject_id: None,
+            traject_ref: None,
+            source_etag: None,
         };
 
         let json = serde_json::to_string(&payload).unwrap();
@@ -1643,6 +1673,11 @@ mod tests {
             yaml_path: "regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
             provider: None,
             depth: None,
+            requested_by: None,
+            deliver: None,
+            traject_id: None,
+            traject_ref: None,
+            source_etag: None,
         };
         let json_no_provider = serde_json::to_string(&payload_no_provider).unwrap();
         assert!(!json_no_provider.contains("provider"));
@@ -1869,6 +1904,33 @@ related_legislation:
     fn test_enrich_branch_name() {
         assert_eq!(enrich_branch_name("opencode"), "enrich/opencode");
         assert_eq!(enrich_branch_name("claude"), "enrich/claude");
+    }
+
+    #[test]
+    fn test_enrich_payload_task_fields_roundtrip_and_backcompat() {
+        // Oude payloads (zonder taak-velden) moeten blijven deserialiseren.
+        let old = serde_json::json!({"law_id": "x", "yaml_path": "nl/x/2025-01-01.yaml"});
+        let parsed: EnrichPayload = serde_json::from_value(old).unwrap();
+        assert!(parsed.requested_by.is_none());
+        assert!(!parsed.deliver_as_task());
+
+        // Nieuwe payloads dragen de taak-velden mee.
+        let account = uuid::Uuid::new_v4();
+        let new = EnrichPayload {
+            law_id: "x".into(),
+            yaml_path: "laws/x/law.yaml".into(),
+            provider: Some("claude".into()),
+            depth: None,
+            requested_by: Some(account),
+            deliver: Some("task".into()),
+            traject_id: Some(uuid::Uuid::new_v4()),
+            traject_ref: Some("testtraject-abcd1234".into()),
+            source_etag: Some("\"abc\"".into()),
+        };
+        let roundtrip: EnrichPayload =
+            serde_json::from_value(serde_json::to_value(&new).unwrap()).unwrap();
+        assert_eq!(roundtrip.requested_by, Some(account));
+        assert!(roundtrip.deliver_as_task());
     }
 
     #[test]
@@ -2181,6 +2243,11 @@ articles:
             yaml_path: yaml_path.into(),
             provider: Some("opencode".into()),
             depth: None,
+            requested_by: None,
+            deliver: None,
+            traject_id: None,
+            traject_ref: None,
+            source_etag: None,
         };
 
         let config = test_config(LlmProvider::OpenCode {
@@ -2246,6 +2313,11 @@ articles:
             yaml_path: yaml_path.into(),
             provider: None,
             depth: None,
+            requested_by: None,
+            deliver: None,
+            traject_id: None,
+            traject_ref: None,
+            source_etag: None,
         };
 
         let config = test_config(LlmProvider::OpenCode {
@@ -2294,6 +2366,11 @@ articles:
             yaml_path: yaml_path.into(),
             provider: None,
             depth: None,
+            requested_by: None,
+            deliver: None,
+            traject_id: None,
+            traject_ref: None,
+            source_etag: None,
         };
 
         let config = test_config(LlmProvider::OpenCode {

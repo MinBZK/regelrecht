@@ -260,6 +260,16 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
    * Throws on failure so callers can decide how to surface the error; the
    * `saveError` ref is also populated for passive UI display.
    *
+   * `yamlText` is sent verbatim as the PUT body - the caller decides what
+   * "the whole law" means for this save. The editor's normal save path
+   * passes a re-dumped doc with only the selected article patched in
+   * (`currentLawYaml`); review-modus approval (EditorView's
+   * `handleLawSave`) instead passes a task's full proposed YAML
+   * (`useTaskReview`'s `proposedContent`) unchanged, so approving commits
+   * every article the proposal touches - not just the one the editor
+   * seeded into its panes. Same request/etag/PR-refresh plumbing either
+   * way; no second save implementation.
+   *
    * @param {string} yamlText - Full law YAML (must contain matching $id)
    */
   async function saveLaw(yamlText) {

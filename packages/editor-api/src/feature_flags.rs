@@ -14,6 +14,14 @@ use crate::state::AppState;
 /// decide whether traject writes must carry the acting user's own token.
 pub const GITHUB_USER_OAUTH: &str = "github.user_oauth";
 
+/// Key of the taken-mechanisme flag (spec: taken-mechanisme). Gates the
+/// whole feature: verrijken-op-aanvraag (`task_requests::request_enrich`),
+/// the taken-UI (frontend `AppShell.vue`/`EditorView.vue`), and whether
+/// failed document-conversion jobs surface as tasks
+/// (`corpus_handlers` document-jobs listing, see
+/// `document_convert::list_traject_document_jobs`).
+pub const TASKS_JOB_REVIEW: &str = "tasks.job_review";
+
 static DEFAULTS: LazyLock<HashMap<String, bool>> = LazyLock::new(|| {
     HashMap::from([
         ("panel.article_text".into(), true),
@@ -42,6 +50,15 @@ static DEFAULTS: LazyLock<HashMap<String, bool>> = LazyLock::new(|| {
         // 400s and the frontend silently reverts it, so the toggle would
         // never stick.
         (GITHUB_USER_OAUTH.into(), false),
+        // Taken-mechanisme: gate het geheel - verrijken op aanvraag (de
+        // "Verrijk deze wet"-actie/het aanmaken van een enrich-job), de
+        // taken-UI (taken-knop/-sheet + review-modus), en of mislukte
+        // documentconversies als taak zichtbaar worden. Met de flag uit valt
+        // het conversie-faalpad terug op de oude lijstweergave (status +
+        // foutmelding inline, geen taak). Zelfde allow-list-regel: zonder
+        // deze key weigert de toggle-PUT met 400 en klapt de UI-switch stil
+        // terug.
+        (TASKS_JOB_REVIEW.into(), false),
     ])
 });
 

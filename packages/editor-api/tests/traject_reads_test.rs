@@ -50,6 +50,7 @@ fn empty_state(pool: PgPool) -> AppState {
             oidc: None,
             base_url: None,
             github_oauth: None,
+            task_enrich_provider: "claude".to_string(),
         }),
         http_client: reqwest::Client::new(),
         pool: Some(pool),
@@ -925,6 +926,7 @@ async fn user_token_enforcement_skips_local_backed_trajects() {
         oidc: None,
         base_url: None,
         github_oauth: Some(GithubOAuth::for_tests(true)),
+        task_enrich_provider: "claude".to_string(),
     });
     let (owner, sub) = seed_account(&db.pool, "alice@test.local").await;
 
@@ -972,6 +974,7 @@ async fn feature_flag_row_drives_user_token_requirement() {
         oidc: None,
         base_url: None,
         github_oauth: Some(GithubOAuth::for_tests(false)),
+        task_enrich_provider: "claude".to_string(),
     });
     let account_id = Uuid::new_v4();
 

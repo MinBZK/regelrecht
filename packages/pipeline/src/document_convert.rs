@@ -45,6 +45,10 @@ pub struct DocumentConvertPayload {
     /// worker default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
+    /// Account dat de upload deed; krijgt bij terminaal falen een
+    /// `job_failed`-taak. `None` voor jobs van vóór dit veld.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_by: Option<Uuid>,
 }
 
 /// An uploaded document loaded from `document_uploads`.
@@ -233,40 +237,63 @@ pub struct TrajectJobView {
     /// Target `.md` path (from the job payload); `None` only for a malformed payload.
     pub target_path: Option<String>,
     pub status: JobStatus,
-    /// Failure reason (from `jobs.result->>'error'`), present when `status = failed`.
+    /// Failure reason (from `jobs.result->>'error'`). Only ever populated for
+    /// a `failed` row, and only when `include_failed` was true - see
+    /// `list_traject_document_jobs`. `None` otherwise.
     pub error: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
-/// List the traject's document-convert jobs that are still relevant to show:
-/// everything that is not `completed` (pending, processing, failed). A completed
-/// job is represented by the actual `.md` in the documents list, so it drops out
-/// of this view.
+/// List the traject's document-convert jobs relevant to the werkdocumenten
+/// status UI. `include_failed` mirrors the `tasks.job_review` feature flag,
+/// inverted (caller passes `!flag_enabled`) - the flag decides which of two
+/// mutually exclusive failure UIs is active, so exactly one of "taak" or
+/// "inline status row" ever shows a given failure:
+///
+/// * `include_failed = false` (flag ON, taken-mechanisme actief): only
+///   still-active jobs (`pending`, `processing`). A completed job is
+///   represented by the actual `.md` in the documents list; a terminally
+///   failed job is not shown here at all - the uploader instead gets a
+///   wegklikbare `job_failed` taak (see
+///   `worker::process_next_document_convert_job`), so a failure no longer
+///   lingers forever in this status block. `error` is always `None` in this
+///   mode (the query excludes failed rows entirely).
+/// * `include_failed = true` (flag OFF): pre-taken-mechanisme behaviour
+///   restored byte-for-byte - everything not `completed` (pending,
+///   processing, failed), with `error` populated from `result->>'error'` for
+///   failed rows so the old inline failure UI (`ConversionStatus.vue`) has
+///   something to render.
 pub async fn list_traject_document_jobs(
     pool: &PgPool,
     traject_ref: &str,
+    include_failed: bool,
 ) -> Result<Vec<TrajectJobView>> {
-    let rows = sqlx::query_as::<_, TrajectJobView>(
+    let (status_filter, error_column) = if include_failed {
+        ("status <> 'completed'", "result->>'error'")
+    } else {
+        ("status IN ('pending', 'processing')", "NULL::text")
+    };
+    // `status_filter`/`error_column` are fixed literals selected above, never
+    // caller-supplied - no injection surface despite the format!.
+    let query = format!(
         r#"
         SELECT id,
                payload->>'target_path' AS target_path,
                status,
-               result->>'error'        AS error,
+               {error_column}          AS error,
                created_at
         FROM jobs
         WHERE traject_ref = $1
           AND job_type = 'document_convert'
-          AND status <> 'completed'
+          AND {status_filter}
         ORDER BY created_at DESC
-        -- Bound the result: failed jobs are not auto-cleaned (phase 1), so a
-        -- traject with many failed uploads would otherwise grow this list (and
-        -- the status block that renders every row) without limit.
         LIMIT 100
-        "#,
-    )
-    .bind(traject_ref)
-    .fetch_all(pool)
-    .await?;
+        "#
+    );
+    let rows = sqlx::query_as::<_, TrajectJobView>(&query)
+        .bind(traject_ref)
+        .fetch_all(pool)
+        .await?;
     Ok(rows)
 }
 
@@ -564,6 +591,7 @@ mod tests {
             traject_ref: "abcd1234".to_string(),
             target_path: "report.md".to_string(),
             provider: Some("claude".to_string()),
+            requested_by: None,
         };
         let json = serde_json::to_value(&payload).unwrap();
         assert_eq!(json["upload_id"], "00000000-0000-0000-0000-000000000000");
@@ -580,6 +608,7 @@ mod tests {
             traject_ref: "abcd1234".to_string(),
             target_path: "report.md".to_string(),
             provider: None,
+            requested_by: None,
         };
         let json = serde_json::to_value(&payload).unwrap();
         assert!(json.get("provider").is_none());

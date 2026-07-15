@@ -114,7 +114,11 @@ pub struct LawOutputEntry {
 /// `/api/trajects/{tid}/corpus/...` always lands in `Traject` — so a
 /// single handler body can serve both via the route-specific extractor
 /// that produced the scope.
-enum ReadScope {
+///
+/// `pub(crate)` so `task_requests` can build a `Traject` scope from the
+/// `TrajectCorpus` it resolved via `require_traject_corpus_from_ref`, to
+/// snapshot a law's YAML through the same read path the editor uses.
+pub(crate) enum ReadScope {
     Traject(Arc<TrajectCorpus>),
     Global(tokio::sync::OwnedRwLockReadGuard<CorpusState>),
 }
@@ -182,7 +186,13 @@ impl ReadScope {
 /// Read a law's YAML within a scope, mapping the outcome to an HTTP error:
 /// a backend failure (lazy fetch threw) becomes 502 "failed to load" so it's
 /// distinguishable from a genuine 404 miss; the error is logged for operators.
-async fn read_law_yaml(scope: &ReadScope, law_id: &str) -> Result<String, (StatusCode, String)> {
+///
+/// `pub(crate)`: also used by `task_requests` to snapshot the wet-YAML an
+/// enrich-op-aanvraag ships as its input blob.
+pub(crate) async fn read_law_yaml(
+    scope: &ReadScope,
+    law_id: &str,
+) -> Result<String, (StatusCode, String)> {
     scope
         .law_yaml(law_id)
         .await
@@ -1410,7 +1420,11 @@ struct EditorWriteTarget {
 /// `/editor/{ref}/…` route — a member removed (or their traject deleted)
 /// mid-session must immediately stop being able to write to the branch
 /// instead of keeping a stale handle through their open tabs.
-async fn require_traject_corpus_from_ref(
+///
+/// `pub(crate)`: `task_requests` uses this same guard + resolution for the
+/// enrich-op-aanvraag endpoint (identical membership requirement as any
+/// other traject-scoped write).
+pub(crate) async fn require_traject_corpus_from_ref(
     state: &AppState,
     session: &Session,
     traject_ref: &str,
@@ -2473,7 +2487,10 @@ pub struct SaveDocumentResponse {
 /// Compute the document ETag used for optimistic-concurrency checks.
 /// Wrapped in double quotes per RFC 7232 so the header value can be
 /// returned verbatim.
-fn document_etag(content: &str) -> String {
+///
+/// `pub(crate)`: `task_requests` reuses this to stamp `source_etag` on an
+/// enrich-op-aanvraag's payload (same staleness-check chain as saves).
+pub(crate) fn document_etag(content: &str) -> String {
     use sha2::{Digest, Sha256};
     let digest = Sha256::digest(content.as_bytes());
     format!("\"{:x}\"", digest)
@@ -2784,6 +2801,7 @@ fn derive_markdown_target(filename: &str, existing: &[String]) -> String {
 /// the converted document will appear at.
 pub async fn upload_traject_document(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path(traject_ref): Path<String>,
     mut multipart: Multipart,
@@ -2924,6 +2942,7 @@ pub async fn upload_traject_document(
         traject_ref: traject_ref.clone(),
         target_path: target_path.clone(),
         provider: None,
+        requested_by: Some(account.id),
     };
     let payload_json = serde_json::to_value(&payload)
         .map_err(|e| upload_internal_error("serialize payload", e))?;
@@ -2955,8 +2974,9 @@ pub async fn upload_traject_document(
 /// GET /api/trajects/{traject_ref}/corpus/documents/jobs
 ///
 /// List the traject's document-convert jobs that are still relevant to show
-/// (running or failed — completed ones are represented by the actual `.md` in
-/// the documents list). Backs the werkdocumenten conversion-status block.
+/// (running, and - with `tasks.job_review` off - failed; completed ones are
+/// represented by the actual `.md` in the documents list). Backs the
+/// werkdocumenten conversion-status block.
 pub async fn list_traject_document_convert_jobs(
     State(state): State<AppState>,
     session: Session,
@@ -2968,10 +2988,21 @@ pub async fn list_traject_document_convert_jobs(
     ))?;
     // Membership guard.
     require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let jobs =
-        regelrecht_pipeline::document_convert::list_traject_document_jobs(pool, &traject_ref)
+    // Flag ON -> failed conversions surface as `job_failed` taken, so this
+    // list stays pending/processing-only; flag OFF -> restore the pre-taken-
+    // mechanisme behaviour (failed rows included, with `error`) since the
+    // taken-UI that would otherwise show them is itself gated off.
+    let flag_enabled =
+        crate::feature_flags::flag_enabled(pool, crate::feature_flags::TASKS_JOB_REVIEW)
             .await
-            .map_err(|e| upload_internal_error("list document jobs", e))?;
+            .map_err(|e| upload_internal_error("read tasks.job_review flag", e))?;
+    let jobs = regelrecht_pipeline::document_convert::list_traject_document_jobs(
+        pool,
+        &traject_ref,
+        !flag_enabled,
+    )
+    .await
+    .map_err(|e| upload_internal_error("list document jobs", e))?;
     Ok(Json(TrajectJobList { jobs }))
 }
 
