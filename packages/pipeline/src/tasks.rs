@@ -12,7 +12,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::error::Result;
-use crate::models::JobStatus;
+use crate::models::{JobStatus, JobType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "task_status", rename_all = "lowercase")]
@@ -120,14 +120,20 @@ pub async fn count_open_tasks_for_account(pool: &PgPool, account_id: Uuid) -> Re
     Ok(count)
 }
 
-/// Eén lopende taak-flow-job voor de "Bezig"-sectie: een enrich-job die deze
-/// gebruiker via `deliver: "task"` heeft aangevraagd en die nog niet is
-/// afgerond (job_review/job_failed-taak bestaat pas na completion/failure).
+/// Eén lopende taak-flow-job voor de "Bezig"-sectie: een enrich- of
+/// document_convert-job die deze gebruiker via `deliver: "task"` heeft
+/// aangevraagd en die nog niet is afgerond (job_review/job_failed-taak
+/// bestaat pas na completion/failure).
 #[derive(Debug, Clone, sqlx::FromRow, Serialize)]
 pub struct RunningTaskJob {
     pub job_id: Uuid,
+    pub job_type: JobType,
     pub law_id: String,
     pub traject_ref: Option<String>,
+    /// Doelbestand van een document_convert-job (payload `target_path`);
+    /// None voor enrich-jobs. Het `law_id`-veld draagt voor conversies een
+    /// synthetische `doc:`-sleutel, dus de weergave leest dit veld.
+    pub target_path: Option<String>,
     pub status: JobStatus,
     pub created_at: DateTime<Utc>,
 }
@@ -141,9 +147,10 @@ pub async fn list_running_task_jobs_for_account(
     account_id: Uuid,
 ) -> Result<Vec<RunningTaskJob>> {
     let jobs = sqlx::query_as::<_, RunningTaskJob>(
-        "SELECT id AS job_id, law_id, traject_ref, status, created_at \
+        "SELECT id AS job_id, job_type, law_id, traject_ref, \
+                payload->>'target_path' AS target_path, status, created_at \
          FROM jobs \
-         WHERE job_type = 'enrich' \
+         WHERE job_type IN ('enrich', 'document_convert') \
            AND status IN ('pending', 'processing') \
            AND payload->>'deliver' = 'task' \
            AND payload->>'requested_by' = $1 \

@@ -69,6 +69,22 @@ describe('TasksSheet', () => {
     expect(wrapper.find('nldd-inline-dialog').exists()).toBe(false);
   });
 
+  it('toont een lopende documentconversie met de bestandsnaam uit target_path', async () => {
+    const wrapper = await mountSheet(
+      [],
+      [{
+        job_id: 'j2',
+        job_type: 'document_convert',
+        law_id: 'doc:testtraject-abcd1234/analyses/rapport.md',
+        target_path: 'analyses/rapport.md',
+        status: 'processing',
+      }]
+    );
+    const indicators = wrapper.findAll('nldd-activity-indicator');
+    expect(indicators).toHaveLength(1);
+    expect(indicators[0].attributes('text')).toBe('Conversie loopt - rapport.md');
+  });
+
   it('toont zowel de Bezig-sectie als de takenlijst wanneer beide gevuld zijn', async () => {
     const wrapper = await mountSheet(
       [{ id: 't1', task_type: 'job_review', title: 'Verrijking beoordelen: andere_wet', payload: {} }],

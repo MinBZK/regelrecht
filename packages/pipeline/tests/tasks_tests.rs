@@ -607,6 +607,27 @@ async fn test_list_running_task_jobs_for_account() {
     .await
     .unwrap();
 
+    // Eigen document_convert-taak-flow-job: hoort ook in de "Bezig"-lijst,
+    // met target_path als weergave-handvat (law_id is een doc:-sleutel).
+    let own_doc_job = job_queue::create_job(
+        &db.pool,
+        CreateJobRequest::new(
+            JobType::DocumentConvert,
+            "doc:testtraject-abcd1234/analyses/rapport.md",
+        )
+        .with_traject_ref("testtraject-abcd1234")
+        .with_payload(json!({
+            "upload_id": uuid::Uuid::new_v4(),
+            "traject_id": traject_id,
+            "traject_ref": "testtraject-abcd1234",
+            "target_path": "analyses/rapport.md",
+            "requested_by": account_id,
+            "deliver": "task"
+        })),
+    )
+    .await
+    .unwrap();
+
     // Corpus-brede job (geen deliver/requested_by) voor dezelfde wet - hoort
     // niet in de taak-flow-lijst thuis, ongeacht account.
     job_queue::create_job(
@@ -635,20 +656,30 @@ async fn test_list_running_task_jobs_for_account() {
     let running = tasks::list_running_task_jobs_for_account(&db.pool, account_id)
         .await
         .unwrap();
-    assert_eq!(running.len(), 1);
-    assert_eq!(running[0].job_id, own_job.id);
-    assert_eq!(running[0].law_id, "test_wet");
+    assert_eq!(running.len(), 2);
+    // Nieuwste eerst: de document_convert-job is na de enrich-job aangemaakt.
+    assert_eq!(running[0].job_id, own_doc_job.id);
+    assert_eq!(running[0].job_type, JobType::DocumentConvert);
     assert_eq!(
-        running[0].traject_ref.as_deref(),
+        running[0].target_path.as_deref(),
+        Some("analyses/rapport.md")
+    );
+    assert_eq!(running[1].job_id, own_job.id);
+    assert_eq!(running[1].job_type, JobType::Enrich);
+    assert_eq!(running[1].law_id, "test_wet");
+    assert_eq!(running[1].target_path, None);
+    assert_eq!(
+        running[1].traject_ref.as_deref(),
         Some("testtraject-abcd1234")
     );
     assert_eq!(
-        running[0].status,
+        running[1].status,
         regelrecht_pipeline::models::JobStatus::Pending
     );
 
-    // Claim + complete de eigen job: eenmaal afgerond hoort hij niet meer in
-    // de "Bezig"-lijst (hij verschijnt dan als job_review-taak i.p.v.).
+    // Claim + complete de eigen enrich-job: eenmaal afgerond hoort hij niet
+    // meer in de "Bezig"-lijst (hij verschijnt dan als job_review-taak
+    // i.p.v.); de nog lopende document_convert-job blijft staan.
     let claimed = job_queue::claim_job(&db.pool, Some(JobType::Enrich))
         .await
         .unwrap()
@@ -661,7 +692,8 @@ async fn test_list_running_task_jobs_for_account() {
     let after = tasks::list_running_task_jobs_for_account(&db.pool, account_id)
         .await
         .unwrap();
-    assert!(after.is_empty());
+    assert_eq!(after.len(), 1);
+    assert_eq!(after[0].job_id, own_doc_job.id);
 }
 
 /// `include_failed` mirrors `!tasks.job_review`: flag ON (taken-mechanisme

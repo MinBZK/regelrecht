@@ -42,6 +42,17 @@ function taskIcon(task) {
   return 'tasks';
 }
 
+// Label voor een lopende taak-flow-job. Een document_convert-job draagt een
+// synthetische `doc:`-sleutel als law_id; de bestandsnaam uit target_path is
+// het herkenbare handvat voor de gebruiker.
+function runningText(job) {
+  if (job.job_type === 'document_convert') {
+    const name = job.target_path?.split('/').pop() || 'werkdocument';
+    return `Conversie loopt - ${name}`;
+  }
+  return `Verrijking loopt - ${job.law_id}`;
+}
+
 // "Beoordelen" navigeert naar het artikel in de editor (met de taak-id als
 // query) en sluit de sheet. Taken zonder traject_ref/law_id in de payload
 // tonen een disabled knop (zie :disabled hieronder) in plaats van te
@@ -74,11 +85,11 @@ function review(task) {
                 <nldd-icon-cell slot="start" size="20">
                   <nldd-activity-indicator
                     size="16"
-                    :text="`Verrijking loopt - ${job.law_id}`"
+                    :text="runningText(job)"
                   ></nldd-activity-indicator>
                 </nldd-icon-cell>
                 <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
-                <nldd-text-cell :text="`Verrijking loopt - ${job.law_id}`"></nldd-text-cell>
+                <nldd-text-cell :text="runningText(job)"></nldd-text-cell>
               </nldd-list-item>
             </nldd-list>
             <nldd-spacer size="16"></nldd-spacer>
