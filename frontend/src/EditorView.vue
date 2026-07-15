@@ -1781,7 +1781,7 @@ async function handleActionSave() {
         <!-- Loading takes precedence over `error` to avoid flashing a stale error during a refetch. -->
         <nldd-page v-else-if="loading">
           <nldd-simple-section width="full">
-            <nldd-activity-indicator timing="instant" text="Artikel laden" show-text></nldd-activity-indicator>
+            <nldd-activity-indicator text="Artikel laden" show-text></nldd-activity-indicator>
           </nldd-simple-section>
         </nldd-page>
 

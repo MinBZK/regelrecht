@@ -18,6 +18,7 @@ import {
   rememberHarvesterOrigin,
 } from './composables/useLastVisitedRoute.js';
 import { useAppChrome, openSearch, onBarSearchKeydown } from './composables/useAppChrome.js';
+import { SEARCH_PLACEHOLDER, SEARCH_ACCESSIBLE_LABEL } from './constants.js';
 
 // Persistent shell that owns the shared chrome (tab-bar, search trigger,
 // TrajectMenu, settings menu) and a nested <router-view> for the editor /
@@ -328,12 +329,20 @@ const hasDocumentTabs = computed(
               <nldd-button-bar size="md">
                 <TrajectMenu id-suffix="md" />
                 <nldd-button-bar-divider></nldd-button-bar-divider>
-                <nldd-icon-button id="settings-menu-btn-md" size="md" icon="account" text="Account" tooltip-timing="never" expandable popovertarget="settings-menu-md"></nldd-icon-button>
+                <nldd-icon-button id="settings-menu-btn-md" size="md" :icon="authenticated ? undefined : 'account'" text="Account" tooltip-timing="never" expandable popovertarget="settings-menu-md">
+                  <nldd-avatar v-if="authenticated" slot="icon" :name="person?.name || person?.email" color="inherit" icon-aligned decorative></nldd-avatar>
+                </nldd-icon-button>
               </nldd-button-bar>
               <nldd-menu id="settings-menu-md" anchor="settings-menu-btn-md">
                 <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
-                <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <nldd-list v-if="!authLoading && authenticated" slot="header" variant="simple" no-dividers>
+                  <nldd-list-item>
+                    <nldd-spacer-cell size="10"></nldd-spacer-cell>
+                    <nldd-text-cell :text="person?.name || person?.email" :supporting-text="person?.name ? person?.email : ''"></nldd-text-cell>
+                    <nldd-spacer-cell size="10"></nldd-spacer-cell>
+                  </nldd-list-item>
+                </nldd-list>
                 <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"
@@ -394,7 +403,8 @@ const hasDocumentTabs = computed(
               >
                 <nldd-search-field
                   size="md"
-                  placeholder="Zoeken"
+                  :placeholder="SEARCH_PLACEHOLDER"
+                  :accessible-label="SEARCH_ACCESSIBLE_LABEL"
                   @click="openSearch"
                   @keydown="onBarSearchKeydown"
                 ></nldd-search-field>
@@ -407,12 +417,20 @@ const hasDocumentTabs = computed(
               <nldd-button-bar size="md">
                 <TrajectMenu id-suffix="lg" />
                 <nldd-button-bar-divider></nldd-button-bar-divider>
-                <nldd-icon-button id="settings-menu-btn-lg" size="md" icon="account" text="Account" tooltip-timing="never" expandable popovertarget="settings-menu-lg"></nldd-icon-button>
+                <nldd-icon-button id="settings-menu-btn-lg" size="md" :icon="authenticated ? undefined : 'account'" text="Account" tooltip-timing="never" expandable popovertarget="settings-menu-lg">
+                  <nldd-avatar v-if="authenticated" slot="icon" :name="person?.name || person?.email" color="inherit" icon-aligned decorative></nldd-avatar>
+                </nldd-icon-button>
               </nldd-button-bar>
               <nldd-menu id="settings-menu-lg" anchor="settings-menu-btn-lg">
                 <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
-                <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <nldd-list v-if="!authLoading && authenticated" slot="header" variant="simple" no-dividers>
+                  <nldd-list-item>
+                    <nldd-spacer-cell size="10"></nldd-spacer-cell>
+                    <nldd-text-cell :text="person?.name || person?.email" :supporting-text="person?.name ? person?.email : ''"></nldd-text-cell>
+                    <nldd-spacer-cell size="10"></nldd-spacer-cell>
+                  </nldd-list-item>
+                </nldd-list>
                 <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"
@@ -598,11 +616,19 @@ const hasDocumentTabs = computed(
               </nldd-just-in-time-education>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <nldd-icon-button id="settings-menu-btn-sm" size="lg" icon="account" text="Account" tooltip-timing="never" popovertarget="settings-menu-sm"></nldd-icon-button>
+              <nldd-icon-button id="settings-menu-btn-sm" size="lg" :icon="authenticated ? undefined : 'account'" text="Account" tooltip-timing="never" popovertarget="settings-menu-sm">
+                <nldd-avatar v-if="authenticated" slot="icon" :name="person?.name || person?.email" color="inherit" icon-aligned decorative></nldd-avatar>
+              </nldd-icon-button>
               <nldd-menu id="settings-menu-sm" anchor="settings-menu-btn-sm">
                 <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
-                <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <nldd-list v-if="!authLoading && authenticated" slot="header" variant="simple" no-dividers>
+                  <nldd-list-item>
+                    <nldd-spacer-cell size="10"></nldd-spacer-cell>
+                    <nldd-text-cell :text="person?.name || person?.email" :supporting-text="person?.name ? person?.email : ''"></nldd-text-cell>
+                    <nldd-spacer-cell size="10"></nldd-spacer-cell>
+                  </nldd-list-item>
+                </nldd-list>
                 <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"
