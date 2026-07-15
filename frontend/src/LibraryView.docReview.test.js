@@ -201,6 +201,36 @@ describe('LibraryView document-review flow', () => {
     expect(loadError.value).toMatch(/mislukt/i);
   });
 
+  // A retry after a failed reject must clear the stale critical banner: the
+  // second call succeeds, so the "Verwerpen ... mislukt" error may not linger.
+  it('rejectDocReview clears a prior reject-failure banner on a successful retry', async () => {
+    rejectTask.mockResolvedValue(undefined);
+    openReview();
+    loadError.value = 'Verwerpen van het voorstel is mislukt. Probeer het opnieuw.';
+    const wrapper = mountLibrary();
+    await wrapper.vm.$nextTick();
+
+    await wrapper.vm.rejectDocReview();
+
+    expect(rejectTask).toHaveBeenCalled();
+    expect(loadError.value).toBeNull();
+  });
+
+  // Approving (Opslaan) after a prior reject-failure must also drop the stale
+  // banner - otherwise it stays visible while the task is already resolved.
+  it('onDocSaved clears a prior reject-failure banner on a successful approval', async () => {
+    approveAfterSave.mockResolvedValue(undefined);
+    openReview();
+    loadError.value = 'Verwerpen van het voorstel is mislukt. Probeer het opnieuw.';
+    const wrapper = mountLibrary();
+    await wrapper.vm.$nextTick();
+
+    await wrapper.vm.onDocSaved('report.md');
+
+    expect(approveAfterSave).toHaveBeenCalled();
+    expect(loadError.value).toBeNull();
+  });
+
   // Fix 2 + Fix 4: onDocSaved only approves when the saved path AND traject
   // match the task under review.
   it('onDocSaved approves and clears the task query when the saved path matches', async () => {

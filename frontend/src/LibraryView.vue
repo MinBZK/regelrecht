@@ -343,6 +343,9 @@ function clearDocReviewQuery() {
 // leaving the user with no way back to it.
 async function rejectDocReview() {
   const path = docReviewTask.value?.payload?.target_path;
+  // Clear a prior failure so a retry (or a later success) drops the stale
+  // critical banner instead of leaving it up after the reject succeeds.
+  docReviewLoadError.value = null;
   try {
     await docReviewRejectInternal();
   } catch (e) {
@@ -386,6 +389,8 @@ async function onDocSaved(savedPath) {
     console.warn('Goedkeuren van documentvoorstel mislukt:', e);
     return;
   }
+  // A successful approval clears any stale reject-failure banner too.
+  docReviewLoadError.value = null;
   clearDocReviewQuery();
 }
 
