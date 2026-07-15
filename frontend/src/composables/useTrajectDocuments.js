@@ -352,15 +352,31 @@ export function useTrajectDocuments(trajectRef) {
     const stem = path.split('/').pop().replace(/\.[^.]+$/, '');
     const body = `# ${stem}\n\n`;
     cancelDraftTimer();
+
+    // Optimistic UI (https://www.lukew.com/ff/entry.asp?1759): drop the new
+    // document into the list and open it *before* the server round-trip, so the
+    // werkdocumenten pane updates instantly and the row shows as selected
+    // (selection follows currentPath). saveCurrent reconciles the list against
+    // the server on success (201 -> fetchList); we roll everything back on
+    // failure so a rejected create never leaves a phantom row behind.
+    const prevDocuments = documents.value;
+    const prevPath = currentPath.value;
+    const prevBody = currentBody.value;
+    const prevEtag = currentEtag.value;
+    if (!documents.value.some((d) => d.path === path)) {
+      documents.value = [...documents.value, { path }];
+    }
     currentPath.value = path;
     currentBody.value = body;
     currentEtag.value = null;
+
     const result = await saveCurrent({ ifMatch: null });
-    // Refresh the list so the new document shows up in the werkdocumenten pane
-    // right away, instead of only after a manual page refresh (mirrors
-    // uploadDocument). currentPath is already the new path, so its row lands
-    // pre-selected.
-    if (result?.ok) await fetchList();
+    if (!result?.ok) {
+      documents.value = prevDocuments;
+      currentPath.value = prevPath;
+      currentBody.value = prevBody;
+      currentEtag.value = prevEtag;
+    }
     return result;
   }
 
@@ -412,6 +428,15 @@ export function useTrajectDocuments(trajectRef) {
     // we clear it below.
     if (path === currentPath.value) cancelDraftTimer();
     saveError.value = null;
+
+    // Optimistic UI (https://www.lukew.com/ff/entry.asp?1759): remove the row
+    // from the list right away and restore it on any failure below. The open
+    // document + its draft are only cleared once the server confirms the delete
+    // (success or 404-already-gone), so a rejected delete leaves the editor
+    // untouched.
+    const prevDocuments = documents.value;
+    documents.value = documents.value.filter((d) => d.path !== path);
+
     // Send `If-Match` so the delete is conditional: a concurrent edit then
     // surfaces as a 412 instead of being silently destroyed. The open
     // document already has its ETag in `currentEtag`; for any other entry
@@ -469,6 +494,7 @@ export function useTrajectDocuments(trajectRef) {
         return { ok: true };
       }
       if (!res.ok) {
+        documents.value = prevDocuments;
         const text = await safeText(res);
         saveError.value = new Error(text || `Verwijderen mislukt: ${res.status}`);
         return { ok: false };
@@ -485,6 +511,7 @@ export function useTrajectDocuments(trajectRef) {
       // Network error (Failed to fetch / timeout) - surface it through
       // the same `saveError` banner the editor already shows, so a failed
       // delete isn't swallowed silently. Mirrors `saveCurrent`'s catch.
+      documents.value = prevDocuments;
       saveError.value = e;
       return { ok: false };
     }

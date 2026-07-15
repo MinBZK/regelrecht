@@ -9,7 +9,7 @@
  */
 import { ref, onUnmounted } from 'vue';
 import { apiFetch } from '@regelrecht/frontend-shared';
-import { documentJobsUrl } from './corpusUrls.js';
+import { documentJobsUrl, documentJobUrl } from './corpusUrls.js';
 
 const DEFAULT_INTERVAL_MS = 4000;
 
@@ -76,10 +76,20 @@ export function useTrajectDocumentJobs(trajectRef, { interval = DEFAULT_INTERVAL
     error.value = null;
   }
 
+  // Cancel (kill) a conversion job — e.g. one stuck for hours. DELETE is
+  // idempotent server-side, so a double-click is harmless. Refresh so the row
+  // disappears immediately.
+  async function cancelJob(jobId) {
+    const ref_ = trajectRef.value;
+    if (!ref_) return;
+    await apiFetch(documentJobUrl(ref_, jobId), { method: 'DELETE' });
+    await refresh();
+  }
+
   onUnmounted(() => {
     mounted = false;
     stopPolling();
   });
 
-  return { jobs, loading, error, refresh, startPolling, stopPolling, reset };
+  return { jobs, loading, error, refresh, startPolling, stopPolling, reset, cancelJob };
 }

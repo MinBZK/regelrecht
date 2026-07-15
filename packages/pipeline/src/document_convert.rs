@@ -270,20 +270,62 @@ pub async fn list_traject_document_jobs(
     Ok(rows)
 }
 
-/// Target `.md` paths of the traject's still-pending/processing document-convert
-/// jobs. Used by the upload handler to make the derived target collision-safe
+/// Cancel a not-yet-completed document-convert job for a traject — e.g. one the
+/// user wants to kill because it has been stuck for hours. Deletes the job row
+/// and its now-orphaned source upload. Scoped to the traject's own
+/// document-convert jobs so a member can't cancel another traject's job by id.
+/// Returns `true` when a job was removed, `false` when none matched (already
+/// gone / completed / wrong traject) so the caller can stay idempotent.
+pub async fn cancel_traject_document_job(
+    pool: &PgPool,
+    traject_ref: &str,
+    job_id: Uuid,
+) -> Result<bool> {
+    let deleted: Option<(Option<Uuid>,)> = sqlx::query_as(
+        r#"
+        DELETE FROM jobs
+        WHERE id = $1
+          AND traject_ref = $2
+          AND job_type = 'document_convert'
+          AND status <> 'completed'
+        RETURNING (payload->>'upload_id')::uuid
+        "#,
+    )
+    .bind(job_id)
+    .bind(traject_ref)
+    .fetch_optional(pool)
+    .await?;
+
+    let Some((upload_id,)) = deleted else {
+        return Ok(false);
+    };
+    // Best-effort clean-up of the orphaned source bytes; the job is already gone
+    // (the user's intent) and `cleanup_orphaned_uploads` is the backstop, so a
+    // failure here must not fail the cancel.
+    if let Some(uid) = upload_id {
+        let _ = delete_upload(pool, uid).await;
+    }
+    Ok(true)
+}
+
+/// Target `.md` paths of the traject's not-yet-completed document-convert jobs
+/// (pending, processing AND failed). A failed job still shows a row under its
+/// name, so reserving it too keeps a new upload from deriving the same name and
+/// spawning a confusing duplicate. Completed jobs are excluded: their `.md` is a
+/// real document, caught by the on-disk check.
+/// Used by the upload handler to make the derived target collision-safe
 /// against conversions that are enqueued but haven't committed their `.md` yet —
 /// without this, two uploads that derive the same name (e.g. two `report.pdf`)
 /// would both target `report.md` and the second conversion would overwrite the
 /// first once both commit.
-pub async fn pending_target_paths(pool: &PgPool, traject_ref: &str) -> Result<Vec<String>> {
+pub async fn reserved_target_paths(pool: &PgPool, traject_ref: &str) -> Result<Vec<String>> {
     let rows = sqlx::query_as::<_, (Option<String>,)>(
         r#"
         SELECT payload->>'target_path'
         FROM jobs
         WHERE traject_ref = $1
           AND job_type = 'document_convert'
-          AND status IN ('pending', 'processing')
+          AND status <> 'completed'
         "#,
     )
     .bind(traject_ref)

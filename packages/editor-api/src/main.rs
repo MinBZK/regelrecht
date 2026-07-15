@@ -388,6 +388,10 @@ async fn main() {
             get(corpus_handlers::list_traject_document_convert_jobs),
         )
         .route(
+            "/api/trajects/{traject_ref}/corpus/documents/jobs/{job_id}",
+            axum::routing::delete(corpus_handlers::cancel_traject_document_convert_job),
+        )
+        .route(
             "/api/trajects/{traject_ref}/corpus/documents/{*doc_path}",
             get(corpus_handlers::get_traject_document),
         )

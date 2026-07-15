@@ -2886,16 +2886,17 @@ pub async fn upload_traject_document(
     // transaction would serialize every writable-document op on this traject.
     drop(backend);
     // Also avoid colliding with conversions that are enqueued but haven't
-    // committed their `.md` yet — otherwise two same-named uploads both derive
-    // e.g. `report.md` and the second conversion overwrites the first. (This
-    // narrows but does not fully close a concurrent-upload window: two requests
-    // can both read the pending set before either commits its job — an
-    // acceptable residual TOCTOU for same-traject same-name simultaneous uploads.)
+    // committed their `.md` yet, and with failed ones that still show a row under
+    // that name — otherwise two same-named uploads both derive e.g. `report.md`,
+    // or a new upload duplicates a failed job's name. (This narrows but does not
+    // fully close a concurrent-upload window: two requests can both read the
+    // reserved set before either commits its job — an acceptable residual TOCTOU
+    // for same-traject same-name simultaneous uploads.)
     existing.extend(
-        regelrecht_pipeline::document_convert::pending_target_paths(pool, &traject_ref)
+        regelrecht_pipeline::document_convert::reserved_target_paths(pool, &traject_ref)
             .await
             .map_err(|e| {
-                upload_internal_error("list pending conversions for collision check", e)
+                upload_internal_error("list reserved conversion targets for collision check", e)
             })?,
     );
     let target_path = derive_markdown_target(&filename, &existing);
@@ -2972,6 +2973,28 @@ pub async fn list_traject_document_convert_jobs(
             .await
             .map_err(|e| upload_internal_error("list document jobs", e))?;
     Ok(Json(TrajectJobList { jobs }))
+}
+
+/// DELETE /api/trajects/{traject_ref}/corpus/documents/jobs/{job_id}
+///
+/// Cancel a still-running document-convert job (e.g. one stuck for hours): the
+/// job and its source upload are removed. Idempotent — a job that is already
+/// gone or finished still yields `204`, so a double-click never errors.
+pub async fn cancel_traject_document_convert_job(
+    State(state): State<AppState>,
+    session: Session,
+    Path((traject_ref, job_id)): Path<(String, uuid::Uuid)>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let pool = state.pool.as_ref().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "database not configured".to_string(),
+    ))?;
+    // Membership guard — any traject member may cancel its conversions.
+    require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    regelrecht_pipeline::document_convert::cancel_traject_document_job(pool, &traject_ref, job_id)
+        .await
+        .map_err(|e| upload_internal_error("cancel document job", e))?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// GET /api/trajects/{traject_ref}/corpus/documents/{*doc_path}

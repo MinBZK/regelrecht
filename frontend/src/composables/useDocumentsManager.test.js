@@ -16,6 +16,7 @@ function makeApi(overrides = {}) {
   const documents = ref([]);
   const currentPath = ref(null);
   const currentBody = ref('');
+  const savedBody = ref('');
   const currentEtag = ref(null);
   return {
     documents,
@@ -23,7 +24,7 @@ function makeApi(overrides = {}) {
     listError: ref(null),
     currentPath,
     currentBody,
-    savedBody: ref(''),
+    savedBody,
     currentEtag,
     docLoading: ref(false),
     docError: ref(null),
@@ -34,7 +35,10 @@ function makeApi(overrides = {}) {
     openDocument: vi.fn(async (p) => {
       currentPath.value = p;
     }),
-    saveCurrent: vi.fn(async () => ({ ok: true })),
+    saveCurrent: vi.fn(async () => {
+      savedBody.value = currentBody.value; // mirror the real save: baseline follows content
+      return { ok: true };
+    }),
     reloadCurrent: vi.fn(async () => {}),
     createDocument: vi.fn(async (p) => {
       currentPath.value = p;
@@ -82,6 +86,26 @@ describe('useDocumentsManager', () => {
     const path = await m.startNew();
     expect(path).toBe('untitled-3.md');
     expect(h.api.createDocument).toHaveBeenCalledWith('untitled-3.md');
+  });
+
+  it('startNew skips reserved names (e.g. a converting upload not yet in the list)', async () => {
+    h.api.documents.value = [{ path: 'untitled.md' }];
+    // untitled-2.md is still converting, so it is not in `documents` yet.
+    const mr = useDocumentsManager(ref('traject-abc12345'), () => ['untitled-2.md']);
+    const path = await mr.startNew();
+    expect(path).toBe('untitled-3.md');
+    expect(h.api.createDocument).toHaveBeenCalledWith('untitled-3.md');
+  });
+
+  it('handleSave rejects a rename to a name that is still converting', async () => {
+    h.api.documents.value = [{ path: 'beleid.md' }];
+    h.api.currentPath.value = 'beleid.md';
+    const mr = useDocumentsManager(ref('traject-abc12345'), () => ['untitled-2.md']);
+    mr.titleDraft.value = 'untitled-2';
+    const ok = await mr.handleSave();
+    expect(ok).toBe(false);
+    expect(mr.titleError.value).toBe('Een document met deze naam bestaat al.');
+    expect(h.api.saveCurrent).not.toHaveBeenCalled();
   });
 
   it('handleSave without a rename just saves the current path', async () => {
@@ -139,6 +163,100 @@ describe('useDocumentsManager', () => {
     expect(ok).toBe(false);
     expect(m.titleError.value).toBeTruthy();
     expect(h.api.saveCurrent).not.toHaveBeenCalled();
+  });
+
+  it('validateRename accepts a valid name and rejects invalid/duplicate ones', async () => {
+    h.api.documents.value = [{ path: 'bestaat.md' }];
+    h.api.currentPath.value = 'oud.md';
+    await nextTick();
+    m.titleDraft.value = 'nieuw';
+    expect(m.validateRename()).toBe(true);
+    expect(m.titleError.value).toBe(null);
+    m.titleDraft.value = 'bestaat';
+    expect(m.validateRename()).toBe(false);
+    expect(m.titleError.value).toBe('Een document met deze naam bestaat al.');
+    m.titleDraft.value = 'Bad Name';
+    expect(m.validateRename()).toBe(false);
+    expect(m.titleError.value).toBeTruthy();
+  });
+
+  // --- Auto-name from the first line (Apple Notes-style) ---
+  it('auto-names an untitled document from its first line on save', async () => {
+    h.api.documents.value = [];
+    await m.startNew(); // creates untitled.md, marks it auto-managed
+    await nextTick(); // titleDraft <- 'untitled'
+    h.api.currentBody.value = '# Boodschappen\nmelk';
+    const ok = await m.handleSave();
+    expect(ok).toBe(true);
+    expect(h.api.currentPath.value).toBe('boodschappen.md');
+    expect(h.api.deleteDocument).toHaveBeenCalledWith('untitled.md');
+  });
+
+  it('re-derives the name on later saves while still auto-managed', async () => {
+    h.api.documents.value = [];
+    await m.startNew();
+    await nextTick();
+    h.api.currentBody.value = '# Boodschappen';
+    await m.handleSave(); // -> boodschappen.md
+    await nextTick(); // titleDraft <- 'boodschappen'
+    h.api.currentBody.value = '# Weekmenu';
+    await m.handleSave(); // -> weekmenu.md
+    expect(h.api.currentPath.value).toBe('weekmenu.md');
+  });
+
+  it('stops auto-naming once the user renames the document manually', async () => {
+    h.api.documents.value = [];
+    await m.startNew();
+    await nextTick();
+    m.titleDraft.value = 'mijn-notitie'; // user edits the name field
+    h.api.currentBody.value = '# Boodschappen';
+    await m.handleSave(); // manual -> mijn-notitie.md
+    expect(h.api.currentPath.value).toBe('mijn-notitie.md');
+    await nextTick();
+    h.api.currentBody.value = '# Weekmenu';
+    await m.handleSave(); // must NOT auto-rename
+    expect(h.api.currentPath.value).toBe('mijn-notitie.md');
+  });
+
+  it('keeps the current name when the first line yields nothing', async () => {
+    h.api.documents.value = [];
+    await m.startNew();
+    await nextTick();
+    h.api.currentBody.value = '#   \n\n';
+    const ok = await m.handleSave();
+    expect(ok).toBe(true);
+    expect(h.api.currentPath.value).toBe('untitled.md');
+    expect(h.api.deleteDocument).not.toHaveBeenCalled();
+  });
+
+  it('appends -2 when the derived name is already taken', async () => {
+    h.api.documents.value = [{ path: 'boodschappen.md' }];
+    await m.startNew(); // untitled.md (boodschappen is taken)
+    await nextTick();
+    h.api.currentBody.value = '# Boodschappen';
+    await m.handleSave();
+    expect(h.api.currentPath.value).toBe('boodschappen-2.md');
+  });
+
+  it('re-links auto-naming when the first line is made to match the name again', async () => {
+    h.api.documents.value = [];
+    await m.startNew();
+    await nextTick();
+    // Manual rename -> locked (name no longer matches the first line).
+    m.titleDraft.value = 'mijn-lijst';
+    h.api.currentBody.value = '# Boodschappen';
+    await m.handleSave(); // -> mijn-lijst.md, locked
+    expect(h.api.currentPath.value).toBe('mijn-lijst.md');
+    // Make the first line match the name + save -> re-linked.
+    await nextTick();
+    h.api.currentBody.value = '# Mijn lijst';
+    await m.handleSave(); // name stays mijn-lijst.md, but now auto-managed again
+    expect(h.api.currentPath.value).toBe('mijn-lijst.md');
+    // A further first-line change now re-derives the name.
+    await nextTick();
+    h.api.currentBody.value = '# Weekmenu';
+    await m.handleSave();
+    expect(h.api.currentPath.value).toBe('weekmenu.md');
   });
 
   it('confirmDelete reports true only when the open document was removed', async () => {

@@ -55,6 +55,7 @@ const {
   displayTitle,
   onBodyInput,
   onTitleInput,
+  validateRename,
   handleSave,
   undoChanges,
   overwriteServer,
@@ -78,10 +79,13 @@ const blockingError = computed(() => {
   return null;
 });
 
-// The editor body is shown once it's neither loading/creating nor blocked by a
-// load error; the formatting footer follows the same condition (nothing to
-// format otherwise).
-const editorReady = computed(() => !docLoading.value && !creating.value && !blockingError.value);
+// The formatting footer shows as soon as the editor shell is up — including
+// while an existing document's content is still loading — so opening a document
+// reveals the toolbar immediately instead of waiting on the fetch. Toolbar
+// commands resolve the editor lazily and no-op until it mounts, so showing the
+// toolbar a moment early is safe. It hides only when a load error replaces the
+// body (nothing to format then).
+const showFormattingToolbar = computed(() => !blockingError.value);
 
 // The formatting toolbar sits in the page footer and the editor in the page
 // body (different page slots), so the two-way state sync listens on their
@@ -133,8 +137,13 @@ async function openRename() {
   renameFieldEl.value?.focus?.();
 }
 async function saveRename() {
-  const ok = await handleSave();
-  if (ok) renameSheetEl.value?.hide?.();
+  // Optimistic: a valid name closes the sheet immediately and commits in the
+  // background (the rename is two slow GitHub writes). An invalid/duplicate name
+  // keeps the sheet open with the error. handleSave updates the name optimistically
+  // and rolls back + surfaces a save error if the server rejects it.
+  if (!validateRename()) return;
+  renameSheetEl.value?.hide?.();
+  handleSave();
 }
 
 // --- Delete ---
@@ -187,7 +196,7 @@ function dismissDeleteNotice() {
 <template>
   <!-- Sticky top toolbar: document name + actions menu (start), and Save +
        revert (end) shown only while there are unsaved changes. -->
-  <nldd-container slot="header" padding-inline="16" padding-top="16">
+  <nldd-container slot="header" padding-inline="12" padding-top="12" sm-padding-inline="8" sm-padding-top="8">
     <nldd-toolbar size="md">
         <!-- Back to the document list, shown only while the sidebar is stacked
              away. --context-back-button-display comes from the split-view pane
@@ -198,7 +207,7 @@ function dismissDeleteNotice() {
         </nldd-toolbar-item>
         <!-- Document title with an integrated xs action button; its rename/delete
              menu is teleported to body and anchored to it by id. -->
-        <nldd-toolbar-title slot="start" :text="docName">
+        <nldd-toolbar-title slot="center" align="center" :text="docName">
           <nldd-icon-button
             slot="action"
             id="document-actions-btn"
@@ -257,7 +266,7 @@ function dismissDeleteNotice() {
   <!-- Sticky bottom toolbar: the full text-editing palette, shown whenever the
        editor body is available. Formatting toolbar from the DS "Mixed" story;
        controls are uncontrolled and onToolbarState reflects the editor state. -->
-  <nldd-container v-if="editorReady" slot="footer" padding-inline="16" padding-top="0" padding-bottom="16" sm-padding-inline="8" sm-padding-bottom="8">
+  <nldd-container v-if="showFormattingToolbar" slot="footer" padding-inline="12" padding-top="0" padding-bottom="12" sm-padding-inline="8" sm-padding-bottom="8">
     <nldd-toolbar size="md">
       <!-- Overflow priority (high stays longest, low overflows first):
            text-formatting > block-type > list > indent > link > quote >

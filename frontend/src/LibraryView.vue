@@ -9,7 +9,6 @@ import ActionSheet from './components/ActionSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
 import DocumentList from './components/DocumentList.vue';
 import DocumentEditor from './components/DocumentEditor.vue';
-import ConversionStatus from './components/ConversionStatus.vue';
 import TrajectDetailsPane from './components/TrajectDetailsPane.vue';
 import TrajectMembersPane from './components/TrajectMembersPane.vue';
 import { useAuth } from './composables/useAuth.js';
@@ -76,7 +75,16 @@ function goToAccountRequest() {
 // standalone WerkdocumentenView; DocumentEditor self-contains the rename / save
 // / delete / conflict UI, so LibraryView only wires the manager, list and the
 // unsaved-changes guard.
-const docsMgr = useDocumentsManager(activeTrajectRef);
+// Werkdocumenten upload (ported from main #918): file picker -> server-side
+// markdown conversion -> poll the conversion jobs. Created before the manager
+// so it can reserve converting target names against create/rename collisions.
+const docJobs = useTrajectDocumentJobs(activeTrajectRef);
+const { jobs: conversionJobs, cancelJob: cancelConversionJob } = docJobs;
+
+const docsMgr = useDocumentsManager(
+  activeTrajectRef,
+  () => conversionJobs.value.map((j) => j.target_path),
+);
 const {
   documents: docList,
   listLoading: docsLoading,
@@ -87,16 +95,53 @@ const {
   open: openDoc,
   startNew: startNewDoc,
   close: closeDoc,
+  refreshList: refreshDocList,
 } = docsMgr;
 
 const isWerkdocMode = computed(() => route.name === 'werkdocumenten-traject');
 const hasOpenDoc = computed(() => !!openDocPath.value);
+// A conversion job has no .md to open yet; clicking its row "opens" it in the
+// main pane — a loading state while running, a failure + retry when failed.
+// This holds that job's target path; viewedJob resolves it to the job.
+const viewingJobPath = ref(null);
+const viewedJob = computed(() => conversionJobs.value.find((j) => j.target_path === viewingJobPath.value));
+// Highlight either the open document or the conversion job being viewed.
+const docSelectedPath = computed(() => openDocPath.value || viewingJobPath.value);
+// When conversion jobs change: refresh the list so a finished job's .md replaces
+// its pending row. If the user is viewing that job, keep the view while the job
+// is still around (running -> failed transitions in place); once it drops out of
+// the polled jobs it completed, so open the freshly converted document.
+watch(conversionJobs, (now, prev) => {
+  if (now.length < prev.length) refreshDocList();
+  // Deep-link / refresh: the URL may address a path that only now turns out to be
+  // a conversion job (jobs load a tick after the page). Switch from the failing
+  // real-doc open to its job view.
+  const routed = isWerkdocMode.value && route.params.docPath ? String(route.params.docPath) : null;
+  if (routed && viewingJobPath.value !== routed && now.some((j) => j.target_path === routed)) {
+    viewingJobPath.value = routed;
+    if (openDocPath.value === routed) closeDoc();
+  }
+  const p = viewingJobPath.value;
+  if (!p) return;
+  if (now.some((j) => j.target_path === p)) return; // still running or failed — keep its view
+  viewingJobPath.value = null;
+  openDoc(p);
+});
 
-// Werkdocumenten upload (ported from main #918): file picker -> server-side
-// markdown conversion -> poll the conversion jobs and show progress. Wired to
-// the upload button next to "+" in the werkdoc toolbar.
-const docJobs = useTrajectDocumentJobs(activeTrajectRef);
-const { jobs: conversionJobs } = docJobs;
+// Resolve a werkdoc URL path to a view: a conversion job (running/failed) shows
+// its job view (no fetch); anything else opens as a real document. On a fresh
+// deep-link the jobs aren't loaded yet, so a job path first opens as a doc and
+// the watcher above corrects it once the jobs arrive.
+function showWerkdocPath(p) {
+  if (!p) { viewingJobPath.value = null; closeDoc(); return; }
+  if (conversionJobs.value.some((j) => j.target_path === p)) {
+    viewingJobPath.value = p;
+    if (openDocPath.value) closeDoc();
+    return;
+  }
+  viewingJobPath.value = null;
+  if (openDocPath.value !== p) openDoc(p);
+}
 const {
   fileInput: docFileInput,
   uploadError: docUploadError,
@@ -107,7 +152,10 @@ const {
 // Poll conversion jobs only while the werkdocumenten sidebar is open.
 watch(
   isWerkdocMode,
-  (on) => (on ? docJobs.startPolling() : docJobs.stopPolling()),
+  (on) => {
+    if (on) { docJobs.startPolling(); }
+    else { docJobs.stopPolling(); viewingJobPath.value = null; }
+  },
   { immediate: true },
 );
 onBeforeUnmount(() => docJobs.stopPolling());
@@ -156,9 +204,11 @@ function onTrajectGone() {
   router.push({ name: 'home' });
 }
 
-// Mirror the open document into the URL (refresh / bookmark / back). Guard the
-// redundant replace the initial open would trigger (URL already names the doc).
-watch(openDocPath, (p) => {
+// Mirror the open document OR the conversion job being viewed into the URL
+// (refresh / bookmark / back), so a converting/failed werkdocument has its own
+// address and survives a refresh. Guard the redundant replace the initial open
+// would trigger (URL already names it).
+watch(docSelectedPath, (p) => {
   if (!isWerkdocMode.value) return;
   const target = {
     name: 'werkdocumenten-traject',
@@ -224,14 +274,40 @@ async function saveDocAndLeave() {
   resolveDocGuard(true);
 }
 function onDocSelect(path) {
+  // A conversion job (running or failed) has no .md to open: show its state in
+  // the main pane instead of fetching (which would 404). The conversion watcher
+  // opens the real document once a running job finishes.
+  if (conversionJobs.value.some((j) => j.target_path === path)) {
+    if (viewingJobPath.value === path) return;
+    guardedDocNavigate(() => { closeDoc(); viewingJobPath.value = path; });
+    return;
+  }
   if (path === openDocPath.value) return;
-  guardedDocNavigate(() => openDoc(path));
+  guardedDocNavigate(() => { viewingJobPath.value = null; openDoc(path); });
 }
 function onDocNew() {
-  guardedDocNavigate(() => startNewDoc());
+  guardedDocNavigate(() => { viewingJobPath.value = null; startNewDoc(); });
+}
+// Cancel the conversion the user is currently viewing (from its loading view).
+// Clear viewingJobPath first so the conversion watcher doesn't mistake the
+// cancelled (vanished) job for a completion and open a .md that was never written.
+function onCancelViewingJob() {
+  const p = viewingJobPath.value;
+  if (!p) return;
+  const job = conversionJobs.value.find((j) => j.target_path === p);
+  viewingJobPath.value = null;
+  if (job) cancelConversionJob(job.id);
+}
+// Retry a failed conversion the user is viewing: discard the failed attempt and
+// reopen the upload picker so they can pick the file again.
+function onRetryViewingJob() {
+  const job = conversionJobs.value.find((j) => j.target_path === viewingJobPath.value);
+  viewingJobPath.value = null;
+  if (job) cancelConversionJob(job.id);
+  onDocUpload();
 }
 function onDocBack() {
-  guardedDocNavigate(() => closeDoc());
+  guardedDocNavigate(() => { viewingJobPath.value = null; closeDoc(); });
 }
 
 // Keep the user's traject scope across in-app navigations. A traject with a law
@@ -474,11 +550,18 @@ const lawErrorIs404 = computed(() => lawError.value?.status === 404);
 watchEffect(() => {
   const detail = [];
   if (isWerkdocMode.value) {
-    // An open document names the tab; "Werkdocumenten" otherwise. Once a
-    // document is open we drop the section name - the title is context enough.
-    detail.push(hasOpenDoc.value && openDocPath.value
-      ? docsMgr.displayTitle(openDocPath.value)
-      : 'Werkdocumenten');
+    // Leaf-first with a leading status glyph, so it stays visible when the tab
+    // strip truncates: ⋯ converting, △ failed, • unsaved edits. A viewed
+    // conversion job names the tab by its target, an open document by its name,
+    // else the section.
+    if (viewingJobPath.value) {
+      const glyph = viewedJob.value?.status === 'failed' ? '△' : '⋯';
+      detail.push(`${glyph} ${docsMgr.displayTitle(viewingJobPath.value)}`);
+    } else if (hasOpenDoc.value && openDocPath.value) {
+      detail.push(`${docHasChanges.value ? '• ' : ''}${docsMgr.displayTitle(openDocPath.value)}`);
+    } else {
+      detail.push('Werkdocumenten');
+    }
   } else if (isInstellingenMode.value) {
     detail.push(
       instellingenTab.value === 'leden' ? 'Leden'
@@ -869,10 +952,7 @@ onBeforeRouteUpdate(async (to) => {
   // The corpus state falls through to the no-lawId branch below and is cleared.
   if (to.name === 'werkdocumenten-traject') {
     const p = to.params.docPath ? String(to.params.docPath) : null;
-    if (p !== openDocPath.value) {
-      if (p) openDoc(p);
-      else closeDoc();
-    }
+    if (p !== docSelectedPath.value) showWerkdocPath(p);
   }
 
   const newLawId = to.params.lawId;
@@ -948,9 +1028,10 @@ if (route.params.lawId) {
   }
   loadLaw(route.params.lawId);
 }
-// Werkdocumenten deep-link on first load: open the addressed document.
+// Werkdocumenten deep-link on first load: restore the addressed document, or a
+// converting/failed job's view once the jobs load (the conversionJobs watcher).
 if (isWerkdocMode.value && route.params.docPath) {
-  openDoc(String(route.params.docPath));
+  showWerkdocPath(String(route.params.docPath));
 }
 loadIndex();
 
@@ -995,7 +1076,7 @@ watch(activeTrajectRef, () => {
 
         <nldd-page v-else-if="isInitialLoading">
           <nldd-simple-section width="full">
-            <nldd-activity-indicator timing="instant" text="Laden" show-text></nldd-activity-indicator>
+            <nldd-activity-indicator text="Laden" show-text></nldd-activity-indicator>
           </nldd-simple-section>
         </nldd-page>
 
@@ -1013,7 +1094,7 @@ watch(activeTrajectRef, () => {
               <nldd-simple-section width="full">
                 <nldd-title v-if="!loading" id="home-titel" size="3"><h3>{{ sidebarTitle }}</h3></nldd-title>
                 <nldd-spacer v-if="!loading" size="16"></nldd-spacer>
-                <nldd-activity-indicator v-if="loading" timing="instant" text="Laden" show-text></nldd-activity-indicator>
+                <nldd-activity-indicator v-if="loading" text="Laden" show-text></nldd-activity-indicator>
                 <template v-else>
                   <!-- Werkdocumenten (in a traject): a single entry that opens
                        the document list in the secondary sidebar + editor in
@@ -1115,18 +1196,26 @@ watch(activeTrajectRef, () => {
                 <nldd-spacer size="16"></nldd-spacer>
                 <nldd-toolbar label="Documentacties">
                   <nldd-toolbar-item slot="start">
-                    <nldd-icon-button icon="plus-small" text="Nieuw document" @click="onDocNew"></nldd-icon-button>
-                  </nldd-toolbar-item>
-                  <nldd-toolbar-item slot="start">
-                    <nldd-icon-button icon="upload-to-cloud" text="Upload PDF of DOCX" @click="onDocUpload"></nldd-icon-button>
+                    <nldd-icon-button
+                      id="werkdoc-add-btn"
+                      icon="plus-small"
+                      text="Document toevoegen"
+                      expandable
+                      tooltip-timing="never"
+                      popup-type="menu"
+                      popovertarget="werkdoc-add-menu"
+                    ></nldd-icon-button>
+                    <nldd-menu id="werkdoc-add-menu" anchor="werkdoc-add-btn">
+                      <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="onDocNew"></nldd-menu-item>
+                      <nldd-menu-item icon="upload-to-cloud" text="Upload PDF of DOCX" @select="onDocUpload"></nldd-menu-item>
+                    </nldd-menu>
                   </nldd-toolbar-item>
                 </nldd-toolbar>
                 <nldd-spacer size="16"></nldd-spacer>
-                <ConversionStatus :jobs="conversionJobs"></ConversionStatus>
                 <input ref="docFileInput" type="file" accept=".pdf,.doc,.docx" hidden @change="onDocFileChange" />
-                <nldd-activity-indicator v-if="docsLoading" text="Documenten laden" show-text></nldd-activity-indicator>
+                <nldd-activity-indicator v-if="docsLoading && !docList.length && !conversionJobs.length" text="Documenten laden" show-text></nldd-activity-indicator>
                 <nldd-inline-dialog v-else-if="docsError" variant="alert" text="Documenten niet geladen" :supporting-text="docsError.message"></nldd-inline-dialog>
-                <DocumentList v-else-if="docList.length" :documents="docList" :selected-path="openDocPath" @select="onDocSelect"></DocumentList>
+                <DocumentList v-else-if="docList.length || conversionJobs.length" :documents="docList" :jobs="conversionJobs" :selected-path="docSelectedPath" @select="onDocSelect"></DocumentList>
                 <nldd-inline-dialog v-else text="Geen werkdocumenten" supporting-text="Maak een nieuw document of upload een PDF of DOCX."></nldd-inline-dialog>
               </nldd-simple-section>
             </nldd-page>
@@ -1171,7 +1260,7 @@ watch(activeTrajectRef, () => {
                     </nldd-inline-dialog>
                   </nldd-container>
                 </nldd-popover>
-                <nldd-activity-indicator v-if="selectedLawLoading" timing="instant" text="Wet laden" show-text></nldd-activity-indicator>
+                <nldd-activity-indicator v-if="selectedLawLoading" text="Wet laden" show-text></nldd-activity-indicator>
                 <nldd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een wet"></nldd-inline-dialog>
                 <nldd-list v-else variant="simple" arrow-navigation>
                   <nldd-list-item
@@ -1220,8 +1309,18 @@ watch(activeTrajectRef, () => {
           </nldd-split-view-pane>
 
           <!-- Main (werkdoc mode): the document editor, or a placeholder. -->
-          <nldd-split-view-pane v-else-if="isWerkdocMode" slot="main" :has-content="hasOpenDoc || undefined">
-            <nldd-page v-if="hasOpenDoc" sticky-header sticky-footer>
+          <nldd-split-view-pane v-else-if="isWerkdocMode" slot="main" :has-content="hasOpenDoc || !!viewingJobPath || undefined">
+            <nldd-page v-if="viewingJobPath">
+              <nldd-simple-section width="full">
+                <nldd-inline-dialog v-if="viewedJob && viewedJob.status === 'failed'" variant="alert" :text="`Conversie van '${docsMgr.displayTitle(viewingJobPath)}' mislukt`" supporting-text="Het bestand kon niet worden omgezet naar tekst. Mogelijk is het beschadigd of geen leesbaar documenttype.">
+                  <nldd-button slot="actions" variant="secondary" text="Probeer opnieuw" @click="onRetryViewingJob"></nldd-button>
+                </nldd-inline-dialog>
+                <nldd-inline-dialog v-else variant="loading" :text="`${docsMgr.displayTitle(viewingJobPath)} aan het converteren…`" supporting-text="Dit gebeurt op de achtergrond. Je kunt gerust wegnavigeren en later terugkomen. Duurt het te lang, dan kun je de conversie annuleren.">
+                  <nldd-button slot="actions" variant="secondary" text="Annuleer conversie" @click="onCancelViewingJob"></nldd-button>
+                </nldd-inline-dialog>
+              </nldd-simple-section>
+            </nldd-page>
+            <nldd-page v-else-if="hasOpenDoc" sticky-header sticky-footer>
               <DocumentEditor ref="docEditorEl" :manager="docsMgr" @back="onDocBack"></DocumentEditor>
             </nldd-page>
             <nldd-page v-else>
@@ -1248,7 +1347,7 @@ watch(activeTrajectRef, () => {
               </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="selectedLawLoading">
                 <!-- Loading takes precedence over `lawError` to avoid flashing a stale error during a refetch. -->
-                <nldd-activity-indicator timing="instant" text="Artikel laden" show-text></nldd-activity-indicator>
+                <nldd-activity-indicator text="Artikel laden" show-text></nldd-activity-indicator>
               </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="lawError">
                 <!-- 404 = law not in active traject; give the user an exit instead of a generic error. -->

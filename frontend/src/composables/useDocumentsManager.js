@@ -12,7 +12,7 @@
 import { computed, ref, watch } from 'vue';
 import { useTrajectDocuments } from './useTrajectDocuments.js';
 
-export function useDocumentsManager(trajectRef) {
+export function useDocumentsManager(trajectRef, reservedPaths = () => []) {
   const docs = useTrajectDocuments(trajectRef);
   const {
     documents,
@@ -28,6 +28,7 @@ export function useDocumentsManager(trajectRef) {
     saveError,
     conflict,
     deletedRemotely,
+    fetchList,
     openDocument,
     saveCurrent,
     reloadCurrent,
@@ -90,15 +91,54 @@ export function useDocumentsManager(trajectRef) {
   // --- Open / nieuw ---
   async function open(path) {
     await openDocument(path);
+    reconcileAutoBaseline();
   }
 
   const creating = ref(false);
-  function nextUntitledPath() {
-    let path = 'untitled.md';
-    for (let n = 2; documents.value.some((d) => d.path === path); n++) {
-      path = `untitled-${n}.md`;
-    }
+  // Names that are taken but not (yet) in `documents` - e.g. an uploaded
+  // document still converting, whose .md only appears once the job finishes.
+  // `reservedPaths()` supplies them, so a create/rename can't collide with an
+  // in-flight upload of the same name.
+  function isTaken(p) {
+    return documents.value.some((d) => d.path === p) || reservedPaths().includes(p);
+  }
+  // First free `${stem}[-N].md`, skipping `selfPath` so a document can keep its
+  // own name. Backs both new untitled docs and auto-naming.
+  function nextFreePath(stem, selfPath = null) {
+    const taken = (p) => p !== selfPath && isTaken(p);
+    let path = `${stem}.md`;
+    for (let n = 2; taken(path); n++) path = `${stem}-${n}.md`;
     return path;
+  }
+  function nextUntitledPath() {
+    return nextFreePath('untitled');
+  }
+  // Derive a filename stem from the first non-empty line (Apple Notes-style),
+  // sanitised to the backend's [a-z0-9._-] and capped at 50. Empty when the line
+  // yields nothing usable.
+  function deriveNameFromBody(body) {
+    const firstLine = (body || '').split('\n').find((l) => l.trim() !== '') ?? '';
+    return firstLine
+      .replace(/^#+\s*/, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^[-.]+|[-.]+$/g, '')
+      .slice(0, 50)
+      .replace(/[-.]+$/g, '');
+  }
+  // Auto-naming from the first line stays active while the name is still the one
+  // we last set automatically. `autoBaseline` holds that path; null = the user
+  // renamed it, so leave it alone. Rebuilt on open by comparing the name to what
+  // the SAVED first line derives, so a refresh restores the auto/manual state
+  // exactly (we only ever name on save).
+  const autoBaseline = ref(null);
+  function reconcileAutoBaseline() {
+    const path = currentPath.value;
+    if (!path) { autoBaseline.value = null; return; }
+    const stem = displayTitle(path);
+    const derived = deriveNameFromBody(savedBody.value);
+    autoBaseline.value = /^untitled(-\d+)?$/.test(stem) || (derived && derived === stem) ? path : null;
   }
   // Creates an untitled document and loads it; the backend allows only
   // [a-z0-9._-] in paths. Returns the new path so the caller can route to it.
@@ -108,6 +148,7 @@ export function useDocumentsManager(trajectRef) {
     const path = nextUntitledPath();
     try {
       await createDocument(path);
+      reconcileAutoBaseline();
       return path;
     } finally {
       creating.value = false;
@@ -118,6 +159,7 @@ export function useDocumentsManager(trajectRef) {
   // "nothing selected". Used by the standalone page's back affordance (on a
   // narrow viewport the split view stacks, so "terug" returns to the list).
   function close() {
+    autoBaseline.value = null;
     currentPath.value = null;
     currentBody.value = '';
     // Reset the saved baseline too — otherwise hasChanges stays true (empty
@@ -146,10 +188,39 @@ export function useDocumentsManager(trajectRef) {
     titleError.value = null;
   }
 
+  // Synchronous validation of the current rename input, so the rename sheet can
+  // close optimistically on a valid name and stay open (with the error) on an
+  // invalid/duplicate one, without awaiting the (slow) server round-trip.
+  function validateRename() {
+    titleError.value = null;
+    const finalPath = pathFromTitle(titleDraft.value);
+    const err = validatePath(finalPath);
+    if (err) { titleError.value = err; return false; }
+    if (finalPath !== currentPath.value && isTaken(finalPath)) {
+      titleError.value = 'Een document met deze naam bestaat al.';
+      return false;
+    }
+    return true;
+  }
+
   async function handleSave() {
     if (saving.value) return false;
     titleError.value = null;
-    const finalPath = pathFromTitle(titleDraft.value);
+
+    // Auto-name (Apple Notes-style): while the name is still auto-managed and the
+    // user hasn't touched the name field, derive it from the first line on every
+    // save. Otherwise keep the user's typed name (and stop auto-managing).
+    const autoManaged = autoBaseline.value !== null && autoBaseline.value === currentPath.value;
+    const titleUntouched = titleDraft.value === displayTitle(currentPath.value);
+    const wentAuto = autoManaged && titleUntouched;
+    let finalPath;
+    if (wentAuto) {
+      const derived = deriveNameFromBody(currentBody.value);
+      finalPath = derived ? nextFreePath(derived, currentPath.value) : currentPath.value;
+    } else {
+      finalPath = pathFromTitle(titleDraft.value);
+    }
+
     const err = validatePath(finalPath);
     if (err) {
       titleError.value = err;
@@ -157,6 +228,7 @@ export function useDocumentsManager(trajectRef) {
     }
     if (finalPath === currentPath.value) {
       const result = await saveCurrent();
+      if (result?.ok) reconcileAutoBaseline();
       return !!result?.ok;
     }
     // Hernoemen: geen rename-API - schrijf eerst onder het nieuwe pad (blind
@@ -168,7 +240,7 @@ export function useDocumentsManager(trajectRef) {
     // bestand op finalPath, dan overschrijft deze blinde write het zonder
     // waarschuwing. Sluitend te maken met `If-None-Match: *` zodra de backend
     // dat ondersteunt (zie useTrajectDocuments.saveCurrent).
-    if (documents.value.some((d) => d.path === finalPath)) {
+    if (isTaken(finalPath)) {
       titleError.value = 'Een document met deze naam bestaat al.';
       return false;
     }
@@ -182,6 +254,9 @@ export function useDocumentsManager(trajectRef) {
       currentEtag.value = oldEtag;
       return false;
     }
+    // The rename committed: re-derive the auto/manual state from the saved
+    // content, so name==first-line re-links and a manual name locks.
+    reconcileAutoBaseline();
     const deleted = await deleteDocument(oldPath);
     if (!deleted?.ok) {
       // The new name is saved, so content is never lost, but the old path
@@ -249,9 +324,9 @@ export function useDocumentsManager(trajectRef) {
     // derived helpers
     displayTitle,
     // actions
-    open, startNew, close, uploadDocument,
+    open, startNew, close, uploadDocument, refreshList: fetchList,
     onBodyInput, onTitleInput,
-    handleSave, undoChanges, overwriteServer,
+    validateRename, handleSave, undoChanges, overwriteServer,
     reloadCurrent, dropDraft,
     askDelete, cancelDelete, confirmDelete,
   };
