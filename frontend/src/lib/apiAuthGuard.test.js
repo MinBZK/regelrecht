@@ -2,9 +2,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Hoisted shared state: the login/connect spies and the mutable auth refs the
 // guard reads.
-const { loginSpy, connectSpy, authState } = vi.hoisted(() => ({
+const { loginSpy, connectSpy, navSpy, authState } = vi.hoisted(() => ({
   loginSpy: vi.fn(),
   connectSpy: vi.fn(),
+  // The guard now navigates to /uitgelogd via window.location.assign instead of
+  // calling login(); stub it so tests observe the redirect without navigating.
+  navSpy: vi.fn(),
   authState: { authenticated: true, oidcConfigured: true },
 }));
 
@@ -37,6 +40,8 @@ async function freshGuard(status, auth = {}) {
   vi.resetModules();
   loginSpy.mockClear();
   connectSpy.mockClear();
+  navSpy.mockClear();
+  window.location.assign = navSpy;
   authState.authenticated = auth.authenticated ?? true;
   authState.oidcConfigured = auth.oidcConfigured ?? true;
   const original = vi.fn().mockResolvedValue({ status });
@@ -87,44 +92,45 @@ describe('installApiAuthGuard', () => {
   it('redirects on a 401 from an /api/ call for an authenticated session', async () => {
     const { wrapped } = await freshGuard(401);
     await wrapped('/api/trajects');
-    expect(loginSpy).toHaveBeenCalledTimes(1);
+    expect(navSpy).toHaveBeenCalledTimes(1);
+    expect(navSpy).toHaveBeenCalledWith(expect.stringContaining('/uitgelogd?return_url='));
   });
 
   it('does NOT redirect an unauthenticated session (anonymous public-page 401)', async () => {
     // e.g. /library loading /api/favorites without a session - tolerated, no bounce.
     const { wrapped } = await freshGuard(401, { authenticated: false });
     await wrapped('/api/favorites');
-    expect(loginSpy).not.toHaveBeenCalled();
+    expect(navSpy).not.toHaveBeenCalled();
   });
 
   it('does NOT redirect when OIDC is disabled (local dev)', async () => {
     const { wrapped } = await freshGuard(401, { oidcConfigured: false, authenticated: false });
     await wrapped('/api/trajects');
-    expect(loginSpy).not.toHaveBeenCalled();
+    expect(navSpy).not.toHaveBeenCalled();
   });
 
   it('does NOT redirect on a 403 (missing role, not a re-login case)', async () => {
     const { wrapped } = await freshGuard(403);
     await wrapped('/api/trajects');
-    expect(loginSpy).not.toHaveBeenCalled();
+    expect(navSpy).not.toHaveBeenCalled();
   });
 
   it('does NOT redirect on a 401 from /auth/status', async () => {
     const { wrapped } = await freshGuard(401);
     await wrapped('/auth/status');
-    expect(loginSpy).not.toHaveBeenCalled();
+    expect(navSpy).not.toHaveBeenCalled();
   });
 
   it('does NOT redirect on a 401 from a cross-origin /api/ call', async () => {
     const { wrapped } = await freshGuard(401);
     await wrapped('https://other.example/api/x');
-    expect(loginSpy).not.toHaveBeenCalled();
+    expect(navSpy).not.toHaveBeenCalled();
   });
 
   it('redirects only once for multiple concurrent 401s (loop guard)', async () => {
     const { wrapped } = await freshGuard(401);
     await Promise.all([wrapped('/api/a'), wrapped('/api/b'), wrapped('/api/c')]);
-    expect(loginSpy).toHaveBeenCalledTimes(1);
+    expect(navSpy).toHaveBeenCalledTimes(1);
   });
 
   it('passes the original response through unchanged on success', async () => {
@@ -132,7 +138,7 @@ describe('installApiAuthGuard', () => {
     const res = await wrapped('/api/trajects', { method: 'POST' });
     expect(res.status).toBe(200);
     expect(original).toHaveBeenCalledWith('/api/trajects', { method: 'POST' });
-    expect(loginSpy).not.toHaveBeenCalled();
+    expect(navSpy).not.toHaveBeenCalled();
   });
 
   it('redirects into the GitHub connect flow on a 428 from an /api/ call', async () => {
@@ -141,7 +147,7 @@ describe('installApiAuthGuard', () => {
     expect(connectSpy).toHaveBeenCalledTimes(1);
     // No explicit returnUrl: connect() defaults to the current location.
     expect(connectSpy).toHaveBeenCalledWith();
-    expect(loginSpy).not.toHaveBeenCalled();
+    expect(navSpy).not.toHaveBeenCalled();
     // The response still reaches the call site (its own error handling may run
     // briefly before navigation commits).
     expect(res.status).toBe(428);
@@ -165,7 +171,7 @@ describe('installApiAuthGuard', () => {
     await wrapped('/api/a'); // 401 → login redirect, latch set
     original.mockResolvedValue({ status: 428 });
     await wrapped('/api/b'); // 428 while leaving the page - no second redirect
-    expect(loginSpy).toHaveBeenCalledTimes(1);
+    expect(navSpy).toHaveBeenCalledTimes(1);
     expect(connectSpy).not.toHaveBeenCalled();
   });
 });
