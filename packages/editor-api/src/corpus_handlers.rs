@@ -2467,6 +2467,10 @@ const ALLOWED_DOCUMENT_EXTENSIONS: &[&str] = &["md", "txt"];
 pub struct TrajectDocumentListEntry {
     /// Path relative to `documents/<traject-ref>/`, forward slashes.
     pub path: String,
+    /// Display title from the document's YAML frontmatter, when present.
+    /// Cosmetic only — the path stays the document's identity.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -2482,6 +2486,58 @@ pub struct SaveDocumentResponse {
     /// Mirrors `SaveResponse.pr` — populated when the writable
     /// backend surfaced a PR link.
     pub pr: Option<SavePrInfo>,
+}
+
+/// Extract `title:` from a leading YAML frontmatter block (`---` … `---`).
+///
+/// Cosmetic only: every malformed shape — no opening fence, unterminated
+/// fence, YAML parse error, non-scalar or empty `title` — yields `None`,
+/// never an error, so a hand-edited document can't break the list.
+fn frontmatter_title(body: &str) -> Option<String> {
+    let body = body.strip_prefix('\u{feff}').unwrap_or(body);
+    // Scan at most the first 8 KiB, matching the editor's `frontmatterTitle`
+    // (`frontend/src/lib/docTitle.js`) so both parsers honour the same
+    // contract: a real frontmatter block is tiny, and a closing fence buried
+    // beyond 8 KiB yields no title in either place rather than only here.
+    const SCAN_CAP: usize = 8192;
+    let body = if body.len() > SCAN_CAP {
+        let mut end = SCAN_CAP;
+        while !body.is_char_boundary(end) {
+            end -= 1;
+        }
+        &body[..end]
+    } else {
+        body
+    };
+    let mut lines = body.lines();
+    if lines.next()?.trim_end_matches('\r') != "---" {
+        return None;
+    }
+    let mut block = String::new();
+    let mut closed = false;
+    for line in lines {
+        if line.trim_end_matches('\r') == "---" {
+            closed = true;
+            break;
+        }
+        block.push_str(line.trim_end_matches('\r'));
+        block.push('\n');
+    }
+    if !closed {
+        return None;
+    }
+    let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&block).ok()?;
+    let title = match value.get("title")? {
+        serde_yaml_ng::Value::String(s) => s.clone(),
+        serde_yaml_ng::Value::Number(n) => n.to_string(),
+        _ => return None,
+    };
+    let title = title.trim();
+    if title.is_empty() {
+        None
+    } else {
+        Some(title.to_string())
+    }
 }
 
 /// Compute the document ETag used for optimistic-concurrency checks.
@@ -2707,18 +2763,33 @@ pub async fn list_traject_documents(
     // Filter at the API boundary too — the on-disk tree could carry a
     // stray hand-committed file (e.g. an editor's `~` backup or a
     // hidden `.DS_Store`) and the API should not advertise those.
-    let documents = entries
-        .into_iter()
-        .filter(|e| {
-            std::path::Path::new(&e.relative_path)
-                .extension()
-                .and_then(|s| s.to_str())
-                .is_some_and(|ext| ALLOWED_DOCUMENT_EXTENSIONS.contains(&ext))
-        })
-        .map(|e| TrajectDocumentListEntry {
+    let mut documents = Vec::new();
+    for e in entries.into_iter().filter(|e| {
+        std::path::Path::new(&e.relative_path)
+            .extension()
+            .and_then(|s| s.to_str())
+            .is_some_and(|ext| ALLOWED_DOCUMENT_EXTENSIONS.contains(&ext))
+    }) {
+        // Read each body to surface its frontmatter title. Local/clone
+        // backends make this N cheap disk reads; the GitHub-API backend
+        // pays one Contents call per document (ETag-cached), fine for the
+        // handful of documents a traject carries. If a traject ever holds
+        // hundreds, a Trees-API bulk fetch is the escape hatch. A failed
+        // read only costs that entry its title, never the listing.
+        let title = match backend.read_file(&base.join(&e.relative_path)).await {
+            Ok(Some(body)) => frontmatter_title(&body),
+            Ok(None) => None,
+            Err(err) => {
+                tracing::debug!(error = %err, path = %e.relative_path,
+                    "document body read for title failed");
+                None
+            }
+        };
+        documents.push(TrajectDocumentListEntry {
             path: e.relative_path,
-        })
-        .collect();
+            title,
+        });
+    }
     Ok(Json(TrajectDocumentList { documents }))
 }
 
@@ -3498,6 +3569,74 @@ mod tests {
             "mijn-brief.md"
         );
         assert!(validate_document_path(&derive_markdown_target("a...b   c.doc", &[])).is_ok());
+    }
+
+    #[test]
+    fn frontmatter_title_extracts_plain_and_quoted_titles() {
+        assert_eq!(
+            frontmatter_title("---\ntitle: Mijn Brief\n---\n\nBody."),
+            Some("Mijn Brief".to_string())
+        );
+        assert_eq!(
+            frontmatter_title("---\ntitle: \"Rapport: Q3 \\\"final\\\"\"\n---\nBody."),
+            Some("Rapport: Q3 \"final\"".to_string())
+        );
+        // Numbers are legitimate titles.
+        assert_eq!(
+            frontmatter_title("---\ntitle: 2024\n---\n"),
+            Some("2024".to_string())
+        );
+        // CRLF line endings and a BOM must not defeat the fence scan.
+        assert_eq!(
+            frontmatter_title("\u{feff}---\r\ntitle: Nota\r\n---\r\nBody."),
+            Some("Nota".to_string())
+        );
+    }
+
+    #[test]
+    fn frontmatter_title_yields_none_on_malformed_input() {
+        // No frontmatter at all.
+        assert_eq!(frontmatter_title("# Kop\n\nBody."), None);
+        assert_eq!(frontmatter_title(""), None);
+        // A thematic break further down is not frontmatter.
+        assert_eq!(frontmatter_title("Body.\n---\ntitle: X\n---\n"), None);
+        // Unterminated fence.
+        assert_eq!(frontmatter_title("---\ntitle: X\n"), None);
+        // Invalid YAML between the fences.
+        assert_eq!(frontmatter_title("---\ntitle: [\n---\n"), None);
+        // Missing, empty, blank or non-scalar title.
+        assert_eq!(frontmatter_title("---\nauthor: X\n---\n"), None);
+        assert_eq!(frontmatter_title("---\ntitle: \"\"\n---\n"), None);
+        assert_eq!(frontmatter_title("---\ntitle: \"   \"\n---\n"), None);
+        assert_eq!(frontmatter_title("---\ntitle: [a, b]\n---\n"), None);
+        assert_eq!(frontmatter_title("---\ntitle: true\n---\n"), None);
+    }
+
+    #[test]
+    fn frontmatter_title_caps_scan_like_the_editor() {
+        // A closing fence buried beyond the 8 KiB scan cap yields no title,
+        // matching the editor's `frontmatterTitle` so both parsers agree.
+        let body = format!("---\ntitle: Diep\n{}\n---\n", "x".repeat(9000));
+        assert_eq!(frontmatter_title(&body), None);
+        // A title well within the cap is still found even with a large body.
+        let body = format!("---\ntitle: Ondiep\n---\n{}", "x".repeat(9000));
+        assert_eq!(frontmatter_title(&body), Some("Ondiep".to_string()));
+    }
+
+    #[test]
+    fn document_list_entry_omits_absent_title() {
+        let entry = TrajectDocumentListEntry {
+            path: "beleid.md".to_string(),
+            title: None,
+        };
+        let json = serde_json::to_value(&entry).unwrap();
+        assert_eq!(json, serde_json::json!({"path": "beleid.md"}));
+        let entry = TrajectDocumentListEntry {
+            path: "beleid.md".to_string(),
+            title: Some("Beleid 2024".to_string()),
+        };
+        let json = serde_json::to_value(&entry).unwrap();
+        assert_eq!(json["title"], "Beleid 2024");
     }
 
     #[test]

@@ -55,6 +55,8 @@ const {
   pendingDeletePath,
   deleteNotice,
   displayTitle,
+  titleForPath,
+  currentTitle,
   onBodyInput,
   onTitleInput,
   handleSave,
@@ -66,8 +68,10 @@ const {
   confirmDelete,
 } = m;
 
-// Document name shown in the top toolbar title.
-const docName = computed(() => displayTitle(currentPath.value) || 'Document');
+// Document name shown in the top toolbar title: the live frontmatter title
+// when the body carries one, else the de-slugged path. The rename sheet below
+// keeps using displayTitle/titleDraft (the raw path-based name).
+const docName = computed(() => currentTitle.value || 'Document');
 
 // A load failure leaves nothing to edit, so it replaces the whole body as an
 // inline dialog. Save / conflict / delete failures are modals and a
@@ -463,7 +467,7 @@ function dismissDeleteNotice() {
     <nldd-modal-dialog
       ref="deleteModalEl"
       variant="alert"
-      :text="pendingDeletePath ? `${displayTitle(pendingDeletePath)} verwijderen?` : 'Document verwijderen?'"
+      :text="pendingDeletePath ? `${titleForPath(pendingDeletePath)} verwijderen?` : 'Document verwijderen?'"
       supporting-text="Het document wordt definitief uit het traject verwijderd. Dit kan niet ongedaan worden gemaakt."
       @close="cancelDelete"
     >

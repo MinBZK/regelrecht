@@ -10,6 +10,7 @@
  * shown, sheet open/close) stays in the components.
  */
 import { computed, ref, watch } from 'vue';
+import { deslugifyDocPath, docDisplayTitle, frontmatterTitle } from '../lib/docTitle.js';
 import { useTrajectDocuments } from './useTrajectDocuments.js';
 
 export function useDocumentsManager(trajectRef) {
@@ -61,11 +62,37 @@ export function useDocumentsManager(trajectRef) {
   );
 
   // --- Titels ---
+  // Twee soorten titels, met verschillende contracten:
+  //
+  // 1. displayTitle/pathFromTitle: het RAUWE pad-gebaseerde exemplaar dat de
+  //    hernoem-sheet gebruikt. De rename-flow leunt op de invariant
+  //    `pathFromTitle(displayTitle(p)) === p` — deze mogen dus nooit een
+  //    "mooie" titel (spaties/hoofdletters) opleveren, anders wordt elke
+  //    save een rename.
+  // 2. titleForPath/currentTitle: puur voor WEERGAVE — frontmatter-titel als
+  //    die er is, anders het gedeslugifyde pad. Nooit terugvertalen naar een
+  //    pad.
+  //
   // '.md' blijft verborgen voor de gebruiker; '.txt' wijkt af van de default en
   // blijft daarom zichtbaar.
   function displayTitle(path) {
     return path ? path.replace(/\.md$/, '') : '';
   }
+  // Weergavetitel voor een pad: de frontmatter-titel uit de opgehaalde lijst,
+  // anders deslugify.
+  function titleForPath(path) {
+    const entry = documents.value.find((d) => d.path === path);
+    return entry ? docDisplayTitle(entry) : deslugifyDocPath(path);
+  }
+  // Live titel van het GEOPENDE document, geparseerd uit de body die de
+  // gebruiker bewerkt — zo volgt de editor-kop een frontmatter-edit direct.
+  // Tijdens het laden bevat currentBody nog het vorige document; val dan
+  // terug op het pad tot docLoading klaart.
+  const currentTitle = computed(
+    () =>
+      (!docLoading.value && frontmatterTitle(currentBody.value))
+      || deslugifyDocPath(currentPath.value),
+  );
   function pathFromTitle(title) {
     const t = title.trim();
     if (!t) return '';
@@ -229,11 +256,11 @@ export function useDocumentsManager(trajectRef) {
     }
     if (result?.conflict) {
       deleteNotice.value =
-        `"${displayTitle(path)}" is intussen door iemand anders gewijzigd; de lijst is ververst. ` +
+        `"${titleForPath(path)}" is intussen door iemand anders gewijzigd; de lijst is ververst. ` +
         `Open het document om de huidige versie te zien voordat je het verwijdert.`;
     } else {
       deleteNotice.value =
-        saveError.value?.message || `Verwijderen van "${displayTitle(path)}" is mislukt.`;
+        saveError.value?.message || `Verwijderen van "${titleForPath(path)}" is mislukt.`;
     }
     return false;
   }
@@ -247,7 +274,7 @@ export function useDocumentsManager(trajectRef) {
     titleDraft, titleError,
     pendingDeletePath, deleteNotice,
     // derived helpers
-    displayTitle,
+    displayTitle, titleForPath, currentTitle,
     // actions
     open, startNew, close, uploadDocument,
     onBodyInput, onTitleInput,

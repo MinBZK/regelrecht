@@ -134,7 +134,7 @@ function retryUpload() {
 // Name the open document in the unsaved-changes guard so it's clear what's at
 // risk (falls back to a generic phrasing if the name isn't resolved yet).
 const docNavGuardText = computed(() => {
-  const name = docsMgr.displayTitle(openDocPath.value);
+  const name = docsMgr.titleForPath(openDocPath.value);
   return name
     ? `'${name}' heeft wijzigingen die nog niet zijn opgeslagen. Als je verdergaat, gaan ze verloren.`
     : 'Dit document heeft wijzigingen die nog niet zijn opgeslagen. Als je verdergaat, gaan ze verloren.';

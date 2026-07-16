@@ -11,13 +11,16 @@
  * endpoint falls back to including failed rows (with `error`), and this is
  * the old inline failure UI from before the taken-mechanisme existed.
  */
+import { deslugifyDocPath } from '../lib/docTitle.js';
+
 defineProps({
   jobs: { type: Array, default: () => [] },
 });
 
+// A pending conversion has no body (and thus no frontmatter title) yet, so
+// the de-slugged target path is the best available name.
 function title(job) {
-  const path = job.target_path || 'document';
-  return path.replace(/\.md$/, '');
+  return deslugifyDocPath(job.target_path || 'document');
 }
 </script>
 

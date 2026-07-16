@@ -31,7 +31,11 @@ beforeEach(() => {
 describe('useTrajectDocuments', () => {
   it('fetches the documents list for the active traject', async () => {
     const fetchSpy = vi.fn().mockResolvedValue(
-      res({ json: { documents: [{ path: 'notes.md' }, { path: 'mvt/concept.md' }] } }),
+      res({
+        json: {
+          documents: [{ path: 'notes.md', title: 'Notities' }, { path: 'mvt/concept.md' }],
+        },
+      }),
     );
     globalThis.fetch = fetchSpy;
 
@@ -44,6 +48,9 @@ describe('useTrajectDocuments', () => {
       'notes.md',
       'mvt/concept.md',
     ]);
+    // The optional frontmatter title from the list response rides along.
+    expect(documents.value[0].title).toBe('Notities');
+    expect(documents.value[1].title).toBeUndefined();
   });
 
   it('uploads a document as multipart and refreshes the list', async () => {
@@ -105,6 +112,13 @@ describe('useTrajectDocuments', () => {
     expect(put).toBeTruthy();
     expect(put.opts.headers['If-Match']).toBe('"v1"');
     expect(docs.currentEtag.value).toBe('"new"');
+
+    // A 200 save refreshes the list non-blocking so a changed frontmatter
+    // title shows up in the sidebar without a manual refresh.
+    await nextTick();
+    const listCallsAfterPut =
+      calls.filter((c) => c.url.endsWith('/corpus/documents') && !c.opts.method).length;
+    expect(listCallsAfterPut).toBeGreaterThanOrEqual(2);
   });
 
   it('surfaces a 412 as a conflict instead of overwriting silently', async () => {

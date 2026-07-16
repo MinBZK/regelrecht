@@ -14,11 +14,11 @@ describe('ConversionStatus', () => {
     expect(wrapper.find('.conversion-status').exists()).toBe(false);
   });
 
-  it('shows a spinner for a running conversion (title without .md)', () => {
-    const wrapper = mountStatus([{ id: '1', target_path: 'report.md', status: 'processing' }]);
+  it('shows a spinner for a running conversion (de-slugged title, no .md)', () => {
+    const wrapper = mountStatus([{ id: '1', target_path: 'mijn-report.md', status: 'processing' }]);
     const indicator = wrapper.find('nldd-activity-indicator');
     expect(indicator.exists()).toBe(true);
-    expect(indicator.attributes('text')).toContain('report');
+    expect(indicator.attributes('text')).toContain('Mijn report');
     expect(indicator.attributes('text')).not.toContain('.md');
   });
 
@@ -40,7 +40,7 @@ describe('ConversionStatus', () => {
     const dialog = wrapper.find('nldd-inline-dialog');
     expect(dialog.exists()).toBe(true);
     expect(dialog.attributes('variant')).toBe('alert');
-    expect(dialog.attributes('text')).toContain('brief');
+    expect(dialog.attributes('text')).toContain('Brief');
     expect(dialog.attributes('supporting-text')).toBe('boom');
   });
 });

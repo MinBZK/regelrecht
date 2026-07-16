@@ -502,6 +502,43 @@ async fn try_deterministic_convert(
     }
 }
 
+/// Prepend a YAML frontmatter block carrying the original uploaded
+/// filename's stem as `title:`, so the human-readable name survives the
+/// slugged `target_path` ("Mijn Brief.docx" → `mijn-brief.md` keeps
+/// showing as "Mijn Brief" in the editor). Skipped when the stem is
+/// empty or when the produced markdown already starts with a frontmatter
+/// fence — never stack two blocks. YAML escaping (filenames can carry
+/// `:`, quotes, `#`) is delegated to serde_yaml_ng.
+fn with_title_frontmatter(markdown: String, original_filename: &str) -> String {
+    let stem = Path::new(original_filename)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(str::trim)
+        .unwrap_or("");
+    if stem.is_empty() {
+        return markdown;
+    }
+    if markdown
+        .trim_start_matches('\u{feff}')
+        .lines()
+        .next()
+        // A fence line is exactly `---` (only a trailing `\r` tolerated), the
+        // same notion both title extractors use. Do not accept trailing spaces
+        // here: `--- ` is body, not a fence — treating it as "already fenced"
+        // would suppress the title block while the extractors would then find
+        // no frontmatter, leaving the document with no title at all.
+        .is_some_and(|first| first.trim_end_matches('\r') == "---")
+    {
+        return markdown;
+    }
+    let mut map = std::collections::BTreeMap::new();
+    map.insert("title", stem);
+    match serde_yaml_ng::to_string(&map) {
+        Ok(yaml) => format!("---\n{yaml}---\n\n{markdown}"),
+        Err(_) => markdown,
+    }
+}
+
 /// The pure filesystem half of the conversion, split out so it can be unit-tested
 /// with a fake converter and a synthetic upload (no DB, no LLM).
 async fn convert_in_dir(
@@ -527,26 +564,28 @@ async fn convert_in_dir(
     // crucially — keeps the untrusted document away from the Bash-enabled LLM,
     // shrinking the prompt-injection surface. The agentic path stays as a
     // fallback for formats the tools don't handle (or when they are absent).
-    if let Some(markdown) = try_deterministic_convert(&input_file, &ext, &output_path).await {
-        return Ok(markdown);
-    }
+    let markdown =
+        if let Some(markdown) = try_deterministic_convert(&input_file, &ext, &output_path).await {
+            markdown
+        } else {
+            converter
+                .convert(&input_file, work_dir, &output_path, config)
+                .await?;
 
-    converter
-        .convert(&input_file, work_dir, &output_path, config)
-        .await?;
-
-    let markdown = tokio::fs::read_to_string(&output_path).await.map_err(|e| {
-        PipelineError::Enrich(format!(
-            "conversion produced no readable markdown at {}: {e}",
-            output_path.display()
-        ))
-    })?;
-    if markdown.trim().is_empty() {
-        return Err(PipelineError::Enrich(
-            "conversion produced empty markdown".to_string(),
-        ));
-    }
-    Ok(markdown)
+            let markdown = tokio::fs::read_to_string(&output_path).await.map_err(|e| {
+                PipelineError::Enrich(format!(
+                    "conversion produced no readable markdown at {}: {e}",
+                    output_path.display()
+                ))
+            })?;
+            if markdown.trim().is_empty() {
+                return Err(PipelineError::Enrich(
+                    "conversion produced empty markdown".to_string(),
+                ));
+            }
+            markdown
+        };
+    Ok(with_title_frontmatter(markdown, &upload.filename))
 }
 
 #[cfg(test)]
@@ -670,8 +709,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         // A `.bin` extension no deterministic tool handles, so the agentic
         // fallback (the FakeConverter) runs and we test that orchestration.
+        // The original filename's stem must come back as a frontmatter title.
         let upload = Upload {
-            filename: "report.bin".to_string(),
+            filename: "Mijn Brief.bin".to_string(),
             content_type: "application/octet-stream".to_string(),
             bytes: b"raw bytes".to_vec(),
         };
@@ -681,7 +721,7 @@ mod tests {
         let md = convert_in_dir(
             dir.path(),
             &upload,
-            "report.md",
+            "mijn-brief.md",
             &EnrichConfig::for_test(crate::enrich::LlmProvider::Claude {
                 path: "claude".into(),
                 model: None,
@@ -690,7 +730,57 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(md, "# Report\n\nBody.\n");
+        assert_eq!(md, "---\ntitle: Mijn Brief\n---\n\n# Report\n\nBody.\n");
+    }
+
+    #[test]
+    fn with_title_frontmatter_prepends_stem_as_title() {
+        assert_eq!(
+            with_title_frontmatter("Body.\n".to_string(), "Mijn Brief.docx"),
+            "---\ntitle: Mijn Brief\n---\n\nBody.\n"
+        );
+    }
+
+    #[test]
+    fn with_title_frontmatter_escapes_yaml_special_characters() {
+        // Filenames can carry `:` and quotes; the emitted block must stay
+        // valid YAML and round-trip to the exact stem.
+        let md = with_title_frontmatter("Body.\n".to_string(), "Rapport: Q3 \"final\".pdf");
+        let block = md
+            .strip_prefix("---\n")
+            .and_then(|rest| rest.split_once("\n---\n"))
+            .expect("frontmatter block present")
+            .0;
+        let parsed: std::collections::BTreeMap<String, String> =
+            serde_yaml_ng::from_str(block).unwrap();
+        assert_eq!(parsed["title"], "Rapport: Q3 \"final\"");
+        assert!(md.ends_with("\n\nBody.\n"));
+    }
+
+    #[test]
+    fn with_title_frontmatter_skips_existing_block_and_empty_stem() {
+        // Never stack a second frontmatter block on converter output that
+        // already carries one.
+        let existing = "---\ntitle: Al aanwezig\n---\n\nBody.\n".to_string();
+        assert_eq!(
+            with_title_frontmatter(existing.clone(), "iets.docx"),
+            existing
+        );
+        // An unusable stem leaves the markdown untouched (frontend falls
+        // back to de-slugging the path).
+        assert_eq!(with_title_frontmatter("Body.\n".to_string(), ""), "Body.\n");
+    }
+
+    #[test]
+    fn with_title_frontmatter_treats_trailing_space_fence_as_body() {
+        // `--- ` (trailing space) is not a fence line to the title extractors,
+        // so it must not count as "already fenced" — otherwise the title block
+        // is skipped here yet no frontmatter is found downstream, leaving the
+        // document titleless. The block must be prepended.
+        assert_eq!(
+            with_title_frontmatter("--- \nnot really frontmatter\n".to_string(), "Brief.docx"),
+            "---\ntitle: Brief\n---\n\n--- \nnot really frontmatter\n"
+        );
     }
 
     #[tokio::test]
