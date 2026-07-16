@@ -14,6 +14,7 @@ import {
   lastHomePath,
   lastEditorPath,
   sectionTarget,
+  homeTabTarget,
   isHomeSection,
   rememberHarvesterOrigin,
 } from './composables/useLastVisitedRoute.js';
@@ -114,11 +115,15 @@ const router = useRouter();
 // or a traject law). Kept named isLibraryRoute to limit this refactor's blast
 // radius.
 const isLibraryRoute = computed(() => isHomeSection(route.name));
-// Home tab restores the last home path verbatim (its own scope), like the
-// harvester return - so you continue exactly where you were. The Editor tab
-// keeps re-stamping the active traject (it carries the editor's traject logic:
-// chooser + law-as-query when no traject is active).
-const libraryTabTarget = computed(() => lastHomePath.value);
+// Home tab: the last home path with the active traject re-stamped onto it
+// (see homeTabTarget) - switching Home<->Editor keeps you in the traject
+// you're working in, instead of restoring a stale scope (e.g. Corpus juris
+// after opening a public deep-link). The Editor tab does the same via
+// sectionTarget, which additionally carries the editor's traject logic
+// (chooser + law-as-query when no traject is active).
+const libraryTabTarget = computed(() =>
+  homeTabTarget(router, lastHomePath.value, activeTrajectRef.value),
+);
 const editorTabTarget = computed(() =>
   sectionTarget(router, lastEditorPath.value, activeTrajectRef.value),
 );

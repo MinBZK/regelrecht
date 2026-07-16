@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import router from './router.js';
-import { sectionTarget } from './composables/useLastVisitedRoute.js';
+import { sectionTarget, homeTabTarget } from './composables/useLastVisitedRoute.js';
 
 // A valid traject ref is `{slug}-{8hex}` (see the route regex). A plain
 // law `$id` uses underscores and must NOT match the traject route.
@@ -188,5 +188,38 @@ describe('sectionTarget - traject preserved across tab switches', () => {
     expect(sectionTarget(router, '/totally/unknown', null).name).toBe('home');
     // Section is derived from the path prefix so the right tab is kept.
     expect(sectionTarget(router, '/editor-bogus/x', null).name).toBe('editor');
+  });
+});
+
+describe('homeTabTarget - Home tab carries the active traject', () => {
+  it('restores the stored path verbatim when it already carries the active scope (hash intact)', () => {
+    const stored = `/trajecten/${REF}/corpus/foo/3#yaml`;
+    expect(homeTabTarget(router, stored, REF)).toBe(stored);
+  });
+
+  it('restores a public stored path verbatim when no traject is active', () => {
+    expect(homeTabTarget(router, '/corpus-juris/foo', null)).toBe('/corpus-juris/foo');
+  });
+
+  it('re-stamps the active traject onto a stored public law path', () => {
+    const t = homeTabTarget(router, '/corpus-juris/foo/3', REF);
+    expect(t.name).toBe('library-traject');
+    expect(t.params.trajectRef).toBe(REF);
+    expect(t.params.lawId).toBe('foo');
+    expect(t.params.articleNumber).toBe('3');
+  });
+
+  it('re-stamps the active traject over a stale stored traject', () => {
+    const t = homeTabTarget(router, '/trajecten/old-deadbeef/corpus/foo', REF);
+    expect(t.name).toBe('library-traject');
+    expect(t.params.trajectRef).toBe(REF);
+    expect(t.params.lawId).toBe('foo');
+  });
+
+  it('drops the stored traject when none is active', () => {
+    const t = homeTabTarget(router, `/trajecten/${REF}/corpus/foo`, null);
+    expect(t.name).toBe('corpus-juris');
+    expect(t.params.trajectRef).toBeUndefined();
+    expect(t.params.lawId).toBe('foo');
   });
 });

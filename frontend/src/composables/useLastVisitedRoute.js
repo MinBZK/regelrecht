@@ -162,11 +162,24 @@ export function sectionTarget(router, storedPath, activeRef) {
     return { name: 'taken-traject', params: { trajectRef: activeRef } };
   }
 
-  // Home section (corpus) — the active traject scope wins over whatever the
+  // Home section (corpus): the active traject scope wins over whatever the
   // stored path carried (re-stamped, or dropped when browsing without a traject).
   return homeTarget({
     trajectRef: activeRef || undefined,
     lawId: params.lawId,
     articleNumber: params.articleNumber,
   });
+}
+
+// Target for the Home tab: the last-visited Home path, with the ACTIVE
+// traject re-stamped onto it (via sectionTarget) so a Home<->Editor tab
+// switch keeps you in the traject you're working in instead of restoring a
+// stale scope (e.g. Corpus juris after opening a public deep-link). When the
+// stored path already carries the active scope it's returned verbatim, so
+// query/hash (the open werkdocument's `?task=`, the #yaml detail tab)
+// survive exactly like before.
+export function homeTabTarget(router, storedPath, activeRef) {
+  const storedRef = router.resolve(storedPath).params.trajectRef || null;
+  if (storedRef === (activeRef || null)) return storedPath;
+  return sectionTarget(router, storedPath, activeRef);
 }
