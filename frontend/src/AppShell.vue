@@ -111,12 +111,13 @@ const editorPanelFlags = [
 // effects: it shows the Koppel/Ontkoppel items below AND makes the backend
 // require the acting user's own GitHub token for traject writes (a save
 // without a linked token then 428s, which apiAuthGuard.js turns into a
-// redirect through the connect flow).
-const functieFlags = computed(() =>
-  githubStatus.value?.configured
-    ? [...editorPanelFlags, ['github.user_oauth', 'GitHub-koppeling']]
-    : editorPanelFlags,
-);
+// redirect through the connect flow). The Taken toggle gates the whole
+// taken-mechanisme (see the `showTasks` comment above).
+const functieFlags = computed(() => [
+  ...editorPanelFlags,
+  ...(githubStatus.value?.configured ? [['github.user_oauth', 'GitHub-koppeling']] : []),
+  ['tasks.job_review', 'Taken'],
+]);
 
 const route = useRoute();
 const router = useRouter();
