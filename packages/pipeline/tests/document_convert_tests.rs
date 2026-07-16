@@ -55,11 +55,12 @@ async fn job_exists(db: &TestDb, job_id: uuid::Uuid) -> bool {
 }
 
 async fn upload_exists(db: &TestDb, upload_id: uuid::Uuid) -> bool {
-    let row: Option<(uuid::Uuid,)> = sqlx::query_as("SELECT id FROM document_uploads WHERE id = $1")
-        .bind(upload_id)
-        .fetch_optional(&db.pool)
-        .await
-        .expect("select upload");
+    let row: Option<(uuid::Uuid,)> =
+        sqlx::query_as("SELECT id FROM document_uploads WHERE id = $1")
+            .bind(upload_id)
+            .fetch_optional(&db.pool)
+            .await
+            .expect("select upload");
     row.is_some()
 }
 
