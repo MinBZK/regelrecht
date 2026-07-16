@@ -1273,6 +1273,20 @@ async fn process_next_document_convert_job(
         }
     };
 
+    // Taak-flow-gate, vóór de (kostbare) conversie: zonder `requested_by` is
+    // er geen zinvolle assignee voor de review-taak, dus zo'n job kan nooit
+    // afgeleverd worden. Terminaal falen zónder taak (mirrors the enrich
+    // gate in `process_next_enrich_job`) - de upload-bytes worden ook
+    // meteen opgeruimd, er is toch geen aflever-pad meer voor ze.
+    if payload.deliver_as_task() && payload.requested_by.is_none() {
+        let msg = "taak-flow-payload zonder requested_by".to_string();
+        tracing::error!(job_id = %job.id, error = %msg);
+        let _ = document_convert::delete_upload(pool, payload.upload_id).await;
+        job_queue::fail_job_terminal(pool, job.id, Some(serde_json::json!({ "error": msg })))
+            .await?;
+        return Ok(JobOutcome::Processed);
+    }
+
     // Apply the payload's provider override (if any) and bound the run by the
     // worker's job timeout, mirroring the enrich path.
     let mut job_config = match &payload.provider {
@@ -1281,8 +1295,17 @@ async fn process_next_document_convert_job(
     };
     job_config.timeout = job_timeout;
 
-    match run_document_convert(pool, &payload, &job_config).await {
-        Ok(()) => {
+    match run_document_convert(pool, &job, &payload, &job_config).await {
+        Ok(true) => {
+            // Taak-flow: `finish_document_convert_task_job` already inserted the
+            // result-blob, completed the job, and created the review-taak,
+            // atomically. Only the transient upload bytes remain to clean up.
+            if let Err(e) = document_convert::delete_upload(pool, payload.upload_id).await {
+                tracing::warn!(job_id = %job.id, error = %e, "failed to delete document upload after success");
+            }
+            Ok(JobOutcome::Processed)
+        }
+        Ok(false) => {
             // The markdown is already committed to git at this point. Drop the
             // transient upload bytes BEFORE propagating any complete_job error —
             // otherwise a failed status update would `?`-return past the cleanup
@@ -1382,17 +1405,26 @@ async fn process_next_document_convert_job(
     }
 }
 
-/// Convert the uploaded document to markdown and commit it to the traject.
+/// Convert the uploaded document to markdown and deliver it - either pushed
+/// straight to the traject (old behaviour), or as a result-blob + review-taak
+/// (taak-flow, `payload.deliver_as_task()`). Returns `true` when the taak-flow
+/// ran: `finish_document_convert_task_job` already completed the job as part
+/// of its own transaction, so the caller must NOT call `complete_job` again.
 async fn run_document_convert(
     pool: &PgPool,
+    job: &crate::models::Job,
     payload: &DocumentConvertPayload,
     config: &EnrichConfig,
-) -> Result<()> {
+) -> Result<bool> {
     let markdown =
         document_convert::execute_document_convert(pool, payload, config, &LlmDocumentConverter)
             .await?;
+    if payload.deliver_as_task() {
+        finish_document_convert_task_job(pool, job, payload, &markdown).await?;
+        return Ok(true);
+    }
     document_convert::write_markdown_to_traject(pool, payload, &markdown).await?;
-    Ok(())
+    Ok(false)
 }
 
 /// Taak-flow: materialiseer de input-blob(s) van een enrich-taak-job in een
@@ -1474,6 +1506,50 @@ pub async fn finish_enrich_task_job(
                 "traject_ref": payload.traject_ref,
                 "source_etag": payload.source_etag,
                 "provider": payload.provider,
+            })),
+        },
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Taak-flow succes voor document-convert: sla de gegenereerde markdown op
+/// als result-blob en maak de review-taak aan - atomair met complete_job.
+/// De worker pusht niets; goedkeuren gebeurt in de request-context van de
+/// gebruiker (met diens token wanneer enforcement aan staat).
+pub async fn finish_document_convert_task_job(
+    pool: &PgPool,
+    job: &crate::models::Job,
+    payload: &DocumentConvertPayload,
+    markdown: &str,
+) -> Result<()> {
+    let mut tx = pool.begin().await?;
+    // Hygiëne: er zijn geen input-blobs voor document-convert (de bytes
+    // leven in `document_uploads`), maar dit ruimt defensief een eventuele
+    // stale result-blob van een eerdere poging op.
+    crate::tasks::delete_blobs_for_job(&mut *tx, job.id).await?;
+    crate::tasks::insert_blob(
+        &mut *tx,
+        job.id,
+        crate::tasks::BlobKind::Result,
+        &payload.target_path,
+        markdown,
+    )
+    .await?;
+    job_queue::complete_job(&mut *tx, job.id, None).await?;
+    crate::tasks::create_task(
+        &mut *tx,
+        crate::tasks::NewTask {
+            task_type: crate::tasks::TaskType::JobReview,
+            assignee_account_id: payload.requested_by,
+            traject_id: Some(payload.traject_id),
+            job_id: Some(job.id),
+            title: format!("Werkdocument beoordelen: {}", payload.target_path),
+            payload: Some(serde_json::json!({
+                "kind": "document",
+                "traject_ref": payload.traject_ref,
+                "target_path": payload.target_path,
             })),
         },
     )

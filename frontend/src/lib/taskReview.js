@@ -1,21 +1,37 @@
 /**
  * reviewTarget - de router-target voor de "Beoordelen"-knop van een
- * job_review-taak: de traject-scoped editor-route voor de wet (zie
- * router.js, route `editor-traject`:
- * `editor/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:lawId?/:articleNumber?`),
- * met de taak-id als `?task=`-query zodat de editor de taak kan koppelen aan
- * het geopende artikel.
+ * job_review-taak. Vertakt op `payload.kind`:
+ *  - `kind === 'document'`: de werkdocumenten-route (router.js, route
+ *    `werkdocumenten-traject`: `trajecten/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/
+ *    werkdocumenten/:docPath(.*)?`), met `docPath` op `payload.target_path` -
+ *    het werkdocument bestaat op de branch meestal nog niet, dus deze route
+ *    is ook de deep-link naar een nog-niet-bestaand document.
+ *  - anders (wet-review): de traject-scoped editor-route (route
+ *    `editor-traject`: `editor/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:lawId?/
+ *    :articleNumber?`), met `payload.law_id`.
+ * Beide dragen de taak-id als `?task=`-query zodat de bestemming de taak kan
+ * koppelen aan wat er geopend wordt.
  *
  * Puur en los van de router/sheet zodat de route-opbouw te testen is zonder
- * een component te mounten. Geeft `null` terug wanneer de taak geen
- * `traject_ref`/`law_id` in de payload heeft (bijv. een corrupte of
+ * een component te mounten. Geeft `null` terug wanneer de taak niet genoeg
+ * payload-velden heeft voor een van beide routes (bijv. een corrupte of
  * onvolledige taak) - de aanroeper toont dan geen/een disabled knop in
  * plaats van te crashen of naar een kapotte route te navigeren.
  */
 export function reviewTarget(task) {
   const trajectRef = task?.payload?.traject_ref;
+  if (!trajectRef) return null;
+  if (task?.payload?.kind === 'document') {
+    const targetPath = task.payload.target_path;
+    if (!targetPath) return null;
+    return {
+      name: 'werkdocumenten-traject',
+      params: { trajectRef, docPath: targetPath },
+      query: { task: task.id },
+    };
+  }
   const lawId = task?.payload?.law_id;
-  if (!trajectRef || !lawId) return null;
+  if (!lawId) return null;
   return {
     name: 'editor-traject',
     params: { trajectRef, lawId },

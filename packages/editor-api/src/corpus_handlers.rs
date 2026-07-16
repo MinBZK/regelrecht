@@ -2866,18 +2866,33 @@ pub async fn upload_traject_document(
     // upload instead.
     let backend = resolve_traject_documents_writer(&traject).await?;
 
-    // Enforcement gate, on the writer resolved above (one lock, not two). The
-    // conversion runs in a background worker that can never carry the acting
-    // user's cookie-bound token, so its write would always fall back to the
-    // backend's configured token. With user-token enforcement on that is
-    // exactly the silent service-token fallback `require_user_token` forbids —
-    // refuse the upload fail-closed. Deliberately NOT a 428: linking GitHub
-    // would not change anything here, so the koppel-flow redirect would loop.
-    // Only for a backend that honors the override, though: a local writable-own
-    // (preview/local-stack) writes without any token, so there is no service-
-    // token fallback to forbid. The cheap backend check runs first; the flag
-    // read (a DB round-trip) only fires for GitHub-backed trajects.
-    if backend.supports_token_override() {
+    // Taak-flow-gate: met `tasks.job_review` AAN levert de conversie zijn
+    // resultaat als result-blob + review-taak terug (zie
+    // `finish_document_convert_task_job`) - de worker pusht dan niets meer,
+    // dus de enforcement-guard hieronder is niet meer van toepassing (het
+    // committen gebeurt pas bij goedkeuren, in de request-context van de
+    // gebruiker, met diens token wanneer enforcement aan staat). Deze
+    // flag-read is bewust onvoorwaardelijk (één extra DB-round-trip per
+    // upload, ook voor lokale backends): de afleverkeuze moet op
+    // enqueue-moment in de payload vastliggen, ongeacht het backend-type.
+    let task_delivery =
+        crate::feature_flags::flag_enabled(pool, crate::feature_flags::TASKS_JOB_REVIEW)
+            .await
+            .map_err(|e| upload_internal_error("read tasks.job_review flag", e))?;
+
+    // Enforcement gate, on the writer resolved above (one lock, not two). Only
+    // relevant with the taak-flow OFF: the conversion then runs in a background
+    // worker that can never carry the acting user's cookie-bound token, so its
+    // write would always fall back to the backend's configured token. With
+    // user-token enforcement on that is exactly the silent service-token
+    // fallback `require_user_token` forbids — refuse the upload fail-closed.
+    // Deliberately NOT a 428: linking GitHub would not change anything here, so
+    // the koppel-flow redirect would loop. Only for a backend that honors the
+    // override, though: a local writable-own (preview/local-stack) writes
+    // without any token, so there is no service-token fallback to forbid. The
+    // cheap checks run first; `write_requires_user_token`'s own flag read (a
+    // DB round-trip) only fires for GitHub-backed trajects in push-mode.
+    if !task_delivery && backend.supports_token_override() {
         if let Some(oauth) = state.config.github_oauth.as_ref() {
             if github_oauth::write_requires_user_token(&state, oauth).await? {
                 return Err((
@@ -2916,6 +2931,18 @@ pub async fn upload_traject_document(
                 upload_internal_error("list pending conversions for collision check", e)
             })?,
     );
+    // Also reserve the target paths of OPEN document-review tasks: a
+    // task-delivered conversion is already `completed` on the job (so it
+    // doesn't show up in `pending_target_paths` above) while the reviewer
+    // hasn't approved/rejected yet - the `.md` doesn't exist, but the name is
+    // still spoken for until the task resolves.
+    existing.extend(
+        regelrecht_pipeline::tasks::open_document_task_target_paths(pool, traject_id)
+            .await
+            .map_err(|e| {
+                upload_internal_error("list open document review tasks for collision check", e)
+            })?,
+    );
     let target_path = derive_markdown_target(&filename, &existing);
 
     // Persist the bytes and enqueue the conversion job in one transaction.
@@ -2942,6 +2969,7 @@ pub async fn upload_traject_document(
         target_path: target_path.clone(),
         provider: None,
         requested_by: Some(account.id),
+        deliver: task_delivery.then(|| "task".to_string()),
     };
     let payload_json = serde_json::to_value(&payload)
         .map_err(|e| upload_internal_error("serialize payload", e))?;
