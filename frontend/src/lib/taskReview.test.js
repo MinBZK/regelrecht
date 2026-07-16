@@ -31,6 +31,42 @@ describe('reviewTarget', () => {
   it('geeft null voor een taak zonder payload', () => {
     expect(reviewTarget({ id: 't4' })).toBeNull();
   });
+
+  it('bouwt de werkdocumenten-route met ?task= voor een document-review-taak', () => {
+    const task = {
+      id: 't5',
+      task_type: 'job_review',
+      payload: {
+        kind: 'document',
+        traject_ref: 'mijn-traject-1a2b3c4d',
+        target_path: 'bijv-rapport.md',
+      },
+    };
+    const target = reviewTarget(task);
+    expect(target).not.toBeNull();
+    const resolved = router.resolve(target);
+    expect(resolved.name).toBe('werkdocumenten-traject');
+    expect(resolved.params.trajectRef).toBe('mijn-traject-1a2b3c4d');
+    expect(resolved.params.docPath).toBe('bijv-rapport.md');
+    expect(resolved.fullPath).toBe(
+      '/trajecten/mijn-traject-1a2b3c4d/werkdocumenten/bijv-rapport.md?task=t5',
+    );
+  });
+
+  it('geeft null voor een document-review-taak zonder target_path', () => {
+    expect(
+      reviewTarget({
+        id: 't6',
+        payload: { kind: 'document', traject_ref: 'mijn-traject-1a2b3c4d' },
+      }),
+    ).toBeNull();
+  });
+
+  it('geeft null voor een document-review-taak zonder traject_ref', () => {
+    expect(
+      reviewTarget({ id: 't7', payload: { kind: 'document', target_path: 'bijv-rapport.md' } }),
+    ).toBeNull();
+  });
 });
 
 describe('proposalDivergence', () => {

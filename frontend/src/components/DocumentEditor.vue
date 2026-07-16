@@ -35,7 +35,7 @@ import { paneChromeVisible } from '../constants.js';
 const props = defineProps({
   manager: { type: Object, required: true },
 });
-const emit = defineEmits(['deleted', 'back']);
+const emit = defineEmits(['deleted', 'back', 'saved']);
 
 const m = props.manager;
 const {
@@ -109,10 +109,20 @@ onUnmounted(() => {
 // The top-bar Save (and Ctrl/Cmd+S) only persist the body; renaming happens in
 // the sheet. Reset titleDraft to the current name first so a name left half-
 // edited in a dismissed rename sheet can never trigger an accidental rename.
+// Emits 'saved' on success - the save-success hook a document-task review
+// (useDocumentTaskReview, wired in LibraryView.vue) uses to resolve the task
+// as approved, mirroring how EditorView's law-review approves after its own
+// save succeeds. The payload is the path that was under review WHEN THE SAVE
+// STARTED (captured before `handleSave`, which can move `currentPath` for a
+// rename) - LibraryView's `onDocSaved` gates on that path matching the
+// task's `target_path`, not on wherever the document ended up.
 async function saveDocument() {
   if (saving.value || !currentPath.value) return false;
+  const savedPath = currentPath.value;
   titleDraft.value = displayTitle(currentPath.value);
-  return await handleSave();
+  const ok = await handleSave();
+  if (ok) emit('saved', savedPath);
+  return ok;
 }
 
 // Exposed so the parent's leave-guard can offer a "save and close" action
@@ -138,14 +148,20 @@ async function openRename() {
   await nextTick();
   renameFieldEl.value?.focus?.();
 }
+// Also emits 'saved' (see `saveDocument` above): renaming still commits
+// whatever body was in the editor, so it must still trip the review-approve
+// hook when that body is the one under review - even though the document
+// may end up at a different path than `target_path`, `savedPath` (captured
+// before the rename) is what LibraryView's gate compares against.
 async function saveRename() {
   // Optimistic: a valid name closes the sheet immediately and commits in the
   // background (the rename is two slow GitHub writes). An invalid/duplicate name
   // keeps the sheet open with the error. handleSave updates the name optimistically
   // and rolls back + surfaces a save error if the server rejects it.
   if (!validateRename()) return;
+  const savedPath = currentPath.value;
   renameSheetEl.value?.hide?.();
-  handleSave();
+  if (await handleSave()) emit('saved', savedPath);
 }
 
 // --- Delete ---
@@ -183,9 +199,15 @@ function conflictReload() {
   conflict.value = null;
   reloadCurrent();
 }
-function conflictOverwrite() {
+// Async + emits 'saved' on success (see `saveDocument` above): "Lokaal
+// overschrijven" commits the in-editor body via a force-write, bypassing
+// `handleSave`/`saveDocument` entirely - without this the review-approve
+// hook would never fire for a conflict resolved this way.
+async function conflictOverwrite() {
   conflict.value = null;
-  overwriteServer();
+  const savedPath = currentPath.value;
+  const result = await overwriteServer();
+  if (result?.ok) emit('saved', savedPath);
 }
 
 const deleteNoticeModalEl = ref(null);

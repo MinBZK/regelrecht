@@ -176,4 +176,40 @@ describe('useTrajectDocuments', () => {
     expect(docs.savedBody.value).toBe('# Server');
     expect(docs.docError.value).toBeNull();
   });
+
+  it('dropDraft clears an orphan draft for a document that does not exist on the server', async () => {
+    // Mirrors a rejected document-review proposal: the target document is
+    // never pushed (404), a proposal/edit gets typed into it and debounced
+    // to localStorage, and "Verwerpen" must not leave that draft behind -
+    // reopening the (still-nonexistent) document later would otherwise
+    // resurrect it as a 'draft-present' notice forever.
+    vi.useFakeTimers();
+    try {
+      const trajectRef = ref('mig-1a2b3c4d');
+      globalThis.fetch = vi.fn().mockImplementation(async (url) => {
+        if (url.endsWith('/documents')) return res({ json: { documents: [] } });
+        return res({ ok: false, status: 404 });
+      });
+
+      const docs = useTrajectDocuments(trajectRef);
+      await docs.openDocument('proposal.md');
+      expect(docs.docError.value?.kind).toBe('not-found');
+
+      docs.currentBody.value = '# Voorstel';
+      await vi.advanceTimersByTimeAsync(600);
+      expect(
+        localStorage.getItem('regelrecht-doc-draft:mig-1a2b3c4d:proposal.md'),
+      ).toBe('# Voorstel');
+
+      docs.dropDraft();
+
+      expect(
+        localStorage.getItem('regelrecht-doc-draft:mig-1a2b3c4d:proposal.md'),
+      ).toBeNull();
+      expect(docs.currentBody.value).toBe('');
+      expect(docs.docError.value).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

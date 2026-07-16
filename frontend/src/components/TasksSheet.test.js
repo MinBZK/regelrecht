@@ -69,6 +69,22 @@ describe('TasksSheet', () => {
     expect(wrapper.find('nldd-inline-dialog').exists()).toBe(false);
   });
 
+  it('toont een lopende documentconversie met de bestandsnaam uit target_path', async () => {
+    const wrapper = await mountSheet(
+      [],
+      [{
+        job_id: 'j2',
+        job_type: 'document_convert',
+        law_id: 'doc:testtraject-abcd1234/analyses/rapport.md',
+        target_path: 'analyses/rapport.md',
+        status: 'processing',
+      }]
+    );
+    const indicators = wrapper.findAll('nldd-activity-indicator');
+    expect(indicators).toHaveLength(1);
+    expect(indicators[0].attributes('text')).toBe('Conversie loopt - rapport.md');
+  });
+
   it('toont zowel de Bezig-sectie als de takenlijst wanneer beide gevuld zijn', async () => {
     const wrapper = await mountSheet(
       [{ id: 't1', task_type: 'job_review', title: 'Verrijking beoordelen: andere_wet', payload: {} }],
@@ -127,6 +143,24 @@ describe('TasksSheet', () => {
       query: { task: 't2' },
     });
     expect(isOpen.value).toBe(false);
+  });
+
+  it('navigeert naar de werkdocumenten-route met ?task= voor een document-review-taak, met het documents-icoon', async () => {
+    const wrapper = await mountSheet([
+      {
+        id: 't5',
+        task_type: 'job_review',
+        title: 'Documentconversie beoordelen: bijv-rapport.md',
+        payload: { kind: 'document', traject_ref: 'traject-abcd1234', target_path: 'bijv-rapport.md' },
+      },
+    ]);
+    expect(wrapper.get('nldd-icon-cell').attributes('icon')).toBe('documents');
+    await wrapper.get('nldd-button').trigger('click');
+    expect(pushMock).toHaveBeenCalledWith({
+      name: 'werkdocumenten-traject',
+      params: { trajectRef: 'traject-abcd1234', docPath: 'bijv-rapport.md' },
+      query: { task: 't5' },
+    });
   });
 
   it('toont een disabled Beoordelen-knop voor een taak zonder traject_ref/law_id', async () => {

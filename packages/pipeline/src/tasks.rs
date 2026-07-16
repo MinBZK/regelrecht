@@ -12,7 +12,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::error::Result;
-use crate::models::JobStatus;
+use crate::models::{JobStatus, JobType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "task_status", rename_all = "lowercase")]
@@ -120,14 +120,20 @@ pub async fn count_open_tasks_for_account(pool: &PgPool, account_id: Uuid) -> Re
     Ok(count)
 }
 
-/// Eén lopende taak-flow-job voor de "Bezig"-sectie: een enrich-job die deze
-/// gebruiker via `deliver: "task"` heeft aangevraagd en die nog niet is
-/// afgerond (job_review/job_failed-taak bestaat pas na completion/failure).
+/// Eén lopende taak-flow-job voor de "Bezig"-sectie: een enrich- of
+/// document_convert-job die deze gebruiker via `deliver: "task"` heeft
+/// aangevraagd en die nog niet is afgerond (job_review/job_failed-taak
+/// bestaat pas na completion/failure).
 #[derive(Debug, Clone, sqlx::FromRow, Serialize)]
 pub struct RunningTaskJob {
     pub job_id: Uuid,
+    pub job_type: JobType,
     pub law_id: String,
     pub traject_ref: Option<String>,
+    /// Doelbestand van een document_convert-job (payload `target_path`);
+    /// None voor enrich-jobs. Het `law_id`-veld draagt voor conversies een
+    /// synthetische `doc:`-sleutel, dus de weergave leest dit veld.
+    pub target_path: Option<String>,
     pub status: JobStatus,
     pub created_at: DateTime<Utc>,
 }
@@ -141,9 +147,10 @@ pub async fn list_running_task_jobs_for_account(
     account_id: Uuid,
 ) -> Result<Vec<RunningTaskJob>> {
     let jobs = sqlx::query_as::<_, RunningTaskJob>(
-        "SELECT id AS job_id, law_id, traject_ref, status, created_at \
+        "SELECT id AS job_id, job_type, law_id, traject_ref, \
+                payload->>'target_path' AS target_path, status, created_at \
          FROM jobs \
-         WHERE job_type = 'enrich' \
+         WHERE job_type IN ('enrich', 'document_convert') \
            AND status IN ('pending', 'processing') \
            AND payload->>'deliver' = 'task' \
            AND payload->>'requested_by' = $1 \
@@ -200,6 +207,30 @@ pub async fn resolve_task(
         tracing::info!(task_id = %t.id, status = ?t.status, "task resolved");
     }
     Ok(task)
+}
+
+/// Target paths reserved by OPEN document-review tasks of a traject: a
+/// task-delivered conversion is already `completed` on the underlying job
+/// (see `finish_document_convert_task_job`) while the review itself is still
+/// unresolved and the `.md` doesn't exist on the branch yet. The upload
+/// collision check (`pending_target_paths`, which only looks at
+/// pending/processing jobs) misses this window — a second upload with the
+/// same derived name would collide with a name that's really still "in use"
+/// by the open task. Approving/rejecting the task (or letting it lapse) frees
+/// the name again, since the task's status then stops matching `= 'open'`.
+pub async fn open_document_task_target_paths(
+    pool: &PgPool,
+    traject_id: Uuid,
+) -> Result<Vec<String>> {
+    let rows = sqlx::query_as::<_, (Option<String>,)>(
+        "SELECT payload->>'target_path' FROM tasks \
+         WHERE traject_id = $1 AND status = 'open' AND task_type = 'job_review' \
+           AND payload->>'kind' = 'document' AND payload->>'target_path' IS NOT NULL",
+    )
+    .bind(traject_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().filter_map(|(p,)| p).collect())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

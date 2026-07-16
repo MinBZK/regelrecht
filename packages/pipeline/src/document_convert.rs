@@ -49,6 +49,18 @@ pub struct DocumentConvertPayload {
     /// `job_failed`-taak. `None` voor jobs van vóór dit veld.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requested_by: Option<Uuid>,
+    /// `"task"` ⇒ resultaat als job_blobs + review-taak, géén push (taak-flow;
+    /// gezet door editor-api wanneer de tasks.job_review-flag aan staat bij
+    /// enqueue). Afwezig ⇒ oude gedrag: directe push naar de traject-branch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deliver: Option<String>,
+}
+
+impl DocumentConvertPayload {
+    /// Taak-flow: resultaat naar Postgres + taak i.p.v. push naar git.
+    pub fn deliver_as_task(&self) -> bool {
+        self.deliver.as_deref() == Some("task")
+    }
 }
 
 /// An uploaded document loaded from `document_uploads`.
@@ -592,6 +604,7 @@ mod tests {
             target_path: "report.md".to_string(),
             provider: Some("claude".to_string()),
             requested_by: None,
+            deliver: None,
         };
         let json = serde_json::to_value(&payload).unwrap();
         assert_eq!(json["upload_id"], "00000000-0000-0000-0000-000000000000");
@@ -609,9 +622,41 @@ mod tests {
             target_path: "report.md".to_string(),
             provider: None,
             requested_by: None,
+            deliver: None,
         };
         let json = serde_json::to_value(&payload).unwrap();
         assert!(json.get("provider").is_none());
+    }
+
+    #[test]
+    fn payload_deliver_task_fields_roundtrip_and_backcompat() {
+        // Oude payloads (zonder deliver-veld) moeten blijven deserialiseren en
+        // vallen terug op het oude directe-push-gedrag.
+        let old = serde_json::json!({
+            "upload_id": Uuid::nil(),
+            "traject_id": Uuid::nil(),
+            "traject_ref": "abcd1234",
+            "target_path": "report.md",
+        });
+        let parsed: DocumentConvertPayload = serde_json::from_value(old).unwrap();
+        assert!(parsed.deliver.is_none());
+        assert!(!parsed.deliver_as_task());
+
+        // Nieuwe payloads dragen het deliver-veld mee.
+        let account = Uuid::new_v4();
+        let new = DocumentConvertPayload {
+            upload_id: Uuid::nil(),
+            traject_id: Uuid::nil(),
+            traject_ref: "abcd1234".to_string(),
+            target_path: "report.md".to_string(),
+            provider: None,
+            requested_by: Some(account),
+            deliver: Some("task".to_string()),
+        };
+        let roundtrip: DocumentConvertPayload =
+            serde_json::from_value(serde_json::to_value(&new).unwrap()).unwrap();
+        assert_eq!(roundtrip.requested_by, Some(account));
+        assert!(roundtrip.deliver_as_task());
     }
 
     #[test]

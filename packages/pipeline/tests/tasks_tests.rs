@@ -1,11 +1,13 @@
 use serde_json::json;
 
+use regelrecht_pipeline::document_convert::DocumentConvertPayload;
 use regelrecht_pipeline::job_queue::{self, CreateJobRequest};
 use regelrecht_pipeline::models::JobType;
 use regelrecht_pipeline::tasks::{self, BlobKind, NewTask, TaskStatus, TaskType};
 use regelrecht_pipeline::test_utils::TestDb;
 use regelrecht_pipeline::worker::{
-    fail_enrich_task_job, fail_enrich_task_job_with_retry, finish_enrich_task_job,
+    fail_enrich_task_job, fail_enrich_task_job_with_retry, finish_document_convert_task_job,
+    finish_enrich_task_job,
 };
 
 /// Maak een account + traject om FK's te vullen. tasks.assignee_account_id
@@ -293,6 +295,148 @@ async fn test_finish_enrich_task_job_creates_task_and_result_blobs() {
 }
 
 #[tokio::test]
+async fn test_finish_document_convert_task_job_creates_task_and_result_blob() {
+    let db = TestDb::new().await;
+    let (account_id, traject_id) = seed_account_and_traject(&db).await;
+    let payload = DocumentConvertPayload {
+        upload_id: uuid::Uuid::new_v4(),
+        traject_id,
+        traject_ref: "testtraject-abcd1234".to_string(),
+        target_path: "report.md".to_string(),
+        provider: None,
+        requested_by: Some(account_id),
+        deliver: Some("task".to_string()),
+    };
+    let _created = job_queue::create_job(
+        &db.pool,
+        CreateJobRequest::new(
+            JobType::DocumentConvert,
+            "doc:testtraject-abcd1234/report.md",
+        )
+        .with_traject_ref("testtraject-abcd1234")
+        .with_payload(serde_json::to_value(&payload).unwrap())
+        .with_max_attempts(1),
+    )
+    .await
+    .unwrap();
+    // Claim zodat complete_job ('processing' vereist) slaagt.
+    let job = job_queue::claim_job(&db.pool, Some(JobType::DocumentConvert))
+        .await
+        .unwrap()
+        .unwrap();
+
+    finish_document_convert_task_job(&db.pool, &job, &payload, "# Report\n\nBody.\n")
+        .await
+        .unwrap();
+
+    // Job completed, result-blob met target_path + markdown.
+    let done = job_queue::get_job(&db.pool, job.id).await.unwrap();
+    assert_eq!(
+        done.status,
+        regelrecht_pipeline::models::JobStatus::Completed
+    );
+    let results = tasks::load_blobs(&db.pool, job.id, BlobKind::Result)
+        .await
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].path, "report.md");
+    assert_eq!(results[0].content, "# Report\n\nBody.\n");
+
+    // job_review-taak met kind=document/traject_ref/target_path, juiste assignee.
+    let open = tasks::list_open_tasks_for_account(&db.pool, account_id)
+        .await
+        .unwrap();
+    assert_eq!(open.len(), 1);
+    assert_eq!(open[0].task_type, "job_review");
+    assert_eq!(open[0].job_id, Some(job.id));
+    assert_eq!(open[0].traject_id, Some(traject_id));
+    let task_payload = open[0].payload.as_ref().unwrap();
+    assert_eq!(task_payload["kind"], "document");
+    assert_eq!(task_payload["traject_ref"], "testtraject-abcd1234");
+    assert_eq!(task_payload["target_path"], "report.md");
+}
+
+#[tokio::test]
+async fn test_open_document_task_target_paths_reserves_names_until_resolved() {
+    let db = TestDb::new().await;
+    let (account_id, traject_id) = seed_account_and_traject(&db).await;
+    let (other_traject_id,): (uuid::Uuid,) = sqlx::query_as(
+        "INSERT INTO trajects (name, created_by) VALUES ('Ander traject', $1) RETURNING id",
+    )
+    .bind(account_id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+
+    let payload = DocumentConvertPayload {
+        upload_id: uuid::Uuid::new_v4(),
+        traject_id,
+        traject_ref: "testtraject-abcd1234".to_string(),
+        target_path: "report.md".to_string(),
+        provider: None,
+        requested_by: Some(account_id),
+        deliver: Some("task".to_string()),
+    };
+    let _created = job_queue::create_job(
+        &db.pool,
+        CreateJobRequest::new(
+            JobType::DocumentConvert,
+            "doc:testtraject-abcd1234/report.md",
+        )
+        .with_traject_ref("testtraject-abcd1234")
+        .with_payload(serde_json::to_value(&payload).unwrap())
+        .with_max_attempts(1),
+    )
+    .await
+    .unwrap();
+    let job = job_queue::claim_job(&db.pool, Some(JobType::DocumentConvert))
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Nog geen taak - lege reservering.
+    assert!(tasks::open_document_task_target_paths(&db.pool, traject_id)
+        .await
+        .unwrap()
+        .is_empty());
+
+    // Task-delivered conversie: de job is 'completed' (dus buiten
+    // `pending_target_paths`), maar de review is nog open - de naam moet nu
+    // gereserveerd zijn.
+    finish_document_convert_task_job(&db.pool, &job, &payload, "# Report\n\nBody.\n")
+        .await
+        .unwrap();
+
+    let reserved = tasks::open_document_task_target_paths(&db.pool, traject_id)
+        .await
+        .unwrap();
+    assert_eq!(reserved, vec!["report.md".to_string()]);
+
+    // Een ander traject ziet de reservering niet, ongeacht dezelfde naam.
+    assert!(
+        tasks::open_document_task_target_paths(&db.pool, other_traject_id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    // Na goedkeuren (of afwijzen) van de review-taak vervalt de reservering.
+    let open = tasks::list_open_tasks_for_account(&db.pool, account_id)
+        .await
+        .unwrap();
+    assert_eq!(open.len(), 1);
+    tasks::resolve_task(&db.pool, open[0].id, account_id, TaskStatus::Approved)
+        .await
+        .unwrap()
+        .expect("assignee mag resolven");
+
+    assert!(tasks::open_document_task_target_paths(&db.pool, traject_id)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
 async fn test_fail_enrich_task_job_creates_failed_task_and_cleans_input() {
     let db = TestDb::new().await;
     let (account_id, traject_id) = seed_account_and_traject(&db).await;
@@ -463,6 +607,27 @@ async fn test_list_running_task_jobs_for_account() {
     .await
     .unwrap();
 
+    // Eigen document_convert-taak-flow-job: hoort ook in de "Bezig"-lijst,
+    // met target_path als weergave-handvat (law_id is een doc:-sleutel).
+    let own_doc_job = job_queue::create_job(
+        &db.pool,
+        CreateJobRequest::new(
+            JobType::DocumentConvert,
+            "doc:testtraject-abcd1234/analyses/rapport.md",
+        )
+        .with_traject_ref("testtraject-abcd1234")
+        .with_payload(json!({
+            "upload_id": uuid::Uuid::new_v4(),
+            "traject_id": traject_id,
+            "traject_ref": "testtraject-abcd1234",
+            "target_path": "analyses/rapport.md",
+            "requested_by": account_id,
+            "deliver": "task"
+        })),
+    )
+    .await
+    .unwrap();
+
     // Corpus-brede job (geen deliver/requested_by) voor dezelfde wet - hoort
     // niet in de taak-flow-lijst thuis, ongeacht account.
     job_queue::create_job(
@@ -491,20 +656,30 @@ async fn test_list_running_task_jobs_for_account() {
     let running = tasks::list_running_task_jobs_for_account(&db.pool, account_id)
         .await
         .unwrap();
-    assert_eq!(running.len(), 1);
-    assert_eq!(running[0].job_id, own_job.id);
-    assert_eq!(running[0].law_id, "test_wet");
+    assert_eq!(running.len(), 2);
+    // Nieuwste eerst: de document_convert-job is na de enrich-job aangemaakt.
+    assert_eq!(running[0].job_id, own_doc_job.id);
+    assert_eq!(running[0].job_type, JobType::DocumentConvert);
     assert_eq!(
-        running[0].traject_ref.as_deref(),
+        running[0].target_path.as_deref(),
+        Some("analyses/rapport.md")
+    );
+    assert_eq!(running[1].job_id, own_job.id);
+    assert_eq!(running[1].job_type, JobType::Enrich);
+    assert_eq!(running[1].law_id, "test_wet");
+    assert_eq!(running[1].target_path, None);
+    assert_eq!(
+        running[1].traject_ref.as_deref(),
         Some("testtraject-abcd1234")
     );
     assert_eq!(
-        running[0].status,
+        running[1].status,
         regelrecht_pipeline::models::JobStatus::Pending
     );
 
-    // Claim + complete de eigen job: eenmaal afgerond hoort hij niet meer in
-    // de "Bezig"-lijst (hij verschijnt dan als job_review-taak i.p.v.).
+    // Claim + complete de eigen enrich-job: eenmaal afgerond hoort hij niet
+    // meer in de "Bezig"-lijst (hij verschijnt dan als job_review-taak
+    // i.p.v.); de nog lopende document_convert-job blijft staan.
     let claimed = job_queue::claim_job(&db.pool, Some(JobType::Enrich))
         .await
         .unwrap()
@@ -517,7 +692,8 @@ async fn test_list_running_task_jobs_for_account() {
     let after = tasks::list_running_task_jobs_for_account(&db.pool, account_id)
         .await
         .unwrap();
-    assert!(after.is_empty());
+    assert_eq!(after.len(), 1);
+    assert_eq!(after[0].job_id, own_doc_job.id);
 }
 
 /// `include_failed` mirrors `!tasks.job_review`: flag ON (taken-mechanisme
