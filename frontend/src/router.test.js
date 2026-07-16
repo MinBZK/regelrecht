@@ -166,6 +166,25 @@ describe('sectionTarget - traject preserved across tab switches', () => {
     expect(t.name).toBe('home');
   });
 
+  it('re-stamps the active traject onto a stored instellingen path, keeping the tab', () => {
+    const t = sectionTarget(router, '/trajecten/old-deadbeef/instellingen/leden', REF);
+    expect(t.name).toBe('instellingen-traject');
+    expect(t.params.trajectRef).toBe(REF);
+    expect(t.params.tab).toBe('leden');
+  });
+
+  it('preserves the instellingen sub-mode without a tab', () => {
+    const t = sectionTarget(router, `/trajecten/${REF}/instellingen`, REF);
+    expect(t.name).toBe('instellingen-traject');
+    expect(t.params.trajectRef).toBe(REF);
+    expect(t.params.tab).toBeUndefined();
+  });
+
+  it('drops the instellingen sub-mode when no traject is active', () => {
+    const t = sectionTarget(router, `/trajecten/${REF}/instellingen/details`, null);
+    expect(t.name).toBe('home');
+  });
+
   it('sends the Editor tab to the chooser when no traject is active', () => {
     // The editor requires a traject: with none active, the stored editor
     // path collapses to the chooser and the law travels along as query.
@@ -221,5 +240,12 @@ describe('homeTabTarget - Home tab carries the active traject', () => {
     expect(t.name).toBe('corpus-juris');
     expect(t.params.trajectRef).toBeUndefined();
     expect(t.params.lawId).toBe('foo');
+  });
+
+  it('keeps the instellingen sub-mode when re-stamping onto another traject', () => {
+    const t = homeTabTarget(router, '/trajecten/old-deadbeef/instellingen/details', REF);
+    expect(t.name).toBe('instellingen-traject');
+    expect(t.params.trajectRef).toBe(REF);
+    expect(t.params.tab).toBe('details');
   });
 });

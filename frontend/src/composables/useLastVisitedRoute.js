@@ -162,6 +162,18 @@ export function sectionTarget(router, storedPath, activeRef) {
     return { name: 'taken-traject', params: { trajectRef: activeRef } };
   }
 
+  // Instellingen sub-mode of Home: same preservation as werkdocumenten
+  // (re-stamp the active traject, keep the open tab). Without this branch the
+  // generic fallback below would silently collapse a stored instellingen path
+  // to the traject home on a scope mismatch.
+  const isInstellingen = name === 'instellingen-traject'
+    || (name == null && /\/instellingen($|[/?#])/.test(storedPath));
+  if (isInstellingen && activeRef) {
+    const target = { name: 'instellingen-traject', params: { trajectRef: activeRef } };
+    if (params.tab) target.params.tab = params.tab;
+    return target;
+  }
+
   // Home section (corpus): the active traject scope wins over whatever the
   // stored path carried (re-stamped, or dropped when browsing without a traject).
   return homeTarget({
