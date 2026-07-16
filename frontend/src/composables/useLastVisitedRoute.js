@@ -77,8 +77,8 @@ export function recordLastVisited(routeName, fullPath) {
 
 // The Home section's last-visited full path — the public landing, a public law,
 // the traject bibliotheek, werkdocumenten or instellingen — all under the 'home'
-// key. The Home tab restores this verbatim (like the harvester return) so
-// switching back to Home reopens exactly where you were, whatever its scope.
+// key. The Home tab restores this through homeTabTarget (below): verbatim when
+// the stored scope matches the active traject, re-stamped onto it otherwise.
 export const lastHomePath = computed(() => _lastVisited.value.home ?? '/');
 
 // `/editor` (no traject) is the read-only editor. The first visit
