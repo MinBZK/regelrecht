@@ -108,12 +108,13 @@ const hasOpenDoc = computed(() => !!openDocPath.value);
 // This holds that job's target path; viewedJob resolves it to the job.
 const viewingJobPath = ref(null);
 const viewedJob = computed(() => conversionJobs.value.find((j) => j.target_path === viewingJobPath.value));
-// A failure doesn't always stay in the polled jobs: with tasks.job_review on the
-// endpoint returns pending/processing only (failures surface as a job_failed
-// task instead - see list_traject_document_jobs' include_failed), so the job
-// simply vanishes and `viewedJob` goes undefined. Set by the jobs watcher when a
-// viewed job disappeared without leaving its .md behind. Resets whenever the
-// viewed path changes, so it can't leak onto the next job.
+// A failure never stays in the polled jobs: the endpoint returns
+// pending/processing only (failures surface as a job_failed task instead - see
+// list_traject_document_jobs, which the editor-api always calls with
+// include_failed = false since #939 dropped the tasks.job_review flag), so the
+// job simply vanishes and `viewedJob` goes undefined. Set by the jobs watcher
+// when a viewed job disappeared without leaving its .md behind. Resets whenever
+// the viewed path changes, so it can't leak onto the next job.
 const viewingJobFailed = ref(false);
 watch(viewingJobPath, () => { viewingJobFailed.value = false; });
 const viewedJobFailed = computed(() => viewingJobFailed.value || viewedJob.value?.status === 'failed');
@@ -142,8 +143,8 @@ watch(conversionJobs, async (now, prev) => {
   if (!p) return;
   if (now.some((j) => j.target_path === p)) return; // still listed — keep its view
   // Gone from the polled jobs. Only a written .md proves it completed: a failed
-  // conversion drops out too (tasks.job_review on) and never wrote one, so
-  // opening it would 404 into a generic load error instead of saying it failed.
+  // conversion drops out too and never wrote one, so opening it would 404 into
+  // a generic load error instead of saying it failed.
   if (!docList.value.some((d) => d.path === p)) {
     viewingJobFailed.value = true;
     return;
@@ -1468,7 +1469,7 @@ watch(activeTrajectRef, () => {
                     ></nldd-icon-button>
                     <nldd-menu id="werkdoc-add-menu" anchor="werkdoc-add-btn">
                       <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="onDocNew"></nldd-menu-item>
-                      <nldd-menu-item icon="upload-to-cloud" text="Upload PDF of DOCX" @select="onDocUpload"></nldd-menu-item>
+                      <nldd-menu-item icon="upload-to-cloud" text="PDF of DOCX uploaden…" @select="onDocUpload"></nldd-menu-item>
                     </nldd-menu>
                   </nldd-toolbar-item>
                 </nldd-toolbar>

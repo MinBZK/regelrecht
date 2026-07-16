@@ -1,10 +1,11 @@
 // Targeted tests for the conversion-jobs watcher in LibraryView.vue: what
 // happens to a job the user is viewing when it leaves the polled list.
 //
-// The endpoint only returns pending/processing jobs once tasks.job_review is on
-// (failures become a job_failed task instead - see list_traject_document_jobs'
-// include_failed), so "gone from the list" means completed OR failed. Only a
-// written .md tells them apart. Same harness technique as
+// The endpoint only ever returns pending/processing jobs (failures become a
+// job_failed task instead - see list_traject_document_jobs, which the editor-api
+// always calls with include_failed = false since #939 dropped the
+// tasks.job_review flag), so "gone from the list" means completed OR failed.
+// Only a written .md tells them apart. Same harness technique as
 // LibraryView.docReview.test.js: shallow-mount with every composable stubbed,
 // deliberately narrow to this one surface.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -164,9 +165,9 @@ describe('LibraryView conversion-jobs watcher', () => {
 
   it('does not open a document for a job that left the list without writing one', async () => {
     await mountViewingJob();
-    // A failed conversion leaves the list too (tasks.job_review on excludes
-    // failed rows) but never wrote its .md. Opening it would 404 into a
-    // generic load error instead of reporting the failure.
+    // A failed conversion leaves the list too (the endpoint excludes failed
+    // rows) but never wrote its .md. Opening it would 404 into a generic load
+    // error instead of reporting the failure.
     await jobLeavesList();
     expect(openDoc).not.toHaveBeenCalled();
   });
