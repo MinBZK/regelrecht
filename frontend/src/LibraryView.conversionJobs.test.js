@@ -88,14 +88,20 @@ vi.mock('./composables/useTrajectDocumentJobs.js', () => ({
   }),
 }));
 
+// Capture the onUploaded callback LibraryView hands in, so a test can fire it
+// with an upload result the way a real successful upload would.
+let onUploaded = null;
 vi.mock('./composables/useDocumentUpload.js', () => ({
-  useDocumentUpload: () => ({
-    fileInput: ref(null),
-    uploadError: ref(null),
-    uploadRetryable: ref(false),
-    onUpload: vi.fn(),
-    onFileChange: vi.fn(),
-  }),
+  useDocumentUpload: (_uploadFn, uploadedCb) => {
+    onUploaded = uploadedCb;
+    return {
+      fileInput: ref(null),
+      uploadError: ref(null),
+      uploadRetryable: ref(false),
+      onUpload: vi.fn(),
+      onFileChange: vi.fn(),
+    };
+  },
 }));
 
 vi.mock('./composables/useDocumentTaskReview.js', () => ({
@@ -173,6 +179,18 @@ describe('LibraryView conversion-jobs watcher', () => {
     // Match the dialog's own text, not a bare 'mislukt' - "Uploaden mislukt"
     // also renders in this view, which makes a loose assertion pass regardless.
     expect(wrapper.html()).toContain("Conversie van 'upload' mislukt");
+  });
+
+  it('selects a fresh upload so the main pane shows its conversion', async () => {
+    const wrapper = shallowMount(LibraryView, { global: { stubs: { teleport: true } } });
+    await nextTick();
+    // Only the upload response knows where the conversion will land.
+    onUploaded({ ok: true, targetPath: JOB_PATH });
+    jobs.value = [{ id: 'job-1', target_path: JOB_PATH, status: 'processing' }];
+    await nextTick();
+    await nextTick();
+    expect(wrapper.html()).toContain('aan het converteren');
+    expect(openDoc).not.toHaveBeenCalled(); // no .md exists yet
   });
 
   it('keeps the job view while the job is still listed', async () => {

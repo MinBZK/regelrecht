@@ -172,7 +172,10 @@ const {
   uploadRetryable: docUploadRetryable,
   onUpload: onDocUpload,
   onFileChange: onDocFileChange,
-} = useDocumentUpload(docsMgr.uploadDocument, () => docJobs.refresh());
+} = useDocumentUpload(docsMgr.uploadDocument, (result) => {
+  docJobs.refresh();
+  if (result?.targetPath) showUploadedJob(result.targetPath);
+});
 // Poll conversion jobs only while the werkdocumenten sidebar is open.
 watch(
   isWerkdocMode,
@@ -315,6 +318,15 @@ function onDocSelect(path) {
 }
 function onDocNew() {
   guardedDocNavigate(() => { viewingJobPath.value = null; startNewDoc(); });
+}
+// A fresh upload arrives as a conversion job, not a document - its .md only
+// exists once the conversion finishes. Select it anyway, so the main pane shows
+// the upload the user just made (converting, then the document itself via the
+// jobs watcher, or the failure) instead of leaving them on whatever was open.
+// `targetPath` comes from the upload response; only it knows where the
+// conversion will land. Same navigation as clicking the row, so same guard.
+function showUploadedJob(path) {
+  guardedDocNavigate(() => { closeDoc(); viewingJobPath.value = path; });
 }
 // Cancel the conversion the user is currently viewing (from its loading view).
 // Clear viewingJobPath first so the conversion watcher doesn't mistake the

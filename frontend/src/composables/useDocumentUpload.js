@@ -6,7 +6,10 @@
  * plumbing in a single place.
  *
  * @param {(file: File) => Promise<{ ok: boolean }>} uploadFn  performs the upload
- * @param {() => void} [onUploaded]  called after a successful upload (e.g. start polling)
+ * @param {(result: object) => void} [onUploaded]  called after a successful upload
+ *   (e.g. start polling) with the upload's result, so the consumer can act on
+ *   `targetPath` - the path the conversion will write, which only the upload
+ *   response knows.
  */
 import { ref } from 'vue';
 
@@ -33,7 +36,7 @@ export function useDocumentUpload(uploadFn, onUploaded) {
     uploadRetryable.value = true;
     const result = await uploadFn(file);
     if (result?.ok) {
-      if (onUploaded) onUploaded();
+      if (onUploaded) onUploaded(result);
     } else {
       // Set retryability before the message so a consumer watching the error
       // reads the matching value. A result without `retryable` defaults to true.
