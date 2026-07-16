@@ -36,7 +36,7 @@ const yamlText = computed(() => {
       variant="secondary"
       size="md"
       data-testid="create-mr-btn"
-      text="Machine-leesbare versie aanmaken"
+      text="Machine versie aanmaken"
       :href="createHref"
       @click.prevent="emit('create-mr', $event.currentTarget)"
       @pointerdown.capture="onLoginTriggerPointerdown"

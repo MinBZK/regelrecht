@@ -270,14 +270,14 @@ function addOutput() {
 
 <template>
   <nldd-inline-dialog v-if="!mr" data-testid="no-machine-readable" text="Geen machine-leesbare gegevens voor dit artikel">
-    <nldd-button v-if="editable" slot="actions" variant="secondary" size="md" data-testid="init-mr-btn" @click="emit('init-mr')" text="Maak machine-leesbare versie aan"></nldd-button>
+    <nldd-button v-if="editable" slot="actions" variant="secondary" size="md" data-testid="init-mr-btn" @click="emit('init-mr')" text="Maak machine versie aan"></nldd-button>
     <nldd-button
       v-else-if="canCreate"
       slot="actions"
       variant="secondary"
       size="md"
       data-testid="create-mr-btn"
-      text="Machine-leesbare versie aanmaken"
+      text="Machine versie aanmaken"
       :href="createHref"
       @click.prevent="emit('create-mr', $event.currentTarget)"
       @pointerdown.capture="onLoginTriggerPointerdown"

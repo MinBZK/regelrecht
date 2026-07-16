@@ -108,14 +108,28 @@ const hasOpenDoc = computed(() => !!openDocPath.value);
 // This holds that job's target path; viewedJob resolves it to the job.
 const viewingJobPath = ref(null);
 const viewedJob = computed(() => conversionJobs.value.find((j) => j.target_path === viewingJobPath.value));
+// A failure doesn't always stay in the polled jobs: with tasks.job_review on the
+// endpoint returns pending/processing only (failures surface as a job_failed
+// task instead - see list_traject_document_jobs' include_failed), so the job
+// simply vanishes and `viewedJob` goes undefined. Set by the jobs watcher when a
+// viewed job disappeared without leaving its .md behind. Resets whenever the
+// viewed path changes, so it can't leak onto the next job.
+const viewingJobFailed = ref(false);
+watch(viewingJobPath, () => { viewingJobFailed.value = false; });
+const viewedJobFailed = computed(() => viewingJobFailed.value || viewedJob.value?.status === 'failed');
 // Highlight either the open document or the conversion job being viewed.
 const docSelectedPath = computed(() => openDocPath.value || viewingJobPath.value);
 // When conversion jobs change: refresh the list so a finished job's .md replaces
 // its pending row. If the user is viewing that job, keep the view while the job
-// is still around (running -> failed transitions in place); once it drops out of
-// the polled jobs it completed, so open the freshly converted document.
-watch(conversionJobs, (now, prev) => {
-  if (now.length < prev.length) refreshDocList();
+// is still listed (running, or failed while the flag keeps failures here); once
+// it drops out, open the freshly converted document - but only once the .md is
+// actually there, because dropping out means completed OR failed.
+watch(conversionJobs, async (now, prev) => {
+  // Any job leaving the list can have produced a document, so refresh on a
+  // departure rather than on a shrinking count - a job leaving and another
+  // starting in the same poll keeps the length equal.
+  const departed = prev.some((j) => !now.some((n) => n.target_path === j.target_path));
+  if (departed) await refreshDocList();
   // Deep-link / refresh: the URL may address a path that only now turns out to be
   // a conversion job (jobs load a tick after the page). Switch from the failing
   // real-doc open to its job view.
@@ -126,7 +140,14 @@ watch(conversionJobs, (now, prev) => {
   }
   const p = viewingJobPath.value;
   if (!p) return;
-  if (now.some((j) => j.target_path === p)) return; // still running or failed — keep its view
+  if (now.some((j) => j.target_path === p)) return; // still listed — keep its view
+  // Gone from the polled jobs. Only a written .md proves it completed: a failed
+  // conversion drops out too (tasks.job_review on) and never wrote one, so
+  // opening it would 404 into a generic load error instead of saying it failed.
+  if (!docList.value.some((d) => d.path === p)) {
+    viewingJobFailed.value = true;
+    return;
+  }
   viewingJobPath.value = null;
   openDoc(p);
 });
@@ -727,7 +748,7 @@ watchEffect(() => {
     // conversion job names the tab by its target, an open document by its name,
     // else the section.
     if (viewingJobPath.value) {
-      const glyph = viewedJob.value?.status === 'failed' ? '△' : '⋯';
+      const glyph = viewedJobFailed.value ? '△' : '⋯';
       detail.push(`${glyph} ${docsMgr.displayTitle(viewingJobPath.value)}`);
     } else if (hasOpenDoc.value && openDocPath.value) {
       detail.push(`${docHasChanges.value ? '• ' : ''}${docsMgr.displayTitle(openDocPath.value)}`);
@@ -1495,7 +1516,7 @@ watch(activeTrajectRef, () => {
           <nldd-split-view-pane v-else-if="isWerkdocMode" slot="main" :has-content="hasOpenDoc || !!viewingJobPath || undefined">
             <nldd-page v-if="viewingJobPath">
               <nldd-simple-section width="full">
-                <nldd-inline-dialog v-if="viewedJob && viewedJob.status === 'failed'" variant="alert" :text="`Conversie van '${docsMgr.displayTitle(viewingJobPath)}' mislukt`" supporting-text="Het bestand kon niet worden omgezet naar tekst. Mogelijk is het beschadigd of geen leesbaar documenttype.">
+                <nldd-inline-dialog v-if="viewedJobFailed" variant="alert" :text="`Conversie van '${docsMgr.displayTitle(viewingJobPath)}' mislukt`" supporting-text="Het bestand kon niet worden omgezet naar tekst. Mogelijk is het beschadigd of geen leesbaar documenttype.">
                   <nldd-button slot="actions" variant="secondary" text="Probeer opnieuw" @click="onRetryViewingJob"></nldd-button>
                 </nldd-inline-dialog>
                 <nldd-inline-dialog v-else variant="loading" :text="`${docsMgr.displayTitle(viewingJobPath)} aan het converteren…`" supporting-text="Dit gebeurt op de achtergrond. Je kunt gerust wegnavigeren en later terugkomen. Duurt het te lang, dan kun je de conversie annuleren.">

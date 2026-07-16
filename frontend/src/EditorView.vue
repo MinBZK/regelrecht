@@ -2638,7 +2638,7 @@ async function handleActionSave() {
                     variant="secondary"
                     size="md"
                     data-testid="init-mr-btn-yaml"
-                    text="Maak machine-leesbare versie aan"
+                    text="Maak machine versie aan"
                     @click="handleInitMr"
                   ></nldd-button>
                 </nldd-inline-dialog>
