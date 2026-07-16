@@ -12,7 +12,7 @@
     "test:watch": "vitest"
   },
   "peerDependencies": {
-    "vue": "^3.5.0"
+    "vue": "^3.5.40"
   },
   "devDependencies": {
     "happy-dom": "^20.10.6",
