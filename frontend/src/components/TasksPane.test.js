@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 // Route useTasks.js's network leg through a controllable spy - same pattern
@@ -7,46 +7,29 @@ const apiFetch = vi.fn();
 vi.mock('@regelrecht/frontend-shared', () => ({ apiFetch: (...a) => apiFetch(...a) }));
 
 // The component navigates on "Beoordelen" via vue-router; stub it so the
-// sheet mounts without a real router (route-building itself is verified
+// pane mounts without a real router (route-building itself is verified
 // against the real router in ../lib/taskReview.test.js).
 const pushMock = vi.fn();
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: pushMock }) }));
 
-// nldd-sheet compiles to a raw custom element under happy-dom; stub
-// show()/hide() so the watch(isOpen) handler doesn't throw.
-beforeAll(() => {
-  if (typeof customElements !== 'undefined' && !customElements.get('nldd-sheet')) {
-    class NddSheetTestStub extends HTMLElement {
-      show() {}
-      hide() {}
-    }
-    customElements.define('nldd-sheet', NddSheetTestStub);
-  }
-});
-
-describe('TasksSheet', () => {
+describe('TasksPane', () => {
   beforeEach(() => {
     vi.resetModules();
     apiFetch.mockReset();
     pushMock.mockReset();
   });
 
-  // useTasks/useTasksSheet are module singletons; re-import both dynamically
-  // after resetModules() so each test starts from a clean slate (mirrors
+  // useTasks is a module singleton; re-import dynamically after
+  // resetModules() so each test starts from a clean slate (mirrors
   // useTasks.test.js).
-  async function mountSheet(tasks, running = []) {
+  async function mountPane(tasks, running = []) {
     apiFetch.mockResolvedValue({
       status: 200,
       json: async () => ({ tasks, open_count: tasks.length, running }),
     });
-    const { default: TasksSheet } = await import('./TasksSheet.vue');
-    const { useTasksSheet } = await import('../composables/useTasksSheet.js');
-    useTasksSheet().open();
-    const wrapper = mount(TasksSheet, {
-      attachTo: document.body,
-      global: { stubs: { teleport: true } },
-    });
-    // Flush the sheet's open-watcher tick and useTasks' deferred initial load.
+    const { default: TasksPane } = await import('./TasksPane.vue');
+    const wrapper = mount(TasksPane, { attachTo: document.body });
+    // Flush useTasks' deferred initial load.
     await wrapper.vm.$nextTick();
     await Promise.resolve();
     await wrapper.vm.$nextTick();
@@ -54,12 +37,12 @@ describe('TasksSheet', () => {
   }
 
   it('toont een lege staat zonder open taken', async () => {
-    const wrapper = await mountSheet([]);
+    const wrapper = await mountPane([]);
     expect(wrapper.get('nldd-inline-dialog').attributes('text')).toBe('Geen open taken.');
   });
 
   it('toont de Bezig-sectie met een activity-indicator per lopende job en NIET de lege staat', async () => {
-    const wrapper = await mountSheet(
+    const wrapper = await mountPane(
       [],
       [{ job_id: 'j1', law_id: 'test_wet', status: 'pending' }]
     );
@@ -70,7 +53,7 @@ describe('TasksSheet', () => {
   });
 
   it('toont een lopende documentconversie met de bestandsnaam uit target_path', async () => {
-    const wrapper = await mountSheet(
+    const wrapper = await mountPane(
       [],
       [{
         job_id: 'j2',
@@ -86,7 +69,7 @@ describe('TasksSheet', () => {
   });
 
   it('toont zowel de Bezig-sectie als de takenlijst wanneer beide gevuld zijn', async () => {
-    const wrapper = await mountSheet(
+    const wrapper = await mountPane(
       [{ id: 't1', task_type: 'job_review', title: 'Verrijking beoordelen: andere_wet', payload: {} }],
       [{ job_id: 'j1', law_id: 'test_wet', status: 'processing' }]
     );
@@ -96,7 +79,7 @@ describe('TasksSheet', () => {
   });
 
   it('toont een job_failed-taak als alert-rij met titel + error als secundaire tekst en een Gezien-knop', async () => {
-    const wrapper = await mountSheet([
+    const wrapper = await mountPane([
       {
         id: 't1',
         task_type: 'job_failed',
@@ -119,8 +102,8 @@ describe('TasksSheet', () => {
     );
   });
 
-  it('navigeert naar de editor-route met ?task= voor een job_review-taak en sluit de sheet', async () => {
-    const wrapper = await mountSheet([
+  it('navigeert naar de editor-route met ?task= voor een job_review-taak', async () => {
+    const wrapper = await mountPane([
       {
         id: 't2',
         task_type: 'job_review',
@@ -128,10 +111,6 @@ describe('TasksSheet', () => {
         payload: { law_id: 'test_wet', traject_ref: 'traject-abcd1234' },
       },
     ]);
-    const { useTasksSheet } = await import('../composables/useTasksSheet.js');
-    const { isOpen } = useTasksSheet();
-    expect(isOpen.value).toBe(true);
-
     expect(wrapper.get('nldd-icon-cell').attributes('icon')).toBe('tasks');
     const cell = wrapper.get('nldd-text-cell');
     expect(cell.attributes('color')).toBeUndefined();
@@ -142,11 +121,10 @@ describe('TasksSheet', () => {
       params: { trajectRef: 'traject-abcd1234', lawId: 'test_wet' },
       query: { task: 't2' },
     });
-    expect(isOpen.value).toBe(false);
   });
 
   it('navigeert naar de werkdocumenten-route met ?task= voor een document-review-taak, met het documents-icoon', async () => {
-    const wrapper = await mountSheet([
+    const wrapper = await mountPane([
       {
         id: 't5',
         task_type: 'job_review',
@@ -164,7 +142,7 @@ describe('TasksSheet', () => {
   });
 
   it('toont een disabled Beoordelen-knop voor een taak zonder traject_ref/law_id', async () => {
-    const wrapper = await mountSheet([
+    const wrapper = await mountPane([
       { id: 't3', task_type: 'job_review', title: 'Verrijking beoordelen: ???', payload: {} },
     ]);
     const btn = wrapper.get('nldd-button');

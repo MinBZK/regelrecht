@@ -73,6 +73,17 @@ const router = createRouter({
           component: LibraryView,
           meta: { title: 'Instellingen', requiresAuth: true },
         },
+        {
+          // The user's taken within a traject: `/trajecten/{ref}/taken`.
+          // Rendered by the same LibraryView (Taken entry -> the task list in
+          // the secondary sidebar), like werkdocumenten. A task itself never
+          // opens in main - "Beoordelen" navigates to the editor or the
+          // addressed werkdocument.
+          path: 'trajecten/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/taken',
+          name: 'taken-traject',
+          component: LibraryView,
+          meta: { title: 'Taken', requiresAuth: true },
+        },
         // Back-compat: the old public library URLs redirect to the new paths.
         // Declared AFTER library-traject so a {slug}-{8hex} ref still matches
         // the traject route rather than these plain-law redirects.

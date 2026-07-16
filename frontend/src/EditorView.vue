@@ -1343,7 +1343,7 @@ const lastSaveTouchedText = ref(false);
 const lastSaveTouchedMachine = ref(false);
 
 // --- Review-modus (job_review-taak) -----------------------------------
-// `?task=<id>` + the tasks.job_review flag: show a job_review task's
+// `?task=<id>`: show a job_review task's
 // proposed law YAML as an unsaved edit rather than fetching it
 // separately. The proposal is applied to the first article where it
 // diverges from the saved law (seeding `editedText`/`machineReadable`,
@@ -1460,27 +1460,18 @@ const reviewBannerSupportingText = computed(() => {
   );
 });
 
-// Whether the tasks.job_review flag is on - split out of the watch below
-// as its own reactive source, because `useFeatureFlags` resolves
-// asynchronously (starts at its hardcoded default, then the `/api/
-// feature-flags` fetch may flip it). Without this, a law/article that
-// finishes loading before that fetch resolves would evaluate the flag as
-// off, `loading`/`selectedArticle` wouldn't change again on their own,
-// and the `?task=<id>` deep link would never activate review mode.
-const taskReviewFlagEnabled = computed(() => isEnabled('tasks.job_review'));
-
 // Fires once the law + its first article have finished loading (whether
 // that's the initial load or a tab-restore switchLaw), so it works
 // regardless of how the route.query.task navigation happened to arrive.
-// `reviewTaskIdParam` is itself a source: navigating from the TasksSheet
+// `reviewTaskIdParam` is itself a source: navigating from the taken-lijst
 // to a wet that is ALREADY open (the target law/article is unchanged) is a
 // query-only route change - `loading`/`selectedArticle` never flip, so
 // without this source the watch would simply never re-fire and the review
 // would never activate.
 watch(
-  [loading, selectedArticle, taskReviewFlagEnabled, reviewTaskIdParam],
-  ([isLoading, article, flagEnabled, taskId]) => {
-    if (isLoading || !article || !taskId || !flagEnabled) return;
+  [loading, selectedArticle, reviewTaskIdParam],
+  ([isLoading, article, taskId]) => {
+    if (isLoading || !article || !taskId) return;
     if (reviewAttemptedForTaskId === taskId) return;
     reviewAttemptedForTaskId = taskId;
     loadReview(taskId, currentEtag.value).then(() => {
@@ -1501,18 +1492,18 @@ async function rejectReview() {
 
 // --- "Verrijk deze wet" (request a job_review task) ---------------------
 // Fire-and-forget request; the resulting job_review task shows up in the
-// Taken-badge/sheet on its next poll (TasksButton/TasksSheet already poll
+// taken-lijst in Home on its next poll (TasksSidebarItem/TasksPane poll
 // via useTasks() every 30s). Use the non-polling useTaskActions() here -
 // EditorView doesn't need the shared task list/badge count, and joining
 // useTasks() unconditionally in setup() would start that poll for every
-// editor visitor, including anonymous ones with the flag off.
+// editor visitor, including anonymous ones.
 const { requestEnrich } = useTaskActions();
 const enrichFeedback = ref(null); // { variant, text } | null
-// Flag on, an actual traject open (write access implies a traject, see
-// `canEdit` above), and a law loaded - mirrors the gates other write
-// actions in this view use.
+// An actual traject open (write access implies a traject, see `canEdit`
+// above) and a law loaded - mirrors the gates other write actions in this
+// view use.
 const canEnrichLaw = computed(
-  () => isEnabled('tasks.job_review') && canEdit.value && !!activeTrajectRef.value && !!lawId.value,
+  () => canEdit.value && !!activeTrajectRef.value && !!lawId.value,
 );
 
 async function enrichLaw() {

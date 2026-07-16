@@ -2866,46 +2866,6 @@ pub async fn upload_traject_document(
     // upload instead.
     let backend = resolve_traject_documents_writer(&traject).await?;
 
-    // Taak-flow-gate: met `tasks.job_review` AAN levert de conversie zijn
-    // resultaat als result-blob + review-taak terug (zie
-    // `finish_document_convert_task_job`) - de worker pusht dan niets meer,
-    // dus de enforcement-guard hieronder is niet meer van toepassing (het
-    // committen gebeurt pas bij goedkeuren, in de request-context van de
-    // gebruiker, met diens token wanneer enforcement aan staat). Deze
-    // flag-read is bewust onvoorwaardelijk (één extra DB-round-trip per
-    // upload, ook voor lokale backends): de afleverkeuze moet op
-    // enqueue-moment in de payload vastliggen, ongeacht het backend-type.
-    let task_delivery =
-        crate::feature_flags::flag_enabled(pool, crate::feature_flags::TASKS_JOB_REVIEW)
-            .await
-            .map_err(|e| upload_internal_error("read tasks.job_review flag", e))?;
-
-    // Enforcement gate, on the writer resolved above (one lock, not two). Only
-    // relevant with the taak-flow OFF: the conversion then runs in a background
-    // worker that can never carry the acting user's cookie-bound token, so its
-    // write would always fall back to the backend's configured token. With
-    // user-token enforcement on that is exactly the silent service-token
-    // fallback `require_user_token` forbids — refuse the upload fail-closed.
-    // Deliberately NOT a 428: linking GitHub would not change anything here, so
-    // the koppel-flow redirect would loop. Only for a backend that honors the
-    // override, though: a local writable-own (preview/local-stack) writes
-    // without any token, so there is no service-token fallback to forbid. The
-    // cheap checks run first; `write_requires_user_token`'s own flag read (a
-    // DB round-trip) only fires for GitHub-backed trajects in push-mode.
-    if !task_delivery && backend.supports_token_override() {
-        if let Some(oauth) = state.config.github_oauth.as_ref() {
-            if github_oauth::write_requires_user_token(&state, oauth).await? {
-                return Err((
-                    StatusCode::FORBIDDEN,
-                    "Documenten uploaden is niet beschikbaar wanneer schrijven met je \
-                     persoonlijke GitHub-token vereist is: de conversie schrijft op de \
-                     achtergrond en kan niet namens jou committen."
-                        .to_string(),
-                ));
-            }
-        }
-    }
-
     let base = traject_documents_base(&traject_ref);
     let mut existing: Vec<String> = backend
         .list_files_recursive(&base, None)
@@ -2970,7 +2930,11 @@ pub async fn upload_traject_document(
         target_path: target_path.clone(),
         provider: None,
         requested_by: Some(account.id),
-        deliver: task_delivery.then(|| "task".to_string()),
+        // De conversie levert altijd als review-taak (result-blob + taak, zie
+        // `finish_document_convert_task_job`): de worker pusht zelf niets, het
+        // committen gebeurt pas bij goedkeuren in de request-context van de
+        // gebruiker (met diens token wanneer enforcement aan staat).
+        deliver: Some("task".to_string()),
     };
     let payload_json = serde_json::to_value(&payload)
         .map_err(|e| upload_internal_error("serialize payload", e))?;
@@ -3002,9 +2966,9 @@ pub async fn upload_traject_document(
 /// GET /api/trajects/{traject_ref}/corpus/documents/jobs
 ///
 /// List the traject's document-convert jobs that are still relevant to show
-/// (running, and - with `tasks.job_review` off - failed; completed ones are
-/// represented by the actual `.md` in the documents list). Backs the
-/// werkdocumenten conversion-status block.
+/// (pending/processing only: a failure surfaces as een `job_failed`-taak, and
+/// completed ones are represented by the actual `.md` in the documents list).
+/// Backs the werkdocumenten conversion-status block.
 pub async fn list_traject_document_convert_jobs(
     State(state): State<AppState>,
     session: Session,
@@ -3016,18 +2980,10 @@ pub async fn list_traject_document_convert_jobs(
     ))?;
     // Membership guard.
     require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    // Flag ON -> failed conversions surface as `job_failed` taken, so this
-    // list stays pending/processing-only; flag OFF -> restore the pre-taken-
-    // mechanisme behaviour (failed rows included, with `error`) since the
-    // taken-UI that would otherwise show them is itself gated off.
-    let flag_enabled =
-        crate::feature_flags::flag_enabled(pool, crate::feature_flags::TASKS_JOB_REVIEW)
-            .await
-            .map_err(|e| upload_internal_error("read tasks.job_review flag", e))?;
     let jobs = regelrecht_pipeline::document_convert::list_traject_document_jobs(
         pool,
         &traject_ref,
-        !flag_enabled,
+        false,
     )
     .await
     .map_err(|e| upload_internal_error("list document jobs", e))?;

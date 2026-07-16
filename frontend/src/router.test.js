@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import router from './router.js';
-import { sectionTarget } from './composables/useLastVisitedRoute.js';
+import { sectionTarget, homeTabTarget } from './composables/useLastVisitedRoute.js';
 
 // A valid traject ref is `{slug}-{8hex}` (see the route regex). A plain
 // law `$id` uses underscores and must NOT match the traject route.
@@ -37,6 +37,12 @@ describe('route disambiguation (traject vs no-traject)', () => {
       name: 'werkdocumenten-traject',
       params: { trajectRef: REF, docPath: 'besluit.md' },
     });
+  });
+
+  it('routes a traject taken URL to taken-traject', () => {
+    const r = router.resolve(`/trajecten/${REF}/taken`);
+    expect(r.name).toBe('taken-traject');
+    expect(r.params.trajectRef).toBe(REF);
   });
 
   it('routes a plain law-id corpus URL to corpus-juris (no traject)', () => {
@@ -149,6 +155,36 @@ describe('sectionTarget - traject preserved across tab switches', () => {
     expect(t.name).toBe('home');
   });
 
+  it('preserves the taken sub-mode across a tab switch, re-stamping the active traject', () => {
+    const t = sectionTarget(router, '/trajecten/old-deadbeef/taken', REF);
+    expect(t.name).toBe('taken-traject');
+    expect(t.params.trajectRef).toBe(REF);
+  });
+
+  it('drops the taken sub-mode when no traject is active', () => {
+    const t = sectionTarget(router, `/trajecten/${REF}/taken`, null);
+    expect(t.name).toBe('home');
+  });
+
+  it('re-stamps the active traject onto a stored instellingen path, keeping the tab', () => {
+    const t = sectionTarget(router, '/trajecten/old-deadbeef/instellingen/leden', REF);
+    expect(t.name).toBe('instellingen-traject');
+    expect(t.params.trajectRef).toBe(REF);
+    expect(t.params.tab).toBe('leden');
+  });
+
+  it('preserves the instellingen sub-mode without a tab', () => {
+    const t = sectionTarget(router, `/trajecten/${REF}/instellingen`, REF);
+    expect(t.name).toBe('instellingen-traject');
+    expect(t.params.trajectRef).toBe(REF);
+    expect(t.params.tab).toBeUndefined();
+  });
+
+  it('drops the instellingen sub-mode when no traject is active', () => {
+    const t = sectionTarget(router, `/trajecten/${REF}/instellingen/details`, null);
+    expect(t.name).toBe('home');
+  });
+
   it('sends the Editor tab to the chooser when no traject is active', () => {
     // The editor requires a traject: with none active, the stored editor
     // path collapses to the chooser and the law travels along as query.
@@ -171,5 +207,45 @@ describe('sectionTarget - traject preserved across tab switches', () => {
     expect(sectionTarget(router, '/totally/unknown', null).name).toBe('home');
     // Section is derived from the path prefix so the right tab is kept.
     expect(sectionTarget(router, '/editor-bogus/x', null).name).toBe('editor');
+  });
+});
+
+describe('homeTabTarget - Home tab carries the active traject', () => {
+  it('restores the stored path verbatim when it already carries the active scope (hash intact)', () => {
+    const stored = `/trajecten/${REF}/corpus/foo/3#yaml`;
+    expect(homeTabTarget(router, stored, REF)).toBe(stored);
+  });
+
+  it('restores a public stored path verbatim when no traject is active', () => {
+    expect(homeTabTarget(router, '/corpus-juris/foo', null)).toBe('/corpus-juris/foo');
+  });
+
+  it('re-stamps the active traject onto a stored public law path', () => {
+    const t = homeTabTarget(router, '/corpus-juris/foo/3', REF);
+    expect(t.name).toBe('library-traject');
+    expect(t.params.trajectRef).toBe(REF);
+    expect(t.params.lawId).toBe('foo');
+    expect(t.params.articleNumber).toBe('3');
+  });
+
+  it('re-stamps the active traject over a stale stored traject', () => {
+    const t = homeTabTarget(router, '/trajecten/old-deadbeef/corpus/foo', REF);
+    expect(t.name).toBe('library-traject');
+    expect(t.params.trajectRef).toBe(REF);
+    expect(t.params.lawId).toBe('foo');
+  });
+
+  it('drops the stored traject when none is active', () => {
+    const t = homeTabTarget(router, `/trajecten/${REF}/corpus/foo`, null);
+    expect(t.name).toBe('corpus-juris');
+    expect(t.params.trajectRef).toBeUndefined();
+    expect(t.params.lawId).toBe('foo');
+  });
+
+  it('keeps the instellingen sub-mode when re-stamping onto another traject', () => {
+    const t = homeTabTarget(router, '/trajecten/old-deadbeef/instellingen/details', REF);
+    expect(t.name).toBe('instellingen-traject');
+    expect(t.params.trajectRef).toBe(REF);
+    expect(t.params.tab).toBe('details');
   });
 });

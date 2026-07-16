@@ -19,15 +19,6 @@ const DEFAULTS = {
   // spike stays invisible until a user opts in; the backend is independently
   // gated on GITHUB_OAUTH_* env vars (unconfigured deployments never show it).
   'github.user_oauth': false,
-  // Taken-mechanisme: gates het geheel - verrijken op aanvraag (de "Verrijk
-  // deze wet"-actie/het aanmaken van een enrich-job), de taken-UI
-  // (TasksButton/TasksSheet + review-modus), en of mislukte documentconversies
-  // als taak binnenkomen. Off by default. Met de flag uit valt het
-  // conversie-faalpad terug op de oude inline lijstweergave (zie
-  // ConversionStatus.vue) - geen zichtbaarheidsgat. Same allow-list rule as
-  // the flags above - the backend key must exist or the toggle PUT 400s and
-  // the switch silently reverts.
-  'tasks.job_review': false,
 };
 
 // Local overrides survive refresh when the backend has no persistence (dev).

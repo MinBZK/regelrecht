@@ -50,8 +50,8 @@ pub struct DocumentConvertPayload {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requested_by: Option<Uuid>,
     /// `"task"` ⇒ resultaat als job_blobs + review-taak, géén push (taak-flow;
-    /// gezet door editor-api wanneer de tasks.job_review-flag aan staat bij
-    /// enqueue). Afwezig ⇒ oude gedrag: directe push naar de traject-branch.
+    /// editor-api zet dit op elke upload). Afwezig ⇒ oude gedrag (jobs van
+    /// vóór het taken-mechanisme): directe push naar de traject-branch.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deliver: Option<String>,
 }
@@ -257,12 +257,9 @@ pub struct TrajectJobView {
 }
 
 /// List the traject's document-convert jobs relevant to the werkdocumenten
-/// status UI. `include_failed` mirrors the `tasks.job_review` feature flag,
-/// inverted (caller passes `!flag_enabled`) - the flag decides which of two
-/// mutually exclusive failure UIs is active, so exactly one of "taak" or
-/// "inline status row" ever shows a given failure:
+/// status UI.
 ///
-/// * `include_failed = false` (flag ON, taken-mechanisme actief): only
+/// * `include_failed = false` (taken-mechanisme, the editor-api's mode): only
 ///   still-active jobs (`pending`, `processing`). A completed job is
 ///   represented by the actual `.md` in the documents list; a terminally
 ///   failed job is not shown here at all - the uploader instead gets a
@@ -270,10 +267,9 @@ pub struct TrajectJobView {
 ///   `worker::process_next_document_convert_job`), so a failure no longer
 ///   lingers forever in this status block. `error` is always `None` in this
 ///   mode (the query excludes failed rows entirely).
-/// * `include_failed = true` (flag OFF): pre-taken-mechanisme behaviour
-///   restored byte-for-byte - everything not `completed` (pending,
-///   processing, failed), with `error` populated from `result->>'error'` for
-///   failed rows so the old inline failure UI (`ConversionStatus.vue`) has
+/// * `include_failed = true` (pre-taken-mechanisme behaviour): everything not
+///   `completed` (pending, processing, failed), with `error` populated from
+///   `result->>'error'` for failed rows so an inline failure UI has
 ///   something to render.
 pub async fn list_traject_document_jobs(
     pool: &PgPool,

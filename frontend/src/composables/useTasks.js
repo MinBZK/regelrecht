@@ -2,8 +2,8 @@
  * useTasks - de open taken van de ingelogde gebruiker (module-singleton).
  *
  * Poll-patroon van useTrajectDocumentJobs (keep-stale on failure), maar met
- * één gedeelde module-state zoals useBwbHarvest: de topbar-badge en de
- * taken-sheet kijken naar dezelfde lijst. Interval bewust ruim (30s) - taken
+ * één gedeelde module-state zoals useBwbHarvest: het sidebar-item (badge) en
+ * het taken-panel kijken naar dezelfde lijst. Interval bewust ruim (30s) - taken
  * zijn laagfrequent; na eigen acties (enrich-aanvraag, resolve) wordt direct
  * ge-refreshed.
  */
@@ -105,9 +105,9 @@ export function useTasks() {
 // callers that only need to fetch/resolve/enrich a task (e.g. EditorView's
 // review mode and "Verrijk deze wet" action) and would otherwise start the
 // 30s poll unconditionally in setup() - including for anonymous visitors -
-// which breaks the AppShell invariant that anonymous visitors or callers
-// with the feature flag disabled never poll. Callers that DO want the
-// shared, polled task list (the Taken-badge/sheet) keep using useTasks().
+// which breaks the invariant that anonymous visitors never poll. Callers
+// that DO want the shared, polled task list (the taken-lijst in Home:
+// TasksSidebarItem/TasksPane) keep using useTasks().
 export function useTaskActions() {
   return { fetchTask, resolveTask, requestEnrich, refresh };
 }

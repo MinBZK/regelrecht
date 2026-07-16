@@ -696,10 +696,10 @@ async fn test_list_running_task_jobs_for_account() {
     assert_eq!(after[0].job_id, own_doc_job.id);
 }
 
-/// `include_failed` mirrors `!tasks.job_review`: flag ON (taken-mechanisme
-/// actief) -> `include_failed = false` -> failed jobs excluded, the uploader
-/// gets a `job_failed` task instead. Flag OFF -> `include_failed = true` ->
-/// pre-taken-mechanisme behaviour, failed rows included with their `error`.
+/// `include_failed = false` (taken-mechanisme, the editor-api's mode) ->
+/// failed jobs excluded, the uploader gets a `job_failed` task instead.
+/// `include_failed = true` -> pre-taken-mechanisme behaviour, failed rows
+/// included with their `error`.
 #[tokio::test]
 async fn test_document_jobs_list_excludes_failed() {
     let db = TestDb::new().await;

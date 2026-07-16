@@ -11,6 +11,8 @@ import DocumentList from './components/DocumentList.vue';
 import DocumentEditor from './components/DocumentEditor.vue';
 import TrajectDetailsPane from './components/TrajectDetailsPane.vue';
 import TrajectMembersPane from './components/TrajectMembersPane.vue';
+import TasksPane from './components/TasksPane.vue';
+import TasksSidebarItem from './components/TasksSidebarItem.vue';
 import { useAuth } from './composables/useAuth.js';
 import { lawFetchInit } from './composables/useLaw.js';
 import { useTrajects, refreshTrajects } from './composables/useTrajects.js';
@@ -22,14 +24,12 @@ import { useDocumentsManager } from './composables/useDocumentsManager.js';
 import { useTrajectDocumentJobs } from './composables/useTrajectDocumentJobs.js';
 import { useDocumentUpload } from './composables/useDocumentUpload.js';
 import { useDocumentTaskReview } from './composables/useDocumentTaskReview.js';
-import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { humanizeLawId } from './lib/lawName.js';
 import { apiFetch, apiFetchJson, ApiError } from './lib/apiFetch.js';
 import { useLatest } from './lib/useLatest.js';
 import { holdRetryFloor, RETRY_MIN_SPINNER_MS } from './lib/retryFeedback.js';
 
 const { authenticated, login } = useAuth();
-const { isEnabled } = useFeatureFlags();
 
 // Provided by AppShell: shows the login-warning popover anchored to an element,
 // so "Bewerken" gates on login the same way the Editor tab does.
@@ -231,6 +231,18 @@ function goToWerkdocumenten() {
   router.push({ name: 'werkdocumenten-traject', params: { trajectRef: activeTrajectRef.value } });
 }
 
+// --- Taken (folded into Home) -----------------------------------------------
+// The user's taken live inside Home too: a "Taken"-item in the primary sidebar
+// (below Instellingen and Werkdocumenten) opens the task list in the secondary
+// sidebar (route `taken-traject`), like the werkdocumenten panel. A task never
+// opens in main - "Beoordelen" navigates to the editor or the addressed
+// werkdocument.
+const isTakenMode = computed(() => route.name === 'taken-traject');
+function goToTaken() {
+  if (!activeTrajectRef.value) return;
+  router.push({ name: 'taken-traject', params: { trajectRef: activeTrajectRef.value } });
+}
+
 // --- Instellingen (traject details + leden, folded into Home) ---------------
 const isInstellingenMode = computed(() => route.name === 'instellingen-traject');
 const instellingenTab = computed(() => route.params.tab || null);
@@ -378,7 +390,7 @@ function onDocBack() {
 }
 
 // --- Review-modus (job_review-taak, payload.kind === 'document') --------
-// `?task=<id>` + the tasks.job_review flag on the werkdocumenten route:
+// `?task=<id>` on the werkdocumenten route:
 // show a document-conversion job_review task's proposed markdown as an
 // unsaved edit on the addressed document, the same way EditorView seeds a
 // law-review proposal into the article panes. Mirrors EditorView's
@@ -400,11 +412,6 @@ const docReviewActive = computed(() => !!docReviewTask.value);
 // we just resolved.
 let docReviewAttemptedForTaskId = null;
 
-// Whether the tasks.job_review flag is on, split out as its own reactive
-// source for the same reason as EditorView's `taskReviewFlagEnabled`:
-// useFeatureFlags resolves asynchronously, so a document that finishes
-// loading before that fetch lands must still re-evaluate once it does.
-const taskReviewFlagEnabled = computed(() => isEnabled('tasks.job_review'));
 const docReviewTaskIdParam = computed(() =>
   isWerkdocMode.value && typeof route.query.task === 'string' ? route.query.task : null,
 );
@@ -415,9 +422,9 @@ const docReviewTaskIdParam = computed(() =>
 // so this only has to wait for the per-document `docLoading` to clear (not
 // `docsLoading`, which tracks the sidebar's document *list* fetch).
 watch(
-  [docsMgr.docLoading, openDocPath, taskReviewFlagEnabled, docReviewTaskIdParam],
-  ([isDocLoading, docPath, flagEnabled, taskId]) => {
-    if (isDocLoading || !docPath || !taskId || !flagEnabled) return;
+  [docsMgr.docLoading, openDocPath, docReviewTaskIdParam],
+  ([isDocLoading, docPath, taskId]) => {
+    if (isDocLoading || !docPath || !taskId) return;
     if (docReviewAttemptedForTaskId === taskId) return;
     docReviewAttemptedForTaskId = taskId;
     loadDocReview(taskId).then(() => {
@@ -692,10 +699,10 @@ const sidebarSections = computed(() => {
 // width rather than the narrow sidebar. isInitialLoading covers the first load
 // before anything resolves; indexError is handled at the same top level.
 const isInitialLoading = computed(
-  () => loading.value && !selectedLawId.value && sidebarSections.value.length === 0 && !isWerkdocMode.value && !isInstellingenMode.value,
+  () => loading.value && !selectedLawId.value && sidebarSections.value.length === 0 && !isWerkdocMode.value && !isInstellingenMode.value && !isTakenMode.value,
 );
 const isEmptyLibrary = computed(
-  () => !loading.value && !indexError.value && !selectedLawId.value && sidebarSections.value.length === 0 && !isWerkdocMode.value && !isInstellingenMode.value,
+  () => !loading.value && !indexError.value && !selectedLawId.value && sidebarSections.value.length === 0 && !isWerkdocMode.value && !isInstellingenMode.value && !isTakenMode.value,
 );
 
 // Tell the shell whether the library is empty so it can show the just-in-time
@@ -1355,6 +1362,7 @@ watch(activeTrajectRef, () => {
                         <nldd-spacer-cell size="8"></nldd-spacer-cell>
                         <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
                       </nldd-list-item>
+                      <TasksSidebarItem :selected="isTakenMode" @click="goToTaken" />
                     </nldd-list>
                     <nldd-spacer size="24"></nldd-spacer>
                   </template>
@@ -1423,6 +1431,19 @@ watch(activeTrajectRef, () => {
                     <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
                   </nldd-list-item>
                 </nldd-list>
+              </nldd-simple-section>
+            </nldd-page>
+          </nldd-split-view-pane>
+
+          <!-- Secondary Sidebar (taken mode): the task list, mirroring the
+               werkdocumenten panel. -->
+          <nldd-split-view-pane v-else-if="isTakenMode" slot="secondary-sidebar" has-content>
+            <nldd-page sticky-header>
+              <nldd-top-title-bar slot="header" text="Taken" :back-text="LIBRARY_HOME_BACK_TEXT" collapse-anchor="taken-titel"></nldd-top-title-bar>
+              <nldd-simple-section width="full">
+                <nldd-title id="taken-titel" size="3"><h3>Taken</h3></nldd-title>
+                <nldd-spacer size="16"></nldd-spacer>
+                <TasksPane></TasksPane>
               </nldd-simple-section>
             </nldd-page>
           </nldd-split-view-pane>
@@ -1547,6 +1568,16 @@ watch(activeTrajectRef, () => {
               ></TrajectMembersPane>
               <nldd-simple-section v-else width="full">
                 <nldd-inline-dialog text="Kies een instelling"></nldd-inline-dialog>
+              </nldd-simple-section>
+            </nldd-page>
+          </nldd-split-view-pane>
+
+          <!-- Main (taken-modus): heeft nooit content - een taak opent niet
+               hier, "Beoordelen" navigeert naar de editor of het werkdocument. -->
+          <nldd-split-view-pane v-else-if="isTakenMode" slot="main">
+            <nldd-page>
+              <nldd-simple-section width="full">
+                <nldd-inline-dialog text="Geen selectie"></nldd-inline-dialog>
               </nldd-simple-section>
             </nldd-page>
           </nldd-split-view-pane>

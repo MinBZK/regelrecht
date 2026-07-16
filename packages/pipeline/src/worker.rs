@@ -1355,13 +1355,6 @@ async fn process_next_document_convert_job(
                 )
                 .await?;
                 if let Some(account_id) = payload.requested_by {
-                    // Unconditional - the worker has no notion of the
-                    // `tasks.job_review` flag (deployment-wide, read on the
-                    // editor-api side only). With the flag off the taken-UI is
-                    // hidden and the documenten-jobs-lijst falls back to
-                    // showing failed rows inline instead, so this task is
-                    // simply invisible, not absent - history is preserved and
-                    // shows up in the Taken sheet the moment the flag flips on.
                     crate::tasks::create_task(
                         &mut *tx,
                         crate::tasks::NewTask {
