@@ -175,10 +175,8 @@ describe('LibraryView conversion-jobs watcher', () => {
     const wrapper = await mountViewingJob();
     await jobLeavesList();
     // Match the dialog's own text, not a bare 'mislukt' - "Uploaden mislukt"
-    // also renders in this view and makes a loose assertion pass regardless.
-    // Match the dialog's own text, not a bare 'mislukt' - "Uploaden mislukt"
     // also renders in this view, which makes a loose assertion pass regardless.
-    expect(wrapper.html()).toContain("Conversie van 'upload' mislukt");
+    expect(wrapper.html()).toContain('Conversie mislukt');
   });
 
   it('selects a fresh upload so the main pane shows its conversion', async () => {
@@ -189,8 +187,27 @@ describe('LibraryView conversion-jobs watcher', () => {
     jobs.value = [{ id: 'job-1', target_path: JOB_PATH, status: 'processing' }];
     await nextTick();
     await nextTick();
-    expect(wrapper.html()).toContain('aan het converteren');
+    expect(wrapper.html()).toContain('Aan het converteren');
     expect(openDoc).not.toHaveBeenCalled(); // no .md exists yet
+  });
+
+  it('names the document in the toolbar, not in the dialog', async () => {
+    const wrapper = await mountViewingJob();
+    // The title belongs where a document's title lives, so the dialog can stay
+    // about the conversion. It is there from the start (the path is known) and
+    // survives the job resolving either way.
+    expect(wrapper.html()).toContain('<nldd-toolbar-title slot="center" align="center" text="upload"');
+    await jobLeavesList();
+    expect(wrapper.html()).toContain('<nldd-toolbar-title slot="center" align="center" text="upload"');
+  });
+
+  it('offers a way back out of the job view', async () => {
+    // On a stacked (small) viewport the job view is the whole screen, with no
+    // document list beside it to click back to. Whether the item is *visible*
+    // is the pane's call via --context-back-button-display; that it exists at
+    // all is this view's.
+    const wrapper = await mountViewingJob();
+    expect(wrapper.html()).toContain('Terug naar werkdocumenten');
   });
 
   it('keeps the job view while the job is still listed', async () => {

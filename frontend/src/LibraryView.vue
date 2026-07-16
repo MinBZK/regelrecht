@@ -197,6 +197,20 @@ watch(docUploadError, async (err) => {
 function dismissUploadError() {
   docUploadError.value = null;
 }
+
+// Same modal treatment for a failed cancel: the job is still converting, so
+// leaving the user back at the list with no word would have the UI claim
+// something it didn't do.
+const jobCancelError = ref(null);
+const jobCancelErrorModalEl = ref(null);
+watch(jobCancelError, async (err) => {
+  await nextTick();
+  if (err) jobCancelErrorModalEl.value?.show?.();
+  else jobCancelErrorModalEl.value?.hide?.();
+});
+function dismissJobCancelError() {
+  jobCancelError.value = null;
+}
 function retryUpload() {
   docUploadError.value = null;
   nextTick(() => onDocUpload());
@@ -330,20 +344,33 @@ function showUploadedJob(path) {
 }
 // Cancel the conversion the user is currently viewing (from its loading view).
 // Clear viewingJobPath first so the conversion watcher doesn't mistake the
-// cancelled (vanished) job for a completion and open a .md that was never written.
-function onCancelViewingJob() {
+// cancelled (vanished) job for a job that failed - it leaves the list either
+// way, and without its .md the watcher would otherwise report a failure the
+// user caused on purpose.
+async function onCancelViewingJob() {
   const p = viewingJobPath.value;
   if (!p) return;
   const job = conversionJobs.value.find((j) => j.target_path === p);
   viewingJobPath.value = null;
-  if (job) cancelConversionJob(job.id);
+  if (!job) return;
+  const res = await cancelConversionJob(job.id);
+  if (!res?.ok) jobCancelError.value = res?.error || 'Annuleren mislukt.';
 }
 // Retry a failed conversion the user is viewing: discard the failed attempt and
-// reopen the upload picker so they can pick the file again.
-function onRetryViewingJob() {
+// reopen the upload picker so they can pick the file again. A cancel that fails
+// stops the retry: the old attempt still holds its name (the upload derives a
+// collision-free one against reserved paths), so carrying on would quietly file
+// the retry under a different name next to the attempt it was meant to replace.
+async function onRetryViewingJob() {
   const job = conversionJobs.value.find((j) => j.target_path === viewingJobPath.value);
   viewingJobPath.value = null;
-  if (job) cancelConversionJob(job.id);
+  if (job) {
+    const res = await cancelConversionJob(job.id);
+    if (!res?.ok) {
+      jobCancelError.value = res?.error || 'Annuleren mislukt.';
+      return;
+    }
+  }
   onDocUpload();
 }
 function onDocBack() {
@@ -1527,11 +1554,28 @@ watch(activeTrajectRef, () => {
           <!-- Main (werkdoc mode): the document editor, or a placeholder. -->
           <nldd-split-view-pane v-else-if="isWerkdocMode" slot="main" :has-content="hasOpenDoc || !!viewingJobPath || undefined">
             <nldd-page v-if="viewingJobPath">
+              <!-- Back to the document list, shown only while the sidebar is
+                   stacked away - the job view is the whole screen then, with no
+                   other way out. Mirrors DocumentEditor's own back item: the
+                   split-view pane drives --context-back-button-display ('none'
+                   while the sidebar is visible). -->
+              <nldd-container slot="header" padding-inline="12" padding-top="12" sm-padding-inline="8" sm-padding-top="8">
+                <nldd-toolbar size="md">
+                  <nldd-toolbar-item slot="start" class="job-back">
+                    <nldd-icon-button icon="chevron-left" text="Terug naar werkdocumenten" tooltip-timing="never" @click="onDocBack"></nldd-icon-button>
+                  </nldd-toolbar-item>
+                  <!-- Names the document here, where a document's name lives, so
+                       the dialog below can stay about the conversion itself. The
+                       path is known from the start, so no chrome guard: the title
+                       is there before the conversion resolves either way. -->
+                  <nldd-toolbar-title slot="center" align="center" :text="docsMgr.displayTitle(viewingJobPath)"></nldd-toolbar-title>
+                </nldd-toolbar>
+              </nldd-container>
               <nldd-simple-section width="full">
-                <nldd-inline-dialog v-if="viewedJobFailed" variant="alert" :text="`Conversie van '${docsMgr.displayTitle(viewingJobPath)}' mislukt`" supporting-text="Het bestand kon niet worden omgezet naar tekst. Mogelijk is het beschadigd of geen leesbaar documenttype.">
+                <nldd-inline-dialog v-if="viewedJobFailed" variant="alert" text="Conversie mislukt" supporting-text="Het bestand kon niet worden omgezet naar tekst. Mogelijk is het beschadigd of geen leesbaar documenttype.">
                   <nldd-button slot="actions" variant="secondary" text="Probeer opnieuw" @click="onRetryViewingJob"></nldd-button>
                 </nldd-inline-dialog>
-                <nldd-inline-dialog v-else variant="loading" :text="`${docsMgr.displayTitle(viewingJobPath)} aan het converteren…`" supporting-text="Dit gebeurt op de achtergrond. Je kunt gerust wegnavigeren en later terugkomen. Duurt het te lang, dan kun je de conversie annuleren.">
+                <nldd-inline-dialog v-else variant="loading" text="Aan het converteren…" supporting-text="Dit gebeurt op de achtergrond. Je kunt gerust wegnavigeren en later terugkomen. Duurt het te lang, dan kun je de conversie annuleren.">
                   <nldd-button slot="actions" variant="secondary" text="Annuleer conversie" @click="onCancelViewingJob"></nldd-button>
                 </nldd-inline-dialog>
               </nldd-simple-section>
@@ -1689,6 +1733,18 @@ watch(activeTrajectRef, () => {
       <nldd-button v-if="docUploadRetryable" slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryUpload"></nldd-button>
     </nldd-modal-dialog>
   </Teleport>
+
+  <Teleport to="body">
+    <nldd-modal-dialog
+      ref="jobCancelErrorModalEl"
+      variant="alert"
+      text="Annuleren mislukt"
+      :supporting-text="`De conversie loopt door op de achtergrond. ${jobCancelError || ''}`"
+      @close="dismissJobCancelError"
+    >
+      <nldd-button slot="actions" variant="primary" text="Sluit" @click="dismissJobCancelError"></nldd-button>
+    </nldd-modal-dialog>
+  </Teleport>
 </template>
 
 <style>
@@ -1703,5 +1759,14 @@ watch(activeTrajectRef, () => {
    de main pane zichtbaar is (full-stack mode = single pane op mobile). */
 nldd-navigation-split-view:not(.full-stack) .article-not-found__back-button {
   display: none;
+}
+
+/* The conversion-job view's back item, shown only once the split-view pane
+   drops its hide-back state (the document list is stacked away). Same signal
+   nldd-top-title-bar and DocumentEditor's own back item use; the pane sets
+   --context-back-button-display: none while the list is visible.
+   :not([hidden]) yields to the toolbar's own overflow hiding. */
+.job-back:not([hidden]) {
+  display: var(--context-back-button-display, inline-flex);
 }
 </style>

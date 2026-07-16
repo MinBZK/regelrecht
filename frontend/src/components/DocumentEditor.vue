@@ -81,10 +81,12 @@ const blockingError = computed(() => {
 });
 
 // The formatting footer follows the shared pane-loading strategy
-// (paneChromeVisible): while a document loads or is created the pane shows only
-// the "Document laden" indicator — no title, actions or footer — so it reads
-// like every other loading pane. The footer also hides on a load error
-// (nothing to format then).
+// (paneChromeVisible), so it makes the same call as every other pane rather
+// than its own: with SHOW_PANE_CHROME_WHILE_LOADING on (constants.js) it stays
+// up while a document loads or is created, and flipping that one switch off
+// collapses this pane - like all of them - to a bare "Document laden" indicator
+// with no title, actions or footer. The footer also hides on a load error
+// (nothing to format then), whatever the switch says.
 const showFormattingToolbar = computed(
   () => !blockingError.value && paneChromeVisible(docLoading.value || creating.value),
 );
