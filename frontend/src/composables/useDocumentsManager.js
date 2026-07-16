@@ -129,9 +129,17 @@ export function useDocumentsManager(trajectRef, reservedPaths = () => []) {
   }
   // Auto-naming from the first line stays active while the name is still the one
   // we last set automatically. `autoBaseline` holds that path; null = the user
-  // renamed it, so leave it alone. Rebuilt on open by comparing the name to what
-  // the SAVED first line derives, so a refresh restores the auto/manual state
-  // exactly (we only ever name on save).
+  // renamed it, so leave it alone. Derived from the saved content rather than
+  // remembered, so the auto/manual state survives a refresh without being stored
+  // anywhere (we only ever name on save).
+  //
+  // The `untitled` test is what makes a brand-new document auto-name at all: it
+  // has no body yet, so `derived` is empty and the name comparison can't match.
+  // The price is that it reads intent off the name, and the name doesn't carry
+  // any: a document the user deliberately renames to `untitled` re-links to
+  // auto-naming, and its next save renames it after its first line. Deliberately
+  // not closed - that needs the auto/manual state persisted (server-side or
+  // localStorage) to protect the one name our own generator hands out.
   const autoBaseline = ref(null);
   function reconcileAutoBaseline() {
     const path = currentPath.value;
@@ -263,8 +271,15 @@ export function useDocumentsManager(trajectRef, reservedPaths = () => []) {
       // could not be removed and lingers on the server as an orphan copy.
       // Surface it so the user can delete it by hand instead of silently
       // leaving a duplicate behind.
-      titleError.value =
-        'Hernoemd en opgeslagen, maar het oude bestand kon niet worden verwijderd. Verwijder het handmatig.';
+      //
+      // Via deleteNotice, not titleError: this arrives AFTER the save
+      // committed, and every caller has closed the rename sheet by then (or
+      // never opened it - auto-naming renames from the top-bar Save). A field
+      // error under a form nobody is looking at is no warning at all. Name the
+      // orphan, too: the document now lives under a different name, so "verwijder
+      // het handmatig" without saying which file is not actionable.
+      deleteNotice.value =
+        `Hernoemd en opgeslagen, maar het oude bestand "${displayTitle(oldPath)}" kon niet worden verwijderd. Verwijder het handmatig.`;
     }
     return true;
   }

@@ -139,8 +139,12 @@ describe('useDocumentsManager', () => {
     expect(ok).toBe(true);
     expect(h.api.currentPath.value).toBe('nieuw.md');
     expect(h.api.deleteDocument).toHaveBeenCalledWith('oud.md');
-    // ...but the old file could not be removed, so the orphan is surfaced.
-    expect(m.titleError.value).toMatch(/oude bestand kon niet worden verwijderd/i);
+    // ...but the old file could not be removed, so the orphan is surfaced -
+    // through deleteNotice, which has a modal of its own. titleError renders
+    // only inside the rename sheet, and this fires after the save committed,
+    // by which point every caller has closed it (or never opened it).
+    expect(m.deleteNotice.value).toMatch(/oude bestand "oud" kon niet worden verwijderd/i);
+    expect(m.titleError.value).toBeNull();
   });
 
   it('handleSave refuses a rename onto an existing document', async () => {
