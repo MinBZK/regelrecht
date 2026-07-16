@@ -892,6 +892,26 @@ if (!route.params.articleNumber && openTabs.value.length > 0) {
   selectTab(restored || openTabs.value[0]).catch(console.warn);
 }
 
+// Robustness net for the setup logic above: whenever there is no active tab but
+// tabs are open (the active tab was closed while others remain, or openTabs
+// filled in after mount), open the first one so the panes show instead of the
+// empty state. The empty state then only appears with genuinely no open tabs.
+// NEVER when the URL names an article: that is an explicit open, and if it
+// fails the user must see the "niet beschikbaar / niet geladen" dialog for the
+// law they asked for - not silently land on some other tab.
+watch([activeTab, openTabs], ([tab, tabs]) => {
+  if (route.params.articleNumber) return;
+  if (!tab && tabs.length > 0) selectTab(tabs[0]).catch(console.warn);
+});
+
+// A URL naming a traject the user has no access to (deleted, never existed, or
+// access revoked) redirects to the chooser with a name-agnostic banner, rather
+// than a dead-end error page inside the editor. The name is unknown here (no
+// access = no lookup), so the banner stays generic.
+watch(trajectMissing, (missing) => {
+  if (missing) router.replace({ name: 'trajecten', query: { melding: 'traject-missing' } });
+}, { immediate: true });
+
 // Browser back/forward (or any external navigation) - pull state from
 // URL. Local mutations from selectTab already match the destination,
 // so the guards below short-circuit; the work only happens for true
@@ -1972,23 +1992,19 @@ async function handleActionSave() {
              precedence over every editor state below, including the law-404
              branch, so a missing traject never shows "<law> is niet
              beschikbaar in dit traject". -->
-        <nldd-page v-if="trajectMissing">
-          <nldd-simple-section width="full">
-            <nldd-inline-dialog
-              variant="alert"
-              text="Dit traject bestaat niet of je hebt geen toegang."
-              supporting-text="Ga terug naar het overzicht om een traject te kiezen."
-            >
-              <nldd-button slot="actions" variant="primary" text="Naar overzicht" :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)"></nldd-button>
-            </nldd-inline-dialog>
-          </nldd-simple-section>
-        </nldd-page>
+        <!-- A traject the user can't access redirects to /trajecten with a
+             name-agnostic banner (see the trajectMissing watcher); render
+             nothing here while that navigation commits. -->
+        <nldd-page v-if="trajectMissing"></nldd-page>
 
-        <!-- Empty state: no tabs open. The CTA points back to the library
-             since that's the only way to create new tabs; mention the tab
-             bar too because closed tabs may still be visible alongside this
-             empty state on the next pane. -->
-        <nldd-page v-else-if="!activeTab">
+        <!-- Nothing to show at all: no open tabs, nothing loading, nothing
+             selected, no error to report. Deliberately NOT keyed on
+             `!activeTab` alone - that stays null for the WHOLE load of an
+             explicit article URL (the add-tab watch only sets it once the
+             article resolves), so keying on it would hide the panes behind a
+             full-page state exactly when we want them up. `!error` keeps a
+             failed explicit open on its own error branch below. -->
+        <nldd-page v-else-if="!activeTab && !loading && !selectedArticle && !error && openTabs.length === 0">
           <nldd-simple-section width="full">
             <nldd-inline-dialog text="Open een artikel vanuit de tabbalk of Home om te bewerken.">
               <nldd-button slot="actions" variant="secondary" text="Naar Home" :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)"></nldd-button>
@@ -1996,19 +2012,14 @@ async function handleActionSave() {
           </nldd-simple-section>
         </nldd-page>
 
-        <!-- Loading takes precedence over `error` to avoid flashing a stale error during a refetch. -->
-        <nldd-page v-else-if="loading">
-          <nldd-simple-section width="full">
-            <nldd-activity-indicator text="Artikel laden" show-text></nldd-activity-indicator>
-          </nldd-simple-section>
-        </nldd-page>
-
         <!-- Error state - mirrors the library's law-load failure pattern.
              404s typically mean "the law isn't part of the active traject"
              (e.g. after a traject switch); we surface a traject-specific
              message and a quick "Naar bibliotheek" exit. Other failures
-             keep the generic copy + retry. -->
-        <nldd-page v-else-if="error">
+             keep the generic copy + retry. Gated on `!loading` so a stale
+             error during a refetch yields to the panes (with their own
+             per-pane loading) instead of flashing the error. -->
+        <nldd-page v-else-if="error && !loading">
           <nldd-simple-section width="full">
             <nldd-inline-dialog
               v-if="lawErrorIs404"
@@ -2425,11 +2436,29 @@ async function handleActionSave() {
                 </nldd-toolbar>
               </nldd-container>
 
+              <!-- While the shared article/law load is in flight - or before an
+                   article is picked at all - each pane shows its own type-named
+                   indicator ("Tekst laden", …) so the chrome (the Weergave
+                   toolbar above) is up immediately and the content fills in per
+                   pane. `!selectedArticle` matters as much as `loading`: on an
+                   explicit article URL the panes render before the article
+                   resolves, and the view content below would otherwise get a
+                   null article.
+                   The scenario pane is EXCLUDED: it has a second phase (scenario
+                   files + dependency laws) after this one, and two indicators
+                   handing off would each restart the DS anti-flash timer
+                   (spinner -> 1s blank -> spinner). It therefore renders during
+                   the load too and owns both phases in one mounted indicator -
+                   see its `article-loading` prop below. -->
+              <nldd-simple-section v-if="(loading || !selectedArticle) && !(view === 'scenario' && lawId)" width="full">
+                <nldd-activity-indicator :text="`${viewLabel(view)} laden`" show-text></nldd-activity-indicator>
+              </nldd-simple-section>
+
               <!-- Tekst - WYSIWYG editor when the user can edit, otherwise the
                    read-only ArticleText display. The format controls in the
                    header toolbar guard on `textEditorRefs[idx]`, which only the
                    WYSIWYG component populates, so they auto-hide when read-only. -->
-              <nldd-simple-section v-if="view === 'text'" width="full">
+              <nldd-simple-section v-else-if="view === 'text'" width="full">
                 <ArticleTextEditor
                   v-if="canEditArticleText"
                   :ref="setTextEditorRef(idx)"
@@ -2590,6 +2619,7 @@ async function handleActionSave() {
                   :law-yaml="currentLawYaml"
                   :engine="getEngine()"
                   :ready="engineReady"
+                  :article-loading="loading || !selectedArticle"
                   :articles="articles"
                   :traject-ref="activeTrajectRef"
                   @executed="handleScenarioExecuted"

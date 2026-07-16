@@ -30,6 +30,7 @@ import {
   onToolbarState,
   attachOverflowSelectListener,
 } from '../lib/editorToolbar.js';
+import { paneChromeVisible } from '../constants.js';
 
 const props = defineProps({
   manager: { type: Object, required: true },
@@ -79,13 +80,14 @@ const blockingError = computed(() => {
   return null;
 });
 
-// The formatting footer shows as soon as the editor shell is up — including
-// while an existing document's content is still loading — so opening a document
-// reveals the toolbar immediately instead of waiting on the fetch. Toolbar
-// commands resolve the editor lazily and no-op until it mounts, so showing the
-// toolbar a moment early is safe. It hides only when a load error replaces the
-// body (nothing to format then).
-const showFormattingToolbar = computed(() => !blockingError.value);
+// The formatting footer follows the shared pane-loading strategy
+// (paneChromeVisible): while a document loads or is created the pane shows only
+// the "Document laden" indicator — no title, actions or footer — so it reads
+// like every other loading pane. The footer also hides on a load error
+// (nothing to format then).
+const showFormattingToolbar = computed(
+  () => !blockingError.value && paneChromeVisible(docLoading.value || creating.value),
+);
 
 // The formatting toolbar sits in the page footer and the editor in the page
 // body (different page slots), so the two-way state sync listens on their
@@ -207,7 +209,7 @@ function dismissDeleteNotice() {
         </nldd-toolbar-item>
         <!-- Document title with an integrated xs action button; its rename/delete
              menu is teleported to body and anchored to it by id. -->
-        <nldd-toolbar-title slot="center" align="center" :text="docName">
+        <nldd-toolbar-title v-if="paneChromeVisible(docLoading || creating)" slot="center" align="center" :text="docName">
           <nldd-icon-button
             slot="action"
             id="document-actions-btn"

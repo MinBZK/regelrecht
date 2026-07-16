@@ -15,7 +15,7 @@ import { useAuth } from './composables/useAuth.js';
 import { lawFetchInit } from './composables/useLaw.js';
 import { useTrajects, refreshTrajects } from './composables/useTrajects.js';
 import { lawsListUrl, lawUrl, changedLawsUrl } from './composables/corpusUrls.js';
-import { SUPPORT_EMAIL } from './constants.js';
+import { SUPPORT_EMAIL, paneChromeVisible } from './constants.js';
 import { registerSearchPopover, setLibraryEmpty } from './composables/useAppChrome.js';
 import { homeTarget } from './composables/useLastVisitedRoute.js';
 import { useDocumentsManager } from './composables/useDocumentsManager.js';
@@ -507,6 +507,14 @@ const indexedLawName = computed(() => {
   return law ? displayName(law) : humanizeLawId(selectedLawId.value);
 });
 
+// Title for the law pane. While loading, `lawName` (derived from the still-loaded
+// PREVIOUS law) is stale, so the old title would linger when switching laws;
+// `indexedLawName` tracks `selectedLawId` and updates immediately, so use it
+// during load and the fully-resolved `lawName` once the new law is in.
+const lawTitle = computed(() =>
+  selectedLawLoading.value ? indexedLawName.value : (lawName.value || indexedLawName.value),
+);
+
 // Track the active law in "Recent bekeken" - including one that fails to load,
 // so the sidebar reflects what the user is looking at even when nothing is
 // curated yet. Re-runs as the name resolves to upgrade the label from the
@@ -542,8 +550,8 @@ const lawErrorIs404 = computed(() => lawError.value?.status === 404);
 //   "Leden · 15 juni test · RegelRecht"            (traject-instellingen)
 // The traject name is appended on a traject-scoped browse (like the editor) so
 // the tab and history show which traject you are in; it is null on the public
-// no-traject library, so it drops out there. "Home · RegelRecht" is the
-// fallback. We omit the "Bibliotheek:" prefix (unlike the editor) - browsing is
+// no-traject library, so it drops out there. Bare "RegelRecht" is the fallback
+// (the Home landing). We omit the "Bibliotheek:" prefix (unlike the editor) - browsing is
 // the implicit default and the leaf name carries enough context.
 // Always set (no early return) - router.afterEach used to set a static
 // fallback but it raced with this effect on tab/article switches.
@@ -570,15 +578,15 @@ watchEffect(() => {
     );
   } else {
     if (selectedArticle.value) detail.push(`Art. ${selectedArticle.value.number}`);
-    // Fall back to indexedLawName so the title reflects the URL even when the
-    // law itself failed to load.
-    const name = lawName.value || indexedLawName.value;
+    // Use lawTitle so a law switch shows the new law immediately (lawName is
+    // stale mid-load); it also falls back to the index/URL name on a load error.
+    const name = lawTitle.value;
     if (name) detail.push(name);
   }
   if (activeTraject.value?.name) detail.push(activeTraject.value.name);
   document.title = detail.length > 0
     ? `${detail.join(' · ')} · RegelRecht`
-    : 'Home · RegelRecht';
+    : 'RegelRecht';
 });
 
 function displayName(law) {
@@ -1228,17 +1236,20 @@ watch(activeTrajectRef, () => {
           <nldd-split-view-pane v-else-if="selectedLawId && !lawError" slot="secondary-sidebar" has-content>
             <nldd-page sticky-header>
               <nldd-top-title-bar
-                v-if="!selectedLawLoading"
                 slot="header"
-                :text="lawName || indexedLawName"
+                :text="paneChromeVisible(selectedLawLoading) ? lawTitle : undefined"
                 :back-text="LIBRARY_HOME_BACK_TEXT"
                 collapse-anchor="wet-titel"
               ></nldd-top-title-bar>
 
               <nldd-simple-section width="full">
-                <nldd-title v-if="!selectedLawLoading" id="wet-titel" size="3"><h3>{{ lawName }}</h3></nldd-title>
-                <nldd-spacer v-if="!selectedLawLoading" size="16"></nldd-spacer>
-                <nldd-toolbar v-if="selectedLaw && !selectedLawLoading" label="Favorieten">
+                <nldd-title v-if="paneChromeVisible(selectedLawLoading)" id="wet-titel" size="3"><h3>{{ lawTitle }}</h3></nldd-title>
+                <nldd-spacer v-if="paneChromeVisible(selectedLawLoading)" size="16"></nldd-spacer>
+                <!-- Keyed on the chrome flag only, like the title above: the
+                     favourite button runs entirely off `selectedLawId` (route)
+                     + `favorites`, never the loaded law, so waiting for
+                     `selectedLaw` only hid the toolbar during the load. -->
+                <nldd-toolbar v-if="paneChromeVisible(selectedLawLoading)" label="Favorieten">
                   <nldd-toolbar-item slot="start">
                     <nldd-icon-button
                       :icon="favorites?.has(selectedLawId) ? 'heart-filled' : 'heart'"
@@ -1247,7 +1258,7 @@ watch(activeTrajectRef, () => {
                     ></nldd-icon-button>
                   </nldd-toolbar-item>
                 </nldd-toolbar>
-                <nldd-spacer v-if="selectedLaw && !selectedLawLoading" size="16"></nldd-spacer>
+                <nldd-spacer v-if="paneChromeVisible(selectedLawLoading)" size="16"></nldd-spacer>
                 <nldd-popover ref="favoriteLoginWarning" accessible-label="Inloggen" width="320px">
                   <nldd-container padding="16">
                     <nldd-inline-dialog

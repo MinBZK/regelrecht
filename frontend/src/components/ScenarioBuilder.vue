@@ -34,6 +34,12 @@ const props = defineProps({
   lawYaml: { type: String, default: null },
   engine: { type: Object, default: null },
   ready: { type: Boolean, default: false },
+  /** The shared article/law load is still in flight. The pane renders us during
+   *  that load (no `lawYaml` yet) so our indicator can span BOTH phases as one
+   *  mounted element: article -> scenario files -> dependency laws. Two separate
+   *  indicators handing off would each restart the DS anti-flash timer on mount,
+   *  giving spinner -> 1s blank -> spinner. */
+  articleLoading: { type: Boolean, default: false },
   /** Articles array from useLaw() for article mapping */
   articles: { type: Array, default: () => [] },
   /** Active traject ref. Required for scenario writes; reads route
@@ -623,15 +629,20 @@ defineExpose({ save: onSave });
       </template>
 
       <nldd-inline-dialog
-        v-else-if="!scenariosLoading && !depsLoading"
+        v-else-if="!articleLoading && !scenariosLoading && !depsLoading"
         text="Geen scenario's beschikbaar voor dit artikel."
       ></nldd-inline-dialog>
     </nldd-simple-section>
-    <!-- Full-pane loading overlay with a frosted backdrop, shown while the
-         scenario files or their dependency laws ("X/Y wetten geladen") load.
-         Default (anti-flash) timing keeps quick loads from flashing. -->
+    <!-- Full-pane loading overlay, shown across the WHOLE scenario story: the
+         article/law load, then the scenario files, then their dependency laws
+         ("X/Y wetten geladen"). Deliberately one condition over all three so
+         this element stays mounted throughout - the DS resets its anti-flash
+         timer on every connectedCallback, so handing off between two separate
+         indicators produced spinner -> 1s blank -> spinner. Staying mounted
+         runs the 1000ms timer once: quick loads still never flash, and a slow
+         one shows a single continuous spinner. -->
     <nldd-activity-indicator
-      v-if="scenariosLoading || depsLoading"
+      v-if="articleLoading || scenariosLoading || depsLoading"
       backdrop
       show-text
       :text="depsLoading ? depsProgress : 'Scenario\'s laden'"

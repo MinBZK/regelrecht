@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, watchEffect } from 'vue';
+import { computed, onMounted, watchEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTrajects, refreshTrajects } from './composables/useTrajects.js';
 import { lastHomePath, homeTarget } from './composables/useLastVisitedRoute.js';
@@ -14,6 +14,12 @@ import { lastHomePath, homeTarget } from './composables/useLastVisitedRoute.js';
 const route = useRoute();
 const router = useRouter();
 const { trajects, loading, error } = useTrajects();
+
+// Set when the editor (or a traject-scoped view) redirected here because the
+// requested traject is missing/inaccessible - see EditorView's trajectMissing.
+// The ref is unknown at that point (no access = no name lookup), so the banner
+// stays name-agnostic.
+const trajectMissing = computed(() => route.query.melding === 'traject-missing');
 
 // Always refetch on entry: the landing page should reflect trajects
 // created elsewhere (other tab, other device) since the cached
@@ -84,6 +90,14 @@ function trajectSupportingText(t) {
       <nldd-simple-section width="800px">
         <nldd-title id="kies-traject-titel" size="3"><h3>Trajecten</h3></nldd-title>
         <nldd-spacer size="16"></nldd-spacer>
+        <template v-if="trajectMissing">
+          <nldd-banner
+            variant="warning"
+            text="Het traject dat je probeerde te openen bestaat niet, niet meer of je hebt geen toegang"
+            supporting-text="Kies een ander traject of maak een nieuw traject aan."
+          ></nldd-banner>
+          <nldd-spacer size="16"></nldd-spacer>
+        </template>
         <nldd-activity-indicator v-if="loading" text="Trajecten laden" show-text></nldd-activity-indicator>
         <nldd-inline-dialog
           v-else-if="error"

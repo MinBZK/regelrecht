@@ -4,6 +4,7 @@
 // invite form in its own sheet. Loads on mount and whenever the traject changes.
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useTrajectMembers } from '../composables/useTrajectMembers.js';
+import { paneChromeVisible } from '../constants.js';
 
 const props = defineProps({
   /** Traject to manage (UUID id). */
@@ -211,14 +212,14 @@ async function confirmRemoveInvite() {
 
 <template>
   <nldd-simple-section>
-    <nldd-title id="instellingen-pane-titel" size="3"><h3>Leden</h3></nldd-title>
-    <nldd-spacer size="16"></nldd-spacer>
-    <nldd-toolbar v-if="isOwner" label="Ledenacties">
+    <nldd-title v-if="paneChromeVisible(loading)" id="instellingen-pane-titel" size="3"><h3>Leden</h3></nldd-title>
+    <nldd-spacer v-if="paneChromeVisible(loading)" size="16"></nldd-spacer>
+    <nldd-toolbar v-if="isOwner && paneChromeVisible(loading)" label="Ledenacties">
       <nldd-toolbar-item slot="start">
         <nldd-button variant="secondary" size="md" start-icon="plus-small" text="Uitnodigen" @click="openInvite"></nldd-button>
       </nldd-toolbar-item>
     </nldd-toolbar>
-    <nldd-spacer v-if="isOwner" size="16"></nldd-spacer>
+    <nldd-spacer v-if="isOwner && paneChromeVisible(loading)" size="16"></nldd-spacer>
 
     <nldd-activity-indicator v-if="loading" text="Leden laden" show-text></nldd-activity-indicator>
     <nldd-inline-dialog v-else-if="loadError" variant="alert" text="Leden niet geladen" :supporting-text="loadError.message"></nldd-inline-dialog>

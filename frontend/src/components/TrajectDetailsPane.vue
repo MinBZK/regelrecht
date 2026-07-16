@@ -9,6 +9,7 @@ import {
   branchTreeUrl,
 } from '../composables/useTrajectDetail.js';
 import { deleteTraject, leaveTraject } from '../composables/useTrajects.js';
+import { paneChromeVisible } from '../constants.js';
 
 const props = defineProps({
   /** Traject to show (UUID id). */
@@ -115,10 +116,10 @@ async function confirmLeave() {
 
 <template>
   <nldd-simple-section>
-    <nldd-title id="instellingen-pane-titel" size="3"><h3>Traject details</h3></nldd-title>
-    <nldd-spacer size="16"></nldd-spacer>
+    <nldd-title v-if="paneChromeVisible(loading)" id="instellingen-pane-titel" size="3"><h3>Traject details</h3></nldd-title>
+    <nldd-spacer v-if="paneChromeVisible(loading)" size="16"></nldd-spacer>
 
-    <nldd-activity-indicator v-if="loading" text="Traject laden" show-text></nldd-activity-indicator>
+    <nldd-activity-indicator v-if="loading" text="Traject details laden" show-text></nldd-activity-indicator>
     <nldd-inline-dialog v-else-if="loadError" variant="alert" :text="loadError.message || 'Fout bij laden'"></nldd-inline-dialog>
     <template v-else-if="detail">
     <nldd-list variant="box">
