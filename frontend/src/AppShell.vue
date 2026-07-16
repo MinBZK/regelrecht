@@ -19,6 +19,7 @@ import {
   rememberHarvesterOrigin,
 } from './composables/useLastVisitedRoute.js';
 import { useAppChrome, openSearch, onBarSearchKeydown } from './composables/useAppChrome.js';
+import { SEARCH_PLACEHOLDER, SEARCH_ACCESSIBLE_LABEL } from './constants.js';
 
 // Persistent shell that owns the shared chrome (tab-bar, search trigger,
 // TrajectMenu, settings menu) and a nested <router-view> for the editor /
@@ -291,6 +292,24 @@ function onSearchHintClose(e) {
 const hasDocumentTabs = computed(
   () => documentTabs.value.length > 0 && !!tabActions.value,
 );
+
+// Which tab replaces a dismissed one is the bar's call, not ours: its dismiss
+// handler picks the neighbour (right, else left, skipping tabs overflow has
+// hidden - layout state only it can see), marks that item selected itself, and
+// reports it as `nextItem` here. Inventing a second policy alongside it selects
+// two tabs: the bar writes `selected` straight onto its own element, which Vue
+// never learns about, so its pick stays lit next to ours.
+//
+// Map elements back to tabs by data-tab-key rather than by index - the bar
+// reorders its own DOM to keep the selected tab visible when tabs overflow.
+function onTabDismiss(e) {
+  const actions = tabActions.value;
+  if (!actions) return;
+  const toTab = (el) =>
+    documentTabs.value.find((t) => actions.key(t) === el?.dataset?.tabKey) ?? null;
+  const dismissed = toTab(e.detail?.item);
+  if (dismissed) actions.close(dismissed, toTab(e.detail?.nextItem));
+}
 </script>
 
 <template>
@@ -332,12 +351,20 @@ const hasDocumentTabs = computed(
               <nldd-button-bar size="md">
                 <TrajectMenu id-suffix="md" />
                 <nldd-button-bar-divider></nldd-button-bar-divider>
-                <nldd-icon-button id="settings-menu-btn-md" size="md" icon="account" text="Account" tooltip-timing="never" expandable popovertarget="settings-menu-md"></nldd-icon-button>
+                <nldd-icon-button id="settings-menu-btn-md" size="md" :icon="authenticated ? undefined : 'account'" text="Account" tooltip-timing="never" expandable popovertarget="settings-menu-md">
+                  <nldd-avatar v-if="authenticated" slot="icon" :name="person?.name || person?.email" color="inherit" icon-aligned decorative></nldd-avatar>
+                </nldd-icon-button>
               </nldd-button-bar>
               <nldd-menu id="settings-menu-md" anchor="settings-menu-btn-md">
                 <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
-                <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <nldd-list v-if="!authLoading && authenticated" slot="header" variant="simple" no-dividers>
+                  <nldd-list-item>
+                    <nldd-spacer-cell size="10"></nldd-spacer-cell>
+                    <nldd-text-cell :text="person?.name || person?.email" :supporting-text="person?.name ? person?.email : ''"></nldd-text-cell>
+                    <nldd-spacer-cell size="10"></nldd-spacer-cell>
+                  </nldd-list-item>
+                </nldd-list>
                 <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"
@@ -398,7 +425,8 @@ const hasDocumentTabs = computed(
               >
                 <nldd-search-field
                   size="md"
-                  placeholder="Zoeken"
+                  :placeholder="SEARCH_PLACEHOLDER"
+                  :accessible-label="SEARCH_ACCESSIBLE_LABEL"
                   @click="openSearch"
                   @keydown="onBarSearchKeydown"
                 ></nldd-search-field>
@@ -411,12 +439,20 @@ const hasDocumentTabs = computed(
               <nldd-button-bar size="md">
                 <TrajectMenu id-suffix="lg" />
                 <nldd-button-bar-divider></nldd-button-bar-divider>
-                <nldd-icon-button id="settings-menu-btn-lg" size="md" icon="account" text="Account" tooltip-timing="never" expandable popovertarget="settings-menu-lg"></nldd-icon-button>
+                <nldd-icon-button id="settings-menu-btn-lg" size="md" :icon="authenticated ? undefined : 'account'" text="Account" tooltip-timing="never" expandable popovertarget="settings-menu-lg">
+                  <nldd-avatar v-if="authenticated" slot="icon" :name="person?.name || person?.email" color="inherit" icon-aligned decorative></nldd-avatar>
+                </nldd-icon-button>
               </nldd-button-bar>
               <nldd-menu id="settings-menu-lg" anchor="settings-menu-btn-lg">
                 <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
-                <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <nldd-list v-if="!authLoading && authenticated" slot="header" variant="simple" no-dividers>
+                  <nldd-list-item>
+                    <nldd-spacer-cell size="10"></nldd-spacer-cell>
+                    <nldd-text-cell :text="person?.name || person?.email" :supporting-text="person?.name ? person?.email : ''"></nldd-text-cell>
+                    <nldd-spacer-cell size="10"></nldd-spacer-cell>
+                  </nldd-list-item>
+                </nldd-list>
                 <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"
@@ -461,10 +497,22 @@ const hasDocumentTabs = computed(
            shows an empty bar. -->
       <nldd-split-view-pane v-if="hasDocumentTabs" slot="document-tabs" above="md">
         <nldd-container padding-inline="8" padding-top="0" padding-bottom="8">
-          <nldd-document-tab-bar>
+          <!-- Drag-reorder: the bar reorders its items visually and fires
+               nldd-reorder; without this listener that move never reaches
+               `openTabs`, so it was lost (reverted from localStorage) the next
+               time the editor mounted. EditorView's `reorderTabs` mirrors the
+               move into the array and persists it. -->
+          <!-- `tabdismiss` (the bar), not `dismiss` (the item): the bar picks
+               the replacement for a dismissed tab itself and hands it over as
+               `nextItem`. See onTabDismiss. -->
+          <nldd-document-tab-bar
+            @nldd-reorder="tabActions.reorder($event.detail.fromIndex, $event.detail.toIndex)"
+            @tabdismiss="onTabDismiss"
+          >
             <nldd-document-tab-bar-item
               v-for="tab in documentTabs"
               :key="tabActions.key(tab)"
+              :data-tab-key="tabActions.key(tab)"
               :text="`Artikel ${tab.articleNumber}`"
               :supporting-text="tabActions.displayName(tab)"
               :short-text="`Art. ${tab.articleNumber}`"
@@ -472,7 +520,6 @@ const hasDocumentTabs = computed(
               :selected="activeDocumentTab && tabActions.key(activeDocumentTab) === tabActions.key(tab) || undefined"
               has-dismiss-button
               @click="tabActions.select(tab)"
-              @dismiss="tabActions.close(tab)"
             >
             </nldd-document-tab-bar-item>
           </nldd-document-tab-bar>
@@ -602,11 +649,19 @@ const hasDocumentTabs = computed(
               </nldd-just-in-time-education>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <nldd-icon-button id="settings-menu-btn-sm" size="lg" icon="account" text="Account" tooltip-timing="never" popovertarget="settings-menu-sm"></nldd-icon-button>
+              <nldd-icon-button id="settings-menu-btn-sm" size="lg" :icon="authenticated ? undefined : 'account'" text="Account" tooltip-timing="never" popovertarget="settings-menu-sm">
+                <nldd-avatar v-if="authenticated" slot="icon" :name="person?.name || person?.email" color="inherit" icon-aligned decorative></nldd-avatar>
+              </nldd-icon-button>
               <nldd-menu id="settings-menu-sm" anchor="settings-menu-btn-sm">
                 <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
-                <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <nldd-list v-if="!authLoading && authenticated" slot="header" variant="simple" no-dividers>
+                  <nldd-list-item>
+                    <nldd-spacer-cell size="10"></nldd-spacer-cell>
+                    <nldd-text-cell :text="person?.name || person?.email" :supporting-text="person?.name ? person?.email : ''"></nldd-text-cell>
+                    <nldd-spacer-cell size="10"></nldd-spacer-cell>
+                  </nldd-list-item>
+                </nldd-list>
                 <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"

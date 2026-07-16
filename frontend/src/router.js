@@ -191,6 +191,19 @@ const router = createRouter({
       meta: { title: 'Nieuw traject', requiresAuth: true },
     },
     {
+      // Bare "session expired / logged out" page. Top-level (no app-chrome) and
+      // PUBLIC (no requiresAuth) so the auth guards can land here without
+      // looping. Both the router guard and the fetch 401-guard redirect here
+      // with `?return_url=<the protected page>` when a session expires, instead
+      // of the old silent bounce to /auth/login (which could dead-end blank).
+      // The page's re-login button forwards return_url to /auth/login so the
+      // user comes back where they were.
+      path: '/uitgelogd',
+      name: 'uitgelogd',
+      component: () => import('./SessionExpiredView.vue'),
+      meta: { title: 'Uitgelogd' },
+    },
+    {
       // Harvester-admin "Corpusinwinning" section - the merged harvester dashboard.
       // Top-level route (sibling of AppShell, not nested) so it carries its own
       // chrome (HarvesterView), with the two sub-screens as nested children -
@@ -279,10 +292,12 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   if (!to.meta.requiresAuth) return true;
   await ensureAuthReady();
-  const { authenticated, hasAnyRole, login } = useAuth();
+  const { authenticated, hasAnyRole } = useAuth();
   if (!authenticated.value) {
-    login(to.fullPath);
-    return false;
+    // Send to the bare "je bent uitgelogd" page instead of silently bouncing
+    // through /auth/login (which could dead-end on a blank page). It carries
+    // the intended destination so its re-login button returns the user here.
+    return { name: 'uitgelogd', query: { return_url: to.fullPath } };
   }
   // Role-gated routes (e.g. the harvester-admin Corpusinwinning section): an
   // authenticated user lacking the required role is redirected to the

@@ -75,15 +75,17 @@ export function installApiAuthGuard() {
       // Resolve auth status before deciding: an early `/api/*` 401 can race the
       // `/auth/status` check, leaving the refs at their defaults otherwise.
       await ensureAuthReady();
-      const { authenticated, oidcConfigured, login } = useAuth();
+      const { authenticated, oidcConfigured } = useAuth();
       // Only an expired session (loaded authenticated, IdP configured) redirects.
       // Anonymous visitors on public pages and OIDC-off dev fall through.
       if (oidcConfigured.value && authenticated.value && !redirecting) {
         redirecting = true;
-        // No explicit returnUrl: the navigation has already committed, so
-        // window.location reflects the page the user is actually on - exactly
-        // where they should return after re-auth.
-        login();
+        // Land on the bare "je bent uitgelogd" page (a public SPA route)
+        // instead of silently bouncing to /auth/login (which could dead-end on
+        // a blank page). window.location already reflects the page the user is
+        // on, so pass it as return_url for the page's re-login button.
+        const returnUrl = window.location.pathname + window.location.search + window.location.hash;
+        window.location.assign('/uitgelogd?return_url=' + encodeURIComponent(returnUrl));
       }
     }
     if (response.status === 428 && !redirecting && isApiUrl(input)) {

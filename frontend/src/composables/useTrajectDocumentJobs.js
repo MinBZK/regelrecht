@@ -11,7 +11,7 @@
  */
 import { ref, onUnmounted } from 'vue';
 import { apiFetch } from '@regelrecht/frontend-shared';
-import { documentJobsUrl } from './corpusUrls.js';
+import { documentJobsUrl, documentJobUrl } from './corpusUrls.js';
 
 const DEFAULT_INTERVAL_MS = 4000;
 
@@ -78,10 +78,36 @@ export function useTrajectDocumentJobs(trajectRef, { interval = DEFAULT_INTERVAL
     error.value = null;
   }
 
+  // Cancel (kill) a conversion job — e.g. one stuck for hours. DELETE is
+  // idempotent server-side, so a double-click is harmless. Refresh so the row
+  // disappears immediately.
+  //
+  // Result-object style like useTrajectDocuments' own mutations (saveCurrent,
+  // uploadDocument): apiFetch throws on any non-ok status, and a failed cancel
+  // leaves the job running server-side - something the caller has to be able to
+  // say out loud, so it must not travel as an unhandled rejection. Deliberately
+  // NOT via the `error` ref above: that one belongs to the poll, whose failures
+  // are ridden out on purpose (keep-stale), so surfacing it would pop on every
+  // transient blip.
+  async function cancelJob(jobId) {
+    const ref_ = trajectRef.value;
+    if (!ref_) return { ok: false, error: 'Geen actief traject.' };
+    try {
+      await apiFetch(documentJobUrl(ref_, jobId), { method: 'DELETE' });
+    } catch (e) {
+      // Refresh anyway: the job survived, so put its row back rather than
+      // leaving the list claiming otherwise.
+      await refresh();
+      return { ok: false, error: e.message || 'Annuleren mislukt.' };
+    }
+    await refresh();
+    return { ok: true };
+  }
+
   onUnmounted(() => {
     mounted = false;
     stopPolling();
   });
 
-  return { jobs, loading, error, refresh, startPolling, stopPolling, reset };
+  return { jobs, loading, error, refresh, startPolling, stopPolling, reset, cancelJob };
 }

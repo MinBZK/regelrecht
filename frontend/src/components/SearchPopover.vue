@@ -7,6 +7,11 @@ import { useTrajects } from '../composables/useTrajects.js';
 import { lawsListUrl } from '../composables/corpusUrls.js';
 import { apiFetchJson } from '../lib/apiFetch.js';
 import { useLatest } from '../lib/useLatest.js';
+import { SEARCH_PLACEHOLDER, SEARCH_ACCESSIBLE_LABEL } from '../constants.js';
+
+// Override the list's built-in search-field placeholder (i18n default "Zoeken")
+// so this popover stays in sync with the main search-field in AppShell.
+const listTranslations = { 'components.list.search-placeholder-text': SEARCH_PLACEHOLDER };
 
 const emit = defineEmits(['select-law', 'harvest-available']);
 
@@ -276,7 +281,7 @@ defineExpose({ show });
   -->
   <nldd-popover
     ref="popoverRef"
-    accessible-label="Zoeken in wetten"
+    :accessible-label="SEARCH_ACCESSIBLE_LABEL"
     :width="useCenteredPosition ? '720px' : '360px'"
     placement="bottom-end"
     :centered="useCenteredPosition || null"
@@ -298,7 +303,8 @@ defineExpose({ show });
         type="listbox"
         variant="simple"
         height="min(70vh, 560px)"
-        accessible-label="Zoeken in wetten"
+        :accessible-label="SEARCH_ACCESSIBLE_LABEL"
+        :translations="listTranslations"
         empty-text="Geen resultaten gevonden"
         empty-supporting-text="Pas je zoektermen of voorkeuren aan"
         @input="onListInput"

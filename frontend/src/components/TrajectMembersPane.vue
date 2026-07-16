@@ -4,6 +4,7 @@
 // invite form in its own sheet. Loads on mount and whenever the traject changes.
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useTrajectMembers } from '../composables/useTrajectMembers.js';
+import { paneChromeVisible } from '../constants.js';
 
 const props = defineProps({
   /** Traject to manage (UUID id). */
@@ -32,7 +33,7 @@ watch(() => props.trajectId, reload);
 
 const isOwner = computed(() => callerRole.value === 'owner');
 function roleLabel(role) {
-  return role === 'owner' ? 'Eigenaar' : 'Bijdrager';
+  return role === 'owner' ? 'Beheerder' : 'Bijdrager';
 }
 
 const ownerCount = computed(() => members.value.filter((m) => m.role === 'owner').length);
@@ -54,20 +55,43 @@ const inviteBusy = ref(false);
 const inviteError = ref(null);
 const inviteResult = ref(null);
 
-async function openInvite() {
+// Swap the form for the success view once every address in the batch went
+// through. A partial batch keeps the form: the failures stay in the field so
+// they can be corrected and retried, with the outcome shown inline.
+const inviteSucceeded = computed(
+  () =>
+    !!inviteResult.value &&
+    inviteResult.value.failed.length === 0 &&
+    inviteResult.value.succeeded.length > 0,
+);
+
+// Reset the form to its empty state and re-seed the (async-mounted) token
+// field. Shared by opening the sheet and by "Meer uitnodigen".
+async function resetInviteForm() {
   inviteEmails.value = [];
   invitePending.value = '';
   inviteRole.value = 'contributor';
   inviteError.value = null;
   inviteResult.value = null;
   await nextTick();
-  inviteSheetEl.value?.show?.();
   if (inviteInputRef.value) inviteInputRef.value.values = [];
+}
+
+async function openInvite() {
+  await resetInviteForm();
+  inviteSheetEl.value?.show?.();
   await nextTick();
   inviteInputRef.value?.focus?.();
 }
 function closeInvite() {
   inviteSheetEl.value?.hide?.();
+}
+
+// "Meer uitnodigen" on the success view: swap it back for a fresh form.
+async function inviteAgain() {
+  await resetInviteForm();
+  await nextTick();
+  inviteInputRef.value?.focus?.();
 }
 
 // Row-level busy + error indicators keyed by member account_id / invite email.
@@ -86,6 +110,18 @@ function setRowError(key, message) {
   rowError.value = next;
 }
 
+// Token-field handlers. Besides tracking the committed tokens / pending text,
+// they clear the "voer een adres in" error as soon as the user acts, so the
+// error and invalid outline disappear the moment they start correcting it.
+function onEmailsChange(e) {
+  inviteEmails.value = e.detail?.values ?? inviteEmails.value;
+  if (inviteError.value) inviteError.value = null;
+}
+function onEmailsInput(e) {
+  invitePending.value = e.detail?.value ?? invitePending.value;
+  if (inviteError.value) inviteError.value = null;
+}
+
 async function submitInvite() {
   inviteError.value = null;
   inviteResult.value = null;
@@ -97,6 +133,10 @@ async function submitInvite() {
   const emails = [...new Set(raw.map((e) => e.trim()).filter(Boolean))];
   if (emails.length === 0) {
     inviteError.value = 'Voer minstens één e-mailadres in';
+    // Pull focus back to the field so the just-revealed error is where the
+    // user is looking and they can start typing straight away.
+    await nextTick();
+    inviteInputRef.value?.focus?.();
     return;
   }
   inviteBusy.value = true;
@@ -150,18 +190,36 @@ async function clickRemoveInvite(inv) {
     markBusy(inv.email, false);
   }
 }
+
+// Retracting an invite is destructive, so confirm it in a modal that names the
+// address before the actual removeInvite runs.
+const confirmDialogEl = ref(null);
+const confirmInvite = ref(null);
+
+function askRemoveInvite(inv) {
+  confirmInvite.value = inv;
+  confirmDialogEl.value?.show?.();
+}
+function cancelRemoveInvite() {
+  confirmDialogEl.value?.hide?.();
+}
+async function confirmRemoveInvite() {
+  const inv = confirmInvite.value;
+  confirmDialogEl.value?.hide?.();
+  if (inv) await clickRemoveInvite(inv);
+}
 </script>
 
 <template>
   <nldd-simple-section>
-    <nldd-title id="instellingen-pane-titel" size="3"><h3>Leden</h3></nldd-title>
-    <nldd-spacer size="16"></nldd-spacer>
-    <nldd-toolbar v-if="isOwner" label="Ledenacties">
+    <nldd-title v-if="paneChromeVisible(loading)" id="instellingen-pane-titel" size="3"><h3>Leden</h3></nldd-title>
+    <nldd-spacer v-if="paneChromeVisible(loading)" size="16"></nldd-spacer>
+    <nldd-toolbar v-if="isOwner && paneChromeVisible(loading)" label="Ledenacties">
       <nldd-toolbar-item slot="start">
         <nldd-button variant="secondary" size="md" start-icon="plus-small" text="Uitnodigen" @click="openInvite"></nldd-button>
       </nldd-toolbar-item>
     </nldd-toolbar>
-    <nldd-spacer v-if="isOwner" size="16"></nldd-spacer>
+    <nldd-spacer v-if="isOwner && paneChromeVisible(loading)" size="16"></nldd-spacer>
 
     <nldd-activity-indicator v-if="loading" text="Leden laden" show-text></nldd-activity-indicator>
     <nldd-inline-dialog v-else-if="loadError" variant="alert" text="Leden niet geladen" :supporting-text="loadError.message"></nldd-inline-dialog>
@@ -196,7 +254,7 @@ async function clickRemoveInvite(inv) {
                 @select="changeMemberRole(m, 'contributor')"
               ></nldd-menu-item>
               <template v-else>
-                <nldd-menu-item text="Maak eigenaar" @select="changeMemberRole(m, 'owner')"></nldd-menu-item>
+                <nldd-menu-item text="Maak beheerder" @select="changeMemberRole(m, 'owner')"></nldd-menu-item>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item text="Verwijder lid" destructive @select="clickRemoveMember(m)"></nldd-menu-item>
               </template>
@@ -207,40 +265,35 @@ async function clickRemoveInvite(inv) {
           {{ rowError.get(m.account_id) }}
         </div>
       </template>
+      <!-- Pending invites live in the same list so a long roster stays filterable
+           instead of scrolling them out of view in a separate section below. -->
+      <template v-for="inv in pendingInvites" :key="inv.email">
+        <nldd-list-item size="md">
+          <nldd-spacer-cell slot="start" size="12"></nldd-spacer-cell>
+          <nldd-icon-cell slot="start" size="20"><nldd-icon name="user"></nldd-icon></nldd-icon-cell>
+          <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+          <nldd-text-cell supporting-text="Openstaande uitnodiging. Wacht op eerste login voor activatie.">
+            <span class="member-name">
+              <span>{{ inv.email }}</span>
+              <nldd-tag size="sm" :color="inv.role === 'owner' ? 'accent' : 'neutral'" :text="roleLabel(inv.role)"></nldd-tag>
+            </span>
+          </nldd-text-cell>
+          <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          <nldd-cell v-if="isOwner">
+            <nldd-button
+              variant="destructive"
+              size="sm"
+              text="Intrekken"
+              :disabled="rowBusy.has(inv.email) || undefined"
+              @click="askRemoveInvite(inv)"
+            ></nldd-button>
+          </nldd-cell>
+        </nldd-list-item>
+        <div v-if="rowError.get(inv.email)" class="members-row-error">
+          {{ rowError.get(inv.email) }}
+        </div>
+      </template>
     </nldd-list>
-
-    <template v-if="pendingInvites.length > 0">
-      <nldd-spacer size="24"></nldd-spacer>
-      <nldd-title size="4"><h2>Openstaande uitnodigingen</h2></nldd-title>
-      <nldd-spacer size="8"></nldd-spacer>
-      <nldd-list variant="box">
-        <template v-for="inv in pendingInvites" :key="inv.email">
-          <nldd-list-item size="md">
-            <nldd-spacer-cell slot="start" size="12"></nldd-spacer-cell>
-            <nldd-icon-cell slot="start" size="20"><nldd-icon name="user"></nldd-icon></nldd-icon-cell>
-            <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
-            <nldd-text-cell :text="inv.email" supporting-text="Wacht op eerste login"></nldd-text-cell>
-            <nldd-spacer-cell size="8"></nldd-spacer-cell>
-            <nldd-cell>
-              <span class="members-pending-role">{{ roleLabel(inv.role) }}</span>
-            </nldd-cell>
-            <nldd-spacer-cell size="8"></nldd-spacer-cell>
-            <nldd-cell v-if="isOwner">
-              <nldd-button
-                variant="ghost"
-                size="sm"
-                text="Trek in"
-                :disabled="rowBusy.has(inv.email) || undefined"
-                @click="clickRemoveInvite(inv)"
-              ></nldd-button>
-            </nldd-cell>
-          </nldd-list-item>
-          <div v-if="rowError.get(inv.email)" class="members-row-error">
-            {{ rowError.get(inv.email) }}
-          </div>
-        </template>
-      </nldd-list>
-    </template>
     </template>
   </nldd-simple-section>
 
@@ -250,7 +303,18 @@ async function clickRemoveInvite(inv) {
       <nldd-page sticky-header sticky-footer>
         <nldd-top-title-bar slot="header" text="Uitnodigen" dismiss-text="Annuleer" @dismiss="closeInvite"></nldd-top-title-bar>
         <nldd-simple-section width="full">
-          <nldd-form>
+          <!-- Success view: a new view in the sheet, shown once the whole batch was sent. -->
+          <nldd-inline-dialog
+            v-if="inviteSucceeded"
+            variant="success"
+            :text="`${inviteResult.succeeded.length} uitnodiging${inviteResult.succeeded.length === 1 ? '' : 'en'} verstuurd`"
+            supporting-text="Toegang wordt actief bij de eerste login."
+          >
+            <nldd-button slot="actions" variant="primary" size="md" width="full" text="Sluit" @click="closeInvite"></nldd-button>
+            <nldd-button slot="actions" variant="secondary" size="md" width="full" text="Meer uitnodigen" @click="inviteAgain"></nldd-button>
+          </nldd-inline-dialog>
+
+          <nldd-form v-else>
             <form novalidate @submit.prevent="submitInvite">
               <nldd-form-field label="E-mailadressen">
                 <nldd-token-field
@@ -261,13 +325,14 @@ async function clickRemoveInvite(inv) {
                   accessible-label="E-mailadressen"
                   placeholder="Toevoegen..."
                   :invalid="inviteError ? true : undefined"
-                  @change="inviteEmails = $event.detail?.values ?? inviteEmails"
-                  @input="invitePending = $event.detail?.value ?? invitePending"
+                  :error-message="inviteError ? 'invite-email-error' : undefined"
+                  @change="onEmailsChange"
+                  @input="onEmailsInput"
                 ></nldd-token-field>
                 <nldd-form-field-help-text>
                   Typ een adres en gebruik een komma om nog een adres in te voeren. Toegang tot '{{ trajectName }}' wordt actief bij de eerste login.
                 </nldd-form-field-help-text>
-                <nldd-form-field-error-text v-if="inviteError" id="invite-email-error">
+                <nldd-form-field-error-text id="invite-email-error">
                   {{ inviteError }}
                 </nldd-form-field-error-text>
               </nldd-form-field>
@@ -275,10 +340,14 @@ async function clickRemoveInvite(inv) {
               <nldd-form-field label="Rol">
                 <nldd-toggle-button-group type="radio" size="md" accessible-label="Rol" @change="onRoleChange">
                   <nldd-toggle-button value="contributor" text="Bijdrager" :selected="inviteRole === 'contributor' || undefined"></nldd-toggle-button>
-                  <nldd-toggle-button value="owner" text="Eigenaar" :selected="inviteRole === 'owner' || undefined"></nldd-toggle-button>
+                  <nldd-toggle-button value="owner" text="Beheerder" :selected="inviteRole === 'owner' || undefined"></nldd-toggle-button>
                 </nldd-toggle-button-group>
+                <nldd-form-field-help-text>
+                  Een bijdrager kan wetten en scenario's in dit traject bekijken en bewerken. Een beheerder kan daarnaast ook leden en instellingen van dit traject aanpassen.
+                </nldd-form-field-help-text>
               </nldd-form-field>
 
+              <!-- Partial batch (a full success shows the success view above instead). -->
               <div v-if="inviteResult" class="members-info">
                 <div v-if="inviteResult.succeeded.length">
                   {{ inviteResult.succeeded.length }} uitnodiging{{ inviteResult.succeeded.length === 1 ? '' : 'en' }} verstuurd. Toegang wordt actief bij de eerste login.
@@ -305,6 +374,18 @@ async function clickRemoveInvite(inv) {
       </nldd-page>
     </nldd-sheet>
   </Teleport>
+
+  <!-- Confirm dialog for retracting a pending invite. -->
+  <Teleport to="body">
+    <nldd-modal-dialog
+      ref="confirmDialogEl"
+      :text="confirmInvite ? `Uitnodiging voor ${confirmInvite.email} intrekken?` : ''"
+      supporting-text="Je kunt deze persoon op een later moment weer uitnodigen."
+    >
+      <nldd-button slot="actions" variant="secondary" size="md" width="full" text="Behoud uitnodiging" @click="cancelRemoveInvite"></nldd-button>
+      <nldd-button slot="actions" variant="destructive" size="md" width="full" text="Trek uitnodiging in" @click="confirmRemoveInvite"></nldd-button>
+    </nldd-modal-dialog>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -326,10 +407,5 @@ async function clickRemoveInvite(inv) {
 .members-invite-failed {
   color: var(--nldd-color-text-error, #c62828);
   margin-top: 4px;
-}
-.members-pending-role {
-  font-size: 13px;
-  color: var(--semantics-content-secondary-color, #555);
-  text-transform: capitalize;
 }
 </style>

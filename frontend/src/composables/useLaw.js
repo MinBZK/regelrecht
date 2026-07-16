@@ -113,9 +113,16 @@ export async function fetchLaw(trajectRef, lawId) {
 }
 
 export function useLaw(lawParam, articleParam, trajectRefParam) {
+  // No law in the route: the `?law=` query may still carry one (the traject
+  // chooser passes it through). Otherwise we open NOTHING - deliberately no
+  // hardcoded fallback law. A default here silently loaded that law, resolved
+  // its first article, and the editor's add-tab watch turned it into a real
+  // tab - so `/editor/` always opened "Artikel 1" of the default law and even
+  // resurrected that tab after the user closed it. With no law, the caller
+  // (EditorView) decides what to open, e.g. by restoring the last active tab.
   if (!lawParam) {
     const params = new URLSearchParams(window.location.search);
-    lawParam = params.get('law') || 'wet_op_de_zorgtoeslag';
+    lawParam = params.get('law') || null;
   }
   const initialArticle = articleParam || null;
   // Current traject id for this composable instance. `switchLaw` may
@@ -125,7 +132,9 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
   // If the parameter looks like a URL, fetch directly; otherwise build
   // the API URL from the current trajectRef.
   const initialDirectUrl =
-    lawParam.startsWith('/') || lawParam.startsWith('http') ? lawParam : null;
+    lawParam && (lawParam.startsWith('/') || lawParam.startsWith('http'))
+      ? lawParam
+      : null;
   const law = shallowRef(null);
   const rawYaml = ref('');
   const selectedArticleNumber = ref(null);
@@ -203,9 +212,14 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
     }
   }
 
-  load();
+  // With no law to open there is nothing to fetch: settle `loading` right away
+  // so the caller shows its empty state instead of an indicator that never
+  // resolves. `switchLaw` still loads on demand once a tab is picked.
+  if (lawParam) load();
+  else loading.value = false;
 
-  // Derive the law ID from the parsed law or the original param
+  // Derive the law ID from the parsed law or the original param (null when no
+  // law is open, which the editor's add-tab watch guards on).
   const lawId = computed(() => law.value?.$id || lawParam);
 
   /**

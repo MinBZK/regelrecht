@@ -102,6 +102,12 @@ export function documentJobsUrl(trajectRef) {
   return `${corpusBase(trajectRef)}/documents/jobs`;
 }
 
+// A single conversion job — DELETE cancels it (kills a stuck upload).
+export function documentJobUrl(trajectRef, jobId) {
+  requireTraject(trajectRef, 'document job cancel');
+  return `${corpusBase(trajectRef)}/documents/jobs/${encodeURIComponent(jobId)}`;
+}
+
 // Writes only exist under the traject prefix. Composables call this at
 // the top of their save function so the call-stack failure is "no
 // traject" instead of a malformed URL.
