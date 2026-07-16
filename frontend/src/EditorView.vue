@@ -2631,7 +2631,17 @@ async function handleActionSave() {
                 <nldd-inline-dialog
                   v-if="!hasMachineReadable"
                   text="Geen machine-leesbare gegevens voor dit artikel"
-                ></nldd-inline-dialog>
+                >
+                  <nldd-button
+                    v-if="canEdit"
+                    slot="actions"
+                    variant="secondary"
+                    size="md"
+                    data-testid="init-mr-btn-yaml"
+                    text="Maak machine-leesbare versie aan"
+                    @click="handleInitMr"
+                  ></nldd-button>
+                </nldd-inline-dialog>
                 <template v-else>
                   <nldd-code-editor
                     resize="auto"

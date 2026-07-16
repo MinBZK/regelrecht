@@ -817,12 +817,20 @@ function gateEditorLogin(anchorEl) {
   showLoginWarning?.(anchorEl, editLawHref.value);
 }
 
-function onEditClick(e) {
+// Open the editor for the selected article, gating on login. `anchorEl` is the
+// button that was clicked - it anchors the login popover. Shared by "Bewerken"
+// and by the Machine/YAML empty-state "aanmaken" button: this pane is
+// read-only, so creating a machine-readable version means going to the editor.
+function openEditor(anchorEl) {
   if (!authenticated.value) {
-    gateEditorLogin(e.currentTarget);
+    gateEditorLogin(anchorEl);
     return;
   }
   router.push(editLawTarget.value);
+}
+
+function onEditClick(e) {
+  openEditor(e.currentTarget);
 }
 
 function selectLaw(lawId, focusAfter = false) {
@@ -1416,8 +1424,8 @@ watch(activeTrajectRef, () => {
                   <nldd-spacer size="24"></nldd-spacer>
                   <KeepAlive>
                     <ArticleText v-if="detailView === 'tekst'" :article="selectedArticle" centered />
-                    <MachineReadable v-else-if="detailView === 'machine'" :article="selectedArticle" @open-action="activeAction = $event" />
-                    <YamlView v-else-if="detailView === 'yaml'" :article="selectedArticle" />
+                    <MachineReadable v-else-if="detailView === 'machine'" :article="selectedArticle" :can-create="!!selectedLawId" :create-href="authenticated ? editLawHref : undefined" @create-mr="openEditor" @open-action="activeAction = $event" />
+                    <YamlView v-else-if="detailView === 'yaml'" :article="selectedArticle" :can-create="!!selectedLawId" :create-href="authenticated ? editLawHref : undefined" @create-mr="openEditor" />
                   </KeepAlive>
                 </nldd-simple-section>
               </template>

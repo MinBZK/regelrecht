@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, toRef, watch, nextTick } from 'vue';
+import { computed, inject, ref, toRef, watch, nextTick } from 'vue';
 import { humanize } from '../utils/outputFormat.js';
 import { useCorpusLaws } from '../composables/useCorpusLaws.js';
 import BreakableName from './BreakableName.vue';
@@ -16,14 +16,30 @@ const props = defineProps({
   /** Active traject ref - scopes the corpus-laws lookup so display
    *  names reflect the traject's view (including its in-progress edits). */
   trajectRef: { type: String, default: null },
+  /** Read-only context: offer a button that opens the editor so the missing
+   *  machine-readable version can be created there. Ignored when `editable`,
+   *  which seeds it in place instead. */
+  canCreate: { type: Boolean, default: false },
+  /** Anchor target for that button. Leave unset when the user isn't logged
+   *  in, so the click gates on the login popover instead of the href. */
+  createHref: { type: String, default: undefined },
 });
 
 const { displayName: lawDisplayName } = useCorpusLaws(toRef(props, 'trajectRef'));
+
+// Provided by AppShell; see LibraryView's "Bewerken" button.
+const onLoginTriggerPointerdown = inject('onLoginTriggerPointerdown', () => {});
 
 const emit = defineEmits([
   'open-action',
   'open-edit',
   'init-mr',
+  /**
+   * Read-only empty state: the user wants the machine-readable version
+   * created, which only the editor can do. Payload is the button element, so
+   * the parent can anchor the login popover to it.
+   */
+  'create-mr',
   'add-action',
   // The Machine-pane "Opslaan" button - a real backend save of the law.
   'save',
@@ -254,7 +270,18 @@ function addOutput() {
 
 <template>
   <nldd-inline-dialog v-if="!mr" data-testid="no-machine-readable" text="Geen machine-leesbare gegevens voor dit artikel">
-    <nldd-button v-if="editable" slot="actions" variant="primary" size="md" data-testid="init-mr-btn" @click="emit('init-mr')" text="Initialiseer machine readable versie"></nldd-button>
+    <nldd-button v-if="editable" slot="actions" variant="secondary" size="md" data-testid="init-mr-btn" @click="emit('init-mr')" text="Maak machine-leesbare versie aan"></nldd-button>
+    <nldd-button
+      v-else-if="canCreate"
+      slot="actions"
+      variant="secondary"
+      size="md"
+      data-testid="create-mr-btn"
+      text="Machine-leesbare versie aanmaken"
+      :href="createHref"
+      @click.prevent="emit('create-mr', $event.currentTarget)"
+      @pointerdown.capture="onLoginTriggerPointerdown"
+    ></nldd-button>
   </nldd-inline-dialog>
 
   <div v-else data-testid="machine-readable">
