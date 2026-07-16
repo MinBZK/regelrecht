@@ -937,17 +937,22 @@ onBeforeRouteUpdate(async (to) => {
   }
 });
 
-function closeTab(tab) {
-  openTabs.value = openTabs.value.filter(t => tabKey(t) !== tabKey(tab));
-  saveTabs(openTabs.value);
-  if (activeTab.value && tabKey(activeTab.value) === tabKey(tab)) {
-    const remaining = openTabs.value;
-    if (remaining.length > 0) {
-      selectTab(remaining[remaining.length - 1]).catch(console.warn);
-    } else {
-      activeTab.value = null;
-    }
-  }
+// `next` is the tab bar's own replacement pick, handed over by its tabdismiss
+// event (see AppShell's onTabDismiss). Follow it: the bar has already marked
+// that item selected, so choosing differently here leaves both lit. Callers
+// without a bar (no pick to follow) get the same rule the bar applies: the
+// neighbour to the right, else the one to the left.
+function closeTab(tab, next = null) {
+  const wasActive = !!activeTab.value && tabKey(activeTab.value) === tabKey(tab);
+  const index = openTabs.value.findIndex(t => tabKey(t) === tabKey(tab));
+  const remaining = openTabs.value.filter(t => tabKey(t) !== tabKey(tab));
+  openTabs.value = remaining;
+  saveTabs(remaining);
+  if (!wasActive) return;
+  // Removing index `i` shifts the right neighbour into `i`.
+  const replacement = next ?? remaining[index] ?? remaining[index - 1] ?? null;
+  if (replacement) selectTab(replacement).catch(console.warn);
+  else activeTab.value = null;
 }
 
 function tabDisplayName(tab) {

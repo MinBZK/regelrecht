@@ -292,6 +292,24 @@ function onSearchHintClose(e) {
 const hasDocumentTabs = computed(
   () => documentTabs.value.length > 0 && !!tabActions.value,
 );
+
+// Which tab replaces a dismissed one is the bar's call, not ours: its dismiss
+// handler picks the neighbour (right, else left, skipping tabs overflow has
+// hidden - layout state only it can see), marks that item selected itself, and
+// reports it as `nextItem` here. Inventing a second policy alongside it selects
+// two tabs: the bar writes `selected` straight onto its own element, which Vue
+// never learns about, so its pick stays lit next to ours.
+//
+// Map elements back to tabs by data-tab-key rather than by index - the bar
+// reorders its own DOM to keep the selected tab visible when tabs overflow.
+function onTabDismiss(e) {
+  const actions = tabActions.value;
+  if (!actions) return;
+  const toTab = (el) =>
+    documentTabs.value.find((t) => actions.key(t) === el?.dataset?.tabKey) ?? null;
+  const dismissed = toTab(e.detail?.item);
+  if (dismissed) actions.close(dismissed, toTab(e.detail?.nextItem));
+}
 </script>
 
 <template>
@@ -484,12 +502,17 @@ const hasDocumentTabs = computed(
                `openTabs`, so it was lost (reverted from localStorage) the next
                time the editor mounted. EditorView's `reorderTabs` mirrors the
                move into the array and persists it. -->
+          <!-- `tabdismiss` (the bar), not `dismiss` (the item): the bar picks
+               the replacement for a dismissed tab itself and hands it over as
+               `nextItem`. See onTabDismiss. -->
           <nldd-document-tab-bar
             @nldd-reorder="tabActions.reorder($event.detail.fromIndex, $event.detail.toIndex)"
+            @tabdismiss="onTabDismiss"
           >
             <nldd-document-tab-bar-item
               v-for="tab in documentTabs"
               :key="tabActions.key(tab)"
+              :data-tab-key="tabActions.key(tab)"
               :text="`Artikel ${tab.articleNumber}`"
               :supporting-text="tabActions.displayName(tab)"
               :short-text="`Art. ${tab.articleNumber}`"
@@ -497,7 +520,6 @@ const hasDocumentTabs = computed(
               :selected="activeDocumentTab && tabActions.key(activeDocumentTab) === tabActions.key(tab) || undefined"
               has-dismiss-button
               @click="tabActions.select(tab)"
-              @dismiss="tabActions.close(tab)"
             >
             </nldd-document-tab-bar-item>
           </nldd-document-tab-bar>
