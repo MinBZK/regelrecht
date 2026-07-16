@@ -494,7 +494,14 @@ const hasDocumentTabs = computed(
            shows an empty bar. -->
       <nldd-split-view-pane v-if="hasDocumentTabs" slot="document-tabs" above="md">
         <nldd-container padding-inline="8" padding-top="0" padding-bottom="8">
-          <nldd-document-tab-bar>
+          <!-- Drag-reorder: the bar reorders its items visually and fires
+               nldd-reorder; without this listener that move never reaches
+               `openTabs`, so it was lost (reverted from localStorage) the next
+               time the editor mounted. EditorView's `reorderTabs` mirrors the
+               move into the array and persists it. -->
+          <nldd-document-tab-bar
+            @nldd-reorder="tabActions.reorder($event.detail.fromIndex, $event.detail.toIndex)"
+          >
             <nldd-document-tab-bar-item
               v-for="tab in documentTabs"
               :key="tabActions.key(tab)"
