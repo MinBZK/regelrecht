@@ -22,25 +22,12 @@ describe('ConversionStatus', () => {
     expect(indicator.attributes('text')).not.toContain('.md');
   });
 
-  it('shows a spinner per running job, no error dialog (flag ON: failures are tasks)', () => {
+  it('shows a spinner per running job, no error dialog (failures are tasks)', () => {
     const wrapper = mountStatus([
       { id: '1', target_path: 'report.md', status: 'processing' },
       { id: '2', target_path: 'brief.md', status: 'processing' },
     ]);
     expect(wrapper.findAll('nldd-activity-indicator')).toHaveLength(2);
     expect(wrapper.find('nldd-inline-dialog').exists()).toBe(false);
-  });
-
-  // Flag OFF: the jobs endpoint falls back to including failed rows, and this
-  // is the pre-taken-mechanisme inline failure UI.
-  it('shows the failure reason for a failed conversion', () => {
-    const wrapper = mountStatus([
-      { id: '2', target_path: 'brief.md', status: 'failed', error: 'boom' },
-    ]);
-    const dialog = wrapper.find('nldd-inline-dialog');
-    expect(dialog.exists()).toBe(true);
-    expect(dialog.attributes('variant')).toBe('alert');
-    expect(dialog.attributes('text')).toContain('brief');
-    expect(dialog.attributes('supporting-text')).toBe('boom');
   });
 });

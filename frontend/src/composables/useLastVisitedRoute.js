@@ -37,6 +37,7 @@ export const HOME_ROUTE_NAMES = [
   'library-traject',
   'werkdocumenten-traject',
   'instellingen-traject',
+  'taken-traject',
 ];
 export function isHomeSection(routeName) {
   return HOME_ROUTE_NAMES.includes(routeName);
@@ -151,6 +152,14 @@ export function sectionTarget(router, storedPath, activeRef) {
     const target = { name: 'werkdocumenten-traject', params: { trajectRef: activeRef } };
     if (params.docPath) target.params.docPath = params.docPath;
     return target;
+  }
+
+  // Taken sub-mode of Home: same preservation as werkdocumenten (re-stamp the
+  // active traject) so a Home↔Editor tab switch returns to the open taken-panel.
+  const isTaken = name === 'taken-traject'
+    || (name == null && /\/taken($|[/?#])/.test(storedPath));
+  if (isTaken && activeRef) {
+    return { name: 'taken-traject', params: { trajectRef: activeRef } };
   }
 
   // Home section (corpus) — the active traject scope wins over whatever the

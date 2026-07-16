@@ -14,7 +14,7 @@ import { ref } from 'vue';
 // `onBeforeRouteLeave` are just named exports LibraryView calls once at
 // setup to register a callback - stubbing them as no-ops absorbs that
 // registration without needing real guard machinery (same technique
-// TasksSheet.test.js / MobileTrajectSheet.test.js use for useRoute/useRouter).
+// TasksPane.test.js / MobileTrajectSheet.test.js use for useRoute/useRouter).
 const routeState = {
   name: 'werkdocumenten-traject',
   params: { trajectRef: 'traject-abcd1234', docPath: '' },

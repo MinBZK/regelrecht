@@ -2,8 +2,6 @@
 import { computed, ref, nextTick, onMounted, onBeforeUnmount, provide } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import TrajectMenu from './components/TrajectMenu.vue';
-import TasksButton from './components/TasksButton.vue';
-import TasksSheet from './components/TasksSheet.vue';
 import MobileTrajectSheet from './components/MobileTrajectSheet.vue';
 import AboutSheet from './components/AboutSheet.vue';
 import SupportSheet from './components/SupportSheet.vue';
@@ -37,17 +35,6 @@ const {
   disconnect: disconnectGithub,
 } = useGithubAuth();
 const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
-
-// Taken (job_review/job_failed): topbar-knop + sheet komen alleen in de DOM
-// terecht - en dus roept alleen dán `useTasks()` op, wat de 30s-poll start -
-// wanneer de flag aan staat EN de gebruiker ingelogd is. Het hele
-// taken-mechanisme (verrijk-op-aanvraag + taken-UI + taak-gebaseerde
-// conversie-mislukkingen) zit achter `tasks.job_review`. Met de flag uit
-// levert het documentconversie-jobs-endpoint geen job_failed-taken meer terug
-// (zie ConversionStatus.vue) - de oude lijstweergave met failed-status komt
-// dan terug, dus er is geen zichtbaarheidsgat voor mislukte conversies.
-// Anonieme bezoekers of een uitgeschakelde flag pollen /api/tasks nooit.
-const showTasks = computed(() => authenticated.value && isEnabled('tasks.job_review'));
 
 // Roles that may reach the harvester-admin "Corpusinwinning" section. Any harvester-*
 // tier (reader/writer/admin) or the spanning regelrecht-admin sees the menu
@@ -110,12 +97,10 @@ const editorPanelFlags = [
 // effects: it shows the Koppel/Ontkoppel items below AND makes the backend
 // require the acting user's own GitHub token for traject writes (a save
 // without a linked token then 428s, which apiAuthGuard.js turns into a
-// redirect through the connect flow). The Taken toggle gates the whole
-// taken-mechanisme (see the `showTasks` comment above).
+// redirect through the connect flow).
 const functieFlags = computed(() => [
   ...editorPanelFlags,
   ...(githubStatus.value?.configured ? [['github.user_oauth', 'GitHub-koppeling']] : []),
-  ['tasks.job_review', 'Taken'],
 ]);
 
 const route = useRoute();
@@ -339,9 +324,6 @@ const hasDocumentTabs = computed(
               </nldd-just-in-time-education>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <TasksButton v-if="showTasks" id-suffix="md" />
-            </nldd-toolbar-item>
-            <nldd-toolbar-item slot="end">
               <nldd-button-bar size="md">
                 <TrajectMenu id-suffix="md" />
                 <nldd-button-bar-divider></nldd-button-bar-divider>
@@ -419,9 +401,6 @@ const hasDocumentTabs = computed(
             </nldd-toolbar-item>
             <nldd-toolbar-item v-if="lastSavedPr" slot="end">
               <nldd-button size="md" start-icon="external-link" :text="`PR #${lastSavedPr.number}`" :href="lastSavedPr.url" target="_blank" rel="noopener"></nldd-button>
-            </nldd-toolbar-item>
-            <nldd-toolbar-item slot="end">
-              <TasksButton v-if="showTasks" id-suffix="lg" />
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
               <nldd-button-bar size="md">
@@ -665,11 +644,6 @@ const hasDocumentTabs = computed(
     <AboutSheet ref="aboutSheet"></AboutSheet>
     <SupportSheet ref="supportSheet"></SupportSheet>
   </nldd-app-view>
-
-  <!-- Taken-sheet, opened from TasksButton (md/lg headers). Mounted only
-       behind the same authenticated gate as the button, so useTasks()
-       (called inside) never polls for an anonymous visitor. -->
-  <TasksSheet v-if="showTasks" />
 
   <!-- Editor requires login: a heads-up popover anchored to the clicked Editor
        tab (sm/md/lg) so the SSO screen never appears unannounced. -->

@@ -39,6 +39,12 @@ describe('route disambiguation (traject vs no-traject)', () => {
     });
   });
 
+  it('routes a traject taken URL to taken-traject', () => {
+    const r = router.resolve(`/trajecten/${REF}/taken`);
+    expect(r.name).toBe('taken-traject');
+    expect(r.params.trajectRef).toBe(REF);
+  });
+
   it('routes a plain law-id corpus URL to corpus-juris (no traject)', () => {
     const r = router.resolve('/corpus-juris/wet_op_de_zorgtoeslag');
     expect(r.name).toBe('corpus-juris');
@@ -146,6 +152,17 @@ describe('sectionTarget - traject preserved across tab switches', () => {
 
   it('drops the werkdocumenten sub-mode when no traject is active', () => {
     const t = sectionTarget(router, `/trajecten/${REF}/werkdocumenten/x.md`, null);
+    expect(t.name).toBe('home');
+  });
+
+  it('preserves the taken sub-mode across a tab switch, re-stamping the active traject', () => {
+    const t = sectionTarget(router, '/trajecten/old-deadbeef/taken', REF);
+    expect(t.name).toBe('taken-traject');
+    expect(t.params.trajectRef).toBe(REF);
+  });
+
+  it('drops the taken sub-mode when no traject is active', () => {
+    const t = sectionTarget(router, `/trajecten/${REF}/taken`, null);
     expect(t.name).toBe('home');
   });
 

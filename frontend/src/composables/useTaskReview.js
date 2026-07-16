@@ -14,7 +14,7 @@ export function useTaskReview() {
   // useTaskActions(), not useTasks(): useTaskReview() is itself called
   // unconditionally in EditorView's setup(), so joining the polled
   // useTasks() here would start the 30s poll for every editor visitor
-  // (including anonymous ones) regardless of the tasks.job_review flag.
+  // (including anonymous ones).
   const { fetchTask, resolveTask } = useTaskActions();
   const reviewTask = ref(null);
   const proposedContent = ref(null);
