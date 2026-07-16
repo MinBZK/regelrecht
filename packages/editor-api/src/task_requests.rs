@@ -52,21 +52,6 @@ pub async fn request_enrich(
         "database niet geconfigureerd".to_string(),
     ))?;
 
-    // Server-side flag-gate, vóór al het werk (goedkoper dan de membership-
-    // check hieronder: één flag-read i.p.v. een traject-lookup). 404 in plaats
-    // van 403: met de flag uit bestaat deze feature niet voor deze deployment,
-    // dus geen hint dat er iets "verbodens" achter zit. Zelfde
-    // flag-read-patroon als `github_oauth::write_requires_user_token`.
-    if !crate::feature_flags::flag_enabled(pool, crate::feature_flags::TASKS_JOB_REVIEW)
-        .await
-        .map_err(internal("feature-flag lezen"))?
-    {
-        return Err((
-            StatusCode::NOT_FOUND,
-            "Verrijken op aanvraag is niet ingeschakeld.".to_string(),
-        ));
-    }
-
     // Zelfde guard + resolutie als de document-upload: membership-check en
     // traject-id voor de payload/taak.
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
