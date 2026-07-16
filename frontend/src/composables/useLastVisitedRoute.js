@@ -77,8 +77,8 @@ export function recordLastVisited(routeName, fullPath) {
 
 // The Home section's last-visited full path — the public landing, a public law,
 // the traject bibliotheek, werkdocumenten or instellingen — all under the 'home'
-// key. The Home tab restores this verbatim (like the harvester return) so
-// switching back to Home reopens exactly where you were, whatever its scope.
+// key. The Home tab restores this through homeTabTarget (below): verbatim when
+// the stored scope matches the active traject, re-stamped onto it otherwise.
 export const lastHomePath = computed(() => _lastVisited.value.home ?? '/');
 
 // `/editor` (no traject) is the read-only editor. The first visit
@@ -162,11 +162,36 @@ export function sectionTarget(router, storedPath, activeRef) {
     return { name: 'taken-traject', params: { trajectRef: activeRef } };
   }
 
-  // Home section (corpus) — the active traject scope wins over whatever the
+  // Instellingen sub-mode of Home: same preservation as werkdocumenten
+  // (re-stamp the active traject, keep the open tab). Without this branch the
+  // generic fallback below would silently collapse a stored instellingen path
+  // to the traject home on a scope mismatch.
+  const isInstellingen = name === 'instellingen-traject'
+    || (name == null && /\/instellingen($|[/?#])/.test(storedPath));
+  if (isInstellingen && activeRef) {
+    const target = { name: 'instellingen-traject', params: { trajectRef: activeRef } };
+    if (params.tab) target.params.tab = params.tab;
+    return target;
+  }
+
+  // Home section (corpus): the active traject scope wins over whatever the
   // stored path carried (re-stamped, or dropped when browsing without a traject).
   return homeTarget({
     trajectRef: activeRef || undefined,
     lawId: params.lawId,
     articleNumber: params.articleNumber,
   });
+}
+
+// Target for the Home tab: the last-visited Home path, with the ACTIVE
+// traject re-stamped onto it (via sectionTarget) so a Home<->Editor tab
+// switch keeps you in the traject you're working in instead of restoring a
+// stale scope (e.g. Corpus juris after opening a public deep-link). When the
+// stored path already carries the active scope it's returned verbatim, so
+// query/hash (the open werkdocument's `?task=`, the #yaml detail tab)
+// survive exactly like before.
+export function homeTabTarget(router, storedPath, activeRef) {
+  const storedRef = router.resolve(storedPath).params.trajectRef || null;
+  if (storedRef === (activeRef || null)) return storedPath;
+  return sectionTarget(router, storedPath, activeRef);
 }
