@@ -82,6 +82,7 @@ pub async fn request_enrich(
         traject_id: Some(traject_id),
         traject_ref: Some(traject_ref.clone()),
         source_etag: Some(source_etag),
+        new_law: None,
     };
     let payload_json = serde_json::to_value(&payload).map_err(internal("payload serialiseren"))?;
 
@@ -89,34 +90,7 @@ pub async fn request_enrich(
     // op (law_id, provider) via de bestaande unieke actieve-enrich-index.
     let mut tx = pool.begin().await.map_err(internal("begin tx"))?;
 
-    // Serialiseer per account: de cap-check hieronder is anders een
-    // COUNT-then-INSERT-race (zelfde TOCTOU-klasse als harvest_request;
-    // zelfde remedie: een xact-scoped advisory lock).
-    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended('task_enrich:' || $1::text, 0))")
-        .bind(account.id.to_string())
-        .execute(&mut *tx)
-        .await
-        .map_err(internal("account-lock nemen"))?;
-
-    // Per-account-cap: telt actieve taak-flow-jobs van dit account vóórdat we
-    // er nog een bij enqueuen, zodat een scripted flood niet de prio-80-queue
-    // of het LLM-uurbudget kan opsouperen.
-    let (active_count,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM jobs \
-         WHERE job_type = 'enrich' AND status IN ('pending', 'processing') \
-           AND payload->>'requested_by' = $1",
-    )
-    .bind(account.id.to_string())
-    .fetch_one(&mut *tx)
-    .await
-    .map_err(internal("actieve taak-jobs tellen"))?;
-    if active_count >= MAX_ACTIVE_TASK_JOBS_PER_ACCOUNT {
-        return Err((
-            StatusCode::TOO_MANY_REQUESTS,
-            "Je hebt te veel verrijkingen tegelijk lopen; wacht tot er een paar klaar zijn."
-                .to_string(),
-        ));
-    }
+    enforce_task_job_cap(&mut tx, account.id).await?;
 
     // max_attempts 3 (default expliciet): transiënte fouten (fork-exhaustion,
     // provider-hiccups) zijn retryable; de input-blob overleeft tot definitief
@@ -144,6 +118,42 @@ pub async fn request_enrich(
         StatusCode::ACCEPTED,
         Json(EnrichRequestResponse { job_id: job.id }),
     ))
+}
+
+/// Per-account-cap op actieve taak-flow-jobs, binnen de transactie van de
+/// aanroeper. Serialiseert eerst per account (xact-scoped advisory lock):
+/// de COUNT-then-INSERT is anders een TOCTOU-race (zelfde klasse en remedie
+/// als harvest_request). Telt naast enrich- ook law_convert-jobs mee: elke
+/// law_convert ketent immers een enrich-job na. Gedeeld door `request_enrich`
+/// en de law-upload in `corpus_handlers`.
+pub(crate) async fn enforce_task_job_cap(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    account_id: Uuid,
+) -> Result<(), (StatusCode, String)> {
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended('task_enrich:' || $1::text, 0))")
+        .bind(account_id.to_string())
+        .execute(&mut **tx)
+        .await
+        .map_err(internal("account-lock nemen"))?;
+
+    let (active_count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM jobs \
+         WHERE job_type IN ('enrich', 'law_convert') \
+           AND status IN ('pending', 'processing') \
+           AND payload->>'requested_by' = $1",
+    )
+    .bind(account_id.to_string())
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(internal("actieve taak-jobs tellen"))?;
+    if active_count >= MAX_ACTIVE_TASK_JOBS_PER_ACCOUNT {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "Je hebt te veel verrijkingen tegelijk lopen; wacht tot er een paar klaar zijn."
+                .to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn internal<E: std::fmt::Display>(what: &'static str) -> impl FnOnce(E) -> (StatusCode, String) {

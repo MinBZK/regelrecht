@@ -278,3 +278,73 @@ describe('useLaw fetch dedup (single-flight)', () => {
     expect(callCount).toBe(2);
   });
 });
+
+describe('useLaw law_create-flow (seedFromYaml + createLaw)', () => {
+  it('seedFromYaml vult de editorstate zonder netwerk en wist de load-fout', async () => {
+    // De load 404't (de wet bestaat nog niet in het traject).
+    globalThis.fetch = vi.fn().mockImplementation(async () =>
+      res({ ok: false, status: 404, body: 'Law not found' }),
+    );
+    const law = useLaw('nieuwe_wet', null, 'tr-12345678');
+    await waitForLoaded(law);
+    expect(law.error.value).toBeTruthy();
+
+    const seeded = law.seedFromYaml(
+      '$id: nieuwe_wet\narticles:\n  - number: "1"\n    text: t\n',
+    );
+    expect(seeded).toBe(true);
+    expect(law.error.value).toBeNull();
+    expect(law.law.value.$id).toBe('nieuwe_wet');
+    expect(law.selectedArticleNumber.value).toBe('1');
+    expect(law.currentEtag.value).toBeNull();
+  });
+
+  it('seedFromYaml laat de foutstaat staan bij kapotte YAML', async () => {
+    globalThis.fetch = vi.fn().mockImplementation(async () =>
+      res({ ok: false, status: 404, body: 'Law not found' }),
+    );
+    const law = useLaw('nieuwe_wet2', null, 'tr-12345678');
+    await waitForLoaded(law);
+    expect(law.seedFromYaml('niet: [valide yaml')).toBe(false);
+    expect(law.error.value).toBeTruthy();
+  });
+
+  it('createLaw POST naar het create-endpoint en ketent de ETag voor vervolg-saves', async () => {
+    const calls = [];
+    globalThis.fetch = vi.fn().mockImplementation(async (url, opts) => {
+      calls.push({ url, opts: opts ?? {} });
+      if (opts?.method === 'POST') {
+        return res({ etag: '"created"', json: { pr: null, etag: '"created"' } });
+      }
+      return res({ ok: false, status: 404, body: 'Law not found' });
+    });
+    const law = useLaw('nieuwe_wet3', null, 'tr-12345678');
+    await waitForLoaded(law);
+    law.seedFromYaml('$id: nieuwe_wet3\narticles:\n  - number: "1"\n    text: t\n');
+
+    await law.createLaw('$id: nieuwe_wet3\narticles:\n  - number: "1"\n    text: t\n');
+
+    const post = calls.find((c) => c.opts?.method === 'POST');
+    expect(post).toBeTruthy();
+    expect(post.url).toBe('/api/trajects/tr-12345678/corpus/laws');
+    // Geen If-Match op een create: er is nog niets om mee te racen.
+    expect(post.opts.headers['If-Match']).toBeUndefined();
+    expect(law.currentEtag.value).toBe('"created"');
+    expect(law.lawId.value).toBe('nieuwe_wet3');
+  });
+
+  it('createLaw geeft de servermelding door (bijv. een 409-slugconflict)', async () => {
+    globalThis.fetch = vi.fn().mockImplementation(async (url, opts) => {
+      if (opts?.method === 'POST') {
+        return res({ ok: false, status: 409, body: 'Er bestaat al een wet met dit $id in dit traject; pas het $id in de YAML aan.' });
+      }
+      return res({ ok: false, status: 404, body: 'Law not found' });
+    });
+    const law = useLaw('nieuwe_wet4', null, 'tr-12345678');
+    await waitForLoaded(law);
+    await expect(law.createLaw('$id: nieuwe_wet4\narticles: []\n')).rejects.toThrow(
+      /bestaat al een wet/i,
+    );
+    expect(law.saveError.value).toBeTruthy();
+  });
+});

@@ -21,6 +21,7 @@ import {
   requireTraject,
 } from './corpusUrls.js';
 import { apiFetchJson } from '../lib/apiFetch.js';
+import { uploadMultipart } from '../lib/uploadMultipart.js';
 import { useLatest } from '../lib/useLatest.js';
 
 const STORAGE_PREFIX = 'regelrecht-doc-draft:';
@@ -395,36 +396,14 @@ export function useTrajectDocuments(trajectRef) {
   async function uploadDocument(file) {
     requireTraject(trajectRef.value, 'document upload');
     saveError.value = null;
-    const form = new FormData();
-    form.append('file', file);
-    try {
-      // Raw fetch, result-object style like `saveCurrent`. Do NOT set
-      // Content-Type - the browser adds the multipart boundary itself.
-      const res = await fetch(documentUploadUrl(trajectRef.value), {
-        method: 'POST',
-        body: form,
-      });
-      if (!res.ok) {
-        // 404/405/501 mean the backend doesn't offer the upload endpoint (the
-        // conversion feature isn't enabled yet) - a human message, and retrying
-        // won't help. Other statuses keep the server's text (or the code) and
-        // stay retryable.
-        const unsupported = res.status === 404 || res.status === 405 || res.status === 501;
-        const text = await safeText(res);
-        const error = unsupported
-          ? 'Uploaden wordt door de server nog niet ondersteund.'
-          : (text || `Uploaden mislukt (foutcode ${res.status}).`);
-        // Surface via the returned result only (the consumer shows its own
-        // upload dialog); don't also set saveError, which raises a 2nd modal.
-        return { ok: false, error, retryable: !unsupported };
-      }
-      const json = await safeJson(res);
-      // Refresh the list so the poller (and, once converted, the .md) show up.
-      await fetchList();
-      return { ok: true, targetPath: json?.target_path ?? null };
-    } catch (e) {
-      return { ok: false, error: e.message };
-    }
+    // Shared multipart POST (raw fetch + 404/405/501 classification). Errors
+    // surface via the returned result only (the consumer shows its own upload
+    // dialog); don't also set saveError, which raises a 2nd modal.
+    const result = await uploadMultipart(documentUploadUrl(trajectRef.value), file);
+    if (!result.ok) return result;
+    // Refresh the list so the poller (and, once converted, the .md) show up.
+    await fetchList();
+    return { ok: true, targetPath: result.json?.target_path ?? null };
   }
 
   async function deleteDocument(path) {

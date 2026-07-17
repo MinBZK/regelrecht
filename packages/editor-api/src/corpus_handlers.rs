@@ -2725,6 +2725,58 @@ pub async fn list_traject_documents(
 /// Upload formats accepted in fase 1: PDF and Word.
 const UPLOAD_DOCUMENT_EXTENSIONS: &[&str] = &["pdf", "doc", "docx"];
 
+/// Pull the uploaded file out of a multipart body (the `file` field) and gate
+/// it on [`UPLOAD_DOCUMENT_EXTENSIONS`]. Shared by the werkdocument- and
+/// wet-upload endpoints. Returns `(filename, content_type, bytes)`.
+async fn read_upload_multipart(
+    multipart: &mut Multipart,
+) -> Result<(String, String, Vec<u8>), (StatusCode, String)> {
+    let mut filename: Option<String> = None;
+    let mut content_type: Option<String> = None;
+    let mut data: Option<Vec<u8>> = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Ongeldige upload: {e}")))?
+    {
+        if field.name() == Some("file") {
+            filename = field.file_name().map(|s| s.to_string());
+            content_type = field.content_type().map(|s| s.to_string());
+            let bytes = field.bytes().await.map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    format!("Kon het bestand niet lezen: {e}"),
+                )
+            })?;
+            data = Some(bytes.to_vec());
+            break;
+        }
+    }
+    let filename = filename.ok_or((
+        StatusCode::BAD_REQUEST,
+        "Geen bestand in de upload (het 'file'-veld ontbreekt).".to_string(),
+    ))?;
+    let data = data.filter(|d| !d.is_empty()).ok_or((
+        StatusCode::BAD_REQUEST,
+        "Het geüploade bestand is leeg.".to_string(),
+    ))?;
+    let content_type = content_type.unwrap_or_else(|| "application/octet-stream".to_string());
+
+    // Only PDF/Word in fase 1.
+    let ext = std::path::Path::new(&filename)
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .unwrap_or_default();
+    if !UPLOAD_DOCUMENT_EXTENSIONS.contains(&ext.as_str()) {
+        return Err((
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "Alleen PDF- en Word-documenten (.pdf, .doc, .docx) worden ondersteund.".to_string(),
+        ));
+    }
+    Ok((filename, content_type, data))
+}
+
 #[derive(Debug, Serialize)]
 pub struct UploadDocumentResponse {
     /// The `.md` path the converted document will appear at once its
@@ -2814,50 +2866,8 @@ pub async fn upload_traject_document(
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let traject_id = resolve_traject_ref(pool, &traject_ref).await?;
 
-    // Pull the uploaded file out of the multipart body (the `file` field).
-    let mut filename: Option<String> = None;
-    let mut content_type: Option<String> = None;
-    let mut data: Option<Vec<u8>> = None;
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Ongeldige upload: {e}")))?
-    {
-        if field.name() == Some("file") {
-            filename = field.file_name().map(|s| s.to_string());
-            content_type = field.content_type().map(|s| s.to_string());
-            let bytes = field.bytes().await.map_err(|e| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    format!("Kon het bestand niet lezen: {e}"),
-                )
-            })?;
-            data = Some(bytes.to_vec());
-            break;
-        }
-    }
-    let filename = filename.ok_or((
-        StatusCode::BAD_REQUEST,
-        "Geen bestand in de upload (het 'file'-veld ontbreekt).".to_string(),
-    ))?;
-    let data = data.filter(|d| !d.is_empty()).ok_or((
-        StatusCode::BAD_REQUEST,
-        "Het geüploade bestand is leeg.".to_string(),
-    ))?;
-    let content_type = content_type.unwrap_or_else(|| "application/octet-stream".to_string());
-
-    // Only PDF/Word in fase 1.
-    let ext = std::path::Path::new(&filename)
-        .extension()
-        .and_then(|s| s.to_str())
-        .map(|e| e.to_ascii_lowercase())
-        .unwrap_or_default();
-    if !UPLOAD_DOCUMENT_EXTENSIONS.contains(&ext.as_str()) {
-        return Err((
-            StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            "Alleen PDF- en Word-documenten (.pdf, .doc, .docx) worden ondersteund.".to_string(),
-        ));
-    }
+    // Pull the uploaded file out of the multipart body and gate the extension.
+    let (filename, content_type, data) = read_upload_multipart(&mut multipart).await?;
 
     // Derive a collision-safe target markdown path against the existing docs.
     // A failed listing must NOT be swallowed: an empty `existing` set would let
@@ -2961,6 +2971,208 @@ pub async fn upload_traject_document(
         StatusCode::ACCEPTED,
         Json(UploadDocumentResponse { target_path }),
     ))
+}
+
+#[derive(Debug, Serialize)]
+pub struct UploadLawResponse {
+    pub job_id: uuid::Uuid,
+}
+
+/// POST /api/trajects/{traject_ref}/corpus/laws/upload
+///
+/// Accept a multipart upload of a PDF/Word document and enqueue a
+/// `law_convert` job: the worker turns it into a harvested base-law YAML and
+/// chains a task-flow enrichment on it. The user gets a single review task
+/// with the enriched law at the end (kind `law_create`); approving it lands
+/// the law in the traject via `create_traject_law`. Responds `202 Accepted`
+/// with the job id; there is no target path yet, because the conversion
+/// itself chooses the law's `$id` and `regulatory_layer`.
+pub async fn upload_traject_law(
+    State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
+    session: Session,
+    Path(traject_ref): Path<String>,
+    mut multipart: Multipart,
+) -> Result<(StatusCode, Json<UploadLawResponse>), (StatusCode, String)> {
+    let pool = state.pool.as_ref().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "database not configured".to_string(),
+    ))?;
+    // Membership guard (also resolves the traject); the id feeds the job payload.
+    let _traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let traject_id = resolve_traject_ref(pool, &traject_ref).await?;
+
+    let (filename, content_type, data) = read_upload_multipart(&mut multipart).await?;
+
+    // Persist the bytes and enqueue the conversion job in one transaction,
+    // guarded by the same per-account taak-flow-cap as enrich-op-aanvraag
+    // (each law_convert chains an enrich job, so it counts toward that cap).
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| upload_internal_error("begin tx", e))?;
+    crate::task_requests::enforce_task_job_cap(&mut tx, account.id).await?;
+
+    let (upload_id,): (uuid::Uuid,) = sqlx::query_as(
+        "INSERT INTO document_uploads (traject_ref, filename, content_type, bytes) \
+         VALUES ($1, $2, $3, $4) RETURNING id",
+    )
+    .bind(&traject_ref)
+    .bind(&filename)
+    .bind(&content_type)
+    .bind(&data)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| upload_internal_error("insert upload", e))?;
+
+    let payload = regelrecht_pipeline::law_convert::LawConvertPayload {
+        upload_id,
+        traject_id,
+        traject_ref: traject_ref.clone(),
+        filename: filename.clone(),
+        provider: Some(state.config.task_enrich_provider.clone()),
+        requested_by: Some(account.id),
+        deliver: Some("task".to_string()),
+    };
+    let payload_json = serde_json::to_value(&payload)
+        .map_err(|e| upload_internal_error("serialize payload", e))?;
+    let req = regelrecht_pipeline::job_queue::CreateJobRequest::new(
+        regelrecht_pipeline::JobType::LawConvert,
+        // Synthetic job key; real identity ($id) is chosen by the conversion.
+        format!("lawdoc:{traject_ref}/{filename}"),
+    )
+    .with_traject_ref(traject_ref.clone())
+    // Single attempt, like document-convert: a retry would re-run the
+    // expensive LLM structuring and most failures are deterministic. A
+    // failure surfaces as a job_failed task; re-uploading is the retry.
+    .with_max_attempts(1)
+    .with_payload(payload_json);
+    let job = regelrecht_pipeline::job_queue::create_job(&mut *tx, req)
+        .await
+        .map_err(|e| upload_internal_error("create job", e))?;
+    tx.commit()
+        .await
+        .map_err(|e| upload_internal_error("commit tx", e))?;
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(UploadLawResponse { job_id: job.id }),
+    ))
+}
+
+/// POST /api/trajects/{traject_ref}/corpus/laws: create a NEW law in the
+/// traject's writable-own source.
+///
+/// The approve-step of a `law_create` review task: `save_law` (PUT) can only
+/// write laws that already exist in the traject's index, so a freshly
+/// converted law needs this create path. Unlike `save_law` the body gets
+/// FULL schema validation (there is no existing file to fall back on), and
+/// the corpus path is derived **server-side** from the validated body:
+/// `regulation/nl/{regulatory_layer}/{$id}/{valid_from}.yaml`.
+pub async fn create_traject_law(
+    State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
+    session: Session,
+    Path(traject_ref): Path<String>,
+    headers: axum::http::HeaderMap,
+    body: String,
+) -> Result<axum::response::Response, (StatusCode, String)> {
+    use axum::response::IntoResponse;
+    let author = Some(require_editor_user(&session).await?);
+
+    // Membership guard FIRST, before any body work — the schema validation
+    // below is CPU-bound over an up-to-5MB body and must not be reachable
+    // for non-members (same ordering as the upload handlers).
+    let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let traject_id = resolve_traject_ref(
+        state.pool.as_ref().ok_or((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "database not configured".to_string(),
+        ))?,
+        &traject_ref,
+    )
+    .await?;
+
+    // Full validation: schema + $id-slug + regulatory_layer + valid_from,
+    // the same single validator the law-convert worker uses, so what the
+    // worker produced (and the reviewer possibly edited) is what lands.
+    // The error body lists the validation errors; they are plain schema
+    // paths/messages, not echoed free-form user input.
+    let meta = regelrecht_pipeline::law_convert::validate_law_yaml(&body).map_err(|errors| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Wet valideert niet tegen het schema: {}", errors.join("; ")),
+        )
+    })?;
+    let law_id = meta.law_id.clone();
+
+    // A law with this $id anywhere in the federated index is a conflict: the
+    // create path must never shadow or overwrite an existing law. (Editing
+    // an existing law goes through the PUT.)
+    if traject.corpus.source_map.get_law(&law_id).is_some() {
+        return Err((
+            StatusCode::CONFLICT,
+            "Er bestaat al een wet met dit $id in dit traject; pas het $id in de YAML aan."
+                .to_string(),
+        ));
+    }
+
+    // Standard corpus layout, relative to the writable-own source root.
+    let relative_path = PathBuf::from("regulation")
+        .join("nl")
+        .join(meta.regulatory_layer.as_dir_name())
+        .join(&law_id)
+        .join(format!("{}.yaml", meta.valid_from));
+
+    // The writable-own backend (same routing as documents: the law does not
+    // exist yet, so there is no per-law source to route from).
+    let backend = resolve_traject_documents_writer(&traject).await?;
+    // Belt-and-braces against an index blind spot (e.g. a file committed on
+    // the branch after the current snapshot was built).
+    if backend
+        .read_file(&relative_path)
+        .await
+        .map_err(corpus_write_error("law"))?
+        .is_some()
+    {
+        return Err((
+            StatusCode::CONFLICT,
+            "Er staat al een wetsbestand op dit pad in het traject; pas het $id in de YAML aan."
+                .to_string(),
+        ));
+    }
+    let token_override =
+        github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**backend)
+            .await?;
+
+    backend
+        .write_file(&relative_path, &body)
+        .await
+        .map_err(corpus_write_error("law"))?;
+    let outcome = backend
+        .persist(&WriteContext {
+            message: format!("Nieuwe wet {} uit documentconversie", law_id),
+            author,
+            token_override,
+        })
+        .await
+        .map_err(corpus_write_error("law"))?;
+    drop(backend);
+
+    let new_etag = document_etag(&body);
+
+    // Read-your-writes for requests still holding the current snapshot …
+    traject.record_save(law_id.clone(), body).await;
+    traject.record_changed_law(&law_id).await;
+    // … and a full cache drop so the next request rebuilds the index with
+    // the new file on the branch. Without this the law stays invisible to
+    // the PUT/save path (which requires an index entry) until the TTL
+    // refresh happens to run.
+    state.trajects.invalidate(traject_id).await;
+
+    let mut response = save_response_from_traject(outcome);
+    response.etag = Some(new_etag.clone());
+    Ok(([(axum::http::header::ETAG, new_etag)], Json(response)).into_response())
 }
 
 /// GET /api/trajects/{traject_ref}/corpus/documents/jobs

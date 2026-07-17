@@ -197,6 +197,8 @@ const {
   saving: lawSaving,
   saveError: lawSaveError,
   saveLaw,
+  seedFromYaml,
+  createLaw,
   currentEtag,
   lastSavedPr,
 } = useLaw(route.params.lawId, route.params.articleNumber, route.params.trajectRef);
@@ -1370,6 +1372,12 @@ const {
   reject: rejectReviewInternal,
 } = useTaskReview();
 const reviewActive = computed(() => !!reviewTask.value);
+// `law_create`-taak: de wet bestaat nog niet in het traject; het voorstel
+// wordt integraal in de editor geseed en Opslaan gaat via het create-pad
+// (POST) in plaats van de PUT.
+const reviewIsLawCreate = computed(
+  () => reviewTask.value?.payload?.kind === 'law_create',
+);
 const reviewTaskIdParam = computed(() =>
   typeof route.query.task === 'string' ? route.query.task : null,
 );
@@ -1444,12 +1452,19 @@ function applyProposedContent(proposedYaml) {
 const REVIEW_HIDDEN_CHANGES_NOTE = 'Zie ook het YAML-paneel voor wijzigingen buiten dit artikel.';
 const reviewBannerVariant = computed(() => {
   if (reviewLoadError.value) return 'critical';
+  if (reviewIsLawCreate.value) return 'neutral';
   if (reviewStale.value) return 'warning';
   if (reviewActive.value && !reviewSeeded.value) return 'warning';
   return 'neutral';
 });
+const reviewBannerText = computed(() =>
+  reviewIsLawCreate.value ? 'Nieuwe wet uit documentconversie' : 'Voorstel uit verrijking',
+);
 const reviewBannerSupportingText = computed(() => {
   if (reviewLoadError.value) return reviewLoadError.value;
+  if (reviewIsLawCreate.value) {
+    return 'Controleer de wet; Opslaan voegt de wet toe aan het traject, Verwerpen wijst af.';
+  }
   if (!reviewSeeded.value) {
     return 'Voorstel raakt alleen inhoud die hier niet zichtbaar is - bekijk het YAML-paneel.';
   }
@@ -1486,11 +1501,49 @@ watch(
   { immediate: true },
 );
 
+// `law_create`-variant van de watch hierboven: de wet bestaat nog niet, dus
+// de load eindigt in een 404 en `selectedArticle` komt er nooit - de normale
+// watch kan niet vuren. Bij een 404 mét ?task= halen we de taak alsnog op;
+// is het een law_create-taak voor precies deze wet, dan wordt het voorstel
+// integraal geseed (`seedFromYaml`) in plaats van gespliced - de hele wet ÍS
+// het voorstel. Elke andere combinatie laat de bestaande 404-foutstaat staan.
+watch(
+  [error, reviewTaskIdParam],
+  ([err, taskId]) => {
+    if (!taskId || err?.status !== 404) return;
+    if (reviewAttemptedForTaskId === taskId) return;
+    reviewAttemptedForTaskId = taskId;
+    loadReview(taskId, null).then(() => {
+      const task = reviewTask.value;
+      if (
+        task?.payload?.kind === 'law_create' &&
+        task?.payload?.law_id === lawId.value &&
+        reviewProposedContent.value
+      ) {
+        seedFromYaml(reviewProposedContent.value);
+        // Niets is als dirty edit geseed: de banner levert de primaire
+        // opslaan-knop (zie `reviewSeeded` in de template), niet de
+        // Wijzigingenbalk.
+        reviewSeeded.value = false;
+        reviewHasHiddenChanges.value = false;
+      }
+    });
+  },
+  { immediate: true },
+);
+
 // "Verwerpen" in the review banner: resolve the task as rejected, throw
 // away the seeded edit (same discard the Wijzigingenbalk offers), and
 // leave review mode.
 async function rejectReview() {
+  const wasLawCreate = reviewIsLawCreate.value;
   await rejectReviewInternal();
+  if (wasLawCreate) {
+    // De wet bestaat niet (en komt er na verwerpen ook niet): terugroutes
+    // naar de wetsroute zouden op een 404 landen, dus terug naar Home.
+    router.replace(libraryTabTarget.value);
+    return;
+  }
   discardArticle();
   clearReviewQuery();
 }
@@ -1560,7 +1613,14 @@ async function handleLawSave() {
   lastSaveTouchedText.value = reviewActive.value ? true : isArticleTextDirty.value;
   lastSaveTouchedMachine.value = reviewActive.value ? true : isMachineReadableDirty.value;
   try {
-    await saveLaw(lawYaml);
+    // law_create: de wet bestaat nog niet in het traject, dus het voorstel
+    // gaat door het create-pad (POST, pad server-side afgeleid) - daarna
+    // bestaat de wet en nemen vervolg-saves de normale PUT.
+    if (reviewActive.value && reviewIsLawCreate.value) {
+      await createLaw(lawYaml);
+    } else {
+      await saveLaw(lawYaml);
+    }
     if (lawId.value !== savedLawId) return; // law switched mid-PUT
     // points at the re-parsed article. The `watch(selectedArticle)` above
     // fires on the next microtask - leaving a window where the dirty
@@ -2069,7 +2129,7 @@ async function handleActionSave() {
                nldd-button-group), so it carries "Verwerpen"/"Voorstel
                opslaan en goedkeuren" without any custom CSS. -->
           <nldd-container v-if="reviewActive || reviewLoadError" padding="8">
-            <nldd-banner :variant="reviewBannerVariant" text="Voorstel uit verrijking" :supporting-text="reviewBannerSupportingText">
+            <nldd-banner :variant="reviewBannerVariant" :text="reviewBannerText" :supporting-text="reviewBannerSupportingText">
               <!-- Wijzigingenbalk only appears when a pane is dirty, which
                    `!reviewSeeded` never is (nothing was seeded into the
                    panes) - give the banner its own primary action so

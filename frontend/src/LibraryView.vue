@@ -16,7 +16,7 @@ import TasksSidebarItem from './components/TasksSidebarItem.vue';
 import { useAuth } from './composables/useAuth.js';
 import { lawFetchInit } from './composables/useLaw.js';
 import { useTrajects, refreshTrajects } from './composables/useTrajects.js';
-import { lawsListUrl, lawUrl, changedLawsUrl } from './composables/corpusUrls.js';
+import { lawsListUrl, lawUrl, lawUploadUrl, changedLawsUrl } from './composables/corpusUrls.js';
 import { SUPPORT_EMAIL, paneChromeVisible } from './constants.js';
 import { registerSearchPopover, setLibraryEmpty } from './composables/useAppChrome.js';
 import { homeTarget } from './composables/useLastVisitedRoute.js';
@@ -26,6 +26,7 @@ import { useDocumentUpload } from './composables/useDocumentUpload.js';
 import { useDocumentTaskReview } from './composables/useDocumentTaskReview.js';
 import { humanizeLawId } from './lib/lawName.js';
 import { apiFetch, apiFetchJson, ApiError } from './lib/apiFetch.js';
+import { uploadMultipart } from './lib/uploadMultipart.js';
 import { useLatest } from './lib/useLatest.js';
 import { holdRetryFloor, RETRY_MIN_SPINNER_MS } from './lib/retryFeedback.js';
 
@@ -215,6 +216,47 @@ function dismissJobCancelError() {
 function retryUpload() {
   docUploadError.value = null;
   nextTick(() => onDocUpload());
+}
+
+// --- Wet of regel toevoegen uit een geüpload document ----------------------
+// De "+" onder de wettenlijst (alleen in een traject): upload een PDF/Word-
+// document dat de backend omzet naar een basis-wet en automatisch verrijkt;
+// het resultaat komt terug als law_create-taak in het Taken-paneel. De
+// multipart-POST en foutclassificatie delen we met de werkdocument-upload
+// via `uploadMultipart`.
+async function uploadLawDocument(file) {
+  if (!activeTrajectRef.value) {
+    return { ok: false, error: 'Geen actief traject.', retryable: false };
+  }
+  return uploadMultipart(lawUploadUrl(activeTrajectRef.value), file);
+}
+const lawUploadStarted = ref(false);
+function dismissLawUploadStarted() {
+  lawUploadStarted.value = false;
+}
+const {
+  fileInput: lawFileInput,
+  uploadError: lawUploadError,
+  uploadRetryable: lawUploadRetryable,
+  onUpload: onLawUpload,
+  onFileChange: onLawFileChange,
+} = useDocumentUpload(uploadLawDocument, () => {
+  lawUploadStarted.value = true;
+});
+// Zelfde modal-behandeling als de werkdocument-upload, met een eigen modal
+// zodat de retry-actie de juiste picker heropent.
+const lawUploadErrorModalEl = ref(null);
+watch(lawUploadError, async (err) => {
+  await nextTick();
+  if (err) lawUploadErrorModalEl.value?.show?.();
+  else lawUploadErrorModalEl.value?.hide?.();
+});
+function dismissLawUploadError() {
+  lawUploadError.value = null;
+}
+function retryLawUpload() {
+  lawUploadError.value = null;
+  nextTick(() => onLawUpload());
 }
 
 // Name the open document in the unsaved-changes guard so it's clear what's at
@@ -1408,6 +1450,39 @@ watch(activeTrajectRef, () => {
                       </nldd-list-item>
                     </nldd-list>
                   </template>
+                  <!-- Wet of regel toevoegen uit een geüpload document (alleen
+                       in een traject): start de conversie-naar-wet-keten; de
+                       voortgang en het resultaat verschijnen in het
+                       Taken-paneel. Zelfde toolbar/icon-button-patroon als de
+                       werkdocument-upload; één actie, dus direct een klik in
+                       plaats van een menu. -->
+                  <template v-if="activeTrajectRef">
+                    <nldd-spacer size="24"></nldd-spacer>
+                    <nldd-toolbar label="Wetacties">
+                      <nldd-toolbar-item slot="start">
+                        <!-- Géén `expandable`: dat is de disclosure-chevron
+                             voor menu/popover-knoppen; dit is een directe
+                             actie. De tekst verschijnt als tooltip. -->
+                        <nldd-icon-button
+                          id="law-upload-btn"
+                          icon="plus-small"
+                          text="Wet of regel toevoegen uit document"
+                          @click="onLawUpload"
+                        ></nldd-icon-button>
+                      </nldd-toolbar-item>
+                    </nldd-toolbar>
+                    <input ref="lawFileInput" type="file" accept=".pdf,.doc,.docx" hidden @change="onLawFileChange" />
+                    <template v-if="lawUploadStarted">
+                      <nldd-spacer size="8"></nldd-spacer>
+                      <nldd-banner
+                        variant="success"
+                        text="Conversie gestart"
+                        supporting-text="Je krijgt een taak zodra de wet klaarstaat voor beoordeling."
+                        dismissible
+                        @dismiss="dismissLawUploadStarted"
+                      ></nldd-banner>
+                    </template>
+                  </template>
                 </template>
               </nldd-simple-section>
             </nldd-page>
@@ -1763,6 +1838,19 @@ watch(activeTrajectRef, () => {
     >
       <nldd-button slot="actions" variant="primary" text="Sluit" @click="dismissUploadError"></nldd-button>
       <nldd-button v-if="docUploadRetryable" slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryUpload"></nldd-button>
+    </nldd-modal-dialog>
+  </Teleport>
+
+  <Teleport to="body">
+    <nldd-modal-dialog
+      ref="lawUploadErrorModalEl"
+      variant="alert"
+      text="Uploaden mislukt"
+      :supporting-text="lawUploadError || ''"
+      @close="dismissLawUploadError"
+    >
+      <nldd-button slot="actions" variant="primary" text="Sluit" @click="dismissLawUploadError"></nldd-button>
+      <nldd-button v-if="lawUploadRetryable" slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryLawUpload"></nldd-button>
     </nldd-modal-dialog>
   </Teleport>
 

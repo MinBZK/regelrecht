@@ -1066,6 +1066,7 @@ pub async fn create_enrich_jobs(
             traject_id: None,
             traject_ref: None,
             source_etag: None,
+            new_law: None,
         };
 
         let payload_json = serde_json::to_value(&enrich_payload).map_err(|e| {

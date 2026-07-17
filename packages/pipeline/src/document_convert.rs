@@ -97,10 +97,10 @@ pub async fn delete_upload(pool: &PgPool, upload_id: Uuid) -> Result<()> {
 }
 
 /// Delete upload rows no longer referenced by an active (`pending`/`processing`)
-/// document_convert job. This garbage-collects bytes orphaned when a worker
-/// crashed mid-conversion and the generic orphan reaper failed the job without
-/// running the type-specific [`delete_upload`]. Returns the number of rows
-/// removed.
+/// document_convert or law_convert job. This garbage-collects bytes orphaned
+/// when a worker crashed mid-conversion and the generic orphan reaper failed
+/// the job without running the type-specific [`delete_upload`]. Returns the
+/// number of rows removed.
 ///
 /// Safe because editor-api inserts the upload row and its job in a single
 /// transaction, so a row with no active job is genuinely orphaned — the short
@@ -112,7 +112,7 @@ pub async fn cleanup_orphaned_uploads(pool: &PgPool) -> Result<u64> {
         WHERE du.created_at < now() - interval '15 minutes'
           AND NOT EXISTS (
               SELECT 1 FROM jobs j
-              WHERE j.job_type = 'document_convert'
+              WHERE j.job_type IN ('document_convert', 'law_convert')
                 AND j.status IN ('pending', 'processing')
                 AND j.payload->>'upload_id' = du.id::text
           )
@@ -453,7 +453,7 @@ fn build_convert_prompt(input_file: &Path, output_path: &Path) -> String {
 /// Pick a file extension for the scratch input file from the original filename,
 /// falling back to the content type. Keeps the extension the agent sees honest
 /// so it can detect the format.
-fn extension_for(filename: &str, content_type: &str) -> String {
+pub(crate) fn extension_for(filename: &str, content_type: &str) -> String {
     if let Some(ext) = Path::new(filename)
         .extension()
         .and_then(|e| e.to_str())
@@ -500,7 +500,7 @@ pub async fn execute_document_convert(
 ///
 /// `pandoc` handles the office/markup formats; `pdftotext` (poppler) handles
 /// PDF. Both are baked into the enrich-worker image.
-async fn try_deterministic_convert(
+pub(crate) async fn try_deterministic_convert(
     input_file: &Path,
     ext: &str,
     output_path: &Path,
