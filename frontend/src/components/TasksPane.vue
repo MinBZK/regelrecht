@@ -37,6 +37,12 @@ function runningText(job) {
     const name = job.target_path?.split('/').pop() || 'werkdocument';
     return `Conversie loopt - ${name}`;
   }
+  if (job.job_type === 'law_convert') {
+    // target_path draagt voor law_convert de geüploade bestandsnaam
+    // (COALESCE in list_running_task_jobs_for_account).
+    const name = job.target_path?.split('/').pop() || 'document';
+    return `Wet maken loopt - ${name}`;
+  }
   return `Verrijking loopt - ${job.law_id}`;
 }
 

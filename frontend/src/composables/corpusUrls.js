@@ -95,6 +95,22 @@ export function documentUploadUrl(trajectRef) {
   return `${corpusBase(trajectRef)}/documents/upload`;
 }
 
+// Upload a source document that becomes a NEW law in the traject: the
+// backend converts it to a base-law YAML (law_convert job), chains an
+// enrichment, and delivers the result as a `law_create` review task.
+export function lawUploadUrl(trajectRef) {
+  requireTraject(trajectRef, 'law upload');
+  return `${corpusBase(trajectRef)}/laws/upload`;
+}
+
+// Create a NEW law in the traject (the approve-step of a `law_create`
+// review task). POST body = the full law YAML; the corpus path is
+// derived server-side from the validated body.
+export function lawCreateUrl(trajectRef) {
+  requireTraject(trajectRef, 'law create');
+  return `${corpusBase(trajectRef)}/laws`;
+}
+
 // Running/failed document-conversion jobs for the traject, backing the
 // werkdocumenten conversion-status block.
 export function documentJobsUrl(trajectRef) {

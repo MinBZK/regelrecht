@@ -10,6 +10,7 @@ pub mod harvest;
 pub mod harvest_request;
 pub mod health;
 pub mod job_queue;
+pub mod law_convert;
 pub mod law_status;
 pub mod models;
 pub mod tasks;

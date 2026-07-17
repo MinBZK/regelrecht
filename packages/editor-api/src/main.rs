@@ -488,6 +488,18 @@ async fn main() {
                 .layer(axum::extract::DefaultBodyLimit::max(MAX_UPLOAD_BODY)),
         )
         .route(
+            // Static segment wins over `{law_id}` in the router, so this
+            // does not shadow the per-law routes.
+            "/api/trajects/{traject_ref}/corpus/laws/upload",
+            axum::routing::post(corpus_handlers::upload_traject_law)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_UPLOAD_BODY)),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws",
+            axum::routing::post(corpus_handlers::create_traject_law)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_LAW_BODY)),
+        )
+        .route(
             "/api/trajects/{traject_ref}/corpus/laws/{law_id}/enrich",
             axum::routing::post(task_requests::request_enrich),
         )

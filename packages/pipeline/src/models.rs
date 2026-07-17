@@ -13,6 +13,11 @@ pub enum JobType {
     #[sqlx(rename = "document_convert")]
     #[serde(rename = "document_convert")]
     DocumentConvert,
+    /// Convert an uploaded document (PDF/Word) to a harvested base-law YAML
+    /// and chain a task-flow enrich job on it. Scoped to a traject.
+    #[sqlx(rename = "law_convert")]
+    #[serde(rename = "law_convert")]
+    LawConvert,
 }
 
 #[derive(

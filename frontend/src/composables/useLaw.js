@@ -1,7 +1,7 @@
 import { computed, ref, shallowRef } from 'vue';
 import * as yaml from 'js-yaml';
 import { lastSavedPr, sanitizeSavedPr } from './useSavedPr.js';
-import { lawUrl } from './corpusUrls.js';
+import { lawCreateUrl, lawUrl } from './corpusUrls.js';
 import { apiFetch } from '../lib/apiFetch.js';
 import { createLruMap } from '../lib/lruMap.js';
 import { useLatest } from '../lib/useLatest.js';
@@ -370,6 +370,85 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
     }
   }
 
+  /**
+   * Seed the editor state from raw YAML without any network fetch. Used by
+   * the `law_create`-review flow: the law does not exist in the traject yet
+   * (the normal `load()` 404'ed), so the task's proposed YAML IS the content
+   * to show. Clears the load error and settles `loading` so the editor
+   * renders the proposal like a normally loaded law.
+   */
+  function seedFromYaml(yamlText) {
+    let parsed;
+    try {
+      parsed = yaml.load(yamlText);
+    } catch {
+      return false; // malformed proposal - keep the current (error) state
+    }
+    law.value = parsed;
+    rawYaml.value = yamlText;
+    currentEtag.value = null;
+    error.value = null;
+    loading.value = false;
+    if (articles.value.length > 0) {
+      selectedArticleNumber.value = String(articles.value[0].number);
+    }
+    return true;
+  }
+
+  /**
+   * Create a NEW law in the active traject via POST (the approve-step of a
+   * `law_create` review task). Same body/etag/PR plumbing as `saveLaw`, but
+   * without `If-Match` (there is nothing to be concurrent with yet); the
+   * backend derives the corpus path from the validated YAML. After a
+   * successful create the law exists in the traject, so follow-up saves go
+   * through the normal `saveLaw` PUT.
+   */
+  async function createLaw(yamlText) {
+    if (!currentTrajectRef) {
+      throw new Error('Cannot create law: no active traject');
+    }
+    const savedTrajectRef = currentTrajectRef;
+    saving.value = true;
+    saveError.value = null;
+    try {
+      const res = await apiFetch(lawCreateUrl(savedTrajectRef), {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/yaml; charset=utf-8' },
+        body: yamlText,
+        // Same proxy-guard as saveLaw: only surface text/plain bodies (the
+        // editor-api's own 400/409 messages), fall back generic otherwise.
+        errorMessage: (status, body, contentType) =>
+          contentType.startsWith('text/plain') && body
+            ? body
+            : `Save failed: ${status}`,
+      });
+      let json = null;
+      try {
+        json = await res.json();
+        lastSavedPr.value = sanitizeSavedPr(json?.pr);
+      } catch {
+        // Bare 200 without JSON - treat as successful.
+      }
+      const newEtag = res.headers.get('ETag') ?? json?.etag ?? null;
+      const parsed = yaml.load(yamlText);
+      rawYaml.value = yamlText;
+      law.value = parsed;
+      currentEtag.value = newEtag;
+      const resolvedId = parsed?.$id;
+      if (resolvedId) {
+        lawCache.set(
+          lawCacheKey(savedTrajectRef, resolvedId),
+          makeEntry(parsed, yamlText, newEtag)
+        );
+      }
+    } catch (e) {
+      saveError.value = e;
+      throw e;
+    } finally {
+      saving.value = false;
+    }
+  }
+
   return {
     law,
     lawId,
@@ -384,6 +463,8 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
     saving,
     saveError,
     saveLaw,
+    seedFromYaml,
+    createLaw,
     currentEtag,
     lastSavedPr,
   };

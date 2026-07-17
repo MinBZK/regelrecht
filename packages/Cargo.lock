@@ -4113,6 +4113,7 @@ dependencies = [
  "libc",
  "pretty_assertions",
  "regelrecht-corpus",
+ "regelrecht-engine",
  "regelrecht-harvester",
  "regelrecht-law-model",
  "regelrecht-pipeline",

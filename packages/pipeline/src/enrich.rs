@@ -474,6 +474,12 @@ pub struct EnrichPayload {
     /// `document_etag()` van de wet-YAML op aanvraagmoment (staleness-check).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_etag: Option<String>,
+    /// `true` wanneer deze enrichment een NIEUWE wet betreft die nog niet in
+    /// het traject bestaat (geketend vanuit een `law_convert`-job). Stuurt de
+    /// review-taak: `kind: "law_create"` + eigen titel, zodat de editor het
+    /// voorstel als aan-te-maken wet behandelt i.p.v. als wijziging.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new_law: Option<bool>,
 }
 
 impl EnrichPayload {
@@ -1659,6 +1665,7 @@ mod tests {
             traject_id: None,
             traject_ref: None,
             source_etag: None,
+            new_law: None,
         };
 
         let json = serde_json::to_string(&payload).unwrap();
@@ -1678,6 +1685,7 @@ mod tests {
             traject_id: None,
             traject_ref: None,
             source_etag: None,
+            new_law: None,
         };
         let json_no_provider = serde_json::to_string(&payload_no_provider).unwrap();
         assert!(!json_no_provider.contains("provider"));
@@ -1926,6 +1934,7 @@ related_legislation:
             traject_id: Some(uuid::Uuid::new_v4()),
             traject_ref: Some("testtraject-abcd1234".into()),
             source_etag: Some("\"abc\"".into()),
+            new_law: None,
         };
         let roundtrip: EnrichPayload =
             serde_json::from_value(serde_json::to_value(&new).unwrap()).unwrap();
@@ -2248,6 +2257,7 @@ articles:
             traject_id: None,
             traject_ref: None,
             source_etag: None,
+            new_law: None,
         };
 
         let config = test_config(LlmProvider::OpenCode {
@@ -2318,6 +2328,7 @@ articles:
             traject_id: None,
             traject_ref: None,
             source_etag: None,
+            new_law: None,
         };
 
         let config = test_config(LlmProvider::OpenCode {
@@ -2371,6 +2382,7 @@ articles:
             traject_id: None,
             traject_ref: None,
             source_etag: None,
+            new_law: None,
         };
 
         let config = test_config(LlmProvider::OpenCode {

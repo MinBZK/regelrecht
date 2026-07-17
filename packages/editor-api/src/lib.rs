@@ -12,6 +12,7 @@ pub mod crypto;
 pub mod feature_flags;
 pub mod github_oauth;
 pub mod state;
+pub mod task_requests;
 pub mod traject_corpus;
 pub mod trajects;
 pub mod user_notes;

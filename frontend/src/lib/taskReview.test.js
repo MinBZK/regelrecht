@@ -67,6 +67,26 @@ describe('reviewTarget', () => {
       reviewTarget({ id: 't7', payload: { kind: 'document', target_path: 'bijv-rapport.md' } }),
     ).toBeNull();
   });
+
+  it('routeert een law_create-taak naar de editor-traject-route (wet-branch)', () => {
+    const task = {
+      id: 't8',
+      task_type: 'job_review',
+      payload: {
+        kind: 'law_create',
+        traject_ref: 'mijn-traject-1a2b3c4d',
+        law_id: 'werkinstructie_toetsing',
+      },
+    };
+    const target = reviewTarget(task);
+    expect(target).not.toBeNull();
+    const resolved = router.resolve(target);
+    expect(resolved.name).toBe('editor-traject');
+    expect(resolved.params.lawId).toBe('werkinstructie_toetsing');
+    expect(resolved.fullPath).toBe(
+      '/trajecten/mijn-traject-1a2b3c4d/editor/werkinstructie_toetsing?task=t8',
+    );
+  });
 });
 
 describe('proposalDivergence', () => {
