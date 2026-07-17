@@ -1460,12 +1460,13 @@ watch(activeTrajectRef, () => {
                     <nldd-spacer size="24"></nldd-spacer>
                     <nldd-toolbar label="Wetacties">
                       <nldd-toolbar-item slot="start">
+                        <!-- Géén `expandable`: dat is de disclosure-chevron
+                             voor menu/popover-knoppen; dit is een directe
+                             actie. De tekst verschijnt als tooltip. -->
                         <nldd-icon-button
                           id="law-upload-btn"
                           icon="plus-small"
                           text="Wet of regel toevoegen uit document"
-                          expandable
-                          tooltip-timing="never"
                           @click="onLawUpload"
                         ></nldd-icon-button>
                       </nldd-toolbar-item>
