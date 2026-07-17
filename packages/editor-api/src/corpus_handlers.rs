@@ -3080,6 +3080,19 @@ pub async fn create_traject_law(
     use axum::response::IntoResponse;
     let author = Some(require_editor_user(&session).await?);
 
+    // Membership guard FIRST, before any body work — the schema validation
+    // below is CPU-bound over an up-to-5MB body and must not be reachable
+    // for non-members (same ordering as the upload handlers).
+    let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let traject_id = resolve_traject_ref(
+        state.pool.as_ref().ok_or((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "database not configured".to_string(),
+        ))?,
+        &traject_ref,
+    )
+    .await?;
+
     // Full validation: schema + $id-slug + regulatory_layer + valid_from,
     // the same single validator the law-convert worker uses, so what the
     // worker produced (and the reviewer possibly edited) is what lands.
@@ -3092,16 +3105,6 @@ pub async fn create_traject_law(
         )
     })?;
     let law_id = meta.law_id.clone();
-
-    let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let traject_id = resolve_traject_ref(
-        state.pool.as_ref().ok_or((
-            StatusCode::SERVICE_UNAVAILABLE,
-            "database not configured".to_string(),
-        ))?,
-        &traject_ref,
-    )
-    .await?;
 
     // A law with this $id anywhere in the federated index is a conflict: the
     // create path must never shadow or overwrite an existing law. (Editing

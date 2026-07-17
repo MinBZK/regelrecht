@@ -26,6 +26,7 @@ import { useDocumentUpload } from './composables/useDocumentUpload.js';
 import { useDocumentTaskReview } from './composables/useDocumentTaskReview.js';
 import { humanizeLawId } from './lib/lawName.js';
 import { apiFetch, apiFetchJson, ApiError } from './lib/apiFetch.js';
+import { uploadMultipart } from './lib/uploadMultipart.js';
 import { useLatest } from './lib/useLatest.js';
 import { holdRetryFloor, RETRY_MIN_SPINNER_MS } from './lib/retryFeedback.js';
 
@@ -220,35 +221,14 @@ function retryUpload() {
 // --- Wet of regel toevoegen uit een geüpload document ----------------------
 // De "+" onder de wettenlijst (alleen in een traject): upload een PDF/Word-
 // document dat de backend omzet naar een basis-wet en automatisch verrijkt;
-// het resultaat komt terug als law_create-taak in het Taken-paneel. Zelfde
-// resultaat-object-stijl als `uploadDocument` (useTrajectDocuments) zodat
-// `useDocumentUpload` de foutafhandeling kan hergebruiken.
+// het resultaat komt terug als law_create-taak in het Taken-paneel. De
+// multipart-POST en foutclassificatie delen we met de werkdocument-upload
+// via `uploadMultipart`.
 async function uploadLawDocument(file) {
   if (!activeTrajectRef.value) {
     return { ok: false, error: 'Geen actief traject.', retryable: false };
   }
-  const form = new FormData();
-  form.append('file', file);
-  try {
-    // Raw fetch: geen Content-Type zetten, de browser bepaalt de
-    // multipart-boundary zelf (zelfde afweging als uploadDocument).
-    const res = await fetch(lawUploadUrl(activeTrajectRef.value), {
-      method: 'POST',
-      body: form,
-    });
-    if (!res.ok) {
-      const unsupported = res.status === 404 || res.status === 405 || res.status === 501;
-      let text = '';
-      try { text = await res.text(); } catch { /* generieke melding hieronder */ }
-      const error = unsupported
-        ? 'Uploaden wordt door de server nog niet ondersteund.'
-        : (text || `Uploaden mislukt (foutcode ${res.status}).`);
-      return { ok: false, error, retryable: !unsupported };
-    }
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e.message, retryable: true };
-  }
+  return uploadMultipart(lawUploadUrl(activeTrajectRef.value), file);
 }
 const lawUploadStarted = ref(false);
 function dismissLawUploadStarted() {
