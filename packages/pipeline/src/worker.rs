@@ -888,7 +888,14 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
         // Law-convert jobs (upload → basis-wet-YAML) run before the cap gate
         // for the same reason as document-convert: interactive uploads. The
         // enrich job they chain into DOES fall under the hourly cap.
-        match process_next_law_convert_job(&pool, &enrich_config, config.job_timeout).await {
+        match process_next_law_convert_job(
+            &pool,
+            &enrich_config,
+            config.job_timeout,
+            config.orphan_timeout,
+        )
+        .await
+        {
             Ok(JobOutcome::Processed) => {
                 consecutive_resource_failures = 0;
                 current_interval = config.poll_interval;
@@ -1459,11 +1466,13 @@ async fn process_next_law_convert_job(
     pool: &PgPool,
     enrich_config: &EnrichConfig,
     job_timeout: Duration,
+    orphan_timeout: Duration,
 ) -> Result<JobOutcome> {
     let job = match job_queue::claim_job(pool, Some(JobType::LawConvert)).await? {
         Some(job) => job,
         None => return Ok(JobOutcome::Idle),
     };
+    tracing::info!(job_id = %job.id, law_id = %job.law_id, "processing law-convert job");
 
     // Malformed payload is deterministisch: terminaal falen, en de upload
     // best-effort opruimen als het id nog uit de raw payload te vissen is.
@@ -1510,18 +1519,39 @@ async fn process_next_law_convert_job(
         Some(provider) => enrich_config.with_provider_override(provider),
         None => enrich_config.clone(),
     };
-    job_config.timeout = job_timeout;
+    // De generieke orphan-reaper (reap_orphaned_jobs) kent geen heartbeat en
+    // faalt élke processing-job ouder dan orphan_timeout — bij max_attempts=1
+    // zou een trage/hangende LLM-run dus stil verdwijnen, zonder
+    // job_failed-taak. Begrens de hele conversie (beide agent-runs samen)
+    // ruim ónder de reaper-window, zodat de worker de race altijd wint en
+    // een te trage run in het zichtbare foutpad eindigt. kill_on_drop op het
+    // subprocess ruimt de agent op wanneer de buitenste timeout afgaat.
+    let reaper_margin = orphan_timeout
+        .saturating_sub(Duration::from_secs(120))
+        .max(Duration::from_secs(60));
+    let convert_deadline = job_timeout.min(reaper_margin);
+    job_config.timeout = convert_deadline;
 
-    let run_result = match law_convert::execute_law_convert(
-        pool,
-        &payload,
-        &job_config,
-        &LlmLawStructurer,
+    let run_result = match tokio::time::timeout(
+        convert_deadline,
+        law_convert::execute_law_convert(pool, &payload, &job_config, &LlmLawStructurer),
     )
     .await
     {
-        Ok(law) => law_convert::finish_law_convert_job(pool, &job, &payload, &law).await,
-        Err(e) => Err(e),
+        Err(_elapsed) => {
+            // De gedropte future komt niet meer aan zijn eigen tempdir-cleanup
+            // toe; ruim de werkdirectory hier op (pad is deterministisch).
+            let _ = tokio::fs::remove_dir_all(
+                std::env::temp_dir().join(format!("lawconvert-{}", payload.upload_id)),
+            )
+            .await;
+            Err(PipelineError::Enrich(format!(
+                "conversie-time-out na {}s (begrensd onder de reaper-window)",
+                convert_deadline.as_secs()
+            )))
+        }
+        Ok(Ok(law)) => law_convert::finish_law_convert_job(pool, &job, &payload, &law).await,
+        Ok(Err(e)) => Err(e),
     };
 
     match run_result {
