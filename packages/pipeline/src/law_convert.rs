@@ -92,19 +92,35 @@ pub struct GeneratedLaw {
 #[async_trait::async_trait]
 pub trait LawStructurer: Send + Sync {
     /// Run the agent with `prompt` in `work_dir`; the prompt names the file
-    /// the agent must write its YAML to.
-    async fn structure(&self, prompt: &str, work_dir: &Path, config: &EnrichConfig) -> Result<()>;
+    /// the agent must write its YAML to. `allow_bash` widens the toolset with
+    /// een shell — alléén nodig wanneer de agent het rauwe bestand zelf moet
+    /// converteren (de fallback zonder deterministische extractie).
+    async fn structure(
+        &self,
+        prompt: &str,
+        work_dir: &Path,
+        config: &EnrichConfig,
+        allow_bash: bool,
+    ) -> Result<()>;
 }
 
-/// Production structurer: the enrich LLM subprocess with shell access (the
-/// agent may need `pandoc`/`pdftotext` for the fallback path where no
-/// deterministic conversion was possible).
+/// Production structurer: the enrich LLM subprocess. Shell-toegang is
+/// least-privilege: de structurering zelf is Read/Write-werk op tekst; alleen
+/// de rauwe-bestand-fallback krijgt Bash (voor `pandoc`/`pdftotext`). De
+/// agent-lane mét Bash bleek op de kale Alpine-worker bovendien onbetrouwbaar
+/// (zie de document-convert-historie), dus de gewone route vermijdt hem.
 pub struct LlmLawStructurer;
 
 #[async_trait::async_trait]
 impl LawStructurer for LlmLawStructurer {
-    async fn structure(&self, prompt: &str, work_dir: &Path, config: &EnrichConfig) -> Result<()> {
-        run_llm_subprocess(&config.provider, prompt, None, work_dir, config, true).await
+    async fn structure(
+        &self,
+        prompt: &str,
+        work_dir: &Path,
+        config: &EnrichConfig,
+        allow_bash: bool,
+    ) -> Result<()> {
+        run_llm_subprocess(&config.provider, prompt, None, work_dir, config, allow_bash).await
     }
 }
 
@@ -345,7 +361,13 @@ pub(crate) async fn convert_law_in_dir(
 
     let source_url = format!("upload://{}", sanitize_for_url(&upload.filename));
     let prompt = build_structure_prompt(&source_file, source_is_text, &source_url);
-    structurer.structure(&prompt, work_dir, config).await?;
+    // Bash alléén wanneer de agent het rauwe bestand nog zelf moet
+    // converteren; op al-geëxtraheerde tekst is de structurering puur
+    // Read/Write-werk (least privilege, en de Bash-lane is op de kale
+    // Alpine-worker onbetrouwbaar gebleken).
+    structurer
+        .structure(&prompt, work_dir, config, !source_is_text)
+        .await?;
 
     let output_path = work_dir.join(OUTPUT_FILE);
     let yaml = read_output(&output_path).await?;
@@ -360,7 +382,10 @@ pub(crate) async fn convert_law_in_dir(
                 "generated law YAML invalid, running repair round"
             );
             let repair = build_repair_prompt(&errors);
-            structurer.structure(&repair, work_dir, config).await?;
+            // De reparatieronde bewerkt alleen nog `law.yaml`: nooit Bash.
+            structurer
+                .structure(&repair, work_dir, config, false)
+                .await?;
             let yaml = read_output(&output_path).await?;
             match validate_law_yaml(&yaml) {
                 Ok(meta) => Ok(GeneratedLaw { yaml, meta }),
@@ -569,18 +594,27 @@ mod tests {
     }
 
     /// Fake structurer that writes a fixed sequence of YAML outputs, one per
-    /// call — proving the validate + repair-round orchestration.
+    /// call — proving the validate + repair-round orchestration. Registreert
+    /// per aanroep ook de gevraagde Bash-toegang (least-privilege-check).
     struct FakeStructurer {
         outputs: std::sync::Mutex<Vec<String>>,
-        calls: std::sync::atomic::AtomicUsize,
+        bash_per_call: std::sync::Mutex<Vec<bool>>,
     }
 
     impl FakeStructurer {
         fn new(outputs: Vec<String>) -> Self {
             Self {
                 outputs: std::sync::Mutex::new(outputs),
-                calls: std::sync::atomic::AtomicUsize::new(0),
+                bash_per_call: std::sync::Mutex::new(Vec::new()),
             }
+        }
+
+        fn calls(&self) -> usize {
+            self.bash_per_call.lock().unwrap().len()
+        }
+
+        fn bash_flags(&self) -> Vec<bool> {
+            self.bash_per_call.lock().unwrap().clone()
         }
     }
 
@@ -591,8 +625,9 @@ mod tests {
             _prompt: &str,
             work_dir: &Path,
             _config: &EnrichConfig,
+            allow_bash: bool,
         ) -> Result<()> {
-            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.bash_per_call.lock().unwrap().push(allow_bash);
             let yaml = self.outputs.lock().unwrap().remove(0);
             std::fs::write(work_dir.join(OUTPUT_FILE), yaml).unwrap();
             Ok(())
@@ -621,10 +656,10 @@ mod tests {
             law.meta.regulatory_layer,
             RegulatoryLayer::Uitvoeringsbeleid
         );
-        assert_eq!(
-            structurer.calls.load(std::sync::atomic::Ordering::SeqCst),
-            1
-        );
+        assert_eq!(structurer.calls(), 1);
+        // Rauwe .bin zonder deterministische extractie: de agent moet zelf
+        // converteren, dus Bash aan.
+        assert_eq!(structurer.bash_flags(), vec![true]);
     }
 
     #[tokio::test]
@@ -635,10 +670,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(law.meta.law_id, "werkinstructie_toetsing");
-        assert_eq!(
-            structurer.calls.load(std::sync::atomic::Ordering::SeqCst),
-            2
-        );
+        assert_eq!(structurer.calls(), 2);
+        // De reparatieronde bewerkt alleen law.yaml: nooit Bash.
+        assert_eq!(structurer.bash_flags(), vec![true, false]);
     }
 
     #[tokio::test]
@@ -652,9 +686,6 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("still invalid after repair"));
-        assert_eq!(
-            structurer.calls.load(std::sync::atomic::Ordering::SeqCst),
-            2
-        );
+        assert_eq!(structurer.calls(), 2);
     }
 }
