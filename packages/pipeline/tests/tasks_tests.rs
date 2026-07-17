@@ -806,3 +806,137 @@ async fn test_traject_enrich_not_blocked_by_corpus_enrich() {
         .unwrap();
     assert!(dup_corpus.is_none());
 }
+
+/// Door de reaper terminaal gefaalde taak-flow-jobs moeten alsnog een
+/// job_failed-taak opleveren; her-pogingen (terug naar pending) en
+/// niet-taak-flow-jobs niet.
+#[tokio::test]
+async fn test_notify_reaped_task_jobs_creates_failed_tasks() {
+    use std::time::Duration;
+
+    let db = TestDb::new().await;
+    let (account_id, traject_id) = seed_account_and_traject(&db).await;
+
+    // 1. Terminale taak-flow law_convert (max_attempts=1).
+    job_queue::create_job(
+        &db.pool,
+        CreateJobRequest::new(
+            JobType::LawConvert,
+            "lawdoc:testtraject-abcd1234/beleid.pdf",
+        )
+        .with_traject_ref("testtraject-abcd1234")
+        .with_max_attempts(1)
+        .with_payload(json!({
+            "upload_id": uuid::Uuid::new_v4(),
+            "traject_id": traject_id,
+            "traject_ref": "testtraject-abcd1234",
+            "filename": "beleid.pdf",
+            "requested_by": account_id,
+            "deliver": "task",
+        })),
+    )
+    .await
+    .unwrap();
+    // 2. Taak-flow enrich met retries over: reap zet hem terug naar pending,
+    //    dus géén taak.
+    job_queue::create_job(
+        &db.pool,
+        CreateJobRequest::new(JobType::Enrich, "test_wet")
+            .with_max_attempts(3)
+            .with_payload(json!({
+                "law_id": "test_wet",
+                "yaml_path": "laws/test_wet/law.yaml",
+                "requested_by": account_id,
+                "deliver": "task",
+            })),
+    )
+    .await
+    .unwrap();
+    // 3. Niet-taak-flow harvest, terminaal: reaped maar geen taak.
+    job_queue::create_job(
+        &db.pool,
+        CreateJobRequest::new(JobType::Harvest, "BWBR0000000").with_max_attempts(1),
+    )
+    .await
+    .unwrap();
+
+    // Claim alle drie en antidateer ze voorbij de reaper-window.
+    while job_queue::claim_job(&db.pool, None)
+        .await
+        .unwrap()
+        .is_some()
+    {}
+    sqlx::query("UPDATE jobs SET started_at = now() - interval '2 hours'")
+        .execute(&db.pool)
+        .await
+        .unwrap();
+
+    let reaped = job_queue::reap_orphaned_jobs(&db.pool, Duration::from_secs(60))
+        .await
+        .unwrap();
+    assert_eq!(reaped.len(), 3);
+    tasks::notify_reaped_task_jobs(&db.pool, &reaped)
+        .await
+        .unwrap();
+
+    let open = tasks::list_open_tasks_for_account(&db.pool, account_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        open.len(),
+        1,
+        "alleen de terminale taak-flow-job krijgt een taak"
+    );
+    assert_eq!(open[0].task_type, "job_failed");
+    assert_eq!(open[0].title, "Conversie naar wet mislukt: beleid.pdf");
+    assert_eq!(open[0].traject_id, Some(traject_id));
+    let payload = open[0].payload.as_ref().unwrap();
+    assert_eq!(payload["traject_ref"], "testtraject-abcd1234");
+    assert!(payload["error"].as_str().unwrap().contains("afgebroken"));
+}
+
+/// De nieuwe-wet-variant van een gereapte enrich krijgt de law_create-titel.
+#[tokio::test]
+async fn test_notify_reaped_new_law_enrich_gets_law_create_title() {
+    use std::time::Duration;
+
+    let db = TestDb::new().await;
+    let (account_id, traject_id) = seed_account_and_traject(&db).await;
+    job_queue::create_job(
+        &db.pool,
+        CreateJobRequest::new(JobType::Enrich, "werkinstructie_toetsing")
+            .with_max_attempts(1)
+            .with_payload(json!({
+                "law_id": "werkinstructie_toetsing",
+                "yaml_path": "laws/werkinstructie_toetsing/law.yaml",
+                "requested_by": account_id,
+                "deliver": "task",
+                "traject_id": traject_id,
+                "traject_ref": "testtraject-abcd1234",
+                "new_law": true,
+            })),
+    )
+    .await
+    .unwrap();
+    job_queue::claim_job(&db.pool, None).await.unwrap().unwrap();
+    sqlx::query("UPDATE jobs SET started_at = now() - interval '2 hours'")
+        .execute(&db.pool)
+        .await
+        .unwrap();
+
+    let reaped = job_queue::reap_orphaned_jobs(&db.pool, Duration::from_secs(60))
+        .await
+        .unwrap();
+    tasks::notify_reaped_task_jobs(&db.pool, &reaped)
+        .await
+        .unwrap();
+
+    let open = tasks::list_open_tasks_for_account(&db.pool, account_id)
+        .await
+        .unwrap();
+    assert_eq!(open.len(), 1);
+    assert_eq!(
+        open[0].title,
+        "Wet aanmaken mislukt: werkinstructie_toetsing"
+    );
+}

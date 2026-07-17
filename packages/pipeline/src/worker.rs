@@ -144,8 +144,18 @@ fn spawn_reaper(
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         loop {
-            if let Err(e) = job_queue::reap_orphaned_jobs(&pool, orphan_timeout).await {
-                tracing::warn!(error = %e, "failed to reap orphaned jobs");
+            match job_queue::reap_orphaned_jobs(&pool, orphan_timeout).await {
+                Ok(reaped) => {
+                    // Terminaal gefaalde taak-flow-jobs krijgen alsnog een
+                    // job_failed-taak; zonder dit verdwijnt de "Bezig"-regel
+                    // stil en hoort de aanvrager nooit dat het misging.
+                    if let Err(e) = crate::tasks::notify_reaped_task_jobs(&pool, &reaped).await {
+                        tracing::warn!(error = %e, "failed to create tasks for reaped jobs");
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to reap orphaned jobs");
+                }
             }
             // GC upload bytes orphaned when a worker died mid-conversion: the
             // generic reaper above fails such a job without running the
@@ -860,7 +870,14 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
         // interactive, user-initiated uploads (naturally rate-limited) and must
         // not be blocked when bulk enrichment has hit its budget cap. They still
         // share this worker's LLM CLI environment and OAuth token.
-        match process_next_document_convert_job(&pool, &enrich_config, config.job_timeout).await {
+        match process_next_document_convert_job(
+            &pool,
+            &enrich_config,
+            config.job_timeout,
+            config.orphan_timeout,
+        )
+        .await
+        {
             Ok(JobOutcome::Processed) => {
                 consecutive_resource_failures = 0;
                 current_interval = config.poll_interval;
@@ -1273,6 +1290,7 @@ async fn process_next_document_convert_job(
     pool: &PgPool,
     enrich_config: &EnrichConfig,
     job_timeout: Duration,
+    orphan_timeout: Duration,
 ) -> Result<JobOutcome> {
     let job = match job_queue::claim_job(pool, Some(JobType::DocumentConvert)).await? {
         Some(job) => job,
@@ -1325,14 +1343,21 @@ async fn process_next_document_convert_job(
     }
 
     // Apply the payload's provider override (if any) and bound the run by the
-    // worker's job timeout, mirroring the enrich path.
+    // worker's job timeout, mirroring the enrich path. Net als law-convert
+    // begrensd ónder de reaper-window: de agent-fallback kan traag zijn, en
+    // een gereapte single-attempt-job zou anders stil verdwijnen — de
+    // begrenzing laat een te trage run in het zichtbare foutpad eindigen.
     let mut job_config = match &payload.provider {
         Some(provider) => enrich_config.with_provider_override(provider),
         None => enrich_config.clone(),
     };
-    job_config.timeout = job_timeout;
+    let reaper_margin = orphan_timeout
+        .saturating_sub(Duration::from_secs(120))
+        .max(Duration::from_secs(60));
+    let convert_deadline = job_timeout.min(reaper_margin);
+    job_config.timeout = convert_deadline;
 
-    match run_document_convert(pool, &job, &payload, &job_config).await {
+    match run_document_convert(pool, &job, &payload, &job_config, convert_deadline).await {
         Ok(true) => {
             // Taak-flow: `finish_document_convert_task_job` already inserted the
             // result-blob, completed the job, and created the review-taak,
@@ -1445,10 +1470,29 @@ async fn run_document_convert(
     job: &crate::models::Job,
     payload: &DocumentConvertPayload,
     config: &EnrichConfig,
+    convert_deadline: Duration,
 ) -> Result<bool> {
-    let markdown =
-        document_convert::execute_document_convert(pool, payload, config, &LlmDocumentConverter)
-            .await?;
+    // Buitenste begrenzing ónder de reaper-window (zie de aanroeper): de
+    // gedropte future komt niet meer aan zijn eigen tempdir-cleanup toe, dus
+    // die doen we hier; kill_on_drop ruimt het agent-subprocess op.
+    let markdown = match tokio::time::timeout(
+        convert_deadline,
+        document_convert::execute_document_convert(pool, payload, config, &LlmDocumentConverter),
+    )
+    .await
+    {
+        Err(_elapsed) => {
+            let _ = tokio::fs::remove_dir_all(
+                std::env::temp_dir().join(format!("docconvert-{}", payload.upload_id)),
+            )
+            .await;
+            return Err(PipelineError::Enrich(format!(
+                "conversie-time-out na {}s (begrensd onder de reaper-window)",
+                convert_deadline.as_secs()
+            )));
+        }
+        Ok(r) => r?,
+    };
     if payload.deliver_as_task() {
         finish_document_convert_task_job(pool, job, payload, &markdown).await?;
         return Ok(true);
