@@ -74,3 +74,7 @@ env.sso-local
 
 # Leak-guard laag 2 — casus-/sector-patronen blijven lokaal (zie script/check-skills-no-casus.sh)
 script/.skills-casus-denylist.local
+
+# Lokale DS-tarballs voor het testen van een storybook-branch (niet committen)
+.ds-tarballs/
+sync-ds.sh
