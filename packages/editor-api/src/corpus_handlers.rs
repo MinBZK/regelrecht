@@ -1555,6 +1555,7 @@ struct TrajectLawWrite {
 /// the looked-up law (for its `relative_path`), the write-target source
 /// id, and an owned guard over the traject's writable backend.
 async fn resolve_traject_law_write(
+    state: &AppState,
     traject: &Arc<TrajectCorpus>,
     law_id: &str,
 ) -> Result<TrajectLawWrite, (StatusCode, String)> {
@@ -1569,18 +1570,43 @@ async fn resolve_traject_law_write(
             StatusCode::SERVICE_UNAVAILABLE,
             "Writable backend not initialised".to_string(),
         ))?;
-    if !entry.writable {
-        return Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()));
-    }
     // Per-source write mutex: every save to the same traject source
     // serialises here, so contention (a second save waiting out the
     // first's GitHub round-trips) shows up as a fat `lock` phase.
     let backend = timing::measure("lock", entry.backend.clone().lock_owned()).await;
+    require_traject_backend_writable(state, entry.writable, &**backend).await?;
     Ok(TrajectLawWrite {
         law,
         write_source_id: write_target_source_id,
         backend,
     })
+}
+
+/// The single writability gate for traject writes.
+///
+/// A backend that is writable at rest (configured service token, or a
+/// natively writable local dir) always passes. A backend that is
+/// read-only at rest still passes when this deployment routes writes
+/// through the acting user's own GitHub token AND the backend honors
+/// `WriteContext::token_override` — the deployed federation config for a
+/// user-created traject repo has no service token on purpose, and 403-ing
+/// there would break every write in the user-token mode (the pr952
+/// promote bug). The subsequent `user_write_token_for_backend` call then
+/// enforces the linked-token requirement (428 when absent/expired), and
+/// `persist` itself still refuses (`CorpusError::ReadOnly` → 403) if a
+/// write somehow reaches it with no token at all.
+async fn require_traject_backend_writable(
+    state: &AppState,
+    writable_at_rest: bool,
+    backend: &dyn RepoBackend,
+) -> Result<(), (StatusCode, String)> {
+    if writable_at_rest {
+        return Ok(());
+    }
+    if backend.supports_token_override() && github_oauth::user_token_write_mode(state).await? {
+        return Ok(());
+    }
+    Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()))
 }
 
 /// Source-relative path of a law's scenario file.
@@ -1759,10 +1785,11 @@ async fn read_traject_scenario_cached(
 /// the law/scenario writes use), so notes land in the same traject
 /// branch/PR as the rest of the edits in the session.
 async fn resolve_traject_annotation_target(
+    state: &AppState,
     traject: &Arc<TrajectCorpus>,
     law_id: &str,
 ) -> Result<EditorWriteTarget, (StatusCode, String)> {
-    let write = resolve_traject_law_write(traject, law_id).await?;
+    let write = resolve_traject_law_write(state, traject, law_id).await?;
     Ok(EditorWriteTarget {
         relative_path: PathBuf::from("annotations")
             .join(law_id)
@@ -1813,7 +1840,7 @@ pub async fn save_scenario(
     let author = Some(require_editor_user(&session).await?);
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let write = resolve_traject_law_write(&traject, &law_id).await?;
+    let write = resolve_traject_law_write(&state, &traject, &law_id).await?;
     // Resolved-backend-aware: a local writable-own backend ignores the
     // override, so enforcement must not 428 a save that never reaches GitHub.
     let token_override =
@@ -2013,7 +2040,7 @@ pub async fn save_annotations(
         }));
     }
     let new_notes = public_notes;
-    let target = resolve_traject_annotation_target(&traject, &law_id).await?;
+    let target = resolve_traject_annotation_target(&state, &traject, &law_id).await?;
     let EditorWriteTarget {
         relative_path,
         backend,
@@ -2231,7 +2258,7 @@ pub async fn save_law(
     // corpus so we can mirror the saved body into its read-your-writes
     // overlay after `persist` succeeds.
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let write = resolve_traject_law_write(&traject, &law_id).await?;
+    let write = resolve_traject_law_write(&state, &traject, &law_id).await?;
     let token_override =
         github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**write.backend)
             .await?;
@@ -2304,7 +2331,7 @@ pub async fn delete_scenario(
     let author = Some(require_editor_user(&session).await?);
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let write = resolve_traject_law_write(&traject, &law_id).await?;
+    let write = resolve_traject_law_write(&state, &traject, &law_id).await?;
     let token_override =
         github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**write.backend)
             .await?;
@@ -2578,6 +2605,7 @@ fn traject_documents_base(traject_ref: &str) -> PathBuf {
 /// `write_target_for_source.values().next()`, which relied on every
 /// value being identical (true today, but unenforced).
 async fn resolve_traject_documents_writer(
+    state: &AppState,
     traject: &Arc<TrajectCorpus>,
 ) -> Result<tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>, (StatusCode, String)> {
     let entry = traject
@@ -2588,10 +2616,9 @@ async fn resolve_traject_documents_writer(
             StatusCode::SERVICE_UNAVAILABLE,
             "Writable backend not initialised".to_string(),
         ))?;
-    if !entry.writable {
-        return Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()));
-    }
-    Ok(entry.backend.clone().lock_owned().await)
+    let backend = entry.backend.clone().lock_owned().await;
+    require_traject_backend_writable(state, entry.writable, &**backend).await?;
+    Ok(backend)
 }
 
 /// Read the `If-Match` header value, trimmed. `None` when absent or empty.
@@ -2692,7 +2719,7 @@ pub async fn list_traject_documents(
     Path(traject_ref): Path<String>,
 ) -> Result<Json<TrajectDocumentList>, (StatusCode, String)> {
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let backend = resolve_traject_documents_writer(&traject).await?;
+    let backend = resolve_traject_documents_writer(&state, &traject).await?;
     let base = traject_documents_base(&traject_ref);
     let entries = backend
         .list_files_recursive(&base, None)
@@ -2874,7 +2901,7 @@ pub async fn upload_traject_document(
     // the derivation hand back a name that already exists, and the worker's
     // unconditional write would silently overwrite that document. Fail the
     // upload instead.
-    let backend = resolve_traject_documents_writer(&traject).await?;
+    let backend = resolve_traject_documents_writer(&state, &traject).await?;
 
     let base = traject_documents_base(&traject_ref);
     let mut existing: Vec<String> = backend
@@ -3126,7 +3153,7 @@ pub async fn create_traject_law(
 
     // The writable-own backend (same routing as documents: the law does not
     // exist yet, so there is no per-law source to route from).
-    let backend = resolve_traject_documents_writer(&traject).await?;
+    let backend = resolve_traject_documents_writer(&state, &traject).await?;
     // Belt-and-braces against an index blind spot (e.g. a file committed on
     // the branch after the current snapshot was built).
     if backend
@@ -3250,7 +3277,7 @@ pub async fn promote_corpus_law(
     // Schrijfpad: de writable-own backend van het traject (zelfde routing als
     // documents/create: per-wet routing bestaat nog niet, want de wet zit nog
     // niet in de traject-repo).
-    let backend = resolve_traject_documents_writer(&traject).await?;
+    let backend = resolve_traject_documents_writer(&state, &traject).await?;
 
     // Geen dubbele/overschreven bestanden, per bestandssoort:
     // - Wet-versie-YAML al op het doelpad (bijv. via een eerdere save_law op
@@ -3517,7 +3544,7 @@ pub async fn get_traject_document(
     use axum::response::IntoResponse;
     validate_document_path(&doc_path)?;
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let backend = resolve_traject_documents_writer(&traject).await?;
+    let backend = resolve_traject_documents_writer(&state, &traject).await?;
     let relative_path = traject_documents_base(&traject_ref).join(&doc_path);
     let content = backend
         .read_file(&relative_path)
@@ -3583,7 +3610,7 @@ pub async fn save_traject_document(
     }
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let backend = resolve_traject_documents_writer(&traject).await?;
+    let backend = resolve_traject_documents_writer(&state, &traject).await?;
     let token_override =
         github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**backend)
             .await?;
@@ -3651,7 +3678,7 @@ pub async fn delete_traject_document(
     let author = Some(require_editor_user(&session).await?);
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let backend = resolve_traject_documents_writer(&traject).await?;
+    let backend = resolve_traject_documents_writer(&state, &traject).await?;
     let token_override =
         github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**backend)
             .await?;

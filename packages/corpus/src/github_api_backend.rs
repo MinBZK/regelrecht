@@ -69,6 +69,12 @@ struct Inner {
     sha_cache: HashMap<PathBuf, String>,
     /// Buffered writes/deletes, in insertion order.
     pending: Vec<(PathBuf, PendingWrite)>,
+    /// Whether the target branch is known to exist. Set by a successful
+    /// `ensure_ready` (rest-token bootstrap) or by the lazy bootstrap in
+    /// `persist`. A token-less backend skips branch creation at
+    /// `ensure_ready`, so the first user-token write mints the branch
+    /// itself — this flag keeps that to one round-trip per backend.
+    branch_ready: bool,
 }
 
 pub struct GitHubApiBackend {
@@ -82,7 +88,11 @@ pub struct GitHubApiBackend {
     /// Path prefix inside the repo (same role as `repo_subpath` on
     /// `GitBackend`). Source-relative paths are joined under this.
     sub_path: Option<String>,
-    /// OAuth/PAT token for the API. `None` makes the backend read-only.
+    /// OAuth/PAT token for the API. `None` makes the backend read-only
+    /// **at rest** (`is_writable` = false): writes can then still land via
+    /// a per-call `WriteContext::token_override` (the acting editor user's
+    /// own GitHub token) — `persist` refuses only when *neither* token is
+    /// present.
     token: Option<String>,
     inner: Mutex<Inner>,
 }
@@ -104,6 +114,7 @@ impl GitHubApiBackend {
                 fetcher: GitHubFetcher::new()?,
                 sha_cache: HashMap::new(),
                 pending: Vec::new(),
+                branch_ready: false,
             }),
         })
     }
@@ -178,6 +189,63 @@ impl GitHubApiBackend {
             Some((_, sha)) => Ok(Some(sha)),
             None => Ok(None),
         }
+    }
+
+    /// Ensure `branch` exists on `repo`, creating it from `base_branch`
+    /// when missing. Shared by `ensure_ready` (rest-token bootstrap at
+    /// backend init) and `persist` (lazy bootstrap with the per-call
+    /// user token, for backends that had no token at init).
+    async fn ensure_branch(
+        fetcher: &mut GitHubFetcher,
+        repo: &str,
+        branch: &str,
+        base_branch: Option<&str>,
+        token: Option<&str>,
+    ) -> Result<()> {
+        let exists = fetcher.branch_exists(repo, branch, token).await?;
+        if exists {
+            return Ok(());
+        }
+        let base = base_branch.ok_or_else(|| {
+            CorpusError::Config(format!(
+                "branch '{}' does not exist on {} and no base_branch \
+                 was configured to seed it from",
+                branch, repo
+            ))
+        })?;
+        // TOCTOU on lazy branch creation: between our `branch_exists`
+        // returning false and this POST, another activation (different
+        // backend instance, same traject) can win the race and create
+        // the branch first. GitHub then 422s us with "Reference already
+        // exists". Re-check `branch_exists` on any create_branch failure;
+        // if the branch is present now the desired post-condition holds
+        // and we treat the create as a benign no-op.
+        match fetcher.create_branch(repo, branch, base, token).await {
+            Ok(()) => {
+                tracing::info!(
+                    repo = %repo,
+                    branch = %branch,
+                    base = %base,
+                    "GitHubApiBackend: created traject branch from base"
+                );
+            }
+            Err(e) => {
+                let now_exists = fetcher
+                    .branch_exists(repo, branch, token)
+                    .await
+                    .unwrap_or(false);
+                if now_exists {
+                    tracing::info!(
+                        repo = %repo,
+                        branch = %branch,
+                        "GitHubApiBackend: create_branch lost a benign race; branch already exists"
+                    );
+                } else {
+                    return Err(e);
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -266,13 +334,12 @@ impl RepoBackend for GitHubApiBackend {
             .collect())
     }
 
+    // No token guard here: a backend without a rest-token can still
+    // commit via `WriteContext::token_override` (per-user GitHub OAuth),
+    // and the override only becomes visible at `persist`. Buffer now;
+    // `persist` refuses with `ReadOnly` when neither token is present.
     async fn write_file(&self, relative_path: &Path, content: &str) -> Result<()> {
         validate_relative(relative_path)?;
-        if self.token.is_none() {
-            return Err(CorpusError::ReadOnly(
-                "GitHubApiBackend has no push token".to_string(),
-            ));
-        }
         let mut inner = self.inner.lock().await;
         let base_sha = inner.sha_cache.get(relative_path).cloned();
         inner.pending.push((
@@ -285,13 +352,9 @@ impl RepoBackend for GitHubApiBackend {
         Ok(())
     }
 
+    // Same stance as `write_file`: token enforcement lives in `persist`.
     async fn delete_file(&self, relative_path: &Path) -> Result<()> {
         validate_relative(relative_path)?;
-        if self.token.is_none() {
-            return Err(CorpusError::ReadOnly(
-                "GitHubApiBackend has no push token".to_string(),
-            ));
-        }
         let mut inner = self.inner.lock().await;
         let base_sha = inner.sha_cache.get(relative_path).cloned();
         inner.pending.push((
@@ -442,8 +505,16 @@ impl RepoBackend for GitHubApiBackend {
         // OAuth token) supersedes the backend's baked-in token for this write,
         // so the commit authenticates *as the user* and GitHub enforces their
         // push rights. Absent an override we fall back to the configured token
-        // — byte-identical to the pre-spike behaviour.
-        let token = ctx.token_override.as_deref().or(self.token.as_deref());
+        // — byte-identical to the pre-spike behaviour. Neither present =
+        // read-only: this is where the token guard lives now that
+        // `write_file`/`delete_file` buffer unconditionally (the override
+        // only exists at persist time). The drained pending buffer is
+        // dropped on this error, same as any other failing persist.
+        let Some(token) = ctx.token_override.as_deref().or(self.token.as_deref()) else {
+            return Err(CorpusError::ReadOnly(
+                "GitHubApiBackend has no push token (neither configured nor per-user)".to_string(),
+            ));
+        };
 
         // With a user token the commit is left unattributed on our side:
         // the Contents API then defaults author/committer to the
@@ -481,6 +552,24 @@ impl RepoBackend for GitHubApiBackend {
         // single write before calling persist, so there is no partially-
         // applied multi-write batch to recover here.
         let mut inner = self.inner.lock().await;
+
+        // Lazy branch bootstrap for the user-token write mode: a backend
+        // without a rest-token skipped branch creation at `ensure_ready`
+        // (it had nothing to authenticate with), so the first persist must
+        // mint the traject branch itself — with the same effective token
+        // that authenticates the commit.
+        if !inner.branch_ready {
+            Self::ensure_branch(
+                &mut inner.fetcher,
+                &repo,
+                &self.branch,
+                self.base_branch.as_deref(),
+                Some(token),
+            )
+            .await?;
+            inner.branch_ready = true;
+        }
+
         for (path, pw) in pending {
             let api_path = self.api_path(&path)?;
             match pw.op {
@@ -494,7 +583,7 @@ impl RepoBackend for GitHubApiBackend {
                         pw.base_sha.as_deref(),
                         committer.as_ref(),
                         &ctx.message,
-                        token,
+                        Some(token),
                     )
                     .await?;
                     new_shas.insert(path, new_sha);
@@ -503,8 +592,14 @@ impl RepoBackend for GitHubApiBackend {
                     let sha_for_delete = match &pw.base_sha {
                         Some(s) => s.clone(),
                         None => {
-                            match Self::fetch_sha(&mut inner, &repo, &self.branch, &api_path, token)
-                                .await?
+                            match Self::fetch_sha(
+                                &mut inner,
+                                &repo,
+                                &self.branch,
+                                &api_path,
+                                Some(token),
+                            )
+                            .await?
                             {
                                 Some(s) => s,
                                 // Already gone: treat as a successful delete,
@@ -521,7 +616,7 @@ impl RepoBackend for GitHubApiBackend {
                         &sha_for_delete,
                         committer.as_ref(),
                         &ctx.message,
-                        token,
+                        Some(token),
                     )
                     .await?;
                     // Drop the cached SHA so a next read sees the file as
@@ -555,70 +650,32 @@ impl RepoBackend for GitHubApiBackend {
 
     #[tracing::instrument(name = "gh_ensure_ready", skip_all, fields(branch = %self.branch))]
     async fn ensure_ready(&mut self) -> Result<()> {
-        // Read-only backends have nothing to bootstrap — the branch
-        // either exists (reads work) or it doesn't (reads 404 as
-        // they'd 404 on a missing file), and we don't try to mint a
-        // branch without a write token.
+        // Backends without a rest-token have nothing to bootstrap here —
+        // the branch either exists (reads work) or it doesn't (reads 404
+        // as they'd 404 on a missing file), and we can't mint a branch
+        // without a token. In the user-token write mode the first
+        // `persist` bootstraps the branch instead, with the per-call
+        // override token.
         if self.token.is_none() {
             return Ok(());
         }
         // Branch-check (+ lazy create) round-trips against GitHub; feeds
         // the `ensure_ready` Server-Timing phase on the cold-build path.
         let ready_start = std::time::Instant::now();
-        let inner = self.inner.get_mut();
         let repo = format!("{}/{}", self.owner, self.repo);
-        let exists = inner
-            .fetcher
-            .branch_exists(&repo, &self.branch, self.token.as_deref())
-            .await?;
-        if exists {
-            timing::record("ensure_ready", ready_start.elapsed());
-            return Ok(());
-        }
-        let base = self.base_branch.as_deref().ok_or_else(|| {
-            CorpusError::Config(format!(
-                "branch '{}' does not exist on {}/{} and no base_branch \
-                 was configured to seed it from",
-                self.branch, self.owner, self.repo
-            ))
-        })?;
-        // TOCTOU on lazy branch creation: between our `branch_exists`
-        // returning false and this POST, another activation (different
-        // backend instance, same traject) can win the race and create
-        // the branch first. GitHub then 422s us with "Reference already
-        // exists". Re-check `branch_exists` on any create_branch failure;
-        // if the branch is present now the desired post-condition holds
-        // and we treat the create as a benign no-op.
-        match inner
-            .fetcher
-            .create_branch(&repo, &self.branch, base, self.token.as_deref())
-            .await
-        {
-            Ok(()) => {
-                tracing::info!(
-                    repo = %repo,
-                    branch = %self.branch,
-                    base = %base,
-                    "GitHubApiBackend: created traject branch from base"
-                );
-            }
-            Err(e) => {
-                let now_exists = inner
-                    .fetcher
-                    .branch_exists(&repo, &self.branch, self.token.as_deref())
-                    .await
-                    .unwrap_or(false);
-                if now_exists {
-                    tracing::info!(
-                        repo = %repo,
-                        branch = %self.branch,
-                        "GitHubApiBackend: create_branch lost a benign race; branch already exists"
-                    );
-                } else {
-                    return Err(e);
-                }
-            }
-        }
+        let branch = self.branch.clone();
+        let base_branch = self.base_branch.clone();
+        let token = self.token.clone();
+        let inner = self.inner.get_mut();
+        Self::ensure_branch(
+            &mut inner.fetcher,
+            &repo,
+            &branch,
+            base_branch.as_deref(),
+            token.as_deref(),
+        )
+        .await?;
+        inner.branch_ready = true;
         timing::record("ensure_ready", ready_start.elapsed());
         Ok(())
     }
@@ -877,6 +934,17 @@ mod tests {
     /// JSON body of the resulting Contents API PUT.
     async fn persist_and_capture_put_body(ctx: WriteContext) -> serde_json::Value {
         let server = MockServer::start().await;
+        // `persist` bootstraps the branch lazily when `ensure_ready` never
+        // ran (this helper builds the backend directly); an existing branch
+        // is a single ref GET.
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus/git/ref/heads/main"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ref": "refs/heads/main",
+                "object": {"sha": "branch-sha"}
+            })))
+            .mount(&server)
+            .await;
         Mock::given(method("PUT"))
             .and(path_matcher(
                 "/repos/acme/corpus/contents/regulation/nl/wet/foo/2025-01-01.yaml",
