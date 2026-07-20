@@ -24,7 +24,8 @@
 import { ref, computed, watch, nextTick } from 'vue';
 import { useBwbSearch, MIN_QUERY_LENGTH } from '../composables/useBwbSearch.js';
 import { useTrajects } from '../composables/useTrajects.js';
-import { lawsListUrl, lawPromoteUrl, trajectHarvestUrl } from '../composables/corpusUrls.js';
+import { useLawPromote } from '../composables/useLawPromote.js';
+import { lawsListUrl, trajectHarvestUrl } from '../composables/corpusUrls.js';
 import { apiFetch, apiFetchJson, ApiError } from '../lib/apiFetch.js';
 import { useLatest } from '../lib/useLatest.js';
 
@@ -47,16 +48,21 @@ const BREAKPOINT_LG_MIN = 1008;
 // Corpus-treffers (traject-gefedereerd: eigen repo + centrale seed) voor de
 // huidige zoekterm.
 const centralLaws = ref([]);
-// Law-ids die al in de traject-repo staan (source_priority 0): promoten is
-// dan niet mogelijk. Een 409 van de backend vult deze set ook bij.
-const inTrajectIds = ref(new Set());
 const searching = ref(false);
 const searchFailed = ref(false);
 
-// Per law_id: 'busy' tijdens de promote-POST; 409 markeert de wet alsnog
-// als al-in-traject. Per bwb_id: 'busy' | 'requested' | 'conflict' | 'error'.
-const promoteState = ref({});
-const promoteError = ref(null);
+// Gedeelde promote-logica (ook gebruikt door de gewone zoekresultaten in
+// SearchPopover): per-wet busy-state, al-in-traject-set, 409-afhandeling.
+const {
+  promoteState,
+  promoteError,
+  setLawsFromSearch,
+  isInTraject: isLawIdInTraject,
+  clearPromoteError,
+  promote: promoteLaw,
+} = useLawPromote(activeTrajectRef);
+
+// Per bwb_id: 'busy' | 'requested' | 'conflict' | 'error'.
 const harvestState = ref({});
 
 function displayName(law) {
@@ -96,7 +102,7 @@ let debounceTimer = null;
 watch(search, (q) => {
   clearBwb();
   searchFailed.value = false;
-  promoteError.value = null;
+  clearPromoteError();
   if (debounceTimer) clearTimeout(debounceTimer);
   const term = q.trim();
   if (term.length < MIN_QUERY_LENGTH) {
@@ -120,9 +126,7 @@ async function runSearch(term) {
     );
     if (!isCurrent()) return;
     centralLaws.value = laws;
-    inTrajectIds.value = new Set(
-      laws.filter((l) => l.source_priority === 0).map((l) => l.law_id),
-    );
+    setLawsFromSearch(laws);
     searchFailed.value = false;
     // Niets in het centrale corpus: val terug op wetten.overheid.nl zodat
     // de gebruiker met een BWB-id een traject-harvest kan starten.
@@ -138,29 +142,14 @@ async function runSearch(term) {
 }
 
 function isInTraject(law) {
-  return inTrajectIds.value.has(law.law_id);
+  return isLawIdInTraject(law.law_id);
 }
 
 async function promote(law) {
-  if (!activeTrajectRef.value) return;
-  const id = law.law_id;
-  if (promoteState.value[id] === 'busy' || isInTraject(law)) return;
-  promoteState.value = { ...promoteState.value, [id]: 'busy' };
-  promoteError.value = null;
-  try {
-    await apiFetchJson(lawPromoteUrl(activeTrajectRef.value, id), { method: 'POST' });
-    promoteState.value = { ...promoteState.value, [id]: 'done' };
-    emit('promoted', id);
+  const outcome = await promoteLaw(law.law_id);
+  if (outcome === 'done') {
+    emit('promoted', law.law_id);
     close();
-  } catch (e) {
-    promoteState.value = { ...promoteState.value, [id]: null };
-    if (e instanceof ApiError && e.status === 409) {
-      // Backend is de autoriteit: markeer als al-in-traject.
-      inTrajectIds.value = new Set([...inTrajectIds.value, id]);
-    } else {
-      promoteError.value =
-        'Toevoegen aan het traject is mislukt. Probeer het opnieuw of neem contact op.';
-    }
   }
 }
 
@@ -201,7 +190,9 @@ function harvestStatusText(bwbId, fallback) {
 }
 
 function close() {
-  popoverRef.value?.hide();
+  // `?.` op hide zelf: in tests (happy-dom) is het custom element niet
+  // geüpgraded en bestaat de methode niet.
+  popoverRef.value?.hide?.();
 }
 
 function onListInput(e) {
@@ -215,7 +206,7 @@ function onListKeydown(e) {
 function onPopoverClose() {
   search.value = '';
   clearBwb();
-  promoteError.value = null;
+  clearPromoteError();
 }
 
 /** Public API: open het popover, verankerd aan het gegeven trigger-element. */

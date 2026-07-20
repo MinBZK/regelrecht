@@ -730,6 +730,14 @@ function onSearchSelectLaw(lawIdVal) {
   router.push(libraryRouteFor(lawIdVal));
 }
 
+// Een wet die vanuit de zoekresultaten naar het traject is gepromoot: ververs
+// de gedeelde corpus-lijst (de wet hoort nu bij de eigen traject-repo) en open
+// haar in de bibliotheek — zelfde afronding als een afgeronde harvest.
+async function onSearchLawPromoted(lawIdVal) {
+  await refreshCorpusLaws();
+  router.push(libraryRouteFor(lawIdVal));
+}
+
 async function onSearchHarvestAvailable(slug) {
   // Best-effort reload - a failure just means the list below may not
   // include the fresh law yet.
@@ -2804,6 +2812,7 @@ async function handleActionSave() {
       ref="searchPopoverRef"
       @select-law="onSearchSelectLaw"
       @harvest-available="onSearchHarvestAvailable"
+      @promoted="onSearchLawPromoted"
     />
   </Teleport>
 

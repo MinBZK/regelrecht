@@ -268,9 +268,10 @@ const addLawPopoverRef = ref(null);
 function openAddLawSearch() {
   addLawPopoverRef.value?.show(document.getElementById('law-add-btn'));
 }
-// Na een geslaagde promote: index verversen (de wet staat nu in de
-// traject-repo) en de wet openen — dezelfde afronding als een afgeronde
-// harvest in de globale zoeker (onHarvestAvailable).
+// Na een geslaagde promote (via de AddLawPopover óf de "Toevoegen aan
+// traject"-knop in de gewone zoekresultaten): index verversen (de wet staat
+// nu in de traject-repo) en de wet openen — dezelfde afronding als een
+// afgeronde harvest in de globale zoeker (onHarvestAvailable).
 async function onLawPromoted(lawId) {
   await loadIndex();
   selectLaw(lawId);
@@ -1851,6 +1852,7 @@ watch(activeTrajectRef, () => {
       ref="searchPopoverRef"
       @select-law="(lawId) => selectLaw(lawId, true)"
       @harvest-available="onHarvestAvailable"
+      @promoted="onLawPromoted"
     />
     <AddLawPopover
       ref="addLawPopoverRef"
