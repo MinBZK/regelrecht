@@ -3175,6 +3175,269 @@ pub async fn create_traject_law(
     Ok(([(axum::http::header::ETAG, new_etag)], Json(response)).into_response())
 }
 
+/// Response body of a promote: how many files were copied and, when the
+/// traject backend opened a PR for the commit, its coordinates.
+#[derive(Debug, Serialize)]
+pub struct PromoteResponse {
+    pub law_id: String,
+    pub copied_files: usize,
+    pub pr: Option<SavePrInfo>,
+}
+
+/// One file collected from a seed source for a promote, addressed by its
+/// source-relative path — which doubles as the write path in the traject's
+/// writable-own source, exactly like `save_law`'s write-routing for a
+/// federated law (`resolve_traject_law_write` reuses `law.relative_path`).
+struct PromoteFile {
+    relative_path: PathBuf,
+    content: String,
+}
+
+/// POST /api/trajects/{traject_ref}/corpus/laws/{law_id}/promote
+///
+/// Kopieer een wet uit het centrale corpus (de gefedereerde seed-bron van
+/// het traject, bijv. `minbzk-central`) naar de traject-repo: alle
+/// versie-YAML's (inclusief `machine_readable`) plus de bijbehorende
+/// `scenarios/*.feature`-bestanden, in één commit via het bestaande
+/// traject-schrijfpad (zelfde commit- en autorisatiegedrag als het opslaan
+/// van een wet). Staat de wet al in de traject-repo, dan 409 — er ontstaan
+/// nooit dubbele bestanden.
+///
+/// De bron is bewust het traject-gefedereerde corpus en niet de globale
+/// corpus-state: de traject-index dekt de volledige seed (metadata-only,
+/// lazy bodies), terwijl de globale state in productie alleen favorieten
+/// materialiseert (`load_favorites_async`).
+pub async fn promote_corpus_law(
+    State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
+    session: Session,
+    Path((traject_ref, law_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<PromoteResponse>, (StatusCode, String)> {
+    let author = Some(require_editor_user(&session).await?);
+
+    // Membership guard FIRST (same ordering as create_traject_law), and the
+    // traject-id for the cache invalidation afterwards.
+    let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let traject_id = resolve_traject_ref(
+        state.pool.as_ref().ok_or((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "database not configured".to_string(),
+        ))?,
+        &traject_ref,
+    )
+    .await?;
+
+    // Al in de traject-repo volgens de gefedereerde index? Dan is promoten
+    // zinloos/gevaarlijk (overschrijven van traject-edits). De index kan een
+    // blinde vlek hebben (file net gecommit); de per-bestand check verderop
+    // is de belt-and-braces.
+    if let Some(law) = traject.corpus.source_map.get_law(&law_id) {
+        if law.source_id == traject.writable_own_source_id {
+            return Err((
+                StatusCode::CONFLICT,
+                "Deze wet staat al in dit traject.".to_string(),
+            ));
+        }
+    }
+
+    // Verzamel alle te kopiëren bestanden uit de seed-bron(nen), vóórdat de
+    // writable-own-lock genomen wordt. Alleen seed-locks worden hier (één
+    // tegelijk) gehouden — de writable-own → seed lock-orde-invariant blijft
+    // daarmee intact.
+    let files = collect_promote_files(&traject, &law_id).await?;
+
+    // Schrijfpad: de writable-own backend van het traject (zelfde routing als
+    // documents/create: per-wet routing bestaat nog niet, want de wet zit nog
+    // niet in de traject-repo).
+    let backend = resolve_traject_documents_writer(&traject).await?;
+
+    // Geen dubbele bestanden: bestaat er al een wet-versiebestand op het
+    // doelpad (bijv. via een eerdere save_law op de gefedereerde wet, of een
+    // commit die de index nog niet zag), dan weigeren we de hele promote.
+    for file in &files {
+        if file
+            .relative_path
+            .extension()
+            .is_some_and(|ext| ext == "yaml")
+            && backend
+                .read_file(&file.relative_path)
+                .await
+                .map_err(corpus_write_error("law"))?
+                .is_some()
+        {
+            return Err((
+                StatusCode::CONFLICT,
+                "Deze wet staat al (deels) in dit traject.".to_string(),
+            ));
+        }
+    }
+
+    let token_override =
+        github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**backend)
+            .await?;
+
+    for file in &files {
+        backend
+            .write_file(&file.relative_path, &file.content)
+            .await
+            .map_err(corpus_write_error("law"))?;
+    }
+    let outcome = backend
+        .persist(&WriteContext {
+            message: format!("Voeg wet {} toe uit het centrale corpus", law_id),
+            author,
+            token_override,
+        })
+        .await
+        .map_err(corpus_write_error("law"))?;
+    drop(backend);
+
+    // Read-your-writes + index-verversing, zoals create_traject_law: de
+    // nieuwste versie in de overlay, de wet in de changed-lijst, en een
+    // cache-drop zodat de volgende request de wet in de traject-index ziet.
+    if let Some(newest) = files
+        .iter()
+        .find(|f| f.relative_path.extension().is_some_and(|e| e == "yaml"))
+    {
+        traject
+            .record_save(law_id.clone(), newest.content.clone())
+            .await;
+    }
+    traject.record_changed_law(&law_id).await;
+    state.trajects.invalidate(traject_id).await;
+
+    Ok(Json(PromoteResponse {
+        law_id,
+        copied_files: files.len(),
+        pr: outcome.pr.map(|pr| SavePrInfo {
+            url: pr.html_url,
+            number: pr.number,
+        }),
+    }))
+}
+
+/// Verzamel de volledige wet-map van `law_id` uit de seed-bron(nen) van het
+/// traject: elk versie-YAML (nieuwste eerst, lazy-fetch waar de index alleen
+/// metadata heeft) plus de `scenarios/*.feature`-bestanden naast de wet.
+/// Versies uit de writable-own-bron worden overgeslagen (die staan er al).
+///
+/// Lock-discipline: houdt uitsluitend seed-backend-locks, één tegelijk —
+/// de aanroeper neemt de writable-own-lock pas ná dit verzamelen, dus de
+/// writable-own → seed lock-orde-invariant kan hier niet schenden.
+async fn collect_promote_files(
+    traject: &Arc<TrajectCorpus>,
+    law_id: &str,
+) -> Result<Vec<PromoteFile>, (StatusCode, String)> {
+    let not_found = || {
+        (
+            StatusCode::NOT_FOUND,
+            "Deze wet is niet gevonden in het centrale corpus van dit traject.".to_string(),
+        )
+    };
+    let versions: Vec<LoadedLaw> = traject
+        .corpus
+        .source_map
+        .get_law_versions(law_id)
+        .ok_or_else(not_found)?
+        .iter()
+        .filter(|v| v.source_id != traject.writable_own_source_id)
+        .cloned()
+        .collect();
+    if versions.is_empty() {
+        return Err(not_found());
+    }
+
+    let fetch_error = |what: &'static str, path: &std::path::Path, e: &dyn std::fmt::Display| {
+        tracing::warn!(law_id = %law_id, path = %path.display(), error = %e, "promote: {what} lezen uit seed-bron mislukt");
+        (
+            StatusCode::BAD_GATEWAY,
+            "Kon de wet niet volledig uit het centrale corpus lezen.".to_string(),
+        )
+    };
+
+    // Dedupe op relative_path: dezelfde versie kan uit meerdere seeds
+    // geïndexeerd zijn; get_law_versions sorteert hoogste prioriteit eerst,
+    // dus de eerste treffer per pad wint.
+    let mut seen = std::collections::BTreeSet::new();
+    let mut files = Vec::new();
+    for version in &versions {
+        let relative_path = PathBuf::from(&version.relative_path);
+        // Defensief: de index is vertrouwd, maar deze paden worden 1-op-1
+        // schrijfpaden in de traject-repo.
+        if version.relative_path.contains("..") || relative_path.is_absolute() {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Ongeldig bronpad in de corpus-index.".to_string(),
+            ));
+        }
+        if !seen.insert(relative_path.clone()) {
+            continue;
+        }
+        let content = if !version.yaml_content.is_empty() {
+            version.yaml_content.clone()
+        } else {
+            // Metadata-only indexvermelding: body lazy fetchen via de
+            // seed-backend, net als de traject-scoped reads doen.
+            let entry = traject.corpus.backends.get(&version.source_id).ok_or((
+                StatusCode::BAD_GATEWAY,
+                "Seed-backend van het centrale corpus is niet beschikbaar.".to_string(),
+            ))?;
+            let backend = entry.backend.lock().await;
+            backend
+                .read_file(&relative_path)
+                .await
+                .map_err(|e| fetch_error("wet-versie", &relative_path, &e))?
+                .ok_or_else(|| {
+                    fetch_error(
+                        "wet-versie",
+                        &relative_path,
+                        &"bestand ontbreekt bij de bron",
+                    )
+                })?
+        };
+        files.push(PromoteFile {
+            relative_path,
+            content,
+        });
+    }
+
+    // Scenario's naast de wet (criterium: de volledige wet-map). We lezen ze
+    // van de seed van de best-passende versie; een leesfout is een harde
+    // fout — stilletjes zonder scenario's promoten zou het acceptatiecriterium
+    // schenden zonder dat iemand het ziet.
+    let primary = &versions[0];
+    let law_dir = PathBuf::from(&primary.relative_path)
+        .parent()
+        .map(PathBuf::from)
+        .ok_or((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Kan de wet-map niet bepalen.".to_string(),
+        ))?;
+    let scenarios_dir = law_dir.join("scenarios");
+    if let Some(entry) = traject.corpus.backends.get(&primary.source_id) {
+        let backend = entry.backend.lock().await;
+        let entries = backend
+            .list_files(&scenarios_dir, Some("feature"))
+            .await
+            .map_err(|e| fetch_error("scenario-lijst", &scenarios_dir, &e))?;
+        for entry in entries {
+            let path = scenarios_dir.join(&entry.name);
+            let content = backend
+                .read_file(&path)
+                .await
+                .map_err(|e| fetch_error("scenario", &path, &e))?
+                .ok_or_else(|| fetch_error("scenario", &path, &"bestand ontbreekt bij de bron"))?;
+            files.push(PromoteFile {
+                relative_path: path,
+                content,
+            });
+        }
+    }
+
+    Ok(files)
+}
+
 /// GET /api/trajects/{traject_ref}/corpus/documents/jobs
 ///
 /// List the traject's document-convert jobs that are still relevant to show

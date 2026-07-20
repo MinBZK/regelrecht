@@ -504,6 +504,18 @@ async fn main() {
             axum::routing::post(task_requests::request_enrich),
         )
         .route(
+            // Promote: kopieer een wet uit het centrale corpus naar de
+            // traject-repo (zelfde schrijfpad/autorisatie als save_law).
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}/promote",
+            axum::routing::post(corpus_handlers::promote_corpus_law),
+        )
+        .route(
+            // Traject-scoped harvest via het taken-mechanisme: BWB-download
+            // op de worker + geketende taak-flow-enrich (law_convert-patroon).
+            "/api/trajects/{traject_ref}/corpus/harvest",
+            axum::routing::post(task_requests::request_traject_harvest),
+        )
+        .route(
             "/api/trajects/{traject_ref}/corpus/documents/{*doc_path}",
             axum::routing::put(corpus_handlers::save_traject_document)
                 .delete(corpus_handlers::delete_traject_document)
