@@ -1773,8 +1773,8 @@ async fn process_next_traject_harvest_job(
                 PipelineError::Harvester(
                     regelrecht_harvester::HarvesterError::NoConsolidatedText { .. }
                 )
-            ) || msg.contains("valideert niet tegen het schema")
-                || msg.contains("er loopt al een verrijking");
+            ) || msg.contains(traject_harvest::SCHEMA_MISMATCH_MARKER)
+                || msg.contains(law_convert::ENRICH_IN_PROGRESS_MARKER);
 
             let fail_and_notify: Result<()> = async {
                 let mut tx = pool.begin().await?;

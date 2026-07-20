@@ -20,6 +20,12 @@ use crate::error::{PipelineError, Result};
 use crate::harvest::{execute_harvest, HarvestPayload};
 use crate::law_convert::{validate_law_yaml, GeneratedLaw};
 
+/// Marker in de schema-validatiefout hieronder. De worker classificeert de
+/// fout hiermee als deterministisch (terminaal, geen retry) — door de
+/// gedeelde const kan de formulering niet stilletjes uit de pas lopen met de
+/// matcher in `worker.rs`.
+pub(crate) const SCHEMA_MISMATCH_MARKER: &str = "valideert niet tegen het schema";
+
 /// Payload van een `traject_harvest`-job. Spiegel van
 /// [`crate::law_convert::LawConvertPayload`], maar de bron is een BWB-id in
 /// plaats van geüploade bytes.
@@ -68,9 +74,15 @@ pub async fn execute_traject_harvest(
     payload: &TrajectHarvestPayload,
     http_client: &Client,
 ) -> Result<GeneratedLaw> {
+    // Werkdirectory op basis van het server-gegenereerde traject-UUID, nooit
+    // de traject-ref: de ref is een URL-pad-segment waarvan alleen het
+    // 8-hex-suffix gevalideerd wordt — het slug-deel is vrije (ASCII-)tekst en
+    // een percent-encoded `/` overleeft axum's routing. In een pad dat door
+    // `remove_dir_all`/`create_dir_all` gaat zou dat path-traversal zijn.
+    // Zelfde patroon als docconvert/lawconvert (upload_id-UUID).
     let work_dir = std::env::temp_dir().join(format!(
         "trajectharvest-{}-{}",
-        payload.traject_ref, payload.bwb_id
+        payload.traject_id, payload.bwb_id
     ));
     // Clear any stale directory left by a previous attempt of this same job.
     let _ = tokio::fs::remove_dir_all(&work_dir).await;
@@ -110,7 +122,7 @@ async fn harvest_law_in_dir(
         // hoort als terminale fout in het job_failed-pad te eindigen. De
         // harvester hoort schema-conform te schrijven; dit is het vangnet.
         Err(errors) => Err(PipelineError::Enrich(format!(
-            "geharveste YAML voor {bwb_id} valideert niet tegen het schema: {}",
+            "geharveste YAML voor {bwb_id} {SCHEMA_MISMATCH_MARKER}: {}",
             errors.join("; ")
         ))),
     }

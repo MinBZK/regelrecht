@@ -33,6 +33,12 @@ use crate::tasks::{self, BlobKind};
 /// enrich-op-aanvraag (task_requests.rs), want ook hier wacht een mens.
 const CHAINED_ENRICH_PRIORITY: i32 = 80;
 
+/// Marker in de dedup-fout van [`chain_enrich_and_complete`] ("er loopt al
+/// een verrijking …"). De worker classificeert de fout hiermee als
+/// deterministisch (terminaal, geen retry) — door de gedeelde const kan de
+/// formulering niet stilletjes uit de pas lopen met de matcher in `worker.rs`.
+pub(crate) const ENRICH_IN_PROGRESS_MARKER: &str = "er loopt al een verrijking";
+
 /// Payload carried by a `law_convert` job. The raw bytes live in
 /// `document_uploads` (referenced by `upload_id`), same as document-convert.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -466,7 +472,7 @@ pub async fn chain_enrich_and_complete(
         // Rollback (impliciet) en laat de aanroeper dit als terminale fout met
         // job_failed-taak afhandelen.
         return Err(PipelineError::Enrich(format!(
-            "er loopt al een verrijking voor wet '{}' in dit traject; \
+            "{ENRICH_IN_PROGRESS_MARKER} voor wet '{}' in dit traject; \
              de nieuwe wet is niet aangemaakt",
             law.meta.law_id
         )));
