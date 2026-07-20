@@ -318,6 +318,13 @@ async function show(anchorEl, initialSearch = '') {
  * to the host. The `open` event fires AFTER _manageFocus, so our focus wins.
  */
 function onPopoverOpen() {
+  // Verse sessie: gooi een pending emit van een vorige sessie weg. Die kan
+  // blijven hangen wanneer de promote-POST pas resolvet nadat de gebruiker de
+  // popover al sloot — close() is dan een no-op (de popover is al dicht, dus
+  // geen 'close'-event) en zonder deze reset zou de eerstvolgende close een
+  // stale 'promoted' emitten en een legitieme select-law verdringen.
+  pendingPromotedLawId = null;
+  pendingSelectLawId = null;
   const list = popoverRef.value?.querySelector('nldd-list');
   const input = list?.shadowRoot?.querySelector('.list__search-field-input');
   if (input) {

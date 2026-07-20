@@ -246,6 +246,39 @@ describe('SearchPopover "Toevoegen aan traject" in zoekresultaten', () => {
     expect(wrapper.emitted('select-law')).toBeUndefined();
   });
 
+  it('een promote die pas na het sluiten resolvet, emit niet alsnog in een latere sessie', async () => {
+    let resolvePromote;
+    fetch.mockImplementation(async (url, init = {}) => {
+      const u = String(url);
+      if (u.includes('/auth/status')) return { ok: false, json: async () => ({}) };
+      if (u.includes('/promote') && init.method === 'POST') {
+        return new Promise((r) => {
+          resolvePromote = () => r({ ok: true, json: async () => ({}) });
+        });
+      }
+      if (u.includes('/corpus/laws') && u.includes('q=')) {
+        return { ok: true, json: async () => LAWS };
+      }
+      return { ok: true, json: async () => [] };
+    });
+
+    const wrapper = mount(SearchPopover);
+    await searchFor(wrapper, 'zorgverzekering');
+
+    // De gebruiker sluit de popover terwijl de promote-POST nog loopt…
+    await promoteButtons(wrapper)[0].trigger('click');
+    await wrapper.get('nldd-popover').trigger('close');
+    // …waarna de POST alsnog slaagt: close() is dan een no-op (de popover is
+    // al dicht, dus geen 'close'-event) en de pending emit mag niet blijven
+    // hangen tot een volgende sessie.
+    resolvePromote();
+    await settle();
+
+    await wrapper.get('nldd-popover').trigger('open');
+    await wrapper.get('nldd-popover').trigger('close');
+    expect(wrapper.emitted('promoted')).toBeUndefined();
+  });
+
   it('een 409 markeert de wet als al-in-traject: knop weg, "Al in dit traject"', async () => {
     fetch.mockImplementation(async (url, init = {}) => {
       const u = String(url);

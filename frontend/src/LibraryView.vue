@@ -271,10 +271,13 @@ function openAddLawSearch() {
 // Na een geslaagde promote (via de AddLawPopover óf de "Toevoegen aan
 // traject"-knop in de gewone zoekresultaten): index verversen (de wet staat
 // nu in de traject-repo) en de wet openen — dezelfde afronding als een
-// afgeronde harvest in de globale zoeker (onHarvestAvailable).
-async function onLawPromoted(lawId) {
+// afgeronde harvest in de globale zoeker (onHarvestAvailable). Vanuit de
+// zoekresultaten focussen we ook het sidebar-item (focusAfter), net als
+// select-law uit dezelfde popover — daarvoor stelt SearchPopover de
+// 'promoted'-emit uit tot na _returnFocus.
+async function onLawPromoted(lawId, focusAfter = false) {
   await loadIndex();
-  selectLaw(lawId);
+  selectLaw(lawId, focusAfter);
 }
 // Een gestarte traject-harvest is async: bevestig met dezelfde banner-vorm
 // als de document-upload dat de voortgang in het Taken-paneel verschijnt.
@@ -1852,7 +1855,7 @@ watch(activeTrajectRef, () => {
       ref="searchPopoverRef"
       @select-law="(lawId) => selectLaw(lawId, true)"
       @harvest-available="onHarvestAvailable"
-      @promoted="onLawPromoted"
+      @promoted="(lawId) => onLawPromoted(lawId, true)"
     />
     <AddLawPopover
       ref="addLawPopoverRef"
