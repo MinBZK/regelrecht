@@ -43,6 +43,10 @@ function runningText(job) {
     const name = job.target_path?.split('/').pop() || 'document';
     return `Wet maken loopt - ${name}`;
   }
+  if (job.job_type === 'traject_harvest') {
+    // law_id draagt hier het BWB-id van de op te halen wet.
+    return `Wet ophalen loopt - ${job.law_id}`;
+  }
   return `Verrijking loopt - ${job.law_id}`;
 }
 

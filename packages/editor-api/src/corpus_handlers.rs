@@ -1555,6 +1555,7 @@ struct TrajectLawWrite {
 /// the looked-up law (for its `relative_path`), the write-target source
 /// id, and an owned guard over the traject's writable backend.
 async fn resolve_traject_law_write(
+    state: &AppState,
     traject: &Arc<TrajectCorpus>,
     law_id: &str,
 ) -> Result<TrajectLawWrite, (StatusCode, String)> {
@@ -1569,18 +1570,43 @@ async fn resolve_traject_law_write(
             StatusCode::SERVICE_UNAVAILABLE,
             "Writable backend not initialised".to_string(),
         ))?;
-    if !entry.writable {
-        return Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()));
-    }
     // Per-source write mutex: every save to the same traject source
     // serialises here, so contention (a second save waiting out the
     // first's GitHub round-trips) shows up as a fat `lock` phase.
     let backend = timing::measure("lock", entry.backend.clone().lock_owned()).await;
+    require_traject_backend_writable(state, entry.writable, &**backend).await?;
     Ok(TrajectLawWrite {
         law,
         write_source_id: write_target_source_id,
         backend,
     })
+}
+
+/// The single writability gate for traject writes.
+///
+/// A backend that is writable at rest (configured service token, or a
+/// natively writable local dir) always passes. A backend that is
+/// read-only at rest still passes when this deployment routes writes
+/// through the acting user's own GitHub token AND the backend honors
+/// `WriteContext::token_override` — the deployed federation config for a
+/// user-created traject repo has no service token on purpose, and 403-ing
+/// there would break every write in the user-token mode (the pr952
+/// promote bug). The subsequent `user_write_token_for_backend` call then
+/// enforces the linked-token requirement (428 when absent/expired), and
+/// `persist` itself still refuses (`CorpusError::ReadOnly` → 403) if a
+/// write somehow reaches it with no token at all.
+async fn require_traject_backend_writable(
+    state: &AppState,
+    writable_at_rest: bool,
+    backend: &dyn RepoBackend,
+) -> Result<(), (StatusCode, String)> {
+    if writable_at_rest {
+        return Ok(());
+    }
+    if backend.supports_token_override() && github_oauth::user_token_write_mode(state).await? {
+        return Ok(());
+    }
+    Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()))
 }
 
 /// Source-relative path of a law's scenario file.
@@ -1759,10 +1785,11 @@ async fn read_traject_scenario_cached(
 /// the law/scenario writes use), so notes land in the same traject
 /// branch/PR as the rest of the edits in the session.
 async fn resolve_traject_annotation_target(
+    state: &AppState,
     traject: &Arc<TrajectCorpus>,
     law_id: &str,
 ) -> Result<EditorWriteTarget, (StatusCode, String)> {
-    let write = resolve_traject_law_write(traject, law_id).await?;
+    let write = resolve_traject_law_write(state, traject, law_id).await?;
     Ok(EditorWriteTarget {
         relative_path: PathBuf::from("annotations")
             .join(law_id)
@@ -1813,7 +1840,7 @@ pub async fn save_scenario(
     let author = Some(require_editor_user(&session).await?);
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let write = resolve_traject_law_write(&traject, &law_id).await?;
+    let write = resolve_traject_law_write(&state, &traject, &law_id).await?;
     // Resolved-backend-aware: a local writable-own backend ignores the
     // override, so enforcement must not 428 a save that never reaches GitHub.
     let token_override =
@@ -2013,7 +2040,7 @@ pub async fn save_annotations(
         }));
     }
     let new_notes = public_notes;
-    let target = resolve_traject_annotation_target(&traject, &law_id).await?;
+    let target = resolve_traject_annotation_target(&state, &traject, &law_id).await?;
     let EditorWriteTarget {
         relative_path,
         backend,
@@ -2231,7 +2258,7 @@ pub async fn save_law(
     // corpus so we can mirror the saved body into its read-your-writes
     // overlay after `persist` succeeds.
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let write = resolve_traject_law_write(&traject, &law_id).await?;
+    let write = resolve_traject_law_write(&state, &traject, &law_id).await?;
     let token_override =
         github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**write.backend)
             .await?;
@@ -2304,7 +2331,7 @@ pub async fn delete_scenario(
     let author = Some(require_editor_user(&session).await?);
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let write = resolve_traject_law_write(&traject, &law_id).await?;
+    let write = resolve_traject_law_write(&state, &traject, &law_id).await?;
     let token_override =
         github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**write.backend)
             .await?;
@@ -2578,6 +2605,7 @@ fn traject_documents_base(traject_ref: &str) -> PathBuf {
 /// `write_target_for_source.values().next()`, which relied on every
 /// value being identical (true today, but unenforced).
 async fn resolve_traject_documents_writer(
+    state: &AppState,
     traject: &Arc<TrajectCorpus>,
 ) -> Result<tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>, (StatusCode, String)> {
     let entry = traject
@@ -2588,10 +2616,9 @@ async fn resolve_traject_documents_writer(
             StatusCode::SERVICE_UNAVAILABLE,
             "Writable backend not initialised".to_string(),
         ))?;
-    if !entry.writable {
-        return Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()));
-    }
-    Ok(entry.backend.clone().lock_owned().await)
+    let backend = entry.backend.clone().lock_owned().await;
+    require_traject_backend_writable(state, entry.writable, &**backend).await?;
+    Ok(backend)
 }
 
 /// Read the `If-Match` header value, trimmed. `None` when absent or empty.
@@ -2692,7 +2719,7 @@ pub async fn list_traject_documents(
     Path(traject_ref): Path<String>,
 ) -> Result<Json<TrajectDocumentList>, (StatusCode, String)> {
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let backend = resolve_traject_documents_writer(&traject).await?;
+    let backend = resolve_traject_documents_writer(&state, &traject).await?;
     let base = traject_documents_base(&traject_ref);
     let entries = backend
         .list_files_recursive(&base, None)
@@ -2874,7 +2901,7 @@ pub async fn upload_traject_document(
     // the derivation hand back a name that already exists, and the worker's
     // unconditional write would silently overwrite that document. Fail the
     // upload instead.
-    let backend = resolve_traject_documents_writer(&traject).await?;
+    let backend = resolve_traject_documents_writer(&state, &traject).await?;
 
     let base = traject_documents_base(&traject_ref);
     let mut existing: Vec<String> = backend
@@ -3126,7 +3153,7 @@ pub async fn create_traject_law(
 
     // The writable-own backend (same routing as documents: the law does not
     // exist yet, so there is no per-law source to route from).
-    let backend = resolve_traject_documents_writer(&traject).await?;
+    let backend = resolve_traject_documents_writer(&state, &traject).await?;
     // Belt-and-braces against an index blind spot (e.g. a file committed on
     // the branch after the current snapshot was built).
     if backend
@@ -3173,6 +3200,286 @@ pub async fn create_traject_law(
     let mut response = save_response_from_traject(outcome);
     response.etag = Some(new_etag.clone());
     Ok(([(axum::http::header::ETAG, new_etag)], Json(response)).into_response())
+}
+
+/// Response body of a promote: how many files were copied and, when the
+/// traject backend opened a PR for the commit, its coordinates.
+#[derive(Debug, Serialize)]
+pub struct PromoteResponse {
+    pub law_id: String,
+    pub copied_files: usize,
+    pub pr: Option<SavePrInfo>,
+}
+
+/// One file collected from a seed source for a promote, addressed by its
+/// source-relative path — which doubles as the write path in the traject's
+/// writable-own source, exactly like `save_law`'s write-routing for a
+/// federated law (`resolve_traject_law_write` reuses `law.relative_path`).
+struct PromoteFile {
+    relative_path: PathBuf,
+    content: String,
+}
+
+/// POST /api/trajects/{traject_ref}/corpus/laws/{law_id}/promote
+///
+/// Kopieer een wet uit het centrale corpus (de gefedereerde seed-bron van
+/// het traject, bijv. `minbzk-central`) naar de traject-repo: alle
+/// versie-YAML's (inclusief `machine_readable`) plus de bijbehorende
+/// `scenarios/*.feature`-bestanden, in één commit via het bestaande
+/// traject-schrijfpad (zelfde commit- en autorisatiegedrag als het opslaan
+/// van een wet). Staat de wet al in de traject-repo, dan 409 — er ontstaan
+/// nooit dubbele bestanden.
+///
+/// De bron is bewust het traject-gefedereerde corpus en niet de globale
+/// corpus-state: de traject-index dekt de volledige seed (metadata-only,
+/// lazy bodies), terwijl de globale state in productie alleen favorieten
+/// materialiseert (`load_favorites_async`).
+pub async fn promote_corpus_law(
+    State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
+    session: Session,
+    Path((traject_ref, law_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<PromoteResponse>, (StatusCode, String)> {
+    let author = Some(require_editor_user(&session).await?);
+
+    // Membership guard FIRST (same ordering as create_traject_law), and the
+    // traject-id for the cache invalidation afterwards.
+    let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let traject_id = resolve_traject_ref(
+        state.pool.as_ref().ok_or((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "database not configured".to_string(),
+        ))?,
+        &traject_ref,
+    )
+    .await?;
+
+    // Al in de traject-repo volgens de gefedereerde index? Dan is promoten
+    // zinloos/gevaarlijk (overschrijven van traject-edits). De index kan een
+    // blinde vlek hebben (file net gecommit); de per-bestand check verderop
+    // is de belt-and-braces.
+    if let Some(law) = traject.corpus.source_map.get_law(&law_id) {
+        if law.source_id == traject.writable_own_source_id {
+            return Err((
+                StatusCode::CONFLICT,
+                "Deze wet staat al in dit traject.".to_string(),
+            ));
+        }
+    }
+
+    // Verzamel alle te kopiëren bestanden uit de seed-bron(nen), vóórdat de
+    // writable-own-lock genomen wordt. Alleen seed-locks worden hier (één
+    // tegelijk) gehouden — de writable-own → seed lock-orde-invariant blijft
+    // daarmee intact.
+    let files = collect_promote_files(&traject, &law_id).await?;
+
+    // Schrijfpad: de writable-own backend van het traject (zelfde routing als
+    // documents/create: per-wet routing bestaat nog niet, want de wet zit nog
+    // niet in de traject-repo).
+    let backend = resolve_traject_documents_writer(&state, &traject).await?;
+
+    // Geen dubbele/overschreven bestanden, per bestandssoort:
+    // - Wet-versie-YAML al op het doelpad (bijv. via een eerdere save_law op
+    //   de gefedereerde wet, of een commit die de index nog niet zag) → 409
+    //   voor de hele promote.
+    // - Scenario-file al op het doelpad: dat is een traject-edit —
+    //   `save_scenario` routeert scenario's van gefedereerde wetten naar de
+    //   writable-own zónder dat er een wet-YAML in de traject-repo staat.
+    //   Die edit mag een promote niet stilletjes overschrijven; de
+    //   traject-versie wint (zelfde "eigen repo boven seed"-regel als
+    //   source_priority 0) en de rest van de wet-map wordt gewoon gekopieerd.
+    let mut to_write: Vec<&PromoteFile> = Vec::with_capacity(files.len());
+    for file in &files {
+        let exists = backend
+            .read_file(&file.relative_path)
+            .await
+            .map_err(corpus_write_error("law"))?
+            .is_some();
+        if !exists {
+            to_write.push(file);
+            continue;
+        }
+        if file
+            .relative_path
+            .extension()
+            .is_some_and(|ext| ext == "yaml")
+        {
+            return Err((
+                StatusCode::CONFLICT,
+                "Deze wet staat al (deels) in dit traject.".to_string(),
+            ));
+        }
+        tracing::info!(
+            law_id = %law_id,
+            path = %file.relative_path.display(),
+            "promote: bestand bestaat al in de traject-repo (traject-edit wint), overslaan"
+        );
+    }
+
+    let token_override =
+        github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**backend)
+            .await?;
+
+    for file in &to_write {
+        backend
+            .write_file(&file.relative_path, &file.content)
+            .await
+            .map_err(corpus_write_error("law"))?;
+    }
+    let outcome = backend
+        .persist(&WriteContext {
+            message: format!("Voeg wet {} toe uit het centrale corpus", law_id),
+            author,
+            token_override,
+        })
+        .await
+        .map_err(corpus_write_error("law"))?;
+    drop(backend);
+
+    // Read-your-writes + index-verversing, zoals create_traject_law: de
+    // nieuwste versie in de overlay, de wet in de changed-lijst, en een
+    // cache-drop zodat de volgende request de wet in de traject-index ziet.
+    if let Some(newest) = files
+        .iter()
+        .find(|f| f.relative_path.extension().is_some_and(|e| e == "yaml"))
+    {
+        traject
+            .record_save(law_id.clone(), newest.content.clone())
+            .await;
+    }
+    traject.record_changed_law(&law_id).await;
+    state.trajects.invalidate(traject_id).await;
+
+    Ok(Json(PromoteResponse {
+        law_id,
+        copied_files: to_write.len(),
+        pr: outcome.pr.map(|pr| SavePrInfo {
+            url: pr.html_url,
+            number: pr.number,
+        }),
+    }))
+}
+
+/// Verzamel de volledige wet-map van `law_id` uit de seed-bron(nen) van het
+/// traject: elk versie-YAML (nieuwste eerst, lazy-fetch waar de index alleen
+/// metadata heeft) plus de `scenarios/*.feature`-bestanden naast de wet.
+/// Versies uit de writable-own-bron worden overgeslagen (die staan er al).
+///
+/// Lock-discipline: houdt uitsluitend seed-backend-locks, één tegelijk —
+/// de aanroeper neemt de writable-own-lock pas ná dit verzamelen, dus de
+/// writable-own → seed lock-orde-invariant kan hier niet schenden.
+async fn collect_promote_files(
+    traject: &Arc<TrajectCorpus>,
+    law_id: &str,
+) -> Result<Vec<PromoteFile>, (StatusCode, String)> {
+    let not_found = || {
+        (
+            StatusCode::NOT_FOUND,
+            "Deze wet is niet gevonden in het centrale corpus van dit traject.".to_string(),
+        )
+    };
+    let versions: Vec<LoadedLaw> = traject
+        .corpus
+        .source_map
+        .get_law_versions(law_id)
+        .ok_or_else(not_found)?
+        .iter()
+        .filter(|v| v.source_id != traject.writable_own_source_id)
+        .cloned()
+        .collect();
+    if versions.is_empty() {
+        return Err(not_found());
+    }
+
+    let fetch_error = |what: &'static str, path: &std::path::Path, e: &dyn std::fmt::Display| {
+        tracing::warn!(law_id = %law_id, path = %path.display(), error = %e, "promote: {what} lezen uit seed-bron mislukt");
+        (
+            StatusCode::BAD_GATEWAY,
+            "Kon de wet niet volledig uit het centrale corpus lezen.".to_string(),
+        )
+    };
+
+    // Dedupe op relative_path: dezelfde versie kan uit meerdere seeds
+    // geïndexeerd zijn; get_law_versions sorteert hoogste prioriteit eerst,
+    // dus de eerste treffer per pad wint.
+    let mut seen = std::collections::BTreeSet::new();
+    let mut files = Vec::new();
+    for version in &versions {
+        let relative_path = PathBuf::from(&version.relative_path);
+        // Defensief: de index is vertrouwd, maar deze paden worden 1-op-1
+        // schrijfpaden in de traject-repo.
+        if version.relative_path.contains("..") || relative_path.is_absolute() {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Ongeldig bronpad in de corpus-index.".to_string(),
+            ));
+        }
+        if !seen.insert(relative_path.clone()) {
+            continue;
+        }
+        let content = if !version.yaml_content.is_empty() {
+            version.yaml_content.clone()
+        } else {
+            // Metadata-only indexvermelding: body lazy fetchen via de
+            // seed-backend, net als de traject-scoped reads doen.
+            let entry = traject.corpus.backends.get(&version.source_id).ok_or((
+                StatusCode::BAD_GATEWAY,
+                "Seed-backend van het centrale corpus is niet beschikbaar.".to_string(),
+            ))?;
+            let backend = entry.backend.lock().await;
+            backend
+                .read_file(&relative_path)
+                .await
+                .map_err(|e| fetch_error("wet-versie", &relative_path, &e))?
+                .ok_or_else(|| {
+                    fetch_error(
+                        "wet-versie",
+                        &relative_path,
+                        &"bestand ontbreekt bij de bron",
+                    )
+                })?
+        };
+        files.push(PromoteFile {
+            relative_path,
+            content,
+        });
+    }
+
+    // Scenario's naast de wet (criterium: de volledige wet-map). We lezen ze
+    // van de seed van de best-passende versie; een leesfout is een harde
+    // fout — stilletjes zonder scenario's promoten zou het acceptatiecriterium
+    // schenden zonder dat iemand het ziet.
+    let primary = &versions[0];
+    let law_dir = PathBuf::from(&primary.relative_path)
+        .parent()
+        .map(PathBuf::from)
+        .ok_or((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Kan de wet-map niet bepalen.".to_string(),
+        ))?;
+    let scenarios_dir = law_dir.join("scenarios");
+    if let Some(entry) = traject.corpus.backends.get(&primary.source_id) {
+        let backend = entry.backend.lock().await;
+        let entries = backend
+            .list_files(&scenarios_dir, Some("feature"))
+            .await
+            .map_err(|e| fetch_error("scenario-lijst", &scenarios_dir, &e))?;
+        for entry in entries {
+            let path = scenarios_dir.join(&entry.name);
+            let content = backend
+                .read_file(&path)
+                .await
+                .map_err(|e| fetch_error("scenario", &path, &e))?
+                .ok_or_else(|| fetch_error("scenario", &path, &"bestand ontbreekt bij de bron"))?;
+            files.push(PromoteFile {
+                relative_path: path,
+                content,
+            });
+        }
+    }
+
+    Ok(files)
 }
 
 /// GET /api/trajects/{traject_ref}/corpus/documents/jobs
@@ -3237,7 +3544,7 @@ pub async fn get_traject_document(
     use axum::response::IntoResponse;
     validate_document_path(&doc_path)?;
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let backend = resolve_traject_documents_writer(&traject).await?;
+    let backend = resolve_traject_documents_writer(&state, &traject).await?;
     let relative_path = traject_documents_base(&traject_ref).join(&doc_path);
     let content = backend
         .read_file(&relative_path)
@@ -3303,7 +3610,7 @@ pub async fn save_traject_document(
     }
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let backend = resolve_traject_documents_writer(&traject).await?;
+    let backend = resolve_traject_documents_writer(&state, &traject).await?;
     let token_override =
         github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**backend)
             .await?;
@@ -3371,7 +3678,7 @@ pub async fn delete_traject_document(
     let author = Some(require_editor_user(&session).await?);
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let backend = resolve_traject_documents_writer(&traject).await?;
+    let backend = resolve_traject_documents_writer(&state, &traject).await?;
     let token_override =
         github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**backend)
             .await?;

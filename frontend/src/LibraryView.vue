@@ -7,6 +7,7 @@ import MachineReadable from './components/MachineReadable.vue';
 import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
+import AddLawPopover from './components/AddLawPopover.vue';
 import DocumentList from './components/DocumentList.vue';
 import DocumentEditor from './components/DocumentEditor.vue';
 import TrajectDetailsPane from './components/TrajectDetailsPane.vue';
@@ -257,6 +258,35 @@ function dismissLawUploadError() {
 function retryLawUpload() {
   lawUploadError.value = null;
   nextTick(() => onLawUpload());
+}
+
+// --- Wet toevoegen uit het centrale corpus (promote / traject-harvest) -----
+// De zoek-flow achter "Zoeken in het centrale corpus…": promoten kopieert de
+// wet naar de traject-repo, en voor een niet-gevonden wet start een BWB-id
+// een traject-scoped harvest via het taken-mechanisme (AddLawPopover).
+const addLawPopoverRef = ref(null);
+function openAddLawSearch() {
+  addLawPopoverRef.value?.show(document.getElementById('law-add-btn'));
+}
+// Na een geslaagde promote (via de AddLawPopover óf de "Toevoegen aan
+// traject"-knop in de gewone zoekresultaten): index verversen (de wet staat
+// nu in de traject-repo) en de wet openen — dezelfde afronding als een
+// afgeronde harvest in de globale zoeker (onHarvestAvailable). Vanuit de
+// zoekresultaten focussen we ook het sidebar-item (focusAfter), net als
+// select-law uit dezelfde popover — daarvoor stelt SearchPopover de
+// 'promoted'-emit uit tot na _returnFocus.
+async function onLawPromoted(lawId, focusAfter = false) {
+  await loadIndex();
+  selectLaw(lawId, focusAfter);
+}
+// Een gestarte traject-harvest is async: bevestig met dezelfde banner-vorm
+// als de document-upload dat de voortgang in het Taken-paneel verschijnt.
+const lawHarvestStarted = ref(false);
+function onTrajectHarvestRequested() {
+  lawHarvestStarted.value = true;
+}
+function dismissLawHarvestStarted() {
+  lawHarvestStarted.value = false;
 }
 
 // Name the open document in the unsaved-changes guard so it's clear what's at
@@ -1450,12 +1480,11 @@ watch(activeTrajectRef, () => {
                       </nldd-list-item>
                     </nldd-list>
                   </template>
-                  <!-- Wet of regel toevoegen uit een geüpload document (alleen
-                       in een traject): start de conversie-naar-wet-keten; de
-                       voortgang en het resultaat verschijnen in het
-                       Taken-paneel. Zelfde toolbar/icon-button-patroon als de
-                       werkdocument-upload; één actie, dus direct een klik in
-                       plaats van een menu. -->
+                  <!-- Wet toevoegen (alleen in een traject): de "+" opent
+                       DIRECT de "Wet toevoegen"-zoeker (AddLawPopover) —
+                       zonder menu-tussenstap. De tweede route (PDF/Word-
+                       document uploaden → conversie-naar-wet-keten) zit ín
+                       die popover als actie onder de zoekresultaten. -->
                   <template v-if="activeTrajectRef">
                     <nldd-spacer size="24"></nldd-spacer>
                     <nldd-toolbar label="Wetacties">
@@ -1464,10 +1493,10 @@ watch(activeTrajectRef, () => {
                              voor menu/popover-knoppen; dit is een directe
                              actie. De tekst verschijnt als tooltip. -->
                         <nldd-icon-button
-                          id="law-upload-btn"
+                          id="law-add-btn"
                           icon="plus-small"
-                          text="Wet of regel toevoegen uit document"
-                          @click="onLawUpload"
+                          text="Wet toevoegen"
+                          @click="openAddLawSearch"
                         ></nldd-icon-button>
                       </nldd-toolbar-item>
                     </nldd-toolbar>
@@ -1480,6 +1509,16 @@ watch(activeTrajectRef, () => {
                         supporting-text="Je krijgt een taak zodra de wet klaarstaat voor beoordeling."
                         dismissible
                         @dismiss="dismissLawUploadStarted"
+                      ></nldd-banner>
+                    </template>
+                    <template v-if="lawHarvestStarted">
+                      <nldd-spacer size="8"></nldd-spacer>
+                      <nldd-banner
+                        variant="success"
+                        text="Ophalen gestart"
+                        supporting-text="De aanvraag staat bij Taken; je krijgt een taak zodra de wet klaarstaat voor beoordeling."
+                        dismissible
+                        @dismiss="dismissLawHarvestStarted"
                       ></nldd-banner>
                     </template>
                   </template>
@@ -1811,6 +1850,13 @@ watch(activeTrajectRef, () => {
       ref="searchPopoverRef"
       @select-law="(lawId) => selectLaw(lawId, true)"
       @harvest-available="onHarvestAvailable"
+      @promoted="(lawId) => onLawPromoted(lawId, true)"
+    />
+    <AddLawPopover
+      ref="addLawPopoverRef"
+      @promoted="onLawPromoted"
+      @harvest-requested="onTrajectHarvestRequested"
+      @upload-requested="onLawUpload"
     />
   </Teleport>
   <!-- Unsaved-changes guard for in-view werkdocument navigation. -->

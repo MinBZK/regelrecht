@@ -45,9 +45,25 @@ fn ctx() -> WriteContext {
     WriteContext::new("test commit".to_string(), None)
 }
 
+/// `persist` bootstraps the traject branch lazily when `ensure_ready` never
+/// ran (these tests construct the backend directly, so `branch_ready` is
+/// false): mount the ref-GET reporting the branch as already existing so a
+/// persisting test needs no create-branch mocks.
+async fn mount_branch_exists(server: &MockServer) {
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus/git/ref/heads/traject/abc"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "ref": "refs/heads/traject/abc",
+            "object": { "sha": "branch-sha" },
+        })))
+        .mount(server)
+        .await;
+}
+
 #[tokio::test]
 async fn read_file_returns_content_and_caches_sha_for_later_write() {
     let server = MockServer::start().await;
+    mount_branch_exists(&server).await;
 
     // Read returns content + sha.
     Mock::given(method("GET"))
@@ -90,6 +106,7 @@ async fn read_file_returns_content_and_caches_sha_for_later_write() {
 #[tokio::test]
 async fn persist_with_token_override_authenticates_as_the_user() {
     let server = MockServer::start().await;
+    mount_branch_exists(&server).await;
 
     // The PUT must carry the *override* token — the acting user's own
     // credential — not the backend's baked-in "test-token". Matching on the
@@ -122,6 +139,7 @@ async fn persist_with_token_override_authenticates_as_the_user() {
 #[tokio::test]
 async fn persist_without_override_keeps_the_backend_token() {
     let server = MockServer::start().await;
+    mount_branch_exists(&server).await;
 
     // The counterpart: no override → the configured backend token, exactly
     // the pre-spike behaviour every non-editor call site relies on.
@@ -145,6 +163,7 @@ async fn persist_without_override_keeps_the_backend_token() {
 #[tokio::test]
 async fn write_without_prior_read_resolves_sha_lazily_at_persist() {
     let server = MockServer::start().await;
+    mount_branch_exists(&server).await;
 
     // First PUT (no sha) returns 422 — file already exists; backend must
     // then GET sha and re-PUT.
@@ -192,6 +211,7 @@ async fn write_without_prior_read_resolves_sha_lazily_at_persist() {
 #[tokio::test]
 async fn put_409_refreshes_sha_and_retries_once() {
     let server = MockServer::start().await;
+    mount_branch_exists(&server).await;
 
     // The caller read the file once, caching sha-old.
     Mock::given(method("GET"))
@@ -246,6 +266,7 @@ async fn put_409_refreshes_sha_and_retries_once() {
 #[tokio::test]
 async fn delete_path_resolves_sha_then_deletes() {
     let server = MockServer::start().await;
+    mount_branch_exists(&server).await;
 
     // No prior read → backend must GET sha first.
     Mock::given(method("GET"))
@@ -275,6 +296,7 @@ async fn delete_path_resolves_sha_then_deletes() {
 #[tokio::test]
 async fn delete_already_gone_is_no_op() {
     let server = MockServer::start().await;
+    mount_branch_exists(&server).await;
 
     // GET 404 → file already gone → persist swallows the delete.
     Mock::given(method("GET"))

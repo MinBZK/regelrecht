@@ -154,6 +154,13 @@ mod inner {
 
     impl GitHubFetcher {
         /// Create a new fetcher.
+        ///
+        /// The API base defaults to `api.github.com`; the `GITHUB_API_BASE`
+        /// env var overrides it process-wide. That override exists for
+        /// integration tests that stand up a wiremock GitHub (the fetcher is
+        /// constructed deep inside backend/registry code with no config
+        /// plumbing to inject a base URL) and doubles as a GitHub
+        /// Enterprise seam. Production deployments leave it unset.
         pub fn new() -> Result<Self> {
             let client = reqwest::Client::builder()
                 .user_agent("regelrecht-corpus/0.1")
@@ -162,9 +169,15 @@ mod inner {
                 .build()
                 .map_err(|e| CorpusError::Config(format!("Failed to create HTTP client: {}", e)))?;
 
+            let api_base = std::env::var("GITHUB_API_BASE")
+                .ok()
+                .map(|s| s.trim().trim_end_matches('/').to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "https://api.github.com".to_string());
+
             Ok(Self {
                 client,
-                api_base: "https://api.github.com".to_string(),
+                api_base,
                 etag_cache: HashMap::new(),
                 rate_limit_remaining: None,
             })

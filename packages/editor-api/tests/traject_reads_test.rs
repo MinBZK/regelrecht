@@ -413,23 +413,40 @@ async fn ttl_refresh_picks_up_upstream_laws_and_reconciles_saves() {
     .unwrap();
     write_law(corpus.path(), "EXTERNAL");
 
-    // The next request refreshes the snapshot (TTL expired): the new law
-    // is indexed without a traject delete/recreate or process restart…
-    let Json(entries) = list_traject_corpus_laws(
-        State(state.clone()),
-        session_for(&sub).await,
-        Path(tref.clone()),
-        Query(PaginationParams {
-            offset: 0,
-            limit: None,
-            q: None,
-            ids: None,
-        }),
-    )
-    .await
-    .expect("law list must succeed");
+    // A next request refreshes the snapshot (TTL expired) and the new law
+    // is indexed without a traject delete/recreate or process restart.
+    //
+    // The refresh is stale-while-revalidate: a request past the TTL serves
+    // the stale snapshot and kicks the re-enumeration off in a *background*
+    // task (see `spawn_background_refresh`), so no single request is
+    // guaranteed to observe the post-write snapshot — in particular, a
+    // refresh spawned by an earlier request may have enumerated the sources
+    // just *before* the writes above landed. Poll (bounded) until a request
+    // is served the refreshed snapshot; asserting on one shot made this
+    // test scheduling-dependent and flaky.
+    let mut indexed = false;
+    for _ in 0..50 {
+        let Json(entries) = list_traject_corpus_laws(
+            State(state.clone()),
+            session_for(&sub).await,
+            Path(tref.clone()),
+            Query(PaginationParams {
+                offset: 0,
+                limit: None,
+                q: None,
+                ids: None,
+            }),
+        )
+        .await
+        .expect("law list must succeed");
+        if entries.iter().any(|e| e.law_id == "andere_wet") {
+            indexed = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
     assert!(
-        entries.iter().any(|e| e.law_id == "andere_wet"),
+        indexed,
         "refreshed snapshot must index the upstream-added law"
     );
 
@@ -439,7 +456,16 @@ async fn ttl_refresh_picks_up_upstream_laws_and_reconciles_saves() {
     // stops pinning its own stale save (which would otherwise turn every
     // cross-replica edit into a permanent 412 loop — the user could
     // never fetch the conflicting content their If-Match fails against).
-    let (_etag, after) = read_law(state, session_for(&sub).await, &tref).await;
+    // Same stale-while-revalidate caveat as above: poll, don't one-shot.
+    let mut after = String::new();
+    for _ in 0..50 {
+        let (_etag, body) = read_law(state.clone(), session_for(&sub).await, &tref).await;
+        after = body;
+        if after.contains("EXTERNAL") {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
     assert!(
         after.contains("EXTERNAL"),
         "expected reads to converge to the externally written content; got: {after}"
