@@ -36,17 +36,19 @@ fn to_pg_interval(duration: Duration) -> Result<PgInterval> {
         .map_err(|_| PipelineError::InvalidInput(format!("invalid interval: {duration:?}")))
 }
 
-/// Internal row type for the reaper CTE result.
-#[derive(sqlx::FromRow)]
-struct ReapedRow {
-    #[allow(dead_code)]
-    id: Uuid,
-    #[allow(dead_code)]
-    law_id: String,
-    #[allow(dead_code)]
-    job_type: JobType,
-    #[allow(dead_code)]
-    status: JobStatus,
+/// Een door de reaper geraakte job. `status` is de NIEUWE status: `Pending`
+/// wanneer er nog pogingen over waren (her-poging), `Failed` bij terminaal.
+/// De payload rijdt mee zodat de aanroeper voor terminaal gefaalde
+/// taak-flow-jobs alsnog een `job_failed`-taak kan aanmaken — zonder die
+/// nazorg verdwijnt zo'n job stil uit de "Bezig"-lijst (zie
+/// `tasks::notify_reaped_task_jobs`).
+#[derive(Debug, sqlx::FromRow)]
+pub struct ReapedJob {
+    pub id: Uuid,
+    pub law_id: String,
+    pub job_type: JobType,
+    pub status: JobStatus,
+    pub payload: Option<serde_json::Value>,
 }
 
 pub struct CreateJobRequest {
@@ -362,16 +364,22 @@ where
 /// (e.g., the worker crashed). If the job still has retries left, it is reset
 /// to 'pending'; otherwise it is marked 'failed'.
 ///
-/// Returns the number of reaped jobs.
+/// Returns the reaped jobs (atomically claimed by THIS caller: de UPDATE …
+/// RETURNING geeft elke rij aan precies één concurrent reaper), zodat de
+/// aanroeper nazorg kan doen — met name `tasks::notify_reaped_task_jobs`
+/// voor terminaal gefaalde taak-flow-jobs.
 #[tracing::instrument(skip(executor))]
-pub async fn reap_orphaned_jobs<'e, E>(executor: E, timeout: std::time::Duration) -> Result<u64>
+pub async fn reap_orphaned_jobs<'e, E>(
+    executor: E,
+    timeout: std::time::Duration,
+) -> Result<Vec<ReapedJob>>
 where
     E: sqlx::PgExecutor<'e>,
 {
     let timeout_interval = sqlx::postgres::types::PgInterval::try_from(timeout)
         .map_err(|_| PipelineError::InvalidInput(format!("invalid reaper timeout: {timeout:?}")))?;
 
-    let reaped_rows = sqlx::query_as::<_, ReapedRow>(
+    let reaped_rows = sqlx::query_as::<_, ReapedJob>(
         r#"
         WITH reaped AS (
             UPDATE jobs
@@ -386,20 +394,22 @@ where
                 END
             WHERE status = 'processing'
               AND started_at < now() - $1::interval
-            RETURNING id, law_id, job_type, status
+            RETURNING id, law_id, job_type, status, payload
         )
-        SELECT id, law_id, job_type, status FROM reaped
+        SELECT id, law_id, job_type, status, payload FROM reaped
         "#,
     )
     .bind(timeout_interval)
     .fetch_all(executor)
     .await?;
 
-    let count = reaped_rows.len() as u64;
-    if count > 0 {
-        tracing::warn!(count, "reaped orphaned jobs stuck in processing");
+    if !reaped_rows.is_empty() {
+        tracing::warn!(
+            count = reaped_rows.len(),
+            "reaped orphaned jobs stuck in processing"
+        );
     }
-    Ok(count)
+    Ok(reaped_rows)
 }
 
 /// Create a harvest job only if no active (pending/processing) harvest job
