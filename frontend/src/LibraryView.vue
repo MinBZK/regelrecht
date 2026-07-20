@@ -7,6 +7,7 @@ import MachineReadable from './components/MachineReadable.vue';
 import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
+import AddLawPopover from './components/AddLawPopover.vue';
 import DocumentList from './components/DocumentList.vue';
 import DocumentEditor from './components/DocumentEditor.vue';
 import TrajectDetailsPane from './components/TrajectDetailsPane.vue';
@@ -257,6 +258,31 @@ function dismissLawUploadError() {
 function retryLawUpload() {
   lawUploadError.value = null;
   nextTick(() => onLawUpload());
+}
+
+// --- Wet toevoegen uit het centrale corpus (promote / traject-harvest) -----
+// De zoek-flow achter "Zoeken in het centrale corpus…": promoten kopieert de
+// wet naar de traject-repo, en voor een niet-gevonden wet start een BWB-id
+// een traject-scoped harvest via het taken-mechanisme (AddLawPopover).
+const addLawPopoverRef = ref(null);
+function openAddLawSearch() {
+  addLawPopoverRef.value?.show(document.getElementById('law-add-btn'));
+}
+// Na een geslaagde promote: index verversen (de wet staat nu in de
+// traject-repo) en de wet openen — dezelfde afronding als een afgeronde
+// harvest in de globale zoeker (onHarvestAvailable).
+async function onLawPromoted(lawId) {
+  await loadIndex();
+  selectLaw(lawId);
+}
+// Een gestarte traject-harvest is async: bevestig met dezelfde banner-vorm
+// als de document-upload dat de voortgang in het Taken-paneel verschijnt.
+const lawHarvestStarted = ref(false);
+function onTrajectHarvestRequested() {
+  lawHarvestStarted.value = true;
+}
+function dismissLawHarvestStarted() {
+  lawHarvestStarted.value = false;
 }
 
 // Name the open document in the unsaved-changes guard so it's clear what's at
@@ -1450,25 +1476,29 @@ watch(activeTrajectRef, () => {
                       </nldd-list-item>
                     </nldd-list>
                   </template>
-                  <!-- Wet of regel toevoegen uit een geüpload document (alleen
-                       in een traject): start de conversie-naar-wet-keten; de
-                       voortgang en het resultaat verschijnen in het
-                       Taken-paneel. Zelfde toolbar/icon-button-patroon als de
-                       werkdocument-upload; één actie, dus direct een klik in
-                       plaats van een menu. -->
+                  <!-- Wet toevoegen (alleen in een traject): één "+"-menu met
+                       twee routes — zoeken in het centrale corpus (promoten,
+                       met harvest-fallback via het taken-mechanisme) of een
+                       PDF/Word-document uploaden dat de conversie-naar-wet-
+                       keten start. Zelfde menu-patroon als de werkdocument-
+                       toevoegknop. -->
                   <template v-if="activeTrajectRef">
                     <nldd-spacer size="24"></nldd-spacer>
                     <nldd-toolbar label="Wetacties">
                       <nldd-toolbar-item slot="start">
-                        <!-- Géén `expandable`: dat is de disclosure-chevron
-                             voor menu/popover-knoppen; dit is een directe
-                             actie. De tekst verschijnt als tooltip. -->
                         <nldd-icon-button
-                          id="law-upload-btn"
+                          id="law-add-btn"
                           icon="plus-small"
-                          text="Wet of regel toevoegen uit document"
-                          @click="onLawUpload"
+                          text="Wet toevoegen"
+                          expandable
+                          tooltip-timing="never"
+                          popup-type="menu"
+                          popovertarget="law-add-menu"
                         ></nldd-icon-button>
+                        <nldd-menu id="law-add-menu" anchor="law-add-btn">
+                          <nldd-menu-item icon="search" text="Zoeken in het centrale corpus…" @select="openAddLawSearch"></nldd-menu-item>
+                          <nldd-menu-item icon="upload-to-cloud" text="PDF of DOCX uploaden…" @select="onLawUpload"></nldd-menu-item>
+                        </nldd-menu>
                       </nldd-toolbar-item>
                     </nldd-toolbar>
                     <input ref="lawFileInput" type="file" accept=".pdf,.doc,.docx" hidden @change="onLawFileChange" />
@@ -1480,6 +1510,16 @@ watch(activeTrajectRef, () => {
                         supporting-text="Je krijgt een taak zodra de wet klaarstaat voor beoordeling."
                         dismissible
                         @dismiss="dismissLawUploadStarted"
+                      ></nldd-banner>
+                    </template>
+                    <template v-if="lawHarvestStarted">
+                      <nldd-spacer size="8"></nldd-spacer>
+                      <nldd-banner
+                        variant="success"
+                        text="Ophalen gestart"
+                        supporting-text="De aanvraag staat bij Taken; je krijgt een taak zodra de wet klaarstaat voor beoordeling."
+                        dismissible
+                        @dismiss="dismissLawHarvestStarted"
                       ></nldd-banner>
                     </template>
                   </template>
@@ -1811,6 +1851,11 @@ watch(activeTrajectRef, () => {
       ref="searchPopoverRef"
       @select-law="(lawId) => selectLaw(lawId, true)"
       @harvest-available="onHarvestAvailable"
+    />
+    <AddLawPopover
+      ref="addLawPopoverRef"
+      @promoted="onLawPromoted"
+      @harvest-requested="onTrajectHarvestRequested"
     />
   </Teleport>
   <!-- Unsaved-changes guard for in-view werkdocument navigation. -->

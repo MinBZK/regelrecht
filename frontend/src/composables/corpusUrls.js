@@ -111,6 +111,21 @@ export function lawCreateUrl(trajectRef) {
   return `${corpusBase(trajectRef)}/laws`;
 }
 
+// Promote: kopieer een wet uit het CENTRALE corpus (alle versie-YAML's +
+// scenario's) naar de traject-repo, via het gewone traject-schrijfpad.
+export function lawPromoteUrl(trajectRef, lawId) {
+  requireTraject(trajectRef, 'law promote');
+  return `${lawUrl(trajectRef, lawId)}/promote`;
+}
+
+// Traject-scoped harvest via het taken-mechanisme: POST { bwb_id } start een
+// async BWB-download + geketende enrich; het resultaat komt terug als
+// `law_create`-review-taak in het takenpaneel.
+export function trajectHarvestUrl(trajectRef) {
+  requireTraject(trajectRef, 'traject harvest');
+  return `${corpusBase(trajectRef)}/harvest`;
+}
+
 // Running/failed document-conversion jobs for the traject, backing the
 // werkdocumenten conversion-status block.
 export function documentJobsUrl(trajectRef) {

@@ -68,6 +68,21 @@ describe('TasksPane', () => {
     expect(indicators[0].attributes('text')).toBe('Conversie loopt - rapport.md');
   });
 
+  it('toont een lopende traject-harvest met het BWB-id', async () => {
+    const wrapper = await mountPane(
+      [],
+      [{
+        job_id: 'j3',
+        job_type: 'traject_harvest',
+        law_id: 'BWBR0002399',
+        status: 'pending',
+      }]
+    );
+    const indicators = wrapper.findAll('nldd-activity-indicator');
+    expect(indicators).toHaveLength(1);
+    expect(indicators[0].attributes('text')).toBe('Wet ophalen loopt - BWBR0002399');
+  });
+
   it('toont zowel de Bezig-sectie als de takenlijst wanneer beide gevuld zijn', async () => {
     const wrapper = await mountPane(
       [{ id: 't1', task_type: 'job_review', title: 'Verrijking beoordelen: andere_wet', payload: {} }],
