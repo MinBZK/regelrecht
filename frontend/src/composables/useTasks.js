@@ -107,7 +107,7 @@ export function useTasks() {
 // 30s poll unconditionally in setup() - including for anonymous visitors -
 // which breaks the invariant that anonymous visitors never poll. Callers
 // that DO want the shared, polled task list (the taken-lijst in Home:
-// TasksSidebarItem/TasksPane) keep using useTasks().
+// TasksSidebarItem/TasksListPane) keep using useTasks().
 export function useTaskActions() {
   return { fetchTask, resolveTask, requestEnrich, refresh };
 }
