@@ -193,7 +193,7 @@ fn bench_complex_law(c: &mut Criterion) {
 
     // Verify the execution actually succeeds before benchmarking
     let verify = service.evaluate_law_output(
-        "zorgtoeslagwet",
+        "wet_op_de_zorgtoeslag",
         "hoogte_zorgtoeslag",
         params.clone(),
         "2025-01-01",
@@ -208,7 +208,7 @@ fn bench_complex_law(c: &mut Criterion) {
         b.iter(|| {
             service
                 .evaluate_law_output(
-                    black_box("zorgtoeslagwet"),
+                    black_box("wet_op_de_zorgtoeslag"),
                     black_box("hoogte_zorgtoeslag"),
                     params.clone(),
                     "2025-01-01",
@@ -221,7 +221,7 @@ fn bench_complex_law(c: &mut Criterion) {
         b.iter(|| {
             service
                 .evaluate_law_output_with_trace(
-                    black_box("zorgtoeslagwet"),
+                    black_box("wet_op_de_zorgtoeslag"),
                     black_box("hoogte_zorgtoeslag"),
                     params.clone(),
                     "2025-01-01",

@@ -1,0 +1,35 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.3/schema.json
+$id: test_einddatum_afnemer
+name: Testwet einddatum afnemer
+regulatory_layer: WET
+bwb_id: BWBR9999903
+publication_date: '2023-01-01'
+valid_from: '2023-01-01'
+url: https://example.com/test_einddatum_afnemer
+
+articles:
+  - number: '1'
+    url: https://example.com/test_einddatum_afnemer/1
+    text: >-
+      Het afgeleide bedrag is gelijk aan het normbedrag, bedoeld in artikel 1
+      van de Testwet einddatum.
+    machine_readable:
+      execution:
+        input:
+          - name: normbedrag
+            type: amount
+            source:
+              regulation: test_einddatum
+              output: normbedrag
+            type_spec:
+              unit: eurocent
+        output:
+          - name: afgeleid_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: afgeleid_bedrag
+            value: $normbedrag

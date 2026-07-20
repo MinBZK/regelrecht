@@ -106,6 +106,16 @@ mod inner {
         pub content: String,
     }
 
+    /// A YAML file discovered via the Trees API: its repo-relative path
+    /// plus the blob sha the tree listing reported for it. The sha is the
+    /// file's content identity — two listings reporting the same sha are
+    /// guaranteed to have byte-identical content.
+    #[derive(Debug, Clone)]
+    struct TreeFile {
+        path: String,
+        sha: Option<String>,
+    }
+
     /// GitHub API response for the Trees endpoint.
     #[derive(Debug, Deserialize)]
     struct TreeResponse {
@@ -118,6 +128,11 @@ mod inner {
         path: String,
         #[serde(rename = "type")]
         entry_type: String,
+        /// Blob sha of the entry. GitHub always sends it; kept optional so
+        /// a missing field degrades to "no content identity" instead of
+        /// failing the whole tree parse.
+        #[serde(default)]
+        sha: Option<String>,
     }
 
     /// GitHub fetcher with ETag caching and rate limit awareness.
@@ -197,19 +212,24 @@ mod inner {
 
             // Step 2: Fetch each YAML file's content
             let mut files = Vec::new();
-            for path in &yaml_paths {
+            for file in &yaml_paths {
                 match self
-                    .fetch_file_content(&source.full_repo(), source.effective_ref(), path, token)
+                    .fetch_file_content(
+                        &source.full_repo(),
+                        source.effective_ref(),
+                        &file.path,
+                        token,
+                    )
                     .await
                 {
                     Ok(content) => {
                         files.push(FetchedFile {
-                            path: path.clone(),
+                            path: file.path.clone(),
                             content,
                         });
                     }
                     Err(e) => {
-                        tracing::warn!(path = %path, error = %e, "Failed to fetch file, skipping");
+                        tracing::warn!(path = %file.path, error = %e, "Failed to fetch file, skipping");
                     }
                 }
             }
@@ -257,19 +277,24 @@ mod inner {
             );
 
             let mut files = Vec::new();
-            for path in best_per_law.values() {
+            for file in best_per_law.values() {
                 match self
-                    .fetch_file_content(&source.full_repo(), source.effective_ref(), path, token)
+                    .fetch_file_content(
+                        &source.full_repo(),
+                        source.effective_ref(),
+                        &file.path,
+                        token,
+                    )
                     .await
                 {
                     Ok(content) => {
                         files.push(FetchedFile {
-                            path: path.clone(),
+                            path: file.path.clone(),
                             content,
                         });
                     }
                     Err(e) => {
-                        tracing::warn!(path = %path, error = %e, "Failed to fetch file, skipping");
+                        tracing::warn!(path = %file.path, error = %e, "Failed to fetch file, skipping");
                     }
                 }
             }
@@ -279,14 +304,17 @@ mod inner {
 
         /// Enumerate every law in a source via the Trees API (1 call),
         /// selecting the best version per law — WITHOUT fetching any file
-        /// content. Returns `(law_id, repo_path)` pairs. This is the cheap
-        /// enumeration the lightweight corpus index is built from: opening a
-        /// law fetches just that one file lazily via the backend.
+        /// content. Returns `(law_id, repo_path, blob_sha)` triples; the
+        /// sha is the file's content identity from the tree listing, so
+        /// callers can detect content change across enumerations without
+        /// fetching bodies. This is the cheap enumeration the lightweight
+        /// corpus index is built from: opening a law fetches just that one
+        /// file lazily via the backend.
         pub async fn list_source_law_paths(
             &mut self,
             source: &GitHubSource,
             token: Option<&str>,
-        ) -> Result<Vec<(String, String)>> {
+        ) -> Result<Vec<(String, String, Option<String>)>> {
             let base_path = source.path.as_deref().unwrap_or("");
             let all_paths = match self
                 .list_yaml_files(
@@ -302,28 +330,30 @@ mod inner {
             };
             Ok(Self::group_best_versions(&all_paths, base_path, None)
                 .into_iter()
+                .map(|(law_id, file)| (law_id, file.path, file.sha))
                 .collect())
         }
 
-        /// Group repo-relative YAML paths by `law_id` (the directory name),
+        /// Group repo-relative YAML files by `law_id` (the directory name),
         /// keeping the best version per law (closest valid date ≤ today, else
         /// latest). `filter`, when set, restricts to those law_ids. Path
         /// format: `{base_path}/{layer}/{law_id}/{date}.yaml`. Returns a map
-        /// of `law_id → repo_path`.
+        /// of `law_id → tree file (repo path + blob sha)`.
         fn group_best_versions(
-            all_paths: &[String],
+            all_paths: &[TreeFile],
             base_path: &str,
             filter: Option<&HashSet<String>>,
-        ) -> HashMap<String, String> {
+        ) -> HashMap<String, TreeFile> {
             let prefix = if base_path.is_empty() {
                 String::new()
             } else {
                 format!("{}/", base_path)
             };
             let today = crate::source_map::today_str();
-            let mut best_per_law: HashMap<String, String> = HashMap::new();
+            let mut best_per_law: HashMap<String, TreeFile> = HashMap::new();
 
-            for path in all_paths {
+            for file in all_paths {
+                let path = &file.path;
                 let rel = if prefix.is_empty() {
                     path.as_str()
                 } else {
@@ -361,25 +391,27 @@ mod inner {
                 let filename = parts[parts.len() - 1];
                 let new_date = filename.strip_suffix(".yaml");
 
-                if let Some(existing_path) = best_per_law.get(law_id) {
-                    let existing_filename = existing_path.rsplit('/').next().unwrap_or("");
+                if let Some(existing) = best_per_law.get(law_id) {
+                    let existing_filename = existing.path.rsplit('/').next().unwrap_or("");
                     let existing_date = existing_filename.strip_suffix(".yaml");
 
                     let new_wins =
                         crate::source_map::pick_best_version(existing_date, new_date, &today);
 
                     if new_wins {
-                        best_per_law.insert(law_id.to_string(), path.clone());
+                        best_per_law.insert(law_id.to_string(), file.clone());
                     }
                 } else {
-                    best_per_law.insert(law_id.to_string(), path.clone());
+                    best_per_law.insert(law_id.to_string(), file.clone());
                 }
             }
 
             best_per_law
         }
 
-        /// List all YAML files in a repo path using the Trees API.
+        /// List all YAML files in a repo path using the Trees API, with the
+        /// blob sha the tree reported for each file (the content identity
+        /// callers can use to detect change without fetching the body).
         ///
         /// Returns `None` when the server responds with 304 Not Modified,
         /// indicating the tree has not changed since the last fetch.
@@ -389,7 +421,7 @@ mod inner {
             branch: &str,
             base_path: &str,
             token: Option<&str>,
-        ) -> Result<Option<Vec<String>>> {
+        ) -> Result<Option<Vec<TreeFile>>> {
             let url = format!(
                 "{}/repos/{}/git/trees/{}?recursive=1",
                 self.api_base, repo, branch
@@ -448,7 +480,7 @@ mod inner {
                 )));
             }
 
-            let yaml_files: Vec<String> = tree
+            let yaml_files: Vec<TreeFile> = tree
                 .tree
                 .into_iter()
                 .filter(|e| {
@@ -458,7 +490,10 @@ mod inner {
                             || e.path == base_path
                             || e.path.starts_with(&format!("{}/", base_path)))
                 })
-                .map(|e| e.path)
+                .map(|e| TreeFile {
+                    path: e.path,
+                    sha: e.sha,
+                })
                 .collect();
 
             tracing::debug!(
@@ -612,6 +647,64 @@ mod inner {
             }
             let content = decode_contents_payload(&item)?;
             Ok(Some((content, item.sha)))
+        }
+
+        /// Download the repo at `git_ref` in a SINGLE request via the
+        /// archive (tarball) endpoint and return each YAML law's
+        /// `implements` list — `(repo-relative path, implements)` pairs for
+        /// `.yaml`/`.yml` files, the archive's top-level
+        /// `{owner}-{repo}-{sha}/` directory component stripped so the paths
+        /// line up with the Trees/Contents APIs.
+        ///
+        /// Crucially, bodies are parsed and DISCARDED one at a time during
+        /// extraction — only the (tiny) implements lists are kept — so a
+        /// large corpus archive does not materialise every law body in
+        /// memory at once (which would OOM the process).
+        ///
+        /// GitHub answers the tarball endpoint with a 302 to a short-lived
+        /// codeload URL (carrying its own token), which reqwest follows
+        /// automatically — so this works for private repos with just the
+        /// Bearer token on the initial request.
+        pub async fn fetch_archive_implements(
+            &mut self,
+            repo: &str,
+            git_ref: &str,
+            token: Option<&str>,
+        ) -> Result<Vec<(String, Vec<String>)>> {
+            let url = format!("{}/repos/{}/tarball/{}", self.api_base, repo, git_ref);
+            let headers = self.default_headers(token);
+            let response = self
+                .client
+                .get(&url)
+                .headers(headers)
+                .send()
+                .await
+                .map_err(|e| CorpusError::Git(format!("GitHub archive request failed: {}", e)))?;
+            self.track_rate_limit(&response);
+
+            if !response.status().is_success() {
+                return Err(CorpusError::Git(format!(
+                    "GitHub archive API returned {} for {}: {}",
+                    response.status(),
+                    repo,
+                    response.text().await.unwrap_or_default()
+                )));
+            }
+
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|e| CorpusError::Git(format!("Failed to read archive body: {}", e)))?;
+
+            // gunzip + untar + parse are synchronous and CPU-bound: run them
+            // off the async runtime so a large corpus archive can't stall it.
+            let files =
+                tokio::task::spawn_blocking(move || extract_implements_from_tar_gz(bytes.as_ref()))
+                    .await
+                    .map_err(|e| {
+                        CorpusError::Config(format!("archive extract task panicked: {e}"))
+                    })??;
+            Ok(files)
         }
 
         /// List a directory via the Contents API. For a directory the
@@ -995,12 +1088,62 @@ mod inner {
             .map_err(|e| CorpusError::Git(format!("UTF-8 decode failed for {}: {}", item.path, e)))
     }
 
+    /// Stream a gzipped tar produced by GitHub's tarball endpoint and
+    /// return `(repo-relative path, implements list)` for every
+    /// `.yaml`/`.yml` file. The archive nests everything under a single
+    /// top-level `{owner}-{repo}-{sha}/` directory; that first component is
+    /// stripped. Directories, non-YAML files, and non-UTF-8 bodies are
+    /// skipped rather than failing the whole scan.
+    ///
+    /// Each body is read into a scratch `String`, parsed for `implements`,
+    /// and dropped before the next entry — so peak memory is one law body
+    /// plus the (tiny) implements result, never the whole decompressed
+    /// corpus. This is what keeps the one-request bulk scan from OOMing on
+    /// a large corpus.
+    fn extract_implements_from_tar_gz(bytes: &[u8]) -> Result<Vec<(String, Vec<String>)>> {
+        use std::io::Read;
+        let gz = flate2::read::GzDecoder::new(bytes);
+        let mut archive = tar::Archive::new(gz);
+        let mut out = Vec::new();
+        let entries = archive
+            .entries()
+            .map_err(|e| CorpusError::Git(format!("failed to read archive entries: {e}")))?;
+        for entry in entries {
+            let mut entry = entry
+                .map_err(|e| CorpusError::Git(format!("failed to read archive entry: {e}")))?;
+            if entry.header().entry_type() != tar::EntryType::Regular {
+                continue;
+            }
+            let path = entry
+                .path()
+                .map_err(|e| CorpusError::Git(format!("archive entry has no path: {e}")))?
+                .to_string_lossy()
+                .replace('\\', "/");
+            // Strip the archive's single top-level directory component.
+            let Some((_, rel)) = path.split_once('/') else {
+                continue;
+            };
+            if !(rel.ends_with(".yaml") || rel.ends_with(".yml")) {
+                continue;
+            }
+            let mut content = String::new();
+            if entry.read_to_string(&mut content).is_err() {
+                tracing::debug!(path = %rel, "archive entry is not valid UTF-8; skipping");
+                continue;
+            }
+            let implements = crate::source_map::collect_law_implements(&content);
+            out.push((rel.to_string(), implements));
+            // `content` dropped here — bodies never accumulate.
+        }
+        Ok(out)
+    }
+
     #[cfg(test)]
     mod tests {
-        use super::GitHubFetcher;
+        use super::{GitHubFetcher, TreeFile};
         use std::collections::HashMap;
 
-        fn sorted_ids(map: &HashMap<String, String>) -> Vec<String> {
+        fn sorted_ids(map: &HashMap<String, TreeFile>) -> Vec<String> {
             let mut ids: Vec<String> = map.keys().cloned().collect();
             ids.sort();
             ids
@@ -1016,8 +1159,14 @@ mod inner {
         #[test]
         fn annotation_files_are_not_indexed_as_laws() {
             let paths = vec![
-                "regulation/nl/wet/wet_op_de_zorgtoeslag/2026-01-01.yaml".to_string(),
-                "annotations/zorgtoeslagwet/annotations.yaml".to_string(),
+                TreeFile {
+                    path: "regulation/nl/wet/wet_op_de_zorgtoeslag/2026-01-01.yaml".to_string(),
+                    sha: Some("abc123".to_string()),
+                },
+                TreeFile {
+                    path: "annotations/zorgtoeslagwet/annotations.yaml".to_string(),
+                    sha: Some("def456".to_string()),
+                },
             ];
             let best = GitHubFetcher::group_best_versions(&paths, "", None);
             assert_eq!(sorted_ids(&best), vec!["wet_op_de_zorgtoeslag".to_string()]);

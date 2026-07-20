@@ -14,6 +14,7 @@ import { ref, computed, watch } from 'vue';
 import { buildSelector } from '../composables/useTextSelection.js';
 import { useAmbiguityVocabulary } from '../composables/useAmbiguityVocabulary.js';
 import { documentsListUrl } from '../composables/corpusUrls.js';
+import { apiFetchJson } from '../lib/apiFetch.js';
 
 const props = defineProps({
   // Raw char range from selectionToRawRange(), or null when closed.
@@ -64,13 +65,9 @@ async function fetchDocumentOptions() {
   if (!props.trajectRef) return;
   documentsLoadError.value = null;
   try {
-    const res = await fetch(documentsListUrl(props.trajectRef));
-    if (!res.ok) {
-      documentsLoadError.value = new Error(`HTTP ${res.status}`);
-      documentOptions.value = [];
-      return;
-    }
-    const json = await res.json();
+    const json = await apiFetchJson(documentsListUrl(props.trajectRef), {
+      errorMessage: (status) => `HTTP ${status}`,
+    });
     documentOptions.value = Array.isArray(json?.documents)
       ? json.documents.map((d) => d.path)
       : [];
@@ -166,8 +163,43 @@ function reset() {
   workflow.value = 'open';
 }
 
+// True while our own cancel()/save() is inside hidePopover(), so a `close`
+// dispatched synchronously from that call is recognized as self-inflicted.
+// The native popover spec queues toggle (and thus nldd's close) as a task,
+// which lands after the parent nulled `range` — the range guard below covers
+// that regime. This flag covers the synchronous regime, so onPopoverClose
+// stays correct regardless of how nldd-popover dispatches.
+let selfClosing = false;
+
+function hidePopoverSelf() {
+  selfClosing = true;
+  try {
+    popoverEl.value?.hidePopover?.();
+  } finally {
+    selfClosing = false;
+  }
+}
+
 function cancel() {
-  popoverEl.value?.hidePopover?.();
+  hidePopoverSelf();
+  reset();
+  emit('cancel');
+}
+
+// nldd-popover is popover="auto": the browser light-dismisses it on an
+// outside click or Esc without going through cancel(). The component fires
+// `close` on every dismissal, so a close that arrives while the form is
+// still open (range set) is an external dismiss and must cancel — otherwise
+// the parent keeps creatorOpen=true and suppresses the "Notitie" button for
+// every later selection. Closes from our own save()/cancel()/teardown are
+// filtered by the selfClosing flag (synchronous dispatch) or arrive after
+// the parent already nulled the range (asynchronous dispatch).
+function onPopoverClose(event) {
+  // Only the popover's own close counts: nldd close events bubble+composed,
+  // so a future nested sheet/dialog in the form slot would land here too and
+  // silently cancel a half-filled form.
+  if (event.target !== event.currentTarget) return;
+  if (selfClosing || !props.range) return;
   reset();
   emit('cancel');
 }
@@ -192,7 +224,7 @@ function save() {
     note.workflow = workflow.value;
   }
   note.__draft = true;
-  popoverEl.value?.hidePopover?.();
+  hidePopoverSelf();
   reset();
   emit('create', note);
 }
@@ -272,6 +304,7 @@ const statusInfo = computed(() => {
     accessible-label="Notitie aanmaken"
     placement="bottom-start"
     width="480px"
+    @close="onPopoverClose"
   >
     <div v-if="range" class="note-creator" data-testid="note-creator">
       <div class="nc-quote">

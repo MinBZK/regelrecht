@@ -130,6 +130,36 @@ pub trait RepoBackend: Send + Sync {
             .collect())
     }
 
+    /// Return every YAML law's `implements` list as `(source-relative
+    /// path, implements)` pairs — the input the implements/“who implements
+    /// me” index is built from — reading bodies in as few requests as
+    /// possible.
+    ///
+    /// Returns parsed `implements` lists, NOT bodies, on purpose: a
+    /// corpus-wide scan must never hold every law body in memory at once
+    /// (that OOMs on a large corpus). The default implementation reads one
+    /// file at a time via [`list_files_recursive`] + [`read_file`], parsing
+    /// and dropping each body as it goes. A backend that can fetch in bulk
+    /// (the GitHub API backend downloads the repo archive in a single
+    /// request) overrides this — but still streams bodies through the
+    /// parser one at a time.
+    ///
+    /// [`list_files_recursive`]: RepoBackend::list_files_recursive
+    /// [`read_file`]: RepoBackend::read_file
+    async fn read_all_implements(&self) -> Result<Vec<(String, Vec<String>)>> {
+        let entries = self
+            .list_files_recursive(Path::new(""), Some("yaml"))
+            .await?;
+        let mut out = Vec::with_capacity(entries.len());
+        for entry in entries {
+            if let Some(content) = self.read_file(Path::new(&entry.relative_path)).await? {
+                let implements = crate::source_map::collect_law_implements(&content);
+                out.push((entry.relative_path, implements));
+            }
+        }
+        Ok(out)
+    }
+
     /// Persist pending changes.
     ///
     /// No-op for local backends. For git backends this commits dirty files

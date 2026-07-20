@@ -1,6 +1,6 @@
 [package]
 name = "regelrecht-engine"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 authors = ["MinBZK <noreply@minbzk.nl>"]
 description = "RegelRecht law execution engine - Machine-readable Dutch law execution"
@@ -11,13 +11,14 @@ keywords = ["law", "legal", "wasm", "dutch", "regelrecht"]
 categories = ["wasm", "parsing"]
 
 [package.metadata.regelrecht]
-supported-schemas = ["v0.2.0", "v0.3.0", "v0.3.1", "v0.3.2", "v0.4.0", "v0.5.0", "v0.5.1", "v0.5.2"]
+supported-schemas = ["v0.2.0", "v0.3.0", "v0.3.1", "v0.3.2", "v0.4.0", "v0.5.0", "v0.5.1", "v0.5.2", "v0.5.3", "v0.5.4"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 regelrecht-shared = { path = "../shared" }
+regelrecht-law-model = { path = "../law-model" }
 serde.workspace = true
 serde_yaml_ng.workspace = true
 serde_json.workspace = true

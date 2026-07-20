@@ -105,10 +105,8 @@ impl BddView {
                         self.start_run(runner);
                     }
                 }
-                KeyCode::Enter => {
-                    if !self.running && !runner.is_running() {
-                        self.start_run(runner);
-                    }
+                KeyCode::Enter if !self.running && !runner.is_running() => {
+                    self.start_run(runner);
                 }
                 _ => {}
             },

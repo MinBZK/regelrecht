@@ -174,9 +174,12 @@ pub async fn execute_harvest(
         let bwb_source = regelrecht_harvester::BwbSource {
             max_size_mb: payload.max_size_mb,
         };
-        let law = bwb_source
+        let mut law = bwb_source
             .download(http_client, law_id, Some(&resolved_date))
             .await?;
+        // RFC-019: record an instrument end date only when this is the final consolidation
+        // and BWB reports a finite einddatum (genuine end with no successor).
+        law.metadata.valid_to = manifest::resolve_valid_to(&bwb_manifest, &resolved_date);
         (law, resolved_date)
     } else {
         tracing::info!(law_id = %law_id, source = source.name(), "downloading law from {}", source.name());

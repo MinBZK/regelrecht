@@ -21,7 +21,7 @@ This distinction determines the execution boundary. A calculation can be run by 
 A law that produces a formal decision declares `competent_authority`. The engine reads it from the top level of the law (or from a `machine_readable` section); it is **not** a field of `execution.produces`. The JSON schema defines `competent_authority` on the `machine_readable` section, but the top-level form is accepted too (the top-level object does not reject extra keys), and that is what the corpus uses, often as a `#`-reference into the law's definitions (see `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`):
 
 ```yaml
-$id: zorgtoeslagwet
+$id: wet_op_de_zorgtoeslag
 competent_authority: '#bevoegd_gezag'   # top-level, resolved from definitions
 # ...
 
@@ -67,6 +67,8 @@ A citizen requesting their trace can see: "your income was determined by the Tax
 
 ## Further reading
 
+- [Competent Authority](./competent-authority) - the `competent_authority` field that decides execute-vs-accept
+- [Traceability](./traceability) - how the organizational boundary appears in a real trace
 - [Hooks and Reactive Execution](./hooks-and-reactive-execution) - how Awb rules apply across organizations
 - [Federated Corpus](./federated-corpus) - how different organizations maintain their own law files
 - [RFC-009: Multi-Org Execution](/rfcs/rfc-009) - the full design specification

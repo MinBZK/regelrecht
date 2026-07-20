@@ -19,6 +19,8 @@ import {
   documentFileUrl,
   requireTraject,
 } from './corpusUrls.js';
+import { apiFetchJson } from '../lib/apiFetch.js';
+import { useLatest } from '../lib/useLatest.js';
 
 const STORAGE_PREFIX = 'regelrecht-doc-draft:';
 const DRAFT_DEBOUNCE_MS = 500;
@@ -89,13 +91,9 @@ export function useTrajectDocuments(trajectRef) {
     loading.value = true;
     listError.value = null;
     try {
-      const res = await fetch(documentsListUrl(trajectRef.value));
-      if (!res.ok) {
-        listError.value = new Error(`Lijst ophalen mislukt: ${res.status}`);
-        documents.value = [];
-        return;
-      }
-      const json = await res.json();
+      const json = await apiFetchJson(documentsListUrl(trajectRef.value), {
+        errorMessage: (status) => `Lijst ophalen mislukt: ${status}`,
+      });
       documents.value = Array.isArray(json?.documents) ? json.documents : [];
     } catch (e) {
       listError.value = e;
@@ -105,14 +103,14 @@ export function useTrajectDocuments(trajectRef) {
     }
   }
 
-  // Monotonic counter to discard out-of-order `openDocument` responses.
-  // Clicking document A then B fires two concurrent fetches; if A resolves
-  // after B, its (stale) response must not clobber B's loaded state.
-  let openGeneration = 0;
+  // Discards out-of-order `openDocument` responses. Clicking document A
+  // then B fires two concurrent fetches; if A resolves after B, its
+  // (stale) response must not clobber B's loaded state.
+  const claimOpen = useLatest();
 
   async function openDocument(path) {
     requireTraject(trajectRef.value, 'document open');
-    const gen = ++openGeneration;
+    const isCurrent = claimOpen();
     docLoading.value = true;
     docError.value = null;
     saveError.value = null;
@@ -123,10 +121,13 @@ export function useTrajectDocuments(trajectRef) {
     // it would otherwise persist the new body under the old path.
     cancelDraftTimer();
     try {
+      // Raw fetch on purpose: every status maps to its own docError shape
+      // below (404, other non-ok, draft divergence) — a thrown error would
+      // collapse those branches.
       const res = await fetch(documentFileUrl(trajectRef.value, path));
       // A newer openDocument started while this fetch was in flight — drop
       // this stale response so it can't overwrite the newer document.
-      if (gen !== openGeneration) return;
+      if (!isCurrent()) return;
       if (res.status === 404) {
         currentPath.value = path;
         currentBody.value = '';
@@ -152,7 +153,7 @@ export function useTrajectDocuments(trajectRef) {
       }
       const serverBody = await res.text();
       // Re-check after the body read — another open may have superseded us.
-      if (gen !== openGeneration) return;
+      if (!isCurrent()) return;
       const serverEtag = res.headers.get('ETag');
 
       // Set the path + body atomically (post-await) so the debounce
@@ -176,11 +177,11 @@ export function useTrajectDocuments(trajectRef) {
         currentBody.value = serverBody;
       }
     } catch (e) {
-      if (gen === openGeneration) docError.value = e;
+      if (isCurrent()) docError.value = e;
     } finally {
       // Only the latest open controls the loading flag, so a stale
       // response settling late can't flip it off mid-load.
-      if (gen === openGeneration) docLoading.value = false;
+      if (isCurrent()) docLoading.value = false;
     }
   }
 
@@ -242,6 +243,9 @@ export function useTrajectDocuments(trajectRef) {
     const ifMatchValue = ifMatch ?? currentEtag.value;
     if (ifMatchValue) headers['If-Match'] = ifMatchValue;
     try {
+      // Raw fetch on purpose: this is a result-object API ({ ok, conflict,
+      // deleted }) where 412 and other non-ok statuses each map to their
+      // own branch instead of a thrown error.
       const res = await fetch(
         documentFileUrl(trajectRef.value, currentPath.value),
         {
@@ -310,12 +314,11 @@ export function useTrajectDocuments(trajectRef) {
   /**
    * Create a new document at `path`. Generates a minimal H1 template
    * body and PUTs it without `If-Match`, so a brand-new file lands at
-   * `200/201 OK`. The caller (`DocumentsPanel.submitCreate`) does a
-   * client-side duplicate check against the already-fetched list
-   * before invoking us — without that check, a race where another
-   * user creates the same path between list-refresh and submit would
-   * silently overwrite. A future iteration can tighten this by adding
-   * `If-None-Match: *` support to the backend.
+   * `200/201 OK`. The caller (`useDocumentsManager.startNew`) only ever
+   * passes a freshly generated `untitled-*.md` path that isn't in the
+   * already-fetched list, so a collision needs a concurrent create of the
+   * same name between list-refresh and submit — a race a future iteration
+   * can close by adding `If-None-Match: *` support to the backend.
    */
   async function createDocument(path) {
     requireTraject(trajectRef.value, 'document create');
@@ -363,6 +366,8 @@ export function useTrajectDocuments(trajectRef) {
     const headers = {};
     if (ifMatch) headers['If-Match'] = ifMatch;
     try {
+      // Raw fetch on purpose: same result-object style as `saveCurrent` —
+      // 412 and 404 are normal branches here, not errors.
       const res = await fetch(documentFileUrl(trajectRef.value, path), {
         method: 'DELETE',
         headers,
@@ -423,7 +428,8 @@ export function useTrajectDocuments(trajectRef) {
   // etag belong to the old traject, so a save would write the old content
   // to the NEW traject's URL (and the stale etag would trip a misleading
   // 412 "overschrijven"-prompt). Clearing here makes the switch safe;
-  // DocumentsPanel additionally closes the edit sheet on the same change.
+  // TrajectDocuments additionally returns the sheet to its list on the same
+  // change.
   watch(
     trajectRef,
     () => {

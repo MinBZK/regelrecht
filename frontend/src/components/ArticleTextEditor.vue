@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { useEditor, EditorContent } from '@tiptap/vue-3';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
+import { history } from '@tiptap/pm/history';
 
 const props = defineProps({
   article: { type: Object, default: null },
@@ -24,7 +25,7 @@ const props = defineProps({
   modelValue: { type: String, default: '' },
 });
 
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits(['update:modelValue', 'focus']);
 
 const editor = useEditor({
   content: props.modelValue,
@@ -52,6 +53,9 @@ const editor = useEditor({
   onUpdate: ({ editor }) => {
     emit('update:modelValue', editor.storage.markdown.getMarkdown());
   },
+  // Let the parent track which text editor was last focused, so the
+  // article-level changes bar can route undo/redo to the right instance.
+  onFocus: () => { emit('focus'); },
 });
 
 // Reactive tick used to re-evaluate `editor.isActive(...)` in the template
@@ -130,16 +134,54 @@ function toggleItalic() { editor.value?.chain().focus().toggleItalic().run(); }
 function toggleBulletList() { editor.value?.chain().focus().toggleBulletList().run(); }
 function toggleOrderedList() { editor.value?.chain().focus().toggleOrderedList().run(); }
 
+// Undo/redo from Tiptap's StarterKit history. canUndo/canRedo read
+// `selectionTick` so they re-evaluate after every doc change (history depth
+// shifts), keeping the toolbar buttons enabled/disabled in lockstep.
+const canUndo = computed(() => {
+  selectionTick.value;
+  const inst = editor.value;
+  return inst ? inst.can().undo() : false;
+});
+const canRedo = computed(() => {
+  selectionTick.value;
+  const inst = editor.value;
+  return inst ? inst.can().redo() : false;
+});
+function undo() { editor.value?.chain().focus().undo().run(); }
+function redo() { editor.value?.chain().focus().redo().run(); }
+
+// Drop the undo/redo history. StarterKit (v3) exposes no clearHistory command,
+// so drop and re-add the ProseMirror history plugin: a fresh instance re-inits
+// with empty undo/redo stacks. Both steps go through Tiptap's own reconfigure
+// (registerPlugin/unregisterPlugin) so editor.state stays in sync — a bare
+// view.updateState leaves Tiptap's cached state untouched. Used after a discard
+// so Ctrl+Z can't step back into the thrown-away edits and re-dirty the article.
+function clearHistory() {
+  const inst = editor.value;
+  if (!inst) return;
+  inst.unregisterPlugin('history');
+  inst.registerPlugin(history({ depth: 100, newGroupDelay: 500 }));
+  // The reconfigure doesn't fire the transaction listeners, so nudge the tick
+  // to re-evaluate canUndo/canRedo for the toolbar.
+  selectionTick.value++;
+}
+
 // Expose the active-format state and toggle handlers so the parent can
-// render the formatting buttons inside its own pane-header (next to the
+// render the formatting buttons inside its own header toolbar (next to the
 // existing pane-view dropdown) rather than this component re-drawing its
-// own toolbar with a duplicate label dropdown.
+// own toolbar with a duplicate label dropdown. undo/redo feed the
+// article-level changes bar in the AppShell.
 defineExpose({
   activeFormats,
   toggleBold,
   toggleItalic,
   toggleBulletList,
   toggleOrderedList,
+  canUndo,
+  canRedo,
+  undo,
+  redo,
+  clearHistory,
 });
 </script>
 
@@ -169,10 +211,6 @@ defineExpose({
   display: flex;
   flex-direction: column;
   min-height: 0;
-}
-
-.article-text-editor__body-wrap {
-  padding: 16px;
 }
 
 .article-text-editor__empty {

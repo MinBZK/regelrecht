@@ -310,7 +310,7 @@ The lower regulation registers as implementing the open term:
 # regeling_standaardpremie article 1
 machine_readable:
   implements:
-    - law: zorgtoeslagwet
+    - law: wet_op_de_zorgtoeslag
       article: '4'
       open_term: standaardpremie
       gelet_op: Gelet op artikel 4 van de Wet op de zorgtoeslag

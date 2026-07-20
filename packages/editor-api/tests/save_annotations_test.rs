@@ -42,7 +42,7 @@ use regelrecht_pipeline::test_utils::TestDb;
 // Helpers
 // ---------------------------------------------------------------------------
 
-const LAW_ID: &str = "zorgtoeslagwet";
+const LAW_ID: &str = "wet_op_de_zorgtoeslag";
 
 fn empty_state(pool: PgPool) -> AppState {
     AppState {
@@ -181,7 +181,7 @@ async fn writes_a_note_to_the_traject_local_sidecar() {
     let session = session_for(&sub, Some(traject_id)).await;
 
     let body = serde_json::to_string(&[note(LAW_ID, "zorgtoeslag")]).unwrap();
-    let Json(SaveResponse { pr, no_change }) =
+    let Json(SaveResponse { pr, no_change, .. }) =
         save_annotations(State(state), session, Path(LAW_ID.to_string()), body)
             .await
             .expect("save should succeed");
@@ -266,7 +266,7 @@ async fn re_saving_an_already_committed_note_is_a_no_op() {
     // Second save of the SAME note: dedup leaves nothing, so no_change is
     // reported and the file is byte-identical (no empty commit / churn).
     let session2 = session_for(&sub, Some(traject_id)).await;
-    let Json(SaveResponse { pr, no_change }) =
+    let Json(SaveResponse { pr, no_change, .. }) =
         save_annotations(State(state), session2, Path(LAW_ID.to_string()), body)
             .await
             .expect("second save ok");

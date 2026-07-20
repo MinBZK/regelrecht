@@ -73,6 +73,17 @@ This repository uses pre-commit hooks for code quality:
 
 **No branding in commits.** Do not add "Generated with Claude Code" or "Co-Authored-By: Claude" lines to commit messages.
 
+### Test Data
+
+**Never use real secret or private information in tests.** This is a public
+repository — anything in a test fixture is published. Do not put names of
+private repositories, internal hostnames, credentials, tokens, real BSNs/personal
+data, or any reference to a private working environment into test fixtures,
+assertions, comments, or sample data. Use clearly-fictional placeholders instead
+(e.g. `example-org/regelrecht-corpus-example`). When a test needs to model a
+private/traject-owned source, anonymize the identifiers — the test should prove
+the behavior, not leak where the real data lives.
+
 ### Git Worktrees
 
 When using git worktrees, create them **inside the project folder** (e.g., `.worktrees/`).
@@ -123,9 +134,9 @@ If you needed **any additional CSS styling** on top of the design-system compone
 
 This project uses an RFC process for design decisions.
 
-- **Location**: `docs/rfcs/`
-- **Process document**: See `docs/rfcs/rfc-000.md`
-- **Template**: Use `docs/rfcs/template.md`
+- **Location**: `docs/src/content/rfcs/`
+- **Process document**: See `docs/src/content/rfcs/rfc-000.md`
+- **Template**: Use `docs/src/content/rfcs/template.md`
 
 ### When to Write an RFC
 
@@ -134,6 +145,25 @@ Write an RFC for:
 - Execution engine architecture changes
 - Cross-cutting design patterns
 - Integration patterns between components
+
+### RFC Metadata (frontmatter)
+
+RFC metadata lives in YAML **frontmatter**, not a bold-labelled body preamble.
+The fields are `title`, `status`, `implementation`, `date`, `authors`,
+optional `depends_on`, and optional `short_title`. The docs site
+(`docs/src/pages/rfcs/`, parsed by `docs/src/lib/rfcs.ts`) renders `status` and
+`implementation` as NDD tags and the rest as a header line — there is no rehype
+preamble plugin.
+
+Two orthogonal fields, both required on every RFC so an absent tag never reads
+as "unknown":
+
+- **`status`** — lifecycle only: `Draft | Proposed | Accepted | Rejected | Superseded`.
+  A built-and-merged RFC is `Accepted`, not `Draft`; "Draft" means the design
+  itself is unsettled.
+- **`implementation`** — build state: `Implemented | Partially implemented | Not implemented`.
+  Independent of `status` (code can land ahead of acceptance). Ground the value
+  in the actual codebase, not the RFC's aspirations.
 
 ## Code Reviews
 

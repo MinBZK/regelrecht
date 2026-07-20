@@ -10,7 +10,7 @@
 //! use std::collections::BTreeMap;
 //!
 //! let mut service = LawExecutionService::new();
-//! service.load_law(zorgtoeslagwet_yaml)?;
+//! service.load_law(wet_op_de_zorgtoeslag_yaml)?;
 //! service.load_law(regeling_standaardpremie_yaml)?;
 //!
 //! let mut params = BTreeMap::new();
@@ -33,7 +33,7 @@ use crate::engine::{ArticleEngine, ArticleResult, OutputProvenance};
 use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
 use crate::priority;
-use crate::resolver::RuleResolver;
+use crate::resolver::{RuleResolver, SelectionReason};
 use crate::trace::TraceBuilder;
 use crate::types::{
     Connectivity, LegalStatus, PathNodeType, RegulatoryLayer, ResolveType, UntranslatableMode,
@@ -87,11 +87,38 @@ struct ResolutionContext<'a> {
     contextual_law_id: Option<String>,
 }
 
+/// Parse the calculation date, rejecting malformed input: an unparseable date
+/// must not silently bypass `valid_from`/`valid_to` version selection (RFC-019).
+fn parse_calculation_date(calculation_date: &str) -> Result<NaiveDate> {
+    NaiveDate::parse_from_str(calculation_date, "%Y-%m-%d")
+        .map_err(|e| EngineError::InvalidDate(format!("{calculation_date}: {e}")))
+}
+
+/// Map a failed version selection to an honest engine error (RFC-019 §3):
+/// the message states the data fact for the reference date, never a verdict.
+fn selection_error(law_id: &str, calculation_date: &str, reason: SelectionReason) -> EngineError {
+    match reason {
+        SelectionReason::NotFound => EngineError::LawNotFound(law_id.to_string()),
+        SelectionReason::NotYetInForce => EngineError::LawNotYetInForce {
+            law_id: law_id.to_string(),
+            reference_date: calculation_date.to_string(),
+        },
+        SelectionReason::EndedOn(valid_to) => EngineError::LawEnded {
+            law_id: law_id.to_string(),
+            reference_date: calculation_date.to_string(),
+            valid_to: valid_to.format("%Y-%m-%d").to_string(),
+        },
+    }
+}
+
 impl<'a> ResolutionContext<'a> {
     /// Create a new resolution context.
-    fn new(calculation_date: &'a str) -> Self {
-        let reference_date = NaiveDate::parse_from_str(calculation_date, "%Y-%m-%d").ok();
-        Self {
+    ///
+    /// Rejects a malformed `calculation_date`: a date that fails to parse must
+    /// not silently bypass `valid_from`/`valid_to` version selection (RFC-019).
+    fn new(calculation_date: &'a str) -> Result<Self> {
+        let reference_date = Some(parse_calculation_date(calculation_date)?);
+        Ok(Self {
             calculation_date,
             reference_date,
             visited: HashSet::new(),
@@ -99,21 +126,14 @@ impl<'a> ResolutionContext<'a> {
             trace: None,
             cache: HashMap::new(),
             contextual_law_id: None,
-        }
+        })
     }
 
     /// Create a new resolution context with trace builder.
-    fn with_trace(calculation_date: &'a str, trace: Rc<RefCell<TraceBuilder>>) -> Self {
-        let reference_date = NaiveDate::parse_from_str(calculation_date, "%Y-%m-%d").ok();
-        Self {
-            calculation_date,
-            reference_date,
-            visited: HashSet::new(),
-            depth: 0,
-            trace: Some(trace),
-            cache: HashMap::new(),
-            contextual_law_id: None,
-        }
+    fn with_trace(calculation_date: &'a str, trace: Rc<RefCell<TraceBuilder>>) -> Result<Self> {
+        let mut ctx = Self::new(calculation_date)?;
+        ctx.trace = Some(trace);
+        Ok(ctx)
     }
 
     /// Return the cached parsed date for version selection.
@@ -465,6 +485,7 @@ impl LawExecutionService {
             .map(|law| LoadedRegulation {
                 id: law.id.clone(),
                 valid_from: law.valid_from.clone(),
+                valid_to: law.valid_to.clone(),
                 hash: law.content_hash.clone(),
             })
             .collect();
@@ -545,7 +566,7 @@ impl LawExecutionService {
                 "output_names must not be empty".to_string(),
             ));
         }
-        let mut res_ctx = ResolutionContext::new(calculation_date);
+        let mut res_ctx = ResolutionContext::new(calculation_date)?;
         res_ctx.contextual_law_id = Some(law_id.to_string());
         self.evaluate_law_multi_internal(law_id, output_names, parameters, &mut res_ctx)
     }
@@ -606,7 +627,7 @@ impl LawExecutionService {
             ));
         }
 
-        let mut res_ctx = ResolutionContext::with_trace(calculation_date, Rc::clone(&trace));
+        let mut res_ctx = ResolutionContext::with_trace(calculation_date, Rc::clone(&trace))?;
         res_ctx.contextual_law_id = Some(law_id.to_string());
 
         // Execute: group outputs by article, evaluate each once, merge + filter
@@ -705,7 +726,7 @@ impl LawExecutionService {
         calculation_date: &str,
         trace: Rc<RefCell<TraceBuilder>>,
     ) -> Result<ArticleResult> {
-        let mut res_ctx = ResolutionContext::with_trace(calculation_date, trace);
+        let mut res_ctx = ResolutionContext::with_trace(calculation_date, trace)?;
         res_ctx.contextual_law_id = Some(law_id.to_string());
         self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx)
     }
@@ -809,11 +830,11 @@ impl LawExecutionService {
         trace: Option<Rc<RefCell<TraceBuilder>>>,
     ) -> Result<ExecutionOutcome> {
         // Look up the law and article
-        let ref_date = NaiveDate::parse_from_str(calculation_date, "%Y-%m-%d").ok();
+        let ref_date = Some(parse_calculation_date(calculation_date)?);
         let law = self
             .resolver
-            .get_law_for_date(law_id, ref_date)
-            .ok_or_else(|| EngineError::LawNotFound(law_id.to_string()))?;
+            .get_law_for_date_reported(law_id, ref_date)
+            .map_err(|reason| selection_error(law_id, calculation_date, reason))?;
         let article = self
             .resolver
             .get_article_by_output(law_id, output_name, ref_date)
@@ -911,9 +932,9 @@ impl LawExecutionService {
 
         // Execute the article with stage-aware hook firing
         let mut res_ctx = if let Some(ref tb) = trace {
-            ResolutionContext::with_trace(calculation_date, Rc::clone(tb))
+            ResolutionContext::with_trace(calculation_date, Rc::clone(tb))?
         } else {
-            ResolutionContext::new(calculation_date)
+            ResolutionContext::new(calculation_date)?
         };
         res_ctx.contextual_law_id = Some(stage_state.contextual_law.clone());
 
@@ -987,11 +1008,11 @@ impl LawExecutionService {
         parameters: BTreeMap<String, Value>,
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<ArticleResult> {
-        // Validate that the law exists
+        // Validate that the law exists and is in force on the calculation date
         let _law = self
             .resolver
-            .get_law_for_date(law_id, res_ctx.reference_date())
-            .ok_or_else(|| EngineError::LawNotFound(law_id.to_string()))?;
+            .get_law_for_date_reported(law_id, res_ctx.reference_date())
+            .map_err(|reason| selection_error(law_id, res_ctx.calculation_date, reason))?;
 
         // Group outputs by their producing article number to avoid redundant evaluations
         let mut article_to_outputs: BTreeMap<String, Vec<&str>> = BTreeMap::new();
@@ -1145,8 +1166,8 @@ impl LawExecutionService {
         // Get the law (version-aware: use the same reference date as the article lookup)
         let law = self
             .resolver
-            .get_law_for_date(law_id, res_ctx.reference_date())
-            .ok_or_else(|| EngineError::LawNotFound(law_id.to_string()))?;
+            .get_law_for_date_reported(law_id, res_ctx.reference_date())
+            .map_err(|reason| selection_error(law_id, res_ctx.calculation_date, reason))?;
 
         // Find the article
         let article = self
@@ -2045,6 +2066,21 @@ impl LawExecutionService {
                 res_ctx
                     .trace_set_message(format!("Internal reference: {}#{}", law.id, output_name));
 
+                // Cycle detection: check if this internal output is already being
+                // resolved. Use \0 as separator to prevent key collisions, and an
+                // "internal:" prefix to keep keys distinct from external references.
+                let internal_key = format!("internal:{}\0{}", law.id, output_name);
+                if res_ctx.is_visited(&internal_key) {
+                    res_ctx.trace_set_message(format!(
+                        "Circular internal reference detected: {}#{} is already being resolved",
+                        law.id, output_name
+                    ));
+                    return Err(EngineError::CircularReference(format!(
+                        "Circular internal reference: output '{}' in {} is already being resolved",
+                        output_name, law.id
+                    )));
+                }
+
                 let ref_article = match law.find_article_by_output(output_name) {
                     Some(a) => a,
                     None => {
@@ -2060,14 +2096,49 @@ impl LawExecutionService {
                 };
 
                 let ref_params = parameters.clone();
-                let result = match self.evaluate_article_with_service(
+
+                // Enter internal resolution scope for cycle detection
+                res_ctx.enter(internal_key.clone());
+
+                // Check depth limit (mirrors evaluate_law_output_internal): the
+                // visited set bounds distinct outputs, but a long non-cyclic
+                // internal chain could still overflow the stack.
+                if res_ctx.depth > config::MAX_CROSS_LAW_DEPTH {
+                    res_ctx.leave(&internal_key);
+                    tracing::warn!(
+                        law_id = %law.id,
+                        output = %output_name,
+                        depth = res_ctx.depth,
+                        "Cross-law resolution depth exceeded (internal reference)"
+                    );
+                    res_ctx.trace_set_message(format!(
+                        "Cross-law resolution depth exceeded {} levels ({}:{})",
+                        config::MAX_CROSS_LAW_DEPTH,
+                        law.id,
+                        output_name
+                    ));
+                    return Err(EngineError::CircularReference(format!(
+                        "Cross-law resolution depth exceeded {} levels. \
+                         Possible circular reference involving {}:{}",
+                        config::MAX_CROSS_LAW_DEPTH,
+                        law.id,
+                        output_name
+                    )));
+                }
+
+                let eval_result = self.evaluate_article_with_service(
                     ref_article,
                     law,
                     ref_params,
                     Some(output_name),
                     "BESLUIT",
                     res_ctx,
-                ) {
+                );
+
+                // Leave scope (even on error, for correct cycle tracking)
+                res_ctx.leave(&internal_key);
+
+                let result = match eval_result {
                     Ok(r) => r,
                     Err(e) => {
                         res_ctx.trace_set_message(format!("Internal reference failed: {}", e));
@@ -2393,7 +2464,7 @@ impl ServiceProvider for LawExecutionService {
         context: &RuleContext,
         calculation_date: &str,
     ) -> Result<Value> {
-        let mut res_ctx = ResolutionContext::new(calculation_date);
+        let mut res_ctx = ResolutionContext::new(calculation_date)?;
         self.resolve_external_input_internal(
             regulation,
             output,
@@ -2407,6 +2478,7 @@ impl ServiceProvider for LawExecutionService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::article::LawLoad;
 
     fn make_base_law() -> &'static str {
         r#"
@@ -2617,6 +2689,269 @@ articles:
         );
     }
 
+    #[test]
+    fn test_service_internal_circular_reference() {
+        // Same-law cycle: article 1's input sources article 2's output,
+        // and article 2's input sources article 1's output.
+        // Previously this recursed unbounded and crashed with a stack overflow.
+        let law = r#"
+$id: internal_cycle_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: References output of article 2
+    machine_readable:
+      execution:
+        input:
+          - name: from_b
+            type: number
+            source:
+              output: output_b
+        output:
+          - name: output_a
+            type: number
+        actions:
+          - output: output_a
+            value: $from_b
+  - number: '2'
+    text: References output of article 1
+    machine_readable:
+      execution:
+        input:
+          - name: from_a
+            type: number
+            source:
+              output: output_a
+        output:
+          - name: output_b
+            type: number
+        actions:
+          - output: output_b
+            value: $from_a
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service.evaluate_law_output(
+            "internal_cycle_law",
+            "output_a",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
+
+        assert!(
+            matches!(result, Err(EngineError::CircularReference(_))),
+            "Expected CircularReference error, got: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_service_internal_circular_reference_indirect() {
+        // Indirect same-law cycle across three articles:
+        // article 1 -> article 2 -> article 3 -> article 1.
+        let law = r#"
+$id: internal_cycle_law_3
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: References output of article 2
+    machine_readable:
+      execution:
+        input:
+          - name: from_b
+            type: number
+            source:
+              output: output_b
+        output:
+          - name: output_a
+            type: number
+        actions:
+          - output: output_a
+            value: $from_b
+  - number: '2'
+    text: References output of article 3
+    machine_readable:
+      execution:
+        input:
+          - name: from_c
+            type: number
+            source:
+              output: output_c
+        output:
+          - name: output_b
+            type: number
+        actions:
+          - output: output_b
+            value: $from_c
+  - number: '3'
+    text: References output of article 1
+    machine_readable:
+      execution:
+        input:
+          - name: from_a
+            type: number
+            source:
+              output: output_a
+        output:
+          - name: output_c
+            type: number
+        actions:
+          - output: output_c
+            value: $from_a
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service.evaluate_law_output(
+            "internal_cycle_law_3",
+            "output_a",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
+
+        assert!(
+            matches!(result, Err(EngineError::CircularReference(_))),
+            "Expected CircularReference error, got: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_service_internal_diamond_reference_succeeds() {
+        // Legitimate diamond, no cycle: two inputs of article 1 both source
+        // the SAME output of article 2. The cycle guard must not produce a
+        // false positive here (the visited key is released between siblings).
+        let law = r#"
+$id: internal_diamond_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Sums the same output of article 2 twice
+    machine_readable:
+      execution:
+        input:
+          - name: left
+            type: number
+            source:
+              output: shared_value
+          - name: right
+            type: number
+            source:
+              output: shared_value
+        output:
+          - name: combined
+            type: number
+        actions:
+          - output: combined
+            operation: ADD
+            values:
+              - $left
+              - $right
+  - number: '2'
+    text: Provides a shared value
+    machine_readable:
+      execution:
+        output:
+          - name: shared_value
+            type: number
+        actions:
+          - output: shared_value
+            value: 21
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "internal_diamond_law",
+                "combined",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .expect("diamond-shaped internal references must not be flagged as circular");
+
+        assert_eq!(result.outputs.get("combined"), Some(&Value::Int(42)));
+    }
+
+    #[test]
+    fn test_service_internal_deep_chain_depth_limit() {
+        // A linear (non-cyclic) chain of internal references longer than
+        // MAX_CROSS_LAW_DEPTH must hit the depth limit instead of recursing
+        // until the stack overflows.
+        let chain_len = config::MAX_CROSS_LAW_DEPTH + 5;
+        let mut yaml = String::from(
+            "$id: internal_deep_chain_law\n\
+             regulatory_layer: WET\n\
+             publication_date: '2025-01-01'\n\
+             articles:\n",
+        );
+        for i in 0..chain_len {
+            yaml.push_str(&format!(
+                r#"  - number: '{num}'
+    text: Chain link {num}
+    machine_readable:
+      execution:
+        input:
+          - name: from_next
+            type: number
+            source:
+              output: value_{next}
+        output:
+          - name: value_{num}
+            type: number
+        actions:
+          - output: value_{num}
+            value: $from_next
+"#,
+                num = i,
+                next = i + 1
+            ));
+        }
+        // Terminal article: a literal value, no further references.
+        yaml.push_str(&format!(
+            r#"  - number: '{num}'
+    text: Chain terminal
+    machine_readable:
+      execution:
+        output:
+          - name: value_{num}
+            type: number
+        actions:
+          - output: value_{num}
+            value: 1
+"#,
+            num = chain_len
+        ));
+
+        let mut service = LawExecutionService::new();
+        service.load_law(&yaml).unwrap();
+
+        let result = service.evaluate_law_output(
+            "internal_deep_chain_law",
+            "value_0",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
+
+        match result {
+            Err(EngineError::CircularReference(msg)) => {
+                assert!(
+                    msg.contains("depth exceeded"),
+                    "Expected depth-exceeded error, got: {}",
+                    msg
+                );
+            }
+            other => panic!("Expected CircularReference depth error, got: {:?}", other),
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Parameter Override Tests
     // -------------------------------------------------------------------------
@@ -2737,27 +3072,28 @@ articles:
 
         #[test]
         fn test_service_resolve_with_real_files() {
-            // Integration test: load real zorgtoeslagwet + regeling_standaardpremie
+            // Integration test: load real wet_op_de_zorgtoeslag + regeling_standaardpremie
             // and verify resolve action works end-to-end
             let regulation_path = get_regulation_path();
 
-            let zorgtoeslagwet_path =
+            let wet_op_de_zorgtoeslag_path =
                 regulation_path.join("nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml");
             let regeling_path = regulation_path
                 .join("nl/ministeriele_regeling/regeling_standaardpremie/2025-01-01.yaml");
 
-            let zt_law = ArticleBasedLaw::from_yaml_file(&zorgtoeslagwet_path).unwrap();
+            let wet_op_de_zorgtoeslag_law =
+                ArticleBasedLaw::from_yaml_file(&wet_op_de_zorgtoeslag_path).unwrap();
             let rsp_law = ArticleBasedLaw::from_yaml_file(&regeling_path).unwrap();
 
             let mut service = LawExecutionService::new();
-            service.load_law_struct(zt_law).unwrap();
+            service.load_law_struct(wet_op_de_zorgtoeslag_law).unwrap();
             service.load_law_struct(rsp_law).unwrap();
 
-            // Execute zorgtoeslagwet standaardpremie output
+            // Execute wet_op_de_zorgtoeslag standaardpremie output
             // This should resolve the regeling_standaardpremie via legal_basis
             let result = service
                 .evaluate_law_output(
-                    "zorgtoeslagwet",
+                    "wet_op_de_zorgtoeslag",
                     "standaardpremie",
                     BTreeMap::new(),
                     "2025-01-01",
@@ -2787,7 +3123,7 @@ articles:
             );
 
             // Verify known laws are loaded
-            assert!(resolver.has_law("zorgtoeslagwet"));
+            assert!(resolver.has_law("wet_op_de_zorgtoeslag"));
             assert!(resolver.has_law("regeling_standaardpremie"));
             assert!(resolver.has_law("participatiewet"));
         }
@@ -2801,8 +3137,8 @@ articles:
             let mut service = LawExecutionService::new();
             service.load_law_struct(law).unwrap();
 
-            let info = service.get_law_info("zorgtoeslagwet").unwrap();
-            assert_eq!(info.id, "zorgtoeslagwet");
+            let info = service.get_law_info("wet_op_de_zorgtoeslag").unwrap();
+            assert_eq!(info.id, "wet_op_de_zorgtoeslag");
             assert_eq!(info.regulatory_layer, RegulatoryLayer::Wet);
             assert!(info.article_count > 0);
             assert!(!info.outputs.is_empty());

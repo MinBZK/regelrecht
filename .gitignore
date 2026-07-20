@@ -15,6 +15,11 @@
 # Git worktrees
 .worktrees/
 
+# Browser automation artifacts (Playwright MCP / e2e smoke screenshots).
+# The MCP server writes snapshots/screenshots here; keep them out of git.
+.playwright-mcp/
+.screenshots/
+
 # Frontend
 node_modules/
 frontend/dist/
@@ -55,6 +60,8 @@ corpus-financieel-cv-demo/
 # Environment — ignore all .env files, keep the committed *.example templates
 .env*
 !.env*.example
+# Local SSO secrets (no leading dot, so .env* above misses it)
+env.sso-local
 
 # Gemini CLI
 .gemini/*
@@ -63,3 +70,6 @@ corpus-financieel-cv-demo/
 # Beads
 .beads/
 .relanding-ref/
+
+# Leak-guard laag 2 — casus-/sector-patronen blijven lokaal (zie script/check-skills-no-casus.sh)
+script/.skills-casus-denylist.local

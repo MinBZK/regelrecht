@@ -22,15 +22,15 @@ await init();
 const engine = new WasmEngine();
 
 // Load a law from YAML
-const response = await fetch('/laws/zorgtoeslagwet.yaml');
+const response = await fetch('/laws/wet_op_de_zorgtoeslag.yaml');
 const yaml = await response.text();
-const lawId = engine.loadLaw(yaml);  // Returns "zorgtoeslagwet"
+const lawId = engine.loadLaw(yaml);  // Returns "wet_op_de_zorgtoeslag"
 
 // Execute an article output
 // NOTE: External dependencies (source.regulation) must be pre-resolved
 // and passed as parameters - see Limitations section
 const result = engine.execute(
-    'zorgtoeslagwet',
+    'wet_op_de_zorgtoeslag',
     'heeft_recht_op_zorgtoeslag',
     {
         BSN: '123456789',

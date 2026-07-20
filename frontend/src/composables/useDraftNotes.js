@@ -6,7 +6,7 @@
  * document for a manual commit (the original RFC-018 §10 MVP, still here for
  * the offline case), and `saveToRepo` PUTs that same document to editor-api,
  * which validates it and opens a PR against the chosen source — the same
- * per-(session, source) branch+PR path law and scenario edits already use.
+ * traject branch+PR path law and scenario edits already use.
  *
  * Draft notes are merged into the resolved-notes list by the caller so they
  * highlight live, exactly like committed notes; they just carry an extra
@@ -14,8 +14,9 @@
  */
 import { ref, computed, watch } from 'vue';
 import yaml from 'js-yaml';
-import { lastSavedPr, sanitizeSavedPr } from './useEditorSession.js';
+import { lastSavedPr, sanitizeSavedPr } from './useSavedPr.js';
 import { annotationsUrl, requireTraject } from './corpusUrls.js';
+import { apiFetch, apiFetchText } from '../lib/apiFetch.js';
 
 const STORAGE_PREFIX = 'regelrecht-draft-notes:';
 
@@ -125,17 +126,15 @@ export function useDraftNotes(lawId, trajectRef) {
     const snapshotDrafts = [...drafts.value];
     let committed = [];
     try {
-      const res = await fetch(
+      const text = await apiFetchText(
         `/data/annotations/${encodeURIComponent(id)}/annotations.yaml`,
       );
-      if (res.ok) {
-        const doc = yaml.load(await res.text());
-        if (Array.isArray(doc?.annotations)) committed = doc.annotations;
-      }
-      // 404 (no sidecar yet) and parse failures fall through to drafts-only;
-      // the author still gets a valid file to commit.
+      const doc = yaml.load(text);
+      if (Array.isArray(doc?.annotations)) committed = doc.annotations;
     } catch {
-      /* network/parse error — export the drafts so work is not lost */
+      // 404 (no sidecar yet), other HTTP errors, network and parse
+      // failures all fall through to drafts-only — the author still gets
+      // a valid file to commit, so no work is lost.
     }
     const annotations = [
       ...committed.map(stripDraftMarker),
@@ -143,7 +142,7 @@ export function useDraftNotes(lawId, trajectRef) {
     ];
     const doc = {
       $schema:
-        'https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.2/annotation-schema.json',
+        'https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.3/annotation-schema.json',
       annotations,
     };
     // lineWidth -1: never fold long body strings, so the YAML diff stays
@@ -178,25 +177,19 @@ export function useDraftNotes(lawId, trajectRef) {
     // clean W3C Annotation objects.
     const newNotes = drafts.value.map(stripDraftMarker);
     const url = annotationsUrl(tr, id);
-    const res = await fetch(url, {
+    const res = await apiFetch(url, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(newNotes),
-    });
-    if (!res.ok) {
       // Same content-type guard as useLaw.saveLaw: only render the body
       // when it's editor-api's own text/plain error, never a proxy's HTML.
-      let text = `Opslaan mislukt: ${res.status}`;
-      const contentType = res.headers.get('content-type') || '';
-      if (contentType.startsWith('text/plain')) {
-        try {
-          text = (await res.text()) || text;
-        } catch { /* keep status fallback */ }
-      }
-      throw new Error(text);
-    }
+      errorMessage: (status, body, contentType) =>
+        contentType.startsWith('text/plain') && body
+          ? body
+          : `Opslaan mislukt: ${status}`,
+    });
     let pr = null;
     let noChange = false;
     try {

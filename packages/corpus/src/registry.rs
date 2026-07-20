@@ -287,7 +287,7 @@ impl CorpusRegistry {
                     source.auth_ref.as_deref(),
                     auth_file,
                 )?;
-                for (law_id, path) in fetcher
+                for (law_id, path, sha) in fetcher
                     .list_source_law_paths(github, token.as_deref())
                     .await?
                 {
@@ -298,6 +298,7 @@ impl CorpusRegistry {
                         &source.id,
                         &source.name,
                         source.priority,
+                        sha.as_deref(),
                     )?;
                 }
             }

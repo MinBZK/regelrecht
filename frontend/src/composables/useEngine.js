@@ -5,6 +5,8 @@
  */
 import { ref } from 'vue';
 import { lawUrl } from './corpusUrls.js';
+import { apiFetchText } from '../lib/apiFetch.js';
+import { createLruMap } from '../lib/lruMap.js';
 
 let engineInstance = null;
 let initPromise = null;
@@ -20,28 +22,18 @@ let initPromise = null;
 // session. The cap is a safety net for any future code path that
 // loads a dependency without going through `unloadAllLaws` on scope
 // change. Cap mirrors `lawCache`'s order of magnitude (`useLaw.js`).
-const LOADED_SCOPES_MAX = 50;
-const loadedScopes = new Map();
-
-function touchLoadedScopes(lawId) {
-  if (loadedScopes.has(lawId)) {
-    const v = loadedScopes.get(lawId);
-    loadedScopes.delete(lawId);
-    loadedScopes.set(lawId, v);
-  }
-  while (loadedScopes.size > LOADED_SCOPES_MAX) {
-    const oldest = loadedScopes.keys().next().value;
+const loadedScopes = createLruMap(50, {
+  onEvict: (lawId) => {
     // Drop the WASM-side copy alongside the tracking entry — without
     // this the engine retains the law in memory even though our
     // scope-tracking forgot it, defeating the whole "safety net" of
     // the cap. `hasLaw` guards an unloadLaw call that the engine
     // would otherwise panic on if the law is already gone.
-    if (engineInstance?.hasLaw(oldest)) {
-      engineInstance.unloadLaw(oldest);
+    if (engineInstance?.hasLaw(lawId)) {
+      engineInstance.unloadLaw(lawId);
     }
-    loadedScopes.delete(oldest);
-  }
-}
+  },
+});
 
 const ready = ref(false);
 const initError = ref(null);
@@ -55,9 +47,9 @@ async function initEngine() {
       // WASM pkg lives in public/wasm/pkg/ and is served as a static asset.
       // Use fetch + blob URL to load the JS glue, avoiding Vite's restriction
       // on importing files from /public in source code.
-      const jsRes = await fetch('/wasm/pkg/regelrecht_engine.js');
-      if (!jsRes.ok) throw new Error(`Failed to fetch WASM JS glue: ${jsRes.status}`);
-      const jsText = await jsRes.text();
+      const jsText = await apiFetchText('/wasm/pkg/regelrecht_engine.js', {
+        errorMessage: (status) => `Failed to fetch WASM JS glue: ${status}`,
+      });
       const blob = new Blob([jsText], { type: 'application/javascript' });
       const blobUrl = URL.createObjectURL(blob);
       const wasm = await import(/* @vite-ignore */ blobUrl);
@@ -93,12 +85,11 @@ async function loadDependency(lawId, trajectRef = null) {
     engine.unloadLaw(lawId);
   }
 
-  const res = await fetch(lawUrl(trajectRef, lawId));
-  if (!res.ok) throw new Error(`Failed to fetch law '${lawId}': ${res.status}`);
-  const yaml = await res.text();
+  const yaml = await apiFetchText(lawUrl(trajectRef, lawId), {
+    errorMessage: (status) => `Failed to fetch law '${lawId}': ${status}`,
+  });
   engine.loadLaw(yaml);
   loadedScopes.set(lawId, scope);
-  touchLoadedScopes(lawId);
 }
 
 /**
@@ -118,7 +109,6 @@ async function loadLawYaml(yaml, lawId = null, trajectRef = null) {
   const result = engine.loadLaw(yaml);
   if (lawId) {
     loadedScopes.set(lawId, trajectRef || '');
-    touchLoadedScopes(lawId);
   }
   return result;
 }

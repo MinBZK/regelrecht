@@ -121,7 +121,9 @@ jobs:
     uses: ./.github/workflows/build-image.yml
     with:
       image-name: minbzk/regelrecht-harvester-worker
-      dockerfile: packages/pipeline/Dockerfile.harvester-worker
+      dockerfile: packages/pipeline/Dockerfile
+      target: harvester-worker
+      build-args: BIN=regelrecht-harvest-worker
       cache-scope: harvester-worker
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
@@ -139,7 +141,9 @@ jobs:
     uses: ./.github/workflows/build-image.yml
     with:
       image-name: minbzk/regelrecht-enrich-worker
-      dockerfile: packages/pipeline/Dockerfile.enrich-worker
+      dockerfile: packages/pipeline/Dockerfile
+      target: enrich-worker
+      build-args: BIN=regelrecht-enrich-worker
       cache-scope: enrich-worker
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
@@ -152,7 +156,9 @@ jobs:
     uses: ./.github/workflows/build-image.yml
     with:
       image-name: minbzk/regelrecht-pipeline-api
-      dockerfile: packages/pipeline/Dockerfile.pipeline-api
+      dockerfile: packages/pipeline/Dockerfile
+      target: pipeline-api
+      build-args: BIN=regelrecht-pipeline-api
       cache-scope: pipeline-api
 
   build-grafana:
@@ -200,7 +206,10 @@ jobs:
   # -- Deploy preview --
   deploy-preview:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Each ZAD component deploy takes ~5 minutes and they run sequentially;
+    # a PR touching engine + frontend + docs redeploys 6+ components, which
+    # does not fit in 15 minutes.
+    timeout-minutes: 45
     needs: [build, build-admin, build-harvester-worker, build-enrich-worker, build-pipeline-api, build-lawmaking, build-docs, changes]
     if: >-
       always() &&
@@ -341,7 +350,9 @@ jobs:
   # -- Deploy production --
   deploy-production:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Same budget as deploy-preview: sequential ZAD deploys of all changed
+    # components do not fit in 15 minutes on a broad merge.
+    timeout-minutes: 45
     needs: [build, build-admin, build-harvester-worker, build-enrich-worker, build-pipeline-api, build-grafana, build-lawmaking, build-docs]
     if: >-
       always() &&

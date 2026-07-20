@@ -17,13 +17,13 @@
 //!
 //! ```javascript
 //! const engine = new WasmEngine();
-//! engine.loadLaw(zorgtoeslagwetYaml);
+//! engine.loadLaw(wetOpDeZorgtoeslagYaml);
 //! engine.loadLaw(regelingStandaardpremieYaml);
 //! engine.loadLaw(awirYaml);
 //!
 //! // Cross-law references are resolved automatically
 //! const result = engine.execute(
-//!     'zorgtoeslagwet',
+//!     'wet_op_de_zorgtoeslag',
 //!     'heeft_recht_op_zorgtoeslag',
 //!     { bsn: '999993653' },
 //!     '2025-01-01'

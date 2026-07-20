@@ -69,6 +69,8 @@ const canAddValue = computed(() => {
   if (op === 'NOT_NULL') return false;
   // AGE has a fixed shape (date_of_birth + reference_date) — no add slot.
   if (op === 'AGE') return false;
+  // DATE_DIFF has a fixed shape (from + to + in) — no add slot.
+  if (op === 'DATE_DIFF') return false;
   // Comparison ops always have exactly subject + value (or just subject for
   // NOT_NULL); operationValues pushes both unconditionally, so addValue() has
   // nothing to do. Hide the button to avoid a no-op click.
@@ -91,6 +93,7 @@ function canRemoveValue(val) {
   if (op === 'NOT' && val._kind === 'value') return false;
   // AGE has two fixed structural slots — neither can be deleted.
   if (op === 'AGE' && (val._kind === 'date_of_birth' || val._kind === 'reference_date')) return false;
+  if (op === 'DATE_DIFF' && (val._kind === 'from' || val._kind === 'to' || val._kind === 'in')) return false;
   // IF and SWITCH share the cases[]/default schema and both need a default branch
   if ((op === 'IF' || op === 'SWITCH') && val._kind === 'default') return false;
   // IF must keep its single case; SWITCH must keep at least one case.
@@ -126,6 +129,16 @@ const operationValues = computed(() => {
     return [
       { _label: 'Geboortedatum', _value: node.date_of_birth ?? '', _kind: 'date_of_birth' },
       { _label: 'Peildatum', _value: node.reference_date ?? '', _kind: 'reference_date' },
+    ];
+  }
+
+  // DATE_DIFF: three fixed structural slots (RFC-021). The unit (`in`) is an
+  // enum value or a variable reference, never a nested operation.
+  if (node.operation === 'DATE_DIFF') {
+    return [
+      { _label: 'Van', _value: node.from ?? '', _kind: 'from' },
+      { _label: 'Tot', _value: node.to ?? '', _kind: 'to' },
+      { _label: 'Eenheid', _value: node.in ?? '', _kind: 'in' },
     ];
   }
 
@@ -225,6 +238,9 @@ function changeOperationType(newType) {
     delete node.else;
     delete node.date_of_birth;
     delete node.reference_date;
+    delete node.from;
+    delete node.to;
+    delete node.in;
   } else if (LOGICAL_OPS.has(newType)) {
     if (!Array.isArray(node.conditions)) {
       node.conditions = [];
@@ -239,6 +255,9 @@ function changeOperationType(newType) {
     delete node.else;
     delete node.date_of_birth;
     delete node.reference_date;
+    delete node.from;
+    delete node.to;
+    delete node.in;
   } else if (newType === 'IF') {
     // IF uses the same cases[]/default schema as SWITCH but is single-case.
     // Truncate any extra cases when transitioning from SWITCH so we don't
@@ -258,6 +277,9 @@ function changeOperationType(newType) {
     delete node.else;
     delete node.date_of_birth;
     delete node.reference_date;
+    delete node.from;
+    delete node.to;
+    delete node.in;
   } else if (newType === 'NOT') {
     if (node.value === undefined) {
       node.value = node.subject ?? '';
@@ -272,6 +294,9 @@ function changeOperationType(newType) {
     delete node.else;
     delete node.date_of_birth;
     delete node.reference_date;
+    delete node.from;
+    delete node.to;
+    delete node.in;
   } else if (newType === 'SWITCH') {
     // Schema requires at least one case
     if (!Array.isArray(node.cases) || node.cases.length === 0) {
@@ -287,6 +312,9 @@ function changeOperationType(newType) {
     delete node.else;
     delete node.date_of_birth;
     delete node.reference_date;
+    delete node.from;
+    delete node.to;
+    delete node.in;
   } else if (ARITHMETIC_OPS.has(newType)) {
     if (!Array.isArray(node.values)) {
       node.values = [];
@@ -301,6 +329,9 @@ function changeOperationType(newType) {
     delete node.else;
     delete node.date_of_birth;
     delete node.reference_date;
+    delete node.from;
+    delete node.to;
+    delete node.in;
   } else if (newType === 'AGE') {
     // AGE has two fixed structural slots — seed both as empty strings so
     // the user can fill them via the form. Strip every other slot so the
@@ -316,6 +347,26 @@ function changeOperationType(newType) {
     delete node.when;
     delete node.then;
     delete node.else;
+    delete node.from;
+    delete node.to;
+    delete node.in;
+  } else if (newType === 'DATE_DIFF') {
+    // DATE_DIFF has three fixed structural slots (RFC-021). Seed `in` with
+    // a valid unit so the node validates without further input.
+    if (node.from === undefined) node.from = '';
+    if (node.to === undefined) node.to = '';
+    if (node.in === undefined) node.in = 'days';
+    delete node.subject;
+    delete node.value;
+    delete node.values;
+    delete node.conditions;
+    delete node.cases;
+    delete node.default;
+    delete node.when;
+    delete node.then;
+    delete node.else;
+    delete node.date_of_birth;
+    delete node.reference_date;
   }
 }
 
@@ -326,6 +377,9 @@ function applyValueMutation(val, newVal) {
   else if (val._kind === 'value') node.value = newVal;
   else if (val._kind === 'date_of_birth') node.date_of_birth = newVal;
   else if (val._kind === 'reference_date') node.reference_date = newVal;
+  else if (val._kind === 'from') node.from = newVal;
+  else if (val._kind === 'to') node.to = newVal;
+  else if (val._kind === 'in') node.in = newVal;
   else if (val._kind === 'values' && val._index !== undefined) node.values[val._index] = newVal;
   else if (val._kind === 'conditions' && val._index !== undefined) node.conditions[val._index] = newVal;
   else if (val._kind === 'default') node.default = newVal;
@@ -363,7 +417,9 @@ function updateDropdownValue(val, event) {
 function canChangeValueKind(val) {
   return val._kind !== 'subject'
     && val._kind !== 'date_of_birth'
-    && val._kind !== 'reference_date';
+    && val._kind !== 'reference_date'
+    // The DATE_DIFF unit is an enum or variable, never a nested operation.
+    && val._kind !== 'in';
 }
 
 // The actions menu only contains the Type group and Verwijder. When neither
@@ -503,7 +559,7 @@ function addValue() {
         :key="i"
         size="md"
         :data-testid="`op-value-${i}`"
-        :type="!editable && isNestedOperation(val._value) ? 'button' : undefined"
+        :button="!editable && isNestedOperation(val._value)"
         @click="!editable && isNestedOperation(val._value) && emit('select-operation', val._value)"
       >
         <nldd-text-cell :text="val._label" :width="editable ? '120px' : 'fit-content'"></nldd-text-cell>
@@ -597,6 +653,7 @@ function addValue() {
                 v-if="canRemoveValue(val)"
                 text="Verwijder"
                 icon="delete"
+                destructive
                 @click.stop="removeValue(val)"
               ></nldd-menu-item>
             </nldd-menu>

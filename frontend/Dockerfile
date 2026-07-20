@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 # Stage 1a: Build WASM module using cargo + wasm-bindgen-cli (no wasm-pack needed)
-FROM rust:1.96-alpine@sha256:66f48b19d6e88519e2e58bebe0d945779a6a4ca41c2db17db78c9569655b50ac AS wasm-builder
+# Rust version: keep in sync with rust-toolchain.toml (source of truth).
+FROM rust:1.96-alpine@sha256:2ea3db105d38fdfa4e31f366674287fcaa828087e2fe3973befdc537f2d443b1 AS wasm-builder
 RUN apk add --no-cache musl-dev
 RUN rustup target add wasm32-unknown-unknown
 RUN cargo install wasm-bindgen-cli@0.2.114 --locked
@@ -16,13 +17,14 @@ COPY packages/Cargo.lock packages/Cargo.toml ./
 RUN grep -qE '^members = \[$' Cargo.toml && \
     sed -i '/"admin"/d; /"auth"/d; /"corpus"/d; /"editor-api"/d; /"harvester"/d; /"pipeline"/d; /"tui"/d' Cargo.toml
 COPY packages/engine/ engine/
+COPY packages/law-model/ law-model/
 COPY packages/shared/ shared/
 RUN cargo build --target wasm32-unknown-unknown --release --features wasm -p regelrecht-engine && \
     wasm-bindgen --target web --out-dir /wasm-pkg \
       target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
 
 # Stage 1b: Build frontend (with WASM module)
-FROM node:26-alpine@sha256:144769ec3f32e8ee36b3cfde91e82bee25d9367b20f31a151f3f7eea3a2a8541 AS frontend-builder
+FROM node:26-alpine@sha256:3ad34ca6292aec4a91d8ddeb9229e29d9c2f689efd0dd242860889ac71842eba AS frontend-builder
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json* frontend/.npmrc ./
 RUN npm ci
@@ -31,7 +33,8 @@ COPY --from=wasm-builder /wasm-pkg/ public/wasm/pkg/
 RUN npm run build
 
 # Stage 2: Chef base
-FROM rust:1.96-alpine@sha256:66f48b19d6e88519e2e58bebe0d945779a6a4ca41c2db17db78c9569655b50ac AS chef
+# Rust version: keep in sync with rust-toolchain.toml (source of truth).
+FROM rust:1.96-alpine@sha256:2ea3db105d38fdfa4e31f366674287fcaa828087e2fe3973befdc537f2d443b1 AS chef
 RUN apk add --no-cache musl-dev
 RUN cargo install cargo-chef --locked
 WORKDIR /build
@@ -51,6 +54,7 @@ COPY packages/auth/ auth/
 COPY packages/editor-api/ editor-api/
 COPY packages/corpus/ corpus/
 COPY packages/engine/ engine/
+COPY packages/law-model/ law-model/
 COPY packages/harvester/ harvester/
 COPY packages/pipeline/ pipeline/
 COPY packages/shared/ shared/
@@ -71,6 +75,7 @@ COPY packages/auth/ auth/
 COPY packages/editor-api/ editor-api/
 COPY packages/corpus/ corpus/
 COPY packages/engine/ engine/
+COPY packages/law-model/ law-model/
 COPY packages/harvester/ harvester/
 COPY packages/pipeline/ pipeline/
 COPY packages/shared/ shared/
@@ -87,7 +92,7 @@ RUN find . -name '*.rs' -exec touch {} + && \
     cargo build --release --bin regelrecht-editor-api
 
 # Stage 5: Runtime
-FROM alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11
+FROM alpine:3.24@sha256:a2d49ea686c2adfe3c992e47dc3b5e7fa6e6b5055609400dc2acaeb241c829f4
 RUN apk add --no-cache ca-certificates git && \
     addgroup -S app && adduser -S app -G app
 

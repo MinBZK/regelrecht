@@ -5,6 +5,8 @@ import { useBwbHarvest } from '../composables/useBwbHarvest.js';
 import { useAuth } from '../composables/useAuth.js';
 import { useTrajects } from '../composables/useTrajects.js';
 import { lawsListUrl } from '../composables/corpusUrls.js';
+import { apiFetchJson } from '../lib/apiFetch.js';
+import { useLatest } from '../lib/useLatest.js';
 
 const emit = defineEmits(['select-law', 'harvest-available']);
 
@@ -96,8 +98,8 @@ const groupedLaws = computed(() => {
 const hasSearch = computed(() => search.value.length > 0);
 
 // Debounce the corpus query so we don't fire a request per keystroke, and
-// guard against out-of-order responses with a sequence number.
-let searchSeq = 0;
+// guard against out-of-order responses with a latest-claim.
+const claimSearch = useLatest();
 let debounceTimer = null;
 
 watch(search, (q) => {
@@ -106,10 +108,11 @@ watch(search, (q) => {
   if (debounceTimer) clearTimeout(debounceTimer);
   const term = q.trim();
   if (term.length < MIN_QUERY_LENGTH) {
-    // Bump the sequence so any fetch already in flight (debounce fired before
-    // this clear) is discarded when it resolves — otherwise it would repopulate
-    // serverLaws for the cleared term and fire a spurious BWB search.
-    ++searchSeq;
+    // Claim (and discard) a generation so any fetch already in flight
+    // (debounce fired before this clear) is discarded when it resolves —
+    // otherwise it would repopulate serverLaws for the cleared term and
+    // fire a spurious BWB search.
+    claimSearch();
     serverLaws.value = [];
     searching.value = false;
     return;
@@ -119,33 +122,26 @@ watch(search, (q) => {
 });
 
 async function runCorpusSearch(term) {
-  const seq = ++searchSeq;
+  const isCurrent = claimSearch();
   try {
     const url = lawsListUrl(activeTrajectRef.value, `q=${encodeURIComponent(term)}&limit=60`);
-    const res = await fetch(url);
-    if (seq !== searchSeq) return; // a newer query superseded this one
-    if (!res.ok) {
-      // Backend error (500/503/…). Surface it rather than letting the empty
-      // result cascade to the external wetten.overheid.nl fallback, which
-      // would mask the failure with unrelated results.
-      serverLaws.value = [];
-      searchFailed.value = true;
-      return;
-    }
-    const laws = await res.json();
-    if (seq !== searchSeq) return;
+    const laws = await apiFetchJson(url);
+    if (!isCurrent()) return; // a newer query superseded this one
     serverLaws.value = laws;
     searchFailed.value = false;
     // No match anywhere in the corpus → offer the external wetten.overheid.nl
     // search (unless the user must log in first to reach it).
     if (laws.length === 0 && !needsLogin.value) searchBwb(term);
   } catch {
-    if (seq === searchSeq) {
+    // Backend error (500/503/…) or network failure. Surface it rather than
+    // letting the empty result cascade to the external wetten.overheid.nl
+    // fallback, which would mask the failure with unrelated results.
+    if (isCurrent()) {
       serverLaws.value = [];
       searchFailed.value = true;
     }
   } finally {
-    if (seq === searchSeq) searching.value = false;
+    if (isCurrent()) searching.value = false;
   }
 }
 
@@ -311,7 +307,7 @@ defineExpose({ show });
                 v-for="law in group.laws"
                 :key="law.law_id"
                 size="md"
-                type="button"
+                button
                 @click="selectLaw(law.law_id)"
               >
                 <nldd-text-cell :text="displayName(law)"></nldd-text-cell>
@@ -324,7 +320,7 @@ defineExpose({ show });
           <div class="search-popover-empty-title">Log in om externe bronnen te doorzoeken</div>
           <div class="search-popover-empty-subtitle">Inloggen is vereist om wetten op te halen van wetten.overheid.nl</div>
           <nldd-spacer size="12"></nldd-spacer>
-          <nldd-button size="md" text="Inloggen" @click="login"></nldd-button>
+          <nldd-button size="md" text="Inloggen" @click="login()"></nldd-button>
         </div>
         <nldd-inline-dialog v-else-if="bwbLoading" text="Zoeken op wetten.overheid.nl..."></nldd-inline-dialog>
         <template v-else-if="bwbResults.length > 0">
@@ -335,7 +331,7 @@ defineExpose({ show });
               v-for="result in bwbResults"
               :key="result.bwb_id"
               size="md"
-              type="button"
+              button
               :disabled="harvestStatus[result.bwb_id] === 'loading'
                 || isPolling(harvestStatus[result.bwb_id])
                 || undefined"

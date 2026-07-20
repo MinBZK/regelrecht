@@ -614,7 +614,8 @@ impl<'a> ArticleEngine<'a> {
             | Operation::Age
             | Operation::DateAdd
             | Operation::Date
-            | Operation::DayOfWeek => Err(EngineError::InvalidOperation(format!(
+            | Operation::DayOfWeek
+            | Operation::DateDiff => Err(EngineError::InvalidOperation(format!(
                 "{} must be nested inside 'value', not used directly at action level",
                 operation.name()
             ))),
@@ -633,7 +634,7 @@ impl<'a> ArticleEngine<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::article::ArticleBasedLaw;
+    use crate::article::{ArticleBasedLaw, LawLoad};
 
     fn make_simple_law() -> ArticleBasedLaw {
         let yaml = r#"
@@ -1363,7 +1364,7 @@ articles:
         use super::*;
 
         #[test]
-        fn test_execute_zorgtoeslagwet_vermogen_check() {
+        fn test_execute_wet_op_de_zorgtoeslag_vermogen_check() {
             let path = get_regulation_path().join("nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml");
             let law = ArticleBasedLaw::from_yaml_file(&path).unwrap();
 

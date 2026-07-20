@@ -87,7 +87,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a harvest job
     let job = job_queue::create_job(
         &pool,
-        CreateJobRequest::new(JobType::Harvest, "zorgtoeslagwet")
+        CreateJobRequest::new(JobType::Harvest, "wet_op_de_zorgtoeslag")
             .with_priority(Priority::new(80))
             .with_payload(serde_json::json!({
                 "bwb_id": "BWBR0018451",
@@ -96,9 +96,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ).await?;
 
     // Track the law's status
-    law_status::upsert_law(&pool, "zorgtoeslagwet", Some("Zorgtoeslagwet")).await?;
-    law_status::update_status(&pool, "zorgtoeslagwet", LawStatusValue::Queued).await?;
-    law_status::set_harvest_job(&pool, "zorgtoeslagwet", job.id).await?;
+    law_status::upsert_law(&pool, "wet_op_de_zorgtoeslag", Some("Zorgtoeslagwet")).await?;
+    law_status::update_status(&pool, "wet_op_de_zorgtoeslag", LawStatusValue::Queued).await?;
+    law_status::set_harvest_job(&pool, "wet_op_de_zorgtoeslag", job.id).await?;
 
     Ok(())
 }

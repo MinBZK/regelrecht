@@ -19,7 +19,7 @@
 //! params.insert("BSN".to_string(), Value::String("123456789".to_string()));
 //!
 //! let result = service.evaluate_law_output(
-//!     "zorgtoeslagwet",
+//!     "wet_op_de_zorgtoeslag",
 //!     "heeft_recht_op_zorgtoeslag",
 //!     params,
 //!     "2024-01-01",
@@ -59,7 +59,7 @@ pub use annotation::{
 };
 pub use article::{
     Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, Case, Execution,
-    HookDeclaration, HookFilter, HookPoint, MachineReadable, OverrideDeclaration,
+    HookDeclaration, HookFilter, HookPoint, LawLoad, MachineReadable, OverrideDeclaration,
     ProcedureDefinition, Source, Stage, UntranslatableEntry,
 };
 pub use config::{
@@ -90,7 +90,7 @@ mod tests {
 
     #[test]
     fn test_version() {
-        assert_eq!(VERSION, "0.2.0");
+        assert_eq!(VERSION, "0.3.0");
     }
 
     #[test]

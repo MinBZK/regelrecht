@@ -139,7 +139,7 @@ onUnmounted(() => {
               :key="op.number"
               size="md"
               :data-testid="`parent-op-${op.number}`"
-              type="button"
+              button
               @click="selectOperation(op)"
             >
               <nldd-icon-cell size="20">

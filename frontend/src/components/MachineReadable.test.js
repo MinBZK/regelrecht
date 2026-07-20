@@ -297,7 +297,7 @@ describe('MachineReadable', () => {
       });
       // No Bewerk/Bekijk buttons in read-only mode; list-item itself is the trigger.
       expect(findBekijkButtons(wrapper).length).toBe(0);
-      const actionItems = wrapper.findAll('nldd-list-item[type="button"]');
+      const actionItems = wrapper.findAll('nldd-list-item[button]');
       expect(actionItems.length).toBeGreaterThan(0);
     });
 
@@ -305,7 +305,7 @@ describe('MachineReadable', () => {
       const wrapper = mount(MachineReadable, {
         props: { article: createArticle(), editable: false },
       });
-      const actionItems = wrapper.findAll('nldd-list-item[type="button"]');
+      const actionItems = wrapper.findAll('nldd-list-item[button]');
       await actionItems[0].trigger('click');
       expect(wrapper.emitted('open-action')).toHaveLength(1);
       expect(wrapper.emitted('open-edit')).toBeUndefined();

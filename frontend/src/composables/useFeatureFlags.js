@@ -5,23 +5,19 @@
  * hardcoded defaults when the API is unavailable (e.g. no database).
  */
 import { ref, readonly } from 'vue';
+import { apiFetch, apiFetchJson } from '../lib/apiFetch.js';
+import { useAuth } from './useAuth.js';
 
 const DEFAULTS = {
   'panel.article_text': true,
   'panel.scenario_form': true,
   'panel.yaml_editor': true,
   'panel.machine_readable': true,
-  // Notes pane (RFC-005/RFC-018). Off by default until the feature is past
-  // the display-only MVP and the corpus has notes for more than one law.
+  // "Tekst viewer + notities" pane (RFC-005/RFC-018): a read-only article-text
+  // view with resolved note highlights + inline note authoring, separate from
+  // the editable Tekst editor. Off by default until the feature is past the
+  // display-only MVP and the corpus has notes for more than one law.
   'panel.notes': false,
-  // Note authoring (RFC-018 write path, MVP: localStorage + manual export).
-  // Off by default: it is a separate, opt-in capability on top of viewing.
-  'notes.create': false,
-  // Gates write access on the Tekst pane independently from its visibility.
-  // Default off so users see article text in read-only mode until they
-  // explicitly opt in — the first-save markdown normalisation rewrites the
-  // YAML enough that we want the toggle to be deliberate.
-  'editor.article_text_edit': false,
 };
 
 // Local overrides survive refresh when the backend has no persistence (dev).
@@ -43,15 +39,21 @@ const loaded = ref(false);
 
 let fetchPromise = null;
 
+// useAuth() returns module-level refs; capture oidcConfigured once at load so
+// the toggle() catch below reads .value without calling a composable at runtime
+// outside a setup() context.
+const { oidcConfigured } = useAuth();
+
 async function loadFlags() {
   if (fetchPromise) return fetchPromise;
   fetchPromise = (async () => {
     try {
-      const res = await fetch('/api/feature-flags');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const server = await apiFetchJson('/api/feature-flags', {
+        errorMessage: (status) => `HTTP ${status}`,
+      });
       // Server values are the base; local overrides win so user toggles
       // survive refreshes when the backend can't persist (503 path below).
-      flags.value = { ...DEFAULTS, ...(await res.json()), ...loadLocal() };
+      flags.value = { ...DEFAULTS, ...server, ...loadLocal() };
     } catch (e) {
       console.warn('Failed to load feature flags, using defaults:', e.message);
       flags.value = { ...DEFAULTS, ...loadLocal() };
@@ -66,22 +68,24 @@ async function toggle(key) {
   const current = flags.value[key] ?? DEFAULTS[key] ?? true;
   const newValue = !current;
 
-  // Optimistic update. Persist locally too so the toggle survives refreshes
-  // when the backend explicitly can't persist (503, no DB configured in dev).
+  // Optimistic update, persisted locally so the toggle survives refreshes
+  // whenever the backend can't accept the write (503 no-DB, or a failed write
+  // handled in the catch below).
   flags.value = { ...flags.value, [key]: newValue };
 
   try {
-    const res = await fetch(`/api/feature-flags/${encodeURIComponent(key)}`, {
+    const res = await apiFetch(`/api/feature-flags/${encodeURIComponent(key)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enabled: newValue }),
+      allowStatuses: [503],
+      errorMessage: (status) => `HTTP ${status}`,
     });
     if (res.status === 503) {
       // Backend has no DB; keep the change local so it survives refresh.
       saveLocal({ ...loadLocal(), [key]: newValue });
       return;
     }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     // Clear any stale local override for this key — server is now authoritative.
     const local = loadLocal();
     if (key in local) {
@@ -91,8 +95,20 @@ async function toggle(key) {
     const updated = await res.json();
     flags.value = { ...DEFAULTS, ...updated, ...loadLocal() };
   } catch (e) {
-    console.warn('Failed to update feature flag, reverting:', e.message);
-    flags.value = { ...flags.value, [key]: current };
+    // A write can fail two ways. In OIDC-off dev the PUT 401s because the dev
+    // session has no auth, and there is no server state to contradict an
+    // override, so keep the toggle local and let panes stay switchable. With
+    // OIDC configured (prod) that same 401 means a transient/expired session
+    // (or the failure is offline / a 5xx); persisting it would make the
+    // override sticky in localStorage and silently win over the server even
+    // after re-authentication, so revert the optimistic change instead.
+    if (oidcConfigured.value) {
+      console.warn('Feature flag write failed; reverting (server stays authoritative):', e.message);
+      flags.value = { ...flags.value, [key]: current };
+    } else {
+      console.warn('Feature flag write failed in no-auth dev; keeping change locally:', e.message);
+      saveLocal({ ...loadLocal(), [key]: newValue });
+    }
   }
 }
 

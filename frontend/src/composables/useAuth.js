@@ -1,4 +1,5 @@
 import { ref } from 'vue';
+import { apiFetchJson } from '../lib/apiFetch.js';
 
 const authenticated = ref(false);
 const oidcConfigured = ref(false);
@@ -9,14 +10,12 @@ let readyPromise = null;
 
 async function checkAuth() {
   try {
-    const response = await fetch('/auth/status');
-    if (!response.ok) return;
-    const status = await response.json();
+    const status = await apiFetchJson('/auth/status');
     authenticated.value = status.authenticated;
     oidcConfigured.value = status.oidc_configured;
     person.value = status.person || null;
   } catch {
-    // Auth endpoint not available — treat as no auth configured
+    // Auth endpoint not available or errored — treat as no auth configured
   } finally {
     loading.value = false;
   }
@@ -40,8 +39,12 @@ export function useAuth() {
   // `window.location` still points at the source route) can forward it to
   // SSO. Falls back to the current location for the common case.
   function login(returnUrl) {
-    const url = returnUrl
-      ?? window.location.pathname + window.location.search + window.location.hash;
+    // Only accept an explicit string: a template that passes `login` as a
+    // bare event handler (`@click="login"`) hands us a PointerEvent, which
+    // would otherwise stringify into return_url=[object PointerEvent].
+    const url = typeof returnUrl === 'string' && returnUrl
+      ? returnUrl
+      : window.location.pathname + window.location.search + window.location.hash;
     window.location.href = '/auth/login?return_url=' + encodeURIComponent(url);
   }
 

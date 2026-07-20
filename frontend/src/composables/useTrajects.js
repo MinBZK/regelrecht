@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
+import { apiFetch, apiFetchJson } from '../lib/apiFetch.js';
 
 const trajects = ref([]);
 const loading = ref(true);
@@ -14,6 +15,9 @@ async function loadTrajects() {
   // for the duration of the round-trip.
   loading.value = true;
   try {
+    // Raw fetch + ok-branch on purpose: a non-ok status (e.g. 401 on a
+    // public page) keeps the previous list without setting `error` —
+    // only a network failure surfaces through the catch.
     const resp = await fetch('/api/trajects');
     if (resp.ok) {
       trajects.value = await resp.json();
@@ -38,18 +42,24 @@ export async function refreshTrajects() {
 }
 
 export async function createTraject(payload) {
-  const resp = await fetch('/api/trajects', {
+  const created = await apiFetchJson('/api/trajects', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),
+    errorMessage: (status, body) => body || `Create failed: ${status}`,
   });
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(text || `Create failed: ${resp.status}`);
-  }
-  const created = await resp.json();
   await refreshTrajects();
   return created;
+}
+
+// Owner-only hard delete (backend: DELETE /api/trajects/:id → 204). The
+// upstream branch on GitHub is deliberately left untouched by the backend.
+export async function deleteTraject(trajectId) {
+  await apiFetch(`/api/trajects/${encodeURIComponent(trajectId)}`, {
+    method: 'DELETE',
+    errorMessage: (status, body) => body || `Delete failed: ${status}`,
+  });
+  await refreshTrajects();
 }
 
 // Active traject lives in `route.params.trajectRef` (per-tab state),

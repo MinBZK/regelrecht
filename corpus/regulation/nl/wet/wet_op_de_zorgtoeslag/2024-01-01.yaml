@@ -1,6 +1,6 @@
 ---
 $schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.0/schema/v0.5.0/schema.json
-$id: zorgtoeslagwet
+$id: wet_op_de_zorgtoeslag
 regulatory_layer: WET
 publication_date: '2023-12-20'
 valid_from: '2024-01-01'

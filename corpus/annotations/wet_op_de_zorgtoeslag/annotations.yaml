@@ -1,0 +1,102 @@
+---
+# Stand-off notes on the Healthcare Allowance Act (Wet op de zorgtoeslag).
+# Format: RFC-005. Infrastructure: RFC-018. Validated by `just validate-annotations`.
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.2/schema/v0.5.2/annotation-schema.json
+annotations:
+  # Linking note: connects the text granting the allowance to the
+  # machine_readable element that computes its amount. This makes the
+  # interpretation chain from law text to executable logic auditable.
+  - type: Annotation
+    motivation: linking
+    creator: Dienst Toeslagen
+    target:
+      source: regelrecht://wet_op_de_zorgtoeslag
+      selector:
+        type: TextQuoteSelector
+        exact: zorgtoeslag
+        prefix: 'heeft de verzekerde aanspraak op een '
+        suffix: ' ter grootte van dat verschil'
+    body:
+      type: SpecificResource
+      source: regelrecht://wet_op_de_zorgtoeslag/hoogte_zorgtoeslag
+      purpose: linking
+    resolution: found
+    workflow: resolved
+
+  # Commenting note: explains a domain term for readers.
+  - type: Annotation
+    motivation: commenting
+    creator: J. de Vries
+    target:
+      source: regelrecht://wet_op_de_zorgtoeslag
+      selector:
+        type: TextQuoteSelector
+        exact: normpremie
+        prefix: 'Indien de '
+        suffix: ' voor een verzekerde'
+    body:
+      type: TextualBody
+      value: >-
+        De normpremie is een fictief bedrag dat staat voor wat de verzekerde
+        geacht wordt zelf aan zorgkosten bij te dragen. Het hangt af van het
+        inkomen, niet van de feitelijk betaalde premie.
+      purpose: commenting
+      format: text/plain
+      language: nl
+    resolution: found
+
+  # Questioning note over an open norm (RFC-018 Decision 6). The percentages
+  # can be changed by ministerial regulation; until that regulation is located
+  # and modelled, this is an open norm that is only partially filled in.
+  - type: Annotation
+    motivation: questioning
+    creator: interpreter-team
+    target:
+      source: regelrecht://wet_op_de_zorgtoeslag
+      selector:
+        type: TextQuoteSelector
+        exact: ministeriële regeling
+        prefix: 'Bij '
+        suffix: ' kunnen deze percentages'
+    body:
+      - type: TextualBody
+        value: >-
+          De percentages kunnen bij ministeriële regeling worden gewijzigd.
+          De vigerende regeling is nog niet in het corpus opgenomen; de
+          hardcoded percentages in machine_readable gelden tot dan.
+        purpose: questioning
+        format: text/plain
+        language: nl
+      - type: TextualBody
+        value: open-norm-partial
+        purpose: tagging
+    workflow: open
+
+  # The resolved end of the same lifecycle (RFC-018 Decision 6). The concrete
+  # percentage for a verzekerde with a toeslagpartner is spelled out in the
+  # law text and is modelled in machine_readable, so this part of the open
+  # norm is filled in: the questioning note is kept for audit history but its
+  # workflow is resolved.
+  - type: Annotation
+    motivation: questioning
+    creator: interpreter-team
+    target:
+      source: regelrecht://wet_op_de_zorgtoeslag
+      selector:
+        type: TextQuoteSelector
+        exact: 4,273 procent
+        prefix: 'voor een verzekerde met een toeslagpartner '
+        suffix: ' van het'
+    body:
+      - type: TextualBody
+        value: >-
+          Het percentage voor een verzekerde met toeslagpartner is in de
+          wettekst opgenomen en gemodelleerd in machine_readable. Deze open
+          norm is daarmee ingevuld; de note blijft staan voor de auditketen.
+        purpose: questioning
+        format: text/plain
+        language: nl
+      - type: TextualBody
+        value: open-norm-partial
+        purpose: tagging
+    workflow: resolved

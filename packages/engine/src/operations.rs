@@ -1,16 +1,16 @@
 //! Operation execution for the RegelRecht engine
 //!
-//! Implements the execution logic for all operation types in the v0.5.0 schema,
-//! plus engine-only operations retained for backward compatibility.
+//! Implements the execution logic for all operation types in the regulation
+//! schema, plus engine-only operations retained for backward compatibility.
 //!
-//! **Schema v0.5.0 operations:**
+//! **Schema operations:**
 //! - **Comparison:** EQUALS, GREATER_THAN, LESS_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN_OR_EQUAL
 //! - **Arithmetic:** ADD, SUBTRACT, MULTIPLY, DIVIDE
 //! - **Aggregate:** MAX, MIN
 //! - **Logical:** AND, OR, NOT
 //! - **Conditional:** IF (multi-case with cases/default)
 //! - **Collection:** IN, LIST
-//! - **Date:** AGE, DATE_ADD, DATE, DAY_OF_WEEK
+//! - **Date:** AGE, DATE_ADD, DATE, DAY_OF_WEEK, DATE_DIFF
 //!
 //! **Engine-only (not in schema, accepted for backward compatibility):**
 //! NOT_EQUALS, IS_NULL, NOT_NULL, NOT_IN
@@ -19,6 +19,7 @@ use crate::article::{ActionOperation, ActionValue, Case};
 use crate::error::{EngineError, Result};
 use crate::types::{PathNodeType, Value};
 use chrono::{Datelike, NaiveDate};
+use std::cmp::Ordering;
 
 /// Maximum nesting depth for operations to prevent stack overflow
 const MAX_OPERATION_DEPTH: usize = 100;
@@ -230,16 +231,20 @@ fn execute_operation_internal<R: ValueResolver>(
             execute_equality(subject, value, resolver, depth, true)
         }
         ActionOperation::GreaterThan { subject, value } => {
-            execute_numeric_comparison(subject, value, resolver, depth, |a, b| a > b)
+            execute_ordered_comparison(subject, value, resolver, depth, |ord| {
+                ord == Ordering::Greater
+            })
         }
         ActionOperation::LessThan { subject, value } => {
-            execute_numeric_comparison(subject, value, resolver, depth, |a, b| a < b)
+            execute_ordered_comparison(subject, value, resolver, depth, |ord| ord == Ordering::Less)
         }
         ActionOperation::GreaterThanOrEqual { subject, value } => {
-            execute_numeric_comparison(subject, value, resolver, depth, |a, b| a >= b)
+            execute_ordered_comparison(subject, value, resolver, depth, |ord| ord != Ordering::Less)
         }
         ActionOperation::LessThanOrEqual { subject, value } => {
-            execute_numeric_comparison(subject, value, resolver, depth, |a, b| a <= b)
+            execute_ordered_comparison(subject, value, resolver, depth, |ord| {
+                ord != Ordering::Greater
+            })
         }
 
         // Arithmetic
@@ -317,6 +322,9 @@ fn execute_operation_internal<R: ValueResolver>(
             execute_date_construct(year, month, day, resolver, depth)
         }
         ActionOperation::DayOfWeek { date } => execute_day_of_week(date, resolver, depth),
+        ActionOperation::DateDiff { from, to, unit } => {
+            execute_date_diff(from, to, unit, resolver, depth)
+        }
     }
 }
 
@@ -368,7 +376,12 @@ pub(crate) fn values_equal(a: &Value, b: &Value) -> bool {
 /// Execute EQUALS / NOT_EQUALS with Python-style numeric coercion.
 ///
 /// - `Int(42) == Float(42.0)` returns `true` (like Python)
-/// - Non-numeric types use structural equality
+/// - The mixed date forms compare chronologically: the string form `"2025-01-01"`
+///   equals the reference-date object form `{iso: "2025-01-01", ...}` (RFC-021).
+///   This keeps EQUALS consistent with the ordering operators, which also accept
+///   both date forms via `parse_date`. Two strings or two objects keep structural
+///   equality, so objects that merely share an `iso` field are not equal.
+/// - Other non-numeric types use structural equality
 /// - When `negate` is true, the result is inverted (NOT_EQUALS).
 fn execute_equality<R: ValueResolver>(
     subject: &ActionValue,
@@ -384,22 +397,61 @@ fn execute_equality<R: ValueResolver>(
         return Ok(tainted);
     }
 
-    let equal = values_equal(&subject_val, &value_val);
+    let mut equal = values_equal(&subject_val, &value_val);
+
+    // Date-aware fallback, scoped to the mixed form (a string against an `{iso}`
+    // object): the one date pairing structural equality can never match. Two
+    // canonical date strings are equal structurally exactly when they are equal
+    // chronologically, and object↔object stays structural so arbitrary objects
+    // sharing an `iso` field do not become equal (RFC-021). A side that fails to
+    // parse as a date leaves the structural verdict untouched. Scoped to EQUALS so
+    // membership and other structural comparisons keep their existing semantics.
+    if !equal && is_mixed_date_pair(&subject_val, &value_val) {
+        if let (Ok(subject_date), Ok(value_date)) =
+            (parse_date(&subject_val), parse_date(&value_val))
+        {
+            equal = subject_date == value_date;
+        }
+    }
+
     Ok(Value::Bool(if negate { !equal } else { equal }))
 }
 
-/// Execute a numeric comparison (>, <, >=, <=).
+/// Whether the pair is the mixed date form: one string against one
+/// reference-date `{iso}` object, in either order.
 ///
-/// Converts values to f64 for comparison to handle both Int and Float types.
-fn execute_numeric_comparison<R: ValueResolver, F>(
+/// Used to scope date-aware equality to the single pairing that structural
+/// equality cannot already handle.
+fn is_mixed_date_pair(a: &Value, b: &Value) -> bool {
+    fn iso_object(v: &Value) -> bool {
+        matches!(v, Value::Object(obj) if matches!(obj.get("iso"), Some(Value::String(_))))
+    }
+    (matches!(a, Value::String(_)) && iso_object(b))
+        || (iso_object(a) && matches!(b, Value::String(_)))
+}
+
+/// Execute an ordered comparison (>, <, >=, <=) on numbers or dates.
+///
+/// Operands are type-safe and dispatch on their resolved type:
+/// - both numeric (Int/Float) → numeric comparison (Int and Float compared as f64)
+/// - both ISO dates (YYYY-MM-DD strings, or `{iso, ...}` objects) → date comparison
+/// - mixed or unsupported types → `TypeMismatch` error
+///
+/// This lets `$peildatum > $grensdatum` work the same way `$bedrag > 1000` does,
+/// without introducing date-specific operators (RFC-021, route A).
+///
+/// The operator is a single predicate over [`Ordering`], shared by the numeric
+/// and the date path so the two can never drift apart. An incomparable numeric
+/// pair (NaN) satisfies no ordering, matching the previous f64 behavior.
+fn execute_ordered_comparison<R: ValueResolver, F>(
     subject: &ActionValue,
     value: &ActionValue,
     resolver: &R,
     depth: usize,
-    compare: F,
+    satisfies: F,
 ) -> Result<Value>
 where
-    F: Fn(f64, f64) -> bool,
+    F: Fn(Ordering) -> bool,
 {
     let subject_val = evaluate_value(subject, resolver, depth)?;
     let value_val = evaluate_value(value, resolver, depth)?;
@@ -408,10 +460,53 @@ where
         return Ok(tainted);
     }
 
-    let subject_num = to_number(&subject_val)?;
-    let value_num = to_number(&value_val)?;
+    // Numbers first: the common case and the historical behavior.
+    if is_numeric(&subject_val) && is_numeric(&value_val) {
+        let subject_num = to_number(&subject_val)?;
+        let value_num = to_number(&value_val)?;
+        return Ok(Value::Bool(
+            subject_num.partial_cmp(&value_num).is_some_and(&satisfies),
+        ));
+    }
 
-    Ok(Value::Bool(compare(subject_num, value_num)))
+    // Dates: only when BOTH operands parse as ISO dates, so a mismatch
+    // (e.g. number vs date) surfaces as a clear error rather than a silent coercion.
+    let subject_date = parse_date(&subject_val);
+    let value_date = parse_date(&value_val);
+    if let (Ok(subject_date), Ok(value_date)) = (&subject_date, &value_date) {
+        return Ok(Value::Bool(satisfies(subject_date.cmp(value_date))));
+    }
+
+    // Neither a numeric pair nor a date pair. Point the error at what actually
+    // went wrong: a number against a date is a mixed pair (each operand is fine
+    // on its own), otherwise blame the operand that is neither number nor date.
+    let subject_kind = comparable_kind(&subject_val, subject_date.is_ok());
+    let value_kind = comparable_kind(&value_val, value_date.is_ok());
+    match (subject_kind, value_kind) {
+        (Some(subject_kind), Some(value_kind)) => Err(EngineError::TypeMismatch {
+            expected: "two numbers or two dates".to_string(),
+            actual: format!("a {subject_kind} compared against a {value_kind}"),
+        }),
+        (Some(_), None) => Err(type_error("number or date", &value_val)),
+        _ => Err(type_error("number or date", &subject_val)),
+    }
+}
+
+/// The comparable kind of an operand, for error reporting: `number`, `date`,
+/// or `None` when it is neither.
+fn comparable_kind(val: &Value, parses_as_date: bool) -> Option<&'static str> {
+    if is_numeric(val) {
+        Some("number")
+    } else if parses_as_date {
+        Some("date")
+    } else {
+        None
+    }
+}
+
+/// Whether a value is a number (Int or Float) for comparison dispatch.
+fn is_numeric(val: &Value) -> bool {
+    matches!(val, Value::Int(_) | Value::Float(_))
 }
 
 // =============================================================================
@@ -1120,26 +1215,84 @@ fn execute_day_of_week<R: ValueResolver>(
     Ok(Value::Int(parsed.weekday().num_days_from_monday() as i64))
 }
 
+/// Execute DATE_DIFF: the signed difference between two dates, expressed in a unit.
+///
+/// ```yaml
+/// operation: DATE_DIFF
+/// from: $informatie_datum
+/// to: $referencedate.iso
+/// in: days        # one of: days | months | years
+/// ```
+///
+/// Returns an `Int`. The result is **positive when `to >= from`** and negative
+/// otherwise, so `DATE_DIFF(from, to)` reads as "how far `to` is ahead of `from`".
+///
+/// - `days` — exact calendar days between the dates.
+/// - `months` / `years` — *complete* calendar units, reusing the same arithmetic
+///   as `AGE` (BW art. 1:2): e.g. Jan 31 → Feb 28 counts as one whole month.
+///
+/// The unit is an explicit argument (not inferred) because the difference between
+/// two dates is genuinely ambiguous: 400 days is also "1 year" and "13 months".
+fn execute_date_diff<R: ValueResolver>(
+    from: &ActionValue,
+    to: &ActionValue,
+    unit: &ActionValue,
+    resolver: &R,
+    depth: usize,
+) -> Result<Value> {
+    let from_val = evaluate_value(from, resolver, depth)?;
+    let to_val = evaluate_value(to, resolver, depth)?;
+
+    if let Some(tainted) = propagate_binary(&from_val, &to_val) {
+        return Ok(tainted);
+    }
+
+    let from_date = parse_date(&from_val)?;
+    let to_date = parse_date(&to_val)?;
+
+    let unit_val = evaluate_value(unit, resolver, depth)?;
+    // The unit participates in taint propagation like the date operands: an
+    // Untranslatable unit flows through as a value (RFC-012), not as an error.
+    if unit_val.is_untranslatable() {
+        return Ok(unit_val);
+    }
+    let unit_str = match &unit_val {
+        Value::String(s) => s.as_str(),
+        _ => {
+            return Err(type_error(
+                "string ('days', 'months', or 'years')",
+                &unit_val,
+            ))
+        }
+    };
+
+    // calculate_*_difference are positive when their first arg >= second arg.
+    // Passing (to, from) makes the result positive when `to >= from`.
+    let diff = match unit_str {
+        "days" => (to_date - from_date).num_days(),
+        "months" => calculate_months_difference(to_date, from_date),
+        "years" => calculate_years_difference(to_date, from_date),
+        other => {
+            return Err(EngineError::InvalidOperation(format!(
+                "DATE_DIFF 'in' must be one of 'days', 'months', 'years', got '{}'",
+                other
+            )));
+        }
+    };
+
+    Ok(Value::Int(diff))
+}
+
 /// Parse a date from a Value.
 ///
 /// Expects the value to be a string in ISO 8601 format (YYYY-MM-DD).
 fn parse_date(value: &Value) -> Result<NaiveDate> {
     match value {
-        Value::String(s) => NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|e| {
-            EngineError::InvalidOperation(format!(
-                "Failed to parse date '{}': {}. Expected format: YYYY-MM-DD",
-                s, e
-            ))
-        }),
+        Value::String(s) => parse_iso_date(s),
         // Handle referencedate objects with {iso, year, month, day}
         Value::Object(obj) => {
             if let Some(Value::String(iso)) = obj.get("iso") {
-                NaiveDate::parse_from_str(iso, "%Y-%m-%d").map_err(|e| {
-                    EngineError::InvalidOperation(format!(
-                        "Failed to parse date '{}': {}. Expected format: YYYY-MM-DD",
-                        iso, e
-                    ))
-                })
+                parse_iso_date(iso)
             } else {
                 Err(EngineError::TypeMismatch {
                     expected: "date string (YYYY-MM-DD) or object with 'iso' field".to_string(),
@@ -1154,6 +1307,31 @@ fn parse_date(value: &Value) -> Result<NaiveDate> {
     }
 }
 
+/// Parse a date string in canonical ISO 8601 `YYYY-MM-DD` form.
+///
+/// chrono's `%Y-%m-%d` parser is lenient and accepts non-zero-padded input like
+/// `2025-1-1`. We reject those: a non-canonical literal would compare chronologically
+/// under `>`/`<` but inequal under `EQUALS` (which uses string equality), so the two
+/// must never disagree. Requiring canonical form keeps every operator consistent and
+/// matches the format the engine itself produces for `$referencedate.iso`.
+fn parse_iso_date(s: &str) -> Result<NaiveDate> {
+    let parsed = NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|e| {
+        EngineError::InvalidOperation(format!(
+            "Failed to parse date '{}': {}. Expected format: YYYY-MM-DD",
+            s, e
+        ))
+    })?;
+    // Reject lenient (non-zero-padded) input by round-tripping through the canonical form.
+    if parsed.format("%Y-%m-%d").to_string() != s {
+        return Err(EngineError::InvalidOperation(format!(
+            "Date '{}' is not in canonical YYYY-MM-DD form (use zero-padded components, e.g. '{}')",
+            s,
+            parsed.format("%Y-%m-%d")
+        )));
+    }
+    Ok(parsed)
+}
+
 /// Calculate the difference in complete months between two dates.
 ///
 /// Uses proper calendar arithmetic. A month is counted as complete when
@@ -1161,7 +1339,8 @@ fn parse_date(value: &Value) -> Result<NaiveDate> {
 /// For end-of-month edge cases (e.g., Jan 31 -> Feb 28), if `earlier.day()`
 /// exceeds the number of days in `later`'s month, it is capped to the last
 /// day of that month so the month is correctly counted as complete.
-#[allow(dead_code)] // Retained for potential future date-difference operations
+///
+/// Used by DATE_DIFF with `in: months`.
 fn calculate_months_difference(date1: NaiveDate, date2: NaiveDate) -> i64 {
     let (earlier, later, sign) = if date1 >= date2 {
         (date2, date1, 1)
@@ -1360,6 +1539,18 @@ mod tests {
     /// Helper to create a variable reference
     fn var(name: &str) -> ActionValue {
         ActionValue::Literal(Value::String(format!("${}", name)))
+    }
+
+    /// Helper to build a reference-date `{iso, year, month, day}` object Value,
+    /// matching how the engine injects `$referencedate`.
+    fn date_obj(iso: &str) -> Value {
+        let date = NaiveDate::parse_from_str(iso, "%Y-%m-%d").expect("valid test date");
+        let mut obj = BTreeMap::new();
+        obj.insert("iso".to_string(), Value::String(iso.to_string()));
+        obj.insert("year".to_string(), Value::Int(i64::from(date.year())));
+        obj.insert("month".to_string(), Value::Int(i64::from(date.month())));
+        obj.insert("day".to_string(), Value::Int(i64::from(date.day())));
+        Value::Object(obj)
     }
 
     // -------------------------------------------------------------------------
@@ -2625,6 +2816,652 @@ mod tests {
             assert_eq!(
                 execute_operation(&op2, &resolver, 0).unwrap(),
                 Value::Int(6)
+            );
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Date comparison Tests (RFC-021 route A: type-safe ordered comparison)
+    // -------------------------------------------------------------------------
+
+    mod date_comparison {
+        use super::*;
+
+        #[test]
+        fn test_greater_than_dates() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::GreaterThan {
+                subject: lit("2025-01-15"),
+                value: lit("2025-01-10"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Bool(true)
+            );
+        }
+
+        #[test]
+        fn test_less_than_dates() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::LessThan {
+                subject: lit("2024-12-31"),
+                value: lit("2025-01-01"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Bool(true)
+            );
+        }
+
+        #[test]
+        fn test_greater_than_or_equal_dates_equal() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::GreaterThanOrEqual {
+                subject: lit("2025-06-01"),
+                value: lit("2025-06-01"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Bool(true)
+            );
+        }
+
+        #[test]
+        fn test_less_than_or_equal_dates() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::LessThanOrEqual {
+                subject: lit("2025-06-02"),
+                value: lit("2025-06-01"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Bool(false)
+            );
+        }
+
+        #[test]
+        fn test_equals_dates() {
+            // ISO date string equality is equivalent to date equality (canonical format).
+            let resolver = TestResolver::new();
+            let op = ActionOperation::Equals {
+                subject: lit("2025-03-01"),
+                value: lit("2025-03-01"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Bool(true)
+            );
+        }
+
+        #[test]
+        fn test_compare_peildatum_against_threshold() {
+            // The thread's motivating case: peildatum (referencedate.iso) vs a date literal.
+            let resolver = TestResolver::new().with_var("peildatum", "2025-07-01");
+            let op = ActionOperation::GreaterThan {
+                subject: var("peildatum"),
+                value: lit("2025-01-01"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Bool(true)
+            );
+        }
+
+        #[test]
+        fn test_numeric_comparison_still_works() {
+            // Route A must not regress integer/float comparison.
+            let resolver = TestResolver::new();
+            let op = ActionOperation::GreaterThan {
+                subject: lit(50i64),
+                value: lit(42i64),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Bool(true)
+            );
+        }
+
+        #[test]
+        fn test_mixed_number_and_date_errors() {
+            // A number vs a date is a type error, not a silent coercion.
+            let resolver = TestResolver::new();
+            let op = ActionOperation::GreaterThan {
+                subject: lit(2025i64),
+                value: lit("2025-01-01"),
+            };
+            assert!(execute_operation(&op, &resolver, 0).is_err());
+        }
+
+        #[test]
+        fn test_non_date_string_errors() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::GreaterThan {
+                subject: lit("hello"),
+                value: lit("world"),
+            };
+            let err = execute_operation(&op, &resolver, 0).unwrap_err();
+            let msg = err.to_string();
+            assert!(msg.contains("number or date"), "unexpected message: {msg}");
+        }
+
+        #[test]
+        fn test_compare_referencedate_object_against_string() {
+            // $referencedate resolves to an object; comparing it against a date string
+            // must work via parse_date's object support.
+            let resolver = TestResolver::new().with_var("referencedate", date_obj("2025-07-01"));
+            let op = ActionOperation::GreaterThan {
+                subject: var("referencedate"),
+                value: lit("2025-01-01"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Bool(true)
+            );
+        }
+
+        #[test]
+        fn test_equals_referencedate_object_equals_date_string() {
+            // RFC-021: the object form and the string form of the same date are equal.
+            let resolver = TestResolver::new().with_var("referencedate", date_obj("2025-03-01"));
+            let op = ActionOperation::Equals {
+                subject: var("referencedate"),
+                value: lit("2025-03-01"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Bool(true)
+            );
+        }
+
+        #[test]
+        fn test_equals_referencedate_object_differs_from_other_date() {
+            let resolver = TestResolver::new().with_var("referencedate", date_obj("2025-03-01"));
+            let op = ActionOperation::Equals {
+                subject: var("referencedate"),
+                value: lit("2025-03-02"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Bool(false)
+            );
+        }
+
+        #[test]
+        fn test_equals_non_date_strings_unaffected() {
+            // The date-aware fallback must not change plain string equality.
+            let resolver = TestResolver::new();
+            let same = ActionOperation::Equals {
+                subject: lit("aanvraag"),
+                value: lit("aanvraag"),
+            };
+            let diff = ActionOperation::Equals {
+                subject: lit("aanvraag"),
+                value: lit("bezwaar"),
+            };
+            assert_eq!(
+                execute_operation(&same, &resolver, 0).unwrap(),
+                Value::Bool(true)
+            );
+            assert_eq!(
+                execute_operation(&diff, &resolver, 0).unwrap(),
+                Value::Bool(false)
+            );
+        }
+
+        #[test]
+        fn test_strict_greater_than_is_false_on_equal_dates() {
+            // Boundary day: a deadline check must not flip on the cutoff date
+            // itself. Pins the strictness of the date path.
+            let resolver = TestResolver::new();
+            let op = ActionOperation::GreaterThan {
+                subject: lit("2025-06-01"),
+                value: lit("2025-06-01"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Bool(false)
+            );
+        }
+
+        #[test]
+        fn test_strict_less_than_is_false_on_equal_dates() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::LessThan {
+                subject: lit("2025-06-01"),
+                value: lit("2025-06-01"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Bool(false)
+            );
+        }
+
+        #[test]
+        fn test_not_equals_dates_mixed_forms() {
+            // NOT_EQUALS inverts the date-aware fallback for the mixed form.
+            let resolver = TestResolver::new().with_var("referencedate", date_obj("2025-03-01"));
+            let same = ActionOperation::NotEquals {
+                subject: var("referencedate"),
+                value: lit("2025-03-01"),
+            };
+            let diff = ActionOperation::NotEquals {
+                subject: var("referencedate"),
+                value: lit("2025-03-02"),
+            };
+            assert_eq!(
+                execute_operation(&same, &resolver, 0).unwrap(),
+                Value::Bool(false)
+            );
+            assert_eq!(
+                execute_operation(&diff, &resolver, 0).unwrap(),
+                Value::Bool(true)
+            );
+        }
+
+        #[test]
+        fn test_equals_objects_sharing_iso_stay_structural() {
+            // Object↔object keeps structural equality: two objects that merely
+            // share an `iso` field are NOT equal (the date fallback is scoped to
+            // the mixed string/object form).
+            let mut left = BTreeMap::new();
+            left.insert("iso".to_string(), Value::String("2025-01-01".to_string()));
+            left.insert("type".to_string(), Value::String("aanvraag".to_string()));
+            let mut right = BTreeMap::new();
+            right.insert("iso".to_string(), Value::String("2025-01-01".to_string()));
+            right.insert("type".to_string(), Value::String("bezwaar".to_string()));
+
+            let resolver = TestResolver::new()
+                .with_var("left", Value::Object(left))
+                .with_var("right", Value::Object(right));
+            let op = ActionOperation::Equals {
+                subject: var("left"),
+                value: var("right"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Bool(false)
+            );
+        }
+
+        #[test]
+        fn test_equals_identical_referencedate_objects_still_equal() {
+            // Two structurally identical reference-date objects stay equal via
+            // plain structural equality; the fallback is not needed for them.
+            let resolver = TestResolver::new()
+                .with_var("a", date_obj("2025-03-01"))
+                .with_var("b", date_obj("2025-03-01"));
+            let op = ActionOperation::Equals {
+                subject: var("a"),
+                value: var("b"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Bool(true)
+            );
+        }
+
+        #[test]
+        fn test_mixed_error_names_both_kinds() {
+            // A number against a date reports the mixed pair, not a misleading
+            // complaint about one (individually valid) operand.
+            let resolver = TestResolver::new();
+            let op = ActionOperation::GreaterThan {
+                subject: lit(2025i64),
+                value: lit("2025-01-01"),
+            };
+            let err = execute_operation(&op, &resolver, 0).unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("two numbers or two dates")
+                    && msg.contains("a number compared against a date"),
+                "unexpected message: {msg}"
+            );
+        }
+
+        #[test]
+        fn test_error_blames_the_invalid_operand() {
+            // A valid date compared against a bool must blame the bool, not the
+            // (perfectly fine) date subject.
+            let resolver = TestResolver::new().with_var("flag", Value::Bool(true));
+            let op = ActionOperation::GreaterThan {
+                subject: lit("2025-01-01"),
+                value: var("flag"),
+            };
+            let err = execute_operation(&op, &resolver, 0).unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("number or date") && msg.contains("bool"),
+                "unexpected message: {msg}"
+            );
+        }
+
+        #[test]
+        fn test_tainted_date_operand_propagates() {
+            // RFC-012: an Untranslatable operand flows through the ordered
+            // comparison as a value instead of failing the calculation.
+            let tainted = Value::Untranslatable {
+                article: "1".to_string(),
+                construct: "test".to_string(),
+            };
+            let resolver = TestResolver::new().with_var("tainted", tainted.clone());
+            let op = ActionOperation::GreaterThan {
+                subject: var("tainted"),
+                value: lit("2025-01-01"),
+            };
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), tainted);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // DATE_DIFF Tests (RFC-021 route B: explicit unit argument)
+    // -------------------------------------------------------------------------
+
+    mod date_diff {
+        use super::*;
+
+        #[test]
+        fn test_diff_in_days() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateDiff {
+                from: lit("2025-01-01"),
+                to: lit("2025-01-11"),
+                unit: lit("days"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(10)
+            );
+        }
+
+        #[test]
+        fn test_diff_in_days_negative_when_to_before_from() {
+            // Sign convention: positive when `to >= from`, negative otherwise.
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateDiff {
+                from: lit("2025-01-11"),
+                to: lit("2025-01-01"),
+                unit: lit("days"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(-10)
+            );
+        }
+
+        #[test]
+        fn test_diff_in_years() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateDiff {
+                from: lit("2000-06-01"),
+                to: lit("2025-06-01"),
+                unit: lit("years"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(25)
+            );
+        }
+
+        #[test]
+        fn test_diff_in_years_before_anniversary() {
+            // 2025-05-31 has not yet reached the June 1 anniversary → 24 complete years.
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateDiff {
+                from: lit("2000-06-01"),
+                to: lit("2025-05-31"),
+                unit: lit("years"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(24)
+            );
+        }
+
+        #[test]
+        fn test_diff_in_months() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateDiff {
+                from: lit("2025-01-01"),
+                to: lit("2025-04-01"),
+                unit: lit("months"),
+            };
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), Value::Int(3));
+        }
+
+        #[test]
+        fn test_diff_in_months_end_of_month_clamp() {
+            // Jan 31 → Feb 28 counts as one complete month.
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateDiff {
+                from: lit("2025-01-31"),
+                to: lit("2025-02-28"),
+                unit: lit("months"),
+            };
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), Value::Int(1));
+        }
+
+        #[test]
+        fn test_diff_with_variables() {
+            let resolver = TestResolver::new()
+                .with_var("start", "2025-01-01")
+                .with_var("eind", "2025-12-31");
+            let op = ActionOperation::DateDiff {
+                from: var("start"),
+                to: var("eind"),
+                unit: lit("days"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(364)
+            );
+        }
+
+        #[test]
+        fn test_diff_invalid_unit_errors() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateDiff {
+                from: lit("2025-01-01"),
+                to: lit("2025-02-01"),
+                unit: lit("weeks"),
+            };
+            assert!(execute_operation(&op, &resolver, 0).is_err());
+        }
+
+        #[test]
+        fn test_diff_invalid_date_errors() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateDiff {
+                from: lit("not-a-date"),
+                to: lit("2025-02-01"),
+                unit: lit("days"),
+            };
+            assert!(execute_operation(&op, &resolver, 0).is_err());
+        }
+
+        #[test]
+        fn test_diff_non_canonical_date_errors() {
+            // Non-zero-padded dates are rejected so EQUALS (string equality) and the
+            // ordering operators can never disagree on the same literal.
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateDiff {
+                from: lit("2025-1-1"),
+                to: lit("2025-02-01"),
+                unit: lit("days"),
+            };
+            assert!(execute_operation(&op, &resolver, 0).is_err());
+        }
+
+        #[test]
+        fn test_diff_with_referencedate_object() {
+            // `to` is the $referencedate object form, `from` a date string.
+            let resolver = TestResolver::new().with_var("referencedate", date_obj("2025-01-11"));
+            let op = ActionOperation::DateDiff {
+                from: lit("2025-01-01"),
+                to: var("referencedate"),
+                unit: lit("days"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(10)
+            );
+        }
+
+        #[test]
+        fn test_diff_in_days_across_leap_day() {
+            // 2024 is a leap year, so Feb has 29 days: Feb 28 → Mar 1 is 2 days.
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateDiff {
+                from: lit("2024-02-28"),
+                to: lit("2024-03-01"),
+                unit: lit("days"),
+            };
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), Value::Int(2));
+        }
+
+        #[test]
+        fn test_diff_in_years_feb29_birthday_non_leap_year() {
+            // A Feb 29 start reaches its anniversary on Feb 28 in a non-leap year
+            // (BW art. 1:2), so 2000-02-29 → 2025-02-28 is 25 whole years.
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateDiff {
+                from: lit("2000-02-29"),
+                to: lit("2025-02-28"),
+                unit: lit("years"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(25)
+            );
+        }
+
+        #[test]
+        fn test_diff_in_months_negative_when_to_before_from() {
+            // The sign convention holds for calendar units too, including the
+            // end-of-month clamp in the reverse direction.
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateDiff {
+                from: lit("2025-03-31"),
+                to: lit("2025-02-28"),
+                unit: lit("months"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(-1)
+            );
+        }
+
+        #[test]
+        fn test_diff_in_years_negative_when_to_before_from() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateDiff {
+                from: lit("2025-06-01"),
+                to: lit("2020-06-01"),
+                unit: lit("years"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(-5)
+            );
+        }
+
+        #[test]
+        fn test_tainted_date_operand_propagates() {
+            // RFC-012: an Untranslatable `from` flows through as a value.
+            let tainted = Value::Untranslatable {
+                article: "1".to_string(),
+                construct: "test".to_string(),
+            };
+            let resolver = TestResolver::new().with_var("tainted", tainted.clone());
+            let op = ActionOperation::DateDiff {
+                from: var("tainted"),
+                to: lit("2025-01-01"),
+                unit: lit("days"),
+            };
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), tainted);
+        }
+
+        #[test]
+        fn test_tainted_unit_propagates() {
+            // The schema allows `in: $variable`; when that variable resolves to
+            // an Untranslatable, the taint propagates instead of erroring.
+            let tainted = Value::Untranslatable {
+                article: "1".to_string(),
+                construct: "test".to_string(),
+            };
+            let resolver = TestResolver::new().with_var("tainted_unit", tainted.clone());
+            let op = ActionOperation::DateDiff {
+                from: lit("2025-01-01"),
+                to: lit("2025-01-11"),
+                unit: var("tainted_unit"),
+            };
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), tainted);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Canonical date-form Tests (RFC-021: keep EQUALS and ordering consistent)
+    // -------------------------------------------------------------------------
+
+    mod canonical_dates {
+        use super::*;
+
+        #[test]
+        fn test_non_canonical_date_rejected_by_comparison() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::GreaterThan {
+                subject: lit("2025-1-1"),
+                value: lit("2025-01-01"),
+            };
+            assert!(execute_operation(&op, &resolver, 0).is_err());
+        }
+
+        #[test]
+        fn test_equals_non_canonical_string_stays_structural() {
+            // The EQUALS date fallback does not fire when a side fails canonical
+            // parsing: "2025-1-1" against the object form of 2025-01-01 is simply
+            // unequal, without an error (RFC-021 implementation notes). Pins the
+            // one place where a non-canonical date is not rejected loudly.
+            let resolver = TestResolver::new().with_var("referencedate", date_obj("2025-01-01"));
+            let op = ActionOperation::Equals {
+                subject: lit("2025-1-1"),
+                value: var("referencedate"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Bool(false)
+            );
+        }
+
+        #[test]
+        fn test_equals_and_ordering_agree_on_canonical_dates() {
+            // For canonical (zero-padded) ISO dates, "a == b" iff neither "a > b" nor "a < b".
+            let resolver = TestResolver::new();
+            let a = "2025-03-01";
+            let b = "2025-03-01";
+
+            let eq = ActionOperation::Equals {
+                subject: lit(a),
+                value: lit(b),
+            };
+            let gt = ActionOperation::GreaterThan {
+                subject: lit(a),
+                value: lit(b),
+            };
+            let lt = ActionOperation::LessThan {
+                subject: lit(a),
+                value: lit(b),
+            };
+            assert_eq!(
+                execute_operation(&eq, &resolver, 0).unwrap(),
+                Value::Bool(true)
+            );
+            assert_eq!(
+                execute_operation(&gt, &resolver, 0).unwrap(),
+                Value::Bool(false)
+            );
+            assert_eq!(
+                execute_operation(&lt, &resolver, 0).unwrap(),
+                Value::Bool(false)
             );
         }
     }

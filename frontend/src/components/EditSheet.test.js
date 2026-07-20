@@ -428,7 +428,7 @@ describe('EditSheet', () => {
   describe('input — law combo-box flow', () => {
     const mockLaws = [
       { law_id: 'wet_basisregistratie_personen', name: null, display_name: 'Wet basisregistratie personen', source_id: 'local', source_name: 'Local' },
-      { law_id: 'zorgtoeslagwet', name: null, display_name: 'Wet op de zorgtoeslag', source_id: 'local', source_name: 'Local' },
+      { law_id: 'wet_op_de_zorgtoeslag', name: null, display_name: 'Wet op de zorgtoeslag', source_id: 'local', source_name: 'Local' },
       { law_id: 'kieswet', name: 'Kieswet', display_name: 'Kieswet', source_id: 'local', source_name: 'Local' },
     ];
     const mockOutputs = [
@@ -533,7 +533,7 @@ describe('EditSheet', () => {
       await vi.waitFor(() => expect(wrapper.vm.allLaws.length).toBeGreaterThan(0));
 
       const ids = wrapper.vm.allLaws.map((l) => l.law_id);
-      expect(ids).toEqual(['wet_basisregistratie_personen', 'zorgtoeslagwet', 'kieswet']);
+      expect(ids).toEqual(['wet_basisregistratie_personen', 'wet_op_de_zorgtoeslag', 'kieswet']);
     });
 
     it('save emits correct data after combo-box select flow', async () => {

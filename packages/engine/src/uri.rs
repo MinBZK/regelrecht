@@ -20,10 +20,10 @@
 //! assert_eq!(uri.field(), Some("is_verzekerd"));
 //!
 //! // Build a URI
-//! let uri = RegelrechtUriBuilder::new("zorgtoeslagwet", "bereken_zorgtoeslag")
+//! let uri = RegelrechtUriBuilder::new("wet_op_de_zorgtoeslag", "bereken_zorgtoeslag")
 //!     .with_field("heeft_recht_op_zorgtoeslag")
 //!     .build();
-//! assert_eq!(uri, "regelrecht://zorgtoeslagwet/bereken_zorgtoeslag#heeft_recht_op_zorgtoeslag");
+//! assert_eq!(uri, "regelrecht://wet_op_de_zorgtoeslag/bereken_zorgtoeslag#heeft_recht_op_zorgtoeslag");
 //!
 //! // Internal reference
 //! let uri = RegelrechtUri::parse("#standaardpremie").unwrap();
@@ -47,7 +47,7 @@ pub enum ReferenceType {
 pub struct RegelrechtUri {
     /// Original URI string
     uri: String,
-    /// Law identifier (e.g., "zorgtoeslagwet")
+    /// Law identifier (e.g., "wet_op_de_zorgtoeslag")
     law_id: String,
     /// Output name (e.g., "bereken_zorgtoeslag")
     output: String,
@@ -228,7 +228,7 @@ impl RegelrechtUriBuilder {
     /// Create a new URI builder
     ///
     /// # Arguments
-    /// * `law_id` - Law identifier (e.g., "zorgtoeslagwet")
+    /// * `law_id` - Law identifier (e.g., "wet_op_de_zorgtoeslag")
     /// * `output` - Output name (e.g., "bereken_zorgtoeslag")
     ///
     /// # Panics
@@ -353,10 +353,10 @@ mod tests {
         #[test]
         fn test_parse_regelrecht_uri_long_ids() {
             let uri = RegelrechtUri::parse(
-                "regelrecht://zorgtoeslagwet/bereken_zorgtoeslag#heeft_recht_op_zorgtoeslag",
+                "regelrecht://wet_op_de_zorgtoeslag/bereken_zorgtoeslag#heeft_recht_op_zorgtoeslag",
             )
             .unwrap();
-            assert_eq!(uri.law_id(), "zorgtoeslagwet");
+            assert_eq!(uri.law_id(), "wet_op_de_zorgtoeslag");
             assert_eq!(uri.output(), "bereken_zorgtoeslag");
             assert_eq!(uri.field(), Some("heeft_recht_op_zorgtoeslag"));
         }
@@ -375,10 +375,10 @@ mod tests {
 
         #[test]
         fn test_parse_file_path_without_field() {
-            let uri = RegelrechtUri::parse("regulation/nl/wet/zorgtoeslagwet").unwrap();
-            assert_eq!(uri.law_id(), "zorgtoeslagwet");
+            let uri = RegelrechtUri::parse("regulation/nl/wet/wet_op_de_zorgtoeslag").unwrap();
+            assert_eq!(uri.law_id(), "wet_op_de_zorgtoeslag");
             // Output defaults to law_id when no field
-            assert_eq!(uri.output(), "zorgtoeslagwet");
+            assert_eq!(uri.output(), "wet_op_de_zorgtoeslag");
             assert_eq!(uri.field(), None);
         }
 
@@ -439,8 +439,12 @@ mod tests {
 
         #[test]
         fn test_build_basic() {
-            let uri = RegelrechtUriBuilder::new("zorgtoeslagwet", "bereken_zorgtoeslag").build();
-            assert_eq!(uri, "regelrecht://zorgtoeslagwet/bereken_zorgtoeslag");
+            let uri =
+                RegelrechtUriBuilder::new("wet_op_de_zorgtoeslag", "bereken_zorgtoeslag").build();
+            assert_eq!(
+                uri,
+                "regelrecht://wet_op_de_zorgtoeslag/bereken_zorgtoeslag"
+            );
         }
 
         #[test]

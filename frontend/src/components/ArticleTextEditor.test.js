@@ -124,4 +124,28 @@ describe('ArticleTextEditor', () => {
     const md = editor.storage.markdown.getMarkdown();
     expect(md).toContain('second paragraph');
   });
+
+  it('clearHistory empties the undo stack so a discard cannot be stepped back into', async () => {
+    const wrapper = mountEditor({ modelValue: 'start' });
+    await nextTick();
+    await nextTick();
+
+    const editorContent = wrapper.findComponent({ name: 'EditorContent' });
+    if (!editorContent.exists() || !editorContent.props('editor')) {
+      return; // tiptap not available under happy-dom; skip.
+    }
+    const editor = editorContent.props('editor');
+
+    // An edit makes the history non-empty (undo available).
+    editor.commands.insertContent(' more');
+    await nextTick();
+    expect(editor.can().undo()).toBe(true);
+
+    // clearHistory rebuilds the state with a fresh (empty) history plugin, so a
+    // post-discard Ctrl+Z has nothing to step back into.
+    wrapper.vm.clearHistory();
+    await nextTick();
+    expect(editor.can().undo()).toBe(false);
+    expect(wrapper.vm.canUndo).toBe(false);
+  });
 });

@@ -15,7 +15,7 @@ const {
   setSort, setFilter, goToPage, refresh,
 } = useLawEntries();
 
-const { lastJobCreated } = useNewHarvestJob();
+const { lastJobCreated, open } = useNewHarvestJob();
 watch(lastJobCreated, () => refresh());
 </script>
 
@@ -30,9 +30,18 @@ watch(lastJobCreated, () => refresh());
     :order="order"
     :filters="filters"
     empty-text="No law entries"
+    empty-supporting-text="Start jobs to add laws"
     @sort="setSort"
     @filter-change="setFilter"
   >
+    <template #empty-action>
+      <nldd-button
+        slot="actions"
+        variant="primary"
+        text="New harvest job"
+        @click="open"
+      />
+    </template>
     <template #cell-status="{ row }">
       <StatusBadge :status="row.status || 'unknown'" />
     </template>

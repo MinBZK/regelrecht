@@ -34,7 +34,7 @@ machine_readable:
       legal_basis: artikel 4 Wet op de zorgtoeslag
 
   implements:                   # IoC fulfillment (optional)
-    - law: zorgtoeslagwet
+    - law: wet_op_de_zorgtoeslag
       article: '4'
       open_term: standaardpremie
       gelet_op: Gelet op artikel 4 van de Wet op de zorgtoeslag
@@ -330,7 +330,7 @@ machine_readable:
 ```yaml
 machine_readable:
   implements:
-    - law: zorgtoeslagwet
+    - law: wet_op_de_zorgtoeslag
       article: '4'
       open_term: standaardpremie
       gelet_op: Gelet op artikel 4 van de Wet op de zorgtoeslag

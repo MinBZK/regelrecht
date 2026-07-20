@@ -116,14 +116,14 @@ impl DashboardView {
 
         // Sort and take top items
         let mut laws_by_layer: Vec<(String, usize)> = layer_counts.into_iter().collect();
-        laws_by_layer.sort_by(|a, b| b.1.cmp(&a.1));
+        laws_by_layer.sort_by_key(|b| std::cmp::Reverse(b.1));
 
         let mut most_referenced: Vec<(String, usize)> = ref_counts.into_iter().collect();
-        most_referenced.sort_by(|a, b| b.1.cmp(&a.1));
+        most_referenced.sort_by_key(|b| std::cmp::Reverse(b.1));
         most_referenced.truncate(5);
 
         let mut most_implementing: Vec<(String, usize)> = impl_counts.into_iter().collect();
-        most_implementing.sort_by(|a, b| b.1.cmp(&a.1));
+        most_implementing.sort_by_key(|b| std::cmp::Reverse(b.1));
         most_implementing.truncate(5);
 
         self.stats = DashboardStats {

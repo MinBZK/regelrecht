@@ -301,7 +301,7 @@ const dateErrorId = useId();
       </template>
 
       <!-- Error -->
-      <div v-if="error && !running" class="sf-error">{{ error }}</div>
+      <nldd-banner v-if="error && !running" variant="critical" :text="error"></nldd-banner>
 
       <!-- Loading indicator -->
       <div v-if="running" class="sf-running">Uitvoeren...</div>
@@ -342,7 +342,7 @@ const dateErrorId = useId();
           v-for="(ds, i) in dataSources"
           :key="ds.sourceName"
           size="md"
-          type="button"
+          button
           :data-testid="`ds-row-${i}`"
           @click="selectedSource = i"
         >

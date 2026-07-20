@@ -1,8 +1,10 @@
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
 import { useDependencies } from '../composables/useDependencies.js';
-import { useScenarios } from '../composables/useScenarios.js';
+import { useScenarios, isScenarioMismatch } from '../composables/useScenarios.js';
 import { lawUrl } from '../composables/corpusUrls.js';
+import { apiFetchText } from '../lib/apiFetch.js';
+import { useLatest } from '../lib/useLatest.js';
 import { parseFeature } from '../gherkin/parser.js';
 import { mapFeatureToForm, getEffectiveSetup, formStateToGherkin, syncEditedValues } from '../gherkin/formMapper.js';
 import { matchStatus, humanize } from '../utils/outputFormat.js';
@@ -49,6 +51,23 @@ const {
   selectScenario: selectScenarioFile,
   saveScenario,
 } = useScenarios(lawIdRef, trajectRefRef);
+
+// Mismatch warning: the selected scenario file declares execution targets
+// that do not include the opened law. Running it would evaluate that other
+// law — surface this instead of letting the run fail confusingly.
+const selectedScenarioEntry = computed(
+  () => scenarioFiles.value.find((sf) => sf.filename === selectedScenarioFile.value) || null,
+);
+const selectedScenarioMismatchTargets = computed(() =>
+  selectedScenarioEntry.value && isScenarioMismatch(selectedScenarioEntry.value, props.lawId)
+    ? selectedScenarioEntry.value.target_law_ids
+    : null,
+);
+const mismatchSupportingText = computed(() =>
+  selectedScenarioMismatchTargets.value
+    ? `Dit scenario evalueert '${selectedScenarioMismatchTargets.value.join("', '")}', niet deze wet ('${props.lawId}'). Uitvoeren gebruikt die andere wet.`
+    : '',
+);
 
 const formState = ref(null);
 const saveSuccess = ref(false);
@@ -143,9 +162,9 @@ async function fetchLawYaml(lawId) {
     yamlCacheTrajectRef = props.trajectRef;
   }
   if (yamlCache[lawId]) return yamlCache[lawId];
-  const res = await fetch(lawUrl(props.trajectRef, lawId));
-  if (!res.ok) throw new Error(`Failed to fetch law '${lawId}': ${res.status}`);
-  const text = await res.text();
+  const text = await apiFetchText(lawUrl(props.trajectRef, lawId), {
+    errorMessage: (status) => `Failed to fetch law '${lawId}': ${status}`,
+  });
   yamlCache[lawId] = text;
   return text;
 }
@@ -154,7 +173,7 @@ async function fetchLawYaml(lawId) {
 const depsReady = ref(false);
 
 // --- Load dependencies when law YAML changes ---
-let watchVersion = 0;
+const claimDependencyLoad = useLatest();
 
 // Debounced mirror of props.lawYaml. While the user types in the text or
 // machine pane, `lawYaml` changes on every keystroke (currentLawYaml re-dumps
@@ -188,11 +207,11 @@ onBeforeUnmount(() => clearTimeout(lawYamlDebounce));
 async function runDependencyLoad() {
   const lawYaml = debouncedLawYaml.value;
   if (!lawYaml || !props.ready || !props.engine) return;
-  const version = ++watchVersion;
+  const isCurrent = claimDependencyLoad();
   depsReady.value = false;
 
   const mainLawId = await loadAllDependencies(lawYaml, props.engine, fetchLawYaml);
-  if (version !== watchVersion) return;
+  if (!isCurrent()) return;
 
   // Also load dependencies from scenario background + per-scenario steps
   if (formState.value) {
@@ -213,7 +232,7 @@ async function runDependencyLoad() {
     }
   }
 
-  if (version === watchVersion) {
+  if (isCurrent()) {
     // The explicitly-declared deps are loaded — the panel is usable now, so
     // mark ready and let scenarios auto-execute. Implementing regulations
     // (IoC) load in the background: their corpus scan can be slow and is
@@ -233,7 +252,7 @@ async function runDependencyLoad() {
 
 // `debouncedLawYaml`, `props.ready` and `formState` settle on separate ticks
 // during the initial load. Without coalescing, each settle fires this watch
-// and starts (then abandons, via `watchVersion`) a full dependency scan — up
+// and starts (then abandons, via the latest-guard) a full dependency scan — up
 // to four overlapping corpus-wide reloads per open. A short debounce collapses
 // the burst into a single run after the inputs have settled.
 let depsScheduleTimer = null;
@@ -293,20 +312,20 @@ watch(formState, () => {
 });
 
 // --- Auto-execute all scenarios sequentially when deps are ready ---
-let autoExecuteVersion = 0;
+const claimAutoExecute = useLatest();
 
 watch(
   [depsReady, formState],
   async ([ready, state]) => {
     if (!ready || !state || !state.scenarios?.length) return;
-    const version = ++autoExecuteVersion;
+    const isCurrent = claimAutoExecute();
 
     // Wait one tick so ScenarioForm refs are mounted
     await nextTick();
-    if (version !== autoExecuteVersion) return;
+    if (!isCurrent()) return;
 
     for (let i = 0; i < state.scenarios.length; i++) {
-      if (version !== autoExecuteVersion) return;
+      if (!isCurrent()) return;
       const formRef = scenarioRefs.value[i];
       if (formRef?.execute) {
         formRef.execute();
@@ -464,29 +483,32 @@ defineExpose({ save: onSave });
 </script>
 
 <template>
-  <!-- Overview -->
-  <nldd-simple-section>
-      <div v-if="scenariosLoading" class="sb-loading">Scenario's laden...</div>
-      <nldd-dropdown v-else-if="scenarioFiles.length > 1" size="md">
+  <!-- Overview. Wrapped in a positioned container so the loading overlay can
+       cover the whole pane. -->
+  <div class="sb-pane">
+    <nldd-simple-section>
+      <nldd-dropdown v-if="scenarioFiles.length > 1" size="md">
         <select
           :value="selectedScenarioFile"
           @change="onScenarioFileSelect"
         >
           <option v-for="sf in scenarioFiles" :key="sf.filename" :value="sf.filename">
-            {{ sf.filename }}
+            {{ isScenarioMismatch(sf, lawId) ? '⚠ ' + sf.filename : sf.filename }}
           </option>
         </select>
       </nldd-dropdown>
 
+      <nldd-inline-dialog
+        v-if="selectedScenarioMismatchTargets"
+        variant="alert"
+        text="Scenario hoort bij een andere wet"
+        :supporting-text="mismatchSupportingText"
+      ></nldd-inline-dialog>
+
       <nldd-inline-dialog v-if="saveSuccess" text="Opgeslagen"></nldd-inline-dialog>
       <nldd-inline-dialog v-if="saveError" variant="alert" text="Opslaan mislukt" :supporting-text="saveError.message || String(saveError)"></nldd-inline-dialog>
 
-      <template v-if="depsLoading">
-        <nldd-spacer size="8"></nldd-spacer>
-        <div class="sb-section-title">Afhankelijkheden laden</div>
-        <div class="sb-loading">{{ depsProgress }}</div>
-      </template>
-      <nldd-inline-dialog v-else-if="depsError" variant="alert" text="Fout" :supporting-text="String(depsError)"></nldd-inline-dialog>
+      <nldd-inline-dialog v-if="depsError" variant="alert" text="Fout" :supporting-text="String(depsError)"></nldd-inline-dialog>
 
       <template v-if="formState">
         <nldd-collection layout="grid" item-width="320px">
@@ -541,6 +563,17 @@ defineExpose({ save: onSave });
         text="Geen scenario's beschikbaar voor dit artikel."
       ></nldd-inline-dialog>
     </nldd-simple-section>
+    <!-- Full-pane loading overlay with a frosted backdrop, shown while the
+         scenario files or their dependency laws ("X/Y wetten geladen") load.
+         Default (anti-flash) timing keeps quick loads from flashing. -->
+    <nldd-activity-indicator
+      v-if="scenariosLoading || depsLoading"
+      backdrop
+      show-text
+      :text="depsLoading ? depsProgress : 'Scenario\'s laden'"
+      style="position: absolute; inset: 0;"
+    ></nldd-activity-indicator>
+  </div>
 
   <!-- Edit scenario in a side sheet. All ScenarioForm instances stay
        mounted so auto-execute can cache results for the overview cards. -->
@@ -619,17 +652,16 @@ defineExpose({ save: onSave });
 </template>
 
 <style scoped>
-.sb-section-title {
-  font-weight: 600;
-  font-size: 13px;
-  margin-bottom: 4px;
-  color: var(--semantics-text-color-primary, #1C2029);
-}
-
-.sb-loading {
-  font-size: 12px;
-  color: var(--semantics-text-color-secondary, #666);
-  font-style: italic;
+/* Positioning context for the full-pane loading overlay. min-height fills the
+   pane's scroll viewport so the backdrop covers the whole area, not just the
+   (possibly empty) content. Flex column so the simple-section grows to the full
+   height — its empty-state inline-dialog then self-centers like elsewhere,
+   instead of sitting at the top. The absolute overlay is unaffected. */
+.sb-pane {
+  display: flex;
+  position: relative;
+  min-height: 100%;
+  flex-direction: column;
 }
 
 /* Card collection */

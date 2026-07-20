@@ -22,7 +22,7 @@ The YAML specification *is* the law in executable form. Every article in the fil
 Each Dutch law is stored as a YAML file. The file mirrors the legal structure:
 
 ```yaml
-$id: zorgtoeslagwet
+$id: wet_op_de_zorgtoeslag
 name: Wet op de zorgtoeslag
 regulatory_layer: WET
 valid_from: '2025-01-01'
@@ -134,12 +134,10 @@ On the data side, 342 municipalities, 12 provinces, and 21 water boards all prod
 
 ## Traceability
 
-Every execution produces a trace tree. The trace shows which articles were applied, which inputs were fetched and from where, which operations ran, and what each step produced. Think of it as an explanation of the legal reasoning in structured form.
-
-Traces show cross-law references ("income came from Awir article 8"), IoC resolution ("standard premium came from Regeling standaardpremie"), and organizational boundaries ("income accepted from Tax Authority"). Citizens can request their trace from each contributing organization.
+Every execution can produce a trace tree showing which articles applied, which inputs were fetched and from where, which operations ran, and what each step produced: the legal reasoning behind a number, in structured form. A trace makes a cross-law chain, an IoC resolution, and the Awb hooks that fired on a *beschikking* all visible in one tree. See [Traceability](./traceability) for how to read one, with a real worked example.
 
 ## Temporal versioning
 
 Laws change over time. The standard premium was different in 2024 than in 2025. A calculation for January 2025 must use the rules and values in effect on that date. The engine selects the law version where `valid_from <= reference_date`.
 
-The corpus contains both `regeling_standaardpremie/2024-01-01.yaml` and `regeling_standaardpremie/2025-01-01.yaml`. A calculation with `reference_date: 2024-06-15` automatically uses the 2024 value.
+The corpus contains both `regeling_standaardpremie/2024-01-01.yaml` and `regeling_standaardpremie/2025-01-01.yaml`. A calculation with `reference_date: 2024-06-15` automatically uses the 2024 value. See [Temporal Validity and Dates](./temporal-and-dates) for how a law expires with `valid_to`, what happens to a reference into an ended law, and how dates are compared and subtracted inside the rules.

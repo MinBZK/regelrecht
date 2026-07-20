@@ -33,7 +33,7 @@ Feature: Zorgtoeslag eligibility
       | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
       | 999993653 | null           | null            | null     | null                 |
     Given parameter "bsn" is "999993653"
-    When I evaluate "heeft_recht_op_zorgtoeslag" of "zorgtoeslagwet"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
     Then output "hoogte_zorgtoeslag" equals 209692
@@ -64,7 +64,7 @@ Feature: Zorgtoeslag eligibility
       | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
       | 999993653 | null           | null            | null     | null                 |
     Given parameter "bsn" is "999993653"
-    When I evaluate "heeft_recht_op_zorgtoeslag" of "zorgtoeslagwet"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is false
 
@@ -91,7 +91,7 @@ Feature: Zorgtoeslag eligibility
       | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
       | 999993653 | null           | null            | null     | null                 |
     Given parameter "bsn" is "999993653"
-    When I evaluate "heeft_recht_op_zorgtoeslag" of "zorgtoeslagwet"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
     Then output "hoogte_zorgtoeslag" equals 210821
@@ -125,7 +125,7 @@ Feature: Zorgtoeslag eligibility
       | bsn       | aantal_studerend_gezin |
       | 999993653 | 0                      |
     Given parameter "bsn" is "999993653"
-    When I evaluate "heeft_recht_op_zorgtoeslag" of "zorgtoeslagwet"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
     Then output "hoogte_zorgtoeslag" equals 210916
@@ -159,7 +159,7 @@ Feature: Zorgtoeslag eligibility
       | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
       | 999993653 | null           | null            | null     | null                 |
     Given parameter "bsn" is "999993653"
-    When I evaluate "heeft_recht_op_zorgtoeslag" of "zorgtoeslagwet"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
     Then output "hoogte_zorgtoeslag" equals 272845
@@ -189,7 +189,7 @@ Feature: Zorgtoeslag eligibility
       | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
       | 999993653 | null           | null            | null     | null                 |
     Given parameter "bsn" is "999993653"
-    When I evaluate "heeft_recht_op_zorgtoeslag" of "zorgtoeslagwet"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
     Then output "hoogte_zorgtoeslag" equals 173280
@@ -217,7 +217,7 @@ Feature: Zorgtoeslag eligibility
       | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
       | 999993653 | null           | null            | null     | null                 |
     Given parameter "bsn" is "999993653"
-    When I evaluate "heeft_recht_op_zorgtoeslag" of "zorgtoeslagwet"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
     Then output "hoogte_zorgtoeslag" equals 210726
@@ -247,7 +247,7 @@ Feature: Zorgtoeslag eligibility
       | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
       | 999993653 | null           | null            | GGZ      | TBS                  |
     Given parameter "bsn" is "999993653"
-    When I evaluate "heeft_recht_op_zorgtoeslag" of "zorgtoeslagwet"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
     Then output "hoogte_zorgtoeslag" equals 210726

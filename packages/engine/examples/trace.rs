@@ -4,7 +4,7 @@
 //!   cargo run --example trace -- <law_id> <output_name> <date> [key=value ...]
 //!
 //! Example:
-//!   cargo run --example trace -- zorgtoeslagwet hoogte_zorgtoeslag 2025-01-01 bsn=999993653
+//!   cargo run --example trace -- wet_op_de_zorgtoeslag hoogte_zorgtoeslag 2025-01-01 bsn=999993653
 
 use regelrecht_engine::{LawExecutionService, Value};
 use std::collections::BTreeMap;
@@ -15,7 +15,9 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.len() < 3 {
         eprintln!("Usage: trace <law_id> <output_name> <date> [key=value ...]");
-        eprintln!("Example: trace zorgtoeslagwet hoogte_zorgtoeslag 2025-01-01 bsn=999993653");
+        eprintln!(
+            "Example: trace wet_op_de_zorgtoeslag hoogte_zorgtoeslag 2025-01-01 bsn=999993653"
+        );
         std::process::exit(1);
     }
 

@@ -43,7 +43,7 @@ This says: "I need a value called `standaardpremie`. The minister should set it 
 # valid_from: 2025-01-01
 machine_readable:
   implements:
-    - law: zorgtoeslagwet
+    - law: wet_op_de_zorgtoeslag
       article: '4'
       open_term: standaardpremie
       gelet_op: Gelet op artikel 4 van de Wet op de zorgtoeslag
@@ -128,4 +128,5 @@ Cross-law references and IoC both let laws use values from other laws, but they 
 
 - [Cross-Law References](./cross-law-references) - the other pattern for inter-law values
 - [Hooks and Reactive Execution](./hooks-and-reactive-execution) - yet another pattern: laws that fire automatically
+- [Traceability](./traceability) - how an open-term delegation appears in an execution trace
 - [RFC-003: Inversion of Control](/rfcs/rfc-003) - the full design specification

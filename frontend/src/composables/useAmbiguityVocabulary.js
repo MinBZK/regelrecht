@@ -10,6 +10,7 @@
  */
 import { ref } from 'vue';
 import yaml from 'js-yaml';
+import { apiFetchText } from '../lib/apiFetch.js';
 
 // Session cache: the file does not change while the editor is open.
 let cached = null;
@@ -24,9 +25,10 @@ async function load() {
     return cached;
   }
   try {
-    const res = await fetch('/data/annotations/_vocabulary/ambiguity.yaml');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const doc = yaml.load(await res.text());
+    const text = await apiFetchText('/data/annotations/_vocabulary/ambiguity.yaml', {
+      errorMessage: (status) => `HTTP ${status}`,
+    });
+    const doc = yaml.load(text);
     const list = Array.isArray(doc?.ambiguity) ? doc.ambiguity : [];
     cached = list;
     items.value = list;

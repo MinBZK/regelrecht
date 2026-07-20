@@ -38,10 +38,10 @@ test.describe('Complex actions', () => {
   test('add action with AND operation containing comparison conditions', async ({ page }) => {
     const fixtureYaml = createFixtureWithMetadata();
 
-    await page.route('**/api/corpus/laws/zorgtoeslagwet', route =>
+    await page.route('**/api/corpus/laws/wet_op_de_zorgtoeslag', route =>
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fixtureYaml })
     );
-    await page.goto('/editor/zorgtoeslagwet');
+    await page.goto('/editor/wet_op_de_zorgtoeslag');
     await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
 
     await selectArticle(page, '2');
@@ -130,10 +130,10 @@ test.describe('Complex actions', () => {
   test('add nested operation via button and verify in YAML', async ({ page }) => {
     const fixtureYaml = createFixtureWithMetadata();
 
-    await page.route('**/api/corpus/laws/zorgtoeslagwet', route =>
+    await page.route('**/api/corpus/laws/wet_op_de_zorgtoeslag', route =>
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fixtureYaml })
     );
-    await page.goto('/editor/zorgtoeslagwet');
+    await page.goto('/editor/wet_op_de_zorgtoeslag');
     await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
 
     await selectArticle(page, '2');

@@ -12,6 +12,7 @@
  * takes over.
  */
 import { ref, readonly, computed, watchEffect } from 'vue';
+import { apiFetch, apiFetchJson, ApiError } from '../lib/apiFetch.js';
 
 const VALID_THEMES = ['auto', 'light', 'dark'];
 
@@ -64,9 +65,9 @@ async function loadSettings() {
   if (fetchPromise) return fetchPromise;
   fetchPromise = (async () => {
     try {
-      const res = await fetch('/api/user/settings');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await apiFetchJson('/api/user/settings', {
+        errorMessage: (status) => `HTTP ${status}`,
+      });
       // Drop server-supplied values that don't pass client-side validation
       // before they reach `settings.value`. The backend validates writes,
       // but a stale row predating tightened validation could still produce
@@ -108,20 +109,21 @@ async function setSetting(key, value) {
   if (key === 'theme') writeCachedTheme(value);
 
   try {
-    const res = await fetch(`/api/user/settings/${encodeURIComponent(key)}`, {
+    await apiFetch(`/api/user/settings/${encodeURIComponent(key)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ value }),
     });
-    if (!res.ok) {
-      // 401 (anonymous), 503 (no DB), 5xx all collapse to "local-only mode":
-      // keep the value in settings.value + localStorage so the picker remains
-      // functional. Do not revert — the documented contract is that anonymous
-      // users still get a working picker via the localStorage cache.
-      console.warn(`User setting PUT not persisted (HTTP ${res.status})`);
-    }
   } catch (e) {
-    console.warn('User setting PUT failed (network error):', e.message);
+    // 401 (anonymous), 503 (no DB), 5xx all collapse to "local-only mode":
+    // keep the value in settings.value + localStorage so the picker remains
+    // functional. Do not revert — the documented contract is that anonymous
+    // users still get a working picker via the localStorage cache.
+    if (e instanceof ApiError) {
+      console.warn(`User setting PUT not persisted (HTTP ${e.status})`);
+    } else {
+      console.warn('User setting PUT failed (network error):', e.message);
+    }
   } finally {
     // Hold the dirty guard until the initial GET has merged. If the PUT
     // resolves before the GET, dropping the guard here would let the GET's
