@@ -31,7 +31,7 @@ import { useLatest } from '../lib/useLatest.js';
 
 const listTranslations = { 'components.list.search-placeholder-text': 'Zoek een wet of BWB-id…' };
 
-const emit = defineEmits(['promoted', 'harvest-requested']);
+const emit = defineEmits(['promoted', 'harvest-requested', 'upload-requested']);
 
 const { activeTrajectRef } = useTrajects();
 const { results: bwbResults, loading: bwbLoading, search: searchBwb, clear: clearBwb } = useBwbSearch();
@@ -193,6 +193,16 @@ function close() {
   // `?.` op hide zelf: in tests (happy-dom) is het custom element niet
   // geüpgraded en bestaat de methode niet.
   popoverRef.value?.hide?.();
+}
+
+// Derde route naast promoten en harvest: een PDF/Word-document uploaden dat
+// de conversie-naar-wet-keten start (voorheen een apart item in het
+// plus-menu; dat menu is vervallen — de plus opent nu direct deze zoeker).
+// De file-picker zelf leeft in LibraryView; eerst sluiten, anders opent de
+// picker achter het popover.
+function requestUpload() {
+  close();
+  emit('upload-requested');
 }
 
 function onListInput(e) {
@@ -371,6 +381,20 @@ defineExpose({ show });
           ></nldd-inline-dialog>
         </div>
       </nldd-list>
+
+      <!-- Alternatieve route: staat de wet nergens (of alleen op papier),
+           upload dan een PDF/Word-document — de conversie-naar-wet-keten
+           levert het resultaat als review-taak op. Buiten de listbox zodat
+           de empty-states van de zoeker blijven werken. -->
+      <nldd-spacer size="8"></nldd-spacer>
+      <nldd-button
+        size="md"
+        variant="secondary"
+        start-icon="upload-to-cloud"
+        text="PDF of DOCX uploaden…"
+        data-testid="add-law-upload"
+        @click="requestUpload"
+      ></nldd-button>
     </nldd-container>
   </nldd-popover>
 </template>

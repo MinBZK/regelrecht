@@ -1480,29 +1480,24 @@ watch(activeTrajectRef, () => {
                       </nldd-list-item>
                     </nldd-list>
                   </template>
-                  <!-- Wet toevoegen (alleen in een traject): één "+"-menu met
-                       twee routes — zoeken in het centrale corpus (promoten,
-                       met harvest-fallback via het taken-mechanisme) of een
-                       PDF/Word-document uploaden dat de conversie-naar-wet-
-                       keten start. Zelfde menu-patroon als de werkdocument-
-                       toevoegknop. -->
+                  <!-- Wet toevoegen (alleen in een traject): de "+" opent
+                       DIRECT de "Wet toevoegen"-zoeker (AddLawPopover) —
+                       zonder menu-tussenstap. De tweede route (PDF/Word-
+                       document uploaden → conversie-naar-wet-keten) zit ín
+                       die popover als actie onder de zoekresultaten. -->
                   <template v-if="activeTrajectRef">
                     <nldd-spacer size="24"></nldd-spacer>
                     <nldd-toolbar label="Wetacties">
                       <nldd-toolbar-item slot="start">
+                        <!-- Géén `expandable`: dat is de disclosure-chevron
+                             voor menu/popover-knoppen; dit is een directe
+                             actie. De tekst verschijnt als tooltip. -->
                         <nldd-icon-button
                           id="law-add-btn"
                           icon="plus-small"
                           text="Wet toevoegen"
-                          expandable
-                          tooltip-timing="never"
-                          popup-type="menu"
-                          popovertarget="law-add-menu"
+                          @click="openAddLawSearch"
                         ></nldd-icon-button>
-                        <nldd-menu id="law-add-menu" anchor="law-add-btn">
-                          <nldd-menu-item icon="search" text="Zoeken in het centrale corpus…" @select="openAddLawSearch"></nldd-menu-item>
-                          <nldd-menu-item icon="upload-to-cloud" text="PDF of DOCX uploaden…" @select="onLawUpload"></nldd-menu-item>
-                        </nldd-menu>
                       </nldd-toolbar-item>
                     </nldd-toolbar>
                     <input ref="lawFileInput" type="file" accept=".pdf,.doc,.docx" hidden @change="onLawFileChange" />
@@ -1861,6 +1856,7 @@ watch(activeTrajectRef, () => {
       ref="addLawPopoverRef"
       @promoted="onLawPromoted"
       @harvest-requested="onTrajectHarvestRequested"
+      @upload-requested="onLawUpload"
     />
   </Teleport>
   <!-- Unsaved-changes guard for in-view werkdocument navigation. -->

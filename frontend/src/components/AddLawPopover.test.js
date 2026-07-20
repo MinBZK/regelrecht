@@ -211,4 +211,19 @@ describe('AddLawPopover', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].get('nldd-text-cell').attributes('text')).toBe('Voorbeeldwet extern');
   });
+
+  it('biedt de document-upload als route en emit "upload-requested" (popover sluit eerst)', async () => {
+    // De uploadoptie zat eerst in het plus-menu naast de zoeker; dat menu is
+    // vervallen (de plus opent direct deze popover), dus de route leeft nu
+    // hier. De file-picker zelf zit in LibraryView — de popover moet vóór de
+    // emit sluiten zodat de picker niet achter het popover opent.
+    const wrapper = mount(AddLawPopover);
+    const hide = vi.fn();
+    wrapper.vm.$refs.popoverRef.hide = hide;
+
+    await wrapper.get('[data-testid="add-law-upload"]').trigger('click');
+
+    expect(hide).toHaveBeenCalledTimes(1);
+    expect(wrapper.emitted('upload-requested')).toEqual([[]]);
+  });
 });
