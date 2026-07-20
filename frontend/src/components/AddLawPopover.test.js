@@ -195,4 +195,20 @@ describe('AddLawPopover', () => {
     await searchFor(wrapper, 'wet op het voortgezet onderwijs');
     expect(wrapper.vm.bwbIdQuery).toBe(null);
   });
+
+  it('toont één rij wanneer de externe zoeker het getypte BWB-id ook vindt', async () => {
+    stubFetch({
+      searchLaws: [],
+      bwbResults: [{ bwb_id: 'BWBR0002399', title: 'Voorbeeldwet extern', type: 'wet' }],
+    });
+    const wrapper = mount(AddLawPopover);
+    await searchFor(wrapper, 'BWBR0002399');
+    // Debounce van useBwbSearch (400ms) na de corpus-respons.
+    await new Promise((r) => setTimeout(r, 450));
+    await nextTick();
+
+    const rows = wrapper.findAll('nldd-list-item[data-bwb-id="BWBR0002399"]');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].get('nldd-text-cell').attributes('text')).toBe('Voorbeeldwet extern');
+  });
 });

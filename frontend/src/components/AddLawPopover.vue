@@ -80,6 +80,16 @@ const bwbIdQuery = computed(() => {
   return /^BWB[A-Z0-9]{3,17}$/.test(term) ? term : null;
 });
 
+// De directe rij alleen tonen zolang de externe zoeker hetzelfde id niet al
+// als resultaat (met titel) toont — anders staan er twee rijen voor dezelfde
+// wet met dezelfde harvest-knop.
+const showDirectBwbRow = computed(
+  () =>
+    bwbIdQuery.value &&
+    sortedLaws.value.length === 0 &&
+    !bwbResults.value.some((r) => r.bwb_id === bwbIdQuery.value),
+);
+
 const claimSearch = useLatest();
 let debounceTimer = null;
 
@@ -297,13 +307,16 @@ defineExpose({ show });
           </nldd-cell>
         </nldd-list-item>
 
-        <!-- Direct getypt BWB-id: traject-harvest zonder externe zoeker. -->
-        <nldd-list-item v-if="bwbIdQuery && sortedLaws.length === 0" size="md" :data-bwb-id="bwbIdQuery">
+        <!-- Direct getypt BWB-id: traject-harvest zonder externe zoeker.
+             De corpus-zoeker matcht niet op BWB-id, dus "0 treffers" bewijst
+             hier niet dat de wet buiten het corpus valt — geen "niet in het
+             centrale corpus"-claim in de begeleidende tekst. -->
+        <nldd-list-item v-if="showDirectBwbRow" size="md" :data-bwb-id="bwbIdQuery">
           <nldd-icon-cell size="20"><nldd-icon name="harvest"></nldd-icon></nldd-icon-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-text-cell
             :text="bwbIdQuery"
-            :supporting-text="harvestStatusText(bwbIdQuery, 'Niet in het centrale corpus — haal op uit wetten.overheid.nl')"
+            :supporting-text="harvestStatusText(bwbIdQuery, 'Haal dit BWB-id op uit wetten.overheid.nl')"
           ></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-cell>

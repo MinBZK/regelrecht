@@ -273,6 +273,51 @@ async fn promote_refuses_a_law_already_in_the_traject_repo() {
 }
 
 #[tokio::test]
+async fn promote_keeps_a_traject_edited_scenario_of_a_federated_law() {
+    // `save_scenario` routeert scenario's van gefedereerde wetten naar de
+    // writable-own zonder dat er een wet-YAML in de traject-repo staat. Zo'n
+    // traject-edit mag een promote niet stilletjes overschrijven: de
+    // traject-versie wint, de wet-YAML's worden gewoon gekopieerd.
+    let db = TestDb::new().await;
+    let central = tempfile::tempdir().unwrap();
+    write_central_law(central.path());
+    let state = empty_state(db.pool.clone());
+
+    let (owner, sub) = seed_account(&db.pool, "alice@test.local").await;
+    let traject_dir = tempfile::tempdir().unwrap();
+    let scenario_dir = traject_dir
+        .path()
+        .join("wet")
+        .join(LAW_ID)
+        .join("scenarios");
+    std::fs::create_dir_all(&scenario_dir).unwrap();
+    std::fs::write(
+        scenario_dir.join("basis.feature"),
+        "Feature: basis (traject-edit)\n",
+    )
+    .unwrap();
+    let traject_id = seeded_traject(&db.pool, owner, traject_dir.path(), central.path()).await;
+    let tref = traject_ref(traject_id);
+
+    let response = promote(state, session_for(&sub).await, &tref, LAW_ID)
+        .await
+        .expect("promote must succeed despite the scenario edit");
+    assert_eq!(
+        response.0.copied_files, 2,
+        "2 versies; scenario overgeslagen"
+    );
+
+    let base = traject_dir.path().join("wet").join(LAW_ID);
+    assert!(base.join("2025-01-01.yaml").exists());
+    assert!(base.join("2024-01-01.yaml").exists());
+    assert_eq!(
+        std::fs::read_to_string(base.join("scenarios").join("basis.feature")).unwrap(),
+        "Feature: basis (traject-edit)\n",
+        "traject-edit mag niet overschreven worden"
+    );
+}
+
+#[tokio::test]
 async fn promote_404s_for_a_law_missing_from_the_central_corpus() {
     let db = TestDb::new().await;
     let central = tempfile::tempdir().unwrap();

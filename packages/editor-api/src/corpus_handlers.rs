@@ -3252,32 +3252,49 @@ pub async fn promote_corpus_law(
     // niet in de traject-repo).
     let backend = resolve_traject_documents_writer(&traject).await?;
 
-    // Geen dubbele bestanden: bestaat er al een wet-versiebestand op het
-    // doelpad (bijv. via een eerdere save_law op de gefedereerde wet, of een
-    // commit die de index nog niet zag), dan weigeren we de hele promote.
+    // Geen dubbele/overschreven bestanden, per bestandssoort:
+    // - Wet-versie-YAML al op het doelpad (bijv. via een eerdere save_law op
+    //   de gefedereerde wet, of een commit die de index nog niet zag) → 409
+    //   voor de hele promote.
+    // - Scenario-file al op het doelpad: dat is een traject-edit —
+    //   `save_scenario` routeert scenario's van gefedereerde wetten naar de
+    //   writable-own zónder dat er een wet-YAML in de traject-repo staat.
+    //   Die edit mag een promote niet stilletjes overschrijven; de
+    //   traject-versie wint (zelfde "eigen repo boven seed"-regel als
+    //   source_priority 0) en de rest van de wet-map wordt gewoon gekopieerd.
+    let mut to_write: Vec<&PromoteFile> = Vec::with_capacity(files.len());
     for file in &files {
+        let exists = backend
+            .read_file(&file.relative_path)
+            .await
+            .map_err(corpus_write_error("law"))?
+            .is_some();
+        if !exists {
+            to_write.push(file);
+            continue;
+        }
         if file
             .relative_path
             .extension()
             .is_some_and(|ext| ext == "yaml")
-            && backend
-                .read_file(&file.relative_path)
-                .await
-                .map_err(corpus_write_error("law"))?
-                .is_some()
         {
             return Err((
                 StatusCode::CONFLICT,
                 "Deze wet staat al (deels) in dit traject.".to_string(),
             ));
         }
+        tracing::info!(
+            law_id = %law_id,
+            path = %file.relative_path.display(),
+            "promote: bestand bestaat al in de traject-repo (traject-edit wint), overslaan"
+        );
     }
 
     let token_override =
         github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**backend)
             .await?;
 
-    for file in &files {
+    for file in &to_write {
         backend
             .write_file(&file.relative_path, &file.content)
             .await
@@ -3309,7 +3326,7 @@ pub async fn promote_corpus_law(
 
     Ok(Json(PromoteResponse {
         law_id,
-        copied_files: files.len(),
+        copied_files: to_write.len(),
         pr: outcome.pr.map(|pr| SavePrInfo {
             url: pr.html_url,
             number: pr.number,
