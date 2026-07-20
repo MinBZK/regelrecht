@@ -11,9 +11,15 @@ import DocumentList from './components/DocumentList.vue';
 import DocumentEditor from './components/DocumentEditor.vue';
 import TrajectDetailsPane from './components/TrajectDetailsPane.vue';
 import TrajectMembersPane from './components/TrajectMembersPane.vue';
-import TasksPane from './components/TasksPane.vue';
+import TasksCategoriesPane from './components/TasksCategoriesPane.vue';
+import TasksListPane from './components/TasksListPane.vue';
 import TasksSidebarItem from './components/TasksSidebarItem.vue';
 import { useAuth } from './composables/useAuth.js';
+import { useCorpusLaws } from './composables/useCorpusLaws.js';
+// useTaskActions, niet useTasks: LibraryView heeft alleen de refresh nodig na
+// een geannuleerde job en mag daarvoor niet de 30s-poll aanzetten (die hoort
+// bij de taken-componenten, en anonieme bezoekers pollen nooit).
+import { useTaskActions } from './composables/useTasks.js';
 import { lawFetchInit } from './composables/useLaw.js';
 import { useTrajects, refreshTrajects } from './composables/useTrajects.js';
 import { lawsListUrl, lawUrl, changedLawsUrl } from './composables/corpusUrls.js';
@@ -61,6 +67,13 @@ const { activeTrajectRef, activeTraject } = useTrajects();
 const sidebarTitle = computed(() =>
   activeTrajectRef.value ? activeTraject.value?.name || 'Traject…' : 'Corpus juris',
 );
+// Laadtekst die aansluit op wat er stráks in de kop staat: binnen een traject
+// laden we dat traject, daarbuiten de globale corpus. Gekoppeld aan
+// activeTrajectRef (niet aan ingelogd-zijn): ingelogd zonder gekozen traject is
+// nog steeds de Corpus juris-scope, en de kop zegt dat ook.
+const sidebarLoadingText = computed(() =>
+  activeTrajectRef.value ? 'Traject laden' : 'Corpus juris laden',
+);
 
 // "Account aanvragen" affordance for the favoriet login popover (mirrors the
 // editor/bewerken login popover in AppShell): to the public account-request
@@ -83,6 +96,7 @@ function goToAccountRequest() {
 // so it can reserve converting target names against create/rename collisions.
 const docJobs = useTrajectDocumentJobs(activeTrajectRef);
 const { jobs: conversionJobs, cancelJob: cancelConversionJob } = docJobs;
+const { refresh: refreshTasks } = useTaskActions();
 
 const docsMgr = useDocumentsManager(
   activeTrajectRef,
@@ -159,6 +173,12 @@ watch(conversionJobs, async (now, prev) => {
 // the watcher above corrects it once the jobs arrive.
 function showWerkdocPath(p) {
   if (!p) { viewingJobPath.value = null; closeDoc(); return; }
+  // Al bewust op de job-weergave gezet (bijv. "Bekijk document" vanuit een
+  // lopende taak, of de conversionJobs-watcher): behoud die, ook al is de
+  // jobs-lijst nog niet gepolld - anders zou dit 'm als gewoon document openen
+  // en de 404/‘mislukt’-staat laten opflitsen. De watcher bevestigt de job
+  // zodra de poll landt, of opent de .md zodra de conversie klaar is.
+  if (viewingJobPath.value === p) return;
   if (conversionJobs.value.some((j) => j.target_path === p)) {
     viewingJobPath.value = p;
     if (openDocPath.value) closeDoc();
@@ -175,7 +195,22 @@ const {
   onFileChange: onDocFileChange,
 } = useDocumentUpload(docsMgr.uploadDocument, (result) => {
   docJobs.refresh();
-  if (result?.targetPath) showUploadedJob(result.targetPath);
+  if (!result?.targetPath) return;
+  // Vanuit de takenlijst ("Probeer opnieuw") staan we niet in werkdoc-modus, en
+  // `showUploadedJob` zet alleen state die dáár rendert - de gebruiker zou dan
+  // op zijn takenlijst blijven staan zonder enig teken dat de upload aankwam.
+  // Navigeer in dat geval naar de job-weergave, dezelfde bestemming die
+  // "Bekijk document" opent.
+  if (!isWerkdocMode.value) {
+    if (activeTrajectRef.value) {
+      router.push({
+        name: 'werkdocumenten-traject',
+        params: { trajectRef: activeTrajectRef.value, docPath: result.targetPath },
+      });
+    }
+    return;
+  }
+  showUploadedJob(result.targetPath);
 });
 // Poll conversion jobs only while the werkdocumenten sidebar is open.
 watch(
@@ -234,15 +269,75 @@ function goToWerkdocumenten() {
 
 // --- Taken (folded into Home) -----------------------------------------------
 // The user's taken live inside Home too: a "Taken"-item in the primary sidebar
-// (below Instellingen and Werkdocumenten) opens the task list in the secondary
-// sidebar (route `taken-traject`), like the werkdocumenten panel. A task never
-// opens in main - "Beoordelen" navigates to the editor or the addressed
+// (below Instellingen and Werkdocumenten) opens the categories in the secondary
+// sidebar (route `taken-traject`), and the chosen category's task list in main -
+// the Instellingen shape, not the werkdocumenten one. A task itself still never
+// opens in main: "Beoordelen" navigates to the editor or the addressed
 // werkdocument.
 const isTakenMode = computed(() => route.name === 'taken-traject');
+const takenCategorie = computed(() => route.params.categorie || null);
+// Only meaningful under `wet`; the route allows the segment either way, so pin
+// it here rather than let a stray /taken/alle/kieswet filter anything. Note the
+// param is `contextLawId`, not `lawId` - see the route comment: `lawId` would
+// make this view open the law as well as filter by it.
+const takenLawId = computed(() =>
+  takenCategorie.value === 'wet' ? (route.params.contextLawId || null) : null,
+);
 function goToTaken() {
   if (!activeTrajectRef.value) return;
   router.push({ name: 'taken-traject', params: { trajectRef: activeTrajectRef.value } });
 }
+// "Annuleer conversie" vanuit de takenlijst. Hergebruikt de foutmodal van de
+// job-weergave: een mislukte cancel mag niet stil blijven, want de rij blijft
+// dan staan terwijl de UI doet alsof er iets gebeurde. `useTasks` merkt de
+// verdwenen job pas op bij zijn volgende poll (30s), dus refresh meteen.
+async function onCancelTaskJob(job) {
+  const res = await cancelConversionJob(job.job_id);
+  if (!res?.ok) {
+    jobCancelError.value = res?.error || 'Annuleren mislukt.';
+    return;
+  }
+  await refreshTasks();
+}
+
+// "Bekijk document" vanuit een lopende conversie-taak. Zet viewingJobPath vóór
+// de navigatie, zodat de resolutie het pad niet eerst als gewoon document opent
+// (de jobs-lijst is bij binnenkomst nog niet gepolld) - dat gaf de flits tussen
+// "aan het converteren" en "mislukt". showWerkdocPath respecteert een al
+// gezette viewingJobPath, dus de job-weergave staat er meteen; de
+// conversionJobs-watcher bevestigt de job zodra de poll landt.
+function onViewTaskJob(path) {
+  if (!activeTrajectRef.value || !path) return;
+  viewingJobPath.value = path;
+  router.push({ name: 'werkdocumenten-traject', params: { trajectRef: activeTrajectRef.value, docPath: path } });
+}
+
+function goToTakenCategorie({ categorie, lawId }) {
+  if (!activeTrajectRef.value) return;
+  router.push({
+    name: 'taken-traject',
+    params: { trajectRef: activeTrajectRef.value, categorie, contextLawId: lawId || undefined },
+  });
+}
+// Titel van de gekozen categorie, voor zowel de top-title-bar als de kop in
+// main. Een wet-context draagt de weergavenaam (de route draagt alleen het
+// law_id); useCorpusLaws deelt zijn scope-cache met TasksCategoriesPane, dus
+// dit is geen tweede fetch.
+const { displayName: corpusLawName } = useCorpusLaws(activeTrajectRef);
+const TAKEN_TITELS = {
+  alle: 'Alle taken',
+  prioriteit: 'Prioriteit',
+  wachten: 'Wachten op',
+  werkdocumenten: 'Werkdocumenten',
+  // Alleen bereikbaar via een handmatig getypte /taken/wet zonder id; het panel
+  // linkt altijd naar één wet.
+  wet: 'Wetten',
+};
+const takenTitle = computed(() => {
+  if (!takenCategorie.value) return undefined;
+  if (takenLawId.value) return corpusLawName(takenLawId.value);
+  return TAKEN_TITELS[takenCategorie.value];
+});
 
 // --- Instellingen (traject details + leden, folded into Home) ---------------
 const isInstellingenMode = computed(() => route.name === 'instellingen-traject');
@@ -387,6 +482,9 @@ async function onRetryViewingJob() {
   onDocUpload();
 }
 function onDocBack() {
+  // closeDoc nult currentPath; de docSelectedPath-mirror (zie boven) vervangt de
+  // URL dan naar de kale lijst. Geen expliciete navigatie nodig - dat zou de
+  // mirror alleen dubbelen.
   guardedDocNavigate(() => { viewingJobPath.value = null; closeDoc(); });
 }
 
@@ -417,6 +515,21 @@ const docReviewTaskIdParam = computed(() =>
   isWerkdocMode.value && typeof route.query.task === 'string' ? route.query.task : null,
 );
 
+// Het geadresseerde werkdocument bestaat niet: openDoc's 404-tak liet een
+// 'not-found' docError achter (useTrajectDocuments.js). Toon dan een eigen
+// centrale melding i.p.v. de kale editor-body. Niet tijdens een review: een
+// review wijst normaal naar een nog-niet-bestaand document, en dan is de
+// 'not-found' juist het startpunt voor het voorstel (zie de watcher hierboven,
+// die 'm wist zodra er een voorstel is). Zolang er nog een ?task= loopt, laten
+// we de review-flow het scherm bezitten - mislukt die, dan haalt hij ?task=
+// eruit en valt het alsnog hier naartoe.
+const docNotFoundActive = computed(() =>
+  isWerkdocMode.value
+  && docsMgr.docError.value?.kind === 'not-found'
+  && !docReviewActive.value
+  && !docReviewTaskIdParam.value,
+);
+
 // Fires once the addressed document has finished its (possibly 404) open -
 // `openDoc(docPath)` (route-driven, see the initial-load/onBeforeRouteUpdate
 // wiring below) already sets `currentPath`/`docError` before this can act,
@@ -429,7 +542,18 @@ watch(
     if (docReviewAttemptedForTaskId === taskId) return;
     docReviewAttemptedForTaskId = taskId;
     loadDocReview(taskId).then(() => {
-      if (!docReviewProposedContent.value) return;
+      if (!docReviewProposedContent.value) {
+        // Geen voorstel om te seeden. Alleen als de load écht faalde (de
+        // composable laat `reviewTask` dan leeg) halen we ?task= uit de URL en
+        // laten we de natuurlijke document-staat het overnemen - voor het
+        // normaal niet-bestaande doeldocument is dat de 404-melding, geen
+        // sticky foutbanner die daarna elk document vervuilt.
+        if (!docReviewTask.value) {
+          docReviewLoadError.value = null;
+          clearDocReviewQuery();
+        }
+        return;
+      }
       // Stale-callback guard: `docPath`/`activeTrajectRef` may have moved on
       // (another document opened, or the traject switched) while the fetch
       // was in flight. Re-check against the task's own payload - a mismatch
@@ -791,14 +915,15 @@ watchEffect(() => {
   const detail = [];
   if (isWerkdocMode.value) {
     // Leaf-first with a leading status glyph, so it stays visible when the tab
-    // strip truncates: ⋯ converting, △ failed, • unsaved edits. A viewed
-    // conversion job names the tab by its target, an open document by its name,
-    // else the section.
+    // strip truncates: ○ converting, △ failed, ● unsaved edits. Alle drie
+    // geometrische markers van gelijke grootte (○/● zijn een ontworpen paar,
+    // open vs gevuld), bewust geen ⋯-leesteken ertussen. A viewed conversion job
+    // names the tab by its target, an open document by its name, else the section.
     if (viewingJobPath.value) {
-      const glyph = viewedJobFailed.value ? '△' : '⋯';
+      const glyph = viewedJobFailed.value ? '△' : '○';
       detail.push(`${glyph} ${docsMgr.displayTitle(viewingJobPath.value)}`);
     } else if (hasOpenDoc.value && openDocPath.value) {
-      detail.push(`${docHasChanges.value ? '• ' : ''}${docsMgr.displayTitle(openDocPath.value)}`);
+      detail.push(`${docHasChanges.value ? '● ' : ''}${docsMgr.displayTitle(openDocPath.value)}`);
     } else {
       detail.push('Werkdocumenten');
     }
@@ -1152,6 +1277,10 @@ function onPaneBack(e) {
     // Instellingen: back from a tab's content returns to the tab list
     // (bare /instellingen), which collapses to the secondary sidebar on narrow.
     if (isInstellingenMode.value) return goToInstellingen();
+    // Taken: same shape, back from a category returns to the category list.
+    // Without this the shared fallback below ran, and that routes on a law id
+    // that taken mode does not have, so the button did nothing at all.
+    if (isTakenMode.value) return goToTaken();
     return (lawError.value || indexError.value) ? goToLibraryRoot() : goToLawRoot();
   }
   if (slot === 'secondary-sidebar') return goToLibraryRoot();
@@ -1306,6 +1435,13 @@ watch(activeTrajectRef, () => {
 </script>
 
 <template>
+        <!-- Buiten de panes: de bestandskiezer wordt vanuit twee modi geopend
+             (de werkdocumenten-toolbar en "Probeer opnieuw" in de takenlijst).
+             Stond hij in het werkdocumenten-paneel, dan is `docFileInput` in
+             taken-modus null en klikt `onUpload()` stilletjes niets aan -
+             optional chaining slikt dat zonder een kik. -->
+        <input ref="docFileInput" type="file" accept=".pdf,.doc,.docx" hidden @change="onDocFileChange" />
+
         <!-- Full-page "no usable content" states (matching EditorView): shown
              instead of the split-view so the error / CTA spans the full width,
              not the narrow sidebar. -->
@@ -1342,7 +1478,7 @@ watch(activeTrajectRef, () => {
               <nldd-simple-section width="full">
                 <nldd-title v-if="!loading" id="home-titel" size="3"><h3>{{ sidebarTitle }}</h3></nldd-title>
                 <nldd-spacer v-if="!loading" size="16"></nldd-spacer>
-                <nldd-activity-indicator v-if="loading" text="Laden" show-text></nldd-activity-indicator>
+                <nldd-activity-indicator v-if="loading" :text="sidebarLoadingText" show-text></nldd-activity-indicator>
                 <template v-else>
                   <!-- Werkdocumenten (in a traject): a single entry that opens
                        the document list in the secondary sidebar + editor in
@@ -1350,15 +1486,15 @@ watch(activeTrajectRef, () => {
                   <template v-if="activeTrajectRef">
                     <nldd-list variant="simple" arrow-navigation>
                       <nldd-list-item size="md" button :selected="isInstellingenMode || undefined" @click="goToInstellingen()">
-                        <nldd-icon-cell size="20"><nldd-icon name="gear"></nldd-icon></nldd-icon-cell>
-                        <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                        <nldd-icon-cell slot="start" size="20"><nldd-icon name="gear"></nldd-icon></nldd-icon-cell>
+                        <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
                         <nldd-text-cell text="Instellingen"></nldd-text-cell>
                         <nldd-spacer-cell size="8"></nldd-spacer-cell>
                         <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
                       </nldd-list-item>
                       <nldd-list-item size="md" button :selected="isWerkdocMode || undefined" @click="goToWerkdocumenten">
-                        <nldd-icon-cell size="20"><nldd-icon name="documents"></nldd-icon></nldd-icon-cell>
-                        <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                        <nldd-icon-cell slot="start" size="20"><nldd-icon name="documents"></nldd-icon></nldd-icon-cell>
+                        <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
                         <nldd-text-cell text="Werkdocumenten"></nldd-text-cell>
                         <nldd-spacer-cell size="8"></nldd-spacer-cell>
                         <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
@@ -1421,12 +1557,19 @@ watch(activeTrajectRef, () => {
                 <nldd-title id="instellingen-titel" size="3"><h3>Instellingen</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
                 <nldd-list variant="simple" arrow-navigation>
+                  <!-- Zelfde iconen als in TrajectMenu/MobileTrajectSheet: deze
+                       twee openen dezelfde bestemmingen, dus ze horen er niet
+                       anders uit te zien afhankelijk van waar je ze aanklikt. -->
                   <nldd-list-item size="md" button :selected="instellingenTab === 'details' || undefined" @click="goToInstellingen('details')">
+                    <nldd-icon-cell slot="start" size="20"><nldd-icon name="traject"></nldd-icon></nldd-icon-cell>
+                    <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
                     <nldd-text-cell text="Traject details"></nldd-text-cell>
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
                   </nldd-list-item>
                   <nldd-list-item size="md" button :selected="instellingenTab === 'leden' || undefined" @click="goToInstellingen('leden')">
+                    <nldd-icon-cell slot="start" size="20"><nldd-icon name="person-2"></nldd-icon></nldd-icon-cell>
+                    <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
                     <nldd-text-cell text="Leden"></nldd-text-cell>
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
@@ -1436,15 +1579,20 @@ watch(activeTrajectRef, () => {
             </nldd-page>
           </nldd-split-view-pane>
 
-          <!-- Secondary Sidebar (taken mode): the task list, mirroring the
-               werkdocumenten panel. -->
+          <!-- Secondary Sidebar (taken mode): the categories, mirroring the
+               Instellingen panel - the list itself lives in main. -->
           <nldd-split-view-pane v-else-if="isTakenMode" slot="secondary-sidebar" has-content>
             <nldd-page sticky-header>
               <nldd-top-title-bar slot="header" text="Taken" :back-text="LIBRARY_HOME_BACK_TEXT" collapse-anchor="taken-titel"></nldd-top-title-bar>
               <nldd-simple-section width="full">
                 <nldd-title id="taken-titel" size="3"><h3>Taken</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
-                <TasksPane></TasksPane>
+                <TasksCategoriesPane
+                  :traject-ref="activeTrajectRef"
+                  :categorie="takenCategorie"
+                  :law-id="takenLawId"
+                  @select="goToTakenCategorie"
+                ></TasksCategoriesPane>
               </nldd-simple-section>
             </nldd-page>
           </nldd-split-view-pane>
@@ -1474,11 +1622,10 @@ watch(activeTrajectRef, () => {
                   </nldd-toolbar-item>
                 </nldd-toolbar>
                 <nldd-spacer size="16"></nldd-spacer>
-                <input ref="docFileInput" type="file" accept=".pdf,.doc,.docx" hidden @change="onDocFileChange" />
                 <nldd-activity-indicator v-if="docsLoading && !docList.length && !conversionJobs.length" text="Documenten laden" show-text></nldd-activity-indicator>
                 <nldd-inline-dialog v-else-if="docsError" variant="alert" text="Documenten niet geladen" :supporting-text="docsError.message"></nldd-inline-dialog>
                 <DocumentList v-else-if="docList.length || conversionJobs.length" :documents="docList" :jobs="conversionJobs" :selected-path="docSelectedPath" @select="onDocSelect"></DocumentList>
-                <nldd-inline-dialog v-else text="Geen werkdocumenten" supporting-text="Maak een nieuw document of upload een PDF of DOCX."></nldd-inline-dialog>
+                <nldd-inline-dialog v-else text="Geen werkdocumenten"></nldd-inline-dialog>
               </nldd-simple-section>
             </nldd-page>
           </nldd-split-view-pane>
@@ -1573,12 +1720,31 @@ watch(activeTrajectRef, () => {
             </nldd-page>
           </nldd-split-view-pane>
 
-          <!-- Main (taken-modus): heeft nooit content - een taak opent niet
-               hier, "Beoordelen" navigeert naar de editor of het werkdocument. -->
-          <nldd-split-view-pane v-else-if="isTakenMode" slot="main">
-            <nldd-page>
-              <nldd-simple-section width="full">
-                <nldd-inline-dialog text="Geen selectie"></nldd-inline-dialog>
+          <!-- Main (taken-modus): de takenlijst van de gekozen categorie. Een
+               taak zelf opent nog steeds niet hier - "Beoordelen" navigeert naar
+               de editor of het werkdocument. -->
+          <nldd-split-view-pane v-else-if="isTakenMode" slot="main" :has-content="takenCategorie || undefined">
+            <nldd-page sticky-header>
+              <nldd-top-title-bar
+                slot="header"
+                :text="takenTitle"
+                back-text="Taken"
+                :collapse-anchor="takenCategorie ? 'taken-pane-titel' : undefined"
+              ></nldd-top-title-bar>
+              <nldd-simple-section v-if="takenCategorie">
+                <nldd-title id="taken-pane-titel" size="3"><h3>{{ takenTitle }}</h3></nldd-title>
+                <nldd-spacer size="16"></nldd-spacer>
+                <TasksListPane
+                  :traject-ref="activeTrajectRef"
+                  :categorie="takenCategorie"
+                  :law-id="takenLawId"
+                  @upload="onDocUpload"
+                  @cancel-job="onCancelTaskJob"
+                  @view-job="onViewTaskJob"
+                ></TasksListPane>
+              </nldd-simple-section>
+              <nldd-simple-section v-else width="full">
+                <nldd-inline-dialog text="Kies een categorie"></nldd-inline-dialog>
               </nldd-simple-section>
             </nldd-page>
           </nldd-split-view-pane>
@@ -1612,6 +1778,22 @@ watch(activeTrajectRef, () => {
                 </nldd-inline-dialog>
               </nldd-simple-section>
             </nldd-page>
+            <!-- Werkdoc-404: het geadresseerde document bestaat niet. Staat vóór
+                 de hasOpenDoc-tak, want openDoc's 404 zet wél currentPath (dus
+                 hasOpenDoc is true) - zonder deze voorrang zou de editor met een
+                 lege body renderen. Een echte centrale melding met een uitweg,
+                 in de stijl van de artikel-404 verderop. -->
+            <nldd-page v-else-if="docNotFoundActive">
+              <nldd-simple-section width="full">
+                <nldd-inline-dialog
+                  variant="alert"
+                  :text="`Werkdocument ${docsMgr.displayTitle(openDocPath)} bestaat niet`"
+                  supporting-text="Mogelijk is het verwijderd of klopt de link niet. Ga terug naar de lijst om een ander document te openen of een nieuw document te maken."
+                >
+                  <nldd-button slot="actions" variant="primary" text="Terug naar werkdocumenten" @click="onDocBack"></nldd-button>
+                </nldd-inline-dialog>
+              </nldd-simple-section>
+            </nldd-page>
             <nldd-page v-else-if="hasOpenDoc" sticky-header sticky-footer>
               <!-- Review-modus (job_review-taak, payload.kind === 'document'):
                    a full-width, low bar above the document editor, same
@@ -1620,7 +1802,11 @@ watch(activeTrajectRef, () => {
                    DocumentEditor's default (body) slot, ahead of its own
                    nldd-simple-section - both land in nldd-page's body area,
                    in source order, so the banner sits above the editor. -->
-              <nldd-container v-if="docReviewActive || docReviewLoadError" padding="8">
+              <!-- Alleen bij een actief voorstel: een mislukte review-load zet
+                   geen banner meer (die viel eerder overal boven - zie de
+                   watcher-failure-tak), en `docReviewLoadError` dient nu enkel
+                   nog voor een mislukte Verwerpen-actie op een actieve review. -->
+              <nldd-container v-if="docReviewActive" padding="8">
                 <nldd-banner :variant="docReviewBannerVariant" text="Voorstel uit documentconversie" :supporting-text="docReviewBannerSupportingText">
                   <nldd-button
                     v-if="docReviewActive"

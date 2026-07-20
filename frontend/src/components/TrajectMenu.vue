@@ -49,6 +49,13 @@ function goToWerkdocumenten() {
   router.push({ name: 'werkdocumenten-traject', params: { trajectRef: activeTrajectRef.value } });
 }
 
+// Open the active traject's taken - the same Home panel the sidebar's
+// Taken item opens, reachable without going back to Home first.
+function goToTaken() {
+  if (!activeTrajectRef.value) return;
+  router.push({ name: 'taken-traject', params: { trajectRef: activeTrajectRef.value } });
+}
+
 // Switch to the traject-less global corpus ("Corpus juris"): not a real traject,
 // but mutually exclusive with them, so it lives in the same switcher. Carries
 // the open law so you land on the same law, globally (homeTarget's no-traject
@@ -208,6 +215,12 @@ async function submitCreate() {
       text="Werkdocumenten"
       icon="documents"
       @click="goToWerkdocumenten"
+    ></nldd-menu-item>
+    <nldd-menu-item
+      v-if="activeTraject"
+      text="Taken"
+      icon="tasks"
+      @click="goToTaken"
     ></nldd-menu-item>
     <nldd-menu-item
       v-if="activeTraject"

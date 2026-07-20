@@ -1497,7 +1497,7 @@ async function rejectReview() {
 
 // --- "Verrijk deze wet" (request a job_review task) ---------------------
 // Fire-and-forget request; the resulting job_review task shows up in the
-// taken-lijst in Home on its next poll (TasksSidebarItem/TasksPane poll
+// taken-lijst in Home on its next poll (TasksSidebarItem/TasksListPane poll
 // via useTasks() every 30s). Use the non-polling useTaskActions() here -
 // EditorView doesn't need the shared task list/badge count, and joining
 // useTasks() unconditionally in setup() would start that poll for every
@@ -1674,12 +1674,13 @@ watchEffect(() => {
 });
 
 // Reflect navigation depth + unsaved state in the document title:
-//   "• Editor: Art. 5 · Wet op de zorgtoeslag · 15 juni test · RegelRecht"
+//   "● Editor: Art. 5 · Wet op de zorgtoeslag · 15 juni test · RegelRecht"
 // A leading dot flags unsaved changes - it stays visible even when the tab
-// title is truncated to its start. Then the mode prefix, then most-specific to
-// least-specific (article, law, traject) with the brand last. Lives here (after
-// articleDirty) and is always set - a static router.afterEach fallback used to
-// race this effect on tab/article switches.
+// title is truncated to its start. Same glyph as the werkdoc-tab unsaved marker
+// in LibraryView (● matches the ○ converting circle in size). Then the mode
+// prefix, then most-specific to least-specific (article, law, traject) with the
+// brand last. Lives here (after articleDirty) and is always set - a static
+// router.afterEach fallback used to race this effect on tab/article switches.
 watchEffect(() => {
   const detail = [];
   if (selectedArticle.value) detail.push(`Art. ${selectedArticle.value.number}`);
@@ -1688,7 +1689,7 @@ watchEffect(() => {
   const base = detail.length > 0
     ? `Editor: ${detail.join(' · ')} · RegelRecht`
     : 'Editor · RegelRecht';
-  document.title = articleDirty.value ? `• ${base}` : base;
+  document.title = articleDirty.value ? `● ${base}` : base;
 });
 
 function onYamlInput(event) {
