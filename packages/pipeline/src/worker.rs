@@ -19,6 +19,7 @@ use crate::job_queue::{self, CreateJobRequest};
 use crate::law_convert::{self, LawConvertPayload, LlmLawStructurer};
 use crate::law_status;
 use crate::models::{JobType, LawStatusValue, Priority};
+use crate::traject_harvest::{self, TrajectHarvestPayload};
 
 /// Local night window (Europe/Amsterdam) as a half-open hour-of-day range
 /// `[start, end)`. Hours in this range get the multiplied enrich cap.
@@ -255,6 +256,35 @@ pub async fn run_harvest_worker(config: WorkerConfig) -> Result<()> {
             }
             _ = tokio::time::sleep(current_interval) => {
                 // Ready to process next job
+            }
+        }
+
+        // Traject-scoped harvests (taak-flow) gaan vóór de corpus-brede
+        // queue: een mens wacht erop (prio 80-aanvraag uit de editor), en de
+        // corpus-brede harvest kan lange bulkruns draaien. Spiegel van hoe de
+        // enrich-worker document-/law-convert-jobs vóór de enrich-cap draait.
+        match process_next_traject_harvest_job(&pool, &config, &http_client).await {
+            Ok(JobOutcome::Processed) => {
+                consecutive_resource_failures = 0;
+                current_interval = config.poll_interval;
+                continue;
+            }
+            Ok(JobOutcome::ResourceExhausted) => {
+                handle_resource_exhaustion(
+                    &mut consecutive_resource_failures,
+                    config.max_consecutive_resource_failures,
+                    "traject-harvest",
+                );
+                current_interval = config.poll_interval;
+                continue;
+            }
+            Ok(JobOutcome::Idle) => { /* geen traject-harvest — door naar de gewone queue */ }
+            Err(e) => {
+                tracing::error!(error = %e, "error processing traject-harvest job");
+                current_interval = (current_interval * 2)
+                    .max(config.poll_interval)
+                    .min(config.max_poll_interval);
+                continue;
             }
         }
 
@@ -1650,6 +1680,147 @@ async fn process_next_law_convert_job(
                 }
             }
             fail_result?;
+
+            Ok(outcome_for_error(&msg))
+        }
+    }
+}
+
+/// Verwerk één `traject_harvest`-job: BWB-download → gevalideerde
+/// basis-wet-YAML → geketende taak-flow-enrich-job (het kettingstuk is
+/// [`law_convert::chain_enrich_and_complete`] — zelfde keten als law-convert).
+/// Draait op de harvest-worker (die heeft de BWB-machinerie); de geketende
+/// enrich draait daarna op de enrich-worker.
+async fn process_next_traject_harvest_job(
+    pool: &PgPool,
+    config: &WorkerConfig,
+    http_client: &Client,
+) -> Result<JobOutcome> {
+    let job = match job_queue::claim_job(pool, Some(JobType::TrajectHarvest)).await? {
+        Some(job) => job,
+        None => return Ok(JobOutcome::Idle),
+    };
+    tracing::info!(job_id = %job.id, law_id = %job.law_id, attempt = job.attempts, "processing traject-harvest job");
+
+    // Malformed payload is deterministisch: terminaal falen. Zonder payload
+    // is er ook geen aanvrager om een taak voor te maken.
+    let payload: TrajectHarvestPayload = match job
+        .payload
+        .as_ref()
+        .ok_or_else(|| PipelineError::Worker("traject_harvest job has no payload".to_string()))
+        .and_then(|p| {
+            serde_json::from_value(p.clone())
+                .map_err(|e| PipelineError::Worker(format!("payload deserialization failed: {e}")))
+        }) {
+        Ok(payload) => payload,
+        Err(e) => {
+            let msg = format!("invalid traject_harvest payload: {e}");
+            tracing::error!(job_id = %job.id, error = %msg);
+            job_queue::fail_job_terminal(pool, job.id, Some(serde_json::json!({ "error": msg })))
+                .await?;
+            return Ok(JobOutcome::Processed);
+        }
+    };
+
+    // Traject-harvest kent alléén de taak-flow: zonder `requested_by` is er
+    // geen assignee voor de uiteindelijke review-taak, en zonder
+    // `deliver: task` geen aflever-pad (er bestaat geen direct-push-variant).
+    if !payload.deliver_as_task() || payload.requested_by.is_none() {
+        let msg = "traject_harvest vereist deliver=task met requested_by".to_string();
+        tracing::error!(job_id = %job.id, error = %msg);
+        job_queue::fail_job_terminal(pool, job.id, Some(serde_json::json!({ "error": msg })))
+            .await?;
+        return Ok(JobOutcome::Processed);
+    }
+
+    // Zelfde buitenboord-timeout als de corpus-brede harvest: de BWB-fetches
+    // hebben geen eigen deadline en dit is een sequentiële workerloop.
+    let run_result = match tokio::time::timeout(
+        config.job_timeout,
+        traject_harvest::execute_traject_harvest(&payload, http_client),
+    )
+    .await
+    {
+        Err(_elapsed) => Err(PipelineError::Worker(format!(
+            "traject-harvest timed out after {}s",
+            config.job_timeout.as_secs()
+        ))),
+        Ok(Ok(law)) => {
+            let ctx = law_convert::EnrichChainContext {
+                provider: payload.provider.clone(),
+                requested_by: payload.requested_by,
+                traject_id: payload.traject_id,
+                traject_ref: payload.traject_ref.clone(),
+            };
+            law_convert::chain_enrich_and_complete(pool, &job, &ctx, &law).await
+        }
+        Ok(Err(e)) => Err(e),
+    };
+
+    match run_result {
+        Ok(()) => Ok(JobOutcome::Processed),
+        Err(e) => {
+            let msg = e.to_string();
+            tracing::error!(job_id = %job.id, error = %msg, "traject-harvest job failed");
+            // Deterministische fouten (geen geconsolideerde tekst; YAML die
+            // niet valideert; een al-lopende enrich op dezelfde slug) falen
+            // terminaal — een retry reproduceert exact hetzelfde. Transiënte
+            // fouten (BWB-outage, netwerk, timeout) doorlopen fail_job met
+            // backoff tot max_attempts; pas bij definitief falen krijgt de
+            // aanvrager de job_failed-taak.
+            let deterministic = matches!(
+                e,
+                PipelineError::Harvester(
+                    regelrecht_harvester::HarvesterError::NoConsolidatedText { .. }
+                )
+            ) || msg.contains("valideert niet tegen het schema")
+                || msg.contains("er loopt al een verrijking");
+
+            let fail_and_notify: Result<()> = async {
+                let mut tx = pool.begin().await?;
+                let terminal = if deterministic {
+                    job_queue::fail_job_terminal(
+                        &mut *tx,
+                        job.id,
+                        Some(serde_json::json!({ "error": msg.clone() })),
+                    )
+                    .await?;
+                    true
+                } else {
+                    let failed = job_queue::fail_job(
+                        &mut *tx,
+                        job.id,
+                        Some(serde_json::json!({ "error": msg.clone() })),
+                    )
+                    .await?;
+                    failed.status == crate::models::JobStatus::Failed
+                };
+                if terminal {
+                    if let Some(account_id) = payload.requested_by {
+                        crate::tasks::create_task(
+                            &mut *tx,
+                            crate::tasks::NewTask {
+                                task_type: crate::tasks::TaskType::JobFailed,
+                                assignee_account_id: Some(account_id),
+                                traject_id: Some(payload.traject_id),
+                                job_id: Some(job.id),
+                                title: format!("Wet ophalen mislukt: {}", payload.display_name()),
+                                payload: Some(serde_json::json!({
+                                    "traject_ref": payload.traject_ref,
+                                    "bwb_id": payload.bwb_id,
+                                    "law_name": payload.law_name,
+                                    "error": msg.clone(),
+                                })),
+                            },
+                        )
+                        .await?;
+                    }
+                }
+                tx.commit().await?;
+                Ok(())
+            }
+            .await;
+            fail_and_notify?;
 
             Ok(outcome_for_error(&msg))
         }

@@ -121,8 +121,8 @@ pub async fn count_open_tasks_for_account(pool: &PgPool, account_id: Uuid) -> Re
 }
 
 /// Eén lopende taak-flow-job voor de "Bezig"-sectie: een enrich-,
-/// document_convert- of law_convert-job die deze gebruiker via
-/// `deliver: "task"` heeft aangevraagd en die nog niet is afgerond
+/// document_convert-, law_convert- of traject_harvest-job die deze gebruiker
+/// via `deliver: "task"` heeft aangevraagd en die nog niet is afgerond
 /// (job_review/job_failed-taak bestaat pas na completion/failure).
 #[derive(Debug, Clone, sqlx::FromRow, Serialize)]
 pub struct RunningTaskJob {
@@ -153,7 +153,7 @@ pub async fn list_running_task_jobs_for_account(
                 COALESCE(payload->>'target_path', payload->>'filename') AS target_path, \
                 status, created_at \
          FROM jobs \
-         WHERE job_type IN ('enrich', 'document_convert', 'law_convert') \
+         WHERE job_type IN ('enrich', 'document_convert', 'law_convert', 'traject_harvest') \
            AND status IN ('pending', 'processing') \
            AND payload->>'deliver' = 'task' \
            AND payload->>'requested_by' = $1 \
@@ -293,13 +293,19 @@ pub async fn notify_reaped_task_jobs(
                 "Conversie naar wet mislukt: {}",
                 str_field("filename").unwrap_or("document")
             ),
+            JobType::TrajectHarvest => format!(
+                "Wet ophalen mislukt: {}",
+                str_field("law_name")
+                    .or_else(|| str_field("bwb_id"))
+                    .unwrap_or(&job.law_id)
+            ),
         };
 
         let mut task_payload = serde_json::json!({
             "error": "De verwerking duurde te lang of de worker is herstart; \
                       de job is afgebroken.",
         });
-        for key in ["traject_ref", "law_id", "target_path", "filename"] {
+        for key in ["traject_ref", "law_id", "target_path", "filename", "bwb_id"] {
             if let Some(v) = str_field(key) {
                 task_payload[key] = serde_json::json!(v);
             }
