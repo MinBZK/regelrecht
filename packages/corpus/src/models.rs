@@ -21,6 +21,15 @@ pub struct Source {
     /// Reference to auth configuration. When absent, source is public.
     #[serde(default)]
     pub auth_ref: Option<String>,
+    /// When set, token resolution for this source never falls back to the
+    /// legacy shared `CORPUS_GIT_TOKEN` (see
+    /// [`crate::auth::resolve_token_strict`]). Set for sources whose
+    /// `auth_ref` derives from user input — a traject's writable-own repo —
+    /// where the legacy fallback would ship the central token to a
+    /// user-chosen repo on every read/scan. Not part of the manifest
+    /// format; operator-managed manifest sources default to `false`.
+    #[serde(default)]
+    pub strict_auth: bool,
 }
 
 /// Source type discriminator with configuration.
@@ -213,6 +222,7 @@ sources:
                 scopes: vec![],
                 priority: 5,
                 auth_ref: None,
+                strict_auth: false,
             }],
         };
 

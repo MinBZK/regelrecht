@@ -166,6 +166,10 @@ impl WritableOwnSourceRow {
             scopes: Vec::new(),
             priority: self.priority.max(0) as u32,
             auth_ref: self.auth_ref.clone(),
+            // Writable-own rows carry a user-derived `auth_ref`; resolution
+            // must never fall back to the shared legacy token (the worker
+            // below indeed resolves via `resolve_token_strict`).
+            strict_auth: true,
         }
     }
 }

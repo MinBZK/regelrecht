@@ -251,7 +251,7 @@ pub async fn list_traject_sources(
 
 fn list_sources_in_scope(scope: &ReadScope) -> Vec<SourceSummary> {
     let corpus = scope.corpus();
-    build_source_summaries(&corpus.registry, &corpus.source_map)
+    build_source_summaries(&corpus.registry, &corpus.source_map, &corpus.index_failures)
 }
 
 /// GET /api/corpus/laws — list loaded laws with source metadata (global view).
