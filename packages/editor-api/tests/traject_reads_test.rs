@@ -168,8 +168,10 @@ fn if_match_headers(etag: &str) -> HeaderMap {
 async fn read_law(state: AppState, session: Session, tref: &str) -> (String, String) {
     let (status, headers, body) = get_traject_corpus_law(
         State(state),
+        Extension(test_account()),
         session,
         Path((tref.to_string(), LAW_ID.to_string())),
+        HeaderMap::new(),
     )
     .await
     .expect("get_traject_corpus_law must succeed");
@@ -228,8 +230,10 @@ async fn read_scenario(
 ) -> (String, String) {
     let (status, headers, body) = get_traject_scenario(
         State(state),
+        Extension(test_account()),
         session,
         Path((tref.to_string(), LAW_ID.to_string(), filename.to_string())),
+        HeaderMap::new(),
     )
     .await
     .expect("scenario GET must succeed");
@@ -428,6 +432,7 @@ async fn ttl_refresh_picks_up_upstream_laws_and_reconciles_saves() {
     for _ in 0..50 {
         let Json(entries) = list_traject_corpus_laws(
             State(state.clone()),
+            Extension(test_account()),
             session_for(&sub).await,
             Path(tref.clone()),
             Query(PaginationParams {
@@ -436,6 +441,7 @@ async fn ttl_refresh_picks_up_upstream_laws_and_reconciles_saves() {
                 q: None,
                 ids: None,
             }),
+            HeaderMap::new(),
         )
         .await
         .expect("law list must succeed");
@@ -507,8 +513,10 @@ async fn revoked_membership_is_403_on_traject_read() {
 
     let err = get_traject_corpus_law(
         State(state),
+        Extension(test_account()),
         session_for(&sub).await,
         Path((traject_ref(traject_id), LAW_ID.to_string())),
+        HeaderMap::new(),
     )
     .await
     .expect_err("revoked membership must refuse the traject read");
@@ -920,8 +928,10 @@ async fn scenario_list_unions_write_target_and_seed() {
 
     let Json(entries) = list_traject_scenarios(
         State(state),
+        Extension(test_account()),
         session_for(&sub).await,
         Path((tref, LAW_ID.to_string())),
+        HeaderMap::new(),
     )
     .await
     .expect("list must succeed");

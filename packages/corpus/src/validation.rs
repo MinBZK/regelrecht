@@ -158,6 +158,7 @@ mod tests {
             scopes,
             priority,
             auth_ref: None,
+            strict_auth: false,
         }
     }
 

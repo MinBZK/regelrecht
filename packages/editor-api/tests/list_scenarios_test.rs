@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{Extension, Path, State};
 use sqlx::PgPool;
 use tokio::sync::{Mutex, RwLock};
 use tower_sessions::Session;
@@ -16,6 +16,7 @@ use tower_sessions_memory_store::MemoryStore;
 use uuid::Uuid;
 
 use regelrecht_auth::handlers::SESSION_KEY_SUB;
+use regelrecht_editor_api::accounts::AccountRecord;
 use regelrecht_editor_api::config::AppConfig;
 use regelrecht_editor_api::corpus_handlers::{list_scenarios, list_traject_scenarios};
 use regelrecht_editor_api::state::{AppState, BackendEntry, CorpusState};
@@ -161,10 +162,18 @@ async fn list_traject_scenarios_returns_target_law_ids() {
     write_corpus(corpus.path());
     let traject = local_traject(&db.pool, owner, corpus.path()).await;
 
+    let account = AccountRecord {
+        id: owner,
+        person_sub: sub.clone(),
+        email: "alice@test.local".to_string(),
+        name: "Test User".to_string(),
+    };
     let axum::Json(entries) = list_traject_scenarios(
         State(state),
+        Extension(account),
         session_for(&sub).await,
         Path((traject_ref(traject), LAW_ID.to_string())),
+        axum::http::HeaderMap::new(),
     )
     .await
     .expect("list_traject_scenarios must succeed");
@@ -225,6 +234,7 @@ async fn list_scenarios_global_returns_target_law_ids() {
             source_map,
             backends,
             auth_file: None,
+            index_failures: std::collections::HashMap::new(),
         })),
         oidc_client: None,
         end_session_url: None,

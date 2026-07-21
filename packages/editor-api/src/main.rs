@@ -778,6 +778,11 @@ async fn init_corpus(favorites: &HashSet<String>) -> CorpusState {
         source_map,
         backends,
         auth_file: auth_file.map(|p| p.to_path_buf()),
+        // The global startup path loads favorites with its own all-or-
+        // nothing fallback above; per-source scan health is only tracked
+        // on the traject path (`build_traject_corpus`), where a silently
+        // missing source changes which corpus a law resolves from.
+        index_failures: HashMap::new(),
     }
 }
 

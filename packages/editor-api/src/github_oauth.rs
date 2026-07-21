@@ -938,6 +938,28 @@ pub async fn user_write_token(
     account_id: Uuid,
     headers: &HeaderMap,
 ) -> Result<Option<String>, (StatusCode, String)> {
+    user_token_when_required(
+        state,
+        account_id,
+        headers,
+        "Je GitHub-koppeling is verlopen. Koppel je account opnieuw om op te slaan.",
+        "Koppel je GitHub-account om in dit traject op te slaan. \
+         De wijziging wordt met jouw eigen GitHub-toegang weggeschreven.",
+    )
+    .await
+}
+
+/// Shared core of [`user_write_token`] and [`user_read_token_for_backend`]:
+/// the requiredness gate, the cookie resolution, and the 428 semantics —
+/// parameterised only in the user-facing messages so the read path can say
+/// "lezen" where the write path says "opslaan".
+async fn user_token_when_required(
+    state: &AppState,
+    account_id: Uuid,
+    headers: &HeaderMap,
+    expired_msg: &str,
+    missing_msg: &str,
+) -> Result<Option<String>, (StatusCode, String)> {
     let Some(oauth) = state.config.github_oauth.as_ref() else {
         return Ok(None);
     };
@@ -964,21 +986,12 @@ pub async fn user_write_token(
         Some(link) if !link.expired() => {
             tracing::debug!(
                 github_login = %link.github_login,
-                "authorizing traject write as the linked GitHub user"
+                "authorizing traject access as the linked GitHub user"
             );
             Ok(Some(link.access_token))
         }
-        Some(_expired) => Err((
-            StatusCode::PRECONDITION_REQUIRED,
-            "Je GitHub-koppeling is verlopen. Koppel je account opnieuw om op te slaan."
-                .to_string(),
-        )),
-        None => Err((
-            StatusCode::PRECONDITION_REQUIRED,
-            "Koppel je GitHub-account om in dit traject op te slaan. \
-             De wijziging wordt met jouw eigen GitHub-toegang weggeschreven."
-                .to_string(),
-        )),
+        Some(_expired) => Err((StatusCode::PRECONDITION_REQUIRED, expired_msg.to_string())),
+        None => Err((StatusCode::PRECONDITION_REQUIRED, missing_msg.to_string())),
     }
 }
 
@@ -1001,6 +1014,54 @@ pub async fn user_write_token_for_backend(
         return Ok(None);
     }
     user_write_token(state, account_id, headers).await
+}
+
+/// The read-path analogue of [`user_write_token_for_backend`]: resolve the
+/// per-user GitHub credential for a **read** on `backend`.
+///
+/// Narrower than the write path in one deliberate way: a backend that has
+/// its own configured (service) token keeps reading with it — `Ok(None)`,
+/// behaviour unchanged — even in the user-token write mode. The write path
+/// overrides an existing service token to make the *commit* authenticate as
+/// the user; a read has no attribution concern, and rerouting working
+/// service-token reads through personal tokens would break members without
+/// direct repo access.
+///
+/// So the outcomes are:
+///
+/// * backend ignores token overrides (local source, clone-based git) →
+///   `Ok(None)`;
+/// * backend has a service token → `Ok(None)` (read uses it, as before);
+/// * backend is token-less and override-capable (the traject writable-own
+///   Contents-API backend on a user-chosen repo) → the user's own token,
+///   or the same 428 connect-flow the write path uses when the user hasn't
+///   linked GitHub. Without the user-token mode enabled this stays
+///   `Ok(None)` — the pre-existing (silently degrading) behaviour, exactly
+///   like writes stay on the service-token path there.
+pub async fn user_read_token_for_backend(
+    state: &AppState,
+    account_id: Uuid,
+    headers: &HeaderMap,
+    backend: &dyn RepoBackend,
+) -> Result<Option<String>, (StatusCode, String)> {
+    if !backend.supports_token_override() {
+        return Ok(None);
+    }
+    // `is_writable` on the Contents-API backend means "has a configured
+    // rest token" — the one backend kind that reaches this point.
+    if backend.is_writable() {
+        return Ok(None);
+    }
+    user_token_when_required(
+        state,
+        account_id,
+        headers,
+        "Je GitHub-koppeling is verlopen. Koppel je account opnieuw om de \
+         inhoud van dit traject te kunnen lezen.",
+        "Koppel je GitHub-account om de inhoud van dit traject te kunnen \
+         lezen. De traject-repo wordt met jouw eigen GitHub-toegang gelezen.",
+    )
+    .await
 }
 
 // --- GitHub HTTP calls -----------------------------------------------------

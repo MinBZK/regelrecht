@@ -4,6 +4,17 @@ use crate::error::{CorpusError, Result};
 use crate::models::{RegistryManifest, Source, SourceType};
 use crate::source_map::SourceMap;
 
+/// A source that failed to enumerate during
+/// [`CorpusRegistry::index_all_sources_async`], with the error it failed on.
+/// Carrying the message (not just the id) lets callers surface *why* the
+/// source's laws are missing — a `law_count: 0` with no reason is
+/// indistinguishable from a genuinely empty repo.
+#[derive(Debug, Clone)]
+pub struct SourceIndexFailure {
+    pub source_id: String,
+    pub error: String,
+}
+
 /// Corpus registry that manages source definitions.
 ///
 /// Loads sources from `corpus-registry.yaml` and optionally merges
@@ -171,11 +182,7 @@ impl CorpusRegistry {
 
         for source in &self.sources {
             if let SourceType::GitHub { github } = &source.source_type {
-                let token = crate::auth::resolve_token_for_source(
-                    &source.id,
-                    source.auth_ref.as_deref(),
-                    auth_file,
-                )?;
+                let token = crate::auth::resolve_source_token(source, auth_file)?;
                 match fetcher
                     .fetch_source_filtered(github, token.as_deref(), &missing)
                     .await?
@@ -224,16 +231,18 @@ impl CorpusRegistry {
     /// rate limit. The library/search only needs the index; content is only
     /// needed when a specific law is opened.
     ///
-    /// Returns the index plus the ids of any sources that failed to enumerate
-    /// (non-fatal, mirroring [`load_all_sources_async`]).
+    /// Returns the index plus a [`SourceIndexFailure`] per source that failed
+    /// to enumerate (non-fatal, mirroring [`load_all_sources_async`]) — the
+    /// error string travels with the id so callers can surface *why* a
+    /// source's laws are missing instead of only showing a zero law count.
     #[cfg(feature = "github")]
     pub async fn index_all_sources_async(
         &self,
         auth_file: Option<&Path>,
-    ) -> Result<(SourceMap, Vec<String>)> {
+    ) -> Result<(SourceMap, Vec<SourceIndexFailure>)> {
         let mut map = SourceMap::new();
         let mut fetcher = crate::github::GitHubFetcher::new()?;
-        let mut failed: Vec<String> = Vec::new();
+        let mut failed: Vec<SourceIndexFailure> = Vec::new();
 
         for source in &self.sources {
             if let Err(e) = Self::index_one_source(&mut map, &mut fetcher, source, auth_file).await
@@ -243,13 +252,16 @@ impl CorpusRegistry {
                     error = %e,
                     "failed to index corpus source, skipping"
                 );
-                failed.push(source.id.clone());
+                failed.push(SourceIndexFailure {
+                    source_id: source.id.clone(),
+                    error: e.to_string(),
+                });
             }
         }
 
         if !failed.is_empty() {
             tracing::warn!(
-                failed = ?failed,
+                failed = ?failed.iter().map(|f| f.source_id.as_str()).collect::<Vec<_>>(),
                 indexed = map.len(),
                 "some corpus sources failed to index"
             );
@@ -282,11 +294,13 @@ impl CorpusRegistry {
                 map.load_source(source)?;
             }
             SourceType::GitHub { github } => {
-                let token = crate::auth::resolve_token_for_source(
-                    &source.id,
-                    source.auth_ref.as_deref(),
-                    auth_file,
-                )?;
+                // `resolve_source_token` honours `strict_auth`: the scan of a
+                // traject's writable-own repo resolves with exactly the same
+                // rules as its push path, so a repo the server can push to is
+                // also a repo the server can index (and vice versa — no more
+                // "promote succeeded but the index reads with a different
+                // token and comes back empty").
+                let token = crate::auth::resolve_source_token(source, auth_file)?;
                 for (law_id, path, sha) in fetcher
                     .list_source_law_paths(github, token.as_deref())
                     .await?

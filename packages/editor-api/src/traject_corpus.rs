@@ -371,6 +371,21 @@ impl TrajectCorpus {
         &self,
         law_id: &str,
     ) -> Result<Option<String>, regelrecht_corpus::error::CorpusError> {
+        self.law_yaml_with_read_token(law_id, None).await
+    }
+
+    /// [`Self::law_yaml`] with a per-request read token for the
+    /// **writable-own** source (the acting user's own GitHub token,
+    /// resolved by the request handler). The token is applied *only* when
+    /// the law's body resolves from the writable-own source — seed sources
+    /// never see it — and it is passed through per call, never stored on
+    /// this (shared, cross-user) structure. Cached *content* is fine: every
+    /// traject route runs a membership check before reaching this.
+    pub async fn law_yaml_with_read_token(
+        &self,
+        law_id: &str,
+        own_read_token: Option<&str>,
+    ) -> Result<Option<String>, regelrecht_corpus::error::CorpusError> {
         if let Some(text) = self.overlay.read().await.get(law_id) {
             return Ok(Some(text.clone()));
         }
@@ -396,11 +411,16 @@ impl TrajectCorpus {
             return Ok(None);
         };
 
+        // The personal token authenticates exclusively against the
+        // traject's own repo; a seed read must never carry it.
+        let token = (source_id == self.writable_own_source_id)
+            .then_some(own_read_token)
+            .flatten();
         let content = {
             let backend = entry.backend.lock().await;
             // `?` propagates a read error rather than collapsing it to None.
             backend
-                .read_file(std::path::Path::new(&relative_path))
+                .read_file_with_token(std::path::Path::new(&relative_path), token)
                 .await?
         };
         let Some(content) = content else {
@@ -436,9 +456,15 @@ impl TrajectCorpus {
     /// versions are served from the index body (local sources) or lazily fetched
     /// via their own backend + `relative_path` (GitHub sources). Returns an empty
     /// vec when no version of the id is indexed.
-    pub async fn law_yaml_versions(
+    ///
+    /// Accepts the per-request writable-own read token — same contract as
+    /// [`Self::law_yaml_with_read_token`]: the token is only ever applied
+    /// to versions whose source is the writable-own, per call, never
+    /// stored. Pass `None` outside a user-request context.
+    pub async fn law_yaml_versions_with_read_token(
         &self,
         law_id: &str,
+        own_read_token: Option<&str>,
     ) -> Result<Vec<String>, regelrecht_corpus::error::CorpusError> {
         // Snapshot the per-version index metadata, then drop the borrow before
         // any await below.
@@ -500,10 +526,15 @@ impl TrajectCorpus {
             // per-version `loadLawVersions` isolation. A law that ends up with no
             // fetchable version surfaces to the loader as a missing dependency
             // (retried on the next run), not a hard 502.
+            // Personal token only for the writable-own source, like
+            // `law_yaml_with_read_token`.
+            let token = (source_id == self.writable_own_source_id)
+                .then_some(own_read_token)
+                .flatten();
             let content = {
                 let backend = entry.backend.lock().await;
                 match backend
-                    .read_file(std::path::Path::new(&relative_path))
+                    .read_file_with_token(std::path::Path::new(&relative_path), token)
                     .await
                 {
                     Ok(content) => content,
@@ -1434,24 +1465,18 @@ async fn build_traject_corpus(
     // Build a backend per source, scoped to a traject-specific clone path.
     let mut backends: HashMap<String, BackendEntry> = HashMap::new();
     for (row, source) in rows.iter().zip(sources.iter()) {
-        // For the writable-own source we resolve strictly (no legacy
-        // `CORPUS_GIT_TOKEN` fallback). The `auth_ref` on this row was
-        // derived from the create-request's repo coords, so a missing
-        // per-repo token MUST fail closed — not transparently ship the
-        // central token to a user-chosen GitHub repo on the next push.
+        // Token resolution honours `Source::strict_auth` (set by
+        // `to_source` for the writable-own row): the writable-own resolves
+        // strictly (no legacy `CORPUS_GIT_TOKEN` fallback), because its
+        // `auth_ref` was derived from the create-request's repo coords and a
+        // missing per-repo token MUST fail closed — not transparently ship
+        // the central token to a user-chosen GitHub repo on the next push.
         // Seeded (non-writable) sources keep the legacy fallback so
         // pre-existing deployments that rely on a single global PAT for
-        // read-only mirrors keep working.
-        let token_result = if row.is_writable_own {
-            let key = source.auth_ref.as_deref().unwrap_or(&source.id);
-            regelrecht_corpus::auth::resolve_token_strict(key, auth_file)
-        } else {
-            regelrecht_corpus::auth::resolve_token_for_source(
-                &source.id,
-                source.auth_ref.as_deref(),
-                auth_file,
-            )
-        };
+        // read-only mirrors keep working. The index scan below
+        // (`index_all_sources_async`) goes through the same resolver, so
+        // scan and push can no longer disagree about the token.
+        let token_result = regelrecht_corpus::auth::resolve_source_token(source, auth_file);
         let token = token_result.unwrap_or_else(|e| {
             tracing::warn!(
                 traject = %traject_id,
@@ -1462,10 +1487,12 @@ async fn build_traject_corpus(
             None
         });
         // Diagnostic: token=None on the writable-own source means git
-        // push will hit "could not read Username" later. Surface it now
-        // with both the source_id and the resolved auth_ref so an
-        // operator can see whether the row carries the expected ref and
-        // whether the env var matches.
+        // push will hit "could not read Username" later, and — for a
+        // private repo — the index scan and every lazy body read will 404
+        // just as hard, silently resolving the traject's own laws from the
+        // seed corpus instead. Surface it now with both the source_id and
+        // the resolved auth_ref so an operator can see whether the row
+        // carries the expected ref and whether the env var matches.
         if token.is_none() && source.id == writable_own_source_id {
             let expected_env = regelrecht_corpus::auth::token_env_name(
                 source.auth_ref.as_deref().unwrap_or(&source.id),
@@ -1476,7 +1503,8 @@ async fn build_traject_corpus(
                 auth_ref = ?source.auth_ref,
                 auth_file = ?auth_file,
                 expected_env = %expected_env,
-                "traject writable-own source resolved NO token — push will fail"
+                "traject writable-own source resolved NO token — pushes will fail, and \
+                 on a private repo reads/index scans fail too (laws fall back to seed sources)"
             );
         }
 
@@ -1570,18 +1598,25 @@ async fn build_traject_corpus(
     // failing entirely on what is usually a transient GitHub hiccup. The hard
     // failure path is the writable-own *backend* init above, which returns
     // `Err` so a broken write target never opens silently.
-    let source_map =
+    let (source_map, index_failures) =
         match timing::measure("index", registry.index_all_sources_async(auth_file)).await {
             Ok((map, failed)) => {
-                if failed.iter().any(|id| id == &writable_own_source_id) {
+                if let Some(f) = failed
+                    .iter()
+                    .find(|f| f.source_id == writable_own_source_id)
+                {
                     tracing::error!(
                         traject = %traject_id,
                         source_id = %writable_own_source_id,
-                        "traject writable-own source failed to load — the traject's own laws \
-                         will be missing from the bibliotheek until the corpus is rebuilt"
+                        error = %f.error,
+                        "traject writable-own source failed to index — the traject's own laws \
+                         are missing from the bibliotheek and silently resolve from the seed \
+                         sources until the scan succeeds"
                     );
                 }
-                map
+                let failures: HashMap<String, String> =
+                    failed.into_iter().map(|f| (f.source_id, f.error)).collect();
+                (map, failures)
             }
             Err(e) => {
                 tracing::warn!(
@@ -1589,9 +1624,21 @@ async fn build_traject_corpus(
                     error = %e,
                     "traject corpus load failed, falling back to local-only"
                 );
-                registry
-                    .load_local_sources()
-                    .unwrap_or_else(|_| SourceMap::new())
+                // Local-only fallback: every non-local source is absent from
+                // the map, so record the enumeration error against each of
+                // them — `/sources` then shows why their law_count is 0.
+                let failures: HashMap<String, String> = registry
+                    .sources()
+                    .iter()
+                    .filter(|s| matches!(s.source_type, SourceType::GitHub { .. }))
+                    .map(|s| (s.id.clone(), e.to_string()))
+                    .collect();
+                (
+                    registry
+                        .load_local_sources()
+                        .unwrap_or_else(|_| SourceMap::new()),
+                    failures,
+                )
             }
         };
 
@@ -1601,6 +1648,7 @@ async fn build_traject_corpus(
             source_map,
             backends,
             auth_file: auth_file.map(|p| p.to_path_buf()),
+            index_failures,
         },
         write_target_for_source,
         writable_own_source_id,
@@ -1660,9 +1708,13 @@ async fn refresh_traject_corpus(
         .index_all_sources_async(auth_file.as_deref())
         .await?;
     if !failed.is_empty() {
+        let details: Vec<String> = failed
+            .iter()
+            .map(|f| format!("{}: {}", f.source_id, f.error))
+            .collect();
         return Err(TrajectCorpusError::Corpus(
             regelrecht_corpus::error::CorpusError::Config(format!(
-                "index refresh for traject {traject_id} failed to enumerate sources: {failed:?}"
+                "index refresh for traject {traject_id} failed to enumerate sources: {details:?}"
             )),
         ));
     }
@@ -1689,6 +1741,10 @@ async fn next_snapshot(old: &Arc<TrajectCorpus>, source_map: SourceMap) -> Arc<T
             source_map,
             backends: old.corpus.backends.clone(),
             auth_file: old.corpus.auth_file.clone(),
+            // A refresh only lands when every source enumerated (see
+            // `refresh_traject_corpus`), so the refreshed snapshot has no
+            // scan failures to report.
+            index_failures: HashMap::new(),
         },
         write_target_for_source: old.write_target_for_source.clone(),
         writable_own_source_id: old.writable_own_source_id.clone(),
@@ -1986,6 +2042,7 @@ mod tests {
                 source_map,
                 backends,
                 auth_file: None,
+                index_failures: HashMap::new(),
             },
             write_target_for_source: HashMap::new(),
             writable_own_source_id: "own".to_string(),
@@ -2143,6 +2200,126 @@ mod tests {
         assert_eq!(
             corpus.law_yaml("wet_a").await.unwrap().as_deref(),
             Some("$id: wet_a\nname: saved\n")
+        );
+    }
+
+    /// Backend gedraagt zich als een privé repo achter de Contents-API:
+    /// zonder het verwachte per-call token leest elke file als 404
+    /// (`Ok(None)`). Met `required_token: None` modelleert hij een
+    /// seed-backend die het persoonlijke token nooit mag ontvangen.
+    struct TokenGatedBackend {
+        files: HashMap<String, String>,
+        required_token: Option<String>,
+    }
+
+    #[async_trait]
+    impl RepoBackend for TokenGatedBackend {
+        async fn read_file(&self, path: &Path) -> CorpusResult<Option<String>> {
+            self.read_file_with_token(path, None).await
+        }
+        async fn read_file_with_token(
+            &self,
+            path: &Path,
+            token: Option<&str>,
+        ) -> CorpusResult<Option<String>> {
+            match &self.required_token {
+                // Privé repo: alleen het juiste token leest; anders 404.
+                Some(required) if token != Some(required.as_str()) => return Ok(None),
+                Some(_) => {}
+                // Seed-bron: het persoonlijke token mag hier nooit landen.
+                None => assert!(
+                    token.is_none(),
+                    "seed backend must never receive the personal read token"
+                ),
+            }
+            Ok(self.files.get(path.to_str().unwrap()).cloned())
+        }
+        async fn write_file(&self, _: &Path, _: &str) -> CorpusResult<()> {
+            Ok(())
+        }
+        async fn delete_file(&self, _: &Path) -> CorpusResult<()> {
+            Ok(())
+        }
+        async fn list_files(&self, _: &Path, _: Option<&str>) -> CorpusResult<Vec<FileEntry>> {
+            Ok(Vec::new())
+        }
+        async fn persist(&self, _: &CorpusWriteContext) -> CorpusResult<PersistOutcome> {
+            Ok(PersistOutcome::default())
+        }
+        async fn ensure_ready(&mut self) -> CorpusResult<()> {
+            Ok(())
+        }
+        fn supports_token_override(&self) -> bool {
+            true
+        }
+        fn is_writable(&self) -> bool {
+            false
+        }
+    }
+
+    #[tokio::test]
+    async fn law_yaml_forwards_the_read_token_only_to_the_writable_own_source() {
+        let mut map = SourceMap::new();
+        metadata_entry(&mut map, "wet_eigen", "own");
+        metadata_entry(&mut map, "wet_seed", "seed");
+        let backends = HashMap::from([
+            (
+                "own".to_string(),
+                BackendEntry {
+                    backend: Arc::new(Mutex::new(Box::new(TokenGatedBackend {
+                        files: HashMap::from([(
+                            "wet/wet_eigen/2025-01-01.yaml".to_string(),
+                            "$id: wet_eigen\n".to_string(),
+                        )]),
+                        required_token: Some("user-token".to_string()),
+                    }) as Box<dyn RepoBackend>)),
+                    writable: false,
+                },
+            ),
+            (
+                "seed".to_string(),
+                BackendEntry {
+                    backend: Arc::new(Mutex::new(Box::new(TokenGatedBackend {
+                        files: HashMap::from([(
+                            "wet/wet_seed/2025-01-01.yaml".to_string(),
+                            "$id: wet_seed\n".to_string(),
+                        )]),
+                        required_token: None,
+                    }) as Box<dyn RepoBackend>)),
+                    writable: false,
+                },
+            ),
+        ]);
+        let corpus = test_corpus(map, backends);
+
+        // Zonder token blijft de privé writable-own onleesbaar (GitHub's 404
+        // → `Ok(None)`), en er wordt níets negatiefs gecachet…
+        assert_eq!(
+            corpus
+                .law_yaml_with_read_token("wet_eigen", None)
+                .await
+                .unwrap(),
+            None
+        );
+        // …met het per-request token leest dezelfde wet wél.
+        assert_eq!(
+            corpus
+                .law_yaml_with_read_token("wet_eigen", Some("user-token"))
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("$id: wet_eigen\n")
+        );
+
+        // Een seed-read binnen dezelfde request geeft het token NIET door
+        // (de assert in de stub bewaakt dat) en slaagt gewoon.
+        assert_eq!(
+            corpus
+                .law_yaml_with_read_token("wet_seed", Some("user-token"))
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("$id: wet_seed\n")
         );
     }
 
@@ -2307,6 +2484,7 @@ mod tests {
             scopes: vec![],
             priority: 0,
             auth_ref: None,
+            strict_auth: false,
         };
         let registry = CorpusRegistry::from_sources(vec![source.clone()]);
         let source_map = registry.load_local_sources().unwrap();
@@ -2326,6 +2504,7 @@ mod tests {
                 source_map,
                 backends,
                 auth_file: None,
+                index_failures: HashMap::new(),
             },
             write_target_for_source: HashMap::new(),
             writable_own_source_id: "own".to_string(),
@@ -3074,6 +3253,12 @@ impl TrajectSourceRow {
             scopes,
             priority: self.priority.max(0) as u32,
             auth_ref: self.auth_ref.clone(),
+            // The writable-own's `auth_ref` derives from user-supplied repo
+            // coords (create-traject request), so EVERY token lookup for it
+            // — backend construction here, but also the index scan inside
+            // `CorpusRegistry::index_all_sources_async` — must resolve
+            // strictly, without the legacy `CORPUS_GIT_TOKEN` fallback.
+            strict_auth: self.is_writable_own,
         }
     }
 }
