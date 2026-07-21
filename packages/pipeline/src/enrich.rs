@@ -665,6 +665,55 @@ async fn read_enrichment_result_envelope(yaml_abs: &Path) -> EnrichmentResultEnv
     }
 }
 
+/// Strip a stale `chunk_report` from the `.enrichment-result.yaml` sidecar
+/// before a chunked LLM run.
+///
+/// The envelope is committed to the enrich branch as provenance, so the fresh
+/// checkout of a continuation chunk still contains the *previous* chunk's
+/// `chunk_report`. Left in place, the no-op guard would accept that stale
+/// report as proof-of-review for THIS window and silently advance the cursor
+/// past an unreviewed window. Removing only the `chunk_report` key (all other
+/// envelope contents — e.g. `related_legislation` — stay intact, via a raw
+/// `Value` edit so unknown keys survive too) guarantees any report present
+/// after the run was written this session.
+///
+/// Best-effort: an absent, unparseable, or non-mapping file is left alone —
+/// `read_enrichment_result_envelope` already degrades those to an empty
+/// envelope (no `chunk_report`) after the run, which keeps the guard sound.
+async fn clear_stale_chunk_report(yaml_abs: &Path) {
+    let envelope_path = enrichment_result_path(yaml_abs);
+    let Ok(content) = tokio::fs::read_to_string(&envelope_path).await else {
+        return;
+    };
+    let Ok(mut value) = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&content) else {
+        return;
+    };
+    let Some(map) = value.as_mapping_mut() else {
+        return;
+    };
+    if map.remove("chunk_report").is_none() {
+        return;
+    }
+    match serde_yaml_ng::to_string(&value) {
+        Ok(stripped) => {
+            if let Err(e) = tokio::fs::write(&envelope_path, stripped).await {
+                tracing::warn!(
+                    path = %envelope_path.display(),
+                    error = %e,
+                    "failed to strip stale chunk_report from result envelope"
+                );
+            }
+        }
+        Err(e) => {
+            tracing::warn!(
+                path = %envelope_path.display(),
+                error = %e,
+                "failed to re-serialize result envelope while stripping stale chunk_report"
+            );
+        }
+    }
+}
+
 /// Path of the `.enrichment-result.yaml` sidecar next to a law YAML file.
 fn enrichment_result_path(yaml_abs: &Path) -> PathBuf {
     yaml_abs
@@ -1686,6 +1735,11 @@ pub async fn execute_enrich_with_runner(
             "chunk cursor already at end of document; completing without an LLM run"
         );
     } else {
+        // A previous chunk's committed envelope must not serve as
+        // proof-of-review for this window (see clear_stale_chunk_report).
+        if chunk_window.is_some() {
+            clear_stale_chunk_report(&yaml_abs).await;
+        }
         let normalized_payload = EnrichPayload {
             yaml_path: normalized_path.clone(),
             chunk_articles: chunk_window.as_ref().map(|(_, numbers)| numbers.clone()),
@@ -3329,6 +3383,67 @@ articles:
         let msg = err.to_string();
         assert!(msg.contains(CHUNK_NO_OUTPUT_MARKER), "got: {msg}");
         assert!(!msg.contains("no machine_readable sections"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn test_execute_enrich_chunk_stale_report_is_no_proof_of_review() {
+        // The envelope is committed to the enrich branch as provenance, so a
+        // continuation chunk's checkout still contains the PREVIOUS chunk's
+        // chunk_report. A run that produces nothing must not pass the no-op
+        // guard on that stale report — the worker strips it pre-run, keeping
+        // the rest of the envelope (related_legislation) intact.
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+            .await
+            .unwrap();
+        // Cursor after chunk 1 (articles 1-2) …
+        tokio::fs::write(
+            law_dir.join(".enrichment.yaml"),
+            format!(
+                "law_id: BWBR0000001\ntimestamp: '2026-01-01T00:00:00Z'\nprovider: opencode\nmodel: m\nprompt_hash: p\ncode_commit: c\ncoverage_score: 1.0\narticles_total: 4\narticles_with_machine_readable: 0\nenrich_cursor: 2\nenrich_cursor_path: {yaml_path}\n"
+            ),
+        )
+        .await
+        .unwrap();
+        // …and chunk 1's committed envelope, report included.
+        tokio::fs::write(
+            law_dir.join(".enrichment-result.yaml"),
+            "related_legislation:\n  - name: Some Law\n    bwb_id: BWBR0037841\nchunk_report:\n  articles_reviewed: [\"1\", \"2\"]\n",
+        )
+        .await
+        .unwrap();
+
+        let mut config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        config.max_articles_per_run = 2;
+
+        let err = execute_enrich_with_runner(
+            &chunk_test_payload(yaml_path),
+            dir.path(),
+            &config,
+            "",
+            &NoopLlmRunner,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            err.to_string().contains(CHUNK_NO_OUTPUT_MARKER),
+            "stale chunk_report must not count as this session's proof: {err}"
+        );
+
+        // The stale report was stripped; the rest of the envelope survived.
+        let envelope = read_enrichment_result_envelope(&dir.path().join(yaml_path)).await;
+        assert!(envelope.chunk_report.is_none());
+        assert_eq!(envelope.related_legislation.len(), 1);
+        assert_eq!(
+            envelope.related_legislation[0].bwb_id.as_deref(),
+            Some("BWBR0037841")
+        );
     }
 
     #[tokio::test]
