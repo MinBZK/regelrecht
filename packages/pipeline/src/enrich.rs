@@ -1715,7 +1715,11 @@ pub async fn execute_enrich_with_runner(
             (Some((start, numbers)), law_complete, end)
         }
     };
-    let untranslatables_before = collect_untranslatables_from(&law).len();
+    // Window-scoped baseline for the chunk no-op guard: progress is measured
+    // inside the assigned window only.
+    let window_stats_before = chunk_window
+        .as_ref()
+        .map(|(start, numbers)| window_progress_stats(&law, *start, start + numbers.len()));
 
     let provider_name = config.provider.name().to_string();
 
@@ -1761,7 +1765,8 @@ pub async fn execute_enrich_with_runner(
 
     // Count articles with machine_readable after enrichment.
     // Coverage score measures what the LLM *added* this session, not total coverage.
-    let (articles_after, articles_with_machine_readable) = count_article_stats(&yaml_abs).await?;
+    let law_after = load_law(&yaml_abs).await?;
+    let (articles_after, articles_with_machine_readable) = article_stats(&law_after);
     if articles_after != articles_before {
         return Err(PipelineError::Enrich(format!(
             "article count changed during enrichment (before={articles_before}, after={articles_after}) — LLM modified YAML structure"
@@ -1784,7 +1789,7 @@ pub async fn execute_enrich_with_runner(
     let envelope = read_enrichment_result_envelope(&yaml_abs).await;
 
     // Capture the untranslatables the agent flagged in the enriched YAML (RFC-012).
-    let untranslatables = collect_untranslatables(&yaml_abs).await?;
+    let untranslatables = collect_untranslatables_from(&law_after);
 
     match &chunk_window {
         // Whole-law mode: if the LLM ran successfully but didn't enrich any
@@ -1807,7 +1812,18 @@ pub async fn execute_enrich_with_runner(
         // the failure stays retryable and can never terminally exhaust a
         // healthy law. The empty window skipped the LLM, so it is exempt.
         Some((start, numbers)) if !empty_window => {
-            let has_new_untranslatables = untranslatables.len() > untranslatables_before;
+            // Progress is measured INSIDE the assigned window: an edit outside
+            // `[start, end)` (a prompt violation, though it rides along in the
+            // commit exactly as it would in whole-law mode) must not count as
+            // proof that this window was reviewed — otherwise the cursor
+            // advances past a window nobody looked at.
+            let end = start + numbers.len();
+            let (win_enriched_before, win_untranslatables_before) =
+                window_stats_before.unwrap_or((0, 0));
+            let (win_enriched_after, win_untranslatables_after) =
+                window_progress_stats(&law_after, *start, end);
+            let window_newly_enriched = win_enriched_after.saturating_sub(win_enriched_before);
+            let window_new_untranslatables = win_untranslatables_after > win_untranslatables_before;
             // The chunk_report only counts as proof-of-review when it names at
             // least one article of THIS window: a bare `chunk_report: {}` or
             // one listing unrelated numbers must not advance the cursor past
@@ -1821,13 +1837,15 @@ pub async fn execute_enrich_with_runner(
                     .chain(report.articles_skipped.iter().map(|s| &s.number))
                     .any(|n| numbers.contains(n))
             });
-            if newly_enriched == 0 && !report_references_window && !has_new_untranslatables {
+            if window_newly_enriched == 0
+                && !report_references_window
+                && !window_new_untranslatables
+            {
                 return Err(PipelineError::Enrich(format!(
-                    "{CHUNK_NO_OUTPUT_MARKER}: no new machine_readable additions, no chunk_report \
-                     referencing this window, no new untranslatables (articles {}..{} of {})",
-                    start,
-                    start + numbers.len(),
-                    articles_before
+                    "{CHUNK_NO_OUTPUT_MARKER}: no new machine_readable additions in the window, \
+                     no chunk_report referencing this window, no new untranslatables in the \
+                     window (articles {}..{} of {})",
+                    start, end, articles_before
                 )));
             }
         }
@@ -1959,6 +1977,7 @@ async fn compute_prompt_hash(repo_path: &Path) -> String {
 /// including the empty `{}` an LLM may insert before filling it; an explicit
 /// `machine_readable: null` is treated as un-enriched. No corpus file uses the
 /// bare/null form, so this matches the previous key-presence behavior in practice.
+#[cfg(test)]
 async fn count_article_stats(path: &Path) -> Result<(usize, usize)> {
     let law = load_law(path).await?;
     Ok(article_stats(&law))
@@ -1986,6 +2005,7 @@ fn article_stats(law: &ArticleBasedLaw) -> (usize, usize) {
 ///
 /// Parses the law into the canonical [`ArticleBasedLaw`] model, mirroring
 /// [`count_article_stats`]. Returns an empty vec when no article declares any.
+#[cfg(test)]
 async fn collect_untranslatables(path: &Path) -> Result<Vec<CapturedUntranslatable>> {
     let law = load_law(path).await?;
     Ok(collect_untranslatables_from(&law))
@@ -1993,6 +2013,26 @@ async fn collect_untranslatables(path: &Path) -> Result<Vec<CapturedUntranslatab
 
 /// Flatten the untranslatables of an already-parsed law. See
 /// [`collect_untranslatables`].
+/// Window-scoped progress stats for the chunk no-op guard:
+/// `(articles_with_machine_readable, untranslatable_count)` within
+/// `[start, end)` of a parsed law. The guard measures progress inside the
+/// assigned window only — a whole-document delta would let an edit *outside*
+/// the window masquerade as progress for a window that was never reviewed.
+fn window_progress_stats(law: &ArticleBasedLaw, start: usize, end: usize) -> (usize, usize) {
+    let window = &law.articles[start..end];
+    let enriched = window
+        .iter()
+        .filter(|a| a.machine_readable.is_some())
+        .count();
+    let untranslatables = window
+        .iter()
+        .filter_map(|a| a.machine_readable.as_ref())
+        .filter_map(|m| m.untranslatables.as_ref())
+        .map(|entries| entries.len())
+        .sum();
+    (enriched, untranslatables)
+}
+
 fn collect_untranslatables_from(law: &ArticleBasedLaw) -> Vec<CapturedUntranslatable> {
     let mut out = Vec::new();
     for article in &law.articles {
@@ -3401,6 +3441,62 @@ articles:
         let msg = err.to_string();
         assert!(msg.contains(CHUNK_NO_OUTPUT_MARKER), "got: {msg}");
         assert!(!msg.contains("no machine_readable sections"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn test_execute_enrich_chunk_out_of_window_edit_is_no_progress() {
+        // A run that adds machine_readable ONLY to an article outside its
+        // assigned window (and writes no report) has not reviewed the window:
+        // the document-wide count rose, but the guard must still fail
+        // retryable instead of advancing the cursor past an unreviewed window.
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+            .await
+            .unwrap();
+
+        // Window is articles 1-2; this runner enriches article 3 instead.
+        struct OutOfWindowRunner;
+        #[async_trait::async_trait]
+        impl LlmRunner for OutOfWindowRunner {
+            async fn run(
+                &self,
+                _payload: &EnrichPayload,
+                yaml_abs: &Path,
+                _repo_path: &Path,
+                _config: &EnrichConfig,
+            ) -> Result<()> {
+                let content = tokio::fs::read_to_string(yaml_abs).await?;
+                let updated = content.replace(
+                    "  - number: '3'\n    text: Article three.",
+                    "  - number: '3'\n    text: Article three.\n    machine_readable: {}",
+                );
+                tokio::fs::write(yaml_abs, updated).await?;
+                Ok(())
+            }
+        }
+
+        let mut config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        config.max_articles_per_run = 2;
+
+        let err = execute_enrich_with_runner(
+            &chunk_test_payload(yaml_path),
+            dir.path(),
+            &config,
+            "",
+            &OutOfWindowRunner,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            err.to_string().contains(CHUNK_NO_OUTPUT_MARKER),
+            "out-of-window edit must not count as window progress: {err}"
+        );
     }
 
     #[tokio::test]
