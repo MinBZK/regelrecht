@@ -1067,6 +1067,8 @@ pub async fn create_enrich_jobs(
             traject_ref: None,
             source_etag: None,
             new_law: None,
+            chunk_articles: None,
+            skip_mvt: None,
         };
 
         let payload_json = serde_json::to_value(&enrich_payload).map_err(|e| {

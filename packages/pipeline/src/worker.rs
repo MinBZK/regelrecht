@@ -11,7 +11,7 @@ use crate::db;
 use crate::document_convert::{self, DocumentConvertPayload, LlmDocumentConverter};
 use crate::enrich::{
     create_enrich_corpus, enrich_branch_name, execute_enrich, progress_file_path, EnrichConfig,
-    EnrichPayload, RelatedLegislation,
+    EnrichPayload, EnrichResult, RelatedLegislation,
 };
 use crate::error::{PipelineError, Result};
 use crate::harvest::{execute_harvest, HarvestPayload, HarvestResult, MAX_HARVEST_DEPTH};
@@ -543,6 +543,8 @@ async fn process_next_job(
                         traject_ref: None,
                         source_etag: None,
                         new_law: None,
+                        chunk_articles: None,
+                        skip_mvt: None,
                     };
                     let payload_json = match serde_json::to_value(&enrich_payload) {
                         Ok(json) => json,
@@ -2113,6 +2115,10 @@ async fn process_enrich_task_job(
     if bounded_config.timeout >= job_timeout {
         bounded_config.timeout = job_timeout.saturating_sub(Duration::from_secs(30));
     }
+    // Taak-flow verrijkt altijd de hele wet in één sessie: het resultaat wordt
+    // een review-taak (blobs), niet een push naar de enrich-branch, dus er is
+    // geen cursor-persistentie of continuation-lus om op te bouwen.
+    bounded_config.max_articles_per_run = 0;
 
     let outcome = tokio::time::timeout(
         job_timeout,
@@ -2161,6 +2167,100 @@ async fn process_enrich_task_job(
             Ok(JobOutcome::Processed)
         }
     }
+}
+
+/// Finish a successful (non-task-flow) enrich run atomically.
+///
+/// One transaction: complete the job, mirror the captured untranslatables,
+/// and then either
+/// - `law_complete == true` → mark the law `enriched` (the pre-chunking
+///   behavior); or
+/// - `law_complete == false` (mid-chunk-loop) → leave the law status alone
+///   (it stays `enriching`) and create the continuation enrich job — same
+///   provider, priority, depth and traject scope, bare payload — in the SAME
+///   transaction. Creating it after `complete_job` inside one tx means
+///   `idx_unique_active_enrich_job` no longer sees the completed job as
+///   active, and either both the completion and the continuation commit or
+///   neither does: there is never a law left `enriching` without an
+///   active/pending job.
+///
+/// Returns the continuation job when one was created. An `Ok(None)` conflict
+/// (another active job in the same scope already exists — e.g. a manually
+/// requested re-enrich) is logged and accepted: that job will carry the loop
+/// forward.
+///
+/// `pub` so the DB-integration tests can drive the completion/continuation
+/// contract against a real Postgres without spawning an LLM.
+pub async fn complete_enrich_success_tx(
+    pool: &PgPool,
+    job: &crate::models::Job,
+    payload: &EnrichPayload,
+    result: &EnrichResult,
+    result_json: Option<serde_json::Value>,
+) -> Result<Option<crate::models::Job>> {
+    let mut tx = pool.begin().await?;
+    job_queue::complete_job(&mut *tx, job.id, result_json).await?;
+    // Mirror the captured untranslatables into their table so they
+    // surface in the harvester UI. Atomic with the completion:
+    // delete-and-replace per (law_id, provider).
+    crate::untranslatables::replace_untranslatables(
+        &mut tx,
+        &result.law_id,
+        &result.provider,
+        job.id,
+        &result.untranslatables,
+    )
+    .await?;
+
+    let continuation = if result.law_complete {
+        law_status::update_status(&mut *tx, &job.law_id, LawStatusValue::Enriched).await?;
+        None
+    } else {
+        // Bare continuation payload: the chunk window is recomputed from the
+        // cursor on the enrich branch at claim time, so it does NOT ride in
+        // the queue payload (`chunk_articles`/`skip_mvt` stay transport-only).
+        let continuation_payload = EnrichPayload {
+            law_id: payload.law_id.clone(),
+            yaml_path: payload.yaml_path.clone(),
+            provider: Some(result.provider.clone()),
+            depth: payload.depth,
+            requested_by: None,
+            deliver: None,
+            traject_id: None,
+            traject_ref: payload.traject_ref.clone(),
+            source_etag: None,
+            new_law: None,
+            chunk_articles: None,
+            skip_mvt: None,
+        };
+        let continuation_json = serde_json::to_value(&continuation_payload).map_err(|e| {
+            PipelineError::Enrich(format!("serialize continuation enrich payload: {e}"))
+        })?;
+        let mut req = CreateJobRequest::new(JobType::Enrich, &job.law_id)
+            .with_priority(Priority::new(job.priority))
+            .with_payload(continuation_json);
+        // Inherit the traject scope from the payload (the `Job` model does not
+        // carry the `traject_ref` column), so the continuation lands in the
+        // same uniqueness scope of `idx_unique_active_enrich_job`.
+        if let Some(ref traject_ref) = payload.traject_ref {
+            req = req.with_traject_ref(traject_ref.clone());
+        }
+        let created = job_queue::create_enrich_job_if_not_exists(&mut *tx, req).await?;
+        if created.is_none() {
+            // Another active enrich job for this law/provider/scope already
+            // exists (e.g. a manual re-enrich request); it will pick the
+            // cursor up from the branch, so the loop still progresses.
+            tracing::info!(
+                law_id = %job.law_id,
+                provider = %result.provider,
+                "continuation enrich job skipped: active job already exists"
+            );
+        }
+        created
+    };
+
+    tx.commit().await?;
+    Ok(continuation)
 }
 
 /// Process the next available enrich job.
@@ -2429,6 +2529,8 @@ async fn process_next_enrich_job(
                 articles_total = result.articles_total,
                 articles_with_machine_readable = result.articles_with_machine_readable,
                 coverage_score = result.coverage_score,
+                law_complete = result.law_complete,
+                enrich_cursor = result.enrich_cursor,
                 provider = %result.provider,
                 branch = %result.branch,
                 "enrichment completed successfully"
@@ -2437,45 +2539,33 @@ async fn process_next_enrich_job(
             // Push to corpus, complete the job in DB, and update law status.
             // If any of these fail, mark the job as failed so it gets retried
             // instead of orphaning it in 'processing' state for 30 minutes.
-            let commit_result: std::result::Result<(), PipelineError> = async {
-                if let Some(ref corpus) = enrich_corpus {
-                    let message = format!(
-                        "enrich({}): {} ({})",
-                        result.provider, result.law_id, result.yaml_path
-                    );
-                    corpus
-                        .client
-                        .commit_and_push(&written_files, &message)
-                        .await
-                        .map_err(|e| PipelineError::Enrich(format!("corpus push failed: {e}")))?;
-                }
-
-                let result_json = match serde_json::to_value(&result) {
-                    Ok(v) => Some(v),
-                    Err(e) => {
-                        tracing::warn!(error = %e, job_id = %job.id, "failed to serialize enrich result");
-                        None
+            let commit_result: std::result::Result<Option<crate::models::Job>, PipelineError> =
+                async {
+                    if let Some(ref corpus) = enrich_corpus {
+                        let message = format!(
+                            "enrich({}): {} ({})",
+                            result.provider, result.law_id, result.yaml_path
+                        );
+                        corpus
+                            .client
+                            .commit_and_push(&written_files, &message)
+                            .await
+                            .map_err(|e| {
+                                PipelineError::Enrich(format!("corpus push failed: {e}"))
+                            })?;
                     }
-                };
 
-                let mut tx = pool.begin().await?;
-                job_queue::complete_job(&mut *tx, job.id, result_json).await?;
-                // Mirror the captured untranslatables into their table so they
-                // surface in the harvester UI. Atomic with the completion:
-                // delete-and-replace per (law_id, provider).
-                crate::untranslatables::replace_untranslatables(
-                    &mut tx,
-                    &result.law_id,
-                    &result.provider,
-                    job.id,
-                    &result.untranslatables,
-                )
-                .await?;
-                law_status::update_status(&mut *tx, &job.law_id, LawStatusValue::Enriched).await?;
-                tx.commit().await?;
-                Ok(())
-            }
-            .await;
+                    let result_json = match serde_json::to_value(&result) {
+                        Ok(v) => Some(v),
+                        Err(e) => {
+                            tracing::warn!(error = %e, job_id = %job.id, "failed to serialize enrich result");
+                            None
+                        }
+                    };
+
+                    complete_enrich_success_tx(pool, &job, &payload, &result, result_json).await
+                }
+                .await;
 
             match commit_result {
                 Err(e) => {
@@ -2521,7 +2611,19 @@ async fn process_next_enrich_job(
                     }
                     Ok(outcome)
                 }
-                Ok(()) => {
+                Ok(continuation) => {
+                    if let Some(ref cont) = continuation {
+                        tracing::info!(
+                            job_id = %job.id,
+                            continuation_job_id = %cont.id,
+                            law_id = %job.law_id,
+                            enrich_cursor = result.enrich_cursor,
+                            "law not complete after chunk; continuation enrich job created"
+                        );
+                    }
+
+                    // A successful chunk resets the fail counter: only
+                    // *consecutive* failed runs count toward exhaustion.
                     if let Err(e) =
                         law_status::reset_fail_count(pool, &job.law_id, JobType::Enrich).await
                     {
@@ -2530,16 +2632,24 @@ async fn process_next_enrich_job(
 
                     // Set coverage score outside the transaction (non-critical).
                     // With dual providers, whichever finishes last writes the score.
+                    // The stored score is the CUMULATIVE fraction of articles with
+                    // machine_readable, not the per-run delta — mid-chunk-loop the
+                    // delta would misrepresent a partially processed law. The
+                    // per-run delta stays visible in the job's `EnrichResult`.
+                    let cumulative_coverage = if result.articles_total > 0 {
+                        result.articles_with_machine_readable as f64 / result.articles_total as f64
+                    } else {
+                        0.0
+                    };
                     if let Err(e) =
-                        law_status::set_coverage_score(pool, &job.law_id, result.coverage_score)
-                            .await
+                        law_status::set_coverage_score(pool, &job.law_id, cumulative_coverage).await
                     {
                         tracing::warn!(error = %e, provider = %result.provider, "failed to set coverage score");
                     } else {
                         tracing::info!(
                             law_id = %job.law_id,
                             provider = %result.provider,
-                            coverage_score = result.coverage_score,
+                            coverage_score = cumulative_coverage,
                             "coverage score updated"
                         );
                     }
@@ -3004,6 +3114,24 @@ mod tests {
         assert!(
             is_deterministic_content_failure(&enrich_err.to_string()),
             "PipelineError::Enrich Display must preserve the message the classifier keys on"
+        );
+    }
+
+    #[test]
+    fn chunk_no_output_is_not_deterministic() {
+        // A chunk that produced no output at all fails RETRYABLE: its message
+        // must never match the deterministic-content classifier, or a healthy
+        // large law could be terminally exhausted by one hiccupped chunk. Pin
+        // the full formatted message, not just the marker, so a rewording that
+        // accidentally introduces a classifier marker fails here.
+        let chunk_err = PipelineError::Enrich(format!(
+            "{}: no new machine_readable additions, no chunk_report, \
+             no new untranslatables (articles 15..30 of 324)",
+            crate::enrich::CHUNK_NO_OUTPUT_MARKER
+        ));
+        assert!(
+            !is_deterministic_content_failure(&chunk_err.to_string()),
+            "chunk no-output failures must stay retryable (never terminal)"
         );
     }
 

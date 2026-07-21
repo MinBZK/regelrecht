@@ -35,6 +35,13 @@ working examples in the corpus.
    `features/bijstand.feature`
 6. Count articles; if >20 articles, process in batches of ~15
 
+**Explicit article subset (chunked enrichment):** when the enrichment prompt
+supplies an explicit list of article numbers to process, that subset defines
+your entire scope. The internal batching above applies *within that subset*
+only, and every article outside the subset must be left completely untouched —
+do not add, edit, or remove `machine_readable` sections elsewhere in the file.
+The pipeline processes the remaining articles in later runs.
+
 ## FUNDAMENTAL RULE: Stay Within Scope
 
 Each `machine_readable` section must faithfully interpret ONLY the legal provision it
