@@ -82,6 +82,7 @@ pub async fn request_enrich(
         traject_id: Some(traject_id),
         traject_ref: Some(traject_ref.clone()),
         source_etag: Some(source_etag),
+        new_law: None,
     };
     let payload_json = serde_json::to_value(&payload).map_err(internal("payload serialiseren"))?;
 
@@ -89,34 +90,7 @@ pub async fn request_enrich(
     // op (law_id, provider) via de bestaande unieke actieve-enrich-index.
     let mut tx = pool.begin().await.map_err(internal("begin tx"))?;
 
-    // Serialiseer per account: de cap-check hieronder is anders een
-    // COUNT-then-INSERT-race (zelfde TOCTOU-klasse als harvest_request;
-    // zelfde remedie: een xact-scoped advisory lock).
-    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended('task_enrich:' || $1::text, 0))")
-        .bind(account.id.to_string())
-        .execute(&mut *tx)
-        .await
-        .map_err(internal("account-lock nemen"))?;
-
-    // Per-account-cap: telt actieve taak-flow-jobs van dit account vóórdat we
-    // er nog een bij enqueuen, zodat een scripted flood niet de prio-80-queue
-    // of het LLM-uurbudget kan opsouperen.
-    let (active_count,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM jobs \
-         WHERE job_type = 'enrich' AND status IN ('pending', 'processing') \
-           AND payload->>'requested_by' = $1",
-    )
-    .bind(account.id.to_string())
-    .fetch_one(&mut *tx)
-    .await
-    .map_err(internal("actieve taak-jobs tellen"))?;
-    if active_count >= MAX_ACTIVE_TASK_JOBS_PER_ACCOUNT {
-        return Err((
-            StatusCode::TOO_MANY_REQUESTS,
-            "Je hebt te veel verrijkingen tegelijk lopen; wacht tot er een paar klaar zijn."
-                .to_string(),
-        ));
-    }
+    enforce_task_job_cap(&mut tx, account.id).await?;
 
     // max_attempts 3 (default expliciet): transiënte fouten (fork-exhaustion,
     // provider-hiccups) zijn retryable; de input-blob overleeft tot definitief
@@ -146,6 +120,171 @@ pub async fn request_enrich(
     ))
 }
 
+/// Bovengrens op de meegegeven weergavenaam: hij landt in taak-titels en in
+/// de job-payload, dus onbegrensde user input hoort daar niet thuis.
+const MAX_LAW_NAME_CHARS: usize = 200;
+
+#[derive(serde::Deserialize)]
+pub struct TrajectHarvestRequest {
+    pub bwb_id: String,
+    /// Weergavenaam uit de zoekresultaten (optioneel; alleen voor titels).
+    #[serde(default)]
+    pub law_name: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+pub struct TrajectHarvestResponse {
+    pub job_id: Uuid,
+}
+
+/// Valideer en normaliseer een door de gebruiker aangeleverd BWB-id.
+/// Canonieke vorm is hoofdletters (`BWBR0018451`); lowercase input wordt
+/// genormaliseerd. De vorm-check is bewust ruim (BWBR/BWBV/…): de harvester
+/// zelf is de autoriteit over wat echt bestaat.
+fn normalize_bwb_id(raw: &str) -> Option<String> {
+    let id = raw.trim().to_ascii_uppercase();
+    let ok = id.starts_with("BWB")
+        && (6..=20).contains(&id.len())
+        && id.chars().all(|c| c.is_ascii_alphanumeric());
+    ok.then_some(id)
+}
+
+/// POST /api/trajects/{traject_ref}/corpus/harvest
+///
+/// Start een traject-scoped harvest via het taken-mechanisme: enqueue een
+/// `traject_harvest`-job (BWB-download op de harvest-worker) die een
+/// taak-flow-enrich ketent (zie `pipeline::traject_harvest`). De aanvraag is
+/// direct zichtbaar in het takenpaneel als lopende aanvraag; het resultaat
+/// komt terug als `law_create`-review-taak van de aanvrager.
+pub async fn request_traject_harvest(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(account): Extension<AccountRecord>,
+    Path(traject_ref): Path<String>,
+    axum::Json(req): axum::Json<TrajectHarvestRequest>,
+) -> Result<(StatusCode, Json<TrajectHarvestResponse>), (StatusCode, String)> {
+    let pool = state.pool.as_ref().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "database niet geconfigureerd".to_string(),
+    ))?;
+
+    let bwb_id = normalize_bwb_id(&req.bwb_id).ok_or((
+        StatusCode::BAD_REQUEST,
+        "Geen geldig BWB-id (verwacht bijv. BWBR0018451).".to_string(),
+    ))?;
+    let law_name = req
+        .law_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.chars().take(MAX_LAW_NAME_CHARS).collect::<String>());
+
+    // Zelfde guard + resolutie als de enrich-aanvraag: membership-check en
+    // traject-id voor de payload/taak.
+    let _traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let traject_id = resolve_traject_ref(pool, &traject_ref).await?;
+
+    let payload = regelrecht_pipeline::traject_harvest::TrajectHarvestPayload {
+        bwb_id: bwb_id.clone(),
+        traject_id,
+        traject_ref: traject_ref.clone(),
+        law_name,
+        provider: Some(state.config.task_enrich_provider.clone()),
+        requested_by: Some(account.id),
+        deliver: Some("task".into()),
+    };
+    let payload_json = serde_json::to_value(&payload).map_err(internal("payload serialiseren"))?;
+
+    let mut tx = pool.begin().await.map_err(internal("begin tx"))?;
+
+    enforce_task_job_cap(&mut tx, account.id).await?;
+
+    // Serialiseer per (traject, wet) en dedup dan tegen actieve jobs: twee
+    // leden die dezelfde wet tegelijk aanvragen zouden anders allebei langs
+    // de SELECT komen (zelfde TOCTOU-klasse en remedie als harvest_request).
+    sqlx::query(
+        "SELECT pg_advisory_xact_lock(hashtextextended('traject_harvest:' || $1 || ':' || $2, 0))",
+    )
+    .bind(&traject_ref)
+    .bind(&bwb_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(internal("harvest-lock nemen"))?;
+
+    let existing: Option<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM jobs \
+         WHERE job_type = 'traject_harvest' AND law_id = $1 AND traject_ref = $2 \
+           AND status IN ('pending', 'processing') \
+         LIMIT 1",
+    )
+    .bind(&bwb_id)
+    .bind(&traject_ref)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(internal("actieve harvest-jobs zoeken"))?;
+    if existing.is_some() {
+        return Err((
+            StatusCode::CONFLICT,
+            "Er loopt al een ophaal-aanvraag voor deze wet in dit traject.".to_string(),
+        ));
+    }
+
+    // max_attempts 3: BWB-outages en netwerkfouten zijn transiënt en de
+    // harvest is idempotent; deterministische fouten failt de worker
+    // terminaal (zie process_next_traject_harvest_job).
+    let req = CreateJobRequest::new(JobType::TrajectHarvest, &bwb_id)
+        .with_traject_ref(&traject_ref)
+        .with_priority(Priority::new(TASK_ENRICH_PRIORITY))
+        .with_payload(payload_json)
+        .with_max_attempts(3);
+    let job = job_queue::create_job(&mut *tx, req)
+        .await
+        .map_err(internal("enqueue traject-harvest"))?;
+    tx.commit().await.map_err(internal("commit"))?;
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(TrajectHarvestResponse { job_id: job.id }),
+    ))
+}
+
+/// Per-account-cap op actieve taak-flow-jobs, binnen de transactie van de
+/// aanroeper. Serialiseert eerst per account (xact-scoped advisory lock):
+/// de COUNT-then-INSERT is anders een TOCTOU-race (zelfde klasse en remedie
+/// als harvest_request). Telt naast enrich- ook law_convert- en
+/// traject_harvest-jobs mee: die ketenen immers elk een enrich-job na.
+/// Gedeeld door `request_enrich`, `request_traject_harvest` en de law-upload
+/// in `corpus_handlers`.
+pub(crate) async fn enforce_task_job_cap(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    account_id: Uuid,
+) -> Result<(), (StatusCode, String)> {
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended('task_enrich:' || $1::text, 0))")
+        .bind(account_id.to_string())
+        .execute(&mut **tx)
+        .await
+        .map_err(internal("account-lock nemen"))?;
+
+    let (active_count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM jobs \
+         WHERE job_type IN ('enrich', 'law_convert', 'traject_harvest') \
+           AND status IN ('pending', 'processing') \
+           AND payload->>'requested_by' = $1",
+    )
+    .bind(account_id.to_string())
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(internal("actieve taak-jobs tellen"))?;
+    if active_count >= MAX_ACTIVE_TASK_JOBS_PER_ACCOUNT {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "Je hebt te veel verrijkingen tegelijk lopen; wacht tot er een paar klaar zijn."
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
 fn internal<E: std::fmt::Display>(what: &'static str) -> impl FnOnce(E) -> (StatusCode, String) {
     move |e| {
         tracing::error!(error = %e, what, "enrich-aanvraag mislukt");
@@ -170,5 +309,32 @@ mod tests {
         let id = Uuid::new_v4();
         let json = serde_json::to_value(id).expect("uuid serialiseert");
         assert_eq!(json, serde_json::Value::String(id.to_string()));
+    }
+
+    #[test]
+    fn normalize_bwb_id_accepts_and_uppercases_valid_ids() {
+        assert_eq!(
+            normalize_bwb_id("BWBR0018451").as_deref(),
+            Some("BWBR0018451")
+        );
+        assert_eq!(
+            normalize_bwb_id("  bwbr0018451 ").as_deref(),
+            Some("BWBR0018451")
+        );
+        // Verdragen (BWBV) vallen ook onder BWB.
+        assert_eq!(
+            normalize_bwb_id("BWBV0001000").as_deref(),
+            Some("BWBV0001000")
+        );
+    }
+
+    #[test]
+    fn normalize_bwb_id_rejects_garbage() {
+        assert!(normalize_bwb_id("").is_none());
+        assert!(normalize_bwb_id("BWB").is_none());
+        assert!(normalize_bwb_id("CVDR681386").is_none());
+        assert!(normalize_bwb_id("BWBR00184-1").is_none());
+        assert!(normalize_bwb_id("BWBR001845100000000000").is_none());
+        assert!(normalize_bwb_id("wet_op_de_zorgtoeslag").is_none());
     }
 }

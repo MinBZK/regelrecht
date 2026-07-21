@@ -89,12 +89,15 @@ vi.mock('./composables/useTrajectDocumentJobs.js', () => ({
   }),
 }));
 
-// Capture the onUploaded callback LibraryView hands in, so a test can fire it
-// with an upload result the way a real successful upload would.
-let onUploaded = null;
+// Capture the onUploaded callbacks LibraryView hands in, so a test can fire
+// one with an upload result the way a real successful upload would.
+// LibraryView wires useDocumentUpload twice (werkdocument-upload eerst, dan
+// de wet-upload), dus per aanroep vastleggen; `onUploaded` = de werkdoc-cb.
+let onUploadedCbs = [];
+const onUploaded = (...args) => onUploadedCbs[0]?.(...args);
 vi.mock('./composables/useDocumentUpload.js', () => ({
   useDocumentUpload: (_uploadFn, uploadedCb) => {
-    onUploaded = uploadedCb;
+    onUploadedCbs.push(uploadedCb);
     return {
       fileInput: ref(null),
       uploadError: ref(null),
@@ -143,6 +146,7 @@ async function jobLeavesList() {
 }
 
 beforeEach(() => {
+  onUploadedCbs = [];
   documents.value = [];
   jobs.value = [];
   openDoc.mockReset().mockResolvedValue(undefined);

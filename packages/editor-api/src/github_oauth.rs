@@ -895,6 +895,25 @@ pub async fn write_requires_user_token(
         })
 }
 
+/// [`write_requires_user_token`], tolerating an unconfigured OAuth
+/// integration: `false` when `github_oauth` is absent (the pre-spike
+/// service-token world).
+///
+/// Used by the traject write resolvers to decide whether a backend that is
+/// read-only **at rest** (no configured service token) may still be
+/// written through: in user-token mode the acting user's own GitHub token
+/// authenticates the commit (`WriteContext::token_override`), so "no
+/// service token" must not 403 the write up-front — the deployed
+/// federation config for a user-created traject repo intentionally has no
+/// `CORPUS_AUTH_*` token for that repo (fail-closed against shipping the
+/// central token to a user-chosen repo).
+pub async fn user_token_write_mode(state: &AppState) -> Result<bool, (StatusCode, String)> {
+    match state.config.github_oauth.as_ref() {
+        Some(oauth) => write_requires_user_token(state, oauth).await,
+        None => Ok(false),
+    }
+}
+
 /// Resolve the per-user GitHub credential to attach to an editor write, read
 /// from the sealed token cookie riding on this request.
 ///

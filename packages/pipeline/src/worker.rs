@@ -16,8 +16,10 @@ use crate::enrich::{
 use crate::error::{PipelineError, Result};
 use crate::harvest::{execute_harvest, HarvestPayload, HarvestResult, MAX_HARVEST_DEPTH};
 use crate::job_queue::{self, CreateJobRequest};
+use crate::law_convert::{self, LawConvertPayload, LlmLawStructurer};
 use crate::law_status;
 use crate::models::{JobType, LawStatusValue, Priority};
+use crate::traject_harvest::{self, TrajectHarvestPayload};
 
 /// Local night window (Europe/Amsterdam) as a half-open hour-of-day range
 /// `[start, end)`. Hours in this range get the multiplied enrich cap.
@@ -143,8 +145,18 @@ fn spawn_reaper(
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         loop {
-            if let Err(e) = job_queue::reap_orphaned_jobs(&pool, orphan_timeout).await {
-                tracing::warn!(error = %e, "failed to reap orphaned jobs");
+            match job_queue::reap_orphaned_jobs(&pool, orphan_timeout).await {
+                Ok(reaped) => {
+                    // Terminaal gefaalde taak-flow-jobs krijgen alsnog een
+                    // job_failed-taak; zonder dit verdwijnt de "Bezig"-regel
+                    // stil en hoort de aanvrager nooit dat het misging.
+                    if let Err(e) = crate::tasks::notify_reaped_task_jobs(&pool, &reaped).await {
+                        tracing::warn!(error = %e, "failed to create tasks for reaped jobs");
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to reap orphaned jobs");
+                }
             }
             // GC upload bytes orphaned when a worker died mid-conversion: the
             // generic reaper above fails such a job without running the
@@ -244,6 +256,35 @@ pub async fn run_harvest_worker(config: WorkerConfig) -> Result<()> {
             }
             _ = tokio::time::sleep(current_interval) => {
                 // Ready to process next job
+            }
+        }
+
+        // Traject-scoped harvests (taak-flow) gaan vóór de corpus-brede
+        // queue: een mens wacht erop (prio 80-aanvraag uit de editor), en de
+        // corpus-brede harvest kan lange bulkruns draaien. Spiegel van hoe de
+        // enrich-worker document-/law-convert-jobs vóór de enrich-cap draait.
+        match process_next_traject_harvest_job(&pool, &config, &http_client).await {
+            Ok(JobOutcome::Processed) => {
+                consecutive_resource_failures = 0;
+                current_interval = config.poll_interval;
+                continue;
+            }
+            Ok(JobOutcome::ResourceExhausted) => {
+                handle_resource_exhaustion(
+                    &mut consecutive_resource_failures,
+                    config.max_consecutive_resource_failures,
+                    "traject-harvest",
+                );
+                current_interval = config.poll_interval;
+                continue;
+            }
+            Ok(JobOutcome::Idle) => { /* geen traject-harvest — door naar de gewone queue */ }
+            Err(e) => {
+                tracing::error!(error = %e, "error processing traject-harvest job");
+                current_interval = (current_interval * 2)
+                    .max(config.poll_interval)
+                    .min(config.max_poll_interval);
+                continue;
             }
         }
 
@@ -501,6 +542,7 @@ async fn process_next_job(
                         traject_id: None,
                         traject_ref: None,
                         source_etag: None,
+                        new_law: None,
                     };
                     let payload_json = match serde_json::to_value(&enrich_payload) {
                         Ok(json) => json,
@@ -858,7 +900,14 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
         // interactive, user-initiated uploads (naturally rate-limited) and must
         // not be blocked when bulk enrichment has hit its budget cap. They still
         // share this worker's LLM CLI environment and OAuth token.
-        match process_next_document_convert_job(&pool, &enrich_config, config.job_timeout).await {
+        match process_next_document_convert_job(
+            &pool,
+            &enrich_config,
+            config.job_timeout,
+            config.orphan_timeout,
+        )
+        .await
+        {
             Ok(JobOutcome::Processed) => {
                 consecutive_resource_failures = 0;
                 current_interval = config.poll_interval;
@@ -876,6 +925,41 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
             Ok(JobOutcome::Idle) => { /* no document-convert job — continue to enrich */ }
             Err(e) => {
                 tracing::error!(error = %e, "error processing document-convert job");
+                current_interval = (current_interval * 2)
+                    .max(config.poll_interval)
+                    .min(config.max_poll_interval);
+                continue;
+            }
+        }
+
+        // Law-convert jobs (upload → basis-wet-YAML) run before the cap gate
+        // for the same reason as document-convert: interactive uploads. The
+        // enrich job they chain into DOES fall under the hourly cap.
+        match process_next_law_convert_job(
+            &pool,
+            &enrich_config,
+            config.job_timeout,
+            config.orphan_timeout,
+        )
+        .await
+        {
+            Ok(JobOutcome::Processed) => {
+                consecutive_resource_failures = 0;
+                current_interval = config.poll_interval;
+                continue;
+            }
+            Ok(JobOutcome::ResourceExhausted) => {
+                handle_resource_exhaustion(
+                    &mut consecutive_resource_failures,
+                    config.max_consecutive_resource_failures,
+                    "law-convert",
+                );
+                current_interval = config.poll_interval;
+                continue;
+            }
+            Ok(JobOutcome::Idle) => { /* no law-convert job, continue to enrich */ }
+            Err(e) => {
+                tracing::error!(error = %e, "error processing law-convert job");
                 current_interval = (current_interval * 2)
                     .max(config.poll_interval)
                     .min(config.max_poll_interval);
@@ -1236,6 +1320,7 @@ async fn process_next_document_convert_job(
     pool: &PgPool,
     enrich_config: &EnrichConfig,
     job_timeout: Duration,
+    orphan_timeout: Duration,
 ) -> Result<JobOutcome> {
     let job = match job_queue::claim_job(pool, Some(JobType::DocumentConvert)).await? {
         Some(job) => job,
@@ -1288,14 +1373,21 @@ async fn process_next_document_convert_job(
     }
 
     // Apply the payload's provider override (if any) and bound the run by the
-    // worker's job timeout, mirroring the enrich path.
+    // worker's job timeout, mirroring the enrich path. Net als law-convert
+    // begrensd ónder de reaper-window: de agent-fallback kan traag zijn, en
+    // een gereapte single-attempt-job zou anders stil verdwijnen — de
+    // begrenzing laat een te trage run in het zichtbare foutpad eindigen.
     let mut job_config = match &payload.provider {
         Some(provider) => enrich_config.with_provider_override(provider),
         None => enrich_config.clone(),
     };
-    job_config.timeout = job_timeout;
+    let reaper_margin = orphan_timeout
+        .saturating_sub(Duration::from_secs(120))
+        .max(Duration::from_secs(60));
+    let convert_deadline = job_timeout.min(reaper_margin);
+    job_config.timeout = convert_deadline;
 
-    match run_document_convert(pool, &job, &payload, &job_config).await {
+    match run_document_convert(pool, &job, &payload, &job_config, convert_deadline).await {
         Ok(true) => {
             // Taak-flow: `finish_document_convert_task_job` already inserted the
             // result-blob, completed the job, and created the review-taak,
@@ -1408,16 +1500,331 @@ async fn run_document_convert(
     job: &crate::models::Job,
     payload: &DocumentConvertPayload,
     config: &EnrichConfig,
+    convert_deadline: Duration,
 ) -> Result<bool> {
-    let markdown =
-        document_convert::execute_document_convert(pool, payload, config, &LlmDocumentConverter)
-            .await?;
+    // Buitenste begrenzing ónder de reaper-window (zie de aanroeper): de
+    // gedropte future komt niet meer aan zijn eigen tempdir-cleanup toe, dus
+    // die doen we hier; kill_on_drop ruimt het agent-subprocess op.
+    let markdown = match tokio::time::timeout(
+        convert_deadline,
+        document_convert::execute_document_convert(pool, payload, config, &LlmDocumentConverter),
+    )
+    .await
+    {
+        Err(_elapsed) => {
+            let _ = tokio::fs::remove_dir_all(
+                std::env::temp_dir().join(format!("docconvert-{}", payload.upload_id)),
+            )
+            .await;
+            return Err(PipelineError::Enrich(format!(
+                "conversie-time-out na {}s (begrensd onder de reaper-window)",
+                convert_deadline.as_secs()
+            )));
+        }
+        Ok(r) => r?,
+    };
     if payload.deliver_as_task() {
         finish_document_convert_task_job(pool, job, payload, &markdown).await?;
         return Ok(true);
     }
     document_convert::write_markdown_to_traject(pool, payload, &markdown).await?;
     Ok(false)
+}
+
+/// Verwerk één `law_convert`-job: geüpload document → gevalideerde
+/// basis-wet-YAML → geketende taak-flow-enrich-job (het kettingstuk zit in
+/// `law_convert::finish_law_convert_job`). Spiegel van
+/// [`process_next_document_convert_job`]: single-attempt, terminale fouten
+/// krijgen atomair een `job_failed`-taak en de upload-bytes worden opgeruimd.
+async fn process_next_law_convert_job(
+    pool: &PgPool,
+    enrich_config: &EnrichConfig,
+    job_timeout: Duration,
+    orphan_timeout: Duration,
+) -> Result<JobOutcome> {
+    let job = match job_queue::claim_job(pool, Some(JobType::LawConvert)).await? {
+        Some(job) => job,
+        None => return Ok(JobOutcome::Idle),
+    };
+    tracing::info!(job_id = %job.id, law_id = %job.law_id, "processing law-convert job");
+
+    // Malformed payload is deterministisch: terminaal falen, en de upload
+    // best-effort opruimen als het id nog uit de raw payload te vissen is.
+    let payload: LawConvertPayload = match job
+        .payload
+        .as_ref()
+        .ok_or_else(|| PipelineError::Worker("law_convert job has no payload".to_string()))
+        .and_then(|p| {
+            serde_json::from_value(p.clone())
+                .map_err(|e| PipelineError::Worker(format!("payload deserialization failed: {e}")))
+        }) {
+        Ok(payload) => payload,
+        Err(e) => {
+            let msg = format!("invalid law_convert payload: {e}");
+            tracing::error!(job_id = %job.id, error = %msg);
+            if let Some(id) = job
+                .payload
+                .as_ref()
+                .and_then(|p| p.get("upload_id"))
+                .and_then(|v| v.as_str())
+                .and_then(|s| uuid::Uuid::parse_str(s).ok())
+            {
+                let _ = document_convert::delete_upload(pool, id).await;
+            }
+            job_queue::fail_job_terminal(pool, job.id, Some(serde_json::json!({ "error": msg })))
+                .await?;
+            return Ok(JobOutcome::Processed);
+        }
+    };
+
+    // Law-convert kent alléén de taak-flow: zonder `requested_by` is er geen
+    // assignee voor de uiteindelijke review-taak, en zonder `deliver: task`
+    // is er geen aflever-pad (er bestaat geen direct-push-variant).
+    if !payload.deliver_as_task() || payload.requested_by.is_none() {
+        let msg = "law_convert vereist deliver=task met requested_by".to_string();
+        tracing::error!(job_id = %job.id, error = %msg);
+        let _ = document_convert::delete_upload(pool, payload.upload_id).await;
+        job_queue::fail_job_terminal(pool, job.id, Some(serde_json::json!({ "error": msg })))
+            .await?;
+        return Ok(JobOutcome::Processed);
+    }
+
+    let mut job_config = match &payload.provider {
+        Some(provider) => enrich_config.with_provider_override(provider),
+        None => enrich_config.clone(),
+    };
+    // De generieke orphan-reaper (reap_orphaned_jobs) kent geen heartbeat en
+    // faalt élke processing-job ouder dan orphan_timeout — bij max_attempts=1
+    // zou een trage/hangende LLM-run dus stil verdwijnen, zonder
+    // job_failed-taak. Begrens de hele conversie (beide agent-runs samen)
+    // ruim ónder de reaper-window, zodat de worker de race altijd wint en
+    // een te trage run in het zichtbare foutpad eindigt. kill_on_drop op het
+    // subprocess ruimt de agent op wanneer de buitenste timeout afgaat.
+    let reaper_margin = orphan_timeout
+        .saturating_sub(Duration::from_secs(120))
+        .max(Duration::from_secs(60));
+    let convert_deadline = job_timeout.min(reaper_margin);
+    job_config.timeout = convert_deadline;
+
+    let run_result = match tokio::time::timeout(
+        convert_deadline,
+        law_convert::execute_law_convert(pool, &payload, &job_config, &LlmLawStructurer),
+    )
+    .await
+    {
+        Err(_elapsed) => {
+            // De gedropte future komt niet meer aan zijn eigen tempdir-cleanup
+            // toe; ruim de werkdirectory hier op (pad is deterministisch).
+            let _ = tokio::fs::remove_dir_all(
+                std::env::temp_dir().join(format!("lawconvert-{}", payload.upload_id)),
+            )
+            .await;
+            Err(PipelineError::Enrich(format!(
+                "conversie-time-out na {}s (begrensd onder de reaper-window)",
+                convert_deadline.as_secs()
+            )))
+        }
+        Ok(Ok(law)) => law_convert::finish_law_convert_job(pool, &job, &payload, &law).await,
+        Ok(Err(e)) => Err(e),
+    };
+
+    match run_result {
+        Ok(()) => {
+            // De keten staat (enrich-job + input-blob + complete, atomair);
+            // alleen de transiënte upload-bytes resten nog.
+            if let Err(e) = document_convert::delete_upload(pool, payload.upload_id).await {
+                tracing::warn!(job_id = %job.id, error = %e, "failed to delete law upload after success");
+            }
+            Ok(JobOutcome::Processed)
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            tracing::error!(job_id = %job.id, error = %msg, "law-convert job failed");
+            // Zelfde atomaire fail+taak-transactie als document-convert:
+            // single-attempt, dus terminaal, en de aanvrager moet het zien.
+            let fail_result: Result<()> = async {
+                let mut tx = pool.begin().await?;
+                job_queue::fail_job_terminal(
+                    &mut *tx,
+                    job.id,
+                    Some(serde_json::json!({ "error": msg.clone() })),
+                )
+                .await?;
+                if let Some(account_id) = payload.requested_by {
+                    crate::tasks::create_task(
+                        &mut *tx,
+                        crate::tasks::NewTask {
+                            task_type: crate::tasks::TaskType::JobFailed,
+                            assignee_account_id: Some(account_id),
+                            traject_id: Some(payload.traject_id),
+                            job_id: Some(job.id),
+                            title: format!("Conversie naar wet mislukt: {}", payload.filename),
+                            payload: Some(serde_json::json!({
+                                "traject_ref": payload.traject_ref,
+                                "filename": payload.filename,
+                                "error": msg.clone(),
+                            })),
+                        },
+                    )
+                    .await?;
+                }
+                tx.commit().await?;
+                Ok(())
+            }
+            .await;
+            // Upload-bytes alleen weg wanneer de fail+taak echt gecommit is
+            // (zelfde afweging als het document-convert-pad).
+            if fail_result.is_ok() {
+                if let Err(e) = document_convert::delete_upload(pool, payload.upload_id).await {
+                    tracing::warn!(job_id = %job.id, error = %e, "failed to delete law upload after terminal failure");
+                }
+            }
+            fail_result?;
+
+            Ok(outcome_for_error(&msg))
+        }
+    }
+}
+
+/// Verwerk één `traject_harvest`-job: BWB-download → gevalideerde
+/// basis-wet-YAML → geketende taak-flow-enrich-job (het kettingstuk is
+/// [`law_convert::chain_enrich_and_complete`] — zelfde keten als law-convert).
+/// Draait op de harvest-worker (die heeft de BWB-machinerie); de geketende
+/// enrich draait daarna op de enrich-worker.
+async fn process_next_traject_harvest_job(
+    pool: &PgPool,
+    config: &WorkerConfig,
+    http_client: &Client,
+) -> Result<JobOutcome> {
+    let job = match job_queue::claim_job(pool, Some(JobType::TrajectHarvest)).await? {
+        Some(job) => job,
+        None => return Ok(JobOutcome::Idle),
+    };
+    tracing::info!(job_id = %job.id, law_id = %job.law_id, attempt = job.attempts, "processing traject-harvest job");
+
+    // Malformed payload is deterministisch: terminaal falen. Zonder payload
+    // is er ook geen aanvrager om een taak voor te maken.
+    let payload: TrajectHarvestPayload = match job
+        .payload
+        .as_ref()
+        .ok_or_else(|| PipelineError::Worker("traject_harvest job has no payload".to_string()))
+        .and_then(|p| {
+            serde_json::from_value(p.clone())
+                .map_err(|e| PipelineError::Worker(format!("payload deserialization failed: {e}")))
+        }) {
+        Ok(payload) => payload,
+        Err(e) => {
+            let msg = format!("invalid traject_harvest payload: {e}");
+            tracing::error!(job_id = %job.id, error = %msg);
+            job_queue::fail_job_terminal(pool, job.id, Some(serde_json::json!({ "error": msg })))
+                .await?;
+            return Ok(JobOutcome::Processed);
+        }
+    };
+
+    // Traject-harvest kent alléén de taak-flow: zonder `requested_by` is er
+    // geen assignee voor de uiteindelijke review-taak, en zonder
+    // `deliver: task` geen aflever-pad (er bestaat geen direct-push-variant).
+    if !payload.deliver_as_task() || payload.requested_by.is_none() {
+        let msg = "traject_harvest vereist deliver=task met requested_by".to_string();
+        tracing::error!(job_id = %job.id, error = %msg);
+        job_queue::fail_job_terminal(pool, job.id, Some(serde_json::json!({ "error": msg })))
+            .await?;
+        return Ok(JobOutcome::Processed);
+    }
+
+    // Zelfde buitenboord-timeout als de corpus-brede harvest: de BWB-fetches
+    // hebben geen eigen deadline en dit is een sequentiële workerloop.
+    let run_result = match tokio::time::timeout(
+        config.job_timeout,
+        traject_harvest::execute_traject_harvest(&payload, http_client),
+    )
+    .await
+    {
+        Err(_elapsed) => Err(PipelineError::Worker(format!(
+            "traject-harvest timed out after {}s",
+            config.job_timeout.as_secs()
+        ))),
+        Ok(Ok(law)) => {
+            let ctx = law_convert::EnrichChainContext {
+                provider: payload.provider.clone(),
+                requested_by: payload.requested_by,
+                traject_id: payload.traject_id,
+                traject_ref: payload.traject_ref.clone(),
+            };
+            law_convert::chain_enrich_and_complete(pool, &job, &ctx, &law).await
+        }
+        Ok(Err(e)) => Err(e),
+    };
+
+    match run_result {
+        Ok(()) => Ok(JobOutcome::Processed),
+        Err(e) => {
+            let msg = e.to_string();
+            tracing::error!(job_id = %job.id, error = %msg, "traject-harvest job failed");
+            // Deterministische fouten (geen geconsolideerde tekst; YAML die
+            // niet valideert; een al-lopende enrich op dezelfde slug) falen
+            // terminaal — een retry reproduceert exact hetzelfde. Transiënte
+            // fouten (BWB-outage, netwerk, timeout) doorlopen fail_job met
+            // backoff tot max_attempts; pas bij definitief falen krijgt de
+            // aanvrager de job_failed-taak.
+            let deterministic = matches!(
+                e,
+                PipelineError::Harvester(
+                    regelrecht_harvester::HarvesterError::NoConsolidatedText { .. }
+                )
+            ) || msg.contains(traject_harvest::SCHEMA_MISMATCH_MARKER)
+                || msg.contains(law_convert::ENRICH_IN_PROGRESS_MARKER);
+
+            let fail_and_notify: Result<()> = async {
+                let mut tx = pool.begin().await?;
+                let terminal = if deterministic {
+                    job_queue::fail_job_terminal(
+                        &mut *tx,
+                        job.id,
+                        Some(serde_json::json!({ "error": msg.clone() })),
+                    )
+                    .await?;
+                    true
+                } else {
+                    let failed = job_queue::fail_job(
+                        &mut *tx,
+                        job.id,
+                        Some(serde_json::json!({ "error": msg.clone() })),
+                    )
+                    .await?;
+                    failed.status == crate::models::JobStatus::Failed
+                };
+                if terminal {
+                    if let Some(account_id) = payload.requested_by {
+                        crate::tasks::create_task(
+                            &mut *tx,
+                            crate::tasks::NewTask {
+                                task_type: crate::tasks::TaskType::JobFailed,
+                                assignee_account_id: Some(account_id),
+                                traject_id: Some(payload.traject_id),
+                                job_id: Some(job.id),
+                                title: format!("Wet ophalen mislukt: {}", payload.display_name()),
+                                payload: Some(serde_json::json!({
+                                    "traject_ref": payload.traject_ref,
+                                    "bwb_id": payload.bwb_id,
+                                    "law_name": payload.law_name,
+                                    "error": msg.clone(),
+                                })),
+                            },
+                        )
+                        .await?;
+                    }
+                }
+                tx.commit().await?;
+                Ok(())
+            }
+            .await;
+            fail_and_notify?;
+
+            Ok(outcome_for_error(&msg))
+        }
+    }
 }
 
 /// Taak-flow: materialiseer de input-blob(s) van een enrich-taak-job in een
@@ -1485,6 +1892,25 @@ pub async fn finish_enrich_task_job(
         .await?;
     }
     job_queue::complete_job(&mut *tx, job.id, result_json).await?;
+    // Een nieuwe wet (geketend vanuit law_convert) krijgt een eigen titel en
+    // een `kind`-discriminator, zodat de editor het voorstel als aan te maken
+    // wet behandelt (create-pad) i.p.v. als wijziging van een bestaande.
+    let new_law = payload.new_law == Some(true);
+    let mut task_payload = serde_json::json!({
+        "law_id": payload.law_id,
+        "yaml_path": payload.yaml_path,
+        "traject_ref": payload.traject_ref,
+        "source_etag": payload.source_etag,
+        "provider": payload.provider,
+    });
+    if new_law {
+        task_payload["kind"] = serde_json::json!("law_create");
+    }
+    let title = if new_law {
+        format!("Nieuwe wet beoordelen: {}", payload.law_id)
+    } else {
+        format!("Verrijking beoordelen: {}", payload.law_id)
+    };
     crate::tasks::create_task(
         &mut *tx,
         crate::tasks::NewTask {
@@ -1492,14 +1918,8 @@ pub async fn finish_enrich_task_job(
             assignee_account_id: payload.requested_by,
             traject_id: payload.traject_id,
             job_id: Some(job.id),
-            title: format!("Verrijking beoordelen: {}", payload.law_id),
-            payload: Some(serde_json::json!({
-                "law_id": payload.law_id,
-                "yaml_path": payload.yaml_path,
-                "traject_ref": payload.traject_ref,
-                "source_etag": payload.source_etag,
-                "provider": payload.provider,
-            })),
+            title,
+            payload: Some(task_payload),
         },
     )
     .await?;
@@ -1567,6 +1987,14 @@ async fn finalize_failed_task_job_tx(
         .map_err(|e| PipelineError::Enrich(format!("invalid enrich payload: {e}")))?;
 
     crate::tasks::delete_blobs_for_job(&mut **tx, job.id).await?;
+    let title = if payload.new_law == Some(true) {
+        // De geketende enrich van een geüploade wet: de gebruiker kent geen
+        // "verrijking", alleen de wet die er niet kwam. De input-blob (de
+        // basis-YAML) gaat hier mee weg; opnieuw uploaden is het herstel.
+        format!("Wet aanmaken mislukt: {}", payload.law_id)
+    } else {
+        format!("Verrijking mislukt: {}", payload.law_id)
+    };
     crate::tasks::create_task(
         &mut **tx,
         crate::tasks::NewTask {
@@ -1574,7 +2002,7 @@ async fn finalize_failed_task_job_tx(
             assignee_account_id: payload.requested_by,
             traject_id: payload.traject_id,
             job_id: Some(job.id),
-            title: format!("Verrijking mislukt: {}", payload.law_id),
+            title,
             payload: Some(serde_json::json!({
                 "law_id": payload.law_id,
                 "traject_ref": payload.traject_ref,

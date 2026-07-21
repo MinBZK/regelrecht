@@ -86,4 +86,18 @@ describe('runningTitle', () => {
     const job = { job_id: 'j3', job_type: 'document_convert' };
     expect(runningTitle(job, lawName)).toBe('Wachten op conversie van werkdocument');
   });
+
+  it('schrijft een lopende wet-conversie als wachten, met de bestandsnaam', () => {
+    const job = {
+      job_id: 'j4',
+      job_type: 'law_convert',
+      target_path: 'uploads/zorgtoeslag.pdf',
+    };
+    expect(runningTitle(job, lawName)).toBe('Wachten op wet maken van zorgtoeslag.pdf');
+  });
+
+  it('schrijft een lopende traject-harvest als wachten, met het BWB-id', () => {
+    const job = { job_id: 'j5', job_type: 'traject_harvest', law_id: 'BWBR0002399' };
+    expect(runningTitle(job, lawName)).toBe('Wachten op wet ophalen van BWBR0002399');
+  });
 });

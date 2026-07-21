@@ -120,19 +120,21 @@ pub async fn count_open_tasks_for_account(pool: &PgPool, account_id: Uuid) -> Re
     Ok(count)
 }
 
-/// Eén lopende taak-flow-job voor de "Bezig"-sectie: een enrich- of
-/// document_convert-job die deze gebruiker via `deliver: "task"` heeft
-/// aangevraagd en die nog niet is afgerond (job_review/job_failed-taak
-/// bestaat pas na completion/failure).
+/// Eén lopende taak-flow-job voor de "Bezig"-sectie: een enrich-,
+/// document_convert-, law_convert- of traject_harvest-job die deze gebruiker
+/// via `deliver: "task"` heeft aangevraagd en die nog niet is afgerond
+/// (job_review/job_failed-taak bestaat pas na completion/failure).
 #[derive(Debug, Clone, sqlx::FromRow, Serialize)]
 pub struct RunningTaskJob {
     pub job_id: Uuid,
     pub job_type: JobType,
     pub law_id: String,
     pub traject_ref: Option<String>,
-    /// Doelbestand van een document_convert-job (payload `target_path`);
-    /// None voor enrich-jobs. Het `law_id`-veld draagt voor conversies een
-    /// synthetische `doc:`-sleutel, dus de weergave leest dit veld.
+    /// Weergavenaam voor conversie-jobs: het doelbestand van een
+    /// document_convert-job (payload `target_path`) of de bestandsnaam van
+    /// een law_convert-upload (payload `filename`); None voor enrich-jobs.
+    /// Het `law_id`-veld draagt voor conversies een synthetische sleutel
+    /// (`doc:`/`lawdoc:`), dus de weergave leest dit veld.
     pub target_path: Option<String>,
     pub status: JobStatus,
     pub created_at: DateTime<Utc>,
@@ -148,9 +150,10 @@ pub async fn list_running_task_jobs_for_account(
 ) -> Result<Vec<RunningTaskJob>> {
     let jobs = sqlx::query_as::<_, RunningTaskJob>(
         "SELECT id AS job_id, job_type, law_id, traject_ref, \
-                payload->>'target_path' AS target_path, status, created_at \
+                COALESCE(payload->>'target_path', payload->>'filename') AS target_path, \
+                status, created_at \
          FROM jobs \
-         WHERE job_type IN ('enrich', 'document_convert') \
+         WHERE job_type IN ('enrich', 'document_convert', 'law_convert', 'traject_harvest') \
            AND status IN ('pending', 'processing') \
            AND payload->>'deliver' = 'task' \
            AND payload->>'requested_by' = $1 \
@@ -231,6 +234,111 @@ pub async fn open_document_task_target_paths(
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().filter_map(|(p,)| p).collect())
+}
+
+/// Maak `job_failed`-taken voor door de reaper TERMINAAL gefaalde
+/// taak-flow-jobs (payload `deliver: "task"` met een `requested_by`).
+///
+/// Zonder deze nazorg verdwijnt zo'n job stil: de "Bezig"-regel in het
+/// takenpaneel verdwijnt en de aanvrager krijgt nooit te zien dat er iets
+/// misging (waargenomen bij trage law-convert-runs, maar het gat gold voor
+/// álle taak-flow-jobtypen). Her-pogingen (status terug naar pending) slaan
+/// we over: die komen gewoon opnieuw langs. Ruimt per gefaalde job ook de
+/// job-blobs op (patroon `finalize_failed_task_job_tx`). Best-effort per
+/// job: één mislukte taak-insert mag de reaper-loop niet stoppen.
+pub async fn notify_reaped_task_jobs(
+    pool: &PgPool,
+    reaped: &[crate::job_queue::ReapedJob],
+) -> Result<()> {
+    for job in reaped {
+        if job.status != JobStatus::Failed {
+            continue;
+        }
+        let Some(payload) = job.payload.as_ref() else {
+            continue;
+        };
+        if payload.get("deliver").and_then(|v| v.as_str()) != Some("task") {
+            continue;
+        }
+        let Some(assignee) = payload
+            .get("requested_by")
+            .and_then(|v| v.as_str())
+            .and_then(|s| Uuid::parse_str(s).ok())
+        else {
+            continue;
+        };
+        let traject_id = payload
+            .get("traject_id")
+            .and_then(|v| v.as_str())
+            .and_then(|s| Uuid::parse_str(s).ok());
+        let str_field = |key: &str| payload.get(key).and_then(|v| v.as_str());
+
+        let title = match job.job_type {
+            // Harvest-jobs zijn nooit taak-flow; de deliver-check hierboven
+            // filtert ze al, dit is een expliciet vangnet.
+            JobType::Harvest => continue,
+            JobType::Enrich => {
+                let law_id = str_field("law_id").unwrap_or(&job.law_id);
+                if payload.get("new_law").and_then(|v| v.as_bool()) == Some(true) {
+                    format!("Wet aanmaken mislukt: {law_id}")
+                } else {
+                    format!("Verrijking mislukt: {law_id}")
+                }
+            }
+            JobType::DocumentConvert => format!(
+                "Conversie mislukt: {}",
+                str_field("target_path").unwrap_or("werkdocument")
+            ),
+            JobType::LawConvert => format!(
+                "Conversie naar wet mislukt: {}",
+                str_field("filename").unwrap_or("document")
+            ),
+            JobType::TrajectHarvest => format!(
+                "Wet ophalen mislukt: {}",
+                str_field("law_name")
+                    .or_else(|| str_field("bwb_id"))
+                    .unwrap_or(&job.law_id)
+            ),
+        };
+
+        let mut task_payload = serde_json::json!({
+            "error": "De verwerking duurde te lang of de worker is herstart; \
+                      de job is afgebroken.",
+        });
+        for key in ["traject_ref", "law_id", "target_path", "filename", "bwb_id"] {
+            if let Some(v) = str_field(key) {
+                task_payload[key] = serde_json::json!(v);
+            }
+        }
+
+        let result: Result<()> = async {
+            let mut tx = pool.begin().await?;
+            delete_blobs_for_job(&mut *tx, job.id).await?;
+            create_task(
+                &mut *tx,
+                NewTask {
+                    task_type: TaskType::JobFailed,
+                    assignee_account_id: Some(assignee),
+                    traject_id,
+                    job_id: Some(job.id),
+                    title,
+                    payload: Some(task_payload),
+                },
+            )
+            .await?;
+            tx.commit().await?;
+            Ok(())
+        }
+        .await;
+        if let Err(e) = result {
+            tracing::warn!(
+                job_id = %job.id,
+                error = %e,
+                "job_failed-taak voor gereapte taak-flow-job aanmaken mislukt"
+            );
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

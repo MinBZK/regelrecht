@@ -51,6 +51,12 @@ COPY packages/law-model/ law-model/
 COPY packages/pipeline/ pipeline/
 COPY packages/harvester/ harvester/
 COPY packages/shared/ shared/
+# regelrecht-engine (validate feature, pulled in by pipeline's law_convert)
+# embeds the JSON schemas via `include_str!("../../../schema/...")`, relative
+# to engine/src/. The crate lives at /build/engine here (not
+# /build/packages/engine), so that literal resolves to /schema/... — same
+# layout trick as frontend/Dockerfile.
+COPY schema/ /schema/
 # Invalidate cargo's fingerprint cache so it recompiles with real source
 # instead of using the stub binary from cargo-chef cook.
 RUN find . -name '*.rs' -exec touch {} + && \

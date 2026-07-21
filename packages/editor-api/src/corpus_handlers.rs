@@ -1555,6 +1555,7 @@ struct TrajectLawWrite {
 /// the looked-up law (for its `relative_path`), the write-target source
 /// id, and an owned guard over the traject's writable backend.
 async fn resolve_traject_law_write(
+    state: &AppState,
     traject: &Arc<TrajectCorpus>,
     law_id: &str,
 ) -> Result<TrajectLawWrite, (StatusCode, String)> {
@@ -1569,18 +1570,43 @@ async fn resolve_traject_law_write(
             StatusCode::SERVICE_UNAVAILABLE,
             "Writable backend not initialised".to_string(),
         ))?;
-    if !entry.writable {
-        return Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()));
-    }
     // Per-source write mutex: every save to the same traject source
     // serialises here, so contention (a second save waiting out the
     // first's GitHub round-trips) shows up as a fat `lock` phase.
     let backend = timing::measure("lock", entry.backend.clone().lock_owned()).await;
+    require_traject_backend_writable(state, entry.writable, &**backend).await?;
     Ok(TrajectLawWrite {
         law,
         write_source_id: write_target_source_id,
         backend,
     })
+}
+
+/// The single writability gate for traject writes.
+///
+/// A backend that is writable at rest (configured service token, or a
+/// natively writable local dir) always passes. A backend that is
+/// read-only at rest still passes when this deployment routes writes
+/// through the acting user's own GitHub token AND the backend honors
+/// `WriteContext::token_override` — the deployed federation config for a
+/// user-created traject repo has no service token on purpose, and 403-ing
+/// there would break every write in the user-token mode (the pr952
+/// promote bug). The subsequent `user_write_token_for_backend` call then
+/// enforces the linked-token requirement (428 when absent/expired), and
+/// `persist` itself still refuses (`CorpusError::ReadOnly` → 403) if a
+/// write somehow reaches it with no token at all.
+async fn require_traject_backend_writable(
+    state: &AppState,
+    writable_at_rest: bool,
+    backend: &dyn RepoBackend,
+) -> Result<(), (StatusCode, String)> {
+    if writable_at_rest {
+        return Ok(());
+    }
+    if backend.supports_token_override() && github_oauth::user_token_write_mode(state).await? {
+        return Ok(());
+    }
+    Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()))
 }
 
 /// Source-relative path of a law's scenario file.
@@ -1759,10 +1785,11 @@ async fn read_traject_scenario_cached(
 /// the law/scenario writes use), so notes land in the same traject
 /// branch/PR as the rest of the edits in the session.
 async fn resolve_traject_annotation_target(
+    state: &AppState,
     traject: &Arc<TrajectCorpus>,
     law_id: &str,
 ) -> Result<EditorWriteTarget, (StatusCode, String)> {
-    let write = resolve_traject_law_write(traject, law_id).await?;
+    let write = resolve_traject_law_write(state, traject, law_id).await?;
     Ok(EditorWriteTarget {
         relative_path: PathBuf::from("annotations")
             .join(law_id)
@@ -1813,7 +1840,7 @@ pub async fn save_scenario(
     let author = Some(require_editor_user(&session).await?);
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let write = resolve_traject_law_write(&traject, &law_id).await?;
+    let write = resolve_traject_law_write(&state, &traject, &law_id).await?;
     // Resolved-backend-aware: a local writable-own backend ignores the
     // override, so enforcement must not 428 a save that never reaches GitHub.
     let token_override =
@@ -2013,7 +2040,7 @@ pub async fn save_annotations(
         }));
     }
     let new_notes = public_notes;
-    let target = resolve_traject_annotation_target(&traject, &law_id).await?;
+    let target = resolve_traject_annotation_target(&state, &traject, &law_id).await?;
     let EditorWriteTarget {
         relative_path,
         backend,
@@ -2231,7 +2258,7 @@ pub async fn save_law(
     // corpus so we can mirror the saved body into its read-your-writes
     // overlay after `persist` succeeds.
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let write = resolve_traject_law_write(&traject, &law_id).await?;
+    let write = resolve_traject_law_write(&state, &traject, &law_id).await?;
     let token_override =
         github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**write.backend)
             .await?;
@@ -2304,7 +2331,7 @@ pub async fn delete_scenario(
     let author = Some(require_editor_user(&session).await?);
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let write = resolve_traject_law_write(&traject, &law_id).await?;
+    let write = resolve_traject_law_write(&state, &traject, &law_id).await?;
     let token_override =
         github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**write.backend)
             .await?;
@@ -2578,6 +2605,7 @@ fn traject_documents_base(traject_ref: &str) -> PathBuf {
 /// `write_target_for_source.values().next()`, which relied on every
 /// value being identical (true today, but unenforced).
 async fn resolve_traject_documents_writer(
+    state: &AppState,
     traject: &Arc<TrajectCorpus>,
 ) -> Result<tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>, (StatusCode, String)> {
     let entry = traject
@@ -2588,10 +2616,9 @@ async fn resolve_traject_documents_writer(
             StatusCode::SERVICE_UNAVAILABLE,
             "Writable backend not initialised".to_string(),
         ))?;
-    if !entry.writable {
-        return Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()));
-    }
-    Ok(entry.backend.clone().lock_owned().await)
+    let backend = entry.backend.clone().lock_owned().await;
+    require_traject_backend_writable(state, entry.writable, &**backend).await?;
+    Ok(backend)
 }
 
 /// Read the `If-Match` header value, trimmed. `None` when absent or empty.
@@ -2692,7 +2719,7 @@ pub async fn list_traject_documents(
     Path(traject_ref): Path<String>,
 ) -> Result<Json<TrajectDocumentList>, (StatusCode, String)> {
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let backend = resolve_traject_documents_writer(&traject).await?;
+    let backend = resolve_traject_documents_writer(&state, &traject).await?;
     let base = traject_documents_base(&traject_ref);
     let entries = backend
         .list_files_recursive(&base, None)
@@ -2724,6 +2751,58 @@ pub async fn list_traject_documents(
 
 /// Upload formats accepted in fase 1: PDF and Word.
 const UPLOAD_DOCUMENT_EXTENSIONS: &[&str] = &["pdf", "doc", "docx"];
+
+/// Pull the uploaded file out of a multipart body (the `file` field) and gate
+/// it on [`UPLOAD_DOCUMENT_EXTENSIONS`]. Shared by the werkdocument- and
+/// wet-upload endpoints. Returns `(filename, content_type, bytes)`.
+async fn read_upload_multipart(
+    multipart: &mut Multipart,
+) -> Result<(String, String, Vec<u8>), (StatusCode, String)> {
+    let mut filename: Option<String> = None;
+    let mut content_type: Option<String> = None;
+    let mut data: Option<Vec<u8>> = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Ongeldige upload: {e}")))?
+    {
+        if field.name() == Some("file") {
+            filename = field.file_name().map(|s| s.to_string());
+            content_type = field.content_type().map(|s| s.to_string());
+            let bytes = field.bytes().await.map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    format!("Kon het bestand niet lezen: {e}"),
+                )
+            })?;
+            data = Some(bytes.to_vec());
+            break;
+        }
+    }
+    let filename = filename.ok_or((
+        StatusCode::BAD_REQUEST,
+        "Geen bestand in de upload (het 'file'-veld ontbreekt).".to_string(),
+    ))?;
+    let data = data.filter(|d| !d.is_empty()).ok_or((
+        StatusCode::BAD_REQUEST,
+        "Het geüploade bestand is leeg.".to_string(),
+    ))?;
+    let content_type = content_type.unwrap_or_else(|| "application/octet-stream".to_string());
+
+    // Only PDF/Word in fase 1.
+    let ext = std::path::Path::new(&filename)
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .unwrap_or_default();
+    if !UPLOAD_DOCUMENT_EXTENSIONS.contains(&ext.as_str()) {
+        return Err((
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "Alleen PDF- en Word-documenten (.pdf, .doc, .docx) worden ondersteund.".to_string(),
+        ));
+    }
+    Ok((filename, content_type, data))
+}
 
 #[derive(Debug, Serialize)]
 pub struct UploadDocumentResponse {
@@ -2814,57 +2893,15 @@ pub async fn upload_traject_document(
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let traject_id = resolve_traject_ref(pool, &traject_ref).await?;
 
-    // Pull the uploaded file out of the multipart body (the `file` field).
-    let mut filename: Option<String> = None;
-    let mut content_type: Option<String> = None;
-    let mut data: Option<Vec<u8>> = None;
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Ongeldige upload: {e}")))?
-    {
-        if field.name() == Some("file") {
-            filename = field.file_name().map(|s| s.to_string());
-            content_type = field.content_type().map(|s| s.to_string());
-            let bytes = field.bytes().await.map_err(|e| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    format!("Kon het bestand niet lezen: {e}"),
-                )
-            })?;
-            data = Some(bytes.to_vec());
-            break;
-        }
-    }
-    let filename = filename.ok_or((
-        StatusCode::BAD_REQUEST,
-        "Geen bestand in de upload (het 'file'-veld ontbreekt).".to_string(),
-    ))?;
-    let data = data.filter(|d| !d.is_empty()).ok_or((
-        StatusCode::BAD_REQUEST,
-        "Het geüploade bestand is leeg.".to_string(),
-    ))?;
-    let content_type = content_type.unwrap_or_else(|| "application/octet-stream".to_string());
-
-    // Only PDF/Word in fase 1.
-    let ext = std::path::Path::new(&filename)
-        .extension()
-        .and_then(|s| s.to_str())
-        .map(|e| e.to_ascii_lowercase())
-        .unwrap_or_default();
-    if !UPLOAD_DOCUMENT_EXTENSIONS.contains(&ext.as_str()) {
-        return Err((
-            StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            "Alleen PDF- en Word-documenten (.pdf, .doc, .docx) worden ondersteund.".to_string(),
-        ));
-    }
+    // Pull the uploaded file out of the multipart body and gate the extension.
+    let (filename, content_type, data) = read_upload_multipart(&mut multipart).await?;
 
     // Derive a collision-safe target markdown path against the existing docs.
     // A failed listing must NOT be swallowed: an empty `existing` set would let
     // the derivation hand back a name that already exists, and the worker's
     // unconditional write would silently overwrite that document. Fail the
     // upload instead.
-    let backend = resolve_traject_documents_writer(&traject).await?;
+    let backend = resolve_traject_documents_writer(&state, &traject).await?;
 
     let base = traject_documents_base(&traject_ref);
     let mut existing: Vec<String> = backend
@@ -2963,6 +3000,488 @@ pub async fn upload_traject_document(
     ))
 }
 
+#[derive(Debug, Serialize)]
+pub struct UploadLawResponse {
+    pub job_id: uuid::Uuid,
+}
+
+/// POST /api/trajects/{traject_ref}/corpus/laws/upload
+///
+/// Accept a multipart upload of a PDF/Word document and enqueue a
+/// `law_convert` job: the worker turns it into a harvested base-law YAML and
+/// chains a task-flow enrichment on it. The user gets a single review task
+/// with the enriched law at the end (kind `law_create`); approving it lands
+/// the law in the traject via `create_traject_law`. Responds `202 Accepted`
+/// with the job id; there is no target path yet, because the conversion
+/// itself chooses the law's `$id` and `regulatory_layer`.
+pub async fn upload_traject_law(
+    State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
+    session: Session,
+    Path(traject_ref): Path<String>,
+    mut multipart: Multipart,
+) -> Result<(StatusCode, Json<UploadLawResponse>), (StatusCode, String)> {
+    let pool = state.pool.as_ref().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "database not configured".to_string(),
+    ))?;
+    // Membership guard (also resolves the traject); the id feeds the job payload.
+    let _traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let traject_id = resolve_traject_ref(pool, &traject_ref).await?;
+
+    let (filename, content_type, data) = read_upload_multipart(&mut multipart).await?;
+
+    // Persist the bytes and enqueue the conversion job in one transaction,
+    // guarded by the same per-account taak-flow-cap as enrich-op-aanvraag
+    // (each law_convert chains an enrich job, so it counts toward that cap).
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| upload_internal_error("begin tx", e))?;
+    crate::task_requests::enforce_task_job_cap(&mut tx, account.id).await?;
+
+    let (upload_id,): (uuid::Uuid,) = sqlx::query_as(
+        "INSERT INTO document_uploads (traject_ref, filename, content_type, bytes) \
+         VALUES ($1, $2, $3, $4) RETURNING id",
+    )
+    .bind(&traject_ref)
+    .bind(&filename)
+    .bind(&content_type)
+    .bind(&data)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| upload_internal_error("insert upload", e))?;
+
+    let payload = regelrecht_pipeline::law_convert::LawConvertPayload {
+        upload_id,
+        traject_id,
+        traject_ref: traject_ref.clone(),
+        filename: filename.clone(),
+        provider: Some(state.config.task_enrich_provider.clone()),
+        requested_by: Some(account.id),
+        deliver: Some("task".to_string()),
+    };
+    let payload_json = serde_json::to_value(&payload)
+        .map_err(|e| upload_internal_error("serialize payload", e))?;
+    let req = regelrecht_pipeline::job_queue::CreateJobRequest::new(
+        regelrecht_pipeline::JobType::LawConvert,
+        // Synthetic job key; real identity ($id) is chosen by the conversion.
+        format!("lawdoc:{traject_ref}/{filename}"),
+    )
+    .with_traject_ref(traject_ref.clone())
+    // Single attempt, like document-convert: a retry would re-run the
+    // expensive LLM structuring and most failures are deterministic. A
+    // failure surfaces as a job_failed task; re-uploading is the retry.
+    .with_max_attempts(1)
+    .with_payload(payload_json);
+    let job = regelrecht_pipeline::job_queue::create_job(&mut *tx, req)
+        .await
+        .map_err(|e| upload_internal_error("create job", e))?;
+    tx.commit()
+        .await
+        .map_err(|e| upload_internal_error("commit tx", e))?;
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(UploadLawResponse { job_id: job.id }),
+    ))
+}
+
+/// POST /api/trajects/{traject_ref}/corpus/laws: create a NEW law in the
+/// traject's writable-own source.
+///
+/// The approve-step of a `law_create` review task: `save_law` (PUT) can only
+/// write laws that already exist in the traject's index, so a freshly
+/// converted law needs this create path. Unlike `save_law` the body gets
+/// FULL schema validation (there is no existing file to fall back on), and
+/// the corpus path is derived **server-side** from the validated body:
+/// `regulation/nl/{regulatory_layer}/{$id}/{valid_from}.yaml`.
+pub async fn create_traject_law(
+    State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
+    session: Session,
+    Path(traject_ref): Path<String>,
+    headers: axum::http::HeaderMap,
+    body: String,
+) -> Result<axum::response::Response, (StatusCode, String)> {
+    use axum::response::IntoResponse;
+    let author = Some(require_editor_user(&session).await?);
+
+    // Membership guard FIRST, before any body work — the schema validation
+    // below is CPU-bound over an up-to-5MB body and must not be reachable
+    // for non-members (same ordering as the upload handlers).
+    let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let traject_id = resolve_traject_ref(
+        state.pool.as_ref().ok_or((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "database not configured".to_string(),
+        ))?,
+        &traject_ref,
+    )
+    .await?;
+
+    // Full validation: schema + $id-slug + regulatory_layer + valid_from,
+    // the same single validator the law-convert worker uses, so what the
+    // worker produced (and the reviewer possibly edited) is what lands.
+    // The error body lists the validation errors; they are plain schema
+    // paths/messages, not echoed free-form user input.
+    let meta = regelrecht_pipeline::law_convert::validate_law_yaml(&body).map_err(|errors| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Wet valideert niet tegen het schema: {}", errors.join("; ")),
+        )
+    })?;
+    let law_id = meta.law_id.clone();
+
+    // A law with this $id anywhere in the federated index is a conflict: the
+    // create path must never shadow or overwrite an existing law. (Editing
+    // an existing law goes through the PUT.)
+    if traject.corpus.source_map.get_law(&law_id).is_some() {
+        return Err((
+            StatusCode::CONFLICT,
+            "Er bestaat al een wet met dit $id in dit traject; pas het $id in de YAML aan."
+                .to_string(),
+        ));
+    }
+
+    // Standard corpus layout, relative to the writable-own source root.
+    let relative_path = PathBuf::from("regulation")
+        .join("nl")
+        .join(meta.regulatory_layer.as_dir_name())
+        .join(&law_id)
+        .join(format!("{}.yaml", meta.valid_from));
+
+    // The writable-own backend (same routing as documents: the law does not
+    // exist yet, so there is no per-law source to route from).
+    let backend = resolve_traject_documents_writer(&state, &traject).await?;
+    // Belt-and-braces against an index blind spot (e.g. a file committed on
+    // the branch after the current snapshot was built).
+    if backend
+        .read_file(&relative_path)
+        .await
+        .map_err(corpus_write_error("law"))?
+        .is_some()
+    {
+        return Err((
+            StatusCode::CONFLICT,
+            "Er staat al een wetsbestand op dit pad in het traject; pas het $id in de YAML aan."
+                .to_string(),
+        ));
+    }
+    let token_override =
+        github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**backend)
+            .await?;
+
+    backend
+        .write_file(&relative_path, &body)
+        .await
+        .map_err(corpus_write_error("law"))?;
+    let outcome = backend
+        .persist(&WriteContext {
+            message: format!("Nieuwe wet {} uit documentconversie", law_id),
+            author,
+            token_override,
+        })
+        .await
+        .map_err(corpus_write_error("law"))?;
+    drop(backend);
+
+    let new_etag = document_etag(&body);
+
+    // Read-your-writes for requests still holding the current snapshot …
+    traject.record_save(law_id.clone(), body).await;
+    traject.record_changed_law(&law_id).await;
+    // … and a full cache drop so the next request rebuilds the index with
+    // the new file on the branch. Without this the law stays invisible to
+    // the PUT/save path (which requires an index entry) until the TTL
+    // refresh happens to run.
+    state.trajects.invalidate(traject_id).await;
+
+    let mut response = save_response_from_traject(outcome);
+    response.etag = Some(new_etag.clone());
+    Ok(([(axum::http::header::ETAG, new_etag)], Json(response)).into_response())
+}
+
+/// Response body of a promote: how many files were copied and, when the
+/// traject backend opened a PR for the commit, its coordinates.
+#[derive(Debug, Serialize)]
+pub struct PromoteResponse {
+    pub law_id: String,
+    pub copied_files: usize,
+    pub pr: Option<SavePrInfo>,
+}
+
+/// One file collected from a seed source for a promote, addressed by its
+/// source-relative path — which doubles as the write path in the traject's
+/// writable-own source, exactly like `save_law`'s write-routing for a
+/// federated law (`resolve_traject_law_write` reuses `law.relative_path`).
+struct PromoteFile {
+    relative_path: PathBuf,
+    content: String,
+}
+
+/// POST /api/trajects/{traject_ref}/corpus/laws/{law_id}/promote
+///
+/// Kopieer een wet uit het centrale corpus (de gefedereerde seed-bron van
+/// het traject, bijv. `minbzk-central`) naar de traject-repo: alle
+/// versie-YAML's (inclusief `machine_readable`) plus de bijbehorende
+/// `scenarios/*.feature`-bestanden, in één commit via het bestaande
+/// traject-schrijfpad (zelfde commit- en autorisatiegedrag als het opslaan
+/// van een wet). Staat de wet al in de traject-repo, dan 409 — er ontstaan
+/// nooit dubbele bestanden.
+///
+/// De bron is bewust het traject-gefedereerde corpus en niet de globale
+/// corpus-state: de traject-index dekt de volledige seed (metadata-only,
+/// lazy bodies), terwijl de globale state in productie alleen favorieten
+/// materialiseert (`load_favorites_async`).
+pub async fn promote_corpus_law(
+    State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
+    session: Session,
+    Path((traject_ref, law_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<PromoteResponse>, (StatusCode, String)> {
+    let author = Some(require_editor_user(&session).await?);
+
+    // Membership guard FIRST (same ordering as create_traject_law), and the
+    // traject-id for the cache invalidation afterwards.
+    let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let traject_id = resolve_traject_ref(
+        state.pool.as_ref().ok_or((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "database not configured".to_string(),
+        ))?,
+        &traject_ref,
+    )
+    .await?;
+
+    // Al in de traject-repo volgens de gefedereerde index? Dan is promoten
+    // zinloos/gevaarlijk (overschrijven van traject-edits). De index kan een
+    // blinde vlek hebben (file net gecommit); de per-bestand check verderop
+    // is de belt-and-braces.
+    if let Some(law) = traject.corpus.source_map.get_law(&law_id) {
+        if law.source_id == traject.writable_own_source_id {
+            return Err((
+                StatusCode::CONFLICT,
+                "Deze wet staat al in dit traject.".to_string(),
+            ));
+        }
+    }
+
+    // Verzamel alle te kopiëren bestanden uit de seed-bron(nen), vóórdat de
+    // writable-own-lock genomen wordt. Alleen seed-locks worden hier (één
+    // tegelijk) gehouden — de writable-own → seed lock-orde-invariant blijft
+    // daarmee intact.
+    let files = collect_promote_files(&traject, &law_id).await?;
+
+    // Schrijfpad: de writable-own backend van het traject (zelfde routing als
+    // documents/create: per-wet routing bestaat nog niet, want de wet zit nog
+    // niet in de traject-repo).
+    let backend = resolve_traject_documents_writer(&state, &traject).await?;
+
+    // Geen dubbele/overschreven bestanden, per bestandssoort:
+    // - Wet-versie-YAML al op het doelpad (bijv. via een eerdere save_law op
+    //   de gefedereerde wet, of een commit die de index nog niet zag) → 409
+    //   voor de hele promote.
+    // - Scenario-file al op het doelpad: dat is een traject-edit —
+    //   `save_scenario` routeert scenario's van gefedereerde wetten naar de
+    //   writable-own zónder dat er een wet-YAML in de traject-repo staat.
+    //   Die edit mag een promote niet stilletjes overschrijven; de
+    //   traject-versie wint (zelfde "eigen repo boven seed"-regel als
+    //   source_priority 0) en de rest van de wet-map wordt gewoon gekopieerd.
+    let mut to_write: Vec<&PromoteFile> = Vec::with_capacity(files.len());
+    for file in &files {
+        let exists = backend
+            .read_file(&file.relative_path)
+            .await
+            .map_err(corpus_write_error("law"))?
+            .is_some();
+        if !exists {
+            to_write.push(file);
+            continue;
+        }
+        if file
+            .relative_path
+            .extension()
+            .is_some_and(|ext| ext == "yaml")
+        {
+            return Err((
+                StatusCode::CONFLICT,
+                "Deze wet staat al (deels) in dit traject.".to_string(),
+            ));
+        }
+        tracing::info!(
+            law_id = %law_id,
+            path = %file.relative_path.display(),
+            "promote: bestand bestaat al in de traject-repo (traject-edit wint), overslaan"
+        );
+    }
+
+    let token_override =
+        github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**backend)
+            .await?;
+
+    for file in &to_write {
+        backend
+            .write_file(&file.relative_path, &file.content)
+            .await
+            .map_err(corpus_write_error("law"))?;
+    }
+    let outcome = backend
+        .persist(&WriteContext {
+            message: format!("Voeg wet {} toe uit het centrale corpus", law_id),
+            author,
+            token_override,
+        })
+        .await
+        .map_err(corpus_write_error("law"))?;
+    drop(backend);
+
+    // Read-your-writes + index-verversing, zoals create_traject_law: de
+    // nieuwste versie in de overlay, de wet in de changed-lijst, en een
+    // cache-drop zodat de volgende request de wet in de traject-index ziet.
+    if let Some(newest) = files
+        .iter()
+        .find(|f| f.relative_path.extension().is_some_and(|e| e == "yaml"))
+    {
+        traject
+            .record_save(law_id.clone(), newest.content.clone())
+            .await;
+    }
+    traject.record_changed_law(&law_id).await;
+    state.trajects.invalidate(traject_id).await;
+
+    Ok(Json(PromoteResponse {
+        law_id,
+        copied_files: to_write.len(),
+        pr: outcome.pr.map(|pr| SavePrInfo {
+            url: pr.html_url,
+            number: pr.number,
+        }),
+    }))
+}
+
+/// Verzamel de volledige wet-map van `law_id` uit de seed-bron(nen) van het
+/// traject: elk versie-YAML (nieuwste eerst, lazy-fetch waar de index alleen
+/// metadata heeft) plus de `scenarios/*.feature`-bestanden naast de wet.
+/// Versies uit de writable-own-bron worden overgeslagen (die staan er al).
+///
+/// Lock-discipline: houdt uitsluitend seed-backend-locks, één tegelijk —
+/// de aanroeper neemt de writable-own-lock pas ná dit verzamelen, dus de
+/// writable-own → seed lock-orde-invariant kan hier niet schenden.
+async fn collect_promote_files(
+    traject: &Arc<TrajectCorpus>,
+    law_id: &str,
+) -> Result<Vec<PromoteFile>, (StatusCode, String)> {
+    let not_found = || {
+        (
+            StatusCode::NOT_FOUND,
+            "Deze wet is niet gevonden in het centrale corpus van dit traject.".to_string(),
+        )
+    };
+    let versions: Vec<LoadedLaw> = traject
+        .corpus
+        .source_map
+        .get_law_versions(law_id)
+        .ok_or_else(not_found)?
+        .iter()
+        .filter(|v| v.source_id != traject.writable_own_source_id)
+        .cloned()
+        .collect();
+    if versions.is_empty() {
+        return Err(not_found());
+    }
+
+    let fetch_error = |what: &'static str, path: &std::path::Path, e: &dyn std::fmt::Display| {
+        tracing::warn!(law_id = %law_id, path = %path.display(), error = %e, "promote: {what} lezen uit seed-bron mislukt");
+        (
+            StatusCode::BAD_GATEWAY,
+            "Kon de wet niet volledig uit het centrale corpus lezen.".to_string(),
+        )
+    };
+
+    // Dedupe op relative_path: dezelfde versie kan uit meerdere seeds
+    // geïndexeerd zijn; get_law_versions sorteert hoogste prioriteit eerst,
+    // dus de eerste treffer per pad wint.
+    let mut seen = std::collections::BTreeSet::new();
+    let mut files = Vec::new();
+    for version in &versions {
+        let relative_path = PathBuf::from(&version.relative_path);
+        // Defensief: de index is vertrouwd, maar deze paden worden 1-op-1
+        // schrijfpaden in de traject-repo.
+        if version.relative_path.contains("..") || relative_path.is_absolute() {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Ongeldig bronpad in de corpus-index.".to_string(),
+            ));
+        }
+        if !seen.insert(relative_path.clone()) {
+            continue;
+        }
+        let content = if !version.yaml_content.is_empty() {
+            version.yaml_content.clone()
+        } else {
+            // Metadata-only indexvermelding: body lazy fetchen via de
+            // seed-backend, net als de traject-scoped reads doen.
+            let entry = traject.corpus.backends.get(&version.source_id).ok_or((
+                StatusCode::BAD_GATEWAY,
+                "Seed-backend van het centrale corpus is niet beschikbaar.".to_string(),
+            ))?;
+            let backend = entry.backend.lock().await;
+            backend
+                .read_file(&relative_path)
+                .await
+                .map_err(|e| fetch_error("wet-versie", &relative_path, &e))?
+                .ok_or_else(|| {
+                    fetch_error(
+                        "wet-versie",
+                        &relative_path,
+                        &"bestand ontbreekt bij de bron",
+                    )
+                })?
+        };
+        files.push(PromoteFile {
+            relative_path,
+            content,
+        });
+    }
+
+    // Scenario's naast de wet (criterium: de volledige wet-map). We lezen ze
+    // van de seed van de best-passende versie; een leesfout is een harde
+    // fout — stilletjes zonder scenario's promoten zou het acceptatiecriterium
+    // schenden zonder dat iemand het ziet.
+    let primary = &versions[0];
+    let law_dir = PathBuf::from(&primary.relative_path)
+        .parent()
+        .map(PathBuf::from)
+        .ok_or((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Kan de wet-map niet bepalen.".to_string(),
+        ))?;
+    let scenarios_dir = law_dir.join("scenarios");
+    if let Some(entry) = traject.corpus.backends.get(&primary.source_id) {
+        let backend = entry.backend.lock().await;
+        let entries = backend
+            .list_files(&scenarios_dir, Some("feature"))
+            .await
+            .map_err(|e| fetch_error("scenario-lijst", &scenarios_dir, &e))?;
+        for entry in entries {
+            let path = scenarios_dir.join(&entry.name);
+            let content = backend
+                .read_file(&path)
+                .await
+                .map_err(|e| fetch_error("scenario", &path, &e))?
+                .ok_or_else(|| fetch_error("scenario", &path, &"bestand ontbreekt bij de bron"))?;
+            files.push(PromoteFile {
+                relative_path: path,
+                content,
+            });
+        }
+    }
+
+    Ok(files)
+}
+
 /// GET /api/trajects/{traject_ref}/corpus/documents/jobs
 ///
 /// List the traject's document-convert jobs that are still relevant to show
@@ -3025,7 +3544,7 @@ pub async fn get_traject_document(
     use axum::response::IntoResponse;
     validate_document_path(&doc_path)?;
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let backend = resolve_traject_documents_writer(&traject).await?;
+    let backend = resolve_traject_documents_writer(&state, &traject).await?;
     let relative_path = traject_documents_base(&traject_ref).join(&doc_path);
     let content = backend
         .read_file(&relative_path)
@@ -3091,7 +3610,7 @@ pub async fn save_traject_document(
     }
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let backend = resolve_traject_documents_writer(&traject).await?;
+    let backend = resolve_traject_documents_writer(&state, &traject).await?;
     let token_override =
         github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**backend)
             .await?;
@@ -3159,7 +3678,7 @@ pub async fn delete_traject_document(
     let author = Some(require_editor_user(&session).await?);
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let backend = resolve_traject_documents_writer(&traject).await?;
+    let backend = resolve_traject_documents_writer(&state, &traject).await?;
     let token_override =
         github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**backend)
             .await?;

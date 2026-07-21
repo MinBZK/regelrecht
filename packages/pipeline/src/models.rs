@@ -13,6 +13,19 @@ pub enum JobType {
     #[sqlx(rename = "document_convert")]
     #[serde(rename = "document_convert")]
     DocumentConvert,
+    /// Convert an uploaded document (PDF/Word) to a harvested base-law YAML
+    /// and chain a task-flow enrich job on it. Scoped to a traject.
+    #[sqlx(rename = "law_convert")]
+    #[serde(rename = "law_convert")]
+    LawConvert,
+    /// Harvest a law from BWB for one traject (task flow): download + parse
+    /// the base-law YAML and chain a task-flow enrich job on it, exactly like
+    /// [`JobType::LawConvert`] does after its conversion. Unlike
+    /// [`JobType::Harvest`] this never touches the central corpus repo — the
+    /// result travels as job blobs and lands via the review task's approve.
+    #[sqlx(rename = "traject_harvest")]
+    #[serde(rename = "traject_harvest")]
+    TrajectHarvest,
 }
 
 #[derive(
