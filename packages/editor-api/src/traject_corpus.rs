@@ -371,6 +371,21 @@ impl TrajectCorpus {
         &self,
         law_id: &str,
     ) -> Result<Option<String>, regelrecht_corpus::error::CorpusError> {
+        self.law_yaml_with_read_token(law_id, None).await
+    }
+
+    /// [`Self::law_yaml`] with a per-request read token for the
+    /// **writable-own** source (the acting user's own GitHub token,
+    /// resolved by the request handler). The token is applied *only* when
+    /// the law's body resolves from the writable-own source — seed sources
+    /// never see it — and it is passed through per call, never stored on
+    /// this (shared, cross-user) structure. Cached *content* is fine: every
+    /// traject route runs a membership check before reaching this.
+    pub async fn law_yaml_with_read_token(
+        &self,
+        law_id: &str,
+        own_read_token: Option<&str>,
+    ) -> Result<Option<String>, regelrecht_corpus::error::CorpusError> {
         if let Some(text) = self.overlay.read().await.get(law_id) {
             return Ok(Some(text.clone()));
         }
@@ -396,11 +411,16 @@ impl TrajectCorpus {
             return Ok(None);
         };
 
+        // The personal token authenticates exclusively against the
+        // traject's own repo; a seed read must never carry it.
+        let token = (source_id == self.writable_own_source_id)
+            .then_some(own_read_token)
+            .flatten();
         let content = {
             let backend = entry.backend.lock().await;
             // `?` propagates a read error rather than collapsing it to None.
             backend
-                .read_file(std::path::Path::new(&relative_path))
+                .read_file_with_token(std::path::Path::new(&relative_path), token)
                 .await?
         };
         let Some(content) = content else {
@@ -436,9 +456,15 @@ impl TrajectCorpus {
     /// versions are served from the index body (local sources) or lazily fetched
     /// via their own backend + `relative_path` (GitHub sources). Returns an empty
     /// vec when no version of the id is indexed.
-    pub async fn law_yaml_versions(
+    ///
+    /// Accepts the per-request writable-own read token — same contract as
+    /// [`Self::law_yaml_with_read_token`]: the token is only ever applied
+    /// to versions whose source is the writable-own, per call, never
+    /// stored. Pass `None` outside a user-request context.
+    pub async fn law_yaml_versions_with_read_token(
         &self,
         law_id: &str,
+        own_read_token: Option<&str>,
     ) -> Result<Vec<String>, regelrecht_corpus::error::CorpusError> {
         // Snapshot the per-version index metadata, then drop the borrow before
         // any await below.
@@ -500,10 +526,15 @@ impl TrajectCorpus {
             // per-version `loadLawVersions` isolation. A law that ends up with no
             // fetchable version surfaces to the loader as a missing dependency
             // (retried on the next run), not a hard 502.
+            // Personal token only for the writable-own source, like
+            // `law_yaml_with_read_token`.
+            let token = (source_id == self.writable_own_source_id)
+                .then_some(own_read_token)
+                .flatten();
             let content = {
                 let backend = entry.backend.lock().await;
                 match backend
-                    .read_file(std::path::Path::new(&relative_path))
+                    .read_file_with_token(std::path::Path::new(&relative_path), token)
                     .await
                 {
                     Ok(content) => content,
@@ -2169,6 +2200,126 @@ mod tests {
         assert_eq!(
             corpus.law_yaml("wet_a").await.unwrap().as_deref(),
             Some("$id: wet_a\nname: saved\n")
+        );
+    }
+
+    /// Backend gedraagt zich als een privé repo achter de Contents-API:
+    /// zonder het verwachte per-call token leest elke file als 404
+    /// (`Ok(None)`). Met `required_token: None` modelleert hij een
+    /// seed-backend die het persoonlijke token nooit mag ontvangen.
+    struct TokenGatedBackend {
+        files: HashMap<String, String>,
+        required_token: Option<String>,
+    }
+
+    #[async_trait]
+    impl RepoBackend for TokenGatedBackend {
+        async fn read_file(&self, path: &Path) -> CorpusResult<Option<String>> {
+            self.read_file_with_token(path, None).await
+        }
+        async fn read_file_with_token(
+            &self,
+            path: &Path,
+            token: Option<&str>,
+        ) -> CorpusResult<Option<String>> {
+            match &self.required_token {
+                // Privé repo: alleen het juiste token leest; anders 404.
+                Some(required) if token != Some(required.as_str()) => return Ok(None),
+                Some(_) => {}
+                // Seed-bron: het persoonlijke token mag hier nooit landen.
+                None => assert!(
+                    token.is_none(),
+                    "seed backend must never receive the personal read token"
+                ),
+            }
+            Ok(self.files.get(path.to_str().unwrap()).cloned())
+        }
+        async fn write_file(&self, _: &Path, _: &str) -> CorpusResult<()> {
+            Ok(())
+        }
+        async fn delete_file(&self, _: &Path) -> CorpusResult<()> {
+            Ok(())
+        }
+        async fn list_files(&self, _: &Path, _: Option<&str>) -> CorpusResult<Vec<FileEntry>> {
+            Ok(Vec::new())
+        }
+        async fn persist(&self, _: &CorpusWriteContext) -> CorpusResult<PersistOutcome> {
+            Ok(PersistOutcome::default())
+        }
+        async fn ensure_ready(&mut self) -> CorpusResult<()> {
+            Ok(())
+        }
+        fn supports_token_override(&self) -> bool {
+            true
+        }
+        fn is_writable(&self) -> bool {
+            false
+        }
+    }
+
+    #[tokio::test]
+    async fn law_yaml_forwards_the_read_token_only_to_the_writable_own_source() {
+        let mut map = SourceMap::new();
+        metadata_entry(&mut map, "wet_eigen", "own");
+        metadata_entry(&mut map, "wet_seed", "seed");
+        let backends = HashMap::from([
+            (
+                "own".to_string(),
+                BackendEntry {
+                    backend: Arc::new(Mutex::new(Box::new(TokenGatedBackend {
+                        files: HashMap::from([(
+                            "wet/wet_eigen/2025-01-01.yaml".to_string(),
+                            "$id: wet_eigen\n".to_string(),
+                        )]),
+                        required_token: Some("user-token".to_string()),
+                    }) as Box<dyn RepoBackend>)),
+                    writable: false,
+                },
+            ),
+            (
+                "seed".to_string(),
+                BackendEntry {
+                    backend: Arc::new(Mutex::new(Box::new(TokenGatedBackend {
+                        files: HashMap::from([(
+                            "wet/wet_seed/2025-01-01.yaml".to_string(),
+                            "$id: wet_seed\n".to_string(),
+                        )]),
+                        required_token: None,
+                    }) as Box<dyn RepoBackend>)),
+                    writable: false,
+                },
+            ),
+        ]);
+        let corpus = test_corpus(map, backends);
+
+        // Zonder token blijft de privé writable-own onleesbaar (GitHub's 404
+        // → `Ok(None)`), en er wordt níets negatiefs gecachet…
+        assert_eq!(
+            corpus
+                .law_yaml_with_read_token("wet_eigen", None)
+                .await
+                .unwrap(),
+            None
+        );
+        // …met het per-request token leest dezelfde wet wél.
+        assert_eq!(
+            corpus
+                .law_yaml_with_read_token("wet_eigen", Some("user-token"))
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("$id: wet_eigen\n")
+        );
+
+        // Een seed-read binnen dezelfde request geeft het token NIET door
+        // (de assert in de stub bewaakt dat) en slaagt gewoon.
+        assert_eq!(
+            corpus
+                .law_yaml_with_read_token("wet_seed", Some("user-token"))
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("$id: wet_seed\n")
         );
     }
 

@@ -7,6 +7,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tower_sessions::Session;
+use uuid::Uuid;
 
 use regelrecht_auth::handlers::{
     SESSION_KEY_EMAIL, SESSION_KEY_EMAIL_VERIFIED, SESSION_KEY_NAME, SESSION_KEY_SUB,
@@ -119,14 +120,100 @@ pub struct LawOutputEntry {
 /// `TrajectCorpus` it resolved via `require_traject_corpus_from_ref`, to
 /// snapshot a law's YAML through the same read path the editor uses.
 pub(crate) enum ReadScope {
-    Traject(Arc<TrajectCorpus>),
+    Traject(TrajectScope),
     Global(tokio::sync::OwnedRwLockReadGuard<CorpusState>),
 }
 
+/// Traject-scoped read state: the per-traject corpus plus the outcome of
+/// the per-request read-token resolution for its writable-own source.
+///
+/// The token outcome is resolved eagerly at scope construction but
+/// surfaced **lazily**: a read that never touches the writable-own
+/// backend (seed laws, source listings) must keep working for a user
+/// without a linked GitHub account, so the deferred `Err` (the 428
+/// connect-flow) only fires at the call sites that actually read the
+/// writable-own source. The token itself lives only in this per-request
+/// struct — never in the shared `TrajectCorpus` or any cache key.
+pub(crate) struct TrajectScope {
+    traject: Arc<TrajectCorpus>,
+    own_read_token: Result<Option<String>, (StatusCode, String)>,
+}
+
+impl TrajectScope {
+    /// The token to authenticate a writable-own read with, or the
+    /// deferred 428 when this deployment requires a user token for that
+    /// source and the caller hasn't linked one. Call this at the moment
+    /// a read actually targets the writable-own backend — not earlier.
+    fn own_read_token(&self) -> Result<Option<&str>, (StatusCode, String)> {
+        match &self.own_read_token {
+            Ok(token) => Ok(token.as_deref()),
+            Err(e) => Err(e.clone()),
+        }
+    }
+
+    /// [`Self::own_read_token`], but only when `law_id`'s body actually
+    /// resolves from the writable-own source — a seed-served law must
+    /// neither carry the personal token nor trip the deferred 428.
+    fn own_read_token_for_law(&self, law_id: &str) -> Result<Option<&str>, (StatusCode, String)> {
+        let from_own = self
+            .traject
+            .corpus
+            .source_map
+            .get_law(law_id)
+            .is_some_and(|l| l.source_id == self.traject.writable_own_source_id);
+        if from_own {
+            self.own_read_token()
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Like [`Self::own_read_token_for_law`], for the full version set:
+    /// the token (or deferred 428) applies as soon as *any* indexed
+    /// version of the law lives on the writable-own source.
+    fn own_read_token_for_law_versions(
+        &self,
+        law_id: &str,
+    ) -> Result<Option<&str>, (StatusCode, String)> {
+        let any_own = self
+            .traject
+            .corpus
+            .source_map
+            .get_law_versions(law_id)
+            .is_some_and(|vs| {
+                vs.iter()
+                    .any(|v| v.source_id == self.traject.writable_own_source_id)
+            });
+        if any_own {
+            self.own_read_token()
+        } else {
+            Ok(None)
+        }
+    }
+}
+
 impl ReadScope {
+    /// Build a traject scope, resolving the per-request read token for
+    /// the traject's writable-own source (see [`TrajectScope`]).
+    ///
+    /// `pub(crate)`: `task_requests` snapshots law YAML through the same
+    /// read path and must resolve the same token.
+    pub(crate) async fn for_traject(
+        state: &AppState,
+        account_id: Uuid,
+        headers: &axum::http::HeaderMap,
+        traject: Arc<TrajectCorpus>,
+    ) -> Self {
+        let own_read_token = resolve_own_read_token(state, account_id, headers, &traject).await;
+        ReadScope::Traject(TrajectScope {
+            traject,
+            own_read_token,
+        })
+    }
+
     fn corpus(&self) -> &CorpusState {
         match self {
-            ReadScope::Traject(t) => &t.corpus,
+            ReadScope::Traject(t) => &t.traject.corpus,
             ReadScope::Global(g) => g,
         }
     }
@@ -136,12 +223,22 @@ impl ReadScope {
     /// takes precedence over the source_map snapshot, so a save +
     /// re-open in the same traject returns the new content without a
     /// full source_map rebuild.
-    async fn law_yaml(
-        &self,
-        law_id: &str,
-    ) -> Result<Option<String>, regelrecht_corpus::error::CorpusError> {
+    ///
+    /// Backend failures (lazy fetch threw) map to 502 "failed to load",
+    /// distinguishable from a genuine `Ok(None)` miss; a writable-own law
+    /// that needs the caller's GitHub link maps to the 428 connect-flow.
+    async fn law_yaml(&self, law_id: &str) -> Result<Option<String>, (StatusCode, String)> {
         match self {
-            ReadScope::Traject(t) => t.law_yaml(law_id).await,
+            ReadScope::Traject(t) => {
+                // Deferred read-token outcome: loud (428) when the body
+                // lives on a writable-own source we cannot read for this
+                // user, instead of a silent 404 from GitHub.
+                let token = t.own_read_token_for_law(law_id)?;
+                t.traject
+                    .law_yaml_with_read_token(law_id, token)
+                    .await
+                    .map_err(law_read_error(law_id))
+            }
             // The global corpus is fully loaded up front, so there's no lazy
             // fetch that could fail — a miss is always a genuine miss.
             ReadScope::Global(g) => {
@@ -154,12 +251,21 @@ impl ReadScope {
     /// Mirrors [`Self::law_yaml`] but returns the full version set (newest-first)
     /// so the scenario loader can hand them all to the engine. An unknown law is
     /// an empty vec, not an error.
-    async fn law_yaml_versions(
-        &self,
-        law_id: &str,
-    ) -> Result<Vec<String>, regelrecht_corpus::error::CorpusError> {
+    async fn law_yaml_versions(&self, law_id: &str) -> Result<Vec<String>, (StatusCode, String)> {
         match self {
-            ReadScope::Traject(t) => t.law_yaml_versions(law_id).await,
+            ReadScope::Traject(t) => {
+                let token = t.own_read_token_for_law_versions(law_id)?;
+                t.traject
+                    .law_yaml_versions_with_read_token(law_id, token)
+                    .await
+                    .map_err(|e| {
+                        tracing::warn!(law_id = %law_id, error = %e, "failed to load law versions");
+                        (
+                            StatusCode::BAD_GATEWAY,
+                            format!("Kon versies van wet '{law_id}' niet laden"),
+                        )
+                    })
+            }
             // The global corpus is fully loaded up front (like `law_yaml`), so
             // eagerly-loaded (local-source) bodies are present; filter any
             // metadata-only sentinel so the loader never receives an empty YAML
@@ -183,9 +289,49 @@ impl ReadScope {
     }
 }
 
-/// Read a law's YAML within a scope, mapping the outcome to an HTTP error:
-/// a backend failure (lazy fetch threw) becomes 502 "failed to load" so it's
-/// distinguishable from a genuine 404 miss; the error is logged for operators.
+/// Map a law-body backend failure to the client-facing 502; the raw error
+/// is logged for operators.
+fn law_read_error(
+    law_id: &str,
+) -> impl FnOnce(regelrecht_corpus::error::CorpusError) -> (StatusCode, String) + '_ {
+    move |e| {
+        tracing::warn!(law_id = %law_id, error = %e, "failed to load law body");
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Kon wet '{law_id}' niet laden"),
+        )
+    }
+}
+
+/// Resolve the per-request read token for a traject's writable-own
+/// backend (see [`github_oauth::user_read_token_for_backend`] for the
+/// decision table). The result — including the deferred 428 — is stored
+/// on the [`TrajectScope`] and only surfaced by reads that actually
+/// target the writable-own source.
+async fn resolve_own_read_token(
+    state: &AppState,
+    account_id: Uuid,
+    headers: &axum::http::HeaderMap,
+    traject: &TrajectCorpus,
+) -> Result<Option<String>, (StatusCode, String)> {
+    let Some(entry) = traject.corpus.backends.get(&traject.writable_own_source_id) else {
+        return Ok(None);
+    };
+    // Writable at rest = the backend has its own credential (service
+    // token, or a natively writable local dir): reads keep using it,
+    // behaviour unchanged — and we skip the backend lock entirely.
+    if entry.writable {
+        return Ok(None);
+    }
+    // Lock only long enough for the two synchronous capability probes
+    // inside `user_read_token_for_backend`; no I/O under this guard.
+    let backend = entry.backend.lock().await;
+    github_oauth::user_read_token_for_backend(state, account_id, headers, &**backend).await
+}
+
+/// Read a law's YAML within a scope. 502 for a backend failure, 404 for a
+/// genuine miss, 428 when the writable-own source needs the caller's
+/// GitHub link (see [`ReadScope::law_yaml`]).
 ///
 /// `pub(crate)`: also used by `task_requests` to snapshot the wet-YAML an
 /// enrich-op-aanvraag ships as its input blob.
@@ -195,14 +341,7 @@ pub(crate) async fn read_law_yaml(
 ) -> Result<String, (StatusCode, String)> {
     scope
         .law_yaml(law_id)
-        .await
-        .map_err(|e| {
-            tracing::warn!(law_id = %law_id, error = %e, "failed to load law body");
-            (
-                StatusCode::BAD_GATEWAY,
-                format!("Kon wet '{law_id}' niet laden"),
-            )
-        })?
+        .await?
         .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{law_id}' not found")))
 }
 
@@ -221,13 +360,18 @@ async fn global_scope(state: &AppState) -> ReadScope {
 /// UUID before the membership query (see `resolve_traject_ref`). Returns
 /// 403 when the caller is not a member, 404 when the ref doesn't match
 /// any known traject, 400 when the ref is malformed.
+///
+/// `account` + `headers` feed the per-request read-token resolution for
+/// the traject's writable-own source (see [`TrajectScope`]).
 async fn require_traject_scope(
     state: &AppState,
     session: &Session,
+    account: &AccountRecord,
+    headers: &axum::http::HeaderMap,
     traject_ref: &str,
 ) -> Result<ReadScope, (StatusCode, String)> {
     let traject = require_traject_corpus_from_ref(state, session, traject_ref).await?;
-    Ok(ReadScope::Traject(traject))
+    Ok(ReadScope::for_traject(state, account.id, headers, traject).await)
 }
 
 /// GET /api/sources — list all registered corpus sources (global).
@@ -242,10 +386,12 @@ pub async fn list_sources(
 /// but routed through the traject's per-source backends.
 pub async fn list_traject_sources(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path(traject_ref): Path<String>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<Vec<SourceSummary>>, (StatusCode, String)> {
-    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    let scope = require_traject_scope(&state, &session, &account, &headers, &traject_ref).await?;
     Ok(Json(list_sources_in_scope(&scope)))
 }
 
@@ -270,11 +416,13 @@ pub async fn list_corpus_laws(
 /// but the source_map comes from the traject's per-source backends.
 pub async fn list_traject_corpus_laws(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path(traject_ref): Path<String>,
     Query(params): Query<PaginationParams>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<Vec<CorpusLawEntry>>, (StatusCode, String)> {
-    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    let scope = require_traject_scope(&state, &session, &account, &headers, &traject_ref).await?;
     Ok(Json(list_corpus_laws_in_scope(&scope, params)))
 }
 
@@ -429,10 +577,12 @@ pub async fn get_corpus_law(
 /// global GET but with the traject's read-your-writes overlay applied.
 pub async fn get_traject_corpus_law(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path((traject_ref, law_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<EtaggedContentResponse, (StatusCode, String)> {
-    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    let scope = require_traject_scope(&state, &session, &account, &headers, &traject_ref).await?;
     get_corpus_law_in_scope(&scope, &law_id).await
 }
 
@@ -463,10 +613,12 @@ pub async fn get_corpus_law_versions(
 /// read-your-writes overlay.
 pub async fn get_traject_corpus_law_versions(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path((traject_ref, law_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<Vec<String>>, (StatusCode, String)> {
-    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    let scope = require_traject_scope(&state, &session, &account, &headers, &traject_ref).await?;
     get_corpus_law_versions_in_scope(&scope, &law_id).await
 }
 
@@ -474,15 +626,9 @@ async fn get_corpus_law_versions_in_scope(
     scope: &ReadScope,
     law_id: &str,
 ) -> Result<Json<Vec<String>>, (StatusCode, String)> {
-    let versions = scope.law_yaml_versions(law_id).await.map_err(|e| {
-        // A backend failure (lazy fetch threw) is a 502, distinguishable from
-        // a genuine "no such law" empty array; logged for operators.
-        tracing::warn!(law_id = %law_id, error = %e, "failed to load law versions");
-        (
-            StatusCode::BAD_GATEWAY,
-            format!("Kon versies van wet '{law_id}' niet laden"),
-        )
-    })?;
+    // A backend failure (lazy fetch threw) is a 502, distinguishable from
+    // a genuine "no such law" empty array (see `ReadScope::law_yaml_versions`).
+    let versions = scope.law_yaml_versions(law_id).await?;
     Ok(Json(versions))
 }
 
@@ -499,10 +645,12 @@ pub async fn list_law_outputs(
 /// global but with the traject overlay.
 pub async fn list_traject_law_outputs(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path((traject_ref, law_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<Vec<LawOutputEntry>>, (StatusCode, String)> {
-    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    let scope = require_traject_scope(&state, &session, &account, &headers, &traject_ref).await?;
     list_law_outputs_in_scope(&scope, &law_id).await
 }
 
@@ -549,10 +697,12 @@ pub async fn list_law_implementors(
 /// as the global view but resolved through the traject's federated corpus.
 pub async fn list_traject_law_implementors(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path((traject_ref, law_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<Vec<String>>, (StatusCode, String)> {
-    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    let scope = require_traject_scope(&state, &session, &account, &headers, &traject_ref).await?;
     Ok(Json(implementors_in_scope(&scope, &law_id).await))
 }
 
@@ -570,8 +720,8 @@ async fn implementors_in_scope(scope: &ReadScope, law_id: &str) -> Vec<String> {
         // per-request signal here is debug-only — a warn per lookup would
         // re-log the same incident on every panel open until the next
         // rebuild self-heals it.
-        ReadScope::Traject(traject) => {
-            let result = traject.implementors_of(law_id).await;
+        ReadScope::Traject(ts) => {
+            let result = ts.traject.implementors_of(law_id).await;
             if result.skipped_count > 0 {
                 tracing::debug!(
                     law_id = %law_id,
@@ -660,10 +810,12 @@ pub async fn list_scenarios(
 /// scenario is visible without a corpus reload.
 pub async fn list_traject_scenarios(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path((traject_ref, law_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<Vec<ScenarioEntry>>, (StatusCode, String)> {
-    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    let scope = require_traject_scope(&state, &session, &account, &headers, &traject_ref).await?;
     list_scenarios_in_scope(&scope, &law_id).await
 }
 
@@ -694,7 +846,8 @@ async fn list_scenarios_in_scope(
         // law file itself was never saved there, AND seed scenarios that
         // were never copied to the branch keep showing up (their GET
         // falls back to the seed the same way).
-        ReadScope::Traject(traject) => {
+        ReadScope::Traject(ts) => {
+            let traject = &ts.traject;
             // Per-snapshot cache: the editor requests this listing on
             // every law open, and a rebuild costs one `list_files` per
             // backend plus a read per scenario file — the most GitHub-
@@ -728,6 +881,10 @@ async fn list_scenarios_in_scope(
                 Err(_) => return Ok(Json(Vec::new())),
             };
             let write_source_id = traject_write_source_id(traject, law);
+            // The write-target listing reads the writable-own source, so
+            // this is where a missing GitHub link surfaces loudly (428)
+            // instead of a silently seed-only listing.
+            let own_read_token = ts.own_read_token()?;
             let mut names = std::collections::BTreeSet::new();
             // Lock order: write target first, released before the seed
             // backend is touched (writable-own → seed, never the
@@ -738,9 +895,14 @@ async fn list_scenarios_in_scope(
                 let Some(entry) = traject.corpus.backends.get(source_id) else {
                     continue;
                 };
+                // Personal token only on the write-target (writable-own)
+                // leg; the seed listing never carries it.
+                let token = (source_id == write_source_id)
+                    .then_some(own_read_token)
+                    .flatten();
                 let backend = entry.backend.lock().await;
                 let entries = backend
-                    .list_files(&scenarios_dir, Some("feature"))
+                    .list_files_with_token(&scenarios_dir, Some("feature"), token)
                     .await
                     .map_err(list_error)?;
                 drop(backend);
@@ -760,7 +922,7 @@ async fn list_scenarios_in_scope(
             for filename in names {
                 let relative_path = scenarios_dir.join(&filename);
                 let target_law_ids =
-                    match read_traject_scenario_cached(traject, law, &relative_path).await {
+                    match read_traject_scenario_cached(ts, law, &relative_path).await {
                         Ok(Some(content)) => extract_target_law_ids(&content),
                         // Listed but unreadable on every routing leg: a
                         // ghost. GitHub's directory listing is eventually
@@ -864,10 +1026,12 @@ pub async fn get_scenario(
 /// — traject-scoped scenario read.
 pub async fn get_traject_scenario(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path((traject_ref, law_id, filename)): Path<(String, String, String)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<EtaggedContentResponse, (StatusCode, String)> {
-    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    let scope = require_traject_scope(&state, &session, &account, &headers, &traject_ref).await?;
     get_scenario_in_scope(&scope, &law_id, &filename).await
 }
 
@@ -885,10 +1049,10 @@ async fn get_scenario_in_scope(
         // checked against. See `read_traject_file_via_write_target` for
         // the 412-loop this prevents. Cached per snapshot; saves keep the
         // entry coherent (see `read_traject_scenario_cached`).
-        ReadScope::Traject(traject) => {
-            let law = traject_law(traject, law_id)?;
+        ReadScope::Traject(ts) => {
+            let law = traject_law(&ts.traject, law_id)?;
             let relative_path = scenario_relative_path(law, filename)?;
-            read_traject_scenario_cached(traject, law, &relative_path).await?
+            read_traject_scenario_cached(ts, law, &relative_path).await?
         }
         // Global: no write target exists; keep the read-only resolution.
         ReadScope::Global(_) => {
@@ -946,7 +1110,8 @@ fn resolve_annotation_read_backend(
     law_id: &str,
 ) -> Result<SharedBackend, (StatusCode, String)> {
     match scope {
-        ReadScope::Traject(traject) => {
+        ReadScope::Traject(ts) => {
+            let traject = &ts.traject;
             let law = traject_law(traject, law_id)?;
             // Mirror `resolve_traject_law_write`: a law from a
             // non-writable_own source is routed to the writable_own
@@ -1031,8 +1196,9 @@ pub async fn get_traject_annotations(
     session: Session,
     Extension(account): Extension<AccountRecord>,
     Path((traject_ref, law_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<YamlResponse, (StatusCode, String)> {
-    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    let scope = require_traject_scope(&state, &session, &account, &headers, &traject_ref).await?;
     let sidecar = match get_annotations_in_scope(&scope, &law_id).await {
         Ok((_, _, content)) => Some(content),
         // Absent sidecar is fine here: the caller may still have personal
@@ -1125,14 +1291,26 @@ async fn read_annotations_in_scope(
     // letting a stale backend read pass the guard and overwrite the
     // save's fresh entry.
     let mut gen_before = 0;
-    if let ReadScope::Traject(traject) = scope {
-        gen_before = traject.sidecar_write_generation();
-        if let Some(cached) = traject.cached_sidecar(&annotations_cache_key(law_id)).await {
+    if let ReadScope::Traject(ts) = scope {
+        gen_before = ts.traject.sidecar_write_generation();
+        if let Some(cached) = ts
+            .traject
+            .cached_sidecar(&annotations_cache_key(law_id))
+            .await
+        {
             return Ok(cached);
         }
     }
 
     let backend = resolve_annotation_read_backend(scope, law_id)?;
+
+    // Traject-scoped, the resolved backend is the write target — the
+    // writable-own source — so this read carries the per-request token
+    // (or surfaces the deferred 428) exactly like the scenario reads.
+    let own_read_token = match scope {
+        ReadScope::Traject(ts) => ts.own_read_token()?.map(str::to_string),
+        ReadScope::Global(_) => None,
+    };
 
     // RFC-018 §1: keyed by law id at the source root, regardless of where
     // the law file lives. Same path the `save_annotations` write uses.
@@ -1142,17 +1320,20 @@ async fn read_annotations_in_scope(
 
     let content = {
         let backend = backend.lock().await;
-        backend.read_file(&relative_path).await.map_err(|e| {
-            tracing::warn!(law_id = %law_id, error = %e, "get_annotations backend read failed");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to read annotations".to_string(),
-            )
-        })?
+        backend
+            .read_file_with_token(&relative_path, own_read_token.as_deref())
+            .await
+            .map_err(|e| {
+                tracing::warn!(law_id = %law_id, error = %e, "get_annotations backend read failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to read annotations".to_string(),
+                )
+            })?
     };
 
-    if let ReadScope::Traject(traject) = scope {
-        traject
+    if let ReadScope::Traject(ts) = scope {
+        ts.traject
             .store_sidecar_read(annotations_cache_key(law_id), content.clone(), gen_before)
             .await;
     }
@@ -1637,10 +1818,11 @@ async fn current_content_for_write(
     write: &TrajectLawWrite,
     relative_path: &std::path::Path,
     kind: &'static str,
+    own_read_token: Option<&str>,
 ) -> Result<Option<String>, (StatusCode, String)> {
     if let Some(text) = write
         .backend
-        .read_file(relative_path)
+        .read_file_with_token(relative_path, own_read_token)
         .await
         .map_err(corpus_write_error(kind))?
     {
@@ -1710,6 +1892,7 @@ async fn read_traject_file_via_write_target(
     law: &LoadedLaw,
     relative_path: &std::path::Path,
     kind: &'static str,
+    own_read_token: Option<&str>,
 ) -> Result<Option<String>, (StatusCode, String)> {
     let write_source_id = traject_write_source_id(traject, law);
     let entry = traject.corpus.backends.get(&write_source_id).ok_or((
@@ -1718,8 +1901,11 @@ async fn read_traject_file_via_write_target(
     ))?;
     {
         let backend = entry.backend.lock().await;
+        // The write target is the writable-own source, so this leg may
+        // ride the per-request user token. The seed fallback below never
+        // does.
         if let Some(text) = backend
-            .read_file(relative_path)
+            .read_file_with_token(relative_path, own_read_token)
             .await
             .map_err(corpus_write_error(kind))?
         {
@@ -1752,10 +1938,11 @@ fn scenario_cache_key(relative_path: &std::path::Path) -> String {
 /// wrong). Cross-replica edits converge at the next snapshot, like law
 /// bodies.
 async fn read_traject_scenario_cached(
-    traject: &Arc<TrajectCorpus>,
+    ts: &TrajectScope,
     law: &LoadedLaw,
     relative_path: &std::path::Path,
 ) -> Result<Option<String>, (StatusCode, String)> {
+    let traject = &ts.traject;
     let key = scenario_cache_key(relative_path);
     // Generation captured before the cache probe: a save/delete landing
     // while the read is in flight bumps it, and the store below is then
@@ -1768,8 +1955,13 @@ async fn read_traject_scenario_cached(
     if let Some(cached) = traject.cached_sidecar(&key).await {
         return Ok(cached);
     }
+    // Token (or deferred 428) resolved only on a cache miss: cached
+    // *content* is fine to serve — every traject route already passed
+    // the membership check.
+    let own_read_token = ts.own_read_token()?;
     let content =
-        read_traject_file_via_write_target(traject, law, relative_path, "scenario").await?;
+        read_traject_file_via_write_target(traject, law, relative_path, "scenario", own_read_token)
+            .await?;
     traject
         .store_sidecar_read(key, content.clone(), gen_before)
         .await;
@@ -1850,10 +2042,26 @@ pub async fn save_scenario(
 
     // Optimistic concurrency, same semantics as documents. Only read the
     // current content when the client actually sent a precondition — a
-    // header-less save stays a single write, no extra backend read.
+    // header-less save stays a single write, no extra backend read. The
+    // precondition read uses the read-token mechanism (a token-less
+    // writable-own backend reads with the user's token), so it compares
+    // against the same bytes the GET served.
     if let Some(if_match) = extract_if_match(&headers) {
-        let current =
-            current_content_for_write(&traject, &write, &relative_path, "scenario").await?;
+        let read_token = github_oauth::user_read_token_for_backend(
+            &state,
+            account.id,
+            &headers,
+            &**write.backend,
+        )
+        .await?;
+        let current = current_content_for_write(
+            &traject,
+            &write,
+            &relative_path,
+            "scenario",
+            read_token.as_deref(),
+        )
+        .await?;
         check_if_match(current.as_deref(), Some(&if_match), "Scenario")?;
     }
 
@@ -2055,9 +2263,14 @@ pub async fn save_annotations(
 
     // Read the current sidecar from the traject backend (the branch this
     // traject's PR is built on — read-your-writes within the traject).
-    // Absent file = first notes for this law.
+    // Absent file = first notes for this law. Uses the read-token
+    // mechanism: on a token-less writable-own backend this read would
+    // otherwise 404 on a private repo and silently drop the existing
+    // notes from the append base.
+    let read_token =
+        github_oauth::user_read_token_for_backend(&state, account.id, &headers, &**backend).await?;
     let base_text: Option<String> = backend
-        .read_file(&relative_path)
+        .read_file_with_token(&relative_path, read_token.as_deref())
         .await
         .map_err(corpus_write_error("annotations"))?;
 
@@ -2271,7 +2484,21 @@ pub async fn save_law(
     // mutex (acquired by `resolve_traject_law_write` above), so a
     // concurrent save cannot slip between the check and the write.
     if let Some(if_match) = extract_if_match(&headers) {
-        let current = current_content_for_write(&traject, &write, &relative_path, "law").await?;
+        let read_token = github_oauth::user_read_token_for_backend(
+            &state,
+            account.id,
+            &headers,
+            &**write.backend,
+        )
+        .await?;
+        let current = current_content_for_write(
+            &traject,
+            &write,
+            &relative_path,
+            "law",
+            read_token.as_deref(),
+        )
+        .await?;
         check_if_match(current.as_deref(), Some(&if_match), "Wet")?;
     }
 
@@ -2664,9 +2891,10 @@ async fn enforce_if_match(
     backend: &dyn RepoBackend,
     relative_path: &std::path::Path,
     if_match: Option<&str>,
+    read_token: Option<&str>,
 ) -> Result<Option<String>, (StatusCode, String)> {
     let current = backend
-        .read_file(relative_path)
+        .read_file_with_token(relative_path, read_token)
         .await
         .map_err(corpus_write_error("document"))?;
     check_if_match(current.as_deref(), if_match, "Document")
@@ -2715,14 +2943,22 @@ fn check_if_match(
 /// offers the create form.
 pub async fn list_traject_documents(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path(traject_ref): Path<String>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<TrajectDocumentList>, (StatusCode, String)> {
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let backend = resolve_traject_documents_writer(&state, &traject).await?;
+    // Documents live exclusively on the writable-own source, so this read
+    // rides the per-request user token when that source has no service
+    // token — and fails loud (428, the GitHub connect-flow) instead of
+    // returning a silently empty list when the user hasn't linked GitHub.
+    let read_token =
+        github_oauth::user_read_token_for_backend(&state, account.id, &headers, &**backend).await?;
     let base = traject_documents_base(&traject_ref);
     let entries = backend
-        .list_files_recursive(&base, None)
+        .list_files_recursive_with_token(&base, None, read_token.as_deref())
         .await
         .map_err(|e| {
             tracing::warn!(error = %e, "list_files_recursive on documents failed");
@@ -2883,6 +3119,7 @@ pub async fn upload_traject_document(
     Extension(account): Extension<AccountRecord>,
     session: Session,
     Path(traject_ref): Path<String>,
+    headers: axum::http::HeaderMap,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<UploadDocumentResponse>), (StatusCode, String)> {
     let pool = state.pool.as_ref().ok_or((
@@ -2902,10 +3139,15 @@ pub async fn upload_traject_document(
     // unconditional write would silently overwrite that document. Fail the
     // upload instead.
     let backend = resolve_traject_documents_writer(&state, &traject).await?;
+    // Same read-token routing as `list_traject_documents`: without it a
+    // token-less writable-own repo lists empty and the collision check is
+    // blind.
+    let read_token =
+        github_oauth::user_read_token_for_backend(&state, account.id, &headers, &**backend).await?;
 
     let base = traject_documents_base(&traject_ref);
     let mut existing: Vec<String> = backend
-        .list_files_recursive(&base, None)
+        .list_files_recursive_with_token(&base, None, read_token.as_deref())
         .await
         .map_err(|e| upload_internal_error("list documents for collision check", e))?
         .into_iter()
@@ -3154,10 +3396,12 @@ pub async fn create_traject_law(
     // The writable-own backend (same routing as documents: the law does not
     // exist yet, so there is no per-law source to route from).
     let backend = resolve_traject_documents_writer(&state, &traject).await?;
+    let read_token =
+        github_oauth::user_read_token_for_backend(&state, account.id, &headers, &**backend).await?;
     // Belt-and-braces against an index blind spot (e.g. a file committed on
     // the branch after the current snapshot was built).
     if backend
-        .read_file(&relative_path)
+        .read_file_with_token(&relative_path, read_token.as_deref())
         .await
         .map_err(corpus_write_error("law"))?
         .is_some()
@@ -3278,6 +3522,11 @@ pub async fn promote_corpus_law(
     // documents/create: per-wet routing bestaat nog niet, want de wet zit nog
     // niet in de traject-repo).
     let backend = resolve_traject_documents_writer(&state, &traject).await?;
+    // Leestoken voor de bestaat-al-checks hieronder: zonder service-token
+    // leest een privé traject-repo anders overal 404 en zou de promote
+    // bestaande traject-edits stilletjes overschrijven.
+    let read_token =
+        github_oauth::user_read_token_for_backend(&state, account.id, &headers, &**backend).await?;
 
     // Geen dubbele/overschreven bestanden, per bestandssoort:
     // - Wet-versie-YAML al op het doelpad (bijv. via een eerdere save_law op
@@ -3292,7 +3541,7 @@ pub async fn promote_corpus_law(
     let mut to_write: Vec<&PromoteFile> = Vec::with_capacity(files.len());
     for file in &files {
         let exists = backend
-            .read_file(&file.relative_path)
+            .read_file_with_token(&file.relative_path, read_token.as_deref())
             .await
             .map_err(corpus_write_error("law"))?
             .is_some();
@@ -3538,16 +3787,23 @@ pub async fn cancel_traject_document_convert_job(
 /// next PUT/DELETE to detect a concurrent edit.
 pub async fn get_traject_document(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path((traject_ref, doc_path)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<axum::response::Response, (StatusCode, String)> {
     use axum::response::IntoResponse;
     validate_document_path(&doc_path)?;
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let backend = resolve_traject_documents_writer(&state, &traject).await?;
+    // Same read-token routing as the listing: user token on a token-less
+    // writable-own source, 428 instead of a misleading 404 when the user
+    // hasn't linked GitHub.
+    let read_token =
+        github_oauth::user_read_token_for_backend(&state, account.id, &headers, &**backend).await?;
     let relative_path = traject_documents_base(&traject_ref).join(&doc_path);
     let content = backend
-        .read_file(&relative_path)
+        .read_file_with_token(&relative_path, read_token.as_deref())
         .await
         .map_err(corpus_write_error("document"))?
         .ok_or((StatusCode::NOT_FOUND, "Document niet gevonden".to_string()))?;
@@ -3614,12 +3870,19 @@ pub async fn save_traject_document(
     let token_override =
         github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**backend)
             .await?;
+    let read_token =
+        github_oauth::user_read_token_for_backend(&state, account.id, &headers, &**backend).await?;
     let relative_path = traject_documents_base(&traject_ref).join(&doc_path);
 
     let if_match = extract_if_match(&headers);
-    let existed_before = enforce_if_match(&**backend, &relative_path, if_match.as_deref())
-        .await?
-        .is_some();
+    let existed_before = enforce_if_match(
+        &**backend,
+        &relative_path,
+        if_match.as_deref(),
+        read_token.as_deref(),
+    )
+    .await?
+    .is_some();
 
     backend
         .write_file(&relative_path, &body)
@@ -3682,12 +3945,19 @@ pub async fn delete_traject_document(
     let token_override =
         github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**backend)
             .await?;
+    let read_token =
+        github_oauth::user_read_token_for_backend(&state, account.id, &headers, &**backend).await?;
     let relative_path = traject_documents_base(&traject_ref).join(&doc_path);
 
     let if_match = extract_if_match(&headers);
-    let existed = enforce_if_match(&**backend, &relative_path, if_match.as_deref())
-        .await?
-        .is_some();
+    let existed = enforce_if_match(
+        &**backend,
+        &relative_path,
+        if_match.as_deref(),
+        read_token.as_deref(),
+    )
+    .await?
+    .is_some();
     if !existed {
         return Err((StatusCode::NOT_FOUND, "Document niet gevonden".to_string()));
     }
@@ -4103,7 +4373,7 @@ mod tests {
         let backend = StubBackend {
             body: Some("hello".to_string()),
         };
-        let etag = enforce_if_match(&backend, StdPath::new("x"), None)
+        let etag = enforce_if_match(&backend, StdPath::new("x"), None, None)
             .await
             .unwrap();
         assert_eq!(etag.as_deref(), Some(document_etag("hello").as_str()));
@@ -4112,7 +4382,7 @@ mod tests {
     #[tokio::test]
     async fn enforce_if_match_returns_none_when_file_absent_and_no_precondition() {
         let backend = StubBackend { body: None };
-        let etag = enforce_if_match(&backend, StdPath::new("x"), None)
+        let etag = enforce_if_match(&backend, StdPath::new("x"), None, None)
             .await
             .unwrap();
         assert!(etag.is_none());
@@ -4123,7 +4393,7 @@ mod tests {
         let backend = StubBackend {
             body: Some("hello".to_string()),
         };
-        let err = enforce_if_match(&backend, StdPath::new("x"), Some("\"stale\""))
+        let err = enforce_if_match(&backend, StdPath::new("x"), Some("\"stale\""), None)
             .await
             .expect_err("must refuse stale etag");
         assert_eq!(err.0, StatusCode::PRECONDITION_FAILED);
@@ -4135,7 +4405,7 @@ mod tests {
             body: Some("hello".to_string()),
         };
         let etag = document_etag("hello");
-        let returned = enforce_if_match(&backend, StdPath::new("x"), Some(&etag))
+        let returned = enforce_if_match(&backend, StdPath::new("x"), Some(&etag), None)
             .await
             .unwrap();
         assert_eq!(returned.as_deref(), Some(etag.as_str()));
@@ -4146,7 +4416,7 @@ mod tests {
         // `If-Match: *` semantically means "match any existing version".
         // Against a file that doesn't exist yet, the precondition fails.
         let backend = StubBackend { body: None };
-        let err = enforce_if_match(&backend, StdPath::new("x"), Some("*"))
+        let err = enforce_if_match(&backend, StdPath::new("x"), Some("*"), None)
             .await
             .expect_err("must refuse `*` against missing file");
         assert_eq!(err.0, StatusCode::PRECONDITION_FAILED);
@@ -4157,7 +4427,7 @@ mod tests {
         let backend = StubBackend {
             body: Some("anything".to_string()),
         };
-        let returned = enforce_if_match(&backend, StdPath::new("x"), Some("*"))
+        let returned = enforce_if_match(&backend, StdPath::new("x"), Some("*"), None)
             .await
             .unwrap();
         assert_eq!(

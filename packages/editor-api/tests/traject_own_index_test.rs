@@ -327,9 +327,11 @@ async fn traject_index_shows_promoted_law_and_surfaces_failed_own_scans() {
     // gerapporteerde prod-gedrag — gereproduceerd zonder GitHub-token.
     let laws = list_traject_corpus_laws(
         State(state.clone()),
+        Extension(account.clone()),
         session_for(&sub).await,
         Path(tref_a.clone()),
         ids_query(),
+        HeaderMap::new(),
     )
     .await
     .expect("laws-listing moet slagen");
@@ -343,8 +345,10 @@ async fn traject_index_shows_promoted_law_and_surfaces_failed_own_scans() {
     // Niet langer stil: /sources meldt per source waaróm de scan faalde.
     let sources = list_traject_sources(
         State(state.clone()),
+        Extension(account.clone()),
         session_for(&sub).await,
         Path(tref_a.clone()),
+        HeaderMap::new(),
     )
     .await
     .expect("sources-listing moet slagen");
@@ -402,9 +406,11 @@ async fn traject_index_shows_promoted_law_and_surfaces_failed_own_scans() {
 
     let laws = list_traject_corpus_laws(
         State(state.clone()),
+        Extension(account.clone()),
         session_for(&sub).await,
         Path(tref_b.clone()),
         ids_query(),
+        HeaderMap::new(),
     )
     .await
     .expect("laws-listing moet slagen");
@@ -420,8 +426,10 @@ async fn traject_index_shows_promoted_law_and_surfaces_failed_own_scans() {
 
     let sources = list_traject_sources(
         State(state.clone()),
+        Extension(account.clone()),
         session_for(&sub).await,
         Path(tref_b.clone()),
+        HeaderMap::new(),
     )
     .await
     .expect("sources-listing moet slagen");

@@ -271,6 +271,20 @@ fn validate_relative(path: &Path) -> Result<()> {
 impl RepoBackend for GitHubApiBackend {
     #[tracing::instrument(name = "gh_read_file", skip_all, fields(path = %relative_path.display()))]
     async fn read_file(&self, relative_path: &Path) -> Result<Option<String>> {
+        self.read_file_with_token(relative_path, None).await
+    }
+
+    // The read-side counterpart of `persist`'s `ctx.token_override`: a
+    // per-call user token supersedes the backend's baked-in token for this
+    // one Contents API GET, so a request-bound read on a private repo
+    // without a configured service token can authenticate as the acting
+    // editor user. Absent an override the configured token (or none) is
+    // used — byte-identical to `read_file`.
+    async fn read_file_with_token(
+        &self,
+        relative_path: &Path,
+        token_override: Option<&str>,
+    ) -> Result<Option<String>> {
         let api_path = self.api_path(relative_path)?;
         let mut inner = self.inner.lock().await;
         // One Contents API GET — the If-Match precondition read on the save
@@ -281,7 +295,7 @@ impl RepoBackend for GitHubApiBackend {
                 &self.full_repo(),
                 &self.branch,
                 &api_path,
-                self.token.as_deref(),
+                token_override.or(self.token.as_deref()),
             ),
         )
         .await?;
@@ -369,6 +383,16 @@ impl RepoBackend for GitHubApiBackend {
 
     #[tracing::instrument(name = "gh_list_files", skip_all, fields(dir = %dir.display()))]
     async fn list_files(&self, dir: &Path, extension: Option<&str>) -> Result<Vec<FileEntry>> {
+        self.list_files_with_token(dir, extension, None).await
+    }
+
+    // Same per-call token override stance as `read_file_with_token`.
+    async fn list_files_with_token(
+        &self,
+        dir: &Path,
+        extension: Option<&str>,
+        token_override: Option<&str>,
+    ) -> Result<Vec<FileEntry>> {
         let api_dir = self.api_path(dir)?;
         let mut inner = self.inner.lock().await;
         // One Contents API directory GET — feeds the `gh_list` Server-
@@ -380,7 +404,7 @@ impl RepoBackend for GitHubApiBackend {
                 &self.full_repo(),
                 &self.branch,
                 &api_dir,
-                self.token.as_deref(),
+                token_override.or(self.token.as_deref()),
             ),
         )
         .await?;
@@ -404,6 +428,17 @@ impl RepoBackend for GitHubApiBackend {
         &self,
         dir: &Path,
         extension: Option<&str>,
+    ) -> Result<Vec<RecursiveFileEntry>> {
+        self.list_files_recursive_with_token(dir, extension, None)
+            .await
+    }
+
+    // Same per-call token override stance as `read_file_with_token`.
+    async fn list_files_recursive_with_token(
+        &self,
+        dir: &Path,
+        extension: Option<&str>,
+        token_override: Option<&str>,
     ) -> Result<Vec<RecursiveFileEntry>> {
         let api_root = self.api_path(dir)?;
         let mut inner = self.inner.lock().await;
@@ -431,7 +466,7 @@ impl RepoBackend for GitHubApiBackend {
                     &self.full_repo(),
                     &self.branch,
                     &api_dir,
-                    self.token.as_deref(),
+                    token_override.or(self.token.as_deref()),
                 )
                 .await?;
             // The Contents API caps a single directory listing at 1000

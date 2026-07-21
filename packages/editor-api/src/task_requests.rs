@@ -46,6 +46,7 @@ pub async fn request_enrich(
     session: Session,
     Extension(account): Extension<AccountRecord>,
     Path((traject_ref, law_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<(StatusCode, Json<EnrichRequestResponse>), (StatusCode, String)> {
     let pool = state.pool.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
@@ -57,8 +58,10 @@ pub async fn request_enrich(
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let traject_id = resolve_traject_ref(pool, &traject_ref).await?;
 
-    // Snapshot de wet zoals de gebruiker hem nu ziet (traject-scope).
-    let scope = ReadScope::Traject(traject);
+    // Snapshot de wet zoals de gebruiker hem nu ziet (traject-scope),
+    // inclusief het per-request leestoken voor de writable-own source —
+    // zonder service-token leest de wet-body anders via de seed of 404't.
+    let scope = ReadScope::for_traject(&state, account.id, &headers, traject).await;
     let yaml = read_law_yaml(&scope, &law_id).await?;
     if yaml.len() > MAX_INPUT_BYTES {
         return Err((
