@@ -21,7 +21,7 @@ const { activeTrajectRef } = useTrajects();
 // "Toevoegen aan traject" direct vanuit de zoekresultaten: een treffer uit een
 // gefedereerde bron (de centrale seed, source_priority > 0) die nog niet in de
 // eigen traject-repo staat, krijgt een promote-knop in de rij. Zelfde gedeelde
-// logica als de "Wet toevoegen"-flow (AddLawPopover) - geen tweede
+// logica als de "Wet toevoegen"-flow (AddLawSheet) - geen tweede
 // promote-implementatie.
 const {
   promoteState,
@@ -389,7 +389,7 @@ defineExpose({ show });
         ></nldd-button>
 
         <!-- Fout bij promoten: één banner boven de resultaten (zelfde vorm
-             als in AddLawPopover). -->
+             als in AddLawSheet). -->
         <nldd-list-item v-if="promoteError" size="md">
           <nldd-icon-cell size="20" icon="alert" color="critical"></nldd-icon-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>

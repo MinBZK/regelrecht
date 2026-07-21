@@ -7,11 +7,12 @@ import MachineReadable from './components/MachineReadable.vue';
 import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
-import AddLawPopover from './components/AddLawPopover.vue';
+import AddLawSheet from './components/AddLawSheet.vue';
 import DocumentList from './components/DocumentList.vue';
 import DocumentEditor from './components/DocumentEditor.vue';
 import TrajectDetailsPane from './components/TrajectDetailsPane.vue';
 import TrajectMembersPane from './components/TrajectMembersPane.vue';
+import InviteMembersSheet from './components/InviteMembersSheet.vue';
 import TasksCategoriesPane from './components/TasksCategoriesPane.vue';
 import TasksListPane from './components/TasksListPane.vue';
 import TasksSidebarItem from './components/TasksSidebarItem.vue';
@@ -30,6 +31,7 @@ import { homeTarget } from './composables/useLastVisitedRoute.js';
 import { useDocumentsManager } from './composables/useDocumentsManager.js';
 import { useTrajectDocumentJobs } from './composables/useTrajectDocumentJobs.js';
 import { useDocumentUpload } from './composables/useDocumentUpload.js';
+import { useAddActions } from './composables/useAddActions.js';
 import { useDocumentTaskReview } from './composables/useDocumentTaskReview.js';
 import { humanizeLawId } from './lib/lawName.js';
 import { apiFetch, apiFetchJson, ApiError } from './lib/apiFetch.js';
@@ -298,12 +300,36 @@ function retryLawUpload() {
 // --- Wet toevoegen uit het centrale corpus (promote / traject-harvest) -----
 // De zoek-flow achter "Zoeken in het centrale corpus…": promoten kopieert de
 // wet naar de traject-repo, en voor een niet-gevonden wet start een BWB-id
-// een traject-scoped harvest via het taken-mechanisme (AddLawPopover).
-const addLawPopoverRef = ref(null);
+// een traject-scoped harvest via het taken-mechanisme (AddLawSheet).
+const addLawSheetRef = ref(null);
+const inviteMembersSheetRef = ref(null);
 function openAddLawSearch() {
-  addLawPopoverRef.value?.show(document.getElementById('law-add-btn'));
+  addLawSheetRef.value?.show();
 }
-// Na een geslaagde promote (via de AddLawPopover óf de "Toevoegen aan
+
+// De universele "Toevoegen"-knop in de header (AppShell) vuurt intenties; hier
+// worden ze omgezet in de bestaande acties. LibraryView is altijd gemount binnen
+// een traject, dus de tellers worden altijd opgevangen.
+const addActions = useAddActions();
+watch(() => addActions.addLaw.value, () => openAddLawSearch());
+watch(() => addActions.newWerkdoc.value, () => headerAddWerkdoc('new'));
+watch(() => addActions.uploadWerkdoc.value, () => headerAddWerkdoc('upload'));
+// Alleen de sheet openen, geen navigatie: de InviteMembersSheet leeft hier en is
+// altijd bereikbaar. Na een geslaagde invite seint hij membersChanged, waar de
+// leden-pane op herlaadt.
+watch(() => addActions.inviteMembers.value, () => inviteMembersSheetRef.value?.show());
+
+// Werkdocument nieuw/upload vanuit de header: zorg eerst voor werkdoc-modus (de
+// nieuw-document-editor en de file-picker leven daar), voer daarna de actie uit.
+async function headerAddWerkdoc(kind) {
+  if (!isWerkdocMode.value) {
+    goToWerkdocumenten();
+    await nextTick();
+  }
+  if (kind === 'new') onDocNew();
+  else onDocUpload();
+}
+// Na een geslaagde promote (via de AddLawSheet óf de "Toevoegen aan
 // traject"-knop in de gewone zoekresultaten): index verversen (de wet staat
 // nu in de traject-repo) en de wet openen — dezelfde afronding als een
 // afgeronde harvest in de globale zoeker (onHarvestAvailable). Vanuit de
@@ -1616,26 +1642,12 @@ watch(activeTrajectRef, () => {
                       </nldd-list-item>
                     </nldd-list>
                   </template>
-                  <!-- Wet toevoegen (alleen in een traject): de "+" opent
-                       DIRECT de "Wet toevoegen"-zoeker (AddLawPopover) —
-                       zonder menu-tussenstap. De tweede route (PDF/Word-
-                       document uploaden → conversie-naar-wet-keten) zit ín
-                       die popover als actie onder de zoekresultaten. -->
+                  <!-- "Wet toevoegen" is verhuisd naar de universele "+" in de
+                       header (AppShell); die opent de AddLawSheet via
+                       useAddActions. De file-picker voor de upload-route blijft
+                       hier, want de upload zelf (onLawFileChange) leeft in deze
+                       view. -->
                   <template v-if="activeTrajectRef">
-                    <nldd-spacer size="24"></nldd-spacer>
-                    <nldd-toolbar label="Wetacties">
-                      <nldd-toolbar-item slot="start">
-                        <!-- Géén `expandable`: dat is de disclosure-chevron
-                             voor menu/popover-knoppen; dit is een directe
-                             actie. De tekst verschijnt als tooltip. -->
-                        <nldd-icon-button
-                          id="law-add-btn"
-                          icon="plus-small"
-                          text="Wet toevoegen"
-                          @click="openAddLawSearch"
-                        ></nldd-icon-button>
-                      </nldd-toolbar-item>
-                    </nldd-toolbar>
                     <input ref="lawFileInput" type="file" accept=".pdf,.doc,.docx" hidden @change="onLawFileChange" />
                     <template v-if="lawUploadStarted">
                       <nldd-spacer size="8"></nldd-spacer>
@@ -2038,12 +2050,13 @@ watch(activeTrajectRef, () => {
       @harvest-available="onHarvestAvailable"
       @promoted="(lawId) => onLawPromoted(lawId, true)"
     />
-    <AddLawPopover
-      ref="addLawPopoverRef"
+    <AddLawSheet
+      ref="addLawSheetRef"
       @promoted="onLawPromoted"
       @harvest-requested="onTrajectHarvestRequested"
       @upload-requested="onLawUpload"
     />
+    <InviteMembersSheet ref="inviteMembersSheetRef" :traject-id="activeTraject?.id" />
   </Teleport>
   <!-- Unsaved-changes guard for in-view werkdocument navigation. -->
   <Teleport to="body">
