@@ -7,13 +7,16 @@
 //! schrijven via het gekoppelde user-token:
 //!
 //! 1. **Onleesbare traject-repo (het prod-symptoom).** De promote slaagt
-//!    (write met user-token), maar de server-side indexscan van de
-//!    writable-own faalt — zoals op een privé-repo zonder geconfigureerd
-//!    token: unauthenticated Trees-API geeft 404. De wet resolvet dan stil
-//!    uit de seed (priority 2) in plaats van de traject-repo (priority 0):
-//!    exact het waargenomen gedrag. De test pint dat `GET .../sources` dit
-//!    niet langer stil laat: de writable-own toont `law_count: 0` mét een
-//!    `index_error`, in plaats van alleen een nietszeggende 0.
+//!    (write met user-token), maar de indexscan van de writable-own faalt
+//!    — zoals op een privé-repo zonder geconfigureerd token:
+//!    unauthenticated Trees-API geeft 404, en hier faalt ook het
+//!    user-token (ongemockt trees-pad). Sinds de user-token-fallback op de
+//!    scan valt de bibliotheek dan niet langer stil terug op de seed: de
+//!    listing faalt luid (428 zonder gekoppeld token, 502 mét token dat
+//!    de repo alsnog niet kan lezen). `GET .../sources` blijft de diagnose
+//!    dragen: de writable-own toont `law_count: 0` mét een `index_error`.
+//!    (De volledige user-token-scanflow — succes via het token, heling na
+//!    een kapotte snapshot — staat in `traject_index_user_token_test.rs`.)
 //! 2. **Happy path van #952.** Zodra de scan de traject-repo wél kan lezen
 //!    (Trees-API geeft de gepromote bestanden terug), staat de wet in de
 //!    traject-index op `source_priority: 0` en is de source gezond
@@ -323,9 +326,10 @@ async fn traject_index_shows_promoted_law_and_surfaces_failed_own_scans() {
     assert_eq!(response.0.copied_files, 3, "2 versies + 1 scenario");
 
     // …maar de herbouwde index (promote invalideert de cache) mist de
-    // traject-repo: de wet valt stil terug op de seed. Dit ís het
-    // gerapporteerde prod-gedrag — gereproduceerd zonder GitHub-token.
-    let laws = list_traject_corpus_laws(
+    // traject-repo. Sinds de user-token-fallback op de indexscan valt de
+    // bibliotheek dan niet langer stil terug op de seed: een request
+    // zónder gekoppeld token faalt luid met de 428-koppel-flow…
+    let err = list_traject_corpus_laws(
         State(state.clone()),
         Extension(account.clone()),
         session_for(&sub).await,
@@ -334,12 +338,34 @@ async fn traject_index_shows_promoted_law_and_surfaces_failed_own_scans() {
         HeaderMap::new(),
     )
     .await
-    .expect("laws-listing moet slagen");
-    assert_eq!(laws.0.len(), 1, "wet resolvet nog steeds — uit de seed");
-    assert_eq!(laws.0[0].source_id, "central-seed");
+    .expect_err("onleesbare traject-repo zonder token mag niet stil terugvallen op de seed");
     assert_eq!(
-        laws.0[0].source_priority, 2,
-        "onleesbare traject-repo → stille fallback naar de seed (priority 2)"
+        err.0,
+        axum::http::StatusCode::PRECONDITION_REQUIRED,
+        "zonder gekoppeld token hoort de bibliotheek de 428-koppel-flow te geven, got: {}: {}",
+        err.0,
+        err.1
+    );
+
+    // …en een request mét gekoppeld token (dat deze repo alsnog niet kan
+    // lezen — het trees-pad is ongemockt, dus ook met token 404) faalt
+    // expliciet met een 502 die de scan-fout draagt.
+    let err = list_traject_corpus_laws(
+        State(state.clone()),
+        Extension(account.clone()),
+        session_for(&sub).await,
+        Path(tref_a.clone()),
+        ids_query(),
+        headers.clone(),
+    )
+    .await
+    .expect_err("scan-fout mét token → expliciete fout, geen stille fallback");
+    assert_eq!(
+        err.0,
+        axum::http::StatusCode::BAD_GATEWAY,
+        "got: {}: {}",
+        err.0,
+        err.1
     );
 
     // Niet langer stil: /sources meldt per source waaróm de scan faalde.

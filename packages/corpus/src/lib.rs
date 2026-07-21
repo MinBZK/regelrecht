@@ -33,7 +33,7 @@ pub use github_api_backend::GitHubApiBackend;
 pub use models::{RegistryManifest, Source, SourceType};
 #[cfg(feature = "github")]
 pub use pr_client::PullRequestClient;
-pub use registry::{CorpusRegistry, SourceIndexFailure};
+pub use registry::{CorpusRegistry, ScanTokenOverride, SourceIndexFailure};
 #[cfg(feature = "github")]
 pub use repo_access::{validate_repo_access, RepoAccessError, RepoInfo};
 pub use source_map::SourceMap;

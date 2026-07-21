@@ -15,6 +15,26 @@ pub struct SourceIndexFailure {
     pub error: String,
 }
 
+/// Per-call token override for the index scan of exactly **one** source.
+///
+/// Carries the acting user's personal GitHub token into the enumeration of
+/// a traject's writable-own repo when the server has no `CORPUS_AUTH_*`
+/// token for it — the scan-side mirror of the request-bound reads that
+/// already fall back to the user's token. Two hard rules keep the token
+/// contained:
+///
+/// * it is applied **only** when the server-side resolution for
+///   `source_id` yields no token (a source with its own service token
+///   keeps scanning with that), and never for any other source;
+/// * it lives for the duration of the call — the registry never stores it.
+#[derive(Clone, Copy)]
+pub struct ScanTokenOverride<'a> {
+    /// The one source id the override may authenticate.
+    pub source_id: &'a str,
+    /// The per-call token (e.g. the linked user's OAuth token).
+    pub token: &'a str,
+}
+
 /// Corpus registry that manages source definitions.
 ///
 /// Loads sources from `corpus-registry.yaml` and optionally merges
@@ -242,12 +262,28 @@ impl CorpusRegistry {
         &self,
         auth_file: Option<&Path>,
     ) -> Result<(SourceMap, Vec<SourceIndexFailure>)> {
+        self.index_all_sources_with_override(auth_file, None).await
+    }
+
+    /// [`Self::index_all_sources_async`] with an optional per-call
+    /// [`ScanTokenOverride`]: the traject build path passes the acting
+    /// user's token here so the writable-own repo can be enumerated when
+    /// the server has no token for it. See the override type for the
+    /// containment rules (single source, server token wins, never stored).
+    #[cfg(feature = "github")]
+    pub async fn index_all_sources_with_override(
+        &self,
+        auth_file: Option<&Path>,
+        scan_override: Option<ScanTokenOverride<'_>>,
+    ) -> Result<(SourceMap, Vec<SourceIndexFailure>)> {
         let mut map = SourceMap::new();
         let mut fetcher = crate::github::GitHubFetcher::new()?;
         let mut failed: Vec<SourceIndexFailure> = Vec::new();
 
         for source in &self.sources {
-            if let Err(e) = Self::index_one_source(&mut map, &mut fetcher, source, auth_file).await
+            if let Err(e) =
+                Self::index_one_source(&mut map, &mut fetcher, source, auth_file, scan_override)
+                    .await
             {
                 tracing::warn!(
                     source_id = %source.id,
@@ -290,6 +326,7 @@ impl CorpusRegistry {
         fetcher: &mut crate::github::GitHubFetcher,
         source: &Source,
         auth_file: Option<&Path>,
+        scan_override: Option<ScanTokenOverride<'_>>,
     ) -> Result<()> {
         match &source.source_type {
             SourceType::Local { .. } => {
@@ -302,9 +339,19 @@ impl CorpusRegistry {
                 // also a repo the server can index (and vice versa — no more
                 // "promote succeeded but the index reads with a different
                 // token and comes back empty").
-                let token = crate::auth::CredentialResolver::new(auth_file)
+                let mut token = crate::auth::CredentialResolver::new(auth_file)
                     .resolve_source(source)?
                     .into_token();
+                // Only when the server resolves NO token may the per-call
+                // override authenticate this scan — and only for the one
+                // source it was issued for. A configured service token always
+                // wins (mirroring the request-bound read fallback), and the
+                // override never reaches any other (seed) source.
+                if token.is_none() {
+                    if let Some(o) = scan_override.filter(|o| o.source_id == source.id) {
+                        token = Some(o.token.to_string());
+                    }
+                }
                 for (law_id, path, sha) in fetcher
                     .list_source_law_paths(github, token.as_deref())
                     .await?
