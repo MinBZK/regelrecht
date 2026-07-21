@@ -260,6 +260,133 @@ async fn continuation_inherits_traject_scope() {
 }
 
 #[tokio::test]
+async fn continuation_conflict_with_existing_active_job_is_accepted() {
+    // The Ok(None) branch of complete_enrich_success_tx: when another active
+    // enrich job for the same law/provider/scope already exists, the
+    // continuation insert is refused by `idx_unique_active_enrich_job` and
+    // that is accepted — the existing job picks the cursor up from the branch
+    // and carries the loop forward. Deterministic setup: the running job was
+    // created WITHOUT an explicit provider (payload->>'provider' IS NULL, a
+    // distinct index key), so a manual re-enrich WITH the provider can be
+    // pending while it processes; the continuation (which always pins the
+    // resolved provider) then collides with that manual job.
+    let db = TestDb::new().await;
+    law_status::upsert_law(&db.pool, LAW_ID, Some("Testwet"), None)
+        .await
+        .unwrap();
+    law_status::update_status(&db.pool, LAW_ID, LawStatusValue::Enriching)
+        .await
+        .unwrap();
+
+    let mut no_provider_payload = payload("opencode");
+    no_provider_payload.provider = None;
+    let req = CreateJobRequest::new(JobType::Enrich, LAW_ID)
+        .with_priority(Priority::new(70))
+        .with_payload(serde_json::to_value(&no_provider_payload).unwrap());
+    job_queue::create_enrich_job_if_not_exists(&db.pool, req)
+        .await
+        .unwrap()
+        .expect("job created");
+    let job = job_queue::claim_job(&db.pool, Some(JobType::Enrich))
+        .await
+        .unwrap()
+        .expect("claimable");
+
+    // Manual re-enrich with an explicit provider, while the first job runs.
+    let manual = job_queue::create_enrich_job_if_not_exists(
+        &db.pool,
+        CreateJobRequest::new(JobType::Enrich, LAW_ID)
+            .with_payload(serde_json::to_value(payload("opencode")).unwrap()),
+    )
+    .await
+    .unwrap()
+    .expect("distinct provider key admits a concurrent manual job");
+
+    let result = chunk_result("opencode", false, 15);
+    let continuation = worker::complete_enrich_success_tx(
+        &db.pool,
+        &job,
+        &no_provider_payload,
+        &result,
+        Some(serde_json::to_value(&result).unwrap()),
+    )
+    .await
+    .unwrap();
+    assert!(
+        continuation.is_none(),
+        "conflicting active job must be accepted as the loop carrier"
+    );
+
+    // The completion itself still committed…
+    assert_eq!(
+        job_queue::get_job(&db.pool, job.id).await.unwrap().status,
+        JobStatus::Completed
+    );
+    // …the law is still mid-loop…
+    assert_eq!(
+        law_status::get_law(&db.pool, LAW_ID).await.unwrap().status,
+        LawStatusValue::Enriching
+    );
+    // …and the loop can proceed via the manual job.
+    let next = job_queue::claim_job(&db.pool, Some(JobType::Enrich))
+        .await
+        .unwrap()
+        .expect("manual job claimable");
+    assert_eq!(next.id, manual.id);
+}
+
+#[tokio::test]
+async fn reaped_terminal_enrich_job_does_not_strand_law_in_enriching() {
+    // A worker crash mid-chunk orphans the continuation job in 'processing';
+    // the reaper terminally fails it once its attempts are spent. Without
+    // aftercare the law would sit in 'enriching' forever with no active or
+    // pending job — invisible to the user now that the frontend exempts
+    // 'enriching' from its poll cap. handle_reaped_enrich_jobs must mirror
+    // the synchronous failure path: law → enrich_failed plus an auto-retry
+    // job (fail count far below the exhausted threshold).
+    let db = TestDb::new().await;
+    let job = setup_processing_enrich_job(&db, "opencode").await;
+
+    // Spend all attempts and backdate the start so the reaper sees an orphan
+    // beyond its timeout with no retries left.
+    sqlx::query(
+        "UPDATE jobs SET attempts = max_attempts, started_at = now() - interval '2 hours' WHERE id = $1",
+    )
+    .bind(job.id)
+    .execute(&db.pool)
+    .await
+    .unwrap();
+
+    let reaped = job_queue::reap_orphaned_jobs(&db.pool, std::time::Duration::from_secs(60))
+        .await
+        .unwrap();
+    assert_eq!(reaped.len(), 1);
+    assert_eq!(reaped[0].status, JobStatus::Failed);
+
+    worker::handle_reaped_enrich_jobs(&db.pool, &reaped, 10).await;
+
+    // Not stranded: terminal-ish status for the user, retry job pending.
+    let law = law_status::get_law(&db.pool, LAW_ID).await.unwrap();
+    assert_eq!(law.status, LawStatusValue::EnrichFailed);
+    let retry = job_queue::claim_job(&db.pool, Some(JobType::Enrich))
+        .await
+        .unwrap();
+    // The auto-retry job carries a backoff delay, so it need not be claimable
+    // yet — but it must exist as a pending job.
+    if retry.is_none() {
+        let pending = job_queue::list_jobs(&db.pool, Some(JobStatus::Pending))
+            .await
+            .unwrap();
+        assert!(
+            pending
+                .iter()
+                .any(|j| j.law_id == LAW_ID && j.job_type == JobType::Enrich),
+            "aftercare must schedule an auto-retry enrich job"
+        );
+    }
+}
+
+#[tokio::test]
 async fn legacy_result_json_counts_as_complete() {
     // A `jobs.result` JSON without `law_complete` (pre-chunking) deserializes
     // as complete: replaying it through the completion path marks the law

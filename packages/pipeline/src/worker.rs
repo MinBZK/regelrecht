@@ -141,6 +141,7 @@ const REAPER_INTERVAL: Duration = Duration::from_secs(60);
 fn spawn_reaper(
     pool: PgPool,
     orphan_timeout: Duration,
+    exhausted_threshold: i32,
     cancel: tokio_util::sync::CancellationToken,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
@@ -153,6 +154,11 @@ fn spawn_reaper(
                     if let Err(e) = crate::tasks::notify_reaped_task_jobs(&pool, &reaped).await {
                         tracing::warn!(error = %e, "failed to create tasks for reaped jobs");
                     }
+                    // Terminaal gefaalde niet-taak-flow enrich-jobs: dezelfde
+                    // status/retry/exhausted-bookkeeping als het synchrone
+                    // failure-pad, anders strandt de wet in 'enriching' zonder
+                    // actieve/pending job (en polt de frontend eindeloos).
+                    handle_reaped_enrich_jobs(&pool, &reaped, exhausted_threshold).await;
                 }
                 Err(e) => {
                     tracing::warn!(error = %e, "failed to reap orphaned jobs");
@@ -236,7 +242,12 @@ pub async fn run_harvest_worker(config: WorkerConfig) -> Result<()> {
     // Reap orphaned jobs on an independent task so a wedged job in the main
     // loop can't also stop the reaper (which would freeze the whole queue).
     let reaper_cancel = tokio_util::sync::CancellationToken::new();
-    let reaper_handle = spawn_reaper(pool.clone(), config.orphan_timeout, reaper_cancel.clone());
+    let reaper_handle = spawn_reaper(
+        pool.clone(),
+        config.orphan_timeout,
+        config.exhausted_threshold,
+        reaper_cancel.clone(),
+    );
 
     let mut current_interval = std::time::Duration::ZERO; // poll immediately on startup
     let mut consecutive_resource_failures: u32 = 0;
@@ -871,7 +882,12 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
     // Reap orphaned jobs on an independent task so a wedged job in the main
     // loop can't also stop the reaper (which would freeze the whole queue).
     let reaper_cancel = tokio_util::sync::CancellationToken::new();
-    let reaper_handle = spawn_reaper(pool.clone(), config.orphan_timeout, reaper_cancel.clone());
+    let reaper_handle = spawn_reaper(
+        pool.clone(),
+        config.orphan_timeout,
+        config.exhausted_threshold,
+        reaper_cancel.clone(),
+    );
 
     let mut current_interval = std::time::Duration::ZERO;
     let mut consecutive_resource_failures: u32 = 0;
@@ -2898,6 +2914,72 @@ async fn execute_harvest_job(
     }
 
     Ok(result)
+}
+
+/// Nazorg voor door de reaper terminaal gefaalde (niet-taak-flow) enrich-jobs.
+///
+/// `reap_orphaned_jobs` zet een job op `failed` zonder `law_entries` aan te
+/// raken; alleen het synchrone failure-pad in `process_next_enrich_job` deed
+/// de statusovergang plus retry/exhausted-bookkeeping. Zonder deze nazorg
+/// blijft een wet na een crash-reap voorgoed in `enriching` staan zonder
+/// actieve of pending job — precies de toestand die de chunk-lus (D2) uitsluit
+/// voor het succespad, en die de frontend sinds de poll-cap-exemptie voor
+/// `enriching` niet meer met een (vals) timeout-signaal afdekt. Spiegel daarom
+/// het synchrone pad: markeer de wet `enrich_failed` en laat
+/// [`handle_enrich_exhausted_or_retry`] óf een retry-job met backoff plannen
+/// (de lus hervat bij de cursor op de branch) óf de wet `enrich_exhausted`
+/// maken. Taak-flow-jobs (`deliver=task`) volgen het bestaande
+/// task-notificatiepad (`tasks::notify_reaped_task_jobs`) en raken
+/// `law_entries` niet.
+///
+/// `pub` zodat de DB-integratietests dit contract zonder reaper-task kunnen
+/// aanroepen.
+pub async fn handle_reaped_enrich_jobs(
+    pool: &PgPool,
+    reaped: &[job_queue::ReapedJob],
+    exhausted_threshold: i32,
+) {
+    for job in reaped {
+        if job.job_type != JobType::Enrich || job.status != crate::models::JobStatus::Failed {
+            continue;
+        }
+        let Some(payload_json) = job.payload.as_ref() else {
+            continue;
+        };
+        let payload: EnrichPayload = match serde_json::from_value(payload_json.clone()) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!(
+                    job_id = %job.id,
+                    law_id = %job.law_id,
+                    error = %e,
+                    "reaped enrich job has an unparseable payload; skipping law-status aftercare"
+                );
+                continue;
+            }
+        };
+        if payload.deliver_as_task() {
+            continue;
+        }
+        tracing::warn!(
+            job_id = %job.id,
+            law_id = %job.law_id,
+            "enrich job reaped to terminal failure; running law-status aftercare"
+        );
+        // Set EnrichFailed only if not already Enriched or EnrichExhausted
+        // (same guard as the synchronous failure path).
+        if let Err(e) = law_status::mark_enrich_failed(pool, &job.law_id).await {
+            tracing::warn!(error = %e, law_id = %job.law_id, "failed to update law status to enrich_failed");
+        }
+        handle_enrich_exhausted_or_retry(
+            pool,
+            &job.law_id,
+            &payload,
+            job.priority,
+            exhausted_threshold,
+        )
+        .await;
+    }
 }
 
 /// Increment the enrich fail count and either mark the law as exhausted
