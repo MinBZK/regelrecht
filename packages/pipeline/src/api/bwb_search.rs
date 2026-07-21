@@ -29,9 +29,24 @@ pub async fn search_bwb(
     State(state): State<ApiState>,
     Query(params): Query<SearchParams>,
 ) -> Result<Json<Vec<BwbSearchResult>>, (StatusCode, String)> {
-    let q = params.q.trim();
-    if q.is_empty() || q.len() < 3 {
-        return Ok(Json(vec![]));
+    match search_bwb_by_name(&state.http_client, params.q.trim()).await {
+        Ok(results) => Ok(Json(results)),
+        Err(e) => Err((StatusCode::BAD_GATEWAY, e)),
+    }
+}
+
+/// Search wetten.overheid.nl via the SRU API for laws matching `q`.
+///
+/// The client-taking core shared by the axum handler and the enrich worker's
+/// related-legislation resolution. Queries shorter than 3 characters (after the
+/// same sanitize as the handler) return an empty list rather than an error.
+pub async fn search_bwb_by_name(
+    client: &reqwest::Client,
+    q: &str,
+) -> Result<Vec<BwbSearchResult>, String> {
+    let q = q.trim();
+    if q.len() < 3 {
+        return Ok(vec![]);
     }
 
     let sanitized: String = q
@@ -50,35 +65,20 @@ pub async fn search_bwb(
             ("maximumRecords", &MAX_RESULTS.to_string()),
         ],
     )
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("URL build error: {e}"),
-        )
-    })?;
+    .map_err(|e| format!("URL build error: {e}"))?;
 
-    let response = state
-        .http_client
+    let response = client
         .get(url)
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("BWB search failed: {e}")))?;
+        .map_err(|e| format!("BWB search failed: {e}"))?;
 
-    let xml_text = response.text().await.map_err(|e| {
-        (
-            StatusCode::BAD_GATEWAY,
-            format!("BWB response read failed: {e}"),
-        )
-    })?;
+    let xml_text = response
+        .text()
+        .await
+        .map_err(|e| format!("BWB response read failed: {e}"))?;
 
-    let results = parse_sru_response(&xml_text).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("XML parse error: {e}"),
-        )
-    })?;
-
-    Ok(Json(results))
+    parse_sru_response(&xml_text).map_err(|e| format!("XML parse error: {e}"))
 }
 
 /// Parse SRU XML response and extract unique laws (deduplicated by BWBR ID).

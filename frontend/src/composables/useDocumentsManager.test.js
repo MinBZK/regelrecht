@@ -9,9 +9,6 @@ const h = vi.hoisted(() => ({ api: null }));
 vi.mock('./useTrajectDocuments.js', () => ({
   useTrajectDocuments: () => h.api,
 }));
-vi.mock('./useArticleMarkdown.js', () => ({
-  renderArticleHtml: (s) => `<p>${s ?? ''}</p>`,
-}));
 
 import { useDocumentsManager } from './useDocumentsManager.js';
 
@@ -19,6 +16,7 @@ function makeApi(overrides = {}) {
   const documents = ref([]);
   const currentPath = ref(null);
   const currentBody = ref('');
+  const savedBody = ref('');
   const currentEtag = ref(null);
   return {
     documents,
@@ -26,6 +24,7 @@ function makeApi(overrides = {}) {
     listError: ref(null),
     currentPath,
     currentBody,
+    savedBody,
     currentEtag,
     docLoading: ref(false),
     docError: ref(null),
@@ -36,7 +35,10 @@ function makeApi(overrides = {}) {
     openDocument: vi.fn(async (p) => {
       currentPath.value = p;
     }),
-    saveCurrent: vi.fn(async () => ({ ok: true })),
+    saveCurrent: vi.fn(async () => {
+      savedBody.value = currentBody.value; // mirror the real save: baseline follows content
+      return { ok: true };
+    }),
     reloadCurrent: vi.fn(async () => {}),
     createDocument: vi.fn(async (p) => {
       currentPath.value = p;
@@ -61,12 +63,49 @@ describe('useDocumentsManager', () => {
     expect(m.displayTitle(null)).toBe('');
   });
 
+  it('onTitleInput sanitizes the name to a valid path (no error shown)', () => {
+    m.onTitleInput({ target: { value: 'Beleid Nota' } });
+    expect(m.titleDraft.value).toBe('beleid-nota'); // uppercase -> lower, space -> '-'
+    m.onTitleInput({ target: { value: 'ABC_123.def' } });
+    expect(m.titleDraft.value).toBe('abc_123.def'); // letters/digits/._ kept
+    m.onTitleInput({ target: { value: 'map/Sub Doc' } });
+    expect(m.titleDraft.value).toBe('map/sub-doc'); // '/' kept as folder separator
+    m.onTitleInput({ detail: { value: 'Rare!!Tekens@hier' } });
+    expect(m.titleDraft.value).toBe('rare-tekens-hier'); // runs of invalid chars -> single '-'
+    expect(m.titleError.value).toBe(null);
+  });
+
+  it('typing the name clears a stale title error', () => {
+    m.titleError.value = 'Een document met deze naam bestaat al.';
+    m.onTitleInput({ target: { value: 'nieuwe-naam' } });
+    expect(m.titleError.value).toBe(null);
+  });
+
   it('startNew creates the next free untitled path and returns it', async () => {
     h.api.documents.value = [{ path: 'untitled.md' }, { path: 'untitled-2.md' }];
     const path = await m.startNew();
     expect(path).toBe('untitled-3.md');
     expect(h.api.createDocument).toHaveBeenCalledWith('untitled-3.md');
-    expect(m.viewMode.value).toBe('editor');
+  });
+
+  it('startNew skips reserved names (e.g. a converting upload not yet in the list)', async () => {
+    h.api.documents.value = [{ path: 'untitled.md' }];
+    // untitled-2.md is still converting, so it is not in `documents` yet.
+    const mr = useDocumentsManager(ref('traject-abc12345'), () => ['untitled-2.md']);
+    const path = await mr.startNew();
+    expect(path).toBe('untitled-3.md');
+    expect(h.api.createDocument).toHaveBeenCalledWith('untitled-3.md');
+  });
+
+  it('handleSave rejects a rename to a name that is still converting', async () => {
+    h.api.documents.value = [{ path: 'beleid.md' }];
+    h.api.currentPath.value = 'beleid.md';
+    const mr = useDocumentsManager(ref('traject-abc12345'), () => ['untitled-2.md']);
+    mr.titleDraft.value = 'untitled-2';
+    const ok = await mr.handleSave();
+    expect(ok).toBe(false);
+    expect(mr.titleError.value).toBe('Een document met deze naam bestaat al.');
+    expect(h.api.saveCurrent).not.toHaveBeenCalled();
   });
 
   it('handleSave without a rename just saves the current path', async () => {
@@ -96,12 +135,16 @@ describe('useDocumentsManager', () => {
     await nextTick();
     m.titleDraft.value = 'nieuw';
     const ok = await m.handleSave();
-    // The rename itself succeeded — content is saved under the new name.
+    // The rename itself succeeded - content is saved under the new name.
     expect(ok).toBe(true);
     expect(h.api.currentPath.value).toBe('nieuw.md');
     expect(h.api.deleteDocument).toHaveBeenCalledWith('oud.md');
-    // ...but the old file could not be removed, so the orphan is surfaced.
-    expect(m.titleError.value).toMatch(/oude bestand kon niet worden verwijderd/i);
+    // ...but the old file could not be removed, so the orphan is surfaced -
+    // through deleteNotice, which has a modal of its own. titleError renders
+    // only inside the rename sheet, and this fires after the save committed,
+    // by which point every caller has closed it (or never opened it).
+    expect(m.deleteNotice.value).toMatch(/oude bestand "oud" kon niet worden verwijderd/i);
+    expect(m.titleError.value).toBeNull();
   });
 
   it('handleSave refuses a rename onto an existing document', async () => {
@@ -126,6 +169,100 @@ describe('useDocumentsManager', () => {
     expect(h.api.saveCurrent).not.toHaveBeenCalled();
   });
 
+  it('validateRename accepts a valid name and rejects invalid/duplicate ones', async () => {
+    h.api.documents.value = [{ path: 'bestaat.md' }];
+    h.api.currentPath.value = 'oud.md';
+    await nextTick();
+    m.titleDraft.value = 'nieuw';
+    expect(m.validateRename()).toBe(true);
+    expect(m.titleError.value).toBe(null);
+    m.titleDraft.value = 'bestaat';
+    expect(m.validateRename()).toBe(false);
+    expect(m.titleError.value).toBe('Een document met deze naam bestaat al.');
+    m.titleDraft.value = 'Bad Name';
+    expect(m.validateRename()).toBe(false);
+    expect(m.titleError.value).toBeTruthy();
+  });
+
+  // --- Auto-name from the first line (Apple Notes-style) ---
+  it('auto-names an untitled document from its first line on save', async () => {
+    h.api.documents.value = [];
+    await m.startNew(); // creates untitled.md, marks it auto-managed
+    await nextTick(); // titleDraft <- 'untitled'
+    h.api.currentBody.value = '# Boodschappen\nmelk';
+    const ok = await m.handleSave();
+    expect(ok).toBe(true);
+    expect(h.api.currentPath.value).toBe('boodschappen.md');
+    expect(h.api.deleteDocument).toHaveBeenCalledWith('untitled.md');
+  });
+
+  it('re-derives the name on later saves while still auto-managed', async () => {
+    h.api.documents.value = [];
+    await m.startNew();
+    await nextTick();
+    h.api.currentBody.value = '# Boodschappen';
+    await m.handleSave(); // -> boodschappen.md
+    await nextTick(); // titleDraft <- 'boodschappen'
+    h.api.currentBody.value = '# Weekmenu';
+    await m.handleSave(); // -> weekmenu.md
+    expect(h.api.currentPath.value).toBe('weekmenu.md');
+  });
+
+  it('stops auto-naming once the user renames the document manually', async () => {
+    h.api.documents.value = [];
+    await m.startNew();
+    await nextTick();
+    m.titleDraft.value = 'mijn-notitie'; // user edits the name field
+    h.api.currentBody.value = '# Boodschappen';
+    await m.handleSave(); // manual -> mijn-notitie.md
+    expect(h.api.currentPath.value).toBe('mijn-notitie.md');
+    await nextTick();
+    h.api.currentBody.value = '# Weekmenu';
+    await m.handleSave(); // must NOT auto-rename
+    expect(h.api.currentPath.value).toBe('mijn-notitie.md');
+  });
+
+  it('keeps the current name when the first line yields nothing', async () => {
+    h.api.documents.value = [];
+    await m.startNew();
+    await nextTick();
+    h.api.currentBody.value = '#   \n\n';
+    const ok = await m.handleSave();
+    expect(ok).toBe(true);
+    expect(h.api.currentPath.value).toBe('untitled.md');
+    expect(h.api.deleteDocument).not.toHaveBeenCalled();
+  });
+
+  it('appends -2 when the derived name is already taken', async () => {
+    h.api.documents.value = [{ path: 'boodschappen.md' }];
+    await m.startNew(); // untitled.md (boodschappen is taken)
+    await nextTick();
+    h.api.currentBody.value = '# Boodschappen';
+    await m.handleSave();
+    expect(h.api.currentPath.value).toBe('boodschappen-2.md');
+  });
+
+  it('re-links auto-naming when the first line is made to match the name again', async () => {
+    h.api.documents.value = [];
+    await m.startNew();
+    await nextTick();
+    // Manual rename -> locked (name no longer matches the first line).
+    m.titleDraft.value = 'mijn-lijst';
+    h.api.currentBody.value = '# Boodschappen';
+    await m.handleSave(); // -> mijn-lijst.md, locked
+    expect(h.api.currentPath.value).toBe('mijn-lijst.md');
+    // Make the first line match the name + save -> re-linked.
+    await nextTick();
+    h.api.currentBody.value = '# Mijn lijst';
+    await m.handleSave(); // name stays mijn-lijst.md, but now auto-managed again
+    expect(h.api.currentPath.value).toBe('mijn-lijst.md');
+    // A further first-line change now re-derives the name.
+    await nextTick();
+    h.api.currentBody.value = '# Weekmenu';
+    await m.handleSave();
+    expect(h.api.currentPath.value).toBe('weekmenu.md');
+  });
+
   it('confirmDelete reports true only when the open document was removed', async () => {
     h.api.currentPath.value = 'open.md';
     await nextTick();
@@ -146,13 +283,43 @@ describe('useDocumentsManager', () => {
     expect(m.deleteNotice.value).toMatch(/gewijzigd/i);
   });
 
-  it('close clears the open document back to nothing-selected', () => {
+  it('close clears the open document and resets the dirty baseline', () => {
     h.api.currentPath.value = 'open.md';
     h.api.currentBody.value = '# hi';
+    h.api.savedBody.value = '# hi';
     h.api.currentEtag.value = 'etag-1';
     m.close();
     expect(h.api.currentPath.value).toBeNull();
     expect(h.api.currentBody.value).toBe('');
+    expect(h.api.savedBody.value).toBe('');
     expect(h.api.currentEtag.value).toBeNull();
+    // Without resetting savedBody, hasChanges would stay true and the next
+    // navigation would trip the unsaved-changes guard.
+    expect(m.hasChanges.value).toBe(false);
+  });
+
+  it('hasChanges is true when the body diverges from the saved baseline', () => {
+    h.api.currentBody.value = '# edited';
+    h.api.savedBody.value = '# original';
+    expect(m.hasChanges.value).toBe(true);
+  });
+
+  it('hasChanges stays false while loading or on a blocking load error', () => {
+    h.api.currentBody.value = '# edited';
+    h.api.savedBody.value = '# original';
+    h.api.docLoading.value = true;
+    expect(m.hasChanges.value).toBe(false);
+    h.api.docLoading.value = false;
+    h.api.docError.value = { kind: 'load-error', message: 'x' };
+    expect(m.hasChanges.value).toBe(false);
+  });
+
+  it('hasChanges stays true on a draft-present notice (Save button must show)', () => {
+    // A local draft diverging from the server is unsaved changes, not a blocking
+    // error — mirrors DocumentEditor.blockingError, which does not block on it.
+    h.api.currentBody.value = '# draft';
+    h.api.savedBody.value = '# server';
+    h.api.docError.value = { kind: 'draft-present', message: 'x', serverBody: '# server' };
+    expect(m.hasChanges.value).toBe(true);
   });
 });

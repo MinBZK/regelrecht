@@ -10,7 +10,7 @@ use regelrecht_pipeline::{EnrichPayload, JobType, Priority, ENRICH_PROVIDERS};
 use serde::{Deserialize, Serialize};
 
 use crate::error::ApiError;
-use crate::models::{Job, LawEntry, PaginatedResponse};
+use crate::models::{Job, LawEntry, PaginatedResponse, Untranslatable};
 use crate::state::AppState;
 
 /// Map a sqlx error to a 500 ApiError, logging the cause with `op` so the log
@@ -195,6 +195,141 @@ pub async fn list_law_entries(
             .await
             .map_err(db_err("data query failed"))?
     };
+
+    Ok(Json(PaginatedResponse {
+        data,
+        total,
+        limit,
+        offset,
+    }))
+}
+
+// --- Untranslatables ---
+
+#[derive(Deserialize)]
+pub struct UntranslatablesQuery {
+    pub law_id: Option<String>,
+    pub provider: Option<String>,
+    pub accepted: Option<bool>,
+    pub construct: Option<String>,
+    pub sort: Option<String>,
+    pub order: Option<String>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+const ALLOWED_SORT_COLUMNS_UNTRANSLATABLE: &[&str] = &[
+    "id",
+    "law_id",
+    "provider",
+    "article",
+    "construct",
+    "accepted",
+    "created_at",
+];
+
+pub async fn list_untranslatables(
+    State(state): State<AppState>,
+    Query(params): Query<UntranslatablesQuery>,
+) -> Result<Json<PaginatedResponse<Untranslatable>>, ApiError> {
+    let pool = &state.pool;
+    let limit = clamped_limit(params.limit);
+    let offset = clamped_offset(params.offset);
+
+    let sort_column = validated_sort_column(
+        params.sort.as_deref(),
+        ALLOWED_SORT_COLUMNS_UNTRANSLATABLE,
+        "created_at",
+    )
+    .ok_or(ApiError::BadRequest("invalid sort column".to_string()))?;
+
+    let order = normalized_order(params.order.as_deref());
+
+    // Build dynamic WHERE clause for multi-filter support. Columns are qualified
+    // with `u.` so they stay unambiguous under the law_entries join.
+    let mut where_clauses = Vec::new();
+    let mut bind_index: usize = 1;
+
+    if params.law_id.is_some() {
+        // Partial / case-insensitive match, matching the jobs/law search fields.
+        where_clauses.push(format!("u.law_id ILIKE ${bind_index}"));
+        bind_index += 1;
+    }
+    if params.provider.is_some() {
+        where_clauses.push(format!("u.provider = ${bind_index}"));
+        bind_index += 1;
+    }
+    if params.accepted.is_some() {
+        where_clauses.push(format!("u.accepted = ${bind_index}"));
+        bind_index += 1;
+    }
+    if params.construct.is_some() {
+        where_clauses.push(format!("u.construct ILIKE ${bind_index}"));
+        bind_index += 1;
+    }
+
+    let where_sql = if where_clauses.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", where_clauses.join(" AND "))
+    };
+
+    // Count query (no join needed — filters are all on the untranslatables table).
+    // Filter values are bound in the same order for the count and data queries.
+    let count_sql = format!("SELECT COUNT(*) FROM untranslatables u {where_sql}");
+    let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql);
+    if let Some(ref law_id) = params.law_id {
+        count_query = count_query.bind(format!("%{}%", like_escape(law_id)));
+    }
+    if let Some(ref provider) = params.provider {
+        count_query = count_query.bind(provider);
+    }
+    if let Some(accepted) = params.accepted {
+        count_query = count_query.bind(accepted);
+    }
+    if let Some(ref construct) = params.construct {
+        count_query = count_query.bind(format!("%{}%", like_escape(construct)));
+    }
+
+    let total: i64 = count_query
+        .fetch_one(pool)
+        .await
+        .map_err(db_err("count query failed"))?;
+
+    // Data query — sort column is validated against an allowlist above, so
+    // interpolating it into the query string is safe. LEFT JOIN so an
+    // untranslatable whose law_entry is missing still appears (law_name = NULL).
+    let limit_idx = bind_index;
+    let offset_idx = bind_index + 1;
+    let data_sql = format!(
+        "SELECT u.id, u.law_id, le.law_name, u.enrich_job_id, u.provider, \
+         u.article, u.construct, u.reason, u.suggestion, u.legal_text_excerpt, \
+         u.accepted, u.created_at \
+         FROM untranslatables u \
+         LEFT JOIN law_entries le ON le.law_id = u.law_id \
+         {where_sql} \
+         ORDER BY u.{sort_column} {order} LIMIT ${limit_idx} OFFSET ${offset_idx}"
+    );
+
+    let mut data_query = sqlx::query_as::<_, Untranslatable>(&data_sql);
+    if let Some(ref law_id) = params.law_id {
+        data_query = data_query.bind(format!("%{}%", like_escape(law_id)));
+    }
+    if let Some(ref provider) = params.provider {
+        data_query = data_query.bind(provider);
+    }
+    if let Some(accepted) = params.accepted {
+        data_query = data_query.bind(accepted);
+    }
+    if let Some(ref construct) = params.construct {
+        data_query = data_query.bind(format!("%{}%", like_escape(construct)));
+    }
+    data_query = data_query.bind(limit).bind(offset);
+
+    let data: Vec<Untranslatable> = data_query
+        .fetch_all(pool)
+        .await
+        .map_err(db_err("data query failed"))?;
 
     Ok(Json(PaginatedResponse {
         data,
@@ -472,6 +607,286 @@ pub async fn list_jobs_summary(
     }))
 }
 
+// --- Dashboard stats ---
+
+/// Job counts per status. The four fields are the full `job_status` enum; an
+/// unrecognised status (e.g. a future migration) is logged and dropped rather
+/// than surfaced, so the dashboard never shows a mystery bucket.
+#[derive(Serialize, Default)]
+pub struct StatusCounts {
+    pub pending: i64,
+    pub processing: i64,
+    pub completed: i64,
+    pub failed: i64,
+}
+
+impl StatusCounts {
+    fn add(&mut self, status: &str, count: i64) {
+        match status {
+            "pending" => self.pending += count,
+            "processing" => self.processing += count,
+            "completed" => self.completed += count,
+            "failed" => self.failed += count,
+            other => tracing::warn!(status = other, "unknown job status in dashboard stats"),
+        }
+    }
+
+    fn total(&self) -> i64 {
+        self.pending + self.processing + self.completed + self.failed
+    }
+
+    fn merge(a: &Self, b: &Self) -> Self {
+        Self {
+            pending: a.pending + b.pending,
+            processing: a.processing + b.processing,
+            completed: a.completed + b.completed,
+            failed: a.failed + b.failed,
+        }
+    }
+}
+
+/// Job counts per type. The two fields are the full `job_type` enum.
+#[derive(Serialize, Default)]
+pub struct TypeCounts {
+    pub harvest: i64,
+    pub enrich: i64,
+}
+
+/// Per-type breakdown of the status counts.
+#[derive(Serialize, Default)]
+pub struct TypeStatus {
+    pub harvest: StatusCounts,
+    pub enrich: StatusCounts,
+}
+
+#[derive(Serialize)]
+pub struct JobsBlock {
+    pub total: i64,
+    pub by_type: TypeCounts,
+    pub by_status: StatusCounts,
+    pub by_type_status: TypeStatus,
+}
+
+/// Count of jobs "executed" in a time window, split by type. A job's effective
+/// timestamp is `COALESCE(completed_at, created_at)`: terminal jobs
+/// (completed/failed) count on their completion date, non-terminal jobs
+/// (pending/processing) on their creation date.
+#[derive(Serialize, Default)]
+pub struct WindowCounts {
+    pub total: i64,
+    pub harvest: i64,
+    pub enrich: i64,
+}
+
+#[derive(Serialize)]
+pub struct ExecutedBlock {
+    pub today: WindowCounts,
+    pub last_7d: WindowCounts,
+}
+
+/// One failed job for the "recent failures" list, with its failure reason.
+#[derive(Serialize, sqlx::FromRow)]
+pub struct RecentFailure {
+    pub id: uuid::Uuid,
+    pub law_id: String,
+    pub job_type: String,
+    /// `COALESCE(completed_at, created_at)`; `created_at` is NOT NULL so this is
+    /// never null.
+    pub failed_at: chrono::DateTime<chrono::Utc>,
+    pub error: String,
+}
+
+/// Per-day counts for one job type: jobs created that day (`added`) and jobs
+/// that reached a terminal status that day (`succeeded`/`failed`).
+#[derive(Serialize, Default)]
+pub struct DailyCounts {
+    pub added: i64,
+    pub succeeded: i64,
+    pub failed: i64,
+}
+
+/// One Europe/Amsterdam calendar day (`YYYY-MM-DD`) in the 14-day window.
+#[derive(Serialize)]
+pub struct DailyEntry {
+    pub date: String,
+    pub harvest: DailyCounts,
+    pub enrich: DailyCounts,
+}
+
+#[derive(Serialize)]
+pub struct DashboardStats {
+    pub jobs: JobsBlock,
+    pub executed: ExecutedBlock,
+    pub open_untranslatables: i64,
+    pub recent_failures: Vec<RecentFailure>,
+    pub daily: Vec<DailyEntry>,
+}
+
+/// Aggregate snapshot for the harvester "Overzicht" dashboard: job counts by
+/// type and status, jobs executed today / in the last 7 days, the number of
+/// open (unaccepted) untranslatables, and the most recent failed jobs with
+/// their reasons.
+pub async fn dashboard_stats(
+    State(state): State<AppState>,
+) -> Result<Json<DashboardStats>, ApiError> {
+    let pool = &state.pool;
+
+    // 1. Jobs by type x status — fold into the per-type breakdown; totals and
+    //    the type-agnostic status counts are derived from it.
+    let type_status_rows = sqlx::query_as::<_, (String, String, i64)>(
+        "SELECT job_type::text, status::text, COUNT(*) FROM jobs GROUP BY job_type, status",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(db_err("dashboard jobs-by-type-status query failed"))?;
+
+    let mut by_type_status = TypeStatus::default();
+    for (job_type, status, count) in type_status_rows {
+        match job_type.as_str() {
+            "harvest" => by_type_status.harvest.add(&status, count),
+            "enrich" => by_type_status.enrich.add(&status, count),
+            other => tracing::warn!(job_type = other, "unknown job type in dashboard stats"),
+        }
+    }
+    let by_type = TypeCounts {
+        harvest: by_type_status.harvest.total(),
+        enrich: by_type_status.enrich.total(),
+    };
+    let by_status = StatusCounts::merge(&by_type_status.harvest, &by_type_status.enrich);
+    let jobs = JobsBlock {
+        total: by_type.harvest + by_type.enrich,
+        by_type,
+        by_status,
+        by_type_status,
+    };
+
+    // 2. Executed today / last 7 days, per type. "Today" is the Europe/Amsterdam
+    //    calendar day (same tz convention as the pipeline's hourly rate limiter).
+    let executed_rows = sqlx::query_as::<_, (String, i64, i64)>(
+        "SELECT job_type::text, \
+             COUNT(*) FILTER (WHERE COALESCE(completed_at, created_at) \
+                 >= (date_trunc('day', now() AT TIME ZONE 'Europe/Amsterdam') \
+                     AT TIME ZONE 'Europe/Amsterdam')), \
+             COUNT(*) FILTER (WHERE COALESCE(completed_at, created_at) \
+                 >= now() - INTERVAL '7 days') \
+         FROM jobs GROUP BY job_type",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(db_err("dashboard executed-windows query failed"))?;
+
+    let mut today = WindowCounts::default();
+    let mut last_7d = WindowCounts::default();
+    for (job_type, today_count, week_count) in executed_rows {
+        match job_type.as_str() {
+            "harvest" => {
+                today.harvest = today_count;
+                last_7d.harvest = week_count;
+            }
+            "enrich" => {
+                today.enrich = today_count;
+                last_7d.enrich = week_count;
+            }
+            other => tracing::warn!(job_type = other, "unknown job type in dashboard stats"),
+        }
+    }
+    today.total = today.harvest + today.enrich;
+    last_7d.total = last_7d.harvest + last_7d.enrich;
+    let executed = ExecutedBlock { today, last_7d };
+
+    // 3. Open (unaccepted) untranslatables.
+    let open_untranslatables: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM untranslatables WHERE accepted = false")
+            .fetch_one(pool)
+            .await
+            .map_err(db_err("dashboard untranslatables count failed"))?;
+
+    // 4. Recent failures with reason. Failed jobs store the reason in
+    //    `result->>'error'` (no dedicated column); the placeholder only guards
+    //    the theoretical case of a failed job whose result lacks that key.
+    let recent_failures = sqlx::query_as::<_, RecentFailure>(
+        "SELECT id, law_id, job_type::text AS job_type, \
+             COALESCE(completed_at, created_at) AS failed_at, \
+             COALESCE(result->>'error', 'onbekend') AS error \
+         FROM jobs WHERE status = 'failed' \
+         ORDER BY COALESCE(completed_at, created_at) DESC LIMIT 50",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(db_err("dashboard recent-failures query failed"))?;
+
+    // 5. Daily series for the last 14 Europe/Amsterdam days: jobs added
+    //    (created_at) and jobs finished (completed_at, split by outcome), per
+    //    type. Days without activity come back as explicit zero rows so the
+    //    frontend never fills gaps. Pre-aggregate per (day, type, kind) first —
+    //    a day-skeleton joined directly against the jobs rows degrades into an
+    //    O(days × rows) nested loop. The 15-day cutoffs give slack for the
+    //    UTC↔Amsterdam offset; at most 6 aggregate rows join per day, so the
+    //    SUM FILTER never double-counts.
+    let daily_rows = sqlx::query_as::<_, (String, i64, i64, i64, i64, i64, i64)>(
+        "WITH days AS ( \
+             SELECT ((now() AT TIME ZONE 'Europe/Amsterdam')::date - offs) AS day \
+             FROM generate_series(13, 0, -1) AS offs \
+         ), events AS ( \
+             SELECT (created_at AT TIME ZONE 'Europe/Amsterdam')::date AS day, \
+                    job_type::text AS job_type, 'added' AS kind, COUNT(*) AS n \
+             FROM jobs \
+             WHERE created_at >= now() - INTERVAL '15 days' \
+             GROUP BY 1, 2 \
+             UNION ALL \
+             SELECT (completed_at AT TIME ZONE 'Europe/Amsterdam')::date, \
+                    job_type::text, \
+                    CASE status::text WHEN 'completed' THEN 'succeeded' ELSE 'failed' END, \
+                    COUNT(*) \
+             FROM jobs \
+             WHERE status IN ('completed', 'failed') \
+               AND completed_at >= now() - INTERVAL '15 days' \
+             GROUP BY 1, 2, 3 \
+         ) \
+         SELECT to_char(days.day, 'YYYY-MM-DD'), \
+             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'harvest' AND e.kind = 'added'), 0)::bigint, \
+             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'harvest' AND e.kind = 'succeeded'), 0)::bigint, \
+             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'harvest' AND e.kind = 'failed'), 0)::bigint, \
+             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'enrich' AND e.kind = 'added'), 0)::bigint, \
+             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'enrich' AND e.kind = 'succeeded'), 0)::bigint, \
+             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'enrich' AND e.kind = 'failed'), 0)::bigint \
+         FROM days \
+         LEFT JOIN events e ON e.day = days.day \
+         GROUP BY days.day \
+         ORDER BY days.day",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(db_err("dashboard daily-series query failed"))?;
+
+    let daily: Vec<DailyEntry> = daily_rows
+        .into_iter()
+        .map(
+            |(date, h_added, h_succeeded, h_failed, e_added, e_succeeded, e_failed)| DailyEntry {
+                date,
+                harvest: DailyCounts {
+                    added: h_added,
+                    succeeded: h_succeeded,
+                    failed: h_failed,
+                },
+                enrich: DailyCounts {
+                    added: e_added,
+                    succeeded: e_succeeded,
+                    failed: e_failed,
+                },
+            },
+        )
+        .collect();
+
+    Ok(Json(DashboardStats {
+        jobs,
+        executed,
+        open_untranslatables,
+        recent_failures,
+        daily,
+    }))
+}
+
 #[derive(Deserialize)]
 pub struct CreateJobBody {
     /// Law identifier — BWB (e.g. "BWBR0018451") or CVDR (e.g. "CVDR681386").
@@ -644,6 +1059,14 @@ pub async fn create_enrich_jobs(
             law_id: law_id.clone(),
             yaml_path: yaml_path.clone(),
             provider: Some((*provider_name).to_string()),
+            // Admin-requested enrichments are roots of the related-harvest chain.
+            depth: None,
+            requested_by: None,
+            deliver: None,
+            traject_id: None,
+            traject_ref: None,
+            source_etag: None,
+            new_law: None,
         };
 
         let payload_json = serde_json::to_value(&enrich_payload).map_err(|e| {

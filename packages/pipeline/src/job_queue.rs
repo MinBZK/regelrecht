@@ -36,22 +36,27 @@ fn to_pg_interval(duration: Duration) -> Result<PgInterval> {
         .map_err(|_| PipelineError::InvalidInput(format!("invalid interval: {duration:?}")))
 }
 
-/// Internal row type for the reaper CTE result.
-#[derive(sqlx::FromRow)]
-struct ReapedRow {
-    #[allow(dead_code)]
-    id: Uuid,
-    #[allow(dead_code)]
-    law_id: String,
-    #[allow(dead_code)]
-    job_type: JobType,
-    #[allow(dead_code)]
-    status: JobStatus,
+/// Een door de reaper geraakte job. `status` is de NIEUWE status: `Pending`
+/// wanneer er nog pogingen over waren (her-poging), `Failed` bij terminaal.
+/// De payload rijdt mee zodat de aanroeper voor terminaal gefaalde
+/// taak-flow-jobs alsnog een `job_failed`-taak kan aanmaken — zonder die
+/// nazorg verdwijnt zo'n job stil uit de "Bezig"-lijst (zie
+/// `tasks::notify_reaped_task_jobs`).
+#[derive(Debug, sqlx::FromRow)]
+pub struct ReapedJob {
+    pub id: Uuid,
+    pub law_id: String,
+    pub job_type: JobType,
+    pub status: JobStatus,
+    pub payload: Option<serde_json::Value>,
 }
 
 pub struct CreateJobRequest {
     pub job_type: JobType,
     pub law_id: String,
+    /// Owning traject ref for traject-scoped jobs; `None` for corpus-wide
+    /// harvest/enrich jobs.
+    pub traject_ref: Option<String>,
     pub priority: Priority,
     pub payload: Option<serde_json::Value>,
     pub max_attempts: i32,
@@ -65,11 +70,18 @@ impl CreateJobRequest {
         Self {
             job_type,
             law_id: law_id.into(),
+            traject_ref: None,
             priority: Priority::default(),
             payload: None,
             max_attempts: 3,
             initial_delay: None,
         }
+    }
+
+    /// Associate the job with an owning traject.
+    pub fn with_traject_ref(mut self, traject_ref: impl Into<String>) -> Self {
+        self.traject_ref = Some(traject_ref.into());
+        self
     }
 
     pub fn with_priority(mut self, priority: Priority) -> Self {
@@ -102,13 +114,14 @@ where
     let initial_delay = req.initial_delay.map(to_pg_interval).transpose()?;
     let job = sqlx::query_as::<_, Job>(
         r#"
-        INSERT INTO jobs (job_type, law_id, priority, payload, max_attempts, scheduled_at)
-        VALUES ($1, $2, $3, $4, $5, now() + $6::interval)
+        INSERT INTO jobs (job_type, law_id, traject_ref, priority, payload, max_attempts, scheduled_at)
+        VALUES ($1, $2, $3, $4, $5, $6, now() + $7::interval)
         RETURNING *
         "#,
     )
     .bind(req.job_type)
     .bind(&req.law_id)
+    .bind(&req.traject_ref)
     .bind(req.priority.value())
     .bind(&req.payload)
     .bind(req.max_attempts)
@@ -118,6 +131,55 @@ where
 
     tracing::info!(job_id = %job.id, "job created");
     Ok(job)
+}
+
+/// Count enrich jobs for `provider` started within the current local clock-hour
+/// bucket (Europe/Amsterdam), and return that bucket's local hour-of-day
+/// (`0..=23`) so the caller can pick the day vs night cap.
+///
+/// Used to enforce a per-provider hourly run cap (see `ENRICH_HOURLY_LIMIT` +
+/// `ENRICH_NIGHT_MULTIPLIER`), which protects a personal Claude subscription
+/// token from running the whole corpus in one go. Reads the durable `jobs` table
+/// so the cap holds across worker restarts/redeploys.
+///
+/// Timezone is resolved by Postgres (`AT TIME ZONE 'Europe/Amsterdam'`), which is
+/// DST-correct; no chrono-tz needed. Served by the existing partial index
+/// `0022_enrich_daily_count_index` on `((payload->>'provider'), started_at)`:
+/// the hour bound lives in the `WHERE` clause, so the scan is bounded to the
+/// current hour bucket (a `COUNT(*) FILTER (...)` would not push into the index).
+///
+/// Counts every job that actually ran this hour, in ANY status; only never-run
+/// `pending` jobs (`started_at IS NULL`) are excluded. Relies on every enqueue
+/// path setting `payload.provider`.
+///
+/// Not transactional with the caller's claim: with N concurrent workers the cap
+/// may be exceeded by up to N near the hour boundary. That's acceptable for a
+/// spend guard.
+pub async fn count_enrich_jobs_started_this_hour<'e, E>(
+    executor: E,
+    provider: &str,
+) -> Result<(i64, i32)>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let row = sqlx::query_as::<_, (i64, i32)>(
+        r#"
+        SELECT
+            COUNT(*) AS ran_this_hour,
+            EXTRACT(HOUR FROM now() AT TIME ZONE 'Europe/Amsterdam')::int AS local_hour
+        FROM jobs
+        WHERE job_type = 'enrich'
+          AND started_at IS NOT NULL
+          AND payload->>'provider' = $1
+          AND started_at >= date_trunc('hour', now() AT TIME ZONE 'Europe/Amsterdam')
+                            AT TIME ZONE 'Europe/Amsterdam'
+        "#,
+    )
+    .bind(provider)
+    .fetch_one(executor)
+    .await?;
+
+    Ok(row)
 }
 
 /// Claim the highest-priority pending job using FOR UPDATE SKIP LOCKED.
@@ -254,22 +316,70 @@ where
     Ok(job)
 }
 
+/// Mark a job as permanently failed regardless of remaining attempts.
+///
+/// Unlike [`fail_job`], this never reschedules for retry: it sets `failed`
+/// immediately even when `attempts < max_attempts`. Use this for deterministic
+/// failures that cannot succeed on retry against the same inputs, where
+/// retrying only burns budget and blocks the serial queue. Examples:
+/// - the enrichment LLM produced no machine_readable sections, or its output
+///   failed to parse; or
+/// - enrichment base drift, where the base is stale relative to the recorded
+///   provenance and every retry would re-fail against the same base (and, on
+///   each non-final attempt, flip-flop the law status Enriching -> Harvested
+///   before finally landing on Failed).
+#[tracing::instrument(skip(executor, error_result))]
+pub async fn fail_job_terminal<'e, E>(
+    executor: E,
+    job_id: Uuid,
+    error_result: Option<serde_json::Value>,
+) -> Result<Job>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let job = sqlx::query_as::<_, Job>(
+        r#"
+        UPDATE jobs
+        SET status = 'failed'::job_status,
+            result = $2,
+            completed_at = now(),
+            scheduled_at = NULL
+        WHERE id = $1 AND status = 'processing'
+        RETURNING *
+        "#,
+    )
+    .bind(job_id)
+    .bind(&error_result)
+    .fetch_optional(executor)
+    .await?
+    .ok_or(PipelineError::JobNotProcessing(job_id))?;
+
+    tracing::warn!(job_id = %job.id, attempts = job.attempts, "job terminally failed (non-retryable)");
+    Ok(job)
+}
+
 /// Reap orphaned jobs stuck in 'processing' for longer than `timeout`.
 ///
 /// Jobs that remain in 'processing' beyond the timeout are assumed orphaned
 /// (e.g., the worker crashed). If the job still has retries left, it is reset
 /// to 'pending'; otherwise it is marked 'failed'.
 ///
-/// Returns the number of reaped jobs.
+/// Returns the reaped jobs (atomically claimed by THIS caller: de UPDATE …
+/// RETURNING geeft elke rij aan precies één concurrent reaper), zodat de
+/// aanroeper nazorg kan doen — met name `tasks::notify_reaped_task_jobs`
+/// voor terminaal gefaalde taak-flow-jobs.
 #[tracing::instrument(skip(executor))]
-pub async fn reap_orphaned_jobs<'e, E>(executor: E, timeout: std::time::Duration) -> Result<u64>
+pub async fn reap_orphaned_jobs<'e, E>(
+    executor: E,
+    timeout: std::time::Duration,
+) -> Result<Vec<ReapedJob>>
 where
     E: sqlx::PgExecutor<'e>,
 {
     let timeout_interval = sqlx::postgres::types::PgInterval::try_from(timeout)
         .map_err(|_| PipelineError::InvalidInput(format!("invalid reaper timeout: {timeout:?}")))?;
 
-    let reaped_rows = sqlx::query_as::<_, ReapedRow>(
+    let reaped_rows = sqlx::query_as::<_, ReapedJob>(
         r#"
         WITH reaped AS (
             UPDATE jobs
@@ -284,20 +394,22 @@ where
                 END
             WHERE status = 'processing'
               AND started_at < now() - $1::interval
-            RETURNING id, law_id, job_type, status
+            RETURNING id, law_id, job_type, status, payload
         )
-        SELECT id, law_id, job_type, status FROM reaped
+        SELECT id, law_id, job_type, status, payload FROM reaped
         "#,
     )
     .bind(timeout_interval)
     .fetch_all(executor)
     .await?;
 
-    let count = reaped_rows.len() as u64;
-    if count > 0 {
-        tracing::warn!(count, "reaped orphaned jobs stuck in processing");
+    if !reaped_rows.is_empty() {
+        tracing::warn!(
+            count = reaped_rows.len(),
+            "reaped orphaned jobs stuck in processing"
+        );
     }
-    Ok(count)
+    Ok(reaped_rows)
 }
 
 /// Create a harvest job only if no active (pending/processing) harvest job
@@ -401,11 +513,18 @@ where
 }
 
 /// Create an enrich job if no active (pending/processing) enrich job exists
-/// for this law_id + provider combination.
+/// for this law_id + provider + traject scope.
 ///
 /// Uses `INSERT ... ON CONFLICT DO NOTHING` against the
 /// `idx_unique_active_enrich_job` partial unique index to atomically
-/// prevent duplicates — no TOCTOU race regardless of isolation level.
+/// prevent duplicates — no TOCTOU race regardless of isolation level. The
+/// index keys on `(law_id, job_type, provider, COALESCE(traject_ref, ''))`,
+/// so uniqueness is scoped per traject: a corpus-wide auto-enrich
+/// (`traject_ref` NULL) and a traject-scoped enrich request (task-flow) for
+/// the same law_id + provider no longer collide, and two different trajects
+/// requesting the same law_id + provider don't block each other either. A
+/// second active request within the *same* scope (same traject, or both
+/// corpus-wide) still collides and loses with `None` (`Ok(None)`).
 ///
 /// Returns `Some(job)` if created, `None` if a duplicate already existed.
 pub async fn create_enrich_job_if_not_exists<'e, E>(
@@ -418,9 +537,9 @@ where
     let initial_delay = req.initial_delay.map(to_pg_interval).transpose()?;
     let job = sqlx::query_as::<_, Job>(
         r#"
-        INSERT INTO jobs (job_type, law_id, priority, payload, max_attempts, scheduled_at)
-        VALUES ($1, $2, $3, $4, $5, now() + $6::interval)
-        ON CONFLICT (law_id, job_type, (payload->>'provider'))
+        INSERT INTO jobs (job_type, law_id, traject_ref, priority, payload, max_attempts, scheduled_at)
+        VALUES ($1, $2, $3, $4, $5, $6, now() + $7::interval)
+        ON CONFLICT (law_id, job_type, (payload->>'provider'), COALESCE(traject_ref, ''))
             WHERE job_type = 'enrich' AND status IN ('pending', 'processing')
         DO NOTHING
         RETURNING *
@@ -428,6 +547,7 @@ where
     )
     .bind(req.job_type)
     .bind(&req.law_id)
+    .bind(&req.traject_ref)
     .bind(req.priority.value())
     .bind(&req.payload)
     .bind(req.max_attempts)

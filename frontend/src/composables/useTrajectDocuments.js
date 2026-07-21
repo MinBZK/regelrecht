@@ -1,5 +1,5 @@
 /**
- * useTrajectDocuments — manage markdown / plain-text documents that
+ * useTrajectDocuments - manage markdown / plain-text documents that
  * live alongside laws in a traject's corpus branch.
  *
  * Reads, writes and deletes go through `/api/trajects/{ref}/corpus/documents`
@@ -10,16 +10,18 @@
  * `useDraftNotes` voor notities aanhoudt.
  *
  * @param {import('vue').Ref<string|null>} trajectRef Active traject ref.
- *   Required for every operation here — documents only exist under a
+ *   Required for every operation here - documents only exist under a
  *   traject scope (there is no global counterpart).
  */
 import { ref, watch } from 'vue';
 import {
   documentsListUrl,
   documentFileUrl,
+  documentUploadUrl,
   requireTraject,
 } from './corpusUrls.js';
 import { apiFetchJson } from '../lib/apiFetch.js';
+import { uploadMultipart } from '../lib/uploadMultipart.js';
 import { useLatest } from '../lib/useLatest.js';
 
 const STORAGE_PREFIX = 'regelrecht-doc-draft:';
@@ -42,7 +44,7 @@ function persistDraft(trajectRef, docPath, text) {
   try {
     localStorage.setItem(draftKey(trajectRef, docPath), text);
   } catch {
-    /* quota / unavailable — drafts are best-effort */
+    /* quota / unavailable - drafts are best-effort */
   }
 }
 
@@ -55,7 +57,7 @@ function clearDraft(trajectRef, docPath) {
 }
 
 export function useTrajectDocuments(trajectRef) {
-  // Top-level state — the list of documents in the current traject.
+  // Top-level state - the list of documents in the current traject.
   const documents = ref([]);
   const loading = ref(false);
   const listError = ref(null);
@@ -64,6 +66,9 @@ export function useTrajectDocuments(trajectRef) {
   // a time; switching to another document overwrites these.
   const currentPath = ref(null);
   const currentBody = ref('');
+  // The last body known to be persisted on the server - the baseline for the
+  // "unsaved changes" (hasChanges) check. Set on load and after a save.
+  const savedBody = ref('');
   // The ETag we received on the last successful read or save. Sent back
   // as `If-Match` on the next PUT/DELETE so the server can detect a
   // concurrent edit from another tab/user.
@@ -72,7 +77,7 @@ export function useTrajectDocuments(trajectRef) {
   const docError = ref(null);
   const saving = ref(false);
   const saveError = ref(null);
-  // Set to a localised string when a save returned 412 — the editor
+  // Set to a localised string when a save returned 412 - the editor
   // surfaces a conflict banner and lets the user choose
   // "lokaal overschrijven" or "server-versie laden".
   const conflict = ref(null);
@@ -116,24 +121,41 @@ export function useTrajectDocuments(trajectRef) {
     saveError.value = null;
     conflict.value = null;
     deletedRemotely.value = null;
+    // Show the document shell immediately: adopt the path now, before the fetch,
+    // so hasOpenDoc flips true and the editor renders its "Document laden"
+    // indicator right away instead of leaving the user on the old view until a
+    // (possibly slow) fetch resolves. The body follows when the fetch lands; the
+    // editor stays behind the indicator while docLoading, so the previous
+    // document's stale body is never shown. Only currentPath changes here (not
+    // currentBody), so the draft watch doesn't fire.
+    currentPath.value = path;
     // Cancel any debounce that was scheduled by the previous document's
     // last keystroke: when the watch fires after we swap `currentPath`
     // it would otherwise persist the new body under the old path.
     cancelDraftTimer();
     try {
       // Raw fetch on purpose: every status maps to its own docError shape
-      // below (404, other non-ok, draft divergence) — a thrown error would
+      // below (404, other non-ok, draft divergence) - a thrown error would
       // collapse those branches.
       const res = await fetch(documentFileUrl(trajectRef.value, path));
-      // A newer openDocument started while this fetch was in flight — drop
+      // A newer openDocument started while this fetch was in flight - drop
       // this stale response so it can't overwrite the newer document.
       if (!isCurrent()) return;
       if (res.status === 404) {
         currentPath.value = path;
         currentBody.value = '';
+        // Reset the baseline too so an empty body isn't seen as a change vs the
+        // previous document's saved content (spurious dirty state).
+        savedBody.value = '';
         currentEtag.value = null;
+        // Distinct kind from the generic 'load-error' below: a document-task
+        // review (useDocumentTaskReview) needs to tell "doesn't exist yet -
+        // seed the proposal as a new document" apart from a real fetch
+        // failure. DocumentEditor's blockingError check treats both the same
+        // (`kind !== 'draft-present'`), so this is not a behaviour change for
+        // the normal not-a-review flow.
         docError.value = {
-          kind: 'load-error',
+          kind: 'not-found',
           message: 'Document niet gevonden',
         };
         return;
@@ -144,6 +166,9 @@ export function useTrajectDocuments(trajectRef) {
         // subsequent Save can't PUT stale content back to the old path.
         currentPath.value = path;
         currentBody.value = '';
+        // Reset the baseline too (see 404 branch) so the failed load doesn't
+        // register as unsaved changes against the previous document.
+        savedBody.value = '';
         currentEtag.value = null;
         docError.value = {
           kind: 'load-error',
@@ -152,7 +177,7 @@ export function useTrajectDocuments(trajectRef) {
         return;
       }
       const serverBody = await res.text();
-      // Re-check after the body read — another open may have superseded us.
+      // Re-check after the body read - another open may have superseded us.
       if (!isCurrent()) return;
       const serverEtag = res.headers.get('ETag');
 
@@ -162,6 +187,7 @@ export function useTrajectDocuments(trajectRef) {
       cancelDraftTimer();
       currentPath.value = path;
       currentEtag.value = serverEtag;
+      savedBody.value = serverBody;
       // If the user had an unsaved draft for this document, prefer it
       // over the server body but flag the divergence so the editor can
       // offer "drop draft, keep server version".
@@ -185,14 +211,18 @@ export function useTrajectDocuments(trajectRef) {
     }
   }
 
+  // Discard local changes for the open document: drop the saved draft AND
+  // revert the in-memory body to the last-saved baseline, so a discard truly
+  // reverts instead of only clearing localStorage (otherwise the in-memory edit
+  // lingers, re-drafts on the next keystroke, and trips the leave-guard again).
   function dropDraft() {
     if (!currentPath.value) return;
+    // Cancel a pending debounced flush so it can't re-create the row we clear.
+    cancelDraftTimer();
     clearDraft(trajectRef.value, currentPath.value);
-    // If we kept a serverBody on the docError we can restore it
-    // immediately; otherwise the user can refetch.
-    if (docError.value?.serverBody !== undefined) {
-      currentBody.value = docError.value.serverBody;
-    }
+    // savedBody is the server version (set on open/save); on a draft-present
+    // notice it equals docError.serverBody, so "keep server version" still holds.
+    currentBody.value = savedBody.value;
     docError.value = null;
   }
 
@@ -221,13 +251,13 @@ export function useTrajectDocuments(trajectRef) {
    * Pass `{ ifMatch: '*' }` to force-overwrite whatever version exists
    * (used by `overwriteServer` in the conflict-resolution path); note `*`
    * still 412s when the file does not exist, so it cannot create. The
-   * create flow instead passes `{ ifMatch: null }` — a blind write with no
+   * create flow instead passes `{ ifMatch: null }` - a blind write with no
    * precondition, which is what lands a brand-new file.
    */
   async function saveCurrent({ ifMatch } = {}) {
     if (!currentPath.value) return;
     requireTraject(trajectRef.value, 'document save');
-    // Drop any pending draft flush — if it fires after `clearDraft`
+    // Drop any pending draft flush - if it fires after `clearDraft`
     // below, it'd re-create the localStorage row we just removed and
     // leak a phantom draft for the next open.
     cancelDraftTimer();
@@ -260,7 +290,7 @@ export function useTrajectDocuments(trajectRef) {
         // that no longer exists (someone deleted it). Discriminate on what
         // WE sent rather than parsing the server's (localisable) error
         // string: the backend only emits the "deleted" 412 for `If-Match: *`
-        // against a missing file — i.e. exactly the force-overwrite path —
+        // against a missing file - i.e. exactly the force-overwrite path -
         // so `ifMatchValue === '*'` here is an unambiguous, language-stable
         // signal. The deleted case is a dead end for the concurrent-edit
         // buttons ("Server-versie laden" 404s, "Lokaal overschrijven" 412s
@@ -289,7 +319,8 @@ export function useTrajectDocuments(trajectRef) {
       // convenience for clients that can't read headers.
       currentEtag.value = res.headers.get('ETag') ?? json?.etag ?? currentEtag.value;
       clearDraft(trajectRef.value, currentPath.value);
-      // Reload the list — a freshly created document needs to appear
+      savedBody.value = currentBody.value;
+      // Reload the list - a freshly created document needs to appear
       // in the sidebar without a manual refresh.
       if (res.status === 201) {
         await fetchList();
@@ -304,7 +335,7 @@ export function useTrajectDocuments(trajectRef) {
   }
 
   /** Force-replace the local body with whatever the server currently
-   *  holds — used as the resolution path for a 412 conflict. */
+   *  holds - used as the resolution path for a 412 conflict. */
   async function reloadCurrent() {
     if (!currentPath.value) return;
     clearDraft(trajectRef.value, currentPath.value);
@@ -317,7 +348,7 @@ export function useTrajectDocuments(trajectRef) {
    * `200/201 OK`. The caller (`useDocumentsManager.startNew`) only ever
    * passes a freshly generated `untitled-*.md` path that isn't in the
    * already-fetched list, so a collision needs a concurrent create of the
-   * same name between list-refresh and submit — a race a future iteration
+   * same name between list-refresh and submit - a race a future iteration
    * can close by adding `If-None-Match: *` support to the backend.
    */
   async function createDocument(path) {
@@ -328,11 +359,51 @@ export function useTrajectDocuments(trajectRef) {
     const stem = path.split('/').pop().replace(/\.[^.]+$/, '');
     const body = `# ${stem}\n\n`;
     cancelDraftTimer();
+
+    // Optimistic UI (https://www.lukew.com/ff/entry.asp?1759): drop the new
+    // document into the list and open it *before* the server round-trip, so the
+    // werkdocumenten pane updates instantly and the row shows as selected
+    // (selection follows currentPath). saveCurrent reconciles the list against
+    // the server on success (201 -> fetchList); we roll everything back on
+    // failure so a rejected create never leaves a phantom row behind.
+    const prevDocuments = documents.value;
+    const prevPath = currentPath.value;
+    const prevBody = currentBody.value;
+    const prevEtag = currentEtag.value;
+    if (!documents.value.some((d) => d.path === path)) {
+      documents.value = [...documents.value, { path }];
+    }
     currentPath.value = path;
     currentBody.value = body;
     currentEtag.value = null;
+
     const result = await saveCurrent({ ifMatch: null });
+    if (!result?.ok) {
+      documents.value = prevDocuments;
+      currentPath.value = prevPath;
+      currentBody.value = prevBody;
+      currentEtag.value = prevEtag;
+    }
     return result;
+  }
+
+  /**
+   * Upload a PDF/Word document. Stores the bytes server-side and enqueues an
+   * async conversion-to-markdown job; the resulting `.md` appears in the list
+   * once the job completes (surfaced meanwhile by the conversion-status
+   * poller). Returns a result object `{ ok, targetPath }`.
+   */
+  async function uploadDocument(file) {
+    requireTraject(trajectRef.value, 'document upload');
+    saveError.value = null;
+    // Shared multipart POST (raw fetch + 404/405/501 classification). Errors
+    // surface via the returned result only (the consumer shows its own upload
+    // dialog); don't also set saveError, which raises a 2nd modal.
+    const result = await uploadMultipart(documentUploadUrl(trajectRef.value), file);
+    if (!result.ok) return result;
+    // Refresh the list so the poller (and, once converted, the .md) show up.
+    await fetchList();
+    return { ok: true, targetPath: result.json?.target_path ?? null };
   }
 
   async function deleteDocument(path) {
@@ -342,11 +413,20 @@ export function useTrajectDocuments(trajectRef) {
     // we clear it below.
     if (path === currentPath.value) cancelDraftTimer();
     saveError.value = null;
+
+    // Optimistic UI (https://www.lukew.com/ff/entry.asp?1759): remove the row
+    // from the list right away and restore it on any failure below. The open
+    // document + its draft are only cleared once the server confirms the delete
+    // (success or 404-already-gone), so a rejected delete leaves the editor
+    // untouched.
+    const prevDocuments = documents.value;
+    documents.value = documents.value.filter((d) => d.path !== path);
+
     // Send `If-Match` so the delete is conditional: a concurrent edit then
     // surfaces as a 412 instead of being silently destroyed. The open
     // document already has its ETag in `currentEtag`; for any other entry
     // (the list does not cache per-entry ETags) fetch the current ETag
-    // first. A non-OK GET (e.g. 404 — already gone) leaves `ifMatch` null
+    // first. A non-OK GET (e.g. 404 - already gone) leaves `ifMatch` null
     // and the DELETE falls through to report the real outcome.
     let ifMatch =
       path === currentPath.value && currentEtag.value ? currentEtag.value : null;
@@ -360,13 +440,13 @@ export function useTrajectDocuments(trajectRef) {
         });
         if (head.ok) ifMatch = head.headers.get('ETag');
       } catch {
-        /* network error — proceed unconditionally; DELETE surfaces its own error */
+        /* network error - proceed unconditionally; DELETE surfaces its own error */
       }
     }
     const headers = {};
     if (ifMatch) headers['If-Match'] = ifMatch;
     try {
-      // Raw fetch on purpose: same result-object style as `saveCurrent` —
+      // Raw fetch on purpose: same result-object style as `saveCurrent` -
       // 412 and 404 are normal branches here, not errors.
       const res = await fetch(documentFileUrl(trajectRef.value, path), {
         method: 'DELETE',
@@ -376,7 +456,7 @@ export function useTrajectDocuments(trajectRef) {
         // A concurrent modification means our delete precondition failed.
         // Do NOT reuse the save-conflict `conflict` ref: its banner offers
         // "reload"/"overwrite" actions that operate on the *open* document
-        // (and "overwrite" is a PUT — the wrong resolution for a delete).
+        // (and "overwrite" is a PUT - the wrong resolution for a delete).
         // Refresh the list so the caller re-evaluates against current
         // state, and return a typed result for the panel to surface.
         await fetchList();
@@ -384,7 +464,7 @@ export function useTrajectDocuments(trajectRef) {
       }
       if (res.status === 404) {
         // The document is already gone (deleted remotely between the list
-        // load and this click — e.g. the unconditional path where the HEAD
+        // load and this click - e.g. the unconditional path where the HEAD
         // probe 404'd). Delete is idempotent, so treat it as success: drop
         // the local draft, clear it if it was the open one, and refresh the
         // list so the stale sidebar entry disappears instead of lingering
@@ -399,6 +479,7 @@ export function useTrajectDocuments(trajectRef) {
         return { ok: true };
       }
       if (!res.ok) {
+        documents.value = prevDocuments;
         const text = await safeText(res);
         saveError.value = new Error(text || `Verwijderen mislukt: ${res.status}`);
         return { ok: false };
@@ -412,15 +493,16 @@ export function useTrajectDocuments(trajectRef) {
       await fetchList();
       return { ok: true };
     } catch (e) {
-      // Network error (Failed to fetch / timeout) — surface it through
+      // Network error (Failed to fetch / timeout) - surface it through
       // the same `saveError` banner the editor already shows, so a failed
       // delete isn't swallowed silently. Mirrors `saveCurrent`'s catch.
+      documents.value = prevDocuments;
       saveError.value = e;
       return { ok: false };
     }
   }
 
-  // Re-fetch the list whenever the active traject changes — switching
+  // Re-fetch the list whenever the active traject changes - switching
   // trajects routes through a different writable backend.
   //
   // Critically, also reset the per-document state: a document loaded from
@@ -451,6 +533,7 @@ export function useTrajectDocuments(trajectRef) {
     listError,
     currentPath,
     currentBody,
+    savedBody,
     currentEtag,
     docLoading,
     docError,
@@ -463,6 +546,7 @@ export function useTrajectDocuments(trajectRef) {
     saveCurrent,
     reloadCurrent,
     createDocument,
+    uploadDocument,
     deleteDocument,
     dropDraft,
   };

@@ -5,167 +5,79 @@
  * Reverse:  visual form state → formStateToGherkin() → Gherkin text
  */
 
-import { parseValue } from './steps.js';
+import { parseValue } from './actions.js';
+import { GRAMMAR } from './grammar.generated.js';
 
-// --- Extraction patterns (mirrors steps.js but extracts data instead of executing) ---
+// --- Generated grammar lookups (single source of truth for phrasing) ---
 
-const PATTERNS = [
-  {
-    id: 'calculationDate',
-    pattern: /^the calculation date is "([^"]+)"$/,
-    extract: (match) => ({ type: 'calculationDate', value: match[1] }),
-  },
-  {
-    id: 'parameterString',
-    pattern: /^parameter "([^"]+)" is "([^"]*)"$/,
-    extract: (match) => ({ type: 'parameter', name: match[1], value: match[2] }),
-  },
-  {
-    id: 'parameterNumeric',
-    pattern: /^parameter "([^"]+)" is (-?\d+(?:\.\d+)?)$/,
-    extract: (match) => ({ type: 'parameter', name: match[1], value: parseValue(match[2]) }),
-  },
-  {
-    id: 'parameterTable',
-    pattern: /^the following parameters:$/,
-    extract: (_match, step) => ({
-      type: 'parameterTable',
-      parameters: tableToParams(step.dataTable),
-    }),
-  },
-  // cucumber-rs grammar used by the .feature files in this repo's features/
-  // directory. The table has no header row — every row is a (name, value).
-  {
-    id: 'citizenDataTable',
-    pattern: /^a citizen with the following data:$/,
-    extract: (_match, step) => ({
-      type: 'parameterTable',
-      parameters: noHeaderTableToParams(step.dataTable),
-    }),
-  },
-  {
-    id: 'dependency',
-    pattern: /^law "([^"]+)" is loaded$/,
-    extract: (match) => ({ type: 'dependency', lawId: match[1] }),
-  },
-  {
-    id: 'dataSource',
-    pattern: /^the following "([^"]+)" data with key "([^"]+)":$/,
-    extract: (match, step) => ({
-      type: 'dataSource',
-      sourceName: match[1],
-      keyField: match[2],
-      headers: step.dataTable?.[0] || [],
-      rows: step.dataTable?.slice(1) || [],
-    }),
-  },
-  {
-    id: 'dataSourceRust',
-    pattern: /^the following (\w+) "([^"]+)" data:$/,
-    extract: (match, step) => ({
-      type: 'dataSource',
-      sourceName: `${match[1]}_${match[2]}`,
-      keyField: step.dataTable?.[0]?.[0] || 'id',
-      headers: step.dataTable?.[0] || [],
-      rows: step.dataTable?.slice(1) || [],
-    }),
-  },
-  {
-    id: 'evaluate',
-    pattern: /^I evaluate "([^"]+)" of "([^"]+)"$/,
-    extract: (match) => ({ type: 'execution', outputName: match[1], lawId: match[2] }),
-  },
-  // cucumber-rs grammar: comma-separated outputs collapse to the first one;
-  // the editor's execution model is single-output. Sufficient for the form
-  // to wire up an execution + show a result.
-  {
-    id: 'executeLawForOutputs',
-    pattern: /^the law "([^"]+)" is executed for outputs "([^"]+)"$/,
-    extract: (match) => ({
-      type: 'execution',
-      outputName: match[2].split(',')[0].trim(),
-      lawId: match[1],
-    }),
-  },
-  {
-    id: 'succeeds',
-    pattern: /^the execution succeeds$/,
-    extract: () => ({ type: 'assertion', assertionType: 'succeeds' }),
-  },
-  {
-    id: 'fails',
-    pattern: /^the execution fails$/,
-    extract: () => ({ type: 'assertion', assertionType: 'fails' }),
-  },
-  {
-    id: 'failsWith',
-    pattern: /^the execution fails with "([^"]+)"$/,
-    extract: (match) => ({ type: 'assertion', assertionType: 'failsWith', value: match[1] }),
-  },
-  {
-    id: 'outputTrue',
-    pattern: /^output "([^"]+)" is true$/,
-    extract: (match) => ({ type: 'assertion', assertionType: 'boolean', outputName: match[1], value: true }),
-  },
-  {
-    id: 'outputFalse',
-    pattern: /^output "([^"]+)" is false$/,
-    extract: (match) => ({ type: 'assertion', assertionType: 'boolean', outputName: match[1], value: false }),
-  },
-  {
-    id: 'outputEqualsNumeric',
-    pattern: /^output "([^"]+)" equals (-?\d+(?:\.\d+)?)$/,
-    extract: (match) => ({ type: 'assertion', assertionType: 'equals', outputName: match[1], value: parseValue(match[2]) }),
-  },
-  {
-    id: 'outputEqualsString',
-    pattern: /^output "([^"]+)" equals "([^"]*)"$/,
-    extract: (match) => ({ type: 'assertion', assertionType: 'equalsString', outputName: match[1], value: match[2] }),
-  },
-  {
-    id: 'outputNull',
-    pattern: /^output "([^"]+)" is null$/,
-    extract: (match) => ({ type: 'assertion', assertionType: 'null', outputName: match[1] }),
-  },
-  {
-    id: 'outputContains',
-    pattern: /^output "([^"]+)" contains "([^"]+)"$/,
-    extract: (match) => ({ type: 'assertion', assertionType: 'contains', outputName: match[1], value: match[2] }),
-  },
-  // cucumber-rs grammar variants: "the output ..." prefix + quoted booleans.
-  // The quoted-boolean pattern must come before the generic quoted-string
-  // pattern so "true"/"false" classify as boolean assertions.
-  {
-    id: 'outputTheBoolQuoted',
-    pattern: /^the output "([^"]+)" is "(true|false)"$/,
-    extract: (match) => ({
-      type: 'assertion',
-      assertionType: 'boolean',
-      outputName: match[1],
-      value: match[2] === 'true',
-    }),
-  },
-  {
-    id: 'outputTheEqualsNumeric',
-    pattern: /^the output "([^"]+)" is "(-?\d+(?:\.\d+)?)"$/,
-    extract: (match) => ({
-      type: 'assertion',
-      assertionType: 'equals',
-      outputName: match[1],
-      value: parseValue(match[2]),
-    }),
-  },
-  {
-    id: 'outputTheEqualsString',
-    pattern: /^the output "([^"]+)" is "([^"]*)"$/,
-    extract: (match) => ({
-      type: 'assertion',
-      assertionType: 'equalsString',
-      outputName: match[1],
-      value: match[2],
-    }),
-  },
-];
+// Emit-templates keyed by grammar entry id, and a capitalized keyword prefix
+// (Given/When/Then) per entry id - both derived from GRAMMAR so phrasing and
+// keyword stay single-sourced.
+const TPL = Object.fromEntries(GRAMMAR.map((e) => [e.id, e.template]));
+const KW = Object.fromEntries(
+  GRAMMAR.map((e) => [e.id, e.keyword.charAt(0).toUpperCase() + e.keyword.slice(1)]),
+);
+
+// --- Extraction: classify a step line into a form-state fragment ---
+//
+// We reuse the GENERATED patterns (the drift surface) and keep only the
+// extraction → form-state mapping hand-written, keyed on the grammar `action`.
+// The editor consumes the `core` tier only.
+const CORE_ENTRIES = GRAMMAR.filter((e) => e.tier === 'core');
+
+/**
+ * Extract a form-state fragment from a matched core grammar entry.
+ * Disambiguates the two parameter forms by entry id (string vs number).
+ */
+function extractFragment(entry, match, step) {
+  switch (entry.action) {
+    case 'set_calculation_date':
+      return { type: 'calculationDate', value: match[1] };
+    case 'load_law':
+      return { type: 'dependency', lawId: match[1] };
+    case 'set_parameter':
+      return {
+        type: 'parameter',
+        name: match[1],
+        value: entry.id === 'set_parameter_number' ? parseValue(match[2]) : match[2],
+      };
+    case 'set_parameters_table':
+      return { type: 'parameterTable', parameters: tableToParams(step.dataTable) };
+    case 'set_data_source':
+      return {
+        type: 'dataSource',
+        sourceName: match[1],
+        keyField: match[2],
+        headers: step.dataTable?.[0] || [],
+        rows: step.dataTable?.slice(1) || [],
+      };
+    case 'evaluate':
+      return { type: 'execution', outputName: match[1], lawId: match[2] };
+    case 'assert_succeeds':
+      return { type: 'assertion', assertionType: 'succeeds' };
+    case 'assert_fails':
+      return { type: 'assertion', assertionType: 'fails' };
+    case 'assert_fails_with':
+      return { type: 'assertion', assertionType: 'failsWith', value: match[1] };
+    case 'assert_boolean':
+      return {
+        type: 'assertion',
+        assertionType: 'boolean',
+        outputName: match[1],
+        value: entry.id === 'assert_boolean_true',
+      };
+    case 'assert_equals':
+      return entry.id === 'assert_equals_number'
+        ? { type: 'assertion', assertionType: 'equals', outputName: match[1], value: parseValue(match[2]) }
+        : { type: 'assertion', assertionType: 'equalsString', outputName: match[1], value: match[2] };
+    case 'assert_null':
+      return { type: 'assertion', assertionType: 'null', outputName: match[1] };
+    case 'assert_contains':
+      return { type: 'assertion', assertionType: 'contains', outputName: match[1], value: match[2] };
+    default:
+      return null;
+  }
+}
 
 function tableToParams(dataTable) {
   if (!dataTable || dataTable.length < 2) return [];
@@ -175,21 +87,12 @@ function tableToParams(dataTable) {
   }));
 }
 
-// cucumber-rs "citizen data" tables have no header row.
-function noHeaderTableToParams(dataTable) {
-  if (!dataTable || dataTable.length === 0) return [];
-  return dataTable.map((row) => ({
-    name: row[0],
-    value: parseValue(row[1] || ''),
-  }));
-}
-
 function classifyStep(step) {
   const text = step.text;
-  for (const def of PATTERNS) {
-    const match = text.match(def.pattern);
+  for (const entry of CORE_ENTRIES) {
+    const match = text.match(entry.pattern);
     if (match) {
-      return def.extract(match, step);
+      return extractFragment(entry, match, step);
     }
   }
   return null;
@@ -387,7 +290,7 @@ export function syncEditedValues(formState, scenarioIndex, values) {
       // Update existing scenario-level parameter
       scenario.setup.parameters[scenarioParamMap.get(name)].value = value;
     } else if (bgParamMap.has(name)) {
-      // Background param — add scenario override only if value differs
+      // Background param - add scenario override only if value differs
       const bgValue = bgParamMap.get(name).value;
       if (String(bgValue) !== String(value)) {
         scenario.setup.parameters.push({ name, value });
@@ -395,7 +298,7 @@ export function syncEditedValues(formState, scenarioIndex, values) {
     }
   }
 
-  // Drop scenario-level overrides that now match the background — otherwise
+  // Drop scenario-level overrides that now match the background - otherwise
   // a save/edit/save cycle accumulates redundant `Given parameter ...` steps.
   scenario.setup.parameters = scenario.setup.parameters.filter((p) => {
     if (!bgParamMap.has(p.name)) return true;
@@ -417,12 +320,12 @@ export function syncEditedValues(formState, scenarioIndex, values) {
         // Update existing scenario-level data source in place
         scenario.setup.dataSources[scenarioDsMap.get(stateDs.sourceName)] = stateDs;
       } else if (bgDsMap.has(stateDs.sourceName)) {
-        // Background data source — add scenario override only if it differs
+        // Background data source - add scenario override only if it differs
         if (!dataSourcesEqual(bgDsMap.get(stateDs.sourceName), stateDs)) {
           scenario.setup.dataSources.push(stateDs);
         }
       } else {
-        // Wholly new data source — add at scenario level
+        // Wholly new data source - add at scenario level
         scenario.setup.dataSources.push(stateDs);
       }
     }
@@ -436,7 +339,7 @@ export function syncEditedValues(formState, scenarioIndex, values) {
 
   // Sync calculation date (scenario-level override).
   // Treat `null`, `undefined` and `""` as "user cleared the field" so that
-  // a clear is not silently dropped — otherwise the next save would write
+  // a clear is not silently dropped - otherwise the next save would write
   // the stale date back to the .feature file.
   if (calculationDate !== undefined) {
     const cleared = calculationDate === null || calculationDate === '';
@@ -480,7 +383,7 @@ export function formStateToGherkin(formState) {
   if (formState.background) {
     lines.push('');
     lines.push('  Background:');
-    writeSetupSteps(lines, formState.background, '    ', true);
+    writeSetupSteps(lines, formState.background, '    ');
     writeUnmatchedSteps(lines, formState.background.unmatchedSteps, '    ');
   }
 
@@ -491,16 +394,18 @@ export function formStateToGherkin(formState) {
       lines.push(`  ${scenario.tags.join(' ')}`);
     }
     lines.push(`  Scenario: ${scenario.name}`);
-    writeSetupSteps(lines, scenario.setup, '    ', true);
+    writeSetupSteps(lines, scenario.setup, '    ');
 
     // Execution
     if (scenario.execution) {
-      lines.push(`    When I evaluate "${scenario.execution.outputName}" of "${scenario.execution.lawId}"`);
+      const line = TPL.evaluate([scenario.execution.outputName, scenario.execution.lawId]);
+      lines.push(`    ${KW.evaluate} ${line}`);
     }
 
     // Assertions
     for (const assertion of scenario.assertions) {
-      lines.push(`    Then ${formatAssertion(assertion)}`);
+      const [id, line] = formatAssertion(assertion);
+      lines.push(`    ${KW[id]} ${line}`);
     }
 
     // Unmatched steps
@@ -510,29 +415,27 @@ export function formStateToGherkin(formState) {
   return lines.join('\n') + '\n';
 }
 
-function writeSetupSteps(lines, setup, indent, useGiven) {
-  const keyword = useGiven ? 'Given' : 'And';
-
+function writeSetupSteps(lines, setup, indent) {
+  // All setup phrasings + keywords come from the generated grammar by entry id.
   if (setup.calculationDate) {
-    lines.push(`${indent}${keyword} the calculation date is "${setup.calculationDate}"`);
+    lines.push(`${indent}${KW.set_calculation_date} ${TPL.set_calculation_date([setup.calculationDate])}`);
   }
 
   for (const dep of setup.dependencies || []) {
-    lines.push(`${indent}Given law "${dep}" is loaded`);
+    lines.push(`${indent}${KW.load_law} ${TPL.load_law([dep])}`);
   }
 
   for (const param of setup.parameters || []) {
-    const v = formatValue(param.value);
     if (typeof param.value === 'number') {
-      lines.push(`${indent}Given parameter "${param.name}" is ${v}`);
+      lines.push(`${indent}${KW.set_parameter_number} ${TPL.set_parameter_number([param.name, formatValue(param.value)])}`);
     } else {
-      lines.push(`${indent}Given parameter "${param.name}" is "${v}"`);
+      lines.push(`${indent}${KW.set_parameter_string} ${TPL.set_parameter_string([param.name, formatValue(param.value)])}`);
     }
   }
 
   for (const ds of setup.dataSources || []) {
     if (ds.headers.length === 0) continue;
-    lines.push(`${indent}Given the following "${ds.sourceName}" data with key "${ds.keyField}":`);
+    lines.push(`${indent}${KW.set_data_source} ${TPL.set_data_source([ds.sourceName, ds.keyField])}`);
 
     // Header
     lines.push(`${indent}  | ${ds.headers.join(' | ')} |`);
@@ -561,25 +464,31 @@ function writeUnmatchedSteps(lines, unmatchedSteps, indent) {
   }
 }
 
+/**
+ * Render an assertion to its canonical line via the generated grammar templates.
+ * Returns [grammarEntryId, line] so the caller can prefix the right keyword.
+ */
 function formatAssertion(assertion) {
   switch (assertion.assertionType) {
     case 'succeeds':
-      return 'the execution succeeds';
+      return ['assert_succeeds', TPL.assert_succeeds([])];
     case 'fails':
-      return 'the execution fails';
+      return ['assert_fails', TPL.assert_fails([])];
     case 'failsWith':
-      return `the execution fails with "${assertion.value}"`;
+      return ['assert_fails_with', TPL.assert_fails_with([assertion.value])];
     case 'boolean':
-      return `output "${assertion.outputName}" is ${assertion.value ? 'true' : 'false'}`;
+      return assertion.value
+        ? ['assert_boolean_true', TPL.assert_boolean_true([assertion.outputName])]
+        : ['assert_boolean_false', TPL.assert_boolean_false([assertion.outputName])];
     case 'equals':
-      return `output "${assertion.outputName}" equals ${assertion.value}`;
+      return ['assert_equals_number', TPL.assert_equals_number([assertion.outputName, assertion.value])];
     case 'equalsString':
-      return `output "${assertion.outputName}" equals "${assertion.value}"`;
+      return ['assert_equals_string', TPL.assert_equals_string([assertion.outputName, assertion.value])];
     case 'null':
-      return `output "${assertion.outputName}" is null`;
+      return ['assert_null', TPL.assert_null([assertion.outputName])];
     case 'contains':
-      return `output "${assertion.outputName}" contains "${assertion.value}"`;
+      return ['assert_contains', TPL.assert_contains([assertion.outputName, assertion.value])];
     default:
-      return `unknown assertion: ${assertion.assertionType}`;
+      throw new Error(`formatAssertion: unhandled assertionType '${assertion.assertionType}' - classifier/serializer out of sync`);
   }
 }

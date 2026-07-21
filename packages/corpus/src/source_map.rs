@@ -81,8 +81,16 @@ impl LoadedLaw {
 /// lowest priority value wins. Equal priority with the same `$id` is an error.
 #[derive(Debug)]
 pub struct SourceMap {
-    /// Laws indexed by `$id`, with provenance metadata.
+    /// Laws indexed by `$id`, with provenance metadata. Holds the single
+    /// "best for today" version per id (see [`SourceMap::insert`]) — the
+    /// shape every existing single-version caller expects.
     laws: HashMap<String, LoadedLaw>,
+    /// *All* versions of each law, indexed by `$id`. Where [`laws`](Self::laws)
+    /// collapses an id to one entry, this keeps every version so the scenario
+    /// dependency loader can hand the engine the full set and let it pick the
+    /// version in force on the scenario's calculation date — not just today's.
+    /// See [`SourceMap::get_law_versions`].
+    versions: HashMap<String, Vec<LoadedLaw>>,
     /// Conflicts that were resolved (for reporting).
     resolved_conflicts: Vec<ConflictResolution>,
 }
@@ -102,6 +110,7 @@ impl SourceMap {
     pub fn new() -> Self {
         Self {
             laws: HashMap::new(),
+            versions: HashMap::new(),
             resolved_conflicts: Vec::new(),
         }
     }
@@ -207,6 +216,10 @@ impl SourceMap {
     fn insert(&mut self, law: LoadedLaw) -> Result<()> {
         let law_id = law.law_id.clone();
 
+        // Record every version (independent of the single-best collapse below)
+        // so the scenario loader can feed the engine the full set.
+        self.insert_version(law.clone());
+
         if let Some(existing) = self.laws.get(&law_id) {
             if existing.source_priority == law.source_priority {
                 // Same source with multiple versions → pick best version
@@ -268,6 +281,48 @@ impl SourceMap {
         }
 
         Ok(())
+    }
+
+    /// Record one version of a law in the per-id version set ([`Self::versions`]).
+    ///
+    /// Versions are keyed by their filename date (`…/{id}/{date}.yaml`). Two
+    /// sources providing the same `$id` for the *same* date collapse to the
+    /// higher-priority source's body (lower `source_priority` wins; ties keep
+    /// the incumbent, mirroring the single-best map's "existing wins on equal
+    /// priority"). A date present in only one source is always kept — so the
+    /// engine sees, e.g., a local always-in-force version *and* central's
+    /// future-dated one, and `select_in` can pick the one in force on the
+    /// scenario date. Undated files share a single slot, resolved the same way.
+    /// Order-independent: the outcome is the same whichever source is indexed
+    /// first. Entries are kept sorted newest-first (undated last) for
+    /// deterministic output; the engine re-sorts on load regardless.
+    ///
+    /// The filename date is a proxy for the body's `valid_from` (the corpus
+    /// convention is `{id}/{valid_from}.yaml`). The engine ultimately re-dedups
+    /// the loaded set by the body `valid_from` field, so a filename/body
+    /// mismatch can at worst pass a redundant body the engine collapses — it
+    /// never drops a genuinely distinct `valid_from`.
+    fn insert_version(&mut self, law: LoadedLaw) {
+        let new_date = extract_date_from_path(&law.file_path);
+        let entries = self.versions.entry(law.law_id.clone()).or_default();
+
+        if let Some(slot) = entries
+            .iter_mut()
+            .find(|e| extract_date_from_path(&e.file_path) == new_date)
+        {
+            if law.source_priority < slot.source_priority {
+                *slot = law;
+            }
+        } else {
+            entries.push(law);
+        }
+
+        // Newest date first; undated entries (None) sort last. This re-sorts on
+        // every insertion — O(N) key allocations per insert, O(N²) to build a
+        // law's set one version at a time — negligible at the corpus's 1–5
+        // versions per law. If version counts ever grow large, prefer a single
+        // deferred sort in `get_law_versions` instead.
+        entries.sort_by_cached_key(|e| std::cmp::Reverse(extract_date_from_path(&e.file_path)));
     }
 
     /// Load a single fetched file (from GitHub or other remote) into the map.
@@ -383,6 +438,18 @@ impl SourceMap {
         self.laws.get(law_id)
     }
 
+    /// Get *all* versions of a law by ID, newest-first (undated last).
+    ///
+    /// Unlike [`Self::get_law`] (one "best for today" entry), this returns the
+    /// full version set across sources so the scenario dependency loader can
+    /// hand the engine every version and let `select_in` pick the one in force
+    /// on the scenario's calculation date. Returns `None` only when no version
+    /// of the id is indexed. Bodies of metadata-only (GitHub) entries are empty
+    /// until lazily fetched via each entry's `relative_path`.
+    pub fn get_law_versions(&self, law_id: &str) -> Option<&[LoadedLaw]> {
+        self.versions.get(law_id).map(Vec::as_slice)
+    }
+
     /// Update the cached YAML content for an existing law. Used after the
     /// editor persists an edit through [`crate::backend::RepoBackend`], so
     /// subsequent GETs (and dependency walks) see the new text without
@@ -395,17 +462,37 @@ impl SourceMap {
     /// left untouched. If the caller writes a new file under a different
     /// `$id` that's a different operation (unsupported via this hook).
     pub fn update_yaml_content(&mut self, law_id: &str, new_content: String) -> bool {
-        let Some(law) = self.laws.get_mut(law_id) else {
-            return false;
+        // Parse only once the law is known to be present — an unknown id is a
+        // no-op, so don't pay for header parsing on that path. The borrow on
+        // `laws` is released at the end of the block so the `versions` entry
+        // (which reuses the derived fields) can be updated next.
+        let (file_path, name, display_name, implements) = {
+            let Some(law) = self.laws.get_mut(law_id) else {
+                return false;
+            };
+            let name = extract_law_name(&new_content);
+            let (display_name, implements) = derive_loaded_fields(&new_content);
+            law.name = name.clone();
+            law.display_name = display_name.clone();
+            law.implements = implements.clone();
+            law.yaml_content = new_content.clone();
+            // The in-memory content no longer matches the blob the source
+            // enumeration reported — drop the stale content identity.
+            law.content_sha = None;
+            (law.file_path.clone(), name, display_name, implements)
         };
-        law.name = extract_law_name(&new_content);
-        let (display_name, implements) = derive_loaded_fields(&new_content);
-        law.display_name = display_name;
-        law.implements = implements;
-        law.yaml_content = new_content;
-        // The in-memory content no longer matches the blob the source
-        // enumeration reported — drop the stale content identity.
-        law.content_sha = None;
+
+        // Keep the matching version entry coherent with the edited body so the
+        // version-set loader (`get_law_versions`) reflects read-your-writes too.
+        if let Some(entries) = self.versions.get_mut(law_id) {
+            if let Some(v) = entries.iter_mut().find(|v| v.file_path == file_path) {
+                v.name = name;
+                v.display_name = display_name;
+                v.implements = implements;
+                v.yaml_content = new_content;
+                v.content_sha = None;
+            }
+        }
         true
     }
 
@@ -1068,6 +1155,100 @@ mod tests {
         let law = map.get_law("my_law").unwrap();
         // 2024 is currently valid, 2099 is future → 2024 wins
         assert!(law.file_path.contains("2024-01-01"));
+    }
+
+    #[test]
+    fn test_get_law_versions_keeps_all_versions_same_source() {
+        let dir = TempDir::new().unwrap();
+
+        write_yaml(dir.path(), "wet/my_law/2024-01-01.yaml", "my_law");
+        write_yaml(dir.path(), "wet/my_law/2025-01-01.yaml", "my_law");
+
+        let source = make_source("local", "Local", dir.path(), 1);
+        let mut map = SourceMap::new();
+        map.load_source(&source).unwrap();
+
+        // `get_law` still collapses to one (the today's-best entry)...
+        assert_eq!(map.len(), 1);
+        // ...but `get_law_versions` exposes the full set, newest-first.
+        let versions = map.get_law_versions("my_law").unwrap();
+        assert_eq!(versions.len(), 2);
+        assert!(versions[0].file_path.contains("2025-01-01"));
+        assert!(versions[1].file_path.contains("2024-01-01"));
+        assert!(map.get_law_versions("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_get_law_versions_unions_across_sources_keeping_future() {
+        // The federation bug shape: a higher-priority source has only an
+        // in-force version, a lower-priority source additionally has a
+        // future-dated one. `get_law` returns the priority winner (the
+        // in-force local copy), but the engine must *also* see the future
+        // version so a scenario as-of a later date can resolve it — and the
+        // future version must NOT shadow the in-force one for earlier dates.
+        let local_dir = TempDir::new().unwrap();
+        let central_dir = TempDir::new().unwrap();
+
+        write_yaml(local_dir.path(), "wet/my_law/2025-01-01.yaml", "my_law");
+        write_yaml(central_dir.path(), "wet/my_law/2025-01-01.yaml", "my_law");
+        write_yaml(central_dir.path(), "wet/my_law/2099-01-01.yaml", "my_law");
+
+        let local = make_source("local", "Local", local_dir.path(), 1);
+        let central = make_source("central", "Central", central_dir.path(), 2);
+
+        let mut map = SourceMap::new();
+        map.load_source(&local).unwrap();
+        map.load_source(&central).unwrap();
+
+        // Single-best collapse: local (priority 1) wins the contested 2025 date.
+        assert_eq!(map.get_law("my_law").unwrap().source_id, "local");
+
+        // Version set: the union across sources — one entry per date, with the
+        // 2025 date resolved to the higher-priority (local) body.
+        let versions = map.get_law_versions("my_law").unwrap();
+        assert_eq!(versions.len(), 2, "expected the 2025 + 2099 union");
+        let v2025 = versions
+            .iter()
+            .find(|v| v.file_path.contains("2025-01-01"))
+            .unwrap();
+        assert_eq!(v2025.source_id, "local", "2025 date won by priority");
+        assert!(
+            versions.iter().any(|v| v.file_path.contains("2099-01-01")),
+            "central's future version must be kept, not dropped"
+        );
+    }
+
+    #[test]
+    fn test_get_law_versions_priority_order_independent() {
+        // Mirrors `..._unions_across_sources_keeping_future` (local 2025 +
+        // central 2025 + central 2099) but indexes central FIRST, so this
+        // exercises both order-independent behaviours at once: the contested
+        // 2025 date still resolves to the higher-priority local body, and
+        // central's future 2099 version is still kept in the union.
+        let local_dir = TempDir::new().unwrap();
+        let central_dir = TempDir::new().unwrap();
+        write_yaml(local_dir.path(), "wet/my_law/2025-01-01.yaml", "my_law");
+        write_yaml(central_dir.path(), "wet/my_law/2025-01-01.yaml", "my_law");
+        write_yaml(central_dir.path(), "wet/my_law/2099-01-01.yaml", "my_law");
+
+        let local = make_source("local", "Local", local_dir.path(), 1);
+        let central = make_source("central", "Central", central_dir.path(), 2);
+
+        let mut map = SourceMap::new();
+        map.load_source(&central).unwrap();
+        map.load_source(&local).unwrap();
+
+        let versions = map.get_law_versions("my_law").unwrap();
+        assert_eq!(versions.len(), 2, "expected the 2025 + 2099 union");
+        let v2025 = versions
+            .iter()
+            .find(|v| v.file_path.contains("2025-01-01"))
+            .unwrap();
+        assert_eq!(v2025.source_id, "local", "2025 date won by priority");
+        assert!(
+            versions.iter().any(|v| v.file_path.contains("2099-01-01")),
+            "central's future version must be kept regardless of index order"
+        );
     }
 
     #[test]

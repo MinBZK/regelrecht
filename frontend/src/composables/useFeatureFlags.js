@@ -1,5 +1,5 @@
 /**
- * useFeatureFlags — singleton feature flag store with API sync.
+ * useFeatureFlags - singleton feature flag store with API sync.
  *
  * Fetches flags from /api/feature-flags on first use, falls back to
  * hardcoded defaults when the API is unavailable (e.g. no database).
@@ -13,11 +13,12 @@ const DEFAULTS = {
   'panel.scenario_form': true,
   'panel.yaml_editor': true,
   'panel.machine_readable': true,
-  // "Tekst viewer + notities" pane (RFC-005/RFC-018): a read-only article-text
-  // view with resolved note highlights + inline note authoring, separate from
-  // the editable Tekst editor. Off by default until the feature is past the
-  // display-only MVP and the corpus has notes for more than one law.
-  'panel.notes': false,
+  'panel.notes': true,
+  // Per-user GitHub OAuth link (spike, PR #887): gates the "Koppel
+  // GitHub-account" affordance in the account menu. Off by default so the
+  // spike stays invisible until a user opts in; the backend is independently
+  // gated on GITHUB_OAUTH_* env vars (unconfigured deployments never show it).
+  'github.user_oauth': false,
 };
 
 // Local overrides survive refresh when the backend has no persistence (dev).
@@ -51,9 +52,12 @@ async function loadFlags() {
       const server = await apiFetchJson('/api/feature-flags', {
         errorMessage: (status) => `HTTP ${status}`,
       });
-      // Server values are the base; local overrides win so user toggles
-      // survive refreshes when the backend can't persist (503 path below).
-      flags.value = { ...DEFAULTS, ...server, ...loadLocal() };
+      // The server (DB) is authoritative for any flag it returns, so it wins
+      // over a stale local override - otherwise a client toggle saved during a
+      // no-DB session would silently beat a later DB-backed (e.g. admin-set)
+      // value. A local override only fills in flags the server does not define,
+      // which is the no-DB (503) survival path below.
+      flags.value = { ...DEFAULTS, ...loadLocal(), ...server };
     } catch (e) {
       console.warn('Failed to load feature flags, using defaults:', e.message);
       flags.value = { ...DEFAULTS, ...loadLocal() };
@@ -86,14 +90,14 @@ async function toggle(key) {
       saveLocal({ ...loadLocal(), [key]: newValue });
       return;
     }
-    // Clear any stale local override for this key — server is now authoritative.
+    // Clear any stale local override for this key - server is now authoritative.
     const local = loadLocal();
     if (key in local) {
       delete local[key];
       saveLocal(local);
     }
     const updated = await res.json();
-    flags.value = { ...DEFAULTS, ...updated, ...loadLocal() };
+    flags.value = { ...DEFAULTS, ...loadLocal(), ...updated };
   } catch (e) {
     // A write can fail two ways. In OIDC-off dev the PUT 401s because the dev
     // session has no auth, and there is no server state to contradict an

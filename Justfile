@@ -57,9 +57,17 @@ validate *FILES:
 validate-annotations *FILES:
     script/validate-annotations.sh {{FILES}}
 
+# Schema↔model conformance suite — proves the Rust law-model conforms to the
+# canonical schema.json. Standalone helper; `just test` already runs it via
+# --all-features. Needs the `validate` feature (jsonschema). See
+# packages/engine/tests/conformance/README.md.
+conformance:
+    cd packages && {{ci_flags}} cargo test -p regelrecht-engine --features validate --test conformance
+
 # Run all quality checks (format + lint + check + validate + validate-annotations + tests)
 # Note: pipeline-integration-test excluded — it requires Docker (testcontainers)
-check: format lint build-check validate validate-annotations test harvester-test pipeline-test admin-fmt admin-lint admin-check admin-test admin-frontend editor-api-fmt editor-api-lint editor-api-check
+# Note: the conformance suite runs as part of `test` (cargo test --all-features).
+check: format lint build-check validate validate-annotations test harvester-test pipeline-test admin-fmt admin-lint admin-check admin-test editor-api-fmt editor-api-lint editor-api-check
 
 # --- Tests ---
 
@@ -70,6 +78,11 @@ test:
 # Run Rust BDD tests
 bdd:
     cd packages/engine && {{ci_flags}} cargo test --test bdd -- --nocapture
+
+# Regenerate all BDD step bindings from bdd/grammar.yaml
+bdd-codegen:
+    node bdd/codegen/gen-js.mjs
+    @echo "Rust bindings regenerate automatically via build.rs on next cargo build"
 
 # Run BDD tests with execution trace output (writes box-drawing traces to trace_output/)
 bdd-trace:
@@ -88,8 +101,8 @@ pipeline-test:
 pipeline-integration-test:
     cd packages/pipeline && {{ci_flags}} cargo test --test '*'
 
-# Run all tests (engine + harvester + pipeline unit + pipeline integration)
-test-all: test harvester-test pipeline-test pipeline-integration-test
+# Run all tests (engine + harvester + pipeline unit + pipeline integration + editor-api)
+test-all: test harvester-test pipeline-test pipeline-integration-test editor-api-test
 
 # --- Mutation testing ---
 
@@ -118,19 +131,18 @@ bench-compare BASE:
 # Run security audit on all dependencies (vulnerabilities, licenses, sources)
 audit:
     cd packages && cargo deny check --config ../deny.toml
-    cd frontend && npm audit
-    cd frontend && npx license-checker --production --failOn "GPL-2.0;GPL-3.0;AGPL-1.0;AGPL-3.0;SSPL-1.0;BUSL-1.1"
-    cd packages/admin/frontend-src && npm audit
+    # One npm workspace at the repo root covers all three frontends + the shared
+    # package, so audit/license-check the whole hoisted tree once. (license-checker
+    # drops --production because the workspace root has no production deps of its
+    # own; the whole-tree scan is strictly broader coverage.)
+    npm audit
+    npx license-checker --failOn "GPL-2.0;GPL-3.0;AGPL-1.0;AGPL-3.0;SSPL-1.0;BUSL-1.1"
 
 # --- Admin ---
 
 # Run admin API locally (requires DATABASE_SERVER_FULL env var)
 admin:
     cd packages && cargo run --package regelrecht-admin
-
-# Build admin frontend
-admin-frontend:
-    cd packages/admin/frontend-src && npm ci && npm run build
 
 # Check admin Rust code
 admin-check:
@@ -177,8 +189,14 @@ editor-api-lint:
 editor-api-fmt:
     cd packages && cargo fmt --check --package regelrecht-editor-api
 
-# Run editor API integration tests (requires Docker for testcontainers).
-# Excluded from `just check` for the same reason `pipeline-integration-test` is.
+# Run ALL editor API tests: src unit tests + tests/*.rs integration tests
+# (the latter require Docker for testcontainers). This is what CI runs on
+# editor-api changes; excluded from `just check` for the same reason
+# `pipeline-integration-test` is.
+editor-api-test:
+    cd packages && {{ci_flags}} cargo test --package regelrecht-editor-api
+
+# Run editor API integration tests only (requires Docker for testcontainers).
 editor-api-integration-test:
     cd packages && {{ci_flags}} cargo test --package regelrecht-editor-api --test '*'
 
@@ -281,7 +299,6 @@ dev:
     dev_compose_up postgres prometheus grafana
     dev_wait_postgres
 
-    if dev_ensure_deps packages/admin/frontend-src "admin frontend"; then admin_fe=true; else admin_fe=false; fi
     if dev_ensure_deps frontend "editor frontend"; then editor_fe=true; else editor_fe=false; fi
 
     rm -f "$PIDFILE"
@@ -290,10 +307,6 @@ dev:
     dev_start "admin API (cargo watch on :8000)" .dev-admin.log \
       "DATABASE_URL='$db_url' RUST_LOG='${RUST_LOG:-info}' cargo watch -C packages -x 'run --package regelrecht-admin'"
 
-    if [ "$admin_fe" = true ]; then
-        dev_start "admin frontend (vite on :3001)" .dev-admin-frontend.log \
-          "cd packages/admin/frontend-src && npx vite"
-    fi
     if [ "$editor_fe" = true ]; then
         dev_start "editor frontend (vite on :3000)" .dev-editor.log \
           "cd frontend && npx vite"
@@ -308,18 +321,12 @@ dev:
     if [ "$editor_fe" = true ]; then
         echo "  Editor:     http://localhost:3000     (hot reload)"
     fi
-    if [ "$admin_fe" = true ]; then
-        echo "  Admin UI:   http://localhost:3001     (hot reload, proxies API to :8000)"
-    fi
     echo   "  Admin API:  http://localhost:8000     (auto-recompile on save)"
     echo   "  Grafana:    http://localhost:${GRAFANA_PORT:-3002}"
     echo   "  Prometheus: http://localhost:${PROMETHEUS_PORT:-9090}"
     echo   "  PostgreSQL: localhost:${POSTGRES_PORT:-5433}"
     printf "\n"
     printf "  ${dim}Admin API log:${reset}      tail -f .dev-admin.log\n"
-    if [ "$admin_fe" = true ]; then
-        printf "  ${dim}Admin frontend log:${reset} tail -f .dev-admin-frontend.log\n"
-    fi
     if [ "$editor_fe" = true ]; then
         printf "  ${dim}Editor log:${reset}         tail -f .dev-editor.log\n"
     fi
@@ -328,8 +335,8 @@ dev:
     printf "  ${dim}Stop everything:${reset}    just dev-down\n"
 
 # Vite ports default to 7300/7400/7500 (the redirect URIs already registered on
-# the regelrecht-local Keycloak client); override via EDITOR_PORT / ADMIN_FE_PORT
-# / LAWMAKING_PORT. No grafana / prometheus / workers are started.
+# the regelrecht-local Keycloak client); override via EDITOR_PORT /
+# LAWMAKING_PORT. No grafana / prometheus / workers are started.
 #
 # Frontend-focused dev: start only what a frontend needs (backend, DB, WASM, vite). No arg = all frontends; APP = editor | admin | lawmaking | all
 dev-frontend APP="all":
@@ -355,11 +362,18 @@ dev-frontend APP="all":
     # Vite (browser-facing) ports — overridable. Editor stays 7300 unless you
     # also update BASE_URL in .env.sso-local and the Keycloak redirect URI.
     editor_port="${EDITOR_PORT:-7300}"
-    admin_fe_port="${ADMIN_FE_PORT:-7400}"
     lawmaking_port="${LAWMAKING_PORT:-7500}"
     # In 'all', editor-api keeps :8000 and admin moves to :8001 to avoid the clash.
     admin_api_port=8000
     if [ "$app" = all ]; then admin_api_port=8001; fi
+    # When both editor and admin run (i.e. 'all'), point editor-api's
+    # harvester-admin proxy at the local admin API so the editor's Corpusinwinning
+    # section reaches it. In editor-only mode the proxy is unset and the Corpusinwinning
+    # screens 503 (run `just dev-frontend all` for the full harvester flow).
+    harvest_admin_env=""
+    if [ "$run_admin" = true ]; then
+        harvest_admin_env="HARVEST_ADMIN_URL=http://localhost:${admin_api_port} "
+    fi
 
     if [ "$run_editor" = true ] || [ "$run_admin" = true ]; then
         dev_preflight --rust --node
@@ -390,20 +404,20 @@ dev-frontend APP="all":
             # .env.sso-local inside the backgrounded shell so the OIDC /
             # DATABASE_URL / BASE_URL it sets scope to editor-api only.
             dev_start "editor-api (:8000, OIDC)" .dev-editor-api.log \
-              "set -a; . ./.env.sso-local; set +a; cd packages && cargo run --package regelrecht-editor-api"
+              "set -a; . ./.env.sso-local; set +a; cd packages && ${harvest_admin_env}cargo run --package regelrecht-editor-api"
             dev_start "editor vite (:${editor_port})" .dev-editor.log \
               "cd frontend && API_PORT=8000 npx vite --port ${editor_port} --strictPort --host 0.0.0.0"
         fi
     fi
 
+    # Admin is now an API-only service (its dashboard UI moved into the editor's
+    # Corpusinwinning section). In 'all' mode the editor-api proxies to it via
+    # HARVEST_ADMIN_URL (set on the editor-api above), so the harvester screens
+    # work end-to-end through the editor at :${editor_port}.
     if [ "$run_admin" = true ]; then
-        if dev_ensure_deps packages/admin/frontend-src "admin frontend"; then
-            db_url="postgres://regelrecht:regelrecht_dev@${DB_HOST:-localhost}:${POSTGRES_PORT:-5433}/regelrecht_pipeline"
-            dev_start "admin API (:${admin_api_port})" .dev-admin.log \
-              "cd packages && DATABASE_URL='$db_url' RUST_LOG='${RUST_LOG:-info}' ADMIN_PORT=${admin_api_port} cargo run --package regelrecht-admin"
-            dev_start "admin vite (:${admin_fe_port})" .dev-admin-frontend.log \
-              "cd packages/admin/frontend-src && API_PORT=${admin_api_port} npx vite --port ${admin_fe_port} --strictPort --host 0.0.0.0"
-        fi
+        db_url="postgres://regelrecht:regelrecht_dev@${DB_HOST:-localhost}:${POSTGRES_PORT:-5433}/regelrecht_pipeline"
+        dev_start "admin API (:${admin_api_port})" .dev-admin.log \
+          "cd packages && DATABASE_URL='$db_url' RUST_LOG='${RUST_LOG:-info}' ADMIN_PORT=${admin_api_port} cargo run --package regelrecht-admin"
     fi
 
     if [ "$run_lawmaking" = true ]; then
@@ -422,7 +436,7 @@ dev-frontend APP="all":
         echo "  Editor:     http://localhost:${editor_port}     (vite HMR → editor-api :8000, SSO)"
     fi
     if [ "$run_admin" = true ]; then
-        echo "  Admin UI:   http://localhost:${admin_fe_port}     (vite HMR → admin API :${admin_api_port})"
+        echo "  Admin API:  http://localhost:${admin_api_port}     (harvester API; UI is the editor's Corpusinwinning section)"
     fi
     if [ "$run_lawmaking" = true ]; then
         echo "  Lawmaking:  http://localhost:${lawmaking_port}     (vite HMR, no backend)"

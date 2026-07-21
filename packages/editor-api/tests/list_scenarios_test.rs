@@ -37,10 +37,13 @@ fn empty_state(pool: PgPool) -> AppState {
         config: Arc::new(AppConfig {
             oidc: None,
             base_url: None,
+            github_oauth: None,
+            task_enrich_provider: "claude".to_string(),
         }),
         http_client: reqwest::Client::new(),
         pool: Some(pool),
         pipeline_api_url: None,
+        harvest_admin_url: None,
         reload_lock: Arc::new(Mutex::new(())),
         trajects: Arc::new(TrajectCorpusCache::new()),
     }
@@ -228,10 +231,13 @@ async fn list_scenarios_global_returns_target_law_ids() {
         config: Arc::new(AppConfig {
             oidc: None,
             base_url: None,
+            github_oauth: None,
+            task_enrich_provider: "claude".to_string(),
         }),
         http_client: reqwest::Client::new(),
         pool: None,
         pipeline_api_url: None,
+        harvest_admin_url: None,
         reload_lock: Arc::new(Mutex::new(())),
         trajects: Arc::new(TrajectCorpusCache::new()),
     };

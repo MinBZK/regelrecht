@@ -19,20 +19,29 @@ use tower_sessions_sqlx_store::PostgresStore;
 mod accounts;
 mod config;
 mod corpus_handlers;
+mod crypto;
 mod favorites;
 mod feature_flags;
+mod github_oauth;
 mod harvest_proxy;
 mod middleware;
 mod state;
+mod task_requests;
+mod tasks_api;
 mod traject_corpus;
 mod trajects;
+mod user_notes;
 mod user_settings;
 
 use state::{AppState, CorpusState};
 
 #[tokio::main]
 async fn main() {
-    regelrecht_shared::telemetry::init_subscriber("info");
+    // The editor is the service that wants the write/build-path latency
+    // breakdown, so it opts *itself* into span-close timing logs (passing
+    // `true`), while the shared subscriber leaves them off by default for
+    // the hot-path workers. `LOG_SPAN_EVENTS` still overrides at runtime.
+    regelrecht_shared::telemetry::init_subscriber_with_spans("info", true);
 
     let app_config = config::AppConfig::from_env();
 
@@ -67,6 +76,8 @@ async fn main() {
     let hostname = env::var("HOSTNAME").ok();
     let pipeline_api_url =
         resolve_pipeline_api_url(hostname.as_deref(), env::var("PIPELINE_API_URL").ok());
+    let harvest_admin_url =
+        resolve_harvest_admin_url(hostname.as_deref(), env::var("HARVEST_ADMIN_URL").ok());
     let hostname_log = hostname.as_deref().unwrap_or("<none>");
     match &pipeline_api_url {
         Some(url) => {
@@ -75,6 +86,15 @@ async fn main() {
         None => tracing::info!(
             hostname = %hostname_log,
             "no pipeline-api URL configured, harvest proxy disabled"
+        ),
+    }
+    match &harvest_admin_url {
+        Some(url) => {
+            tracing::info!(url = %url, hostname = %hostname_log, "harvester-admin proxy target")
+        }
+        None => tracing::info!(
+            hostname = %hostname_log,
+            "no harvester-admin URL configured, harvest-admin proxy disabled"
         ),
     }
 
@@ -115,6 +135,7 @@ async fn main() {
         http_client,
         pool: pool.clone(),
         pipeline_api_url,
+        harvest_admin_url,
         reload_lock: Arc::new(tokio::sync::Mutex::new(())),
         trajects: Arc::new(traject_corpus::TrajectCorpusCache::new()),
     };
@@ -134,6 +155,10 @@ async fn main() {
         .route(
             "/api/corpus/laws/{law_id}",
             get(corpus_handlers::get_corpus_law),
+        )
+        .route(
+            "/api/corpus/laws/{law_id}/versions",
+            get(corpus_handlers::get_corpus_law_versions),
         )
         .route(
             "/api/corpus/laws/{law_id}/outputs",
@@ -171,6 +196,13 @@ async fn main() {
     const MAX_SCENARIO_BODY: usize = 1024 * 1024;
     const MAX_LAW_BODY: usize = 5 * 1024 * 1024;
     const MAX_DOCUMENT_BODY: usize = 1024 * 1024;
+    // Twice the 64 KiB note-value cap (user_notes::MAX_BODY_VALUE_BYTES):
+    // room for JSON escaping/overhead while still rejecting blobs early.
+    const MAX_NOTE_BODY: usize = 128 * 1024;
+    // Uploaded PDF/Word documents (converted to markdown async). Much larger
+    // than the text caps since it carries a binary; still bounded to reject
+    // oversized files early (Postgres stores the bytes transiently).
+    const MAX_UPLOAD_BODY: usize = 25 * 1024 * 1024;
 
     // Reader routes — `editor-reader` covers user-scoped reads (favorites,
     // settings) and harvest search (search is behind auth because it triggers
@@ -215,6 +247,76 @@ async fn main() {
             middleware::require_role::<AppState>("editor-writer"),
         ));
 
+    // Persoonlijke notities — private per-user notes on a law (Postgres,
+    // never git). Handlers extract `Extension<AccountRecord>`, so
+    // `account_middleware` must run per request, same as traject routes.
+    // Reads at reader tier, mutations at writer tier, mirroring how
+    // favorites/settings split across `reader_routes`/`writer_routes`
+    // (which stay Session-based and therefore don't carry the account
+    // middleware).
+    let user_notes_reader_routes = Router::new()
+        .route("/api/user/notes/{law_id}", get(user_notes::list))
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            accounts::account_middleware,
+        ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_role::<AppState>("editor-reader"),
+        ));
+
+    let user_notes_writer_routes = Router::new()
+        .route(
+            "/api/user/notes/{law_id}",
+            axum::routing::post(user_notes::create)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_NOTE_BODY)),
+        )
+        .route(
+            "/api/user/notes/{law_id}/{note_id}",
+            axum::routing::put(user_notes::update)
+                .delete(user_notes::remove)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_NOTE_BODY)),
+        )
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            accounts::account_middleware,
+        ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_role::<AppState>("editor-writer"),
+        ));
+
+    // Persoonlijke taken (taken-mechanisme) — review-taken van async jobs,
+    // gekoppeld aan het aanvragende account. Zelfde split als user_notes:
+    // reads at reader tier, de afhandeling (mutatie + audit-stempel) at
+    // writer tier, allebei achter `account_middleware` omdat de handlers
+    // `Extension<AccountRecord>` extracten.
+    let tasks_reader_routes = Router::new()
+        .route("/api/tasks", get(tasks_api::list))
+        .route("/api/tasks/{task_id}", get(tasks_api::detail))
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            accounts::account_middleware,
+        ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_role::<AppState>("editor-reader"),
+        ));
+
+    let tasks_writer_routes = Router::new()
+        .route(
+            "/api/tasks/{task_id}/resolve",
+            axum::routing::post(tasks_api::resolve),
+        )
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            accounts::account_middleware,
+        ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_role::<AppState>("editor-writer"),
+        ));
+
     // Admin routes — `editor-admin` covers destructive/global operations
     // (full corpus reload, feature flag toggles).
     let admin_routes = Router::new()
@@ -229,6 +331,23 @@ async fn main() {
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
             middleware::require_role::<AppState>("editor-admin"),
+        ));
+
+    // Harvester-admin proxy — the merged "Beheer" section in the editor reaches
+    // the standalone harvester-admin API through here. A single wildcard route
+    // forwards every method (GET reads, POST enqueue, DELETE) to that service,
+    // rewriting `/api/harvest-admin/<x>` → `/api/<x>` and forwarding the
+    // session cookie. Gated on `harvester-reader` as defence-in-depth; the
+    // harvester-admin service is the real enforcer for writer/admin actions
+    // (writes stay OIDC-only there — editor-api never mints a service token).
+    let harvest_admin_routes = Router::new()
+        .route(
+            "/api/harvest-admin/{*rest}",
+            axum::routing::any(harvest_proxy::proxy_harvest_admin),
+        )
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_role::<AppState>("harvester-reader"),
         ));
 
     // Traject routes — user-scoped CRUD on shared editing sessions plus
@@ -270,6 +389,10 @@ async fn main() {
             get(corpus_handlers::get_traject_corpus_law),
         )
         .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}/versions",
+            get(corpus_handlers::get_traject_corpus_law_versions),
+        )
+        .route(
             "/api/trajects/{traject_ref}/corpus/laws/{law_id}/outputs",
             get(corpus_handlers::list_traject_law_outputs),
         )
@@ -292,6 +415,14 @@ async fn main() {
         .route(
             "/api/trajects/{traject_ref}/corpus/documents",
             get(corpus_handlers::list_traject_documents),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/documents/jobs",
+            get(corpus_handlers::list_traject_document_convert_jobs),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/documents/jobs/{job_id}",
+            axum::routing::delete(corpus_handlers::cancel_traject_document_convert_job),
         )
         .route(
             "/api/trajects/{traject_ref}/corpus/documents/{*doc_path}",
@@ -352,11 +483,47 @@ async fn main() {
                 .layer(axum::extract::DefaultBodyLimit::max(MAX_LAW_BODY)),
         )
         .route(
+            "/api/trajects/{traject_ref}/corpus/documents/upload",
+            axum::routing::post(corpus_handlers::upload_traject_document)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_UPLOAD_BODY)),
+        )
+        .route(
+            // Static segment wins over `{law_id}` in the router, so this
+            // does not shadow the per-law routes.
+            "/api/trajects/{traject_ref}/corpus/laws/upload",
+            axum::routing::post(corpus_handlers::upload_traject_law)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_UPLOAD_BODY)),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws",
+            axum::routing::post(corpus_handlers::create_traject_law)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_LAW_BODY)),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}/enrich",
+            axum::routing::post(task_requests::request_enrich),
+        )
+        .route(
             "/api/trajects/{traject_ref}/corpus/documents/{*doc_path}",
             axum::routing::put(corpus_handlers::save_traject_document)
                 .delete(corpus_handlers::delete_traject_document)
                 .layer(axum::extract::DefaultBodyLimit::max(MAX_DOCUMENT_BODY)),
         )
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            accounts::account_middleware,
+        ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_role::<AppState>("editor-writer"),
+        ));
+
+    // GitHub user-OAuth link flow (spike). Requires an authenticated editor
+    // session with a resolved account (the sealed token cookie is bound to
+    // it), so it sits behind the same account_middleware + writer-role gate as
+    // traject writes. When the feature is unconfigured the handlers themselves
+    // return 501.
+    let github_oauth_routes = github_oauth::github_oauth_routes()
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
             accounts::account_middleware,
@@ -429,9 +596,24 @@ async fn main() {
             .merge(reader_routes)
             .merge(writer_routes)
             .merge(admin_routes)
+            .merge(harvest_admin_routes)
             .merge(traject_reader_routes)
             .merge(traject_writer_routes)
+            .merge(user_notes_reader_routes)
+            .merge(user_notes_writer_routes)
+            .merge(tasks_reader_routes)
+            .merge(tasks_writer_routes)
+            .merge(github_oauth_routes)
+            // Relay is public (no session/account): GitHub redirects the
+            // browser here on the fixed callback host and we 302 it on to the
+            // originating deployment. Must sit OUTSIDE the auth layer.
+            .merge(github_oauth::github_relay_route())
             .with_state(app_state)
+            // Innermost custom layer: wraps the routed handlers most
+            // tightly, so the request-scoped timing recorder is installed
+            // (and read back into the `Server-Timing` header) around the
+            // exact code that records the phases.
+            .layer(axum_middleware::from_fn(middleware::server_timing))
             // Inside the session layer (session loaded) and outside the route
             // role gates (fresh roles / a dropped auth marker are seen by the
             // gate). Innermost .layer() so session_layer wraps it.
@@ -462,9 +644,17 @@ async fn main() {
             .merge(reader_routes)
             .merge(writer_routes)
             .merge(admin_routes)
+            .merge(harvest_admin_routes)
             .merge(traject_reader_routes)
             .merge(traject_writer_routes)
+            .merge(user_notes_reader_routes)
+            .merge(user_notes_writer_routes)
+            .merge(tasks_reader_routes)
+            .merge(tasks_writer_routes)
             .with_state(app_state)
+            // See the auth branch above: innermost layer so the timing
+            // recorder wraps the routed handlers.
+            .layer(axum_middleware::from_fn(middleware::server_timing))
             .layer(session_layer)
             .layer(axum_middleware::from_fn(middleware::security_headers))
             .layer(TraceLayer::new_for_http())
@@ -690,33 +880,25 @@ fn resolve_pipeline_api_url(hostname: Option<&str>, env_url: Option<String>) -> 
         .or(env_url)
 }
 
-/// True when `base_url` is an http (not https) origin pointing at the local
-/// machine. Used to drop the session cookie's `Secure` flag for local SSO dev
-/// (`just editor-sso` over http://localhost) so Safari — which, unlike Chrome
-/// and Firefox, refuses Secure cookies over http://localhost — completes the
-/// OIDC handshake. Production always serves over an https BASE_URL, so this is
-/// false there and cookies stay Secure. A missing or unparseable BASE_URL is
-/// treated as non-local (Secure stays on) — the safe default.
+/// Resolve the standalone harvester-admin API URL, preferring pod HOSTNAME over
+/// an environment override — same rationale and priority as
+/// [`resolve_pipeline_api_url`] (`HOSTNAME` → `HARVEST_ADMIN_URL` → `None`).
 ///
-/// Parses with `url::Url` (the same crate that validates `BASE_URL` at startup)
-/// so the scheme/host extraction matches WHATWG rules: the host is exact (a
-/// look-alike like `http://localhost.attacker.example` or userinfo like
-/// `http://localhost@evil.com` resolves to a non-loopback host and is rejected)
-/// and IPv6 loopback is handled via the typed `Host` enum.
-fn is_http_localhost(base_url: Option<&str>) -> bool {
-    let Some(url) = base_url.and_then(|u| url::Url::parse(u).ok()) else {
-        return false;
-    };
-    if url.scheme() != "http" {
-        return false;
-    }
-    matches!(
-        url.host(),
-        Some(url::Host::Domain("localhost"))
-            | Some(url::Host::Ipv4(std::net::Ipv4Addr::LOCALHOST))
-            | Some(url::Host::Ipv6(std::net::Ipv6Addr::LOCALHOST))
-    )
+/// The harvester-admin service is deployed under ZAD component name
+/// `harvester-admin`, so the in-cluster service is `{deployment}-harvester-admin`.
+/// `HARVEST_ADMIN_URL` is the explicit override for local dev where HOSTNAME
+/// doesn't match the `{deployment}-{component}-{rs}-{pod}` shape.
+fn resolve_harvest_admin_url(hostname: Option<&str>, env_url: Option<String>) -> Option<String> {
+    hostname
+        .and_then(regelrecht_corpus::deployment_from_hostname)
+        .map(|deployment| format!("http://{deployment}-harvester-admin:8000"))
+        .or(env_url)
 }
+
+// `is_http_localhost` (drop the cookie `Secure` flag only for http-localhost
+// local dev) lives in `github_oauth` — the token cookie there and the session
+// cookie here must make the same call. Its exhaustive tests stay below.
+use github_oauth::is_http_localhost;
 
 #[cfg(test)]
 mod pipeline_api_url_tests {
@@ -777,6 +959,52 @@ mod pipeline_api_url_tests {
     fn no_hostname_uses_env_override() {
         let url = resolve_pipeline_api_url(None, Some("http://localhost:8001".to_string()));
         assert_eq!(url.as_deref(), Some("http://localhost:8001"));
+    }
+}
+
+#[cfg(test)]
+mod harvest_admin_url_tests {
+    use super::resolve_harvest_admin_url;
+
+    #[test]
+    fn prod_pod_hostname_derives_regelrecht_harvester_admin() {
+        let url = resolve_harvest_admin_url(Some("regelrecht-editor-abc-xyz"), None);
+        assert_eq!(
+            url.as_deref(),
+            Some("http://regelrecht-harvester-admin:8000")
+        );
+    }
+
+    #[test]
+    fn pr_preview_pod_hostname_derives_pr_harvester_admin() {
+        let url = resolve_harvest_admin_url(Some("pr123-editor-abc-xyz"), None);
+        assert_eq!(url.as_deref(), Some("http://pr123-harvester-admin:8000"));
+    }
+
+    #[test]
+    fn hostname_wins_over_stale_env_var() {
+        let url = resolve_harvest_admin_url(
+            Some("regelrecht-editor-abc-xyz"),
+            Some("http://harvester-admin-pr552:8001".to_string()),
+        );
+        assert_eq!(
+            url.as_deref(),
+            Some("http://regelrecht-harvester-admin:8000")
+        );
+    }
+
+    #[test]
+    fn dev_hostname_falls_back_to_env_override() {
+        let url = resolve_harvest_admin_url(
+            Some("tim-laptop"),
+            Some("http://localhost:8000".to_string()),
+        );
+        assert_eq!(url.as_deref(), Some("http://localhost:8000"));
+    }
+
+    #[test]
+    fn no_hostname_and_no_env_returns_none() {
+        assert!(resolve_harvest_admin_url(None, None).is_none());
     }
 }
 

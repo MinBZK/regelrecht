@@ -3,13 +3,13 @@ title: "Admin Dashboard"
 description: "The web dashboard operators use to monitor and control the harvester pipeline."
 ---
 
-The admin dashboard is a web application for operators to monitor and control the harvester pipeline.
+The harvester-admin service lets operators monitor and control the harvester pipeline. It is a standalone Rust API; its dashboard UI lives inside the editor as the "Corpusinwinning" section (`frontend/src/harvester/`), reached through the editor-api `/api/harvest-admin/*` proxy. The API stays independently addressable for scripts and other services.
 
 ## Overview
 
-- **Language**: Rust (Axum) + Vue 3 (Vite)
-- **Location**: `packages/admin/`
-- **Production URL**: `harvester-admin.regelrecht.rijks.app`
+- **Language**: Rust (Axum), API only
+- **Location**: `packages/admin/` (API); UI in `frontend/src/harvester/`
+- **Production URL**: `harvester-admin.regelrecht.rijks.app` (API); UI at `editor.regelrecht.rijks.app` → Corpusinwinning
 
 ## What it does
 
@@ -17,14 +17,14 @@ The admin dashboard shows pipeline status: pending jobs, running harvests and en
 
 ## Architecture
 
-The backend is a Rust Axum server that connects to PostgreSQL (via the pipeline library) and exposes a REST API. The frontend is a Vue 3 SPA served as static files from the same server.
+The backend is a Rust Axum server that connects to PostgreSQL (via the pipeline library) and exposes a REST API. It no longer serves a SPA; the UI is part of the editor and reaches this API through the editor-api proxy (which forwards the shared session cookie so this service enforces its own `harvester-*` role gates).
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
 | Backend | Rust / Axum | REST API, OIDC auth, Prometheus metrics |
-| Frontend | Vue 3 / Vite | Job and law status UI |
-| Database | PostgreSQL | Shared with pipeline workers |
-| Auth | OIDC (Keycloak) | Operator login |
+| Frontend | Vue 3 (in the editor, `frontend/src/harvester/`) | Job and law status UI, reached via editor-api proxy |
+| Database | PostgreSQL | Shared with pipeline workers (and editor-api session store) |
+| Auth | OIDC (Keycloak) | Operator login; `harvester-*` role gates |
 
 ## Key API endpoints
 
@@ -40,11 +40,15 @@ The backend is a Rust Axum server that connects to PostgreSQL (via the pipeline 
 DATABASE_URL=postgres://user:pass@localhost:5433/regelrecht cargo run -p regelrecht-admin
 ```
 
-The frontend dev server runs separately:
+The dashboard UI is served by the editor. For the full end-to-end flow
+(editor + editor-api proxy + admin API + database) use:
 
 ```bash
-cd packages/admin/frontend-src && npm run dev
+just dev-frontend all
 ```
+
+Then open the editor and choose "Corpusinwinning" from the account menu (visible to any
+`harvester-*` role).
 
 ## Further reading
 

@@ -31,6 +31,28 @@ pub struct WriteContext {
     /// non-editor paths (harvester etc.) which keep the existing
     /// service-only attribution.
     pub author: Option<EditorUser>,
+    /// Per-call GitHub credential that **supersedes** the backend's baked-in
+    /// token for this write only. Set by the editor when the acting user has
+    /// linked their own GitHub account (user-OAuth spike): the write then
+    /// authenticates *as the user*, so GitHub — not the editor — enforces
+    /// whether they may push to the repo. `None` keeps the pre-existing
+    /// behaviour (use the backend's configured token), so every non-editor
+    /// and non-GitHub call site is unaffected.
+    pub token_override: Option<String>,
+}
+
+impl WriteContext {
+    /// Construct a context with no per-call credential override — the common
+    /// case for internal/service call sites that keep using the backend's
+    /// configured token. Editor handlers that thread a per-user token build
+    /// the struct literally instead.
+    pub fn new(message: String, author: Option<EditorUser>) -> Self {
+        Self {
+            message,
+            author,
+            token_override: None,
+        }
+    }
 }
 
 /// A file entry returned by list operations.
@@ -167,6 +189,17 @@ pub trait RepoBackend: Send + Sync {
     /// any side-effects the caller may want to surface (e.g. the PR opened
     /// by a session-mode `GitBackend`).
     async fn persist(&self, ctx: &WriteContext) -> Result<PersistOutcome>;
+
+    /// Whether [`RepoBackend::persist`] honors [`WriteContext::token_override`].
+    ///
+    /// Only a backend that authenticates each persist against GitHub can
+    /// route a write through the acting user's own credential. Backends that
+    /// ignore the override — local checkouts, clone-based git backends with a
+    /// baked-in remote credential — must return `false`, so callers never
+    /// demand a per-user token for a write that could not use one anyway.
+    fn supports_token_override(&self) -> bool {
+        false
+    }
 
     /// Prepare the backend for use (validate directories, clone repos, etc.).
     async fn ensure_ready(&mut self) -> Result<()>;
@@ -1155,6 +1188,7 @@ mod tests {
             .persist(&WriteContext {
                 message: "test".to_string(),
                 author: None,
+                token_override: None,
             })
             .await
             .unwrap();
@@ -1366,6 +1400,7 @@ mod tests {
             .persist(&WriteContext {
                 message: "add test scenario".to_string(),
                 author: None,
+                token_override: None,
             })
             .await
             .unwrap();
@@ -1524,6 +1559,7 @@ mod tests {
                     name: "Anne Schuth".to_string(),
                     email: "anne@example.gov".to_string(),
                 }),
+                token_override: None,
             })
             .await
             .unwrap();
@@ -1603,6 +1639,7 @@ mod tests {
             .persist(&WriteContext {
                 message: "edit".to_string(),
                 author: None,
+                token_override: None,
             })
             .await
             .unwrap();
@@ -1614,6 +1651,7 @@ mod tests {
             .persist(&WriteContext {
                 message: "noop".to_string(),
                 author: None,
+                token_override: None,
             })
             .await
             .unwrap();

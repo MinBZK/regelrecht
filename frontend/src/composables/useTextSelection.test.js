@@ -49,7 +49,7 @@ describe('selectionToRawRange', () => {
   });
 
   it('maps a selection that starts at an element boundary (ol, 0)', () => {
-    // marked renders "<ol>\n<li>..." — childNodes[0] of <ol> is a "\n" text
+    // marked renders "<ol>\n<li>..." - childNodes[0] of <ol> is a "\n" text
     // node with no raw counterpart. A drag starting at the very beginning of
     // the list reports start as (ol, 0); the scan must skip the "\n" and not
     // dead-end. Regression for the element-endpoint-on-whitespace bug.

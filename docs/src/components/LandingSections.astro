@@ -215,10 +215,10 @@ const toc = [
             {t.jobs.items.map((job) => (
               <nldd-card accessible-label={`${t.jobs.vacancyTag}: ${job.title}`}>
                 <nldd-container padding="20">
-                  <div class="rr-tag-row">
+                  <nldd-container layout="wrap" gap="8">
                     <nldd-tag color="accent" size="md">{t.jobs.vacancyTag}</nldd-tag>
                     <nldd-tag color="brand" size="md">{job.organisation}</nldd-tag>
-                  </div>
+                  </nldd-container>
                   <nldd-spacer size="16" />
                   <nldd-title size="3">
                     <h3>{job.title}</h3>
@@ -228,7 +228,7 @@ const toc = [
                     <p>{job.pitch}</p>
                   </nldd-rich-text>
                   <nldd-spacer size="20" />
-                  <div class="rr-tag-row">
+                  <nldd-container layout="wrap" gap="8">
                     {job.meta.map((m) => (
                       <nldd-tag color="neutral" size="md">{m}</nldd-tag>
                     ))}
@@ -239,7 +239,7 @@ const toc = [
                       data-closes-open={t.jobs.closesLabel.open}
                       data-closes-closed={t.jobs.closesLabel.closed}
                     >{t.jobs.closesLabel.open} {closesDate.format(parseIsoDate(job.closes))}</nldd-tag>
-                  </div>
+                  </nldd-container>
                   <nldd-spacer size="24" />
                   <nldd-button-group orientation="horizontal">
                     <nldd-button
@@ -399,13 +399,13 @@ const toc = [
                   {tool.meta && (
                     <Fragment>
                       <nldd-spacer size="8" />
-                      <div class="rr-tag-row">
+                      <nldd-container layout="wrap" gap="8">
                         {tool.meta.split('•').map((tag) => (
                           <nldd-tag color="accent" size="md">
                             {tag.trim()}
                           </nldd-tag>
                         ))}
-                      </div>
+                      </nldd-container>
                     </Fragment>
                   )}
                   <nldd-spacer size="8" />
@@ -571,9 +571,9 @@ const toc = [
             <h2>{t.faq.title}</h2>
           </nldd-title>
           <nldd-spacer size="24" />
-          <nldd-container layout="columns" column-count="1" md-column-count="2" lg-column-count="2" gap="40">
+          <nldd-container layout="lanes" column-count="1" md-column-count="2" lg-column-count="2" gap="16">
             {t.faq.items.map((item) => (
-              <nldd-card class="rr-faq-card" accessible-label={item.q}>
+              <nldd-card accessible-label={item.q}>
                 <nldd-container padding="20">
                   <nldd-title size="4">
                     <h3>{item.q}</h3>

@@ -7,6 +7,11 @@ import { useTrajects } from '../composables/useTrajects.js';
 import { lawsListUrl } from '../composables/corpusUrls.js';
 import { apiFetchJson } from '../lib/apiFetch.js';
 import { useLatest } from '../lib/useLatest.js';
+import { SEARCH_PLACEHOLDER, SEARCH_ACCESSIBLE_LABEL } from '../constants.js';
+
+// Override the list's built-in search-field placeholder (i18n default "Zoeken")
+// so this popover stays in sync with the main search-field in AppShell.
+const listTranslations = { 'components.list.search-placeholder-text': SEARCH_PLACEHOLDER };
 
 const emit = defineEmits(['select-law', 'harvest-available']);
 
@@ -25,14 +30,18 @@ const needsLogin = computed(() => oidcConfigured.value && !authenticated.value);
 const search = ref('');
 const popoverRef = ref(null);
 const useCenteredPosition = ref(true);
-// md only: popover anchors below the trigger button — clicking outside closes
+// md only: popover anchors below the trigger button - clicking outside closes
 // it, so an explicit Sluit button is just clutter. On sm (full-height sheet)
 // and lg (centered overlay) the user needs an explicit way to close.
 const isAnchored = ref(false);
+// The listbox owns its <input>, so we can't bind a `value` prop to seed it.
+// `show(anchor, initialSearch)` stashes the seed here; onPopoverOpen drives it
+// into the input once the field exists (see onPopoverOpen).
+const pendingSearch = ref('');
 
 // Source of truth: @nldd/design-system's `assets/styles/breakpoints.ts`
 // (smMax: 640px, mdMin: 641px, mdMax: 1007px, lgMin: 1008px). Keep in
-// sync until the design system exports breakpoints publicly — currently
+// sync until the design system exports breakpoints publicly - currently
 // the file isn't listed in the package's `exports` field, so a deep
 // import isn't supported. The previous values used `696` for mdMin
 // which didn't match the design-system at all (probably a typo); aligned
@@ -53,9 +62,9 @@ function displayName(law) {
 
 // Results of the server-side corpus search (`?q=`). The corpus index can
 // hold thousands of laws, so the popover queries the backend rather than
-// filtering a preloaded client-side list — that's the only way the search
+// filtering a preloaded client-side list - that's the only way the search
 // can reach every law, not just the first page. Ordered private-repo-first
-// by the backend; `groupedLaws` sections them by source.
+// by the backend; `sortedLaws` keeps that order as a flat option list.
 const serverLaws = ref([]);
 // True while a corpus query is in flight, so the UI shows a spinner instead
 // of briefly flashing "no results" (which would wrongly trigger the external
@@ -67,35 +76,21 @@ const searching = ref(false);
 const searchFailed = ref(false);
 
 /**
- * Group the matched laws by their providing source, ordered by source
- * priority (lower = higher priority, so the traject's own writable repo at
- * priority 0 sorts above the seeded central corpus) and then alphabetically.
- * The popover renders one labelled section per group so a search surfaces
- * matches from the private repo and the central corpus under their own
- * headers — the external wetten.overheid.nl fallback only kicks in when the
- * corpus has no match (see `serverLaws` handling below).
+ * Flat option list for the listbox, ordered by source priority (lower =
+ * higher priority, so the traject's own writable repo at priority 0 sorts
+ * above the seeded central corpus). Array.sort is stable, so laws keep their
+ * backend relevance order within a source. The grouping the old popover did
+ * with per-source headers is now carried per row: each option shows its
+ * `source_name` as supporting-text (see the template). The external
+ * wetten.overheid.nl fallback only kicks in when the corpus has no match.
  */
-const groupedLaws = computed(() => {
-  const groups = new Map();
-  for (const law of serverLaws.value) {
-    let group = groups.get(law.source_id);
-    if (!group) {
-      group = {
-        source_id: law.source_id,
-        source_name: law.source_name || '',
-        priority: law.source_priority ?? Number.MAX_SAFE_INTEGER,
-        laws: [],
-      };
-      groups.set(law.source_id, group);
-    }
-    group.laws.push(law);
-  }
-  return [...groups.values()].sort(
-    (a, b) => a.priority - b.priority || a.source_name.localeCompare(b.source_name),
-  );
-});
-
-const hasSearch = computed(() => search.value.length > 0);
+const sortedLaws = computed(() =>
+  [...serverLaws.value].sort(
+    (a, b) =>
+      (a.source_priority ?? Number.MAX_SAFE_INTEGER) -
+      (b.source_priority ?? Number.MAX_SAFE_INTEGER),
+  ),
+);
 
 // Debounce the corpus query so we don't fire a request per keystroke, and
 // guard against out-of-order responses with a latest-claim.
@@ -109,7 +104,7 @@ watch(search, (q) => {
   const term = q.trim();
   if (term.length < MIN_QUERY_LENGTH) {
     // Claim (and discard) a generation so any fetch already in flight
-    // (debounce fired before this clear) is discarded when it resolves —
+    // (debounce fired before this clear) is discarded when it resolves -
     // otherwise it would repopulate serverLaws for the cleared term and
     // fire a spurious BWB search.
     claimSearch();
@@ -166,30 +161,48 @@ function close() {
 }
 
 /**
- * Escape behaviour: first press clears the query, second press (when
- * already empty) closes the popover. Mirrors how Safari/Spotlight handle
- * Esc in search inputs. We always preventDefault so cross-browser
- * inconsistencies in native <input type="search"> Esc-clear don't leak
- * through (Safari clears, Chromium doesn't).
+ * The listbox emits its own `input` ({ detail: { value } }) - it does NOT
+ * filter internally, so we drive the corpus query straight off it. The watch
+ * on `search` debounces and runs the backend query.
  */
-function onSearchKeydown(e) {
-  if (e.key !== 'Escape') return;
-  e.preventDefault();
-  if (search.value) {
-    search.value = '';
-    clearBwb();
-  } else {
-    close();
-  }
+function onListInput(e) {
+  search.value = e.detail?.value ?? '';
+}
+
+/**
+ * Escape: the listbox owns it. With a non-empty query it clears the term and
+ * calls preventDefault; once the field is empty it does nothing and lets the
+ * keydown bubble up here, so the second Escape closes the popover. Reading
+ * `defaultPrevented` (rather than the now-cleared value) avoids racing the
+ * synchronous `input` event the clear path emits. Mirrors how Safari/Spotlight
+ * handle Esc in search inputs.
+ */
+function onListKeydown(e) {
+  if (e.key === 'Escape' && !e.defaultPrevented) close();
 }
 
 function onPopoverClose() {
   search.value = '';
   clearBwb();
+  // Emit the deferred selection now: the popover has closed and already run its
+  // _returnFocus, so the parent's focus-the-law wins (see selectLaw).
+  if (pendingSelectLawId !== null) {
+    const lawId = pendingSelectLawId;
+    pendingSelectLawId = null;
+    emit('select-law', lawId);
+  }
 }
 
+// The chosen law id, emitted on 'select-law' only once the popover has fully
+// closed (see onPopoverClose) - not here. The native popover restores focus to
+// its trigger (_returnFocus) inside its async close task, just BEFORE it
+// dispatches 'close'. By emitting after that, the parent's "focus the opened
+// law" (scheduled on its own nextTick) runs last and wins - so focus lands on
+// the law instead of snapping back to the search trigger.
+let pendingSelectLawId = null;
+
 function selectLaw(lawId) {
-  emit('select-law', lawId);
+  pendingSelectLawId = lawId;
   close();
 }
 
@@ -201,15 +214,16 @@ function selectLaw(lawId) {
  * from multiple places (e.g. desktop search-field and mobile icon-button)
  * without each one needing a stable ID.
  *
- * Optional `initialSearch` lets the trigger seed the search value — used
+ * Optional `initialSearch` lets the trigger seed the search value - used
  * for the Spotlight-style "type-to-open" UX where pressing a key on the
  * bar's search-field intercepts the keystroke and forwards it as the
- * initial query in the popover.
+ * initial query in the popover. Stashed in `pendingSearch` and applied by
+ * onPopoverOpen (the listbox's input only exists once it's rendered).
  */
 async function show(anchorEl, initialSearch = '') {
   if (!popoverRef.value) return;
   if (anchorEl) popoverRef.value.anchorElement = anchorEl;
-  if (initialSearch) search.value = initialSearch;
+  pendingSearch.value = initialSearch;
   // On lg the popover is centered top (large dropdown overlay style).
   // On md it anchors below the trigger button (Floating UI placement),
   // matching the smaller toolbar's button-as-trigger feel.
@@ -217,7 +231,7 @@ async function show(anchorEl, initialSearch = '') {
   useCenteredPosition.value = window.matchMedia(`(min-width: ${BREAKPOINT_LG_MIN}px)`).matches;
   isAnchored.value = window.matchMedia(`(min-width: ${BREAKPOINT_MD_MIN}px) and (max-width: ${BREAKPOINT_LG_MIN - 1}px)`).matches;
   // Wait for Vue to propagate the new `centered` / `top` / `width` props
-  // onto the popover element before opening — otherwise the first
+  // onto the popover element before opening - otherwise the first
   // reposition() inside the popover's toggle handler runs against the
   // previous breakpoint's props (e.g. centered=true held over from lg)
   // and the popover lands in the wrong position. The Lit-side update on
@@ -228,19 +242,30 @@ async function show(anchorEl, initialSearch = '') {
 }
 
 /**
- * Auto-focus the internal search input on open. Listening to the popover's
- * `open` event (rather than awaiting nextTick after show()) is the only
- * reliable hook: popover's own _manageFocus() runs after computePosition +
- * updateComplete and would otherwise steal focus back to the host. The
- * `open` event fires AFTER _manageFocus, so our focus call wins last.
+ * On open: seed (or reset) the listbox's own <input>, then focus it.
  *
- * The shadow-root vs light-DOM lookup is to be defensive — different
- * design-system versions may render the <input> differently.
+ * The listbox owns its input and exposes no `value` prop, so we drive the
+ * seed through a real `input` event: the list reads the input, updates its
+ * internal `_searchValue`, and re-emits its `{ detail: { value } }` input -
+ * which onListInput turns into the corpus query. An empty `pendingSearch`
+ * clears any stale value left from a previous open (the popover keeps the
+ * list mounted between opens). Setting `.value` directly would be overwritten
+ * by the list's own `.value` binding on the next render, hence the event.
+ *
+ * Listening to the popover's `open` event (rather than awaiting nextTick after
+ * show()) is the only reliable focus hook: popover's own _manageFocus() runs
+ * after computePosition + updateComplete and would otherwise steal focus back
+ * to the host. The `open` event fires AFTER _manageFocus, so our focus wins.
  */
 function onPopoverOpen() {
-  const field = popoverRef.value?.querySelector('nldd-search-field');
-  const native = field?.shadowRoot?.querySelector('input') ?? field?.querySelector('input');
-  native?.focus();
+  const list = popoverRef.value?.querySelector('nldd-list');
+  const input = list?.shadowRoot?.querySelector('.list__search-field-input');
+  if (input) {
+    input.value = pendingSearch.value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.focus();
+  }
+  pendingSearch.value = '';
 }
 
 defineExpose({ show });
@@ -248,7 +273,7 @@ defineExpose({ show });
 
 <template>
   <!--
-    Two positioning modes — toggled by `show()` based on viewport:
+    Two positioning modes - toggled by `show()` based on viewport:
     - lg+: free-positioned (centered horizontally, top-aligned). Big
       Spotlight-style overlay regardless of which trigger fired show().
     - md: anchored below the trigger button via Floating UI (default).
@@ -256,7 +281,7 @@ defineExpose({ show });
   -->
   <nldd-popover
     ref="popoverRef"
-    accessible-label="Zoeken in wetten"
+    :accessible-label="SEARCH_ACCESSIBLE_LABEL"
     :width="useCenteredPosition ? '720px' : '360px'"
     placement="bottom-end"
     :centered="useCenteredPosition || null"
@@ -266,117 +291,123 @@ defineExpose({ show });
     @close="onPopoverClose"
   >
     <nldd-container padding="16">
-      <div class="search-popover-search-row">
-        <nldd-search-field
-          size="md"
-          placeholder="Zoeken"
-          :value="search"
-          @input="search = $event.target.value"
-          @keydown="onSearchKeydown"
-        ></nldd-search-field>
-        <!-- Op md anchort de popover naast de trigger — naast de popover
+      <!--
+        The listbox IS the search UI: it renders its own search field
+        (combobox pattern), the close button sits inline in `search-bar-end`,
+        and the results are its options. It does NOT filter the options itself
+        - onListInput drives the server-side corpus query and we slot exactly
+        the matched options back in. `height` pins the search field and scrolls
+        the options below it.
+      -->
+      <nldd-list
+        type="listbox"
+        variant="simple"
+        height="min(70vh, 560px)"
+        :accessible-label="SEARCH_ACCESSIBLE_LABEL"
+        :translations="listTranslations"
+        empty-text="Geen resultaten gevonden"
+        empty-supporting-text="Pas je zoektermen of voorkeuren aan"
+        @input="onListInput"
+        @keydown="onListKeydown"
+      >
+        <!-- Op md anchort de popover naast de trigger - naast de popover
              klikken sluit 'm. Op sm (full-height sheet) en lg (centered
              overlay) heeft de gebruiker een expliciete sluit-knop nodig. -->
-        <nldd-button v-if="!isAnchored" size="md" text="Sluit" @click="close"></nldd-button>
-      </div>
+        <nldd-button
+          v-if="!isAnchored"
+          slot="search-bar-end"
+          size="md"
+          text="Sluit"
+          @click="close"
+        ></nldd-button>
 
-      <template v-if="hasSearch">
-        <nldd-spacer size="16"></nldd-spacer>
-        <!-- Corpus query in flight: show a spinner instead of briefly
-             flashing "no results" and wrongly tripping the external fallback. -->
-        <nldd-inline-dialog v-if="searching" text="Zoeken in de wetten…"></nldd-inline-dialog>
-        <!-- Corpus query failed: surface the error instead of masking it as
-             "no results" (which would cascade to the external fallback). -->
-        <nldd-inline-dialog
-          v-else-if="searchFailed"
-          variant="alert"
-          text="Zoeken is mislukt"
-          supporting-text="De wetten konden niet worden doorzocht. Probeer het opnieuw."
-        ></nldd-inline-dialog>
-        <!-- Internal corpus matches: one labelled section per source, private
-             repo first (priority 0), then the central corpus. The source name
-             doubles as the group header, so the per-item supporting-text is
-             dropped to avoid repeating it on every row. -->
-        <template v-else-if="groupedLaws.length > 0">
-          <template v-for="(group, groupIndex) in groupedLaws" :key="group.source_id">
-            <nldd-spacer v-if="groupIndex > 0" size="16"></nldd-spacer>
-            <nldd-title size="5"><h5>{{ group.source_name }}</h5></nldd-title>
-            <nldd-spacer size="8"></nldd-spacer>
-            <nldd-list variant="simple">
-              <nldd-list-item
-                v-for="law in group.laws"
-                :key="law.law_id"
-                size="md"
-                button
-                @click="selectLaw(law.law_id)"
-              >
-                <nldd-text-cell :text="displayName(law)"></nldd-text-cell>
-              </nldd-list-item>
-            </nldd-list>
-          </template>
-        </template>
-        <!-- No corpus match → log in / search wetten.overheid.nl / empty. -->
-        <div v-else-if="needsLogin && search.length >= MIN_QUERY_LENGTH" class="search-popover-login-prompt">
-          <div class="search-popover-empty-title">Log in om externe bronnen te doorzoeken</div>
-          <div class="search-popover-empty-subtitle">Inloggen is vereist om wetten op te halen van wetten.overheid.nl</div>
-          <nldd-spacer size="12"></nldd-spacer>
-          <nldd-button size="md" text="Inloggen" @click="login()"></nldd-button>
+        <!-- Interne corpus-treffers: platte lijst, eigen repo eerst (op
+             bron-prioriteit), met de bron als ondertitel per rij. -->
+        <nldd-list-item
+          v-for="law in sortedLaws"
+          :key="law.law_id"
+          size="md"
+          button
+          @click="selectLaw(law.law_id)"
+        >
+          <nldd-text-cell
+            :text="displayName(law)"
+            :supporting-text="law.source_name || undefined"
+          ></nldd-text-cell>
+        </nldd-list-item>
+
+        <!-- Externe wetten.overheid.nl-treffers (alleen wanneer de corpus niets
+             vond): één optie per resultaat met z'n harvest-status. -->
+        <nldd-list-item
+          v-for="result in bwbResults"
+          :key="result.bwb_id"
+          size="md"
+          button
+          :disabled="harvestStatus[result.bwb_id] === 'loading'
+            || isPolling(harvestStatus[result.bwb_id])
+            || undefined"
+          @click="bwbItemClick(result)"
+        >
+          <nldd-text-cell
+            :text="result.title"
+            :supporting-text="statusText(result.bwb_id, `${result.type} - ${result.bwb_id}`)"
+          ></nldd-text-cell>
+          <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          <nldd-icon-cell size="20">
+            <nldd-icon :name="statusIcon(result.bwb_id)"></nldd-icon>
+          </nldd-icon-cell>
+        </nldd-list-item>
+
+        <!-- States zonder zichtbare opties. De listbox toont deze slot alleen
+             als er een zoekterm is en geen opties zichtbaar zijn, dus de
+             volgorde hieronder dekt: zoeken / mislukt / inloggen / extern
+             laden / te kort / geen resultaten. -->
+        <div slot="empty">
+          <nldd-inline-dialog
+            v-if="searching"
+            text="Zoeken in de wetten…"
+          ></nldd-inline-dialog>
+          <nldd-inline-dialog
+            v-else-if="searchFailed"
+            variant="alert"
+            text="Zoeken is mislukt"
+            supporting-text="De wetten konden niet worden doorzocht. Probeer het opnieuw."
+          ></nldd-inline-dialog>
+          <div
+            v-else-if="needsLogin && search.length >= MIN_QUERY_LENGTH"
+            class="search-popover-login-prompt"
+          >
+            <div class="search-popover-empty-title">Log in om externe bronnen te doorzoeken</div>
+            <div class="search-popover-empty-subtitle">Inloggen is vereist om wetten op te halen van wetten.overheid.nl</div>
+            <nldd-spacer size="12"></nldd-spacer>
+            <nldd-button size="md" text="Inloggen" @click="login()"></nldd-button>
+          </div>
+          <nldd-inline-dialog
+            v-else-if="bwbLoading"
+            text="Zoeken op wetten.overheid.nl..."
+          ></nldd-inline-dialog>
+          <nldd-inline-dialog
+            v-else-if="search.length > 0 && search.length < MIN_QUERY_LENGTH"
+            text="Typ minimaal twee letters om te zoeken"
+          ></nldd-inline-dialog>
+          <nldd-inline-dialog
+            v-else
+            text="Geen resultaten gevonden"
+            supporting-text="Pas je zoektermen of voorkeuren aan"
+          ></nldd-inline-dialog>
         </div>
-        <nldd-inline-dialog v-else-if="bwbLoading" text="Zoeken op wetten.overheid.nl..."></nldd-inline-dialog>
-        <template v-else-if="bwbResults.length > 0">
-          <nldd-title size="5"><h5>Resultaten van wetten.overheid.nl</h5></nldd-title>
-          <nldd-spacer size="8"></nldd-spacer>
-          <nldd-list variant="simple">
-            <nldd-list-item
-              v-for="result in bwbResults"
-              :key="result.bwb_id"
-              size="md"
-              button
-              :disabled="harvestStatus[result.bwb_id] === 'loading'
-                || isPolling(harvestStatus[result.bwb_id])
-                || undefined"
-              @click="bwbItemClick(result)"
-            >
-              <nldd-text-cell
-                :text="result.title"
-                :supporting-text="statusText(result.bwb_id, `${result.type} — ${result.bwb_id}`)"
-              >
-              </nldd-text-cell>
-              <nldd-spacer-cell size="8"></nldd-spacer-cell>
-              <nldd-icon-cell size="20">
-                <nldd-icon :name="statusIcon(result.bwb_id)"></nldd-icon>
-              </nldd-icon-cell>
-            </nldd-list-item>
-          </nldd-list>
-        </template>
-        <nldd-list
-          v-else-if="search.length >= MIN_QUERY_LENGTH"
-          variant="simple"
-          empty-text="Geen resultaten gevonden"
-          empty-supporting-text="Pas je zoektermen of voorkeuren aan"
-        ></nldd-list>
-      </template>
+      </nldd-list>
     </nldd-container>
   </nldd-popover>
 </template>
 
 <style>
-.search-popover-search-row {
-  display: flex;
-  align-items: center;
-  gap: var(--primitives-space-8, 8px);
-}
-
-.search-popover-search-row nldd-search-field {
-  flex: 1;
-}
-
 .search-popover-login-prompt {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: var(--primitives-space-64, 64px) var(--primitives-space-16, 16px);
+  padding: var(--primitives-space-32, 32px) var(--primitives-space-16, 16px);
   text-align: center;
 }
 

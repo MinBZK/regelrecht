@@ -19,6 +19,8 @@ use crate::article::{ActionOperation, ActionValue, Case};
 use crate::error::{EngineError, Result};
 use crate::types::{PathNodeType, Value};
 use chrono::{Datelike, NaiveDate};
+use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::{Decimal, MathematicalOps, RoundingStrategy};
 use std::cmp::Ordering;
 
 /// Maximum nesting depth for operations to prevent stack overflow
@@ -39,15 +41,6 @@ fn propagate_binary(a: &Value, b: &Value) -> Option<Value> {
         None
     }
 }
-
-/// Maximum integer value that can be exactly represented in f64.
-/// Beyond this, precision is lost when converting i64 to f64.
-/// This is 2^53 = 9007199254740992.
-const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_992;
-
-/// Minimum integer value that can be exactly represented in f64.
-/// This is -2^53.
-const MIN_SAFE_INTEGER: i64 = -9_007_199_254_740_992;
 
 /// Trait for resolving variable references ($var) during operation execution.
 ///
@@ -205,7 +198,7 @@ fn format_value_for_trace(value: &Value) -> String {
             }
         }
         Value::Int(i) => i.to_string(),
-        Value::Float(f) => format!("{}", f),
+        Value::Decimal(d) => format!("{}", d),
         Value::String(s) => format!("'{}'", s),
         Value::Array(arr) => {
             let items: Vec<String> = arr.iter().map(format_value_for_trace).collect();
@@ -254,8 +247,19 @@ fn execute_operation_internal<R: ValueResolver>(
         ActionOperation::Divide { values } => execute_divide(values, resolver, depth),
 
         // Aggregate
-        ActionOperation::Max { values } => execute_aggregate(values, resolver, depth, f64::max),
-        ActionOperation::Min { values } => execute_aggregate(values, resolver, depth, f64::min),
+        ActionOperation::Max { values } => execute_aggregate(values, resolver, depth, Decimal::max),
+        ActionOperation::Min { values } => execute_aggregate(values, resolver, depth, Decimal::min),
+
+        // Rounding (RFC-024)
+        ActionOperation::Round { value, precision } => {
+            execute_rounding(value, *precision, RoundMode::Round, resolver, depth)
+        }
+        ActionOperation::Ceil { value, precision } => {
+            execute_rounding(value, *precision, RoundMode::Ceil, resolver, depth)
+        }
+        ActionOperation::Floor { value, precision } => {
+            execute_rounding(value, *precision, RoundMode::Floor, resolver, depth)
+        }
 
         // Logical
         ActionOperation::And { conditions } => execute_and(conditions, resolver, depth),
@@ -337,36 +341,19 @@ fn execute_operation_internal<R: ValueResolver>(
 /// This matches Python's behavior where `42 == 42.0` is `True`.
 /// For non-numeric types, uses standard equality.
 ///
-/// # NaN Handling
-///
-/// Unlike IEEE 754 where `NaN != NaN`, this function treats two NaN values
-/// as equal. This is intentional for law execution where NaN represents
-/// invalid/missing data, and comparing two missing values should be consistent.
-///
-/// # Precision Guard
-///
-/// Integers beyond ±2^53 cannot be exactly represented as f64, so
-/// Int-Float comparisons involving such integers return `false` immediately
-/// to avoid silent precision loss.
+/// Numbers compare exactly: `Decimal` carries full precision and `Int`/`Decimal`
+/// are compared as decimals (e.g. `42 == 42.0`), with no float rounding or
+/// ±2^53 precision loss.
 pub(crate) fn values_equal(a: &Value, b: &Value) -> bool {
     match (a, b) {
         // Untranslatable: two untranslatables are equal, mixed is never equal
         (Value::Untranslatable { .. }, Value::Untranslatable { .. }) => true,
         (Value::Untranslatable { .. }, _) | (_, Value::Untranslatable { .. }) => false,
-        // Float-Float comparison: handle NaN specially
-        (Value::Float(f1), Value::Float(f2)) => {
-            if f1.is_nan() && f2.is_nan() {
-                true // Both NaN are considered equal
-            } else {
-                f1 == f2
-            }
-        }
-        // Int-Float comparison: handle NaN and precision guard
-        (Value::Int(i), Value::Float(f)) => {
-            !f.is_nan() && *i >= MIN_SAFE_INTEGER && *i <= MAX_SAFE_INTEGER && (*i as f64) == *f
-        }
-        (Value::Float(f), Value::Int(i)) => {
-            !f.is_nan() && *i >= MIN_SAFE_INTEGER && *i <= MAX_SAFE_INTEGER && *f == (*i as f64)
+        // Decimal-Decimal comparison
+        (Value::Decimal(d1), Value::Decimal(d2)) => d1 == d2,
+        // Int-Decimal comparison (numeric, exact)
+        (Value::Int(i), Value::Decimal(d)) | (Value::Decimal(d), Value::Int(i)) => {
+            Decimal::from(*i) == *d
         }
         // Default: use structural equality
         _ => a == b,
@@ -433,7 +420,7 @@ fn is_mixed_date_pair(a: &Value, b: &Value) -> bool {
 /// Execute an ordered comparison (>, <, >=, <=) on numbers or dates.
 ///
 /// Operands are type-safe and dispatch on their resolved type:
-/// - both numeric (Int/Float) → numeric comparison (Int and Float compared as f64)
+/// - both numeric (Int/Decimal) → exact decimal comparison
 /// - both ISO dates (YYYY-MM-DD strings, or `{iso, ...}` objects) → date comparison
 /// - mixed or unsupported types → `TypeMismatch` error
 ///
@@ -441,8 +428,8 @@ fn is_mixed_date_pair(a: &Value, b: &Value) -> bool {
 /// without introducing date-specific operators (RFC-021, route A).
 ///
 /// The operator is a single predicate over [`Ordering`], shared by the numeric
-/// and the date path so the two can never drift apart. An incomparable numeric
-/// pair (NaN) satisfies no ordering, matching the previous f64 behavior.
+/// and the date path so the two can never drift apart. `Decimal` is totally
+/// ordered, so every numeric pair compares.
 fn execute_ordered_comparison<R: ValueResolver, F>(
     subject: &ActionValue,
     value: &ActionValue,
@@ -462,11 +449,9 @@ where
 
     // Numbers first: the common case and the historical behavior.
     if is_numeric(&subject_val) && is_numeric(&value_val) {
-        let subject_num = to_number(&subject_val)?;
-        let value_num = to_number(&value_val)?;
-        return Ok(Value::Bool(
-            subject_num.partial_cmp(&value_num).is_some_and(&satisfies),
-        ));
+        let subject_num = to_decimal(&subject_val)?;
+        let value_num = to_decimal(&value_val)?;
+        return Ok(Value::Bool(satisfies(subject_num.cmp(&value_num))));
     }
 
     // Dates: only when BOTH operands parse as ISO dates, so a mismatch
@@ -504,9 +489,9 @@ fn comparable_kind(val: &Value, parses_as_date: bool) -> Option<&'static str> {
     }
 }
 
-/// Whether a value is a number (Int or Float) for comparison dispatch.
+/// Whether a value is a number (Int or Decimal) for comparison dispatch.
 fn is_numeric(val: &Value) -> bool {
-    matches!(val, Value::Int(_) | Value::Float(_))
+    matches!(val, Value::Int(_) | Value::Decimal(_))
 }
 
 // =============================================================================
@@ -570,41 +555,40 @@ fn execute_add<R: ValueResolver>(
             }
             Ok(Value::String(result))
         }
-        Value::Int(_) | Value::Float(_) => {
+        Value::Int(_) | Value::Decimal(_) => {
             // Original numeric addition
-            let mut sum = 0.0;
-            let mut has_float = false;
+            let mut sum = Decimal::ZERO;
+            let mut has_decimal = false;
             for val in &evaluated {
                 match val {
-                    Value::Int(_) => sum += to_number(val)?,
-                    Value::Float(f) => {
-                        sum += f;
-                        has_float = true;
+                    Value::Int(i) => sum += Decimal::from(*i),
+                    Value::Decimal(d) => {
+                        sum += d;
+                        has_decimal = true;
                     }
                     _ => return Err(type_error("number", val)),
                 }
             }
-            int_or_float_result(sum, has_float)
+            int_or_decimal_result(sum, has_decimal)
         }
         _ => Err(type_error("number, string, or array", &evaluated[0])),
     }
 }
 
 /// Wrap a numeric arithmetic result so all-int inputs return `Int` and any
-/// `Float` input promotes the result to `Float`. Centralises the
-/// `f64_to_i64_safe` overflow guard shared by ADD/SUBTRACT/MULTIPLY.
-fn int_or_float_result(result: f64, has_float: bool) -> Result<Value> {
-    Ok(if has_float {
-        Value::Float(result)
+/// `Decimal` input promotes the result to `Decimal`. Centralises the
+/// `decimal_to_i64_safe` overflow guard shared by ADD/SUBTRACT/MULTIPLY.
+fn int_or_decimal_result(result: Decimal, has_decimal: bool) -> Result<Value> {
+    Ok(if has_decimal {
+        Value::Decimal(result)
     } else {
-        Value::Int(f64_to_i64_safe(result)?)
+        Value::Int(decimal_to_i64_safe(result)?)
     })
 }
 
 /// Execute SUBTRACT operation: first value minus all subsequent values.
 ///
-/// Note: Uses `to_number()` which validates that integers are within the
-/// safe range for f64 conversion (±2^53).
+/// Computed in exact decimal arithmetic; all-integer inputs return `Int`.
 fn execute_subtract<R: ValueResolver>(
     values: &[ActionValue],
     resolver: &R,
@@ -626,23 +610,22 @@ fn execute_subtract<R: ValueResolver>(
     let Some((first, rest)) = evaluated.split_first() else {
         unreachable!("values checked non-empty above")
     };
-    let mut result = to_number(first)?;
-    let mut has_float = matches!(first, Value::Float(_));
+    let mut result = to_decimal(first)?;
+    let mut has_decimal = matches!(first, Value::Decimal(_));
 
     for val in rest {
-        result -= to_number(val)?;
-        if matches!(val, Value::Float(_)) {
-            has_float = true;
+        result -= to_decimal(val)?;
+        if matches!(val, Value::Decimal(_)) {
+            has_decimal = true;
         }
     }
 
-    int_or_float_result(result, has_float)
+    int_or_decimal_result(result, has_decimal)
 }
 
 /// Execute MULTIPLY operation: product of all values.
 ///
-/// Note: Uses `to_number()` which validates that integers are within the
-/// safe range for f64 conversion (±2^53).
+/// Computed in exact decimal arithmetic; all-integer inputs return `Int`.
 fn execute_multiply<R: ValueResolver>(
     values: &[ActionValue],
     resolver: &R,
@@ -660,27 +643,27 @@ fn execute_multiply<R: ValueResolver>(
         return Ok(tainted);
     }
 
-    let mut result = 1.0;
-    let mut has_float = false;
+    let mut result = Decimal::ONE;
+    let mut has_decimal = false;
 
     for val in &evaluated {
         match val {
-            Value::Int(_) => result *= to_number(val)?,
-            Value::Float(f) => {
-                result *= f;
-                has_float = true;
+            Value::Int(i) => result *= Decimal::from(*i),
+            Value::Decimal(d) => {
+                result *= d;
+                has_decimal = true;
             }
             _ => return Err(type_error("number", val)),
         }
     }
 
-    int_or_float_result(result, has_float)
+    int_or_decimal_result(result, has_decimal)
 }
 
 /// Execute DIVIDE operation: first value divided by all subsequent values.
 ///
-/// Returns `Err(DivisionByZero)` for division by zero.
-/// Returns `Err(InvalidOperation)` for NaN or Infinity results.
+/// Returns `Err(DivisionByZero)` for division by zero. Division is computed in
+/// exact decimal arithmetic and always returns a `Decimal` (like Python's `/`).
 fn execute_divide<R: ValueResolver>(
     values: &[ActionValue],
     resolver: &R,
@@ -702,30 +685,20 @@ fn execute_divide<R: ValueResolver>(
     let Some((first, rest)) = evaluated.split_first() else {
         unreachable!("values checked non-empty above")
     };
-    let mut result = to_number(first)?;
+    let mut result = to_decimal(first)?;
 
     for val in rest {
-        let divisor = to_number(val)?;
-        if divisor == 0.0 {
+        let divisor = to_decimal(val)?;
+        if divisor.is_zero() {
             return Err(EngineError::DivisionByZero);
         }
-        result /= divisor;
+        result = result
+            .checked_div(divisor)
+            .ok_or_else(|| EngineError::ArithmeticOverflow("Division overflowed".to_string()))?;
     }
 
-    // Check for invalid results (NaN or Infinity)
-    if result.is_nan() {
-        return Err(EngineError::InvalidOperation(
-            "Division resulted in NaN".to_string(),
-        ));
-    }
-    if result.is_infinite() {
-        return Err(EngineError::InvalidOperation(
-            "Division resulted in infinity".to_string(),
-        ));
-    }
-
-    // Division always returns a float (like Python)
-    Ok(Value::Float(result))
+    // Division always returns a decimal (like Python's `/`)
+    Ok(Value::Decimal(result))
 }
 
 // =============================================================================
@@ -740,7 +713,7 @@ fn execute_aggregate<R: ValueResolver, F>(
     combine: F,
 ) -> Result<Value>
 where
-    F: Fn(f64, f64) -> f64,
+    F: Fn(Decimal, Decimal) -> Decimal,
 {
     if values.is_empty() {
         return Err(EngineError::InvalidOperation(
@@ -754,14 +727,14 @@ where
         return Ok(tainted);
     }
 
-    let mut has_float = false;
-    let nums: Vec<f64> = evaluated
+    let mut has_decimal = false;
+    let nums: Vec<Decimal> = evaluated
         .iter()
         .map(|v| {
-            if matches!(v, Value::Float(_)) {
-                has_float = true;
+            if matches!(v, Value::Decimal(_)) {
+                has_decimal = true;
             }
-            to_number(v)
+            to_decimal(v)
         })
         .collect::<Result<Vec<_>>>()?;
 
@@ -770,11 +743,86 @@ where
         unreachable!("values checked non-empty above")
     };
 
-    Ok(if has_float {
-        Value::Float(result)
-    } else {
-        Value::Int(f64_to_i64_safe(result)?)
+    int_or_decimal_result(result, has_decimal)
+}
+
+// =============================================================================
+// Rounding Operations (RFC-024)
+// =============================================================================
+
+/// Rounding direction.
+#[derive(Clone, Copy)]
+enum RoundMode {
+    /// Round to nearest, ties away from zero (rekenkundig; the Hoge Raad default).
+    Round,
+    /// Round toward +∞ ("naar boven").
+    Ceil,
+    /// Round toward -∞ ("naar beneden" / "afkapping").
+    Floor,
+}
+
+/// Maximum absolute `precision` a rounding operation accepts (Decimal holds at
+/// most 28 fractional digits, so larger magnitudes are out of range).
+const MAX_ROUND_PRECISION: i64 = 28;
+
+/// Execute a rounding operation (ROUND/CEIL/FLOOR): round the single
+/// operand to `precision` decimal places.
+///
+/// `precision` is in the value's own unit (RFC-023): `0` rounds to whole units,
+/// `2` to two decimals, and a negative precision rounds to tens/hundreds (e.g.
+/// `-2` rounds a eurocent value to whole euros). Rounding never happens
+/// implicitly — only here, where the law asks for it (RFC-024).
+///
+/// `ROUND` is half-up in the legal sense (rekenkundig — ties away from zero, the
+/// Hoge Raad 2009 default). The money domain is non-negative, where "half away
+/// from zero" and "half toward +∞" coincide.
+fn execute_rounding<R: ValueResolver>(
+    value: &ActionValue,
+    precision: i64,
+    mode: RoundMode,
+    resolver: &R,
+    depth: usize,
+) -> Result<Value> {
+    let evaluated = evaluate_value(value, resolver, depth)?;
+    if evaluated.is_untranslatable() {
+        return Ok(evaluated);
+    }
+    let operand = to_decimal(&evaluated)?;
+    let rounded = round_decimal(operand, precision, mode)?;
+    // Mirror the arithmetic ops: an integral result returns `Int`, otherwise `Decimal`.
+    Ok(match decimal_to_i64_safe(rounded) {
+        Ok(i) => Value::Int(i),
+        Err(_) => Value::Decimal(rounded),
     })
+}
+
+/// Round `value` to `precision` decimal places using `mode`.
+fn round_decimal(value: Decimal, precision: i64, mode: RoundMode) -> Result<Decimal> {
+    let strategy = match mode {
+        RoundMode::Round => RoundingStrategy::MidpointAwayFromZero,
+        RoundMode::Ceil => RoundingStrategy::ToPositiveInfinity,
+        RoundMode::Floor => RoundingStrategy::ToNegativeInfinity,
+    };
+
+    if !(-MAX_ROUND_PRECISION..=MAX_ROUND_PRECISION).contains(&precision) {
+        return Err(EngineError::InvalidOperation(format!(
+            "rounding precision {precision} out of range [-{MAX_ROUND_PRECISION}, {MAX_ROUND_PRECISION}]"
+        )));
+    }
+
+    if precision >= 0 {
+        Ok(value.round_dp_with_strategy(precision as u32, strategy))
+    } else {
+        // Negative precision: round to a power of ten (e.g. -2 → whole hundreds).
+        // Use checked arithmetic so an extreme magnitude errors rather than panics.
+        let overflow = || EngineError::ArithmeticOverflow("rounding overflowed".to_string());
+        let scale = Decimal::TEN.checked_powi(-precision).ok_or_else(overflow)?;
+        let scaled = value
+            .checked_div(scale)
+            .ok_or_else(overflow)?
+            .round_dp_with_strategy(0, strategy);
+        scaled.checked_mul(scale).ok_or_else(overflow)
+    }
 }
 
 // =============================================================================
@@ -1420,34 +1468,6 @@ fn calculate_years_difference(date1: NaiveDate, date2: NaiveDate) -> i64 {
 // Helper Functions
 // =============================================================================
 
-/// Safely convert f64 to i64, returning error on overflow/NaN/Infinity
-pub(crate) fn f64_to_i64_safe(f: f64) -> Result<i64> {
-    if f.is_nan() {
-        return Err(EngineError::ArithmeticOverflow("Result is NaN".to_string()));
-    }
-    if f.is_infinite() {
-        return Err(EngineError::ArithmeticOverflow(
-            "Result is infinite".to_string(),
-        ));
-    }
-
-    // i64::MIN as f64 is exact (-9223372036854775808.0).
-    // i64::MAX as f64 rounds UP to 9223372036854775808.0, which is i64::MAX + 1.
-    // Using strict < on the upper bound prevents accepting that rounded-up value,
-    // which would saturate to i64::MAX on `as i64` (semantically wrong).
-    const I64_MIN_F64: f64 = i64::MIN as f64;
-    const I64_MAX_F64: f64 = i64::MAX as f64;
-
-    if !(I64_MIN_F64..I64_MAX_F64).contains(&f) {
-        return Err(EngineError::ArithmeticOverflow(format!(
-            "Value {} exceeds i64 range",
-            f
-        )));
-    }
-
-    Ok(f as i64)
-}
-
 /// Evaluate a slice of ActionValues to concrete Values.
 fn evaluate_values<R: ValueResolver>(
     values: &[ActionValue],
@@ -1460,31 +1480,34 @@ fn evaluate_values<R: ValueResolver>(
         .collect()
 }
 
-/// Convert a Value to a number (f64).
+/// Convert a Value to an exact [`Decimal`].
 ///
-/// # Precision
-///
-/// For integers larger than 2^53 or smaller than -2^53, precision is lost
-/// when converting to f64. This function returns an error for such values
-/// to prevent silent precision loss in financial/legal calculations.
-fn to_number(val: &Value) -> Result<f64> {
+/// Integers widen to `Decimal` losslessly (no ±2^53 limit), so financial/legal
+/// calculations carry full precision.
+fn to_decimal(val: &Value) -> Result<Decimal> {
     match val {
-        Value::Int(i) => {
-            // Check if integer is within safe range for f64
-            if *i > MAX_SAFE_INTEGER || *i < MIN_SAFE_INTEGER {
-                return Err(EngineError::ArithmeticOverflow(format!(
-                    "Integer {} exceeds safe range for floating-point conversion (±2^53)",
-                    i
-                )));
-            }
-            Ok(*i as f64)
-        }
-        Value::Float(f) => Ok(*f),
-        // Untranslatable should be caught by the caller before reaching to_number,
+        Value::Int(i) => Ok(Decimal::from(*i)),
+        Value::Decimal(d) => Ok(*d),
+        // Untranslatable should be caught by the caller before reaching to_decimal,
         // but handle it gracefully.
-        Value::Untranslatable { .. } => Err(type_error("number", val)),
         _ => Err(type_error("number", val)),
     }
+}
+
+/// Convert an exact [`Decimal`] result to `i64`, erroring if it is non-integral
+/// or out of `i64` range. Used to keep all-integer arithmetic results as `Int`.
+pub(crate) fn decimal_to_i64_safe(d: Decimal) -> Result<i64> {
+    let truncated = d.trunc();
+    if truncated != d {
+        // Not an overflow — the value simply has a fractional part.
+        return Err(EngineError::InvalidOperation(format!(
+            "Value {} is not an integer",
+            d
+        )));
+    }
+    truncated
+        .to_i64()
+        .ok_or_else(|| EngineError::ArithmeticOverflow(format!("Value {} exceeds i64 range", d)))
 }
 
 /// Create a TypeMismatch error.
@@ -1502,6 +1525,7 @@ fn type_error(expected: &str, actual: &Value) -> EngineError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rust_decimal_macros::dec;
     use std::collections::{BTreeMap, HashMap};
 
     /// Simple resolver for testing that uses a HashMap
@@ -1719,7 +1743,7 @@ mod tests {
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Float(60.5));
+            assert_eq!(result, Value::Decimal(dec!(60.5)));
         }
 
         #[test]
@@ -1752,7 +1776,7 @@ mod tests {
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Float(50.0));
+            assert_eq!(result, Value::Decimal(dec!(50)));
         }
 
         #[test]
@@ -1777,7 +1801,7 @@ mod tests {
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Float(50.0));
+            assert_eq!(result, Value::Decimal(dec!(50)));
         }
 
         #[test]
@@ -1851,7 +1875,7 @@ mod tests {
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Float(50.3));
+            assert_eq!(result, Value::Decimal(dec!(50.3)));
         }
 
         #[test]
@@ -1863,6 +1887,132 @@ mod tests {
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
             assert_eq!(result, Value::Int(0));
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Rounding Operations Tests (RFC-024)
+    // -------------------------------------------------------------------------
+
+    mod rounding {
+        use super::*;
+
+        fn round_op(value: ActionValue, precision: i64) -> ActionOperation {
+            ActionOperation::Round { value, precision }
+        }
+
+        #[test]
+        fn round_to_whole_units_half_up() {
+            let resolver = TestResolver::new();
+            // 2.5 -> 3 (rekenkundig, ties away from zero)
+            let op = round_op(lit(2.5f64), 0);
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), Value::Int(3));
+            // 2.4 -> 2
+            let op = round_op(lit(2.4f64), 0);
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), Value::Int(2));
+        }
+
+        #[test]
+        fn round_to_two_decimals() {
+            let resolver = TestResolver::new();
+            // 1.005 -> 1.01 (exact in Decimal; the classic f64 failure case where
+            // 1.005 is stored as 1.00499... and would wrongly round down to 1.00).
+            let op = round_op(lit(Value::Decimal(dec!(1.005))), 2);
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Decimal(dec!(1.01))
+            );
+        }
+
+        #[test]
+        fn round_to_five_decimals_subcent_tariff() {
+            let resolver = TestResolver::new();
+            let op = round_op(lit(0.846789f64), 5);
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Decimal(dec!(0.84679))
+            );
+        }
+
+        #[test]
+        fn round_negative_precision_eurocent_to_whole_euros() {
+            let resolver = TestResolver::new();
+            // 209691.78888 eurocent rounded to whole euros (precision -2) -> 209700
+            let op = round_op(lit(209691.78888f64), -2);
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(209700)
+            );
+        }
+
+        #[test]
+        fn ceil_rounds_up() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::Ceil {
+                value: lit(1.01f64),
+                precision: 0,
+            };
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), Value::Int(2));
+        }
+
+        #[test]
+        fn floor_rounds_toward_negative_infinity() {
+            let resolver = TestResolver::new();
+            let floor = ActionOperation::Floor {
+                value: lit(-1.5f64),
+                precision: 0,
+            };
+            // FLOOR rounds toward -inf, so -1.5 → -2.
+            assert_eq!(
+                execute_operation(&floor, &resolver, 0).unwrap(),
+                Value::Int(-2)
+            );
+        }
+
+        #[test]
+        fn rounding_propagates_untranslatable() {
+            let resolver = TestResolver::new();
+            let tainted = Value::Untranslatable {
+                article: "1".into(),
+                construct: "afronden".into(),
+            };
+            let op = round_op(lit(tainted), 0);
+            assert!(execute_operation(&op, &resolver, 0)
+                .unwrap()
+                .is_untranslatable());
+        }
+
+        #[test]
+        fn rounding_rejects_non_number() {
+            let resolver = TestResolver::new();
+            let op = round_op(lit("not a number"), 0);
+            assert!(matches!(
+                execute_operation(&op, &resolver, 0),
+                Err(EngineError::TypeMismatch { .. })
+            ));
+        }
+
+        #[test]
+        fn rounding_rejects_out_of_range_precision() {
+            let resolver = TestResolver::new();
+            let op = round_op(lit(1.5f64), 100);
+            assert!(matches!(
+                execute_operation(&op, &resolver, 0),
+                Err(EngineError::InvalidOperation(_))
+            ));
+        }
+
+        #[test]
+        fn rounding_extreme_magnitude_errors_not_panics() {
+            // A near-max Decimal with large negative precision must error gracefully
+            // (checked arithmetic), never panic mid-evaluation.
+            let resolver = TestResolver::new();
+            let huge = Value::Decimal(dec!(79000000000000000000000000000));
+            let op = round_op(lit(huge), -28);
+            assert!(matches!(
+                execute_operation(&op, &resolver, 0),
+                Err(EngineError::ArithmeticOverflow(_))
+            ));
         }
     }
 
@@ -2232,112 +2382,40 @@ mod tests {
         }
 
         #[test]
-        fn test_nan_detection_in_f64_to_i64() {
-            let result = f64_to_i64_safe(f64::NAN);
-            assert!(matches!(result, Err(EngineError::ArithmeticOverflow(_))));
-            if let Err(EngineError::ArithmeticOverflow(msg)) = result {
-                assert!(msg.contains("NaN"));
-            }
+        fn test_decimal_to_i64_safe_rejects_non_integer() {
+            // A fractional value is "not an integer" (InvalidOperation), not an overflow.
+            assert!(matches!(
+                decimal_to_i64_safe(dec!(42.5)),
+                Err(EngineError::InvalidOperation(_))
+            ));
+            assert_eq!(decimal_to_i64_safe(dec!(42)).unwrap(), 42);
+            assert_eq!(decimal_to_i64_safe(dec!(-42)).unwrap(), -42);
         }
 
         #[test]
-        fn test_infinity_detection_in_f64_to_i64() {
-            let result_pos = f64_to_i64_safe(f64::INFINITY);
-            assert!(matches!(
-                result_pos,
-                Err(EngineError::ArithmeticOverflow(_))
+        fn test_values_equal_numeric() {
+            // Int and Decimal compare numerically and exactly (no float rounding).
+            assert!(values_equal(&Value::Int(42), &Value::Decimal(dec!(42))));
+            assert!(values_equal(&Value::Decimal(dec!(42)), &Value::Int(42)));
+            assert!(values_equal(
+                &Value::Decimal(dec!(1.50)),
+                &Value::Decimal(dec!(1.5))
             ));
-
-            let result_neg = f64_to_i64_safe(f64::NEG_INFINITY);
-            assert!(matches!(
-                result_neg,
-                Err(EngineError::ArithmeticOverflow(_))
-            ));
-        }
-
-        #[test]
-        fn test_i64_range_overflow_detection() {
-            let result_high = f64_to_i64_safe(1e20);
-            assert!(matches!(
-                result_high,
-                Err(EngineError::ArithmeticOverflow(_))
-            ));
-
-            let result_low = f64_to_i64_safe(-1e20);
-            assert!(matches!(
-                result_low,
-                Err(EngineError::ArithmeticOverflow(_))
-            ));
-        }
-
-        #[test]
-        fn test_valid_f64_to_i64_conversion() {
-            assert_eq!(f64_to_i64_safe(42.0).unwrap(), 42);
-            assert_eq!(f64_to_i64_safe(-42.0).unwrap(), -42);
-            assert_eq!(f64_to_i64_safe(0.0).unwrap(), 0);
-            assert_eq!(f64_to_i64_safe(0.9).unwrap(), 0);
-            assert_eq!(f64_to_i64_safe(-0.9).unwrap(), 0);
-        }
-
-        #[test]
-        fn test_f64_to_i64_rejects_i64_max_as_f64() {
-            let result = f64_to_i64_safe(i64::MAX as f64);
-            assert!(
-                matches!(result, Err(EngineError::ArithmeticOverflow(_))),
-                "Expected ArithmeticOverflow for i64::MAX as f64, got: {:?}",
-                result
-            );
-        }
-
-        #[test]
-        fn test_nan_equality() {
-            let nan1 = Value::Float(f64::NAN);
-            let nan2 = Value::Float(f64::NAN);
-            assert!(
-                values_equal(&nan1, &nan2),
-                "Two NaN values should be considered equal"
-            );
-
-            assert!(!values_equal(&Value::Float(f64::NAN), &Value::Int(42)));
-            assert!(!values_equal(&Value::Int(42), &Value::Float(f64::NAN)));
-            assert!(!values_equal(&Value::Float(f64::NAN), &Value::Float(42.0)));
-        }
-
-        #[test]
-        fn test_large_integer_precision_error() {
-            let large_int = Value::Int(MAX_SAFE_INTEGER + 1);
-            assert!(matches!(
-                to_number(&large_int),
-                Err(EngineError::ArithmeticOverflow(_))
-            ));
-
-            let small_int = Value::Int(MIN_SAFE_INTEGER - 1);
-            assert!(matches!(
-                to_number(&small_int),
-                Err(EngineError::ArithmeticOverflow(_))
-            ));
-
-            let safe_int = Value::Int(MAX_SAFE_INTEGER);
-            assert_eq!(to_number(&safe_int).unwrap(), MAX_SAFE_INTEGER as f64);
-
-            let safe_neg = Value::Int(MIN_SAFE_INTEGER);
-            assert_eq!(to_number(&safe_neg).unwrap(), MIN_SAFE_INTEGER as f64);
+            assert!(!values_equal(&Value::Decimal(dec!(42.5)), &Value::Int(42)));
         }
 
         #[test]
         fn test_arithmetic_with_large_integer() {
-            let large_value: i64 = 9_007_199_254_740_993; // MAX_SAFE_INTEGER + 1
+            // Beyond 2^53 arithmetic is now exact (Decimal), no precision loss.
+            let large_value: i64 = 9_007_199_254_740_993; // 2^53 + 1
 
             let resolver = TestResolver::new();
             let op = ActionOperation::Add {
                 values: vec![lit(large_value), lit(1i64)],
             };
 
-            let result = execute_operation(&op, &resolver, 0);
-            assert!(
-                matches!(result, Err(EngineError::ArithmeticOverflow(_))),
-                "Large integer in arithmetic should cause overflow error"
-            );
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::Int(9_007_199_254_740_994));
         }
     }
 
@@ -3494,31 +3572,20 @@ mod tests {
     // -------------------------------------------------------------------------
 
     #[test]
-    fn test_values_equal_precision_guard() {
-        let large_int = MAX_SAFE_INTEGER + 1;
-        let large_neg = MIN_SAFE_INTEGER - 1;
-
-        assert!(!values_equal(
-            &Value::Int(large_int),
-            &Value::Float(large_int as f64)
-        ));
-        assert!(!values_equal(
-            &Value::Float(large_neg as f64),
-            &Value::Int(large_neg)
-        ));
-
-        assert!(values_equal(&Value::Int(42), &Value::Float(42.0)));
-        assert!(values_equal(&Value::Float(42.0), &Value::Int(42)));
+    fn test_values_equal_exact_large_integers() {
+        // Decimal carries integers exactly, so large-integer Int/Decimal pairs
+        // compare without the ±2^53 precision loss f64 would introduce.
+        let large: i64 = 9_007_199_254_740_993; // 2^53 + 1
         assert!(values_equal(
-            &Value::Int(MAX_SAFE_INTEGER),
-            &Value::Float(MAX_SAFE_INTEGER as f64)
+            &Value::Int(large),
+            &Value::Decimal(Decimal::from(large))
+        ));
+        assert!(!values_equal(
+            &Value::Int(large),
+            &Value::Decimal(Decimal::from(large + 1))
         ));
 
-        assert!(values_equal(
-            &Value::Float(f64::NAN),
-            &Value::Float(f64::NAN)
-        ));
-        assert!(!values_equal(&Value::Int(0), &Value::Float(f64::NAN)));
-        assert!(!values_equal(&Value::Float(f64::NAN), &Value::Int(0)));
+        assert!(values_equal(&Value::Int(42), &Value::Decimal(dec!(42))));
+        assert!(values_equal(&Value::Decimal(dec!(42)), &Value::Int(42)));
     }
 }

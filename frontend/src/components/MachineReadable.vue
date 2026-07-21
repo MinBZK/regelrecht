@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, toRef, watch, nextTick } from 'vue';
+import { computed, inject, ref, toRef, watch, nextTick } from 'vue';
 import { humanize } from '../utils/outputFormat.js';
 import { useCorpusLaws } from '../composables/useCorpusLaws.js';
 import BreakableName from './BreakableName.vue';
@@ -13,25 +13,40 @@ const props = defineProps({
   /** True while a save PUT is in flight */
   saving: { type: Boolean, default: false },
   /** Error from the most recent save attempt (Error instance or null) */
-  saveError: { type: Object, default: null },
-  /** Active traject ref — scopes the corpus-laws lookup so display
+  /** Active traject ref - scopes the corpus-laws lookup so display
    *  names reflect the traject's view (including its in-progress edits). */
   trajectRef: { type: String, default: null },
+  /** Read-only context: offer a button that opens the editor so the missing
+   *  machine-readable version can be created there. Ignored when `editable`,
+   *  which seeds it in place instead. */
+  canCreate: { type: Boolean, default: false },
+  /** Anchor target for that button. Leave unset when the user isn't logged
+   *  in, so the click gates on the login popover instead of the href. */
+  createHref: { type: String, default: undefined },
 });
 
 const { displayName: lawDisplayName } = useCorpusLaws(toRef(props, 'trajectRef'));
+
+// Provided by AppShell; see LibraryView's "Bewerken" button.
+const onLoginTriggerPointerdown = inject('onLoginTriggerPointerdown', () => {});
 
 const emit = defineEmits([
   'open-action',
   'open-edit',
   'init-mr',
+  /**
+   * Read-only empty state: the user wants the machine-readable version
+   * created, which only the editor can do. Payload is the button element, so
+   * the parent can anchor the login popover to it.
+   */
+  'create-mr',
   'add-action',
-  // The Machine-pane "Opslaan" button — a real backend save of the law.
+  // The Machine-pane "Opslaan" button - a real backend save of the law.
   'save',
   /**
    * Patch a single machine_readable field in place (no backend save, just
    * marks the model dirty). Same `{ section, key, data }` shape the parent's
-   * handleSave dispatches on — used for inline edits like the produces
+   * handleSave dispatches on - used for inline edits like the produces
    * dropdowns. Distinct from `save` (which is the law PUT).
    */
   'patch',
@@ -160,7 +175,7 @@ function editOutput(index) {
   if (raw) emit('open-edit', { section: 'output', index, data: snapshot(raw) });
 }
 
-// Delete handlers — stage a confirmation in `pendingDelete`, then on
+// Delete handlers - stage a confirmation in `pendingDelete`, then on
 // confirm emit the delete event with the section + identity of the row.
 // The parent (EditorApp) is the source of truth for machineReadable,
 // so all mutations live there. The modal-dialog confirmation is here
@@ -182,7 +197,7 @@ const pendingSectionLabel = computed(
 watch(pendingDelete, async (val) => {
   await nextTick();
   // Guard against test envs where the modal-dialog custom element isn't
-  // upgraded — the ref then holds a plain HTMLElement without show/hide.
+  // upgraded - the ref then holds a plain HTMLElement without show/hide.
   // Optional-chaining on `?.show()` would still throw because it only
   // skips when `.value` is nullish, not when `.show` itself is undefined.
   const el = deleteModalEl.value;
@@ -255,22 +270,21 @@ function addOutput() {
 
 <template>
   <nldd-inline-dialog v-if="!mr" data-testid="no-machine-readable" text="Geen machine-leesbare gegevens voor dit artikel">
-    <nldd-button v-if="editable" slot="actions" variant="primary" size="md" data-testid="init-mr-btn" @click="emit('init-mr')" text="Initialiseer machine readable versie"></nldd-button>
+    <nldd-button v-if="editable" slot="actions" variant="secondary" size="md" data-testid="init-mr-btn" @click="emit('init-mr')" text="Maak machine versie aan"></nldd-button>
+    <nldd-button
+      v-else-if="canCreate"
+      slot="actions"
+      variant="secondary"
+      size="md"
+      data-testid="create-mr-btn"
+      text="Machine versie aanmaken"
+      :href="createHref"
+      @click.prevent="emit('create-mr', $event.currentTarget)"
+      @pointerdown.capture="onLoginTriggerPointerdown"
+    ></nldd-button>
   </nldd-inline-dialog>
 
   <div v-else data-testid="machine-readable">
-    <!-- Save error surfaces inline; the actual save button lives in the
-         parent pane's footer. -->
-    <template v-if="editable && saveError">
-      <nldd-inline-dialog
-        variant="alert"
-        text="Opslaan mislukt"
-        :supporting-text="saveError.message || String(saveError)"
-        data-testid="save-mr-error"
-      ></nldd-inline-dialog>
-      <nldd-spacer size="12"></nldd-spacer>
-    </template>
-
     <!-- Metadata: produces -->
     <nldd-list v-if="produces" variant="box">
       <nldd-list-item v-if="produces.legal_character || editable" size="md">

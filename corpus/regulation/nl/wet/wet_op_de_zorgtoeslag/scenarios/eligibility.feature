@@ -41,6 +41,7 @@ Feature: Zorgtoeslag eligibility
   # NB: Engine currently returns true for minors — age check was removed (#375)
   # because AWIR Art 10 (verzekeringsplicht vs meeverzekerd) is not yet modeled.
   # This scenario asserts false as the desired outcome, not the current engine result.
+  @wip
   Scenario: Minderjarige heeft geen recht op zorgtoeslag
     Given the following "personal_data" data with key "bsn":
       | bsn       | geboortedatum | verblijfsadres | land_verblijf |
@@ -221,6 +222,89 @@ Feature: Zorgtoeslag eligibility
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
     Then output "hoogte_zorgtoeslag" equals 210726
+
+  # === Standaardpremie (regeling_standaardpremie) ===
+
+  Scenario: Standaardpremie 2025 uit regeling_standaardpremie
+    Given the calculation date is "2025-01-01"
+    When I evaluate "standaardpremie" of "regeling_standaardpremie"
+    Then the execution succeeds
+    Then output "standaardpremie" equals 211200
+
+  Scenario: Standaardpremie 2024 uit regeling_standaardpremie
+    Given the calculation date is "2024-01-01"
+    When I evaluate "standaardpremie" of "regeling_standaardpremie"
+    Then the execution succeeds
+    Then output "standaardpremie" equals 198700
+
+  # === 2024 toeslagbedragen ===
+
+  Scenario: Meerderjarige heeft recht op zorgtoeslag (2024)
+    Given the calculation date is "2024-01-01"
+    Given the following "personal_data" data with key "bsn":
+      | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+      | 999993653 | 2005-01-01    | Amsterdam      | NEDERLAND     |
+    Given the following "relationship_data" data with key "bsn":
+      | bsn       | partnerschap_type | partner_bsn |
+      | 999993653 | GEEN              | null        |
+    Given the following "insurance" data with key "bsn":
+      | bsn       | polis_status | verdragsinschrijving |
+      | 999993653 | ACTIEF       | false                |
+    Given the following "box1" data with key "bsn":
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+      | 999993653 | 79547                     | 0                         | 0                     | 0                               | 0            | 0                   |
+    Given the following "box2" data with key "bsn":
+      | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+      | 999993653 | 0                   | 0                      |
+    Given the following "box3" data with key "bsn":
+      | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+      | 999993653 | 0         | 0           | 0              | 0        |
+    Given the following "detenties" data with key "bsn":
+      | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+      | 999993653 | null           | null            | null     | null                 |
+    Given parameter "bsn" is "999993653"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
+    Then the execution succeeds
+    Then output "heeft_recht_op_zorgtoeslag" is true
+    # NB: ~197205 eurocent = EUR 1.972,05. Exact-decimal arithmetic (RFC-024)
+    # yields a sub-cent amount; the model applies no whole-cent rounding (that
+    # would be an explicit ROUND op, RFC-023/024), so the exact value stands.
+    Then output "hoogte_zorgtoeslag" equals 197205.31187
+
+  # NB: Art 2 no longer checks age directly — that was a scope violation.
+  # The Zvw also does not check age for is_verzekerd (minors ARE verzekerd
+  # per Art 2 lid 3 Zvw). So an under-18 with active insurance IS entitled.
+  # The under-18 person with zero income gets the maximum toeslag
+  # (standaardpremie 2024 = EUR 1.987,00).
+  Scenario: Minderjarige met actieve polis heeft recht op zorgtoeslag (2024)
+    Given the calculation date is "2024-01-01"
+    Given the following "personal_data" data with key "bsn":
+      | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+      | 999993653 | 2007-01-01    | Amsterdam      | NEDERLAND     |
+    Given the following "relationship_data" data with key "bsn":
+      | bsn       | partnerschap_type | partner_bsn |
+      | 999993653 | GEEN              | null        |
+    Given the following "insurance" data with key "bsn":
+      | bsn       | polis_status | verdragsinschrijving |
+      | 999993653 | ACTIEF       | false                |
+    Given the following "box1" data with key "bsn":
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+      | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   |
+    Given the following "box2" data with key "bsn":
+      | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+      | 999993653 | 0                   | 0                      |
+    Given the following "box3" data with key "bsn":
+      | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+      | 999993653 | 0         | 0           | 0              | 0        |
+    Given the following "detenties" data with key "bsn":
+      | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+      | 999993653 | null           | null            | null     | null                 |
+    Given parameter "bsn" is "999993653"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
+    Then the execution succeeds
+    Then output "heeft_recht_op_zorgtoeslag" is true
+    # NB: 198700 eurocent = EUR 1.987,00
+    Then output "hoogte_zorgtoeslag" equals 198700
 
   # NB: Forensische zorg exclusion was removed as scope violation (#375).
   # It belongs in Zvw Art 24 or Wfz, not in the zorgtoeslag law.

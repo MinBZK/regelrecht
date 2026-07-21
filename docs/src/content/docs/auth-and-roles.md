@@ -31,7 +31,7 @@ Keycloak composite role).
 There are two applications today:
 
 - **editor**: `packages/editor-api` + `frontend/` (law and scenario editor)
-- **harvester**: `packages/admin` (harvester job queue & corpus sync dashboard)
+- **harvester**: `packages/admin`, a standalone harvester job-queue & corpus API. Its dashboard UI is served inside the editor as the "Corpusinwinning" section (`frontend/src/harvester/`), visible to any `harvester-*` role and reached through the editor-api `/api/harvest-admin/*` proxy (which forwards the session cookie so the harvester API enforces the `harvester-*` gates below). The API stays independently addressable for non-editor clients.
 
 ### Role reference
 
@@ -231,8 +231,8 @@ sync) are fully open in this mode.
 
 ### Local SSO login (dev/local, real Keycloak)
 
-To test the *real* login + RBAC flow locally — instead of the auth-disabled
-bypass above — you can point the editor at a Keycloak realm and log in with a
+To test the *real* login + RBAC flow locally, instead of the auth-disabled
+bypass above, you can point the editor at a Keycloak realm and log in with a
 real account over `http://localhost`. No code change is required; the auth
 layer is driven entirely by environment variables.
 
@@ -241,7 +241,7 @@ layer is driven entirely by environment variables.
 - The editor frontend runs on Vite (started with `--port 7300`) and proxies
   `/api`, `/auth`, `/health` to the editor-api on `:8000`. The browser talks
   only to `http://localhost:7300`. (Vite's config default is `:3000`; we use a
-  host-mapped port — see *Ports and DB host* below.)
+  host-mapped port, see *Ports and DB host* below.)
 - The redirect URI is built as `${BASE_URL}/auth/callback`. With
   `BASE_URL=http://localhost:7300` it becomes
   `http://localhost:7300/auth/callback`, which Vite proxies to the backend.
@@ -253,22 +253,23 @@ layer is driven entirely by environment variables.
 
 Configure the OIDC client the editor will use. Re-using the production client
 and adding a `localhost` redirect to it is a minor token-leakage footgun, so the
-cleaner choice is a single dedicated dev client — `regelrecht-local`, shared
+cleaner choice is a single dedicated dev client, `regelrecht-local`, shared
 across all local apps (editor, harvester-admin, …), with a `localhost` redirect
 URI per app port:
 
 1. **Client type / capability**: *Client authentication* = **On** (a
-   confidential client — the editor sends a client secret, and startup fails if
+   confidential client: the editor sends a client secret, and startup fails if
    `OIDC_CLIENT_SECRET` is empty). Enable *Standard flow* (Authorization Code).
    PKCE (S256) is sent by the app and accepted by Keycloak out of the box; you
    may optionally enforce it under *Advanced → Proof Key for Code Exchange*.
 2. **Valid redirect URIs**: add exactly `http://localhost:7300/auth/callback`
-   for the editor — and one per other local app, e.g.
-   `http://localhost:7400/auth/callback` for harvester-admin. Scheme + host +
-   port + path must match the value the app sends.
-3. **Web origins**: add `http://localhost:7300` (and `http://localhost:7400`),
-   or `+` to derive from the redirect URIs, so the browser's CORS checks pass.
-4. **Client scopes**: ensure `openid`, `email`, and `profile` are granted — the
+   for the editor. (The harvester-admin service is API-only; its UI is the
+   editor's Corpusinwinning section, reached through the editor-api proxy, so it needs
+   no separate browser redirect URI in local dev.) Scheme + host + port + path
+   must match the value the app sends.
+3. **Web origins**: add `http://localhost:7300`, or `+` to derive from the
+   redirect URIs, so the browser's CORS checks pass.
+4. **Client scopes**: ensure `openid`, `email`, and `profile` are granted; the
    app requests these three scopes.
 5. **Realm-roles ID-token mapper**: add a *User Realm Role* mapper on the client
    (or its dedicated scope) with *Add to ID token* = On. Keycloak only puts
@@ -298,8 +299,8 @@ cd frontend && npx vite --port 7300
 
 Open `http://localhost:7300` in any browser and log in. When `BASE_URL` is an
 http localhost origin the editor drops the session cookie's `Secure` flag, so
-Safari — which, unlike Chrome and Firefox, refuses Secure cookies over
-`http://localhost` — completes the OIDC handshake too. Outside localhost
+Safari (which, unlike Chrome and Firefox, refuses Secure cookies over
+`http://localhost`) completes the OIDC handshake too. Outside localhost
 (production always serves over an `https://` `BASE_URL`) the cookie stays
 `Secure`.
 
@@ -310,7 +311,7 @@ On a successful start the editor-api log shows
 **Ports and DB host.** The values above assume a dev container backed by Docker
 Desktop (the common setup here):
 
-- `DATABASE_URL` uses `host.docker.internal` — published container ports live on
+- `DATABASE_URL` uses `host.docker.internal`: published container ports live on
   the Docker host, not the container's `localhost` (the same reason
   `TESTCONTAINERS_HOST_OVERRIDE` is needed for tests).
 - The frontend uses a **host-mapped port** in the 7100–7300 range (`7300`)

@@ -1,47 +1,52 @@
 # Rust BDD Tests
 
-This directory contains Cucumber/Gherkin BDD tests for the Rust engine.
+This directory contains the Rust engine's Cucumber/Gherkin BDD tests. The step
+bindings are **code-generated** from the canonical, engine-agnostic grammar at
+`bdd/grammar.yaml` (repo root) — see `bdd/README.md` for the language itself.
 
 ## Running the Tests
 
 ```bash
-# Via just
-just rust-bdd
+# Via just (runs both buckets)
+just bdd
 
 # Or directly via cargo
 cd packages/engine && cargo test --test bdd -- --nocapture
 ```
 
-## Current Status
-
-**17 of 17 scenarios pass** — all BDD scenarios pass with the IoC (`open_terms` + `implements`) pattern.
-
-### Scenarios
-
-- **Bijstand** (10 scenarios) — Participatiewet eligibility and benefit calculation, including municipal adjustments via IoC
-- **Erfgrensbeplanting** (4 scenarios) — BW 5:42 boundary planting with municipal overrides via IoC, including defaults
-- **Zorgtoeslag** (3 scenarios) — Healthcare allowance with cross-law resolution and ministerial regulation via IoC
-
 ## Architecture
 
 ```
 tests/bdd/
-├── main.rs                    # Test runner entry point
-├── world.rs                   # World struct with test state
-├── steps/
-│   ├── mod.rs                 # Module exports
-│   ├── given.rs               # Given step definitions
-│   ├── when.rs                # When step definitions
-│   └── then.rs                # Then step definitions
+├── main.rs                    # Runner: globs both feature buckets, runs cucumber (skips @wip)
+├── world.rs                   # RegelrechtWorld — generic, law-agnostic test state
+├── dispatch.rs                # ArgValue + World::dispatch — the single hand-written
+│                              #   home for all step semantics (every grammar action)
 └── helpers/
     ├── mod.rs                 # Helper module
-    ├── regulation_loader.rs   # Loads all YAML regulations
+    ├── regulation_loader.rs   # Loads all corpus YAML regulations
     └── value_conversion.rs    # Gherkin value type conversion
 ```
 
-## Feature Files
+The `#[given]/#[when]/#[then]` step functions themselves are **generated** at
+build time by `packages/engine/build.rs` (from `packages/engine/build_codegen/`)
+into `$OUT_DIR/bdd_generated_steps.rs`, which `main.rs` includes. Each generated
+step parses its captures and calls `World::dispatch(action, args, table)`. To add
+or change a step phrasing, edit `bdd/grammar.yaml` — never hand-edit generated
+code. There are no hand-written, per-law step files.
 
-The tests use the shared feature files from `features/`:
-- `bijstand.feature` - 10 scenarios for Participatiewet
-- `zorgtoeslag.feature` - 3 scenarios for healthcare allowance
-- `erfgrensbeplanting.feature` - 4 scenarios for boundary planting regulations
+## Feature Files (two buckets)
+
+The runner discovers feature files from both buckets and runs them through the
+same generated bindings:
+
+- **Bucket A — law validation**: `corpus/regulation/**/scenarios/*.feature`.
+  Run against the live laws; a failure means a law changed or the scenario is
+  stale (a human decides). Scenarios documenting a not-yet-implemented engine
+  behavior are tagged `@wip` and skipped.
+- **Bucket B — engine conformance**: `bdd/conformance/*.feature`, tagged by
+  capability tier (`@tier:notes`, `@tier:untranslatable`, `@tier:provenance`;
+  untagged = `core`). These exercise the whole language against synthetic
+  `test_*` laws.
+
+See `bdd/README.md` for the grammar, tiers, and codegen details.

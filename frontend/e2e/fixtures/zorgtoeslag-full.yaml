@@ -90,7 +90,7 @@ articles:
           # Art. 2 lid 2: "wordt het gezamenlijk toetsingsinkomen van de verzekerde en
           # de toeslagpartner in aanmerking genomen."
           # TODO #377: Bij partners moet het gezamenlijke toetsingsinkomen worden gebruikt.
-          # Geblokkeerd: engine ondersteunt geen conditionele input-resolutie — ophalen
+          # Geblokkeerd: engine ondersteunt geen conditionele input-resolutie - ophalen
           # partner-toetsingsinkomen via AWIR art. 8 met partner_bsn faalt bij null BSN.
           - name: toetsingsinkomen
             type: amount

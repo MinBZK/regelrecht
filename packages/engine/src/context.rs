@@ -521,14 +521,14 @@ mod tests {
         let mut ctx = make_context();
         let mut defs = BTreeMap::new();
         defs.insert("MAX_INCOME".to_string(), Value::Int(50000));
-        defs.insert("TAX_RATE".to_string(), Value::Float(0.21));
+        defs.insert("TAX_RATE".to_string(), Value::from(0.21));
         ctx.set_definitions_raw(defs);
 
         let max = ctx.resolve("MAX_INCOME").unwrap();
         assert_eq!(max, Value::Int(50000));
 
         let rate = ctx.resolve("TAX_RATE").unwrap();
-        assert_eq!(rate, Value::Float(0.21));
+        assert_eq!(rate, Value::from(0.21));
     }
 
     #[test]

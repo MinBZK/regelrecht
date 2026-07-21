@@ -4,6 +4,10 @@ target
 node_modules
 features
 frontend
+# Keep the editor frontend's manifest: the admin and lawmaking image builds run
+# the npm-workspace `npm ci`, which needs every workspace package.json present.
+# (The editor image itself uses frontend/Dockerfile.dockerignore, not this file.)
+!frontend/package.json
 doc
 *.md
 *.png

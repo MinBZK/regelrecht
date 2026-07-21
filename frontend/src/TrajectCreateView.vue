@@ -1,24 +1,19 @@
 <script setup>
-import { computed, ref, watchEffect } from 'vue';
+import { ref, watchEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import SearchPopover from './components/SearchPopover.vue';
 import TrajectCreateForm from './components/TrajectCreateForm.vue';
 import { createTraject } from './composables/useTrajects.js';
-import { registerSearchPopover } from './composables/useAppChrome.js';
+import { homeTarget } from './composables/useLastVisitedRoute.js';
 
-// Nieuw-traject-pagina — bereikbaar vanaf de trajectkeuze-pagina
-// (/editor). Gebruikt hetzelfde gedeelde formulier als de
-// TrajectMenu-sheet; na het aanmaken ga je direct de editor in op het
-// nieuwe traject, met een eventueel meegekregen wet (query
-// `law`/`article`) voorgeselecteerd.
+// Nieuw-traject-pagina - bereikbaar vanaf de trajectkeuze-pagina. Gebruikt
+// hetzelfde gedeelde formulier als de TrajectMenu-sheet; na het aanmaken ga je
+// direct de editor (of traject-scoped bibliotheek) in op het nieuwe traject,
+// met een eventueel meegekregen wet (query `law`/`article`) voorgeselecteerd.
 //
-// Content-only: de chrome komt uit de persistente AppShell; de terugknop
-// naar de keuzepagina zit in de page-header.
+// Top-level route (geen AppShell-child): geen app-chrome. De pagina draagt z'n
+// eigen top-title-bar met terugknop naar de trajectkeuze.
 const route = useRoute();
 const router = useRouter();
-
-const searchPopoverRef = ref(null);
-registerSearchPopover(searchPopoverRef);
 
 const formEl = ref(null);
 const createBusy = ref(false);
@@ -28,13 +23,9 @@ watchEffect(() => {
   document.title = 'Nieuw traject · RegelRecht';
 });
 
-// Terug naar de keuzepagina, met behoud van een meegekregen wet.
-const backTarget = computed(() => ({ name: 'editor', query: route.query }));
-
-// Deze pagina heeft zelf geen wetweergave — een zoekresultaat opent in de
-// bibliotheek.
-function openLawFromSearch(lawId) {
-  router.push({ name: 'library', params: { lawId } });
+// Terug naar de chooser, met behoud van sectie + meegekregen wet.
+function goBack() {
+  router.push({ name: 'trajecten', query: route.query });
 }
 
 async function submitCreate() {
@@ -56,14 +47,13 @@ async function submitCreate() {
         'Traject aangemaakt maar kon niet worden geopend. Ga terug en selecteer het.';
       return;
     }
-    await router.push({
-      name: 'editor-traject',
-      params: {
-        trajectRef: created.ref,
-        lawId: route.query.law || undefined,
-        articleNumber: route.query.article || undefined,
-      },
-    });
+    const lawId = route.query.law || undefined;
+    const articleNumber = route.query.article || undefined;
+    await router.push(
+      route.query.sectie === 'library'
+        ? homeTarget({ trajectRef: created.ref, lawId, articleNumber })
+        : { name: 'editor-traject', params: { trajectRef: created.ref, lawId, articleNumber } },
+    );
   } catch (e) {
     createError.value = e.message || 'Aanmaken mislukt';
   } finally {
@@ -73,28 +63,27 @@ async function submitCreate() {
 </script>
 
 <template>
-  <nldd-page sticky-header>
-    <nldd-top-title-bar
-      slot="header"
-      text="Nieuw traject"
-      :back-text="createBusy ? undefined : 'Kies een traject'"
-      collapse-anchor="nieuw-traject-titel"
-      @back="router.push(backTarget)"
-    ></nldd-top-title-bar>
+  <nldd-app-view>
+    <nldd-page sticky-header>
+      <nldd-top-title-bar
+        slot="header"
+        text="Nieuw traject"
+        :back-text="createBusy ? undefined : 'Trajecten'"
+        collapse-anchor="nieuw-traject-titel"
+        @back="goBack"
+      ></nldd-top-title-bar>
 
-    <nldd-simple-section width="800px">
-      <nldd-title id="nieuw-traject-titel" size="3"><h3>Nieuw traject</h3></nldd-title>
-      <nldd-spacer size="16"></nldd-spacer>
-      <TrajectCreateForm ref="formEl"
-        :busy="createBusy"
-        :error="createError"
-        @submit="submitCreate"
-      />
-    </nldd-simple-section>
-  </nldd-page>
+      <nldd-simple-section width="800px">
+        <nldd-title id="nieuw-traject-titel" size="3"><h3>Nieuw traject</h3></nldd-title>
+        <nldd-spacer size="16"></nldd-spacer>
+        <TrajectCreateForm ref="formEl"
+          :busy="createBusy"
+          :error="createError"
+          @submit="submitCreate"
+        />
+      </nldd-simple-section>
 
-  <SearchPopover
-    ref="searchPopoverRef"
-    @select-law="openLawFromSearch"
-  />
+      <nldd-page-footer slot="footer"></nldd-page-footer>
+    </nldd-page>
+  </nldd-app-view>
 </template>

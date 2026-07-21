@@ -7,11 +7,6 @@
 //! extractors constructed inline) rather than through a `Router`, which
 //! keeps the tests focused on the handler logic and skips the cookie /
 //! middleware plumbing.
-//!
-//! `tower_sessions::Session` can be constructed directly against a
-//! `MemoryStore` (see `make_session` below), so even the two
-//! session-touching handlers (`set_active`, `leave`) are reachable
-//! without a router.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -23,17 +18,15 @@ use axum::{Extension, Json};
 use pretty_assertions::assert_eq;
 use sqlx::PgPool;
 use tokio::sync::{Mutex, RwLock};
-use tower_sessions::Session;
-use tower_sessions_memory_store::MemoryStore;
 use uuid::Uuid;
 
 use regelrecht_editor_api::accounts::AccountRecord;
 use regelrecht_editor_api::config::AppConfig;
+use regelrecht_editor_api::github_oauth::{self, GithubOAuth};
 use regelrecht_editor_api::state::{AppState, CorpusState};
 use regelrecht_editor_api::traject_corpus::TrajectCorpusCache;
 use regelrecht_editor_api::trajects::{
-    self, AddMemberRequest, CreateTrajectRequest, SetActiveTrajectRequest, UpdateMemberRequest,
-    UpdateTrajectRequest, SESSION_KEY_ACTIVE_TRAJECT,
+    self, AddMemberRequest, CreateTrajectRequest, UpdateMemberRequest, UpdateTrajectRequest,
 };
 
 use regelrecht_pipeline::test_utils::TestDb;
@@ -50,10 +43,13 @@ fn empty_state(pool: PgPool) -> AppState {
         config: Arc::new(AppConfig {
             oidc: None,
             base_url: None,
+            github_oauth: None,
+            task_enrich_provider: "claude".to_string(),
         }),
         http_client: reqwest::Client::new(),
         pool: Some(pool),
         pipeline_api_url: None,
+        harvest_admin_url: None,
         reload_lock: Arc::new(Mutex::new(())),
         trajects: Arc::new(TrajectCorpusCache::new()),
     }
@@ -83,6 +79,10 @@ fn create_req(name: &str) -> CreateTrajectRequest {
         name: name.to_string(),
         description: String::new(),
         scope: String::new(),
+        repo_owner: None,
+        repo_name: None,
+        base_branch: None,
+        repo_path: None,
     }
 }
 
@@ -91,6 +91,7 @@ async fn create_traject(state: &AppState, owner: &AccountRecord, name: &str) -> 
     let (status, Json(summary)) = trajects::create(
         State(state.clone()),
         Extension(owner.clone()),
+        axum::http::HeaderMap::new(),
         Json(create_req(name)),
     )
     .await
@@ -123,10 +124,6 @@ async fn add_member(
     .map(|Json(body)| body.status)
 }
 
-fn make_session() -> Session {
-    Session::new(None, Arc::new(MemoryStore::default()), None)
-}
-
 // ---------------------------------------------------------------------------
 // `create`
 // ---------------------------------------------------------------------------
@@ -140,6 +137,7 @@ async fn create_inserts_traject_with_creator_as_owner_and_writable_own_source() 
     let (status, Json(summary)) = trajects::create(
         State(state.clone()),
         Extension(alice.clone()),
+        axum::http::HeaderMap::new(),
         Json(create_req("Tarief")),
     )
     .await
@@ -185,10 +183,149 @@ async fn create_rejects_empty_name() {
 
     let mut req = create_req("");
     req.name = "   ".to_string();
-    let err = trajects::create(State(state), Extension(alice), Json(req))
+    let (status, _msg) = trajects::create(
+        State(state),
+        Extension(alice),
+        axum::http::HeaderMap::new(),
+        Json(req),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn normal_traject_is_writable_with_github_own() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let owner = seed_account(&db.pool, "owner2@example.com", "Owner2").await;
+
+    let id = create_traject(&state, &owner, "Gewoon traject").await;
+
+    let src_type: String = sqlx::query_scalar(
+        "SELECT source_type::text FROM traject_corpus_sources
+         WHERE traject_id = $1 AND is_writable_own = TRUE",
+    )
+    .bind(id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(src_type, "github");
+}
+
+/// Create-request with user-supplied repo coords — the variant whose
+/// preflight resolves a per-user GitHub token.
+fn custom_repo_req(name: &str) -> CreateTrajectRequest {
+    CreateTrajectRequest {
+        name: name.to_string(),
+        description: String::new(),
+        scope: String::new(),
+        repo_owner: Some("example-org".to_string()),
+        repo_name: Some("regelrecht-corpus-example".to_string()),
+        base_branch: Some("main".to_string()),
+        repo_path: None,
+    }
+}
+
+#[tokio::test]
+async fn create_custom_repo_requires_linked_github_when_enforced() {
+    // With user-token enforcement on and no linked GitHub account, the
+    // create-traject preflight must refuse with 428 — before any GitHub
+    // round-trip (no mock server needed) and before any DB row is written.
+    let db = TestDb::new().await;
+    let mut state = empty_state(db.pool.clone());
+    state.config = Arc::new(AppConfig {
+        oidc: None,
+        base_url: None,
+        github_oauth: Some(GithubOAuth::for_tests(true)),
+        task_enrich_provider: "claude".to_string(),
+    });
+    let owner = seed_account(&db.pool, "owner-enforced@example.com", "Owner").await;
+
+    let err = trajects::create(
+        State(state.clone()),
+        Extension(owner.clone()),
+        axum::http::HeaderMap::new(),
+        Json(custom_repo_req("Repo traject")),
+    )
+    .await
+    .expect_err("create with enforcement on and no linked token must refuse");
+    assert_eq!(err.0, StatusCode::PRECONDITION_REQUIRED);
+
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM trajects")
+        .fetch_one(&db.pool)
         .await
-        .unwrap_err();
-    assert_eq!(err, StatusCode::BAD_REQUEST);
+        .unwrap();
+    assert_eq!(count, 0, "a refused create must not leave a traject behind");
+}
+
+#[tokio::test]
+async fn create_custom_repo_preflights_with_the_linked_user_token() {
+    // The linked branch: the repo preflight must authenticate as the acting
+    // user (their sealed-cookie token), not the operator token. Matching on
+    // the Authorization header pins that — an operator-token request would
+    // not match the mocks and the preflight would fail on the 404.
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let db = TestDb::new().await;
+    let server = MockServer::start().await;
+
+    let mut oauth = GithubOAuth::for_tests(true);
+    oauth.api_base = server.uri();
+    let mut state = empty_state(db.pool.clone());
+    state.config = Arc::new(AppConfig {
+        oidc: None,
+        base_url: None,
+        github_oauth: Some(oauth.clone()),
+        task_enrich_provider: "claude".to_string(),
+    });
+    let owner = seed_account(&db.pool, "owner-linked@example.com", "Owner").await;
+
+    Mock::given(method("GET"))
+        .and(path("/repos/example-org/regelrecht-corpus-example"))
+        .and(header("authorization", "Bearer user-token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "default_branch": "main",
+            "private": true,
+            "permissions": { "push": true, "pull": true },
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(
+            "/repos/example-org/regelrecht-corpus-example/branches/main",
+        ))
+        .and(header("authorization", "Bearer user-token"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({ "name": "main" })),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        axum::http::header::COOKIE,
+        axum::http::HeaderValue::from_str(&github_oauth::seal_token_cookie_for_tests(
+            &oauth,
+            owner.id,
+            "user-token",
+        ))
+        .unwrap(),
+    );
+
+    let (status, Json(summary)) = trajects::create(
+        State(state.clone()),
+        Extension(owner.clone()),
+        headers,
+        Json(custom_repo_req("Repo traject")),
+    )
+    .await
+    .expect("create with a linked token must pass the preflight");
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(summary.name, "Repo traject");
 }
 
 // ---------------------------------------------------------------------------
@@ -541,15 +678,14 @@ async fn leave_blocks_last_owner() {
     let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
     let traject_id = create_traject(&state, &alice, "Tarief").await;
 
-    let session = make_session();
-    let err = trajects::leave(State(state), Extension(alice), session, Path(traject_id))
+    let err = trajects::leave(State(state), Extension(alice), Path(traject_id))
         .await
         .unwrap_err();
     assert_eq!(err, StatusCode::CONFLICT);
 }
 
 #[tokio::test]
-async fn leave_allows_contributor_and_clears_active_session_when_leaving_active_traject() {
+async fn leave_allows_contributor() {
     let db = TestDb::new().await;
     let state = empty_state(db.pool.clone());
     let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
@@ -560,16 +696,9 @@ async fn leave_allows_contributor_and_clears_active_session_when_leaving_active_
         Ok("active")
     );
 
-    let session = make_session();
-    session
-        .insert(SESSION_KEY_ACTIVE_TRAJECT, traject_id)
-        .await
-        .unwrap();
-
     let ok = trajects::leave(
         State(state.clone()),
         Extension(bob.clone()),
-        session.clone(),
         Path(traject_id),
     )
     .await
@@ -585,62 +714,6 @@ async fn leave_allows_contributor_and_clears_active_session_when_leaving_active_
     .await
     .unwrap();
     assert_eq!(count, 0);
-
-    let active: Option<Uuid> = session.get(SESSION_KEY_ACTIVE_TRAJECT).await.unwrap();
-    assert_eq!(active, None);
-}
-
-// ---------------------------------------------------------------------------
-// `set_active`
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn set_active_rejects_non_member() {
-    let db = TestDb::new().await;
-    let state = empty_state(db.pool.clone());
-    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
-    let bob = seed_account(&db.pool, "bob@test.local", "Bob").await;
-    let traject_id = create_traject(&state, &alice, "Tarief").await;
-
-    let session = make_session();
-    let err = trajects::set_active(
-        State(state),
-        Extension(bob),
-        session,
-        Json(SetActiveTrajectRequest {
-            traject_id: Some(traject_id),
-        }),
-    )
-    .await
-    .unwrap_err();
-    assert_eq!(err, StatusCode::FORBIDDEN);
-}
-
-#[tokio::test]
-async fn set_active_clears_session_when_traject_id_is_null() {
-    let db = TestDb::new().await;
-    let state = empty_state(db.pool.clone());
-    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
-    let traject_id = create_traject(&state, &alice, "Tarief").await;
-
-    let session = make_session();
-    session
-        .insert(SESSION_KEY_ACTIVE_TRAJECT, traject_id)
-        .await
-        .unwrap();
-
-    let Json(resp) = trajects::set_active(
-        State(state),
-        Extension(alice),
-        session.clone(),
-        Json(SetActiveTrajectRequest { traject_id: None }),
-    )
-    .await
-    .unwrap();
-    assert_eq!(resp.traject_id, None);
-
-    let active: Option<Uuid> = session.get(SESSION_KEY_ACTIVE_TRAJECT).await.unwrap();
-    assert_eq!(active, None);
 }
 
 // ---------------------------------------------------------------------------

@@ -1,11 +1,12 @@
 import { computed, ref, shallowRef } from 'vue';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { lastSavedPr, sanitizeSavedPr } from './useSavedPr.js';
-import { lawUrl } from './corpusUrls.js';
+import { lawCreateUrl, lawUrl } from './corpusUrls.js';
 import { apiFetch } from '../lib/apiFetch.js';
 import { createLruMap } from '../lib/lruMap.js';
 import { useLatest } from '../lib/useLatest.js';
 import { humanizeLawId } from '../lib/lawName.js';
+import { holdRetryFloor } from '../lib/retryFeedback.js';
 
 // Shared law cache, keyed by `${trajectRef || ''}::${lawId}` so a law
 // opened in traject A and in traject B (or globally) returns the
@@ -48,6 +49,54 @@ export const lawFetchInit = Object.freeze({
   errorMessage: (status) => `Failed to fetch: ${status}`,
 });
 
+// The single cache-entry shape shared by every producer (fresh fetch,
+// direct-URL load, save). The `etag` is echoed back as `If-Match` on the
+// next save so a concurrent edit by another traject member surfaces as a
+// 412 instead of a silent overwrite (same chain as useTrajectDocuments).
+function makeEntry(law, rawYaml, etag) {
+  return { law, rawYaml, lawName: resolveLawName(law), etag };
+}
+
+// In-flight law GETs, keyed like `lawCache`. Simultaneous callers share
+// one request instead of racing duplicate GETs against an empty cache -
+// which is exactly what an editor mount does: `useLaw().load()` fetches
+// the routed law while the persisted-tab label loader `fetchLaw`s the
+// same id in parallel. Entries are removed when the request settles, so
+// a failed fetch never pins a rejected promise (retries hit the network).
+const pendingLawFetches = new Map();
+
+/**
+ * The network leg shared by `fetchLaw` and `useLaw().load()`: always
+ * fetches (no cache read - `load()` relies on that for freshness),
+ * single-flighted per cache key, and stores the entry in `lawCache`
+ * under the requested id (and the body's resolved `$id`, when the two
+ * differ) before resolving.
+ */
+function fetchLawFresh(trajectRef, lawId) {
+  const key = lawCacheKey(trajectRef, lawId);
+  const pending = pendingLawFetches.get(key);
+  if (pending) return pending;
+  const p = (async () => {
+    const res = await apiFetch(lawUrl(trajectRef, lawId), lawFetchInit);
+    const text = await res.text();
+    const law = yaml.load(text);
+    const entry = makeEntry(law, text, res.headers.get('ETag'));
+    // Always overwrite: this is fresh content, so any pre-existing entry
+    // is by definition stale (older body and/or ETag) - keeping it would
+    // hand `fetchLaw`/`switchLaw` callers outdated YAML and a
+    // precondition doomed to 412.
+    lawCache.set(key, entry);
+    const resolvedId = law?.$id;
+    if (resolvedId && resolvedId !== lawId) {
+      lawCache.set(lawCacheKey(trajectRef, resolvedId), entry);
+    }
+    return entry;
+  })();
+  pendingLawFetches.set(key, p);
+  p.catch(() => {}).finally(() => pendingLawFetches.delete(key));
+  return p;
+}
+
 /**
  * Fetch a law's YAML, possibly from cache. The traject id is part of
  * the cache key so this never returns content from a different traject
@@ -60,26 +109,20 @@ export async function fetchLaw(trajectRef, lawId) {
   const key = lawCacheKey(trajectRef, lawId);
   const cached = lawCache.get(key);
   if (cached) return cached;
-  const res = await apiFetch(lawUrl(trajectRef, lawId), lawFetchInit);
-  const text = await res.text();
-  const law = yaml.load(text);
-  const entry = {
-    law,
-    rawYaml: text,
-    lawName: resolveLawName(law),
-    // Echoed back as `If-Match` on the next save so a concurrent edit
-    // by another traject member surfaces as a 412 instead of a silent
-    // overwrite (same chain as useTrajectDocuments).
-    etag: res.headers.get('ETag'),
-  };
-  lawCache.set(key, entry);
-  return entry;
+  return fetchLawFresh(trajectRef, lawId);
 }
 
 export function useLaw(lawParam, articleParam, trajectRefParam) {
+  // No law in the route: the `?law=` query may still carry one (the traject
+  // chooser passes it through). Otherwise we open NOTHING - deliberately no
+  // hardcoded fallback law. A default here silently loaded that law, resolved
+  // its first article, and the editor's add-tab watch turned it into a real
+  // tab - so `/editor/` always opened "Artikel 1" of the default law and even
+  // resurrected that tab after the user closed it. With no law, the caller
+  // (EditorView) decides what to open, e.g. by restoring the last active tab.
   if (!lawParam) {
     const params = new URLSearchParams(window.location.search);
-    lawParam = params.get('law') || 'wet_op_de_zorgtoeslag';
+    lawParam = params.get('law') || null;
   }
   const initialArticle = articleParam || null;
   // Current traject id for this composable instance. `switchLaw` may
@@ -89,7 +132,9 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
   // If the parameter looks like a URL, fetch directly; otherwise build
   // the API URL from the current trajectRef.
   const initialDirectUrl =
-    lawParam.startsWith('/') || lawParam.startsWith('http') ? lawParam : null;
+    lawParam && (lawParam.startsWith('/') || lawParam.startsWith('http'))
+      ? lawParam
+      : null;
   const law = shallowRef(null);
   const rawYaml = ref('');
   const selectedArticleNumber = ref(null);
@@ -117,28 +162,39 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
 
   async function load() {
     const isCurrent = claimSwitch();
+    // Snapshot before any await: a concurrent `switchLaw` mutates
+    // `currentTrajectRef`, and the direct-URL cache write below must key
+    // on the traject this load was issued for - not whichever traject the
+    // user has navigated to by the time the response body arrives.
+    const loadTrajectRef = currentTrajectRef;
     try {
       loading.value = true;
-      const url = initialDirectUrl ?? lawUrl(currentTrajectRef, lawParam);
-      const res = await apiFetch(url, lawFetchInit);
+      let entry;
+      if (initialDirectUrl) {
+        // Direct URL: no law id to key the shared in-flight map on, so
+        // fetch inline and cache under the body's resolved `$id`.
+        const res = await apiFetch(initialDirectUrl, lawFetchInit);
+        if (!isCurrent()) return;
+        const text = await res.text();
+        // Deliberately no second staleness check between `.text()` and the
+        // parse (the original had one): the content is fresh either way and
+        // the cache key is snapshotted above, so caching it mirrors
+        // `fetchLawFresh` semantics even if this load went stale mid-flight;
+        // the final `isCurrent()` below still guards all component state.
+        const parsed = yaml.load(text);
+        entry = makeEntry(parsed, text, res.headers.get('ETag'));
+        const resolvedId = parsed?.$id || lawParam;
+        lawCache.set(lawCacheKey(loadTrajectRef, resolvedId), entry);
+      } else {
+        // Fresh fetch (never the cache), shared with any concurrent
+        // `fetchLaw` for the same law so a mount doesn't fire duplicate
+        // GETs. Cache writes happen inside `fetchLawFresh`.
+        entry = await fetchLawFresh(loadTrajectRef, lawParam);
+      }
       if (!isCurrent()) return;
-      const text = await res.text();
-      if (!isCurrent()) return;
-      rawYaml.value = text;
-      law.value = yaml.load(text);
-      currentEtag.value = res.headers.get('ETag');
-      const resolvedId = law.value?.$id || lawParam;
-      const key = lawCacheKey(currentTrajectRef, resolvedId);
-      // Always overwrite: `load()` just fetched fresh content, so any
-      // pre-existing entry is by definition stale (older body and/or
-      // ETag) — keeping it would hand `fetchLaw`/`switchLaw` callers
-      // outdated YAML and a precondition doomed to 412.
-      lawCache.set(key, {
-        law: law.value,
-        rawYaml: text,
-        lawName: resolveLawName(law.value),
-        etag: currentEtag.value,
-      });
+      rawYaml.value = entry.rawYaml;
+      law.value = entry.law;
+      currentEtag.value = entry.etag;
       if (articles.value.length > 0 && !selectedArticleNumber.value) {
         if (initialArticle && articles.value.some(a => String(a.number) === initialArticle)) {
           selectedArticleNumber.value = initialArticle;
@@ -156,9 +212,14 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
     }
   }
 
-  load();
+  // With no law to open there is nothing to fetch: settle `loading` right away
+  // so the caller shows its empty state instead of an indicator that never
+  // resolves. `switchLaw` still loads on demand once a tab is picked.
+  if (lawParam) load();
+  else loading.value = false;
 
-  // Derive the law ID from the parsed law or the original param
+  // Derive the law ID from the parsed law or the original param (null when no
+  // law is open, which the editor's add-tab watch guards on).
   const lawId = computed(() => law.value?.$id || lawParam);
 
   /**
@@ -167,8 +228,10 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
    * cross-traject URL change drives a fresh fetch (and the cache key
    * keeps the previous traject's copy untouched).
    */
-  async function switchLaw(newLawId, articleNumber, newTrajectRef) {
+  async function switchLaw(newLawId, articleNumber, newTrajectRef, { minLoadingMs = 0 } = {}) {
     const isCurrent = claimSwitch();
+    const startedAt = Date.now();
+    let failed = false;
     try {
       loading.value = true;
       error.value = null;
@@ -189,10 +252,14 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
       }
     } catch (e) {
       if (!isCurrent()) return;
+      failed = true;
       error.value = e;
     } finally {
       if (isCurrent()) {
-        loading.value = false;
+        // On a failed retry, hold the spinner briefly so the click reads as
+        // feedback instead of the error dialog snapping straight back.
+        await holdRetryFloor({ startedAt, minMs: minLoadingMs, failed });
+        if (isCurrent()) loading.value = false;
       }
     }
   }
@@ -206,6 +273,16 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
    *
    * Throws on failure so callers can decide how to surface the error; the
    * `saveError` ref is also populated for passive UI display.
+   *
+   * `yamlText` is sent verbatim as the PUT body - the caller decides what
+   * "the whole law" means for this save. The editor's normal save path
+   * passes a re-dumped doc with only the selected article patched in
+   * (`currentLawYaml`); review-modus approval (EditorView's
+   * `handleLawSave`) instead passes a task's full proposed YAML
+   * (`useTaskReview`'s `proposedContent`) unchanged, so approving commits
+   * every article the proposal touches - not just the one the editor
+   * seeded into its panes. Same request/etag/PR-refresh plumbing either
+   * way; no second save implementation.
    *
    * @param {string} yamlText - Full law YAML (must contain matching $id)
    */
@@ -264,7 +341,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
         json = await res.json();
         lastSavedPr.value = sanitizeSavedPr(json?.pr);
       } catch {
-        // Older deployments return a bare 200 without JSON — keep the
+        // Older deployments return a bare 200 without JSON - keep the
         // existing PR (if any) and treat the save as successful.
       }
       // Chain the new ETag for the next save. The header is
@@ -280,12 +357,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
       }
       const resolvedId = parsed?.$id || savedLawId;
       const savedKey = lawCacheKey(savedTrajectRef, resolvedId);
-      lawCache.set(savedKey, {
-        law: parsed,
-        rawYaml: yamlText,
-        lawName: resolveLawName(parsed),
-        etag: newEtag,
-      });
+      lawCache.set(savedKey, makeEntry(parsed, yamlText, newEtag));
     } catch (e) {
       if (lawId.value === savedLawId && currentTrajectRef === savedTrajectRef) {
         saveError.value = e;
@@ -295,6 +367,85 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
       if (lawId.value === savedLawId && currentTrajectRef === savedTrajectRef) {
         saving.value = false;
       }
+    }
+  }
+
+  /**
+   * Seed the editor state from raw YAML without any network fetch. Used by
+   * the `law_create`-review flow: the law does not exist in the traject yet
+   * (the normal `load()` 404'ed), so the task's proposed YAML IS the content
+   * to show. Clears the load error and settles `loading` so the editor
+   * renders the proposal like a normally loaded law.
+   */
+  function seedFromYaml(yamlText) {
+    let parsed;
+    try {
+      parsed = yaml.load(yamlText);
+    } catch {
+      return false; // malformed proposal - keep the current (error) state
+    }
+    law.value = parsed;
+    rawYaml.value = yamlText;
+    currentEtag.value = null;
+    error.value = null;
+    loading.value = false;
+    if (articles.value.length > 0) {
+      selectedArticleNumber.value = String(articles.value[0].number);
+    }
+    return true;
+  }
+
+  /**
+   * Create a NEW law in the active traject via POST (the approve-step of a
+   * `law_create` review task). Same body/etag/PR plumbing as `saveLaw`, but
+   * without `If-Match` (there is nothing to be concurrent with yet); the
+   * backend derives the corpus path from the validated YAML. After a
+   * successful create the law exists in the traject, so follow-up saves go
+   * through the normal `saveLaw` PUT.
+   */
+  async function createLaw(yamlText) {
+    if (!currentTrajectRef) {
+      throw new Error('Cannot create law: no active traject');
+    }
+    const savedTrajectRef = currentTrajectRef;
+    saving.value = true;
+    saveError.value = null;
+    try {
+      const res = await apiFetch(lawCreateUrl(savedTrajectRef), {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/yaml; charset=utf-8' },
+        body: yamlText,
+        // Same proxy-guard as saveLaw: only surface text/plain bodies (the
+        // editor-api's own 400/409 messages), fall back generic otherwise.
+        errorMessage: (status, body, contentType) =>
+          contentType.startsWith('text/plain') && body
+            ? body
+            : `Save failed: ${status}`,
+      });
+      let json = null;
+      try {
+        json = await res.json();
+        lastSavedPr.value = sanitizeSavedPr(json?.pr);
+      } catch {
+        // Bare 200 without JSON - treat as successful.
+      }
+      const newEtag = res.headers.get('ETag') ?? json?.etag ?? null;
+      const parsed = yaml.load(yamlText);
+      rawYaml.value = yamlText;
+      law.value = parsed;
+      currentEtag.value = newEtag;
+      const resolvedId = parsed?.$id;
+      if (resolvedId) {
+        lawCache.set(
+          lawCacheKey(savedTrajectRef, resolvedId),
+          makeEntry(parsed, yamlText, newEtag)
+        );
+      }
+    } catch (e) {
+      saveError.value = e;
+      throw e;
+    } finally {
+      saving.value = false;
     }
   }
 
@@ -312,6 +463,8 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
     saving,
     saveError,
     saveLaw,
+    seedFromYaml,
+    createLaw,
     currentEtag,
     lastSavedPr,
   };

@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch, watchEffect, nextTick } from 'vue';
 import { collectAvailableVariables } from '../utils/operationTree.js';
+import { centsToEuros, eurosToCents } from '../utils/currency.js';
 import { lawsListUrl } from '../composables/corpusUrls.js';
 import { apiFetchJson } from '../lib/apiFetch.js';
 
@@ -70,7 +71,7 @@ async function fetchLawsList() {
   try {
     lawsCache = await apiFetchJson(lawsListUrl(props.trajectRef, 'limit=1000'));
   } catch {
-    // HTTP or network failure — the law combobox just offers no
+    // HTTP or network failure - the law combobox just offers no
     // suggestions; nothing is cached so the next open retries.
     return [];
   }
@@ -102,7 +103,7 @@ async function fetchOutputsForLaw(lawId) {
       `/api/corpus/laws/${encodeURIComponent(lawId)}/outputs`,
     );
   } catch {
-    // HTTP or network failure — no output suggestions for this law.
+    // HTTP or network failure - no output suggestions for this law.
     availableOutputs.value = [];
   } finally {
     outputsLoading.value = false;
@@ -145,7 +146,7 @@ function onOutputComboChange(event) {
     if (!values.value.name) {
       values.value.name = outputName;
     }
-    // Always set type from the source output — it's determined by the external law
+    // Always set type from the source output - it's determined by the external law
     values.value.type = match.output_type || 'string';
     // Always reset and pre-populate source parameters from the selected
     // output's article. Without the unconditional reset, switching to an
@@ -182,13 +183,13 @@ function inferControlType(value, unit) {
 }
 
 function toDisplay(value, controlType) {
-  if (controlType === 'currency') return +(value / 100).toFixed(2);
+  if (controlType === 'currency') return centsToEuros(value);
   if (controlType === 'percentage') return +(value * 100).toFixed(6);
   return value;
 }
 
 function fromDisplay(value, controlType) {
-  if (controlType === 'currency') return Math.round(value * 100);
+  if (controlType === 'currency') return eurosToCents(value);
   if (controlType === 'percentage') return parseFloat((value / 100).toPrecision(15));
   return value;
 }
@@ -233,7 +234,7 @@ watch(() => props.item, async (item) => {
     //     changed we emit the original typed value.
     //   - Non-scalar parameter values (objects/arrays) are stashed in
     //     `sourceParametersOverflow` and merged back on save so they
-    //     survive untouched — the user can only edit those via the YAML
+    //     survive untouched - the user can only edit those via the YAML
     //     pane.
     const params = item.data?.source?.parameters;
     const paramList = [];
@@ -309,7 +310,7 @@ function save() {
     if (!name.trim()) return;
     const data = { name: name.trim(), type };
     // Reduce the form's parameter rows back into a plain object. Skip
-    // rows with an empty key — they're either still being typed or were
+    // rows with an empty key - they're either still being typed or were
     // added and abandoned. Duplicate keys: last write wins (matches what
     // serializing an object would do anyway).
     //
@@ -336,7 +337,7 @@ function save() {
     // Emit `source` only when at least regulation OR output is set.
     // Parameters alone don't make a valid source block (the schema
     // requires regulation when source is present), so if the user has
-    // cleared both regulation and output we drop the entire source —
+    // cleared both regulation and output we drop the entire source -
     // including any overflow params. This matches the user's intent
     // ("disable the source binding") and avoids producing a malformed
     // source: { parameters: {...} } that would fail schema validation.
@@ -426,7 +427,7 @@ const sectionLabels = {
                        (dirty marking); @change delivers the value the
                        field normalises on commit/blur (locale/step). The
                        assignment is idempotent so a same-tick double-fire
-                       is harmless — do not drop @change. -->
+                       is harmless - do not drop @change. -->
                   <nldd-number-field
                     :value="values.displayValue"
                     :step="values.controlType === 'currency' ? '0.01' : (values.controlType === 'percentage' ? '0.001' : undefined)"
@@ -622,7 +623,7 @@ const sectionLabels = {
  *
  * The previous attempt used `display: grid` on the host element, but
  * `nldd-list-item` is a Lit web component whose internal shadow DOM lays
- * out slotted children with its own flexbox — the user-side grid rule
+ * out slotted children with its own flexbox - the user-side grid rule
  * is silently ignored, so the labels collapsed and the value fields
  * shrank to ~80px wide.
  *

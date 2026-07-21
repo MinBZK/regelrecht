@@ -123,7 +123,7 @@ describe('edgeIdsForStep', () => {
     ]);
   });
 
-  // open_term_resolution: step.lawId is ambiguous — flattenTraceSteps
+  // open_term_resolution: step.lawId is ambiguous - flattenTraceSteps
   // doesn't switch descendLawId on this node type, so the engine emits
   // it under whichever law is currently active (typically the higher
   // declaring law, e.g. wet_A). The matcher must work for either id.

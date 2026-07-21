@@ -190,6 +190,59 @@ async fn test_fail_job_with_retry() {
 }
 
 #[tokio::test]
+async fn test_fail_job_terminal_fails_immediately_without_retry() {
+    let db = TestDb::new().await;
+
+    // max_attempts = 3, but a terminal failure must not reschedule even on the
+    // first attempt (deterministic content failures should not burn retries).
+    let req = CreateJobRequest::new(JobType::Enrich, "BWBR0001840").with_max_attempts(3);
+    let job = job_queue::create_job(&db.pool, req).await.unwrap();
+
+    let claimed = job_queue::claim_job(&db.pool, None).await.unwrap().unwrap();
+    assert_eq!(claimed.attempts, 1, "still on the first attempt");
+
+    let failed = job_queue::fail_job_terminal(
+        &db.pool,
+        job.id,
+        Some(json!({"error": "LLM produced no machine_readable sections"})),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        failed.status,
+        JobStatus::Failed,
+        "terminal failure must mark Failed even with attempts < max_attempts"
+    );
+    assert!(failed.completed_at.is_some());
+    assert!(
+        failed.scheduled_at.is_none(),
+        "terminally failed job must not carry a retry schedule"
+    );
+
+    let none = job_queue::claim_job(&db.pool, None).await.unwrap();
+    assert!(
+        none.is_none(),
+        "terminally failed job must not be reclaimed"
+    );
+}
+
+#[tokio::test]
+async fn test_fail_job_terminal_requires_processing_state() {
+    let db = TestDb::new().await;
+
+    // A job that was never claimed is 'pending', not 'processing' — terminal
+    // fail must reject it (mirrors fail_job's guard).
+    let req = CreateJobRequest::new(JobType::Enrich, "BWBR0001840");
+    let job = job_queue::create_job(&db.pool, req).await.unwrap();
+
+    let err = job_queue::fail_job_terminal(&db.pool, job.id, None)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, PipelineError::JobNotProcessing(_)));
+}
+
+#[tokio::test]
 async fn test_fail_job_sets_exponential_backoff_schedule() {
     let db = TestDb::new().await;
 
@@ -300,10 +353,13 @@ async fn test_reap_orphaned_jobs_resets_to_pending() {
         .await
         .unwrap();
 
-    let count = job_queue::reap_orphaned_jobs(&db.pool, Duration::from_secs(60))
+    let reaped_jobs = job_queue::reap_orphaned_jobs(&db.pool, Duration::from_secs(60))
         .await
         .unwrap();
-    assert_eq!(count, 1);
+    assert_eq!(reaped_jobs.len(), 1);
+    // De teruggegeven rij draagt de NIEUWE status en de payload mee.
+    assert_eq!(reaped_jobs[0].id, job.id);
+    assert_eq!(reaped_jobs[0].status, JobStatus::Pending);
 
     // Job should be back to pending (still has retries left: attempts=1, max=3)
     let reaped = job_queue::get_job(&db.pool, job.id).await.unwrap();
@@ -328,10 +384,11 @@ async fn test_reap_orphaned_jobs_permanently_fails_exhausted() {
         .await
         .unwrap();
 
-    let count = job_queue::reap_orphaned_jobs(&db.pool, Duration::from_secs(60))
+    let reaped_jobs = job_queue::reap_orphaned_jobs(&db.pool, Duration::from_secs(60))
         .await
         .unwrap();
-    assert_eq!(count, 1);
+    assert_eq!(reaped_jobs.len(), 1);
+    assert_eq!(reaped_jobs[0].status, JobStatus::Failed);
 
     // Job should be permanently failed (attempts=1 >= max_attempts=1)
     let reaped = job_queue::get_job(&db.pool, job.id).await.unwrap();
@@ -344,20 +401,20 @@ async fn test_reap_orphaned_jobs_returns_zero_when_none_orphaned() {
     let db = TestDb::new().await;
 
     // No jobs at all
-    let count = job_queue::reap_orphaned_jobs(&db.pool, Duration::from_secs(60))
+    let reaped_jobs = job_queue::reap_orphaned_jobs(&db.pool, Duration::from_secs(60))
         .await
         .unwrap();
-    assert_eq!(count, 0);
+    assert!(reaped_jobs.is_empty());
 
     // A processing job that is NOT yet timed out
     let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840");
     job_queue::create_job(&db.pool, req).await.unwrap();
     job_queue::claim_job(&db.pool, None).await.unwrap().unwrap();
 
-    let count = job_queue::reap_orphaned_jobs(&db.pool, Duration::from_secs(3600))
+    let reaped_jobs = job_queue::reap_orphaned_jobs(&db.pool, Duration::from_secs(3600))
         .await
         .unwrap();
-    assert_eq!(count, 0);
+    assert!(reaped_jobs.is_empty());
 }
 
 #[tokio::test]
@@ -466,4 +523,64 @@ async fn test_concurrent_claim_safety() {
         .count();
 
     assert_eq!(claimed_count, 1);
+}
+
+#[tokio::test]
+async fn test_count_enrich_jobs_started_this_hour() {
+    let db = TestDb::new().await;
+
+    // Two claude enrich jobs and one opencode enrich job (payload provider set,
+    // as the admin enqueues them), plus a harvest job that must never count.
+    for law in ["c1", "c2"] {
+        let req =
+            CreateJobRequest::new(JobType::Enrich, law).with_payload(json!({"provider": "claude"}));
+        job_queue::create_job(&db.pool, req).await.unwrap();
+    }
+    let req =
+        CreateJobRequest::new(JobType::Enrich, "o1").with_payload(json!({"provider": "opencode"}));
+    job_queue::create_job(&db.pool, req).await.unwrap();
+    job_queue::create_job(&db.pool, CreateJobRequest::new(JobType::Harvest, "h1"))
+        .await
+        .unwrap();
+    // A pending (never claimed) claude job: started_at is NULL, so it must not count.
+    let req =
+        CreateJobRequest::new(JobType::Enrich, "c3").with_payload(json!({"provider": "claude"}));
+    job_queue::create_job(&db.pool, req).await.unwrap();
+
+    // Claiming sets started_at = now(). Claim the three oldest enrich jobs
+    // (c1, c2, o1 by creation order) and the harvest job; c3 stays pending.
+    for _ in 0..3 {
+        job_queue::claim_job(&db.pool, Some(JobType::Enrich))
+            .await
+            .unwrap()
+            .unwrap();
+    }
+    job_queue::claim_job(&db.pool, Some(JobType::Harvest))
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Only the two claimed claude jobs count; pending c3, opencode, and harvest excluded.
+    let (claude, local_hour) = job_queue::count_enrich_jobs_started_this_hour(&db.pool, "claude")
+        .await
+        .unwrap();
+    assert_eq!(claude, 2, "two claude enrich jobs started this hour");
+    assert!((0..=23).contains(&local_hour), "local hour is 0..=23");
+
+    let (opencode, _) = job_queue::count_enrich_jobs_started_this_hour(&db.pool, "opencode")
+        .await
+        .unwrap();
+    assert_eq!(opencode, 1, "provider filter is per-provider");
+
+    // A run from a previous hour falls outside the current clock-hour bucket.
+    // (2h back is always before the current bucket start, which is <=59min behind
+    // now, so this assertion is not sensitive to where in the hour the test runs.)
+    sqlx::query("UPDATE jobs SET started_at = now() - interval '2 hours' WHERE law_id = 'c1'")
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    let (claude, _) = job_queue::count_enrich_jobs_started_this_hour(&db.pool, "claude")
+        .await
+        .unwrap();
+    assert_eq!(claude, 1, "backdated run excluded from this hour's count");
 }

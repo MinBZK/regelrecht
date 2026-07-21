@@ -11,7 +11,7 @@ keywords = ["law", "legal", "wasm", "dutch", "regelrecht"]
 categories = ["wasm", "parsing"]
 
 [package.metadata.regelrecht]
-supported-schemas = ["v0.2.0", "v0.3.0", "v0.3.1", "v0.3.2", "v0.4.0", "v0.5.0", "v0.5.1", "v0.5.2", "v0.5.3", "v0.5.4"]
+supported-schemas = ["v0.2.0", "v0.3.0", "v0.3.1", "v0.3.2", "v0.4.0", "v0.5.0", "v0.5.1", "v0.5.2", "v0.5.3", "v0.5.4", "v0.5.5", "v0.5.6"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -19,6 +19,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 regelrecht-shared = { path = "../shared" }
 regelrecht-law-model = { path = "../law-model" }
+rust_decimal.workspace = true
 serde.workspace = true
 serde_yaml_ng.workspace = true
 serde_json.workspace = true
@@ -30,7 +31,7 @@ strsim = "0.11"
 tracing.workspace = true
 
 [dependencies.jsonschema]
-version = "0.46"
+version = "0.47"
 optional = true
 
 [dependencies.wasm-bindgen]
@@ -85,12 +86,24 @@ optional = true
 version = "0.32"
 optional = true
 
+[build-dependencies]
+serde = { workspace = true }
+serde_yaml_ng = { workspace = true }
+
 [dev-dependencies]
 cucumber = "0.23"
+gherkin = "0.16"
+futures = "0.3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 walkdir.workspace = true
 tracing-subscriber.workspace = true
 criterion = { version = "0.8", features = ["html_reports"] }
+rust_decimal_macros.workspace = true
+# Used by the schema↔model conformance suite (tests/conformance.rs, requires the
+# `validate` feature). serde_json/serde_yaml_ng are regular deps but must be
+# re-declared here to be in scope for the integration-test crate.
+serde_json.workspace = true
+serde_yaml_ng.workspace = true
 
 [[bench]]
 name = "uri_parsing"

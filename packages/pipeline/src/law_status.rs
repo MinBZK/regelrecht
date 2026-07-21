@@ -294,6 +294,13 @@ fn fail_count_column(job_type: crate::models::JobType) -> &'static str {
     match job_type {
         crate::models::JobType::Harvest => "harvest_fail_count",
         crate::models::JobType::Enrich => "enrich_fail_count",
+        // document_convert/law_convert jobs are traject-scoped, not law-scoped:
+        // they have no `law_entries` row and never go through the per-law
+        // fail-count / exhaust path (the worker fails them with plain
+        // `fail_job`). Reaching here is a programming error.
+        crate::models::JobType::DocumentConvert | crate::models::JobType::LawConvert => {
+            unreachable!("convert jobs have no law-status fail counter")
+        }
     }
 }
 
@@ -359,6 +366,10 @@ where
             LawStatusValue::EnrichFailed,
             LawStatusValue::EnrichExhausted,
         ),
+        // See `fail_count_column`: convert jobs are not law-scoped.
+        crate::models::JobType::DocumentConvert | crate::models::JobType::LawConvert => {
+            unreachable!("convert jobs are not law-scoped and cannot be exhausted")
+        }
     };
     // Only exhaust if status is still the corresponding failed state,
     // preventing a race with admin reset.
@@ -377,4 +388,23 @@ where
         tracing::debug!(law_id = %law_id, job_type = ?job_type, "exhaust_law skipped: status was not in expected failed state");
     }
     Ok(())
+}
+
+/// Set a law's status to `enrich_failed`, but never regress a law that already
+/// reached a terminal enrich state (`enriched` or `enrich_exhausted`). With dual
+/// providers a failing provider must not clobber a status another provider
+/// already earned. Returns the number of rows updated (0 = already terminal).
+#[tracing::instrument(skip(executor))]
+pub async fn mark_enrich_failed<'e, E>(executor: E, law_id: &str) -> Result<u64>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let result = sqlx::query(
+        "UPDATE law_entries SET status = 'enrich_failed'::law_status, updated_at = now() \
+         WHERE law_id = $1 AND status NOT IN ('enriched', 'enrich_exhausted')",
+    )
+    .bind(law_id)
+    .execute(executor)
+    .await?;
+    Ok(result.rows_affected())
 }

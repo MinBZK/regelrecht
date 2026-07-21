@@ -1,5 +1,5 @@
 /**
- * useBwbSearch — search for laws on external sources (wetten.overheid.nl).
+ * useBwbSearch - search for laws on external sources (wetten.overheid.nl).
  *
  * Provides debounced search and result management. Results come from the
  * pipeline-api (proxied through editor-api at /api/harvest/search).
@@ -17,7 +17,7 @@ export function useBwbSearch() {
   let debounceTimer = null;
 
   /**
-   * Search for laws matching the query. Debounced — safe to call on every keystroke.
+   * Search for laws matching the query. Debounced - safe to call on every keystroke.
    * @param {string} query - The search query (minimum 3 characters)
    */
   function search(query) {
@@ -36,7 +36,7 @@ export function useBwbSearch() {
           `/api/harvest/search?q=${encodeURIComponent(q)}`,
         );
       } catch {
-        // BWB search is best-effort — clear stale results on any failure
+        // BWB search is best-effort - clear stale results on any failure
         // (HTTP error or network).
         results.value = [];
       } finally {

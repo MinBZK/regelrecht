@@ -5,12 +5,12 @@
  * trace of 500 steps mixing every node type the matcher handles, then
  * measures how long it takes to enrich each step with `edgeIds` and
  * `nodeIds`. This is the work `useTraceStepping.steps` does once per
- * (result, graph) change — the user-perceived hang after running a
+ * (result, graph) change - the user-perceived hang after running a
  * scenario on a heavy law.
  *
  * Numbers are logged via `console.log`; the assert is a generous upper
  * bound so the test stays green on slow CI runners. The intent is the
- * log line — read the PR body for baseline → after numbers.
+ * log line - read the PR body for baseline → after numbers.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -82,7 +82,7 @@ function buildSyntheticGraph() {
   return { nodes, edges };
 }
 
-// Flat-ish trace tree — STEP_COUNT children under one root, every child
+// Flat-ish trace tree - STEP_COUNT children under one root, every child
 // rotates through the matcher's recognised node types so each step does
 // non-trivial filter work.
 function buildSyntheticTrace() {
@@ -172,7 +172,7 @@ describe('trace edge enrichment perf', () => {
     expect(baseline).toBeLessThan(2000);
     expect(flat.length).toBeGreaterThanOrEqual(150);
     // Minimum bar: any measurable speedup. Slow CI runners are too noisy
-    // for a tighter ratio assert — read the logged speedup line for the
+    // for a tighter ratio assert - read the logged speedup line for the
     // real number (typically 70-90× on a developer laptop).
     expect(after).toBeLessThan(baseline);
   });

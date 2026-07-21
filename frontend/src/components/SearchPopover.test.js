@@ -3,9 +3,9 @@ import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import SearchPopover from './SearchPopover.vue';
 
-// SearchPopover queries the corpus server-side (`/corpus/laws?q=`) and groups
-// the response by source. We drive it via `wrapper.vm` and assert on the
-// `groupedLaws` computed.
+// SearchPopover queries the corpus server-side (`/corpus/laws?q=`) and orders
+// the response into a flat option list (private repo first). We drive it via
+// `wrapper.vm` and assert on the `sortedLaws` computed.
 //
 // useTrajects() calls vue-router's useRoute(); mock it so the component mounts
 // without a router (no active traject → global /api/corpus URL).
@@ -14,7 +14,7 @@ vi.mock('vue-router', () => ({
 }));
 
 // Central corpus (priority 2) listed before the private traject repo
-// (priority 0) to prove the grouping order comes from source_priority, not
+// (priority 0) to prove the sort order comes from source_priority, not
 // response order. Source name/law id are anonymized fixtures, not real repos.
 const LAWS = [
   {
@@ -49,19 +49,25 @@ beforeEach(() => {
 const settle = () => new Promise((r) => setTimeout(r, 300));
 
 describe('SearchPopover server-side search', () => {
-  it('groups corpus matches by source, private repo (priority 0) first', async () => {
+  it('orders corpus matches private repo (priority 0) first, source per row', async () => {
     const wrapper = mount(SearchPopover);
     wrapper.vm.search = 'zorgverzekering';
     await nextTick();
     await settle();
     await nextTick();
 
-    const groups = wrapper.vm.groupedLaws;
-    expect(groups.map((g) => g.source_name)).toEqual([
+    // Flat option list sorted by source_priority: the private traject repo
+    // (priority 0) sorts above the central corpus (priority 2). Each row keeps
+    // its own source_name (shown as supporting-text in the listbox).
+    const laws = wrapper.vm.sortedLaws;
+    expect(laws.map((l) => l.law_id)).toEqual([
+      'besluit_zorgverzekering_example',
+      'besluit_zorgverzekering',
+    ]);
+    expect(laws.map((l) => l.source_name)).toEqual([
       'example-org/regelrecht-corpus-example',
       'Centrale Regelrecht Corpus',
     ]);
-    expect(groups[0].laws.map((l) => l.law_id)).toEqual(['besluit_zorgverzekering_example']);
   });
 
   it('queries the backend with the q parameter (not a client-side filter)', async () => {
@@ -119,7 +125,7 @@ describe('SearchPopover server-side search', () => {
 
     // The cleared term's response must not repopulate the list, and no
     // wetten.overheid.nl search should have been fired for it.
-    expect(wrapper.vm.groupedLaws).toEqual([]);
+    expect(wrapper.vm.sortedLaws).toEqual([]);
     const bwbCalls = fetch.mock.calls
       .map((c) => String(c[0]))
       .filter((u) => u.includes('/harvest/search'));
@@ -143,7 +149,7 @@ describe('SearchPopover server-side search', () => {
     await nextTick();
 
     expect(wrapper.vm.searchFailed).toBe(true);
-    expect(wrapper.vm.groupedLaws).toEqual([]);
+    expect(wrapper.vm.sortedLaws).toEqual([]);
     const bwbCalls = fetch.mock.calls
       .map((c) => String(c[0]))
       .filter((u) => u.includes('/harvest/search'));

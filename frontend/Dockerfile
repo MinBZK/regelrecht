@@ -24,13 +24,19 @@ RUN cargo build --target wasm32-unknown-unknown --release --features wasm -p reg
       target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
 
 # Stage 1b: Build frontend (with WASM module)
-FROM node:26-alpine@sha256:3ad34ca6292aec4a91d8ddeb9229e29d9c2f689efd0dd242860889ac71842eba AS frontend-builder
+FROM node:26-alpine@sha256:e88a35be04478413b7c71c455cd9865de9b9360e1f43456be5951032d7ac1a66 AS frontend-builder
 WORKDIR /app
-COPY frontend/package.json frontend/package-lock.json* frontend/.npmrc ./
+# Workspace manifests first so `npm ci` is cached independently of source.
+COPY package.json package-lock.json .npmrc ./
+COPY packages/frontend-shared/package.json packages/frontend-shared/
+COPY frontend/package.json frontend/
+COPY frontend-lawmaking/package.json frontend-lawmaking/
 RUN npm ci
-COPY frontend/ .
-COPY --from=wasm-builder /wasm-pkg/ public/wasm/pkg/
-RUN npm run build
+# Source: the shared package + the editor frontend, plus the WASM module.
+COPY packages/frontend-shared/ packages/frontend-shared/
+COPY frontend/ frontend/
+COPY --from=wasm-builder /wasm-pkg/ frontend/public/wasm/pkg/
+RUN npm run build -w frontend
 
 # Stage 2: Chef base
 # Rust version: keep in sync with rust-toolchain.toml (source of truth).
@@ -92,12 +98,12 @@ RUN find . -name '*.rs' -exec touch {} + && \
     cargo build --release --bin regelrecht-editor-api
 
 # Stage 5: Runtime
-FROM alpine:3.24@sha256:a2d49ea686c2adfe3c992e47dc3b5e7fa6e6b5055609400dc2acaeb241c829f4
+FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 RUN apk add --no-cache ca-certificates git && \
     addgroup -S app && adduser -S app -G app
 
 COPY --from=builder /build/target/release/regelrecht-editor-api /usr/local/bin/
-COPY --from=frontend-builder /app/dist /app/static
+COPY --from=frontend-builder /app/frontend/dist /app/static
 COPY corpus-registry.yaml /app/corpus-registry.yaml
 COPY corpus/regulation/ /app/corpus/regulation/
 

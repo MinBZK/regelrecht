@@ -3,7 +3,6 @@ import { getCollection, render } from 'astro:content';
 import Base from '~/layouts/Base.astro';
 import DocsOutline from '~/components/DocsOutline.astro';
 import EditLink from '~/components/EditLink.astro';
-import DocsFooter from '~/components/DocsFooter.astro';
 
 export async function getStaticPaths() {
   const docs = await getCollection('docs');
@@ -45,7 +44,8 @@ const description = shy(entry.data.description);
   title={title}
   description={description}
 >
-  <nldd-one-third-two-thirds-section
+  <nldd-sidebar-section
+    no-collapse
     sm-padding-bottom="32"
     md-padding-bottom="64"
     lg-padding-bottom="96"
@@ -54,19 +54,17 @@ const description = shy(entry.data.description);
       <h1>{pageTitle}</h1>
       {description && <p slot="subtitle">{description}</p>}
     </nldd-title>
-    <div slot="left">
+    <nldd-container slot="sidebar" padding="16" padding-top="8">
       <DocsOutline headings={headings} />
-      <nldd-spacer size="24" sm-size="16" />
+      <nldd-spacer size="16" />
       <EditLink filePath={entry.filePath} />
-    </div>
+    </nldd-container>
     {/* The markdown body stays light-DOM (SSR/no-JS safe) inside nldd-rich-text
-        for NLDD prose typography. .rr-min-width-0 prevents long content (wide
-        tables, code blocks) from forcing the 2/3 column wider than its share. */}
-    <div slot="right" class="rr-min-width-0">
-      <nldd-rich-text data-edit-base={editBase}>
+        for NLDD prose typography. */}
+    <div>
+      <nldd-rich-text data-edit-base={editBase} centered>
         <Content />
       </nldd-rich-text>
-      <DocsFooter pathname={pathname} />
     </div>
-  </nldd-one-third-two-thirds-section>
+  </nldd-sidebar-section>
 </Base>

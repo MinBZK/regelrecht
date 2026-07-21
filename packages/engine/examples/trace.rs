@@ -92,7 +92,7 @@ fn parse_value(s: &str) -> Value {
     } else if let Ok(i) = s.parse::<i64>() {
         Value::Int(i)
     } else if let Ok(f) = s.parse::<f64>() {
-        Value::Float(f)
+        Value::from(f)
     } else {
         Value::String(s.to_string())
     }

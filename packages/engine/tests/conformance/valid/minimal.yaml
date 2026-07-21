@@ -1,0 +1,11 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
+$id: test_conformance_minimal
+regulatory_layer: WET
+publication_date: '2025-01-01'
+bwb_id: BWBR0123456
+url: https://example.invalid/law
+articles:
+  - number: '1'
+    text: Een testartikel.
+    url: https://example.invalid/law/artikel/1

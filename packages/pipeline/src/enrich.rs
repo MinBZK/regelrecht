@@ -4,6 +4,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use regelrecht_corpus::{CorpusClient, CorpusConfig};
+use regelrecht_law_model::ArticleBasedLaw;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
@@ -45,6 +46,51 @@ fn pick_enrich_base(preferred: &str, preferred_exists: bool) -> &str {
     }
 }
 
+/// Outcome of comparing a target law's base version against the enrichment's
+/// recorded provenance. Pure decision so it can be unit-tested without git.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BaseAction {
+    /// Law not yet on the enrich branch — check it out fresh from the base.
+    CheckoutFresh,
+    /// Law present and its recorded base matches the current base — unchanged,
+    /// keep the existing enrichment (no fresh checkout).
+    Skip,
+    /// Law present but with no usable recorded provenance — a "legacy"
+    /// enrichment written before the freshness guard existed. Adopt the current
+    /// base blob SHA as its baseline (recorded on the next metadata write) and
+    /// proceed without a fresh checkout, rather than failing. This grandfathers
+    /// every pre-guard enrichment so introducing the guard does not turn them
+    /// all into an immediate `Drift` on first re-enrichment.
+    AdoptBaseline,
+    /// Law present and its *recorded* base moved — fail loudly rather than
+    /// silently re-enriching on top of a base that differs from the one the
+    /// enrichment was generated against.
+    Drift,
+}
+
+/// Decide what to do for a target law given whether it is already tracked on
+/// the enrich branch, the `source_hash` recorded in its `.enrichment.yaml`
+/// (if any), and the current base-branch blob SHA of the law.
+pub(crate) fn decide_base_action(
+    tracked: bool,
+    stored_source_hash: Option<&str>,
+    base_sha: &str,
+) -> BaseAction {
+    if !tracked {
+        return BaseAction::CheckoutFresh;
+    }
+    match stored_source_hash {
+        // No usable provenance recorded (absent or empty) — a pre-guard
+        // enrichment. Grandfather it by adopting the current base as its
+        // baseline instead of treating the unknown as drift.
+        None | Some("") => BaseAction::AdoptBaseline,
+        // Recorded base matches the current base — unchanged.
+        Some(h) if h == base_sha => BaseAction::Skip,
+        // Recorded base differs from the current base — genuine drift.
+        Some(_) => BaseAction::Drift,
+    }
+}
+
 /// Trait abstracting the LLM invocation so `execute_enrich` can be tested
 /// with a fake provider that doesn't spawn real processes.
 #[async_trait::async_trait]
@@ -61,6 +107,11 @@ pub trait LlmRunner: Send + Sync {
     ) -> Result<()>;
 }
 
+/// Max bytes of the LLM subprocess's stderr to retain for diagnostics. The tail
+/// (most recent output) is kept and appended to the error on a non-zero exit, so
+/// a failure reports the real cause (e.g. an auth `401`) instead of a bare code.
+const MAX_STDERR_CAPTURE: usize = 4096;
+
 /// Default runner that spawns a real CLI process.
 pub struct ProcessLlmRunner;
 
@@ -75,97 +126,199 @@ impl LlmRunner for ProcessLlmRunner {
     ) -> Result<()> {
         let progress_path = progress_file_path(yaml_abs);
         let prompt = build_prompt(&payload.yaml_path, &progress_path.to_string_lossy());
-        let provider_name = config.provider.name().to_string();
+        run_llm_subprocess(
+            &config.provider,
+            &prompt,
+            Some(yaml_abs),
+            repo_path,
+            config,
+            // Enrich edits YAML in place; it does not need shell access.
+            false,
+        )
+        .await
+    }
+}
 
-        let mut cmd = build_command(&config.provider, &prompt, yaml_abs, repo_path);
+/// Spawn and supervise an LLM agent subprocess, provider-agnostically.
+///
+/// This is the reusable core lifted out of [`ProcessLlmRunner::run`]: it builds
+/// the command, drains stdout/stderr (retaining a bounded stderr tail for the
+/// error message), and races the child against the configured timeout and the
+/// RSS memory watchdog, killing the whole process group on either. `cwd` is the
+/// working directory the agent runs in (and writes its output into); `file_arg`
+/// is the optional single input file (OpenCode's `-f`). Callers supply their own
+/// `prompt` — enrich and document-convert differ only in that prompt.
+/// `allow_bash` widens the `claude` provider's tool allowlist to include `Bash`
+/// (enrich keeps it off; document-convert needs it so the agent can run/install
+/// a converter). It has no effect on `opencode`, which has its own tool model.
+pub(crate) async fn run_llm_subprocess(
+    provider: &LlmProvider,
+    prompt: &str,
+    file_arg: Option<&Path>,
+    cwd: &Path,
+    config: &EnrichConfig,
+    allow_bash: bool,
+) -> Result<()> {
+    let provider_name = provider.name().to_string();
 
-        // stderr is inherited so the LLM's own errors/stack traces stay visible
-        // in the worker's logs. stdout is piped and drained (see below) instead
-        // of inherited: a verbose agent (e.g. opencode `--format json`) inlines
-        // the full body of every fetched page into its event stream, which
-        // would otherwise flood container logs and bury the worker's own
-        // tracing lines.
-        cmd.stderr(std::process::Stdio::inherit());
-        cmd.stdout(std::process::Stdio::piped());
-        let mut child = cmd.spawn().map_err(|e| {
-            PipelineError::Enrich(format!("failed to spawn {}: {e}", provider_name))
-        })?;
+    let mut cmd = build_command(provider, prompt, file_arg, cwd, allow_bash);
 
-        // Capture the PID before any wait reaps the child; the memory watchdog
-        // and process-group kill both need it.
-        let pid = child.id();
+    // Both streams are piped and drained. stdout is drained-and-discarded: a
+    // verbose agent (e.g. opencode `--format json`) inlines the full body of
+    // every fetched page into its event stream, which would flood container
+    // logs. stderr is drained too — we MUST keep reading both or a full 64 KB
+    // OS pipe buffer blocks the child — but for stderr we also keep a bounded
+    // tail and re-log previews, so the LLM's real error (e.g. an auth 401) is
+    // both visible in the logs and attached to the job's failure.
+    cmd.stderr(std::process::Stdio::piped());
+    cmd.stdout(std::process::Stdio::piped());
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| PipelineError::Enrich(format!("failed to spawn {}: {e}", provider_name)))?;
 
-        // Drain the agent's stdout so it never reaches container logs. We MUST
-        // keep reading it: if the OS pipe buffer (64 KB) fills, the child blocks
-        // indefinitely — the same deadlock the stderr comment above warns about.
-        // The task ends on EOF when the process exits or is killed.
-        if let Some(mut stdout) = child.stdout.take() {
-            let drain_provider = provider_name.clone();
-            tokio::spawn(async move {
-                // Drain in fixed-size chunks rather than whole lines: opencode
-                // inlines multi-MB page bodies as a single JSON line, so a
-                // line reader would allocate the entire body just to log a
-                // 200-char preview — a heap spike on the very worker this
-                // watchdog exists to protect. Reading into a fixed buffer keeps
-                // the pipe empty without ever holding more than `buf`.
-                let mut buf = [0u8; 8192];
-                loop {
-                    match stdout.read(&mut buf).await {
-                        Ok(0) | Err(_) => break, // EOF or pipe gone (process exited/killed)
-                        Ok(n) => {
-                            // Bounded preview at debug only (off under the
-                            // default "info" subscriber). The leading bytes of a
-                            // read carry the event type and ids, not the large
-                            // inlined bodies; lossy is fine for a log preview.
-                            let preview = String::from_utf8_lossy(&buf[..n.min(200)]);
-                            let preview = preview.trim_end();
-                            if !preview.is_empty() {
-                                tracing::debug!(provider = %drain_provider, %preview, "agent stdout");
+    // Capture the PID before any wait reaps the child; the memory watchdog
+    // and process-group kill both need it.
+    let pid = child.id();
+
+    // Drain stderr, retaining the last `MAX_STDERR_CAPTURE` bytes for the
+    // error message and re-logging bounded previews so it stays visible.
+    let stderr_tail = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    let stderr_task = child.stderr.take().map(|mut stderr| {
+        let tail = stderr_tail.clone();
+        let stderr_provider = provider_name.clone();
+        tokio::spawn(async move {
+            let mut buf = [0u8; 8192];
+            loop {
+                match stderr.read(&mut buf).await {
+                    Ok(0) | Err(_) => break, // EOF or pipe gone
+                    Ok(n) => {
+                        let text = String::from_utf8_lossy(&buf[..n]);
+                        let preview: String = text.trim().chars().take(500).collect();
+                        if !preview.is_empty() {
+                            tracing::warn!(provider = %stderr_provider, %preview, "agent stderr");
+                        }
+                        if let Ok(mut t) = tail.lock() {
+                            t.push_str(&text);
+                            if t.len() > MAX_STDERR_CAPTURE {
+                                let mut cut = t.len() - MAX_STDERR_CAPTURE;
+                                while cut < t.len() && !t.is_char_boundary(cut) {
+                                    cut += 1;
+                                }
+                                *t = t[cut..].to_string();
                             }
                         }
                     }
                 }
-            });
+            }
+        })
+    });
+    // Read the retained stderr tail, formatted as a "; stderr: …" suffix.
+    let stderr_suffix = || {
+        stderr_tail
+            .lock()
+            .ok()
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .map(|t| format!("; stderr: {t}"))
+            .unwrap_or_default()
+    };
+
+    // Drain the agent's stdout so it never reaches container logs. We MUST
+    // keep reading it: if the OS pipe buffer (64 KB) fills, the child blocks
+    // indefinitely — the same deadlock the stderr comment above warns about.
+    // The task ends on EOF when the process exits or is killed.
+    if let Some(mut stdout) = child.stdout.take() {
+        let drain_provider = provider_name.clone();
+        tokio::spawn(async move {
+            // Drain in fixed-size chunks rather than whole lines: opencode
+            // inlines multi-MB page bodies as a single JSON line, so a
+            // line reader would allocate the entire body just to log a
+            // 200-char preview — a heap spike on the very worker this
+            // watchdog exists to protect. Reading into a fixed buffer keeps
+            // the pipe empty without ever holding more than `buf`.
+            let mut buf = [0u8; 8192];
+            loop {
+                match stdout.read(&mut buf).await {
+                    Ok(0) | Err(_) => break, // EOF or pipe gone (process exited/killed)
+                    Ok(n) => {
+                        // Bounded preview at debug only (off under the
+                        // default "info" subscriber). The leading bytes of a
+                        // read carry the event type and ids, not the large
+                        // inlined bodies; lossy is fine for a log preview.
+                        let preview = String::from_utf8_lossy(&buf[..n.min(200)]);
+                        let preview = preview.trim_end();
+                        if !preview.is_empty() {
+                            tracing::debug!(provider = %drain_provider, %preview, "agent stdout");
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    let status = tokio::select! {
+        result = child.wait() => {
+            result.map_err(|e| {
+                PipelineError::Enrich(format!("failed to wait for {}: {e}", provider_name))
+            })?
         }
-
-        let status = tokio::select! {
-            result = child.wait() => {
-                result.map_err(|e| {
-                    PipelineError::Enrich(format!("failed to wait for {}: {e}", provider_name))
-                })?
+        _ = tokio::time::sleep(config.timeout) => {
+            terminate(&mut child, pid).await;
+            // Abort the drain task rather than leaving it detached: if a
+            // grandchild inherited fd 2 and survived terminate(), the task
+            // would otherwise leak. The tail read below is already populated.
+            if let Some(t) = &stderr_task {
+                t.abort();
             }
-            _ = tokio::time::sleep(config.timeout) => {
-                terminate(&mut child, pid).await;
-                return Err(PipelineError::Enrich(format!(
-                    "{} timed out after {:?}",
-                    provider_name, config.timeout
-                )));
-            }
-            observed_mb = watch_memory(pid, config.max_rss_mb) => {
-                tracing::error!(
-                    provider = %provider_name,
-                    pid = ?pid,
-                    observed_mb,
-                    limit_mb = config.max_rss_mb,
-                    "LLM subprocess exceeded memory limit, killing to protect the container"
-                );
-                terminate(&mut child, pid).await;
-                return Err(PipelineError::Enrich(format!(
-                    "{provider_name} exceeded memory limit of {} MB (RSS {observed_mb} MB), killed",
-                    config.max_rss_mb
-                )));
-            }
-        };
-
-        if !status.success() {
             return Err(PipelineError::Enrich(format!(
-                "{} exited with {}",
-                provider_name, status,
+                "{} timed out after {:?}{}",
+                provider_name, config.timeout, stderr_suffix()
             )));
         }
+        observed_mb = watch_memory(pid, config.max_rss_mb) => {
+            tracing::error!(
+                provider = %provider_name,
+                pid = ?pid,
+                observed_mb,
+                limit_mb = config.max_rss_mb,
+                "LLM subprocess exceeded memory limit, killing to protect the container"
+            );
+            terminate(&mut child, pid).await;
+            if let Some(t) = &stderr_task {
+                t.abort();
+            }
+            return Err(PipelineError::Enrich(format!(
+                "{provider_name} exceeded memory limit of {} MB (RSS {observed_mb} MB), killed{}",
+                config.max_rss_mb, stderr_suffix()
+            )));
+        }
+    };
 
-        Ok(())
+    if !status.success() {
+        // Give the stderr drain a moment to finish so the tail is complete,
+        // but bound the wait: the child has exited, yet a leaked grandchild
+        // that inherited fd 2 could keep the pipe open and never EOF. Without
+        // a bound this await (outside the timeout/memory select!) would wedge
+        // the worker loop. Best-effort, like the tail in the other paths.
+        if let Some(task) = stderr_task {
+            let _ = tokio::time::timeout(Duration::from_secs(2), task).await;
+        }
+        return Err(PipelineError::Enrich(format!(
+            "{} exited with {}{}",
+            provider_name,
+            status,
+            stderr_suffix()
+        )));
     }
+
+    // Success: abort the drain task instead of leaving it detached — same
+    // fd-2/grandchild-leak guard as the timeout/OOM paths. Normally it has
+    // already finished (the child closed stderr on exit); aborting a finished
+    // task is a no-op.
+    if let Some(t) = &stderr_task {
+        t.abort();
+    }
+    Ok(())
 }
 
 /// Kill the LLM subprocess and reap it.
@@ -298,11 +451,122 @@ pub struct EnrichPayload {
     /// When set, overrides the worker's `LLM_PROVIDER` env var.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
+    /// Recursion depth for related-legislation follow-up harvests. Inherited
+    /// from the harvest job that spawned this enrichment. `None` or `0` means a
+    /// root enrichment; the child harvests it enqueues get `depth + 1`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub depth: Option<u32>,
+    /// Account dat de taak-flow-enrichment aanvroeg (gezet wanneer
+    /// `deliver == "task"`); bepaalt de assignee van de review-taak.
+    /// De taak-flow-gate zelf is `deliver_as_task()`, niet dit veld.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_by: Option<Uuid>,
+    /// `"task"` ⇒ resultaat als job_blobs + taak, géén push (taak-flow).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deliver: Option<String>,
+    /// Eigenaar-traject van de taak-flow (voor de tasks-rij + save-URL's).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub traject_id: Option<Uuid>,
+    /// URL-vorm van het traject (`{slug}-{8hex}`), voor de task-payload
+    /// zodat de frontend er review-URL's mee kan bouwen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub traject_ref: Option<String>,
+    /// `document_etag()` van de wet-YAML op aanvraagmoment (staleness-check).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_etag: Option<String>,
+    /// `true` wanneer deze enrichment een NIEUWE wet betreft die nog niet in
+    /// het traject bestaat (geketend vanuit een `law_convert`-job). Stuurt de
+    /// review-taak: `kind: "law_create"` + eigen titel, zodat de editor het
+    /// voorstel als aan-te-maken wet behandelt i.p.v. als wijziging.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new_law: Option<bool>,
+}
+
+impl EnrichPayload {
+    /// Taak-flow: resultaat naar Postgres + taak i.p.v. push naar git.
+    pub fn deliver_as_task(&self) -> bool {
+        self.deliver.as_deref() == Some("task")
+    }
 }
 
 /// All known provider names. Used to create one enrich job per provider
 /// after a successful harvest.
 pub const ENRICH_PROVIDERS: &[&str] = &["opencode", "claude"];
+
+/// A related-legislation reference returned by the enrichment agent in the
+/// `.enrichment-result.yaml` sidecar (the "result envelope").
+///
+/// The extref-only recursive harvester only follows explicit BWB cross-links in
+/// the source text, so it misses delegated regelingen and other laws a
+/// machine-readable model actually depends on (a `source.regulation`, a
+/// `legal_basis`, or an `open_term` delegation). The enrichment agent knows
+/// these because it just modeled them, so it declares them here and the worker
+/// enqueues follow-up harvests — letting the dependency graph fill itself in.
+///
+/// This lives OUTSIDE the law schema on purpose: the law YAML stays
+/// schema-conformant, and this provenance/routing metadata rides alongside it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RelatedLegislation {
+    /// Human-readable name of the related law/regeling (used for SRU fallback
+    /// resolution when no `bwb_id`/`slug` is supplied).
+    pub name: String,
+    /// How this law relates: `source_regulation`, `legal_basis`, or
+    /// `delegated_regeling`. Informational; the worker treats all the same.
+    #[serde(default)]
+    pub relation: String,
+    /// Best-effort BWB identifier (e.g. "BWBR0018451"). Preferred resolution.
+    #[serde(default)]
+    pub bwb_id: Option<String>,
+    /// Best-effort corpus slug (e.g. "wet_op_de_zorgtoeslag"). Second-choice
+    /// resolution, looked up against `law_entries`.
+    #[serde(default)]
+    pub slug: Option<String>,
+    /// The `open_term` id this delegation fills, when `relation` is a delegation.
+    #[serde(default)]
+    pub open_term: Option<String>,
+}
+
+/// The `.enrichment-result.yaml` result envelope written next to an enriched
+/// law YAML. Deliberately NOT a law-schema change — see [`RelatedLegislation`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct EnrichmentResultEnvelope {
+    #[serde(default)]
+    pub law_id: Option<String>,
+    #[serde(default)]
+    pub related_legislation: Vec<RelatedLegislation>,
+}
+
+/// Read the sibling `.enrichment-result.yaml` result envelope for a law YAML.
+///
+/// Never errors, so it can never fail an otherwise-successful enrichment:
+/// - absent file → empty list;
+/// - unparseable file → logged at `warn` and empty list.
+async fn read_enrichment_result_envelope(yaml_abs: &Path) -> Vec<RelatedLegislation> {
+    let envelope_path = enrichment_result_path(yaml_abs);
+    let content = match tokio::fs::read_to_string(&envelope_path).await {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+    match serde_yaml_ng::from_str::<EnrichmentResultEnvelope>(&content) {
+        Ok(envelope) => envelope.related_legislation,
+        Err(e) => {
+            tracing::warn!(
+                path = %envelope_path.display(),
+                error = %e,
+                "failed to parse .enrichment-result.yaml; ignoring related legislation"
+            );
+            Vec::new()
+        }
+    }
+}
+
+/// Path of the `.enrichment-result.yaml` sidecar next to a law YAML file.
+fn enrichment_result_path(yaml_abs: &Path) -> PathBuf {
+    yaml_abs
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join(".enrichment-result.yaml")
+}
 
 /// Result of a successful enrichment execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -319,6 +583,32 @@ pub struct EnrichResult {
     pub coverage_score: f64,
     pub provider: String,
     pub branch: String,
+    /// Related legislation the enrichment agent declared this law depends on,
+    /// read from the `.enrichment-result.yaml` sidecar. The worker uses these to
+    /// enqueue follow-up harvests. Empty when no sidecar was written.
+    #[serde(default)]
+    pub related_legislation: Vec<RelatedLegislation>,
+    /// Untranslatable constructs captured from the enriched YAML (RFC-012):
+    /// legal constructs the agent could not express with the engine's current
+    /// operation set. The worker persists these to the `untranslatables` table;
+    /// they also ride here in `jobs.result`. `#[serde(default)]` keeps older
+    /// stored results deserializable.
+    #[serde(default)]
+    pub untranslatables: Vec<CapturedUntranslatable>,
+}
+
+/// A single untranslatable captured from an enriched article, flattened for
+/// persistence. DB-free by design: it rides in `jobs.result` JSON and is written
+/// to the `untranslatables` table by the worker.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CapturedUntranslatable {
+    /// The owning article's number (`Article.number`).
+    pub article: String,
+    pub construct: String,
+    pub reason: String,
+    pub suggestion: Option<String>,
+    pub legal_text_excerpt: Option<String>,
+    pub accepted: bool,
 }
 
 /// Metadata written alongside the enriched law YAML as `.enrichment.yaml`.
@@ -334,15 +624,24 @@ pub struct EnrichmentMetadata {
     pub articles_total: usize,
     /// Total articles with a `machine_readable` section after enrichment.
     pub articles_with_machine_readable: usize,
+    /// Git blob SHA of the base-branch law YAML this enrichment was generated
+    /// from. Empty when unknown (files written before this field existed).
+    #[serde(default)]
+    pub source_hash: String,
 }
 
 /// Supported LLM providers for enrichment.
 ///
 /// Both providers manage their own authentication:
 /// - **OpenCode/VLAM**: reads `~/.local/share/opencode/auth.json` (set via `opencode auth`)
-/// - **Claude**: reads `~/.claude/.credentials` or `ANTHROPIC_API_KEY` env var
+/// - **Claude**: authenticates with a **personal Claude subscription** via
+///   `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`), read directly from the
+///   environment; no credentials file is written. `ANTHROPIC_API_KEY` is intentionally NOT
+///   used — it is not on `LLM_ENV_ALLOWLIST`, so it is never forwarded to `claude` and can
+///   never take precedence over the OAuth token.
 ///
-/// In Docker, mount the appropriate auth files or set env vars.
+/// In Docker, set the appropriate env var (forwarded to the subprocess via
+/// `LLM_ENV_ALLOWLIST`).
 #[derive(Debug, Clone)]
 pub enum LlmProvider {
     OpenCode {
@@ -390,6 +689,36 @@ pub struct EnrichConfig {
     pub max_rss_mb: u64,
     /// Pre-built provider configs keyed by name, populated at startup.
     provider_configs: std::collections::HashMap<String, LlmProvider>,
+}
+
+#[cfg(test)]
+impl EnrichConfig {
+    /// Build a config for tests (crate-internal), without reading the
+    /// environment. Shared by the enrich and document-convert test suites.
+    pub(crate) fn for_test(provider: LlmProvider) -> Self {
+        let mut provider_configs = std::collections::HashMap::new();
+        provider_configs.insert(
+            "opencode".to_string(),
+            LlmProvider::OpenCode {
+                path: "opencode".into(),
+                model: None,
+            },
+        );
+        provider_configs.insert(
+            "claude".to_string(),
+            LlmProvider::Claude {
+                path: "claude".into(),
+                model: Some("opus".into()),
+            },
+        );
+        EnrichConfig {
+            provider,
+            timeout: Duration::from_secs(600),
+            code_commit: "abc123".to_string(),
+            max_rss_mb: 3500,
+            provider_configs,
+        }
+    }
 }
 
 impl EnrichConfig {
@@ -545,8 +874,15 @@ const LLM_ENV_ALLOWLIST: &[&str] = &[
     "SHELL",
     "TMPDIR",
     "XDG_",
-    // Provider-specific auth
-    "ANTHROPIC_API_KEY",
+    // Provider-specific auth.
+    //
+    // NOTE: ANTHROPIC_API_KEY is deliberately NOT forwarded. The claude provider
+    // authenticates only with a personal subscription via CLAUDE_CODE_OAUTH_TOKEN.
+    // Keeping ANTHROPIC_API_KEY out of the subprocess env means that even if it is
+    // still set on the worker (e.g. a leftover), it can never reach `claude` and
+    // silently take precedence over the OAuth token — the exact footgun that
+    // makes claude fail auth at startup.
+    "CLAUDE_CODE_OAUTH_TOKEN",
     "VLAM_API_KEY",
     "OPENCODE_",
 ];
@@ -558,20 +894,78 @@ fn env_allowed(key: &str) -> bool {
         .any(|prefix| key == *prefix || key.starts_with(prefix))
 }
 
+/// Select one Claude OAuth token from a comma-separated list, rotating by a
+/// time `bucket` so consecutive runs spread across several personal
+/// subscriptions (each token has its own usage/rate limits).
+///
+/// `CLAUDE_CODE_OAUTH_TOKEN` may hold multiple tokens separated by commas. The
+/// chosen index is `bucket % n`; callers pass `unix_secs / 100`, so the active
+/// token rotates roughly every 100 seconds. Returns `(index, count, token)`, or
+/// `None` when there are no non-empty tokens. Pure so it can be unit-tested.
+fn select_claude_token(raw: &str, bucket: u64) -> Option<(usize, usize, &str)> {
+    let tokens: Vec<&str> = raw
+        .split(',')
+        .map(|t| t.trim())
+        .filter(|t| !t.is_empty())
+        .collect();
+    if tokens.is_empty() {
+        return None;
+    }
+    let idx = (bucket % tokens.len() as u64) as usize;
+    Some((idx, tokens.len(), tokens[idx]))
+}
+
 /// Build the command for the configured LLM provider.
 ///
 /// The subprocess gets a stripped environment: only variables on
 /// `LLM_ENV_ALLOWLIST` are forwarded.  This prevents leaking DATABASE_URL
 /// and other secrets to the LLM process (which may have shell access).
+///
+/// `file_arg` is passed to OpenCode as its `-f` input file (the Claude provider
+/// ignores it and reads via its own tools from `cwd`). Enrich passes the law
+/// YAML; a caller with no single input file passes `None`.
 fn build_command(
     provider: &LlmProvider,
     prompt: &str,
-    yaml_abs: &Path,
-    repo_path: &Path,
+    file_arg: Option<&Path>,
+    cwd: &Path,
+    allow_bash: bool,
 ) -> tokio::process::Command {
     // Collect allowed env vars before creating the command.
     let safe_env: Vec<(String, String)> =
         std::env::vars().filter(|(k, _)| env_allowed(k)).collect();
+
+    // Diagnostic logging: record exactly what will be spawned and which env vars
+    // are forwarded (NAMES only — never values). Classify the OAuth token by its
+    // non-secret prefix so a misconfiguration (an API key pasted into the OAuth
+    // slot) is obvious, and flag whether ANTHROPIC_API_KEY is still present in the
+    // worker env even though it is deliberately never forwarded.
+    let forwarded_env: Vec<&str> = safe_env.iter().map(|(k, _)| k.as_str()).collect();
+    let oauth_token_kind = std::env::var("CLAUDE_CODE_OAUTH_TOKEN").ok().map(|t| {
+        if t.is_empty() {
+            "empty"
+        } else if t.starts_with("sk-ant-oat") {
+            "oauth-token (sk-ant-oat…)"
+        } else if t.starts_with("sk-ant-api") {
+            "WRONG: looks like an API key (sk-ant-api…)"
+        } else {
+            "unrecognized-prefix"
+        }
+    });
+    let model = match provider {
+        LlmProvider::OpenCode { model, .. } | LlmProvider::Claude { model, .. } => model.as_deref(),
+    };
+    tracing::info!(
+        provider = provider.name(),
+        model = ?model,
+        prompt_chars = prompt.len(),
+        claude_oauth_token_kind = ?oauth_token_kind,
+        anthropic_api_key_present_in_worker_env = std::env::var_os("ANTHROPIC_API_KEY").is_some(),
+        "spawning LLM subprocess"
+    );
+    // The forwarded env var NAMES are static between spawns — keep them at debug
+    // so they don't add a long line to every job's info logs.
+    tracing::debug!(provider = provider.name(), forwarded_env = ?forwarded_env, "forwarded env to LLM subprocess");
 
     let mut cmd = match provider {
         LlmProvider::OpenCode { path, model } => {
@@ -579,14 +973,11 @@ fn build_command(
             cmd.env_clear();
             cmd.envs(safe_env);
             cmd.env("NODE_OPTIONS", "--max-old-space-size=512");
-            cmd.arg("run")
-                .arg(prompt)
-                .arg("-f")
-                .arg(yaml_abs)
-                .arg("--format")
-                .arg("json")
-                .arg("--dir")
-                .arg(repo_path);
+            cmd.arg("run").arg(prompt);
+            if let Some(f) = file_arg {
+                cmd.arg("-f").arg(f);
+            }
+            cmd.arg("--format").arg("json").arg("--dir").arg(cwd);
             if let Some(ref m) = model {
                 cmd.arg("-m").arg(m);
             }
@@ -597,11 +988,41 @@ fn build_command(
             cmd.env_clear();
             cmd.envs(safe_env);
             cmd.env("NODE_OPTIONS", "--max-old-space-size=512");
+            // If CLAUDE_CODE_OAUTH_TOKEN holds several comma-separated tokens,
+            // override the forwarded value with a single one chosen by a
+            // time-rotating index, so load spreads across the subscriptions.
+            if let Ok(raw) = std::env::var("CLAUDE_CODE_OAUTH_TOKEN") {
+                let bucket = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() / 100)
+                    .unwrap_or(0);
+                if let Some((idx, count, token)) = select_claude_token(&raw, bucket) {
+                    // Always apply the selected (trimmed) token — even for a
+                    // single token — so stray whitespace or a trailing comma
+                    // never reaches claude verbatim. Never log the token value;
+                    // only the 1-based position and count.
+                    cmd.env("CLAUDE_CODE_OAUTH_TOKEN", token);
+                    if count > 1 {
+                        tracing::info!(
+                            using_token = idx + 1,
+                            of_tokens = count,
+                            "selected claude oauth token (rotating by ~100s)"
+                        );
+                    }
+                }
+            }
+            // `Bash` is only granted when the caller asks for it (document-convert
+            // may need to run/install a converter); enrich keeps the shell off.
+            let allowed_tools = if allow_bash {
+                "Bash,Read,Edit,Write,Grep,Glob"
+            } else {
+                "Read,Edit,Write,Grep,Glob"
+            };
             cmd.arg("-p")
                 .arg(prompt)
                 .arg("--allowedTools")
-                .arg("Read,Edit,Write,Grep,Glob")
-                .current_dir(repo_path);
+                .arg(allowed_tools)
+                .current_dir(cwd);
             if let Some(ref m) = model {
                 cmd.arg("--model").arg(m);
             }
@@ -616,6 +1037,33 @@ fn build_command(
     cmd.process_group(0);
     cmd.kill_on_drop(true);
     cmd
+}
+
+/// Result of preparing the per-job enrichment checkout: the client plus the
+/// base-branch blob SHA of the target law (recorded into `.enrichment.yaml`
+/// as `source_hash`).
+pub struct EnrichCorpus {
+    pub client: CorpusClient,
+    pub source_hash: String,
+}
+
+/// Read the `source_hash` recorded in the target law's `.enrichment.yaml`, if
+/// present and non-empty. Returns `None` when the file is absent/unparseable
+/// or the field is empty (both treated as "unknown provenance").
+async fn read_stored_source_hash(repo_path: &Path, normalized_law_path: &str) -> Option<String> {
+    #[derive(serde::Deserialize)]
+    struct Provenance {
+        #[serde(default)]
+        source_hash: String,
+    }
+    let meta_rel = Path::new(normalized_law_path)
+        .parent()?
+        .join(".enrichment.yaml");
+    let content = tokio::fs::read_to_string(repo_path.join(meta_rel))
+        .await
+        .ok()?;
+    let prov: Provenance = serde_yaml_ng::from_str(&content).ok()?;
+    (!prov.source_hash.is_empty()).then_some(prov.source_hash)
 }
 
 /// Create a `CorpusClient` for the enrichment branch.
@@ -635,7 +1083,7 @@ pub async fn create_enrich_corpus(
     branch: &str,
     job_id: Uuid,
     yaml_path: &str,
-) -> Result<CorpusClient> {
+) -> Result<EnrichCorpus> {
     let mut config = base_config.clone();
     config.branch = branch.into();
 
@@ -668,6 +1116,46 @@ pub async fn create_enrich_corpus(
     let mut client = CorpusClient::new(config);
     client.ensure_repo().await?;
 
+    // Past `ensure_repo()` a per-job git clone exists on disk. Resolving the
+    // base branch, checking freshness, or checking out the law can all fail —
+    // including a deliberate `BaseDrift` bail-out. The worker's shared cleanup
+    // only captures the checkout path on the success path, so on any error we
+    // must remove the clone here; otherwise an errored (and especially a
+    // drifted, awaiting-human) job leaks its clone on a disk/OOM-sensitive
+    // worker.
+    let checkout_dir = client.repo_path().to_path_buf();
+    let source_hash = match resolve_enrich_base(&client, base_config, &normalized).await {
+        Ok(source_hash) => source_hash,
+        Err(e) => {
+            if let Err(rm) = tokio::fs::remove_dir_all(&checkout_dir).await {
+                tracing::warn!(
+                    path = %checkout_dir.display(),
+                    error = %rm,
+                    "failed to clean up per-job corpus checkout after enrich setup error"
+                );
+            }
+            return Err(e);
+        }
+    };
+
+    Ok(EnrichCorpus {
+        client,
+        source_hash,
+    })
+}
+
+/// Resolve the enrichment base branch and materialize the target law from it,
+/// returning the base blob SHA to record as provenance (`source_hash`).
+///
+/// Split out from [`create_enrich_corpus`] so that every error it can raise — a
+/// git probe failure, a checkout failure, or a [`PipelineError::BaseDrift`]
+/// bail-out — flows through a single caller-side cleanup that removes the
+/// per-job clone. Only `&self` methods are used; the clone already exists.
+async fn resolve_enrich_base(
+    client: &CorpusClient,
+    base_config: &CorpusConfig,
+    normalized: &str,
+) -> Result<String> {
     // Prefer the worker's own base branch (e.g. `pr574`) so PR deployments
     // enrich their own harvested YAML, not production's. Probe the remote
     // first and fall back to `development` only when the branch doesn't
@@ -676,9 +1164,10 @@ pub async fn create_enrich_corpus(
     // prevents an unrelated `checkout` or `reset` failure from silently
     // dropping the enrichment back to production's branch.
     //
-    // Pass the exact file path (not the directory) so the `ls-files` guard
-    // inside `checkout_from_branch` doesn't match sibling files and skip
-    // fetching a newly harvested version of an already-known law.
+    // The freshness guard below works on the exact file path (not the
+    // directory): `is_tracked` and `fetch_base_blob_sha` resolve a single blob,
+    // so a newly harvested version of an already-known law is judged on its own
+    // path rather than being masked by a sibling version in the same directory.
     let preferred_base = base_config.branch.as_str();
     let preferred_exists = if preferred_base == "development" || branch_is_known(preferred_base) {
         true
@@ -697,11 +1186,46 @@ pub async fn create_enrich_corpus(
         );
     }
 
-    client
-        .checkout_from_branch(base_branch, &[&normalized])
-        .await?;
+    // Freshness guard: compare the target law's base version against the
+    // provenance recorded in a prior enrichment. New law -> check out fresh;
+    // unchanged base -> keep existing enrichment; missing provenance (a legacy,
+    // pre-guard enrichment) -> adopt the current base as baseline and proceed;
+    // changed base -> fail loudly (do NOT auto-overwrite on a moved base).
+    let base_sha = client.fetch_base_blob_sha(base_branch, normalized).await?;
+    let tracked = client.is_tracked(normalized).await?;
+    let stored = read_stored_source_hash(client.repo_path(), normalized).await;
 
-    Ok(client)
+    match decide_base_action(tracked, stored.as_deref(), &base_sha) {
+        BaseAction::CheckoutFresh => {
+            client.checkout_path_from_fetch_head(normalized).await?;
+            tracing::info!(base = %base_branch, path = %normalized, "checked out law fresh from base");
+        }
+        BaseAction::Skip => {
+            tracing::debug!(path = %normalized, "base unchanged, no fresh checkout needed");
+        }
+        BaseAction::AdoptBaseline => {
+            // Legacy enrichment with no recorded provenance. Keep the existing
+            // enrichment (no fresh checkout, like Skip); the current base blob
+            // SHA returned below is stamped as `source_hash` on the next
+            // `.enrichment.yaml` write, establishing the baseline so subsequent
+            // runs can detect real drift.
+            tracing::info!(
+                path = %normalized,
+                base = %base_branch,
+                "no recorded provenance for tracked law; adopting current base as baseline (legacy enrichment grandfathered)"
+            );
+        }
+        BaseAction::Drift => {
+            return Err(PipelineError::BaseDrift {
+                yaml_path: normalized.to_string(),
+                base: base_branch.to_string(),
+                expected: stored.unwrap_or_else(|| "(none recorded)".to_string()),
+                actual: base_sha,
+            });
+        }
+    }
+
+    Ok(base_sha)
 }
 
 /// Ensure `.claude/skills/` exist in the target repo directory.
@@ -814,8 +1338,9 @@ pub async fn execute_enrich(
     payload: &EnrichPayload,
     repo_path: &Path,
     config: &EnrichConfig,
+    source_hash: &str,
 ) -> Result<(EnrichResult, Vec<PathBuf>)> {
-    execute_enrich_with_runner(payload, repo_path, config, &ProcessLlmRunner).await
+    execute_enrich_with_runner(payload, repo_path, config, source_hash, &ProcessLlmRunner).await
 }
 
 /// Execute the enrichment: call the LLM runner to generate machine_readable sections.
@@ -826,6 +1351,7 @@ pub async fn execute_enrich_with_runner(
     payload: &EnrichPayload,
     repo_path: &Path,
     config: &EnrichConfig,
+    source_hash: &str,
     runner: &dyn LlmRunner,
 ) -> Result<(EnrichResult, Vec<PathBuf>)> {
     let normalized_path = normalize_yaml_path(&payload.yaml_path)?;
@@ -901,6 +1427,7 @@ pub async fn execute_enrich_with_runner(
         coverage_score,
         articles_total: articles_before,
         articles_with_machine_readable,
+        source_hash: source_hash.to_string(),
     };
 
     let metadata_path = yaml_abs
@@ -911,8 +1438,21 @@ pub async fn execute_enrich_with_runner(
         .map_err(|e| PipelineError::Enrich(format!("failed to serialize metadata: {e}")))?;
     tokio::fs::write(&metadata_path, &metadata_yaml).await?;
 
+    // Read the related-legislation result envelope the agent may have written.
+    // Never fails: absent/malformed → empty (see read_enrichment_result_envelope).
+    let related_legislation = read_enrichment_result_envelope(&yaml_abs).await;
+
+    // Capture the untranslatables the agent flagged in the enriched YAML (RFC-012).
+    let untranslatables = collect_untranslatables(&yaml_abs).await?;
+
     // Collect written files for corpus staging
     let mut written_files = vec![yaml_abs.clone(), metadata_path];
+
+    // Stage the result envelope as provenance when the agent wrote one.
+    let envelope_path = enrichment_result_path(&yaml_abs);
+    if envelope_path.exists() {
+        written_files.push(envelope_path);
+    }
 
     // Check if a feature file was generated for this specific law.
     // MvT research creates feature files named after the law slug.
@@ -950,6 +1490,8 @@ pub async fn execute_enrich_with_runner(
         coverage_score,
         provider: provider_name,
         branch,
+        related_legislation,
+        untranslatables,
     };
 
     Ok((result, written_files))
@@ -986,47 +1528,60 @@ async fn compute_prompt_hash(repo_path: &Path) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-/// Count total articles and articles with `machine_readable` in one parse pass.
+/// Count total articles and articles with a `machine_readable` section in one
+/// parse pass.
+///
+/// The law is parsed into the canonical [`ArticleBasedLaw`] model
+/// (`regelrecht-law-model`) rather than walked as an untyped YAML value, so the
+/// field access is type-checked against the single source of truth for the law
+/// format. A structurally-invalid law now surfaces as a parse error here instead
+/// of being silently undercounted — acceptable because this only ever runs on
+/// real harvested/enriched corpus files, where a corruption is worth failing on.
+///
+/// An article counts as enriched when it carries a `machine_readable` mapping,
+/// including the empty `{}` an LLM may insert before filling it; an explicit
+/// `machine_readable: null` is treated as un-enriched. No corpus file uses the
+/// bare/null form, so this matches the previous key-presence behavior in practice.
 async fn count_article_stats(path: &Path) -> Result<(usize, usize)> {
     let content = tokio::fs::read_to_string(path).await?;
-    let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&content)?;
-    Ok((
-        count_articles_in_value(&value),
-        count_machine_readable_in_value(&value),
-    ))
+    let law: ArticleBasedLaw = serde_yaml_ng::from_str(&content)?;
+    let total = law.articles.len();
+    let with_machine_readable = law
+        .articles
+        .iter()
+        .filter(|article| article.machine_readable.is_some())
+        .count();
+    Ok((total, with_machine_readable))
 }
 
-fn count_articles_in_value(value: &serde_yaml_ng::Value) -> usize {
-    match value {
-        serde_yaml_ng::Value::Mapping(map) => {
-            if let Some(serde_yaml_ng::Value::Sequence(seq)) = map.get("articles") {
-                return seq.len();
-            }
-            0
+/// Collect all untranslatables from an enriched law YAML, flattened to
+/// [`CapturedUntranslatable`] with the owning article number attached.
+///
+/// Parses the law into the canonical [`ArticleBasedLaw`] model, mirroring
+/// [`count_article_stats`]. Returns an empty vec when no article declares any.
+async fn collect_untranslatables(path: &Path) -> Result<Vec<CapturedUntranslatable>> {
+    let content = tokio::fs::read_to_string(path).await?;
+    let law: ArticleBasedLaw = serde_yaml_ng::from_str(&content)?;
+    let mut out = Vec::new();
+    for article in &law.articles {
+        let Some(machine_readable) = &article.machine_readable else {
+            continue;
+        };
+        let Some(entries) = &machine_readable.untranslatables else {
+            continue;
+        };
+        for entry in entries {
+            out.push(CapturedUntranslatable {
+                article: article.number.clone(),
+                construct: entry.construct.clone(),
+                reason: entry.reason.clone(),
+                suggestion: entry.suggestion.clone(),
+                legal_text_excerpt: entry.legal_text_excerpt.clone(),
+                accepted: entry.accepted,
+            });
         }
-        _ => 0,
     }
-}
-
-fn count_machine_readable_in_value(value: &serde_yaml_ng::Value) -> usize {
-    match value {
-        serde_yaml_ng::Value::Mapping(map) => {
-            if let Some(serde_yaml_ng::Value::Sequence(articles)) = map.get("articles") {
-                return articles
-                    .iter()
-                    .filter(|article| {
-                        if let serde_yaml_ng::Value::Mapping(article_map) = article {
-                            article_map.contains_key("machine_readable")
-                        } else {
-                            false
-                        }
-                    })
-                    .count();
-            }
-            0
-        }
-        _ => 0,
-    }
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -1054,28 +1609,91 @@ mod tests {
     }
 
     #[test]
+    fn decide_base_action_new_law_checks_out_fresh() {
+        assert_eq!(
+            decide_base_action(false, None, "sha_new"),
+            BaseAction::CheckoutFresh
+        );
+        // Even if a stored hash somehow exists, an untracked path is a fresh checkout.
+        assert_eq!(
+            decide_base_action(false, Some("sha_old"), "sha_new"),
+            BaseAction::CheckoutFresh
+        );
+    }
+
+    #[test]
+    fn decide_base_action_unchanged_base_skips() {
+        assert_eq!(
+            decide_base_action(true, Some("sha"), "sha"),
+            BaseAction::Skip
+        );
+    }
+
+    #[test]
+    fn decide_base_action_changed_base_is_drift() {
+        assert_eq!(
+            decide_base_action(true, Some("sha_old"), "sha_new"),
+            BaseAction::Drift
+        );
+    }
+
+    #[test]
+    fn decide_base_action_missing_or_empty_provenance_adopts_baseline() {
+        // A tracked law with no recorded provenance is a pre-guard "legacy"
+        // enrichment: grandfather it by adopting the current base as baseline,
+        // never a terminal drift (that would fail every existing enrichment the
+        // moment the guard ships).
+        assert_eq!(
+            decide_base_action(true, None, "sha_new"),
+            BaseAction::AdoptBaseline
+        );
+        assert_eq!(
+            decide_base_action(true, Some(""), "sha_new"),
+            BaseAction::AdoptBaseline
+        );
+    }
+
+    #[test]
     fn test_enrich_payload_serde_roundtrip() {
         let payload = EnrichPayload {
             law_id: "BWBR0018451".to_string(),
             yaml_path: "regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
             provider: Some("claude".to_string()),
+            depth: Some(2),
+            requested_by: None,
+            deliver: None,
+            traject_id: None,
+            traject_ref: None,
+            source_etag: None,
+            new_law: None,
         };
 
         let json = serde_json::to_string(&payload).unwrap();
         let deserialized: EnrichPayload = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.provider.as_deref(), Some("claude"));
+        assert_eq!(deserialized.depth, Some(2));
 
-        // Verify backward compatibility: provider is optional and skipped when None
+        // Verify backward compatibility: provider and depth are optional and
+        // skipped when None (old queued payloads omit them entirely).
         let payload_no_provider = EnrichPayload {
             law_id: "BWBR0018451".to_string(),
             yaml_path: "regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
             provider: None,
+            depth: None,
+            requested_by: None,
+            deliver: None,
+            traject_id: None,
+            traject_ref: None,
+            source_etag: None,
+            new_law: None,
         };
         let json_no_provider = serde_json::to_string(&payload_no_provider).unwrap();
         assert!(!json_no_provider.contains("provider"));
+        assert!(!json_no_provider.contains("depth"));
         let deserialized_no_provider: EnrichPayload =
             serde_json::from_str(&json_no_provider).unwrap();
         assert!(deserialized_no_provider.provider.is_none());
+        assert!(deserialized_no_provider.depth.is_none());
 
         assert_eq!(deserialized.law_id, "BWBR0018451");
         assert!(deserialized.yaml_path.contains("zorgtoeslag"));
@@ -1091,6 +1709,8 @@ mod tests {
             coverage_score: 0.7,
             provider: "opencode".to_string(),
             branch: "enrich/opencode".to_string(),
+            related_legislation: Vec::new(),
+            untranslatables: Vec::new(),
         };
 
         let json = serde_json::to_value(&result).unwrap();
@@ -1098,6 +1718,83 @@ mod tests {
         assert_eq!(json["coverage_score"], 0.7);
         assert_eq!(json["provider"], "opencode");
         assert_eq!(json["branch"], "enrich/opencode");
+    }
+
+    #[test]
+    fn test_envelope_full_deserialization() {
+        let yaml = r#"
+law_id: wet_op_de_zorgtoeslag
+related_legislation:
+  - name: Regeling vaststelling standaardpremie en bestuursrechtelijke premie
+    relation: delegated_regeling
+    bwb_id: BWBR0037841
+    slug: regeling_standaardpremie
+    open_term: standaardpremie
+  - name: Algemene wet inkomensafhankelijke regelingen
+    relation: source_regulation
+"#;
+        let envelope: EnrichmentResultEnvelope = serde_yaml_ng::from_str(yaml).unwrap();
+        assert_eq!(envelope.law_id.as_deref(), Some("wet_op_de_zorgtoeslag"));
+        assert_eq!(envelope.related_legislation.len(), 2);
+        let first = &envelope.related_legislation[0];
+        assert_eq!(first.relation, "delegated_regeling");
+        assert_eq!(first.bwb_id.as_deref(), Some("BWBR0037841"));
+        assert_eq!(first.slug.as_deref(), Some("regeling_standaardpremie"));
+        assert_eq!(first.open_term.as_deref(), Some("standaardpremie"));
+        // Second entry omits every optional field.
+        let second = &envelope.related_legislation[1];
+        assert_eq!(second.relation, "source_regulation");
+        assert!(second.bwb_id.is_none());
+        assert!(second.slug.is_none());
+        assert!(second.open_term.is_none());
+    }
+
+    #[test]
+    fn test_envelope_missing_fields_default() {
+        // Only `name` is required; everything else defaults.
+        let yaml = "related_legislation:\n  - name: Some Law\n";
+        let envelope: EnrichmentResultEnvelope = serde_yaml_ng::from_str(yaml).unwrap();
+        assert!(envelope.law_id.is_none());
+        assert_eq!(envelope.related_legislation.len(), 1);
+        let entry = &envelope.related_legislation[0];
+        assert_eq!(entry.name, "Some Law");
+        assert_eq!(entry.relation, "");
+        assert!(entry.bwb_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_read_envelope_absent_file_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let yaml_abs = dir.path().join("2025-01-01.yaml");
+        // No sidecar exists next to it.
+        assert!(read_enrichment_result_envelope(&yaml_abs).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_read_envelope_malformed_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let yaml_abs = dir.path().join("2025-01-01.yaml");
+        std::fs::write(
+            enrichment_result_path(&yaml_abs),
+            "related_legislation: [this is: not valid: yaml",
+        )
+        .unwrap();
+        // Malformed sidecar must never error — it degrades to empty.
+        assert!(read_enrichment_result_envelope(&yaml_abs).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_read_envelope_present_parses() {
+        let dir = tempfile::tempdir().unwrap();
+        let yaml_abs = dir.path().join("2025-01-01.yaml");
+        std::fs::write(
+            enrichment_result_path(&yaml_abs),
+            "related_legislation:\n  - name: Delegated Regeling\n    bwb_id: BWBR0037841\n",
+        )
+        .unwrap();
+        let related = read_enrichment_result_envelope(&yaml_abs).await;
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].bwb_id.as_deref(), Some("BWBR0037841"));
     }
 
     #[test]
@@ -1121,28 +1818,7 @@ mod tests {
     }
 
     fn test_config(provider: LlmProvider) -> EnrichConfig {
-        let mut provider_configs = std::collections::HashMap::new();
-        provider_configs.insert(
-            "opencode".to_string(),
-            LlmProvider::OpenCode {
-                path: "opencode".into(),
-                model: None,
-            },
-        );
-        provider_configs.insert(
-            "claude".to_string(),
-            LlmProvider::Claude {
-                path: "claude".into(),
-                model: Some("opus".into()),
-            },
-        );
-        EnrichConfig {
-            provider,
-            timeout: Duration::from_secs(600),
-            code_commit: "abc123".to_string(),
-            max_rss_mb: 3500,
-            provider_configs,
-        }
+        EnrichConfig::for_test(provider)
     }
 
     #[test]
@@ -1172,6 +1848,25 @@ mod tests {
         assert!(ENRICH_PROVIDERS.contains(&"opencode"));
         assert!(ENRICH_PROVIDERS.contains(&"claude"));
         assert_eq!(ENRICH_PROVIDERS.len(), 2);
+    }
+
+    #[test]
+    fn test_select_claude_token() {
+        // empty / whitespace-only -> None
+        assert_eq!(select_claude_token("", 0), None);
+        assert_eq!(select_claude_token("  , ,", 5), None);
+
+        // single token -> always that token, index 0
+        assert_eq!(select_claude_token("tokA", 0), Some((0, 1, "tokA")));
+        assert_eq!(select_claude_token(" tokA ", 999), Some((0, 1, "tokA")));
+
+        // multiple tokens -> rotate by bucket % n, whitespace trimmed
+        assert_eq!(select_claude_token("a, b , c", 0), Some((0, 3, "a")));
+        assert_eq!(select_claude_token("a, b , c", 1), Some((1, 3, "b")));
+        assert_eq!(select_claude_token("a, b , c", 2), Some((2, 3, "c")));
+        assert_eq!(select_claude_token("a, b , c", 3), Some((0, 3, "a")));
+        // large bucket (e.g. unix_secs/100) still wraps correctly
+        assert_eq!(select_claude_token("a,b", 17_000_001), Some((1, 2, "b")));
     }
 
     #[test]
@@ -1220,6 +1915,34 @@ mod tests {
     }
 
     #[test]
+    fn test_enrich_payload_task_fields_roundtrip_and_backcompat() {
+        // Oude payloads (zonder taak-velden) moeten blijven deserialiseren.
+        let old = serde_json::json!({"law_id": "x", "yaml_path": "nl/x/2025-01-01.yaml"});
+        let parsed: EnrichPayload = serde_json::from_value(old).unwrap();
+        assert!(parsed.requested_by.is_none());
+        assert!(!parsed.deliver_as_task());
+
+        // Nieuwe payloads dragen de taak-velden mee.
+        let account = uuid::Uuid::new_v4();
+        let new = EnrichPayload {
+            law_id: "x".into(),
+            yaml_path: "laws/x/law.yaml".into(),
+            provider: Some("claude".into()),
+            depth: None,
+            requested_by: Some(account),
+            deliver: Some("task".into()),
+            traject_id: Some(uuid::Uuid::new_v4()),
+            traject_ref: Some("testtraject-abcd1234".into()),
+            source_etag: Some("\"abc\"".into()),
+            new_law: None,
+        };
+        let roundtrip: EnrichPayload =
+            serde_json::from_value(serde_json::to_value(&new).unwrap()).unwrap();
+        assert_eq!(roundtrip.requested_by, Some(account));
+        assert!(roundtrip.deliver_as_task());
+    }
+
+    #[test]
     fn test_enrichment_metadata_serde() {
         let meta = EnrichmentMetadata {
             law_id: "BWBR0018451".to_string(),
@@ -1231,6 +1954,7 @@ mod tests {
             coverage_score: 0.7,
             articles_total: 10,
             articles_with_machine_readable: 7,
+            source_hash: String::new(),
         };
 
         let yaml = serde_yaml_ng::to_string(&meta).unwrap();
@@ -1239,6 +1963,33 @@ mod tests {
 
         let deserialized: EnrichmentMetadata = serde_yaml_ng::from_str(&yaml).unwrap();
         assert_eq!(deserialized.articles_with_machine_readable, 7);
+    }
+
+    #[test]
+    fn enrichment_metadata_source_hash_defaults_when_absent() {
+        // A .enrichment.yaml written before this field existed.
+        let legacy = "law_id: BWBR0001\ntimestamp: '2026-01-01T00:00:00Z'\nprovider: claude\nmodel: m\nprompt_hash: p\ncode_commit: c\ncoverage_score: 1.0\narticles_total: 1\narticles_with_machine_readable: 1\n";
+        let meta: EnrichmentMetadata = serde_yaml_ng::from_str(legacy).unwrap();
+        assert_eq!(meta.source_hash, "");
+    }
+
+    #[test]
+    fn enrichment_metadata_source_hash_roundtrips() {
+        let meta = EnrichmentMetadata {
+            law_id: "BWBR0001".into(),
+            timestamp: "2026-01-01T00:00:00Z".into(),
+            provider: "claude".into(),
+            model: "m".into(),
+            prompt_hash: "p".into(),
+            code_commit: "c".into(),
+            coverage_score: 1.0,
+            articles_total: 1,
+            articles_with_machine_readable: 1,
+            source_hash: "abc123".into(),
+        };
+        let yaml = serde_yaml_ng::to_string(&meta).unwrap();
+        let back: EnrichmentMetadata = serde_yaml_ng::from_str(&yaml).unwrap();
+        assert_eq!(back.source_hash, "abc123");
     }
 
     #[test]
@@ -1285,22 +2036,149 @@ mod tests {
         assert!(normalize_yaml_path("").is_err());
     }
 
-    #[test]
-    fn test_count_articles_in_value() {
-        let yaml = r#"
+    #[tokio::test]
+    async fn test_count_article_stats() {
+        // A realistic minimal article-based law: typed counting requires the
+        // canonical top-level fields ($id/regulatory_layer/publication_date) and
+        // articles with number+text, so the fixture mirrors a real harvested law.
+        let yaml = r#"---
+$id: test_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
 articles:
-  - id: art1
-    name: Article 1
-  - id: art2
-    name: Article 2
-  - id: art3
-    name: Article 3
+  - number: '1'
+    text: Article one.
+  - number: '2'
+    text: Article two.
+  - number: '3'
+    text: Article three.
     machine_readable:
-      actions: []
+      execution:
+        actions: []
 "#;
-        let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(yaml).unwrap();
-        assert_eq!(count_articles_in_value(&value), 3);
-        assert_eq!(count_machine_readable_in_value(&value), 1);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("law.yaml");
+        tokio::fs::write(&path, yaml).await.unwrap();
+
+        let (total, with_mr) = count_article_stats(&path).await.unwrap();
+        assert_eq!(total, 3);
+        assert_eq!(with_mr, 1);
+    }
+
+    #[tokio::test]
+    async fn test_collect_untranslatables() {
+        // Two articles carry untranslatables (one accepted, one not); a third
+        // article has a machine_readable section without any. The collector must
+        // flatten every entry, attach the owning article number, and preserve the
+        // optional fields + accepted flag.
+        let yaml = r#"---
+$id: test_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Article one.
+    machine_readable:
+      untranslatables:
+        - construct: rounding
+          reason: Engine cannot round yet.
+          suggestion: Add a ROUND operation.
+          legal_text_excerpt: naar boven afgerond op hele euro's
+          accepted: false
+  - number: '2'
+    text: Article two.
+    machine_readable:
+      execution:
+        actions: []
+  - number: '3'
+    text: Article three.
+    machine_readable:
+      untranslatables:
+        - construct: table_lookup
+          reason: Table lookup unsupported.
+          accepted: true
+"#;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("law.yaml");
+        tokio::fs::write(&path, yaml).await.unwrap();
+
+        let collected = collect_untranslatables(&path).await.unwrap();
+        assert_eq!(collected.len(), 2);
+
+        let rounding = collected
+            .iter()
+            .find(|u| u.construct == "rounding")
+            .expect("rounding entry");
+        assert_eq!(rounding.article, "1");
+        assert_eq!(rounding.reason, "Engine cannot round yet.");
+        assert_eq!(
+            rounding.suggestion.as_deref(),
+            Some("Add a ROUND operation.")
+        );
+        assert_eq!(
+            rounding.legal_text_excerpt.as_deref(),
+            Some("naar boven afgerond op hele euro's")
+        );
+        assert!(!rounding.accepted);
+
+        let lookup = collected
+            .iter()
+            .find(|u| u.construct == "table_lookup")
+            .expect("table_lookup entry");
+        assert_eq!(lookup.article, "3");
+        assert!(lookup.suggestion.is_none());
+        assert!(lookup.legal_text_excerpt.is_none());
+        assert!(lookup.accepted);
+    }
+
+    #[tokio::test]
+    async fn test_collect_untranslatables_none() {
+        let yaml = r#"---
+$id: test_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Article one.
+"#;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("law.yaml");
+        tokio::fs::write(&path, yaml).await.unwrap();
+
+        assert!(collect_untranslatables(&path).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_count_article_stats_empty_vs_null_machine_readable() {
+        // An empty `machine_readable: {}` mapping counts as enriched — this
+        // matches the old key-presence semantics that `FakeLlmRunner` (and the
+        // enrichment delta) rely on when the LLM inserts a bare section. An
+        // explicit `machine_readable: null` deserializes to None and is treated
+        // as un-enriched; no corpus file uses the bare/null form, so the typed
+        // count matches the previous `contains_key` behavior in practice.
+        let yaml = r#"---
+$id: test_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Empty section, enriched.
+    machine_readable: {}
+  - number: '2'
+    text: Null section, not enriched.
+    machine_readable: null
+  - number: '3'
+    text: No section at all.
+"#;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("law.yaml");
+        tokio::fs::write(&path, yaml).await.unwrap();
+
+        let (total, with_mr) = count_article_stats(&path).await.unwrap();
+        assert_eq!(total, 3);
+        assert_eq!(with_mr, 1);
     }
 
     /// Fake LLM runner that simulates enrichment by adding `machine_readable`
@@ -1348,15 +2226,21 @@ articles:
         let law_dir = dir.path().join("regulation/nl/wet/test_law");
         tokio::fs::create_dir_all(&law_dir).await.unwrap();
 
-        let yaml_content = r#"articles:
-  - id: art1
-    name: Article 1
-  - id: art2
-    name: Article 2
+        let yaml_content = r#"---
+$id: test_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Article one.
+  - number: '2'
+    text: Article two.
     machine_readable:
-      actions: []
-  - id: art3
-    name: Article 3
+      execution:
+        actions: []
+  - number: '3'
+    text: Article three.
 "#;
         let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
         tokio::fs::write(dir.path().join(yaml_path), yaml_content)
@@ -1367,6 +2251,13 @@ articles:
             law_id: "BWBR0000001".into(),
             yaml_path: yaml_path.into(),
             provider: Some("opencode".into()),
+            depth: None,
+            requested_by: None,
+            deliver: None,
+            traject_id: None,
+            traject_ref: None,
+            source_etag: None,
+            new_law: None,
         };
 
         let config = test_config(LlmProvider::OpenCode {
@@ -1375,7 +2266,7 @@ articles:
         });
 
         let (result, written_files) =
-            execute_enrich_with_runner(&payload, dir.path(), &config, &FakeLlmRunner)
+            execute_enrich_with_runner(&payload, dir.path(), &config, "", &FakeLlmRunner)
                 .await
                 .unwrap();
 
@@ -1421,7 +2312,7 @@ articles:
         let law_dir = dir.path().join("regulation/nl/wet/test_law");
         tokio::fs::create_dir_all(&law_dir).await.unwrap();
 
-        let yaml_content = "articles:\n  - id: art1\n    name: Article 1\n";
+        let yaml_content = "---\n$id: test_law\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Article one.\n";
         let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
         tokio::fs::write(dir.path().join(yaml_path), yaml_content)
             .await
@@ -1431,6 +2322,13 @@ articles:
             law_id: "BWBR0000001".into(),
             yaml_path: yaml_path.into(),
             provider: None,
+            depth: None,
+            requested_by: None,
+            deliver: None,
+            traject_id: None,
+            traject_ref: None,
+            source_etag: None,
+            new_law: None,
         };
 
         let config = test_config(LlmProvider::OpenCode {
@@ -1438,7 +2336,7 @@ articles:
             model: None,
         });
 
-        let err = execute_enrich_with_runner(&payload, dir.path(), &config, &FailingLlmRunner)
+        let err = execute_enrich_with_runner(&payload, dir.path(), &config, "", &FailingLlmRunner)
             .await
             .unwrap_err();
 
@@ -1468,7 +2366,7 @@ articles:
         let law_dir = dir.path().join("regulation/nl/wet/test_law");
         tokio::fs::create_dir_all(&law_dir).await.unwrap();
 
-        let yaml_content = "articles:\n  - id: art1\n    name: Article 1\n";
+        let yaml_content = "---\n$id: test_law\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Article one.\n";
         let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
         tokio::fs::write(dir.path().join(yaml_path), yaml_content)
             .await
@@ -1478,6 +2376,13 @@ articles:
             law_id: "BWBR0000001".into(),
             yaml_path: yaml_path.into(),
             provider: None,
+            depth: None,
+            requested_by: None,
+            deliver: None,
+            traject_id: None,
+            traject_ref: None,
+            source_etag: None,
+            new_law: None,
         };
 
         let config = test_config(LlmProvider::OpenCode {
@@ -1485,7 +2390,7 @@ articles:
             model: None,
         });
 
-        let err = execute_enrich_with_runner(&payload, dir.path(), &config, &NoopLlmRunner)
+        let err = execute_enrich_with_runner(&payload, dir.path(), &config, "", &NoopLlmRunner)
             .await
             .unwrap_err();
 

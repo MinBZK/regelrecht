@@ -101,7 +101,7 @@ articles:
                               subject: $is_in_openbare_dienst_bes
                               value: true
   - number: B5
-    text: |-
+    text: >-
       Van het kiesrecht zijn uitgesloten zij die bij onherroepelijke rechterlijke uitspraak van het kiesrecht zijn
       ontzet.
     url: https://wetten.overheid.nl/BWBR0004627/2025-02-12#AfdelingII_HoofdstukB_ArtikelB5

@@ -550,12 +550,12 @@ fn format_value_compact(value: &Value) -> String {
         Value::Null => "null".to_string(),
         Value::Bool(b) => b.to_string(),
         Value::Int(i) => i.to_string(),
-        Value::Float(f) => {
+        Value::Decimal(d) => {
             // Limit decimal places
-            if f.fract() == 0.0 {
-                format!("{:.1}", f)
+            if d.fract().is_zero() {
+                format!("{:.1}", d)
             } else {
-                format!("{:.2}", f)
+                format!("{:.2}", d)
             }
         }
         Value::String(s) => {
@@ -598,11 +598,11 @@ fn format_value_display(value: &Value) -> String {
             }
         }
         Value::Int(i) => i.to_string(),
-        Value::Float(f) => {
-            if f.fract() == 0.0 {
-                format!("{:.1}", f)
+        Value::Decimal(d) => {
+            if d.fract().is_zero() {
+                format!("{:.1}", d)
             } else {
-                format!("{}", f)
+                format!("{}", d)
             }
         }
         Value::String(s) => format!("'{}'", s),

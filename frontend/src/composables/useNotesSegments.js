@@ -1,5 +1,5 @@
 /**
- * planSegments — overlap-aware render plan for note highlights.
+ * planSegments - overlap-aware render plan for note highlights.
  *
  * Replaces the flat-partition overlap drop that #647 inherited from
  * markRanges. Given each note's resolved spans (with the note's index in
@@ -16,7 +16,7 @@
  * AND X.end >= Y.end AND at least one inequality is strict) and both cover
  * the same segment, X is suppressed in that segment so the inner note shows
  * cleanly. X stays in the `coveringIdx` so hovering it bridges back to its
- * full span. Identical spans both render — neither strictly contains the
+ * full span. Identical spans both render - neither strictly contains the
  * other.
  *
  * Partial overlap (neither contains the other): both render layered.
@@ -66,7 +66,7 @@ export function planSegments(items) {
     // a non-empty covering set always has at least one minimal element that
     // survives the filter. A throw would surface a regression loudly but
     // also become an unhandled rejection in AnnotatedText's async watcher
-    // and silently drop the whole render — so log loudly and skip just this
+    // and silently drop the whole render - so log loudly and skip just this
     // segment, leaving the rest of the article highlighted.
     if (visible.length === 0) {
       // eslint-disable-next-line no-console
@@ -104,7 +104,7 @@ function strictlyContains(outer, inner) {
 
 function pickPrimary(visible) {
   // Earliest span.start wins (the note that "starts first" in document
-  // order). On a tie, lowest idx — that is the order the note appears in
+  // order). On a tie, lowest idx - that is the order the note appears in
   // notesForArticle, which is the YAML order for committed notes.
   let best = visible[0];
   for (let i = 1; i < visible.length; i++) {

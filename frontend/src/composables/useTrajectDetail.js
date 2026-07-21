@@ -1,11 +1,11 @@
 /**
- * useTrajectDetail — fetch one traject's full detail (`GET /api/trajects/:id`),
+ * useTrajectDetail - fetch one traject's full detail (`GET /api/trajects/:id`),
  * including its `sources`, for the read-only Traject-info sheet.
  *
  * Same endpoint and fresh-state-per-call shape as `useTrajectMembers`, but
  * keeps the whole `TrajectDetail` object (that composable discards `sources`).
- * The `id` argument is the traject **UUID** — the same value
- * `TrajectMenu.openMembersForActive` passes for member management — not the
+ * The `id` argument is the traject **UUID** - the same value
+ * `TrajectMenu.openMembersForActive` passes for member management - not the
  * URL `ref` form.
  */
 import { ref } from 'vue';

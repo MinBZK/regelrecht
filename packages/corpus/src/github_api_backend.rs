@@ -36,6 +36,7 @@ use crate::backend::{FileEntry, PersistOutcome, RecursiveFileEntry, RepoBackend,
 use crate::error::{CorpusError, Result};
 use crate::github::{Committer, GitHubFetcher};
 use crate::models::GitHubSource;
+use crate::timing;
 
 /// Pending change buffered between `write_file`/`delete_file` and
 /// `persist`. `base_sha` is `Some` when the caller read the file first
@@ -200,18 +201,22 @@ fn validate_relative(path: &Path) -> Result<()> {
 
 #[async_trait]
 impl RepoBackend for GitHubApiBackend {
+    #[tracing::instrument(name = "gh_read_file", skip_all, fields(path = %relative_path.display()))]
     async fn read_file(&self, relative_path: &Path) -> Result<Option<String>> {
         let api_path = self.api_path(relative_path)?;
         let mut inner = self.inner.lock().await;
-        let outcome = inner
-            .fetcher
-            .fetch_file_with_sha(
+        // One Contents API GET — the If-Match precondition read on the save
+        // path lands here, so it feeds the `gh_get` Server-Timing phase.
+        let outcome = timing::measure(
+            "gh_get",
+            inner.fetcher.fetch_file_with_sha(
                 &self.full_repo(),
                 &self.branch,
                 &api_path,
                 self.token.as_deref(),
-            )
-            .await?;
+            ),
+        )
+        .await?;
         match outcome {
             Some((content, sha)) => {
                 inner.sha_cache.insert(relative_path.to_path_buf(), sha);
@@ -299,18 +304,23 @@ impl RepoBackend for GitHubApiBackend {
         Ok(())
     }
 
+    #[tracing::instrument(name = "gh_list_files", skip_all, fields(dir = %dir.display()))]
     async fn list_files(&self, dir: &Path, extension: Option<&str>) -> Result<Vec<FileEntry>> {
         let api_dir = self.api_path(dir)?;
         let mut inner = self.inner.lock().await;
-        let entries = inner
-            .fetcher
-            .list_directory(
+        // One Contents API directory GET — feeds the `gh_list` Server-
+        // Timing phase so listing round-trips (scenario listings) are
+        // visible next to `gh_get` instead of vanishing into `total`.
+        let entries = timing::measure(
+            "gh_list",
+            inner.fetcher.list_directory(
                 &self.full_repo(),
                 &self.branch,
                 &api_dir,
                 self.token.as_deref(),
-            )
-            .await?;
+            ),
+        )
+        .await?;
         let mut out: Vec<FileEntry> = entries
             .into_iter()
             .filter(|e| e.entry_type == "file")
@@ -411,6 +421,7 @@ impl RepoBackend for GitHubApiBackend {
         Ok(out)
     }
 
+    #[tracing::instrument(name = "gh_persist", skip_all)]
     async fn persist(&self, ctx: &WriteContext) -> Result<PersistOutcome> {
         let pending: Vec<(PathBuf, PendingWrite)> = {
             let mut inner = self.inner.lock().await;
@@ -419,24 +430,46 @@ impl RepoBackend for GitHubApiBackend {
         if pending.is_empty() {
             return Ok(PersistOutcome::default());
         }
+        // Wall-clock of the whole Contents API commit (PUT/DELETE, plus any
+        // sha-refresh retry) — the `gh_put` Server-Timing phase. Best-effort,
+        // same as `ensure_ready`: recorded only on the success path below, so
+        // a `persist` that fails via `?` (e.g. a `try_put` error) yields a
+        // response with no `gh_put` phase. `persist` is not a single future,
+        // so it can't use the record-on-both-paths `timing::measure` wrapper.
+        let put_start = std::time::Instant::now();
 
-        // Committer falls back to a service identity when no human is
-        // attached — same shape as `GitBackend` (the trailer/co-author
-        // is left empty rather than spoofed).
-        let committer = Committer {
-            name: ctx
-                .author
-                .as_ref()
-                .map(|a| a.name.clone())
-                .unwrap_or_else(|| "regelrecht-editor".to_string()),
-            email: ctx
-                .author
-                .as_ref()
-                .map(|a| a.email.clone())
-                .unwrap_or_else(|| "noreply@regelrecht.local".to_string()),
+        // A per-call `token_override` (the acting editor user's own GitHub
+        // OAuth token) supersedes the backend's baked-in token for this write,
+        // so the commit authenticates *as the user* and GitHub enforces their
+        // push rights. Absent an override we fall back to the configured token
+        // — byte-identical to the pre-spike behaviour.
+        let token = ctx.token_override.as_deref().or(self.token.as_deref());
+
+        // With a user token the commit is left unattributed on our side:
+        // the Contents API then defaults author/committer to the
+        // authenticated GitHub account, which IS the acting editor —
+        // overriding it with the session (Keycloak) identity would detach
+        // the commit from their GitHub account. On the shared service
+        // token the human is invisible behind the bot, so there we do
+        // stamp the session identity, falling back to a service identity
+        // when no human is attached — same shape as `GitBackend` (the
+        // trailer/co-author is left empty rather than spoofed).
+        let committer = if ctx.token_override.is_some() {
+            None
+        } else {
+            Some(Committer {
+                name: ctx
+                    .author
+                    .as_ref()
+                    .map(|a| a.name.clone())
+                    .unwrap_or_else(|| "regelrecht-editor".to_string()),
+                email: ctx
+                    .author
+                    .as_ref()
+                    .map(|a| a.email.clone())
+                    .unwrap_or_else(|| "noreply@regelrecht.local".to_string()),
+            })
         };
-
-        let token = self.token.as_deref();
         let repo = self.full_repo();
         let mut new_shas: HashMap<PathBuf, String> = HashMap::new();
 
@@ -459,7 +492,7 @@ impl RepoBackend for GitHubApiBackend {
                         &api_path,
                         &content,
                         pw.base_sha.as_deref(),
-                        &committer,
+                        committer.as_ref(),
                         &ctx.message,
                         token,
                     )
@@ -486,7 +519,7 @@ impl RepoBackend for GitHubApiBackend {
                         &self.branch,
                         &api_path,
                         &sha_for_delete,
-                        &committer,
+                        committer.as_ref(),
                         &ctx.message,
                         token,
                     )
@@ -504,6 +537,8 @@ impl RepoBackend for GitHubApiBackend {
             inner.sha_cache.insert(path, sha);
         }
 
+        timing::record("gh_put", put_start.elapsed());
+
         // Contents API commits straight to the configured branch — no
         // PR is opened. The trajectflow already accepted `pr: None`
         // from the previous `GitBackend` impl, so this is wire-
@@ -511,6 +546,14 @@ impl RepoBackend for GitHubApiBackend {
         Ok(PersistOutcome::default())
     }
 
+    // `persist` above authenticates every Contents-API call with
+    // `ctx.token_override` when present — this is the one backend where a
+    // per-user GitHub token actually changes who the write authenticates as.
+    fn supports_token_override(&self) -> bool {
+        true
+    }
+
+    #[tracing::instrument(name = "gh_ensure_ready", skip_all, fields(branch = %self.branch))]
     async fn ensure_ready(&mut self) -> Result<()> {
         // Read-only backends have nothing to bootstrap — the branch
         // either exists (reads work) or it doesn't (reads 404 as
@@ -519,6 +562,9 @@ impl RepoBackend for GitHubApiBackend {
         if self.token.is_none() {
             return Ok(());
         }
+        // Branch-check (+ lazy create) round-trips against GitHub; feeds
+        // the `ensure_ready` Server-Timing phase on the cold-build path.
+        let ready_start = std::time::Instant::now();
         let inner = self.inner.get_mut();
         let repo = format!("{}/{}", self.owner, self.repo);
         let exists = inner
@@ -526,6 +572,7 @@ impl RepoBackend for GitHubApiBackend {
             .branch_exists(&repo, &self.branch, self.token.as_deref())
             .await?;
         if exists {
+            timing::record("ensure_ready", ready_start.elapsed());
             return Ok(());
         }
         let base = self.base_branch.as_deref().ok_or_else(|| {
@@ -572,6 +619,7 @@ impl RepoBackend for GitHubApiBackend {
                 }
             }
         }
+        timing::record("ensure_ready", ready_start.elapsed());
         Ok(())
     }
 
@@ -617,7 +665,7 @@ async fn try_put(
     path: &str,
     content: &str,
     base_sha: Option<&str>,
-    committer: &Committer,
+    committer: Option<&Committer>,
     message: &str,
     token: Option<&str>,
 ) -> Result<String> {
@@ -651,8 +699,13 @@ async fn try_put(
             // A PUT without `sha` against an existing file returns 422
             // ("sha was not supplied"). Resolve the SHA and retry once
             // — covers `save_law` / `save_scenario` which call
-            // `write_file` without a preceding `read_file`.
-            tracing::debug!(repo = %repo, path = %path, "PUT 422 — fetching sha and retrying as update");
+            // `write_file` without a preceding `read_file`. This is the
+            // extra GET→PUT round-trip a cold sha-cache pays; logged at
+            // info with `gh_put_retry=422` so it can be counted in
+            // `zad logs`. It stays inside the enclosing `gh_put` phase
+            // (no separate header phase) so the Server-Timing breakdown
+            // does not double-count this leg.
+            tracing::info!(repo = %repo, path = %path, gh_put_retry = 422, "PUT 422 — fetching sha and retrying as update");
             let fresh = fetcher
                 .fetch_file_with_sha(repo, branch, path, token)
                 .await?
@@ -687,7 +740,7 @@ async fn try_delete(
     branch: &str,
     path: &str,
     sha: &str,
-    committer: &Committer,
+    committer: Option<&Committer>,
     message: &str,
     token: Option<&str>,
 ) -> Result<()> {
@@ -738,7 +791,7 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::GitHubApiBackend;
-    use crate::backend::RepoBackend;
+    use crate::backend::{EditorUser, RepoBackend, WriteContext};
     use crate::models::GitHubSource;
 
     /// Build a gzipped tar laid out like GitHub's tarball endpoint: every
@@ -818,5 +871,93 @@ mod tests {
                 ),
             ]
         );
+    }
+
+    /// Buffer one write and persist it with the given context; returns the
+    /// JSON body of the resulting Contents API PUT.
+    async fn persist_and_capture_put_body(ctx: WriteContext) -> serde_json::Value {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path_matcher(
+                "/repos/acme/corpus/contents/regulation/nl/wet/foo/2025-01-01.yaml",
+            ))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "content": {"sha": "newsha"}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let src = GitHubSource {
+            owner: "acme".to_string(),
+            repo: "corpus".to_string(),
+            branch: "main".to_string(),
+            path: Some("regulation/nl".to_string()),
+            git_ref: None,
+        };
+        let backend = GitHubApiBackend::new(
+            &src,
+            Some("main".to_string()),
+            Some("service-tok".to_string()),
+        )
+        .unwrap()
+        .with_api_base(server.uri());
+        backend
+            .write_file(
+                std::path::Path::new("wet/foo/2025-01-01.yaml"),
+                "$id: foo\narticles: []\n",
+            )
+            .await
+            .unwrap();
+        backend.persist(&ctx).await.unwrap();
+
+        let requests = server.received_requests().await.unwrap();
+        let put = requests
+            .iter()
+            .find(|r| r.method.as_str() == "PUT")
+            .expect("no PUT request captured");
+        serde_json::from_slice(&put.body).unwrap()
+    }
+
+    /// With the acting user's own token the commit must stay attributed to
+    /// their GitHub account: the PUT body carries no `committer`/`author`
+    /// override, so the Contents API defaults both to the authenticated
+    /// user instead of the (unlinkable) editor-session identity.
+    #[tokio::test]
+    async fn persist_with_user_token_lets_github_attribute_the_commit() {
+        let ctx = WriteContext {
+            message: "Update law foo".to_string(),
+            author: Some(EditorUser {
+                name: "Anne Schuth".to_string(),
+                email: "anne@example.gov".to_string(),
+            }),
+            token_override: Some("user-tok".to_string()),
+        };
+        let body = persist_and_capture_put_body(ctx).await;
+        assert!(
+            body.get("committer").is_none() && body.get("author").is_none(),
+            "user-token write must not override commit identity: {body}"
+        );
+    }
+
+    /// On the shared service token the human is invisible behind the bot,
+    /// so the session identity is stamped on the commit as before.
+    #[tokio::test]
+    async fn persist_with_service_token_stamps_session_identity() {
+        let ctx = WriteContext::new(
+            "Update law foo".to_string(),
+            Some(EditorUser {
+                name: "Anne Schuth".to_string(),
+                email: "anne@example.gov".to_string(),
+            }),
+        );
+        let body = persist_and_capture_put_body(ctx).await;
+        for side in ["committer", "author"] {
+            assert_eq!(
+                body[side],
+                serde_json::json!({"name": "Anne Schuth", "email": "anne@example.gov"}),
+                "service-token write keeps crediting the session identity"
+            );
+        }
     }
 }

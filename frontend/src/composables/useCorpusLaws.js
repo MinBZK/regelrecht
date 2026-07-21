@@ -6,11 +6,11 @@ import { humanizeLawId } from '../lib/lawName.js';
 
 /**
  * Shared corpus-laws list, scoped by the active traject. Each distinct
- * traject (and the global view) gets its own cached payload — switching
+ * traject (and the global view) gets its own cached payload - switching
  * trajects routes through the corresponding `/api/trajects/{ref}/corpus/laws`
  * endpoint without losing the previous traject's data on rebound.
  *
- * Module-level state — every consumer for the same `trajectRef` shares
+ * Module-level state - every consumer for the same `trajectRef` shares
  * the same list/promise.
  */
 
@@ -26,11 +26,15 @@ const FETCH_LIMIT = 1000;
 // hops between many trajects accumulates one entry per scope forever.
 // 5 is enough to cover the global view + a handful of recently-used
 // trajects without thrashing. The global scope (`''`) follows the same
-// rules — that's fine because it just gets re-fetched on demand. The
+// rules - that's fine because it just gets re-fetched on demand. The
 // companion promise map is kept in sync via `onEvict`.
 const SCOPE_CACHE_MAX = 5;
 
 const fetchByScope = new Map(); // scopeKey -> Promise
+// In-flight `refresh()` per scope. A second refresh while one is running
+// joins it instead of deleting the first one's promise out of
+// `fetchByScope` mid-flight and firing yet another request.
+const refreshByScope = new Map(); // scopeKey -> Promise
 const lawsByScope = createLruMap(SCOPE_CACHE_MAX, {
   onEvict: (key) => fetchByScope.delete(key), // scopeKey -> Ref<Array>
 });
@@ -44,7 +48,7 @@ function ensureFetched(trajectRef) {
   if (fetchByScope.has(key)) {
     // Cache hit: `get` touches, so the LRU treats this access as recent.
     // Without this an often-accessed scope can be evicted before a
-    // genuinely-stale one that happened to be added more recently —
+    // genuinely-stale one that happened to be added more recently -
     // the invariant "most recently used is kept" only holds if the
     // touch runs on every access, not just on miss.
     lawsByScope.get(key);
@@ -57,7 +61,7 @@ function ensureFetched(trajectRef) {
       lawsRef.value = Array.isArray(list) ? list : [];
       if (lawsRef.value.length >= FETCH_LIMIT) {
         console.warn(
-          `useCorpusLaws: hit the ${FETCH_LIMIT}-law cap — laws beyond this won't resolve to display names. ` +
+          `useCorpusLaws: hit the ${FETCH_LIMIT}-law cap - laws beyond this won't resolve to display names. ` +
           `Pagination needs to be added if the corpus has grown past ${FETCH_LIMIT} entries.`,
         );
       }
@@ -81,14 +85,14 @@ function ensureFetched(trajectRef) {
  */
 export function useCorpusLaws(trajectRef) {
   // A plain string passed here gets silently wrapped in a static
-  // `ref(value)` that never reacts to the caller's scope changes —
+  // `ref(value)` that never reacts to the caller's scope changes -
   // which would look like "the corpus list is stuck" without any
   // error. All current callers pass a `Ref` (via `toRef(props, ...)`
   // or `computed`); a dev-mode warning catches future misuses before
   // they ship as a silent regression.
   if (trajectRef !== undefined && trajectRef !== null && !('value' in trajectRef)) {
     console.warn(
-      'useCorpusLaws: trajectRef should be a Ref, got plain value — list will not react to scope changes',
+      'useCorpusLaws: trajectRef should be a Ref, got plain value - list will not react to scope changes',
       trajectRef,
     );
   }
@@ -117,7 +121,7 @@ export function useCorpusLaws(trajectRef) {
       if (p && capturedRef) {
         p.then(() => {
           // Only commit if this is still the active scope by the time
-          // the fetch resolves — avoids a cross-scope late write.
+          // the fetch resolves - avoids a cross-scope late write.
           if (scopeKey(refSource.value) === key) {
             laws.value = capturedRef.value;
           }
@@ -140,5 +144,46 @@ export function useCorpusLaws(trajectRef) {
     return humanizeLawId(lawId);
   }
 
-  return { laws, displayName };
+  /**
+   * Bust the active scope's cache and re-fetch (e.g. after a corpus
+   * reload added a law server-side). Updates this consumer's `laws`;
+   * other already-mounted consumers of the same scope keep their
+   * current snapshot until they re-scope or remount (the shared scope
+   * Ref is updated, so any *new* consumer sees the fresh list).
+   */
+  async function refresh() {
+    // Snapshot the scope at call time; `refSource` may re-scope while the
+    // awaits below are in flight, and the bust/re-fetch must stay on the
+    // scope the caller asked to refresh.
+    const scope = refSource.value;
+    const key = scopeKey(scope);
+    // Single-flight per scope: concurrent refreshes share one re-fetch
+    // instead of each busting the slot and stacking duplicate GETs.
+    let p = refreshByScope.get(key);
+    if (!p) {
+      p = (async () => {
+        // Serialize behind whatever fetch currently owns the slot (a
+        // settled promise resolves immediately). Busting an *in-flight*
+        // fetch would orphan it - firing the duplicate concurrent GET
+        // this file exists to avoid - and let its late settle race the
+        // refreshed list with stale data.
+        const current = fetchByScope.get(key);
+        if (current) await current;
+        fetchByScope.delete(key);
+        return ensureFetched(scope);
+      })();
+      refreshByScope.set(key, p);
+      p.catch(() => {}).finally(() => refreshByScope.delete(key));
+    }
+    const capturedRef = lawsByScope.peek(key);
+    await p;
+    // Same stale-scope guard as the watcher: only commit if the caller's
+    // scope is still the active one by the time the fetch resolves.
+    if (capturedRef && scopeKey(refSource.value) === key) {
+      laws.value = capturedRef.value;
+    }
+    return laws.value;
+  }
+
+  return { laws, displayName, refresh };
 }

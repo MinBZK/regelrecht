@@ -37,9 +37,12 @@ pub mod operations;
 pub mod priority;
 pub mod receipt;
 pub mod resolver;
+#[cfg(feature = "validate")]
+pub mod schema;
 pub mod service;
 pub mod trace;
 pub mod types;
+pub mod units;
 pub mod uri;
 
 #[cfg(feature = "wasm")]
@@ -64,7 +67,7 @@ pub use article::{
 };
 pub use config::{
     MAX_ARRAY_SIZE, MAX_CROSS_LAW_DEPTH, MAX_LOADED_LAWS, MAX_OPERATION_DEPTH, MAX_PROPERTY_DEPTH,
-    MAX_RESOLUTION_DEPTH, MAX_YAML_SIZE,
+    MAX_YAML_SIZE,
 };
 pub use context::RuleContext;
 pub use data_source::{DataSource, DataSourceMatch, DataSourceRegistry, DictDataSource};

@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { interceptLaw, gotoEditor, selectArticle, readYamlPane } from './helpers.js';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
 /**
  * Create a fixture with article 2 having definitions, params, inputs, outputs
- * but no actions yet — so we can test building complex actions from scratch.
+ * but no actions yet - so we can test building complex actions from scratch.
  */
 function createFixtureWithMetadata() {
   const base = readFileSync(resolve(import.meta.dirname, 'fixtures/zorgtoeslag-stripped.yaml'), 'utf-8');
@@ -61,7 +61,7 @@ test.describe('Complex actions', () => {
     }, 'heeft_recht_op_zorgtoeslag');
     await page.waitForTimeout(100);
 
-    // New actions have value='' — no OperationSettings shown
+    // New actions have value='' - no OperationSettings shown
     // We need to close and use YAML editing to set up the initial operation structure
     await panel.locator('nldd-button:has-text("Opslaan")').click();
     await page.waitForTimeout(300);
@@ -171,7 +171,7 @@ test.describe('Complex actions', () => {
     await panel.locator('[data-testid="add-nested-op-btn"]').evaluate(el => el.click());
     await page.waitForTimeout(200);
 
-    // Save should be rejected because the nested ADD has no values yet —
+    // Save should be rejected because the nested ADD has no values yet -
     // saving a structurally-incomplete operation would produce YAML the
     // engine cannot execute.
     await panel.locator('nldd-button:has-text("Opslaan")').click();

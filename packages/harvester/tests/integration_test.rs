@@ -310,6 +310,67 @@ fn test_yaml_validates_structure() {
     assert!(articles.is_sequence(), "articles should be an array");
 }
 
+/// Golden: the generated YAML for the zorgtoeslag fixture matches
+/// `fixtures/zorgtoeslag/expected.yaml` byte-for-byte. The fixture documents
+/// the writer's real-world output shape (folded prose blocks, literal blocks
+/// for reference-bearing articles, quoting, indentation). After an
+/// intentional writer change, regenerate it with:
+/// `UPDATE_EXPECTED=1 cargo test --test integration_test`
+#[test]
+fn test_yaml_matches_expected_fixture() {
+    let law = run_pipeline();
+    let yaml = generate_yaml(&law, "2025-01-01").expect("Failed to generate YAML");
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/zorgtoeslag/expected.yaml");
+    if std::env::var_os("UPDATE_EXPECTED").is_some() {
+        fs::write(&path, &yaml).expect("failed to update expected.yaml");
+    }
+    let expected = fs::read_to_string(&path).expect("failed to read expected.yaml");
+    assert_eq!(
+        yaml, expected,
+        "generated YAML diverges from expected.yaml; rerun with UPDATE_EXPECTED=1 after an intentional writer change"
+    );
+}
+
+#[test]
+fn test_yaml_folds_wrapped_prose() {
+    let law = run_pipeline();
+    let yaml = generate_yaml(&law, "2025-01-01").expect("Failed to generate YAML");
+
+    // The preamble is long multi-paragraph prose: it must be emitted as a
+    // folded block so the cosmetic 115-char wrapping does not become real
+    // newlines in the loaded text.
+    assert!(
+        yaml.contains("  text: >-\n"),
+        "preamble should emit a folded block\n{yaml}"
+    );
+
+    let parsed: serde_yaml_ng::Value =
+        serde_yaml_ng::from_str(&yaml).expect("Generated YAML should be valid");
+    let preamble_text = parsed
+        .get("preamble")
+        .and_then(|p| p.get("text"))
+        .and_then(|t| t.as_str())
+        .expect("preamble.text should be a string");
+
+    // Every newline that survives loading must be a paragraph break: single
+    // newlines were cosmetic wraps and fold back to spaces.
+    let mut rest = preamble_text;
+    while let Some(pos) = rest.find('\n') {
+        rest = &rest[pos..];
+        let run = rest.chars().take_while(|&c| c == '\n').count();
+        assert_eq!(
+            run, 2,
+            "loaded preamble may only contain paragraph breaks (\\n\\n), found a run of {run}:\n{preamble_text}"
+        );
+        rest = &rest[run..];
+    }
+    assert!(
+        preamble_text.contains("Wij Beatrix"),
+        "folded preamble should round-trip its content"
+    );
+}
+
 #[test]
 fn test_references_extracted() {
     let law = run_pipeline();

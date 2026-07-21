@@ -46,6 +46,14 @@ pub enum EngineError {
     #[error("Type mismatch: expected {expected}, got {actual}")]
     TypeMismatch { expected: String, actual: String },
 
+    /// Incompatible units combined under an operation (RFC-023).
+    #[error("Unit mismatch in {operation}: cannot combine {left} and {right}")]
+    UnitMismatch {
+        operation: String,
+        left: String,
+        right: String,
+    },
+
     /// Division by zero
     #[error("Division by zero")]
     DivisionByZero,
@@ -191,6 +199,14 @@ pub enum ExternalError {
     #[error("Type mismatch: expected {expected}, got {actual}")]
     TypeMismatch { expected: String, actual: String },
 
+    /// Incompatible units combined under an operation (RFC-023).
+    #[error("Unit mismatch in {operation}: cannot combine {left} and {right}")]
+    UnitMismatch {
+        operation: String,
+        left: String,
+        right: String,
+    },
+
     /// Division by zero
     #[error("Division by zero")]
     DivisionByZero,
@@ -280,6 +296,15 @@ impl From<EngineError> for ExternalError {
             EngineError::TypeMismatch { expected, actual } => {
                 ExternalError::TypeMismatch { expected, actual }
             }
+            EngineError::UnitMismatch {
+                operation,
+                left,
+                right,
+            } => ExternalError::UnitMismatch {
+                operation,
+                left,
+                right,
+            },
             EngineError::DivisionByZero => ExternalError::DivisionByZero,
             EngineError::InvalidUri(_) => ExternalError::InvalidUri,
             EngineError::LawNotFound(id) => ExternalError::LawNotFound(id),

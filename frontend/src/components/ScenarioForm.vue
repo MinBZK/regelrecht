@@ -3,6 +3,7 @@ import { ref, computed, watch, onBeforeUnmount, useId } from 'vue';
 import { parseValue } from '../gherkin/steps.js';
 import { formatValue, formatOutputValue, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
 import DataSourceTable from './DataSourceTable.vue';
+import ScenarioParameterInput from './ScenarioParameterInput.vue';
 
 const props = defineProps({
   /** Scenario object from mapFeatureToForm() */
@@ -17,7 +18,25 @@ const props = defineProps({
   lawId: { type: String, required: true },
   /** Article mapping: { outputToArticle, inputToArticle, paramToArticle } */
   articleMap: { type: Object, default: null },
+  /** Datatype mapping from buildTypeMap(): name -> { type, unit } */
+  typeMap: { type: Object, default: null },
+  /** External data-source field types from buildExternalFieldTypeMap(): name -> { type, unit } */
+  externalFieldTypeMap: { type: Object, default: null },
 });
+
+// Resolve a parameter's declared datatype/unit; default to a plain text field
+// for params not found in the map (background-only params, articles without
+// machine_readable).
+function paramMeta(name) {
+  return props.typeMap?.get(name) ?? { type: 'string', unit: null };
+}
+
+// Resolve an external data-source column's datatype/unit from the dependency
+// graph; default to a plain text field for columns not found in the map.
+function typeField(name) {
+  const meta = props.externalFieldTypeMap?.get(name);
+  return { name, type: meta?.type ?? 'string', unit: meta?.unit ?? null };
+}
 
 const emit = defineEmits(['show-details', 'executed', 'change', 'drill-change']);
 
@@ -33,7 +52,7 @@ function initDataSources() {
   return (props.setup.dataSources || []).map((ds) => ({
     sourceName: ds.sourceName,
     keyField: ds.keyField,
-    fields: ds.headers.filter((h) => h !== ds.keyField).map((h) => ({ name: h, type: 'string' })),
+    fields: ds.headers.filter((h) => h !== ds.keyField).map((h) => typeField(h)),
     rows: ds.rows.map((row, i) => {
       const obj = { _id: i };
       ds.headers.forEach((h, j) => { obj[h] = row[j] ?? ''; });
@@ -96,7 +115,7 @@ const errorTraceText = ref(null);
 // All edits live in these refs and are only written back to formState on
 // save, so re-initialising here fully discards unsaved edits. Used both
 // when the scenario/setup props change and when the parent discards edits
-// (cancel / click-away) without replacing formState — see ScenarioBuilder.
+// (cancel / click-away) without replacing formState - see ScenarioBuilder.
 function discardEdits() {
   calculationDate.value = props.setup.calculationDate || new Date().toISOString().slice(0, 10);
   parameterValues.value = Object.fromEntries(
@@ -123,10 +142,19 @@ function discardEdits() {
 // Re-init when scenario/setup changes
 watch([() => props.setup, () => props.scenario], discardEdits, { deep: true });
 
+// Column types come from the dependency graph, which loads asynchronously after
+// the panel mounts. Re-type the data-source columns in place when the map
+// arrives - without rebuilding rows, so unsaved cell edits survive.
+watch(() => props.externalFieldTypeMap, () => {
+  for (const ds of dataSources.value) {
+    ds.fields = ds.fields.map((f) => typeField(f.name));
+  }
+});
+
 // CONTRACT: execute() must stay fully synchronous. The WASM engine runs
 // in-process with no I/O, so `result`/`error`/`running` are all settled
 // (running reset in finally) before this returns, and callers read them
-// back immediately from the return value or getExecutionData() — e.g.
+// back immediately from the return value or getExecutionData() - e.g.
 // ScenarioBuilder.reExecute() / onSaveAndShow() and the auto-execute
 // loop. Introducing any await/timer/microtask here would make those
 // callers observe `running: true` and stale data. If async execution is
@@ -257,11 +285,11 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 // Minimal field-level validation: a missing date, or an empty input that
 // caused an execution error, is marked invalid so the user sees which
 // field to fill (the raw engine message still shows as context). No
-// auto-revert — the input stays. We deliberately do NOT map engine error
+// auto-revert - the input stays. We deliberately do NOT map engine error
 // strings onto fields (incl. substring-matching the error against a param
 // name): that produced confusing cross-field invalid states (changing bsn
 // flagged loon_uit_dienstbetrekking) and was explicitly reverted. The
-// broad "any error + this field empty" mark is the accepted trade — it
+// broad "any error + this field empty" mark is the accepted trade - it
 // can over-mark a legitimately-blank optional param, but it never
 // mis-points at an unrelated field, which was the worse failure.
 const dateInvalid = computed(() => !calculationDate.value);
@@ -315,7 +343,14 @@ const dateErrorId = useId();
           <nldd-text-cell text="Datum" min-width="120px" max-width="200px"></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-cell width="full" min-width="120px">
-            <nldd-text-field size="md" type="date" :invalid="dateInvalid || undefined" :error-message-ids="dateInvalid ? dateErrorId : undefined" :value="calculationDate" @input="calculationDate = $event.target?.value ?? $event.detail?.value ?? calculationDate; emit('change')"></nldd-text-field>
+            <ScenarioParameterInput
+              type="date"
+              name="Datum"
+              :value="calculationDate"
+              :invalid="dateInvalid"
+              :error-message-ids="dateErrorId"
+              @update="calculationDate = $event; emit('change')"
+            />
             <span v-if="dateInvalid" :id="dateErrorId" class="sf-error">Datum is verplicht</span>
           </nldd-cell>
         </nldd-list-item>
@@ -323,12 +358,14 @@ const dateErrorId = useId();
           <nldd-text-cell :text="name" :supporting-text="articleMap?.paramToArticle?.get(name) ? `Artikel ${articleMap.paramToArticle.get(name)}` : undefined" min-width="120px" max-width="200px"></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-cell width="full" min-width="120px">
-            <nldd-text-field
-              size="md"
-              :invalid="(!!error && (value === '' || value == null)) || undefined"
+            <ScenarioParameterInput
+              :type="paramMeta(name).type"
+              :unit="paramMeta(name).unit"
+              :name="name"
               :value="value"
-              @input="parameterValues = { ...parameterValues, [name]: $event.target?.value ?? $event.detail?.value ?? '' }; emit('change')"
-            ></nldd-text-field>
+              :invalid="!!error && (value === '' || value == null)"
+              @update="parameterValues = { ...parameterValues, [name]: $event }; emit('change')"
+            />
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
@@ -337,7 +374,7 @@ const dateErrorId = useId();
       <nldd-spacer size="16"></nldd-spacer>
       <nldd-title size="5"><h2>Bronnen</h2></nldd-title>
       <nldd-spacer size="8"></nldd-spacer>
-      <nldd-list variant="box">
+      <nldd-list variant="box" arrow-navigation>
         <nldd-list-item
           v-for="(ds, i) in dataSources"
           :key="ds.sourceName"
@@ -375,7 +412,7 @@ const dateErrorId = useId();
 
 <style scoped>
 /* Single component root required for v-show, but it must not generate a
- * box — otherwise it blocks the enclosing simple-section's nldd flex
+ * box - otherwise it blocks the enclosing simple-section's nldd flex
  * layout (flex-grow / centering of an empty data source's dialog). */
 .sf-root {
   display: contents;

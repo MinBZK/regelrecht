@@ -17,7 +17,7 @@
 
 # Stage 1: Chef base
 # Rust version: keep in sync with rust-toolchain.toml (source of truth).
-FROM rust:1.96-alpine@sha256:2ea3db105d38fdfa4e31f366674287fcaa828087e2fe3973befdc537f2d443b1 AS chef
+FROM rust:1.96-alpine@sha256:a41f7740f8b45d45795624eec13a8b42263cc700f19f7e4e86e04d3dda08a479 AS chef
 RUN apk add --no-cache musl-dev
 RUN cargo install cargo-chef --locked
 WORKDIR /build
@@ -60,6 +60,12 @@ COPY packages/law-model/ law-model/
 COPY packages/pipeline/ pipeline/
 COPY packages/harvester/ harvester/
 COPY packages/shared/ shared/
+# regelrecht-engine (validate feature, pulled in by pipeline's law_convert)
+# embeds the JSON schemas via `include_str!("../../../schema/...")`, relative
+# to engine/src/. The crate lives at /build/engine here (not
+# /build/packages/engine), so that literal resolves to /schema/... — same
+# layout trick as frontend/Dockerfile.
+COPY schema/ /schema/
 ARG BIN=regelrecht-pipeline-api
 # Invalidate cargo's fingerprint cache so it recompiles with real source
 # instead of using the stub binary from cargo-chef cook.
@@ -67,7 +73,7 @@ RUN find . -name '*.rs' -exec touch {} + && \
     cargo build --release --bin "${BIN}"
 
 # Stage 4: Shared runtime base
-FROM alpine:3.24@sha256:a2d49ea686c2adfe3c992e47dc3b5e7fa6e6b5055609400dc2acaeb241c829f4 AS runtime-base
+FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS runtime-base
 RUN apk add --no-cache ca-certificates && \
     addgroup -S app && adduser -S app -G app
 
@@ -98,7 +104,13 @@ ENTRYPOINT ["/sbin/tini", "--", "entrypoint.sh"]
 # which orphans its child processes — without an init those accumulate against
 # the container's low pids limit and eventually cause fork()/EAGAIN failures.
 FROM runtime-base AS enrich-worker
-RUN apk add --no-cache git nodejs npm tini
+# `pandoc-cli` (docx/html/…) and `poppler-utils` (pdftotext) give the
+# document-convert agent real, pre-installed converters. Without them the agent's
+# only route on this network-restricted Alpine image is to install a tool at
+# runtime (e.g. `pip install pypandoc-binary`) — but there is no pip/python here
+# and egress is locked down, so it flails and produces no output. Baking the
+# tools in makes docx/PDF conversion deterministic and needs no runtime egress.
+RUN apk add --no-cache git nodejs npm tini pandoc-cli poppler-utils
 
 # Install opencode and claude CLI globally (pinned versions for reproducibility)
 RUN npm install -g --ignore-scripts opencode-ai@1.2.25 @anthropic-ai/claude-code@2.1.74 && \

@@ -405,7 +405,7 @@ fn value_to_key(value: &Value) -> String {
     match value {
         Value::String(s) => s.clone(),
         Value::Int(i) => i.to_string(),
-        Value::Float(f) => f.to_string(),
+        Value::Decimal(d) => d.to_string(),
         Value::Bool(b) => b.to_string(),
         Value::Null => "null".to_string(),
         Value::Array(_) | Value::Object(_) => "complex".to_string(),
@@ -777,7 +777,7 @@ mod tests {
     fn test_value_to_key() {
         assert_eq!(value_to_key(&Value::String("test".to_string())), "test");
         assert_eq!(value_to_key(&Value::Int(42)), "42");
-        assert_eq!(value_to_key(&Value::Float(3.14)), "3.14");
+        assert_eq!(value_to_key(&Value::from(3.14)), "3.14");
         assert_eq!(value_to_key(&Value::Bool(true)), "true");
         assert_eq!(value_to_key(&Value::Null), "null");
     }

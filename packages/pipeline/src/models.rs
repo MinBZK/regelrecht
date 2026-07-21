@@ -8,6 +8,16 @@ use uuid::Uuid;
 pub enum JobType {
     Harvest,
     Enrich,
+    /// Convert an uploaded document (PDF/Word) to a markdown werkdocument via
+    /// the LLM agent. Scoped to a traject (see [`Job::traject_ref`]).
+    #[sqlx(rename = "document_convert")]
+    #[serde(rename = "document_convert")]
+    DocumentConvert,
+    /// Convert an uploaded document (PDF/Word) to a harvested base-law YAML
+    /// and chain a task-flow enrich job on it. Scoped to a traject.
+    #[sqlx(rename = "law_convert")]
+    #[serde(rename = "law_convert")]
+    LawConvert,
 }
 
 #[derive(
@@ -133,6 +143,24 @@ pub struct LawEntry {
     pub enrich_fail_count: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+/// A single untranslatable construct captured during enrichment (RFC-012),
+/// one row per (law, provider, article, construct). Mirrors the
+/// `untranslatables` table; refreshed per (law_id, provider) on each enrich.
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Untranslatable {
+    pub id: Uuid,
+    pub law_id: String,
+    pub enrich_job_id: Uuid,
+    pub provider: String,
+    pub article: String,
+    pub construct: String,
+    pub reason: String,
+    pub suggestion: Option<String>,
+    pub legal_text_excerpt: Option<String>,
+    pub accepted: bool,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]

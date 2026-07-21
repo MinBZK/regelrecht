@@ -270,8 +270,7 @@ The engine enforces compile-time security limits to prevent DoS:
 | `MAX_LOADED_LAWS` | 100 | Prevent memory exhaustion |
 | `MAX_YAML_SIZE` | 1 MB | Prevent YAML bombs |
 | `MAX_ARRAY_SIZE` | 1,000 | Prevent large array DoS |
-| `MAX_RESOLUTION_DEPTH` | 50 | Internal reference nesting |
-| `MAX_CROSS_LAW_DEPTH` | 20 | Cross-law reference nesting |
+| `MAX_CROSS_LAW_DEPTH` | 20 | Cross-law and internal reference nesting |
 | `MAX_OPERATION_DEPTH` | 100 | Operation nesting |
 
 ## Execution Receipt

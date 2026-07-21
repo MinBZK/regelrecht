@@ -121,13 +121,13 @@ describe('AnnotatedText markdown highlighting', () => {
       ...wrapper.element.querySelectorAll('mark[data-primary-idx]'),
     ];
     expect(marks).toHaveLength(3);
-    // [7,12) — only A.
+    // [7,12) - only A.
     expect(marks[0].textContent).toBe('verze');
     expect(marks[0].dataset.noteIdx).toBe('0');
     expect(marks[0].dataset.primaryIdx).toBe('0');
     expect(marks[0].dataset.coverDepth).toBe('1');
     expect(marks[0].className).toContain('note-commenting');
-    // [12,17) — both, primary is A (earlier start), bg is the layered
+    // [12,17) - both, primary is A (earlier start), bg is the layered
     // marker class (no class-background; inline backgroundImage stacks).
     // coverDepth=2 drives the top-edge underline that makes same-motivation
     // overlap legible without depending on a colour shift.
@@ -137,7 +137,7 @@ describe('AnnotatedText markdown highlighting', () => {
     expect(marks[1].dataset.coverDepth).toBe('2');
     expect(marks[1].className).toContain('note-multi');
     expect(marks[1].style.backgroundImage).toContain('linear-gradient');
-    // [17,25) — only B.
+    // [17,25) - only B.
     expect(marks[2].textContent).toBe(' heeft a');
     expect(marks[2].dataset.noteIdx).toBe('1');
     expect(marks[2].dataset.primaryIdx).toBe('1');
@@ -178,7 +178,7 @@ describe('AnnotatedText markdown highlighting', () => {
   });
 
   it('caps cover-depth at 3 even when four+ notes share a span', async () => {
-    // Four notes on identical spans — none strictly contains another, all
+    // Four notes on identical spans - none strictly contains another, all
     // four are visible. coveringIdx.length is 4 but data-cover-depth must
     // clamp to '3' so the CSS rule set stays bounded.
     const wrapper = mountWith(ART, [
@@ -199,9 +199,9 @@ describe('AnnotatedText markdown highlighting', () => {
 
   it('hovering the outer in encapsulation bridges .note-hovered across the inner segment', async () => {
     // Same setup as the encapsulation test. Firing pointerover on the
-    // outer's left flank must add .note-hovered to all three marks — the
+    // outer's left flank must add .note-hovered to all three marks - the
     // inner segment too, even though it does not render the outer's
-    // background by default — so the outer's full extent reads as one
+    // background by default - so the outer's full extent reads as one
     // continuous range.
     const wrapper = mountWith(ART, [
       { note: noteVerzekerde, spans: [{ start: 3, end: 34 }] },
@@ -228,7 +228,7 @@ describe('AnnotatedText markdown highlighting', () => {
       number: '2',
       text: '1. eerste lid hier\n\n2. tweede lid daar',
     };
-    // Span from "eerste" (raw 3) through "tweede lid" — crosses the \n\n.
+    // Span from "eerste" (raw 3) through "tweede lid" - crosses the \n\n.
     const wrapper = mountWith(twoLeden, [
       { note: noteVerzekerde, spans: [{ start: 3, end: 34 }] },
     ]);
@@ -261,7 +261,7 @@ describe('AnnotatedText markdown highlighting', () => {
     const wrapper = mountWith(ART, []);
     await nextTick();
     // canCreate defaults false: no NoteCreator, no floating button, no
-    // selection anchor — the pane is purely a read view.
+    // selection anchor - the pane is purely a read view.
     expect(wrapper.find('[data-testid="create-note-btn"]').exists()).toBe(
       false,
     );
@@ -311,7 +311,7 @@ describe('AnnotatedText markdown highlighting', () => {
 // nldd-popover uses the native HTML popover API: showPopover() puts the
 // element in the top layer and steals focus. Opening it from a pointerover
 // while the user is mid-drag therefore lands the drag's pointermove on the
-// popover instead of the underlying text — selection cannot extend past the
+// popover instead of the underlying text - selection cannot extend past the
 // first mark it touches. These tests pin the drag-aware gate that closes
 // the hover-popover path during a selection drag, while keeping hover and
 // keyboard discoverability intact.
@@ -412,7 +412,7 @@ describe('AnnotatedText popover suppression during drag-selection', () => {
   it('does not open the popover when a non-collapsed selection lives inside the rich-text root', async () => {
     const { wrapper, mark } = await mountedWithMark();
     // Stub getSelection to return a non-collapsed Selection anchored inside
-    // the rich-text root — covers the post-mouseup path where the drag is
+    // the rich-text root - covers the post-mouseup path where the drag is
     // done but the selection is still standing.
     const fakeSel = {
       rangeCount: 1,
@@ -431,7 +431,7 @@ describe('AnnotatedText popover suppression during drag-selection', () => {
 
   it('ignores a secondary-button pointerup while a primary drag is in flight', async () => {
     // Right-button release mid-left-drag must not consume the left-drag's
-    // start coords or clear isDragging — otherwise the remaining drag would
+    // start coords or clear isDragging - otherwise the remaining drag would
     // fall back to only the selection-based guard for the rest of the
     // gesture and a pointerover on a mark could re-open the popover before
     // the actual left release.

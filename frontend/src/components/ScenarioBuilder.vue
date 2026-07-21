@@ -1,14 +1,32 @@
+<script>
+// Parsed-version cache, MODULE-scoped (shared across all ScenarioBuilder
+// instances) so it survives remounts - switching the panel view away and back,
+// or opening another article, remounts this component. The data-source column
+// type map (`rebuildExternalFieldTypeMap`) is derived from these YAMLs, while
+// the WASM engine that gates whether `loadAllDependencies` re-fetches a dep is
+// itself a shared singleton that stays warm across mounts. A per-instance cache
+// would therefore be empty on every remount once the engine is warm, forcing a
+// full dependency re-fetch each time. Invalidated per-traject in
+// `fetchLawVersions`. Assumes at most one ScenarioBuilder is mounted at a time
+// (the scenario panel): `versionsCacheTrajectRef` is shared, so two concurrent
+// instances with different trajectRefs would invalidate each other's cache.
+const versionsCache = {};
+let versionsCacheTrajectRef = null;
+</script>
+
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
 import { useDependencies } from '../composables/useDependencies.js';
+import { loadLawVersions } from '../composables/useEngine.js';
 import { useScenarios, isScenarioMismatch } from '../composables/useScenarios.js';
-import { lawUrl } from '../composables/corpusUrls.js';
-import { apiFetchText } from '../lib/apiFetch.js';
+import { lawVersionsUrl } from '../composables/corpusUrls.js';
+import { apiFetchJson } from '../lib/apiFetch.js';
 import { useLatest } from '../lib/useLatest.js';
 import { parseFeature } from '../gherkin/parser.js';
 import { mapFeatureToForm, getEffectiveSetup, formStateToGherkin, syncEditedValues } from '../gherkin/formMapper.js';
 import { matchStatus, humanize } from '../utils/outputFormat.js';
-import { buildArticleMap } from '../utils/articleMapping.js';
+import * as yaml from 'js-yaml';
+import { buildArticleMap, buildTypeMap, buildExternalFieldTypeMap } from '../utils/articleMapping.js';
 import ScenarioForm from './ScenarioForm.vue';
 
 const props = defineProps({
@@ -16,11 +34,20 @@ const props = defineProps({
   lawYaml: { type: String, default: null },
   engine: { type: Object, default: null },
   ready: { type: Boolean, default: false },
+  /** The shared article/law load is still in flight. The pane renders us during
+   *  that load (no `lawYaml` yet) so our indicator can span BOTH phases as one
+   *  mounted element: article -> scenario files -> dependency laws. Two separate
+   *  indicators handing off would each restart the DS anti-flash timer on mount,
+   *  giving spinner -> 1s blank -> spinner. */
+  articleLoading: { type: Boolean, default: false },
   /** Articles array from useLaw() for article mapping */
   articles: { type: Array, default: () => [] },
   /** Active traject ref. Required for scenario writes; reads route
    *  through the matching traject's backend so a save is visible
    *  without a corpus reload. */
+  // Single-instance assumption: the module-scoped versionsCache keys on this
+  // trajectRef (see the <script> block at the top), so at most one
+  // ScenarioBuilder may be mounted at a time.
   trajectRef: { type: String, default: null },
 });
 
@@ -28,6 +55,12 @@ const emit = defineEmits(['executed', 'dirty-change']);
 
 // --- Article mapping ---
 const articleMap = computed(() => buildArticleMap(props.articles));
+// Datatype mapping: drives the per-type scenario input controls (boolean ->
+// switch, amount -> currency field, etc.) in ScenarioForm.
+const typeMap = computed(() => buildTypeMap(props.articles));
+// External data-source column types, collected from the current law + the
+// already-fetched dependency YAMLs. Rebuilt when the dependency load settles.
+const externalFieldTypeMap = ref(new Map());
 
 // --- Dependencies ---
 const {
@@ -54,7 +87,7 @@ const {
 
 // Mismatch warning: the selected scenario file declares execution targets
 // that do not include the opened law. Running it would evaluate that other
-// law — surface this instead of letting the run fail confusingly.
+// law - surface this instead of letting the run fail confusingly.
 const selectedScenarioEntry = computed(
   () => scenarioFiles.value.find((sf) => sf.filename === selectedScenarioFile.value) || null,
 );
@@ -151,22 +184,26 @@ watch(featureText, (text) => {
   }
 });
 
-// Cache for fetched law YAML texts, scoped to the active traject so a
-// traject switch doesn't return the previous traject's body.
-const yamlCache = {};
-let yamlCacheTrajectRef = null;
-
-async function fetchLawYaml(lawId) {
-  if (yamlCacheTrajectRef !== props.trajectRef) {
-    Object.keys(yamlCache).forEach((k) => delete yamlCache[k]);
-    yamlCacheTrajectRef = props.trajectRef;
+// Cache for fetched law version lists, scoped to the active traject so a
+// traject switch doesn't return the previous traject's bodies. The dependency
+// loader needs *every* version of a law (not just today's-best) so the engine
+// can pick the one in force on the scenario's calculation date.
+async function fetchLawVersions(lawId) {
+  if (versionsCacheTrajectRef !== props.trajectRef) {
+    Object.keys(versionsCache).forEach((k) => delete versionsCache[k]);
+    versionsCacheTrajectRef = props.trajectRef;
   }
-  if (yamlCache[lawId]) return yamlCache[lawId];
-  const text = await apiFetchText(lawUrl(props.trajectRef, lawId), {
-    errorMessage: (status) => `Failed to fetch law '${lawId}': ${status}`,
+  if (versionsCache[lawId]) return versionsCache[lawId];
+  const yamls = await apiFetchJson(lawVersionsUrl(props.trajectRef, lawId), {
+    errorMessage: (status) => `Failed to fetch versions of law '${lawId}': ${status}`,
   });
-  yamlCache[lawId] = text;
-  return text;
+  const list = Array.isArray(yamls) ? yamls : [];
+  // Only cache a non-empty result. An empty array (unknown/not-yet-harvested
+  // law) must stay uncached so a retry after harvest re-fetches rather than
+  // returning the stale `[]` - `[]` is truthy, so caching it would short-
+  // circuit the `if (versionsCache[lawId])` guard forever.
+  if (list.length > 0) versionsCache[lawId] = list;
+  return list;
 }
 
 // --- Dependencies ready tracking ---
@@ -178,7 +215,7 @@ const claimDependencyLoad = useLatest();
 // Debounced mirror of props.lawYaml. While the user types in the text or
 // machine pane, `lawYaml` changes on every keystroke (currentLawYaml re-dumps
 // the whole doc), which would re-run the expensive dependency reload + corpus
-// scan and toggle depsReady — making the scenario panel flicker. We only let
+// scan and toggle depsReady - making the scenario panel flicker. We only let
 // the cascade below fire ~300ms after the last edit. Same setTimeout debounce
 // pattern as ScenarioForm.vue's execute.
 const debouncedLawYaml = ref(props.lawYaml);
@@ -187,8 +224,8 @@ let lawYamlDebounce = null;
 watch(() => props.lawYaml, (val, prev) => {
   // First population or cleared→set (no prior law loaded): apply immediately so
   // the initial dependency load isn't delayed by 300ms. Any change from an
-  // existing value — keystroke edits, but also switching to another article of
-  // the already-open law — debounces.
+  // existing value - keystroke edits, but also switching to another article of
+  // the already-open law - debounces.
   clearTimeout(lawYamlDebounce);
   if (!prev) {
     debouncedLawYaml.value = val;
@@ -201,6 +238,25 @@ watch(() => props.lawYaml, (val, prev) => {
 
 onBeforeUnmount(() => clearTimeout(lawYamlDebounce));
 
+// Collect external data-source column types from the current law plus the
+// dependency YAMLs already fetched into versionsCache (parsed with js-yaml).
+// Called once the dependency load settles so the data-source tables can render
+// typed cells. Tolerates unparseable/text-only versions.
+function rebuildExternalFieldTypeMap() {
+  const docs = [{ articles: props.articles || [] }];
+  for (const [lawId, versions] of Object.entries(versionsCache)) {
+    for (const v of Array.isArray(versions) ? versions : []) {
+      try {
+        const doc = yaml.load(v);
+        if (doc && typeof doc === 'object') docs.push(doc);
+      } catch (e) {
+        console.warn(`Skipped an unparseable cached version of '${lawId}' while building the type map:`, e);
+      }
+    }
+  }
+  externalFieldTypeMap.value = buildExternalFieldTypeMap(docs);
+}
+
 // Run the dependency cascade for the current law + scenarios. Reads the
 // latest prop/state values at call time (not captured watch args) so a
 // debounced run always uses the freshest inputs.
@@ -210,7 +266,7 @@ async function runDependencyLoad() {
   const isCurrent = claimDependencyLoad();
   depsReady.value = false;
 
-  const mainLawId = await loadAllDependencies(lawYaml, props.engine, fetchLawYaml);
+  const mainLawId = await loadAllDependencies(lawYaml, props.engine, fetchLawVersions);
   if (!isCurrent()) return;
 
   // Also load dependencies from scenario background + per-scenario steps
@@ -222,9 +278,13 @@ async function runDependencyLoad() {
     }
     for (const depId of allDeps) {
       try {
+        // Fetch versions unconditionally to populate versionsCache for the
+        // data-source type map (same rationale as loadAllDependencies - the
+        // map is built from cached YAMLs, independent of engine state); load
+        // into the shared engine only if it isn't already present.
+        const yamls = await fetchLawVersions(depId);
         if (!props.engine.hasLaw(depId)) {
-          const yaml = await fetchLawYaml(depId);
-          props.engine.loadLaw(yaml);
+          loadLawVersions(props.engine, yamls, depId);
         }
       } catch (e) {
         console.warn(`Failed to load scenario dependency '${depId}':`, e);
@@ -233,26 +293,34 @@ async function runDependencyLoad() {
   }
 
   if (isCurrent()) {
-    // The explicitly-declared deps are loaded — the panel is usable now, so
+    // The explicitly-declared deps are loaded - the panel is usable now, so
     // mark ready and let scenarios auto-execute. Implementing regulations
     // (IoC) load in the background: their corpus scan can be slow and is
     // best-effort, so it must not gate the panel. `loadImplementors` is
     // guarded to run at most once per law.
     //
-    // Deliberately fire-and-forget — there is no AbortController. If this
+    // Deliberately fire-and-forget - there is no AbortController. If this
     // component unmounts mid-scan the promise keeps running, which is safe:
     // Vue ignores ref writes after unmount, the shared WASM engine outlives
     // the component, and the guard resets on error so a fresh mount retries.
     depsReady.value = true;
+    rebuildExternalFieldTypeMap();
     if (mainLawId) {
-      loadImplementors(mainLawId, props.engine, fetchLawYaml, props.trajectRef);
+      // Implementor regulations load in the background, populating versionsCache
+      // after the rebuild above. Re-type once they settle so any source:{}
+      // fields they declare get picked up (idempotent; skipped if superseded).
+      Promise.resolve(
+        loadImplementors(mainLawId, props.engine, fetchLawVersions, props.trajectRef),
+      )
+        .then(() => { if (isCurrent()) rebuildExternalFieldTypeMap(); })
+        .catch((e) => console.warn('Implementor load / re-type failed (non-fatal):', e));
     }
   }
 }
 
 // `debouncedLawYaml`, `props.ready` and `formState` settle on separate ticks
 // during the initial load. Without coalescing, each settle fires this watch
-// and starts (then abandons, via the latest-guard) a full dependency scan — up
+// and starts (then abandons, via the latest-guard) a full dependency scan - up
 // to four overlapping corpus-wide reloads per open. A short debounce collapses
 // the burst into a single run after the inputs have settled.
 let depsScheduleTimer = null;
@@ -342,7 +410,7 @@ watch(
 // the execution-trace sheet (default), 'graph' for the law-graph sheet.
 function onShowDetails(index, view = 'trace') {
   // Prefer fresh data from the form ref, but its state may have been reset
-  // after a save/reload — fall back to the cached result in that case.
+  // after a save/reload - fall back to the cached result in that case.
   const formRef = scenarioRefs.value[index];
   const fresh = formRef?.getExecutionData?.();
   const hasFresh = fresh && (fresh.result || fresh.traceText || fresh.error);
@@ -359,7 +427,7 @@ function onShowDetails(index, view = 'trace') {
     // note on ScenarioForm.execute) so `running` is reset in its finally
     // before getExecutionData() is read here. The "Bezig met uitvoeren…"
     // branch in ExecutionTraceView and the lastRunning/lastReload
-    // scaffolding in EditorApp are therefore unreachable *by design* —
+    // scaffolding in EditorApp are therefore unreachable *by design* -
     // deliberately kept so the async path lights up for free if that
     // contract is ever lifted. Not dead code to be removed in isolation.
     running: !!fresh?.running,
@@ -376,7 +444,7 @@ function onShowDetails(index, view = 'trace') {
     // Known limitation: `index` is captured by value and the result
     // sheet can outlive the scenario sheet. It stays correct in practice
     // because scenario count/order is stable across an inputs-only save
-    // and cancelEdits() no longer replaces formState — so nothing
+    // and cancelEdits() no longer replaces formState - so nothing
     // reindexes scenarios while the sheet is open, and the UI has no
     // reorder/delete-scenario affordance. If the index ever did go out
     // of bounds, reExecute()'s optional chaining makes it a safe no-op
@@ -465,12 +533,12 @@ async function onSaveAndShow() {
 
 function cancelEdits() {
   // Discard unsaved edits *without* replacing formState. Re-parsing it
-  // remounts the whole overview — clearing cached results/refs (via the
+  // remounts the whole overview - clearing cached results/refs (via the
   // formState watcher) and resetting the scenarios-pane scroll position.
   // Edits live entirely in the edited ScenarioForm's local refs (only
   // synced into formState on save), so asking that form to re-init from
-  // its unchanged props discards them while leaving the overview — and
-  // its scroll position — intact, exactly as when nothing was edited.
+  // its unchanged props discards them while leaving the overview - and
+  // its scroll position - intact, exactly as when nothing was edited.
   const idx = selectedScenarioIndex.value;
   if (isDirty.value && idx !== null) {
     scenarioRefs.value[idx]?.discardEdits?.();
@@ -498,12 +566,14 @@ defineExpose({ save: onSave });
         </select>
       </nldd-dropdown>
 
-      <nldd-inline-dialog
-        v-if="selectedScenarioMismatchTargets"
-        variant="alert"
-        text="Scenario hoort bij een andere wet"
-        :supporting-text="mismatchSupportingText"
-      ></nldd-inline-dialog>
+      <template v-if="selectedScenarioMismatchTargets">
+        <nldd-banner
+          variant="warning"
+          text="Scenario hoort bij een andere wet"
+          :supporting-text="mismatchSupportingText"
+        ></nldd-banner>
+        <nldd-spacer size="16"></nldd-spacer>
+      </template>
 
       <nldd-inline-dialog v-if="saveSuccess" text="Opgeslagen"></nldd-inline-dialog>
       <nldd-inline-dialog v-if="saveError" variant="alert" text="Opslaan mislukt" :supporting-text="saveError.message || String(saveError)"></nldd-inline-dialog>
@@ -559,15 +629,20 @@ defineExpose({ save: onSave });
       </template>
 
       <nldd-inline-dialog
-        v-else-if="!scenariosLoading && !depsLoading"
+        v-else-if="!articleLoading && !scenariosLoading && !depsLoading"
         text="Geen scenario's beschikbaar voor dit artikel."
       ></nldd-inline-dialog>
     </nldd-simple-section>
-    <!-- Full-pane loading overlay with a frosted backdrop, shown while the
-         scenario files or their dependency laws ("X/Y wetten geladen") load.
-         Default (anti-flash) timing keeps quick loads from flashing. -->
+    <!-- Full-pane loading overlay, shown across the WHOLE scenario story: the
+         article/law load, then the scenario files, then their dependency laws
+         ("X/Y wetten geladen"). Deliberately one condition over all three so
+         this element stays mounted throughout - the DS resets its anti-flash
+         timer on every connectedCallback, so handing off between two separate
+         indicators produced spinner -> 1s blank -> spinner. Staying mounted
+         runs the 1000ms timer once: quick loads still never flash, and a slow
+         one shows a single continuous spinner. -->
     <nldd-activity-indicator
-      v-if="scenariosLoading || depsLoading"
+      v-if="articleLoading || scenariosLoading || depsLoading"
       backdrop
       show-text
       :text="depsLoading ? depsProgress : 'Scenario\'s laden'"
@@ -596,7 +671,7 @@ defineExpose({ save: onSave });
           dismiss-text="Annuleer"
           @dismiss="cancelEdits"
         ></nldd-top-title-bar>
-        <!-- Drilled-in header: its own bar — a back button to the scenario
+        <!-- Drilled-in header: its own bar - a back button to the scenario
              overview (the data-source heading lives in the content). -->
         <nldd-top-title-bar
           v-else
@@ -622,6 +697,8 @@ defineExpose({ save: onSave });
             :ready="ready"
             :law-id="lawId"
             :article-map="articleMap"
+            :type-map="typeMap"
+            :external-field-type-map="externalFieldTypeMap"
             @show-details="() => onShowDetails(i)"
             @executed="(data) => onScenarioResult(i, data)"
             @change="markDirty"
@@ -655,7 +732,7 @@ defineExpose({ save: onSave });
 /* Positioning context for the full-pane loading overlay. min-height fills the
    pane's scroll viewport so the backdrop covers the whole area, not just the
    (possibly empty) content. Flex column so the simple-section grows to the full
-   height — its empty-state inline-dialog then self-centers like elsewhere,
+   height - its empty-state inline-dialog then self-centers like elsewhere,
    instead of sitting at the top. The absolute overlay is unaffected. */
 .sb-pane {
   display: flex;

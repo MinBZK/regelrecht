@@ -17,6 +17,7 @@ pub mod registry;
 #[cfg(feature = "github")]
 pub mod repo_access;
 pub mod source_map;
+pub mod timing;
 pub mod validation;
 
 pub use backend::PrInfo;

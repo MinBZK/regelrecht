@@ -14,7 +14,7 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{Extension, Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::Json;
 use pretty_assertions::assert_eq;
@@ -27,11 +27,13 @@ use uuid::Uuid;
 use regelrecht_auth::handlers::{
     SESSION_KEY_EMAIL, SESSION_KEY_EMAIL_VERIFIED, SESSION_KEY_NAME, SESSION_KEY_SUB,
 };
+use regelrecht_editor_api::accounts::AccountRecord;
 use regelrecht_editor_api::config::AppConfig;
 use regelrecht_editor_api::corpus_handlers::{
     get_corpus_law, get_traject_corpus_law, get_traject_scenario, list_traject_corpus_laws,
     list_traject_scenarios, save_law, save_scenario,
 };
+use regelrecht_editor_api::github_oauth::GithubOAuth;
 use regelrecht_editor_api::state::{AppState, CorpusState};
 use regelrecht_editor_api::traject_corpus::TrajectCorpusCache;
 
@@ -47,10 +49,13 @@ fn empty_state(pool: PgPool) -> AppState {
         config: Arc::new(AppConfig {
             oidc: None,
             base_url: None,
+            github_oauth: None,
+            task_enrich_provider: "claude".to_string(),
         }),
         http_client: reqwest::Client::new(),
         pool: Some(pool),
         pipeline_api_url: None,
+        harvest_admin_url: None,
         reload_lock: Arc::new(Mutex::new(())),
         trajects: Arc::new(TrajectCorpusCache::new()),
     }
@@ -177,6 +182,19 @@ async fn read_law(state: AppState, session: Session, tref: &str) -> (String, Str
     (etag, body)
 }
 
+/// A throwaway account for direct handler calls. These tests either build
+/// `AppConfig` with `github_oauth: None` (user-OAuth disabled) or write to
+/// a local backend that never demands a user token, so the write path
+/// never resolves a token for `account.id` — any value is fine.
+fn test_account() -> AccountRecord {
+    AccountRecord {
+        id: Uuid::new_v4(),
+        person_sub: "test-sub".to_string(),
+        email: "test@example.gov".to_string(),
+        name: "Test User".to_string(),
+    }
+}
+
 /// Helper: call `save_law` and return the response (status + new ETag).
 async fn save_law_with(
     state: AppState,
@@ -187,6 +205,7 @@ async fn save_law_with(
 ) -> Result<(StatusCode, Option<String>), (StatusCode, String)> {
     let response = save_law(
         State(state),
+        Extension(test_account()),
         session,
         Path((tref.to_string(), LAW_ID.to_string())),
         headers,
@@ -234,6 +253,7 @@ async fn save_scenario_with(
 ) -> Result<(StatusCode, Option<String>), (StatusCode, String)> {
     let response = save_scenario(
         State(state),
+        Extension(test_account()),
         session,
         Path((tref.to_string(), LAW_ID.to_string(), filename.to_string())),
         headers,
@@ -885,4 +905,106 @@ async fn scenario_list_unions_write_target_and_seed() {
         vec!["basis.feature", "extra.feature"],
         "list must union the branch's saves with the seed's remaining scenarios"
     );
+}
+
+// ---------------------------------------------------------------------------
+// User-token enforcement vs local writable-own backends
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn user_token_enforcement_skips_local_backed_trajects() {
+    // `require_user_token` demands the acting user's own GitHub token on
+    // traject writes — but only the GitHub Contents-API backend can use one.
+    // A traject whose writable-own source is `local` (the supported
+    // preview/local-stack configuration) writes without any token, so
+    // enforcement must not 428 its saves: linking GitHub could never
+    // satisfy the requirement there. This pins the requiredness decision
+    // to the *resolved* backend, not the deployment switch alone.
+    let db = TestDb::new().await;
+    let mut state = empty_state(db.pool.clone());
+    state.config = Arc::new(AppConfig {
+        oidc: None,
+        base_url: None,
+        github_oauth: Some(GithubOAuth::for_tests(true)),
+        task_enrich_provider: "claude".to_string(),
+    });
+    let (owner, sub) = seed_account(&db.pool, "alice@test.local").await;
+
+    let corpus = tempfile::tempdir().unwrap();
+    write_law(corpus.path(), "VOOR_ENFORCEMENT");
+    let traject = local_traject(&db.pool, owner, corpus.path()).await;
+    let tref = traject_ref(traject);
+
+    // No GitHub-link cookie on the request: with the pre-fix ordering this
+    // 428'd before the write target was even resolved.
+    let (status, _etag) = save_law_with(
+        state.clone(),
+        session_for(&sub).await,
+        &tref,
+        HeaderMap::new(),
+        format!("$id: {LAW_ID}\nname: NA_ENFORCEMENT\n"),
+    )
+    .await
+    .expect("save on a local-backed traject must not demand a GitHub link");
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, _etag) = save_scenario_with(
+        state,
+        session_for(&sub).await,
+        &tref,
+        "basis.feature",
+        HeaderMap::new(),
+        "Feature: lokaal-zonder-koppeling\n",
+    )
+    .await
+    .expect("scenario save on a local-backed traject must not demand a GitHub link");
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn feature_flag_row_drives_user_token_requirement() {
+    // `write_requires_user_token` OR-s two switches: the static env-var field
+    // (covered above via `for_tests(true)`) and the DB-backed
+    // `github.user_oauth` feature flag — the switch an admin actually flips
+    // through the "Functies" menu. Drive the requirement through that DB row:
+    // the env switch stays OFF, so any 428 below can only come from the flag.
+    let db = TestDb::new().await;
+    let mut state = empty_state(db.pool.clone());
+    state.config = Arc::new(AppConfig {
+        oidc: None,
+        base_url: None,
+        github_oauth: Some(GithubOAuth::for_tests(false)),
+        task_enrich_provider: "claude".to_string(),
+    });
+    let account_id = Uuid::new_v4();
+
+    // Flag row absent (default off): pre-spike behaviour, no override demanded.
+    let token = regelrecht_editor_api::github_oauth::user_write_token(
+        &state,
+        account_id,
+        &HeaderMap::new(),
+    )
+    .await
+    .expect("without the flag no user token may be demanded");
+    assert_eq!(token, None);
+
+    // Flip the DB row — the same write the "Functies" toggle PUT performs.
+    regelrecht_pipeline::feature_flags::upsert_flag(
+        &db.pool,
+        regelrecht_editor_api::feature_flags::GITHUB_USER_OAUTH,
+        true,
+        None,
+    )
+    .await
+    .expect("flag upsert must succeed");
+
+    // Flag on + no linked token cookie → 428 on the GitHub-capable write path.
+    let err = regelrecht_editor_api::github_oauth::user_write_token(
+        &state,
+        account_id,
+        &HeaderMap::new(),
+    )
+    .await
+    .expect_err("flag on without a linked token must refuse the write");
+    assert_eq!(err.0, StatusCode::PRECONDITION_REQUIRED);
 }

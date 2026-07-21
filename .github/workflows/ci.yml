@@ -25,9 +25,9 @@ jobs:
       editor-api: ${{ steps.filter.outputs.editor-api }}
       docs: ${{ steps.filter.outputs.docs }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d  # v4.0.1
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706  # v4.0.2
         id: filter
         with:
           filters: |
@@ -37,10 +37,15 @@ jobs:
               - packages/harvester/**
               - packages/pipeline/**
               - frontend/**
-              - features/**
+              - packages/frontend-shared/**
+              - bdd/**
               - corpus/regulation/**
               - schema/**
               - script/**
+              # The schema reference doc is version-locked to schema/latest by
+              # provenance-checks; edit it and that guard must re-run.
+              - docs/src/content/docs/reference/schema.md
+              - docs/scripts/check-schema-version.mjs
               - Justfile
               - .pre-commit-config.yaml
               - .yamllint
@@ -68,7 +73,7 @@ jobs:
     timeout-minutes: 5
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         if: needs.changes.outputs.ci == 'true'
         with:
           fetch-depth: 0
@@ -127,16 +132,16 @@ jobs:
     timeout-minutes: 5
     if: needs.changes.outputs.ci == 'true'
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         if: needs.changes.outputs.ci == 'true'
         with:
           fetch-depth: 0
 
-      - name: Check schema versions registered in validate.rs
+      - name: Check schema versions registered in schema.rs
         if: needs.changes.outputs.ci == 'true'
         run: |
-          # Every schema/vX.Y.Z/ directory must appear in validate.rs
-          VALIDATE_RS="packages/engine/src/bin/validate.rs"
+          # Every schema/vX.Y.Z/ directory must appear in the embedded schema table.
+          VALIDATE_RS="packages/engine/src/schema.rs"
           MISSING=""
           for dir in schema/v*/; do
             version=$(basename "$dir")
@@ -145,11 +150,11 @@ jobs:
             fi
           done
           if [ -n "$MISSING" ]; then
-            echo "ERROR: Schema versions not registered in validate.rs:"
+            echo "ERROR: Schema versions not registered in schema.rs:"
             printf "$MISSING"
             exit 1
           fi
-          echo "All schema versions registered in validate.rs"
+          echo "All schema versions registered in schema.rs"
 
       - name: Check corpus schema references
         if: needs.changes.outputs.ci == 'true'
@@ -198,6 +203,19 @@ jobs:
           fi
           echo "schema/latest correctly points to $HIGHEST"
 
+      # The schema reference doc hand-states the current version; this asserts
+      # it tracks schema/latest so a schema bump can't leave the docs behind.
+      # Node-only, reads source files (no astro build).
+      - name: Setup Node.js
+        if: needs.changes.outputs.ci == 'true'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
+        with:
+          node-version: '22'
+
+      - name: Check schema reference doc tracks schema/latest
+        if: needs.changes.outputs.ci == 'true'
+        run: node docs/scripts/check-schema-version.mjs
+
       - name: Check engine version bump on source changes
         if: needs.changes.outputs.ci == 'true' && github.event_name == 'pull_request'
         run: |
@@ -238,9 +256,9 @@ jobs:
     timeout-minutes: 5
     if: needs.changes.outputs.ci == 'true'
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
 
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: '3.x'
 
@@ -265,9 +283,9 @@ jobs:
       SCCACHE_GHA_ENABLED: "true"
       CARGO_INCREMENTAL: "0"
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: '3.12'
 
@@ -286,7 +304,7 @@ jobs:
         uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696  # v0.0.10
 
       - name: Cache cargo registry (shared)
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -323,7 +341,7 @@ jobs:
       SCCACHE_GHA_ENABLED: "true"
       CARGO_INCREMENTAL: "0"
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         if: needs.changes.outputs.ci == 'true'
 
       - name: Install just
@@ -344,7 +362,7 @@ jobs:
 
       - name: Cache cargo registry (shared)
         if: needs.changes.outputs.ci == 'true'
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -363,17 +381,28 @@ jobs:
           node-version: '22'
           registry-url: https://npm.pkg.github.com
           cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install frontend dependencies
         if: needs.changes.outputs.ci == 'true'
-        working-directory: frontend
         run: npm ci
+
+      - name: BDD grammar codegen is in sync
+        if: needs.changes.outputs.ci == 'true'
+        run: |
+          node bdd/codegen/gen-js.mjs
+          git diff --exit-code frontend/src/gherkin/grammar.generated.js \
+            || { echo "::error::grammar.generated.js is stale — run 'just bdd-codegen' and commit the result"; exit 1; }
 
       - name: Run frontend tests
         if: needs.changes.outputs.ci == 'true'
-        working-directory: frontend
-        run: npm test
+        # Directory form (`-w frontend`) rather than the package name, so a
+        # rename of the `name` field can't silently skip the tests.
+        run: npm test -w frontend
+
+      - name: Run shared-package tests
+        if: needs.changes.outputs.ci == 'true'
+        run: npm test -w packages/frontend-shared
 
       - name: Skip (no relevant changes)
         if: needs.changes.outputs.ci != 'true'
@@ -389,7 +418,7 @@ jobs:
       SCCACHE_GHA_ENABLED: "true"
       CARGO_INCREMENTAL: "0"
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         if: needs.changes.outputs.ci == 'true'
 
       - name: Install Rust toolchain
@@ -404,7 +433,7 @@ jobs:
 
       - name: Cache cargo registry (shared)
         if: needs.changes.outputs.ci == 'true'
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -431,13 +460,13 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
 
       - name: Cache cargo registry (shared)
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -462,16 +491,9 @@ jobs:
           node-version: '22'
           registry-url: https://npm.pkg.github.com
           cache: 'npm'
-          cache-dependency-path: |
-            frontend/package-lock.json
-            packages/admin/frontend-src/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Install admin frontend dependencies
-        working-directory: packages/admin/frontend-src
+      - name: Install workspace dependencies
         run: npm ci
 
       - name: Install just
@@ -507,7 +529,7 @@ jobs:
       SCCACHE_GHA_ENABLED: "true"
       CARGO_INCREMENTAL: "0"
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         if: needs.changes.outputs[matrix.package] == 'true'
 
       - name: Install Rust toolchain
@@ -518,7 +540,7 @@ jobs:
 
       - name: Cache cargo registry (shared)
         if: needs.changes.outputs[matrix.package] == 'true'
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -550,30 +572,15 @@ jobs:
         if: needs.changes.outputs[matrix.package] == 'true'
         run: just ${{ matrix.package }}-check
 
-      # The remaining steps are admin-only: editor-api has no `just
-      # editor-api-test` recipe and no frontend build of its own.
+      # Uniform per-package test step: `just admin-test` / `just editor-api-test`.
+      # The editor-api recipe covers src unit tests AND tests/*.rs integration
+      # tests (testcontainers — Docker is present on the hosted runner); before
+      # this step existed those tests were never even compiled in CI and rotted
+      # silently. (The admin frontend moved into the editor, so there is no
+      # longer an admin frontend build here — admin is an API-only Rust binary.)
       - name: Run tests
-        if: matrix.package == 'admin' && needs.changes.outputs.admin == 'true'
-        run: just admin-test
-
-      - name: Setup Node.js
-        if: matrix.package == 'admin' && needs.changes.outputs.admin == 'true'
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
-        with:
-          node-version: '22'
-          registry-url: https://npm.pkg.github.com
-          cache: 'npm'
-          cache-dependency-path: packages/admin/frontend-src/package-lock.json
-
-      - name: Install admin frontend dependencies
-        if: matrix.package == 'admin' && needs.changes.outputs.admin == 'true'
-        working-directory: packages/admin/frontend-src
-        run: npm ci
-
-      - name: Build admin frontend
-        if: matrix.package == 'admin' && needs.changes.outputs.admin == 'true'
-        working-directory: packages/admin/frontend-src
-        run: npm run build
+        if: needs.changes.outputs[matrix.package] == 'true'
+        run: just ${{ matrix.package }}-test
 
       - name: Skip (no relevant changes)
         if: needs.changes.outputs[matrix.package] != 'true'
@@ -585,7 +592,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       - name: Install just
         if: needs.changes.outputs.docs == 'true'

@@ -1,5 +1,5 @@
 /**
- * useTraceStepping — step through a WASM `TraceResult` against the current
+ * useTraceStepping - step through a WASM `TraceResult` against the current
  * law graph and expose active/visited node & edge sets for CSS
  * highlighting.
  *
@@ -7,10 +7,10 @@
  * feature/demo-leenstelsel-tegemoetkoming.
  *
  * Cost model:
- *   - `steps`            — O(N) per (result, nodes, edges) change. Cached.
- *   - `next`/`prev`/`goto` — O(1) on the pointer itself.
- *   - `activeEdgeIds` / `activeNodeIds` — O(1) per `currentStepIdx` change.
- *   - `visitedEdgeIds` / `visitedNodeIds` — O(currentStepIdx) per
+ *   - `steps`            - O(N) per (result, nodes, edges) change. Cached.
+ *   - `next`/`prev`/`goto` - O(1) on the pointer itself.
+ *   - `activeEdgeIds` / `activeNodeIds` - O(1) per `currentStepIdx` change.
+ *   - `visitedEdgeIds` / `visitedNodeIds` - O(currentStepIdx) per
  *     `currentStepIdx` change. Forward traversal of an N-step trace is
  *     therefore O(N²). Acceptable today (typical traces are <100 steps).
  *     PR3 polish: amortise via mutated refs in next/prev/goto.
@@ -26,9 +26,9 @@ import {
 
 /**
  * @param {object} opts
- * @param {import('vue').Ref<object|null>} opts.result  — TraceResult from engine
- * @param {import('vue').Ref<Array>} opts.nodes         — Vue Flow nodes
- * @param {import('vue').Ref<Array>} opts.edges         — Vue Flow edges
+ * @param {import('vue').Ref<object|null>} opts.result  - TraceResult from engine
+ * @param {import('vue').Ref<Array>} opts.nodes         - Vue Flow nodes
+ * @param {import('vue').Ref<Array>} opts.edges         - Vue Flow edges
  * @param {import('vue').Ref<string|null>} opts.rootLawId
  * @param {import('vue').Ref<string|null>} opts.outputName
  */
@@ -61,7 +61,7 @@ export function useTraceStepping({ result, nodes, edges, rootLawId, outputName }
   // - The first listens to `result`: when a fresh trace arrives we want
   //   step 0 selected immediately, even before the graph has been
   //   enriched. The pointer may briefly point at a step that does not
-  //   exist yet — that's fine, the second watcher clamps it once
+  //   exist yet - that's fine, the second watcher clamps it once
   //   `steps` updates.
   // - The second listens to `steps`: when enrichment finishes, or the
   //   graph rebuilds and `steps` shrinks, the pointer is clamped to a

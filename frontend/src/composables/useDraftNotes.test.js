@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ref } from 'vue';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { useDraftNotes } from './useDraftNotes.js';
 import { lastSavedPr } from './useSavedPr.js';
 
@@ -89,7 +89,7 @@ describe('useDraftNotes', () => {
 
   it('exports the raw sidecar notes + drafts (preserving cross-law notes)', async () => {
     // The committed file carries a note for ANOTHER law (federated sidecar).
-    // The resolver would drop it; exportYaml must NOT — it re-parses the file.
+    // The resolver would drop it; exportYaml must NOT - it re-parses the file.
     const otherLawNote = {
       ...NOTE,
       target: { ...NOTE.target, source: 'regelrecht://andere_wet' },
@@ -130,14 +130,14 @@ describe('useDraftNotes', () => {
 });
 
 // saveToRepo now does ONE request: a PUT whose body is the JSON array of
-// new drafts. No /data GET — the backend reads the base from the session
+// new drafts. No /data GET - the backend reads the base from the session
 // branch and appends. Single stub for the PUT.
 function stubSave(putResponse) {
   globalThis.fetch = vi.fn(() => Promise.resolve(putResponse));
 }
 
 describe('useDraftNotes.saveToRepo', () => {
-  // Traject ref used across these saveToRepo tests — must look like
+  // Traject ref used across these saveToRepo tests - must look like
   // `{slug}-{8hex}` so the URL builder produces the canonical shape and
   // the assertions stay stable.
   const TRAJECT_REF = 'tarief-2026-3f4a8b2c';
@@ -231,13 +231,13 @@ describe('useDraftNotes.saveToRepo', () => {
     const result = await saveToRepo();
 
     expect(result).toEqual({ pr: null, noChange: true });
-    // Badge untouched — the earlier PR is still shown.
+    // Badge untouched - the earlier PR is still shown.
     expect(lastSavedPr.value).toEqual({
       url: 'https://github.com/x/y/pull/3',
       number: 3,
       branch: 'b',
     });
-    // Drafts cleared (they are already upstream) — that is fine because
+    // Drafts cleared (they are already upstream) - that is fine because
     // the caller now has noChange to show an explicit message.
     expect(drafts.value).toHaveLength(0);
   });

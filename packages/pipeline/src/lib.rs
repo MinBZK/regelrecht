@@ -2,6 +2,7 @@ pub mod api;
 mod api_state;
 pub mod config;
 pub mod db;
+pub mod document_convert;
 pub mod enrich;
 pub mod error;
 pub mod feature_flags;
@@ -9,10 +10,13 @@ pub mod harvest;
 pub mod harvest_request;
 pub mod health;
 pub mod job_queue;
+pub mod law_convert;
 pub mod law_status;
 pub mod models;
+pub mod tasks;
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
+pub mod untranslatables;
 pub mod worker;
 
 pub use api_state::ApiState;
@@ -20,8 +24,9 @@ pub use api_state::ApiState;
 pub use config::{PipelineConfig, WorkerConfig};
 pub use db::{create_pool, ensure_schema, MIGRATION_LOCK_KEY};
 pub use enrich::{
-    progress_file_path, EnrichConfig, EnrichPayload, EnrichResult, EnrichmentMetadata, LlmProvider,
-    LlmRunner, ProcessLlmRunner, ENRICH_PROVIDERS,
+    progress_file_path, EnrichConfig, EnrichPayload, EnrichResult, EnrichmentMetadata,
+    EnrichmentResultEnvelope, LlmProvider, LlmRunner, ProcessLlmRunner, RelatedLegislation,
+    ENRICH_PROVIDERS,
 };
 pub use error::PipelineError;
 pub use harvest::{HarvestPayload, HarvestResult, MAX_HARVEST_DEPTH};
@@ -29,4 +34,6 @@ pub use harvest::{HarvestPayload, HarvestResult, MAX_HARVEST_DEPTH};
 // handler `api::harvest::request_harvest` shares that name, so callers import
 // it path-qualified via the module.
 pub use harvest_request::{HarvestRequestOptions, HarvestRequestOutcome};
-pub use models::{FeatureFlag, Job, JobStatus, JobType, LawEntry, LawStatusValue, Priority};
+pub use models::{
+    FeatureFlag, Job, JobStatus, JobType, LawEntry, LawStatusValue, Priority, Untranslatable,
+};

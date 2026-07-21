@@ -14,6 +14,7 @@ export function useTrajectMembers() {
   const members = ref([]);
   const pendingInvites = ref([]);
   const callerRole = ref(null);
+  const trajectName = ref('');
   const loading = ref(false);
   const error = ref(null);
 
@@ -25,6 +26,7 @@ export function useTrajectMembers() {
     members.value = [];
     pendingInvites.value = [];
     callerRole.value = null;
+    trajectName.value = '';
     try {
       const body = await apiFetchJson(`/api/trajects/${trajectId}`, {
         errorMessage: (status) => `Kon traject niet laden: ${status}`,
@@ -32,6 +34,7 @@ export function useTrajectMembers() {
       members.value = body.members || [];
       pendingInvites.value = body.pending_invites || [];
       callerRole.value = body.role || null;
+      trajectName.value = body.name || '';
     } catch (e) {
       error.value = e;
     } finally {
@@ -54,16 +57,41 @@ export function useTrajectMembers() {
     return body;
   }
 
+  // Invite several addresses in one action: POST each (sequentially, so a rate
+  // limit or one bad address doesn't abort the rest), collect per-address
+  // outcomes, then reload the roster once. Never rejects — read `failed`.
+  async function inviteMany(trajectId, emails, role) {
+    const succeeded = [];
+    const failed = [];
+    for (const email of emails) {
+      try {
+        const body = await apiFetchJson(`/api/trajects/${trajectId}/members`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email, role }),
+          errorMessage: (status, reason) =>
+            reason ||
+            (status === 400 ? 'Ongeldig e-mailadres of rol' : `Mislukt: ${status}`),
+        });
+        succeeded.push(body.email || email);
+      } catch (e) {
+        failed.push({ email, message: e.message || 'Uitnodigen mislukt' });
+      }
+    }
+    await load(trajectId);
+    return { succeeded, failed };
+  }
+
   async function updateRole(trajectId, accountId, role) {
     await apiFetch(`/api/trajects/${trajectId}/members/${accountId}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ role }),
-      // 409 is the backend's atomic "can't demote the last owner" guard — only
+      // 409 is the backend's atomic "can't demote the last owner" guard - only
       // reachable when demoting an owner to contributor. Surface the workflow.
       errorMessage: (status, body) =>
         status === 409
-          ? 'Een traject moet minstens één eigenaar houden. Maak eerst een ander lid eigenaar.'
+          ? 'Een traject moet minstens één beheerder houden. Maak eerst een ander lid beheerder.'
           : body || `Rol wijzigen mislukt: ${status}`,
     });
     await load(trajectId);
@@ -88,24 +116,18 @@ export function useTrajectMembers() {
     await load(trajectId);
   }
 
-  async function leaveTraject(trajectId) {
-    await apiFetch(`/api/trajects/${trajectId}/leave`, {
-      method: 'POST',
-      errorMessage: (status, body) => body || `Verlaten mislukt: ${status}`,
-    });
-  }
-
   return {
     members,
     pendingInvites,
     callerRole,
+    trajectName,
     loading,
     error,
     load,
     invite,
+    inviteMany,
     updateRole,
     removeMember,
     removeInvite,
-    leaveTraject,
   };
 }

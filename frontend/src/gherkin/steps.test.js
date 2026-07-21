@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { parseValue, createStepDefinitions } from './steps.js';
+import { parseValue, createStepDefinitions, SUPPORTED_TIERS } from './steps.js';
+import { GRAMMAR } from './grammar.generated.js';
 
 describe('parseValue', () => {
   it('parses booleans', () => {
@@ -33,39 +34,51 @@ describe('parseValue', () => {
 });
 
 describe('createStepDefinitions', () => {
-  it('creates step definitions with all patterns', () => {
+  it('creates a step definition for every grammar entry', () => {
     const defs = createStepDefinitions({ loadDependency: async () => {} });
-    expect(defs.length).toBeGreaterThan(10);
+    expect(defs).toHaveLength(GRAMMAR.length);
+    for (const def of defs) {
+      expect(def.pattern).toBeInstanceOf(RegExp);
+      expect(typeof def.execute).toBe('function');
+      expect(typeof def.tier).toBe('string');
+    }
   });
 
-  it('matches calculation date step', () => {
-    const defs = createStepDefinitions({ loadDependency: async () => {} });
-    const dateStep = defs.find((d) => d.pattern.test('the calculation date is "2025-01-01"'));
-    expect(dateStep).toBeDefined();
+  it('declares the core tier as the editor-supported tier set', () => {
+    expect(SUPPORTED_TIERS).toEqual(['core']);
   });
+});
 
-  it('matches parameter steps', () => {
-    const defs = createStepDefinitions({ loadDependency: async () => {} });
-    const strParam = defs.find((d) => d.pattern.test('parameter "bsn" is "999993653"'));
-    expect(strParam).toBeDefined();
-    const numParam = defs.find((d) => d.pattern.test('parameter "age" is 25'));
-    expect(numParam).toBeDefined();
-  });
+// Each canonical example line is parsed by exactly one core grammar pattern,
+// and that pattern carries the expected action. This is the proof that the
+// generated patterns match their canonical phrasings.
+describe('core grammar patterns match their canonical example lines', () => {
+  const examples = [
+    { line: 'the calculation date is "2025-01-01"', action: 'set_calculation_date' },
+    { line: 'law "my_law" is loaded', action: 'load_law' },
+    { line: 'parameter "bsn" is "999993653"', action: 'set_parameter' },
+    { line: 'parameter "age" is 25', action: 'set_parameter' },
+    { line: 'the following parameters:', action: 'set_parameters_table' },
+    { line: 'the following "personal_data" data with key "bsn":', action: 'set_data_source' },
+    { line: 'I evaluate "result" of "my_law"', action: 'evaluate' },
+    { line: 'the execution succeeds', action: 'assert_succeeds' },
+    { line: 'the execution fails', action: 'assert_fails' },
+    { line: 'the execution fails with "some error"', action: 'assert_fails_with' },
+    { line: 'output "x" is true', action: 'assert_boolean' },
+    { line: 'output "x" is false', action: 'assert_boolean' },
+    { line: 'output "x" equals 42', action: 'assert_equals' },
+    { line: 'output "x" equals "hello"', action: 'assert_equals' },
+    { line: 'output "x" is null', action: 'assert_null' },
+    { line: 'output "x" contains "sub"', action: 'assert_contains' },
+  ];
 
-  it('matches evaluate step', () => {
-    const defs = createStepDefinitions({ loadDependency: async () => {} });
-    const evalStep = defs.find((d) => d.pattern.test('I evaluate "output" of "law_id"'));
-    expect(evalStep).toBeDefined();
-  });
+  const coreEntries = GRAMMAR.filter((e) => e.tier === 'core');
 
-  it('matches assertion steps', () => {
-    const defs = createStepDefinitions({ loadDependency: async () => {} });
-    expect(defs.find((d) => d.pattern.test('the execution succeeds'))).toBeDefined();
-    expect(defs.find((d) => d.pattern.test('the execution fails'))).toBeDefined();
-    expect(defs.find((d) => d.pattern.test('output "x" is true'))).toBeDefined();
-    expect(defs.find((d) => d.pattern.test('output "x" is false'))).toBeDefined();
-    expect(defs.find((d) => d.pattern.test('output "x" equals 42'))).toBeDefined();
-    expect(defs.find((d) => d.pattern.test('output "x" equals "hello"'))).toBeDefined();
-    expect(defs.find((d) => d.pattern.test('output "x" is null'))).toBeDefined();
-  });
+  for (const { line, action } of examples) {
+    it(`matches: ${line}`, () => {
+      const matching = coreEntries.filter((e) => e.pattern.test(line));
+      expect(matching).toHaveLength(1);
+      expect(matching[0].action).toBe(action);
+    });
+  }
 });

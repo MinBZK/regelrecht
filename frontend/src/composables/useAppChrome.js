@@ -4,11 +4,11 @@ import { shallowRef, onBeforeUnmount } from 'vue';
 //
 // The Bibliotheek/Editor switch keeps the shell (toolbars, tab-bar,
 // settings menu) mounted and only swaps the nested <router-view>. A few
-// toolbar bits are view-specific — the search trigger (both views), the
+// toolbar bits are view-specific - the search trigger (both views), the
 // federated "PR #N" write-back indicator and the document-tab-bar (editor
-// only). Rather than teleport those into the shell's toolbars — which
+// only). Rather than teleport those into the shell's toolbars - which
 // `nldd-toolbar` rejects, since slotted items must be its *direct*
-// children and teleport would reorder them — the active view publishes
+// children and teleport would reorder them - the active view publishes
 // them here and the shell renders everything itself, in the original
 // order. Module-level singleton, matching the other composables
 // (`useColorScheme`, `useFeatureFlags`).
@@ -24,7 +24,7 @@ export function registerSearchPopover(ref_) {
   popoverRef = ref_;
   // Clear on unmount, but only if this view still owns the registration. The
   // entering view registers in its setup before the leaving view unmounts, so
-  // guarding on identity avoids nulling a registration that already moved on —
+  // guarding on identity avoids nulling a registration that already moved on -
   // making the cleanup safe even if the route topology changes that ordering.
   onBeforeUnmount(() => {
     if (popoverRef === ref_) popoverRef = null;
@@ -63,6 +63,12 @@ const tabActions = shallowRef(null); // { key, displayName, select, close, reord
 const editorChanges = shallowRef(null); // { dirty, saving, canUndo, canRedo } | null
 const editorActions = shallowRef(null); // { save, discard, undo, redo } | null
 
+// --- Library-only chrome ---
+// Whether the library has nothing curated yet (no favorites, no traject edits,
+// no open law). While true, the shell shows the just-in-time search coach-mark
+// on the toolbar search field; the library body itself stays blank.
+const libraryEmpty = shallowRef(false);
+
 export function useAppChrome() {
   return {
     lastSavedPr,
@@ -71,7 +77,14 @@ export function useAppChrome() {
     tabActions,
     editorChanges,
     editorActions,
+    libraryEmpty,
   };
+}
+
+// Published reactively by the library view (and reset when it unmounts) so the
+// shell can gate the search coach-mark on an empty library.
+export function setLibraryEmpty(empty) {
+  libraryEmpty.value = !!empty;
 }
 
 export function setEditorChrome({ pr, tabs, activeTab }) {

@@ -1,5 +1,5 @@
 /**
- * useAmbiguityVocabulary — the controlled tag list for questioning notes.
+ * useAmbiguityVocabulary - the controlled tag list for questioning notes.
  *
  * RFC-018 Decision 9: a questioning note over an open norm carries a tagging
  * body whose value is one of these ids. The list is deliberately *not* a JSON
@@ -9,7 +9,7 @@
  * picker and the CI check read one source and cannot drift.
  */
 import { ref } from 'vue';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { apiFetchText } from '../lib/apiFetch.js';
 
 // Session cache: the file does not change while the editor is open.

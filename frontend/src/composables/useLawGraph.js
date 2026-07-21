@@ -1,11 +1,11 @@
 /**
- * useLawGraph — build a Vue Flow node/edge graph for a root law + its
+ * useLawGraph - build a Vue Flow node/edge graph for a root law + its
  * transitive dependencies.
  *
  * Ported from demo/graph/src/routes/+page.svelte (branch
  * feature/demo-leenstelsel-tegemoetkoming). The YAML parsing, per-law
  * aggregation, layered layout and edge construction follow that demo
- * byte-for-byte — changes there and here need to stay in lockstep.
+ * byte-for-byte - changes there and here need to stay in lockstep.
  *
  * Edge ID format MUST match what lib/traceEdges.js (PR2) looks up:
  *   - cross-law input:  "${lawId}-input-${name}->${targetLaw}-output-${name}"
@@ -21,7 +21,7 @@
  * that scheme has to be rethought.
  */
 import { ref, watch } from 'vue';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { MarkerType, Position } from '@vue-flow/core';
 import { extractRegulationRefs } from './useDependencies.js';
 import { useLatest } from '../lib/useLatest.js';
@@ -275,7 +275,7 @@ function buildGraph(lawsMap) {
     nodes.push({
       id: law.id,
       type: 'law',
-      data: { label: `${law.layer} — ${law.name}` },
+      data: { label: `${law.layer} - ${law.name}` },
       position: { x: rootIdx++ * 400, y: 0 },
       width: 500,
       height: Math.max(leftHeight, rightHeight) + 120,
@@ -712,7 +712,7 @@ export function useLawGraph({ rootLawId, fetchLawYaml }) {
   const error = ref(null);
   // Law ids whose YAML could not be fetched during the BFS walk. The graph
   // still renders the laws that did load, but the UI should warn the user
-  // that some dependencies are missing — otherwise a partial graph looks
+  // that some dependencies are missing - otherwise a partial graph looks
   // complete and silently omits connections.
   const missingDeps = ref([]);
 

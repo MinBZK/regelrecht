@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue';
+import ScenarioParameterInput from './ScenarioParameterInput.vue';
 
 let nextRowId = 0;
 
@@ -67,14 +68,14 @@ function defaultForType(type) {
   }
 }
 
-function inputType(fieldType) {
-  switch (fieldType) {
-    case 'number':
-    case 'amount':
-      return 'number';
-    default:
-      return 'text';
-  }
+// Null contract for data-source cells: null / undefined / the gherkin string
+// "null" all mean "not provided" and display as empty; clearing stores null.
+// (Mirrors steps.js `'null' -> null` and formMapper `null/'' -> 'null'`.)
+function cellDisplay(v) {
+  return v == null || v === 'null' ? '' : v;
+}
+function cellStore(rowIndex, fieldName, v) {
+  updateCell(rowIndex, fieldName, v === '' || v == null ? null : v);
 }
 
 // All columns: key field + declared fields (deduplicated)
@@ -83,7 +84,7 @@ const allColumns = computed(() => {
   const seen = new Set();
 
   seen.add(props.keyField);
-  cols.push({ name: props.keyField, type: 'string', isKey: true });
+  cols.push({ name: props.keyField, type: 'string', unit: null, isKey: true });
 
   for (const field of props.fields) {
     if (!seen.has(field.name)) {
@@ -119,11 +120,11 @@ const showBody = computed(() => props.drilledIn || expanded.value);
     </template>
 
     <template v-if="showBody">
-      <nldd-inline-dialog v-if="rows.length === 0" text="Geen gegevens — vul in indien relevant">
+      <nldd-inline-dialog v-if="rows.length === 0" text="Geen gegevens - vul in indien relevant">
         <nldd-button v-if="!readonly" slot="actions" size="md" start-icon="plus-small" @click="addRow" text="Voeg toe"></nldd-button>
       </nldd-inline-dialog>
 
-      <!-- One box list per row — identical layout regardless of row count,
+      <!-- One box list per row - identical layout regardless of row count,
            with the delete button at the bottom of each list. Spacers (not a
            flex-gap container) separate the stacked lists. -->
       <template v-for="(row, ri) in rows" :key="row._id ?? ri">
@@ -149,12 +150,13 @@ const showBody = computed(() => props.drilledIn || expanded.value);
               </nldd-dropdown>
             </nldd-cell>
             <nldd-cell v-else width="full" min-width="120px">
-              <nldd-text-field
-                size="md"
-                :type="inputType(col.type)"
-                :value="String(row[col.name] ?? '')"
-                @input="updateCell(ri, col.name, $event.target?.value ?? $event.detail?.value ?? '')"
-              ></nldd-text-field>
+              <ScenarioParameterInput
+                :type="col.type"
+                :unit="col.unit"
+                :name="col.name"
+                :value="cellDisplay(row[col.name])"
+                @update="cellStore(ri, col.name, $event)"
+              />
             </nldd-cell>
           </nldd-list-item>
 
@@ -182,7 +184,7 @@ const showBody = computed(() => props.drilledIn || expanded.value);
 </template>
 
 <style scoped>
-/* The component needs a single root, but it must not generate a box —
+/* The component needs a single root, but it must not generate a box -
  * otherwise it blocks the nldd flex layout (flex-grow / centering of the
  * empty-state inline-dialog) of the enclosing simple-section. */
 .ds-root {

@@ -83,6 +83,15 @@ pub enum HarvesterError {
     #[error("YAML serialization failed: {0}")]
     YamlSerialization(#[from] serde_yaml_ng::Error),
 
+    /// A serialized `text: |-` block could not be aligned with any remaining
+    /// fold-plan entry: its reconstructed content matched no planned text (in
+    /// document order). This means the writer's emission invariant broke;
+    /// folding must never guess which block gets which style, so the write
+    /// fails instead. Leftover plan entries are legal (serde may emit a text
+    /// with tabs/control characters as a quoted scalar rather than a block).
+    #[error("YAML text-block fold plan mismatch: {detail}")]
+    FoldPlanMismatch { detail: String },
+
     /// No BWB ID found in JCI reference.
     #[error("No BWB ID found in JCI reference: {0}")]
     InvalidJciReference(String),

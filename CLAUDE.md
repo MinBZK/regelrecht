@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `packages/engine/` - Rust law execution engine
 - `packages/pipeline/` - PostgreSQL-backed job queue and law status tracking
 - `packages/harvester/` - Law corpus harvesting from BWB (Basis Wettelijke Regelgeving)
-- `packages/admin/` - Admin dashboard (Rust API + Vue frontend)
+- `packages/admin/` - Harvester-admin API (Rust; standalone harvest job/corpus API). Its dashboard UI now lives in the editor as the "Corpusinwinning" section (`frontend/src/harvester/`), reached through the editor-api `/api/harvest-admin/*` proxy; the API stays independently addressable for scripts/services.
 - `packages/editor-api/` - Rust backend API for the editor frontend
 - `packages/corpus/` - Shared library for working with YAML regulation files
 - `packages/shared/` - Common types/utilities across packages
@@ -19,7 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `frontend-lawmaking/` - Law-making process visualization (Vue/Vite)
 - `docs/` - Astro site serving both the landing page (regelrecht.rijks.app) and the docs (docs.regelrecht.rijks.app)
 - `corpus/regulation/` - Dutch legal regulations in machine-readable YAML format
-- `features/` - Gherkin BDD feature files (used by Rust cucumber-rs)
+- `bdd/` - Canonical, engine-agnostic BDD feature language. `bdd/grammar.yaml` is the single source of truth for the law-agnostic Gherkin vocabulary; step bindings for every engine are code-generated from it (Rust via `packages/engine/build.rs`, editor JS via `bdd/codegen/gen-js.mjs` → `frontend/src/gherkin/grammar.generated.js`). Never hand-edit a generated file — change `grammar.yaml` and run `just bdd-codegen`. Two buckets share the language: **bucket A** = law-validation scenarios next to the live laws (`corpus/regulation/**/scenarios/*.feature`, run against the real corpus — a failure means a law changed or the scenario is stale, a human decides; `@wip`-tagged scenarios are skipped); **bucket B** = engine-conformance suite (`bdd/conformance/*.feature`, `@tier:`-tagged) proving an engine speaks the whole language against synthetic `test_*` laws. `just bdd` runs both buckets.
 
 ## Development Setup
 
@@ -73,6 +73,25 @@ This repository uses pre-commit hooks for code quality:
 
 **No branding in commits.** Do not add "Generated with Claude Code" or "Co-Authored-By: Claude" lines to commit messages.
 
+### Commit & PR Title Conventions
+
+PR titles are linted by `.github/workflows/pr-title.yml` (a failing title blocks
+merge). The format is **Conventional Commits**: `type(scope): subject`, where
+`(scope)` is optional. Commit messages should follow the same shape.
+
+- **Allowed types**: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`,
+  `test`, `chore`, `build`, `ci`.
+- **Allowed scopes** (optional): `engine`, `admin`, `pipeline`, `harvester`,
+  `editor`, `corpus`, `frontend`, `lawmaking`, `docs`, `grafana`, `ci`,
+  `schema`, `deps`, `dev`. An unlisted scope fails the lint.
+- **The subject MUST start with a lowercase letter** (`subjectPattern:
+  ^[a-z].*$`). This is the easiest rule to trip on: `docs: RFC-…` fails because
+  "RFC" is uppercase — write `docs: verwijzingen naar RFC's …` instead. Editing
+  the PR title re-runs the check; no new commit needed.
+
+Per the global convention these subjects are written in **Dutch** (PR
+descriptions too), while code identifiers stay English.
+
 ### Test Data
 
 **Never use real secret or private information in tests.** This is a public
@@ -99,6 +118,13 @@ git worktree add .worktrees/feature-branch feature-branch
 Laws are stored as article-based YAML files conforming to the official JSON schema:
 - Schema: `schema/latest/schema.json` (symlink to the current version directory in this repo)
 
+The hand-authored `schema.json` is the **canonical, language-agnostic contract**; the Rust
+`law-model` (`packages/law-model/`) is one implementation that must *conform* to it (neither is
+generated from the other). `just conformance` proves this — a corpus differential plus synthetic
+fixtures, the structural twin of the BDD bucket-B suite. See
+`packages/engine/tests/conformance/README.md`. The model is currently more permissive than the
+schema in a few documented ways (`KNOWN_GAPS`); reconciling that is tracked separately.
+
 ### Cross-Law References
 
 Laws reference each other via `source` on input fields:
@@ -118,6 +144,10 @@ See `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` for a worki
 ## Frontend / UI Components
 
 **All user interface MUST be built with components from the MinBZK design system: https://github.com/MinBZK/storybook** (the NDD `ndd-*` web components). Do not hand-roll custom UI elements when a design-system component exists. For the required component hierarchy, nesting rules, and layout patterns, use the `storybook-component-hierarchy` skill.
+
+### Icon names
+
+When an icon has an alias, prefer the **alias name** over the canonical name — e.g. `icon="harvest"` not `wheat`, `icon="info"` not `info-circle`, `icon="new-account"` not `person-circle-badge-plus`. Aliases are more meaningful and stable; the alias list lives in the design system at `src/components/content/icon/icon-aliases.js`.
 
 ### When you can't build what you want with these components
 

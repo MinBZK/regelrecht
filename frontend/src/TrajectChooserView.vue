@@ -1,24 +1,25 @@
 <script setup>
-import { onMounted, ref, watchEffect } from 'vue';
+import { computed, onMounted, watchEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import SearchPopover from './components/SearchPopover.vue';
 import { useTrajects, refreshTrajects } from './composables/useTrajects.js';
-import { registerSearchPopover } from './composables/useAppChrome.js';
+import { lastHomePath, homeTarget } from './composables/useLastVisitedRoute.js';
 
-// Trajectkeuze-pagina — de landing van de kale /editor. De editor vereist
-// een traject; hier kies je een bestaand traject of ga je door naar de
-// aanmaakpagina. Een meegekregen wet (query `law`/`article`, gezet door de
-// redirect van oude no-traject editor-links) opent na de keuze direct.
+// Trajectkeuze-pagina - de landing wanneer de editor (of een traject-scoped
+// bibliotheek) een traject vereist. Hier kies je een bestaand traject of ga je
+// door naar de aanmaakpagina. Een meegekregen wet (query `law`/`article`, gezet
+// door de redirect van oude no-traject editor-links) opent na de keuze direct.
 //
-// Content-only: de chrome (tabs, zoeken, account, traject-menu) leeft in de
-// persistente AppShell. Deze view registreert wel een eigen SearchPopover
-// zodat de zoekknop in de balk hier ook werkt.
+// Top-level route (geen AppShell-child): geen app-chrome. De pagina draagt z'n
+// eigen top-title-bar met terugknop naar de bibliotheek.
 const route = useRoute();
 const router = useRouter();
 const { trajects, loading, error } = useTrajects();
 
-const searchPopoverRef = ref(null);
-registerSearchPopover(searchPopoverRef);
+// Set when the editor (or a traject-scoped view) redirected here because the
+// requested traject is missing/inaccessible - see EditorView's trajectMissing.
+// The ref is unknown at that point (no access = no name lookup), so the banner
+// stays name-agnostic.
+const trajectMissing = computed(() => route.query.melding === 'traject-missing');
 
 // Always refetch on entry: the landing page should reflect trajects
 // created elsewhere (other tab, other device) since the cached
@@ -28,34 +29,38 @@ onMounted(() => {
 });
 
 watchEffect(() => {
-  document.title = 'Kies een traject · RegelRecht';
+  document.title = 'Trajecten · RegelRecht';
 });
 
-// Deze pagina heeft zelf geen wetweergave — een zoekresultaat opent in de
-// bibliotheek.
-function openLawFromSearch(lawId) {
-  router.push({ name: 'library', params: { lawId } });
+// Terug naar waar de user vandaan kwam vóór de trajectkeuze: de bibliotheek, via
+// z'n in sessionStorage bewaarde last-visited-pad. Dat pad overleeft de full-
+// page SSO-redirect die een uitgelogde user naar deze auth-only pagina bracht;
+// een history-pop zou op de login-redirect landen.
+function goBack() {
+  router.push(lastHomePath.value);
 }
 
-function editorTarget(trajectRef) {
-  return {
-    name: 'editor-traject',
-    params: {
-      trajectRef,
-      lawId: route.query.law || undefined,
-      articleNumber: route.query.article || undefined,
-    },
-  };
+// Where picking a traject takes you, from `sectie` (default editor): the
+// library or editor traject-scoped route, carrying the law/article the user was
+// heading for so they land on their intended destination.
+function trajectTarget(trajectRef) {
+  const lawId = route.query.law || undefined;
+  const articleNumber = route.query.article || undefined;
+  // `sectie=library` came from the Home section; editor otherwise. Home splits
+  // into traject-home / library-traject on whether a law is carried.
+  return route.query.sectie === 'library'
+    ? homeTarget({ trajectRef, lawId, articleNumber })
+    : { name: 'editor-traject', params: { trajectRef, lawId, articleNumber } };
 }
 
 function selectTraject(t) {
   // `t.ref` serialises to null when the backend builds a TrajectSummary
-  // without fill_ref() — refuse to navigate (same guard as TrajectMenu).
+  // without fill_ref() - refuse to navigate (same guard as TrajectMenu).
   if (!t.ref) {
     console.warn('TrajectChooser: traject has no ref', t);
     return;
   }
-  router.push(editorTarget(t.ref));
+  router.push(trajectTarget(t.ref));
 }
 
 function openCreate() {
@@ -67,63 +72,78 @@ function trajectSupportingText(t) {
   const parts = [];
   if (t.status === 'afgerond') parts.push('Afgerond');
   if (t.description) parts.push(t.description);
-  return parts.join(' — ') || undefined;
+  return parts.join(' - ') || undefined;
 }
 </script>
 
 <template>
-  <nldd-page sticky-header>
-    <nldd-top-title-bar
-      slot="header"
-      text="Kies een traject"
-      collapse-anchor="kies-traject-titel"
-    ></nldd-top-title-bar>
+  <nldd-app-view>
+    <nldd-page sticky-header>
+      <nldd-top-title-bar
+        slot="header"
+        text="Trajecten"
+        back-text="Home"
+        collapse-anchor="kies-traject-titel"
+        @back="goBack"
+      ></nldd-top-title-bar>
 
-    <nldd-simple-section width="800px">
-      <nldd-title id="kies-traject-titel" size="3"><h3>Kies een traject</h3></nldd-title>
-      <nldd-spacer size="16"></nldd-spacer>
-      <nldd-activity-indicator v-if="loading" text="Trajecten laden" show-text></nldd-activity-indicator>
-      <nldd-inline-dialog
-        v-else-if="error"
-        variant="alert"
-        text="Trajecten zijn niet geladen"
-        supporting-text="De gegevens konden niet worden opgehaald."
-      >
-        <nldd-button slot="actions" variant="primary" text="Probeer opnieuw" @click="refreshTrajects()"></nldd-button>
-      </nldd-inline-dialog>
-      <!-- "Nieuw traject" is een gewoon list item onderaan, zodat de
-           interactie identiek is mét bestaande trajecten (onderaan de
-           lijst) en zonder (als enige item). -->
-      <nldd-list v-else variant="box">
-        <nldd-list-item
-          v-for="t in trajects"
-          :key="t.id"
-          size="md"
-          button
-          @click="selectTraject(t)"
+      <nldd-simple-section width="800px">
+        <nldd-title id="kies-traject-titel" size="3"><h3>Trajecten</h3></nldd-title>
+        <nldd-spacer size="16"></nldd-spacer>
+        <template v-if="trajectMissing">
+          <nldd-banner
+            variant="warning"
+            text="Het traject dat je probeerde te openen bestaat niet, niet meer of je hebt geen toegang"
+            supporting-text="Kies een ander traject of maak een nieuw traject aan."
+          ></nldd-banner>
+          <nldd-spacer size="16"></nldd-spacer>
+        </template>
+        <nldd-activity-indicator v-if="loading" text="Trajecten laden" show-text></nldd-activity-indicator>
+        <nldd-inline-dialog
+          v-else-if="error"
+          variant="alert"
+          text="Trajecten zijn niet geladen"
+          supporting-text="De gegevens konden niet worden opgehaald."
         >
-          <nldd-text-cell :text="t.name" :supporting-text="trajectSupportingText(t)"></nldd-text-cell>
-          <nldd-spacer-cell size="8"></nldd-spacer-cell>
-          <nldd-icon-cell size="20">
-            <nldd-icon name="chevron-right"></nldd-icon>
-          </nldd-icon-cell>
-        </nldd-list-item>
-        <nldd-list-item size="md"
-          button
-          @click="openCreate"
-        >
-          <nldd-text-cell text="Nieuw traject"></nldd-text-cell>
-          <nldd-spacer-cell size="8"></nldd-spacer-cell>
-          <nldd-icon-cell size="20">
-            <nldd-icon name="chevron-right"></nldd-icon>
-          </nldd-icon-cell>
-        </nldd-list-item>
-      </nldd-list>
-    </nldd-simple-section>
-  </nldd-page>
+          <nldd-button slot="actions" variant="primary" text="Probeer opnieuw" @click="refreshTrajects()"></nldd-button>
+        </nldd-inline-dialog>
+        <!-- "Nieuw traject" is een gewoon list item onderaan, zodat de
+             interactie identiek is mét bestaande trajecten (onderaan de
+             lijst) en zonder (als enige item). -->
+        <nldd-list v-else variant="box" arrow-navigation>
+          <nldd-list-item
+            v-for="t in trajects"
+            :key="t.id"
+            size="md"
+            button
+            @click="selectTraject(t)"
+          >
+            <nldd-spacer-cell slot="start" size="12"></nldd-spacer-cell>
+            <nldd-icon-cell slot="start" size="20"><nldd-icon name="traject"></nldd-icon></nldd-icon-cell>
+            <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+            <nldd-text-cell :text="t.name" :supporting-text="trajectSupportingText(t)"></nldd-text-cell>
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+            <nldd-icon-cell size="20">
+              <nldd-icon name="chevron-right"></nldd-icon>
+            </nldd-icon-cell>
+          </nldd-list-item>
+          <nldd-list-item size="md"
+            button
+            @click="openCreate"
+          >
+            <nldd-spacer-cell slot="start" size="12"></nldd-spacer-cell>
+            <nldd-icon-cell slot="start" size="20"><nldd-icon name="plus"></nldd-icon></nldd-icon-cell>
+            <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+            <nldd-text-cell text="Nieuw traject"></nldd-text-cell>
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+            <nldd-icon-cell size="20">
+              <nldd-icon name="chevron-right"></nldd-icon>
+            </nldd-icon-cell>
+          </nldd-list-item>
+        </nldd-list>
+      </nldd-simple-section>
 
-  <SearchPopover
-    ref="searchPopoverRef"
-    @select-law="openLawFromSearch"
-  />
+      <nldd-page-footer slot="footer"></nldd-page-footer>
+    </nldd-page>
+  </nldd-app-view>
 </template>

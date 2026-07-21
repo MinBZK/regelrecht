@@ -1,21 +1,17 @@
 # syntax=docker/dockerfile:1
-# Stage 1: Build frontend
-FROM node:26-alpine@sha256:3ad34ca6292aec4a91d8ddeb9229e29d9c2f689efd0dd242860889ac71842eba AS frontend-builder
-WORKDIR /app
-COPY packages/admin/frontend-src/package.json packages/admin/frontend-src/package-lock.json* packages/admin/frontend-src/.npmrc ./
-RUN npm ci
-COPY packages/admin/frontend-src/ .
-# vite outDir is '../static' which resolves to /static from /app
-RUN npm run build
+# API-only image: the harvester-admin binary is a standalone harvest API. Its
+# dashboard UI now lives in the editor (frontend/src/harvester), which reaches
+# this API through the editor-api /api/harvest-admin/* proxy — so there is no
+# frontend build stage and no static assets here.
 
-# Stage 2: Chef base
+# Stage 1: Chef base
 # Rust version: keep in sync with rust-toolchain.toml (source of truth).
-FROM rust:1.96-alpine@sha256:2ea3db105d38fdfa4e31f366674287fcaa828087e2fe3973befdc537f2d443b1 AS chef
+FROM rust:1.96-alpine@sha256:a41f7740f8b45d45795624eec13a8b42263cc700f19f7e4e86e04d3dda08a479 AS chef
 RUN apk add --no-cache musl-dev
 RUN cargo install cargo-chef --locked
 WORKDIR /build
 
-# Stage 3: Plan dependencies
+# Stage 2: Plan dependencies
 FROM chef AS planner
 COPY packages/Cargo.lock packages/Cargo.toml ./
 # Trim workspace members to those actually built by this Dockerfile so chef
@@ -36,7 +32,7 @@ COPY packages/harvester/ harvester/
 COPY packages/shared/ shared/
 RUN cargo chef prepare --recipe-path recipe.json
 
-# Stage 4: Build Rust binary (deps cached separately from source)
+# Stage 3: Build Rust binary (deps cached separately from source)
 FROM chef AS builder
 COPY packages/Cargo.lock ./
 COPY --from=planner /build/Cargo.toml ./Cargo.toml
@@ -55,21 +51,25 @@ COPY packages/law-model/ law-model/
 COPY packages/pipeline/ pipeline/
 COPY packages/harvester/ harvester/
 COPY packages/shared/ shared/
+# regelrecht-engine (validate feature, pulled in by pipeline's law_convert)
+# embeds the JSON schemas via `include_str!("../../../schema/...")`, relative
+# to engine/src/. The crate lives at /build/engine here (not
+# /build/packages/engine), so that literal resolves to /schema/... — same
+# layout trick as frontend/Dockerfile.
+COPY schema/ /schema/
 # Invalidate cargo's fingerprint cache so it recompiles with real source
 # instead of using the stub binary from cargo-chef cook.
 RUN find . -name '*.rs' -exec touch {} + && \
     cargo build --release --bin regelrecht-admin
 
-# Stage 5: Runtime
-FROM alpine:3.24@sha256:a2d49ea686c2adfe3c992e47dc3b5e7fa6e6b5055609400dc2acaeb241c829f4
+# Stage 4: Runtime
+FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 RUN apk add --no-cache ca-certificates && \
     addgroup -S app && adduser -S app -G app
 
 COPY --from=builder /build/target/release/regelrecht-admin /usr/local/bin/
-COPY --from=frontend-builder /static /app/static
 
 WORKDIR /app
-ENV STATIC_DIR=/app/static
 USER app
 EXPOSE 8000
 CMD ["regelrecht-admin"]

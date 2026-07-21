@@ -53,33 +53,3 @@
 html {
   color-scheme: light;
 }
-
-/* --- Layout utility ---
-   Prevents long content (wide tables, code blocks) inside the right column
-   of nldd-one-third-two-thirds-section from forcing the column wider than
-   its share. Used on docs and RFC slug pages. */
-.rr-min-width-0 {
-  min-width: 0;
-}
-
-/* --- FAQ masonry spacing ---
-   The FAQ uses nldd-container layout="columns" (CSS multicol) so cards keep
-   their natural height instead of stretching to row height like layout="grid".
-   multicol's `gap` only sets the horizontal column-gap; it has no row-gap.
-   A stand-alone nldd-spacer between cards can't fix this: at a column break it
-   orphans to the top of the next column, leaving that column starting low. A
-   bottom margin belongs to the card itself, so it never breaks away. Horizontal
-   spacing stays owned by the container's `gap`. */
-.rr-faq-card {
-  margin-bottom: 40px;
-}
-
-/* --- Tag row ---
-   NLDD has no wrap-row layout component (nldd-container only does padding),
-   so a row of nldd-tags renders inline with bare word-spacing between them.
-   Gap uses the design-system space token so it tracks the token scale. */
-.rr-tag-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--primitives-space-8);
-}

@@ -1,4 +1,4 @@
-/** Branch/fork colors — drives node fill color */
+/** Branch/fork colors - drives node fill color */
 export const branchColors = {
   main: 'var(--color-branch-main)',
   develop: 'var(--color-branch-develop)',
@@ -18,7 +18,7 @@ export const typeColors = {
   release: 'var(--color-release)',
 };
 
-/** Legend entries — one per branch type */
+/** Legend entries - one per branch type */
 export const legend = [
   { label: 'Corpus Juris (main)', color: 'var(--color-branch-main)' },
   { label: 'Wetgevingskalender (develop)', color: 'var(--color-branch-develop)' },

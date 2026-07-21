@@ -20,7 +20,7 @@ serde_yaml_ng.workspace = true
 regelrecht-law-model = { path = "../law-model" }
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"], optional = true }
 serde_json = { workspace = true, optional = true }
-jsonschema = { version = "0.46", optional = true }
+jsonschema = { version = "0.47", optional = true }
 base64 = { workspace = true, optional = true }
 flate2 = { version = "1", optional = true }
 tar = { version = "0.4", optional = true }

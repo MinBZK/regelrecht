@@ -27,11 +27,11 @@ const props = defineProps({
   // enters trace-stepping mode: step list + detail panel appear below
   // the graph and nodes/edges get .trace-active/.trace-visited classes.
   result: { type: Object, default: null },
-  // The scenario's entry output name — pins the "▶ start" marker to the
+  // The scenario's entry output name - pins the "▶ start" marker to the
   // matching output leaf on the root law.
   outputName: { type: String, default: null },
   expectations: { type: Object, default: () => ({}) },
-  /** Active traject ref — routes dependency reads through the
+  /** Active traject ref - routes dependency reads through the
    *  traject's backend so the graph mirrors what the editor pane shows. */
   trajectRef: { type: String, default: null },
 });
@@ -83,7 +83,7 @@ function stepIsVisible(step) {
 
 // Filter-aware nav: when the user has the "Met highlights" filter on,
 // Vorige/Volgende must skip context-only steps that aren't rendered in
-// the list — otherwise the counter advances onto a row that the user
+// the list - otherwise the counter advances onto a row that the user
 // can't see and the step list looks frozen.
 function nextVisible() {
   for (let i = currentStepIdx.value + 1; i < steps.value.length; i++) {
@@ -123,7 +123,7 @@ const selectedRoot = ref(null);
 // Laws the user hid via the close button (visible but excluded).
 const hiddenLaws = ref(new Set());
 
-// Reset local UI state when the underlying law changes — the hidden set /
+// Reset local UI state when the underlying law changes - the hidden set /
 // selection shouldn't bleed into an unrelated graph.
 watch(() => props.lawId, () => {
   selectedRoot.value = null;
@@ -173,7 +173,7 @@ function handleNodeClick({ node, event }) {
   // A11Y LIMITATION (tracked for PR3 polish): the close button on a root
   // law node is detected here by DOM sniffing the click target. Keyboard
   // activation (Enter/Space on a focused button) dispatches a synthetic
-  // `click` that bubbles normally, so this path works for keyboards too —
+  // `click` that bubbles normally, so this path works for keyboards too -
   // but the close button has no independent activation path if Vue Flow
   // ever stops forwarding inner clicks via `node-click`. Wiring a proper
   // data-callback from the custom node component is deferred to PR3.
@@ -190,14 +190,14 @@ function handleNodeClick({ node, event }) {
 
 // Vue Flow's MiniMap takes a flat colour string (not a CSS variable),
 // so the palette token has to be resolved through getComputedStyle.
-// That call is one-shot and untracked — wrapping it in a computed
+// That call is one-shot and untracked - wrapping it in a computed
 // would need a fragile "touch colorScheme to register a dep" trick.
 // Instead, push the resolved value into a plain ref from a watcher:
 // the colorScheme dependency is now visible in the watch() argument
 // list, so a future cleanup can't accidentally drop it.
 //
 // OS-level scheme changes while colorScheme === 'auto' aren't tracked
-// (the composable doesn't expose that). Acceptable — the marker is
+// (the composable doesn't expose that). Acceptable - the marker is
 // decorative and the next graph re-render picks the new value up.
 const { colorScheme } = useColorScheme();
 const miniMapMarkerColor = ref('#ccc');
@@ -254,7 +254,7 @@ const currentStep = computed(() =>
         </VueFlow>
       </div>
 
-      <!-- Trace stepper — shown after a scenario runs -->
+      <!-- Trace stepper - shown after a scenario runs -->
       <div v-if="hasTrace" class="law-graph-trace">
         <div class="law-graph-trace__toolbar">
           <button
@@ -316,7 +316,7 @@ const currentStep = computed(() =>
 .law-graph-view {
   /* Fill the pane. nldd-page wraps slotted content in a flex column,
    * so flex-grow + min-height: 0 lets us claim every pixel the parent
-   * gives us — works equally inside a side pane and inside a bottom
+   * gives us - works equally inside a side pane and inside a bottom
    * sheet, no chrome-height arithmetic needed. */
   display: flex;
   flex-direction: column;

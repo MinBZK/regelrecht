@@ -22,7 +22,7 @@
  * effects below need only Chrome 111+/FF 113+/Safari 16.2+, so they're
  * strictly inside that floor. On the rare browser old enough to skip
  * the glow but still load this stylesheet, the trace highlight outline
- * + background remain — the missing shadow degrades cleanly.
+ * + background remain - the missing shadow degrades cleanly.
  */
 
 .vue-flow .root {
@@ -32,7 +32,7 @@
   color: var(--semantics-content-color);
 }
 
-/* Service colors — one per regulatory_layer index (see LAYER_COLOR_INDEX
+/* Service colors - one per regulatory_layer index (see LAYER_COLOR_INDEX
  * in useLawGraph.js). Each hue maps to a NLDD palette family; the -700
  * border + -100 background combo auto-flips for dark mode through the
  * baked-in light-dark() in palettes.generated.css. */
@@ -144,7 +144,7 @@
   outline-offset: 1px !important;
 }
 
-/* Start point — sticky dashed blue outline + "▶ start" label on the
+/* Start point - sticky dashed blue outline + "▶ start" label on the
  * scenario's root law and initial output leaf. Stays visible across
  * all steps so users can always see where the trace began. */
 .vue-flow__node.trace-start {
@@ -159,7 +159,7 @@
   left: -4px;
   background: var(--primitives-color-lintblauw-600);
   /* Use neutral-0 so the label stays white-on-blue in light mode and
-   * picks up the auto-flipped near-black on light-blue in dark mode —
+   * picks up the auto-flipped near-black on light-blue in dark mode -
    * both retain comfortable contrast against the auto-adjusted bg. */
   color: var(--primitives-color-neutral-0);
   font-size: 10px;

@@ -26,8 +26,15 @@ updates:
           - patch
 
 
+  # Single entry for the root npm workspace. frontend, frontend-lawmaking and
+  # packages/frontend-shared are workspace members sharing one root
+  # package-lock.json (since #860). Dependabot must target the root directory so
+  # it updates the member package.json *and* the root lockfile in sync;
+  # targeting a member directory bumps only its package.json and leaves the root
+  # lockfile out of sync, breaking `npm ci`. (/docs keeps its own lockfile and
+  # has its own entry below.)
   - package-ecosystem: npm
-    directory: /frontend
+    directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
@@ -66,23 +73,6 @@ updates:
           - version-update:semver-major
           - version-update:semver-minor
 
-
-  - package-ecosystem: npm
-    directory: /packages/admin/frontend-src
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 10
-    labels:
-      - dependencies
-      - javascript
-    groups:
-      npm-minor-patch:
-        update-types:
-          - minor
-          - patch
-    ignore:
-      # Our own design package — bump manually, not via Dependabot
-      - dependency-name: '@nldd/design-system'
 
   - package-ecosystem: docker
     directory: /packages/admin
@@ -125,23 +115,6 @@ updates:
 
   - package-ecosystem: npm
     directory: /docs
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 10
-    labels:
-      - dependencies
-      - javascript
-    groups:
-      npm-minor-patch:
-        update-types:
-          - minor
-          - patch
-    ignore:
-      # Our own design package — bump manually, not via Dependabot
-      - dependency-name: '@nldd/design-system'
-
-  - package-ecosystem: npm
-    directory: /frontend-lawmaking
     schedule:
       interval: weekly
     open-pull-requests-limit: 10

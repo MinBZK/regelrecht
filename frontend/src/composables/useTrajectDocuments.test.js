@@ -46,6 +46,36 @@ describe('useTrajectDocuments', () => {
     ]);
   });
 
+  it('uploads a document as multipart and refreshes the list', async () => {
+    const calls = [];
+    globalThis.fetch = vi.fn().mockImplementation(async (url, opts) => {
+      calls.push({ url, opts: opts ?? {} });
+      if (opts?.method === 'POST') {
+        return res({ status: 202, json: { target_path: 'rapport.md' } });
+      }
+      return res({ json: { documents: [] } });
+    });
+
+    const trajectRef = ref('mig-1a2b3c4d');
+    const { uploadDocument } = useTrajectDocuments(trajectRef);
+    const file = new File([new Uint8Array([1, 2, 3])], 'Rapport.pdf', {
+      type: 'application/pdf',
+    });
+    const result = await uploadDocument(file);
+
+    expect(result).toEqual({ ok: true, targetPath: 'rapport.md' });
+    const post = calls.find((c) => c.opts.method === 'POST');
+    expect(post.url).toBe('/api/trajects/mig-1a2b3c4d/corpus/documents/upload');
+    expect(post.opts.body).toBeInstanceOf(FormData);
+    expect(post.opts.body.get('file')).toBeInstanceOf(File);
+    // Content-Type must NOT be set - the browser adds the multipart boundary.
+    expect(post.opts.headers).toBeUndefined();
+    // A successful upload refreshes the document list (GET after the POST).
+    expect(
+      calls.some((c) => c.url.endsWith('/corpus/documents') && c.opts.method !== 'POST'),
+    ).toBe(true);
+  });
+
   it('captures the ETag on open and sends it back as If-Match on save', async () => {
     const trajectRef = ref('mig-1a2b3c4d');
     // 1st call: openDocument GET.
@@ -122,5 +152,64 @@ describe('useTrajectDocuments', () => {
     expect(url).toBe(
       '/api/trajects/mig-1a2b3c4d/corpus/documents/mvt/concept-v2.md',
     );
+  });
+
+  it('dropDraft discards local edits by reverting the body to the saved baseline', async () => {
+    const trajectRef = ref('mig-1a2b3c4d');
+    globalThis.fetch = vi.fn().mockImplementation(async (url) => {
+      if (url.endsWith('/documents')) return res({ json: { documents: [] } });
+      return res({ body: '# Server', etag: '"v1"' });
+    });
+
+    const docs = useTrajectDocuments(trajectRef);
+    await docs.openDocument('notes.md');
+    expect(docs.currentBody.value).toBe('# Server');
+
+    // Simulate an edit that diverges from the saved (server) baseline.
+    docs.currentBody.value = '# Local edit';
+    docs.dropDraft();
+
+    // The edit is reverted, not just the localStorage draft cleared — so the
+    // document is clean again and won't re-trip the leave-guard on reopen
+    // ("Negeer wijzigingen en sluit" truly discards).
+    expect(docs.currentBody.value).toBe('# Server');
+    expect(docs.savedBody.value).toBe('# Server');
+    expect(docs.docError.value).toBeNull();
+  });
+
+  it('dropDraft clears an orphan draft for a document that does not exist on the server', async () => {
+    // Mirrors a rejected document-review proposal: the target document is
+    // never pushed (404), a proposal/edit gets typed into it and debounced
+    // to localStorage, and "Verwerpen" must not leave that draft behind -
+    // reopening the (still-nonexistent) document later would otherwise
+    // resurrect it as a 'draft-present' notice forever.
+    vi.useFakeTimers();
+    try {
+      const trajectRef = ref('mig-1a2b3c4d');
+      globalThis.fetch = vi.fn().mockImplementation(async (url) => {
+        if (url.endsWith('/documents')) return res({ json: { documents: [] } });
+        return res({ ok: false, status: 404 });
+      });
+
+      const docs = useTrajectDocuments(trajectRef);
+      await docs.openDocument('proposal.md');
+      expect(docs.docError.value?.kind).toBe('not-found');
+
+      docs.currentBody.value = '# Voorstel';
+      await vi.advanceTimersByTimeAsync(600);
+      expect(
+        localStorage.getItem('regelrecht-doc-draft:mig-1a2b3c4d:proposal.md'),
+      ).toBe('# Voorstel');
+
+      docs.dropDraft();
+
+      expect(
+        localStorage.getItem('regelrecht-doc-draft:mig-1a2b3c4d:proposal.md'),
+      ).toBeNull();
+      expect(docs.currentBody.value).toBe('');
+      expect(docs.docError.value).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

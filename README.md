@@ -115,8 +115,8 @@ Keycloak, so it needs `.env.sso-local` (copy `.env.sso-local.example`). It and
 `just dev` are mutually exclusive (they share `.dev-pids` and ports) — run one at
 a time.
 
-Vite ports default to `7300/7400/7500` (overridable via `EDITOR_PORT` /
-`ADMIN_FE_PORT` / `LAWMAKING_PORT`). When a native backend can't reach Postgres
+Vite ports default to `7300/7500` (overridable via `EDITOR_PORT` /
+`LAWMAKING_PORT`). When a native backend can't reach Postgres
 on `localhost` (e.g. a WSL2/Docker-Desktop dev container, where Postgres is
 published on the Docker host), point it at `host.docker.internal`: for the
 admin / `just dev` paths set `DB_HOST=host.docker.internal` in `.env`; for the

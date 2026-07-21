@@ -1,82 +1,125 @@
 <template>
-  <rr-page>
-    <div class="app">
-      <!-- Sticky Header -->
-      <header class="app__header">
-        <div class="app__header-content">
-          <img
-            src="/assets/rijkswapen.svg"
-            alt="Rijkswapen"
-            class="app__logo"
+  <nldd-app-view>
+    <nldd-page sticky-header>
+      <!-- Sticky header: branding + playback/zoom/view controls -->
+      <nldd-container slot="header" padding="8">
+        <nldd-toolbar size="md">
+          <nldd-toolbar-item slot="start">
+            <img
+              src="/assets/rijkswapen.svg"
+              alt="Rijkswapen"
+              class="app-logo"
+            />
+          </nldd-toolbar-item>
+          <nldd-toolbar-title
+            slot="start"
+            text="Wetgevingsproces"
+            supporting-text="Van wetsvoorstel tot geldend recht - het wetgevingsproces als GitFlow"
+          ></nldd-toolbar-title>
+
+          <!-- Playback: step navigation -->
+          <nldd-toolbar-item slot="end">
+            <nldd-icon-button
+              icon="chevron-double-left"
+              text="Naar begin"
+              :disabled="activeStep <= 0 || undefined"
+              @click="resetSteps"
+            ></nldd-icon-button>
+          </nldd-toolbar-item>
+          <nldd-toolbar-item slot="end">
+            <nldd-icon-button
+              icon="chevron-left"
+              text="Stap terug"
+              :disabled="activeStep <= 0 || undefined"
+              @click="stepBack"
+            ></nldd-icon-button>
+          </nldd-toolbar-item>
+          <nldd-toolbar-item slot="end">
+            <nldd-icon-button
+              icon="chevron-right"
+              text="Stap vooruit"
+              :disabled="activeStep >= maxStep || undefined"
+              @click="stepForward"
+            ></nldd-icon-button>
+          </nldd-toolbar-item>
+          <nldd-toolbar-item slot="end">
+            <nldd-icon-button
+              icon="chevron-double-right"
+              text="Naar einde"
+              :disabled="activeStep >= maxStep || undefined"
+              @click="goToEnd"
+            ></nldd-icon-button>
+          </nldd-toolbar-item>
+
+          <!-- Playback: play/pause. The design system has no media-transport
+               glyph, so this is a labelled button; `isPlaying` is the single
+               source of truth (a plain button keeps no internal toggle state),
+               and the filled `primary` variant signals the playing state. -->
+          <nldd-toolbar-item slot="end">
+            <nldd-button
+              :text="isPlaying ? 'Pauzeren' : 'Afspelen'"
+              :variant="isPlaying ? 'primary' : 'secondary'"
+              @click="togglePlay"
+            ></nldd-button>
+          </nldd-toolbar-item>
+
+          <nldd-toolbar-item slot="end">
+            <nldd-tag :text="`${activeStep + 1} / ${maxStep + 1}`"></nldd-tag>
+          </nldd-toolbar-item>
+
+          <!-- Zoom -->
+          <nldd-toolbar-item slot="end">
+            <nldd-icon-button icon="plus" text="Zoom in" @click="diagramRef?.zoomIn()"></nldd-icon-button>
+          </nldd-toolbar-item>
+          <nldd-toolbar-item slot="end">
+            <nldd-icon-button icon="minus" text="Zoom uit" @click="diagramRef?.zoomOut()"></nldd-icon-button>
+          </nldd-toolbar-item>
+          <nldd-toolbar-item slot="end">
+            <nldd-icon-button icon="arrow-2-counter-clockwise" text="Centreren" @click="diagramRef?.resetView()"></nldd-icon-button>
+          </nldd-toolbar-item>
+
+          <!-- View mode -->
+          <nldd-toolbar-item slot="end">
+            <nldd-segmented-control
+              size="md"
+              width="fit-content"
+              :value="viewMode"
+              @change="onViewModeChange"
+            >
+              <nldd-segmented-control-item value="simple" text="Eenvoudig"></nldd-segmented-control-item>
+              <nldd-segmented-control-item value="advanced" text="Uitgebreid"></nldd-segmented-control-item>
+              <nldd-segmented-control-item value="woo" text="Wet open overheid"></nldd-segmented-control-item>
+            </nldd-segmented-control>
+          </nldd-toolbar-item>
+        </nldd-toolbar>
+      </nldd-container>
+
+      <!-- Main content: the hand-rolled SVG GitFlow canvas (documented design-
+           system exception - no nldd equivalent for a graph canvas). -->
+      <nldd-full-bleed-section>
+        <div class="diagram-area" @click="selectedStageId = null">
+          <FlowDiagram
+            ref="diagramRef"
+            :stages="currentStages"
+            :branches="currentBranches"
+            :connections="currentConnections"
+            :phases="currentPhases"
+            :timeline="currentTimeline"
+            :active-step="activeStep"
+            :selected-id="selectedStageId"
+            @select-stage="onSelectStage"
           />
-          <div class="app__header-text">
-            <h1 class="app__title">Wetgevingsproces</h1>
-            <p class="app__subtitle">Van wetsvoorstel tot geldend recht — het wetgevingsproces als GitFlow</p>
-          </div>
-
-          <!-- Playback controls -->
-          <div class="header-controls">
-            <button class="header-btn" @click="resetSteps" :disabled="activeStep <= 0" title="Begin" aria-label="Terug naar begin">&#x23EE;</button>
-            <button class="header-btn" @click="stepBack" :disabled="activeStep <= 0" title="Vorige" aria-label="Stap terug">&#x258F;&#x25C0;</button>
-            <button class="header-btn" :class="{ 'header-btn--playing': isPlaying }" @click="togglePlay" :title="isPlaying ? 'Pauzeren' : 'Afspelen'" :aria-label="isPlaying ? 'Pauzeren' : 'Afspelen'">{{ isPlaying ? '⏸' : '▶' }}</button>
-            <button class="header-btn" @click="stepForward" :disabled="activeStep >= maxStep" title="Volgende" aria-label="Stap vooruit">&#x25B6;&#x258F;</button>
-            <button class="header-btn" @click="goToEnd" :disabled="activeStep >= maxStep" title="Einde" aria-label="Naar einde">&#x23ED;</button>
-            <span class="header-controls__step">{{ activeStep + 1 }}/{{ maxStep + 1 }}</span>
-          </div>
-
-          <!-- Zoom controls -->
-          <div class="header-controls">
-            <button class="header-btn" @click="diagramRef?.zoomIn()" title="Zoom in">+</button>
-            <button class="header-btn" @click="diagramRef?.zoomOut()" title="Zoom uit">&minus;</button>
-            <button class="header-btn" @click="diagramRef?.resetView()" title="Centreren">&#x27F2;</button>
-          </div>
-
-          <!-- View toggle -->
-          <div class="app__toggle">
-            <div class="toggle-bar">
-              <button
-                class="toggle-bar__item"
-                :class="{ 'toggle-bar__item--active': viewMode === 'simple' }"
-                @click="setViewMode('simple')"
-              >Eenvoudig</button>
-              <button
-                class="toggle-bar__item"
-                :class="{ 'toggle-bar__item--active': viewMode === 'advanced' }"
-                @click="setViewMode('advanced')"
-              >Uitgebreid</button>
-              <button
-                class="toggle-bar__item"
-                :class="{ 'toggle-bar__item--active': viewMode === 'woo' }"
-                @click="setViewMode('woo')"
-              >Wet open overheid</button>
-            </div>
-          </div>
+          <FlowLegend />
         </div>
-      </header>
+      </nldd-full-bleed-section>
+    </nldd-page>
 
-      <!-- Main content area -->
-      <div class="app__content" @click="selectedStageId = null">
-        <FlowDiagram
-          ref="diagramRef"
-          :stages="currentStages"
-          :branches="currentBranches"
-          :connections="currentConnections"
-          :phases="currentPhases"
-          :timeline="currentTimeline"
-          :active-step="activeStep"
-          :selected-id="selectedStageId"
-          @select-stage="onSelectStage"
-        />
-        <FlowLegend />
-      </div>
-
-      <!-- Detail panel -->
-      <StageDetail
-        :stage="selectedStage"
-        @close="selectedStageId = null"
-      />
-    </div>
-  </rr-page>
+    <!-- Detail panel as a design-system sheet -->
+    <StageDetail
+      :stage="selectedStage"
+      @close="selectedStageId = null"
+    />
+  </nldd-app-view>
 </template>
 
 <script setup>
@@ -130,6 +173,13 @@ function setViewMode(mode) {
   viewMode.value = mode;
   activeStep.value = 0;
   selectedStageId.value = null;
+}
+
+// nldd-segmented-control emits a `change` CustomEvent carrying the selected
+// item value in `detail.value`.
+function onViewModeChange(e) {
+  const mode = e.detail?.value;
+  if (mode && mode !== viewMode.value) setViewMode(mode);
 }
 
 const selectedStage = computed(() => {
@@ -204,142 +254,17 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.app {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 100vh;
-}
-
-.app__header {
-  background: var(--color-primary);
-  color: white;
-  padding: var(--spacing-2) var(--spacing-6);
-  flex-shrink: 0;
-  position: sticky;
-  top: 0;
-  z-index: 20;
-}
-
-.app__header-content {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-4);
-  max-width: 1600px;
-  margin: 0 auto;
-}
-
-.app__logo {
-  height: 36px;
+/* Brand logo sizing inside the design-system toolbar (the design system has no
+   logo slot for this app-level mark). */
+.app-logo {
+  height: 32px;
   width: auto;
-  filter: brightness(0) invert(1);
+  display: block;
 }
 
-.app__header-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.app__title {
-  font-size: var(--font-size-lg);
-  font-weight: 700;
-  margin: 0;
-  line-height: var(--line-height-tight);
-}
-
-.app__subtitle {
-  font-size: var(--font-size-xs);
-  margin: 1px 0 0;
-  opacity: 0.75;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Header controls (playback + zoom) */
-.header-controls {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-.header-btn {
-  width: 30px;
-  height: 30px;
-  border: none;
-  border-radius: var(--border-radius-sm);
-  background: transparent;
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background var(--transition-fast);
-}
-
-.header-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.15);
-  color: white;
-}
-
-.header-btn:disabled {
-  opacity: 0.3;
-  cursor: default;
-}
-
-.header-btn--playing {
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-}
-
-.header-controls__step {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.6);
-  min-width: 40px;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
-/* View toggle */
-.app__toggle {
-  flex-shrink: 0;
-}
-
-.toggle-bar {
-  display: flex;
-  border-radius: var(--border-radius-md);
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-}
-
-.toggle-bar__item {
-  padding: 5px 14px;
-  font-size: var(--font-size-xs);
-  font-family: var(--font-family);
-  font-weight: 400;
-  border: none;
-  cursor: pointer;
-  color: rgba(255, 255, 255, 0.8);
-  background: transparent;
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-
-.toggle-bar__item:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.toggle-bar__item--active {
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-  font-weight: 700;
-}
-
-.app__content {
-  flex: 1;
-  overflow: auto;
+/* Centre the SVG canvas (the documented design-system exception) inside the
+   full-bleed section. */
+.diagram-area {
   display: flex;
   flex-direction: column;
   align-items: center;

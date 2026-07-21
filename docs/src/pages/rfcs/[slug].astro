@@ -3,7 +3,7 @@ import { getCollection, render } from 'astro:content';
 import Base from '~/layouts/Base.astro';
 import DocsOutline from '~/components/DocsOutline.astro';
 import EditLink from '~/components/EditLink.astro';
-import { rfcRelations } from '~/lib/rfcs';
+import { rfcStatusColor, rfcRelations } from '~/lib/rfcs';
 
 export async function getStaticPaths() {
   const rfcs = await getCollection('rfcs');
@@ -20,8 +20,11 @@ const { Content, headings } = await render(entry);
 const pathname = '/rfcs/' + entry.id.replace(/\.md$/, '');
 
 // RFC metadata from frontmatter. Author(s) and date render as an nldd-byline
-// under the title; status, implementation and the cross-references render as
-// plain rich-text lines at the top of the article body.
+// under the title; status and implementation render as side-by-side nldd-tags
+// (colour via the shared rfcStatusColor so it cannot drift from the index),
+// with the cross-references as a rich-text line beneath. No bespoke CSS — the
+// tag row reuses the index's nldd-container wrap layout, and it sits outside
+// the content rich-text so the wrap flow isn't flattened by prose typography.
 const { status, implementation, date, authors } = entry.data;
 // Forward (Depends on) and reverse (Required by) links, resolved against the
 // real RFC set in rfcs.ts so back-references cannot drift from the forward ones.
@@ -44,7 +47,8 @@ const title = pageTitle + ' · RegelRecht';
 ---
 
 <Base lang="en" kind="docs" pathname={pathname} title={title}>
-  <nldd-one-third-two-thirds-section
+  <nldd-sidebar-section
+    no-collapse
     sm-padding-bottom="32"
     md-padding-bottom="64"
     lg-padding-bottom="96"
@@ -53,39 +57,62 @@ const title = pageTitle + ' · RegelRecht';
       <nldd-title size="1">
         <h1>{pageTitle}</h1>
       </nldd-title>
-      {(authors?.length || date) && (
+      {status && (
         <>
           <nldd-spacer size="4" />
+          <nldd-container layout="wrap" gap="4">
+            <nldd-tag color={rfcStatusColor(status)} size="md">{status}</nldd-tag>
+            {implementation && (
+              <nldd-tag color="neutral" size="md">{implementation}</nldd-tag>
+            )}
+          </nldd-container>
+        </>
+      )}
+      {(authors?.length || date) && (
+        <>
+          <nldd-spacer size="6" />
           <nldd-byline text={authors?.join(', ')} supporting-text={date}></nldd-byline>
         </>
       )}
     </div>
-    <div slot="left">
+    <nldd-container slot="sidebar" padding="16" padding-top="8">
       <DocsOutline headings={headings} />
-      <nldd-spacer size="24" sm-size="16" />
+      <nldd-spacer size="16" />
       <EditLink filePath={entry.filePath} />
-    </div>
-    <nldd-rich-text slot="right" data-edit-base={editBase}>
-      {status && (
-        <p>
-          Status: {status}{implementation && `, ${implementation}`}
-          {relations.dependsOn.length > 0 && (
-            <>
-              <br />Depends on: {relations.dependsOn.map((r, i) => (
-                <span>{i > 0 ? ', ' : ''}<a href={r.link}>{r.id}</a> ({r.title})</span>
-              ))}
-            </>
-          )}
-          {relations.requiredBy.length > 0 && (
-            <>
-              <br />Required by: {relations.requiredBy.map((r, i) => (
-                <span>{i > 0 ? ', ' : ''}<a href={r.link}>{r.id}</a> ({r.title})</span>
-              ))}
-            </>
-          )}
-        </p>
+    </nldd-container>
+    <div>
+      {(relations.dependsOn.length > 0 || relations.requiredBy.length > 0) && (
+        <>
+          <nldd-rich-text centered>
+            <dl>
+              {relations.dependsOn.length > 0 && (
+                <>
+                  <dt>Depends on</dt>
+                  <dd>
+                    {relations.dependsOn.map((r, i) => (
+                      <span>{i > 0 ? ', ' : ''}<a href={r.link}>{r.id}</a> ({r.title})</span>
+                    ))}
+                  </dd>
+                </>
+              )}
+              {relations.requiredBy.length > 0 && (
+                <>
+                  <dt>Required by</dt>
+                  <dd>
+                    {relations.requiredBy.map((r, i) => (
+                      <span>{i > 0 ? ', ' : ''}<a href={r.link}>{r.id}</a> ({r.title})</span>
+                    ))}
+                  </dd>
+                </>
+              )}
+            </dl>
+          </nldd-rich-text>
+          <nldd-spacer size="16" />
+        </>
       )}
-      <Content />
-    </nldd-rich-text>
-  </nldd-one-third-two-thirds-section>
+      <nldd-rich-text data-edit-base={editBase} centered>
+        <Content />
+      </nldd-rich-text>
+    </div>
+  </nldd-sidebar-section>
 </Base>

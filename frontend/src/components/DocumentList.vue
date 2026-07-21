@@ -1,56 +1,81 @@
 <script setup>
-// Presentational werkdocumenten list. Two consumers:
-//  - the launcher sheet: pass `hrefFor` so each document row is a native link
-//    that opens the standalone page in a new tab (open-new-page icon,
-//    target=_blank) — middle-click and modifier-click work as expected;
-//  - the standalone page's sidebar: no `hrefFor`, so rows are buttons that
-//    select in place (chevron icon, emits `select`).
-// "Nieuw document" is always a button (it creates, it has no stable URL).
+// Presentational werkdocumenten list for the Home werkdocumenten sidebar: each
+// row is a button that selects the document in place (emits `select`). Creating
+// a new document is a toolbar action above the list, not a row here.
+// In-progress / failed conversion jobs (from an upload) render as rows too, until
+// the resulting .md lands in `documents`.
+import { computed } from 'vue';
+
 const props = defineProps({
   documents: { type: Array, default: () => [] },
-  // Highlight the open document (the page sidebar only).
+  // Running / failed document-conversion jobs, shown as pending rows.
+  jobs: { type: Array, default: () => [] },
+  // Highlight the open document.
   selectedPath: { type: String, default: null },
-  // Maps a document path to a URL; when set, rows become new-tab links.
-  hrefFor: { type: Function, default: null },
-  // List style: 'box' in the launcher sheet, 'simple' on the standalone page.
-  variant: { type: String, default: 'simple' },
 });
-const emit = defineEmits(['select', 'new']);
+defineEmits(['select']);
 
 function title(path) {
   return path ? path.replace(/\.md$/, '') : '';
 }
-// Link rows navigate natively; only in-place rows report a selection.
-function onRowClick(path) {
-  if (!props.hrefFor) emit('select', path);
+function jobTitle(job) {
+  return title(job.target_path || 'document');
 }
+
+// Documents and conversion jobs in ONE list, sorted together by display name
+// (numeric-aware, so untitled sorts before untitled-2 before untitled-10).
+// Sorting jobs in place — rather than pinning them on top — keeps a converting
+// row from jumping to a new position the moment it finishes and turns into a
+// real document.
+const rows = computed(() => {
+  const items = [
+    ...props.jobs.map((job) => ({ type: 'job', key: `job-${job.id}`, job, sortKey: jobTitle(job) })),
+    ...props.documents.map((doc) => ({ type: 'doc', key: doc.path, doc, sortKey: title(doc.path) })),
+  ];
+  return items.sort((a, b) => a.sortKey.localeCompare(b.sortKey, 'nl', { numeric: true }));
+});
 </script>
 
 <template>
-  <nldd-list :variant="variant">
-    <nldd-list-item
-      v-for="doc in documents"
-      :key="doc.path"
-      size="md"
-      :button="hrefFor ? undefined : true"
-      :href="hrefFor ? hrefFor(doc.path) : undefined"
-      :target="hrefFor ? '_blank' : undefined"
-      :rel="hrefFor ? 'noopener' : undefined"
-      :selected="doc.path === selectedPath || undefined"
-      @click="onRowClick(doc.path)"
-    >
-      <nldd-icon-cell size="20"><nldd-icon name="document"></nldd-icon></nldd-icon-cell>
-      <nldd-spacer-cell size="8"></nldd-spacer-cell>
-      <nldd-text-cell :text="title(doc.path)"></nldd-text-cell>
-      <nldd-spacer-cell size="8"></nldd-spacer-cell>
-      <nldd-icon-cell size="20"><nldd-icon :name="hrefFor ? 'open-new-page' : 'chevron-right'"></nldd-icon></nldd-icon-cell>
-    </nldd-list-item>
-    <nldd-list-item size="md" button @click="$emit('new')">
-      <nldd-icon-cell size="20"><nldd-icon name="plus"></nldd-icon></nldd-icon-cell>
-      <nldd-spacer-cell size="8"></nldd-spacer-cell>
-      <nldd-text-cell text="Nieuw document"></nldd-text-cell>
-      <nldd-spacer-cell size="8"></nldd-spacer-cell>
-      <nldd-icon-cell size="20"><nldd-icon :name="hrefFor ? 'open-new-page' : 'chevron-right'"></nldd-icon></nldd-icon-cell>
-    </nldd-list-item>
+  <nldd-list variant="simple" arrow-navigation>
+    <template v-for="row in rows" :key="row.key">
+      <!-- Conversion job: running rows open a loading main pane; failed rows show the error. -->
+      <nldd-list-item
+        v-if="row.type === 'job'"
+        size="md"
+        button
+        :selected="row.job.target_path === selectedPath || undefined"
+        @click="$emit('select', row.job.target_path)"
+      >
+        <nldd-cell v-if="row.job.status !== 'failed'" slot="start">
+          <nldd-activity-indicator size="20" timing="instant"></nldd-activity-indicator>
+        </nldd-cell>
+        <nldd-icon-cell v-else slot="start" size="20">
+          <nldd-icon name="alert"></nldd-icon>
+        </nldd-icon-cell>
+        <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+        <nldd-text-cell
+          :text="jobTitle(row.job)"
+          :supporting-text="row.job.status === 'failed' ? 'Conversie mislukt' : undefined"
+        ></nldd-text-cell>
+        <nldd-spacer-cell size="8"></nldd-spacer-cell>
+        <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+      </nldd-list-item>
+
+      <!-- Document -->
+      <nldd-list-item
+        v-else
+        size="md"
+        button
+        :selected="row.doc.path === selectedPath || undefined"
+        @click="$emit('select', row.doc.path)"
+      >
+        <nldd-icon-cell slot="start" size="20"><nldd-icon name="text-document"></nldd-icon></nldd-icon-cell>
+        <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+        <nldd-text-cell :text="title(row.doc.path)"></nldd-text-cell>
+        <nldd-spacer-cell size="8"></nldd-spacer-cell>
+        <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+      </nldd-list-item>
+    </template>
   </nldd-list>
 </template>

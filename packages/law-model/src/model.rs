@@ -28,15 +28,24 @@ pub struct LegalBasis {
     pub description: Option<String>,
 }
 
-/// Type specification for input/output fields.
-///
-/// Currently only contains unit specification, but may be extended
-/// with additional type metadata (precision, range, format) as the schema evolves.
+/// Type specification for input/output/definition fields.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct TypeSpec {
-    /// Unit of measurement (e.g., "eurocent", "days", "percentage")
+    /// Unit of measurement (e.g., "eurocent", "euro", "ratio", "percentage", "days").
+    /// A unit is a label, never a computational constraint (RFC-023).
     #[serde(default)]
     pub unit: Option<String>,
+    /// Number of decimal places for the value, in its own unit (RFC-023 §2,
+    /// issue #444). Parsed metadata; rounding itself is an explicit operation
+    /// (RFC-024), never inferred from this field.
+    #[serde(default)]
+    pub precision: Option<i64>,
+    /// Minimum allowed value (issue #444). Parsed metadata, not yet enforced.
+    #[serde(default)]
+    pub min: Option<rust_decimal::Decimal>,
+    /// Maximum allowed value (issue #444). Parsed metadata, not yet enforced.
+    #[serde(default)]
+    pub max: Option<rust_decimal::Decimal>,
 }
 
 /// Source specification for input fields
@@ -193,6 +202,14 @@ pub enum ActionOperation {
     #[serde(rename = "MIN")]
     Min { values: Vec<ActionValue> },
 
+    // Rounding (unary value + precision; RFC-024)
+    #[serde(rename = "ROUND")]
+    Round { value: ActionValue, precision: i64 },
+    #[serde(rename = "CEIL")]
+    Ceil { value: ActionValue, precision: i64 },
+    #[serde(rename = "FLOOR")]
+    Floor { value: ActionValue, precision: i64 },
+
     // Logical
     #[serde(rename = "AND")]
     And { conditions: Vec<ActionValue> },
@@ -289,6 +306,9 @@ impl ActionOperation {
             ActionOperation::Divide { .. } => "DIVIDE",
             ActionOperation::Max { .. } => "MAX",
             ActionOperation::Min { .. } => "MIN",
+            ActionOperation::Round { .. } => "ROUND",
+            ActionOperation::Ceil { .. } => "CEIL",
+            ActionOperation::Floor { .. } => "FLOOR",
             ActionOperation::And { .. } => "AND",
             ActionOperation::Or { .. } => "OR",
             ActionOperation::Not { .. } => "NOT",
@@ -326,6 +346,9 @@ pub struct Action {
     /// Conditions for AND/OR operations
     #[serde(default)]
     pub conditions: Option<Vec<ActionValue>>,
+    /// Decimal places for rounding operations (ROUND/CEIL/FLOOR; RFC-024)
+    #[serde(default)]
+    pub precision: Option<i64>,
 }
 
 /// Execution specification within machine_readable section
@@ -343,12 +366,22 @@ pub struct Execution {
     pub actions: Option<Vec<Action>>,
 }
 
-/// Definition value in definitions section
+/// Definition value in definitions section.
+///
+/// A constant may be a bare value (`naam: 123`, backward-compatible) or the
+/// optionally-structured form carrying a `type` and `type_spec` so it can
+/// declare its quantity-kind (RFC-023).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Definition {
-    /// Definition with explicit value field
-    Structured { value: Value },
+    /// Structured form: `value` plus optional `type`/`type_spec` (RFC-023).
+    Structured {
+        value: Value,
+        #[serde(rename = "type", default)]
+        def_type: Option<ParameterType>,
+        #[serde(default)]
+        type_spec: Option<TypeSpec>,
+    },
     /// Simple value (for backward compatibility)
     Simple(Value),
 }
@@ -357,8 +390,19 @@ impl Definition {
     /// Get the value from this definition
     pub fn value(&self) -> &Value {
         match self {
-            Definition::Structured { value } => value,
+            Definition::Structured { value, .. } => value,
             Definition::Simple(v) => v,
+        }
+    }
+
+    /// The declared unit of this constant, if any (RFC-023). Bare constants and
+    /// structured constants without a `type_spec.unit` return `None`.
+    pub fn unit(&self) -> Option<&str> {
+        match self {
+            Definition::Structured { type_spec, .. } => {
+                type_spec.as_ref().and_then(|t| t.unit.as_deref())
+            }
+            Definition::Simple(_) => None,
         }
     }
 }

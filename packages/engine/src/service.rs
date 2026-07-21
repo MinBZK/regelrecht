@@ -247,10 +247,9 @@ fn hash_value(value: &Value, hasher: &mut impl Hasher) {
         Value::Null => {}
         Value::Bool(b) => b.hash(hasher),
         Value::Int(i) => i.hash(hasher),
-        Value::Float(f) => {
-            // Canonicalize -0.0 → +0.0 so hash matches PartialEq (IEEE 754: -0.0 == +0.0)
-            let canonical = if *f == 0.0 { 0.0_f64 } else { *f };
-            canonical.to_bits().hash(hasher);
+        Value::Decimal(d) => {
+            // Normalize so equal decimals (1.0 == 1.00) hash identically, matching PartialEq.
+            d.normalize().hash(hasher);
         }
         Value::String(s) => s.hash(hasher),
         Value::Array(arr) => {
@@ -1684,29 +1683,10 @@ impl LawExecutionService {
         // Apply lex specialis overrides
         self.apply_overrides(&mut result, article, law, &post_params, res_ctx)?;
 
-        // Enforce TypeSpec: round eurocent outputs to integer.
-        // This applies only to top-level article outputs (the API boundary).
-        // Intermediate values within article logic remain as Float to preserve
-        // precision during calculation; rounding happens here at the output edge.
-        if let Some(exec) = article.get_execution_spec() {
-            if let Some(outputs) = &exec.output {
-                for output_spec in outputs {
-                    let is_eurocent = output_spec
-                        .type_spec
-                        .as_ref()
-                        .and_then(|ts| ts.unit.as_deref())
-                        == Some("eurocent");
-                    if is_eurocent {
-                        if let Some(Value::Float(f)) = result.outputs.get(&output_spec.name) {
-                            let rounded = crate::operations::f64_to_i64_safe(f.round())?;
-                            result
-                                .outputs
-                                .insert(output_spec.name.clone(), Value::Int(rounded));
-                        }
-                    }
-                }
-            }
-        }
+        // RFC-024: the engine no longer rounds eurocent outputs implicitly. Rounding
+        // is a law-modeled instruction — a law that must round to whole euros/cents
+        // does so with an explicit ROUND/CEIL/FLOOR operation. Outputs flow
+        // out as exact Decimals; `unit` is a label, never a rounding trigger (RFC-023).
 
         // RFC-012 Propagate mode: taint all outputs from articles with untranslatables
         if !taints.is_empty() {
@@ -2150,10 +2130,20 @@ impl LawExecutionService {
                     res_ctx.trace_set_result(value.clone());
                     context.set_resolved_input(&input.name, value.clone());
                 } else {
+                    // The referenced article ran but produced no such output
+                    // (e.g. an IF action whose branch was not taken). Surface the
+                    // precise cause here instead of leaving the input unresolved
+                    // and letting the consuming action fail later with a generic
+                    // VariableNotFound. Mirrors the external-reference path
+                    // (resolve_external_input_internal), which errors the same way.
                     res_ctx.trace_set_message(format!(
                         "Internal reference: output '{}' not in result from article {}",
                         output_name, ref_article.number
                     ));
+                    return Err(EngineError::OutputNotFound {
+                        law_id: law.id.clone(),
+                        output: output_name.to_string(),
+                    });
                 }
             } else {
                 // Empty source (source: {}) — resolved from DataSourceRegistry only.
@@ -2530,6 +2520,33 @@ articles:
 "#
     }
 
+    /// A `base_law` version stamped with `valid_from` and a distinguishing
+    /// `base_value`, so a test can assert *which* version the resolver picked.
+    fn base_law_version(valid_from: &str, value: i32) -> String {
+        format!(
+            r#"
+$id: base_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '{valid_from}'
+articles:
+  - number: '1'
+    text: Provides a base value
+    machine_readable:
+      definitions:
+        BASE_VALUE:
+          value: {value}
+      execution:
+        output:
+          - name: base_value
+            type: number
+        actions:
+          - output: base_value
+            value: $BASE_VALUE
+"#
+        )
+    }
+
     // -------------------------------------------------------------------------
     // Basic Tests
     // -------------------------------------------------------------------------
@@ -2580,6 +2597,62 @@ articles:
 
         // doubled_value = base_value (100) * 2 = 200
         assert_eq!(result.outputs.get("doubled_value"), Some(&Value::Int(200)));
+    }
+
+    #[test]
+    fn test_service_cross_law_resolution_picks_in_force_version_over_future() {
+        // Regression for the temporal-federation bug: a referenced law that has
+        // BOTH an in-force and a future-dated version must resolve the in-force
+        // one when executed as-of a date before the future version. This is the
+        // version *set* the scenario loader now hands the engine; before the
+        // fix the loader fed only the single "best for today" version (the
+        // future one in a federated corpus) and execution failed NotYetInForce.
+        let mut service = LawExecutionService::new();
+        // Load future first to prove order doesn't matter (resolver sorts).
+        service
+            .load_law(&base_law_version("2099-01-01", 999))
+            .unwrap();
+        service
+            .load_law(&base_law_version("2025-01-01", 100))
+            .unwrap();
+        service.load_law(make_dependent_law()).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "dependent_law",
+                "doubled_value",
+                BTreeMap::new(),
+                "2025-06-01",
+            )
+            .unwrap();
+
+        // Uses the in-force base_value (100 * 2), NOT the future one (999 * 2).
+        assert_eq!(result.outputs.get("doubled_value"), Some(&Value::Int(200)));
+    }
+
+    #[test]
+    fn test_service_cross_law_only_future_version_is_not_yet_in_force() {
+        // Control: with ONLY the future version loaded — the pre-fix behaviour
+        // where the loader handed the engine a single future-dated version —
+        // the same as-of-2025 execution fails NotYetInForce. This proves the
+        // fix is the version *set* reaching the engine, not `select_in` itself.
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(&base_law_version("2099-01-01", 999))
+            .unwrap();
+        service.load_law(make_dependent_law()).unwrap();
+
+        let result = service.evaluate_law_output(
+            "dependent_law",
+            "doubled_value",
+            BTreeMap::new(),
+            "2025-06-01",
+        );
+
+        assert!(
+            matches!(result, Err(EngineError::LawNotYetInForce { .. })),
+            "expected LawNotYetInForce, got: {result:?}",
+        );
     }
 
     #[test]
@@ -2949,6 +3022,300 @@ articles:
                 );
             }
             other => panic!("Expected CircularReference depth error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_service_internal_self_reference_is_circular() {
+        // Degenerate same-law cycle: an article's input sources its own output.
+        let law = r#"
+$id: internal_self_ref_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: References its own output
+    machine_readable:
+      execution:
+        input:
+          - name: my_output
+            type: number
+            source:
+              output: my_output
+        output:
+          - name: my_output
+            type: number
+        actions:
+          - output: my_output
+            value: $my_output
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service.evaluate_law_output(
+            "internal_self_ref_law",
+            "my_output",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
+
+        assert!(
+            matches!(result, Err(EngineError::CircularReference(_))),
+            "Expected CircularReference error for a self-referencing article, got: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_service_internal_reference_basic() {
+        // Article 2's input sources article 1's output (same law). Resolution is
+        // owned by the service; the value flows through to article 2's action.
+        let law = r#"
+$id: internal_ref_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Base calculation article
+    machine_readable:
+      definitions:
+        BASE_VALUE:
+          value: 100
+      execution:
+        output:
+          - name: base_amount
+            type: number
+        actions:
+          - output: base_amount
+            value: $BASE_VALUE
+  - number: '2'
+    text: Derived calculation using internal reference
+    machine_readable:
+      execution:
+        input:
+          - name: base_amount
+            type: number
+            source:
+              output: base_amount
+        output:
+          - name: doubled_amount
+            type: number
+        actions:
+          - output: doubled_amount
+            operation: MULTIPLY
+            values:
+              - $base_amount
+              - 2
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "internal_ref_law",
+                "doubled_amount",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .expect("internal reference must resolve");
+
+        // doubled_amount = base_amount (100) * 2 = 200
+        assert_eq!(result.outputs.get("doubled_amount"), Some(&Value::Int(200)));
+    }
+
+    #[test]
+    fn test_service_internal_reference_chain() {
+        // A chain of internal references within one law: 3 -> 2 -> 1.
+        let law = r#"
+$id: chain_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: First article
+    machine_readable:
+      execution:
+        output:
+          - name: first_value
+            type: number
+        actions:
+          - output: first_value
+            value: 10
+  - number: '2'
+    text: Second article references first
+    machine_readable:
+      execution:
+        input:
+          - name: first_value
+            type: number
+            source:
+              output: first_value
+        output:
+          - name: second_value
+            type: number
+        actions:
+          - output: second_value
+            operation: ADD
+            values:
+              - $first_value
+              - 5
+  - number: '3'
+    text: Third article references second
+    machine_readable:
+      execution:
+        input:
+          - name: second_value
+            type: number
+            source:
+              output: second_value
+        output:
+          - name: third_value
+            type: number
+        actions:
+          - output: third_value
+            operation: MULTIPLY
+            values:
+              - $second_value
+              - 2
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service
+            .evaluate_law_output("chain_law", "third_value", BTreeMap::new(), "2025-01-01")
+            .expect("internal reference chain must resolve");
+
+        // first_value = 10, second_value = 10 + 5 = 15, third_value = 15 * 2 = 30
+        assert_eq!(result.outputs.get("third_value"), Some(&Value::Int(30)));
+    }
+
+    #[test]
+    fn test_service_internal_reference_with_parameters() {
+        // The referenced article consumes a parameter that the caller supplies;
+        // the internal reference must still resolve correctly.
+        let law = r#"
+$id: param_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Article that uses parameter
+    machine_readable:
+      execution:
+        parameters:
+          - name: multiplier
+            type: number
+            required: true
+        output:
+          - name: base_result
+            type: number
+        actions:
+          - output: base_result
+            operation: MULTIPLY
+            values:
+              - 100
+              - $multiplier
+  - number: '2'
+    text: Article that references article 1
+    machine_readable:
+      execution:
+        parameters:
+          - name: multiplier
+            type: number
+            required: true
+        input:
+          - name: base_result
+            type: number
+            source:
+              output: base_result
+        output:
+          - name: final_result
+            type: number
+        actions:
+          - output: final_result
+            operation: ADD
+            values:
+              - $base_result
+              - 50
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let mut params = BTreeMap::new();
+        params.insert("multiplier".to_string(), Value::Int(3));
+
+        let result = service
+            .evaluate_law_output("param_law", "final_result", params, "2025-01-01")
+            .expect("internal reference with parameters must resolve");
+
+        // base_result = 100 * 3 = 300, final_result = 300 + 50 = 350
+        assert_eq!(result.outputs.get("final_result"), Some(&Value::Int(350)));
+    }
+
+    #[test]
+    fn test_service_internal_reference_missing_output_errors() {
+        // Article 2 internally references `missing_output`, which article 1
+        // declares but never produces (no action emits it). The referenced
+        // article runs successfully but its result lacks the output. This must
+        // surface as OutputNotFound at the resolution site — mirroring the
+        // external-reference path — rather than being silently left unresolved
+        // and failing later with a generic VariableNotFound on the input.
+        let law = r#"
+$id: missing_internal_output_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Declares an output it never produces
+    machine_readable:
+      execution:
+        output:
+          - name: produced
+            type: number
+          - name: missing_output
+            type: number
+        actions:
+          - output: produced
+            value: 1
+  - number: '2'
+    text: References the never-produced output
+    machine_readable:
+      execution:
+        input:
+          - name: missing_output
+            type: number
+            source:
+              output: missing_output
+        output:
+          - name: result
+            type: number
+        actions:
+          - output: result
+            value: $missing_output
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let result = service.evaluate_law_output(
+            "missing_internal_output_law",
+            "result",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
+
+        match result {
+            Err(EngineError::OutputNotFound { output, .. }) => {
+                assert_eq!(output, "missing_output");
+            }
+            other => panic!(
+                "Expected OutputNotFound for an unproduced internal output, got: {:?}",
+                other
+            ),
         }
     }
 

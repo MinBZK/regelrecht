@@ -3,6 +3,7 @@
 //! Converts string values from feature files to engine Value types.
 
 use regelrecht_engine::Value;
+use rust_decimal::Decimal;
 
 /// Convert a Gherkin table cell value to an engine Value.
 ///
@@ -10,7 +11,7 @@ use regelrecht_engine::Value;
 /// - `true` / `false` -> Bool
 /// - `null` -> Null
 /// - Integer literals -> Int
-/// - Float literals -> Float
+/// - Decimal literals -> Decimal
 /// - Everything else -> String
 pub fn convert_gherkin_value(val: &str) -> Value {
     let trimmed = val.trim();
@@ -33,77 +34,36 @@ pub fn convert_gherkin_value(val: &str) -> Value {
         return Value::Int(i);
     }
 
-    // Try float
-    if let Ok(f) = trimmed.parse::<f64>() {
-        return Value::Float(f);
+    // Try decimal
+    if let Ok(d) = trimmed.parse::<Decimal>() {
+        return Value::Decimal(d);
     }
 
     // Default to string
     Value::String(trimmed.to_string())
 }
 
-/// Parse a Gherkin data table row into a HashMap.
+/// Compare two Values with a small numeric tolerance.
 ///
-/// The table format is:
-/// ```text
-/// | key1 | value1 |
-/// | key2 | value2 |
-/// ```
-pub fn parse_table_to_params(
-    table: &cucumber::gherkin::Table,
-) -> std::collections::BTreeMap<String, Value> {
-    let mut params = std::collections::BTreeMap::new();
-
-    for row in &table.rows {
-        if row.len() >= 2 {
-            let key = row[0].trim().to_string();
-            let value = convert_gherkin_value(&row[1]);
-            params.insert(key, value);
-        }
-    }
-
-    params
-}
-
-/// Compare two Values with floating-point tolerance.
-///
-/// For Float values, uses a tolerance of 1e-9.
-/// For Int values, exact equality is required.
+/// For numeric values (Int/Decimal), uses an exact-decimal tolerance of 1e-9 to
+/// absorb any literal-parsing noise; other types use exact equality. The
+/// comparison stays in `Decimal` (no f64 round-trip) so it doesn't reintroduce
+/// the float imprecision the engine deliberately avoids.
 #[allow(dead_code)]
 pub fn values_equal_with_tolerance(a: &Value, b: &Value) -> bool {
-    match (a, b) {
-        (Value::Float(fa), Value::Float(fb)) => (fa - fb).abs() < 1e-9,
-        (Value::Int(ia), Value::Float(fb)) => ((*ia as f64) - fb).abs() < 1e-9,
-        (Value::Float(fa), Value::Int(ib)) => (fa - (*ib as f64)).abs() < 1e-9,
+    match (a.as_decimal(), b.as_decimal()) {
+        // Decimal::new(1, 9) == 1e-9
+        (Some(da), Some(db)) => (da - db).abs() < Decimal::new(1, 9),
         _ => a == b,
     }
-}
-
-/// Convert eurocent string to numeric value for comparison.
-///
-/// Handles both integer (eurocent) and float (euro) formats.
-#[allow(dead_code)]
-pub fn parse_eurocent(val: &str) -> Option<i64> {
-    val.trim().parse::<i64>().ok()
-}
-
-/// Convert euro string to eurocent for comparison.
-///
-/// "1358.93" euro -> 135893 eurocent
-#[allow(dead_code)]
-pub fn parse_euro_to_eurocent(val: &str) -> Option<i64> {
-    let trimmed = val.trim();
-    let f: f64 = trimmed.parse().ok()?;
-    Some((f * 100.0).round() as i64)
 }
 
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 mod tests {
-    use super::{
-        convert_gherkin_value, parse_euro_to_eurocent, parse_eurocent, values_equal_with_tolerance,
-    };
+    use super::{convert_gherkin_value, values_equal_with_tolerance};
     use regelrecht_engine::Value;
+    use rust_decimal_macros::dec;
 
     #[test]
     fn test_convert_bool() {
@@ -127,9 +87,9 @@ mod tests {
 
     #[test]
     fn test_convert_float() {
-        assert_eq!(convert_gherkin_value("3.14"), Value::Float(3.14));
-        assert_eq!(convert_gherkin_value("-1.5"), Value::Float(-1.5));
-        assert_eq!(convert_gherkin_value("0.5"), Value::Float(0.5));
+        assert_eq!(convert_gherkin_value("3.14"), Value::Decimal(dec!(3.14)));
+        assert_eq!(convert_gherkin_value("-1.5"), Value::Decimal(dec!(-1.5)));
+        assert_eq!(convert_gherkin_value("0.5"), Value::Decimal(dec!(0.5)));
     }
 
     #[test]
@@ -152,16 +112,16 @@ mod tests {
             &Value::Int(100)
         ));
 
-        // Float tolerance
+        // Decimal tolerance
         assert!(values_equal_with_tolerance(
-            &Value::Float(1.0),
-            &Value::Float(1.0 + 1e-10)
+            &Value::Decimal(dec!(1.0)),
+            &Value::Decimal(dec!(1.0000000001))
         ));
 
-        // Int vs Float
+        // Int vs Decimal
         assert!(values_equal_with_tolerance(
             &Value::Int(100),
-            &Value::Float(100.0)
+            &Value::Decimal(dec!(100.0))
         ));
 
         // Different values
@@ -169,17 +129,5 @@ mod tests {
             &Value::Int(100),
             &Value::Int(101)
         ));
-    }
-
-    #[test]
-    fn test_parse_eurocent() {
-        assert_eq!(parse_eurocent("109171"), Some(109171));
-        assert_eq!(parse_eurocent("0"), Some(0));
-    }
-
-    #[test]
-    fn test_parse_euro_to_eurocent() {
-        assert_eq!(parse_euro_to_eurocent("1358.93"), Some(135893));
-        assert_eq!(parse_euro_to_eurocent("0.50"), Some(50));
     }
 }

@@ -24,7 +24,11 @@ path = "src/bin/pipeline_api.rs"
 
 [dependencies]
 regelrecht-corpus = { path = "../corpus" }
+# `validate` voor de JSON-schema-validatie van gegenereerde basis-wet-YAML
+# (law_convert); de engine hangt alleen aan shared + law-model, geen cyclus.
+regelrecht-engine = { path = "../engine", features = ["validate"] }
 regelrecht-harvester = { path = "../harvester" }
+regelrecht-law-model = { path = "../law-model" }
 regelrecht-shared = { path = "../shared", features = ["telemetry"] }
 sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json", "migrate"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "process", "time", "fs", "net", "io-util"] }
@@ -47,6 +51,7 @@ roxmltree.workspace = true
 url.workspace = true
 testcontainers = { workspace = true, optional = true }
 testcontainers-modules = { workspace = true, optional = true }
+tempfile.workspace = true
 
 [features]
 # Exposes regelrecht_pipeline::test_utils with helpers (e.g. TestDb) used by
@@ -57,7 +62,6 @@ test-utils = ["dep:testcontainers", "dep:testcontainers-modules"]
 regelrecht-pipeline = { path = ".", features = ["test-utils"] }
 pretty_assertions.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "process", "time", "fs"] }
-tempfile.workspace = true
 
 [lints]
 workspace = true
