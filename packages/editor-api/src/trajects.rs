@@ -862,22 +862,23 @@ async fn resolve_writable_target(
             //
             // Fall back to the *strict* per-repo operator token when the user
             // hasn't linked GitHub and this deployment doesn't require it. The
-            // strict resolver (not `resolve_token`) is deliberate: `auth_ref`
+            // strict context (`TokenContext::strict`) is deliberate: `auth_ref`
             // derives from user-supplied repo coords, so an unknown ref must
             // NOT fall back to `CORPUS_GIT_TOKEN` (that would ship the central
             // token to a user-picked repo, a token-exfiltration vector).
             // `user_write_token` returns 428 when a linked token is required
             // but absent.
-            let token = match crate::github_oauth::user_write_token(state, account_id, headers)
-                .await?
-            {
-                Some(user_token) => user_token,
-                None => {
-                    let auth_file = {
-                        let corpus = state.corpus.read().await;
-                        corpus.auth_file.clone()
-                    };
-                    regelrecht_corpus::auth::resolve_token_strict(&auth_ref, auth_file.as_deref())
+            let token =
+                match crate::github_oauth::user_write_token(state, account_id, headers).await? {
+                    Some(user_token) => user_token,
+                    None => {
+                        let auth_file = {
+                            let corpus = state.corpus.read().await;
+                            corpus.auth_file.clone()
+                        };
+                        regelrecht_corpus::auth::CredentialResolver::new(auth_file.as_deref())
+                        .resolve(regelrecht_corpus::auth::TokenContext::strict(&auth_ref))
+                        .map(regelrecht_corpus::auth::TokenDecision::into_token)
                         .map_err(|e| {
                             tracing::error!(error = %e, "auth lookup failed for new traject repo");
                             (
@@ -900,8 +901,8 @@ async fn resolve_writable_target(
                                 ),
                             )
                         })?
-                }
-            };
+                    }
+                };
 
             // The OAuth config's `api_base` (a pub field, overridable in
             // tests with a wiremock server) wins over the real default, so
