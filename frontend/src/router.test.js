@@ -43,6 +43,26 @@ describe('route disambiguation (traject vs no-traject)', () => {
     const r = router.resolve(`/trajecten/${REF}/taken`);
     expect(r.name).toBe('taken-traject');
     expect(r.params.trajectRef).toBe(REF);
+    // Geen categorie = de "Kies een categorie"-staat in main.
+    expect(r.params.categorie).toBeUndefined();
+  });
+
+  it('routes a taken categorie URL to taken-traject', () => {
+    const r = router.resolve(`/trajecten/${REF}/taken/werkdocumenten`);
+    expect(r.name).toBe('taken-traject');
+    expect(r.params.categorie).toBe('werkdocumenten');
+  });
+
+  // A law CONTEXT filters the task list; it does not open the law. LibraryView
+  // treats `params.lawId` as "a law is open here" - it selects that law in the
+  // sidebar and fires loadLaw() for it - so the taken route must never produce
+  // that param, however law-ish its URL looks.
+  it('names a taken law context contextLawId, never lawId', () => {
+    const r = router.resolve(`/trajecten/${REF}/taken/wet/wet_op_de_zorgtoeslag`);
+    expect(r.name).toBe('taken-traject');
+    expect(r.params.categorie).toBe('wet');
+    expect(r.params.contextLawId).toBe('wet_op_de_zorgtoeslag');
+    expect(r.params.lawId).toBeUndefined();
   });
 
   it('routes a plain law-id corpus URL to corpus-juris (no traject)', () => {

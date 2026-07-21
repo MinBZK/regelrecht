@@ -21,7 +21,7 @@ const { activeTrajectRef } = useTrajects();
 // "Toevoegen aan traject" direct vanuit de zoekresultaten: een treffer uit een
 // gefedereerde bron (de centrale seed, source_priority > 0) die nog niet in de
 // eigen traject-repo staat, krijgt een promote-knop in de rij. Zelfde gedeelde
-// logica als de "Wet toevoegen"-flow (AddLawPopover) - geen tweede
+// logica als de "Wet toevoegen"-flow (AddLawSheet) - geen tweede
 // promote-implementatie.
 const {
   promoteState,
@@ -389,7 +389,7 @@ defineExpose({ show });
         ></nldd-button>
 
         <!-- Fout bij promoten: één banner boven de resultaten (zelfde vorm
-             als in AddLawPopover). -->
+             als in AddLawSheet). -->
         <nldd-list-item v-if="promoteError" size="md">
           <nldd-icon-cell size="20" icon="alert" color="critical"></nldd-icon-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -464,15 +464,14 @@ defineExpose({ show });
             text="Zoeken is mislukt"
             supporting-text="De wetten konden niet worden doorzocht. Probeer het opnieuw."
           ></nldd-inline-dialog>
-          <div
+          <nldd-inline-dialog
             v-else-if="needsLogin && search.length >= MIN_QUERY_LENGTH"
-            class="search-popover-login-prompt"
+            icon="login"
+            text="Log in om externe bronnen te doorzoeken"
+            supporting-text="Inloggen is vereist om wetten op te halen van wetten.overheid.nl"
           >
-            <div class="search-popover-empty-title">Log in om externe bronnen te doorzoeken</div>
-            <div class="search-popover-empty-subtitle">Inloggen is vereist om wetten op te halen van wetten.overheid.nl</div>
-            <nldd-spacer size="12"></nldd-spacer>
-            <nldd-button size="md" text="Inloggen" @click="login()"></nldd-button>
-          </div>
+            <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
+          </nldd-inline-dialog>
           <nldd-inline-dialog
             v-else-if="bwbLoading"
             text="Zoeken op wetten.overheid.nl..."
@@ -491,32 +490,3 @@ defineExpose({ show });
     </nldd-container>
   </nldd-popover>
 </template>
-
-<style>
-.search-popover-login-prompt {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: var(--primitives-space-32, 32px) var(--primitives-space-16, 16px);
-  text-align: center;
-}
-
-.search-popover-empty-title {
-  font-size: var(--primitives-font-size-200, 1.125rem);
-  font-weight: var(--primitives-font-weight-medium, 500);
-  color: light-dark(
-    var(--primitives-color-neutral-400, #94a3b8),
-    var(--primitives-color-neutral-500, #64748b)
-  );
-  margin-bottom: var(--primitives-space-4, 4px);
-}
-
-.search-popover-empty-subtitle {
-  font-size: var(--primitives-font-size-100, 0.875rem);
-  color: light-dark(
-    var(--primitives-color-neutral-350, #a1aab8),
-    var(--primitives-color-neutral-550, #556275)
-  );
-}
-</style>

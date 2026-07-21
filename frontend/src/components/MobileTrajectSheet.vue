@@ -109,6 +109,13 @@ function openDocuments() {
   }
 }
 
+function openTaken() {
+  closeSheet();
+  if (activeTrajectRef.value) {
+    router.push({ name: 'taken-traject', params: { trajectRef: activeTrajectRef.value } });
+  }
+}
+
 // Open the active traject's settings (details / leden) in Home.
 function goToInstellingen(tab) {
   closeSheet();
@@ -246,6 +253,11 @@ onBeforeUnmount(() => {
               <nldd-icon-cell size="20"><nldd-icon name="documents"></nldd-icon></nldd-icon-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell text="Werkdocumenten"></nldd-text-cell>
+            </nldd-list-item>
+            <nldd-list-item size="md" button @click="openTaken">
+              <nldd-icon-cell size="20"><nldd-icon name="tasks"></nldd-icon></nldd-icon-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-text-cell text="Taken"></nldd-text-cell>
             </nldd-list-item>
             <nldd-list-item size="md" button @click="goToInstellingen('leden')">
               <nldd-icon-cell size="20"><nldd-icon name="person-2"></nldd-icon></nldd-icon-cell>

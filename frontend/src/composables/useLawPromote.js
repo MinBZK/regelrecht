@@ -1,6 +1,6 @@
 // Gedeelde "Toevoegen aan traject"-logica (promote): één implementatie van de
 // POST /promote-aanroep met per-wet busy-state, de al-in-traject-administratie
-// en de 409-afhandeling. Gebruikt door zowel de AddLawPopover ("Wet
+// en de 409-afhandeling. Gebruikt door zowel de AddLawSheet ("Wet
 // toevoegen"-flow) als de gewone zoekresultaten (SearchPopover) — geen tweede
 // promote-implementatie.
 //

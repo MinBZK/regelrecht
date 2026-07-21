@@ -10,6 +10,7 @@ import { useGithubAuth } from './composables/useGithubAuth.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import { useTrajects } from './composables/useTrajects.js';
+import { useAddActions } from './composables/useAddActions.js';
 import {
   lastHomePath,
   lastEditorPath,
@@ -60,6 +61,8 @@ function goToHarvesting() {
 }
 const { colorScheme, setColorScheme } = useColorScheme();
 const { activeTrajectRef } = useTrajects();
+// Universele "Toevoegen"-knop: vuurt intenties die LibraryView oppakt.
+const { triggerAddLaw, triggerNewWerkdoc, triggerUploadWerkdoc, triggerInviteMembers } = useAddActions();
 
 // "Over RegelRecht" about sheet, opened from the account menu.
 const aboutSheet = ref(null);
@@ -347,6 +350,35 @@ function onTabDismiss(e) {
                 <nldd-button size="md" start-icon="search" text="Zoeken" @click="openSearch"></nldd-button>
               </nldd-just-in-time-education>
             </nldd-toolbar-item>
+            <nldd-toolbar-item slot="end" v-if="trajectActive || (!authLoading && oidcConfigured && !authenticated)">
+              <nldd-icon-button id="add-menu-btn-md" size="md" icon="plus-small" text="Nieuw" tooltip-timing="never" expandable popup-type="menu" popovertarget="add-menu-md"></nldd-icon-button>
+              <nldd-menu v-if="trajectActive" id="add-menu-md" anchor="add-menu-btn-md">
+                <nldd-menu-item icon="book" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
+                <nldd-menu-item icon="new-text-document" text="Werkdocument toevoegen">
+                  <nldd-menu>
+                    <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="triggerNewWerkdoc"></nldd-menu-item>
+                    <nldd-menu-item icon="upload-to-cloud" text="PDF of DOCX uploaden…" @select="triggerUploadWerkdoc"></nldd-menu-item>
+                  </nldd-menu>
+                </nldd-menu-item>
+                <nldd-menu-item icon="add-user" text="Leden uitnodigen…" @select="triggerInviteMembers"></nldd-menu-item>
+              </nldd-menu>
+              <!-- Niet ingelogd: dezelfde "+" blijft staan als ontdekpunt, maar
+                   opent een popover die uitnodigt in te loggen. Zelfde id als het
+                   menu, zodat de knop-popovertarget statisch blijft (patroon van
+                   de trajecten-knop). -->
+              <nldd-popover v-else id="add-menu-md" anchor="add-menu-btn-md" accessible-label="Toevoegen" width="320px">
+                <nldd-container padding="16">
+                  <nldd-inline-dialog
+                    icon="login"
+                    text="Log in om iets toe te voegen"
+                    supporting-text="Zodra je bent ingelogd kun je wetten, werkdocumenten en leden aan een traject toevoegen."
+                  >
+                    <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
+                    <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
+                  </nldd-inline-dialog>
+                </nldd-container>
+              </nldd-popover>
+            </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
               <nldd-button-bar size="md">
                 <TrajectMenu id-suffix="md" />
@@ -434,6 +466,31 @@ function onTabDismiss(e) {
             </nldd-toolbar-item>
             <nldd-toolbar-item v-if="lastSavedPr" slot="end">
               <nldd-button size="md" start-icon="external-link" :text="`PR #${lastSavedPr.number}`" :href="lastSavedPr.url" target="_blank" rel="noopener"></nldd-button>
+            </nldd-toolbar-item>
+            <nldd-toolbar-item slot="end" v-if="trajectActive || (!authLoading && oidcConfigured && !authenticated)">
+              <nldd-icon-button id="add-menu-btn-lg" size="md" icon="plus-small" text="Nieuw" tooltip-timing="never" expandable popup-type="menu" popovertarget="add-menu-lg"></nldd-icon-button>
+              <nldd-menu v-if="trajectActive" id="add-menu-lg" anchor="add-menu-btn-lg">
+                <nldd-menu-item icon="book" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
+                <nldd-menu-item icon="new-text-document" text="Werkdocument toevoegen">
+                  <nldd-menu>
+                    <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="triggerNewWerkdoc"></nldd-menu-item>
+                    <nldd-menu-item icon="upload-to-cloud" text="PDF of DOCX uploaden…" @select="triggerUploadWerkdoc"></nldd-menu-item>
+                  </nldd-menu>
+                </nldd-menu-item>
+                <nldd-menu-item icon="add-user" text="Leden uitnodigen…" @select="triggerInviteMembers"></nldd-menu-item>
+              </nldd-menu>
+              <nldd-popover v-else id="add-menu-lg" anchor="add-menu-btn-lg" accessible-label="Toevoegen" width="320px">
+                <nldd-container padding="16">
+                  <nldd-inline-dialog
+                    icon="login"
+                    text="Log in om iets toe te voegen"
+                    supporting-text="Zodra je bent ingelogd kun je wetten, werkdocumenten en leden aan een traject toevoegen."
+                  >
+                    <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
+                    <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
+                  </nldd-inline-dialog>
+                </nldd-container>
+              </nldd-popover>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
               <nldd-button-bar size="md">
@@ -647,6 +704,31 @@ function onTabDismiss(e) {
               >
                 <nldd-icon-button size="lg" icon="search" text="Zoeken" @click="openSearch"></nldd-icon-button>
               </nldd-just-in-time-education>
+            </nldd-toolbar-item>
+            <nldd-toolbar-item slot="end" v-if="trajectActive || (!authLoading && oidcConfigured && !authenticated)">
+              <nldd-icon-button id="add-menu-btn-sm" size="lg" icon="plus-small" text="Nieuw" tooltip-timing="never" popup-type="menu" popovertarget="add-menu-sm"></nldd-icon-button>
+              <nldd-menu v-if="trajectActive" id="add-menu-sm" anchor="add-menu-btn-sm">
+                <nldd-menu-item icon="book" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
+                <nldd-menu-item icon="new-text-document" text="Werkdocument toevoegen">
+                  <nldd-menu>
+                    <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="triggerNewWerkdoc"></nldd-menu-item>
+                    <nldd-menu-item icon="upload-to-cloud" text="PDF of DOCX uploaden…" @select="triggerUploadWerkdoc"></nldd-menu-item>
+                  </nldd-menu>
+                </nldd-menu-item>
+                <nldd-menu-item icon="add-user" text="Leden uitnodigen…" @select="triggerInviteMembers"></nldd-menu-item>
+              </nldd-menu>
+              <nldd-popover v-else id="add-menu-sm" anchor="add-menu-btn-sm" accessible-label="Toevoegen" width="320px">
+                <nldd-container padding="16">
+                  <nldd-inline-dialog
+                    icon="login"
+                    text="Log in om iets toe te voegen"
+                    supporting-text="Zodra je bent ingelogd kun je wetten, werkdocumenten en leden aan een traject toevoegen."
+                  >
+                    <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
+                    <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
+                  </nldd-inline-dialog>
+                </nldd-container>
+              </nldd-popover>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
               <nldd-icon-button id="settings-menu-btn-sm" size="lg" :icon="authenticated ? undefined : 'account'" text="Account" tooltip-timing="never" popovertarget="settings-menu-sm">

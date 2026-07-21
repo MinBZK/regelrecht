@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
-import AddLawPopover from './AddLawPopover.vue';
+import AddLawSheet from './AddLawSheet.vue';
 
-// De popover is traject-gebonden: useTrajects() leest de trajectRef uit de
+// De sheet is traject-gebonden: useTrajects() leest de trajectRef uit de
 // route. Fictieve ref, geen echte repo/traject-namen (publiek testbestand).
 const TRAJECT_REF = 'voorbeeld-abcd1234';
 
@@ -68,9 +68,9 @@ async function searchFor(wrapper, term) {
   await nextTick();
 }
 
-describe('AddLawPopover', () => {
+describe('AddLawSheet', () => {
   it('zoekt via de traject-scoped corpus-API en sorteert eigen repo eerst', async () => {
-    const wrapper = mount(AddLawPopover);
+    const wrapper = mount(AddLawSheet);
     await searchFor(wrapper, 'wet');
 
     const urls = fetch.mock.calls.map((c) => String(c[0]));
@@ -88,7 +88,7 @@ describe('AddLawPopover', () => {
   });
 
   it('markeert een wet die al in de traject-repo staat (priority 0) als niet-promoteerbaar', async () => {
-    const wrapper = mount(AddLawPopover);
+    const wrapper = mount(AddLawSheet);
     await searchFor(wrapper, 'wet');
 
     const rows = wrapper.findAll('nldd-list-item[data-law-id]');
@@ -101,7 +101,7 @@ describe('AddLawPopover', () => {
   });
 
   it('promoot via POST /promote en emit "promoted"', async () => {
-    const wrapper = mount(AddLawPopover);
+    const wrapper = mount(AddLawSheet);
     await searchFor(wrapper, 'wet');
 
     await wrapper.vm.promote(PROMOTABLE);
@@ -129,7 +129,7 @@ describe('AddLawPopover', () => {
       return { ok: true, json: async () => SEARCH_LAWS };
     });
 
-    const wrapper = mount(AddLawPopover);
+    const wrapper = mount(AddLawSheet);
     await searchFor(wrapper, 'wet');
     await wrapper.vm.promote(PROMOTABLE);
     await nextTick();
@@ -143,7 +143,7 @@ describe('AddLawPopover', () => {
       searchLaws: [],
       bwbResults: [{ bwb_id: 'BWBR0002399', title: 'Voorbeeldwet extern', type: 'wet' }],
     });
-    const wrapper = mount(AddLawPopover);
+    const wrapper = mount(AddLawSheet);
     await searchFor(wrapper, 'voorbeeldwet');
     // Debounce van useBwbSearch (400ms) na de corpus-respons.
     await new Promise((r) => setTimeout(r, 450));
@@ -156,7 +156,7 @@ describe('AddLawPopover', () => {
   });
 
   it('start een traject-scoped harvest voor een BWB-resultaat en emit "harvest-requested"', async () => {
-    const wrapper = mount(AddLawPopover);
+    const wrapper = mount(AddLawSheet);
     await wrapper.vm.requestTrajectHarvest('BWBR0002399', 'Voorbeeldwet extern');
 
     const call = fetch.mock.calls.find(
@@ -180,7 +180,7 @@ describe('AddLawPopover', () => {
       if (u.includes('/auth/status')) return { ok: false, json: async () => ({}) };
       return { ok: true, json: async () => [] };
     });
-    const wrapper = mount(AddLawPopover);
+    const wrapper = mount(AddLawSheet);
     await wrapper.vm.requestTrajectHarvest('BWBR0002399');
     expect(wrapper.vm.harvestState.BWBR0002399).toBe('conflict');
     expect(wrapper.emitted('harvest-requested')).toBeUndefined();
@@ -188,7 +188,7 @@ describe('AddLawPopover', () => {
 
   it('herkent een direct getypt BWB-id (ook lowercase) als harvest-kandidaat', async () => {
     stubFetch({ searchLaws: [] });
-    const wrapper = mount(AddLawPopover);
+    const wrapper = mount(AddLawSheet);
     await searchFor(wrapper, 'bwbr0002399');
     expect(wrapper.vm.bwbIdQuery).toBe('BWBR0002399');
 
@@ -201,7 +201,7 @@ describe('AddLawPopover', () => {
       searchLaws: [],
       bwbResults: [{ bwb_id: 'BWBR0002399', title: 'Voorbeeldwet extern', type: 'wet' }],
     });
-    const wrapper = mount(AddLawPopover);
+    const wrapper = mount(AddLawSheet);
     await searchFor(wrapper, 'BWBR0002399');
     // Debounce van useBwbSearch (400ms) na de corpus-respons.
     await new Promise((r) => setTimeout(r, 450));
@@ -212,14 +212,23 @@ describe('AddLawPopover', () => {
     expect(rows[0].get('nldd-text-cell').attributes('text')).toBe('Voorbeeldwet extern');
   });
 
-  it('biedt de document-upload als route en emit "upload-requested" (popover sluit eerst)', async () => {
-    // De uploadoptie zat eerst in het plus-menu naast de zoeker; dat menu is
-    // vervallen (de plus opent direct deze popover), dus de route leeft nu
-    // hier. De file-picker zelf zit in LibraryView — de popover moet vóór de
-    // emit sluiten zodat de picker niet achter het popover opent.
-    const wrapper = mount(AddLawPopover);
+  it('wisselt met de segmented control tussen zoeken en uploaden', async () => {
+    const wrapper = mount(AddLawSheet);
+    // Standaard staat de zoek-tab open; de upload-knop hoort er dan niet te zijn.
+    expect(wrapper.find('[data-testid="add-law-upload"]').exists()).toBe(false);
+    wrapper.vm.mode = 'upload';
+    await nextTick();
+    expect(wrapper.find('[data-testid="add-law-upload"]').exists()).toBe(true);
+  });
+
+  it('biedt de document-upload als route en emit "upload-requested" (sheet sluit eerst)', async () => {
+    // De file-picker zelf zit in LibraryView; de sheet moet vóór de emit sluiten
+    // zodat de picker niet achter de sheet opent.
+    const wrapper = mount(AddLawSheet);
     const hide = vi.fn();
-    wrapper.vm.$refs.popoverRef.hide = hide;
+    wrapper.vm.$refs.sheetRef.hide = hide;
+    wrapper.vm.mode = 'upload';
+    await nextTick();
 
     await wrapper.get('[data-testid="add-law-upload"]').trigger('click');
 

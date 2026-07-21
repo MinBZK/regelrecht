@@ -14,7 +14,7 @@ import { ref } from 'vue';
 // `onBeforeRouteLeave` are just named exports LibraryView calls once at
 // setup to register a callback - stubbing them as no-ops absorbs that
 // registration without needing real guard machinery (same technique
-// TasksPane.test.js / MobileTrajectSheet.test.js use for useRoute/useRouter).
+// TasksListPane.test.js / MobileTrajectSheet.test.js use for useRoute/useRouter).
 const routeState = {
   name: 'werkdocumenten-traject',
   params: { trajectRef: 'traject-abcd1234', docPath: '' },
@@ -155,6 +155,65 @@ function openReview(overrides = {}) {
   };
   routeState.query = { task: 't1' };
 }
+
+// De "opent onbekend werkdocument → geen 404"-fix: een 404-staat toont een
+// eigen centrale melding (niet de kale editor of "Geen document open"), en de
+// URL is leidend - een adresseerd-maar-niet-open document wordt heropend.
+describe('LibraryView werkdocument not-found', () => {
+  function showsEmptyState(wrapper) {
+    // "Geen document open" staat als attribuut op nldd-inline-dialog (text="…").
+    return wrapper.html().includes('Geen document open');
+  }
+
+  it('toont een centrale 404-melding voor een niet-bestaand document, niet de editor', async () => {
+    currentPath.value = 'ghost.md';
+    docError.value = { kind: 'not-found', message: 'Document niet gevonden' };
+    routeState.params = { trajectRef: 'traject-abcd1234', docPath: 'ghost.md' };
+    routeState.query = {};
+    const wrapper = mountLibrary();
+    await wrapper.vm.$nextTick();
+    // De eigen 404-tak rendert, niet DocumentEditor.
+    expect(wrapper.findComponent({ name: 'DocumentEditor' }).exists()).toBe(false);
+    expect(wrapper.html()).toContain('bestaat niet');
+    expect(showsEmptyState(wrapper)).toBe(false);
+  });
+
+  it('houdt de 404-melding weg zolang er een review-taak (?task=) loopt', async () => {
+    // Tijdens een review is de not-found juist het startpunt voor het voorstel.
+    currentPath.value = 'ghost.md';
+    docError.value = { kind: 'not-found', message: 'Document niet gevonden' };
+    routeState.params = { trajectRef: 'traject-abcd1234', docPath: 'ghost.md' };
+    routeState.query = { task: 't1' };
+    const wrapper = mountLibrary();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.html()).not.toContain('bestaat niet');
+  });
+
+  it('onViewTaskJob landt deterministisch op de job-weergave, niet op een document-open', async () => {
+    // "Bekijk document" vanuit een lopende conversie-taak: het pad mag niet
+    // eerst als gewoon document geopend worden (→ 404/mislukt-race), maar
+    // meteen als job-weergave ("Aan het converteren…").
+    currentPath.value = null;
+    routeState.params = { trajectRef: 'traject-abcd1234', docPath: '' };
+    routeState.query = {};
+    const wrapper = mountLibrary();
+    await wrapper.vm.$nextTick();
+    openDoc.mockClear();
+    pushMock.mockClear();
+
+    wrapper.vm.onViewTaskJob('nota.md');
+    await wrapper.vm.$nextTick();
+
+    expect(pushMock).toHaveBeenCalledWith({
+      name: 'werkdocumenten-traject',
+      params: { trajectRef: 'traject-abcd1234', docPath: 'nota.md' },
+    });
+    // Deterministisch: het pad wordt niet als document geopend, en de
+    // job-weergave staat er (converterend, want de job is nog niet mislukt).
+    expect(openDoc).not.toHaveBeenCalled();
+    expect(wrapper.html()).toContain('Aan het converteren');
+  });
+});
 
 describe('LibraryView document-review flow', () => {
   // Fix 1: "Verwerpen" must throw away the seeded draft before reopening the
