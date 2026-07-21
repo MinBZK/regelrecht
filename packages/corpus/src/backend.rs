@@ -109,6 +109,29 @@ pub trait RepoBackend: Send + Sync {
     /// Read a file's contents. Returns `None` if the file does not exist.
     async fn read_file(&self, relative_path: &Path) -> Result<Option<String>>;
 
+    /// [`read_file`], authenticating with `token_override` when this
+    /// backend supports per-call tokens (see
+    /// [`RepoBackend::supports_token_override`]) — the read analogue of
+    /// [`WriteContext::token_override`]. `None` (or a backend that never
+    /// authenticates reads per call) falls back to [`read_file`]'s
+    /// behaviour, so the default implementation just delegates.
+    ///
+    /// This exists for the traject flow where the writable-own source has
+    /// no configured service token (fail-closed against shipping the
+    /// central token to a user-chosen repo): reads on that source can then
+    /// ride the acting editor user's own GitHub token per request, exactly
+    /// like `persist` does for writes.
+    ///
+    /// [`read_file`]: RepoBackend::read_file
+    async fn read_file_with_token(
+        &self,
+        relative_path: &Path,
+        token_override: Option<&str>,
+    ) -> Result<Option<String>> {
+        let _ = token_override;
+        self.read_file(relative_path).await
+    }
+
     /// Write a file's contents, creating parent directories as needed.
     ///
     /// For git backends this writes to the local checkout without committing.
@@ -120,6 +143,20 @@ pub trait RepoBackend: Send + Sync {
 
     /// List files in a directory, optionally filtered by extension (without dot).
     async fn list_files(&self, dir: &Path, extension: Option<&str>) -> Result<Vec<FileEntry>>;
+
+    /// [`list_files`] with a per-call token override — same contract as
+    /// [`RepoBackend::read_file_with_token`].
+    ///
+    /// [`list_files`]: RepoBackend::list_files
+    async fn list_files_with_token(
+        &self,
+        dir: &Path,
+        extension: Option<&str>,
+        token_override: Option<&str>,
+    ) -> Result<Vec<FileEntry>> {
+        let _ = token_override;
+        self.list_files(dir, extension).await
+    }
 
     /// List all files in a directory tree, recursively, optionally filtered by
     /// extension (without dot). Returned entries carry their path relative to
@@ -150,6 +187,20 @@ pub trait RepoBackend: Send + Sync {
                 relative_path: f.name,
             })
             .collect())
+    }
+
+    /// [`list_files_recursive`] with a per-call token override — same
+    /// contract as [`RepoBackend::read_file_with_token`].
+    ///
+    /// [`list_files_recursive`]: RepoBackend::list_files_recursive
+    async fn list_files_recursive_with_token(
+        &self,
+        dir: &Path,
+        extension: Option<&str>,
+        token_override: Option<&str>,
+    ) -> Result<Vec<RecursiveFileEntry>> {
+        let _ = token_override;
+        self.list_files_recursive(dir, extension).await
     }
 
     /// Return every YAML law's `implements` list as `(source-relative
