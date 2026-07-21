@@ -622,6 +622,11 @@ pub struct EnrichmentResultEnvelope {
 
 /// Proof-of-review for one enrichment chunk, written by the agent into the
 /// `.enrichment-result.yaml` envelope. See [`EnrichmentResultEnvelope`].
+///
+/// Only counts as proof when it references at least one article of the chunk
+/// window it was written for (checked by the no-op guard in
+/// `execute_enrich_with_runner`): an empty or unrelated report must not
+/// advance the cursor past an unreviewed window.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct ChunkReport {
     /// Article numbers the agent reviewed this session.
@@ -1803,10 +1808,23 @@ pub async fn execute_enrich_with_runner(
         // healthy law. The empty window skipped the LLM, so it is exempt.
         Some((start, numbers)) if !empty_window => {
             let has_new_untranslatables = untranslatables.len() > untranslatables_before;
-            if newly_enriched == 0 && envelope.chunk_report.is_none() && !has_new_untranslatables {
+            // The chunk_report only counts as proof-of-review when it names at
+            // least one article of THIS window: a bare `chunk_report: {}` or
+            // one listing unrelated numbers must not advance the cursor past
+            // an unreviewed window. Full window coverage is deliberately NOT
+            // required — exact-match strictness against agent-written numbers
+            // could retry-loop a healthy chunk toward exhaustion.
+            let report_references_window = envelope.chunk_report.as_ref().is_some_and(|report| {
+                report
+                    .articles_reviewed
+                    .iter()
+                    .chain(report.articles_skipped.iter().map(|s| &s.number))
+                    .any(|n| numbers.contains(n))
+            });
+            if newly_enriched == 0 && !report_references_window && !has_new_untranslatables {
                 return Err(PipelineError::Enrich(format!(
-                    "{CHUNK_NO_OUTPUT_MARKER}: no new machine_readable additions, no chunk_report, \
-                     no new untranslatables (articles {}..{} of {})",
+                    "{CHUNK_NO_OUTPUT_MARKER}: no new machine_readable additions, no chunk_report \
+                     referencing this window, no new untranslatables (articles {}..{} of {})",
                     start,
                     start + numbers.len(),
                     articles_before
@@ -3383,6 +3401,63 @@ articles:
         let msg = err.to_string();
         assert!(msg.contains(CHUNK_NO_OUTPUT_MARKER), "got: {msg}");
         assert!(!msg.contains("no machine_readable sections"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn test_execute_enrich_chunk_empty_or_unrelated_report_is_no_proof() {
+        // A bare `chunk_report: {}` — or one naming only articles outside the
+        // window — must not count as proof-of-review: presence alone would let
+        // a do-nothing run advance the cursor past an unreviewed window (and
+        // eventually mark the law enriched with silent gaps).
+        /// Writes a fixed chunk_report body, nothing else.
+        struct FixedReportRunner(&'static str);
+        #[async_trait::async_trait]
+        impl LlmRunner for FixedReportRunner {
+            async fn run(
+                &self,
+                _payload: &EnrichPayload,
+                yaml_abs: &Path,
+                _repo_path: &Path,
+                _config: &EnrichConfig,
+            ) -> Result<()> {
+                tokio::fs::write(enrichment_result_path(yaml_abs), self.0).await?;
+                Ok(())
+            }
+        }
+
+        for report in [
+            "chunk_report: {}\n",
+            // Articles 3-4 are outside the first window (articles 1-2).
+            "chunk_report:\n  articles_reviewed: [\"3\", \"4\"]\n",
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let law_dir = dir.path().join("regulation/nl/wet/test_law");
+            tokio::fs::create_dir_all(&law_dir).await.unwrap();
+            let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+            tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+                .await
+                .unwrap();
+
+            let mut config = test_config(LlmProvider::OpenCode {
+                path: "fake".into(),
+                model: None,
+            });
+            config.max_articles_per_run = 2;
+
+            let err = execute_enrich_with_runner(
+                &chunk_test_payload(yaml_path),
+                dir.path(),
+                &config,
+                "",
+                &FixedReportRunner(report),
+            )
+            .await
+            .unwrap_err();
+            assert!(
+                err.to_string().contains(CHUNK_NO_OUTPUT_MARKER),
+                "report {report:?} must not count as proof: {err}"
+            );
+        }
     }
 
     #[tokio::test]

@@ -131,8 +131,9 @@ order, from a **worker-owned cursor**:
 - MvT research runs only in the first chunk (cursor 0); reverse validation is
   limited to the articles of the chunk. A chunk may legitimately add zero
   `machine_readable` sections when the agent records a `chunk_report` in
-  `.enrichment-result.yaml`; a chunk without any output fails retryable (never
-  terminal).
+  `.enrichment-result.yaml` that references at least one article of the
+  chunk's window; a chunk without any output (or with an empty/unrelated
+  report) fails retryable (never terminal).
 - Termination is guaranteed in `ceil(articles_total / N)` successful runs,
   independent of LLM behavior; the last chunk marks the law `enriched`.
 - Task-flow enrichments (`deliver=task`) always run whole-law (chunking off).

@@ -3207,8 +3207,8 @@ mod tests {
         // the full formatted message, not just the marker, so a rewording that
         // accidentally introduces a classifier marker fails here.
         let chunk_err = PipelineError::Enrich(format!(
-            "{}: no new machine_readable additions, no chunk_report, \
-             no new untranslatables (articles 15..30 of 324)",
+            "{}: no new machine_readable additions, no chunk_report \
+             referencing this window, no new untranslatables (articles 15..30 of 324)",
             crate::enrich::CHUNK_NO_OUTPUT_MARKER
         ));
         assert!(
