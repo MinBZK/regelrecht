@@ -222,7 +222,7 @@ function viewLaw(job) {
            vertraging levert alleen een gat op waar de rij al zichtbaar is. -->
       <nldd-cell slot="start" vertical-alignment="center">
         <nldd-activity-indicator
-          size="16"
+          size="20"
           timing="instant"
           :text="runningTitle(job, displayName)"
         ></nldd-activity-indicator>
