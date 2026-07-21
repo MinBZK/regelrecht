@@ -565,6 +565,27 @@ impl EnrichPayload {
     pub fn deliver_as_task(&self) -> bool {
         self.deliver.as_deref() == Some("task")
     }
+
+    /// Contract-guard voor het corpus-brede (klassieke) enrich-pad: dat pad
+    /// pusht met het centrale corpus-token (`CorpusConfig`/`CORPUS_GIT_TOKEN`)
+    /// naar de centrale corpus-repo — de operator-repo — en mag dus alléén
+    /// corpus-brede jobs verwerken. Een payload met een traject-doel
+    /// (`traject_id`/`traject_ref`) hoort bij de taak-flow
+    /// (`deliver: "task"` → blob + review-taak; zie het worker/traject-contract
+    /// in de crate-doc); belandt zo'n payload tóch hier, dan is dat een
+    /// enqueue-fout die terminaal en luid moet falen in plaats van met het
+    /// server-token naar een verkeerd doel te schrijven.
+    pub fn require_corpus_wide_target(&self) -> Result<()> {
+        if self.traject_id.is_some() || self.traject_ref.is_some() {
+            return Err(PipelineError::Worker(
+                "enrich-payload met traject-doel zonder deliver=task: traject-oplevering \
+                 loopt altijd via een review-taak, het corpus-brede push-pad is alleen \
+                 voor de centrale corpus-repo"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// All known provider names. Used to create one enrich job per provider
@@ -2173,6 +2194,53 @@ mod tests {
 
         assert_eq!(deserialized.law_id, "BWBR0018451");
         assert!(deserialized.yaml_path.contains("zorgtoeslag"));
+    }
+
+    /// Minimale corpus-brede payload; de guard-tests zetten er traject-velden op.
+    fn corpus_wide_payload() -> EnrichPayload {
+        EnrichPayload {
+            law_id: "BWBR0018451".to_string(),
+            yaml_path: "regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
+            provider: None,
+            depth: None,
+            requested_by: None,
+            deliver: None,
+            traject_id: None,
+            traject_ref: None,
+            source_etag: None,
+            new_law: None,
+            chunk_articles: None,
+            skip_mvt: None,
+        }
+    }
+
+    #[test]
+    fn require_corpus_wide_target_accepts_central_corpus_jobs() {
+        // De klassieke corpus-brede enrich (geen traject-velden) blijft
+        // gewoon werken met het centrale corpus-token.
+        corpus_wide_payload()
+            .require_corpus_wide_target()
+            .expect("corpus-brede payload hoort door de guard te komen");
+    }
+
+    #[test]
+    fn require_corpus_wide_target_rejects_traject_payloads() {
+        // Worker/traject-contract: het corpus-brede push-pad (centrale repo,
+        // centrale token) mag nooit een traject-gerichte payload verwerken —
+        // die hoort via de taak-flow af te buigen. traject_id én traject_ref
+        // triggeren elk afzonderlijk, zodat een half-gevulde payload (bijv.
+        // een nieuwe enqueue die maar één veld zet) niet doorglipt.
+        let mut with_id = corpus_wide_payload();
+        with_id.traject_id = Some(Uuid::new_v4());
+        assert!(with_id.require_corpus_wide_target().is_err());
+
+        let mut with_ref = corpus_wide_payload();
+        with_ref.traject_ref = Some("voorbeeld-abcd1234".to_string());
+        let err = with_ref.require_corpus_wide_target().unwrap_err();
+        assert!(
+            err.to_string().contains("review-taak"),
+            "de fout moet naar het contract verwijzen, kreeg: {err}"
+        );
     }
 
     #[test]

@@ -1376,13 +1376,17 @@ async fn process_next_document_convert_job(
         }
     };
 
-    // Taak-flow-gate, vóór de (kostbare) conversie: zonder `requested_by` is
-    // er geen zinvolle assignee voor de review-taak, dus zo'n job kan nooit
-    // afgeleverd worden. Terminaal falen zónder taak (mirrors the enrich
-    // gate in `process_next_enrich_job`) - de upload-bytes worden ook
-    // meteen opgeruimd, er is toch geen aflever-pad meer voor ze.
-    if payload.deliver_as_task() && payload.requested_by.is_none() {
-        let msg = "taak-flow-payload zonder requested_by".to_string();
+    // Contract-guard, vóór de (kostbare) conversie: een document-convert-job
+    // heeft een traject-doel en mag dus uitsluitend via de taak-flow
+    // opleveren — het directe-push-pad naar de traject-repo is verwijderd
+    // (worker/traject-contract, zie de crate-doc). Dit dekt zowel
+    // `deliver != "task"` (waaronder jobs van vóór het taken-mechanisme) als
+    // een ontbrekende `requested_by` (geen assignee voor de review-taak).
+    // Terminaal falen zónder taak, spiegel van de `law_convert`-gate
+    // hieronder; de upload-bytes worden meteen opgeruimd, er is toch geen
+    // aflever-pad meer voor ze.
+    if let Err(e) = payload.require_task_delivery() {
+        let msg = e.to_string();
         tracing::error!(job_id = %job.id, error = %msg);
         let _ = document_convert::delete_upload(pool, payload.upload_id).await;
         job_queue::fail_job_terminal(pool, job.id, Some(serde_json::json!({ "error": msg })))
@@ -1406,34 +1410,13 @@ async fn process_next_document_convert_job(
     job_config.timeout = convert_deadline;
 
     match run_document_convert(pool, &job, &payload, &job_config, convert_deadline).await {
-        Ok(true) => {
+        Ok(()) => {
             // Taak-flow: `finish_document_convert_task_job` already inserted the
             // result-blob, completed the job, and created the review-taak,
             // atomically. Only the transient upload bytes remain to clean up.
             if let Err(e) = document_convert::delete_upload(pool, payload.upload_id).await {
                 tracing::warn!(job_id = %job.id, error = %e, "failed to delete document upload after success");
             }
-            Ok(JobOutcome::Processed)
-        }
-        Ok(false) => {
-            // The markdown is already committed to git at this point. Drop the
-            // transient upload bytes BEFORE propagating any complete_job error —
-            // otherwise a failed status update would `?`-return past the cleanup
-            // and leak the (up to 25 MiB) BYTEA row.
-            let complete_result = job_queue::complete_job(pool, job.id, None).await;
-            if let Err(e) = document_convert::delete_upload(pool, payload.upload_id).await {
-                tracing::warn!(job_id = %job.id, error = %e, "failed to delete document upload after success");
-            }
-            if let Err(e) = &complete_result {
-                // The markdown is already committed to git, but the status update
-                // failed. The job will show as in-progress until the orphan reaper
-                // reclaims it; log loudly so an operator can correlate.
-                tracing::error!(
-                    job_id = %job.id, error = %e, target = %payload.target_path,
-                    "document converted + committed, but marking the job completed failed"
-                );
-            }
-            complete_result?;
             Ok(JobOutcome::Processed)
         }
         Err(e) => {
@@ -1508,18 +1491,19 @@ async fn process_next_document_convert_job(
     }
 }
 
-/// Convert the uploaded document to markdown and deliver it - either pushed
-/// straight to the traject (old behaviour), or as a result-blob + review-taak
-/// (taak-flow, `payload.deliver_as_task()`). Returns `true` when the taak-flow
-/// ran: `finish_document_convert_task_job` already completed the job as part
-/// of its own transaction, so the caller must NOT call `complete_job` again.
+/// Convert the uploaded document to markdown and deliver it as a result-blob +
+/// review-taak (taak-flow — het enige aflever-pad; de guard in de aanroeper
+/// heeft al geborgd dat `payload.deliver_as_task()` waar is, en het oude
+/// directe-push-pad naar de traject-repo bestaat niet meer).
+/// `finish_document_convert_task_job` completes the job as part of its own
+/// transaction, so the caller must NOT call `complete_job` again.
 async fn run_document_convert(
     pool: &PgPool,
     job: &crate::models::Job,
     payload: &DocumentConvertPayload,
     config: &EnrichConfig,
     convert_deadline: Duration,
-) -> Result<bool> {
+) -> Result<()> {
     // Buitenste begrenzing ónder de reaper-window (zie de aanroeper): de
     // gedropte future komt niet meer aan zijn eigen tempdir-cleanup toe, dus
     // die doen we hier; kill_on_drop ruimt het agent-subprocess op.
@@ -1541,12 +1525,8 @@ async fn run_document_convert(
         }
         Ok(r) => r?,
     };
-    if payload.deliver_as_task() {
-        finish_document_convert_task_job(pool, job, payload, &markdown).await?;
-        return Ok(true);
-    }
-    document_convert::write_markdown_to_traject(pool, payload, &markdown).await?;
-    Ok(false)
+    finish_document_convert_task_job(pool, job, payload, &markdown).await?;
+    Ok(())
 }
 
 /// Verwerk één `law_convert`-job: geüpload document → gevalideerde
@@ -2342,6 +2322,19 @@ async fn process_next_enrich_job(
             return Ok(JobOutcome::Processed);
         }
         return process_enrich_task_job(pool, &job, &payload, enrich_config, job_timeout).await;
+    }
+
+    // Contract-borging (worker/traject-contract, zie de crate-doc): vanaf hier
+    // loopt het corpus-brede pad, dat met het centrale corpus-token naar de
+    // centrale corpus-repo pusht. Een payload met een traject-doel die niet
+    // via de taak-flow hierboven is afgebogen, is een enqueue-fout — terminaal
+    // falen in plaats van met het server-token door te pushen.
+    if let Err(e) = payload.require_corpus_wide_target() {
+        let msg = e.to_string();
+        tracing::error!(job_id = %job.id, law_id = %job.law_id, error = %msg);
+        job_queue::fail_job_terminal(pool, job.id, Some(serde_json::json!({ "error": msg })))
+            .await?;
+        return Ok(JobOutcome::Processed);
     }
 
     // Override the provider if the payload specifies one
@@ -3280,5 +3273,136 @@ mod tests {
         let root = HarvestPayload::for_law("BWBR0018451", None);
         let root_json = serde_json::to_string(&root).unwrap();
         assert!(!root_json.contains("depth"));
+    }
+}
+
+/// DB-backed borging van het worker/traject-contract op jobniveau (zie de
+/// crate-doc): een document-convert-job die niet via de taak-flow oplevert,
+/// wordt door [`process_next_document_convert_job`] terminaal geweigerd —
+/// vóór de conversie, zonder taak, zonder blob, en (structureel: het push-pad
+/// bestaat niet meer in `document_convert`) zonder ook maar een git-backend
+/// aan te raken.
+#[cfg(all(test, feature = "test-utils"))]
+mod contract_tests {
+    use super::*;
+    use crate::enrich::LlmProvider;
+    use crate::test_utils::TestDb;
+    use serde_json::json;
+
+    /// Seed een upload + document-convert-job zoals de upload-handler dat doet,
+    /// maar met een vrij te kiezen payload (om het contract te kunnen schenden).
+    async fn seed_job(db: &TestDb, payload: serde_json::Value) -> (uuid::Uuid, uuid::Uuid) {
+        let (upload_id,): (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO document_uploads (traject_ref, filename, content_type, bytes) \
+             VALUES ('testtraject-abcd1234', 'bron.pdf', 'application/pdf', $1) RETURNING id",
+        )
+        .bind(vec![1u8, 2, 3])
+        .fetch_one(&db.pool)
+        .await
+        .expect("insert upload");
+
+        let mut payload = payload;
+        payload["upload_id"] = json!(upload_id);
+        let job = job_queue::create_job(
+            &db.pool,
+            CreateJobRequest::new(
+                JobType::DocumentConvert,
+                "doc:testtraject-abcd1234/report.md",
+            )
+            .with_traject_ref("testtraject-abcd1234")
+            .with_payload(payload)
+            .with_max_attempts(1),
+        )
+        .await
+        .expect("create job");
+        (job.id, upload_id)
+    }
+
+    async fn process_one(db: &TestDb) {
+        // De guard vuurt vóór de conversie; er wordt dus nooit een LLM
+        // gespawnd en de timeouts zijn niet relevant.
+        let config = EnrichConfig::for_test(LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        });
+        process_next_document_convert_job(
+            &db.pool,
+            &config,
+            Duration::from_secs(60),
+            Duration::from_secs(1800),
+        )
+        .await
+        .expect("verwerking hoort netjes af te ronden (met een terminaal gefaalde job)");
+    }
+
+    /// Assert dat de job terminaal gefaald is met de contractfout, de upload is
+    /// opgeruimd, en er niets is afgeleverd: geen review-taak, geen result-blob
+    /// — en dus aantoonbaar geen push-materiaal.
+    async fn assert_rejected_without_delivery(db: &TestDb, job_id: uuid::Uuid) {
+        let (status, error): (String, Option<String>) =
+            sqlx::query_as("SELECT status::text, result->>'error' FROM jobs WHERE id = $1")
+                .bind(job_id)
+                .fetch_one(&db.pool)
+                .await
+                .expect("job row");
+        assert_eq!(status, "failed", "de job faalt terminaal");
+        assert!(
+            error
+                .as_deref()
+                .unwrap_or_default()
+                .contains("deliver=task"),
+            "de fout benoemt het contract, kreeg: {error:?}"
+        );
+
+        let (uploads, tasks, blobs): (i64, i64, i64) = sqlx::query_as(
+            "SELECT (SELECT COUNT(*) FROM document_uploads), \
+                    (SELECT COUNT(*) FROM tasks), \
+                    (SELECT COUNT(*) FROM job_blobs)",
+        )
+        .fetch_one(&db.pool)
+        .await
+        .expect("counts");
+        assert_eq!(uploads, 0, "de upload-bytes zijn opgeruimd");
+        assert_eq!(tasks, 0, "geen taak: de guard faalt zonder aflever-pad");
+        assert_eq!(blobs, 0, "geen result-blob: er is niets opgeleverd");
+    }
+
+    #[tokio::test]
+    async fn document_convert_without_task_delivery_fails_terminally() {
+        // Een pre-taken-mechanisme-payload (geen deliver-veld): het oude
+        // directe-push-gedrag bestaat niet meer, dus dit moet terminaal falen.
+        let db = TestDb::new().await;
+        let (job_id, _upload) = seed_job(
+            &db,
+            json!({
+                "traject_id": uuid::Uuid::new_v4(),
+                "traject_ref": "testtraject-abcd1234",
+                "target_path": "report.md",
+            }),
+        )
+        .await;
+
+        process_one(&db).await;
+        assert_rejected_without_delivery(&db, job_id).await;
+    }
+
+    #[tokio::test]
+    async fn document_convert_task_delivery_without_requested_by_fails_terminally() {
+        // deliver=task zonder aanvrager: geen assignee voor de review-taak,
+        // dus ook geen aflever-pad — zelfde terminale weigering.
+        let db = TestDb::new().await;
+        let (job_id, _upload) = seed_job(
+            &db,
+            json!({
+                "traject_id": uuid::Uuid::new_v4(),
+                "traject_ref": "testtraject-abcd1234",
+                "target_path": "report.md",
+                "deliver": "task",
+            }),
+        )
+        .await;
+
+        process_one(&db).await;
+        assert_rejected_without_delivery(&db, job_id).await;
     }
 }
