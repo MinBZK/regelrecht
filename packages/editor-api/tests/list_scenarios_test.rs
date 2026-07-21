@@ -225,6 +225,7 @@ async fn list_scenarios_global_returns_target_law_ids() {
             source_map,
             backends,
             auth_file: None,
+            index_failures: std::collections::HashMap::new(),
         })),
         oidc_client: None,
         end_session_url: None,

@@ -889,6 +889,7 @@ mod tests {
             scopes: vec![],
             priority,
             auth_ref: None,
+            strict_auth: false,
         }
     }
 

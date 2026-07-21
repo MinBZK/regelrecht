@@ -88,6 +88,13 @@ pub struct CorpusState {
     pub backends: HashMap<String, BackendEntry>,
     /// Path to corpus-auth.yaml for GitHub authentication during reload.
     pub auth_file: Option<PathBuf>,
+    /// Source id → error of the last failed index scan for that source.
+    /// Sources absent from this map enumerated fine. Surfaced on
+    /// `GET /api/sources` (and the traject variant) as `index_error`, so a
+    /// source whose scan failed is distinguishable from a genuinely empty
+    /// one — a failing traject writable-own source otherwise reads as
+    /// `law_count: 0` while its laws silently fall back to the seed corpus.
+    pub index_failures: HashMap<String, String>,
 }
 
 impl CorpusState {
@@ -98,6 +105,7 @@ impl CorpusState {
             source_map: SourceMap::new(),
             backends: HashMap::new(),
             auth_file: None,
+            index_failures: HashMap::new(),
         }
     }
 }

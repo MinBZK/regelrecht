@@ -21,9 +21,13 @@ pub async fn list_sources(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<SourceSummary>>, ApiError> {
     let corpus = state.corpus.read().await;
+    // The admin corpus state doesn't track per-source scan health (its
+    // sources are operator-managed manifest entries); pass no failures so
+    // `index_error` serialises as null on every source.
     Ok(Json(build_source_summaries(
         &corpus.registry,
         &corpus.source_map,
+        &std::collections::HashMap::new(),
     )))
 }
 

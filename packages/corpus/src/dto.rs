@@ -56,6 +56,12 @@ pub struct SourceSummary {
     pub source_type: String,
     pub priority: u32,
     pub law_count: usize,
+    /// Why the last index scan of this source failed, when it did. `None`
+    /// means the scan succeeded — so a `law_count` of 0 with `index_error:
+    /// null` is a genuinely empty source, while `law_count: 0` plus an error
+    /// here means the source couldn't be read at all (missing/invalid token,
+    /// unreachable repo) and its laws are silently absent from resolution.
+    pub index_error: Option<String>,
 }
 
 /// Stable string tag for a [`SourceType`] used in JSON responses.
@@ -67,9 +73,14 @@ pub fn source_type_tag(source_type: &SourceType) -> &'static str {
 }
 
 /// Build the [`SourceSummary`] list returned by `GET /api/sources`.
+///
+/// `index_failures` maps source id → the error of the last failed index scan
+/// (empty when every source enumerated fine, or when the caller doesn't
+/// track scan health).
 pub fn build_source_summaries(
     registry: &CorpusRegistry,
     source_map: &SourceMap,
+    index_failures: &std::collections::HashMap<String, String>,
 ) -> Vec<SourceSummary> {
     registry
         .sources()
@@ -85,7 +96,54 @@ pub fn build_source_summaries(
                 source_type: source_type_tag(&source.source_type).to_string(),
                 priority: source.priority,
                 law_count,
+                index_error: index_failures.get(&source.id).cloned(),
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use crate::models::{LocalSource, Source};
+
+    fn source(id: &str, priority: u32) -> Source {
+        Source {
+            id: id.to_string(),
+            name: id.to_string(),
+            source_type: SourceType::Local {
+                local: LocalSource {
+                    path: std::path::PathBuf::from("unused"),
+                },
+            },
+            scopes: vec![],
+            priority,
+            auth_ref: None,
+            strict_auth: false,
+        }
+    }
+
+    #[test]
+    fn summaries_carry_the_index_error_of_a_failed_source() {
+        // A failed scan and a genuinely empty source both show law_count 0;
+        // `index_error` is what tells them apart on `GET /api/sources`.
+        let registry =
+            CorpusRegistry::from_sources(vec![source("broken", 0), source("healthy", 2)]);
+        let failures = std::collections::HashMap::from([(
+            "broken".to_string(),
+            "GitHub Trees API returned 404".to_string(),
+        )]);
+
+        let summaries = build_source_summaries(&registry, &SourceMap::new(), &failures);
+
+        let broken = summaries.iter().find(|s| s.id == "broken").unwrap();
+        assert_eq!(broken.law_count, 0);
+        assert_eq!(
+            broken.index_error.as_deref(),
+            Some("GitHub Trees API returned 404")
+        );
+        let healthy = summaries.iter().find(|s| s.id == "healthy").unwrap();
+        assert_eq!(healthy.index_error, None);
+    }
 }

@@ -68,6 +68,28 @@ pub fn resolve_token_for_source(
     resolve_token(key, auth_file)
 }
 
+/// Resolve the token for a [`Source`](crate::models::Source), honouring its
+/// [`strict_auth`](crate::models::Source::strict_auth) flag: strict sources
+/// (user-supplied repo coordinates, e.g. a traject's writable-own repo) never
+/// fall back to the legacy shared `CORPUS_GIT_TOKEN`; regular manifest
+/// sources keep the legacy fallback for single-PAT deployments.
+///
+/// This is the one resolver every *source-driven* lookup should go through —
+/// scans, fetches and backend construction resolving through different rules
+/// is exactly how a promote-write can succeed while the subsequent index scan
+/// of the same repo silently fails.
+pub fn resolve_source_token(
+    source: &crate::models::Source,
+    auth_file: Option<&Path>,
+) -> Result<Option<String>> {
+    let key = source.auth_ref.as_deref().unwrap_or(&source.id);
+    if source.strict_auth {
+        resolve_token_strict(key, auth_file)
+    } else {
+        resolve_token(key, auth_file)
+    }
+}
+
 /// Like [`resolve_token_for_source`] but only consults the per-source
 /// env var and the auth file. Returns `None` when neither yields a
 /// token — the legacy `CORPUS_GIT_TOKEN` fallback is intentionally
@@ -303,5 +325,45 @@ sources:
         let result = resolve_token_strict("strict-per-source-ok", None).unwrap();
         unsafe { std::env::remove_var(key) };
         assert_eq!(result, Some("per-source-value".to_string()));
+    }
+
+    fn local_source(auth_ref: &str, strict_auth: bool) -> crate::models::Source {
+        crate::models::Source {
+            id: "src".to_string(),
+            name: "Src".to_string(),
+            source_type: crate::models::SourceType::Local {
+                local: crate::models::LocalSource {
+                    path: std::path::PathBuf::from("unused"),
+                },
+            },
+            scopes: vec![],
+            priority: 0,
+            auth_ref: Some(auth_ref.to_string()),
+            strict_auth,
+        }
+    }
+
+    #[test]
+    fn resolve_source_token_strict_source_skips_legacy_token() {
+        // A `strict_auth` source (traject writable-own, user-supplied repo
+        // coords) must resolve like `resolve_token_strict` on EVERY path
+        // that goes through the source object — most importantly the index
+        // scan, which used to fall back to `CORPUS_GIT_TOKEN` while the
+        // push path resolved strictly.
+        let _g = ENV_LOCK.lock().unwrap();
+        let prev = std::env::var("CORPUS_GIT_TOKEN").ok();
+        unsafe { std::env::set_var("CORPUS_GIT_TOKEN", "central-secret") };
+        let strict = resolve_source_token(&local_source("user-picked-ref", true), None).unwrap();
+        let legacy = resolve_source_token(&local_source("user-picked-ref", false), None).unwrap();
+        match prev {
+            Some(v) => unsafe { std::env::set_var("CORPUS_GIT_TOKEN", v) },
+            None => unsafe { std::env::remove_var("CORPUS_GIT_TOKEN") },
+        }
+        assert_eq!(strict, None, "strict source must not leak the legacy token");
+        assert_eq!(
+            legacy,
+            Some("central-secret".to_string()),
+            "manifest sources keep the legacy single-PAT fallback"
+        );
     }
 }
