@@ -59,10 +59,22 @@ pub enum TokenOrigin {
 }
 
 /// Outcome of a token lookup: the token (if any) plus where it came from.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TokenDecision {
     token: Option<String>,
     origin: TokenOrigin,
+}
+
+/// Redacts the token, like [`SourceAuth`]'s `Debug` — decisions are meant
+/// to be logged (that's the point of [`TokenOrigin`]), so a derived
+/// `Debug` would put the raw secret one `{:?}` away from the log output.
+impl std::fmt::Debug for TokenDecision {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TokenDecision")
+            .field("token", &self.token.as_ref().map(|_| "***"))
+            .field("origin", &self.origin)
+            .finish()
+    }
 }
 
 impl TokenDecision {
