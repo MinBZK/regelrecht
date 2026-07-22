@@ -4,7 +4,6 @@ import { useBwbSearch, MIN_QUERY_LENGTH } from '../composables/useBwbSearch.js';
 import { useBwbHarvest } from '../composables/useBwbHarvest.js';
 import { useAuth } from '../composables/useAuth.js';
 import { useTrajects } from '../composables/useTrajects.js';
-import { useLawPromote } from '../composables/useLawPromote.js';
 import { lawsListUrl } from '../composables/corpusUrls.js';
 import { apiFetchJson } from '../lib/apiFetch.js';
 import { useLatest } from '../lib/useLatest.js';
@@ -14,23 +13,9 @@ import { SEARCH_PLACEHOLDER, SEARCH_ACCESSIBLE_LABEL } from '../constants.js';
 // so this popover stays in sync with the main search-field in AppShell.
 const listTranslations = { 'components.list.search-placeholder-text': SEARCH_PLACEHOLDER };
 
-const emit = defineEmits(['select-law', 'harvest-available', 'promoted']);
+const emit = defineEmits(['select-law', 'harvest-available']);
 
 const { activeTrajectRef } = useTrajects();
-
-// "Toevoegen aan traject" direct vanuit de zoekresultaten: een treffer uit een
-// gefedereerde bron (de centrale seed, source_priority > 0) die nog niet in de
-// eigen traject-repo staat, krijgt een promote-knop in de rij. Zelfde gedeelde
-// logica als de "Wet toevoegen"-flow (AddLawSheet) - geen tweede
-// promote-implementatie.
-const {
-  promoteState,
-  promoteError,
-  setLawsFromSearch,
-  isInTraject: isLawIdInTraject,
-  clearPromoteError,
-  promote: promoteLaw,
-} = useLawPromote(activeTrajectRef);
 
 const { results: bwbResults, loading: bwbLoading, search: searchBwb, clear: clearBwb } = useBwbSearch();
 const {
@@ -115,7 +100,6 @@ let debounceTimer = null;
 watch(search, (q) => {
   clearBwb();
   searchFailed.value = false;
-  clearPromoteError();
   if (debounceTimer) clearTimeout(debounceTimer);
   const term = q.trim();
   if (term.length < MIN_QUERY_LENGTH) {
@@ -139,9 +123,6 @@ async function runCorpusSearch(term) {
     const laws = await apiFetchJson(url);
     if (!isCurrent()) return; // a newer query superseded this one
     serverLaws.value = laws;
-    // Ververs de al-in-traject-set (source_priority 0 = eigen repo) zodat de
-    // promote-knop alleen op nog-niet-gepromote federatie-treffers verschijnt.
-    setLawsFromSearch(laws);
     searchFailed.value = false;
     // No match anywhere in the corpus → offer the external wetten.overheid.nl
     // search (unless the user must log in first to reach it).
@@ -205,16 +186,9 @@ function onListKeydown(e) {
 function onPopoverClose() {
   search.value = '';
   clearBwb();
-  clearPromoteError();
-  // Emit the deferred promote/selection now: the popover has closed and
-  // already run its _returnFocus, so the parent's focus-the-law wins (see
-  // selectLaw / promoteFromRow).
-  if (pendingPromotedLawId !== null) {
-    const lawId = pendingPromotedLawId;
-    pendingPromotedLawId = null;
-    pendingSelectLawId = null;
-    emit('promoted', lawId);
-  } else if (pendingSelectLawId !== null) {
+  // Emit the deferred selection now: the popover has closed and already run its
+  // _returnFocus, so the parent's focus-the-law wins (see selectLaw).
+  if (pendingSelectLawId !== null) {
     const lawId = pendingSelectLawId;
     pendingSelectLawId = null;
     emit('select-law', lawId);
@@ -232,38 +206,6 @@ let pendingSelectLawId = null;
 function selectLaw(lawId) {
   pendingSelectLawId = lawId;
   close();
-}
-
-// The promoted law id, emitted on 'promoted' once the popover has fully closed
-// (same deferral as pendingSelectLawId): the parent refreshes its index and
-// opens/focuses the law, which must win from the popover's _returnFocus.
-let pendingPromotedLawId = null;
-
-/**
- * Alleen federatie-treffers (centrale seed, source_priority > 0) die nog niet
- * in de eigen traject-repo staan krijgen de knop; buiten een traject (globale
- * corpus-weergave) is er niets om naartoe te promoten. Na een 409 verhuist de
- * wet naar de al-in-traject-set en toont de rij "Al in dit traject".
- */
-function canPromote(law) {
-  return (
-    Boolean(activeTrajectRef.value) &&
-    law.source_priority !== 0 &&
-    !isLawIdInTraject(law.law_id)
-  );
-}
-
-function lawSupportingText(law) {
-  if (law.source_priority !== 0 && isLawIdInTraject(law.law_id)) return 'Al in dit traject';
-  return law.source_name || undefined;
-}
-
-async function promoteFromRow(law) {
-  const outcome = await promoteLaw(law.law_id);
-  if (outcome === 'done') {
-    pendingPromotedLawId = law.law_id;
-    close();
-  }
 }
 
 /**
@@ -318,13 +260,6 @@ async function show(anchorEl, initialSearch = '') {
  * to the host. The `open` event fires AFTER _manageFocus, so our focus wins.
  */
 function onPopoverOpen() {
-  // Verse sessie: gooi een pending emit van een vorige sessie weg. Die kan
-  // blijven hangen wanneer de promote-POST pas resolvet nadat de gebruiker de
-  // popover al sloot — close() is dan een no-op (de popover is al dicht, dus
-  // geen 'close'-event) en zonder deze reset zou de eerstvolgende close een
-  // stale 'promoted' emitten en een legitieme select-law verdringen.
-  pendingPromotedLawId = null;
-  pendingSelectLawId = null;
   const list = popoverRef.value?.querySelector('nldd-list');
   const input = list?.shadowRoot?.querySelector('.list__search-field-input');
   if (input) {
@@ -388,19 +323,10 @@ defineExpose({ show });
           @click="close"
         ></nldd-button>
 
-        <!-- Fout bij promoten: één banner boven de resultaten (zelfde vorm
-             als in AddLawSheet). -->
-        <nldd-list-item v-if="promoteError" size="md">
-          <nldd-icon-cell size="20" icon="alert" color="critical"></nldd-icon-cell>
-          <nldd-spacer-cell size="8"></nldd-spacer-cell>
-          <nldd-text-cell :text="promoteError" color="critical"></nldd-text-cell>
-        </nldd-list-item>
-
         <!-- Interne corpus-treffers: platte lijst, eigen repo eerst (op
-             bron-prioriteit), met de bron als ondertitel per rij. Een treffer
-             uit de centrale seed die nog niet in de eigen traject-repo staat,
-             krijgt direct een "Toevoegen aan traject"-knop (click.stop: de
-             knop mag de rij-navigatie niet triggeren). -->
+             bron-prioriteit), met de bron als ondertitel per rij. Rijen
+             navigeren alleen naar de wet; promoten naar het traject kan
+             uitsluitend via de "Wet toevoegen"-flow (AddLawSheet). -->
         <nldd-list-item
           v-for="law in sortedLaws"
           :key="law.law_id"
@@ -411,20 +337,8 @@ defineExpose({ show });
         >
           <nldd-text-cell
             :text="displayName(law)"
-            :supporting-text="lawSupportingText(law)"
+            :supporting-text="law.source_name || undefined"
           ></nldd-text-cell>
-          <template v-if="canPromote(law)">
-            <nldd-spacer-cell size="8"></nldd-spacer-cell>
-            <nldd-cell>
-              <nldd-button
-                size="sm"
-                variant="secondary"
-                text="Toevoegen aan traject"
-                :loading="promoteState[law.law_id] === 'busy' || undefined"
-                @click.stop="promoteFromRow(law)"
-              ></nldd-button>
-            </nldd-cell>
-          </template>
         </nldd-list-item>
 
         <!-- Externe wetten.overheid.nl-treffers (alleen wanneer de corpus niets

@@ -329,16 +329,12 @@ async function headerAddWerkdoc(kind) {
   if (kind === 'new') onDocNew();
   else onDocUpload();
 }
-// Na een geslaagde promote (via de AddLawSheet óf de "Toevoegen aan
-// traject"-knop in de gewone zoekresultaten): index verversen (de wet staat
+// Na een geslaagde promote (via de AddLawSheet): index verversen (de wet staat
 // nu in de traject-repo) en de wet openen — dezelfde afronding als een
-// afgeronde harvest in de globale zoeker (onHarvestAvailable). Vanuit de
-// zoekresultaten focussen we ook het sidebar-item (focusAfter), net als
-// select-law uit dezelfde popover — daarvoor stelt SearchPopover de
-// 'promoted'-emit uit tot na _returnFocus.
-async function onLawPromoted(lawId, focusAfter = false) {
+// afgeronde harvest in de globale zoeker (onHarvestAvailable).
+async function onLawPromoted(lawId) {
   await loadIndex();
-  selectLaw(lawId, focusAfter);
+  selectLaw(lawId);
 }
 // Een gestarte traject-harvest is async: bevestig met dezelfde banner-vorm
 // als de document-upload dat de voortgang in het Taken-paneel verschijnt.
@@ -2075,7 +2071,6 @@ watch(activeTrajectRef, () => {
       ref="searchPopoverRef"
       @select-law="(lawId) => selectLaw(lawId, true)"
       @harvest-available="onHarvestAvailable"
-      @promoted="(lawId) => onLawPromoted(lawId, true)"
     />
     <AddLawSheet
       ref="addLawSheetRef"
