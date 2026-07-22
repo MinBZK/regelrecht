@@ -672,7 +672,14 @@ async fn serve(
         tokio::task::JoinHandle<Result<(), tower_sessions::session_store::Error>>,
     >,
 ) {
-    let addr = SocketAddr::from(([0, 0, 0, 0], 8008));
+    // Default 8000: the container (frontend/Dockerfile EXPOSE 8000) and the
+    // ZAD service/health-check target 8000. Local dev can override to avoid a
+    // port clash (e.g. EDITOR_API_PORT=8008 when pinniped holds 8000).
+    let port = env::var("EDITOR_API_PORT")
+        .ok()
+        .and_then(|s| s.parse::<u16>().ok())
+        .unwrap_or(8000);
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
     tracing::info!("listening on {addr}");
 
     let listener = tokio::net::TcpListener::bind(addr)
