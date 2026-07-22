@@ -303,6 +303,41 @@ async fn put_403_maps_to_write_denied() {
 }
 
 #[tokio::test]
+async fn put_403_rate_limit_stays_generic_git_error() {
+    let server = MockServer::start().await;
+    mount_branch_exists(&server).await;
+
+    // GitHub answers rate-limit exhaustion ALSO with a 403 (primary limit:
+    // `x-ratelimit-remaining: 0`). That is transient, not a permissions
+    // refusal — it must NOT become `WriteDenied` (which the editor-api
+    // translates into a permanent-sounding "geen schrijftoegang" message)
+    // but stay on the generic `Git` path.
+    Mock::given(method("PUT"))
+        .and(path("/repos/acme/corpus/contents/laws/x.yaml"))
+        .respond_with(
+            ResponseTemplate::new(403)
+                .insert_header("x-ratelimit-remaining", "0")
+                .set_body_string("{\"message\":\"API rate limit exceeded\"}"),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let b = backend(&server);
+    b.write_file(Path::new("laws/x.yaml"), "gelimiteerd\n")
+        .await
+        .unwrap();
+    let err = b
+        .persist(&ctx())
+        .await
+        .expect_err("a rate-limited 403 on PUT must still fail the persist");
+    assert!(
+        matches!(err, regelrecht_corpus::error::CorpusError::Git(_)),
+        "a rate-limit 403 must stay a generic Git error, got: {err:?}"
+    );
+}
+
+#[tokio::test]
 async fn delete_403_maps_to_write_denied() {
     let server = MockServer::start().await;
     mount_branch_exists(&server).await;
