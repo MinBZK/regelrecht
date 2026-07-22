@@ -91,6 +91,61 @@ pub(crate) fn decide_base_action(
     }
 }
 
+/// The article window one enrich run must process, decided by the worker (not
+/// the LLM) from the persisted cursor. Pure decision so the chunking contract
+/// can be pinned by unit tests without git or an LLM (pattern:
+/// [`decide_base_action`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ChunkPlan {
+    /// Chunking disabled (`ENRICH_MAX_ARTICLES_PER_RUN=0`): process the whole
+    /// law in one session, exactly the pre-chunking behavior.
+    WholeLaw,
+    /// Process articles `[start, end)` in document order. `law_complete` is
+    /// true when this window reaches the end of the document — the law can be
+    /// marked `enriched` after this run.
+    Chunk {
+        start: usize,
+        end: usize,
+        law_complete: bool,
+    },
+}
+
+/// Plan the article window for this run.
+///
+/// The stored cursor only counts when it was recorded for the *same* law YAML
+/// path AND still fits the document (`cursor <= articles_total`); anything else
+/// (new law version at another path, corrupt metadata, legacy files without
+/// cursor fields) resets to 0. The window is document order from the cursor —
+/// deliberately NOT "the first N un-enriched articles": the law-generate skill
+/// legitimately skips definition/procedure/transitional articles without
+/// `machine_readable`, so an un-enriched-first window would revisit the same
+/// skipped articles forever and never terminate. A cursor guarantees
+/// termination in `ceil(total / N)` successful runs regardless of LLM behavior.
+pub(crate) fn plan_chunk(
+    max_articles_per_run: usize,
+    articles_total: usize,
+    stored_cursor: usize,
+    stored_cursor_path: &str,
+    yaml_path: &str,
+) -> ChunkPlan {
+    if max_articles_per_run == 0 {
+        return ChunkPlan::WholeLaw;
+    }
+    let start = if stored_cursor_path == yaml_path && stored_cursor <= articles_total {
+        stored_cursor
+    } else {
+        0
+    };
+    let end = start
+        .saturating_add(max_articles_per_run)
+        .min(articles_total);
+    ChunkPlan::Chunk {
+        start,
+        end,
+        law_complete: end >= articles_total,
+    }
+}
+
 /// Trait abstracting the LLM invocation so `execute_enrich` can be tested
 /// with a fake provider that doesn't spawn real processes.
 #[async_trait::async_trait]
@@ -125,7 +180,17 @@ impl LlmRunner for ProcessLlmRunner {
         config: &EnrichConfig,
     ) -> Result<()> {
         let progress_path = progress_file_path(yaml_abs);
-        let prompt = build_prompt(&payload.yaml_path, &progress_path.to_string_lossy());
+        // Chunked runs get the explicit-article-subset prompt; whole-law runs
+        // keep the original prompt byte-identical.
+        let prompt = match &payload.chunk_articles {
+            Some(articles) => build_chunk_prompt(
+                &payload.yaml_path,
+                &progress_path.to_string_lossy(),
+                articles,
+                payload.skip_mvt.unwrap_or(false),
+            ),
+            None => build_prompt(&payload.yaml_path, &progress_path.to_string_lossy()),
+        };
         run_llm_subprocess(
             &config.provider,
             &prompt,
@@ -480,6 +545,19 @@ pub struct EnrichPayload {
     /// voorstel als aan-te-maken wet behandelt i.p.v. als wijziging.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub new_law: Option<bool>,
+    /// Article numbers this run must process (chunked enrichment). Computed
+    /// per run by `execute_enrich_with_runner` from the persisted cursor and
+    /// passed to the [`LlmRunner`] via the normalized payload — never stored
+    /// in queue payloads (`skip_serializing_if` keeps old payloads and the
+    /// runner trait untouched). `None` means whole-law mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chunk_articles: Option<Vec<String>>,
+    /// `true` on continuation chunks (cursor > 0): the MvT-research step ran
+    /// during the first chunk and its feature file is already on the branch,
+    /// so the prompt tells the agent to skip step 1. Transport-only, like
+    /// `chunk_articles`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skip_mvt: Option<bool>,
 }
 
 impl EnrichPayload {
@@ -534,28 +612,109 @@ pub struct EnrichmentResultEnvelope {
     pub law_id: Option<String>,
     #[serde(default)]
     pub related_legislation: Vec<RelatedLegislation>,
+    /// Per-chunk review report (chunked enrichment only). A chunk may
+    /// legitimately add zero `machine_readable` sections (e.g. a
+    /// transitional-law chapter); this report is the agent's proof that it
+    /// actually reviewed the window, so the run can still count as progress.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chunk_report: Option<ChunkReport>,
+}
+
+/// Proof-of-review for one enrichment chunk, written by the agent into the
+/// `.enrichment-result.yaml` envelope. See [`EnrichmentResultEnvelope`].
+///
+/// Only counts as proof when it references at least one article of the chunk
+/// window it was written for (checked by the no-op guard in
+/// `execute_enrich_with_runner`): an empty or unrelated report must not
+/// advance the cursor past an unreviewed window.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct ChunkReport {
+    /// Article numbers the agent reviewed this session.
+    #[serde(default)]
+    pub articles_reviewed: Vec<String>,
+    /// Articles deliberately left without `machine_readable`, with the reason
+    /// (e.g. "definition article", "transitional law").
+    #[serde(default)]
+    pub articles_skipped: Vec<SkippedArticle>,
+}
+
+/// One deliberately-skipped article in a [`ChunkReport`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SkippedArticle {
+    pub number: String,
+    #[serde(default)]
+    pub reason: String,
 }
 
 /// Read the sibling `.enrichment-result.yaml` result envelope for a law YAML.
 ///
 /// Never errors, so it can never fail an otherwise-successful enrichment:
-/// - absent file → empty list;
-/// - unparseable file → logged at `warn` and empty list.
-async fn read_enrichment_result_envelope(yaml_abs: &Path) -> Vec<RelatedLegislation> {
+/// - absent file → default (empty) envelope;
+/// - unparseable file → logged at `warn` and default envelope.
+async fn read_enrichment_result_envelope(yaml_abs: &Path) -> EnrichmentResultEnvelope {
     let envelope_path = enrichment_result_path(yaml_abs);
     let content = match tokio::fs::read_to_string(&envelope_path).await {
         Ok(c) => c,
-        Err(_) => return Vec::new(),
+        Err(_) => return EnrichmentResultEnvelope::default(),
     };
     match serde_yaml_ng::from_str::<EnrichmentResultEnvelope>(&content) {
-        Ok(envelope) => envelope.related_legislation,
+        Ok(envelope) => envelope,
         Err(e) => {
             tracing::warn!(
                 path = %envelope_path.display(),
                 error = %e,
-                "failed to parse .enrichment-result.yaml; ignoring related legislation"
+                "failed to parse .enrichment-result.yaml; ignoring its contents"
             );
-            Vec::new()
+            EnrichmentResultEnvelope::default()
+        }
+    }
+}
+
+/// Strip a stale `chunk_report` from the `.enrichment-result.yaml` sidecar
+/// before a chunked LLM run.
+///
+/// The envelope is committed to the enrich branch as provenance, so the fresh
+/// checkout of a continuation chunk still contains the *previous* chunk's
+/// `chunk_report`. Left in place, the no-op guard would accept that stale
+/// report as proof-of-review for THIS window and silently advance the cursor
+/// past an unreviewed window. Removing only the `chunk_report` key (all other
+/// envelope contents — e.g. `related_legislation` — stay intact, via a raw
+/// `Value` edit so unknown keys survive too) guarantees any report present
+/// after the run was written this session.
+///
+/// Best-effort: an absent, unparseable, or non-mapping file is left alone —
+/// `read_enrichment_result_envelope` already degrades those to an empty
+/// envelope (no `chunk_report`) after the run, which keeps the guard sound.
+async fn clear_stale_chunk_report(yaml_abs: &Path) {
+    let envelope_path = enrichment_result_path(yaml_abs);
+    let Ok(content) = tokio::fs::read_to_string(&envelope_path).await else {
+        return;
+    };
+    let Ok(mut value) = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&content) else {
+        return;
+    };
+    let Some(map) = value.as_mapping_mut() else {
+        return;
+    };
+    if map.remove("chunk_report").is_none() {
+        return;
+    }
+    match serde_yaml_ng::to_string(&value) {
+        Ok(stripped) => {
+            if let Err(e) = tokio::fs::write(&envelope_path, stripped).await {
+                tracing::warn!(
+                    path = %envelope_path.display(),
+                    error = %e,
+                    "failed to strip stale chunk_report from result envelope"
+                );
+            }
+        }
+        Err(e) => {
+            tracing::warn!(
+                path = %envelope_path.display(),
+                error = %e,
+                "failed to re-serialize result envelope while stripping stale chunk_report"
+            );
         }
     }
 }
@@ -595,6 +754,23 @@ pub struct EnrichResult {
     /// stored results deserializable.
     #[serde(default)]
     pub untranslatables: Vec<CapturedUntranslatable>,
+    /// `false` when this run was a chunk that did NOT reach the end of the
+    /// document: the law must stay `enriching` and the worker enqueues a
+    /// continuation job. Defaults to `true` so pre-chunking `jobs.result` JSON
+    /// (which lacks the field and always covered the whole law) still
+    /// deserializes as complete.
+    #[serde(default = "default_law_complete")]
+    pub law_complete: bool,
+    /// Cursor after this run (index of the first unprocessed article, in
+    /// document order). 0 in whole-law mode.
+    #[serde(default)]
+    pub enrich_cursor: usize,
+}
+
+/// Serde default for [`EnrichResult::law_complete`]: results stored before
+/// chunking existed always covered the whole law.
+fn default_law_complete() -> bool {
+    true
 }
 
 /// A single untranslatable captured from an enriched article, flattened for
@@ -628,6 +804,16 @@ pub struct EnrichmentMetadata {
     /// from. Empty when unknown (files written before this field existed).
     #[serde(default)]
     pub source_hash: String,
+    /// Chunked-enrichment cursor: index (document order) of the first article
+    /// NOT yet processed by the chunk loop. 0 for legacy files (serde default)
+    /// and whole-law runs; equal to `articles_total` once the loop finished.
+    #[serde(default)]
+    pub enrich_cursor: usize,
+    /// The normalized law YAML path the cursor was recorded for. The cursor
+    /// only applies when this matches the current target path — a new law
+    /// version lives at a different path, which resets the cursor to 0.
+    #[serde(default)]
+    pub enrich_cursor_path: String,
 }
 
 /// Supported LLM providers for enrichment.
@@ -687,6 +873,12 @@ pub struct EnrichConfig {
     /// kills the process and fails the job instead of letting the agent OOM the
     /// whole container. 0 disables the watchdog.
     pub max_rss_mb: u64,
+    /// Max articles one enrich run may process (`ENRICH_MAX_ARTICLES_PER_RUN`).
+    /// 0 disables chunking (whole-law sessions, the pre-chunking behavior).
+    /// Default 15: a 600s session empirically enriches ~5–20 articles and the
+    /// law-generate skill batches internally per ~15, so one chunk ≈ one
+    /// skill batch.
+    pub max_articles_per_run: usize,
     /// Pre-built provider configs keyed by name, populated at startup.
     provider_configs: std::collections::HashMap<String, LlmProvider>,
 }
@@ -716,6 +908,8 @@ impl EnrichConfig {
             timeout: Duration::from_secs(600),
             code_commit: "abc123".to_string(),
             max_rss_mb: 3500,
+            // Chunking off by default in tests; chunk tests opt in explicitly.
+            max_articles_per_run: 0,
             provider_configs,
         }
     }
@@ -739,6 +933,13 @@ impl EnrichConfig {
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(3500);
+
+        // Chunk size for large laws: max articles per enrich run. 0 disables
+        // chunking entirely (whole-law sessions, the pre-chunking behavior).
+        let max_articles_per_run = std::env::var("ENRICH_MAX_ARTICLES_PER_RUN")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(15);
 
         // Build all provider configs once from env vars
         let opencode_provider = LlmProvider::OpenCode {
@@ -774,6 +975,7 @@ impl EnrichConfig {
             timeout: Duration::from_secs(timeout),
             code_commit,
             max_rss_mb,
+            max_articles_per_run,
             provider_configs,
         }
     }
@@ -798,6 +1000,7 @@ impl EnrichConfig {
             timeout: self.timeout,
             code_commit: self.code_commit.clone(),
             max_rss_mb: self.max_rss_mb,
+            max_articles_per_run: self.max_articles_per_run,
             provider_configs: self.provider_configs.clone(),
         }
     }
@@ -835,6 +1038,91 @@ each executable article.
 ## Step 3: Reverse Validation
 Read .claude/skills/law-reverse-validate/SKILL.md and follow its instructions
 to verify every element in machine_readable traces back to the original legal text.
+
+Write all changes to disk. Do not ask questions — proceed autonomously.
+
+## Progress tracking
+Before starting each step, write a JSON progress file to report your current phase.
+Write to: {progress_file_path}
+
+Write this file at these moments:
+- Before Step 1: {{"phase": "mvt_research", "step": 1, "total_steps": 3}}
+- Before Step 2: {{"phase": "generating", "step": 2, "total_steps": 3, "article_count": N}}
+- After validation in Step 2: {{"phase": "validating", "step": 2, "total_steps": 3, "iteration": M}}
+- Before Step 3: {{"phase": "reverse_validating", "step": 3, "total_steps": 3}}
+
+Use the Write tool. Keep it brief — just one write per phase transition."#
+    )
+}
+
+/// Build the prompt for one enrichment chunk: an explicit article subset.
+///
+/// Differences from [`build_prompt`] (which stays byte-identical for whole-law
+/// runs): the agent must process ONLY the listed articles; the MvT-research
+/// step is skipped on continuation chunks (`skip_mvt`, cursor > 0 — the
+/// feature file already exists on the branch); reverse validation is limited
+/// to the articles edited this session; and the agent must record a
+/// `chunk_report` in `.enrichment-result.yaml` so a legitimately-empty chunk
+/// (e.g. transitional law) still proves it was reviewed.
+fn build_chunk_prompt(
+    yaml_path: &str,
+    progress_file_path: &str,
+    article_numbers: &[String],
+    skip_mvt: bool,
+) -> String {
+    let article_list = article_numbers.join(", ");
+    let mvt_step = if skip_mvt {
+        "## Step 1: MvT Research — SKIP\n\
+         MvT research already ran during an earlier session for this law; its\n\
+         feature file is already present. Do NOT redo it. Proceed to step 2."
+            .to_string()
+    } else {
+        "## Step 1: MvT Research\n\
+         Read .claude/skills/law-mvt-research/SKILL.md and follow its instructions to\n\
+         search for Memorie van Toelichting documents and generate Gherkin test scenarios.\n\
+         If no MvT documents are found, proceed to step 2 anyway."
+            .to_string()
+    };
+    format!(
+        r#"You are interpreting a Dutch law to make it machine-executable.
+
+The law YAML file is: {yaml_path}
+
+This is one chunk of a larger law. Process ONLY these articles (by their
+`number` field) and leave every other article completely untouched:
+
+{article_list}
+
+Follow this pipeline in order. For each step, read the referenced skill file
+and follow its instructions completely.
+
+{mvt_step}
+
+## Step 2: Generate machine_readable
+Read .claude/skills/law-generate/SKILL.md and its reference.md and examples.md.
+Follow the generate→validate→test loop to create machine_readable sections for
+each executable article — restricted to the article subset listed above.
+
+## Step 3: Reverse Validation
+Read .claude/skills/law-reverse-validate/SKILL.md and follow its instructions
+to verify every element in machine_readable traces back to the original legal
+text — only for the articles you edited in this session.
+
+## Step 4: Chunk report
+Write (or update) the file `.enrichment-result.yaml` next to the law YAML with
+a `chunk_report` mapping recording what you did in this session:
+
+```yaml
+chunk_report:
+  articles_reviewed: ["<number>", ...]
+  articles_skipped:
+    - number: "<number>"
+      reason: "<why no machine_readable, e.g. definition/transitional article>"
+```
+
+This report is REQUIRED even when no article in this chunk needed a
+machine_readable section. Keep any existing `related_legislation` entries in
+that file intact.
 
 Write all changes to disk. Do not ask questions — proceed autonomously.
 
@@ -1064,6 +1352,31 @@ async fn read_stored_source_hash(repo_path: &Path, normalized_law_path: &str) ->
         .ok()?;
     let prov: Provenance = serde_yaml_ng::from_str(&content).ok()?;
     (!prov.source_hash.is_empty()).then_some(prov.source_hash)
+}
+
+/// Read the chunked-enrichment cursor recorded in the target law's
+/// `.enrichment.yaml`: `(enrich_cursor, enrich_cursor_path)`.
+///
+/// Absent file, unparseable YAML, or missing fields all degrade to `(0, "")` —
+/// [`plan_chunk`] then resets to the start, which is the safe default for
+/// legacy metadata written before the cursor existed.
+async fn read_stored_cursor(repo_path: &Path, normalized_law_path: &str) -> (usize, String) {
+    #[derive(serde::Deserialize, Default)]
+    struct CursorFields {
+        #[serde(default)]
+        enrich_cursor: usize,
+        #[serde(default)]
+        enrich_cursor_path: String,
+    }
+    let Some(parent) = Path::new(normalized_law_path).parent() else {
+        return (0, String::new());
+    };
+    let meta_rel = parent.join(".enrichment.yaml");
+    let Ok(content) = tokio::fs::read_to_string(repo_path.join(meta_rel)).await else {
+        return (0, String::new());
+    };
+    let fields: CursorFields = serde_yaml_ng::from_str(&content).unwrap_or_default();
+    (fields.enrich_cursor, fields.enrich_cursor_path)
 }
 
 /// Create a `CorpusClient` for the enrichment branch.
@@ -1331,6 +1644,15 @@ pub(crate) fn normalize_yaml_path(yaml_path: &str) -> Result<String> {
     Ok(path)
 }
 
+/// Error-message marker for a chunk that produced no reviewable output at all:
+/// no new `machine_readable` sections, no `chunk_report` in the result
+/// envelope, and no new untranslatables. This wording deliberately does NOT
+/// contain any `is_deterministic_content_failure` marker ("no machine_readable
+/// sections" / "yaml error"): the failure must stay retryable — a healthy law
+/// whose chunk merely hiccupped must never be terminally exhausted in one
+/// step. The worker's `chunk_no_output_is_not_deterministic` test pins this.
+pub(crate) const CHUNK_NO_OUTPUT_MARKER: &str = "enrichment chunk produced no reviewable output";
+
 /// Execute the enrichment using the default process-based LLM runner.
 ///
 /// Convenience wrapper around `execute_enrich_with_runner` using `ProcessLlmRunner`.
@@ -1364,8 +1686,40 @@ pub async fn execute_enrich_with_runner(
         )));
     }
 
-    // Count articles and existing machine_readable sections before enrichment
-    let (articles_before, machine_readable_before) = count_article_stats(&yaml_abs).await?;
+    // Parse the law once for the pre-run stats, the chunk window's article
+    // numbers, and the untranslatables baseline of the chunk no-op guard.
+    let law = load_law(&yaml_abs).await?;
+    let (articles_before, machine_readable_before) = article_stats(&law);
+
+    // Chunk planning: the worker (not the LLM) owns the cursor, read from the
+    // `.enrichment.yaml` already present on the enrich branch checkout.
+    let (stored_cursor, stored_cursor_path) = read_stored_cursor(repo_path, &normalized_path).await;
+    let plan = plan_chunk(
+        config.max_articles_per_run,
+        articles_before,
+        stored_cursor,
+        &stored_cursor_path,
+        &normalized_path,
+    );
+    let (chunk_window, law_complete, next_cursor) = match plan {
+        ChunkPlan::WholeLaw => (None, true, 0),
+        ChunkPlan::Chunk {
+            start,
+            end,
+            law_complete,
+        } => {
+            let numbers: Vec<String> = law.articles[start..end]
+                .iter()
+                .map(|a| a.number.clone())
+                .collect();
+            (Some((start, numbers)), law_complete, end)
+        }
+    };
+    // Window-scoped baseline for the chunk no-op guard: progress is measured
+    // inside the assigned window only.
+    let window_stats_before = chunk_window
+        .as_ref()
+        .map(|(start, numbers)| window_progress_stats(&law, *start, start + numbers.len()));
 
     let provider_name = config.provider.name().to_string();
 
@@ -1375,22 +1729,44 @@ pub async fn execute_enrich_with_runner(
         provider = %provider_name,
         articles = articles_before,
         already_enriched = machine_readable_before,
+        chunk = ?chunk_window.as_ref().map(|(start, numbers)| (*start, numbers.len())),
         "starting enrichment"
     );
 
-    let normalized_payload = EnrichPayload {
-        yaml_path: normalized_path.clone(),
-        ..payload.clone()
-    };
-    runner
-        .run(&normalized_payload, &yaml_abs, repo_path, config)
-        .await?;
+    // An empty window (valid cursor already at the end of the document) means
+    // the chunk loop finished this law earlier: nothing to process, no LLM run
+    // — complete trivially instead of prompting an agent with zero articles.
+    let empty_window = matches!(&chunk_window, Some((_, numbers)) if numbers.is_empty());
+    if empty_window {
+        tracing::info!(
+            law_id = %payload.law_id,
+            cursor = stored_cursor,
+            "chunk cursor already at end of document; completing without an LLM run"
+        );
+    } else {
+        // A previous chunk's committed envelope must not serve as
+        // proof-of-review for this window (see clear_stale_chunk_report).
+        if chunk_window.is_some() {
+            clear_stale_chunk_report(&yaml_abs).await;
+        }
+        let normalized_payload = EnrichPayload {
+            yaml_path: normalized_path.clone(),
+            chunk_articles: chunk_window.as_ref().map(|(_, numbers)| numbers.clone()),
+            // MvT research runs once, during the first chunk (cursor 0).
+            skip_mvt: chunk_window.as_ref().map(|(start, _)| *start > 0),
+            ..payload.clone()
+        };
+        runner
+            .run(&normalized_payload, &yaml_abs, repo_path, config)
+            .await?;
 
-    tracing::info!(law_id = %payload.law_id, provider = %provider_name, "enrichment completed");
+        tracing::info!(law_id = %payload.law_id, provider = %provider_name, "enrichment completed");
+    }
 
     // Count articles with machine_readable after enrichment.
     // Coverage score measures what the LLM *added* this session, not total coverage.
-    let (articles_after, articles_with_machine_readable) = count_article_stats(&yaml_abs).await?;
+    let law_after = load_law(&yaml_abs).await?;
+    let (articles_after, articles_with_machine_readable) = article_stats(&law_after);
     if articles_after != articles_before {
         return Err(PipelineError::Enrich(format!(
             "article count changed during enrichment (before={articles_before}, after={articles_after}) — LLM modified YAML structure"
@@ -1407,13 +1783,73 @@ pub async fn execute_enrich_with_runner(
         0.0
     };
 
-    // If the LLM ran successfully but didn't enrich any articles, treat it as
-    // an error so the job gets retried or marked as failed instead of silently
-    // committing a zero-coverage result.
-    if articles_needing_enrichment > 0 && newly_enriched == 0 {
-        return Err(PipelineError::Enrich(format!(
-            "LLM produced no machine_readable sections ({articles_needing_enrichment} articles needed enrichment)"
-        )));
+    // Read the result envelope the agent may have written: related legislation
+    // plus (chunked) the chunk_report used by the no-op guard below. Never
+    // fails: absent/malformed → default (see read_enrichment_result_envelope).
+    let envelope = read_enrichment_result_envelope(&yaml_abs).await;
+
+    // Capture the untranslatables the agent flagged in the enriched YAML (RFC-012).
+    let untranslatables = collect_untranslatables_from(&law_after);
+
+    match &chunk_window {
+        // Whole-law mode: if the LLM ran successfully but didn't enrich any
+        // articles, treat it as an error so the job gets retried or marked as
+        // failed instead of silently committing a zero-coverage result.
+        // Unchanged from the pre-chunking behavior (and deliberately matched
+        // by `is_deterministic_content_failure` in the worker).
+        None => {
+            if articles_needing_enrichment > 0 && newly_enriched == 0 {
+                return Err(PipelineError::Enrich(format!(
+                    "LLM produced no machine_readable sections ({articles_needing_enrichment} articles needed enrichment)"
+                )));
+            }
+        }
+        // Chunked mode: a window may legitimately yield zero new
+        // machine_readable sections (definition/transitional chapters) — but
+        // only when the agent proves it reviewed the window (chunk_report) or
+        // produced new untranslatables. No output at all fails with a message
+        // that deliberately does NOT match `is_deterministic_content_failure`:
+        // the failure stays retryable and can never terminally exhaust a
+        // healthy law. The empty window skipped the LLM, so it is exempt.
+        Some((start, numbers)) if !empty_window => {
+            // Progress is measured INSIDE the assigned window: an edit outside
+            // `[start, end)` (a prompt violation, though it rides along in the
+            // commit exactly as it would in whole-law mode) must not count as
+            // proof that this window was reviewed — otherwise the cursor
+            // advances past a window nobody looked at.
+            let end = start + numbers.len();
+            let (win_enriched_before, win_untranslatables_before) =
+                window_stats_before.unwrap_or((0, 0));
+            let (win_enriched_after, win_untranslatables_after) =
+                window_progress_stats(&law_after, *start, end);
+            let window_newly_enriched = win_enriched_after.saturating_sub(win_enriched_before);
+            let window_new_untranslatables = win_untranslatables_after > win_untranslatables_before;
+            // The chunk_report only counts as proof-of-review when it names at
+            // least one article of THIS window: a bare `chunk_report: {}` or
+            // one listing unrelated numbers must not advance the cursor past
+            // an unreviewed window. Full window coverage is deliberately NOT
+            // required — exact-match strictness against agent-written numbers
+            // could retry-loop a healthy chunk toward exhaustion.
+            let report_references_window = envelope.chunk_report.as_ref().is_some_and(|report| {
+                report
+                    .articles_reviewed
+                    .iter()
+                    .chain(report.articles_skipped.iter().map(|s| &s.number))
+                    .any(|n| numbers.contains(n))
+            });
+            if window_newly_enriched == 0
+                && !report_references_window
+                && !window_new_untranslatables
+            {
+                return Err(PipelineError::Enrich(format!(
+                    "{CHUNK_NO_OUTPUT_MARKER}: no new machine_readable additions in the window, \
+                     no chunk_report referencing this window, no new untranslatables in the \
+                     window (articles {}..{} of {})",
+                    start, end, articles_before
+                )));
+            }
+        }
+        Some(_) => {}
     }
 
     // Write enrichment metadata
@@ -1428,6 +1864,8 @@ pub async fn execute_enrich_with_runner(
         articles_total: articles_before,
         articles_with_machine_readable,
         source_hash: source_hash.to_string(),
+        enrich_cursor: next_cursor,
+        enrich_cursor_path: normalized_path.clone(),
     };
 
     let metadata_path = yaml_abs
@@ -1438,12 +1876,7 @@ pub async fn execute_enrich_with_runner(
         .map_err(|e| PipelineError::Enrich(format!("failed to serialize metadata: {e}")))?;
     tokio::fs::write(&metadata_path, &metadata_yaml).await?;
 
-    // Read the related-legislation result envelope the agent may have written.
-    // Never fails: absent/malformed → empty (see read_enrichment_result_envelope).
-    let related_legislation = read_enrichment_result_envelope(&yaml_abs).await;
-
-    // Capture the untranslatables the agent flagged in the enriched YAML (RFC-012).
-    let untranslatables = collect_untranslatables(&yaml_abs).await?;
+    let related_legislation = envelope.related_legislation;
 
     // Collect written files for corpus staging
     let mut written_files = vec![yaml_abs.clone(), metadata_path];
@@ -1492,6 +1925,8 @@ pub async fn execute_enrich_with_runner(
         branch,
         related_legislation,
         untranslatables,
+        law_complete,
+        enrich_cursor: next_cursor,
     };
 
     Ok((result, written_files))
@@ -1542,16 +1977,27 @@ async fn compute_prompt_hash(repo_path: &Path) -> String {
 /// including the empty `{}` an LLM may insert before filling it; an explicit
 /// `machine_readable: null` is treated as un-enriched. No corpus file uses the
 /// bare/null form, so this matches the previous key-presence behavior in practice.
+#[cfg(test)]
 async fn count_article_stats(path: &Path) -> Result<(usize, usize)> {
+    let law = load_law(path).await?;
+    Ok(article_stats(&law))
+}
+
+/// Parse a law YAML file into the canonical [`ArticleBasedLaw`] model.
+async fn load_law(path: &Path) -> Result<ArticleBasedLaw> {
     let content = tokio::fs::read_to_string(path).await?;
-    let law: ArticleBasedLaw = serde_yaml_ng::from_str(&content)?;
+    Ok(serde_yaml_ng::from_str(&content)?)
+}
+
+/// `(articles_total, articles_with_machine_readable)` for a parsed law.
+fn article_stats(law: &ArticleBasedLaw) -> (usize, usize) {
     let total = law.articles.len();
     let with_machine_readable = law
         .articles
         .iter()
         .filter(|article| article.machine_readable.is_some())
         .count();
-    Ok((total, with_machine_readable))
+    (total, with_machine_readable)
 }
 
 /// Collect all untranslatables from an enriched law YAML, flattened to
@@ -1559,9 +2005,35 @@ async fn count_article_stats(path: &Path) -> Result<(usize, usize)> {
 ///
 /// Parses the law into the canonical [`ArticleBasedLaw`] model, mirroring
 /// [`count_article_stats`]. Returns an empty vec when no article declares any.
+#[cfg(test)]
 async fn collect_untranslatables(path: &Path) -> Result<Vec<CapturedUntranslatable>> {
-    let content = tokio::fs::read_to_string(path).await?;
-    let law: ArticleBasedLaw = serde_yaml_ng::from_str(&content)?;
+    let law = load_law(path).await?;
+    Ok(collect_untranslatables_from(&law))
+}
+
+/// Flatten the untranslatables of an already-parsed law. See
+/// [`collect_untranslatables`].
+/// Window-scoped progress stats for the chunk no-op guard:
+/// `(articles_with_machine_readable, untranslatable_count)` within
+/// `[start, end)` of a parsed law. The guard measures progress inside the
+/// assigned window only — a whole-document delta would let an edit *outside*
+/// the window masquerade as progress for a window that was never reviewed.
+fn window_progress_stats(law: &ArticleBasedLaw, start: usize, end: usize) -> (usize, usize) {
+    let window = &law.articles[start..end];
+    let enriched = window
+        .iter()
+        .filter(|a| a.machine_readable.is_some())
+        .count();
+    let untranslatables = window
+        .iter()
+        .filter_map(|a| a.machine_readable.as_ref())
+        .filter_map(|m| m.untranslatables.as_ref())
+        .map(|entries| entries.len())
+        .sum();
+    (enriched, untranslatables)
+}
+
+fn collect_untranslatables_from(law: &ArticleBasedLaw) -> Vec<CapturedUntranslatable> {
     let mut out = Vec::new();
     for article in &law.articles {
         let Some(machine_readable) = &article.machine_readable else {
@@ -1581,7 +2053,7 @@ async fn collect_untranslatables(path: &Path) -> Result<Vec<CapturedUntranslatab
             });
         }
     }
-    Ok(out)
+    out
 }
 
 #[cfg(test)]
@@ -1666,6 +2138,8 @@ mod tests {
             traject_ref: None,
             source_etag: None,
             new_law: None,
+            chunk_articles: None,
+            skip_mvt: None,
         };
 
         let json = serde_json::to_string(&payload).unwrap();
@@ -1686,6 +2160,8 @@ mod tests {
             traject_ref: None,
             source_etag: None,
             new_law: None,
+            chunk_articles: None,
+            skip_mvt: None,
         };
         let json_no_provider = serde_json::to_string(&payload_no_provider).unwrap();
         assert!(!json_no_provider.contains("provider"));
@@ -1711,6 +2187,8 @@ mod tests {
             branch: "enrich/opencode".to_string(),
             related_legislation: Vec::new(),
             untranslatables: Vec::new(),
+            law_complete: true,
+            enrich_cursor: 0,
         };
 
         let json = serde_json::to_value(&result).unwrap();
@@ -1718,6 +2196,27 @@ mod tests {
         assert_eq!(json["coverage_score"], 0.7);
         assert_eq!(json["provider"], "opencode");
         assert_eq!(json["branch"], "enrich/opencode");
+        assert_eq!(json["law_complete"], true);
+        assert_eq!(json["enrich_cursor"], 0);
+    }
+
+    #[test]
+    fn enrich_result_law_complete_defaults_true_for_legacy_json() {
+        // `jobs.result` rows written before chunking existed lack both fields;
+        // they always covered the whole law, so they must deserialize as
+        // complete with cursor 0.
+        let legacy = serde_json::json!({
+            "law_id": "BWBR0018451",
+            "yaml_path": "regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml",
+            "articles_total": 10,
+            "articles_with_machine_readable": 7,
+            "coverage_score": 0.7,
+            "provider": "opencode",
+            "branch": "enrich/opencode",
+        });
+        let result: EnrichResult = serde_json::from_value(legacy).unwrap();
+        assert!(result.law_complete);
+        assert_eq!(result.enrich_cursor, 0);
     }
 
     #[test]
@@ -1767,7 +2266,9 @@ related_legislation:
         let dir = tempfile::tempdir().unwrap();
         let yaml_abs = dir.path().join("2025-01-01.yaml");
         // No sidecar exists next to it.
-        assert!(read_enrichment_result_envelope(&yaml_abs).await.is_empty());
+        let envelope = read_enrichment_result_envelope(&yaml_abs).await;
+        assert!(envelope.related_legislation.is_empty());
+        assert!(envelope.chunk_report.is_none());
     }
 
     #[tokio::test]
@@ -1780,7 +2281,9 @@ related_legislation:
         )
         .unwrap();
         // Malformed sidecar must never error — it degrades to empty.
-        assert!(read_enrichment_result_envelope(&yaml_abs).await.is_empty());
+        let envelope = read_enrichment_result_envelope(&yaml_abs).await;
+        assert!(envelope.related_legislation.is_empty());
+        assert!(envelope.chunk_report.is_none());
     }
 
     #[tokio::test]
@@ -1792,7 +2295,9 @@ related_legislation:
             "related_legislation:\n  - name: Delegated Regeling\n    bwb_id: BWBR0037841\n",
         )
         .unwrap();
-        let related = read_enrichment_result_envelope(&yaml_abs).await;
+        let related = read_enrichment_result_envelope(&yaml_abs)
+            .await
+            .related_legislation;
         assert_eq!(related.len(), 1);
         assert_eq!(related[0].bwb_id.as_deref(), Some("BWBR0037841"));
     }
@@ -1935,6 +2440,8 @@ related_legislation:
             traject_ref: Some("testtraject-abcd1234".into()),
             source_etag: Some("\"abc\"".into()),
             new_law: None,
+            chunk_articles: None,
+            skip_mvt: None,
         };
         let roundtrip: EnrichPayload =
             serde_json::from_value(serde_json::to_value(&new).unwrap()).unwrap();
@@ -1955,6 +2462,8 @@ related_legislation:
             articles_total: 10,
             articles_with_machine_readable: 7,
             source_hash: String::new(),
+            enrich_cursor: 0,
+            enrich_cursor_path: String::new(),
         };
 
         let yaml = serde_yaml_ng::to_string(&meta).unwrap();
@@ -1971,6 +2480,9 @@ related_legislation:
         let legacy = "law_id: BWBR0001\ntimestamp: '2026-01-01T00:00:00Z'\nprovider: claude\nmodel: m\nprompt_hash: p\ncode_commit: c\ncoverage_score: 1.0\narticles_total: 1\narticles_with_machine_readable: 1\n";
         let meta: EnrichmentMetadata = serde_yaml_ng::from_str(legacy).unwrap();
         assert_eq!(meta.source_hash, "");
+        // Cursor fields default too (files written before chunking existed).
+        assert_eq!(meta.enrich_cursor, 0);
+        assert_eq!(meta.enrich_cursor_path, "");
     }
 
     #[test]
@@ -1986,10 +2498,17 @@ related_legislation:
             articles_total: 1,
             articles_with_machine_readable: 1,
             source_hash: "abc123".into(),
+            enrich_cursor: 30,
+            enrich_cursor_path: "regulation/nl/wet/x/2026-01-01.yaml".into(),
         };
         let yaml = serde_yaml_ng::to_string(&meta).unwrap();
         let back: EnrichmentMetadata = serde_yaml_ng::from_str(&yaml).unwrap();
         assert_eq!(back.source_hash, "abc123");
+        assert_eq!(back.enrich_cursor, 30);
+        assert_eq!(
+            back.enrich_cursor_path,
+            "regulation/nl/wet/x/2026-01-01.yaml"
+        );
     }
 
     #[test]
@@ -2258,6 +2777,8 @@ articles:
             traject_ref: None,
             source_etag: None,
             new_law: None,
+            chunk_articles: None,
+            skip_mvt: None,
         };
 
         let config = test_config(LlmProvider::OpenCode {
@@ -2329,6 +2850,8 @@ articles:
             traject_ref: None,
             source_etag: None,
             new_law: None,
+            chunk_articles: None,
+            skip_mvt: None,
         };
 
         let config = test_config(LlmProvider::OpenCode {
@@ -2383,6 +2906,8 @@ articles:
             traject_ref: None,
             source_etag: None,
             new_law: None,
+            chunk_articles: None,
+            skip_mvt: None,
         };
 
         let config = test_config(LlmProvider::OpenCode {
@@ -2395,5 +2920,849 @@ articles:
             .unwrap_err();
 
         assert!(err.to_string().contains("no machine_readable sections"));
+    }
+
+    // --- Chunked enrichment ---
+
+    #[test]
+    fn plan_chunk_zero_disables_chunking() {
+        assert_eq!(
+            plan_chunk(0, 324, 0, "regulation/a.yaml", "regulation/a.yaml"),
+            ChunkPlan::WholeLaw
+        );
+        // Even a stored cursor is ignored in whole-law mode.
+        assert_eq!(
+            plan_chunk(0, 324, 100, "regulation/a.yaml", "regulation/a.yaml"),
+            ChunkPlan::WholeLaw
+        );
+    }
+
+    #[test]
+    fn plan_chunk_first_run_starts_at_zero() {
+        // Legacy metadata (no cursor fields) reads as (0, "") — path mismatch
+        // resets to 0, which is also the correct start.
+        assert_eq!(
+            plan_chunk(15, 324, 0, "", "regulation/a.yaml"),
+            ChunkPlan::Chunk {
+                start: 0,
+                end: 15,
+                law_complete: false
+            }
+        );
+    }
+
+    #[test]
+    fn plan_chunk_resumes_from_valid_cursor() {
+        assert_eq!(
+            plan_chunk(15, 324, 30, "regulation/a.yaml", "regulation/a.yaml"),
+            ChunkPlan::Chunk {
+                start: 30,
+                end: 45,
+                law_complete: false
+            }
+        );
+    }
+
+    #[test]
+    fn plan_chunk_resets_on_path_mismatch() {
+        // A new law version lives at a different (date-named) path: the cursor
+        // recorded for the old version must not apply.
+        assert_eq!(
+            plan_chunk(
+                15,
+                324,
+                30,
+                "regulation/2025-01-01.yaml",
+                "regulation/2026-01-01.yaml"
+            ),
+            ChunkPlan::Chunk {
+                start: 0,
+                end: 15,
+                law_complete: false
+            }
+        );
+    }
+
+    #[test]
+    fn plan_chunk_resets_on_cursor_beyond_total() {
+        // Corrupt metadata or a shrunk document: a cursor past the end resets.
+        assert_eq!(
+            plan_chunk(15, 20, 25, "regulation/a.yaml", "regulation/a.yaml"),
+            ChunkPlan::Chunk {
+                start: 0,
+                end: 15,
+                law_complete: false
+            }
+        );
+    }
+
+    #[test]
+    fn plan_chunk_final_window_is_complete() {
+        // Partial last window.
+        assert_eq!(
+            plan_chunk(15, 20, 15, "regulation/a.yaml", "regulation/a.yaml"),
+            ChunkPlan::Chunk {
+                start: 15,
+                end: 20,
+                law_complete: true
+            }
+        );
+        // Window exactly reaching the end.
+        assert_eq!(
+            plan_chunk(10, 20, 10, "regulation/a.yaml", "regulation/a.yaml"),
+            ChunkPlan::Chunk {
+                start: 10,
+                end: 20,
+                law_complete: true
+            }
+        );
+        // Law smaller than one window: complete in a single run.
+        assert_eq!(
+            plan_chunk(15, 3, 0, "", "regulation/a.yaml"),
+            ChunkPlan::Chunk {
+                start: 0,
+                end: 3,
+                law_complete: true
+            }
+        );
+    }
+
+    #[test]
+    fn plan_chunk_cursor_at_end_yields_empty_complete_window() {
+        // cursor == total is valid (the loop finished earlier): empty window,
+        // trivially complete — execute skips the LLM run entirely.
+        assert_eq!(
+            plan_chunk(15, 20, 20, "regulation/a.yaml", "regulation/a.yaml"),
+            ChunkPlan::Chunk {
+                start: 20,
+                end: 20,
+                law_complete: true
+            }
+        );
+    }
+
+    #[test]
+    fn plan_chunk_empty_law_is_complete() {
+        assert_eq!(
+            plan_chunk(15, 0, 0, "", "regulation/a.yaml"),
+            ChunkPlan::Chunk {
+                start: 0,
+                end: 0,
+                law_complete: true
+            }
+        );
+    }
+
+    #[test]
+    fn test_build_prompt_is_byte_stable() {
+        // The whole-law prompt must stay byte-identical to the pre-chunking
+        // prompt: chunking must not change what an N=0 (or legacy) run sends
+        // to the LLM. Pin the exact text — an intentional prompt change must
+        // update this fixture consciously.
+        let expected = r#"You are interpreting a Dutch law to make it machine-executable.
+
+The law YAML file is: regulation/nl/wet/test/2025-01-01.yaml
+
+Follow this pipeline in order. For each step, read the referenced skill file
+and follow its instructions completely.
+
+## Step 1: MvT Research
+Read .claude/skills/law-mvt-research/SKILL.md and follow its instructions to
+search for Memorie van Toelichting documents and generate Gherkin test scenarios.
+If no MvT documents are found, proceed to step 2 anyway.
+
+## Step 2: Generate machine_readable
+Read .claude/skills/law-generate/SKILL.md and its reference.md and examples.md.
+Follow the generate→validate→test loop to create machine_readable sections for
+each executable article.
+
+## Step 3: Reverse Validation
+Read .claude/skills/law-reverse-validate/SKILL.md and follow its instructions
+to verify every element in machine_readable traces back to the original legal text.
+
+Write all changes to disk. Do not ask questions — proceed autonomously.
+
+## Progress tracking
+Before starting each step, write a JSON progress file to report your current phase.
+Write to: /tmp/repo/.enrichment-progress.json
+
+Write this file at these moments:
+- Before Step 1: {"phase": "mvt_research", "step": 1, "total_steps": 3}
+- Before Step 2: {"phase": "generating", "step": 2, "total_steps": 3, "article_count": N}
+- After validation in Step 2: {"phase": "validating", "step": 2, "total_steps": 3, "iteration": M}
+- Before Step 3: {"phase": "reverse_validating", "step": 3, "total_steps": 3}
+
+Use the Write tool. Keep it brief — just one write per phase transition."#;
+        assert_eq!(
+            build_prompt(
+                "regulation/nl/wet/test/2025-01-01.yaml",
+                "/tmp/repo/.enrichment-progress.json"
+            ),
+            expected
+        );
+    }
+
+    #[test]
+    fn test_build_chunk_prompt_first_chunk_includes_mvt() {
+        let numbers = vec!["1".to_string(), "2".to_string(), "3a".to_string()];
+        let prompt = build_chunk_prompt(
+            "regulation/nl/wet/test/2025-01-01.yaml",
+            "/tmp/repo/.enrichment-progress.json",
+            &numbers,
+            false,
+        );
+        assert!(prompt.contains("Process ONLY these articles"));
+        assert!(prompt.contains("1, 2, 3a"));
+        assert!(prompt.contains("law-mvt-research/SKILL.md"));
+        assert!(!prompt.contains("SKIP"));
+        assert!(prompt.contains("chunk_report"));
+        assert!(prompt.contains("articles_skipped"));
+        assert!(prompt.contains("law-generate/SKILL.md"));
+        assert!(prompt.contains("law-reverse-validate/SKILL.md"));
+    }
+
+    #[test]
+    fn test_build_chunk_prompt_continuation_skips_mvt() {
+        let numbers = vec!["16".to_string(), "17".to_string()];
+        let prompt = build_chunk_prompt(
+            "regulation/nl/wet/test/2025-01-01.yaml",
+            "/tmp/repo/.enrichment-progress.json",
+            &numbers,
+            true,
+        );
+        assert!(prompt.contains("MvT Research — SKIP"));
+        assert!(!prompt.contains("law-mvt-research/SKILL.md"));
+        assert!(prompt.contains("16, 17"));
+    }
+
+    #[test]
+    fn enrich_payload_chunk_fields_are_transport_only() {
+        // Queue payloads never carry the chunk fields: absent when None…
+        let bare = EnrichPayload {
+            law_id: "x".into(),
+            yaml_path: "regulation/a.yaml".into(),
+            provider: None,
+            depth: None,
+            requested_by: None,
+            deliver: None,
+            traject_id: None,
+            traject_ref: None,
+            source_etag: None,
+            new_law: None,
+            chunk_articles: None,
+            skip_mvt: None,
+        };
+        let json = serde_json::to_string(&bare).unwrap();
+        assert!(!json.contains("chunk_articles"));
+        assert!(!json.contains("skip_mvt"));
+        // …and old payload JSON without them still deserializes.
+        let old = serde_json::json!({"law_id": "x", "yaml_path": "regulation/a.yaml"});
+        let parsed: EnrichPayload = serde_json::from_value(old).unwrap();
+        assert!(parsed.chunk_articles.is_none());
+        assert!(parsed.skip_mvt.is_none());
+    }
+
+    #[test]
+    fn test_envelope_chunk_report_roundtrip_and_backcompat() {
+        // Old envelopes (without chunk_report) keep parsing.
+        let old = "related_legislation:\n  - name: Some Law\n";
+        let envelope: EnrichmentResultEnvelope = serde_yaml_ng::from_str(old).unwrap();
+        assert!(envelope.chunk_report.is_none());
+
+        let yaml = r#"
+related_legislation:
+  - name: Some Law
+chunk_report:
+  articles_reviewed: ["1", "2", "3"]
+  articles_skipped:
+    - number: "2"
+      reason: definition article
+"#;
+        let envelope: EnrichmentResultEnvelope = serde_yaml_ng::from_str(yaml).unwrap();
+        let report = envelope.chunk_report.expect("chunk_report parses");
+        assert_eq!(report.articles_reviewed, vec!["1", "2", "3"]);
+        assert_eq!(report.articles_skipped.len(), 1);
+        assert_eq!(report.articles_skipped[0].number, "2");
+        assert_eq!(report.articles_skipped[0].reason, "definition article");
+    }
+
+    /// Chunk-aware fake runner: adds `machine_readable` ONLY to the articles
+    /// listed in `payload.chunk_articles` and records every invocation's
+    /// window + skip_mvt so the loop contract can be asserted.
+    struct FakeChunkRunner {
+        calls: std::sync::Mutex<Vec<(Vec<String>, Option<bool>)>>,
+        /// Also write a `chunk_report` envelope next to the YAML.
+        write_report: bool,
+    }
+
+    impl FakeChunkRunner {
+        fn new(write_report: bool) -> Self {
+            Self {
+                calls: std::sync::Mutex::new(Vec::new()),
+                write_report,
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl LlmRunner for FakeChunkRunner {
+        async fn run(
+            &self,
+            payload: &EnrichPayload,
+            yaml_abs: &Path,
+            _repo_path: &Path,
+            _config: &EnrichConfig,
+        ) -> Result<()> {
+            let chunk = payload
+                .chunk_articles
+                .clone()
+                .expect("chunked run must pass chunk_articles");
+            self.calls
+                .lock()
+                .unwrap()
+                .push((chunk.clone(), payload.skip_mvt));
+
+            let content = tokio::fs::read_to_string(yaml_abs).await?;
+            let mut value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&content)?;
+            if let serde_yaml_ng::Value::Mapping(ref mut map) = value {
+                if let Some(serde_yaml_ng::Value::Sequence(ref mut articles)) =
+                    map.get_mut("articles")
+                {
+                    for article in articles.iter_mut() {
+                        if let serde_yaml_ng::Value::Mapping(ref mut article_map) = article {
+                            let number = article_map
+                                .get("number")
+                                .and_then(|n| n.as_str())
+                                .unwrap_or_default()
+                                .to_string();
+                            if chunk.contains(&number)
+                                && !article_map.contains_key("machine_readable")
+                            {
+                                article_map.insert(
+                                    serde_yaml_ng::Value::String("machine_readable".into()),
+                                    serde_yaml_ng::Value::Mapping(Default::default()),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            tokio::fs::write(yaml_abs, serde_yaml_ng::to_string(&value)?).await?;
+
+            if self.write_report {
+                let report = format!(
+                    "chunk_report:\n  articles_reviewed: [{}]\n",
+                    chunk
+                        .iter()
+                        .map(|n| format!("\"{n}\""))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                tokio::fs::write(enrichment_result_path(yaml_abs), report).await?;
+            }
+            Ok(())
+        }
+    }
+
+    fn four_article_law() -> &'static str {
+        r#"---
+$id: test_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Article one.
+  - number: '2'
+    text: Article two.
+  - number: '3'
+    text: Article three.
+  - number: '4'
+    text: Article four.
+"#
+    }
+
+    fn chunk_test_payload(yaml_path: &str) -> EnrichPayload {
+        EnrichPayload {
+            law_id: "BWBR0000001".into(),
+            yaml_path: yaml_path.into(),
+            provider: Some("opencode".into()),
+            depth: None,
+            requested_by: None,
+            deliver: None,
+            traject_id: None,
+            traject_ref: None,
+            source_etag: None,
+            new_law: None,
+            chunk_articles: None,
+            skip_mvt: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_enrich_chunked_loop_terminates() {
+        // 4 articles, 2 per run: the loop must finish in exactly 2 runs, the
+        // cursor persisting via .enrichment.yaml between them.
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+            .await
+            .unwrap();
+
+        let mut config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        config.max_articles_per_run = 2;
+        let payload = chunk_test_payload(yaml_path);
+        let runner = FakeChunkRunner::new(false);
+
+        // Run 1: articles 1-2, MvT research included, law not complete.
+        let (result, _) =
+            execute_enrich_with_runner(&payload, dir.path(), &config, "sha1", &runner)
+                .await
+                .unwrap();
+        assert!(!result.law_complete);
+        assert_eq!(result.enrich_cursor, 2);
+        assert_eq!(result.articles_with_machine_readable, 2);
+        assert!((result.coverage_score - 0.5).abs() < f64::EPSILON);
+
+        // Cursor persisted on disk for the continuation run.
+        let meta: EnrichmentMetadata = serde_yaml_ng::from_str(
+            &tokio::fs::read_to_string(law_dir.join(".enrichment.yaml"))
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(meta.enrich_cursor, 2);
+        assert_eq!(meta.enrich_cursor_path, yaml_path);
+
+        // Run 2: articles 3-4, MvT research skipped, law complete.
+        let (result, _) =
+            execute_enrich_with_runner(&payload, dir.path(), &config, "sha1", &runner)
+                .await
+                .unwrap();
+        assert!(result.law_complete);
+        assert_eq!(result.enrich_cursor, 4);
+        assert_eq!(result.articles_with_machine_readable, 4);
+
+        let calls = runner.calls.lock().unwrap();
+        assert_eq!(
+            *calls,
+            vec![
+                (vec!["1".to_string(), "2".to_string()], Some(false)),
+                (vec!["3".to_string(), "4".to_string()], Some(true)),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_enrich_chunk_noop_with_report_succeeds() {
+        // A chunk that adds no machine_readable but writes a chunk_report is
+        // legitimate progress: the cursor advances and the run succeeds.
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+            .await
+            .unwrap();
+
+        /// Writes only a chunk_report — no machine_readable at all.
+        struct ReportOnlyRunner;
+        #[async_trait::async_trait]
+        impl LlmRunner for ReportOnlyRunner {
+            async fn run(
+                &self,
+                _payload: &EnrichPayload,
+                yaml_abs: &Path,
+                _repo_path: &Path,
+                _config: &EnrichConfig,
+            ) -> Result<()> {
+                tokio::fs::write(
+                    enrichment_result_path(yaml_abs),
+                    "chunk_report:\n  articles_reviewed: [\"1\", \"2\"]\n  articles_skipped:\n    - number: \"1\"\n      reason: transitional law\n",
+                )
+                .await?;
+                Ok(())
+            }
+        }
+
+        let mut config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        config.max_articles_per_run = 2;
+
+        let (result, _) = execute_enrich_with_runner(
+            &chunk_test_payload(yaml_path),
+            dir.path(),
+            &config,
+            "",
+            &ReportOnlyRunner,
+        )
+        .await
+        .unwrap();
+        assert!(!result.law_complete);
+        assert_eq!(result.enrich_cursor, 2);
+        assert_eq!(result.articles_with_machine_readable, 0);
+    }
+
+    #[tokio::test]
+    async fn test_execute_enrich_chunk_noop_without_report_fails_retryable() {
+        // No machine_readable, no chunk_report, no untranslatables: the chunk
+        // fails — with a message that must NOT be classified as a
+        // deterministic content failure (the worker pins that classification).
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+            .await
+            .unwrap();
+
+        let mut config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        config.max_articles_per_run = 2;
+
+        let err = execute_enrich_with_runner(
+            &chunk_test_payload(yaml_path),
+            dir.path(),
+            &config,
+            "",
+            &NoopLlmRunner,
+        )
+        .await
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains(CHUNK_NO_OUTPUT_MARKER), "got: {msg}");
+        assert!(!msg.contains("no machine_readable sections"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn test_execute_enrich_chunk_out_of_window_edit_is_no_progress() {
+        // A run that adds machine_readable ONLY to an article outside its
+        // assigned window (and writes no report) has not reviewed the window:
+        // the document-wide count rose, but the guard must still fail
+        // retryable instead of advancing the cursor past an unreviewed window.
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+            .await
+            .unwrap();
+
+        // Window is articles 1-2; this runner enriches article 3 instead.
+        struct OutOfWindowRunner;
+        #[async_trait::async_trait]
+        impl LlmRunner for OutOfWindowRunner {
+            async fn run(
+                &self,
+                _payload: &EnrichPayload,
+                yaml_abs: &Path,
+                _repo_path: &Path,
+                _config: &EnrichConfig,
+            ) -> Result<()> {
+                let content = tokio::fs::read_to_string(yaml_abs).await?;
+                let updated = content.replace(
+                    "  - number: '3'\n    text: Article three.",
+                    "  - number: '3'\n    text: Article three.\n    machine_readable: {}",
+                );
+                tokio::fs::write(yaml_abs, updated).await?;
+                Ok(())
+            }
+        }
+
+        let mut config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        config.max_articles_per_run = 2;
+
+        let err = execute_enrich_with_runner(
+            &chunk_test_payload(yaml_path),
+            dir.path(),
+            &config,
+            "",
+            &OutOfWindowRunner,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            err.to_string().contains(CHUNK_NO_OUTPUT_MARKER),
+            "out-of-window edit must not count as window progress: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_enrich_chunk_empty_or_unrelated_report_is_no_proof() {
+        // A bare `chunk_report: {}` — or one naming only articles outside the
+        // window — must not count as proof-of-review: presence alone would let
+        // a do-nothing run advance the cursor past an unreviewed window (and
+        // eventually mark the law enriched with silent gaps).
+        /// Writes a fixed chunk_report body, nothing else.
+        struct FixedReportRunner(&'static str);
+        #[async_trait::async_trait]
+        impl LlmRunner for FixedReportRunner {
+            async fn run(
+                &self,
+                _payload: &EnrichPayload,
+                yaml_abs: &Path,
+                _repo_path: &Path,
+                _config: &EnrichConfig,
+            ) -> Result<()> {
+                tokio::fs::write(enrichment_result_path(yaml_abs), self.0).await?;
+                Ok(())
+            }
+        }
+
+        for report in [
+            "chunk_report: {}\n",
+            // Articles 3-4 are outside the first window (articles 1-2).
+            "chunk_report:\n  articles_reviewed: [\"3\", \"4\"]\n",
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let law_dir = dir.path().join("regulation/nl/wet/test_law");
+            tokio::fs::create_dir_all(&law_dir).await.unwrap();
+            let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+            tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+                .await
+                .unwrap();
+
+            let mut config = test_config(LlmProvider::OpenCode {
+                path: "fake".into(),
+                model: None,
+            });
+            config.max_articles_per_run = 2;
+
+            let err = execute_enrich_with_runner(
+                &chunk_test_payload(yaml_path),
+                dir.path(),
+                &config,
+                "",
+                &FixedReportRunner(report),
+            )
+            .await
+            .unwrap_err();
+            assert!(
+                err.to_string().contains(CHUNK_NO_OUTPUT_MARKER),
+                "report {report:?} must not count as proof: {err}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_enrich_chunk_stale_report_is_no_proof_of_review() {
+        // The envelope is committed to the enrich branch as provenance, so a
+        // continuation chunk's checkout still contains the PREVIOUS chunk's
+        // chunk_report. A run that produces nothing must not pass the no-op
+        // guard on that stale report — the worker strips it pre-run, keeping
+        // the rest of the envelope (related_legislation) intact.
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+            .await
+            .unwrap();
+        // Cursor after chunk 1 (articles 1-2) …
+        tokio::fs::write(
+            law_dir.join(".enrichment.yaml"),
+            format!(
+                "law_id: BWBR0000001\ntimestamp: '2026-01-01T00:00:00Z'\nprovider: opencode\nmodel: m\nprompt_hash: p\ncode_commit: c\ncoverage_score: 1.0\narticles_total: 4\narticles_with_machine_readable: 0\nenrich_cursor: 2\nenrich_cursor_path: {yaml_path}\n"
+            ),
+        )
+        .await
+        .unwrap();
+        // …and chunk 1's committed envelope, report included.
+        tokio::fs::write(
+            law_dir.join(".enrichment-result.yaml"),
+            "related_legislation:\n  - name: Some Law\n    bwb_id: BWBR0037841\nchunk_report:\n  articles_reviewed: [\"1\", \"2\"]\n",
+        )
+        .await
+        .unwrap();
+
+        let mut config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        config.max_articles_per_run = 2;
+
+        let err = execute_enrich_with_runner(
+            &chunk_test_payload(yaml_path),
+            dir.path(),
+            &config,
+            "",
+            &NoopLlmRunner,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            err.to_string().contains(CHUNK_NO_OUTPUT_MARKER),
+            "stale chunk_report must not count as this session's proof: {err}"
+        );
+
+        // The stale report was stripped; the rest of the envelope survived.
+        let envelope = read_enrichment_result_envelope(&dir.path().join(yaml_path)).await;
+        assert!(envelope.chunk_report.is_none());
+        assert_eq!(envelope.related_legislation.len(), 1);
+        assert_eq!(
+            envelope.related_legislation[0].bwb_id.as_deref(),
+            Some("BWBR0037841")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_enrich_chunk_cursor_at_end_completes_without_llm() {
+        // A valid cursor at the end of the document (loop already finished)
+        // completes trivially: no LLM invocation, law_complete = true.
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+            .await
+            .unwrap();
+        // Pre-existing metadata with the cursor at the end.
+        tokio::fs::write(
+            law_dir.join(".enrichment.yaml"),
+            format!(
+                "law_id: BWBR0000001\ntimestamp: '2026-01-01T00:00:00Z'\nprovider: opencode\nmodel: m\nprompt_hash: p\ncode_commit: c\ncoverage_score: 1.0\narticles_total: 4\narticles_with_machine_readable: 4\nenrich_cursor: 4\nenrich_cursor_path: {yaml_path}\n"
+            ),
+        )
+        .await
+        .unwrap();
+
+        /// Panics when invoked: the empty window must never reach the LLM.
+        struct PanickingRunner;
+        #[async_trait::async_trait]
+        impl LlmRunner for PanickingRunner {
+            async fn run(
+                &self,
+                _payload: &EnrichPayload,
+                _yaml_abs: &Path,
+                _repo_path: &Path,
+                _config: &EnrichConfig,
+            ) -> Result<()> {
+                panic!("LLM must not run for an empty chunk window");
+            }
+        }
+
+        let mut config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        config.max_articles_per_run = 2;
+
+        let (result, _) = execute_enrich_with_runner(
+            &chunk_test_payload(yaml_path),
+            dir.path(),
+            &config,
+            "",
+            &PanickingRunner,
+        )
+        .await
+        .unwrap();
+        assert!(result.law_complete);
+        assert_eq!(result.enrich_cursor, 4);
+    }
+
+    #[tokio::test]
+    async fn test_execute_enrich_chunk_cursor_resets_for_new_version() {
+        // Metadata recorded for another yaml path (older law version): the
+        // cursor must reset to 0 and MvT research must run again.
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2026-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+            .await
+            .unwrap();
+        tokio::fs::write(
+            law_dir.join(".enrichment.yaml"),
+            "law_id: BWBR0000001\ntimestamp: '2026-01-01T00:00:00Z'\nprovider: opencode\nmodel: m\nprompt_hash: p\ncode_commit: c\ncoverage_score: 1.0\narticles_total: 4\narticles_with_machine_readable: 4\nenrich_cursor: 2\nenrich_cursor_path: regulation/nl/wet/test_law/2025-01-01.yaml\n",
+        )
+        .await
+        .unwrap();
+
+        let mut config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        config.max_articles_per_run = 2;
+        let runner = FakeChunkRunner::new(false);
+
+        let (result, _) = execute_enrich_with_runner(
+            &chunk_test_payload(yaml_path),
+            dir.path(),
+            &config,
+            "",
+            &runner,
+        )
+        .await
+        .unwrap();
+        assert!(!result.law_complete);
+        assert_eq!(result.enrich_cursor, 2);
+        let calls = runner.calls.lock().unwrap();
+        // Reset to the start: first window, MvT research NOT skipped.
+        assert_eq!(
+            *calls,
+            vec![(vec!["1".to_string(), "2".to_string()], Some(false))]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_enrich_whole_law_has_no_chunk_fields() {
+        // N=0: the runner receives a payload without chunk fields, so
+        // ProcessLlmRunner builds the byte-identical whole-law prompt.
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+            .await
+            .unwrap();
+
+        struct AssertWholeLawRunner;
+        #[async_trait::async_trait]
+        impl LlmRunner for AssertWholeLawRunner {
+            async fn run(
+                &self,
+                payload: &EnrichPayload,
+                yaml_abs: &Path,
+                _repo_path: &Path,
+                _config: &EnrichConfig,
+            ) -> Result<()> {
+                assert!(payload.chunk_articles.is_none());
+                assert!(payload.skip_mvt.is_none());
+                // Enrich everything so the zero-coverage guard passes.
+                FakeLlmRunner
+                    .run(payload, yaml_abs, _repo_path, _config)
+                    .await
+            }
+        }
+
+        let config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        assert_eq!(config.max_articles_per_run, 0);
+
+        let (result, _) = execute_enrich_with_runner(
+            &chunk_test_payload(yaml_path),
+            dir.path(),
+            &config,
+            "",
+            &AssertWholeLawRunner,
+        )
+        .await
+        .unwrap();
+        assert!(result.law_complete);
+        assert_eq!(result.enrich_cursor, 0);
     }
 }

@@ -455,6 +455,8 @@ pub async fn chain_enrich_and_complete(
         traject_ref: Some(ctx.traject_ref.clone()),
         source_etag: None,
         new_law: Some(true),
+        chunk_articles: None,
+        skip_mvt: None,
     };
     let payload_json = serde_json::to_value(&enrich_payload)
         .map_err(|e| PipelineError::Enrich(format!("serialize enrich payload: {e}")))?;

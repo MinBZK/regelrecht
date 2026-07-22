@@ -86,6 +86,8 @@ pub async fn request_enrich(
         traject_ref: Some(traject_ref.clone()),
         source_etag: Some(source_etag),
         new_law: None,
+        chunk_articles: None,
+        skip_mvt: None,
     };
     let payload_json = serde_json::to_value(&payload).map_err(internal("payload serialiseren"))?;
 
