@@ -17,7 +17,10 @@ import { useGithubAuth } from '../composables/useGithubAuth.js';
 // 428 (Precondition Required) gets the same treatment for the GitHub link:
 // the backend answers a traject write with 428 when this deployment requires
 // the acting user's own GitHub token (`github.user_oauth` flag or
-// GITHUB_USER_TOKEN_REQUIRED) and the user hasn't linked (or it expired).
+// GITHUB_USER_TOKEN_REQUIRED), the write target has no configured service
+// token (a configured token takes precedence and needs no link — see
+// `user_write_token_for_backend` in the editor-api), and the user hasn't
+// linked (or it expired).
 // Instead of a dead-end error toast, the guard bounces straight into the
 // GitHub consent flow via `useGithubAuth().connect()`, which returns to the
 // current page with a `?github=connected|error|denied` marker. Note the

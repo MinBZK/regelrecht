@@ -24,6 +24,16 @@ pub enum CorpusError {
     /// strings.
     #[error("conflict: {0}")]
     Conflict(String),
+
+    /// GitHub refused a write with a 403: the authenticating identity has
+    /// no push access to the repository or organisation (e.g. missing
+    /// repo permissions, or an org's OAuth App access restrictions
+    /// blocking a user token). Surfaced separately from `Git` so callers
+    /// can translate it into a clear "not allowed" message instead of a
+    /// generic internal error. Carries the GitHub response text for
+    /// operator logging — never show it to end users verbatim.
+    #[error("write denied by GitHub (403): {0}")]
+    WriteDenied(String),
 }
 
 pub type Result<T> = std::result::Result<T, CorpusError>;

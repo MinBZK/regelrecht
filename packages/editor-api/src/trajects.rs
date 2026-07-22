@@ -853,56 +853,60 @@ async fn resolve_writable_target(
                 ));
             }
 
-            // Resolve the token to preflight the repo with. Prefer the acting
-            // user's OWN GitHub token (user-OAuth spike): the preflight then
-            // validates *their* push access to the chosen repo — the
-            // entitlement check GitHub gives us for free, so the editor never
-            // needs an all-access credential to police repo choice (the gap
-            // that #885 tracks).
+            // Resolve the token to preflight the repo with, following the
+            // same precedence rule as the write path
+            // (`user_write_token_for_backend`): a configured per-repo
+            // service token goes first — the eventual writes on this repo
+            // run over that token too, so preflighting with the user's
+            // personal token would validate an access path the traject
+            // will never use. The strict context (`TokenContext::strict`)
+            // is deliberate: `auth_ref` derives from user-supplied repo
+            // coords, so an unknown ref must NOT fall back to
+            // `CORPUS_GIT_TOKEN` (that would ship the central token to a
+            // user-picked repo, a token-exfiltration vector).
             //
-            // Fall back to the *strict* per-repo operator token when the user
-            // hasn't linked GitHub and this deployment doesn't require it. The
-            // strict context (`TokenContext::strict`) is deliberate: `auth_ref`
-            // derives from user-supplied repo coords, so an unknown ref must
-            // NOT fall back to `CORPUS_GIT_TOKEN` (that would ship the central
-            // token to a user-picked repo, a token-exfiltration vector).
-            // `user_write_token` returns 428 when a linked token is required
-            // but absent.
-            let token =
-                match crate::github_oauth::user_write_token(state, account_id, headers).await? {
-                    Some(user_token) => user_token,
-                    None => {
-                        let auth_file = {
-                            let corpus = state.corpus.read().await;
-                            corpus.auth_file.clone()
-                        };
-                        regelrecht_corpus::auth::CredentialResolver::new(auth_file.as_deref())
-                        .resolve(regelrecht_corpus::auth::TokenContext::strict(&auth_ref))
-                        .map(regelrecht_corpus::auth::TokenDecision::into_token)
-                        .map_err(|e| {
-                            tracing::error!(error = %e, "auth lookup failed for new traject repo");
-                            (
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                "auth lookup failed".to_string(),
-                            )
-                        })?
-                        .ok_or_else(|| {
-                            let env_name = regelrecht_corpus::auth::token_env_name(&auth_ref);
-                            tracing::warn!(
-                                auth_ref = %auth_ref,
-                                env_name = %env_name,
-                                "no token configured for user-supplied repo"
-                            );
-                            (
-                                StatusCode::SERVICE_UNAVAILABLE,
-                                format!(
-                                    "deze repo is nog niet door je beheerder geconfigureerd \
+            // Only for a token-less ref does the acting user's OWN GitHub
+            // token come into play (user-OAuth spike): the preflight then
+            // validates *their* push access to the chosen repo — the
+            // entitlement check GitHub gives us for free, so the editor
+            // never needs an all-access credential to police repo choice
+            // (the gap that #885 tracks). `user_write_token` returns 428
+            // when a linked token is required but absent.
+            let auth_file = {
+                let corpus = state.corpus.read().await;
+                corpus.auth_file.clone()
+            };
+            let service_token =
+                regelrecht_corpus::auth::CredentialResolver::new(auth_file.as_deref())
+                    .resolve(regelrecht_corpus::auth::TokenContext::strict(&auth_ref))
+                    .map(regelrecht_corpus::auth::TokenDecision::into_token)
+                    .map_err(|e| {
+                        tracing::error!(error = %e, "auth lookup failed for new traject repo");
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "auth lookup failed".to_string(),
+                        )
+                    })?;
+            let token = match service_token {
+                Some(service_token) => service_token,
+                None => crate::github_oauth::user_write_token(state, account_id, headers)
+                    .await?
+                    .ok_or_else(|| {
+                        let env_name = regelrecht_corpus::auth::token_env_name(&auth_ref);
+                        tracing::warn!(
+                            auth_ref = %auth_ref,
+                            env_name = %env_name,
+                            "no token configured for user-supplied repo"
+                        );
+                        (
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            format!(
+                                "deze repo is nog niet door je beheerder geconfigureerd \
                              (verwacht env var {env_name})"
-                                ),
-                            )
-                        })?
-                    }
-                };
+                            ),
+                        )
+                    })?,
+            };
 
             // The OAuth config's `api_base` (a pub field, overridable in
             // tests with a wiremock server) wins over the real default, so

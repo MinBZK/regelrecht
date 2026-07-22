@@ -1540,6 +1540,9 @@ async fn resolve_backend_for_law(
 /// `ReadOnly` is an expected, recoverable precondition (e.g. the resolved
 /// backend is a baked-in local source on a read-only container filesystem),
 /// and the message is safe to surface to the user as `403 Forbidden`.
+/// `WriteDenied` (GitHub itself answered 403 on the write call) also maps
+/// to `403 Forbidden`, with a fixed Dutch "geen schrijftoegang" message —
+/// the GitHub response text is logged, never echoed.
 ///
 /// Every other variant (IO, git command failures, push failures, …) goes
 /// out as `500 Internal Server Error` with a **generic** message. The full
@@ -1562,6 +1565,24 @@ fn corpus_write_error(kind: &'static str) -> impl FnOnce(CorpusError) -> (Status
             StatusCode::CONFLICT,
             "Concurrent edit detected, please retry".to_string(),
         ),
+        // GitHub refused the write outright (403): the authenticating
+        // identity — typically the user's own linked token in the
+        // user-token write mode — has no push access to the repo or its
+        // org (e.g. OAuth App access restrictions). Deliberately NOT the
+        // generic 500: the user can't do anything with "internal error",
+        // but "geen schrijftoegang" points at the actual problem. The
+        // full GitHub response goes to the operator log only. Note that
+        // `apiAuthGuard.js` intentionally does not intercept 403, so this
+        // message reaches the save-failed modal verbatim.
+        CorpusError::WriteDenied(_) => {
+            tracing::warn!(error = %e, kind = %kind, "GitHub denied corpus write (403)");
+            (
+                StatusCode::FORBIDDEN,
+                "GitHub staat deze wijziging niet toe met jouw gekoppelde account: \
+                 geen schrijftoegang tot deze repository of organisatie."
+                    .to_string(),
+            )
+        }
         _ => {
             tracing::warn!(error = %e, kind = %kind, "corpus write/persist failed");
             (
@@ -1839,9 +1860,12 @@ async fn resolve_traject_law_write(
 /// user-created traject repo has no service token on purpose, and 403-ing
 /// there would break every write in the user-token mode (the pr952
 /// promote bug). The subsequent `user_write_token_for_backend` call then
-/// enforces the linked-token requirement (428 when absent/expired), and
-/// `persist` itself still refuses (`CorpusError::ReadOnly` → 403) if a
-/// write somehow reaches it with no token at all.
+/// applies the token-precedence rule: a configured service token goes
+/// first (the write proceeds without an override), and only on token-less
+/// backends is the linked-token requirement enforced (428 when
+/// absent/expired). `persist` itself still refuses
+/// (`CorpusError::ReadOnly` → 403) if a write somehow reaches it with no
+/// token at all.
 async fn require_traject_backend_writable(
     state: &AppState,
     writable_at_rest: bool,
