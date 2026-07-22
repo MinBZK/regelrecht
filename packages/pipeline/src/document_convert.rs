@@ -167,8 +167,8 @@ impl WritableOwnSourceRow {
             priority: self.priority.max(0) as u32,
             auth_ref: self.auth_ref.clone(),
             // Writable-own rows carry a user-derived `auth_ref`; resolution
-            // must never fall back to the shared legacy token (the worker
-            // below indeed resolves via `resolve_token_strict`).
+            // must never fall back to the shared legacy token (the central
+            // `CredentialResolver` below honours this flag).
             strict_auth: true,
         }
     }
@@ -212,11 +212,14 @@ pub async fn write_markdown_to_traject(
     markdown: &str,
 ) -> Result<()> {
     let source = load_writable_own_source(pool, payload.traject_id).await?;
-    // Resolve a push token strictly by the source's auth key (env var
-    // `CORPUS_AUTH_<key>_TOKEN`); no auth file in the worker and no shared-token
+    // Resolve a push token via the central resolver (env var
+    // `CORPUS_AUTH_<key>_TOKEN`); no auth file in the worker, and the source's
+    // `strict_auth: true` (set in `to_source`) means no shared-token
     // fallback — matches the editor's writable-own resolution.
     let auth_key = source.auth_ref.clone().unwrap_or_else(|| source.id.clone());
-    let token = regelrecht_corpus::auth::resolve_token_strict(&auth_key, None)?;
+    let token = regelrecht_corpus::auth::CredentialResolver::new(None)
+        .resolve_source(&source)?
+        .into_token();
 
     // A GitHub source with no push token would only commit into the worker's
     // throwaway checkout (GitBackend goes local-only) and never reach the

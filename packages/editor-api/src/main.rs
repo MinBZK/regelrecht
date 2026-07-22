@@ -799,15 +799,21 @@ async fn init_backends(
     let mut backends = HashMap::new();
 
     for source in registry.sources() {
-        let token = regelrecht_corpus::auth::resolve_token_for_source(
-            &source.id,
-            source.auth_ref.as_deref(),
-            auth_file,
-        )
-        .unwrap_or_else(|e| {
-            tracing::warn!(source_id = %source.id, error = %e, "failed to resolve auth token");
-            None
-        });
+        // Explicit decision: resolution follows the source's `strict_auth`
+        // flag (via `resolve_source`) instead of hardcoding the
+        // legacy-fallback variant this call-site used before. For the global
+        // registry that is behaviourally identical — manifest sources carry
+        // `strict_auth: false`, so single-PAT deployments that only set
+        // `CORPUS_GIT_TOKEN` keep working — but a strict source ever
+        // reaching this path now resolves strictly, consistent with the
+        // traject backend path in `traject_corpus.rs`.
+        let token = regelrecht_corpus::auth::CredentialResolver::new(auth_file)
+            .resolve_source(source)
+            .map(regelrecht_corpus::auth::TokenDecision::into_token)
+            .unwrap_or_else(|e| {
+                tracing::warn!(source_id = %source.id, error = %e, "failed to resolve auth token");
+                None
+            });
 
         // When a push token is present, the backend will push commits to the
         // remote repo. This requires authentication on the write endpoints —

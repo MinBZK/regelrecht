@@ -1476,7 +1476,9 @@ async fn build_traject_corpus(
         // read-only mirrors keep working. The index scan below
         // (`index_all_sources_async`) goes through the same resolver, so
         // scan and push can no longer disagree about the token.
-        let token_result = regelrecht_corpus::auth::resolve_source_token(source, auth_file);
+        let token_result = regelrecht_corpus::auth::CredentialResolver::new(auth_file)
+            .resolve_source(source)
+            .map(regelrecht_corpus::auth::TokenDecision::into_token);
         let token = token_result.unwrap_or_else(|e| {
             tracing::warn!(
                 traject = %traject_id,

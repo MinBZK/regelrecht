@@ -182,7 +182,9 @@ impl CorpusRegistry {
 
         for source in &self.sources {
             if let SourceType::GitHub { github } = &source.source_type {
-                let token = crate::auth::resolve_source_token(source, auth_file)?;
+                let token = crate::auth::CredentialResolver::new(auth_file)
+                    .resolve_source(source)?
+                    .into_token();
                 match fetcher
                     .fetch_source_filtered(github, token.as_deref(), &missing)
                     .await?
@@ -294,13 +296,15 @@ impl CorpusRegistry {
                 map.load_source(source)?;
             }
             SourceType::GitHub { github } => {
-                // `resolve_source_token` honours `strict_auth`: the scan of a
+                // `resolve_source` honours `strict_auth`: the scan of a
                 // traject's writable-own repo resolves with exactly the same
                 // rules as its push path, so a repo the server can push to is
                 // also a repo the server can index (and vice versa — no more
                 // "promote succeeded but the index reads with a different
                 // token and comes back empty").
-                let token = crate::auth::resolve_source_token(source, auth_file)?;
+                let token = crate::auth::CredentialResolver::new(auth_file)
+                    .resolve_source(source)?
+                    .into_token();
                 for (law_id, path, sha) in fetcher
                     .list_source_law_paths(github, token.as_deref())
                     .await?
