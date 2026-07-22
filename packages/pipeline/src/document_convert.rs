@@ -9,7 +9,14 @@
 //! convert (pick a tool, or read it directly). This module owns the payload
 //! type, the transient upload storage helpers, the status-list query for the
 //! editor, and the conversion orchestration. The worker (see `worker.rs`) drives
-//! it and writes the produced markdown back to the traject's git corpus.
+//! it and delivers the produced markdown as a job-blob + review-taak
+//! (`worker::finish_document_convert_task_job`); the editor commits it to the
+//! traject repo namens de gebruiker after approval.
+//!
+//! Per het worker/traject-contract (zie de crate-doc in `lib.rs`) bevat deze
+//! module bewust géén git-push-pad: een sessieloze worker schrijft nooit met
+//! een server-token naar een traject-repo. De guard die dat afdwingt is
+//! [`DocumentConvertPayload::require_task_delivery`].
 
 use std::path::{Path, PathBuf};
 
@@ -17,9 +24,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
-
-use regelrecht_corpus::backend::{create_backend, WriteContext};
-use regelrecht_corpus::models::{GitHubSource, LocalSource, Source, SourceType};
 
 use crate::enrich::{run_llm_subprocess, EnrichConfig};
 use crate::error::{PipelineError, Result};
@@ -50,8 +54,9 @@ pub struct DocumentConvertPayload {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requested_by: Option<Uuid>,
     /// `"task"` ⇒ resultaat als job_blobs + review-taak, géén push (taak-flow;
-    /// editor-api zet dit op elke upload). Afwezig ⇒ oude gedrag (jobs van
-    /// vóór het taken-mechanisme): directe push naar de traject-branch.
+    /// editor-api zet dit op elke upload). Elke andere waarde — inclusief
+    /// afwezig, het pre-taken-mechanisme directe-push-gedrag — wordt door de
+    /// worker terminaal geweigerd: zie [`Self::require_task_delivery`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deliver: Option<String>,
 }
@@ -60,6 +65,27 @@ impl DocumentConvertPayload {
     /// Taak-flow: resultaat naar Postgres + taak i.p.v. push naar git.
     pub fn deliver_as_task(&self) -> bool {
         self.deliver.as_deref() == Some("task")
+    }
+
+    /// Contract-guard op jobniveau: een document-convert-job heeft altijd een
+    /// traject-doel (`traject_id`), en per het worker/traject-contract (zie de
+    /// crate-doc) mag een sessieloze worker nooit met een server-token naar
+    /// een traject-repo pushen. Oplevering kan dus uitsluitend via de
+    /// taak-flow: `deliver: "task"` mét een `requested_by` als assignee van de
+    /// review-taak. Al het andere — het verwijderde directe-push-gedrag van
+    /// jobs van vóór het taken-mechanisme incluis — hoort terminaal en luid te
+    /// falen, vóór de (kostbare) conversie. Spiegel van de `law_convert`-gate
+    /// in `worker.rs`.
+    pub fn require_task_delivery(&self) -> Result<()> {
+        if !self.deliver_as_task() || self.requested_by.is_none() {
+            return Err(PipelineError::Worker(
+                "document_convert vereist deliver=task met requested_by: een traject-write \
+                 loopt altijd via een review-taak (editor-commit namens de gebruiker), nooit \
+                 via een directe push vanuit de worker"
+                    .to_string(),
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -121,130 +147,6 @@ pub async fn cleanup_orphaned_uploads(pool: &PgPool) -> Result<u64> {
     .execute(pool)
     .await?;
     Ok(result.rows_affected())
-}
-
-/// Row for a traject's writable-own corpus source, from `traject_corpus_sources`.
-#[derive(sqlx::FromRow)]
-struct WritableOwnSourceRow {
-    source_id: String,
-    name: String,
-    source_type: String,
-    gh_owner: Option<String>,
-    gh_repo: Option<String>,
-    gh_branch: Option<String>,
-    gh_path: Option<String>,
-    gh_ref: Option<String>,
-    local_path: Option<String>,
-    priority: i32,
-    auth_ref: Option<String>,
-}
-
-impl WritableOwnSourceRow {
-    /// Mirror of editor-api's `TrajectSourceRow::to_source`. Scopes are omitted
-    /// (they only gate reads; the worker only writes).
-    fn to_source(&self) -> Source {
-        let source_type = match self.source_type.as_str() {
-            "github" => SourceType::GitHub {
-                github: GitHubSource {
-                    owner: self.gh_owner.clone().unwrap_or_default(),
-                    repo: self.gh_repo.clone().unwrap_or_default(),
-                    branch: self.gh_branch.clone().unwrap_or_default(),
-                    path: self.gh_path.clone(),
-                    git_ref: self.gh_ref.clone(),
-                },
-            },
-            _ => SourceType::Local {
-                local: LocalSource {
-                    path: std::path::PathBuf::from(self.local_path.clone().unwrap_or_default()),
-                },
-            },
-        };
-        Source {
-            id: self.source_id.clone(),
-            name: self.name.clone(),
-            source_type,
-            scopes: Vec::new(),
-            priority: self.priority.max(0) as u32,
-            auth_ref: self.auth_ref.clone(),
-            // Writable-own rows carry a user-derived `auth_ref`; resolution
-            // must never fall back to the shared legacy token (the central
-            // `CredentialResolver` below honours this flag).
-            strict_auth: true,
-        }
-    }
-}
-
-/// Build a corpus [`Source`] for the traject's single writable-own source.
-async fn load_writable_own_source(pool: &PgPool, traject_id: Uuid) -> Result<Source> {
-    let row = sqlx::query_as::<_, WritableOwnSourceRow>(
-        r#"
-        SELECT source_id, name, source_type::text AS source_type,
-               gh_owner, gh_repo, gh_branch, gh_path, gh_ref, local_path,
-               priority, auth_ref
-        FROM traject_corpus_sources
-        WHERE traject_id = $1 AND is_writable_own = TRUE
-        -- A partial unique index already guarantees at most one such row per
-        -- traject; the deterministic order + LIMIT is defensive belt-and-braces.
-        ORDER BY priority DESC, source_id
-        LIMIT 1
-        "#,
-    )
-    .bind(traject_id)
-    .fetch_optional(pool)
-    .await?
-    .ok_or_else(|| {
-        PipelineError::Enrich(format!(
-            "traject {traject_id} has no writable-own corpus source"
-        ))
-    })?;
-    Ok(row.to_source())
-}
-
-/// Write the converted markdown into the traject's writable-own corpus and push
-/// it. This is a service-account commit straight to the source's branch (no PR):
-/// the async worker has no user session, so it mirrors how the enrich worker
-/// writes to the corpus rather than the editor's per-session PR flow. The file
-/// lands at `documents/<traject_ref>/<target_path>` — the same location the
-/// editor's document handler writes to — so it shows up as a normal werkdocument.
-pub async fn write_markdown_to_traject(
-    pool: &PgPool,
-    payload: &DocumentConvertPayload,
-    markdown: &str,
-) -> Result<()> {
-    let source = load_writable_own_source(pool, payload.traject_id).await?;
-    // Resolve a push token via the central resolver (env var
-    // `CORPUS_AUTH_<key>_TOKEN`); no auth file in the worker, and the source's
-    // `strict_auth: true` (set in `to_source`) means no shared-token
-    // fallback — matches the editor's writable-own resolution.
-    let auth_key = source.auth_ref.clone().unwrap_or_else(|| source.id.clone());
-    let token = regelrecht_corpus::auth::CredentialResolver::new(None)
-        .resolve_source(&source)?
-        .into_token();
-
-    // A GitHub source with no push token would only commit into the worker's
-    // throwaway checkout (GitBackend goes local-only) and never reach the
-    // traject — silent data loss. Fail loudly instead, so the failure is visible
-    // in the werkdocumenten status block and the ops fix (set the token) is
-    // obvious. Local sources need no token (the local write IS the persistence).
-    if token.is_none() && matches!(source.source_type, SourceType::GitHub { .. }) {
-        return Err(PipelineError::Enrich(format!(
-            "no push token for traject source '{auth_key}' (expected env {}); the converted \
-             document cannot be persisted to the traject repository",
-            regelrecht_corpus::auth::token_env_name(&auth_key),
-        )));
-    }
-
-    let mut backend = create_backend(&source, token.as_deref())?;
-    backend.ensure_ready().await?;
-
-    let relative_path = Path::new("documents")
-        .join(&payload.traject_ref)
-        .join(&payload.target_path);
-    backend.write_file(&relative_path, markdown).await?;
-
-    let message = format!("document-convert: {}", payload.target_path);
-    backend.persist(&WriteContext::new(message, None)).await?;
-    Ok(())
 }
 
 /// A trimmed view of a `document_convert` job for the werkdocumenten status UI.
@@ -633,8 +535,9 @@ mod tests {
 
     #[test]
     fn payload_deliver_task_fields_roundtrip_and_backcompat() {
-        // Oude payloads (zonder deliver-veld) moeten blijven deserialiseren en
-        // vallen terug op het oude directe-push-gedrag.
+        // Oude payloads (zonder deliver-veld) moeten blijven deserialiseren —
+        // maar hun directe-push-gedrag bestaat niet meer: de guard weigert ze
+        // terminaal (zie `require_task_delivery_rejects_non_task_payloads`).
         let old = serde_json::json!({
             "upload_id": Uuid::nil(),
             "traject_id": Uuid::nil(),
@@ -660,6 +563,57 @@ mod tests {
             serde_json::from_value(serde_json::to_value(&new).unwrap()).unwrap();
         assert_eq!(roundtrip.requested_by, Some(account));
         assert!(roundtrip.deliver_as_task());
+    }
+
+    /// Basispayload met traject-doel voor de guard-tests hieronder.
+    fn traject_payload(
+        deliver: Option<&str>,
+        requested_by: Option<Uuid>,
+    ) -> DocumentConvertPayload {
+        DocumentConvertPayload {
+            upload_id: Uuid::nil(),
+            traject_id: Uuid::new_v4(),
+            traject_ref: "voorbeeld-abcd1234".to_string(),
+            target_path: "report.md".to_string(),
+            provider: None,
+            requested_by,
+            deliver: deliver.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn require_task_delivery_rejects_non_task_payloads() {
+        // Het worker/traject-contract: een document-convert-job (altijd een
+        // traject-doel) mag uitsluitend via de taak-flow opleveren. Zonder
+        // `deliver: "task"` — het verwijderde pre-taken directe-push-gedrag —
+        // moet de guard weigeren, wélke andere waarde er ook staat.
+        let account = Uuid::new_v4();
+        for deliver in [None, Some("push"), Some("Task"), Some("")] {
+            let err = traject_payload(deliver, Some(account))
+                .require_task_delivery()
+                .unwrap_err();
+            assert!(
+                err.to_string().contains("deliver=task"),
+                "deliver={deliver:?} moet met een duidelijke contractfout geweigerd worden, kreeg: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn require_task_delivery_rejects_task_without_requested_by() {
+        // Zonder aanvrager is er geen assignee voor de review-taak, dus ook
+        // geen aflever-pad — net zo terminaal als een niet-task-payload.
+        let err = traject_payload(Some("task"), None)
+            .require_task_delivery()
+            .unwrap_err();
+        assert!(err.to_string().contains("requested_by"));
+    }
+
+    #[test]
+    fn require_task_delivery_accepts_the_task_flow() {
+        traject_payload(Some("task"), Some(Uuid::new_v4()))
+            .require_task_delivery()
+            .expect("taak-flow-payload met aanvrager is het enige geldige aflever-pad");
     }
 
     #[test]

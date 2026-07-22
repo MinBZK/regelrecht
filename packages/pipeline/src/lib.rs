@@ -1,3 +1,31 @@
+//! PostgreSQL-backed job queue, law status tracking, and the pipeline workers
+//! (harvest, enrich, document/law-convert).
+//!
+//! # Het worker/traject-contract
+//!
+//! **Pipeline-workers schrijven nooit met een server-token naar een
+//! traject-repo.** Een traject-write loopt altijd via een review-taak: de
+//! worker levert zijn resultaat op als job-blob + taak
+//! (`deliver: "task"`, zie o.a. [`worker::finish_enrich_task_job`] en
+//! [`worker::finish_document_convert_task_job`]), de gebruiker keurt goed in
+//! de editor, en de editor doet de commit namens de gebruiker met diens eigen
+//! OAuth-token (client-gedreven via de save-endpoints van editor-api).
+//!
+//! Het corpus-token (`CORPUS_GIT_TOKEN`, via `CorpusConfig`) is uitsluitend
+//! voor de **centrale** corpus-repo — de operator-repo waar de klassieke
+//! corpus-brede enrich zijn `enrich/*`-branches pusht. Guards borgen dit op
+//! jobniveau, niet op call-site-conventie:
+//!
+//! - `document_convert`: [`document_convert::DocumentConvertPayload::require_task_delivery`]
+//!   — een job zonder `deliver: "task"` + `requested_by` faalt terminaal vóór
+//!   de conversie; er bestaat geen push-pad meer in die module.
+//! - `law_convert`: kent alléén de taak-flow (zelfde gate in `worker.rs`).
+//! - `enrich`: de taak-flow buigt af naar blob + taak; het corpus-brede pad
+//!   weigert traject-gerichte payloads via
+//!   [`enrich::EnrichPayload::require_corpus_wide_target`].
+//! - `traject_harvest`: schrijft in een werkdirectory en ketent een
+//!   taak-flow-enrich — raakt zelf geen traject-repo aan.
+
 pub mod api;
 mod api_state;
 pub mod config;
