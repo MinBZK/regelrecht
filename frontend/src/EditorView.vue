@@ -873,7 +873,12 @@ async function selectTab(tab) {
   if (tab.lawId === lawId.value) {
     selectedArticleNumber.value = tab.articleNumber;
   } else {
-    await switchLaw(tab.lawId, tab.articleNumber);
+    // Fetch through the tab's own traject (every open tab belongs to the
+    // active traject). Passing it explicitly matters when this restore runs
+    // right after a traject switch with no law in the URL: `switchLaw`'s
+    // internal traject is still the previous one, so without this the law
+    // would be read through the old traject's scope.
+    await switchLaw(tab.lawId, tab.articleNumber, route.params.trajectRef || null);
     if (!isCurrent()) return; // stale, another switch started
     lawNames.value = { ...lawNames.value, [tab.lawId]: lawName.value };
   }
