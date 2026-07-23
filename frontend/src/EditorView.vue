@@ -227,10 +227,14 @@ watch(activeTrajectRef, (next) => {
   backfillTabLabels(next);
   if (lawId.value) {
     // The URL carried a law across the switch: keep showing it through the new
-    // traject. Clear activeTab so no stale (previous-traject) tab reads as
-    // selected; the tab-add watch re-adds and activates the law - and persists
-    // it under the new traject's key - once switchLaw settles.
-    activeTab.value = null;
+    // traject. Point activeTab straight at that law (the tab-add watch re-adds
+    // and re-affirms it - and persists it under the new traject's key - once
+    // switchLaw settles). Setting it synchronously, rather than clearing to
+    // null, is deliberate: this switchLaw runs outside selectTab and doesn't
+    // await, so a null gap would let the "no active tab" robustness-net watch
+    // fire first and steal the switch (its selectTab claims switchLaw's shared
+    // useLatest last and wins), silently navigating to some other saved tab.
+    activeTab.value = { lawId: lawId.value, articleNumber: String(selectedArticleNumber.value ?? '') };
     switchLaw(lawId.value, selectedArticleNumber.value, next);
   } else {
     // No law in the URL: restore this traject's own last active tab (or its
@@ -1019,6 +1023,10 @@ function backfillTabLabels(trajectRef) {
   Promise.all(uniqueLawIds.map(async (id) => {
     try {
       const entry = await fetchLaw(trajectRef, id);
+      // Drop late results from a superseded switch: a fast A -> B -> C swap
+      // could otherwise land B's label on C's tab when both trajects have the
+      // same law open (its name may differ per traject after a concept edit).
+      if (trajectRef !== activeTrajectRef.value) return;
       lawNames.value = { ...lawNames.value, [id]: entry.lawName };
     } catch { /* ignore */ }
   }));
