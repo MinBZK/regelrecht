@@ -23,7 +23,7 @@ panic = "warn"
 [workspace.dependencies]
 async-trait = "0.1"
 axum = "0.8"
-base64 = "0.22"
+base64 = "0.23"
 # Symmetric AEAD for sealing per-user GitHub OAuth tokens into the browser
 # cookie - the token is deliberately never stored server-side (no DB row, no
 # session-store entry; see editor-api github_oauth.rs). `getrandom` gives
