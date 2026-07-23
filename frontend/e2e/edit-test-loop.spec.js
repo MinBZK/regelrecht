@@ -22,6 +22,7 @@
 import { test, expect } from '@playwright/test';
 import * as yaml from 'js-yaml';
 import { loadCorpus, loadScenario, mockCorpusApi } from './helpers-corpus.js';
+import { gotoEditor } from './helpers.js';
 
 test.describe('Edit → re-execute loop', () => {
   test.beforeEach(async ({ page }) => {
@@ -51,10 +52,7 @@ test.describe('Edit → re-execute loop', () => {
 
     // Navigate directly to article 2 via the route param - that's where
     // heeft_recht_op_zorgtoeslag lives and where we need to edit.
-    await page.goto('/editor/wet_op_de_zorgtoeslag/2');
-
-    // Wait for the document tab bar to render - articles loaded.
-    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 15_000 });
+    await gotoEditor(page, 'wet_op_de_zorgtoeslag', '2');
 
     const minorHeader = page
       .locator('.sb-accordion-header')

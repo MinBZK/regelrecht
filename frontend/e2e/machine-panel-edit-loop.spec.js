@@ -18,6 +18,7 @@
  */
 import { test, expect } from '@playwright/test';
 import { loadCorpus, loadScenario, mockCorpusApi } from './helpers-corpus.js';
+import { gotoEditor } from './helpers.js';
 
 /**
  * Wait for an nldd-sheet to be open. The host element itself doesn't change
@@ -75,8 +76,7 @@ test.describe('Edit → re-execute loop via Machine panel', () => {
 
     // Open article 2 directly via the route param (avoids the
     // selectArticle helper bug noted in the previous PR).
-    await page.goto('/editor/wet_op_de_zorgtoeslag/2');
-    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 15_000 });
+    await gotoEditor(page, 'wet_op_de_zorgtoeslag', '2');
 
     // --- Initial state: Minderjarige scenario is red ---
     const minorHeader = page

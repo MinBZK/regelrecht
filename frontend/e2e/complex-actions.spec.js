@@ -38,11 +38,10 @@ test.describe('Complex actions', () => {
   test('add action with AND operation containing comparison conditions', async ({ page }) => {
     const fixtureYaml = createFixtureWithMetadata();
 
-    await page.route('**/api/corpus/laws/wet_op_de_zorgtoeslag', route =>
+    await page.route('**/corpus/laws/wet_op_de_zorgtoeslag', route =>
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fixtureYaml })
     );
-    await page.goto('/editor/wet_op_de_zorgtoeslag');
-    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
+    await gotoEditor(page);
 
     await selectArticle(page, '2');
     await page.waitForTimeout(300);
@@ -51,7 +50,7 @@ test.describe('Complex actions', () => {
     await page.locator('[data-testid="add-action-btn"]').click();
     await page.waitForTimeout(300);
 
-    const panel = page.locator('nldd-sheet');
+    const panel = page.locator('nldd-sheet:visible');
 
     // Set output
     const outputField = panel.locator('[data-testid="action-output-field"] input');
@@ -109,7 +108,7 @@ test.describe('Complex actions', () => {
     await page.waitForTimeout(300);
 
     // ActionSheet should show the AND operation
-    const panel2 = page.locator('nldd-sheet');
+    const panel2 = page.locator('nldd-sheet:visible');
     await expect(panel2).toBeVisible();
 
     // The ActionSheet initially selects the deepest operation in the tree.
@@ -130,11 +129,10 @@ test.describe('Complex actions', () => {
   test('add nested operation via button and verify in YAML', async ({ page }) => {
     const fixtureYaml = createFixtureWithMetadata();
 
-    await page.route('**/api/corpus/laws/wet_op_de_zorgtoeslag', route =>
+    await page.route('**/corpus/laws/wet_op_de_zorgtoeslag', route =>
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fixtureYaml })
     );
-    await page.goto('/editor/wet_op_de_zorgtoeslag');
-    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
+    await gotoEditor(page);
 
     await selectArticle(page, '2');
     await page.waitForTimeout(300);
@@ -165,7 +163,7 @@ test.describe('Complex actions', () => {
     await actionItem.locator('nldd-button:has-text("Bewerk")').click();
     await page.waitForTimeout(300);
 
-    const panel = page.locator('nldd-sheet');
+    const panel = page.locator('nldd-sheet:visible');
 
     // Click "Voeg operatie toe" to add a nested ADD (empty values[])
     await panel.locator('[data-testid="add-nested-op-btn"]').evaluate(el => el.click());

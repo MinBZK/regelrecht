@@ -21,7 +21,7 @@ test.describe('Parameters and Outputs', () => {
     await fillSheetTextField(page, 'Naam', 'bsn');
 
     // Toggle required
-    const sheet = page.locator('nldd-sheet');
+    const sheet = page.locator('nldd-sheet:visible');
     const requiredSwitch = sheet.locator('nldd-switch');
     await requiredSwitch.evaluate(el => el.click());
     await page.waitForTimeout(100);

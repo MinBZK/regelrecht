@@ -101,6 +101,10 @@ pipeline-test:
 pipeline-integration-test:
     cd packages/pipeline && {{ci_flags}} cargo test --test '*'
 
+# Run the frontend Playwright e2e specs (mocked backend, no Postgres/token needed)
+test-e2e:
+    npm run test:e2e -w frontend
+
 # Run all tests (engine + harvester + pipeline unit + pipeline integration + editor-api)
 test-all: test harvester-test pipeline-test pipeline-integration-test editor-api-test
 

@@ -42,11 +42,10 @@ test.describe('Operation binding', () => {
   test('changing operation type updates YAML', async ({ page }) => {
     const fixtureYaml = createFixtureWithAction();
 
-    await page.route('**/api/corpus/laws/wet_op_de_zorgtoeslag', route =>
+    await page.route('**/corpus/laws/wet_op_de_zorgtoeslag', route =>
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fixtureYaml })
     );
-    await page.goto('/editor/wet_op_de_zorgtoeslag');
-    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
+    await gotoEditor(page);
 
     await selectArticle(page, '2');
     await page.waitForTimeout(300);
@@ -57,7 +56,7 @@ test.describe('Operation binding', () => {
     await page.waitForTimeout(300);
 
     // ActionSheet should be open
-    const panel = page.locator('nldd-sheet');
+    const panel = page.locator('nldd-sheet:visible');
     await expect(panel).toBeVisible();
 
     // Verify the operation type is currently ADD
@@ -84,11 +83,10 @@ test.describe('Operation binding', () => {
   test('changing literal value updates YAML', async ({ page }) => {
     const fixtureYaml = createFixtureWithAction();
 
-    await page.route('**/api/corpus/laws/wet_op_de_zorgtoeslag', route =>
+    await page.route('**/corpus/laws/wet_op_de_zorgtoeslag', route =>
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fixtureYaml })
     );
-    await page.goto('/editor/wet_op_de_zorgtoeslag');
-    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
+    await gotoEditor(page);
 
     await selectArticle(page, '2');
     await page.waitForTimeout(300);
@@ -98,7 +96,7 @@ test.describe('Operation binding', () => {
     await actionItems.last().locator('nldd-button:has-text("Bewerk")').click();
     await page.waitForTimeout(300);
 
-    const panel = page.locator('nldd-sheet');
+    const panel = page.locator('nldd-sheet:visible');
 
     // Find value 1 input (should be 10)
     const value1Input = panel.locator('[data-testid="op-value-0"] nldd-text-field input');
@@ -121,11 +119,10 @@ test.describe('Operation binding', () => {
   test('adding a value via button updates YAML', async ({ page }) => {
     const fixtureYaml = createFixtureWithAction();
 
-    await page.route('**/api/corpus/laws/wet_op_de_zorgtoeslag', route =>
+    await page.route('**/corpus/laws/wet_op_de_zorgtoeslag', route =>
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fixtureYaml })
     );
-    await page.goto('/editor/wet_op_de_zorgtoeslag');
-    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
+    await gotoEditor(page);
 
     await selectArticle(page, '2');
     await page.waitForTimeout(300);
@@ -135,7 +132,7 @@ test.describe('Operation binding', () => {
     await actionItems.last().locator('nldd-button:has-text("Bewerk")').click();
     await page.waitForTimeout(300);
 
-    const panel = page.locator('nldd-sheet');
+    const panel = page.locator('nldd-sheet:visible');
 
     // Click "Voeg waarde toe"
     await panel.locator('[data-testid="add-value-btn"]').click();
@@ -154,11 +151,10 @@ test.describe('Operation binding', () => {
   test('removing a value via minus button updates YAML', async ({ page }) => {
     const fixtureYaml = createFixtureWithAction();
 
-    await page.route('**/api/corpus/laws/wet_op_de_zorgtoeslag', route =>
+    await page.route('**/corpus/laws/wet_op_de_zorgtoeslag', route =>
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fixtureYaml })
     );
-    await page.goto('/editor/wet_op_de_zorgtoeslag');
-    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
+    await gotoEditor(page);
 
     await selectArticle(page, '2');
     await page.waitForTimeout(300);
@@ -168,7 +164,7 @@ test.describe('Operation binding', () => {
     await actionItems.last().locator('nldd-button:has-text("Bewerk")').click();
     await page.waitForTimeout(300);
 
-    const panel = page.locator('nldd-sheet');
+    const panel = page.locator('nldd-sheet:visible');
 
     // Click minus button on first value (nldd-icon-button may be "not visible" to Playwright)
     const removeBtn = panel.locator('[data-testid="op-value-0"] nldd-icon-button[icon="minus"]');

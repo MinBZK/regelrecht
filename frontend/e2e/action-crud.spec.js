@@ -19,7 +19,7 @@ test.describe('Action CRUD', () => {
     await page.waitForTimeout(300);
 
     // ActionSheet should be open
-    const panel = page.locator('nldd-sheet');
+    const panel = page.locator('nldd-sheet:visible');
     await expect(panel).toBeVisible();
 
     // Set output name
@@ -53,7 +53,7 @@ test.describe('Action CRUD', () => {
     await page.locator('[data-testid="add-action-btn"]').click();
     await page.waitForTimeout(300);
 
-    const panel = page.locator('nldd-sheet');
+    const panel = page.locator('nldd-sheet:visible');
 
     // Set output name
     const outputField = panel.locator('[data-testid="action-output-field"] input');
@@ -94,7 +94,7 @@ test.describe('Action CRUD', () => {
     await page.locator('[data-testid="add-action-btn"]').click();
     await page.waitForTimeout(300);
 
-    const panel = page.locator('nldd-sheet');
+    const panel = page.locator('nldd-sheet:visible');
 
     // Set output name
     const outputField = panel.locator('[data-testid="action-output-field"] input');

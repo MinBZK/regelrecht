@@ -8,7 +8,7 @@
  * (no editor-api / Postgres needed) and opens the scenario edit sheet.
  */
 import { test, expect } from '@playwright/test';
-import { loadFixture } from './helpers.js';
+import { loadFixture, gotoEditor } from './helpers.js';
 import { mockCorpusApi } from './helpers-corpus.js';
 
 // A minimal scenario that passes one parameter of each declared datatype:
@@ -46,8 +46,7 @@ test.describe('Scenario parameter input controls', () => {
   });
 
   test('renders a switch for boolean, number-field for amount, text-field for string', async ({ page }) => {
-    await page.goto('/editor/zorgtoeslagwet/2');
-    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 15_000 });
+    await gotoEditor(page, 'zorgtoeslagwet', '2');
 
     // Open the scenario edit sheet via the card's "Bewerk" button.
     const edit = page.getByRole('button', { name: 'Bewerk' }).first();

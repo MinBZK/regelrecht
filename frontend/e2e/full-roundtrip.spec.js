@@ -16,11 +16,10 @@ test.describe('Full round-trip', () => {
     const original = loadOriginal();
     const fullYaml = loadFixture('zorgtoeslag-full.yaml');
 
-    await page.route('**/api/corpus/laws/wet_op_de_zorgtoeslag', route =>
+    await page.route('**/corpus/laws/wet_op_de_zorgtoeslag', route =>
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fullYaml })
     );
-    await page.goto('/editor/wet_op_de_zorgtoeslag');
-    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
+    await gotoEditor(page);
 
     // Article 1a: simple definition
     await selectArticle(page, '1a');
@@ -146,7 +145,7 @@ execution:
     await actionItem.locator('nldd-button:has-text("Bewerk")').click();
     await page.waitForTimeout(300);
 
-    const panel = page.locator('nldd-sheet');
+    const panel = page.locator('nldd-sheet:visible');
     await expect(panel).toBeVisible();
 
     // Verify the operation type
