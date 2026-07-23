@@ -1770,7 +1770,7 @@ watch(activeTrajectRef, () => {
                     ></nldd-icon-button>
                     <nldd-menu id="werkdoc-add-menu" anchor="werkdoc-add-btn">
                       <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="onDocNew"></nldd-menu-item>
-                      <nldd-menu-item icon="upload-to-cloud" text="PDF of DOCX uploaden…" @select="onDocUpload"></nldd-menu-item>
+                      <nldd-menu-item icon="upload-to-cloud" text="Document uploaden (PDF, Word of Markdown)…" @select="onDocUpload"></nldd-menu-item>
                     </nldd-menu>
                   </nldd-toolbar-item>
                 </nldd-toolbar>
