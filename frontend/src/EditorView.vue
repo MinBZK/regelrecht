@@ -216,7 +216,7 @@ const {
 // the open law against the *previous* traject's dependencies. The
 // dependency walker re-loads on demand on the next run, so a single
 // `unloadAllLaws` is enough - no per-dep bookkeeping needed.
-watch(activeTrajectRef, (next) => {
+watch(activeTrajectRef, async (next) => {
   unloadAllLaws();
   // Tabs are scoped per traject: swap the bar to the new traject's own saved
   // set so the previous traject's tabs - which may point at laws this traject
@@ -235,7 +235,20 @@ watch(activeTrajectRef, (next) => {
     // fire first and steal the switch (its selectTab claims switchLaw's shared
     // useLatest last and wins), silently navigating to some other saved tab.
     activeTab.value = { lawId: lawId.value, articleNumber: String(selectedArticleNumber.value ?? '') };
-    switchLaw(lawId.value, selectedArticleNumber.value, next);
+    await switchLaw(lawId.value, selectedArticleNumber.value, next);
+    // On success the tab-add watch has added the law and re-affirmed activeTab;
+    // let it flush. On failure (the law isn't in this traject - the very case
+    // this feature targets, shown via the "niet beschikbaar" dialog) switchLaw
+    // leaves lawId/article untouched, so that watch never ran and the optimistic
+    // activeTab now points at a tab absent from openTabs. Drop it so the bar
+    // doesn't keep a phantom active tab. Bail if a newer switch superseded us.
+    await nextTick();
+    if (
+      activeTrajectRef.value === next && activeTab.value &&
+      !findTab(activeTab.value.lawId, activeTab.value.articleNumber)
+    ) {
+      activeTab.value = null;
+    }
   } else {
     // No law in the URL: restore this traject's own last active tab (or its
     // first tab), mirroring the initial-mount restore.
