@@ -928,6 +928,22 @@ const isEmptyLibrary = computed(
   () => !loading.value && !indexError.value && !selectedLawId.value && sidebarSections.value.length === 0 && !isWerkdocMode.value && !isInstellingenMode.value && !isTakenMode.value,
 );
 
+// Supporting text for the index-error pane: prefer the backend's own
+// (Dutch) explanation — e.g. "De bibliotheek van dit traject is niet
+// beschikbaar: de traject-repo kon niet worden gescand (…)" — over the
+// generic fallback. Length-capped so an unexpected HTML/stack body from
+// an intermediary never floods the dialog.
+const indexErrorSupportingText = computed(() => {
+  const body = indexError.value?.body;
+  if (typeof body === 'string') {
+    const text = body.trim();
+    if (text && text.length <= 300 && !text.startsWith('<') && !text.startsWith('{')) {
+      return text;
+    }
+  }
+  return 'De gegevens konden niet worden opgehaald.';
+});
+
 // Tell the shell whether the library is empty so it can show the just-in-time
 // search coach-mark on the toolbar field; reset on unmount so it doesn't linger
 // on the editor route.
@@ -1166,6 +1182,17 @@ async function loadIndex() {
     // search popover instead.
     const ids = new Set([...(favorites.value || []), ...(changedIds || [])]);
     if (ids.size === 0) {
+      // In een traject is "niets samengesteld" niet hetzelfde als "alles in
+      // orde": als de traject-repo niet gescand kan worden weigert de backend
+      // de traject-bibliotheek expliciet (428 koppel-flow / 502 met uitleg).
+      // Probe die status ook zonder ids, zodat de gebruiker de foutstatus
+      // ziet in plaats van een normaal ogende lege bibliotheek.
+      if (trajectRef) {
+        await apiFetch(lawsListUrl(trajectRef, 'limit=1'), {
+          errorMessage: (status) => `Failed to load corpus: ${status}`,
+        });
+        if (!isCurrent()) return;
+      }
       laws.value = [];
       return;
     }
@@ -1548,7 +1575,7 @@ watch(activeTrajectRef, () => {
             <nldd-inline-dialog
               variant="alert"
               text="Wetten en regels zijn niet geladen"
-              supporting-text="De gegevens konden niet worden opgehaald."
+              :supporting-text="indexErrorSupportingText"
             >
               <nldd-button slot="actions" variant="primary" text="Probeer opnieuw" @click="retryLoadCorpus"></nldd-button>
               <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>

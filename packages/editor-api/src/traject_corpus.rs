@@ -195,6 +195,16 @@ pub struct TrajectCorpus {
     /// guards, so a refresh mid-recompute cannot admit a second Compare
     /// call.
     changed_refresh_in_flight: Arc<AtomicBool>,
+    /// Whether this snapshot's index scan had a per-request user token
+    /// available as fallback for the writable-own source. Only a bool —
+    /// the token itself is **never** stored on this shared, cross-user
+    /// structure (nor in any cache key). [`TrajectCorpusCache::get_or_build`]
+    /// uses it to decide whether a snapshot whose writable-own scan failed
+    /// is worth rebuilding now that a request *does* carry a token: a
+    /// failure scanned *without* one may succeed with it; a failure
+    /// scanned *with* one waits for the TTL instead of re-scanning on
+    /// every request.
+    own_index_scanned_with_user_token: bool,
 }
 
 /// One scenario file in a law's cached listing: the filename plus the law
@@ -352,6 +362,19 @@ pub struct ImplementorsResult {
 }
 
 impl TrajectCorpus {
+    /// The index-scan failure of the **writable-own** source in this
+    /// snapshot, if any. `Some` means the traject's own laws are missing
+    /// from the index — every law would silently resolve from the seed
+    /// sources — so callers serving the traject-scoped library gate on
+    /// this and fail loudly instead of presenting a normal-looking
+    /// central-corpus-only list.
+    pub fn own_index_error(&self) -> Option<&str> {
+        self.corpus
+            .index_failures
+            .get(&self.writable_own_source_id)
+            .map(String::as_str)
+    }
+
     /// Resolve the YAML content for a law in this traject, preferring the
     /// post-save overlay over the source_map snapshot built at traject
     /// activation time.
@@ -1214,12 +1237,36 @@ impl TrajectCorpusCache {
     /// failed refresh extends the stale snapshot for another TTL window
     /// instead of erroring reads (same degrade-to-stale stance as
     /// [`TrajectCorpus::changed_law_ids`]).
+    ///
+    /// `own_scan_token` is the acting user's linked GitHub token, used
+    /// **transiently** as a fallback for the index scan of the traject's
+    /// writable-own source when the server has no token for it (the scan
+    /// mirror of the request-bound read fallback). It is never stored on
+    /// the cached snapshot or in any key — only the *result* of a scan is
+    /// shared, which is acceptable because the law metadata it produces is
+    /// visible to every traject member anyway. One extra rule: a cached
+    /// snapshot whose writable-own scan **failed without** a user token is
+    /// rebuilt synchronously when a request finally carries one — serving
+    /// the broken snapshot to that request would fail it loudly for no
+    /// reason when the user's own access can heal the index right now.
     pub async fn get_or_build(
         &self,
         pool: &PgPool,
         traject_id: Uuid,
         auth_file: Option<PathBuf>,
+        own_scan_token: Option<&str>,
     ) -> Result<Arc<TrajectCorpus>, TrajectCorpusError> {
+        // A snapshot whose writable-own scan failed while no user token was
+        // available is worth one immediate retry now that this request
+        // carries a token. (A failure scanned WITH a token is served as-is
+        // — retrying it per request would hammer GitHub with scans that
+        // keep failing; the TTL refresh retries on schedule.)
+        let heals_own_index = |corpus: &TrajectCorpus| {
+            own_scan_token.is_some()
+                && corpus.own_index_error().is_some()
+                && !corpus.own_index_scanned_with_user_token
+        };
+
         let slot = {
             let mut map = self.cells.write().await;
             map.entry(traject_id)
@@ -1233,6 +1280,10 @@ impl TrajectCorpusCache {
         {
             let state = slot.state.read().await;
             match state.as_ref() {
+                Some(cached) if heals_own_index(&cached.corpus) => {
+                    // Fall through to the synchronous build below: this
+                    // request's token can repair the broken index.
+                }
                 Some(cached) if cached.is_fresh(self.index_ttl) => {
                     tracing::debug!(traject = %traject_id, cache = "hit", "traject corpus served from cache");
                     return Ok(cached.corpus.clone());
@@ -1242,7 +1293,9 @@ impl TrajectCorpusCache {
                     drop(state);
                     // Stale: only one task refreshes (`try_lock`); everyone
                     // else — including the winner — serves stale rather than
-                    // queueing up behind a network round-trip.
+                    // queueing up behind a network round-trip. The refresh
+                    // borrows this request's scan token (owned copy for the
+                    // spawned task; dropped with it).
                     if let Ok(guard) = slot.build_lock.clone().try_lock_owned() {
                         spawn_background_refresh(
                             guard,
@@ -1250,6 +1303,7 @@ impl TrajectCorpusCache {
                             stale.clone(),
                             traject_id,
                             self.index_ttl,
+                            own_scan_token.map(str::to_string),
                         );
                     }
                     return Ok(stale);
@@ -1258,20 +1312,24 @@ impl TrajectCorpusCache {
             }
         }
 
-        // Nothing cached: every caller must wait for the one build.
+        // Nothing cached (or a broken-own-index snapshot this request's
+        // token can heal): every caller must wait for the one build.
         let _build = slot.build_lock.clone().lock_owned().await;
 
         // Re-check under the build lock: the previous holder may have
-        // built while we waited.
+        // built while we waited. A snapshot this request's token could
+        // still heal is NOT served — it is exactly what we came to rebuild.
         if let Some(cached) = slot.state.read().await.as_ref() {
-            tracing::debug!(traject = %traject_id, cache = "hit", "traject corpus served from cache");
-            return Ok(cached.corpus.clone());
+            if !heals_own_index(&cached.corpus) {
+                tracing::debug!(traject = %traject_id, cache = "hit", "traject corpus served from cache");
+                return Ok(cached.corpus.clone());
+            }
         }
 
         tracing::debug!(traject = %traject_id, cache = "cold", "building traject corpus (cold)");
         let corpus = timing::measure(
             "build",
-            build_traject_corpus(pool, traject_id, auth_file.as_deref()),
+            build_traject_corpus(pool, traject_id, auth_file.as_deref(), own_scan_token),
         )
         .await?;
 
@@ -1314,6 +1372,7 @@ fn spawn_background_refresh(
     old: Arc<TrajectCorpus>,
     traject_id: Uuid,
     index_ttl: Duration,
+    own_scan_token: Option<String>,
 ) {
     tokio::spawn(async move {
         let _guard = guard;
@@ -1327,8 +1386,13 @@ fn spawn_background_refresh(
         }
 
         let span = tracing::info_span!("traject_index_refresh", traject = %traject_id);
-        let outcome =
-            tracing::Instrument::instrument(refresh_traject_corpus(&old, traject_id), span).await;
+        let outcome = tracing::Instrument::instrument(
+            refresh_traject_corpus(&old, traject_id, own_scan_token.as_deref()),
+            span,
+        )
+        .await;
+        // `own_scan_token` dies with this task — the refreshed snapshot
+        // only ever carries the scan *result*.
         apply_refresh_outcome(&slot, old, traject_id, outcome).await;
     });
 }
@@ -1411,11 +1475,18 @@ impl From<regelrecht_corpus::error::CorpusError> for TrajectCorpusError {
 
 /// Build a fresh [`TrajectCorpus`]: load sources from DB, clone backends,
 /// produce a [`SourceMap`].
+///
+/// `own_scan_token`: per-call user-token fallback for the index scan of
+/// the writable-own source (see [`TrajectCorpusCache::get_or_build`]).
+/// Consumed by the enumeration only — it is not handed to the backends
+/// (request-bound reads/writes resolve their own per-request token) and
+/// never stored on the returned structure.
 #[tracing::instrument(name = "build_traject_corpus", skip_all, fields(traject = %traject_id))]
 async fn build_traject_corpus(
     pool: &PgPool,
     traject_id: Uuid,
     auth_file: Option<&std::path::Path>,
+    own_scan_token: Option<&str>,
 ) -> Result<Arc<TrajectCorpus>, TrajectCorpusError> {
     let rows = sqlx::query_as::<_, TrajectSourceRow>(
         "SELECT source_id, name, source_type::text AS source_type,
@@ -1505,8 +1576,10 @@ async fn build_traject_corpus(
                 auth_ref = ?source.auth_ref,
                 auth_file = ?auth_file,
                 expected_env = %expected_env,
-                "traject writable-own source resolved NO token — pushes will fail, and \
-                 on a private repo reads/index scans fail too (laws fall back to seed sources)"
+                user_scan_token = own_scan_token.is_some(),
+                "traject writable-own source resolved NO server token — server-side pushes \
+                 fail, and on a private repo reads/index scans only work through the acting \
+                 user's linked GitHub token (user_scan_token says whether this build has one)"
             );
         }
 
@@ -1600,49 +1673,61 @@ async fn build_traject_corpus(
     // failing entirely on what is usually a transient GitHub hiccup. The hard
     // failure path is the writable-own *backend* init above, which returns
     // `Err` so a broken write target never opens silently.
-    let (source_map, index_failures) =
-        match timing::measure("index", registry.index_all_sources_async(auth_file)).await {
-            Ok((map, failed)) => {
-                if let Some(f) = failed
-                    .iter()
-                    .find(|f| f.source_id == writable_own_source_id)
-                {
-                    tracing::error!(
-                        traject = %traject_id,
-                        source_id = %writable_own_source_id,
-                        error = %f.error,
-                        "traject writable-own source failed to index — the traject's own laws \
-                         are missing from the bibliotheek and silently resolve from the seed \
-                         sources until the scan succeeds"
-                    );
-                }
-                let failures: HashMap<String, String> =
-                    failed.into_iter().map(|f| (f.source_id, f.error)).collect();
-                (map, failures)
-            }
-            Err(e) => {
-                tracing::warn!(
+    // The scan may fall back to the acting user's token for the
+    // writable-own source — and only for that source, only when the
+    // server-side resolution yields no token (both enforced corpus-side
+    // by `ScanTokenOverride`).
+    let scan_override = own_scan_token.map(|token| regelrecht_corpus::ScanTokenOverride {
+        source_id: &writable_own_source_id,
+        token,
+    });
+    let (source_map, index_failures) = match timing::measure(
+        "index",
+        registry.index_all_sources_with_override(auth_file, scan_override),
+    )
+    .await
+    {
+        Ok((map, failed)) => {
+            if let Some(f) = failed
+                .iter()
+                .find(|f| f.source_id == writable_own_source_id)
+            {
+                tracing::error!(
                     traject = %traject_id,
-                    error = %e,
-                    "traject corpus load failed, falling back to local-only"
+                    source_id = %writable_own_source_id,
+                    error = %f.error,
+                    "traject writable-own source failed to index — the traject-scoped \
+                     library refuses to serve (no silent fallback to seed-only laws) \
+                     until a scan succeeds"
                 );
-                // Local-only fallback: every non-local source is absent from
-                // the map, so record the enumeration error against each of
-                // them — `/sources` then shows why their law_count is 0.
-                let failures: HashMap<String, String> = registry
-                    .sources()
-                    .iter()
-                    .filter(|s| matches!(s.source_type, SourceType::GitHub { .. }))
-                    .map(|s| (s.id.clone(), e.to_string()))
-                    .collect();
-                (
-                    registry
-                        .load_local_sources()
-                        .unwrap_or_else(|_| SourceMap::new()),
-                    failures,
-                )
             }
-        };
+            let failures: HashMap<String, String> =
+                failed.into_iter().map(|f| (f.source_id, f.error)).collect();
+            (map, failures)
+        }
+        Err(e) => {
+            tracing::warn!(
+                traject = %traject_id,
+                error = %e,
+                "traject corpus load failed, falling back to local-only"
+            );
+            // Local-only fallback: every non-local source is absent from
+            // the map, so record the enumeration error against each of
+            // them — `/sources` then shows why their law_count is 0.
+            let failures: HashMap<String, String> = registry
+                .sources()
+                .iter()
+                .filter(|s| matches!(s.source_type, SourceType::GitHub { .. }))
+                .map(|s| (s.id.clone(), e.to_string()))
+                .collect();
+            (
+                registry
+                    .load_local_sources()
+                    .unwrap_or_else(|_| SourceMap::new()),
+                failures,
+            )
+        }
+    };
 
     Ok(Arc::new(TrajectCorpus {
         corpus: CorpusState {
@@ -1666,6 +1751,9 @@ async fn build_traject_corpus(
         scenario_list_cache: RwLock::new(BoundedCache::default()),
         sidecar_write_gen: AtomicU64::new(0),
         scenario_list_write_gen: AtomicU64::new(0),
+        // Only the *fact* that a user token was available; the token
+        // itself dies with this call.
+        own_index_scanned_with_user_token: own_scan_token.is_some(),
     }))
 }
 
@@ -1703,11 +1791,21 @@ async fn build_traject_corpus(
 async fn refresh_traject_corpus(
     old: &Arc<TrajectCorpus>,
     traject_id: Uuid,
+    own_scan_token: Option<&str>,
 ) -> Result<Arc<TrajectCorpus>, TrajectCorpusError> {
     let registry = old.corpus.registry.clone();
     let auth_file = old.corpus.auth_file.clone();
+    // Same user-token fallback as the cold build: without it, a traject
+    // whose writable-own repo is only readable through the acting user's
+    // token could never refresh its index (every TTL refresh would fail
+    // and re-arm the stale snapshot forever). Transient, like everywhere
+    // else — the refreshed snapshot never carries the token.
+    let scan_override = own_scan_token.map(|token| regelrecht_corpus::ScanTokenOverride {
+        source_id: &old.writable_own_source_id,
+        token,
+    });
     let (source_map, failed) = registry
-        .index_all_sources_async(auth_file.as_deref())
+        .index_all_sources_with_override(auth_file.as_deref(), scan_override)
         .await?;
     if !failed.is_empty() {
         let details: Vec<String> = failed
@@ -1762,6 +1860,11 @@ async fn next_snapshot(old: &Arc<TrajectCorpus>, source_map: SourceMap) -> Arc<T
         scenario_list_cache: RwLock::new(BoundedCache::default()),
         sidecar_write_gen: AtomicU64::new(0),
         scenario_list_write_gen: AtomicU64::new(0),
+        // A refresh only lands when every source enumerated, so this
+        // snapshot has no own-index failure the flag could qualify;
+        // carrying the old value keeps the field truthful about how the
+        // *last* failed scan (if the caller re-arms `old`) was attempted.
+        own_index_scanned_with_user_token: old.own_index_scanned_with_user_token,
     })
 }
 
@@ -2060,6 +2163,7 @@ mod tests {
             scenario_list_cache: RwLock::new(BoundedCache::default()),
             sidecar_write_gen: AtomicU64::new(0),
             scenario_list_write_gen: AtomicU64::new(0),
+            own_index_scanned_with_user_token: false,
         }
     }
 
@@ -2522,6 +2626,7 @@ mod tests {
             scenario_list_cache: RwLock::new(BoundedCache::default()),
             sidecar_write_gen: AtomicU64::new(0),
             scenario_list_write_gen: AtomicU64::new(0),
+            own_index_scanned_with_user_token: false,
         })
     }
 
@@ -2548,7 +2653,7 @@ mod tests {
         write_law_file(dir.path(), "wet_b", "$id: wet_b\nname: nieuw\n");
         assert!(old.corpus.source_map.get_law("wet_b").is_none());
 
-        let refreshed = refresh_traject_corpus(&old, Uuid::new_v4())
+        let refreshed = refresh_traject_corpus(&old, Uuid::new_v4(), None)
             .await
             .expect("local refresh must succeed");
 
@@ -2599,7 +2704,7 @@ mod tests {
             "regeling_a",
             &law_body("regeling_a", Some("wet_hoger")),
         );
-        let refreshed = refresh_traject_corpus(&old, Uuid::new_v4())
+        let refreshed = refresh_traject_corpus(&old, Uuid::new_v4(), None)
             .await
             .expect("local refresh must succeed");
 
@@ -2748,7 +2853,7 @@ mod tests {
         // Another replica / a direct push moves the branch past our save.
         write_law_file(dir.path(), "wet_a", "$id: wet_a\nname: extern\n");
 
-        let refreshed = refresh_traject_corpus(&old, Uuid::new_v4())
+        let refreshed = refresh_traject_corpus(&old, Uuid::new_v4(), None)
             .await
             .expect("local refresh must succeed");
 
@@ -2774,7 +2879,7 @@ mod tests {
         old.record_save("wet_a".to_string(), "$id: wet_a\nname: saved\n".to_string())
             .await;
 
-        let refreshed = refresh_traject_corpus(&old, Uuid::new_v4())
+        let refreshed = refresh_traject_corpus(&old, Uuid::new_v4(), None)
             .await
             .expect("local refresh must succeed");
 
@@ -2826,6 +2931,7 @@ mod tests {
             old.clone(),
             Uuid::new_v4(),
             Duration::from_secs(60),
+            None,
         );
 
         let refreshed = wait_for(|| {

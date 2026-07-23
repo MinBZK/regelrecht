@@ -1052,6 +1052,26 @@ pub async fn user_read_token_for_backend(
     if backend.is_writable() {
         return Ok(None);
     }
+    user_read_token(state, account_id, headers).await
+}
+
+/// [`user_read_token_for_backend`] without the backend probes: the raw
+/// requiredness gate + cookie resolution with the read-path messages.
+///
+/// Exists for the one caller that needs the token *before* any backend
+/// exists — the traject **index scan**, which resolves a candidate token
+/// ahead of `build_traject_corpus` so the enumeration of a token-less
+/// writable-own repo can authenticate as the acting user. Because there is
+/// no backend to scope the decision to, callers must treat the result as a
+/// *candidate*: apply it only where a server-side token is absent (the
+/// corpus-side [`regelrecht_corpus::ScanTokenOverride`] enforces that) and
+/// defer the `Err` (428 connect-flow) until a traject-scoped read actually
+/// needs the writable-own source.
+pub async fn user_read_token(
+    state: &AppState,
+    account_id: Uuid,
+    headers: &HeaderMap,
+) -> Result<Option<String>, (StatusCode, String)> {
     user_token_when_required(
         state,
         account_id,

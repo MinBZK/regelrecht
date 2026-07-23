@@ -370,8 +370,56 @@ async fn require_traject_scope(
     headers: &axum::http::HeaderMap,
     traject_ref: &str,
 ) -> Result<ReadScope, (StatusCode, String)> {
-    let traject = require_traject_corpus_from_ref(state, session, traject_ref).await?;
+    // Resolve the user's linked-token *candidate* BEFORE the corpus build:
+    // the index scan of a token-less writable-own repo authenticates with
+    // it (`ScanTokenOverride` scopes it to that one source, and only when
+    // the server resolves no token). A deferred 428 is swallowed here —
+    // seed-only browsing must keep working for unlinked users; the
+    // `ReadScope` re-resolves the token and raises the 428 at the call
+    // sites that actually need the writable-own source (including the
+    // traject-library gate in `require_traject_index`).
+    let scan_token = github_oauth::user_read_token(state, account.id, headers)
+        .await
+        .unwrap_or(None);
+    let traject = require_traject_corpus_from_ref_with_scan_token(
+        state,
+        session,
+        traject_ref,
+        scan_token.as_deref(),
+    )
+    .await?;
     Ok(ReadScope::for_traject(state, account.id, headers, traject).await)
+}
+
+/// Criterion "luid falen": when the traject's writable-own source failed
+/// to index, the traject-scoped law index must refuse to serve instead of
+/// presenting a normal-looking list in which every law silently resolved
+/// from the central seed corpus. A missing/expired GitHub link is the one
+/// *actionable* cause, so that surfaces as the deferred 428 (the connect
+/// flow); any other scan failure maps to an explicit 502 carrying the
+/// scan error. `/sources` deliberately stays outside this gate — the
+/// per-source `index_error` there is how the failure is diagnosed.
+fn require_traject_index(scope: &ReadScope) -> Result<(), (StatusCode, String)> {
+    let ReadScope::Traject(t) = scope else {
+        return Ok(());
+    };
+    let Some(err) = t.traject.own_index_error() else {
+        return Ok(());
+    };
+    // Deferred read-token outcome first: unlinked (or expired) in
+    // user-token mode → 428 into the koppel-flow.
+    t.own_read_token()?;
+    tracing::warn!(
+        error = %err,
+        "traject library refused: writable-own source failed to index"
+    );
+    Err((
+        StatusCode::BAD_GATEWAY,
+        format!(
+            "De bibliotheek van dit traject is niet beschikbaar: de traject-repo kon niet \
+             worden gescand ({err})"
+        ),
+    ))
 }
 
 /// GET /api/sources — list all registered corpus sources (global).
@@ -423,6 +471,9 @@ pub async fn list_traject_corpus_laws(
     headers: axum::http::HeaderMap,
 ) -> Result<Json<Vec<CorpusLawEntry>>, (StatusCode, String)> {
     let scope = require_traject_scope(&state, &session, &account, &headers, &traject_ref).await?;
+    // No silent central-only fallback: a traject whose own repo couldn't
+    // be scanned fails this listing loudly (428 koppel-flow / 502).
+    require_traject_index(&scope)?;
     Ok(Json(list_corpus_laws_in_scope(&scope, params)))
 }
 
@@ -1610,6 +1661,21 @@ pub(crate) async fn require_traject_corpus_from_ref(
     session: &Session,
     traject_ref: &str,
 ) -> Result<Arc<TrajectCorpus>, (StatusCode, String)> {
+    require_traject_corpus_from_ref_with_scan_token(state, session, traject_ref, None).await
+}
+
+/// [`require_traject_corpus_from_ref`] with the acting user's linked
+/// GitHub token as index-scan candidate (see
+/// [`TrajectCorpusCache::get_or_build`](crate::traject_corpus::TrajectCorpusCache::get_or_build)
+/// — transient, only for the writable-own source, never stored). Only the
+/// library read path resolves and passes a token; the write handlers keep
+/// the plain variant, their per-request tokens ride on the write itself.
+async fn require_traject_corpus_from_ref_with_scan_token(
+    state: &AppState,
+    session: &Session,
+    traject_ref: &str,
+    own_scan_token: Option<&str>,
+) -> Result<Arc<TrajectCorpus>, (StatusCode, String)> {
     let pool = state.pool.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
         "database not configured".to_string(),
@@ -1664,7 +1730,7 @@ pub(crate) async fn require_traject_corpus_from_ref(
     };
     state
         .trajects
-        .get_or_build(pool, traject_id, auth_file)
+        .get_or_build(pool, traject_id, auth_file, own_scan_token)
         .await
         .map_err(traject_corpus_error)
 }
