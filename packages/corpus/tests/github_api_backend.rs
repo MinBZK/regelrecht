@@ -264,6 +264,115 @@ async fn put_409_refreshes_sha_and_retries_once() {
 }
 
 #[tokio::test]
+async fn put_403_maps_to_write_denied() {
+    let server = MockServer::start().await;
+    mount_branch_exists(&server).await;
+
+    // GitHub refuses the write outright — e.g. the authenticating identity
+    // has no push access, or an org's OAuth App access restrictions block
+    // the token. Must surface as `WriteDenied` (with the response text for
+    // logging), not as a generic `Git` error, and without any sha-refresh
+    // retry (`expect(1)` pins that).
+    Mock::given(method("PUT"))
+        .and(path("/repos/acme/corpus/contents/laws/x.yaml"))
+        .respond_with(
+            ResponseTemplate::new(403)
+                .set_body_string("{\"message\":\"Resource not accessible by integration\"}"),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let b = backend(&server);
+    b.write_file(Path::new("laws/x.yaml"), "geweigerd\n")
+        .await
+        .unwrap();
+    let err = b
+        .persist(&ctx())
+        .await
+        .expect_err("a GitHub 403 on PUT must fail the persist");
+    match err {
+        regelrecht_corpus::error::CorpusError::WriteDenied(msg) => {
+            assert!(
+                msg.contains("Resource not accessible"),
+                "the GitHub response text must ride along for logging, got: {msg}"
+            );
+        }
+        other => panic!("expected WriteDenied, got: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn put_403_rate_limit_stays_generic_git_error() {
+    let server = MockServer::start().await;
+    mount_branch_exists(&server).await;
+
+    // GitHub answers rate-limit exhaustion ALSO with a 403 (primary limit:
+    // `x-ratelimit-remaining: 0`). That is transient, not a permissions
+    // refusal — it must NOT become `WriteDenied` (which the editor-api
+    // translates into a permanent-sounding "geen schrijftoegang" message)
+    // but stay on the generic `Git` path.
+    Mock::given(method("PUT"))
+        .and(path("/repos/acme/corpus/contents/laws/x.yaml"))
+        .respond_with(
+            ResponseTemplate::new(403)
+                .insert_header("x-ratelimit-remaining", "0")
+                .set_body_string("{\"message\":\"API rate limit exceeded\"}"),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let b = backend(&server);
+    b.write_file(Path::new("laws/x.yaml"), "gelimiteerd\n")
+        .await
+        .unwrap();
+    let err = b
+        .persist(&ctx())
+        .await
+        .expect_err("a rate-limited 403 on PUT must still fail the persist");
+    assert!(
+        matches!(err, regelrecht_corpus::error::CorpusError::Git(_)),
+        "a rate-limit 403 must stay a generic Git error, got: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn delete_403_maps_to_write_denied() {
+    let server = MockServer::start().await;
+    mount_branch_exists(&server).await;
+
+    // Sha-resolve GET for the blind delete.
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus/contents/laws/y.yaml"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "name": "y.yaml", "path": "laws/y.yaml",
+            "sha": "sha-d1", "type": "file",
+            "content": b64("doomed"), "encoding": "base64",
+        })))
+        .mount(&server)
+        .await;
+
+    Mock::given(method("DELETE"))
+        .and(path("/repos/acme/corpus/contents/laws/y.yaml"))
+        .respond_with(ResponseTemplate::new(403).set_body_string("forbidden"))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let b = backend(&server);
+    b.delete_file(Path::new("laws/y.yaml")).await.unwrap();
+    let err = b
+        .persist(&ctx())
+        .await
+        .expect_err("a GitHub 403 on DELETE must fail the persist");
+    assert!(
+        matches!(err, regelrecht_corpus::error::CorpusError::WriteDenied(_)),
+        "expected WriteDenied, got: {err:?}"
+    );
+}
+
+#[tokio::test]
 async fn delete_path_resolves_sha_then_deletes() {
     let server = MockServer::start().await;
     mount_branch_exists(&server).await;

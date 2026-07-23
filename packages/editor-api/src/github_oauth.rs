@@ -96,9 +96,11 @@ pub struct GithubOAuth {
     ///   user, linked or not, so a linked user's saves to the operator-managed
     ///   central repo can't start 403-ing because their personal token lacks
     ///   access.
-    /// * required on (either switch): every traject write uses the acting
-    ///   user's token; a save with no linked (or an expired) token is refused
-    ///   with 428 rather than silently falling back to the configured token.
+    /// * required on (either switch): a configured service token still takes
+    ///   precedence per backend (see [`user_write_token_for_backend`]); only
+    ///   writes to token-less, override-capable backends must carry the
+    ///   acting user's token, and a save there with no linked (or an
+    ///   expired) token is refused with 428.
     pub require_user_token: bool,
     /// Relay mode. When set, `/login` sends GitHub a **fixed** `redirect_uri`
     /// of `{callback_base}/auth/github/relay` instead of the deployment's own
@@ -867,11 +869,11 @@ pub async fn disconnect(
 ///   GitHub-koppeling UI, so switching the feature on in the Functies menu
 ///   also switches enforcement on. Linking is never offered-but-inert.
 ///
-/// A flag-read failure propagates as 500: on the write path the contract is
-/// "never silently fall back to the service token", and that includes not
-/// guessing when the flag store is unreadable. (In practice the session
-/// store shares the same database, so requests rarely get this far with a
-/// broken pool.)
+/// A flag-read failure propagates as 500: on a token-less backend the
+/// requiredness decision determines whether a write may proceed at all,
+/// and that must not be guessed when the flag store is unreadable. (In
+/// practice the session store shares the same database, so requests
+/// rarely get this far with a broken pool.)
 pub async fn write_requires_user_token(
     state: &AppState,
     oauth: &GithubOAuth,
@@ -931,8 +933,14 @@ pub async fn user_token_write_mode(state: &AppState) -> Result<bool, (StatusCode
 /// returns 428 for any other reason would silently hijack its callers into
 /// the koppel-flow. Pick a different status for other preconditions.
 ///
-/// Write handlers should prefer [`user_write_token_for_backend`], which
-/// additionally skips enforcement for backends that ignore the override.
+/// Precedence contract: a configured service token goes first; the
+/// user-token requirement (incl. the 428 connect-flow) applies only to
+/// token-less write targets. Write handlers should therefore prefer
+/// [`user_write_token_for_backend`], which encodes that rule (and skips
+/// enforcement for backends that ignore the override). Callers of this
+/// bare function must apply the same precedence themselves — resolve the
+/// configured token first and only demand the user token when there is
+/// none (see the create-traject preflight in `trajects.rs`).
 pub async fn user_write_token(
     state: &AppState,
     account_id: Uuid,
@@ -977,11 +985,12 @@ async fn user_token_when_required(
         return Ok(None);
     }
 
-    // From here `require_user_token` is on, so the contract is "never silently
-    // fall back to the service token": the only outcomes are the user's own
-    // token or a 428. `open_token_cookie` folds every failure mode (absent,
-    // tampered, wrong key, foreign account) into `None` = not linked, which
-    // fails closed into the 428 below.
+    // From here the user-token mode is on AND the caller established that
+    // no configured service token applies (the `_for_backend` wrappers
+    // return early on `is_writable` backends): the only outcomes are the
+    // user's own token or a 428. `open_token_cookie` folds every failure
+    // mode (absent, tampered, wrong key, foreign account) into `None` =
+    // not linked, which fails closed into the 428 below.
     match open_token_cookie(oauth, headers, account_id) {
         Some(link) if !link.expired() => {
             tracing::debug!(
@@ -1004,6 +1013,16 @@ async fn user_token_when_required(
 /// any token at all. Demanding a linked GitHub account there would 428 every
 /// save with a requirement linking can never satisfy. So: resolve the write
 /// target first, then call this with the resolved backend.
+///
+/// Mirrors [`user_read_token_for_backend`]: a backend with its own
+/// configured (service) token keeps writing with it — `Ok(None)`, so
+/// `persist` uses the backend token and stamps the commit with the
+/// session identity, exactly the pre-user-token flow. The user-token
+/// requirement (and its 428 connect-flow) applies only to token-less,
+/// override-capable backends. Routing writes on a service-token repo
+/// through the user's personal token instead would 403 for every member
+/// whose token GitHub refuses on that repo (no direct push access, or an
+/// org's OAuth App access restrictions blocking the editor app).
 pub async fn user_write_token_for_backend(
     state: &AppState,
     account_id: Uuid,
@@ -1013,19 +1032,24 @@ pub async fn user_write_token_for_backend(
     if !backend.supports_token_override() {
         return Ok(None);
     }
+    // `is_writable` on the Contents-API backend means "has a configured
+    // rest token" — the one backend kind that reaches this point. A
+    // configured service token takes precedence over the user token.
+    if backend.is_writable() {
+        return Ok(None);
+    }
     user_write_token(state, account_id, headers).await
 }
 
 /// The read-path analogue of [`user_write_token_for_backend`]: resolve the
 /// per-user GitHub credential for a **read** on `backend`.
 ///
-/// Narrower than the write path in one deliberate way: a backend that has
-/// its own configured (service) token keeps reading with it — `Ok(None)`,
-/// behaviour unchanged — even in the user-token write mode. The write path
-/// overrides an existing service token to make the *commit* authenticate as
-/// the user; a read has no attribution concern, and rerouting working
-/// service-token reads through personal tokens would break members without
-/// direct repo access.
+/// Same precedence rule as the write path: a backend that has its own
+/// configured (service) token keeps using it — `Ok(None)`, behaviour
+/// unchanged — even in the user-token write mode. Rerouting working
+/// service-token traffic through personal tokens would break members
+/// without direct repo access (or whose token GitHub blocks via OAuth App
+/// access restrictions).
 ///
 /// So the outcomes are:
 ///

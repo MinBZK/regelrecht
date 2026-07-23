@@ -611,6 +611,24 @@ mod inner {
             self.rate_limit_remaining
         }
 
+        /// True when a 403 response is GitHub *rate limiting* rather than
+        /// a permissions refusal: primary rate-limit exhaustion answers
+        /// 403 with `x-ratelimit-remaining: 0`, and secondary limits
+        /// answer 403 with a `retry-after` header. Callers keep those on
+        /// the generic `Git` path instead of
+        /// [`CorpusError::WriteDenied`] — a "no write access" message for
+        /// a transient limit would mislead the user (the same reasoning
+        /// that keeps 404 generic on the write paths).
+        fn forbidden_is_rate_limit(response: &reqwest::Response) -> bool {
+            response.headers().contains_key("retry-after")
+                || response
+                    .headers()
+                    .get("x-ratelimit-remaining")
+                    .and_then(|v| v.to_str().ok())
+                    .map(str::trim)
+                    == Some("0")
+        }
+
         // -----------------------------------------------------------------
         // Backend-oriented API (used by GitHubApiBackend; no ETag cache —
         // backend reads want the current state of the branch on every
@@ -799,7 +817,10 @@ mod inner {
         /// SHA so callers can chain writes without an extra GET.
         ///
         /// Maps 409 to [`CorpusError::Conflict`] so backends can detect a
-        /// concurrent-write race and retry; everything else is `Git`.
+        /// concurrent-write race and retry, and 403 to
+        /// [`CorpusError::WriteDenied`] (no push access for the
+        /// authenticating identity) — except rate-limit 403s
+        /// ([`Self::forbidden_is_rate_limit`]); everything else is `Git`.
         #[allow(clippy::too_many_arguments)]
         #[tracing::instrument(name = "gh_http", skip_all, fields(method = "PUT", kind = "contents", repo = %repo))]
         pub async fn put_file(
@@ -848,6 +869,14 @@ mod inner {
                     path
                 )));
             }
+            if status == reqwest::StatusCode::FORBIDDEN && !Self::forbidden_is_rate_limit(&response)
+            {
+                return Err(CorpusError::WriteDenied(format!(
+                    "Contents API PUT {} returned 403: {}",
+                    path,
+                    response.text().await.unwrap_or_default()
+                )));
+            }
             if !status.is_success() {
                 return Err(CorpusError::Git(format!(
                     "GitHub Contents API PUT {} returned {}: {}",
@@ -865,7 +894,8 @@ mod inner {
 
         /// Delete a file via Contents API DELETE. Requires the current
         /// blob SHA. 404 is treated as "already gone" (idempotent — same
-        /// shape as [`crate::backend::RepoBackend::delete_file`]).
+        /// shape as [`crate::backend::RepoBackend::delete_file`]); 403
+        /// maps to [`CorpusError::WriteDenied`], like [`Self::put_file`].
         #[allow(clippy::too_many_arguments)]
         #[tracing::instrument(name = "gh_http", skip_all, fields(method = "DELETE", kind = "contents", repo = %repo))]
         pub async fn delete_file_via_api(
@@ -910,6 +940,14 @@ mod inner {
                 return Err(CorpusError::Conflict(format!(
                     "Contents API DELETE {} hit a 409 (stale sha)",
                     path
+                )));
+            }
+            if status == reqwest::StatusCode::FORBIDDEN && !Self::forbidden_is_rate_limit(&response)
+            {
+                return Err(CorpusError::WriteDenied(format!(
+                    "Contents API DELETE {} returned 403: {}",
+                    path,
+                    response.text().await.unwrap_or_default()
                 )));
             }
             if !status.is_success() {
@@ -962,7 +1000,9 @@ mod inner {
 
         /// Create `branch` pointing at the tip of `base_branch`. The base
         /// branch must already exist; the target branch must NOT exist
-        /// (GitHub returns 422 otherwise — surfaced as `Git`).
+        /// (GitHub returns 422 otherwise — surfaced as `Git`). A 403 on
+        /// the ref-create (no push access) maps to
+        /// [`CorpusError::WriteDenied`], like [`Self::put_file`].
         #[tracing::instrument(name = "gh_http", skip_all, fields(method = "POST", kind = "create_branch", repo = %repo))]
         pub async fn create_branch(
             &mut self,
@@ -1015,10 +1055,20 @@ mod inner {
                 .await
                 .map_err(|e| CorpusError::Git(format!("GitHub API request failed: {}", e)))?;
             self.track_rate_limit(&response);
-            if !response.status().is_success() {
+            let status = response.status();
+            if status == reqwest::StatusCode::FORBIDDEN && !Self::forbidden_is_rate_limit(&response)
+            {
+                return Err(CorpusError::WriteDenied(format!(
+                    "Refs API POST (create branch {}@{}) returned 403: {}",
+                    repo,
+                    branch,
+                    response.text().await.unwrap_or_default()
+                )));
+            }
+            if !status.is_success() {
                 return Err(CorpusError::Git(format!(
                     "GitHub Refs API POST returned {} for {}@{}: {}",
-                    response.status(),
+                    status,
                     repo,
                     branch,
                     response.text().await.unwrap_or_default()
