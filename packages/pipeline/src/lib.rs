@@ -8,8 +8,10 @@
 //! worker levert zijn resultaat op als job-blob + taak
 //! (`deliver: "task"`, zie o.a. [`worker::finish_enrich_task_job`] en
 //! [`worker::finish_document_convert_task_job`]), de gebruiker keurt goed in
-//! de editor, en de editor doet de commit namens de gebruiker met diens eigen
-//! OAuth-token (client-gedreven via de save-endpoints van editor-api).
+//! de editor, en de editor volgt daarbij de token-voorrangsregel bij het
+//! committen (service-token indien geconfigureerd, anders het eigen
+//! OAuth-token van de gebruiker; client-gedreven via de save-endpoints van
+//! editor-api).
 //!
 //! Het corpus-token (`CORPUS_GIT_TOKEN`, via `CorpusConfig`) is uitsluitend
 //! voor de **centrale** corpus-repo — de operator-repo waar de klassieke
