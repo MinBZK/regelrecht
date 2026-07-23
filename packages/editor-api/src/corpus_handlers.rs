@@ -3075,14 +3075,41 @@ pub async fn list_traject_documents(
     Ok(Json(TrajectDocumentList { documents }))
 }
 
-/// Upload formats accepted in fase 1: PDF and Word.
+/// Formats that need a conversion step to become a markdown werkdocument: they
+/// are turned into `.md` by a `document_convert` job. Also the set the wet-upload
+/// (`law_convert`) endpoint accepts.
 const UPLOAD_DOCUMENT_EXTENSIONS: &[&str] = &["pdf", "doc", "docx"];
 
+/// Markdown is the werkdocument target format itself, so a `.md`/`.markdown`
+/// upload needs no conversion: its bytes are stored as-is (pass-through). These
+/// are accepted on top of [`UPLOAD_DOCUMENT_EXTENSIONS`] by the werkdocument
+/// upload only — a wet-upload of markdown makes no sense and stays rejected.
+const MARKDOWN_PASSTHROUGH_EXTENSIONS: &[&str] = &["md", "markdown"];
+
+/// Everything the werkdocument upload accepts: the convertible formats plus the
+/// markdown pass-through set. (Kept as one array because `const` cannot
+/// concatenate slices; `werkdoc_upload_extensions_is_the_union` guards against
+/// it drifting from the two source sets.)
+const WERKDOC_UPLOAD_EXTENSIONS: &[&str] = &["pdf", "doc", "docx", "md", "markdown"];
+
+/// The lowercased file extension of `filename`, or an empty string when it has
+/// none. Shared by the upload gate and the markdown pass-through branch so the
+/// two never disagree on what the extension is.
+fn lowercase_extension(filename: &str) -> String {
+    std::path::Path::new(filename)
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .unwrap_or_default()
+}
+
 /// Pull the uploaded file out of a multipart body (the `file` field) and gate
-/// it on [`UPLOAD_DOCUMENT_EXTENSIONS`]. Shared by the werkdocument- and
-/// wet-upload endpoints. Returns `(filename, content_type, bytes)`.
+/// its extension on `allowed`. Shared by the werkdocument- and wet-upload
+/// endpoints, which pass different allow-lists. Returns
+/// `(filename, content_type, bytes)`.
 async fn read_upload_multipart(
     multipart: &mut Multipart,
+    allowed: &[&str],
 ) -> Result<(String, String, Vec<u8>), (StatusCode, String)> {
     let mut filename: Option<String> = None;
     let mut content_type: Option<String> = None;
@@ -3115,16 +3142,17 @@ async fn read_upload_multipart(
     ))?;
     let content_type = content_type.unwrap_or_else(|| "application/octet-stream".to_string());
 
-    // Only PDF/Word in fase 1.
-    let ext = std::path::Path::new(&filename)
-        .extension()
-        .and_then(|s| s.to_str())
-        .map(|e| e.to_ascii_lowercase())
-        .unwrap_or_default();
-    if !UPLOAD_DOCUMENT_EXTENSIONS.contains(&ext.as_str()) {
+    // Gate on the caller-supplied allow-list.
+    let ext = lowercase_extension(&filename);
+    if !allowed.contains(&ext.as_str()) {
+        let list = allowed
+            .iter()
+            .map(|e| format!(".{e}"))
+            .collect::<Vec<_>>()
+            .join(", ");
         return Err((
             StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            "Alleen PDF- en Word-documenten (.pdf, .doc, .docx) worden ondersteund.".to_string(),
+            format!("Dit bestandsformaat wordt niet ondersteund. Toegestaan: {list}."),
         ));
     }
     Ok((filename, content_type, data))
@@ -3198,12 +3226,29 @@ fn derive_markdown_target(filename: &str, existing: &[String]) -> String {
     candidate
 }
 
+/// Write an uploaded markdown werkdocument to the traject's documents backend
+/// unchanged and commit it in one step. The bytes are already the target `.md`
+/// format, so this is a byte-for-byte pass-through — no conversion, no
+/// normalization. Split out so the pass-through can be unit-tested against a
+/// capturing backend without an axum/DB harness.
+async fn write_markdown_passthrough(
+    backend: &dyn RepoBackend,
+    relative_path: &std::path::Path,
+    markdown: &str,
+    ctx: WriteContext,
+) -> Result<PersistOutcome, CorpusError> {
+    backend.write_file(relative_path, markdown).await?;
+    backend.persist(&ctx).await
+}
+
 /// POST /api/trajects/{traject_ref}/corpus/documents/upload
 ///
-/// Accept a multipart upload of a PDF/Word document, store its bytes in
-/// `document_uploads`, and enqueue a `document_convert` job that converts it to
-/// a markdown werkdocument. Responds `202 Accepted` with the target `.md` path
-/// the converted document will appear at.
+/// Accept a multipart upload. A PDF/Word document has its bytes stored in
+/// `document_uploads` and a `document_convert` job enqueued that converts it to
+/// a markdown werkdocument (responds `202 Accepted`). A markdown upload needs no
+/// conversion: its bytes are written straight to the target `.md` (pass-through,
+/// responds `201 Created`). Either way the response carries the target `.md`
+/// path the document appears at.
 pub async fn upload_traject_document(
     State(state): State<AppState>,
     Extension(account): Extension<AccountRecord>,
@@ -3221,7 +3266,11 @@ pub async fn upload_traject_document(
     let traject_id = resolve_traject_ref(pool, &traject_ref).await?;
 
     // Pull the uploaded file out of the multipart body and gate the extension.
-    let (filename, content_type, data) = read_upload_multipart(&mut multipart).await?;
+    // Werkdocumenten also accept markdown (stored as-is, see the pass-through
+    // branch below), on top of the convertible PDF/Word formats.
+    let (filename, content_type, data) =
+        read_upload_multipart(&mut multipart, WERKDOC_UPLOAD_EXTENSIONS).await?;
+    let ext = lowercase_extension(&filename);
 
     // Derive a collision-safe target markdown path against the existing docs.
     // A failed listing must NOT be swallowed: an empty `existing` set would let
@@ -3274,6 +3323,46 @@ pub async fn upload_traject_document(
             })?,
     );
     let target_path = derive_markdown_target(&filename, &existing);
+
+    // Markdown pass-through: markdown IS the werkdocument target format, so a
+    // `.md`/`.markdown` upload needs no conversion. Write its bytes straight to
+    // `<name>.md` (byte-identical, no pandoc round-trip) and skip the
+    // document_convert job + review task entirely — the document appears in the
+    // werkdocumentenlijst right away. (Same synchronous write+commit as
+    // `save_traject_document`.)
+    if MARKDOWN_PASSTHROUGH_EXTENSIONS.contains(&ext.as_str()) {
+        let markdown = String::from_utf8(data).map_err(|_| {
+            (
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "Het markdown-bestand is geen geldige UTF-8-tekst.".to_string(),
+            )
+        })?;
+        let author = Some(require_editor_user(&session).await?);
+        let backend = resolve_traject_documents_writer(&state, &traject).await?;
+        let token_override =
+            github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**backend)
+                .await?;
+        let relative_path = traject_documents_base(&traject_ref).join(&target_path);
+        write_markdown_passthrough(
+            &**backend,
+            &relative_path,
+            &markdown,
+            WriteContext {
+                message: format!("Add document {target_path}"),
+                author,
+                token_override,
+            },
+        )
+        .await
+        .map_err(corpus_write_error("document"))?;
+        drop(backend);
+        // The `.md` already exists on the branch; the job-based path answers 202
+        // (async), so this synchronous write answers 201 Created.
+        return Ok((
+            StatusCode::CREATED,
+            Json(UploadDocumentResponse { target_path }),
+        ));
+    }
 
     // Persist the bytes and enqueue the conversion job in one transaction.
     let mut tx = pool
@@ -3361,7 +3450,10 @@ pub async fn upload_traject_law(
     let _traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let traject_id = resolve_traject_ref(pool, &traject_ref).await?;
 
-    let (filename, content_type, data) = read_upload_multipart(&mut multipart).await?;
+    // Wet-upload only accepts convertible formats; markdown pass-through is a
+    // werkdocument-only affordance.
+    let (filename, content_type, data) =
+        read_upload_multipart(&mut multipart, UPLOAD_DOCUMENT_EXTENSIONS).await?;
 
     // Persist the bytes and enqueue the conversion job in one transaction,
     // guarded by the same per-account taak-flow-cap as enrich-op-aanvraag
@@ -4359,6 +4451,40 @@ mod tests {
     }
 
     #[test]
+    fn lowercase_extension_reads_and_normalises() {
+        assert_eq!(lowercase_extension("Report.MD"), "md");
+        assert_eq!(lowercase_extension("notes.markdown"), "markdown");
+        assert_eq!(lowercase_extension("Brief.DOCX"), "docx");
+        // No extension → empty (never matches an allow-list entry).
+        assert_eq!(lowercase_extension("README"), "");
+    }
+
+    #[test]
+    fn werkdoc_upload_extensions_is_the_union() {
+        // WERKDOC_UPLOAD_EXTENSIONS is hand-written (const can't concat slices);
+        // keep it exactly the convertible set plus the pass-through set.
+        let mut expected: Vec<&str> = UPLOAD_DOCUMENT_EXTENSIONS
+            .iter()
+            .chain(MARKDOWN_PASSTHROUGH_EXTENSIONS.iter())
+            .copied()
+            .collect();
+        expected.sort_unstable();
+        let mut actual: Vec<&str> = WERKDOC_UPLOAD_EXTENSIONS.to_vec();
+        actual.sort_unstable();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn markdown_is_werkdoc_passthrough_but_not_a_wet_upload_format() {
+        // A markdown upload is accepted as a werkdocument and takes the
+        // pass-through branch, but is never a convertible (wet-upload) format.
+        for ext in MARKDOWN_PASSTHROUGH_EXTENSIONS {
+            assert!(WERKDOC_UPLOAD_EXTENSIONS.contains(ext));
+            assert!(!UPLOAD_DOCUMENT_EXTENSIONS.contains(ext));
+        }
+    }
+
+    #[test]
     fn document_etag_is_quoted_hex() {
         let etag = document_etag("hello world");
         // RFC 7232 strong validator: quoted ASCII.
@@ -4524,6 +4650,74 @@ mod tests {
             returned.as_deref(),
             Some(document_etag("anything").as_str())
         );
+    }
+
+    // ---- markdown werkdocument pass-through ----
+
+    /// Writable backend stub that records the single write it receives, so a
+    /// test can assert the pass-through hands the bytes through untouched.
+    struct CapturingBackend {
+        written: std::sync::Mutex<Option<(std::path::PathBuf, String)>>,
+    }
+
+    #[async_trait]
+    impl RepoBackend for CapturingBackend {
+        async fn read_file(&self, _: &StdPath) -> CorpusResult<Option<String>> {
+            Ok(None)
+        }
+        async fn write_file(&self, path: &StdPath, content: &str) -> CorpusResult<()> {
+            *self.written.lock().unwrap() = Some((path.to_path_buf(), content.to_string()));
+            Ok(())
+        }
+        async fn delete_file(&self, _: &StdPath) -> CorpusResult<()> {
+            unreachable!("pass-through never deletes")
+        }
+        async fn list_files(&self, _: &StdPath, _: Option<&str>) -> CorpusResult<Vec<FileEntry>> {
+            Ok(Vec::new())
+        }
+        async fn persist(&self, _: &CorpusWriteContext) -> CorpusResult<PersistOutcome> {
+            Ok(PersistOutcome::default())
+        }
+        async fn ensure_ready(&mut self) -> CorpusResult<()> {
+            Ok(())
+        }
+        fn is_writable(&self) -> bool {
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn markdown_passthrough_writes_bytes_verbatim() {
+        // Content chosen to expose any normalization: no trailing newline,
+        // trailing spaces, CRLF, tabs and non-ASCII must all survive unchanged.
+        let markdown = "# Café  \r\n\n- één\ttwee\n> geen slot-newline";
+        let backend = CapturingBackend {
+            written: std::sync::Mutex::new(None),
+        };
+        let path = std::path::Path::new("regulation/.werkdocumenten/verslag.md");
+        write_markdown_passthrough(
+            &backend,
+            path,
+            markdown,
+            WriteContext {
+                message: "Add document verslag.md".to_string(),
+                author: None,
+                token_override: None,
+            },
+        )
+        .await
+        .expect("pass-through write");
+
+        let (written_path, written_content) = backend
+            .written
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("a write must have happened");
+        assert_eq!(written_path, path);
+        // Byte-for-byte identical: markdown is the target format, so nothing is
+        // converted, wrapped or trimmed.
+        assert_eq!(written_content, markdown);
     }
 
     // ---- check_if_match: the law/scenario save precondition ----
