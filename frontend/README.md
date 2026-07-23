@@ -42,9 +42,13 @@ real Keycloak login, editor-api, DB and WASM. It is the SpecFlow/Selenium-style
 counterpart to the mocked suite — no LLM tokens, repeatable on every change.
 
 ```bash
-# From the repo root:
-just smoke-preview PR=886                                   # editor-pr886 preview
-just smoke-preview URL=https://editor.regelrecht.rijks.app  # any deployed URL
+# From the repo root — pass the target positionally:
+just smoke-preview 886                                  # editor-pr886 preview
+just smoke-preview https://editor.regelrecht.rijks.app  # any deployed URL
+
+# Or as a just variable (must precede the recipe name):
+just PR=886 smoke-preview
+just URL=https://editor.regelrecht.rijks.app smoke-preview
 ```
 
 The recipe sets `SMOKE_BASE_URL` and injects the shared test-user credentials
