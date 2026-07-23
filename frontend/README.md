@@ -26,6 +26,45 @@ npm run build
 npm run preview
 ```
 
+## Testing
+
+### Mocked component + e2e suite (`e2e/`)
+
+`npm run test:e2e` runs the Playwright specs in `e2e/` against a local Vite dev
+server with the backend **mocked** (see `playwright.config.js`). Fast, hermetic,
+no auth. Selector helpers live in `e2e/helpers.js`.
+
+### Deployed-preview smoke suite (`e2e-smoke/`)
+
+A **token-free, deterministic** smoke test that drives the core editor flow
+against a **deployed** PR-preview (or production) through the full stack:
+real Keycloak login, editor-api, DB and WASM. It is the SpecFlow/Selenium-style
+counterpart to the mocked suite — no LLM tokens, repeatable on every change.
+
+```bash
+# From the repo root:
+just smoke-preview PR=886                                   # editor-pr886 preview
+just smoke-preview URL=https://editor.regelrecht.rijks.app  # any deployed URL
+```
+
+The recipe sets `SMOKE_BASE_URL` and injects the shared test-user credentials
+(`SMOKE_USER` / `SMOKE_PASS`) from the local cred file — credentials are **never**
+committed and only ever read from the environment. `global-setup.js` logs in once
+and stores the session in `.auth/state.json` (git-ignored); each spec reuses it.
+
+Layout:
+
+- `playwright.smoke.config.js` — no `webServer`; `baseURL` from `SMOKE_BASE_URL`.
+- `e2e-smoke/global-setup.js` — deterministic login + `/auth/status` check.
+- `e2e-smoke/smoke.spec.js` — the core flow (library → trajecten → create traject →
+  editor → edit → save → reload → persist), cleaning up every traject it creates.
+- `e2e-smoke/smoke-helpers.js` — preview-only helpers (login, traject CRUD). Selector
+  helpers are **reused** from `e2e/helpers.js`, not copied.
+
+**This smoke suite is the living contract for the editor.** When you add or change
+an editor feature, **extend `e2e-smoke/smoke.spec.js`** so the deployed preview keeps
+smoking the full, growing set of core behaviour — not just the frontend in isolation.
+
 ## Browser Support
 
 This prototype uses modern CSS features including:
