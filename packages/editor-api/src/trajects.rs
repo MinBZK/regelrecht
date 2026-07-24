@@ -908,25 +908,32 @@ async fn resolve_writable_target(
                     })?,
             };
 
-            // The OAuth config's `api_base` (a pub field, overridable in
-            // tests with a wiremock server) wins over the real default, so
-            // the preflight — including WHICH token it authenticates with —
-            // is testable without touching github.com.
-            let api_base = state
+            // Build the shared GitHub client for the pre-flight. A build
+            // failure is an infrastructure problem, not a caller error → 503.
+            let mut client = regelrecht_github::GithubClient::new().map_err(|e| {
+                tracing::error!(error = %e, "failed to build GitHub client for repo preflight");
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "kon de GitHub-client niet initialiseren".to_string(),
+                )
+            })?;
+            // The OAuth config's `api_base` (a pub field, overridable in tests
+            // with a wiremock server — `for_tests` uses `api.github.invalid`)
+            // wins over the client's own default when set, so the preflight —
+            // including WHICH token it authenticates with — is testable without
+            // touching github.com.
+            if let Some(api_base) = state
                 .config
                 .github_oauth
                 .as_ref()
                 .map(|o| o.api_base.as_str())
-                .unwrap_or("https://api.github.com");
-            let info = regelrecht_corpus::repo_access::validate_repo_access(
-                api_base,
-                owner,
-                repo,
-                base_branch,
-                &token,
-            )
-            .await
-            .map_err(|e| repo_access_error_to_status(&e, owner, repo, base_branch))?;
+            {
+                client.set_base_url(api_base);
+            }
+            let info = client
+                .validate_repo_access(owner, repo, base_branch, &token)
+                .await
+                .map_err(|e| repo_access_error_to_status(&e, owner, repo, base_branch))?;
 
             tracing::info!(
                 owner = %owner,
@@ -967,12 +974,12 @@ async fn resolve_writable_target(
 /// the create-sheet can show as-is. Kept verbose so each failure mode is
 /// distinguishable in the UI.
 fn repo_access_error_to_status(
-    err: &regelrecht_corpus::repo_access::RepoAccessError,
+    err: &regelrecht_github::RepoAccessError,
     owner: &str,
     repo: &str,
     base_branch: &str,
 ) -> (StatusCode, String) {
-    use regelrecht_corpus::repo_access::RepoAccessError as E;
+    use regelrecht_github::RepoAccessError as E;
     match err {
         // The *user* is fully authenticated (made it through OIDC + this
         // handler's middleware). What failed is the *operator's*

@@ -14,7 +14,7 @@
 //! promote-scenario hieronder aantoonbaar met die 403.
 //!
 //! GitHub wordt gespeeld door wiremock; `GITHUB_API_BASE` (de test-seam in
-//! `GitHubFetcher::new`) wijst de fetchers daarheen. Alle scenario's staan in
+//! `GithubClient::new`) wijst de clients daarheen. Alle scenario's staan in
 //! ÉÉN test zodat die env-var niet tussen parallelle tests kan racen.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -261,7 +261,7 @@ async fn received_put_paths(server: &MockServer) -> Vec<String> {
 #[tokio::test]
 async fn user_token_mode_writes_promote_and_save_through_the_traject_repo() {
     let server = MockServer::start().await;
-    // Test-seam (zie `GitHubFetcher::new`): alle fetchers in dit proces —
+    // Test-seam (zie `GithubClient::new`): alle clients in dit proces —
     // ook die diep in `build_traject_corpus` — praten tegen wiremock.
     std::env::set_var("GITHUB_API_BASE", server.uri());
 

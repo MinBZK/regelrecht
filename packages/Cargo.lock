@@ -4011,6 +4011,7 @@ dependencies = [
  "pretty_assertions",
  "regelrecht-auth",
  "regelrecht-corpus",
+ "regelrecht-github",
  "regelrecht-pipeline",
  "regelrecht-shared",
  "reqwest 0.12.28",
