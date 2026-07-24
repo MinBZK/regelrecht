@@ -27,6 +27,7 @@ import { RETRY_MIN_SPINNER_MS } from './lib/retryFeedback.js';
 import { humanizeLawId } from './lib/lawName.js';
 import { quoteContext } from './lib/quoteContext.js';
 import { useLatest } from './lib/useLatest.js';
+import { loadSavedTabs, saveTabs, loadSavedActiveTab, saveActiveTab } from './lib/openTabsStorage.js';
 import { proposalDivergence } from './lib/taskReview.js';
 import ArticleText from './components/ArticleText.vue';
 import ArticleTextEditor from './components/ArticleTextEditor.vue';
@@ -215,10 +216,44 @@ const {
 // the open law against the *previous* traject's dependencies. The
 // dependency walker re-loads on demand on the next run, so a single
 // `unloadAllLaws` is enough - no per-dep bookkeeping needed.
-watch(activeTrajectRef, (next) => {
+watch(activeTrajectRef, async (next) => {
   unloadAllLaws();
+  // Tabs are scoped per traject: swap the bar to the new traject's own saved
+  // set so the previous traject's tabs - which may point at laws this traject
+  // doesn't have - leave the bar. Each traject's set was already persisted
+  // under its own key on every mutation, so nothing to save here.
+  openTabs.value = loadSavedTabs(next);
+  // Resolve the freshly swapped-in tabs' labels through the new traject.
+  backfillTabLabels(next);
   if (lawId.value) {
-    switchLaw(lawId.value, selectedArticleNumber.value, next);
+    // The URL carried a law across the switch: keep showing it through the new
+    // traject. Point activeTab straight at that law (the tab-add watch re-adds
+    // and re-affirms it - and persists it under the new traject's key - once
+    // switchLaw settles). Setting it synchronously, rather than clearing to
+    // null, is deliberate: this switchLaw runs outside selectTab and doesn't
+    // await, so a null gap would let the "no active tab" robustness-net watch
+    // fire first and steal the switch (its selectTab claims switchLaw's shared
+    // useLatest last and wins), silently navigating to some other saved tab.
+    activeTab.value = { lawId: lawId.value, articleNumber: String(selectedArticleNumber.value ?? '') };
+    await switchLaw(lawId.value, selectedArticleNumber.value, next);
+    // On success the tab-add watch has added the law and re-affirmed activeTab;
+    // let it flush. On failure (the law isn't in this traject - the very case
+    // this feature targets, shown via the "niet beschikbaar" dialog) switchLaw
+    // leaves lawId/article untouched, so that watch never ran and the optimistic
+    // activeTab now points at a tab absent from openTabs. Drop it so the bar
+    // doesn't keep a phantom active tab. Bail if a newer switch superseded us.
+    await nextTick();
+    if (
+      activeTrajectRef.value === next && activeTab.value &&
+      !findTab(activeTab.value.lawId, activeTab.value.articleNumber)
+    ) {
+      activeTab.value = null;
+    }
+  } else {
+    // No law in the URL: restore this traject's own last active tab (or its
+    // first tab), mirroring the initial-mount restore.
+    activeTab.value = null;
+    openSavedActiveTab(next);
   }
 });
 
@@ -764,33 +799,11 @@ watch(graphSheetOpen, async (open) => {
   else graphSheetEl.value?.hide();
 });
 
-// --- Multi-law tab state (persisted in localStorage) ---
-const TABS_STORAGE_KEY = 'regelrecht-open-tabs';
-const ACTIVE_TAB_STORAGE_KEY = 'regelrecht-active-tab';
-
-function loadSavedTabs() {
-  try {
-    const saved = localStorage.getItem(TABS_STORAGE_KEY);
-    const parsed = saved ? JSON.parse(saved) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch { return []; }
-}
-
-function saveTabs(tabs) {
-  localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(tabs));
-}
-
-function loadSavedActiveTab() {
-  try {
-    const saved = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
-    return saved ? JSON.parse(saved) : null;
-  } catch { return null; }
-}
-
-function saveActiveTab(tab) {
-  if (!tab) localStorage.removeItem(ACTIVE_TAB_STORAGE_KEY);
-  else localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, JSON.stringify(tab));
-}
+// --- Multi-law tab state (persisted per traject in localStorage) ---
+// The open-tabs helpers (loadSavedTabs/saveTabs/loadSavedActiveTab/
+// saveActiveTab) live in lib/openTabsStorage.js and key on the active traject
+// ref, so each traject keeps its own tab bar. See that module for the storage
+// shape and the try/catch safe-default guarantee.
 
 /**
  * Build a router target for the editor that preserves the current
@@ -824,7 +837,7 @@ function libraryRouteFor(lawIdVal) {
   return homeTarget({ trajectRef: route.params.trajectRef, lawId: lawIdVal });
 }
 
-const openTabs = ref(loadSavedTabs());
+const openTabs = ref(loadSavedTabs(activeTrajectRef.value));
 
 // Cache for law names (populated on fetch)
 const lawNames = ref({});
@@ -848,10 +861,10 @@ watch([() => lawId.value, selectedArticle], ([id, article]) => {
     const MAX_TABS = 20;
     const tabs = [...openTabs.value, { lawId: id, articleNumber: num }];
     openTabs.value = tabs.length > MAX_TABS ? tabs.slice(-MAX_TABS) : tabs;
-    saveTabs(openTabs.value);
+    saveTabs(activeTrajectRef.value, openTabs.value);
   }
   activeTab.value = { lawId: id, articleNumber: num };
-  saveActiveTab(activeTab.value);
+  saveActiveTab(activeTrajectRef.value, activeTab.value);
   if (lawName.value) lawNames.value = { ...lawNames.value, [id]: lawName.value };
 });
 
@@ -877,7 +890,12 @@ async function selectTab(tab) {
   if (tab.lawId === lawId.value) {
     selectedArticleNumber.value = tab.articleNumber;
   } else {
-    await switchLaw(tab.lawId, tab.articleNumber);
+    // Fetch through the tab's own traject (every open tab belongs to the
+    // active traject). Passing it explicitly matters when this restore runs
+    // right after a traject switch with no law in the URL: `switchLaw`'s
+    // internal traject is still the previous one, so without this the law
+    // would be read through the old traject's scope.
+    await switchLaw(tab.lawId, tab.articleNumber, route.params.trajectRef || null);
     if (!isCurrent()) return; // stale, another switch started
     lawNames.value = { ...lawNames.value, [tab.lawId]: lawName.value };
   }
@@ -887,20 +905,24 @@ async function selectTab(tab) {
   router.replace(editorRouteFor(tab.lawId, tab.articleNumber));
 }
 
-// On load there may be no article to edit yet - the URL carries no article
-// (just a traject, or a law without an article number). Rather than show the
-// empty state while tabs are still open, open one right away: the last active
-// tab when the URL has no law at all (so a refresh returns the user where they
-// were), otherwise simply the first open tab. selectTab sets activeTab
-// synchronously, so the empty state never flashes. With no open tabs we fall
-// through to it - the only case it should appear.
-if (!route.params.articleNumber && openTabs.value.length > 0) {
-  const lastActive = loadSavedActiveTab();
+// When the URL carries no article to edit (just a traject, or a law without an
+// article number), open one of the current traject's tabs right away instead of
+// flashing the empty state while tabs are still open: the last active tab when
+// the URL has no law at all (so a refresh returns the user where they were),
+// otherwise simply the first open tab. selectTab sets activeTab synchronously,
+// so the empty state never flashes. With no open tabs this is a no-op and we
+// fall through to the empty state - the only case it should appear. Shared by
+// the initial mount and by traject switches (see watch(activeTrajectRef)).
+function openSavedActiveTab(trajectRef) {
+  if (route.params.articleNumber || openTabs.value.length === 0) return;
+  const lastActive = loadSavedActiveTab(trajectRef);
   const restored = !route.params.lawId && lastActive?.lawId
     ? findTab(lastActive.lawId, lastActive.articleNumber)
     : null;
   selectTab(restored || openTabs.value[0]).catch(console.warn);
 }
+
+openSavedActiveTab(activeTrajectRef.value);
 
 // Robustness net for the setup logic above: whenever there is no active tab but
 // tabs are open (the active tab was closed while others remain, or openTabs
@@ -957,7 +979,7 @@ function closeTab(tab, next = null) {
   const index = openTabs.value.findIndex(t => tabKey(t) === tabKey(tab));
   const remaining = openTabs.value.filter(t => tabKey(t) !== tabKey(tab));
   openTabs.value = remaining;
-  saveTabs(remaining);
+  saveTabs(activeTrajectRef.value, remaining);
   if (!wasActive) return;
   // Removing index `i` shifts the right neighbour into `i`.
   const replacement = next ?? remaining[index] ?? remaining[index - 1] ?? null;
@@ -986,7 +1008,7 @@ function reorderTabs(fromIndex, toIndex) {
   const [moved] = tabs.splice(fromIndex, 1);
   tabs.splice(toIndex, 0, moved);
   openTabs.value = tabs;
-  saveTabs(openTabs.value);
+  saveTabs(activeTrajectRef.value, openTabs.value);
 }
 
 registerTabActions({
@@ -1005,16 +1027,24 @@ watchEffect(() => {
 });
 onBeforeUnmount(clearEditorChrome);
 
-// Load lawNames for persisted tabs on startup (parallel, deduplicated).
-// Reads go through the currently-active traject so tab labels match
-// what the editor pane shows after a save.
-const uniqueLawIds = [...new Set(openTabs.value.map(t => t.lawId))];
-Promise.all(uniqueLawIds.map(async (id) => {
-  try {
-    const entry = await fetchLaw(activeTrajectRef.value, id);
-    lawNames.value = { ...lawNames.value, [id]: entry.lawName };
-  } catch { /* ignore */ }
-}));
+// Load lawNames for the open tabs (parallel, deduplicated). Reads go through
+// the given traject so tab labels match what the editor pane shows after a
+// save. Runs on startup and again after a traject switch, since a switch swaps
+// in that traject's own tab set whose labels still need resolving.
+function backfillTabLabels(trajectRef) {
+  const uniqueLawIds = [...new Set(openTabs.value.map(t => t.lawId))];
+  Promise.all(uniqueLawIds.map(async (id) => {
+    try {
+      const entry = await fetchLaw(trajectRef, id);
+      // Drop late results from a superseded switch: a fast A -> B -> C swap
+      // could otherwise land B's label on C's tab when both trajects have the
+      // same law open (its name may differ per traject after a concept edit).
+      if (trajectRef !== activeTrajectRef.value) return;
+      lawNames.value = { ...lawNames.value, [id]: entry.lawName };
+    } catch { /* ignore */ }
+  }));
+}
+backfillTabLabels(activeTrajectRef.value);
 
 // --- Engine ---
 const {
