@@ -1015,13 +1015,12 @@ async fn feature_flag_row_drives_user_token_requirement() {
     let account_id = Uuid::new_v4();
 
     // Flag row absent (default off): pre-spike behaviour, no override demanded.
-    let token = regelrecht_editor_api::github_oauth::user_write_token(
-        &state,
-        account_id,
-        &HeaderMap::new(),
-    )
-    .await
-    .expect("without the flag no user token may be demanded");
+    let headers = HeaderMap::new();
+    let token =
+        regelrecht_editor_api::credentials::TrajectCredentials::new(&state, account_id, &headers)
+            .user_write_token()
+            .await
+            .expect("without the flag no user token may be demanded");
     assert_eq!(token, None);
 
     // Flip the DB row — the same write the "Functies" toggle PUT performs.
@@ -1035,12 +1034,11 @@ async fn feature_flag_row_drives_user_token_requirement() {
     .expect("flag upsert must succeed");
 
     // Flag on + no linked token cookie → 428 on the GitHub-capable write path.
-    let err = regelrecht_editor_api::github_oauth::user_write_token(
-        &state,
-        account_id,
-        &HeaderMap::new(),
-    )
-    .await
-    .expect_err("flag on without a linked token must refuse the write");
+    let headers = HeaderMap::new();
+    let err =
+        regelrecht_editor_api::credentials::TrajectCredentials::new(&state, account_id, &headers)
+            .user_write_token()
+            .await
+            .expect_err("flag on without a linked token must refuse the write");
     assert_eq!(err.0, StatusCode::PRECONDITION_REQUIRED);
 }
