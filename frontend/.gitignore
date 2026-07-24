@@ -3,4 +3,5 @@ node_modules/
 public/data/
 test-results/
 playwright-report/
+.auth/
 public/corpus-registry.yaml

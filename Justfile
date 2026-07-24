@@ -104,6 +104,53 @@ pipeline-integration-test:
 # Run all tests (engine + harvester + pipeline unit + pipeline integration + editor-api)
 test-all: test harvester-test pipeline-test pipeline-integration-test editor-api-test
 
+# Optionele variabelen-overrides (moeten VOOR de recipe-naam staan in just):
+#   just PR=886 smoke-preview
+#   just URL=https://editor.regelrecht.rijks.app smoke-preview
+PR := ""
+URL := ""
+
+# Token-vrije browser-smoketest tegen een DEPLOYED editor-preview (of productie):
+# echte Keycloak-login + editor-api + DB + WASM. Draai met een PR-nummer of een
+# volledige URL. De test-user-creds komen uit /workspace/.cred (override met
+# SMOKE_CRED_FILE) - nooit in de repo.
+#
+# Drie manieren om het doel op te geven (positioneel is het handigst):
+#   just smoke-preview 886                                    # PR-preview #886
+#   just smoke-preview https://editor.regelrecht.rijks.app    # exacte URL
+#   just PR=886 smoke-preview                                 # via variabele
+smoke-preview TARGET="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    target="{{TARGET}}"
+    if [ -n "{{URL}}" ]; then
+      base="{{URL}}"
+    elif [ -n "{{PR}}" ]; then
+      base="https://editor-pr{{PR}}-regel-k4c.rig.prd1.gn2.quattro.rijksapps.nl"
+    elif [ -n "$target" ]; then
+      case "$target" in
+        http://*|https://*) base="$target" ;;
+        *) base="https://editor-pr${target}-regel-k4c.rig.prd1.gn2.quattro.rijksapps.nl" ;;
+      esac
+    else
+      echo "Geef een doel mee, bijv. 'just smoke-preview 886' of 'just URL=<url> smoke-preview'." >&2
+      exit 2
+    fi
+    cred="${SMOKE_CRED_FILE:-/workspace/.cred}"
+    if [ ! -f "$cred" ]; then
+      echo "Cred-bestand niet gevonden: $cred (verwacht regels 'Username:'/'Password:')." >&2
+      exit 2
+    fi
+    export SMOKE_BASE_URL="$base"
+    export SMOKE_USER="$(sed -n 's/^Username:[[:space:]]*//p' "$cred" | head -n1)"
+    export SMOKE_PASS="$(sed -n 's/^Password:[[:space:]]*//p' "$cred" | head -n1)"
+    if [ -z "$SMOKE_USER" ] || [ -z "$SMOKE_PASS" ]; then
+      echo "Kon Username/Password niet uit $cred lezen." >&2
+      exit 2
+    fi
+    echo "Smoke-test tegen $SMOKE_BASE_URL"
+    npx playwright test -c frontend/playwright.smoke.config.js
+
 # --- Mutation testing ---
 
 # Run mutation testing on engine (in-place because tests use relative paths to corpus/)
