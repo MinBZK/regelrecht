@@ -72,6 +72,47 @@ export function loadCorpus(rootDir = CORPUS_ROOT) {
 }
 
 /**
+ * Recursively walk a corpus directory and collect **every** version YAML per
+ * `$id` (newest publication_date first). Returns Map<lawId, string[]>.
+ *
+ * The engine's dependency loader fetches `/corpus/laws/{id}/versions` and loads
+ * the whole version set so its date-aware resolver can pick the one in force on
+ * the scenario's calculation date. Returning only a single picked version would
+ * make a scenario dated before the latest file fail to resolve, so the versions
+ * mock must serve all of them.
+ */
+export function loadCorpusVersions(rootDir = CORPUS_ROOT) {
+  const byId = new Map();
+
+  function visit(dir) {
+    for (const entry of readdirSync(dir)) {
+      const full = resolve(dir, entry);
+      if (statSync(full).isDirectory()) {
+        visit(full);
+      } else if (entry.endsWith('.yaml')) {
+        const content = readFileSync(full, 'utf-8');
+        const idMatch = content.match(/^\$id:\s*['"]?([^'"\n]+)['"]?$/m);
+        if (!idMatch) continue;
+        const lawId = idMatch[1].trim();
+        const pubMatch = content.match(/^publication_date:\s*['"]?([^'"\n]+)['"]?$/m);
+        const pubDate = pubMatch ? pubMatch[1].trim() : '';
+        const list = byId.get(lawId) ?? [];
+        list.push({ content, pubDate });
+        byId.set(lawId, list);
+      }
+    }
+  }
+
+  visit(rootDir);
+  // Newest-first, matching the editor-api `/versions` contract.
+  for (const [id, list] of byId) {
+    list.sort((a, b) => (a.pubDate < b.pubDate ? 1 : a.pubDate > b.pubDate ? -1 : 0));
+    byId.set(id, list.map((e) => e.content));
+  }
+  return byId;
+}
+
+/**
  * Find a scenario .feature file next to a law's YAML on disk. Returns the
  * raw text or null when no scenarios directory exists for that law.
  */
@@ -201,6 +242,27 @@ export async function mockCorpusApi(page, corpus, scenarioLaw, scenarioFile) {
       status: 200,
       contentType: 'text/plain; charset=utf-8',
       body: scenarioFile,
+    });
+  });
+
+  // GET .../corpus/laws/{law_id}/versions - the full version set the engine's
+  // dependency loader pulls to run scenarios (cross-law resolution). Serve
+  // every on-disk version for real-corpus specs; for a synthetic corpus map
+  // (a spec that fabricates a law not on disk) fall back to that entry's single
+  // content. Registered last so Playwright's LIFO order checks it before the
+  // generic `/corpus/laws/*` handler.
+  const allVersions = loadCorpusVersions();
+  await page.route('**/corpus/laws/*/versions', (route, request) => {
+    const url = new URL(request.url());
+    const match = url.pathname.match(new RegExp(`${LAWS_PATH}\\/([^/]+)\\/versions$`));
+    if (!match) return route.fallback();
+    const lawId = decodeURIComponent(match[1]);
+    const versions = allVersions.get(lawId)
+      ?? (corpus.has(lawId) ? [corpus.get(lawId).content] : []);
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(versions),
     });
   });
 

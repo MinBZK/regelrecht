@@ -1,5 +1,13 @@
 import { test, expect } from '@playwright/test';
-import { interceptLaw, gotoEditor, selectArticle, readYamlPane } from './helpers.js';
+import {
+  gotoEditor,
+  selectArticle,
+  readYamlPane,
+  openActionEditor,
+  removeOpValue,
+  saveActionSheet,
+  openSheet,
+} from './helpers.js';
 import * as yaml from 'js-yaml';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
@@ -50,13 +58,10 @@ test.describe('Operation binding', () => {
     await selectArticle(page, '2');
     await page.waitForTimeout(300);
 
-    // Click "Bewerk" on the action in the Acties section (last list item with "resultaat")
-    const actionItems = page.locator('nldd-list-item:has(nldd-text-cell:has-text("resultaat"))');
-    await actionItems.last().locator('nldd-button:has-text("Bewerk")').click();
-    await page.waitForTimeout(300);
+    // Open the action editor for `resultaat` via its row-actions menu.
+    await openActionEditor(page, 'resultaat');
 
-    // ActionSheet should be open
-    const panel = page.locator('nldd-sheet:visible');
+    const panel = openSheet(page);
     await expect(panel).toBeVisible();
 
     // Verify the operation type is currently ADD
@@ -72,8 +77,7 @@ test.describe('Operation binding', () => {
     await page.waitForTimeout(100);
 
     // Save
-    await panel.locator('nldd-button:has-text("Opslaan")').click();
-    await page.waitForTimeout(300);
+    await saveActionSheet(page);
 
     // Verify YAML
     const parsedYaml = await readYamlPane(page);
@@ -91,12 +95,9 @@ test.describe('Operation binding', () => {
     await selectArticle(page, '2');
     await page.waitForTimeout(300);
 
-    // Click "Bewerk" on the action in the Acties section (last list item with "resultaat")
-    const actionItems = page.locator('nldd-list-item:has(nldd-text-cell:has-text("resultaat"))');
-    await actionItems.last().locator('nldd-button:has-text("Bewerk")').click();
-    await page.waitForTimeout(300);
+    await openActionEditor(page, 'resultaat');
 
-    const panel = page.locator('nldd-sheet:visible');
+    const panel = openSheet(page);
 
     // Find value 1 input (should be 10)
     const value1Input = panel.locator('[data-testid="op-value-0"] nldd-text-field input');
@@ -107,8 +108,7 @@ test.describe('Operation binding', () => {
     await page.waitForTimeout(100);
 
     // Save
-    await panel.locator('nldd-button:has-text("Opslaan")').click();
-    await page.waitForTimeout(300);
+    await saveActionSheet(page);
 
     // Verify YAML
     const parsedYaml = await readYamlPane(page);
@@ -127,20 +127,16 @@ test.describe('Operation binding', () => {
     await selectArticle(page, '2');
     await page.waitForTimeout(300);
 
-    // Click "Bewerk" on the action in the Acties section (last list item with "resultaat")
-    const actionItems = page.locator('nldd-list-item:has(nldd-text-cell:has-text("resultaat"))');
-    await actionItems.last().locator('nldd-button:has-text("Bewerk")').click();
-    await page.waitForTimeout(300);
+    await openActionEditor(page, 'resultaat');
 
-    const panel = page.locator('nldd-sheet:visible');
+    const panel = openSheet(page);
 
     // Click "Voeg waarde toe"
     await panel.locator('[data-testid="add-value-btn"]').click();
     await page.waitForTimeout(200);
 
     // Save
-    await panel.locator('nldd-button:has-text("Opslaan")').click();
-    await page.waitForTimeout(300);
+    await saveActionSheet(page);
 
     // Verify YAML - should now have 3 values
     const parsedYaml = await readYamlPane(page);
@@ -148,7 +144,7 @@ test.describe('Operation binding', () => {
     expect(parsedYaml.execution.actions[0].value.values[2]).toBe(0); // Default new value
   });
 
-  test('removing a value via minus button updates YAML', async ({ page }) => {
+  test('removing a value via the row-actions menu updates YAML', async ({ page }) => {
     const fixtureYaml = createFixtureWithAction();
 
     await page.route('**/corpus/laws/wet_op_de_zorgtoeslag', route =>
@@ -159,21 +155,13 @@ test.describe('Operation binding', () => {
     await selectArticle(page, '2');
     await page.waitForTimeout(300);
 
-    // Click "Bewerk" on the action in the Acties section (last list item with "resultaat")
-    const actionItems = page.locator('nldd-list-item:has(nldd-text-cell:has-text("resultaat"))');
-    await actionItems.last().locator('nldd-button:has-text("Bewerk")').click();
-    await page.waitForTimeout(300);
+    await openActionEditor(page, 'resultaat');
 
-    const panel = page.locator('nldd-sheet:visible');
-
-    // Click minus button on first value (nldd-icon-button may be "not visible" to Playwright)
-    const removeBtn = panel.locator('[data-testid="op-value-0"] nldd-icon-button[icon="minus"]');
-    await removeBtn.evaluate(el => el.click());
-    await page.waitForTimeout(200);
+    // Remove the first value (10) via its row-actions "Verwijder" item.
+    await removeOpValue(page, 0);
 
     // Save
-    await panel.locator('nldd-button:has-text("Opslaan")').click();
-    await page.waitForTimeout(300);
+    await saveActionSheet(page);
 
     // Verify YAML - should now have 1 value (20 remains)
     const parsedYaml = await readYamlPane(page);

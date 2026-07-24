@@ -1,55 +1,41 @@
 /**
- * Form-driven edit → re-execute loop end-to-end.
+ * Structured (Machine-panel) edit → re-execute loop end-to-end.
  *
  * Sister spec to `edit-test-loop.spec.js`. Same red → green flow on the
- * zorgtoeslag *Minderjarige* scenario, but performed entirely through the
- * structured editor on the right-hand Machine panel (EditSheet for inputs,
- * ActionSheet/OperationSettings for action operation trees) instead of the
- * middle-pane YAML textarea.
+ * zorgtoeslag *Minderjarige* scenario, but the edit that flips the result is
+ * driven through the structured operation editor (ActionSheet /
+ * OperationSettings) instead of the YAML pane.
  *
- * The intent is to lock in the workflow the user actually wants to use:
- *  - "Nieuwe input" → fill EditSheet form (incl. source.parameters) → save
- *  - "Bewerk" on the heeft_recht_op_zorgtoeslag action → ActionSheet
- *  - Add a new operation under the AND → set type to GREATER_THAN_OR_EQUAL,
- *    subject $leeftijd, value 18 → save
- *  - Scenario badge flips to green
+ * Why the setup is seeded via YAML rather than typed into the form:
+ *  - The structured editor no longer offers an "add condition" affordance on a
+ *    logical operation (AND/OR): `canAddValue` is false for logical ops, so a
+ *    fresh condition can only be introduced through YAML.
+ *  - A cross-law input whose source needs a *literal* peildatum date can't be
+ *    bound through the EditSheet's dropdown-only source-parameter controls.
+ * So the leeftijd input and a placeholder age condition (threshold 0, which a
+ * minor still passes → scenario stays red) are seeded through YAML, and the
+ * red → green flip is then performed entirely through the structured
+ * ActionSheet: navigate into the age condition and change its threshold to 18.
+ * This locks in the form-driven edit → re-execute propagation chain.
  *
- * Hand-editing YAML is the escape hatch; this is the happy path.
+ * Requires the WASM engine to be built (frontend/public/wasm/pkg).
  */
 import { test, expect } from '@playwright/test';
+import * as yaml from 'js-yaml';
 import { loadCorpus, loadScenario, mockCorpusApi } from './helpers-corpus.js';
-import { gotoEditor } from './helpers.js';
+import {
+  gotoEditor,
+  readYamlSource,
+  setYamlPane,
+  openSheet,
+  openActionEditor,
+  saveActionSheet,
+  expectScenarioResult,
+} from './helpers.js';
 
-/**
- * Wait for an nldd-sheet to be open. The host element itself doesn't change
- * `display`; visibility lives on the shadow-DOM `<dialog>`'s `open` attribute.
- */
-async function waitForSheetOpen(page, hostSelector) {
-  await page.waitForFunction((sel) => {
-    const sheet = document.querySelector(sel);
-    if (!sheet) return false;
-    const dialog = sheet.shadowRoot?.querySelector('dialog');
-    return dialog?.open === true;
-  }, hostSelector, { timeout: 5000 });
-}
+const MINOR = 'Minderjarige heeft geen recht';
 
-/**
- * Wait for an nldd-sheet to be closed (host present + shadow `<dialog>`'s
- * `open` no longer true). The host MUST be present - otherwise a typo in
- * the selector or a test ordering bug would let this helper resolve
- * immediately and silently mask the error. Pair every `waitForSheetClosed`
- * call with an opening event so the host has been mounted at least once.
- */
-async function waitForSheetClosed(page, hostSelector) {
-  await page.waitForFunction((sel) => {
-    const sheet = document.querySelector(sel);
-    if (!sheet) return false; // wait for the host to be in the DOM
-    const dialog = sheet.shadowRoot?.querySelector('dialog');
-    return dialog?.open !== true;
-  }, hostSelector, { timeout: 5000 });
-}
-
-test.describe('Edit → re-execute loop via Machine panel', () => {
+test.describe('Edit → re-execute loop via the structured operation editor', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
       try {
@@ -58,7 +44,11 @@ test.describe('Edit → re-execute loop via Machine panel', () => {
     });
   });
 
-  test('add leeftijd input + AND condition via Machine panel turns scenario green', async ({ page }) => {
+  test('editing the age threshold via the ActionSheet turns the scenario green', async ({ page }) => {
+    // Full-corpus dependency loading + 13 scenarios executing twice needs well
+    // over the default 30s per-test budget.
+    test.setTimeout(180_000);
+
     const corpus = loadCorpus();
     const zorgtoeslag = corpus.get('wet_op_de_zorgtoeslag');
     expect(zorgtoeslag).toBeTruthy();
@@ -74,204 +64,81 @@ test.describe('Edit → re-execute loop via Machine panel', () => {
       scenarioText,
     );
 
-    // Open article 2 directly via the route param (avoids the
-    // selectArticle helper bug noted in the previous PR).
     await gotoEditor(page, 'wet_op_de_zorgtoeslag', '2');
 
-    // --- Initial state: Minderjarige scenario is red ---
-    const minorHeader = page
-      .locator('.sb-accordion-header')
-      .filter({ hasText: 'Minderjarige' })
-      .first();
-    await expect(minorHeader).toBeVisible({ timeout: 30_000 });
-    await minorHeader
-      .locator('.sb-badge--pass, .sb-badge--fail')
-      .first()
-      .waitFor({ timeout: 30_000 });
-    await expect(minorHeader).toHaveClass(/sb-header--fail/);
+    // Seed the leeftijd input + a placeholder age condition (threshold 0) into
+    // article 2's machine_readable via the YAML pane. The minor still passes
+    // age >= 0, so the scenario stays red until we tighten the threshold.
+    const originalYaml = await readYamlSource(page);
+    expect(originalYaml).toContain('heeft_recht_op_zorgtoeslag');
+    const mr = yaml.load(originalYaml);
 
-    // --- Toggle right pane to Machine view ---
-    // EditorApp tags both segmented controls with data-testids so the
-    // spec doesn't have to rely on positional `.nth()` selectors that
-    // would silently break on layout reorder.
-    await page.locator('[data-testid="right-pane-toggle"]').evaluate((el) => {
-      el.value = 'machine';
-      el.dispatchEvent(new Event('change', { bubbles: true }));
+    mr.execution.input.push({
+      name: 'leeftijd',
+      type: 'number',
+      source: {
+        regulation: 'wet_basisregistratie_personen',
+        output: 'leeftijd',
+        parameters: {
+          bsn: '$bsn',
+          peildatum: '2025-01-01',
+        },
+      },
     });
-    // Wait for the Machine panel to render the existing inputs section.
-    await page.waitForSelector('[data-testid="machine-readable"]', { timeout: 5_000 });
-    await page.waitForSelector('[data-testid="section-inputs"]', { timeout: 5_000 });
 
-    // --- Click "Nieuwe input" to open EditSheet ---
-    await page
-      .locator('[data-testid="add-input-btn"]')
-      .first()
-      .evaluate((el) => el.click());
-
-    const editSheet = page.locator('nldd-sheet.edit-sheet');
-    await waitForSheetOpen(page, 'nldd-sheet.edit-sheet');
-
-    // Helper: nldd-text-field renders an input inside its shadow DOM. The
-    // light-DOM `input` element is reachable via the locator's `>> input`
-    // descendant, but Vue listens to the host's `input` event. Set value
-    // and dispatch the input event so Vue's @input handler updates the
-    // model - same trick the existing helpers.fillSheetTextField uses.
-    async function setSheetField(label, value) {
-      const listItem = editSheet.locator('nldd-list-item').filter({
-        hasText: label,
-      });
-      const input = listItem.locator('nldd-text-field input').first();
-      await input.evaluate((el, val) => {
-        el.value = val;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-      }, value);
-    }
-
-    async function setSheetDropdown(label, value) {
-      const listItem = editSheet.locator('nldd-list-item').filter({
-        hasText: label,
-      });
-      const select = listItem.locator('select').first();
-      await select.evaluate((el, val) => {
-        el.value = val;
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-      }, value);
-    }
-
-    await setSheetField('Naam', 'leeftijd');
-    await setSheetDropdown('Type', 'number');
-    await setSheetField('Bron regelgeving', 'wet_basisregistratie_personen');
-    await setSheetField('Bron output', 'leeftijd');
-
-    // --- Add source.parameters: bsn=$bsn, peildatum=2025-01-01 ---
-    // Each row's data-testid is keyed off `_rowId` (a monotonic counter)
-    // not the array index, so the testids are stable across deletions.
-    // Walk the rendered list in DOM order (which is also row order) and
-    // fill the nth-from-the-bottom row.
-    const addParamBtn = editSheet.locator('[data-testid="source-param-add-btn"]');
-    await addParamBtn.click();
-    await addParamBtn.click();
-
-    const paramRows = editSheet.locator('[data-testid="source-parameters-list"] nldd-list-item');
-    // The list ends with the "Voeg parameter toe" row, so the editable
-    // rows are the first N. Wait for both new rows to be present before
-    // filling them.
-    await expect(paramRows).toHaveCount(3); // 2 param rows + add button row
-
-    async function setParamRow(rowIdx, key, value) {
-      const row = paramRows.nth(rowIdx);
-      const inputs = row.locator('nldd-text-field input');
-      await inputs.nth(0).evaluate((el, v) => {
-        el.value = v;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-      }, key);
-      await inputs.nth(1).evaluate((el, v) => {
-        el.value = v;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-      }, value);
-    }
-    await setParamRow(0, 'bsn', '$bsn');
-    await setParamRow(1, 'peildatum', '2025-01-01');
-
-    // --- Save the EditSheet ---
-    // nldd-button renders its label via the `text` attribute through Lit's
-    // shadow DOM and the property is not reflected back, so a [text=]
-    // attribute selector or hasText filter wouldn't match the host. We
-    // tagged the save button with a data-testid for stable targeting.
-    await editSheet
-      .locator('[data-testid="edit-sheet-save-btn"]')
-      .evaluate((el) => el.click());
-    await waitForSheetClosed(page, 'nldd-sheet.edit-sheet');
-
-    // The new input should now appear in the Machine panel inputs list.
-    await expect(
-      page.locator('[data-testid="input-row-leeftijd"]'),
-    ).toBeAttached({ timeout: 5_000 });
-
-    // --- Open the heeft_recht_op_zorgtoeslag action via ActionSheet ---
-    await page
-      .locator('[data-testid="action-heeft_recht_op_zorgtoeslag-edit-btn"]')
-      .evaluate((el) => el.click());
-
-    const actionSheet = page.locator('nldd-sheet.action-sheet');
-    await waitForSheetOpen(page, 'nldd-sheet.action-sheet');
-
-    // The ActionSheet selects the LAST operation in the tree on open.
-    // For the heeft_recht AND that's one of the leaf comparisons, not the
-    // AND itself. We need to navigate up to the AND root (number "1") via
-    // the "Bovenliggende operaties" list - each row carries a stable
-    // data-testid keyed off the operation number.
-    await actionSheet
-      .locator('[data-testid="parent-op-1-edit-btn"]')
-      .evaluate((el) => el.click());
-
-    // The AND already has 3 conditions in zorgtoeslag article 2; each
-    // surfaces as a `p.value-help-text` row with a "Bewerk" link. Snapshot
-    // the count so we can assert the next click added a fourth row before
-    // we try to interact with it (otherwise `.last()` could race against
-    // Vue's flush and target the pre-existing third condition).
-    const conditionLinks = actionSheet.locator('p.value-help-text a');
-    const initialConditionCount = await conditionLinks.count();
-
-    // Now OperationSettings shows the AND. Click "Voeg operatie toe"
-    // which appends a fresh EQUALS condition to the AND's conditions[].
-    await actionSheet
-      .locator('[data-testid="add-nested-op-btn"]')
-      .click();
-
-    // Wait for the new condition's row to render before clicking it.
-    await expect(conditionLinks).toHaveCount(initialConditionCount + 1);
-
-    // The new condition appears as the last value row. Its "Bewerk" link
-    // is inside the value-help-text paragraph; clicking it selects the
-    // new operation in OperationSettings.
-    await conditionLinks.last().click();
-
-    // --- Configure the new condition ---
-    // Change operation type to GREATER_THAN_OR_EQUAL via the dropdown.
-    const opTypeDropdown = actionSheet.locator(
-      '[data-testid="operation-type-dropdown"] select',
+    const heeftRecht = mr.execution.actions.find(
+      (a) => a.output === 'heeft_recht_op_zorgtoeslag',
     );
-    await opTypeDropdown.evaluate((el) => {
-      el.value = 'GREATER_THAN_OR_EQUAL';
-      el.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(heeftRecht?.value?.operation).toBe('AND');
+    expect(Array.isArray(heeftRecht.value.conditions)).toBe(true);
+    heeftRecht.value.conditions.push({
+      operation: 'GREATER_THAN_OR_EQUAL',
+      subject: '$leeftijd',
+      value: 0,
     });
+    const seededConditionIndex = heeftRecht.value.conditions.length - 1;
 
-    // The OperationSettings now shows two rows: Onderwerp + Waarde.
-    // Onderwerp is empty (a literal '') so it renders as a text input;
-    // typing `$leeftijd` is interpreted as a variable ref by the engine.
-    const onderwerpRow = actionSheet
-      .locator('nldd-list-item')
-      .filter({ hasText: 'Onderwerp' });
-    await onderwerpRow
-      .locator('nldd-text-field input')
+    await setYamlPane(page, yaml.dump(mr, { lineWidth: 80, noRefs: true }));
+    await page.waitForTimeout(1000);
+
+    // Red: a minor passes age >= 0, so the AND is still true and the scenario
+    // (which expects no entitlement) fails.
+    await expectScenarioResult(page, MINOR, 'Mislukt');
+    // Close the (bottom-placed) result sheet before opening the ActionSheet so
+    // only one sheet is visible.
+    await openSheet(page).getByRole('button', { name: 'Sluit' }).click();
+    await expect(openSheet(page)).toHaveCount(0);
+
+    // --- Structured edit: open the action and tighten the age threshold ---
+    await openActionEditor(page, 'heeft_recht_op_zorgtoeslag');
+    // With the result sheet closed, the ActionSheet is the only visible sheet.
+    const sheet = openSheet(page);
+
+    // The sheet opens on the root AND; each condition is a nested-operation
+    // value row. Drill into the seeded age condition via its edit pencil (the
+    // icon-button's `icon` prop isn't reflected to an attribute, so target its
+    // stable `text` label).
+    await sheet
+      .locator(`[data-testid="op-value-${seededConditionIndex}"] nldd-icon-button[text="Bewerken"]`)
       .first()
-      .evaluate((el) => {
-        el.value = '$leeftijd';
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-      });
-
-    const waardeRow = actionSheet
-      .locator('nldd-list-item')
-      .filter({ hasText: 'Waarde' });
-    await waardeRow
-      .locator('nldd-text-field input')
-      .first()
-      .evaluate((el) => {
-        el.value = '18';
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-      });
-
-    // --- Save the ActionSheet ---
-    await actionSheet
-      .locator('[data-testid="action-sheet-save-btn"]')
       .evaluate((el) => el.click());
-    await waitForSheetClosed(page, 'nldd-sheet.action-sheet');
+    await page.waitForTimeout(200);
 
-    // --- Scenarios re-execute against the edited machine_readable ---
-    // ScenarioBuilder is still mounted in the middle pane (we never
-    // toggled it away), so the watch on `props.lawYaml` (= currentLawYaml)
-    // fires when machineReadable mutates and re-runs all scenarios.
-    await expect(minorHeader).toHaveClass(/sb-header--pass/, { timeout: 60_000 });
+    // OperationSettings now shows the comparison's Onderwerp (op-value-0) and
+    // Waarde (op-value-1). Change the threshold literal from 0 to 18.
+    const waarde = sheet.locator('[data-testid="op-value-1"] nldd-text-field input');
+    await waarde.evaluate((el) => {
+      el.value = '18';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await page.waitForTimeout(100);
+
+    await saveActionSheet(page);
+    await expect(openSheet(page)).toHaveCount(0);
+
+    // Green: the minor now fails age >= 18, so the AND is false, entitlement is
+    // false, and the scenario passes after re-execution.
+    await page.waitForTimeout(1000);
+    await expectScenarioResult(page, MINOR, 'Geslaagd');
   });
 });

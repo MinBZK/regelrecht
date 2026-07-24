@@ -233,6 +233,40 @@ export async function clickButton(container, text) {
 }
 
 /**
+ * Open the ActionSheet in edit mode for the machine-readable action whose
+ * output name is `output`. The row's edit affordance moved from an inline
+ * "Bewerk" button to a RowActionsMenu ("more" icon) whose Edit menu-item
+ * carries the `action-<output>-edit-btn` test-id. The menu-item lives in a
+ * closed popover, so a direct DOM click (evaluate) fires its handler without
+ * needing the popover open - the same pattern the sheet-save helpers use.
+ * @param {import('@playwright/test').Page} page
+ * @param {string} output
+ */
+export async function openActionEditor(page, output) {
+  await page
+    .locator(`[data-testid="action-${output}-edit-btn"]`)
+    .first()
+    .evaluate((el) => el.click());
+  await waitForEditSheet(page);
+}
+
+/**
+ * Remove the i-th value row of the currently selected operation in the open
+ * ActionSheet. The inline "minus" icon-button was replaced by a per-row
+ * actions menu ("more" icon) whose "Verwijder" item drives removeValue. The
+ * item sits in a closed popover, so we click it directly via the DOM.
+ * @param {import('@playwright/test').Page} page
+ * @param {number} index
+ */
+export async function removeOpValue(page, index) {
+  await openSheet(page)
+    .locator(`[data-testid="op-value-${index}"] nldd-menu-item[text="Verwijder"]`)
+    .first()
+    .evaluate((el) => el.click());
+  await page.waitForTimeout(200);
+}
+
+/**
  * Fill an nldd-text-field by label within a container.
  * The nldd-text-field wraps a native <input> in shadow DOM.
  */
@@ -274,20 +308,29 @@ export async function waitForEditSheet(page) {
 }
 
 /**
- * Click "Opslaan" in the edit sheet.
+ * Click "Opslaan" in the EditSheet (definitions / parameters / inputs /
+ * outputs). The footer save button carries a stable `edit-sheet-save-btn`
+ * test-id; the label text lives in the web component's shadow DOM, so we
+ * target the id and click through the DOM (robust against shadow visibility).
  * @param {import('@playwright/test').Page} page
  */
 export async function saveEditSheet(page) {
-  await openSheet(page).locator('nldd-button:has-text("Opslaan")').click();
+  await openSheet(page)
+    .locator('[data-testid="edit-sheet-save-btn"]')
+    .evaluate((el) => el.click());
   await page.waitForTimeout(200);
 }
 
 /**
- * Click "Opslaan" in the action sheet (nldd-sheet on main).
+ * Click "Opslaan" in the ActionSheet. The save button carries a stable
+ * `action-sheet-save-btn` test-id and only renders while editable and
+ * new/dirty.
  * @param {import('@playwright/test').Page} page
  */
 export async function saveActionSheet(page) {
-  await openSheet(page).locator('nldd-button:has-text("Opslaan")').click();
+  await openSheet(page)
+    .locator('[data-testid="action-sheet-save-btn"]')
+    .evaluate((el) => el.click());
   await page.waitForTimeout(200);
 }
 
@@ -338,6 +381,25 @@ export async function fillSheetNumberField(page, labelText, value) {
 }
 
 /**
+ * Set an nldd-combo-box value inside the open sheet by its test-id. The
+ * combo-box's change handler reads `event.detail.value`, so we dispatch that
+ * shape directly - it does not require a matching menu-item to be present,
+ * which lets a spec bind a source regulation without mocking the full law
+ * list.
+ * @param {import('@playwright/test').Page} page
+ * @param {string} testid
+ * @param {string} value
+ */
+export async function setSheetComboBox(page, testid, value) {
+  await openSheet(page)
+    .locator(`[data-testid="${testid}"]`)
+    .evaluate((el, val) => {
+      el.value = val;
+      el.dispatchEvent(new CustomEvent('change', { detail: { value: val }, bubbles: true }));
+    }, value);
+}
+
+/**
  * Select a value in an nldd-dropdown inside nldd-sheet by label text.
  */
 export async function selectSheetDropdown(page, labelText, value) {
@@ -351,10 +413,46 @@ export async function selectSheetDropdown(page, labelText, value) {
 }
 
 /**
- * Click "Opslaan" in the nldd-sheet.
+ * Poll a scenario card's result sheet until it reports the wanted status
+ * ("Mislukt" / "Geslaagd"). Scenarios auto-execute sequentially once their
+ * dependency laws finish loading, and the overview cards carry no pass/fail
+ * badge, so we (re)open the result sheet and read its outcome, retrying until
+ * execution has produced one. The result sheet reads fresh data from the
+ * scenario form on every open, so re-clicking picks up a later run. Throws with
+ * the last-seen sheet text if the status never appears within `timeout`.
+ * @param {import('@playwright/test').Page} page
+ * @param {string} title - substring of the scenario card's name
+ * @param {string} want - 'Mislukt' or 'Geslaagd'
+ * @param {number} [timeout]
+ */
+export async function expectScenarioResult(page, title, want, timeout = 60_000) {
+  const card = page.locator('nldd-card').filter({ hasText: title });
+  await card.waitFor({ state: 'visible', timeout: 30_000 });
+  const deadline = Date.now() + timeout;
+  let lastText = '';
+  while (Date.now() < deadline) {
+    await card.getByRole('button', { name: 'Resultaat' }).click();
+    const sheet = openSheet(page);
+    await sheet.waitFor({ state: 'visible', timeout: 10_000 });
+    await page.waitForTimeout(500);
+    if ((await sheet.getByText(want, { exact: false }).count()) > 0) {
+      return;
+    }
+    lastText = (await sheet.innerText().catch(() => '')) || lastText;
+    // Close and retry - a later auto-execute pass may have produced a result.
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(1000);
+  }
+  throw new Error(`scenario "${title}" never reported "${want}". Last sheet text:\n${lastText}`);
+}
+
+/**
+ * Click "Opslaan" in the EditSheet (nldd-sheet). The footer save button
+ * carries a stable `edit-sheet-save-btn` test-id and only renders once the
+ * form is dirty.
  */
 export async function saveSheet(page) {
-  const btn = openSheet(page).locator('nldd-button:has-text("Opslaan")');
+  const btn = openSheet(page).locator('[data-testid="edit-sheet-save-btn"]');
   await btn.evaluate(el => el.click());
   await page.waitForTimeout(300);
 }
