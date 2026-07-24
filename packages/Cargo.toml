@@ -6,6 +6,7 @@ members = [
     "corpus",
     "editor-api",
     "engine",
+    "github",
     "harvester",
     "law-model",
     "pipeline",
@@ -32,9 +33,10 @@ chacha20poly1305 = { version = "0.10", features = ["getrandom"] }
 chrono = { version = "0.4", features = ["serde"] }
 openidconnect = "4.0"
 regex = "1.11"
-# Note: reqwest is intentionally not workspace-hoisted. admin/auth/editor-api
-# require reqwest 0.12 to satisfy openidconnect/oauth2's pinned dependency,
-# while corpus/harvester/pipeline use 0.13. Aligning them would require
+# Note: reqwest is intentionally NOT workspace-hoisted, and must stay that way.
+# admin/auth/editor-api require reqwest 0.12 to satisfy openidconnect/oauth2's
+# pinned dependency, while corpus/github/harvester/pipeline use 0.13. Hoisting a
+# single version would break one side or the other; aligning them would require
 # upgrading openidconnect, which is out of scope for this cleanup.
 roxmltree = "0.21"
 rust_decimal = { version = "1", default-features = false, features = ["maths", "serde", "std"] }

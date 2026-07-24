@@ -33,6 +33,7 @@ jobs:
           filters: |
             ci:
               - packages/corpus/**
+              - packages/github/**
               - packages/engine/**
               - packages/harvester/**
               - packages/pipeline/**
@@ -57,6 +58,7 @@ jobs:
             editor-api:
               - packages/editor-api/**
               - packages/corpus/**
+              - packages/github/**
               - packages/pipeline/**
               - packages/harvester/**
               - Justfile

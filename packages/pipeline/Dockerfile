@@ -34,6 +34,7 @@ COPY packages/Cargo.lock packages/Cargo.toml ./
 RUN grep -qE '^members = \[$' Cargo.toml && \
     sed -i '/"admin"/d; /"auth"/d; /"editor-api"/d; /"tui"/d' Cargo.toml
 COPY packages/corpus/ corpus/
+COPY packages/github/ github/
 COPY packages/engine/ engine/
 COPY packages/law-model/ law-model/
 COPY packages/pipeline/ pipeline/
@@ -55,6 +56,7 @@ RUN cargo chef cook --release --recipe-path recipe.json
 COPY --from=planner /build/Cargo.toml ./Cargo.toml
 
 COPY packages/corpus/ corpus/
+COPY packages/github/ github/
 COPY packages/engine/ engine/
 COPY packages/law-model/ law-model/
 COPY packages/pipeline/ pipeline/
