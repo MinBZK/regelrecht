@@ -77,9 +77,10 @@ pub struct RecursiveFileEntry {
 /// call. Returned via [`PersistOutcome`] so the editor-api can surface the
 /// URL to the frontend after a save.
 ///
-/// Lives on `backend` (not `pr_client`) so the type is available even when
-/// the `github` feature is disabled — keeps the [`PersistOutcome`] shape
-/// uniform across builds.
+/// Lives on `backend` (not on the `regelrecht-github` crate's own `PrInfo`)
+/// so the type is available even when the `github` feature is disabled — it
+/// keeps the [`PersistOutcome`] shape uniform across builds. `SessionGitBackend`
+/// converts the crate's `PrInfo` into this one.
 #[derive(Debug, Clone)]
 pub struct PrInfo {
     /// PR number on the source repo. Used to construct the title in
@@ -837,7 +838,8 @@ pub struct SessionGitBackend {
     client: CorpusClient,
     repo_subpath: Option<String>,
     dirty_files: tokio::sync::Mutex<Vec<PathBuf>>,
-    pr_client: crate::pr_client::PullRequestClient,
+    /// Shared GitHub REST client — used here for the Pulls API calls.
+    github: regelrecht_github::GithubClient,
     /// GitHub coordinates of the source — used for PR API calls.
     github_owner: String,
     github_repo: String,
@@ -879,7 +881,7 @@ impl SessionGitBackend {
             client,
             repo_subpath,
             dirty_files: tokio::sync::Mutex::new(Vec::new()),
-            pr_client: crate::pr_client::PullRequestClient::new()?,
+            github: regelrecht_github::GithubClient::new()?,
             github_owner,
             github_repo,
             base_branch,
@@ -889,10 +891,10 @@ impl SessionGitBackend {
         })
     }
 
-    /// Test-only: swap the PR client for one pointed at a wiremock server.
+    /// Test-only: swap the GitHub client for one pointed at a wiremock server.
     #[cfg(test)]
-    pub(crate) fn with_pr_client(mut self, pr_client: crate::pr_client::PullRequestClient) -> Self {
-        self.pr_client = pr_client;
+    pub(crate) fn with_github_client(mut self, github: regelrecht_github::GithubClient) -> Self {
+        self.github = github;
         self
     }
 
@@ -1113,8 +1115,8 @@ impl RepoBackend for SessionGitBackend {
         }
 
         let (title, body) = self.pr_title_body(ctx);
-        let pr = self
-            .pr_client
+        let gh_pr = self
+            .github
             .ensure_pr(
                 &self.github_owner,
                 &self.github_repo,
@@ -1125,6 +1127,12 @@ impl RepoBackend for SessionGitBackend {
                 &self.pr_token,
             )
             .await?;
+        // Convert the crate's PrInfo into the feature-independent
+        // `backend::PrInfo` the editor-api consumes.
+        let pr = PrInfo {
+            number: gh_pr.number,
+            html_url: gh_pr.html_url,
+        };
 
         *self.last_pr.lock().await = Some(pr.clone());
         Ok(PersistOutcome { pr: Some(pr) })
@@ -1526,7 +1534,7 @@ mod tests {
     #[cfg(feature = "github")]
     #[tokio::test]
     async fn session_backend_persists_then_opens_pr() {
-        use crate::pr_client::PullRequestClient;
+        use regelrecht_github::GithubClient;
         use wiremock::matchers::{method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -1554,9 +1562,7 @@ mod tests {
         config.branch = "development".to_string();
         let client = CorpusClient::new(config);
 
-        let pr_client = PullRequestClient::new()
-            .unwrap()
-            .with_base_url(server.uri());
+        let github = GithubClient::new().unwrap().with_base_url(server.uri());
 
         let backend = SessionGitBackend::new(
             client,
@@ -1568,7 +1574,7 @@ mod tests {
             "test-token".to_string(),
         )
         .unwrap()
-        .with_pr_client(pr_client);
+        .with_github_client(github);
 
         // Edit + persist.
         backend
@@ -1614,7 +1620,7 @@ mod tests {
     #[cfg(feature = "github")]
     #[tokio::test]
     async fn session_backend_empty_persist_returns_cached_pr() {
-        use crate::pr_client::PullRequestClient;
+        use regelrecht_github::GithubClient;
         use wiremock::matchers::{method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -1641,9 +1647,7 @@ mod tests {
         let mut config = CorpusConfig::new(&bare_url, &work);
         config.branch = "development".to_string();
         let client = CorpusClient::new(config);
-        let pr_client = PullRequestClient::new()
-            .unwrap()
-            .with_base_url(server.uri());
+        let github = GithubClient::new().unwrap().with_base_url(server.uri());
 
         let backend = SessionGitBackend::new(
             client,
@@ -1655,7 +1659,7 @@ mod tests {
             "test-token".to_string(),
         )
         .unwrap()
-        .with_pr_client(pr_client);
+        .with_github_client(github);
 
         // First persist makes a real PR
         backend.write_file(Path::new("a.md"), "hi").await.unwrap();
