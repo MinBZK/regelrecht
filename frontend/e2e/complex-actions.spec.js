@@ -1,5 +1,14 @@
 import { test, expect } from '@playwright/test';
-import { interceptLaw, gotoEditor, selectArticle, readYamlPane } from './helpers.js';
+import {
+  gotoEditor,
+  selectArticle,
+  readYamlPane,
+  readYamlSource,
+  setYamlPane,
+  openSheet,
+  openActionEditor,
+  saveActionSheet,
+} from './helpers.js';
 import * as yaml from 'js-yaml';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
@@ -35,59 +44,36 @@ function createFixtureWithMetadata() {
 }
 
 test.describe('Complex actions', () => {
-  test('add action with AND operation containing comparison conditions', async ({ page }) => {
+  test('AND operation with comparison conditions round-trips and renders', async ({ page }) => {
     const fixtureYaml = createFixtureWithMetadata();
 
-    await page.route('**/api/corpus/laws/wet_op_de_zorgtoeslag', route =>
+    await page.route('**/corpus/laws/wet_op_de_zorgtoeslag', route =>
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fixtureYaml })
     );
-    await page.goto('/editor/wet_op_de_zorgtoeslag');
-    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
+    await gotoEditor(page);
 
     await selectArticle(page, '2');
     await page.waitForTimeout(300);
 
-    // Add an action
-    await page.locator('[data-testid="add-action-btn"]').click();
-    await page.waitForTimeout(300);
-
-    const panel = page.locator('nldd-sheet');
-
-    // Set output
-    const outputField = panel.locator('[data-testid="action-output-field"] input');
-    await outputField.evaluate((el, val) => {
-      el.value = val;
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-    }, 'heeft_recht_op_zorgtoeslag');
-    await page.waitForTimeout(100);
-
-    // New actions have value='' - no OperationSettings shown
-    // We need to close and use YAML editing to set up the initial operation structure
-    await panel.locator('nldd-button:has-text("Opslaan")').click();
-    await page.waitForTimeout(300);
-
-    // Edit YAML directly to set up the AND operation with conditions
-    const textarea = page.locator('.editor-yaml-textarea');
-    const currentYaml = await textarea.inputValue();
-
-    // Replace the action's value with an AND operation
+    // Author the AND operation through the YAML pane. The structured form
+    // seeds new actions with an empty EQUALS stub and won't build a nested
+    // boolean tree from scratch, so YAML is the authoring path here.
+    const currentYaml = await readYamlSource(page);
     const updatedYaml = currentYaml.replace(
-      "value: ''",
-      `value:
-            operation: AND
-            conditions:
-              - operation: GREATER_THAN_OR_EQUAL
-                subject: $leeftijd
-                value: 18
-              - operation: EQUALS
-                subject: $is_verzekerde
-                value: true`
+      'actions: []',
+      `actions:
+    - output: heeft_recht_op_zorgtoeslag
+      value:
+        operation: AND
+        conditions:
+          - operation: GREATER_THAN_OR_EQUAL
+            subject: $leeftijd
+            value: 18
+          - operation: EQUALS
+            subject: $is_verzekerde
+            value: true`
     );
-
-    await textarea.evaluate((el, val) => {
-      el.value = val;
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-    }, updatedYaml);
+    await setYamlPane(page, updatedYaml);
     await page.waitForTimeout(300);
 
     // Verify YAML round-trips correctly
@@ -103,47 +89,29 @@ test.describe('Complex actions', () => {
     expect(action.value.conditions[1].subject).toBe('$is_verzekerde');
     expect(action.value.conditions[1].value).toBe(true);
 
-    // Now open the ActionSheet and verify the operation tree renders
-    const actionItem = page.locator('nldd-list-item:has(nldd-text-cell:has-text("heeft_recht_op_zorgtoeslag"))').last();
-    await actionItem.locator('nldd-button:has-text("Bewerk")').click();
-    await page.waitForTimeout(300);
+    // Open the ActionSheet and verify the operation tree renders. It opens on
+    // the root operation, so the type dropdown shows AND.
+    await openActionEditor(page, 'heeft_recht_op_zorgtoeslag');
+    const panel = openSheet(page);
+    await expect(panel).toBeVisible();
 
-    // ActionSheet should show the AND operation
-    const panel2 = page.locator('nldd-sheet');
-    await expect(panel2).toBeVisible();
-
-    // The ActionSheet initially selects the deepest operation in the tree.
-    // Verify the operation settings panel rendered (has a type dropdown)
-    const typeSelect = panel2.locator('[data-testid="operation-type-dropdown"] select');
-    const currentType = await typeSelect.evaluate(el => el.value);
-    // Should be one of the comparison ops (the leaves of the AND tree)
-    expect(['EQUALS', 'GREATER_THAN_OR_EQUAL']).toContain(currentType);
-
-    // Verify the "Bovenliggende operaties" section is shown (since we're viewing a child)
-    await expect(panel2.locator('text=Bovenliggende operaties')).toBeVisible();
-
-    // Close
-    await panel2.locator('nldd-button:has-text("Opslaan")').click();
-    await page.waitForTimeout(200);
+    const typeSelect = panel.locator('[data-testid="operation-type-dropdown"] select');
+    expect(await typeSelect.evaluate(el => el.value)).toBe('AND');
   });
 
-  test('add nested operation via button and verify in YAML', async ({ page }) => {
+  test('turning a value into an empty nested operation blocks the save', async ({ page }) => {
     const fixtureYaml = createFixtureWithMetadata();
 
-    await page.route('**/api/corpus/laws/wet_op_de_zorgtoeslag', route =>
+    await page.route('**/corpus/laws/wet_op_de_zorgtoeslag', route =>
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fixtureYaml })
     );
-    await page.goto('/editor/wet_op_de_zorgtoeslag');
-    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
+    await gotoEditor(page);
 
     await selectArticle(page, '2');
     await page.waitForTimeout(300);
 
-    // Set up an action with a MAX operation via YAML editing
-    const textarea = page.locator('.editor-yaml-textarea');
-    const currentYaml = await textarea.inputValue();
-
-    // Replace "actions: []" with a real action
+    // Author an action with a MAX operation over a single literal value.
+    const currentYaml = await readYamlSource(page);
     const updatedYaml = currentYaml.replace(
       'actions: []',
       `actions:
@@ -153,35 +121,28 @@ test.describe('Complex actions', () => {
         values:
           - 0`
     );
-
-    await textarea.evaluate((el, val) => {
-      el.value = val;
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-    }, updatedYaml);
+    await setYamlPane(page, updatedYaml);
     await page.waitForTimeout(300);
 
-    // Open the action sheet
-    const actionItem = page.locator('nldd-list-item:has(nldd-text-cell:has-text("hoogte_zorgtoeslag"))').last();
-    await actionItem.locator('nldd-button:has-text("Bewerk")').click();
-    await page.waitForTimeout(300);
+    await openActionEditor(page, 'hoogte_zorgtoeslag');
+    const panel = openSheet(page);
 
-    const panel = page.locator('nldd-sheet');
-
-    // Click "Voeg operatie toe" to add a nested ADD (empty values[])
-    await panel.locator('[data-testid="add-nested-op-btn"]').evaluate(el => el.click());
+    // Convert the literal value into a nested operation via its row-actions
+    // menu. changeValueKind seeds an empty `ADD { values: [] }` - structurally
+    // incomplete on purpose.
+    await panel
+      .locator('[data-testid="op-value-0"] nldd-menu-item[text="Operatie"]')
+      .first()
+      .evaluate((el) => el.click());
     await page.waitForTimeout(200);
 
-    // Save should be rejected because the nested ADD has no values yet -
-    // saving a structurally-incomplete operation would produce YAML the
-    // engine cannot execute.
-    await panel.locator('nldd-button:has-text("Opslaan")').click();
-    await page.waitForTimeout(300);
+    // Saving must be rejected: an empty nested operation would produce YAML
+    // the engine cannot execute.
+    await saveActionSheet(page);
+    await page.waitForTimeout(200);
 
-    // The action sheet should still be open (save was blocked)
     await expect(panel).toBeVisible();
-
-    // The middle pane should display the parse error from handleActionSave
-    const error = page.locator('.editor-parse-error-detail');
-    await expect(error).toContainText("Operatie 'ADD' is nog niet ingevuld");
+    const banner = page.locator('nldd-banner[variant="critical"]');
+    await expect(banner).toHaveAttribute('text', /Operatie 'ADD' is nog niet ingevuld/);
   });
 });

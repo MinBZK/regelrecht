@@ -12,6 +12,15 @@ import { readFileSync, readdirSync, statSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import * as yaml from 'js-yaml';
+import { mockAuthedEditor } from './helpers.js';
+
+// Corpus law endpoints exist in two shapes: the global read-only
+// `/api/corpus/laws/...` and the authenticated, traject-scoped
+// `/api/trajects/{ref}/corpus/laws/...` the editor actually reads through. This
+// fragment matches the common `.../corpus/laws` tail of both, so one set of
+// handlers serves either caller. The Playwright route globs below drop the
+// `/api` prefix (`**` + `/corpus/laws...`) to match both for the same reason.
+const LAWS_PATH = String.raw`\/api(?:\/trajects\/[^/]+)?\/corpus\/laws`;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -63,6 +72,47 @@ export function loadCorpus(rootDir = CORPUS_ROOT) {
 }
 
 /**
+ * Recursively walk a corpus directory and collect **every** version YAML per
+ * `$id` (newest publication_date first). Returns Map<lawId, string[]>.
+ *
+ * The engine's dependency loader fetches `/corpus/laws/{id}/versions` and loads
+ * the whole version set so its date-aware resolver can pick the one in force on
+ * the scenario's calculation date. Returning only a single picked version would
+ * make a scenario dated before the latest file fail to resolve, so the versions
+ * mock must serve all of them.
+ */
+export function loadCorpusVersions(rootDir = CORPUS_ROOT) {
+  const byId = new Map();
+
+  function visit(dir) {
+    for (const entry of readdirSync(dir)) {
+      const full = resolve(dir, entry);
+      if (statSync(full).isDirectory()) {
+        visit(full);
+      } else if (entry.endsWith('.yaml')) {
+        const content = readFileSync(full, 'utf-8');
+        const idMatch = content.match(/^\$id:\s*['"]?([^'"\n]+)['"]?$/m);
+        if (!idMatch) continue;
+        const lawId = idMatch[1].trim();
+        const pubMatch = content.match(/^publication_date:\s*['"]?([^'"\n]+)['"]?$/m);
+        const pubDate = pubMatch ? pubMatch[1].trim() : '';
+        const list = byId.get(lawId) ?? [];
+        list.push({ content, pubDate });
+        byId.set(lawId, list);
+      }
+    }
+  }
+
+  visit(rootDir);
+  // Newest-first, matching the editor-api `/versions` contract.
+  for (const [id, list] of byId) {
+    list.sort((a, b) => (a.pubDate < b.pubDate ? 1 : a.pubDate > b.pubDate ? -1 : 0));
+    byId.set(id, list.map((e) => e.content));
+  }
+  return byId;
+}
+
+/**
  * Find a scenario .feature file next to a law's YAML on disk. Returns the
  * raw text or null when no scenarios directory exists for that law.
  */
@@ -90,10 +140,15 @@ export function loadScenario(lawPath, filename) {
  * @param {string} scenarioFile - raw .feature text returned by the scenario fetch
  */
 export async function mockCorpusApi(page, corpus, scenarioLaw, scenarioFile) {
-  // GET /api/corpus/laws - list for dependency discovery (fallback handler).
-  await page.route('**/api/corpus/laws*', (route, request) => {
+  // Authenticated `/auth/status` + `/api/trajects` list/detail so the
+  // traject-scoped, `requiresAuth` editor route mounts. (Kept in the shared
+  // helper so every corpus-driven spec gets the same signed-in shape.)
+  await mockAuthedEditor(page);
+
+  // GET .../corpus/laws - list for dependency discovery (fallback handler).
+  await page.route('**/corpus/laws*', (route, request) => {
     const url = new URL(request.url());
-    if (url.pathname !== '/api/corpus/laws') {
+    if (!new RegExp(`^${LAWS_PATH}$`).test(url.pathname)) {
       return route.fallback();
     }
     const entries = [...corpus.entries()].map(([law_id, entry]) => {
@@ -113,10 +168,10 @@ export async function mockCorpusApi(page, corpus, scenarioLaw, scenarioFile) {
     });
   });
 
-  // GET /api/corpus/laws/{law_id}/outputs - list outputs from all articles.
-  await page.route('**/api/corpus/laws/*/outputs', (route, request) => {
+  // GET .../corpus/laws/{law_id}/outputs - list outputs from all articles.
+  await page.route('**/corpus/laws/*/outputs', (route, request) => {
     const url = new URL(request.url());
-    const match = url.pathname.match(/\/api\/corpus\/laws\/([^/]+)\/outputs$/);
+    const match = url.pathname.match(new RegExp(`${LAWS_PATH}\\/([^/]+)\\/outputs$`));
     if (!match) return route.fallback();
     const lawId = decodeURIComponent(match[1]);
     const entry = corpus.get(lawId);
@@ -131,10 +186,10 @@ export async function mockCorpusApi(page, corpus, scenarioLaw, scenarioFile) {
     });
   });
 
-  // GET /api/corpus/laws/{law_id} - serve from the corpus map.
-  // PUT /api/corpus/laws/{law_id} - no-op; useLaw.saveLaw() updates rawYaml
+  // GET .../corpus/laws/{law_id} - serve from the corpus map.
+  // PUT .../corpus/laws/{law_id} - no-op; useLaw.saveLaw() updates rawYaml
   // locally on success so the test doesn't need a real backend write.
-  await page.route('**/api/corpus/laws/*', (route, request) => {
+  await page.route('**/corpus/laws/*', (route, request) => {
     const url = new URL(request.url());
     const pathname = url.pathname;
     if (pathname.includes('/scenarios') || pathname.includes('/outputs')) {
@@ -155,10 +210,10 @@ export async function mockCorpusApi(page, corpus, scenarioLaw, scenarioFile) {
     });
   });
 
-  // GET /api/corpus/laws/{law_id}/scenarios - list, only for the target law.
-  await page.route('**/api/corpus/laws/*/scenarios', (route, request) => {
+  // GET .../corpus/laws/{law_id}/scenarios - list, only for the target law.
+  await page.route('**/corpus/laws/*/scenarios', (route, request) => {
     const url = new URL(request.url());
-    const match = url.pathname.match(/\/api\/corpus\/laws\/([^/]+)\/scenarios$/);
+    const match = url.pathname.match(new RegExp(`${LAWS_PATH}\\/([^/]+)\\/scenarios$`));
     if (!match) return route.fallback();
     const lawId = decodeURIComponent(match[1]);
     if (lawId === scenarioLaw.id) {
@@ -179,14 +234,35 @@ export async function mockCorpusApi(page, corpus, scenarioLaw, scenarioFile) {
   // scenario text for any law that asks. We only have one fixture so we
   // serve it for every match; tests that need multiple scenario files can
   // refine this later.
-  await page.route('**/api/corpus/laws/*/scenarios/*', (route, request) => {
+  await page.route('**/corpus/laws/*/scenarios/*', (route, request) => {
     const url = new URL(request.url());
-    const match = url.pathname.match(/\/api\/corpus\/laws\/([^/]+)\/scenarios\/([^/]+)$/);
+    const match = url.pathname.match(new RegExp(`${LAWS_PATH}\\/([^/]+)\\/scenarios\\/([^/]+)$`));
     if (!match) return route.fallback();
     return route.fulfill({
       status: 200,
       contentType: 'text/plain; charset=utf-8',
       body: scenarioFile,
+    });
+  });
+
+  // GET .../corpus/laws/{law_id}/versions - the full version set the engine's
+  // dependency loader pulls to run scenarios (cross-law resolution). Serve
+  // every on-disk version for real-corpus specs; for a synthetic corpus map
+  // (a spec that fabricates a law not on disk) fall back to that entry's single
+  // content. Registered last so Playwright's LIFO order checks it before the
+  // generic `/corpus/laws/*` handler.
+  const allVersions = loadCorpusVersions();
+  await page.route('**/corpus/laws/*/versions', (route, request) => {
+    const url = new URL(request.url());
+    const match = url.pathname.match(new RegExp(`${LAWS_PATH}\\/([^/]+)\\/versions$`));
+    if (!match) return route.fallback();
+    const lawId = decodeURIComponent(match[1]);
+    const versions = allVersions.get(lawId)
+      ?? (corpus.has(lawId) ? [corpus.get(lawId).content] : []);
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(versions),
     });
   });
 
@@ -198,15 +274,6 @@ export async function mockCorpusApi(page, corpus, scenarioLaw, scenarioFile) {
       body: JSON.stringify([
         { id: 'local', name: 'Local Test Corpus', source_type: 'local', priority: 1, law_count: corpus.size },
       ]),
-    }),
-  );
-
-  // /auth/status - OIDC disabled in tests; useAuth expects this shape.
-  await page.route('**/auth/status', (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ authenticated: false, oidc_configured: false }),
     }),
   );
 }

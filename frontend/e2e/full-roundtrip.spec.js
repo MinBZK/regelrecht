@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { interceptLaw, gotoEditor, selectArticle, readYamlPane, loadFixture } from './helpers.js';
+import { interceptLaw, gotoEditor, selectArticle, readYamlPane, setYamlPane, openSheet, openActionEditor, loadFixture } from './helpers.js';
 import * as yaml from 'js-yaml';
 
 /**
@@ -16,11 +16,10 @@ test.describe('Full round-trip', () => {
     const original = loadOriginal();
     const fullYaml = loadFixture('zorgtoeslag-full.yaml');
 
-    await page.route('**/api/corpus/laws/wet_op_de_zorgtoeslag', route =>
+    await page.route('**/corpus/laws/wet_op_de_zorgtoeslag', route =>
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fullYaml })
     );
-    await page.goto('/editor/wet_op_de_zorgtoeslag');
-    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
+    await gotoEditor(page);
 
     // Article 1a: simple definition
     await selectArticle(page, '1a');
@@ -96,7 +95,6 @@ test.describe('Full round-trip', () => {
     await page.waitForTimeout(300);
 
     // Edit YAML directly to add complete machine_readable
-    const textarea = page.locator('.editor-yaml-textarea');
     const mrYaml = `definitions:
   drempelinkomen_alleenstaande:
     value: 3971900
@@ -127,29 +125,27 @@ execution:
         value: 18
 `;
 
-    await textarea.evaluate((el, val) => {
-      el.value = val;
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-    }, mrYaml);
+    await setYamlPane(page, mrYaml);
     await page.waitForTimeout(300);
 
     // Verify the machine readable view shows the data
     const mrPane = page.locator('[data-testid="machine-readable"]');
     await expect(mrPane).toContainText('drempelinkomen_alleenstaande');
-    await expect(mrPane).toContainText('BESCHIKKING');
     await expect(mrPane).toContainText('bsn');
     await expect(mrPane).toContainText('leeftijd');
     await expect(mrPane).toContainText('heeft_recht_op_zorgtoeslag');
+    // legal_character renders as an editable dropdown (label "beschikking"),
+    // so assert the bound select value rather than the raw enum text.
+    const legalBasis = mrPane.locator('select[aria-label="Juridische basis"]');
+    expect(await legalBasis.evaluate((el) => el.value)).toBe('BESCHIKKING');
 
-    // Verify the action is displayed and can be opened
-    const actionItem = page.locator('nldd-list-item:has(nldd-text-cell:has-text("heeft_recht_op_zorgtoeslag"))').last();
-    await actionItem.locator('nldd-button:has-text("Bewerk")').click();
-    await page.waitForTimeout(300);
+    // Verify the action is displayed and can be opened via its row-actions menu
+    await openActionEditor(page, 'heeft_recht_op_zorgtoeslag');
 
-    const panel = page.locator('nldd-sheet');
+    const panel = openSheet(page);
     await expect(panel).toBeVisible();
 
-    // Verify the operation type
+    // Verify the operation type (opens on the root operation)
     const typeSelect = panel.locator('[data-testid="operation-type-dropdown"] select');
     const currentType = await typeSelect.evaluate(el => el.value);
     expect(currentType).toBe('GREATER_THAN_OR_EQUAL');

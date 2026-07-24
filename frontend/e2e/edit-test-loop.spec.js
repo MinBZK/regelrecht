@@ -4,24 +4,28 @@
  * Verifies the demo flow the editor was built for:
  *   1. Open wet_op_de_zorgtoeslag in the editor.
  *   2. Observe the *Minderjarige heeft geen recht op zorgtoeslag* scenario is
- *      red (badge = ✗) - age check isn't in the law's machine_readable.
- *   3. Edit article 2's machine_readable via the middle-pane YAML editor to
- *      add a leeftijd input + an AGE-based condition to the existing AND.
+ *      failing (its result sheet reports "Mislukt") - the age check isn't in
+ *      the law's machine_readable, so a minor still qualifies.
+ *   3. Edit article 2's machine_readable via the YAML pane to add a leeftijd
+ *      input + an age condition to the existing AND.
  *   4. ScenarioBuilder auto-reexecutes against the edited YAML.
- *   5. Observe the scenario badge is now green (badge = ✓).
+ *   5. Observe the scenario result is now passing ("Geslaagd").
  *
- * This is the smoke-test for the propagation chain we just wired up:
+ * This is the smoke-test for the propagation chain:
  *   machineReadable edit → currentLawYaml computed → engine reload →
  *   ScenarioBuilder lawYaml prop → dependency reload → auto-execute.
  *
  * All corpus laws, the scenarios list, the scenario feature file, and the
  * PUT save endpoint are mocked from the on-disk corpus directory so the
- * spec doesn't need a running editor-api. This keeps it CI-friendly and
- * reproduces the real dependency graph.
+ * spec doesn't need a running editor-api. Requires the WASM engine to be
+ * built (frontend/public/wasm/pkg, via `just wasm-build`).
  */
 import { test, expect } from '@playwright/test';
 import * as yaml from 'js-yaml';
 import { loadCorpus, loadScenario, mockCorpusApi } from './helpers-corpus.js';
+import { gotoEditor, readYamlSource, setYamlPane, expectScenarioResult } from './helpers.js';
+
+const MINOR = 'Minderjarige heeft geen recht';
 
 test.describe('Edit → re-execute loop', () => {
   test.beforeEach(async ({ page }) => {
@@ -34,6 +38,9 @@ test.describe('Edit → re-execute loop', () => {
   });
 
   test('Minderjarige scenario goes red → green after adding age check', async ({ page }) => {
+    // Full-corpus dependency loading + 13 scenarios executing twice (before and
+    // after the edit) needs well over the default 30s per-test budget.
+    test.setTimeout(180_000);
     const corpus = loadCorpus();
     const zorgtoeslag = corpus.get('wet_op_de_zorgtoeslag');
     expect(zorgtoeslag, 'wet_op_de_zorgtoeslag must exist in the test corpus').toBeTruthy();
@@ -51,57 +58,24 @@ test.describe('Edit → re-execute loop', () => {
 
     // Navigate directly to article 2 via the route param - that's where
     // heeft_recht_op_zorgtoeslag lives and where we need to edit.
-    await page.goto('/editor/wet_op_de_zorgtoeslag/2');
+    await gotoEditor(page, 'wet_op_de_zorgtoeslag', '2');
 
-    // Wait for the document tab bar to render - articles loaded.
-    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 15_000 });
-
-    const minorHeader = page
-      .locator('.sb-accordion-header')
-      .filter({ hasText: 'Minderjarige' });
-    await expect(minorHeader).toBeVisible({ timeout: 30_000 });
-
-    // Wait until the badge appears (either ✓ or ✗) - meaning execution
-    // completed. The badge span has class sb-badge--pass or sb-badge--fail.
-    await minorHeader
-      .locator('.sb-badge--pass, .sb-badge--fail')
-      .first()
-      .waitFor({ timeout: 30_000 });
-
-    // Initial state: scenario is failed (age check not in the law).
-    await expect(minorHeader).toHaveClass(/sb-header--fail/);
-
-    // Toggle the middle pane to YAML view. nldd-segmented-control-item is
-    // a custom element whose click target lives in shadow DOM, so instead
-    // of clicking we synthesize the change event the way EditorApp's
-    // `onMiddlePaneChange` handler expects: it reads `event.target.value`
-    // first, then falls back to `event.detail[0]`.
-    await page.locator('[data-testid="middle-pane-toggle"]').evaluate((el) => {
-      el.value = 'yaml';
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-    // Wait for Vue to re-render the YAML pane.
-    await page.waitForSelector('.editor-yaml-textarea', { timeout: 5000 });
+    // Initial state: the scenario is failing (age check not in the law), so
+    // its result sheet reports "Mislukt".
+    await expectScenarioResult(page, MINOR, 'Mislukt');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
 
     // Grab the current YAML (article 2's machine_readable), parse it,
-    // surgically add the leeftijd input and the AND condition, and write
-    // it back into the textarea.
-    const textarea = page.locator('.editor-yaml-textarea');
-    await expect(textarea).toBeVisible();
-
-    const originalYaml = await textarea.inputValue();
+    // surgically add the leeftijd input and the age condition, and write it
+    // back into the code editor.
+    const originalYaml = await readYamlSource(page);
     expect(originalYaml).toContain('heeft_recht_op_zorgtoeslag');
     const mr = yaml.load(originalYaml);
 
     // Inject leeftijd input (sourced from BRP with a literal peildatum).
-    // BRP art 1.2 requires both bsn and peildatum; we use the scenario's
-    // calculation date as a literal here.
-    //
-    // NOTE: a literal date is intentional for test isolation - the spec must
-    // remain stable regardless of the real calculation date at CI time. The
-    // canonical production pattern (see `kieswet`) references a parameter
-    // like `peildatum: $verkiezingsdatum` so the date tracks the runtime
-    // context; don't copy the literal form into corpus laws.
+    // A literal date is intentional for test isolation - the spec must remain
+    // stable regardless of the real calculation date at CI time.
     mr.execution.input.push({
       name: 'leeftijd',
       type: 'number',
@@ -116,9 +90,6 @@ test.describe('Edit → re-execute loop', () => {
     });
 
     // Append the age condition to the heeft_recht_op_zorgtoeslag AND.
-    // Assert the action is shaped the way we expect before mutating so a
-    // future refactor (e.g. top-level op change) produces a legible error
-    // instead of a bare `Cannot read properties of undefined` on .push.
     const heeftRecht = mr.execution.actions.find(
       (a) => a.output === 'heeft_recht_op_zorgtoeslag',
     );
@@ -136,29 +107,15 @@ test.describe('Edit → re-execute loop', () => {
 
     const editedYaml = yaml.dump(mr, { lineWidth: 80, noRefs: true });
 
-    // Fill the textarea by dispatching an input event; the editor's
-    // onYamlInput handler parses the text and updates machineReadable.
-    await textarea.evaluate((el, val) => {
-      el.value = val;
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-    }, editedYaml);
+    // Write the edited YAML through the code editor; the editor's onYamlInput
+    // handler parses it and updates machineReadable, which re-executes the
+    // scenarios against the edited law.
+    await setYamlPane(page, editedYaml);
 
-    // Toggle back to the form view so the scenarios accordion mounts
-    // again. The middle pane only shows one of the two views at a time;
-    // remounting ScenarioBuilder kicks off its immediate `lawYaml` watch,
-    // which reloads dependencies against the edited law and re-executes.
-    await page.locator('[data-testid="middle-pane-toggle"]').evaluate((el) => {
-      el.value = 'form';
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-
-    // Re-execution fires via the currentLawYaml → ScenarioBuilder lawYaml
-    // prop chain. Allow the engine + dependency reload + scenario run to
-    // complete.
-    const minorHeaderAfter = page
-      .locator('.sb-accordion-header')
-      .filter({ hasText: 'Minderjarige' })
-      .first();
-    await expect(minorHeaderAfter).toHaveClass(/sb-header--pass/, { timeout: 60_000 });
+    // Allow the engine + dependency reload + scenario re-run to complete, then
+    // re-open the result sheet: the minor now fails the age check, so the AND
+    // is false and the scenario passes ("Geslaagd").
+    await page.waitForTimeout(1000);
+    await expectScenarioResult(page, MINOR, 'Geslaagd');
   });
 });

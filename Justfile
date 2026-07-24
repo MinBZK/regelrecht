@@ -101,6 +101,13 @@ pipeline-test:
 pipeline-integration-test:
     cd packages/pipeline && {{ci_flags}} cargo test --test '*'
 
+# Run the frontend Playwright e2e specs (mocked backend, no Postgres/token needed).
+# Depends on wasm-build: the scenario-execution specs run the real WASM engine
+# in-browser, so the compiled artifact under frontend/public/wasm/pkg must exist.
+# cargo caches, so the build is a near-no-op once warm.
+test-e2e: wasm-build
+    npm run test:e2e -w frontend
+
 # Run all tests (engine + harvester + pipeline unit + pipeline integration + editor-api)
 test-all: test harvester-test pipeline-test pipeline-integration-test editor-api-test
 
