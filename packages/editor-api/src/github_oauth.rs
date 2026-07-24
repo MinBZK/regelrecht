@@ -85,9 +85,9 @@ pub struct GithubOAuth {
     /// middle" mode). This is one of TWO switches: the `github.user_oauth`
     /// feature flag enforces the same thing at runtime, so enabling the
     /// GitHub-koppeling UI also enables enforcement — linking is never
-    /// offered-but-inert. See [`write_requires_user_token`] for the combined
-    /// decision; this env var remains as a deployment-wide override that wins
-    /// regardless of the flag.
+    /// offered-but-inert. See [`crate::credentials::write_requires_user_token`]
+    /// for the combined decision; this env var remains as a deployment-wide
+    /// override that wins regardless of the flag.
     ///
     /// * required off (both switches): writes **always** use the backend's
     ///   configured token — byte-identical to pre-spike behaviour for every
@@ -95,7 +95,8 @@ pub struct GithubOAuth {
     ///   central repo can't start 403-ing because their personal token lacks
     ///   access.
     /// * required on (either switch): a configured service token still takes
-    ///   precedence per backend (see [`user_write_token_for_backend`]); only
+    ///   precedence per backend (see
+    ///   [`crate::credentials::TrajectCredentials::for_write`]); only
     ///   writes to token-less, override-capable backends must carry the
     ///   acting user's token, and a save there with no linked (or an
     ///   expired) token is refused with 428.
