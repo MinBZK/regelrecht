@@ -51,33 +51,22 @@ Feature: Financieel CV — werkgever-perspectief, casus Sadee
   #     aggregator-laag worden uitgerekend (zie Scenario "Samenloop").
 
   # ────────────────────────────────────────────────────────────────────
-  # LDP — Wajong artikel 2:20
-  # Werkgever heeft loondispensatie aangevraagd voor Sadee; UWV stelt
-  # vast dat haar arbeidsprestatie < minimumloon is.
-  Scenario: Sadee komt in aanmerking voor loondispensatie via Wajong art. 2:20
+  # LKS — Participatiewet artikel 10c + 10d
+  # Sadee zit niet in de Pwet-doelgroep (zij heeft Wajong, geen
+  # bijstand). LKS is een gemeente-instrument voor Pwet-doelgroep met
+  # loonwaarde < 100%, dus niet van toepassing.
+  Scenario: Sadee komt niet in aanmerking voor LKS — geen Pwet-doelgroep
     Given the calculation date is "2026-06-01"
     And the following parameters:
       | bsn                                                | 999990100 |
-      | is_wsw_werknemer                                   | false     |
-      | arbeidsprestatie_duidelijk_minder_dan_minimumloon  | true      |
-      | aanvraag_loondispensatie_ingediend                 | true      |
-      | heeft_recht_op_arbeidsondersteuning_wajong         | true      |
-    When I evaluate "heeft_recht_op_loondispensatie" of "wet_arbeidsongeschiktheidsvoorziening_jonggehandicapten"
+      | behoort_tot_doelgroep_lks                          | false     |
+      | kan_minimumloon_niet_verdienen                     | true      |
+      | aanvraag_lks_ingediend_binnen_zes_maanden          | true      |
+      | voorafgaand_relevante_onderwijsroute_of_doelgroep  | true      |
+      | is_wsw_dienstbetrekking                            | false     |
+      | loonwaarde_eurocent_per_maand                      | 150850    |
+      | minimumloon_plus_vakantiebijslag_eurocent_per_maand | 215500   |
+    When I evaluate "heeft_recht_op_lks" of "participatiewet"
     Then the execution succeeds
-    And output "heeft_recht_op_loondispensatie" is true
-    And output "beding_lagere_beloning_is_nietig" is true
-
-  # ────────────────────────────────────────────────────────────────────
-  # OPEN: Samenloop LIV ↔ LKV (Wtl artikel 4.1.3)
-  #
-  # De engine geeft per wet onafhankelijk "recht = true" voor zowel LIV
-  # (€815) als LKV-arbeidsgehandicapt (€5.075). De cumulatieregel
-  # Wtl 4.1.3 verbiedt dat beide tegelijk uitgekeerd worden in hetzelfde
-  # dienstverband-jaar. Voor Sadee betekent dit: kies LKV (hogere
-  # opbrengst, langere looptijd).
-  #
-  # Deze samenloop is NIET door één van de bovenstaande scenarios gedekt
-  # — een aggregator-laag die meerdere wetten orchestreert en cumulatie-
-  # regels uitvoert is een open ontwerpvraag. Wanneer die er is, komt
-  # hier een Scenario dat asserteert dat het Financieel CV de werkgever
-  # vertelt "u krijgt LKV; LIV vervalt omdat ze niet samen mogen".
+    And output "heeft_recht_op_lks" is false
+    And output "hoogte_lks_eurocent_per_maand" equals 0

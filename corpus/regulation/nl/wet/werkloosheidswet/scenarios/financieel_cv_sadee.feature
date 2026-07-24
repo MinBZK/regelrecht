@@ -51,33 +51,20 @@ Feature: Financieel CV — werkgever-perspectief, casus Sadee
   #     aggregator-laag worden uitgerekend (zie Scenario "Samenloop").
 
   # ────────────────────────────────────────────────────────────────────
-  # LDP — Wajong artikel 2:20
-  # Werkgever heeft loondispensatie aangevraagd voor Sadee; UWV stelt
-  # vast dat haar arbeidsprestatie < minimumloon is.
-  Scenario: Sadee komt in aanmerking voor loondispensatie via Wajong art. 2:20
+  # PP — WW artikel 76a
+  # Sadee heeft geen WW-uitkering (komt uit Wajong), dus PP is niet aan
+  # de orde. Werkgever moet weten: proefplaatsing met behoud van uitkering
+  # is een WW-instrument, niet beschikbaar voor Wajongers.
+  Scenario: Sadee mag geen proefplaatsing aangaan — geen WW-uitkering
     Given the calculation date is "2026-06-01"
     And the following parameters:
-      | bsn                                                | 999990100 |
-      | is_wsw_werknemer                                   | false     |
-      | arbeidsprestatie_duidelijk_minder_dan_minimumloon  | true      |
-      | aanvraag_loondispensatie_ingediend                 | true      |
-      | heeft_recht_op_arbeidsondersteuning_wajong         | true      |
-    When I evaluate "heeft_recht_op_loondispensatie" of "wet_arbeidsongeschiktheidsvoorziening_jonggehandicapten"
+      | bsn                                            | 999990100 |
+      | heeft_recht_op_ww_uitkering                    | false     |
+      | in_staat_tot_werkzaamheden                     | true      |
+      | aansprakelijkheidsverzekering_aanwezig         | true      |
+      | niet_eerder_proefplaatsing_zelfde_werkgever    | true      |
+      | reeel_uitzicht_op_dienstbetrekking_zes_maanden | true      |
+    When I evaluate "mag_proefplaatsing_aangaan" of "werkloosheidswet"
     Then the execution succeeds
-    And output "heeft_recht_op_loondispensatie" is true
-    And output "beding_lagere_beloning_is_nietig" is true
-
-  # ────────────────────────────────────────────────────────────────────
-  # OPEN: Samenloop LIV ↔ LKV (Wtl artikel 4.1.3)
-  #
-  # De engine geeft per wet onafhankelijk "recht = true" voor zowel LIV
-  # (€815) als LKV-arbeidsgehandicapt (€5.075). De cumulatieregel
-  # Wtl 4.1.3 verbiedt dat beide tegelijk uitgekeerd worden in hetzelfde
-  # dienstverband-jaar. Voor Sadee betekent dit: kies LKV (hogere
-  # opbrengst, langere looptijd).
-  #
-  # Deze samenloop is NIET door één van de bovenstaande scenarios gedekt
-  # — een aggregator-laag die meerdere wetten orchestreert en cumulatie-
-  # regels uitvoert is een open ontwerpvraag. Wanneer die er is, komt
-  # hier een Scenario dat asserteert dat het Financieel CV de werkgever
-  # vertelt "u krijgt LKV; LIV vervalt omdat ze niet samen mogen".
+    And output "mag_proefplaatsing_aangaan" is false
+    And output "ww_uitkering_blijft_bestaan" is false

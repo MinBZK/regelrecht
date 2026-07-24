@@ -51,33 +51,24 @@ Feature: Financieel CV — werkgever-perspectief, casus Sadee
   #     aggregator-laag worden uitgerekend (zie Scenario "Samenloop").
 
   # ────────────────────────────────────────────────────────────────────
-  # LDP — Wajong artikel 2:20
-  # Werkgever heeft loondispensatie aangevraagd voor Sadee; UWV stelt
-  # vast dat haar arbeidsprestatie < minimumloon is.
-  Scenario: Sadee komt in aanmerking voor loondispensatie via Wajong art. 2:20
+  # JC + WPA — Wet WIA artikel 35
+  # KEY INSIGHT: lid 4.a sluit Wajong-gerechtigden uit van artikel 35-
+  # voorzieningen. Werkgever die JC/WPA voor Sadee verwacht moet weten:
+  # die loopt niet via WIA, maar via Wajong-eigen voorzieningen
+  # (art. 2:22 e.v. — niet in deze slice gemodelleerd).
+  Scenario: Sadee valt buiten WIA artikel 35 voor JC en WPA (lid 4.a Wajong)
     Given the calculation date is "2026-06-01"
     And the following parameters:
-      | bsn                                                | 999990100 |
-      | is_wsw_werknemer                                   | false     |
-      | arbeidsprestatie_duidelijk_minder_dan_minimumloon  | true      |
-      | aanvraag_loondispensatie_ingediend                 | true      |
-      | heeft_recht_op_arbeidsondersteuning_wajong         | true      |
-    When I evaluate "heeft_recht_op_loondispensatie" of "wet_arbeidsongeschiktheidsvoorziening_jonggehandicapten"
+      | bsn                                              | 999990100 |
+      | heeft_structurele_functionele_beperking          | true      |
+      | heeft_arbeidsverhouding_of_voorbereiding         | true      |
+      | is_wsw_werknemer                                 | false     |
+      | heeft_recht_op_arbeidsondersteuning_wajong       | true      |
+      | pwet_college_draagt_zorg_uitsluiting             | false     |
+      | aanvraag_jobcoaching_ingediend                   | true      |
+      | aanvraag_werkplekaanpassing_ingediend            | true      |
+    When I evaluate "artikel_35_van_toepassing" of "wet_werk_en_inkomen_naar_arbeidsvermogen"
     Then the execution succeeds
-    And output "heeft_recht_op_loondispensatie" is true
-    And output "beding_lagere_beloning_is_nietig" is true
-
-  # ────────────────────────────────────────────────────────────────────
-  # OPEN: Samenloop LIV ↔ LKV (Wtl artikel 4.1.3)
-  #
-  # De engine geeft per wet onafhankelijk "recht = true" voor zowel LIV
-  # (€815) als LKV-arbeidsgehandicapt (€5.075). De cumulatieregel
-  # Wtl 4.1.3 verbiedt dat beide tegelijk uitgekeerd worden in hetzelfde
-  # dienstverband-jaar. Voor Sadee betekent dit: kies LKV (hogere
-  # opbrengst, langere looptijd).
-  #
-  # Deze samenloop is NIET door één van de bovenstaande scenarios gedekt
-  # — een aggregator-laag die meerdere wetten orchestreert en cumulatie-
-  # regels uitvoert is een open ontwerpvraag. Wanneer die er is, komt
-  # hier een Scenario dat asserteert dat het Financieel CV de werkgever
-  # vertelt "u krijgt LKV; LIV vervalt omdat ze niet samen mogen".
+    And output "artikel_35_van_toepassing" is false
+    And output "heeft_recht_op_jobcoaching" is false
+    And output "heeft_recht_op_werkplekaanpassing" is false

@@ -51,33 +51,45 @@ Feature: Financieel CV — werkgever-perspectief, casus Sadee
   #     aggregator-laag worden uitgerekend (zie Scenario "Samenloop").
 
   # ────────────────────────────────────────────────────────────────────
-  # LDP — Wajong artikel 2:20
-  # Werkgever heeft loondispensatie aangevraagd voor Sadee; UWV stelt
-  # vast dat haar arbeidsprestatie < minimumloon is.
-  Scenario: Sadee komt in aanmerking voor loondispensatie via Wajong art. 2:20
+  # LIV — Wtl artikel 3 — AFGESCHAFT per 1 januari 2025 (Wet 36458)
+  # In Wtl 2025-01-01.yaml is hoofdstuk 3 verwijderd (artikelen 3.1.1
+  # t/m 3.2.2). De engine geeft op peildatum vandaag een "Output not
+  # found"-error voor heeft_recht_op_liv. Werkgever-relevantie: de tool
+  # moet ondernemers vertellen dat dit voordeel niet meer bestaat.
+  Scenario: LIV bestaat niet meer per 2025-01-01 — output is afgeschaft
     Given the calculation date is "2026-06-01"
     And the following parameters:
-      | bsn                                                | 999990100 |
-      | is_wsw_werknemer                                   | false     |
-      | arbeidsprestatie_duidelijk_minder_dan_minimumloon  | true      |
-      | aanvraag_loondispensatie_ingediend                 | true      |
-      | heeft_recht_op_arbeidsondersteuning_wajong         | true      |
-    When I evaluate "heeft_recht_op_loondispensatie" of "wet_arbeidsongeschiktheidsvoorziening_jonggehandicapten"
-    Then the execution succeeds
-    And output "heeft_recht_op_loondispensatie" is true
-    And output "beding_lagere_beloning_is_nietig" is true
+      | bsn                                          | 999990100 |
+      | jaarloon_eurocent                            | 2412800   |
+      | verloonde_uren                               | 1664      |
+      | heeft_pensioengerechtigde_leeftijd_bereikt   | false     |
+    When I evaluate "heeft_recht_op_liv" of "wet_tegemoetkomingen_loondomein"
+    Then the execution fails with "Output 'heeft_recht_op_liv' not found in law 'wet_tegemoetkomingen_loondomein'"
 
   # ────────────────────────────────────────────────────────────────────
-  # OPEN: Samenloop LIV ↔ LKV (Wtl artikel 4.1.3)
-  #
-  # De engine geeft per wet onafhankelijk "recht = true" voor zowel LIV
-  # (€815) als LKV-arbeidsgehandicapt (€5.075). De cumulatieregel
-  # Wtl 4.1.3 verbiedt dat beide tegelijk uitgekeerd worden in hetzelfde
-  # dienstverband-jaar. Voor Sadee betekent dit: kies LKV (hogere
-  # opbrengst, langere looptijd).
-  #
-  # Deze samenloop is NIET door één van de bovenstaande scenarios gedekt
-  # — een aggregator-laag die meerdere wetten orchestreert en cumulatie-
-  # regels uitvoert is een open ontwerpvraag. Wanneer die er is, komt
-  # hier een Scenario dat asserteert dat het Financieel CV de werkgever
-  # vertelt "u krijgt LKV; LIV vervalt omdat ze niet samen mogen".
+  # LKV — Wtl artikel 2.1 + anti-cumulatie art. 4.1 lid 3
+  # Sadee voldoet aan twee categorieën: b (arbeidsgehandicapt — Wajong)
+  # en c (banenafspraak). Beide tegemoetkomingen worden berekend; het
+  # hoogste bedrag wordt verstrekt (art. 4.1 lid 3):
+  #   b = MIN(305 × 1664, 600000) = 507520 eurocent (€5.075,20)
+  #   c = MIN(101 × 1664, 200000) = 168064 eurocent (€1.680,64)
+  # → b wint omdat het de hoogste berekende tegemoetkoming is, niet door
+  # IF-volgorde maar door de hoogte-vergelijking.
+  Scenario: Sadee krijgt LKV-arbeidsgehandicapt — hoogste tegemoetkoming wint (art. 4.1.3)
+    Given the calculation date is "2026-06-01"
+    And the following parameters:
+      | bsn                                          | 999990100 |
+      | verloonde_uren                               | 1664      |
+      | is_oudere_werknemer                          | false     |
+      | is_arbeidsgehandicapte_werknemer             | true      |
+      | is_herplaatsen_arbeidsgehandicapte           | false     |
+      | is_doelgroep_banenafspraak                   | true      |
+      | heeft_pensioengerechtigde_leeftijd_bereikt   | false     |
+      | heeft_loonaangifte_verzoek_ingediend         | true      |
+    When I evaluate "heeft_recht_op_lkv" of "wet_tegemoetkomingen_loondomein"
+    Then the execution succeeds
+    And output "heeft_recht_op_lkv" is true
+    And output "categorie_lkv" equals "arbeidsgehandicapte_werknemer"
+    And output "tegemoetkoming_arbeidsgehandicapte_eurocent" equals 507520
+    And output "tegemoetkoming_banenafspraak_eurocent" equals 168064
+    And output "hoogte_lkv_per_jaar_eurocent" equals 507520
