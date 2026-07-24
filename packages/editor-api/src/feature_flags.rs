@@ -10,7 +10,7 @@ use serde::Deserialize;
 use crate::state::AppState;
 
 /// Key of the GitHub user-OAuth flag (PR #887). Shared with the write path
-/// (`github_oauth::write_requires_user_token`), which reads this flag to
+/// (`credentials::write_requires_user_token`), which reads this flag to
 /// decide whether traject writes must carry the acting user's own token.
 pub const GITHUB_USER_OAUTH: &str = "github.user_oauth";
 
@@ -36,7 +36,7 @@ static DEFAULTS: LazyLock<HashMap<String, bool>> = LazyLock::new(|| {
         // GitHub user-OAuth (spike, PR #887). One switch, two effects: it
         // shows the "Koppel GitHub-account" affordance in the account menu
         // AND makes traject writes require the acting user's own GitHub token
-        // (`github_oauth::write_requires_user_token`) — linking is never
+        // (`credentials::write_requires_user_token`) — linking is never
         // offered-but-inert. Default off so the spike stays invisible until
         // opted in. Same allow-list rule: without this key the toggle PUT
         // 400s and the frontend silently reverts it, so the toggle would
