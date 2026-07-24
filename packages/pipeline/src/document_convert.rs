@@ -425,9 +425,9 @@ fn deterministic_tool_for(ext: &str) -> Option<DeterministicTool> {
 }
 
 /// Whether a deterministic converter handles `ext`. Formats without one take the
-/// agentic (LLM) fallback route instead. Public so the upload boundary and tests
-/// can reason about which route a newly-accepted format will follow without
-/// spawning a tool.
+/// agentic (LLM) fallback route instead. Public so tests (and any future caller)
+/// can reason about which route a given format will follow without spawning a
+/// tool.
 pub fn has_deterministic_converter(ext: &str) -> bool {
     deterministic_tool_for(ext).is_some()
 }
