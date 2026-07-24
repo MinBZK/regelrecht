@@ -208,7 +208,7 @@ jobs:
       # Node-only, reads source files (no astro build).
       - name: Setup Node.js
         if: needs.changes.outputs.ci == 'true'
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
         with:
           node-version: '22'
 
@@ -376,7 +376,7 @@ jobs:
 
       - name: Setup Node.js
         if: needs.changes.outputs.ci == 'true'
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
         with:
           node-version: '22'
           registry-url: https://npm.pkg.github.com
@@ -486,7 +486,7 @@ jobs:
             "cargo-deny-${CARGO_DENY_VERSION}-x86_64-unknown-linux-musl/cargo-deny"
 
       - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
         with:
           node-version: '22'
           registry-url: https://npm.pkg.github.com
@@ -600,7 +600,7 @@ jobs:
 
       - name: Setup Node.js
         if: needs.changes.outputs.docs == 'true'
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
         with:
           node-version: '22'
           cache: 'npm'
