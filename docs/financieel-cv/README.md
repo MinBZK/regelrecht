@@ -23,9 +23,9 @@ zie ook `dataminimalisatie.md`.
 | PP       | Proefplaatsing                 | Werkloosheidswet (WW)                                                              | BWBR0004045  | 76a lid 1-5        | 2024-01-01 | 4 |
 | _(LIV)_  | _Lage-inkomensvoordeel — afgeschaft per 2025-01-01_ | _Wtl — hoofdstuk 3_                                  | _BWBR0037522_ | _3.1 + 3.2 (vervallen)_ | _historisch_ | _5 (historisch)_ |
 
-Totaal: **103/103 BDD-scenarios** groen via `just bdd`, waaronder
+Totaal: **127/127 BDD-scenarios** groen via `just bdd`, waaronder
 14 integraal-scenarios voor casus Sadee (werkgever-perspectief) en
-Koen (werknemer-perspectief) in `features/financieel_cv_*.feature`.
+Koen (werknemer-perspectief) in `corpus/regulation/nl/wet/*/scenarios/financieel_cv_*.feature`.
 
 ### Toelichting op peildata
 
@@ -494,7 +494,7 @@ juridische context per regeling.)
 - `just lint` — groen
 - `just validate` — groen (alle YAMLs schema v0.5.1)
 - `just test` — groen
-- `just bdd` — **103/103 scenarios** (648 steps)
+- `just bdd` — **127/127 scenarios** (911 steps)
 
 `just check` faalt op `admin-test` omdat dat Docker (testcontainers)
 vereist; geen regressie van deze sessie.

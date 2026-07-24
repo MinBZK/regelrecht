@@ -453,7 +453,7 @@ modellering- of engine-laag-punten.
 
 ### Persona-check
 
-De persona-scenario's (`features/financieel_cv_koen.feature` = werknemer,
+De persona-scenario's (`corpus/regulation/nl/wet/participatiewet/scenarios/financieel_cv_koen.feature` = werknemer,
 `financieel_cv_sadee.feature` = werkgever) zijn intern consistent en hun
 verwachte uitkomsten matchen de wetslogica over alle zeven regelingen
 (NRP, LKV, LIV, LKS, LDP, JC/WPA, PP). Keten-checkpoints asserten ook

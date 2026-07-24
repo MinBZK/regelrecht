@@ -1,0 +1,35 @@
+---
+title: Financieel CV — profielen van de twee persona's (fictief)
+---
+flowchart LR
+  classDef kopK fill:#fff3e0,stroke:#e65100,stroke-width:4px,color:#000;
+  classDef kopS fill:#ede7f6,stroke:#4527a0,stroke-width:4px,color:#000;
+  classDef vak fill:#ffffff,stroke:#607d8b,stroke-width:2px,color:#000;
+  classDef rol fill:#e0f2f1,stroke:#00695c,stroke-width:3px,color:#000;
+  classDef geen fill:#f5f5f5,stroke:#9e9e9e,stroke-width:2px,stroke-dasharray: 5 5,color:#616161;
+
+  subgraph K["<b>KOEN</b> &mdash; Participatiewet-route"]
+    direction TB
+    KP["<b>Koen &middot; 42 jaar</b><br/>geboren 15-03-1984"]:::kopK
+    KA["<b>Situatie</b><br/>Participatiewet-uitkering<br/>via de gemeente aan het werk"]:::vak
+    KB["<b>Werk</b><br/>sinds 1 januari 2026<br/>logistiek MKB<br/>&euro;12,00 per uur<br/>32 uur per week &rarr; <b>1664 uur/jaar</b><br/>jaarloon <b>&euro;19.968</b>"]:::vak
+    KC["<b>Arbeidsvermogen</b><br/>loonwaarde <b>60%</b> van WML<br/>kan het minimumloon niet verdienen"]:::vak
+    KD["<b>Status</b><br/>in doelgroepregister banenafspraak<br/>loonkostensubsidie toegekend"]:::vak
+    KE["<b>Niet van toepassing</b><br/>geen Wajong &middot; geen WIA<br/>geen WW &middot; geen WSW<br/>geen beschut werk"]:::geen
+    KF["<b>Rol:</b> werknemer<br/><b>Vraagsteller in deze casus:</b><br/>de werknemer z&eacute;lf<br/><i>&rdquo;wat levert mijn dienstverband op?&rdquo;</i>"]:::rol
+    KP ~~~ KA ~~~ KB ~~~ KC ~~~ KD ~~~ KE ~~~ KF
+  end
+
+  subgraph S["<b>SADEE</b> &mdash; Wajong-route"]
+    direction TB
+    SP["<b>Sadee &middot; 28 jaar</b><br/>geboren 15-05-1996"]:::kopS
+    SA["<b>Situatie</b><br/>Wajong-uitkering<br/>arbeidsondersteuning via UWV"]:::vak
+    SB["<b>Werk</b><br/>sinds 1 januari 2024<br/>&euro;14,50 per uur<br/>32 uur per week &rarr; <b>1664 uur/jaar</b><br/>jaarloon <b>&euro;24.128</b>"]:::vak
+    SC["<b>Arbeidsvermogen</b><br/>loonwaarde <b>70%</b> van WML<br/>arbeidsprestatie duidelijk<br/>minder dan minimumloon"]:::vak
+    SD["<b>Status</b><br/>in doelgroepregister banenafspraak<br/>arbeidsgehandicapte werknemer"]:::vak
+    SE["<b>Niet van toepassing</b><br/>geen Participatiewet-doelgroep<br/>geen WIA &middot; geen WW &middot; geen WSW"]:::geen
+    SF["<b>Rol:</b> werknemer<br/><b>Vraagsteller in deze casus:</b><br/>haar (toekomstige) <b>werkgever</b> (MKB)<br/><i>&rdquo;wat krijg ik als ik Sadee aanneem?&rdquo;</i>"]:::rol
+    SP ~~~ SA ~~~ SB ~~~ SC ~~~ SD ~~~ SE ~~~ SF
+  end
+
+  K ~~~ S

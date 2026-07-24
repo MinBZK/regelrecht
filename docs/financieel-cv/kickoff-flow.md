@@ -128,7 +128,7 @@ draaiende code die per persoon doorrekent.
    just bdd
    ```
 
-   103/103 scenarios groen, ~5 seconden. Niet papier, runnable.
+   127/127 scenarios groen, ~5 seconden. Niet papier, runnable.
 
 ---
 
@@ -217,7 +217,7 @@ git checkout packages/editor-api/src/feature_flags.rs   # demo-only patch revert
 # Validatie van alle YAMLs
 just validate
 
-# Volledige BDD-suite (103/103 scenarios)
+# Volledige BDD-suite (127/127 scenarios)
 just bdd
 
 # BDD met traces (nuttig om persona-uitkomst toe te lichten)

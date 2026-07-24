@@ -16,7 +16,7 @@ flowchart TB
       WAJ["<b>Wajong</b> 2:20<br/>LDP<br/><i>BWBR0008657</i>"]:::wet
       PWET["<b>Pwet</b> 10c + 10d<br/>LKS<br/><i>BWBR0015703</i>"]:::wet
       WTL["<b>Wtl</b> 2.10&ndash;2.13<br/>LKV-banenafspraak<br/><i>BWBR0037522</i>"]:::wet
-      WFSV["<b>Wfsv</b> 38b + 38f<br/>doelgroepregister + quotum<br/><i>BWBR0017745</i>"]:::wet
+      WFSV["<b>Wfsv</b> 38b + 38f<br/>doelgroepregister banenafspraak<br/>38b.1.a&ndash;f + 38b.2 + 38b.6<br/><i>BWBR0017745</i>"]:::wet
     end
 
     subgraph AMVB_LVL["<b>AMvB / MIN. REGELING</b> &mdash; gedelegeerd"]
@@ -52,3 +52,8 @@ flowchart TB
   WFSV -. "38f.3 + 38f.4 AMvB" .-> AMVB_38F
   PWET -. "10c + 8a verordeningsplicht" .-> GEM_VOR
   PWET -. "10d loonwaardevaststelling" .-> GEM_BEL
+
+  %% CROSS-LAW: Wfsv 38b is de gedeelde grondslag. Eenmaal gemodelleerd,
+  %% via source.regulation aangeroepen door NRP en LKV.
+  WFSV == "doelgroepregister &rarr; lid 2.e" ==> ZW
+  WFSV == "doelgroepregister &rarr; categorie c" ==> WTL

@@ -1,0 +1,54 @@
+---
+title: Financieel CV — casus Sadee (Wajong/banenafspraak-route)
+---
+flowchart LR
+  classDef persona fill:#fff3e0,stroke:#e65100,stroke-width:3px,color:#000;
+  classDef status fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#000;
+  classDef grondslag fill:#f3e5f5,stroke:#7b1fa2,stroke-width:3px,color:#000;
+  classDef ja fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:#000;
+  classDef nee fill:#f5f5f5,stroke:#9e9e9e,stroke-width:2px,stroke-dasharray: 5 5,color:#616161;
+  classDef weg fill:#ffe0b2,stroke:#e65100,stroke-width:2px,stroke-dasharray: 4 3,color:#000;
+  classDef elders fill:#e0f2f1,stroke:#00695c,stroke-width:2px,stroke-dasharray: 4 3,color:#000;
+
+  SADEE["<b>Sadee</b> &mdash; 28 jaar<br/>Wajong-uitkering / banenafspraak<br/>loonwaarde <b>70%</b> WML<br/>1664 verloonde uren"]:::persona
+
+  subgraph ST["Statussen &mdash; de feiten"]
+    direction TB
+    S_WAJ["Wajong-gerechtigd<br/>(arbeidsondersteuning)"]:::status
+    S_BAN["In doelgroepregister<br/>banenafspraak"]:::status
+    S_AP["Arbeidsprestatie<br/>&lt; minimumloon"]:::status
+    S_GEEN["G&eacute;&eacute;n Pwet-doelgroep<br/>g&eacute;&eacute;n WW"]:::status
+  end
+
+  REG38B["<b>Wfsv 38b</b><br/>doelgroepregister<br/>banenafspraak<br/><i>UWV</i>"]:::grondslag
+
+  subgraph UIT["Uitkomsten Regelrecht"]
+    direction TB
+    NRP["<b>NRP</b> &mdash; Ziektewet 29b lid 2.a + 2.e<br/>RECHT &middot; duur <b>onbeperkt</b><br/><i>UWV</i>"]:::ja
+    LDP["<b>LDP</b> &mdash; Wajong 2:20<br/>RECHT &middot; loonbeding <b>nietig</b><br/><i>UWV</i>"]:::ja
+    LKV["<b>LKV</b> &mdash; Wtl categorie b<br/>RECHT &middot; <b>&euro;5.075,20 / jaar</b><br/><i>hoogste wint (art. 4.1 lid 3)</i>"]:::ja
+    JC["<b>JC + WPA</b> &mdash; Wet WIA 35<br/>GEEN RECHT<br/><i>lid 4.a sluit Wajong uit</i>"]:::nee
+    WAJVZ["Wajong-eigen voorzieningen<br/>art. 2:22 e.v.<br/><i>NIET gemodelleerd</i>"]:::elders
+    LKS["<b>LKS</b> &mdash; Pwet 10c + 10d<br/>GEEN RECHT<br/><i>geen Pwet-doelgroep</i>"]:::nee
+    PP["<b>PP</b> &mdash; WW 76a<br/>GEEN RECHT<br/><i>geen WW-uitkering</i>"]:::nee
+    LIV["<b>LIV</b> &mdash; Wtl hfdst. 3<br/>BESTAAT NIET MEER<br/><i>afgeschaft 2025 &mdash; Wet 36458</i>"]:::weg
+  end
+
+  SADEE --> S_WAJ
+  SADEE --> S_BAN
+  SADEE --> S_AP
+  SADEE --> S_GEEN
+
+  S_BAN ==> REG38B
+  S_WAJ -- "38b.1.c arbeidsondersteuning" --> REG38B
+
+  S_WAJ == "lid 2.a" ==> NRP
+  REG38B == "lid 2.e" ==> NRP
+  S_AP ==> LDP
+  S_WAJ == "categorie b: arbeidsgehandicapt" ==> LKV
+  REG38B -. "categorie c &euro;1.680,64 &mdash; verliest" .-> LKV
+
+  S_WAJ -- "lid 4.a uitsluiting" --> JC
+  JC == "doorverwijzing" ==> WAJVZ
+  S_GEEN -. "niet van toepassing" .-> LKS
+  S_GEEN -. "niet van toepassing" .-> PP

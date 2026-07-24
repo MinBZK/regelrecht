@@ -7,7 +7,7 @@ flowchart LR
     direction TB
     WAJ["<b>Wajong-status</b><br/>Wajong 1a:1<br/><i>UWV</i>"]:::bron_in
     PW["<b>Pwet-LKS-doelgroep</b><br/>Pwet 6.e + 10c<br/><i>gemeente</i>"]:::bron_in
-    BAN["<b>Banenafspraak-register</b><br/>Wfsv 38b.1.d/e/f + 38b.2<br/><i>UWV</i>"]:::bron_in
+    BAN["<b>Doelgroepregister banenafspraak</b><br/>Wfsv 38b.1.a&ndash;f + 38b.2 + 38b.6<br/><i>UWV</i>"]:::bron_in
     P10B["<b>Beschut werk</b><br/>Pwet 10b lid 1<br/><i>gemeente</i>"]:::bron_in
     WIA["Wet WIA-status<br/>WIA-uitkering of &lt;35% AO<br/><i>UWV</i>"]:::bron_uit
     WSW["Wsw-indicatie<br/>Wsw art. 11<br/><i>UWV</i>"]:::bron_uit
@@ -28,9 +28,10 @@ flowchart LR
   PW ==> LKS
   PW -- "lid 2.e" --> NRP
   PW -- "sub 3&deg;" --> LKV
-  BAN -- "lid 11" --> NRP
-  BAN -- "sub 4&deg;-6&deg;" --> LKV
+  BAN -- "lid 2.e" --> NRP
+  BAN -- "categorie c" --> LKV
   P10B -- "lid 2.f" --> NRP
+  P10B -. "hoort NIET in 38b" .-x BAN
   WIA -. "lid 1.a/b" .-> NRP
   WSW -. "lid 2.b/d" .-> NRP
   WSW -. "sub 2&deg;" .-> LKV

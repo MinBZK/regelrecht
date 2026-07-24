@@ -22,6 +22,7 @@ flowchart TB
     WTL["Wtl<br/>art. 2 + 3<br/>BWBR0037522"]:::wet
     PWET["Participatiewet<br/>art. 10c + 10d<br/>BWBR0015703"]:::wet
     WW["WW<br/>art. 76a<br/>BWBR0004045"]:::wet
+    WFSV["Wfsv<br/>art. 38b<br/>doelgroepregister banenafspraak<br/>BWBR0017745"]:::wet
   end
 
   subgraph LAGERE["Lagere regelgeving (Rijk)"]
@@ -30,6 +31,7 @@ flowchart TB
     MR_LIV["MIN. REGELING<br/>Regeling LIV<br/><i>uurloongrenzen jaarlijks</i><br/><i>onder Wtl art. 3.1 lid 4</i>"]:::mr
     MR_WGL["MIN. REGELING<br/>Regeling werkgevers-<br/>lastenvergoeding<br/><i>onder Pwet art. 10d lid 4</i>"]:::mr
     BR_LDP["BELEIDSREGEL<br/>UWV-Beleidsregels<br/>Loondispensatie<br/><i>onder Wajong art. 2:20</i>"]:::beleid
+    AMVB_38B["AMVB<br/>indicatie doelgroepregister<br/><i>onder Wfsv 38b.1.d + 38b.3</i><br/><i>(nog niet geharvest)</i>"]:::amvb
   end
 
   subgraph PROCES["Procesrecht (overkoepelend)"]
@@ -49,6 +51,12 @@ flowchart TB
   WTL -- "art. 3.1 lid 4 jaarlijkse aanpassing" --> MR_LIV
   PWET -- "art. 10d lid 4 vergoeding werkgeverslasten" --> MR_WGL
   WAJ -- "art. 2:20 lid 1 'naar evenredigheid'" --> BR_LDP
+  WFSV -- "38b.1.d + 38b.3 AMvB-grondslag" --> AMVB_38B
+
+  %% Wfsv 38b is de GEDEELDE GRONDSLAG: eenmaal gemodelleerd, cross-law
+  %% aangeroepen. NRP en LKV hangen hun banenafspraak-status hieraan op.
+  WFSV == "doelgroepregister &rarr; lid 2.e" ==> ZW
+  WFSV == "doelgroepregister &rarr; categorie c" ==> WTL
 
   %% Uitvoering consumeert WET + lagere regelgeving
   ZW --> UWV
@@ -57,6 +65,7 @@ flowchart TB
   WAJ --> UWV
   BR_LDP --> UWV
   WW --> UWV
+  WFSV --> UWV
 
   WTL --> BD
   MR_LIV --> BD
@@ -114,6 +123,26 @@ flowchart TB
 | **LDP**  | Wajong 2:20 lid 1 + 2     | UWV-Beleidsregels loondispensatie | UWV |
 | **JC**   | Wet WIA 35 lid 1, 2.d, 4  | Reïntegratiebesluit (AMvB) | UWV |
 | **WPA**  | Wet WIA 35 lid 1, 2.c, 4 + 36 | Reïntegratiebesluit (AMvB) | UWV |
+| _(grondslag)_ **Doelgroepregister banenafspraak** | Wfsv 38b lid 1 a–f, 2, 6 | AMvB-indicatie 38b.1.d + 38b.3 (nog niet geharvest) | UWV |
+
+### De banenafspraak zit niet in een eigen wet
+
+Het **doelgroepregister banenafspraak** is bij ons niet als losse "Wet
+banenafspraak" gemodelleerd, maar op de plek waar de wet het regelt: **Wfsv
+artikel 38b** (BWBR0017745). Eén keer gemodelleerd, door de andere regelingen
+**cross-law aangeroepen** — de **NRP** (Ziektewet 29b lid 2.e) en de **LKV**
+(Wtl, categorie banenafspraak) hangen hun banenafspraak-status hieraan op.
+
+Wat 38b in onze YAML vangt:
+
+- **Opname-gronden 38b.1 a–f** (Pwet-LKS-toeleiding, WSW-indicatie,
+  Wajong-arbeidsondersteuning, AMvB-indicatie, eigen-verzoek-WML-route), plus
+  **38b.2** (UWV-oordeel jonggehandicapt) en **38b.6** (blijf-grond).
+- Kern-outputs: `behoort_tot_doelgroepregister_banenafspraak`,
+  `datum_opname_doelgroepregister` + `grond_opname` (relevant voor de
+  LKV-driejaarstermijn), en `vaststelling_door` (UWV).
+- Een expliciete uitsluiting: **beschut werk (Pwet 10b) hoort níét in het
+  register** — dat is een apart traject, geen arbeidsbeperkte in de zin van 38b.
 
 ## Open delegaties (`open_term`-blokken in YAML)
 

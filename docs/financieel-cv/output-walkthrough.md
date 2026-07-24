@@ -277,7 +277,7 @@ zie YAML.)
 > sinds 2026-05-11 een aparte `2025-01-01.yaml` zonder hoofdstuk 3.
 > Op peildatum vandaag geeft de engine een "Output not found"-error
 > voor `heeft_recht_op_liv` — zie de Sadee- en Koen-scenarios in
-> `features/financieel_cv_*.feature` voor expliciete assertie.
+> `corpus/regulation/nl/wet/*/scenarios/financieel_cv_*.feature` voor expliciete assertie.
 >
 > Deze sectie blijft als historische uitleg behouden voor sessies waar
 > ondernemers vragen "wat was LIV ook alweer?" of voor reconstructie
