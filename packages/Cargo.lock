@@ -4067,6 +4067,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "regelrecht-github"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "reqwest 0.13.2",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
 name = "regelrecht-harvester"
 version = "0.1.0"
 dependencies = [

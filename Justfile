@@ -67,7 +67,7 @@ conformance:
 # Run all quality checks (format + lint + check + validate + validate-annotations + tests)
 # Note: pipeline-integration-test excluded — it requires Docker (testcontainers)
 # Note: the conformance suite runs as part of `test` (cargo test --all-features).
-check: format lint build-check validate validate-annotations test harvester-test pipeline-test admin-fmt admin-lint admin-check admin-test editor-api-fmt editor-api-lint editor-api-check
+check: format lint build-check validate validate-annotations test github-test harvester-test pipeline-test admin-fmt admin-lint admin-check admin-test editor-api-fmt editor-api-lint editor-api-check
 
 # --- Tests ---
 
@@ -89,6 +89,10 @@ bdd-trace:
     rm -rf trace_output
     cd packages/engine && {{ci_flags}} TRACE=1 cargo test --test bdd -- --nocapture
 
+# Run regelrecht-github crate tests (shared GitHub REST client)
+github-test:
+    cd packages && {{ci_flags}} cargo test -p regelrecht-github
+
 # Run harvester tests
 harvester-test:
     cd packages/harvester && {{ci_flags}} cargo test
@@ -101,8 +105,8 @@ pipeline-test:
 pipeline-integration-test:
     cd packages/pipeline && {{ci_flags}} cargo test --test '*'
 
-# Run all tests (engine + harvester + pipeline unit + pipeline integration + editor-api)
-test-all: test harvester-test pipeline-test pipeline-integration-test editor-api-test
+# Run all tests (engine + github + harvester + pipeline unit + pipeline integration + editor-api)
+test-all: test github-test harvester-test pipeline-test pipeline-integration-test editor-api-test
 
 # --- Mutation testing ---
 
