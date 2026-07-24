@@ -82,8 +82,8 @@ merge). The format is **Conventional Commits**: `type(scope): subject`, where
 - **Allowed types**: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`,
   `test`, `chore`, `build`, `ci`.
 - **Allowed scopes** (optional): `engine`, `admin`, `pipeline`, `harvester`,
-  `editor`, `corpus`, `frontend`, `lawmaking`, `docs`, `grafana`, `ci`,
-  `schema`, `deps`, `dev`. An unlisted scope fails the lint.
+  `editor`, `corpus`, `github`, `frontend`, `lawmaking`, `docs`, `grafana`,
+  `ci`, `schema`, `deps`, `dev`. An unlisted scope fails the lint.
 - **The subject MUST start with a lowercase letter** (`subjectPattern:
   ^[a-z].*$`). This is the easiest rule to trip on: `docs: RFC-…` fails because
   "RFC" is uppercase — write `docs: verwijzingen naar RFC's …` instead. Editing
