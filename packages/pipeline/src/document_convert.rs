@@ -1,10 +1,11 @@
-//! Document-convert jobs: turn an uploaded PDF/Word document into a clean
+//! Document-convert jobs: turn an uploaded document of any format into a clean
 //! markdown werkdocument.
 //!
 //! Known formats (docx/office via `pandoc`, PDF via `pdftotext`) are converted
 //! deterministically with a real tool — reliable, offline, and keeping the
-//! untrusted document away from the Bash-enabled LLM. Only when no tool fits
-//! does it fall back to the LLM agent subprocess that enrich uses (see
+//! untrusted document away from the Bash-enabled LLM. Any other format (the
+//! upload boundary no longer gates on an allow-list) falls back to the LLM
+//! agent subprocess that enrich uses (see
 //! [`crate::enrich::run_llm_subprocess`]), which decides for itself how to
 //! convert (pick a tool, or read it directly). This module owns the payload
 //! type, the transient upload storage helpers, the status-list query for the
@@ -401,6 +402,36 @@ pub async fn execute_document_convert(
     result
 }
 
+/// The deterministic command-line converter that handles a given extension.
+/// `pandoc` reads the office/markup formats; `pdftotext` (poppler) reads PDF.
+enum DeterministicTool {
+    Pandoc,
+    PdfToText,
+}
+
+/// The deterministic converter for `ext`, or `None` when no tool fits and the
+/// agentic (LLM) fallback must run. Single source of truth for "which formats
+/// take the fast, offline route" — both [`try_deterministic_convert`] and
+/// [`has_deterministic_converter`] read it, so the routing decision and the
+/// command dispatch can never drift apart.
+fn deterministic_tool_for(ext: &str) -> Option<DeterministicTool> {
+    match ext {
+        // pandoc reads these natively and emits GitHub-flavored Markdown.
+        "docx" | "odt" | "rtf" | "html" | "htm" | "epub" | "fb2" => Some(DeterministicTool::Pandoc),
+        // pandoc cannot read PDF; poppler's pdftotext extracts the text layer.
+        "pdf" => Some(DeterministicTool::PdfToText),
+        _ => None,
+    }
+}
+
+/// Whether a deterministic converter handles `ext`. Formats without one take the
+/// agentic (LLM) fallback route instead. Public so the upload boundary and tests
+/// can reason about which route a newly-accepted format will follow without
+/// spawning a tool.
+pub fn has_deterministic_converter(ext: &str) -> bool {
+    deterministic_tool_for(ext).is_some()
+}
+
 /// Try to convert `input_file` to markdown at `output_path` with a deterministic
 /// command-line tool, chosen by extension. Returns `Some(markdown)` on success,
 /// or `None` when the format is not handled, the tool is absent, it exits
@@ -414,9 +445,8 @@ pub(crate) async fn try_deterministic_convert(
     ext: &str,
     output_path: &Path,
 ) -> Option<String> {
-    let mut cmd = match ext {
-        // pandoc reads these natively and emits GitHub-flavored Markdown.
-        "docx" | "odt" | "rtf" | "html" | "htm" | "epub" | "fb2" => {
+    let mut cmd = match deterministic_tool_for(ext)? {
+        DeterministicTool::Pandoc => {
             let mut c = tokio::process::Command::new("pandoc");
             c.arg(input_file)
                 .arg("-t")
@@ -426,13 +456,11 @@ pub(crate) async fn try_deterministic_convert(
                 .arg(output_path);
             c
         }
-        // pandoc cannot read PDF; poppler's pdftotext extracts the text layer.
-        "pdf" => {
+        DeterministicTool::PdfToText => {
             let mut c = tokio::process::Command::new("pdftotext");
             c.arg("-layout").arg(input_file).arg(output_path);
             c
         }
-        _ => return None,
     };
 
     match cmd.status().await {
@@ -729,5 +757,115 @@ mod tests {
             .await
             .is_none());
         assert!(!output.exists());
+    }
+
+    #[test]
+    fn routes_formats_between_deterministic_and_agentic() {
+        // Formats a real tool handles take the fast, offline route. This covers
+        // the newly-accepted office/markup formats (odt/rtf/html/epub/…) that the
+        // upload boundary used to reject before the allow-list was dropped.
+        for ext in ["docx", "odt", "rtf", "html", "htm", "epub", "fb2", "pdf"] {
+            assert!(
+                has_deterministic_converter(ext),
+                "{ext} should take the deterministic route"
+            );
+        }
+        // Everything else — images, spreadsheets, presentations, unknown/binary
+        // junk — has no deterministic tool and falls back to the agentic
+        // (enricher/LLM) converter, which returns a reviewable markdown task.
+        for ext in ["png", "jpg", "xlsx", "pptx", "csv", "bin", "", "exe"] {
+            assert!(
+                !has_deterministic_converter(ext),
+                "{ext} should take the agentic fallback route"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn convert_in_dir_uses_agentic_fallback_for_new_nonconvertible_format() {
+        let dir = tempfile::tempdir().unwrap();
+        // A `.pptx` is a format the upload boundary now accepts but no
+        // deterministic tool here reads, so the agentic fallback (FakeConverter)
+        // must run and produce the reviewable markdown.
+        let upload = Upload {
+            filename: "deck.pptx".to_string(),
+            content_type:
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                    .to_string(),
+            bytes: b"raw slide bytes".to_vec(),
+        };
+        let converter = FakeConverter {
+            markdown: "# Deck\n\nSlide one.\n".to_string(),
+        };
+        let md = convert_in_dir(
+            dir.path(),
+            &upload,
+            "deck.md",
+            &EnrichConfig::for_test(crate::enrich::LlmProvider::Claude {
+                path: "claude".into(),
+                model: None,
+            }),
+            &converter,
+        )
+        .await
+        .unwrap();
+        assert_eq!(md, "# Deck\n\nSlide one.\n");
+    }
+
+    /// End-to-end deterministic route for a newly-accepted format (`.html`): when
+    /// `pandoc` is present the converter is never consulted, proving the fast
+    /// route is taken. Skipped when `pandoc` is absent (it lives in the
+    /// enrich-worker image but not every test host), so the suite never depends
+    /// on an external tool being installed.
+    #[tokio::test]
+    async fn convert_in_dir_uses_deterministic_route_for_new_html_format() {
+        if tokio::process::Command::new("pandoc")
+            .arg("--version")
+            .output()
+            .await
+            .map(|o| !o.status.success())
+            .unwrap_or(true)
+        {
+            eprintln!("skipping: pandoc not installed");
+            return;
+        }
+
+        struct PanickingConverter;
+        #[async_trait::async_trait]
+        impl DocumentConverter for PanickingConverter {
+            async fn convert(
+                &self,
+                _input_file: &Path,
+                _work_dir: &Path,
+                _output_path: &Path,
+                _config: &EnrichConfig,
+            ) -> Result<()> {
+                panic!("the agentic converter must not run for a deterministic format");
+            }
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let upload = Upload {
+            filename: "page.html".to_string(),
+            content_type: "text/html".to_string(),
+            bytes: b"<h1>Titel</h1><p>Inhoud.</p>".to_vec(),
+        };
+        let md = convert_in_dir(
+            dir.path(),
+            &upload,
+            "page.md",
+            &EnrichConfig::for_test(crate::enrich::LlmProvider::Claude {
+                path: "claude".into(),
+                model: None,
+            }),
+            &PanickingConverter,
+        )
+        .await
+        .unwrap();
+        // pandoc turns the <h1> into an ATX heading.
+        assert!(
+            md.contains("Titel"),
+            "expected converted markdown, got: {md}"
+        );
     }
 }
