@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "admin",
+    "arch-extract",
     "auth",
     "corpus",
     "editor-api",

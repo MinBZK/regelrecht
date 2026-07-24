@@ -535,3 +535,16 @@ docs-preview:
 # Run the accessibility gate (build + mermaid-alt + heading-order + pa11y-ci htmlcs+axe, WCAG 2.1 AA)
 docs-a11y:
     cd docs && npm run a11y
+
+# --- Architecture model ---
+
+# Regenerate the code-derived architecture model
+# (packages/arch-extract → docs/src/content/architecture/model.json). Run this
+# after changing crate structure and commit the result.
+arch-generate:
+    cd packages && {{ci_flags}} cargo run --quiet -p regelrecht-arch-extract -- generate
+
+# Staleness gate: fail if model.json is out of date with the code. This is the
+# primitive a CI drift-check wraps (regenerate + `git diff --exit-code`).
+arch-check:
+    cd packages && {{ci_flags}} cargo run --quiet -p regelrecht-arch-extract -- check
