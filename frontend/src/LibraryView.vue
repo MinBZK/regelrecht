@@ -1565,7 +1565,7 @@ watch(activeTrajectRef, () => {
              Stond hij in het werkdocumenten-paneel, dan is `docFileInput` in
              taken-modus null en klikt `onUpload()` stilletjes niets aan -
              optional chaining slikt dat zonder een kik. -->
-        <input ref="docFileInput" type="file" accept=".pdf,.doc,.docx" hidden @change="onDocFileChange" />
+        <input ref="docFileInput" type="file" accept=".pdf,.doc,.docx,.md,.markdown" hidden @change="onDocFileChange" />
 
         <!-- Full-page "no usable content" states (matching EditorView): shown
              instead of the split-view so the error / CTA spans the full width,
@@ -1770,7 +1770,7 @@ watch(activeTrajectRef, () => {
                     ></nldd-icon-button>
                     <nldd-menu id="werkdoc-add-menu" anchor="werkdoc-add-btn">
                       <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="onDocNew"></nldd-menu-item>
-                      <nldd-menu-item icon="upload-to-cloud" text="PDF of DOCX uploaden…" @select="onDocUpload"></nldd-menu-item>
+                      <nldd-menu-item icon="upload-to-cloud" text="Document uploaden (PDF, Word of Markdown)…" @select="onDocUpload"></nldd-menu-item>
                     </nldd-menu>
                   </nldd-toolbar-item>
                 </nldd-toolbar>

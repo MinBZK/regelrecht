@@ -76,6 +76,32 @@ describe('useTrajectDocuments', () => {
     ).toBe(true);
   });
 
+  it('handles a markdown pass-through upload (201) the same as a conversion (202)', async () => {
+    // A `.md` upload is stored as-is server-side and answers 201 Created (the
+    // resource already exists) instead of 202 Accepted (async conversion). The
+    // composable must treat any ok status the same: read `target_path`, refresh.
+    const calls = [];
+    globalThis.fetch = vi.fn().mockImplementation(async (url, opts) => {
+      calls.push({ url, opts: opts ?? {} });
+      if (opts?.method === 'POST') {
+        return res({ status: 201, json: { target_path: 'notities.md' } });
+      }
+      return res({ json: { documents: [{ path: 'notities.md' }] } });
+    });
+
+    const trajectRef = ref('mig-1a2b3c4d');
+    const { uploadDocument } = useTrajectDocuments(trajectRef);
+    const file = new File([new TextEncoder().encode('# Titel\n')], 'Notities.md', {
+      type: 'text/markdown',
+    });
+    const result = await uploadDocument(file);
+
+    expect(result).toEqual({ ok: true, targetPath: 'notities.md' });
+    expect(
+      calls.some((c) => c.url.endsWith('/corpus/documents') && c.opts.method !== 'POST'),
+    ).toBe(true);
+  });
+
   it('captures the ETag on open and sends it back as If-Match on save', async () => {
     const trajectRef = ref('mig-1a2b3c4d');
     // 1st call: openDocument GET.
