@@ -69,7 +69,7 @@ impl AppConfig {
                     "ADMIN_API_KEY is shorter than 32 characters — consider using a longer key"
                 );
             }
-            tracing::info!("API key authentication is enabled (GET + DELETE)");
+            tracing::info!("API key authentication is enabled (GET + POST + DELETE)");
         }
 
         let api_key_hash = api_key
