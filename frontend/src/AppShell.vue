@@ -357,7 +357,7 @@ function onTabDismiss(e) {
                 <nldd-menu-item icon="new-text-document" text="Werkdocument toevoegen">
                   <nldd-menu>
                     <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="triggerNewWerkdoc"></nldd-menu-item>
-                    <nldd-menu-item icon="upload-to-cloud" text="Document uploaden (PDF, Word of Markdown)…" @select="triggerUploadWerkdoc"></nldd-menu-item>
+                    <nldd-menu-item icon="upload-to-cloud" text="Document uploaden…" @select="triggerUploadWerkdoc"></nldd-menu-item>
                   </nldd-menu>
                 </nldd-menu-item>
                 <nldd-menu-item icon="add-user" text="Leden uitnodigen…" @select="triggerInviteMembers"></nldd-menu-item>
@@ -474,7 +474,7 @@ function onTabDismiss(e) {
                 <nldd-menu-item icon="new-text-document" text="Werkdocument toevoegen">
                   <nldd-menu>
                     <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="triggerNewWerkdoc"></nldd-menu-item>
-                    <nldd-menu-item icon="upload-to-cloud" text="Document uploaden (PDF, Word of Markdown)…" @select="triggerUploadWerkdoc"></nldd-menu-item>
+                    <nldd-menu-item icon="upload-to-cloud" text="Document uploaden…" @select="triggerUploadWerkdoc"></nldd-menu-item>
                   </nldd-menu>
                 </nldd-menu-item>
                 <nldd-menu-item icon="add-user" text="Leden uitnodigen…" @select="triggerInviteMembers"></nldd-menu-item>
@@ -712,7 +712,7 @@ function onTabDismiss(e) {
                 <nldd-menu-item icon="new-text-document" text="Werkdocument toevoegen">
                   <nldd-menu>
                     <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="triggerNewWerkdoc"></nldd-menu-item>
-                    <nldd-menu-item icon="upload-to-cloud" text="Document uploaden (PDF, Word of Markdown)…" @select="triggerUploadWerkdoc"></nldd-menu-item>
+                    <nldd-menu-item icon="upload-to-cloud" text="Document uploaden…" @select="triggerUploadWerkdoc"></nldd-menu-item>
                   </nldd-menu>
                 </nldd-menu-item>
                 <nldd-menu-item icon="add-user" text="Leden uitnodigen…" @select="triggerInviteMembers"></nldd-menu-item>

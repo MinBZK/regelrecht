@@ -3075,22 +3075,43 @@ pub async fn list_traject_documents(
     Ok(Json(TrajectDocumentList { documents }))
 }
 
-/// Formats that need a conversion step to become a markdown werkdocument: they
-/// are turned into `.md` by a `document_convert` job. Also the set the wet-upload
-/// (`law_convert`) endpoint accepts.
+/// Formats the wet-upload (`law_convert`) endpoint accepts. A law upload feeds
+/// the convert-to-law chain, which is only meaningful for a text-bearing
+/// document, so this endpoint keeps a deterministic allow-list — unlike the
+/// werkdocument upload, which accepts any format (see [`upload_traject_document`]).
 const UPLOAD_DOCUMENT_EXTENSIONS: &[&str] = &["pdf", "doc", "docx"];
 
 /// Markdown is the werkdocument target format itself, so a `.md`/`.markdown`
-/// upload needs no conversion: its bytes are stored as-is (pass-through). These
-/// are accepted on top of [`UPLOAD_DOCUMENT_EXTENSIONS`] by the werkdocument
-/// upload only — a wet-upload of markdown makes no sense and stays rejected.
+/// upload needs no conversion: its bytes are stored as-is (pass-through) instead
+/// of going through a `document_convert` job.
 const MARKDOWN_PASSTHROUGH_EXTENSIONS: &[&str] = &["md", "markdown"];
 
-/// Everything the werkdocument upload accepts: the convertible formats plus the
-/// markdown pass-through set. (Kept as one array because `const` cannot
-/// concatenate slices; `werkdoc_upload_extensions_is_the_union` guards against
-/// it drifting from the two source sets.)
-const WERKDOC_UPLOAD_EXTENSIONS: &[&str] = &["pdf", "doc", "docx", "md", "markdown"];
+/// Enforce the optional upload allow-list on `filename`. `None` accepts any
+/// format (the werkdocument upload — the conversion pipeline routes it), while
+/// `Some(list)` rejects any extension outside the list with a 415 (the
+/// wet-upload). Split out of [`read_upload_multipart`] so the gate is unit-
+/// testable without building a multipart request.
+fn check_upload_format(
+    filename: &str,
+    allowed: Option<&[&str]>,
+) -> Result<(), (StatusCode, String)> {
+    let Some(allowed) = allowed else {
+        return Ok(());
+    };
+    let ext = lowercase_extension(filename);
+    if allowed.contains(&ext.as_str()) {
+        return Ok(());
+    }
+    let list = allowed
+        .iter()
+        .map(|e| format!(".{e}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err((
+        StatusCode::UNSUPPORTED_MEDIA_TYPE,
+        format!("Dit bestandsformaat wordt niet ondersteund. Toegestaan: {list}."),
+    ))
+}
 
 /// The lowercased file extension of `filename`, or an empty string when it has
 /// none. Shared by the upload gate and the markdown pass-through branch so the
@@ -3105,11 +3126,14 @@ fn lowercase_extension(filename: &str) -> String {
 
 /// Pull the uploaded file out of a multipart body (the `file` field) and gate
 /// its extension on `allowed`. Shared by the werkdocument- and wet-upload
-/// endpoints, which pass different allow-lists. Returns
-/// `(filename, content_type, bytes)`.
+/// endpoints: the wet-upload passes `Some(allow-list)` (only text-bearing
+/// documents feed the convert-to-law chain), while the werkdocument upload
+/// passes `None` — it accepts any format and routes non-markdown through the
+/// deterministic/agentic conversion pipeline. The empty-file guard always
+/// applies. Returns `(filename, content_type, bytes)`.
 async fn read_upload_multipart(
     multipart: &mut Multipart,
-    allowed: &[&str],
+    allowed: Option<&[&str]>,
 ) -> Result<(String, String, Vec<u8>), (StatusCode, String)> {
     let mut filename: Option<String> = None;
     let mut content_type: Option<String> = None;
@@ -3142,19 +3166,11 @@ async fn read_upload_multipart(
     ))?;
     let content_type = content_type.unwrap_or_else(|| "application/octet-stream".to_string());
 
-    // Gate on the caller-supplied allow-list.
-    let ext = lowercase_extension(&filename);
-    if !allowed.contains(&ext.as_str()) {
-        let list = allowed
-            .iter()
-            .map(|e| format!(".{e}"))
-            .collect::<Vec<_>>()
-            .join(", ");
-        return Err((
-            StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            format!("Dit bestandsformaat wordt niet ondersteund. Toegestaan: {list}."),
-        ));
-    }
+    // Gate on the caller-supplied allow-list, when there is one. `None` means
+    // "accept any format" (the werkdocument upload): the empty-file check above
+    // is then the only sanity guard, and the conversion pipeline decides per
+    // format whether a deterministic tool fits or the agentic fallback runs.
+    check_upload_format(&filename, allowed)?;
     Ok((filename, content_type, data))
 }
 
@@ -3243,12 +3259,14 @@ async fn write_markdown_passthrough(
 
 /// POST /api/trajects/{traject_ref}/corpus/documents/upload
 ///
-/// Accept a multipart upload. A PDF/Word document has its bytes stored in
-/// `document_uploads` and a `document_convert` job enqueued that converts it to
-/// a markdown werkdocument (responds `202 Accepted`). A markdown upload needs no
-/// conversion: its bytes are written straight to the target `.md` (pass-through,
-/// responds `201 Created`). Either way the response carries the target `.md`
-/// path the document appears at.
+/// Accept a multipart upload of any format. A non-markdown document has its bytes
+/// stored in `document_uploads` and a `document_convert` job enqueued that
+/// converts it to a markdown werkdocument (responds `202 Accepted`) — via a
+/// deterministic tool when one fits (pandoc/pdftotext) or the agentic enricher
+/// fallback otherwise, the result returning as a reviewable markdown task. A
+/// markdown upload needs no conversion: its bytes are written straight to the
+/// target `.md` (pass-through, responds `201 Created`). Either way the response
+/// carries the target `.md` path the document appears at.
 pub async fn upload_traject_document(
     State(state): State<AppState>,
     Extension(account): Extension<AccountRecord>,
@@ -3265,11 +3283,12 @@ pub async fn upload_traject_document(
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let traject_id = resolve_traject_ref(pool, &traject_ref).await?;
 
-    // Pull the uploaded file out of the multipart body and gate the extension.
-    // Werkdocumenten also accept markdown (stored as-is, see the pass-through
-    // branch below), on top of the convertible PDF/Word formats.
-    let (filename, content_type, data) =
-        read_upload_multipart(&mut multipart, WERKDOC_UPLOAD_EXTENSIONS).await?;
+    // Pull the uploaded file out of the multipart body. Werkdocumenten accept
+    // any format (`None` = no allow-list): markdown is stored as-is (pass-through
+    // branch below), and every other format is routed through the conversion
+    // pipeline, which picks a deterministic tool when one fits (pandoc/pdftotext)
+    // or the agentic enricher fallback otherwise, returning reviewable markdown.
+    let (filename, content_type, data) = read_upload_multipart(&mut multipart, None).await?;
     let ext = lowercase_extension(&filename);
 
     // Derive a collision-safe target markdown path against the existing docs.
@@ -3450,10 +3469,10 @@ pub async fn upload_traject_law(
     let _traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let traject_id = resolve_traject_ref(pool, &traject_ref).await?;
 
-    // Wet-upload only accepts convertible formats; markdown pass-through is a
-    // werkdocument-only affordance.
+    // Wet-upload only accepts the convertible allow-list; the werkdocument
+    // upload's any-format acceptance does not apply here.
     let (filename, content_type, data) =
-        read_upload_multipart(&mut multipart, UPLOAD_DOCUMENT_EXTENSIONS).await?;
+        read_upload_multipart(&mut multipart, Some(UPLOAD_DOCUMENT_EXTENSIONS)).await?;
 
     // Persist the bytes and enqueue the conversion job in one transaction,
     // guarded by the same per-account taak-flow-cap as enrich-op-aanvraag
@@ -4460,27 +4479,47 @@ mod tests {
     }
 
     #[test]
-    fn werkdoc_upload_extensions_is_the_union() {
-        // WERKDOC_UPLOAD_EXTENSIONS is hand-written (const can't concat slices);
-        // keep it exactly the convertible set plus the pass-through set.
-        let mut expected: Vec<&str> = UPLOAD_DOCUMENT_EXTENSIONS
-            .iter()
-            .chain(MARKDOWN_PASSTHROUGH_EXTENSIONS.iter())
-            .copied()
-            .collect();
-        expected.sort_unstable();
-        let mut actual: Vec<&str> = WERKDOC_UPLOAD_EXTENSIONS.to_vec();
-        actual.sort_unstable();
-        assert_eq!(actual, expected);
+    fn markdown_is_passthrough_but_not_a_wet_upload_format() {
+        // A markdown upload takes the werkdocument pass-through branch (its
+        // extension classifies it), but markdown is never a convertible
+        // (wet-upload) format.
+        for ext in MARKDOWN_PASSTHROUGH_EXTENSIONS {
+            assert!(!UPLOAD_DOCUMENT_EXTENSIONS.contains(ext));
+        }
     }
 
     #[test]
-    fn markdown_is_werkdoc_passthrough_but_not_a_wet_upload_format() {
-        // A markdown upload is accepted as a werkdocument and takes the
-        // pass-through branch, but is never a convertible (wet-upload) format.
-        for ext in MARKDOWN_PASSTHROUGH_EXTENSIONS {
-            assert!(WERKDOC_UPLOAD_EXTENSIONS.contains(ext));
-            assert!(!UPLOAD_DOCUMENT_EXTENSIONS.contains(ext));
+    fn check_upload_format_accepts_any_format_when_ungated() {
+        // The werkdocument upload passes `None`: any file is accepted whatever
+        // its extension — no 415 for an image, spreadsheet, presentation, or an
+        // unknown/extension-less name. The conversion pipeline decides the route.
+        for name in [
+            "scan.png",
+            "sheet.xlsx",
+            "deck.pptx",
+            "README",
+            "notes.odt",
+            "page.html",
+            "archive.weird",
+        ] {
+            assert!(
+                check_upload_format(name, None).is_ok(),
+                "{name} should be accepted by the any-format upload"
+            );
+        }
+    }
+
+    #[test]
+    fn check_upload_format_gates_on_allow_list_for_wet_upload() {
+        // The wet-upload keeps its allow-list: a non-listed format is 415, a
+        // listed one passes.
+        let err = check_upload_format("scan.png", Some(UPLOAD_DOCUMENT_EXTENSIONS)).unwrap_err();
+        assert_eq!(err.0, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        for name in ["brief.pdf", "brief.doc", "brief.docx", "BRIEF.PDF"] {
+            assert!(
+                check_upload_format(name, Some(UPLOAD_DOCUMENT_EXTENSIONS)).is_ok(),
+                "{name} should pass the wet-upload allow-list"
+            );
         }
     }
 

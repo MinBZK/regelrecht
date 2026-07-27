@@ -388,9 +388,11 @@ export function useTrajectDocuments(trajectRef) {
   }
 
   /**
-   * Upload a PDF/Word document. Stores the bytes server-side and enqueues an
-   * async conversion-to-markdown job; the resulting `.md` appears in the list
-   * once the job completes (surfaced meanwhile by the conversion-status
+   * Upload a document of any format. Markdown is stored as-is; any other format
+   * is stored server-side and enqueues an async conversion-to-markdown job (a
+   * deterministic tool when one fits, otherwise the enricher, returning a
+   * reviewable markdown result). The resulting `.md` appears in the list once
+   * the job/review completes (surfaced meanwhile by the conversion-status
    * poller). Returns a result object `{ ok, targetPath }`.
    */
   async function uploadDocument(file) {
