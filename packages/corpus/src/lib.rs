@@ -12,8 +12,6 @@ pub mod github;
 pub mod github_api_backend;
 pub mod models;
 pub mod registry;
-#[cfg(feature = "github")]
-pub mod repo_access;
 pub mod source_map;
 pub mod timing;
 pub mod validation;
@@ -30,6 +28,4 @@ pub use github::FetchResult;
 pub use github_api_backend::GitHubApiBackend;
 pub use models::{RegistryManifest, Source, SourceType};
 pub use registry::{CorpusRegistry, ScanTokenOverride, SourceIndexFailure};
-#[cfg(feature = "github")]
-pub use repo_access::{validate_repo_access, RepoAccessError, RepoInfo};
 pub use source_map::SourceMap;
