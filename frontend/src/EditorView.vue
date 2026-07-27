@@ -234,17 +234,34 @@ watch(activeTrajectRef, async (next) => {
   if (route.params.lawId) {
     // A URL that still names a law in the new traject can only come from a deep
     // link or browser back/forward now (the traject switcher navigates to the
-    // bare root - see trajectSwitchTarget). onBeforeRouteUpdate already loaded
-    // that law through the new traject before this watch ran, so just reflect
-    // it as the active tab in the freshly swapped bar and persist it there.
-    if (lawId.value && selectedArticleNumber.value != null) {
+    // bare root - see trajectSwitchTarget). onBeforeRouteUpdate already ran
+    // switchLaw for that law through the new traject before this watch fired -
+    // but only reflect it as the active tab if it actually LOADED for this
+    // traject. When the new traject doesn't have the law, switchLaw 404s: it
+    // sets `error` and leaves `lawId`/`selectedArticleNumber` holding the
+    // PREVIOUS traject's law. Adopting those here would add that foreign law as
+    // an open+active tab and persist it under this traject - re-introducing the
+    // exact leak this PR fixes. Require a clean load whose id matches the URL;
+    // the error view renders the "niet beschikbaar" dialog for the failed case.
+    const loaded =
+      !error.value &&
+      lawId.value === route.params.lawId &&
+      selectedArticleNumber.value != null;
+    if (loaded) {
       const tab = { lawId: lawId.value, articleNumber: String(selectedArticleNumber.value) };
       if (!findTab(tab.lawId, tab.articleNumber)) {
-        openTabs.value = [...openTabs.value, tab];
+        // Same MAX_TABS cap as the primary add-tab watch, so repeated
+        // cross-traject deep links can't grow a traject's set past the limit.
+        const tabs = [...openTabs.value, tab];
+        openTabs.value = tabs.length > MAX_TABS ? tabs.slice(-MAX_TABS) : tabs;
         saveTabs(next, openTabs.value);
       }
       activeTab.value = tab;
       saveActiveTab(next, tab);
+    } else {
+      // Failed cross-traject deep link: don't leave the previous traject's law
+      // marked active in this traject's bar (it isn't in `openTabs` here).
+      activeTab.value = null;
     }
   } else {
     // The common case: the switcher dropped us on the traject root with no law
@@ -834,6 +851,11 @@ function libraryRouteFor(lawIdVal) {
 
 const openTabs = ref(loadSavedTabs(activeTrajectRef.value));
 
+// Cap on how many law tabs a traject keeps open; the oldest are dropped past
+// this. Enforced wherever a tab is appended (the add-tab watch and the
+// traject-switch deep-link branch).
+const MAX_TABS = 20;
+
 // Cache for law names (populated on fetch)
 const lawNames = ref({});
 
@@ -870,7 +892,6 @@ watch([() => lawId.value, selectedArticle], ([id, article]) => {
   if (lawTrajectRef.value !== activeTrajectRef.value) return;
   const num = String(article.number);
   if (!findTab(id, num)) {
-    const MAX_TABS = 20;
     const tabs = [...openTabs.value, { lawId: id, articleNumber: num }];
     openTabs.value = tabs.length > MAX_TABS ? tabs.slice(-MAX_TABS) : tabs;
     saveTabs(activeTrajectRef.value, openTabs.value);
