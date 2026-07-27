@@ -603,3 +603,13 @@ docs-a11y:
 # without starting the explorer.
 arch-generate:
     cd packages && {{ci_flags}} cargo run --quiet -p regelrecht-arch-extract -- generate
+
+# Start the local architecture explorer: build the Vue Flow UI, then run the
+# arch-extract server, which regenerates the model on-demand from the working
+# tree (GET /api/model, cached on source mtime) and serves the UI on
+# 0.0.0.0:7180. Open http://localhost:7180. Override the port with
+# ARCH_EXPLORE_PORT (stay in 7100–7300 for the dev container). See
+# packages/arch-extract/README.md.
+arch-explore:
+    cd packages/arch-extract/ui && npm install && npm run build
+    cd packages && cargo run --release --quiet -p regelrecht-arch-extract -- serve

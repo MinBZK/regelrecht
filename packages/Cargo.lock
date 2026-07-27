@@ -3986,12 +3986,15 @@ dependencies = [
 name = "regelrecht-arch-extract"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "cargo_metadata",
  "jsonschema",
  "proc-macro2",
  "serde",
  "serde_json",
  "syn 2.0.117",
+ "tokio",
+ "tower-http 0.7.0",
  "walkdir",
 ]
 

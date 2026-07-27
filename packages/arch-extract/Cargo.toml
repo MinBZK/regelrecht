@@ -32,6 +32,11 @@ proc-macro2 = "1"
 serde.workspace = true
 serde_json.workspace = true
 walkdir.workspace = true
+# `serve` subcommand: a lightweight local HTTP server (same Axum stack as
+# `editor-api`) that regenerates the model on-demand and serves the explorer UI.
+axum.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tower-http = { workspace = true, features = ["fs"] }
 
 [dev-dependencies]
 # Validates the generated model against the JSON schema in a test, so drift in

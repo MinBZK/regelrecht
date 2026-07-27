@@ -20,12 +20,68 @@ which is why keeping a committed copy in sync is not worth the trouble.
 
 ## Usage
 
+### Explore it (`just arch-explore`)
+
+```bash
+just arch-explore   # build the UI, then serve the explorer on 0.0.0.0:7180
+```
+
+This is the intended entry point: it builds the Vue Flow frontend
+(`ui/`, see below) and starts the `arch-extract serve` server, then you open
+<http://localhost:7180> and zoom crate → module → type → method. The model is
+generated **on-demand from the working tree** on the first request and cached on
+the newest `packages/**/src/**/*.rs` mtime, so a code change shows up on the next
+refresh (a fresh generation, ~2 s) while unchanged reloads are served from cache.
+
+**Port & binding (dev container).** The server binds `0.0.0.0` — not
+`127.0.0.1` — so it is reachable from the host, and defaults to port **7180**,
+inside the container's forwarded 7100–7300 range. Override with the `--port`
+flag or the `ARCH_EXPLORE_PORT` env var (stay within 7100–7300):
+
+```bash
+ARCH_EXPLORE_PORT=7200 just arch-explore
+```
+
+Direct invocation (from `packages/`, so `cargo metadata` finds the workspace):
+
+```bash
+cargo run -p regelrecht-arch-extract -- serve [--port <n>] [--ui-dir <dir>] [--manifest-path <p>]
+```
+
+The server serves `GET /api/model` (the model as JSON) and the built UI at `/`.
+`--ui-dir` overrides where the built assets are read from (default
+`packages/arch-extract/ui/dist`; also `ARCH_EXPLORE_UI_DIR`).
+
+### The frontend (`ui/`)
+
+`ui/` is a standalone Vite + Vue 3 app (Vue Flow) — its own npm project, not part
+of the root npm workspace. `just arch-explore` builds it for you; to iterate on
+the UI with hot-reload, run the Rust server in one terminal and Vite's dev server
+(which proxies `/api` to it) in another:
+
+```bash
+cargo run -p regelrecht-arch-extract -- serve      # terminal 1 (API on :7180)
+npm --prefix packages/arch-extract/ui run dev        # terminal 2 (UI on :7181)
+```
+
+### Known limitations
+
+- **Accessibility.** The explorer is an internal-only developer tool. Its Vue
+  Flow canvas is not screen-reader navigable and there is no text alternative for
+  the graph; this is deliberate, accepted debt for now. Because the explorer
+  lives outside the docs site, it does not touch the docs a11y gates.
+- **Thin edge coverage.** `syn` parses per file without name resolution, so the
+  model has relatively few relationship edges (~270 for ~2200 nodes). The UI is
+  built to absorb more edges later without changes; improving edge coverage is a
+  separate ticket.
+
+### Just inspect the model (`just arch-generate`)
+
 ```bash
 just arch-generate   # write model.json to the gitignored path, to inspect it
 ```
 
-The recipe runs the `arch-extract` binary from `packages/` so `cargo metadata`
-discovers the workspace. Direct invocation:
+Direct invocation:
 
 ```bash
 cargo run -p regelrecht-arch-extract -- generate [--out <path>] [--stdout] [--deep a,b | --deep-all]
