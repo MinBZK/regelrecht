@@ -9,10 +9,22 @@
 //! editor maps each [`RepoAccessError`] variant onto a specific HTTP status and
 //! Dutch operator message, so the pre-flight keeps its own disjoint enum.
 
+use std::time::Duration;
+
 use reqwest::StatusCode;
 use serde::Deserialize;
 
 use crate::client::GithubClient;
+
+/// Per-request cap for the two pre-flight calls, overriding the shared client's
+/// 60s default.
+///
+/// This is the one GitHub path a user waits on synchronously (creating a
+/// traject blocks on it), so it keeps the tighter budget its dedicated client
+/// had before the consolidation: two sequential calls stay bounded at ~60s
+/// worst case rather than ~120s. Every other caller of the shared client runs
+/// in a background job where the longer default is the better trade.
+const PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Distinct failure modes for repo-access validation. The editor-api caller
 /// maps each variant onto a specific HTTP status / user-facing message — keep
@@ -107,6 +119,7 @@ impl GithubClient {
             .client
             .get(&url)
             .headers(headers)
+            .timeout(PREFLIGHT_TIMEOUT)
             .send()
             .await
             .map_err(|e| RepoAccessError::Transport(e.to_string()))?;
@@ -172,6 +185,7 @@ impl GithubClient {
             .client
             .get(&url)
             .headers(headers)
+            .timeout(PREFLIGHT_TIMEOUT)
             .send()
             .await
             .map_err(|e| RepoAccessError::Transport(e.to_string()))?;
