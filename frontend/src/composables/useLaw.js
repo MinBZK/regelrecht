@@ -129,6 +129,14 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
   // update this when navigation crosses trajects, so URL builders read
   // through the closure instead of capturing a snapshot.
   let currentTrajectRef = trajectRefParam || null;
+  // Reactive mirror of `currentTrajectRef`, kept in sync wherever it is
+  // reassigned. Consumers use this to learn which traject the *open law* was
+  // loaded through - which is NOT necessarily the route's active traject
+  // during a cross-traject navigation: `switchLaw` updates it a tick before
+  // the route (and thus `activeTrajectRef`) commits, so a watcher on the law
+  // can tell "this law belongs to the traject I'm loading into" apart from
+  // "…the traject I'm still leaving".
+  const lawTrajectRef = ref(currentTrajectRef);
   // If the parameter looks like a URL, fetch directly; otherwise build
   // the API URL from the current trajectRef.
   const initialDirectUrl =
@@ -239,6 +247,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
       saving.value = false;
       if (newTrajectRef !== undefined) {
         currentTrajectRef = newTrajectRef || null;
+        lawTrajectRef.value = currentTrajectRef;
       }
       const entry = await fetchLaw(currentTrajectRef, newLawId);
       if (!isCurrent()) return;
@@ -480,6 +489,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
     selectedArticleNumber,
     switchLaw,
     clearLaw,
+    lawTrajectRef,
     loading,
     error,
     saving,

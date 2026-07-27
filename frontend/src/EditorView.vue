@@ -194,6 +194,7 @@ const {
   selectedArticleNumber,
   switchLaw,
   clearLaw,
+  lawTrajectRef,
   loading,
   error,
   saving: lawSaving,
@@ -858,6 +859,15 @@ function findTab(lawIdVal, articleNumber) {
 // Add tab when initial law loads
 watch([() => lawId.value, selectedArticle], ([id, article]) => {
   if (!id || !article) return;
+  // Only record a tab for the traject the law was actually loaded through.
+  // During a cross-traject route change (browser back/forward, or any nav to a
+  // law URL in another traject) `switchLaw` loads the law a tick before the
+  // route - and thus `activeTrajectRef` - commits to the new traject. Keying on
+  // `activeTrajectRef.value` here would append this law to (and persist it
+  // under) the traject we're *leaving*, leaking a foreign law into its tab bar.
+  // Defer to watch(activeTrajectRef), which reconciles the bar under the
+  // correct traject once it commits.
+  if (lawTrajectRef.value !== activeTrajectRef.value) return;
   const num = String(article.number);
   if (!findTab(id, num)) {
     const MAX_TABS = 20;
