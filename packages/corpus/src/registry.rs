@@ -181,7 +181,7 @@ impl CorpusRegistry {
         auth_file: Option<&Path>,
     ) -> Result<SourceMap> {
         let mut map = SourceMap::new();
-        let mut fetcher = crate::github::GitHubFetcher::new()?;
+        let client = regelrecht_github::GithubClient::new()?;
 
         // Determine which law_ids are NOT already covered by local sources,
         // so we only fetch what's missing from GitHub.
@@ -205,9 +205,13 @@ impl CorpusRegistry {
                 let token = crate::auth::CredentialResolver::new(auth_file)
                     .resolve_source(source)?
                     .into_token();
-                match fetcher
-                    .fetch_source_filtered(github, token.as_deref(), &missing)
-                    .await?
+                match crate::github::fetch_source_filtered(
+                    &client,
+                    github,
+                    token.as_deref(),
+                    &missing,
+                )
+                .await?
                 {
                     crate::github::FetchResult::Fetched(files) => {
                         for file in &files {
@@ -277,13 +281,12 @@ impl CorpusRegistry {
         scan_override: Option<ScanTokenOverride<'_>>,
     ) -> Result<(SourceMap, Vec<SourceIndexFailure>)> {
         let mut map = SourceMap::new();
-        let mut fetcher = crate::github::GitHubFetcher::new()?;
+        let client = regelrecht_github::GithubClient::new()?;
         let mut failed: Vec<SourceIndexFailure> = Vec::new();
 
         for source in &self.sources {
             if let Err(e) =
-                Self::index_one_source(&mut map, &mut fetcher, source, auth_file, scan_override)
-                    .await
+                Self::index_one_source(&mut map, &client, source, auth_file, scan_override).await
             {
                 tracing::warn!(
                     source_id = %source.id,
@@ -323,7 +326,7 @@ impl CorpusRegistry {
     #[cfg(feature = "github")]
     async fn index_one_source(
         map: &mut SourceMap,
-        fetcher: &mut crate::github::GitHubFetcher,
+        client: &regelrecht_github::GithubClient,
         source: &Source,
         auth_file: Option<&Path>,
         scan_override: Option<ScanTokenOverride<'_>>,
@@ -352,9 +355,8 @@ impl CorpusRegistry {
                         token = Some(o.token.to_string());
                     }
                 }
-                for (law_id, path, sha) in fetcher
-                    .list_source_law_paths(github, token.as_deref())
-                    .await?
+                for (law_id, path, sha) in
+                    crate::github::list_source_law_paths(client, github, token.as_deref()).await?
                 {
                     map.load_metadata_entry(
                         &law_id,
