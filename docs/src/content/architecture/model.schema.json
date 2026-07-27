@@ -33,7 +33,7 @@
       "properties": {
         "id": {
           "type": "string",
-          "description": "Stable path-style id, e.g. `crate:engine`, `mod:engine::service`, `type:engine::service::LawExecutionService`, `fn:engine::service::LawExecutionService::execute`."
+          "description": "Stable path-style id. Rust: `crate:engine`, `mod:engine::service`, `type:engine::service::LawExecutionService`, `fn:engine::service::LawExecutionService::execute`. JS/TS/Vue frontends: `app:frontend`, `dir:frontend::src::components`, `component:frontend::src::components::LawTable`, `composable:frontend::src::composables::useTasks`, `module:frontend::src::router`."
         },
         "level": {
           "type": "string",
@@ -41,7 +41,7 @@
         },
         "kind": {
           "type": "string",
-          "enum": ["crate", "binary", "module", "struct", "enum", "trait", "method", "fn"]
+          "enum": ["crate", "binary", "module", "struct", "enum", "trait", "method", "fn", "app", "dir", "component", "composable"]
         },
         "lang": { "type": "string" },
         "name": { "type": "string" },

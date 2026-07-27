@@ -24,6 +24,7 @@
 
 mod build;
 mod crate_graph;
+mod js_pass;
 mod model;
 mod prose;
 mod serve;

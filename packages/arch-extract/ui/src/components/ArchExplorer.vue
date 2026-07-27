@@ -60,6 +60,7 @@ const themeLabel = computed(
 // MiniMap needs a flat colour, not a CSS variable — resolve per kind.
 function miniMapNodeColor(node) {
   if (node.class?.includes('kind-crate')) return '#6366f1';
+  if (node.class?.includes('kind-app')) return '#16a34a';
   if (node.class?.includes('level-component')) return '#0ea5e9';
   if (node.class?.includes('level-code')) return '#94a3b8';
   return '#cbd5e1';

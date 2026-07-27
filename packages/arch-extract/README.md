@@ -1,10 +1,12 @@
 # arch-extract
 
 Generates the **code-derived architecture model** (`model.json`) for the
-regelrecht workspace. One language-agnostic file describes the workspace from
-application → crate → module → type → method, plus how the parts depend on and
-use each other. It is the data source for the local **architecture explorer** (a
-separate tool), which renders the model interactively.
+regelrecht workspace. One language-agnostic file describes the whole codebase —
+the Rust workspace (crate → module → type → method) **and** the JS/TS/Vue
+frontends (app → directory → component/composable/module) — plus how the parts
+depend on and use each other. It is the data source for the local
+**architecture explorer** (a separate tool), which renders the model
+interactively.
 
 This is a build-time developer tool — a tooling-only workspace member. It is not
 shipped or deployed; it only reads the workspace and writes one JSON file.
@@ -70,10 +72,11 @@ npm --prefix packages/arch-extract/ui run dev        # terminal 2 (UI on :7181)
   Flow canvas is not screen-reader navigable and there is no text alternative for
   the graph; this is deliberate, accepted debt for now. Because the explorer
   lives outside the docs site, it does not touch the docs a11y gates.
-- **Thin edge coverage.** `syn` parses per file without name resolution, so the
-  model has relatively few relationship edges (~270 for ~2200 nodes). The UI is
-  built to absorb more edges later without changes; improving edge coverage is a
-  separate ticket.
+- **Thin edge coverage on the Rust tier.** `syn` parses per file without name
+  resolution, so the Rust side has relatively few relationship edges (~270 for
+  ~2200 Rust nodes); the frontend tier is denser because ES imports resolve
+  cleanly to files. The UI is built to absorb more edges without changes;
+  improving Rust edge coverage is a separate ticket.
 
 ### Just inspect the model (`just arch-generate`)
 
@@ -174,14 +177,14 @@ jobs:
 
 ## What it extracts
 
-Two tiers feed one model (see `../../docs/src/content/architecture/model.schema.json`):
+Three tiers feed one model (see `../../docs/src/content/architecture/model.schema.json`):
 
 - **Crate graph** — workspace members and their internal path dependencies, from
   `cargo metadata`. Only *normal* (non-dev, non-build) dependencies become
   `depends-on` edges, which yields the documented production layer graph
   (`shared` → `law-model`/`auth` → `engine`/`harvester`/`corpus` → `pipeline` →
   `admin`/`editor-api`/`tui`).
-- **Source structure** — modules, structs, enums, traits, methods and free
+- **Rust source structure** — modules, structs, enums, traits, methods and free
   functions (with the first line of each doc-comment), from a `syn` parse of a
   crate's `src/**.rs`. Plus best-effort `impl` (type → trait) and `uses`
   (type → type) edges. Test-only code (`#[cfg(test)]`, `#[test]`) is skipped.
@@ -189,17 +192,39 @@ Two tiers feed one model (see `../../docs/src/content/architecture/model.schema.
   **Scope:** the deep source pass runs for **every crate** by default. Pass
   `--deep <a,b,…>` to narrow it to a subset (e.g. a quick local run);
   `--deep-all` is the explicit form of the default.
+- **Frontends (JS/TS/Vue)** — the npm-workspace frontends (`frontend/`,
+  `frontend-lawmaking/`, `packages/frontend-shared/`, discovered from the root
+  `package.json` `workspaces`). Each app's `src/` tree (plus a top-level
+  `main`/`index` entry) becomes nodes: a `.vue` file is a **component**, a
+  `useXxx.{js,ts}` file a **composable**, any other JS/TS file a **module**, all
+  nested under **directory** grouping nodes. ES `import`s become edges — a
+  relative import is a file→file `uses` edge (so you see which component uses
+  which composable), and importing one app's package from another is a cross-app
+  `depends-on` edge (both Vue apps → `frontend-shared`). Test/spec, `*.config.*`
+  and `*.d.ts` files are skipped (the JS analogue of skipping `#[cfg(test)]`).
+  See the toolchain decision below for why this is a regex scan, not an AST
+  parser or a Node script.
 
-Nodes carry stable, path-shaped ids (`crate:engine`, `mod:engine::service`,
-`type:engine::service::LawExecutionService`,
-`fn:engine::service::LawExecutionService::execute`); containment is expressed via
-`parent`, relationships via `edges`. The output is canonicalized (nodes sorted by
-id, edges sorted and de-duplicated, **no timestamp**) so a node keeps a stable
-identity between runs — the explorer relies on that.
+Nodes carry stable, path-shaped ids; containment is expressed via `parent`,
+relationships via `edges`. The prefixes are per-language but share the same
+`prefix:path::…` shape:
 
-For reference, a full run currently yields roughly 2200 nodes and a ~755 KB
-pretty-printed model (per-crate node counts range from `shared` at the low end to
-`engine` at the high end).
+| tier | prefixes | example |
+|------|----------|---------|
+| Rust | `crate:` `bin:` `mod:` `type:` `fn:` | `type:engine::service::LawExecutionService` |
+| JS/TS/Vue | `app:` `dir:` `component:` `composable:` `module:` | `component:frontend::src::components::LawTable` |
+
+A JS node's id is derived from its **path only** (never its contents), so it is
+stable: the `component:`/`composable:`/`module:` split follows the file
+extension and the `useXxx` naming convention, not a parse of what the file
+exports. The output is canonicalized (nodes sorted by id, edges sorted and
+de-duplicated, **no timestamp**) so a node keeps a stable identity between runs —
+the explorer relies on that.
+
+For reference, a full run currently yields roughly 2400 nodes (about 2200 Rust +
+180 frontend) and generates in ~1.8 s (release build) — the frontend tier adds
+~0.5 s over the Rust-only ~1.25 s, well inside the on-demand budget. Per-crate
+node counts range from `shared` at the low end to `engine` at the high end.
 
 ## Toolchain decision: `cargo metadata` + `syn` (not rustdoc-JSON)
 
@@ -239,10 +264,53 @@ the model shape is designed to absorb an additional enrichment tier (e.g. a
 nightly rustdoc-JSON pass) without changing consumers — the extraction method is
 an implementation detail behind `model.json`.
 
+## Toolchain decision: a self-contained regex import scan (not swc/oxc, not Node)
+
+The frontend tier had the same open question as the Rust one. This is the
+decision and its rationale.
+
+**Chosen: a self-contained regex scan of the ES-module `import`/`export … from`
+statements, inside this Rust binary** (`js_pass.rs`). For `.vue` single-file
+components the `<script>` / `<script setup>` block is cut out first, so template
+text can't masquerade as an import.
+
+Two heavier routes were rejected:
+
+- **A JS/TS AST parser in-crate (`swc_ecma_parser`, `oxc`).** These are large
+  compile-time dependencies, and the model only needs the import *specifiers*,
+  not a resolved syntax tree — the same best-effort, structural stance the `syn`
+  tier already takes (no name resolution). The cost/benefit does not justify the
+  dependency weight for reading strings after `from`.
+- **A separate Node script writing a partial model.** It would give the best Vue
+  SFC fidelity, but it breaks the property the whole tool is built on: the
+  explorer regenerates the model **on-demand from the working tree**, so a Node
+  step would require `node_modules` installed and Node on `PATH` on every
+  request. That is exactly the "no extra toolchain" argument that picked `syn`
+  over nightly rustdoc-JSON above. Keeping everything in one stable-toolchain
+  binary keeps `just arch-explore` and CI identical and dependency-free.
+
+**Accepted trade-offs (documented, not hidden).** Like the `syn` tier, this is
+best-effort:
+
+- No name resolution: only relative imports that resolve to a file we actually
+  emitted become `uses` edges; bare imports of third-party packages are ignored,
+  and a subpath import of another workspace app still yields the app-level
+  `depends-on` but not a file-level edge.
+- The scanner is textual: a specifier inside a comment could be over-counted,
+  and an import assembled dynamically (a computed specifier) is missed. These
+  are rare and harmless for an architecture map.
+- Node ids are path-derived, so two files that differ only by a non-`.vue`
+  extension in the same directory (e.g. `Foo.js` and `Foo.ts`) would collide on
+  one `module:` id; the canonicalizer keeps the first. This does not occur in
+  the current tree and is the JS analogue of `syn`'s "rare and harmless" alias
+  gaps.
+
 ## Tests
 
 `cargo test -p regelrecht-arch-extract` (part of `just check`) runs the extractor
 on-demand and validates the **generated** model against the JSON schema, asserts
 the crate set and the known dependency layer graph, checks that the deep pass
-covered every crate, and confirms generation is deterministic — so a malformed
-model or a lost dependency edge fails CI.
+covered every crate, asserts the three frontends appear as `app`s with their
+component/composable nodes and import edges (app→app `depends-on` and a
+component→composable `uses`), and confirms generation is deterministic — so a
+malformed model or a lost edge fails CI.

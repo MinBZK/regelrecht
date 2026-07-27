@@ -29,6 +29,9 @@ cargo_metadata = "0.23"
 syn = { version = "2", features = ["full", "extra-traits", "visit", "parsing"] }
 # For inspecting attribute token streams (e.g. distinguishing `cfg(test)`).
 proc-macro2 = "1"
+# JS/TS/Vue frontends: a self-contained regex scan of ES-module import
+# statements (no Node toolchain, no heavy AST parser). See `js_pass.rs`.
+regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 walkdir.workspace = true

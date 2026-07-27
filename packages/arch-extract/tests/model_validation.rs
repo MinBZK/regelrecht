@@ -171,6 +171,98 @@ fn source_level_extraction_ran() {
     assert!(has_service, "expected engine type nodes");
 }
 
+/// Set of node ids of a given kind.
+fn ids_of_kind(model: &Value, kind: &str) -> std::collections::BTreeSet<String> {
+    model["nodes"]
+        .as_array()
+        .expect("nodes array")
+        .iter()
+        .filter(|n| n["kind"] == kind)
+        .filter_map(|n| n["id"].as_str().map(str::to_string))
+        .collect()
+}
+
+#[test]
+fn frontend_apps_extracted() {
+    let model = model();
+
+    // The three npm-workspace frontends appear as `app` containers.
+    let apps = ids_of_kind(model, "app");
+    let expected_apps: std::collections::BTreeSet<String> = [
+        "app:frontend",
+        "app:frontend-lawmaking",
+        "app:frontend-shared",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    assert_eq!(apps, expected_apps, "expected the three frontend apps");
+
+    // Components (.vue) and composables (useXxx) are extracted, with lang set.
+    let nodes = model["nodes"].as_array().expect("nodes array");
+    let vue_components = nodes
+        .iter()
+        .filter(|n| n["kind"] == "component" && n["lang"] == "vue")
+        .count();
+    assert!(vue_components > 0, "expected Vue component nodes");
+    assert!(
+        !ids_of_kind(model, "composable").is_empty(),
+        "expected composable nodes"
+    );
+
+    // Containment: every frontend node (below the app) reaches its app via
+    // `parent`, and no frontend node is left parentless.
+    let below_app = nodes.iter().filter(|n| {
+        matches!(n["kind"].as_str(), Some("component" | "composable" | "dir"))
+            || (n["kind"] == "module" && n["lang"] != "rust")
+    });
+    for n in below_app {
+        assert!(
+            n["parent"].is_string(),
+            "frontend node {} must have a parent",
+            n["id"]
+        );
+    }
+}
+
+#[test]
+fn frontend_import_edges_present() {
+    let model = model();
+    let edges = model["edges"].as_array().expect("edges array");
+
+    // Both Vue apps depend on the shared package (a cross-app `depends-on`).
+    let app_depends = |from: &str| {
+        edges.iter().any(|e| {
+            e["kind"] == "depends-on" && e["from"] == from && e["to"] == "app:frontend-shared"
+        })
+    };
+    assert!(
+        app_depends("app:frontend"),
+        "frontend should depend on frontend-shared"
+    );
+    assert!(
+        app_depends("app:frontend-lawmaking"),
+        "frontend-lawmaking should depend on frontend-shared"
+    );
+
+    // Imports within a frontend become `uses` edges — in particular a component
+    // that imports a composable (the acceptance criterion "which component uses
+    // which composable").
+    let component_uses_composable = edges.iter().any(|e| {
+        e["kind"] == "uses"
+            && e["from"]
+                .as_str()
+                .is_some_and(|f| f.starts_with("component:frontend::"))
+            && e["to"]
+                .as_str()
+                .is_some_and(|t| t.starts_with("composable:frontend::"))
+    });
+    assert!(
+        component_uses_composable,
+        "expected a component→composable uses edge"
+    );
+}
+
 /// The crate prefix of a `kind:crate::…` node id, e.g. `mod:engine::service`
 /// -> `engine`. Returns `None` for a bare `crate:engine` (no `::`).
 fn crate_prefix(id: &str) -> Option<&str> {

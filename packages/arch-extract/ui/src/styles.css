@@ -26,6 +26,13 @@
   --kind-enum: #ca8a04;
   --kind-fn: #64748b;
   --kind-method: #64748b;
+
+  /* JS/TS/Vue frontends. Kept in a warm/green family so the two tiers (Rust
+     crates vs. Vue apps) read as distinct at a glance. */
+  --kind-app: #16a34a;
+  --kind-dir: #0891b2;
+  --kind-component: #42b883; /* Vue green */
+  --kind-composable: #db7734;
 }
 
 /* Dark palette, shared by "OS dark + not forced light" and "forced dark". */
@@ -301,6 +308,18 @@ body,
 .arch-node.kind-method {
   border-left: 4px solid var(--kind-fn);
 }
+.arch-node.kind-app {
+  border-left: 4px solid var(--kind-app);
+}
+.arch-node.kind-dir {
+  border-left: 4px solid var(--kind-dir);
+}
+.arch-node.kind-component {
+  border-left: 4px solid var(--kind-component);
+}
+.arch-node.kind-composable {
+  border-left: 4px solid var(--kind-composable);
+}
 
 .kind-crate .arch-node__kind,
 .detail-panel__badge.kind-crate {
@@ -331,6 +350,22 @@ body,
 .detail-panel__badge.kind-fn,
 .detail-panel__badge.kind-method {
   background: var(--kind-fn);
+}
+.kind-app .arch-node__kind,
+.detail-panel__badge.kind-app {
+  background: var(--kind-app);
+}
+.kind-dir .arch-node__kind,
+.detail-panel__badge.kind-dir {
+  background: var(--kind-dir);
+}
+.kind-component .arch-node__kind,
+.detail-panel__badge.kind-component {
+  background: var(--kind-component);
+}
+.kind-composable .arch-node__kind,
+.detail-panel__badge.kind-composable {
+  background: var(--kind-composable);
 }
 
 /* Handles exist for edge attachment but are not user-facing (no connecting). */

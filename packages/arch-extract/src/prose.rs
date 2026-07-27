@@ -129,6 +129,10 @@ fn kind_str(kind: Kind) -> &'static str {
         Kind::Trait => "trait",
         Kind::Method => "method",
         Kind::Fn => "fn",
+        Kind::App => "app",
+        Kind::Dir => "dir",
+        Kind::Component => "component",
+        Kind::Composable => "composable",
     }
 }
 

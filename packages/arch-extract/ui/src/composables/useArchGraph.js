@@ -28,15 +28,22 @@ const ROOT_GAP_Y = 80;
 const ROOT_ROW_MAX_W = 1800; // wrap the crate row past this width
 
 // Sort order for children: coarse kinds first, then alphabetically. Keeps a
-// crate's modules above its loose fns, types above their methods, etc.
+// crate's modules above its loose fns, types above their methods, etc. The
+// roots (Rust `crate`s and JS `app`s) are grouped so the two tiers do not
+// interleave; below an app, directories sort above the files they group.
 const KIND_RANK = {
-  binary: 0,
-  module: 1,
-  trait: 2,
-  struct: 3,
-  enum: 4,
-  fn: 5,
-  method: 6,
+  crate: 0,
+  app: 1,
+  binary: 2,
+  dir: 3,
+  module: 4,
+  component: 5,
+  composable: 6,
+  trait: 7,
+  struct: 8,
+  enum: 9,
+  fn: 10,
+  method: 11,
 };
 
 // Per-edge-kind styling. Visually distinct so `depends-on` / `impl` / `uses`

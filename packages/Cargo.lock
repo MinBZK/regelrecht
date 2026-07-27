@@ -3990,6 +3990,7 @@ dependencies = [
  "cargo_metadata",
  "jsonschema",
  "proc-macro2",
+ "regex",
  "serde",
  "serde_json",
  "syn 2.0.117",
