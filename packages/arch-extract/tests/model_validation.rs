@@ -60,7 +60,7 @@ fn depends_on(model: &Value, from_short: &str) -> BTreeSet<String> {
 }
 
 #[test]
-fn ten_product_crates_present() {
+fn product_crates_present() {
     let model = load_json("model.json");
     let crates = crate_short_names(&model);
     let expected: BTreeSet<String> = [
@@ -69,6 +69,7 @@ fn ten_product_crates_present() {
         "corpus",
         "editor-api",
         "engine",
+        "github",
         "harvester",
         "law-model",
         "pipeline",
@@ -80,7 +81,7 @@ fn ten_product_crates_present() {
     .collect();
     assert_eq!(
         crates, expected,
-        "crate nodes must be exactly the 10 product crates"
+        "crate nodes must be exactly the product crates"
     );
 }
 
@@ -90,6 +91,11 @@ fn layer_graph_matches_known_dependencies() {
 
     // `shared` is the foundation: it depends on no other workspace crate.
     assert!(depends_on(&model, "shared").is_empty());
+
+    // `github` is a second foundation: the shared GitHub REST client is
+    // deliberately standalone, so the crates that consolidated onto it
+    // (corpus, editor-api) can depend on it without a cycle.
+    assert!(depends_on(&model, "github").is_empty());
 
     // Spot-check the documented layers.
     assert_eq!(
