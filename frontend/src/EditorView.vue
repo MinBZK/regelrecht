@@ -218,7 +218,17 @@ const {
 // the open law against the *previous* traject's dependencies. The
 // dependency walker re-loads on demand on the next run, so a single
 // `unloadAllLaws` is enough - no per-dep bookkeeping needed.
+//
+// This handler is an async chain (`await switchLaw` on a deep link, then
+// `await nextTick`) that mutates shared state, so two switches in quick
+// succession (rapid back/forward across trajects) can overlap. Guard it with
+// the same `useLatest()` pattern `selectTab`/`onBeforeRouteUpdate` use, so a
+// stale invocation can't land its writes - or lower the auto-open latch a newer
+// switch raised - after the newer one, which would leave the bar showing the
+// previous traject's tabs while the route is on the new one.
+const claimTrajectSwitch = useLatest();
 watch(activeTrajectRef, async (next) => {
+  const isCurrent = claimTrajectSwitch();
   // A traject switch settles onto the section root: stand the auto-open
   // robustness net down for this tick so it doesn't force one of the freshly
   // swapped-in tabs active while we deliberately land on the neutral view.
@@ -248,6 +258,9 @@ watch(activeTrajectRef, async (next) => {
     // onBeforeRouteUpdate), this is skipped - no duplicate fetch.
     if (lawTrajectRef.value !== next || lawId.value !== route.params.lawId) {
       await switchLaw(route.params.lawId, route.params.articleNumber, next);
+      // A newer switch superseded us mid-load: drop our writes so we don't
+      // reconcile the bar against a traject the route already left.
+      if (!isCurrent()) return;
     }
     // Only reflect the URL's law as this traject's active tab when it actually
     // loaded FOR this traject. When the traject doesn't have the law, switchLaw
@@ -289,6 +302,9 @@ watch(activeTrajectRef, async (next) => {
     activeTab.value = null;
   }
   await nextTick();
+  // Only the latest switch may lower the latch: a stale invocation clearing it
+  // here would re-enable the auto-open net mid-way through a newer switch.
+  if (!isCurrent()) return;
   suppressTabAutoOpen = false;
 });
 
@@ -959,8 +975,10 @@ async function selectTab(tab) {
 // the URL has no law at all (so a refresh returns the user where they were),
 // otherwise simply the first open tab. selectTab sets activeTab synchronously,
 // so the empty state never flashes. With no open tabs this is a no-op and we
-// fall through to the empty state - the only case it should appear. Shared by
-// the initial mount and by traject switches (see watch(activeTrajectRef)).
+// fall through to the empty state - the only case it should appear. This runs
+// on the INITIAL mount only; a traject switch deliberately does NOT restore the
+// last active tab (see watch(activeTrajectRef), which lands on the neutral root
+// instead), so it never calls this.
 function openSavedActiveTab(trajectRef) {
   if (route.params.articleNumber || openTabs.value.length === 0) return;
   const lastActive = loadSavedActiveTab(trajectRef);
