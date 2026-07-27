@@ -1,0 +1,41 @@
+# regelrecht-arch-extract — the architecture-model generator.
+#
+# This is a build-time developer tool (an 11th, tooling-only workspace member),
+# not a runtime component of the product. It reads the workspace and emits a
+# single language-agnostic `model.json` that the docs site renders. See
+# `README.md` for the extraction approach and the deliberate stable-toolchain
+# choice (cargo metadata + syn) over rustdoc-JSON.
+[package]
+name = "regelrecht-arch-extract"
+version = "0.1.0"
+edition = "2021"
+authors = ["MinBZK <noreply@minbzk.nl>"]
+description = "Generates the code-derived architecture model (model.json) for the regelrecht workspace"
+license = "EUPL-1.2"
+repository = "https://github.com/MinBZK/regelrecht"
+homepage = "https://github.com/MinBZK/regelrecht"
+publish = false
+
+[[bin]]
+name = "arch-extract"
+path = "src/main.rs"
+
+[dependencies]
+# Crate graph + internal path-dependencies, straight from cargo's own model.
+cargo_metadata = "0.23"
+# Source-level structure (modules/types/impls/methods/fns + doc-comments) on the
+# pinned stable toolchain — no nightly rustdoc-JSON required. See README.md.
+syn = { version = "2", features = ["full", "extra-traits", "visit", "parsing"] }
+# For inspecting attribute token streams (e.g. distinguishing `cfg(test)`).
+proc-macro2 = "1"
+serde.workspace = true
+serde_json.workspace = true
+walkdir.workspace = true
+
+[dev-dependencies]
+# Validates the committed model.json against the JSON schema in a test, so drift
+# in the model shape is caught by `cargo test` (and thus `just check`).
+jsonschema = "0.47"
+
+[lints]
+workspace = true
