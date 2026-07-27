@@ -1,0 +1,12 @@
+# Gegenereerde bestanden.
+#
+# `linguist-generated=true` klapt het bestand in in PR-diffs, houdt het uit de
+# taalstatistieken van de repo en uit code-search-resultaten. De diff blijft
+# opvraagbaar, zodat een architectuurwijziging nog steeds te reviewen is.
+#
+# Bewust GEEN `-diff` (zou de inhoud als binair verbergen en juist die
+# reviewbaarheid weghalen) en GEEN `merge=ours` (vereist een merge-driver in
+# .git/config, die niet meegecloned wordt en dus stil niets doet). Bij een
+# merge-conflict: `just arch-generate`, daarna bevestigt `just arch-check`
+# de uitkomst.
+docs/src/content/architecture/model.json linguist-generated=true
