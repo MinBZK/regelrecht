@@ -193,6 +193,7 @@ const {
   selectedArticle,
   selectedArticleNumber,
   switchLaw,
+  clearLaw,
   loading,
   error,
   saving: lawSaving,
@@ -217,6 +218,10 @@ const {
 // dependency walker re-loads on demand on the next run, so a single
 // `unloadAllLaws` is enough - no per-dep bookkeeping needed.
 watch(activeTrajectRef, async (next) => {
+  // A traject switch settles onto the section root: stand the auto-open
+  // robustness net down for this tick so it doesn't force one of the freshly
+  // swapped-in tabs active while we deliberately land on the neutral view.
+  suppressTabAutoOpen = true;
   unloadAllLaws();
   // Tabs are scoped per traject: swap the bar to the new traject's own saved
   // set so the previous traject's tabs - which may point at laws this traject
@@ -225,36 +230,33 @@ watch(activeTrajectRef, async (next) => {
   openTabs.value = loadSavedTabs(next);
   // Resolve the freshly swapped-in tabs' labels through the new traject.
   backfillTabLabels(next);
-  if (lawId.value) {
-    // The URL carried a law across the switch: keep showing it through the new
-    // traject. Point activeTab straight at that law (the tab-add watch re-adds
-    // and re-affirms it - and persists it under the new traject's key - once
-    // switchLaw settles). Setting it synchronously, rather than clearing to
-    // null, is deliberate: this switchLaw runs outside selectTab and doesn't
-    // await, so a null gap would let the "no active tab" robustness-net watch
-    // fire first and steal the switch (its selectTab claims switchLaw's shared
-    // useLatest last and wins), silently navigating to some other saved tab.
-    activeTab.value = { lawId: lawId.value, articleNumber: String(selectedArticleNumber.value ?? '') };
-    await switchLaw(lawId.value, selectedArticleNumber.value, next);
-    // On success the tab-add watch has added the law and re-affirmed activeTab;
-    // let it flush. On failure (the law isn't in this traject - the very case
-    // this feature targets, shown via the "niet beschikbaar" dialog) switchLaw
-    // leaves lawId/article untouched, so that watch never ran and the optimistic
-    // activeTab now points at a tab absent from openTabs. Drop it so the bar
-    // doesn't keep a phantom active tab. Bail if a newer switch superseded us.
-    await nextTick();
-    if (
-      activeTrajectRef.value === next && activeTab.value &&
-      !findTab(activeTab.value.lawId, activeTab.value.articleNumber)
-    ) {
-      activeTab.value = null;
+  if (route.params.lawId) {
+    // A URL that still names a law in the new traject can only come from a deep
+    // link or browser back/forward now (the traject switcher navigates to the
+    // bare root - see trajectSwitchTarget). onBeforeRouteUpdate already loaded
+    // that law through the new traject before this watch ran, so just reflect
+    // it as the active tab in the freshly swapped bar and persist it there.
+    if (lawId.value && selectedArticleNumber.value != null) {
+      const tab = { lawId: lawId.value, articleNumber: String(selectedArticleNumber.value) };
+      if (!findTab(tab.lawId, tab.articleNumber)) {
+        openTabs.value = [...openTabs.value, tab];
+        saveTabs(next, openTabs.value);
+      }
+      activeTab.value = tab;
+      saveActiveTab(next, tab);
     }
   } else {
-    // No law in the URL: restore this traject's own last active tab (or its
-    // first tab), mirroring the initial-mount restore.
+    // The common case: the switcher dropped us on the traject root with no law
+    // in the URL. Go to a neutral view - unload the previous traject's document
+    // (so it can't linger in the panes or leak across as an active tab) and
+    // leave every tab in the bar inactive. The user picks one to open it; we
+    // deliberately do NOT auto-restore the last active tab on a switch (unlike
+    // the initial mount), so switching trajects never re-opens a document.
+    clearLaw();
     activeTab.value = null;
-    openSavedActiveTab(next);
   }
+  await nextTick();
+  suppressTabAutoOpen = false;
 });
 
 // Notes (RFC-005/RFC-018) for the current law, resolved against its text.
@@ -837,6 +839,14 @@ const lawNames = ref({});
 // Active tab tracks which tab is selected
 const activeTab = ref(null);
 
+// Set true for the tick a traject switch takes to settle. The switch swaps the
+// tab bar to the new traject's set and lands on the neutral root with NO active
+// tab, which would otherwise trip the auto-open robustness net below into
+// opening one of the new tabs - exactly what a switch must not do. A plain
+// (non-reactive) latch is enough: the switch sets it before mutating and clears
+// it after nextTick, so the net's flush sees it raised.
+let suppressTabAutoOpen = false;
+
 function tabKey(tab) {
   return `${tab.lawId}:${tab.articleNumber}`;
 }
@@ -925,6 +935,9 @@ openSavedActiveTab(activeTrajectRef.value);
 // law they asked for - not silently land on some other tab.
 watch([activeTab, openTabs], ([tab, tabs]) => {
   if (route.params.articleNumber) return;
+  // A traject switch intentionally sits at the neutral root with tabs in the
+  // bar but none active; don't undo that by opening one.
+  if (suppressTabAutoOpen) return;
   if (!tab && tabs.length > 0) selectTab(tabs[0]).catch(console.warn);
 });
 
@@ -2084,14 +2097,19 @@ async function handleActionSave() {
              nothing here while that navigation commits. -->
         <nldd-page v-if="trajectMissing"></nldd-page>
 
-        <!-- Nothing to show at all: no open tabs, nothing loading, nothing
-             selected, no error to report. Deliberately NOT keyed on
-             `!activeTab` alone - that stays null for the WHOLE load of an
-             explicit article URL (the add-tab watch only sets it once the
-             article resolves), so keying on it would hide the panes behind a
-             full-page state exactly when we want them up. `!error` keeps a
-             failed explicit open on its own error branch below. -->
-        <nldd-page v-else-if="!activeTab && !loading && !selectedArticle && !error && openTabs.length === 0">
+        <!-- Neutral / root view: no active tab, nothing loading, nothing
+             selected, no error to report. Two cases land here - genuinely no
+             open tabs, and the moment right after a traject switch (tabs sit in
+             the bar but none is active, since a switch never auto-opens one).
+             Both show the same "pick a tab or go Home" prompt, so this is NOT
+             keyed on `openTabs.length`. Deliberately NOT keyed on `!activeTab`
+             alone either - that stays null for the WHOLE load of an explicit
+             article URL (the add-tab watch only sets it once the article
+             resolves), so keying on it would hide the panes behind a full-page
+             state exactly when we want them up; `!loading && !selectedArticle`
+             guards that. `!error` keeps a failed explicit open on its own error
+             branch below. -->
+        <nldd-page v-else-if="!activeTab && !loading && !selectedArticle && !error">
           <nldd-simple-section width="full">
             <nldd-inline-dialog text="Open een artikel vanuit de tabbalk of Home om te bewerken.">
               <nldd-button slot="actions" variant="secondary" text="Naar Home" :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)"></nldd-button>

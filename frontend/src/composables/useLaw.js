@@ -265,6 +265,27 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
   }
 
   /**
+   * Drop the currently open law and return to the "nothing open" state (no
+   * law, no article, no error, not loading). Used when a traject switch lands
+   * on the section root: the previous traject's law must not linger in the
+   * panes, and `lawId` must read `null` so the editor shows its neutral empty
+   * state instead of trying to keep the old document up. Clearing `lawParam`
+   * too drops the initial-route fallback, so `lawId` really settles on `null`.
+   * Invalidates any in-flight load/switch so a late response can't repopulate
+   * the cleared state.
+   */
+  function clearLaw() {
+    claimSwitch();
+    lawParam = null;
+    law.value = null;
+    rawYaml.value = '';
+    selectedArticleNumber.value = null;
+    currentEtag.value = null;
+    error.value = null;
+    loading.value = false;
+  }
+
+  /**
    * Persist edited law YAML to the backend via PUT.
    *
    * On success, updates `rawYaml` + `law` locally so downstream consumers
@@ -458,6 +479,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
     selectedArticle,
     selectedArticleNumber,
     switchLaw,
+    clearLaw,
     loading,
     error,
     saving,

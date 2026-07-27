@@ -58,6 +58,19 @@ export function homeTarget({ trajectRef, lawId, articleNumber } = {}) {
     : { name: 'home', params: {} };
 }
 
+// Where a traject switch should land: the ROOT of the section you're in
+// (Home or editor), in the newly picked traject. A switch deliberately does
+// NOT carry the law/article you were viewing - the new traject's corpus
+// differs, so the old lawId points at a document it doesn't have. Carrying it
+// across made the editor try to open that foreign document (and leak the
+// previous traject's tab). Landing on the bare root instead lets the editor
+// show the new traject's own saved tabs in the bar without auto-opening one.
+export function trajectSwitchTarget(routeName, trajectRef) {
+  return isHomeSection(routeName)
+    ? homeTarget({ trajectRef })
+    : { name: 'editor-traject', params: { trajectRef } };
+}
+
 function storageKeyFor(routeName) {
   if (routeName === 'editor-traject') return 'editor';
   // The whole Home section shares one key so the last write wins regardless of

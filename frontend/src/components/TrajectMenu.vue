@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useTrajects } from '../composables/useTrajects.js';
 import { useAuth } from '../composables/useAuth.js';
 import { useLoginToChooser } from '../composables/useLoginToChooser.js';
-import { homeTarget, isHomeSection } from '../composables/useLastVisitedRoute.js';
+import { homeTarget, trajectSwitchTarget } from '../composables/useLastVisitedRoute.js';
 import TrajectCreateForm from './TrajectCreateForm.vue';
 
 const props = defineProps({
@@ -68,21 +68,16 @@ function goToCorpusJuris() {
 }
 
 /**
- * Navigate to a traject - push the user into the traject-scoped view of
- * the section they are currently in (bibliotheek or editor), at the same
- * law they were viewing. Picking a traject from the bibliotheek keeps you
- * in the bibliotheek; from the editor it keeps you in the editor. Per-tab
- * state: a switch here only affects this tab, never other open tabs.
+ * Navigate to a traject - push the user into the traject-scoped view of the
+ * section they are currently in (bibliotheek or editor), at that section's
+ * ROOT. A switch deliberately drops the law you were viewing: the new traject
+ * has its own corpus, so carrying the old lawId across would try to open a
+ * document it doesn't have (and leak the previous traject's tab). The editor
+ * shows the new traject's own saved tabs in the bar without auto-opening one.
+ * Per-tab state: a switch here only affects this tab, never other open tabs.
  */
 async function goToTraject(trajectRef) {
-  const lawId = route.params.lawId || undefined;
-  const articleNumber = route.params.articleNumber || undefined;
-  // Stay in the section you're in: Home keeps you on Home (bare traject or its
-  // corpus, per homeTarget); the editor keeps you in the editor.
-  const target = isHomeSection(route.name)
-    ? homeTarget({ trajectRef, lawId, articleNumber })
-    : { name: 'editor-traject', params: { trajectRef, lawId, articleNumber } };
-  await router.push(target);
+  await router.push(trajectSwitchTarget(route.name, trajectRef));
 }
 
 const menuBtnId = computed(() => `traject-menu-btn-${props.idSuffix}`);

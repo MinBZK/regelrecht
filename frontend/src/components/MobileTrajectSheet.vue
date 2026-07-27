@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useTrajects } from '../composables/useTrajects.js';
 import { useAuth } from '../composables/useAuth.js';
 import { useLoginToChooser } from '../composables/useLoginToChooser.js';
-import { homeTarget, isHomeSection } from '../composables/useLastVisitedRoute.js';
+import { homeTarget, trajectSwitchTarget } from '../composables/useLastVisitedRoute.js';
 import { useAppChrome } from '../composables/useAppChrome.js';
 import TrajectCreateForm from './TrajectCreateForm.vue';
 
@@ -70,14 +70,14 @@ function onSheetClose() {
   sheetMode.value = 'list';
 }
 
-// --- Navigatie naar traject (bibliotheek vs editor, zelfde wet/artikel) ---
+// --- Navigatie naar traject (bibliotheek vs editor) ---
+// Een traject-wissel landt op de root van de sectie waar je in zit: de wet die
+// je bekeek gaat niet mee (het nieuwe traject heeft z'n eigen corpus), zodat we
+// geen document proberen te openen dat daar niet bestaat. De editor toont de
+// eigen opgeslagen tabbladen van het nieuwe traject in de balk zonder er een te
+// openen. Zie trajectSwitchTarget.
 async function goToTraject(trajectRef) {
-  const lawId = route.params.lawId || undefined;
-  const articleNumber = route.params.articleNumber || undefined;
-  const target = isHomeSection(route.name)
-    ? homeTarget({ trajectRef, lawId, articleNumber })
-    : { name: 'editor-traject', params: { trajectRef, lawId, articleNumber } };
-  await router.push(target);
+  await router.push(trajectSwitchTarget(route.name, trajectRef));
 }
 
 // Switch to the traject-less global corpus ("Corpus juris") - a peer of the
