@@ -190,7 +190,9 @@ function buildFlow(model, expanded) {
         .filter(Boolean)
         .join(' '),
       style: { width: `${size.w}px`, height: `${size.h}px` },
-      zIndex: depth,
+      // depth + 1 so every node outranks the edge layer (zIndex 0 below);
+      // deeper nodes still stack above their own container.
+      zIndex: depth + 1,
     });
     for (const k of visibleChildren(id)) emit(k, depth + 1);
   };
@@ -211,7 +213,11 @@ function buildFlow(model, expanded) {
       type: 'default',
       style,
       markerEnd: { type: MarkerType.ArrowClosed, color: style.stroke, width: 16, height: 16 },
-      zIndex: 2000,
+      // Below every node (which start at 1). Edges used to sit at 2000, which
+      // drew the lines over the node boxes and — worse — put Vue Flow's
+      // invisible 20px-wide `.vue-flow__edge-interaction` hit path on top of
+      // the expand toggles, swallowing the click on most nodes.
+      zIndex: 0,
     });
   }
 

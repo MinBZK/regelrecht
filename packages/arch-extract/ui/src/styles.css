@@ -243,7 +243,15 @@ body,
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 2px 4px;
+  /* 24x24 hit target: the canvas opens at fit-view zoom (~0.4 on the crate
+     level), so a snug button shrinks to a handful of screen pixels. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
   border-radius: 4px;
   line-height: 1;
 }
@@ -371,6 +379,14 @@ body,
 /* Handles exist for edge attachment but are not user-facing (no connecting). */
 .vue-flow__handle {
   opacity: 0;
+  pointer-events: none;
+}
+
+/* Vue Flow lays an invisible 20px-wide stroke over every edge to make it easy
+   to hover/click. Nothing here reacts to an edge click, so that hit path only
+   steals clicks from the node controls underneath it. Belt and braces next to
+   the edge z-index: a wide stroke would still cover a node it crosses. */
+.vue-flow__edge-interaction {
   pointer-events: none;
 }
 
