@@ -181,29 +181,39 @@ fn crate_prefix(id: &str) -> Option<&str> {
 #[test]
 fn deep_extraction_covers_all_crates() {
     // The deep source pass runs for every crate by default, not just
-    // engine + corpus. Assert that each product crate has at least one module
-    // node below it (i.e. the syn pass actually walked its src).
+    // engine + corpus. Assert that each product crate has at least one
+    // deep-extracted node below it (i.e. the syn pass actually walked its src).
+    //
+    // "Below it" means any non-crate node whose id resolves to the crate, not
+    // specifically a `module` node: a crate whose root is a single `lib.rs`
+    // (no `mod` declarations) emits its top-level types/fns parented directly
+    // at the crate node (see `FileRole::CrateRoot` in `syn_pass.rs`), so it has
+    // zero module nodes even though the deep pass ran. Keying on modules alone
+    // would spuriously flag such a crate as un-extracted.
     let model = model();
     let nodes = model["nodes"].as_array().expect("nodes array");
 
     let crates = crate_short_names(model);
-    let mut crates_with_modules: std::collections::BTreeSet<String> =
+    let mut crates_with_deep_nodes: std::collections::BTreeSet<String> =
         std::collections::BTreeSet::new();
     for n in nodes {
-        if n["kind"] != "module" {
+        if n["kind"] == "crate" {
             continue;
         }
         if let Some(id) = n["id"].as_str() {
             if let Some(c) = crate_prefix(id) {
-                crates_with_modules.insert(c.to_string());
+                crates_with_deep_nodes.insert(c.to_string());
             }
         }
     }
 
-    let missing: Vec<String> = crates.difference(&crates_with_modules).cloned().collect();
+    let missing: Vec<String> = crates
+        .difference(&crates_with_deep_nodes)
+        .cloned()
+        .collect();
     assert!(
         missing.is_empty(),
-        "every crate should have deep (module) extraction; missing: {missing:?}"
+        "every crate should have deep (source-level) extraction; missing: {missing:?}"
     );
 }
 
