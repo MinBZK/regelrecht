@@ -77,6 +77,15 @@
       "doc": "RegelRecht law execution engine - Machine-readable Dutch law execution"
     },
     {
+      "id": "crate:github",
+      "level": "container",
+      "kind": "crate",
+      "lang": "rust",
+      "name": "github",
+      "path": "packages/github",
+      "doc": "RegelRecht GitHub REST client — one GithubClient service shared across all regelrecht applications"
+    },
+    {
       "id": "crate:harvester",
       "level": "container",
       "kind": "crate",
@@ -764,14 +773,14 @@
       "parent": "type:corpus::backend::SessionGitBackend"
     },
     {
-      "id": "fn:corpus::backend::SessionGitBackend::with_pr_client",
+      "id": "fn:corpus::backend::SessionGitBackend::with_github_client",
       "level": "code",
       "kind": "method",
       "lang": "rust",
-      "name": "with_pr_client",
+      "name": "with_github_client",
       "path": "packages/corpus/src/backend.rs",
       "parent": "type:corpus::backend::SessionGitBackend",
-      "doc": "Test-only: swap the PR client for one pointed at a wiremock server."
+      "doc": "Test-only: swap the GitHub client for one pointed at a wiremock server."
     },
     {
       "id": "fn:corpus::backend::SessionGitBackend::write_file",
@@ -1278,234 +1287,83 @@
       "doc": "Stable string tag for a [`SourceType`] used in JSON responses."
     },
     {
-      "id": "fn:corpus::github::inner::GitHubFetcher::branch_exists",
+      "id": "fn:corpus::error::CorpusError::from",
       "level": "code",
       "kind": "method",
       "lang": "rust",
-      "name": "branch_exists",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "type:corpus::github::inner::GitHubFetcher",
-      "doc": "Check whether a branch exists. Returns `Ok(true)` on 200,"
+      "name": "from",
+      "path": "packages/corpus/src/error.rs",
+      "parent": "type:corpus::error::CorpusError"
     },
     {
-      "id": "fn:corpus::github::inner::GitHubFetcher::compare_files",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "compare_files",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "type:corpus::github::inner::GitHubFetcher",
-      "doc": "In-repo paths of files that differ between `base` and `head`,"
-    },
-    {
-      "id": "fn:corpus::github::inner::GitHubFetcher::create_branch",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "create_branch",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "type:corpus::github::inner::GitHubFetcher",
-      "doc": "Create `branch` pointing at the tip of `base_branch`. The base"
-    },
-    {
-      "id": "fn:corpus::github::inner::GitHubFetcher::default_headers",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "default_headers",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "type:corpus::github::inner::GitHubFetcher",
-      "doc": "Build default headers for GitHub API requests."
-    },
-    {
-      "id": "fn:corpus::github::inner::GitHubFetcher::delete_file_via_api",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "delete_file_via_api",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "type:corpus::github::inner::GitHubFetcher",
-      "doc": "Delete a file via Contents API DELETE. Requires the current"
-    },
-    {
-      "id": "fn:corpus::github::inner::GitHubFetcher::fetch_archive_implements",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "fetch_archive_implements",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "type:corpus::github::inner::GitHubFetcher",
-      "doc": "Download the repo at `git_ref` in a SINGLE request via the"
-    },
-    {
-      "id": "fn:corpus::github::inner::GitHubFetcher::fetch_file_content",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "fetch_file_content",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "type:corpus::github::inner::GitHubFetcher",
-      "doc": "Fetch a single file's content using the Contents API."
-    },
-    {
-      "id": "fn:corpus::github::inner::GitHubFetcher::fetch_file_with_sha",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "fetch_file_with_sha",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "type:corpus::github::inner::GitHubFetcher",
-      "doc": "Fetch a single file's content **plus** its blob SHA. The SHA is"
-    },
-    {
-      "id": "fn:corpus::github::inner::GitHubFetcher::fetch_source",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "fetch_source",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "type:corpus::github::inner::GitHubFetcher",
-      "doc": "Fetch all YAML regulation files from a GitHub source."
-    },
-    {
-      "id": "fn:corpus::github::inner::GitHubFetcher::fetch_source_filtered",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "fetch_source_filtered",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "type:corpus::github::inner::GitHubFetcher",
-      "doc": "Fetch only laws matching the given `$id` set from a GitHub source."
-    },
-    {
-      "id": "fn:corpus::github::inner::GitHubFetcher::forbidden_is_rate_limit",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "forbidden_is_rate_limit",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "type:corpus::github::inner::GitHubFetcher",
-      "doc": "True when a 403 response is GitHub *rate limiting* rather than"
-    },
-    {
-      "id": "fn:corpus::github::inner::GitHubFetcher::group_best_versions",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "group_best_versions",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "type:corpus::github::inner::GitHubFetcher",
-      "doc": "Group repo-relative YAML files by `law_id` (the directory name),"
-    },
-    {
-      "id": "fn:corpus::github::inner::GitHubFetcher::list_directory",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "list_directory",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "type:corpus::github::inner::GitHubFetcher",
-      "doc": "List a directory via the Contents API. For a directory the"
-    },
-    {
-      "id": "fn:corpus::github::inner::GitHubFetcher::list_source_law_paths",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "list_source_law_paths",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "type:corpus::github::inner::GitHubFetcher",
-      "doc": "Enumerate every law in a source via the Trees API (1 call),"
-    },
-    {
-      "id": "fn:corpus::github::inner::GitHubFetcher::list_yaml_files",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "list_yaml_files",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "type:corpus::github::inner::GitHubFetcher",
-      "doc": "List all YAML files in a repo path using the Trees API, with the"
-    },
-    {
-      "id": "fn:corpus::github::inner::GitHubFetcher::new",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "new",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "type:corpus::github::inner::GitHubFetcher",
-      "doc": "Create a new fetcher."
-    },
-    {
-      "id": "fn:corpus::github::inner::GitHubFetcher::put_file",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "put_file",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "type:corpus::github::inner::GitHubFetcher",
-      "doc": "Upsert a file via Contents API PUT. Pass `base_sha = None` to"
-    },
-    {
-      "id": "fn:corpus::github::inner::GitHubFetcher::rate_limit_remaining",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "rate_limit_remaining",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "type:corpus::github::inner::GitHubFetcher",
-      "doc": "Get the current rate limit remaining (if known)."
-    },
-    {
-      "id": "fn:corpus::github::inner::GitHubFetcher::set_base_url",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "set_base_url",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "type:corpus::github::inner::GitHubFetcher",
-      "doc": "In-place variant of [`with_base_url`] for call sites that already"
-    },
-    {
-      "id": "fn:corpus::github::inner::GitHubFetcher::track_rate_limit",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "track_rate_limit",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "type:corpus::github::inner::GitHubFetcher",
-      "doc": "Track rate limit from response headers."
-    },
-    {
-      "id": "fn:corpus::github::inner::GitHubFetcher::with_base_url",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "with_base_url",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "type:corpus::github::inner::GitHubFetcher",
-      "doc": "Override the API base URL — for tests that point at a wiremock"
-    },
-    {
-      "id": "fn:corpus::github::inner::decode_contents_payload",
-      "level": "code",
-      "kind": "fn",
-      "lang": "rust",
-      "name": "decode_contents_payload",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "mod:corpus::github::inner",
-      "doc": "Decode a Contents-API response's content payload. The API returns"
-    },
-    {
-      "id": "fn:corpus::github::inner::extract_implements_from_tar_gz",
+      "id": "fn:corpus::github::extract_implements_from_tar_gz",
       "level": "code",
       "kind": "fn",
       "lang": "rust",
       "name": "extract_implements_from_tar_gz",
       "path": "packages/corpus/src/github.rs",
-      "parent": "mod:corpus::github::inner",
-      "doc": "Stream a gzipped tar produced by GitHub's tarball endpoint and"
+      "parent": "mod:corpus::github",
+      "doc": "Stream a gzipped tar produced by GitHub's tarball endpoint and return"
+    },
+    {
+      "id": "fn:corpus::github::fetch_archive_implements",
+      "level": "code",
+      "kind": "fn",
+      "lang": "rust",
+      "name": "fetch_archive_implements",
+      "path": "packages/corpus/src/github.rs",
+      "parent": "mod:corpus::github",
+      "doc": "Bulk `implements` scan via the repo archive: download the tarball in one"
+    },
+    {
+      "id": "fn:corpus::github::fetch_source",
+      "level": "code",
+      "kind": "fn",
+      "lang": "rust",
+      "name": "fetch_source",
+      "path": "packages/corpus/src/github.rs",
+      "parent": "mod:corpus::github",
+      "doc": "Fetch all YAML regulation files from a GitHub source."
+    },
+    {
+      "id": "fn:corpus::github::fetch_source_filtered",
+      "level": "code",
+      "kind": "fn",
+      "lang": "rust",
+      "name": "fetch_source_filtered",
+      "path": "packages/corpus/src/github.rs",
+      "parent": "mod:corpus::github",
+      "doc": "Fetch only laws matching the given `$id` set from a GitHub source."
+    },
+    {
+      "id": "fn:corpus::github::group_best_versions",
+      "level": "code",
+      "kind": "fn",
+      "lang": "rust",
+      "name": "group_best_versions",
+      "path": "packages/corpus/src/github.rs",
+      "parent": "mod:corpus::github",
+      "doc": "Group repo-relative YAML files by `law_id` (the directory name), keeping the"
+    },
+    {
+      "id": "fn:corpus::github::list_source_law_paths",
+      "level": "code",
+      "kind": "fn",
+      "lang": "rust",
+      "name": "list_source_law_paths",
+      "path": "packages/corpus/src/github.rs",
+      "parent": "mod:corpus::github",
+      "doc": "Enumerate every law in a source via the Trees API (1 call), selecting the"
+    },
+    {
+      "id": "fn:corpus::github::list_yaml_files",
+      "level": "code",
+      "kind": "fn",
+      "lang": "rust",
+      "name": "list_yaml_files",
+      "path": "packages/corpus/src/github.rs",
+      "parent": "mod:corpus::github",
+      "doc": "List YAML files under `base_path` in a repo tree via the shared client's"
     },
     {
       "id": "fn:corpus::github_api_backend::GitHubApiBackend::api_path",
@@ -1771,72 +1629,6 @@
       "parent": "mod:corpus::models"
     },
     {
-      "id": "fn:corpus::pr_client::inner::PullRequestClient::create_pr",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "create_pr",
-      "path": "packages/corpus/src/pr_client.rs",
-      "parent": "type:corpus::pr_client::inner::PullRequestClient"
-    },
-    {
-      "id": "fn:corpus::pr_client::inner::PullRequestClient::default_headers",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "default_headers",
-      "path": "packages/corpus/src/pr_client.rs",
-      "parent": "type:corpus::pr_client::inner::PullRequestClient"
-    },
-    {
-      "id": "fn:corpus::pr_client::inner::PullRequestClient::ensure_pr",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "ensure_pr",
-      "path": "packages/corpus/src/pr_client.rs",
-      "parent": "type:corpus::pr_client::inner::PullRequestClient",
-      "doc": "Idempotently ensure there is an open PR for `head` against `base`."
-    },
-    {
-      "id": "fn:corpus::pr_client::inner::PullRequestClient::find_open_pr",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "find_open_pr",
-      "path": "packages/corpus/src/pr_client.rs",
-      "parent": "type:corpus::pr_client::inner::PullRequestClient"
-    },
-    {
-      "id": "fn:corpus::pr_client::inner::PullRequestClient::new",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "new",
-      "path": "packages/corpus/src/pr_client.rs",
-      "parent": "type:corpus::pr_client::inner::PullRequestClient",
-      "doc": "Build a client. Uses the standard `regelrecht-corpus/0.1` UA so"
-    },
-    {
-      "id": "fn:corpus::pr_client::inner::PullRequestClient::update_pr",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "update_pr",
-      "path": "packages/corpus/src/pr_client.rs",
-      "parent": "type:corpus::pr_client::inner::PullRequestClient"
-    },
-    {
-      "id": "fn:corpus::pr_client::inner::PullRequestClient::with_base_url",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "with_base_url",
-      "path": "packages/corpus/src/pr_client.rs",
-      "parent": "type:corpus::pr_client::inner::PullRequestClient",
-      "doc": "Override the API base URL. Intended for tests that point at a"
-    },
-    {
       "id": "fn:corpus::registry::CorpusRegistry::empty",
       "level": "code",
       "kind": "method",
@@ -1955,73 +1747,6 @@
       "path": "packages/corpus/src/registry.rs",
       "parent": "mod:corpus::registry",
       "doc": "Merge base sources with local overrides."
-    },
-    {
-      "id": "fn:corpus::repo_access::inner::RepoAccessError::fmt",
-      "level": "code",
-      "kind": "method",
-      "lang": "rust",
-      "name": "fmt",
-      "path": "packages/corpus/src/repo_access.rs",
-      "parent": "type:corpus::repo_access::inner::RepoAccessError"
-    },
-    {
-      "id": "fn:corpus::repo_access::inner::check_branch",
-      "level": "code",
-      "kind": "fn",
-      "lang": "rust",
-      "name": "check_branch",
-      "path": "packages/corpus/src/repo_access.rs",
-      "parent": "mod:corpus::repo_access::inner"
-    },
-    {
-      "id": "fn:corpus::repo_access::inner::check_repo",
-      "level": "code",
-      "kind": "fn",
-      "lang": "rust",
-      "name": "check_repo",
-      "path": "packages/corpus/src/repo_access.rs",
-      "parent": "mod:corpus::repo_access::inner"
-    },
-    {
-      "id": "fn:corpus::repo_access::inner::default_headers",
-      "level": "code",
-      "kind": "fn",
-      "lang": "rust",
-      "name": "default_headers",
-      "path": "packages/corpus/src/repo_access.rs",
-      "parent": "mod:corpus::repo_access::inner",
-      "doc": "Build the default header set for every GitHub API call, including"
-    },
-    {
-      "id": "fn:corpus::repo_access::inner::percent_encode_path_segment",
-      "level": "code",
-      "kind": "fn",
-      "lang": "rust",
-      "name": "percent_encode_path_segment",
-      "path": "packages/corpus/src/repo_access.rs",
-      "parent": "mod:corpus::repo_access::inner",
-      "doc": "Percent-encode a single URL path segment per RFC 3986 §2.3:"
-    },
-    {
-      "id": "fn:corpus::repo_access::inner::truncate",
-      "level": "code",
-      "kind": "fn",
-      "lang": "rust",
-      "name": "truncate",
-      "path": "packages/corpus/src/repo_access.rs",
-      "parent": "mod:corpus::repo_access::inner",
-      "doc": "UTF-8-safe slice up to `max` *bytes*, walking back to the"
-    },
-    {
-      "id": "fn:corpus::repo_access::inner::validate_repo_access",
-      "level": "code",
-      "kind": "fn",
-      "lang": "rust",
-      "name": "validate_repo_access",
-      "path": "packages/corpus/src/repo_access.rs",
-      "parent": "mod:corpus::repo_access::inner",
-      "doc": "Pre-flight check before letting a traject use this repo as its"
     },
     {
       "id": "fn:corpus::source_map::LoadedLaw::is_loaded",
@@ -6042,16 +5767,7 @@
       "name": "github",
       "path": "packages/corpus/src/github.rs",
       "parent": "crate:corpus",
-      "doc": "GitHub API client for fetching regulation files from remote repositories."
-    },
-    {
-      "id": "mod:corpus::github::inner",
-      "level": "component",
-      "kind": "module",
-      "lang": "rust",
-      "name": "inner",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "mod:corpus::github"
+      "doc": "GitHub **domain** layer for the corpus: turns a [`GitHubSource`] into the"
     },
     {
       "id": "mod:corpus::github_api_backend",
@@ -6073,25 +5789,6 @@
       "parent": "crate:corpus"
     },
     {
-      "id": "mod:corpus::pr_client",
-      "level": "component",
-      "kind": "module",
-      "lang": "rust",
-      "name": "pr_client",
-      "path": "packages/corpus/src/pr_client.rs",
-      "parent": "crate:corpus",
-      "doc": "GitHub Pull Request API client."
-    },
-    {
-      "id": "mod:corpus::pr_client::inner",
-      "level": "component",
-      "kind": "module",
-      "lang": "rust",
-      "name": "inner",
-      "path": "packages/corpus/src/pr_client.rs",
-      "parent": "mod:corpus::pr_client"
-    },
-    {
       "id": "mod:corpus::registry",
       "level": "component",
       "kind": "module",
@@ -6099,25 +5796,6 @@
       "name": "registry",
       "path": "packages/corpus/src/registry.rs",
       "parent": "crate:corpus"
-    },
-    {
-      "id": "mod:corpus::repo_access",
-      "level": "component",
-      "kind": "module",
-      "lang": "rust",
-      "name": "repo_access",
-      "path": "packages/corpus/src/repo_access.rs",
-      "parent": "crate:corpus",
-      "doc": "Pre-flight checks for a GitHub repository before we commit a traject"
-    },
-    {
-      "id": "mod:corpus::repo_access::inner",
-      "level": "component",
-      "kind": "module",
-      "lang": "rust",
-      "name": "inner",
-      "path": "packages/corpus/src/repo_access.rs",
-      "parent": "mod:corpus::repo_access"
     },
     {
       "id": "mod:corpus::source_map",
@@ -6595,150 +6273,34 @@
       "parent": "mod:corpus::error"
     },
     {
-      "id": "type:corpus::github::inner::Committer",
-      "level": "component",
-      "kind": "struct",
-      "lang": "rust",
-      "name": "Committer",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "mod:corpus::github::inner",
-      "doc": "Commit identity used on Contents/Git Data API writes. Both"
-    },
-    {
-      "id": "type:corpus::github::inner::CompareFile",
-      "level": "component",
-      "kind": "struct",
-      "lang": "rust",
-      "name": "CompareFile",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "mod:corpus::github::inner"
-    },
-    {
-      "id": "type:corpus::github::inner::CompareResponse",
-      "level": "component",
-      "kind": "struct",
-      "lang": "rust",
-      "name": "CompareResponse",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "mod:corpus::github::inner",
-      "doc": "Compare-API response for `GET /repos/{repo}/compare/{base}...{head}`."
-    },
-    {
-      "id": "type:corpus::github::inner::ContentsItem",
-      "level": "component",
-      "kind": "struct",
-      "lang": "rust",
-      "name": "ContentsItem",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "mod:corpus::github::inner",
-      "doc": "Raw shape of the Contents API response for a single path. Used both"
-    },
-    {
-      "id": "type:corpus::github::inner::DirectoryEntry",
-      "level": "component",
-      "kind": "struct",
-      "lang": "rust",
-      "name": "DirectoryEntry",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "mod:corpus::github::inner",
-      "doc": "Single entry returned by a Contents API directory listing. Only the"
-    },
-    {
-      "id": "type:corpus::github::inner::FetchResult",
+      "id": "type:corpus::github::FetchResult",
       "level": "component",
       "kind": "enum",
       "lang": "rust",
       "name": "FetchResult",
       "path": "packages/corpus/src/github.rs",
-      "parent": "mod:corpus::github::inner",
+      "parent": "mod:corpus::github",
       "doc": "Result of fetching a GitHub source."
     },
     {
-      "id": "type:corpus::github::inner::FetchedFile",
+      "id": "type:corpus::github::FetchedFile",
       "level": "component",
       "kind": "struct",
       "lang": "rust",
       "name": "FetchedFile",
       "path": "packages/corpus/src/github.rs",
-      "parent": "mod:corpus::github::inner",
+      "parent": "mod:corpus::github",
       "doc": "A fetched file from GitHub."
     },
     {
-      "id": "type:corpus::github::inner::GitHubFetcher",
-      "level": "component",
-      "kind": "struct",
-      "lang": "rust",
-      "name": "GitHubFetcher",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "mod:corpus::github::inner",
-      "doc": "GitHub fetcher with ETag caching and rate limit awareness."
-    },
-    {
-      "id": "type:corpus::github::inner::PutContent",
-      "level": "component",
-      "kind": "struct",
-      "lang": "rust",
-      "name": "PutContent",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "mod:corpus::github::inner"
-    },
-    {
-      "id": "type:corpus::github::inner::PutResponse",
-      "level": "component",
-      "kind": "struct",
-      "lang": "rust",
-      "name": "PutResponse",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "mod:corpus::github::inner",
-      "doc": "Subset of the Contents-API PUT response we care about. The full"
-    },
-    {
-      "id": "type:corpus::github::inner::RefObject",
-      "level": "component",
-      "kind": "struct",
-      "lang": "rust",
-      "name": "RefObject",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "mod:corpus::github::inner"
-    },
-    {
-      "id": "type:corpus::github::inner::RefResponse",
-      "level": "component",
-      "kind": "struct",
-      "lang": "rust",
-      "name": "RefResponse",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "mod:corpus::github::inner",
-      "doc": "Refs-API response for `GET /git/ref/heads/{branch}`. We only need"
-    },
-    {
-      "id": "type:corpus::github::inner::TreeEntry",
-      "level": "component",
-      "kind": "struct",
-      "lang": "rust",
-      "name": "TreeEntry",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "mod:corpus::github::inner"
-    },
-    {
-      "id": "type:corpus::github::inner::TreeFile",
+      "id": "type:corpus::github::TreeFile",
       "level": "component",
       "kind": "struct",
       "lang": "rust",
       "name": "TreeFile",
       "path": "packages/corpus/src/github.rs",
-      "parent": "mod:corpus::github::inner",
-      "doc": "A YAML file discovered via the Trees API: its repo-relative path"
-    },
-    {
-      "id": "type:corpus::github::inner::TreeResponse",
-      "level": "component",
-      "kind": "struct",
-      "lang": "rust",
-      "name": "TreeResponse",
-      "path": "packages/corpus/src/github.rs",
-      "parent": "mod:corpus::github::inner",
-      "doc": "GitHub API response for the Trees endpoint."
+      "parent": "mod:corpus::github",
+      "doc": "A YAML file discovered via the Trees API: its repo-relative path plus the"
     },
     {
       "id": "type:corpus::github_api_backend::GitHubApiBackend",
@@ -6757,7 +6319,7 @@
       "name": "Inner",
       "path": "packages/corpus/src/github_api_backend.rs",
       "parent": "mod:corpus::github_api_backend",
-      "doc": "Mutable state guarded by the backend's mutex. The fetcher lives here"
+      "doc": "Mutable state guarded by the backend's mutex. The shared `GithubClient`"
     },
     {
       "id": "type:corpus::github_api_backend::PendingOp",
@@ -6839,43 +6401,6 @@
       "doc": "Source type discriminator with configuration."
     },
     {
-      "id": "type:corpus::pr_client::inner::CreatePrBody",
-      "level": "component",
-      "kind": "struct",
-      "lang": "rust",
-      "name": "CreatePrBody",
-      "path": "packages/corpus/src/pr_client.rs",
-      "parent": "mod:corpus::pr_client::inner"
-    },
-    {
-      "id": "type:corpus::pr_client::inner::PrResponse",
-      "level": "component",
-      "kind": "struct",
-      "lang": "rust",
-      "name": "PrResponse",
-      "path": "packages/corpus/src/pr_client.rs",
-      "parent": "mod:corpus::pr_client::inner"
-    },
-    {
-      "id": "type:corpus::pr_client::inner::PullRequestClient",
-      "level": "component",
-      "kind": "struct",
-      "lang": "rust",
-      "name": "PullRequestClient",
-      "path": "packages/corpus/src/pr_client.rs",
-      "parent": "mod:corpus::pr_client::inner",
-      "doc": "Hand-rolled GitHub Pulls API client."
-    },
-    {
-      "id": "type:corpus::pr_client::inner::UpdatePrBody",
-      "level": "component",
-      "kind": "struct",
-      "lang": "rust",
-      "name": "UpdatePrBody",
-      "path": "packages/corpus/src/pr_client.rs",
-      "parent": "mod:corpus::pr_client::inner"
-    },
-    {
       "id": "type:corpus::registry::CorpusRegistry",
       "level": "component",
       "kind": "struct",
@@ -6904,45 +6429,6 @@
       "path": "packages/corpus/src/registry.rs",
       "parent": "mod:corpus::registry",
       "doc": "A source that failed to enumerate during"
-    },
-    {
-      "id": "type:corpus::repo_access::inner::RepoAccessError",
-      "level": "component",
-      "kind": "enum",
-      "lang": "rust",
-      "name": "RepoAccessError",
-      "path": "packages/corpus/src/repo_access.rs",
-      "parent": "mod:corpus::repo_access::inner",
-      "doc": "Distinct failure modes for repo access validation. The editor-api"
-    },
-    {
-      "id": "type:corpus::repo_access::inner::RepoInfo",
-      "level": "component",
-      "kind": "struct",
-      "lang": "rust",
-      "name": "RepoInfo",
-      "path": "packages/corpus/src/repo_access.rs",
-      "parent": "mod:corpus::repo_access::inner",
-      "doc": "Information we glean from a successful validation call. The"
-    },
-    {
-      "id": "type:corpus::repo_access::inner::RepoPermissions",
-      "level": "component",
-      "kind": "struct",
-      "lang": "rust",
-      "name": "RepoPermissions",
-      "path": "packages/corpus/src/repo_access.rs",
-      "parent": "mod:corpus::repo_access::inner"
-    },
-    {
-      "id": "type:corpus::repo_access::inner::RepoResponse",
-      "level": "component",
-      "kind": "struct",
-      "lang": "rust",
-      "name": "RepoResponse",
-      "path": "packages/corpus/src/repo_access.rs",
-      "parent": "mod:corpus::repo_access::inner",
-      "doc": "Minimal subset of the `/repos/{owner}/{repo}` response we care"
     },
     {
       "id": "type:corpus::source_map::CollectedOutput",
@@ -7785,6 +7271,11 @@
     },
     {
       "from": "crate:corpus",
+      "to": "crate:github",
+      "kind": "depends-on"
+    },
+    {
+      "from": "crate:corpus",
       "to": "crate:law-model",
       "kind": "depends-on"
     },
@@ -7796,6 +7287,11 @@
     {
       "from": "crate:editor-api",
       "to": "crate:corpus",
+      "kind": "depends-on"
+    },
+    {
+      "from": "crate:editor-api",
+      "to": "crate:github",
       "kind": "depends-on"
     },
     {
@@ -7909,11 +7405,6 @@
       "kind": "uses"
     },
     {
-      "from": "type:corpus::backend::SessionGitBackend",
-      "to": "type:corpus::pr_client::inner::PullRequestClient",
-      "kind": "uses"
-    },
-    {
       "from": "type:corpus::backend::WriteContext",
       "to": "type:corpus::backend::EditorUser",
       "kind": "uses"
@@ -7924,26 +7415,6 @@
       "kind": "uses"
     },
     {
-      "from": "type:corpus::github::inner::CompareResponse",
-      "to": "type:corpus::github::inner::CompareFile",
-      "kind": "uses"
-    },
-    {
-      "from": "type:corpus::github::inner::PutResponse",
-      "to": "type:corpus::github::inner::PutContent",
-      "kind": "uses"
-    },
-    {
-      "from": "type:corpus::github::inner::RefResponse",
-      "to": "type:corpus::github::inner::RefObject",
-      "kind": "uses"
-    },
-    {
-      "from": "type:corpus::github::inner::TreeResponse",
-      "to": "type:corpus::github::inner::TreeEntry",
-      "kind": "uses"
-    },
-    {
       "from": "type:corpus::github_api_backend::GitHubApiBackend",
       "to": "type:corpus::backend::RepoBackend",
       "kind": "impl"
@@ -7951,11 +7422,6 @@
     {
       "from": "type:corpus::github_api_backend::GitHubApiBackend",
       "to": "type:corpus::github_api_backend::Inner",
-      "kind": "uses"
-    },
-    {
-      "from": "type:corpus::github_api_backend::Inner",
-      "to": "type:corpus::github::inner::GitHubFetcher",
       "kind": "uses"
     },
     {
@@ -7986,11 +7452,6 @@
     {
       "from": "type:corpus::registry::CorpusRegistry",
       "to": "type:corpus::models::Source",
-      "kind": "uses"
-    },
-    {
-      "from": "type:corpus::repo_access::inner::RepoResponse",
-      "to": "type:corpus::repo_access::inner::RepoPermissions",
       "kind": "uses"
     },
     {

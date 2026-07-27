@@ -25,6 +25,7 @@ RUN grep -qE '^members = \[$' Cargo.toml && \
 COPY packages/admin/ admin/
 COPY packages/auth/ auth/
 COPY packages/corpus/ corpus/
+COPY packages/github/ github/
 COPY packages/engine/ engine/
 COPY packages/law-model/ law-model/
 COPY packages/pipeline/ pipeline/
@@ -46,6 +47,7 @@ COPY --from=planner /build/Cargo.toml ./Cargo.toml
 COPY packages/admin/ admin/
 COPY packages/auth/ auth/
 COPY packages/corpus/ corpus/
+COPY packages/github/ github/
 COPY packages/engine/ engine/
 COPY packages/law-model/ law-model/
 COPY packages/pipeline/ pipeline/

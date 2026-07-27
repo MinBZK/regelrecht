@@ -20,6 +20,7 @@ axum = { workspace = true, features = ["multipart"] }
 regelrecht-auth = { path = "../auth" }
 regelrecht-shared = { path = "../shared", features = ["telemetry"] }
 regelrecht-corpus = { path = "../corpus", features = ["github", "annotation-validation"] }
+regelrecht-github = { path = "../github" }
 regelrecht-pipeline = { path = "../pipeline" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tower-http = { workspace = true, features = ["fs", "trace"] }

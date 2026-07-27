@@ -32,9 +32,10 @@ use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 
+use regelrecht_github::{Committer, GithubClient, GithubError};
+
 use crate::backend::{FileEntry, PersistOutcome, RecursiveFileEntry, RepoBackend, WriteContext};
 use crate::error::{CorpusError, Result};
-use crate::github::{Committer, GitHubFetcher};
 use crate::models::GitHubSource;
 use crate::timing;
 
@@ -54,12 +55,12 @@ enum PendingOp {
     Delete,
 }
 
-/// Mutable state guarded by the backend's mutex. The fetcher lives here
-/// because its methods take `&mut self` (ETag cache + rate-limit
-/// tracking), and the SHA cache + pending buffer must be accessed from
-/// `&self` callbacks on the trait.
+/// Mutable state guarded by the backend's mutex. The shared `GithubClient`
+/// lives here alongside the SHA cache + pending buffer so a single guard
+/// covers a whole read/persist cycle; the client itself uses interior
+/// mutability (all its methods take `&self`).
 struct Inner {
-    fetcher: GitHubFetcher,
+    client: GithubClient,
     /// Map from source-relative path → most recently observed blob SHA.
     /// Populated by `read_file`. On persist: entries for paths that were
     /// written are refreshed with the post-commit SHA; entries for paths
@@ -111,7 +112,7 @@ impl GitHubApiBackend {
             sub_path: github.path.clone(),
             token,
             inner: Mutex::new(Inner {
-                fetcher: GitHubFetcher::new()?,
+                client: GithubClient::new()?,
                 sha_cache: HashMap::new(),
                 pending: Vec::new(),
                 branch_ready: false,
@@ -126,11 +127,11 @@ impl GitHubApiBackend {
     /// makes that easy to enforce at the type level).
     pub fn with_api_base(mut self, base_url: impl Into<String>) -> Self {
         // `get_mut` is fine because we still hold &mut self, so the mutex
-        // isn't contended. Mutate the fetcher in place rather than
+        // isn't contended. Mutate the client in place rather than
         // rebuilding it (which would propagate a fallible
-        // `GitHubFetcher::new` call for what is meant to be a trivial
+        // `GithubClient::new` call for what is meant to be a trivial
         // test-only seam).
-        self.inner.get_mut().fetcher.set_base_url(base_url);
+        self.inner.get_mut().client.set_base_url(base_url);
         self
     }
 
@@ -175,14 +176,13 @@ impl GitHubApiBackend {
     /// to an existing file). Returns `Ok(None)` on 404 — the caller can
     /// then treat the PUT as a create.
     async fn fetch_sha(
-        inner: &mut Inner,
+        client: &GithubClient,
         repo: &str,
         branch: &str,
         path: &str,
         token: Option<&str>,
     ) -> Result<Option<String>> {
-        match inner
-            .fetcher
+        match client
             .fetch_file_with_sha(repo, branch, path, token)
             .await?
         {
@@ -196,13 +196,13 @@ impl GitHubApiBackend {
     /// backend init) and `persist` (lazy bootstrap with the per-call
     /// user token, for backends that had no token at init).
     async fn ensure_branch(
-        fetcher: &mut GitHubFetcher,
+        client: &GithubClient,
         repo: &str,
         branch: &str,
         base_branch: Option<&str>,
         token: Option<&str>,
     ) -> Result<()> {
-        let exists = fetcher.branch_exists(repo, branch, token).await?;
+        let exists = client.branch_exists(repo, branch, token).await?;
         if exists {
             return Ok(());
         }
@@ -220,7 +220,7 @@ impl GitHubApiBackend {
         // exists". Re-check `branch_exists` on any create_branch failure;
         // if the branch is present now the desired post-condition holds
         // and we treat the create as a benign no-op.
-        match fetcher.create_branch(repo, branch, base, token).await {
+        match client.create_branch(repo, branch, base, token).await {
             Ok(()) => {
                 tracing::info!(
                     repo = %repo,
@@ -230,7 +230,7 @@ impl GitHubApiBackend {
                 );
             }
             Err(e) => {
-                let now_exists = fetcher
+                let now_exists = client
                     .branch_exists(repo, branch, token)
                     .await
                     .unwrap_or(false);
@@ -241,7 +241,7 @@ impl GitHubApiBackend {
                         "GitHubApiBackend: create_branch lost a benign race; branch already exists"
                     );
                 } else {
-                    return Err(e);
+                    return Err(e.into());
                 }
             }
         }
@@ -291,7 +291,7 @@ impl RepoBackend for GitHubApiBackend {
         // path lands here, so it feeds the `gh_get` Server-Timing phase.
         let outcome = timing::measure(
             "gh_get",
-            inner.fetcher.fetch_file_with_sha(
+            inner.client.fetch_file_with_sha(
                 &self.full_repo(),
                 &self.branch,
                 &api_path,
@@ -323,21 +323,23 @@ impl RepoBackend for GitHubApiBackend {
     ///
     /// Holds the `inner` lock for the whole archive download + extraction
     /// (seconds for a large corpus), same as [`read_file`] holds it for its
-    /// Contents call — the fetcher's `&mut self` (ETag cache, rate-limit
-    /// tracking) requires exclusive access. A concurrent read on the same
-    /// backend stalls for the duration, but in practice this only fires on
-    /// the cold implements-index build, which is single-flighted anyway.
+    /// Contents call. A concurrent read on the same backend stalls for the
+    /// duration, but in practice this only fires on the cold implements-index
+    /// build, which is single-flighted anyway.
     ///
-    /// [`fetch_archive_implements`]: crate::github::GitHubFetcher::fetch_archive_implements
+    /// [`fetch_archive_implements`]: crate::github::fetch_archive_implements
     /// [`to_source_relative`]: GitHubApiBackend::to_source_relative
     /// [`read_file`]: GitHubApiBackend::read_file
     async fn read_all_implements(&self) -> Result<Vec<(String, Vec<String>)>> {
         let files = {
-            let mut inner = self.inner.lock().await;
-            inner
-                .fetcher
-                .fetch_archive_implements(&self.full_repo(), &self.branch, self.token.as_deref())
-                .await?
+            let inner = self.inner.lock().await;
+            crate::github::fetch_archive_implements(
+                &inner.client,
+                &self.full_repo(),
+                &self.branch,
+                self.token.as_deref(),
+            )
+            .await?
         };
         Ok(files
             .into_iter()
@@ -394,13 +396,13 @@ impl RepoBackend for GitHubApiBackend {
         token_override: Option<&str>,
     ) -> Result<Vec<FileEntry>> {
         let api_dir = self.api_path(dir)?;
-        let mut inner = self.inner.lock().await;
+        let inner = self.inner.lock().await;
         // One Contents API directory GET — feeds the `gh_list` Server-
         // Timing phase so listing round-trips (scenario listings) are
         // visible next to `gh_get` instead of vanishing into `total`.
         let entries = timing::measure(
             "gh_list",
-            inner.fetcher.list_directory(
+            inner.client.list_directory(
                 &self.full_repo(),
                 &self.branch,
                 &api_dir,
@@ -441,7 +443,7 @@ impl RepoBackend for GitHubApiBackend {
         token_override: Option<&str>,
     ) -> Result<Vec<RecursiveFileEntry>> {
         let api_root = self.api_path(dir)?;
-        let mut inner = self.inner.lock().await;
+        let inner = self.inner.lock().await;
 
         // Iterative DFS (LIFO `Vec` used as a stack) over Contents-API
         // directory pages. Traversal order doesn't matter — the result is
@@ -461,7 +463,7 @@ impl RepoBackend for GitHubApiBackend {
 
         while let Some((rel_prefix, api_dir)) = queue.pop() {
             let entries = inner
-                .fetcher
+                .client
                 .list_directory(
                     &self.full_repo(),
                     &self.branch,
@@ -579,8 +581,8 @@ impl RepoBackend for GitHubApiBackend {
         let repo = self.full_repo();
         let mut new_shas: HashMap<PathBuf, String> = HashMap::new();
 
-        // Take one lock guard for the whole loop so the &mut GitHubFetcher
-        // calls inside don't pay re-acquire cost per-write. The pending
+        // Take one lock guard for the whole loop so the shared-client calls
+        // inside don't pay re-acquire cost per-write. The pending
         // buffer was already drained above; if any write fails we propagate
         // via `?` and the remaining (still-untaken-from-buffer) entries are
         // dropped — fine in practice because each handler only enqueues a
@@ -595,7 +597,7 @@ impl RepoBackend for GitHubApiBackend {
         // that authenticates the commit.
         if !inner.branch_ready {
             Self::ensure_branch(
-                &mut inner.fetcher,
+                &inner.client,
                 &repo,
                 &self.branch,
                 self.base_branch.as_deref(),
@@ -610,7 +612,7 @@ impl RepoBackend for GitHubApiBackend {
             match pw.op {
                 PendingOp::Upsert(content) => {
                     let new_sha = try_put(
-                        &mut inner.fetcher,
+                        &inner.client,
                         &repo,
                         &self.branch,
                         &api_path,
@@ -628,7 +630,7 @@ impl RepoBackend for GitHubApiBackend {
                         Some(s) => s.clone(),
                         None => {
                             match Self::fetch_sha(
-                                &mut inner,
+                                &inner.client,
                                 &repo,
                                 &self.branch,
                                 &api_path,
@@ -644,7 +646,7 @@ impl RepoBackend for GitHubApiBackend {
                         }
                     };
                     try_delete(
-                        &mut inner.fetcher,
+                        &inner.client,
                         &repo,
                         &self.branch,
                         &api_path,
@@ -703,7 +705,7 @@ impl RepoBackend for GitHubApiBackend {
         let token = self.token.clone();
         let inner = self.inner.get_mut();
         Self::ensure_branch(
-            &mut inner.fetcher,
+            &inner.client,
             &repo,
             &branch,
             base_branch.as_deref(),
@@ -730,9 +732,9 @@ impl RepoBackend for GitHubApiBackend {
             return Ok(Vec::new());
         }
         let in_repo_paths = {
-            let mut inner = self.inner.lock().await;
+            let inner = self.inner.lock().await;
             inner
-                .fetcher
+                .client
                 .compare_files(&self.full_repo(), base, &self.branch, self.token.as_deref())
                 .await?
         };
@@ -751,7 +753,7 @@ impl RepoBackend for GitHubApiBackend {
 /// the caller can decide between abort and a higher-level retry.
 #[allow(clippy::too_many_arguments)]
 async fn try_put(
-    fetcher: &mut GitHubFetcher,
+    client: &GithubClient,
     repo: &str,
     branch: &str,
     path: &str,
@@ -761,20 +763,20 @@ async fn try_put(
     message: &str,
     token: Option<&str>,
 ) -> Result<String> {
-    match fetcher
+    match client
         .put_file(
             repo, branch, path, content, base_sha, committer, message, token,
         )
         .await
     {
         Ok(sha) => Ok(sha),
-        Err(CorpusError::Conflict(_)) => {
+        Err(GithubError::Conflict(_)) => {
             tracing::debug!(repo = %repo, path = %path, "PUT 409 — refreshing sha and retrying");
-            let fresh = fetcher
+            let fresh = client
                 .fetch_file_with_sha(repo, branch, path, token)
                 .await?
                 .map(|(_, sha)| sha);
-            fetcher
+            client
                 .put_file(
                     repo,
                     branch,
@@ -786,6 +788,7 @@ async fn try_put(
                     token,
                 )
                 .await
+                .map_err(Into::into)
         }
         Err(e) if is_unsigned_existing_file(&e) => {
             // A PUT without `sha` against an existing file returns 422
@@ -798,16 +801,16 @@ async fn try_put(
             // (no separate header phase) so the Server-Timing breakdown
             // does not double-count this leg.
             tracing::info!(repo = %repo, path = %path, gh_put_retry = 422, "PUT 422 — fetching sha and retrying as update");
-            let fresh = fetcher
+            let fresh = client
                 .fetch_file_with_sha(repo, branch, path, token)
                 .await?
                 .map(|(_, sha)| sha);
             if fresh.is_none() {
                 // 422 wasn't about an existing file after all — propagate
                 // the original error so the operator can diagnose.
-                return Err(e);
+                return Err(e.into());
             }
-            fetcher
+            client
                 .put_file(
                     repo,
                     branch,
@@ -819,15 +822,16 @@ async fn try_put(
                     token,
                 )
                 .await
+                .map_err(Into::into)
         }
-        Err(e) => Err(e),
+        Err(e) => Err(e.into()),
     }
 }
 
 /// DELETE with one optimistic-concurrency retry: same shape as `try_put`.
 #[allow(clippy::too_many_arguments)]
 async fn try_delete(
-    fetcher: &mut GitHubFetcher,
+    client: &GithubClient,
     repo: &str,
     branch: &str,
     path: &str,
@@ -836,39 +840,40 @@ async fn try_delete(
     message: &str,
     token: Option<&str>,
 ) -> Result<()> {
-    match fetcher
-        .delete_file_via_api(repo, branch, path, sha, committer, message, token)
+    match client
+        .delete_file(repo, branch, path, sha, committer, message, token)
         .await
     {
         Ok(()) => Ok(()),
-        Err(CorpusError::Conflict(_)) => {
+        Err(GithubError::Conflict(_)) => {
             tracing::debug!(repo = %repo, path = %path, "DELETE 409 — refreshing sha and retrying");
-            let fresh = fetcher
+            let fresh = client
                 .fetch_file_with_sha(repo, branch, path, token)
                 .await?
                 .map(|(_, sha)| sha);
             match fresh {
-                Some(s) => {
-                    fetcher
-                        .delete_file_via_api(repo, branch, path, &s, committer, message, token)
-                        .await
-                }
+                Some(s) => client
+                    .delete_file(repo, branch, path, &s, committer, message, token)
+                    .await
+                    .map_err(Into::into),
                 // Race: file was deleted between our 409 and this
                 // refetch. Treat as a successful delete.
                 None => Ok(()),
             }
         }
-        Err(e) => Err(e),
+        Err(e) => Err(e.into()),
     }
 }
 
 /// Best-effort detection that a PUT failed with 422 because we omitted
-/// `sha` while the file already exists. We don't have a structured error
-/// variant for 422 (it's just `CorpusError::Git`), so we sniff the
-/// message — the GitHub response text reliably mentions `sha`.
-fn is_unsigned_existing_file(e: &CorpusError) -> bool {
+/// `sha` while the file already exists. The GitHub response text reliably
+/// mentions `sha`, which rides along in the [`GithubError::Api`] message.
+fn is_unsigned_existing_file(e: &GithubError) -> bool {
     match e {
-        CorpusError::Git(msg) => msg.contains(" 422") && msg.contains("sha"),
+        GithubError::Api {
+            status: 422,
+            message,
+        } => message.contains("sha"),
         _ => false,
     }
 }

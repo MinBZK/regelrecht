@@ -17,4 +17,4 @@
 # Exclude packages not needed for the editor-api build.
 packages/admin
 packages/tui
-# Keep: packages/auth, packages/editor-api, packages/corpus, packages/engine, packages/harvester, packages/pipeline, packages/shared, packages/frontend-shared, packages/Cargo.*
+# Keep: packages/auth, packages/editor-api, packages/corpus, packages/github, packages/engine, packages/harvester, packages/pipeline, packages/shared, packages/frontend-shared, packages/Cargo.*

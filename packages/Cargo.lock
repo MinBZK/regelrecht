@@ -4031,8 +4031,8 @@ dependencies = [
  "flate2",
  "jsonschema",
  "regelrecht-engine",
+ "regelrecht-github",
  "regelrecht-law-model",
- "reqwest 0.13.2",
  "serde",
  "serde_json",
  "serde_yaml_ng",
@@ -4057,6 +4057,7 @@ dependencies = [
  "pretty_assertions",
  "regelrecht-auth",
  "regelrecht-corpus",
+ "regelrecht-github",
  "regelrecht-pipeline",
  "regelrecht-shared",
  "reqwest 0.12.28",
@@ -4110,6 +4111,21 @@ dependencies = [
  "tracing-subscriber",
  "walkdir",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "regelrecht-github"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "reqwest 0.13.2",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "wiremock",
 ]
 
 [[package]]

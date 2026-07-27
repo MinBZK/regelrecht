@@ -1,0 +1,31 @@
+[package]
+name = "regelrecht-github"
+version = "0.1.0"
+edition = "2021"
+authors = ["MinBZK <noreply@minbzk.nl>"]
+description = "RegelRecht GitHub REST client — one GithubClient service shared across all regelrecht applications"
+license = "EUPL-1.2"
+repository = "https://github.com/MinBZK/regelrecht"
+homepage = "https://github.com/MinBZK/regelrecht"
+keywords = ["github", "rest", "client", "regelrecht"]
+categories = ["api-bindings"]
+
+[dependencies]
+# reqwest 0.13 to match corpus/harvester/pipeline (admin/auth/editor-api are
+# pinned to 0.12 by openidconnect — see the workspace note in packages/Cargo.toml
+# on why reqwest is deliberately not hoisted). rustls + json only, no default
+# TLS stack.
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+bytes = "1"
+base64.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+wiremock.workspace = true
+
+[lints]
+workspace = true
