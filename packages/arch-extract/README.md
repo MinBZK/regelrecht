@@ -72,11 +72,15 @@ npm --prefix packages/arch-extract/ui run dev        # terminal 2 (UI on :7181)
   Flow canvas is not screen-reader navigable and there is no text alternative for
   the graph; this is deliberate, accepted debt for now. Because the explorer
   lives outside the docs site, it does not touch the docs a11y gates.
-- **Thin edge coverage on the Rust tier.** `syn` parses per file without name
-  resolution, so the Rust side has relatively few relationship edges (~270 for
-  ~2200 Rust nodes); the frontend tier is denser because ES imports resolve
-  cleanly to files. The UI is built to absorb more edges without changes;
-  improving Rust edge coverage is a separate ticket.
+- **Best-effort edge coverage on the Rust tier.** `syn` parses per file without
+  a full name-resolver or macro expansion, so edges are resolved with a
+  workspace-wide symbol table plus per-file `use` resolution (see "Edge
+  resolution" below) rather than by compiling the code. This captures
+  cross-crate references, `use`-aliases and multi-segment paths, but anything
+  introduced purely by a macro, reached through a glob import, or renamed by a
+  re-export at a path we can't see is still missed. The stance is deliberate:
+  a missing edge is preferred over a wrong one, because the explorer presents an
+  edge as a fact.
 
 ### Just inspect the model (`just arch-generate`)
 
@@ -186,8 +190,12 @@ Three tiers feed one model (see `../../docs/src/content/architecture/model.schem
   `admin`/`editor-api`/`tui`).
 - **Rust source structure** — modules, structs, enums, traits, methods and free
   functions (with the first line of each doc-comment), from a `syn` parse of a
-  crate's `src/**.rs`. Plus best-effort `impl` (type → trait) and `uses`
-  (type → type) edges. Test-only code (`#[cfg(test)]`, `#[test]`) is skipped.
+  crate's `src/**.rs`. Plus best-effort `impl` (type → trait) and `uses` edges;
+  the `uses` edges come from struct fields, enum-variant fields, and the
+  parameter/return types of methods (attributed to the owning type) and free
+  functions (attributed to the function). Cross-crate references are resolved —
+  see "Edge resolution" below. Test-only code (`#[cfg(test)]`, `#[test]`) is
+  skipped.
 
   **Scope:** the deep source pass runs for **every crate** by default. Pass
   `--deep <a,b,…>` to narrow it to a subset (e.g. a quick local run);
@@ -222,9 +230,10 @@ de-duplicated, **no timestamp**) so a node keeps a stable identity between runs 
 the explorer relies on that.
 
 For reference, a full run currently yields roughly 2400 nodes (about 2200 Rust +
-180 frontend) and generates in ~1.8 s (release build) — the frontend tier adds
-~0.5 s over the Rust-only ~1.25 s, well inside the on-demand budget. Per-crate
-node counts range from `shared` at the low end to `engine` at the high end.
+180 frontend) and ~1500 edges, and generates in ~2.2 s (release build) — well
+inside the on-demand budget. Collecting the signature-level `uses` references
+added ~0.3 s over the earlier structure-only pass. Per-crate node counts range
+from `shared` at the low end to `engine` at the high end.
 
 ## Toolchain decision: `cargo metadata` + `syn` (not rustdoc-JSON)
 
@@ -249,15 +258,61 @@ decision and its rationale.
   level plus doc-comments, source-level parsing is sufficient. We do not need
   rustdoc's fully type-resolved cross-references for v1.
 
-**Accepted trade-offs (documented, not hidden).** `syn` sees one file at a time
-with no name resolution or macro expansion, so:
+### Edge resolution (the "middle road")
 
-- `impl`/`uses` edges are resolved best-effort by matching a type's leaf
-  identifier against the *same crate's* own type nodes; cross-crate and
-  macro-generated relationships are not captured.
-- Types introduced purely by macros, and type aliases, are not emitted as nodes,
-  so a handful of `impl` methods can reference a `parent` type id that has no
-  node (e.g. an external `JsValue`). These are rare and harmless.
+`syn` sees one file at a time with no name-resolver and no macro expansion, so a
+type reference is just an identifier or a path — there is no compiler to tell us
+which declaration it points at. The first versions of this tool therefore
+resolved `impl`/`uses` edges by matching a type's *leaf* identifier against the
+same file's crate only, which missed everything that arrived through a `use`
+alias, a multi-segment path or another crate — the Rust tier had ~270 edges for
+~2200 nodes, almost all of them same-crate struct fields.
+
+The pass now takes a middle road between "one file at a time" and full type
+resolution, without building a type-checker (`syn_pass.rs`):
+
+1. **A workspace-wide symbol table.** Every deep-parsed crate contributes its
+   declared type/trait leaf names (`crate → leaf → node id`). A reference can
+   now resolve to a type in *another* crate, not only its own. A leaf that is
+   declared twice in a crate is recorded as ambiguous and never resolved.
+2. **Per-file `use` resolution.** Each file's `use` statements are read into an
+   in-scope-name → target map. `use regelrecht_law_model::money::Cents as Bedrag`
+   makes `Bedrag` resolve to `(law-model, Cents)`; `use crate::service::Foo`
+   pins `Foo` to this crate. The crate of a path is identified from its leading
+   segment (`crate`/`self`/`super`, or an extern-crate ident like
+   `regelrecht_corpus` matched against `cargo metadata`).
+3. **Drop, don't guess.** A name explicitly imported from a non-workspace crate
+   (`use std::io::Error`) is recorded as *external* and never leaf-matched
+   locally; a multi-segment path whose head is an unknown crate (`std::fmt::…`)
+   is dropped rather than reduced to its leaf. Only a reference whose crate is
+   known **and** whose leaf is unambiguous inside that crate becomes an edge.
+
+**What this now covers.** Cross-crate `uses` and `impl` edges (e.g. `editor-api`
+→ `corpus`, `corpus` → `github`, and the `law-model` `ArticleBasedLaw` → engine
+`LawLoad` trait impl); `use`-aliases and multi-segment/`crate::`-qualified
+paths; and more reference *sites* — enum-variant fields and the parameter/return
+types of methods and free functions, on top of the original struct fields. In
+this workspace that took the Rust tier from ~270 edges to ~1150 (of which ~110
+are cross-crate), with no committed false edges (spot-checked, and guarded by
+unit tests in `syn_pass.rs` plus the integration tests in
+`tests/model_validation.rs`).
+
+**Accepted trade-offs (documented, not hidden).** This is still best-effort, not
+name resolution, so it does not capture:
+
+- **Macros.** Types, impls or fields introduced purely by a macro are invisible
+  to a source parse — `syn` never sees them. A handful of `impl` methods can
+  still reference a `parent` type id that has no node (e.g. an external
+  `JsValue`); dangling edges are dropped by the canonicalizer.
+- **Glob imports.** `use foo::*` brings in names we cannot enumerate, so a bare
+  reference resolved only through a glob is missed (never guessed).
+- **Re-exports.** A type used through a `pub use` at a path different from its
+  declaration resolves by crate + leaf, which is usually enough; but a re-export
+  that also *renames* across a crate boundary we can't see is missed.
+- **Type aliases** are not emitted as nodes, so an alias used as a field type
+  resolves to the alias name (dropped) rather than the aliased type.
+- **No `calls` edges.** A full call-graph remains deliberately out of scope; the
+  `uses` edges from a function's signature are as deep as this pass goes.
 
 If a later phase needs resolved cross-crate types or trait-object relationships,
 the model shape is designed to absorb an additional enrichment tier (e.g. a
@@ -312,5 +367,8 @@ on-demand and validates the **generated** model against the JSON schema, asserts
 the crate set and the known dependency layer graph, checks that the deep pass
 covered every crate, asserts the three frontends appear as `app`s with their
 component/composable nodes and import edges (app→app `depends-on` and a
-component→composable `uses`), and confirms generation is deterministic — so a
-malformed model or a lost edge fails CI.
+component→composable `uses`), asserts concrete cross-crate `uses`/`impl` edges
+now resolve (and that no edge points outside the workspace — the "no false edge"
+guard), and confirms generation is deterministic — so a malformed model or a lost
+edge fails CI. The edge-resolution logic itself (path/`use` resolution, the
+drop-don't-guess rules) is unit-tested in `src/syn_pass.rs`.

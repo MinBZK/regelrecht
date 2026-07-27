@@ -34,15 +34,18 @@ pub fn build_model(
 
     let mut nodes = graph.nodes;
     let mut edges = graph.edges;
-    for krate in &graph.crates {
-        let deep_this = match deep {
+    // The deep pass runs over the whole selected set at once: it builds a
+    // workspace-wide symbol table so a reference in one crate can resolve to a
+    // type declared in another (see `syn_pass`).
+    let deep_crates: Vec<&_> = graph
+        .crates
+        .iter()
+        .filter(|krate| match deep {
             DeepScope::All => true,
             DeepScope::Only(list) => list.iter().any(|s| s == &krate.short),
-        };
-        if deep_this {
-            syn_pass::extract_crate(&graph.repo_root, krate, &mut nodes, &mut edges);
-        }
-    }
+        })
+        .collect();
+    syn_pass::extract(&graph.repo_root, &deep_crates, &mut nodes, &mut edges);
 
     // Tier 2: the JS/TS/Vue frontends (independent of `--deep`, which only
     // scopes the Rust source pass).

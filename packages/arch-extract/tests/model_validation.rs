@@ -171,6 +171,104 @@ fn source_level_extraction_ran() {
     assert!(has_service, "expected engine type nodes");
 }
 
+/// The crate short-name a `prefix:crate::…` node id belongs to, e.g.
+/// `type:corpus::dto::PaginationParams` -> `corpus`. Returns `None` for a bare
+/// `crate:corpus` (no `::`).
+fn edge_crate(id: &str) -> Option<&str> {
+    let after = id.split_once(':')?.1;
+    after.split_once("::").map(|(head, _)| head)
+}
+
+#[test]
+fn cross_crate_use_and_impl_edges_resolved() {
+    // Before this pass, `uses`/`impl` edges were resolved by leaf-matching a
+    // type name against the *same crate's* types only, so cross-crate
+    // relationships (the interesting ones for an architecture map) were all
+    // missed. The workspace-wide symbol table plus per-file `use` resolution
+    // now captures them. Assert that concrete, well-known relationships appear —
+    // both proving the coverage improvement and guarding against a regression.
+    let model = model();
+    let edges = model["edges"].as_array().expect("edges array");
+
+    let uses_between = |from_crate: &str, to_crate: &str| {
+        edges.iter().any(|e| {
+            e["kind"] == "uses"
+                && e["from"].as_str().and_then(edge_crate) == Some(from_crate)
+                && e["to"].as_str().and_then(edge_crate) == Some(to_crate)
+                && e["to"].as_str().is_some_and(|t| t.starts_with("type:"))
+        })
+    };
+
+    // editor-api and admin both build on the corpus library.
+    assert!(
+        uses_between("editor-api", "corpus"),
+        "expected editor-api → corpus cross-crate uses edges"
+    );
+    assert!(
+        uses_between("corpus", "github"),
+        "expected corpus → github cross-crate uses edges"
+    );
+
+    // A cross-crate trait impl: `ArticleBasedLaw` (law-model) implements the
+    // engine's `LawLoad` trait — resolvable now that the trait's crate is
+    // identified from the `use` path.
+    let has_cross_impl = edges.iter().any(|e| {
+        e["kind"] == "impl"
+            && e["from"] == "type:law-model::model::ArticleBasedLaw"
+            && e["to"] == "type:engine::article::LawLoad"
+    });
+    assert!(
+        has_cross_impl,
+        "expected the law-model → engine LawLoad impl edge"
+    );
+
+    // The improvement should be broad, not a one-off: many cross-crate uses.
+    let cross_uses = edges
+        .iter()
+        .filter(|e| {
+            e["kind"] == "uses"
+                && e["to"].as_str().is_some_and(|t| t.starts_with("type:"))
+                && matches!(
+                    (
+                        e["from"].as_str().and_then(edge_crate),
+                        e["to"].as_str().and_then(edge_crate),
+                    ),
+                    (Some(a), Some(b)) if a != b
+                )
+        })
+        .count();
+    assert!(
+        cross_uses >= 20,
+        "expected a broad set of cross-crate uses edges, got {cross_uses}"
+    );
+}
+
+#[test]
+fn no_edge_leaves_the_workspace() {
+    // The "no false edges" guarantee at the model level: every edge endpoint is
+    // a real node in the model (the canonicalizer drops dangling edges), and no
+    // edge points at a node in a crate that does not exist. A leaf-match that
+    // guessed a non-existent target would surface here.
+    let model = model();
+    let node_ids: std::collections::HashSet<&str> = model["nodes"]
+        .as_array()
+        .expect("nodes array")
+        .iter()
+        .filter_map(|n| n["id"].as_str())
+        .collect();
+
+    for e in model["edges"].as_array().expect("edges array") {
+        let from = e["from"].as_str().expect("edge from");
+        let to = e["to"].as_str().expect("edge to");
+        assert!(
+            node_ids.contains(from),
+            "edge from a non-existent node: {from}"
+        );
+        assert!(node_ids.contains(to), "edge to a non-existent node: {to}");
+        assert_ne!(from, to, "self-edge should have been dropped");
+    }
+}
+
 /// Set of node ids of a given kind.
 fn ids_of_kind(model: &Value, kind: &str) -> std::collections::BTreeSet<String> {
     model["nodes"]

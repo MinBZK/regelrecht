@@ -4,15 +4,27 @@
 //! path from its location, and parse it with `syn` (pinned stable — no nightly
 //! rustdoc-JSON needed). We emit module / struct / enum / trait / method / fn
 //! nodes (with the first line of their doc-comment) plus `impl` and `uses`
-//! edges, all scoped inside one crate.
+//! edges.
 //!
-//! This is deliberately a *structural* pass, not a name-resolution pass: syn
-//! sees one file at a time with no type inference, so cross-crate and macro-
-//! generated items are invisible and `impl`/`uses` edges are resolved
-//! best-effort by matching a type's leaf identifier against the crate's own
-//! type nodes. That is plenty for an architecture map at crate/module/type/
-//! method granularity, and it is why the README documents this over rustdoc.
+//! This is deliberately a *structural* pass, not a full name-resolution pass:
+//! syn sees one file at a time with no type inference or macro expansion. To
+//! still capture how the parts use each other — the whole point of the explorer
+//! — the pass takes the "middle road" the README describes:
+//!
+//! 1. It builds a **workspace-wide symbol table** (crate → declared type leaf →
+//!    node id) across *all* deep-parsed crates, so a reference can resolve to a
+//!    type in another crate, not just the file's own.
+//! 2. Per file it reads the `use` statements into a **scope map** (in-scope name
+//!    → target crate + leaf). That turns `use`-aliases and multi-segment paths
+//!    (`use regelrecht_law_model::foo::Bar as Baz`) into concrete targets
+//!    without a type checker.
+//! 3. A reference resolves to a node only when the crate is known *and* the leaf
+//!    name is unambiguous inside that crate. Anything that stays ambiguous, or
+//!    whose crate can't be identified (an external crate, a glob import, a
+//!    macro-introduced name), is **dropped rather than guessed** — a false edge
+//!    is worse than a missing one.
 
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -21,36 +33,132 @@ use syn::visit::Visit;
 use crate::crate_graph::{rel, CrateInfo};
 use crate::model::{Edge, EdgeKind, Kind, Level, Node};
 
+/// A reference resolved to a concrete workspace target: a crate short-name plus
+/// the leaf identifier of the referenced type/trait. The final leaf → node-id
+/// lookup happens in the second pass against the workspace symbol table.
+#[derive(Clone, PartialEq, Eq, Debug)]
+struct Target {
+    krate: String,
+    leaf: String,
+}
+
+/// What an in-scope name (introduced by a `use`) points at.
+#[derive(Clone, PartialEq, Eq, Debug)]
+enum UseTarget {
+    /// A known workspace crate + leaf (resolve against the symbol table).
+    Workspace(Target),
+    /// Explicitly imported from a non-workspace crate (e.g. `std`, `serde`).
+    /// Recorded so a bare reference to this name is *not* leaf-matched against
+    /// the local crate — that would be a false edge.
+    External,
+}
+
+/// A `uses` reference to resolve later: the owner node id and its target.
+struct PendingRef {
+    owner: String,
+    target: Target,
+}
+
+/// A pending `impl Type for Trait` edge, both sides still leaf-level.
+struct PendingImpl {
+    ty: Target,
+    tr: Target,
+}
+
 /// Everything harvested from a single crate before edge resolution.
 struct CrateItems {
+    short: String,
     nodes: Vec<Node>,
-    /// Pending `impl Trait for Type`: (type leaf, trait leaf).
-    trait_impls: Vec<(String, String)>,
-    /// Pending `uses`: (owner type node id, referenced type leaf).
-    type_refs: Vec<(String, String)>,
-    /// Type leaf name -> node id, for same-crate edge resolution. When a name
-    /// is ambiguous (defined twice) it is dropped to avoid guessing wrong.
+    trait_impls: Vec<PendingImpl>,
+    type_refs: Vec<PendingRef>,
+    /// Type leaf name -> node id, for edge resolution. When a name is ambiguous
+    /// (defined twice in the crate) it is dropped to avoid guessing wrong.
     type_by_name: HashMap<String, Option<String>>,
 }
 
-/// Extracts nodes and edges for one crate, appending onto `nodes`/`edges`.
-pub fn extract_crate(
+/// Runs the deep source pass over every `krate` in `crates`, appending nodes and
+/// edges. Edges are resolved in a second pass so a reference can point at a type
+/// declared in *another* crate — see the module docs.
+pub fn extract(
     repo_root: &Path,
-    krate: &CrateInfo,
+    crates: &[&CrateInfo],
     nodes: &mut Vec<Node>,
     edges: &mut Vec<Edge>,
 ) {
-    let src = krate.dir.join("src");
-    if !src.is_dir() {
-        return;
+    // Map every extern-crate ident (`regelrecht_law_model`) to its short name
+    // (`law-model`) so `use` paths can be attributed to a crate.
+    let crate_by_ident: HashMap<String, String> = crates
+        .iter()
+        .map(|c| (c.ident.clone(), c.short.clone()))
+        .collect();
+
+    // Pass 1: collect nodes + pending refs for each crate.
+    let mut per_crate: Vec<CrateItems> = Vec::new();
+    for krate in crates {
+        per_crate.push(collect_crate(repo_root, krate, &crate_by_ident));
     }
 
+    // Build the workspace symbol table: crate short -> (leaf -> node id).
+    let symbols: HashMap<String, HashMap<String, Option<String>>> = per_crate
+        .iter()
+        .map(|c| (c.short.clone(), c.type_by_name.clone()))
+        .collect();
+
+    // Pass 2: resolve edges against the full symbol table.
+    for items in &mut per_crate {
+        for r in &items.type_refs {
+            if let Some(to) = lookup(&symbols, &r.target) {
+                if to != r.owner {
+                    edges.push(Edge {
+                        from: r.owner.clone(),
+                        to,
+                        kind: EdgeKind::Uses,
+                    });
+                }
+            }
+        }
+        for im in &items.trait_impls {
+            if let (Some(from), Some(to)) = (lookup(&symbols, &im.ty), lookup(&symbols, &im.tr)) {
+                edges.push(Edge {
+                    from,
+                    to,
+                    kind: EdgeKind::Impl,
+                });
+            }
+        }
+        nodes.append(&mut items.nodes);
+    }
+}
+
+/// Resolves a [`Target`] to a node id: the crate must be known and the leaf must
+/// name exactly one type in it. An ambiguous leaf (`Some(None)`) or a missing
+/// one yields `None` — deliberately dropping the reference rather than guessing.
+fn lookup(
+    symbols: &HashMap<String, HashMap<String, Option<String>>>,
+    target: &Target,
+) -> Option<String> {
+    symbols.get(&target.krate)?.get(&target.leaf)?.clone()
+}
+
+/// Extracts nodes and pending refs for one crate (pass 1). No edges are emitted
+/// here — resolution needs the whole-workspace symbol table.
+fn collect_crate(
+    repo_root: &Path,
+    krate: &CrateInfo,
+    crate_by_ident: &HashMap<String, String>,
+) -> CrateItems {
     let mut items = CrateItems {
+        short: krate.short.clone(),
         nodes: Vec::new(),
         trait_impls: Vec::new(),
         type_refs: Vec::new(),
         type_by_name: HashMap::new(),
     };
+
+    let src = krate.dir.join("src");
+    if !src.is_dir() {
+        return items;
+    }
 
     // Ensure every ancestor module node exists exactly once (id → node index).
     let mut seen_modules: HashMap<String, usize> = HashMap::new();
@@ -76,6 +184,11 @@ pub fn extract_crate(
         let Some(base) = base_module(&src, file) else {
             continue;
         };
+
+        // The file's `use` statements, resolved once for the whole file (nested
+        // `mod` blocks included) into an in-scope-name → target map.
+        let mut use_scope: HashMap<String, UseTarget> = HashMap::new();
+        collect_file_uses(&ast.items, &krate.short, crate_by_ident, &mut use_scope);
 
         // The container the file's top-level items hang from, and the module
         // path segments that prefix their ids.
@@ -115,6 +228,8 @@ pub fn extract_crate(
             file,
             mod_path,
             parent_id,
+            crate_by_ident,
+            use_scope: &use_scope,
             items: &mut items,
             seen_modules: &mut seen_modules,
         };
@@ -147,32 +262,7 @@ pub fn extract_crate(
         }
     }
 
-    // Resolve best-effort edges now that every type node in the crate is known.
-    for (ty_leaf, tr_leaf) in &items.trait_impls {
-        if let (Some(Some(from)), Some(Some(to))) = (
-            items.type_by_name.get(ty_leaf),
-            items.type_by_name.get(tr_leaf),
-        ) {
-            edges.push(Edge {
-                from: from.clone(),
-                to: to.clone(),
-                kind: EdgeKind::Impl,
-            });
-        }
-    }
-    for (owner_id, ref_leaf) in &items.type_refs {
-        if let Some(Some(to)) = items.type_by_name.get(ref_leaf) {
-            if to != owner_id {
-                edges.push(Edge {
-                    from: owner_id.clone(),
-                    to: to.clone(),
-                    kind: EdgeKind::Uses,
-                });
-            }
-        }
-    }
-
-    nodes.append(&mut items.nodes);
+    items
 }
 
 /// What a source file represents in the module tree.
@@ -275,6 +365,8 @@ struct ItemVisitor<'a> {
     file: &'a Path,
     mod_path: Vec<String>,
     parent_id: String,
+    crate_by_ident: &'a HashMap<String, String>,
+    use_scope: &'a HashMap<String, UseTarget>,
     items: &'a mut CrateItems,
     seen_modules: &'a mut HashMap<String, usize>,
 }
@@ -295,6 +387,41 @@ impl ItemVisitor<'_> {
             .entry(name.to_string())
             .and_modify(|slot| *slot = None) // ambiguous → don't resolve edges to it
             .or_insert_with(|| Some(id.to_string()));
+    }
+
+    /// Resolves a written type path (its segments) to a workspace [`Target`], or
+    /// `None` when it cannot be attributed to a known crate without guessing.
+    fn resolve(&self, segs: &[String]) -> Option<Target> {
+        resolve_path(segs, &self.krate.short, self.use_scope, self.crate_by_ident)
+    }
+
+    /// Records every type referenced by `ty` (recursing through generics,
+    /// references, tuples, `dyn`/`impl Trait` bounds) as a pending `uses` edge
+    /// from `owner`.
+    fn push_uses(&mut self, owner: &str, ty: &syn::Type) {
+        let mut paths = Vec::new();
+        collect_type_paths(ty, &mut paths);
+        for segs in paths {
+            if let Some(target) = self.resolve(&segs) {
+                self.items.type_refs.push(PendingRef {
+                    owner: owner.to_string(),
+                    target,
+                });
+            }
+        }
+    }
+
+    /// Records the parameter and return types of a signature as `uses` edges
+    /// from `owner` (a type node for methods, the fn node for free functions).
+    fn push_sig_uses(&mut self, owner: &str, sig: &syn::Signature) {
+        for input in &sig.inputs {
+            if let syn::FnArg::Typed(pt) = input {
+                self.push_uses(owner, &pt.ty);
+            }
+        }
+        if let syn::ReturnType::Type(_, ty) = &sig.output {
+            self.push_uses(owner, ty);
+        }
     }
 }
 
@@ -350,11 +477,9 @@ impl<'ast> Visit<'ast> for ItemVisitor<'_> {
             parent: Some(self.parent_id.clone()),
             doc: first_doc(&node.attrs),
         });
-        // `uses`: leaf type of each field, resolved to same-crate types later.
+        // `uses`: each field's referenced types, resolved to their crate later.
         for field in &node.fields {
-            for leaf in type_leaves(&field.ty) {
-                self.items.type_refs.push((id.clone(), leaf));
-            }
+            self.push_uses(&id, &field.ty);
         }
     }
 
@@ -366,7 +491,7 @@ impl<'ast> Visit<'ast> for ItemVisitor<'_> {
         let id = format!("type:{}::{name}", self.path_prefix());
         self.record_type(&name, &id);
         self.items.nodes.push(Node {
-            id,
+            id: id.clone(),
             level: Level::Component,
             kind: Kind::Enum,
             lang: "rust".to_string(),
@@ -375,6 +500,12 @@ impl<'ast> Visit<'ast> for ItemVisitor<'_> {
             parent: Some(self.parent_id.clone()),
             doc: first_doc(&node.attrs),
         });
+        // `uses`: the types carried by each variant's fields.
+        for variant in &node.variants {
+            for field in &variant.fields {
+                self.push_uses(&id, &field.ty);
+            }
+        }
     }
 
     fn visit_item_trait(&mut self, node: &'ast syn::ItemTrait) {
@@ -394,7 +525,8 @@ impl<'ast> Visit<'ast> for ItemVisitor<'_> {
             parent: Some(self.parent_id.clone()),
             doc: first_doc(&node.attrs),
         });
-        // Trait methods with a default or a signature become code-level nodes.
+        // Trait methods with a default or a signature become code-level nodes,
+        // and their signatures contribute `uses` edges from the trait.
         for item in &node.items {
             if let syn::TraitItem::Fn(f) = item {
                 let m = f.sig.ident.to_string();
@@ -408,6 +540,7 @@ impl<'ast> Visit<'ast> for ItemVisitor<'_> {
                     parent: Some(id.clone()),
                     doc: first_doc(&f.attrs),
                 });
+                self.push_sig_uses(&id, &f.sig);
             }
         }
     }
@@ -417,8 +550,9 @@ impl<'ast> Visit<'ast> for ItemVisitor<'_> {
             return;
         }
         let name = node.sig.ident.to_string();
+        let fn_id = format!("fn:{}::{name}", self.path_prefix());
         self.items.nodes.push(Node {
-            id: format!("fn:{}::{name}", self.path_prefix()),
+            id: fn_id.clone(),
             level: Level::Code,
             kind: Kind::Fn,
             lang: "rust".to_string(),
@@ -427,24 +561,37 @@ impl<'ast> Visit<'ast> for ItemVisitor<'_> {
             parent: Some(self.parent_id.clone()),
             doc: first_doc(&node.attrs),
         });
+        // `uses`: a free function's signature types, attributed to the fn node.
+        self.push_sig_uses(&fn_id, &node.sig);
     }
 
     fn visit_item_impl(&mut self, node: &'ast syn::ItemImpl) {
         if is_test_gated(&node.attrs) {
             return;
         }
-        let Some(ty_leaf) = type_leaves(&node.self_ty).into_iter().next() else {
+        // The type this impl is for. Resolve its path (usually the same crate)
+        // so methods and the `impl` edge attach to the right node.
+        let mut self_paths = Vec::new();
+        collect_type_paths(&node.self_ty, &mut self_paths);
+        let Some(self_segs) = self_paths.first() else {
             return;
         };
-        // `impl Trait for Type` → pending impl edge.
+        let Some(ty_leaf) = self_segs.last().cloned() else {
+            return;
+        };
+        let self_target = self.resolve(self_segs);
+
+        // `impl Trait for Type` → pending impl edge (type → trait). The trait
+        // may live in another crate; resolution handles that.
         if let Some((_, path, _)) = &node.trait_ {
-            if let Some(tr_leaf) = path_leaf(path) {
-                self.items.trait_impls.push((ty_leaf.clone(), tr_leaf));
+            let tr_segs: Vec<String> = path.segments.iter().map(|s| s.ident.to_string()).collect();
+            if let (Some(ty), Some(tr)) = (self_target.clone(), self.resolve(&tr_segs)) {
+                self.items.trait_impls.push(PendingImpl { ty, tr });
             }
         }
-        // Methods hang off the type node id (resolved lazily by consumers via
-        // the parent chain; we build the id from the impl's own type label so
-        // it is stable even if the type lives in another file of this crate).
+        // Methods hang off the type node id (built from the impl's own type
+        // label so it is stable even if the type lives in another file), and
+        // their signatures contribute `uses` edges from that type.
         let type_id = format!("type:{}::{ty_leaf}", self.path_prefix());
         for item in &node.items {
             if let syn::ImplItem::Fn(f) = item {
@@ -459,7 +606,175 @@ impl<'ast> Visit<'ast> for ItemVisitor<'_> {
                     parent: Some(type_id.clone()),
                     doc: first_doc(&f.attrs),
                 });
+                self.push_sig_uses(&type_id, &f.sig);
             }
+        }
+    }
+}
+
+/// Resolves a written type path to a workspace [`Target`], or `None` when the
+/// crate can't be identified without guessing. This is where `use`-aliases,
+/// multi-segment paths and cross-crate references are turned into a concrete
+/// (crate, leaf) pair:
+///
+/// - a single-segment name uses the file's `use` scope, falling back to a
+///   same-crate leaf (a bare `Foo` is either local or a prelude type — the
+///   later symbol-table lookup drops it if it isn't a declared local type);
+/// - a name explicitly imported from a non-workspace crate is dropped;
+/// - a multi-segment path is attributed via its head: `crate`/`self`/`super`
+///   and a known crate ident resolve; an unknown head (`std::…`, `serde::…`) is
+///   dropped rather than leaf-matched, which is what keeps external paths from
+///   becoming false local edges.
+fn resolve_path(
+    segs: &[String],
+    current_short: &str,
+    use_scope: &HashMap<String, UseTarget>,
+    crate_by_ident: &HashMap<String, String>,
+) -> Option<Target> {
+    let head = segs.first()?;
+    let leaf = segs.last()?.clone();
+
+    if segs.len() == 1 {
+        return match use_scope.get(head) {
+            Some(UseTarget::Workspace(t)) => Some(t.clone()),
+            Some(UseTarget::External) => None,
+            None => Some(Target {
+                krate: current_short.to_string(),
+                leaf,
+            }),
+        };
+    }
+
+    match head.as_str() {
+        "crate" | "self" | "super" | "Self" => Some(Target {
+            krate: current_short.to_string(),
+            leaf,
+        }),
+        _ => {
+            if let Some(short) = crate_by_ident.get(head) {
+                Some(Target {
+                    krate: short.clone(),
+                    leaf,
+                })
+            } else if let Some(UseTarget::Workspace(t)) = use_scope.get(head) {
+                // `head` is a module/type brought into scope by a `use`; keep its
+                // crate but take this path's own leaf.
+                Some(Target {
+                    krate: t.krate.clone(),
+                    leaf,
+                })
+            } else {
+                None
+            }
+        }
+    }
+}
+
+/// Reads all `use` statements of a file (recursing into inline `mod` blocks)
+/// into an in-scope-name → [`UseTarget`] map. When the same name is imported
+/// twice with different targets (e.g. from two nested modules) it is downgraded
+/// to [`UseTarget::External`] so it is never resolved — again preferring a
+/// missing edge over a wrong one.
+fn collect_file_uses(
+    items: &[syn::Item],
+    current_short: &str,
+    crate_by_ident: &HashMap<String, String>,
+    scope: &mut HashMap<String, UseTarget>,
+) {
+    for item in items {
+        match item {
+            syn::Item::Use(u) => {
+                flatten_use(
+                    &u.tree,
+                    &mut Vec::new(),
+                    current_short,
+                    crate_by_ident,
+                    scope,
+                );
+            }
+            syn::Item::Mod(m) => {
+                if let Some((_, inner)) = &m.content {
+                    collect_file_uses(inner, current_short, crate_by_ident, scope);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Flattens one `use` tree into scope entries, carrying the path prefix down
+/// through groups. Globs are skipped (their names are unknown).
+fn flatten_use(
+    tree: &syn::UseTree,
+    prefix: &mut Vec<String>,
+    current_short: &str,
+    crate_by_ident: &HashMap<String, String>,
+    scope: &mut HashMap<String, UseTarget>,
+) {
+    match tree {
+        syn::UseTree::Path(p) => {
+            prefix.push(p.ident.to_string());
+            flatten_use(&p.tree, prefix, current_short, crate_by_ident, scope);
+            prefix.pop();
+        }
+        syn::UseTree::Name(n) => {
+            let name = n.ident.to_string();
+            let mut full = prefix.clone();
+            full.push(name.clone());
+            insert_use(scope, name, &full, current_short, crate_by_ident);
+        }
+        syn::UseTree::Rename(r) => {
+            let mut full = prefix.clone();
+            full.push(r.ident.to_string());
+            insert_use(
+                scope,
+                r.rename.to_string(),
+                &full,
+                current_short,
+                crate_by_ident,
+            );
+        }
+        syn::UseTree::Group(g) => {
+            for t in &g.items {
+                flatten_use(t, prefix, current_short, crate_by_ident, scope);
+            }
+        }
+        syn::UseTree::Glob(_) => { /* names unknown — cannot resolve safely */ }
+    }
+}
+
+/// Turns one flattened `use` path into a scope entry under `alias`.
+fn insert_use(
+    scope: &mut HashMap<String, UseTarget>,
+    alias: String,
+    full: &[String],
+    current_short: &str,
+    crate_by_ident: &HashMap<String, String>,
+) {
+    let (Some(head), Some(leaf)) = (full.first(), full.last()) else {
+        return;
+    };
+    let target = match head.as_str() {
+        "crate" | "self" | "super" => UseTarget::Workspace(Target {
+            krate: current_short.to_string(),
+            leaf: leaf.clone(),
+        }),
+        _ => match crate_by_ident.get(head) {
+            Some(short) => UseTarget::Workspace(Target {
+                krate: short.clone(),
+                leaf: leaf.clone(),
+            }),
+            None => UseTarget::External,
+        },
+    };
+    match scope.entry(alias) {
+        Entry::Occupied(mut e) => {
+            if *e.get() != target {
+                e.insert(UseTarget::External);
+            }
+        }
+        Entry::Vacant(v) => {
+            v.insert(target);
         }
     }
 }
@@ -469,45 +784,67 @@ fn trim_type_prefix(type_id: &str) -> String {
     type_id.strip_prefix("type:").unwrap_or(type_id).to_string()
 }
 
-/// Leaf identifier of a path (its last segment), e.g. `foo::Bar` → `Bar`.
-fn path_leaf(path: &syn::Path) -> Option<String> {
-    path.segments.last().map(|s| s.ident.to_string())
-}
-
-/// Collects the leaf identifiers referenced by a type, recursing through
-/// generic arguments (so `Option<Vec<Foo>>` yields `Option`, `Vec`, `Foo`).
-/// Best-effort and intentionally shallow — enough for same-crate `uses` edges.
-fn type_leaves(ty: &syn::Type) -> Vec<String> {
-    let mut out = Vec::new();
-    collect_type_leaves(ty, &mut out);
-    out
-}
-
-fn collect_type_leaves(ty: &syn::Type, out: &mut Vec<String>) {
+/// Collects the paths of every type referenced by `ty`, recursing through
+/// generic arguments, references, tuples and `dyn`/`impl Trait` bounds (so
+/// `Option<Vec<Foo>>` yields `[Option]`, `[Vec]`, `[Foo]` and `Box<dyn Bar>`
+/// yields `[Box]`, `[Bar]`). Each entry is a full segment list so the resolver
+/// can inspect the leading crate segment; best-effort and intentionally shallow.
+fn collect_type_paths(ty: &syn::Type, out: &mut Vec<Vec<String>>) {
     match ty {
         syn::Type::Path(tp) => {
-            if let Some(seg) = tp.path.segments.last() {
-                out.push(seg.ident.to_string());
-                if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
+            let segs: Vec<String> = tp
+                .path
+                .segments
+                .iter()
+                .map(|s| s.ident.to_string())
+                .collect();
+            if !segs.is_empty() {
+                out.push(segs);
+            }
+            if let Some(last) = tp.path.segments.last() {
+                if let syn::PathArguments::AngleBracketed(args) = &last.arguments {
                     for arg in &args.args {
                         if let syn::GenericArgument::Type(inner) = arg {
-                            collect_type_leaves(inner, out);
+                            collect_type_paths(inner, out);
                         }
                     }
                 }
             }
         }
-        syn::Type::Reference(r) => collect_type_leaves(&r.elem, out),
-        syn::Type::Slice(s) => collect_type_leaves(&s.elem, out),
-        syn::Type::Array(a) => collect_type_leaves(&a.elem, out),
-        syn::Type::Paren(p) => collect_type_leaves(&p.elem, out),
-        syn::Type::Group(g) => collect_type_leaves(&g.elem, out),
+        syn::Type::Reference(r) => collect_type_paths(&r.elem, out),
+        syn::Type::Slice(s) => collect_type_paths(&s.elem, out),
+        syn::Type::Array(a) => collect_type_paths(&a.elem, out),
+        syn::Type::Ptr(p) => collect_type_paths(&p.elem, out),
+        syn::Type::Paren(p) => collect_type_paths(&p.elem, out),
+        syn::Type::Group(g) => collect_type_paths(&g.elem, out),
         syn::Type::Tuple(t) => {
             for e in &t.elems {
-                collect_type_leaves(e, out);
+                collect_type_paths(e, out);
             }
         }
+        syn::Type::TraitObject(to) => collect_bound_paths(&to.bounds, out),
+        syn::Type::ImplTrait(it) => collect_bound_paths(&it.bounds, out),
         _ => {}
+    }
+}
+
+/// Collects the trait paths from `dyn`/`impl Trait` bounds.
+fn collect_bound_paths(
+    bounds: &syn::punctuated::Punctuated<syn::TypeParamBound, syn::token::Plus>,
+    out: &mut Vec<Vec<String>>,
+) {
+    for b in bounds {
+        if let syn::TypeParamBound::Trait(tb) = b {
+            let segs: Vec<String> = tb
+                .path
+                .segments
+                .iter()
+                .map(|s| s.ident.to_string())
+                .collect();
+            if !segs.is_empty() {
+                out.push(segs);
+            }
+        }
     }
 }
 
@@ -564,4 +901,140 @@ fn first_doc(attrs: &[syn::Attribute]) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    fn scope(entries: &[(&str, UseTarget)]) -> HashMap<String, UseTarget> {
+        entries
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.clone()))
+            .collect()
+    }
+
+    fn ws(krate: &str, leaf: &str) -> UseTarget {
+        UseTarget::Workspace(Target {
+            krate: krate.to_string(),
+            leaf: leaf.to_string(),
+        })
+    }
+
+    fn idents() -> HashMap<String, String> {
+        [
+            ("regelrecht_law_model", "law-model"),
+            ("regelrecht_shared", "shared"),
+        ]
+        .iter()
+        .map(|(a, b)| (a.to_string(), b.to_string()))
+        .collect()
+    }
+
+    fn segs(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn bare_name_falls_back_to_current_crate() {
+        let t = resolve_path(&segs(&["Foo"]), "engine", &HashMap::new(), &idents()).unwrap();
+        assert_eq!(t.krate, "engine");
+        assert_eq!(t.leaf, "Foo");
+    }
+
+    #[test]
+    fn aliased_use_resolves_to_original_leaf_and_crate() {
+        // `use regelrecht_law_model::money::Cents as Bedrag;` then a field `Bedrag`.
+        let sc = scope(&[("Bedrag", ws("law-model", "Cents"))]);
+        let t = resolve_path(&segs(&["Bedrag"]), "engine", &sc, &idents()).unwrap();
+        assert_eq!(t.krate, "law-model");
+        assert_eq!(t.leaf, "Cents");
+    }
+
+    #[test]
+    fn externally_imported_name_is_not_leaf_matched_locally() {
+        // `use std::io::Error;` must not make a bare `Error` a local edge.
+        let sc = scope(&[("Error", UseTarget::External)]);
+        assert!(resolve_path(&segs(&["Error"]), "engine", &sc, &idents()).is_none());
+    }
+
+    #[test]
+    fn crate_qualified_path_is_current_crate() {
+        let t = resolve_path(
+            &segs(&["crate", "service", "Foo"]),
+            "engine",
+            &HashMap::new(),
+            &idents(),
+        )
+        .unwrap();
+        assert_eq!(t.krate, "engine");
+        assert_eq!(t.leaf, "Foo");
+    }
+
+    #[test]
+    fn cross_crate_path_resolves_via_ident() {
+        let t = resolve_path(
+            &segs(&["regelrecht_law_model", "money", "Cents"]),
+            "engine",
+            &HashMap::new(),
+            &idents(),
+        )
+        .unwrap();
+        assert_eq!(t.krate, "law-model");
+        assert_eq!(t.leaf, "Cents");
+    }
+
+    #[test]
+    fn unknown_multisegment_path_is_dropped_not_leaf_matched() {
+        // `std::fmt::Error` must not resolve to a same-crate `Error`.
+        assert!(resolve_path(
+            &segs(&["std", "fmt", "Error"]),
+            "engine",
+            &HashMap::new(),
+            &idents()
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn imported_module_head_keeps_crate_takes_own_leaf() {
+        // `use regelrecht_law_model::money;` then `money::Cents`.
+        let sc = scope(&[("money", ws("law-model", "money"))]);
+        let t = resolve_path(&segs(&["money", "Cents"]), "engine", &sc, &idents()).unwrap();
+        assert_eq!(t.krate, "law-model");
+        assert_eq!(t.leaf, "Cents");
+    }
+
+    #[test]
+    fn collect_type_paths_walks_generics_and_dyn() {
+        let ty: syn::Type = syn::parse_str("Option<Box<dyn Repo>>").unwrap();
+        let mut out = Vec::new();
+        collect_type_paths(&ty, &mut out);
+        let leaves: Vec<String> = out.iter().map(|p| p.last().unwrap().clone()).collect();
+        assert!(leaves.contains(&"Option".to_string()));
+        assert!(leaves.contains(&"Box".to_string()));
+        assert!(leaves.contains(&"Repo".to_string()));
+    }
+
+    #[test]
+    fn conflicting_imports_downgrade_to_external() {
+        let mut sc = HashMap::new();
+        let ci = idents();
+        insert_use(
+            &mut sc,
+            "Foo".into(),
+            &segs(&["regelrecht_law_model", "Foo"]),
+            "engine",
+            &ci,
+        );
+        insert_use(
+            &mut sc,
+            "Foo".into(),
+            &segs(&["regelrecht_shared", "Foo"]),
+            "engine",
+            &ci,
+        );
+        assert_eq!(sc.get("Foo"), Some(&UseTarget::External));
+    }
 }
