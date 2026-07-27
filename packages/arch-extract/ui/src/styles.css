@@ -417,6 +417,31 @@ body,
 .detail-panel__id {
   color: var(--text-muted);
 }
+.detail-panel__prose {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.detail-panel__prose-title {
+  margin: 0 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.detail-panel__prose-body {
+  font-size: 13px;
+  line-height: 1.55;
+}
+.detail-panel__prose-body p {
+  margin: 0 0 8px;
+}
+.detail-panel__prose-body p:last-child {
+  margin-bottom: 0;
+}
+.detail-panel__prose-body code {
+  font-size: 11px;
+}
 .detail-panel__doc {
   margin-top: 14px;
   padding-top: 12px;

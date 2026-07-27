@@ -25,6 +25,7 @@
 mod build;
 mod crate_graph;
 mod model;
+mod prose;
 mod serve;
 mod syn_pass;
 
@@ -71,7 +72,8 @@ fn parse_args<I: Iterator<Item = String>>(args: I) -> Result<Args, String> {
             "-h" | "--help" => {
                 println!(
                     "arch-extract [generate] [--out <path>] [--stdout] [--deep a,b | --deep-all] [--manifest-path <p>]\n\
-                     arch-extract serve [--port <n>] [--manifest-path <p>] [--ui-dir <dir>]"
+                     arch-extract serve [--port <n>] [--manifest-path <p>] [--ui-dir <dir>]\n\
+                     arch-extract prose <status|check|sync|bless> [--json] [--prose-dir <d>] [--manifest-path <p>]"
                 );
                 std::process::exit(0);
             }
@@ -120,11 +122,15 @@ fn run_generate<I: Iterator<Item = String>>(
 fn main() -> ExitCode {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
 
-    // `serve` is dispatched to its own runtime; everything else is `generate`
-    // (the default, with an optional leading `generate` token).
+    // `serve` and `prose` are dispatched to their own handlers; everything else
+    // is `generate` (the default, with an optional leading `generate` token).
     if args.first().map(String::as_str) == Some("serve") {
         args.remove(0);
         return serve::run(&args);
+    }
+    if args.first().map(String::as_str) == Some("prose") {
+        args.remove(0);
+        return prose::run(&args);
     }
 
     match run_generate(args.into_iter()) {

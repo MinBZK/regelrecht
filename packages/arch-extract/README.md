@@ -90,6 +90,88 @@ cargo run -p regelrecht-arch-extract -- generate [--out <path>] [--stdout] [--de
 `--stdout` prints the model instead of writing it; `--out` overrides the output
 path. Both are inspection conveniences.
 
+## Prose sidecar (wat/waarom per node)
+
+The model captures the **structure** of the workspace automatically; the
+**narrative** — what a part is for and why it exists — is written by hand (or by
+an agent) and kept *beside* the model in a **prose sidecar** rather than in the
+generator, because narrative that is generated only rots.
+
+- **Format.** One Markdown file per node under `prose/`, keyed by the model's
+  stable **node id**. Each file has a small frontmatter block and a free-text
+  body:
+
+  ```markdown
+  ---
+  node: crate:engine
+  fingerprint: 31375e4c860d7f37
+  ---
+  **Wat.** … **Waarom.** …
+  ```
+
+  The `node:` field is authoritative (the filename is only a readable slug). The
+  `fingerprint` records the shape of the node the prose was written against
+  (kind, level, name, path, doc); when the node changes, the fingerprint no
+  longer matches and the entry is flagged **stale**.
+
+- **Scope.** Only the **container** and **component** levels (crates/binaries and
+  modules/types) are in scope — the `code` level (methods, free functions) is
+  deliberately skipped: ~1600 of the ~2200 nodes, whose intent their
+  doc-comments already carry. Container prose is seeded; the rest is filled in
+  over time via the drift flow below.
+
+- **In the explorer.** The server exposes the sidecar at `GET /api/prose`
+  (`{ node-id: markdown }`), and the explorer overlays it in a node's detail
+  panel under "Wat & waarom" when prose exists for that node.
+
+### Drift flow (`just arch-prose-*`)
+
+Because there is no committed `model.json`, the prose commands **regenerate the
+model on-demand** and diff it against the sidecar:
+
+```bash
+just arch-prose-status     # report drift (coverage + missing/stale/orphaned)
+just arch-prose-check      # same, but exit non-zero on any drift
+just arch-prose-sync       # scaffold stubs for undocumented in-scope nodes
+just arch-prose-bless <id> # refresh a fingerprint after rewriting its prose (--all for every entry)
+```
+
+Three drift categories: **missing** (a new/undocumented node), **stale** (a node
+whose shape changed since its prose was written), **orphaned** (prose whose node
+is gone). Stubs are seeded with the node's existing doc-comment as a starting
+point; they read as "still undocumented" until real prose is written.
+
+### Scheduled proposal PR
+
+`scripts/prose-drift-pr.sh` (also `just arch-prose-drift-pr`) is the scheduled
+flow: it runs the drift check, and **only when there is drift** scaffolds the
+stubs, commits them, and opens a **draft PR** with the drift report as proposals.
+`DRY_RUN=true` previews without committing. It is meant to run on a schedule
+(e.g. nightly). Wiring the cron trigger is a `.github/workflows/*.yml` change and
+is intentionally left to a maintainer; a minimal workflow that invokes it:
+
+```yaml
+# .github/workflows/arch-prose-drift.yml (to be added by a maintainer)
+name: Arch prose drift
+on:
+  schedule:
+    - cron: '0 4 * * 1'   # Monday 04:00 UTC
+  workflow_dispatch: {}
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y mold just
+      - run: just arch-prose-drift-pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
 ## What it extracts
 
 Two tiers feed one model (see `../../docs/src/content/architecture/model.schema.json`):

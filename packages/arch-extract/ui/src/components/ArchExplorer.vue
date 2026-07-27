@@ -16,6 +16,7 @@ import { useColorScheme } from '../composables/useColorScheme.js';
 
 const props = defineProps({
   model: { type: Object, required: true },
+  prose: { type: Object, default: () => ({}) },
 });
 
 const nodeTypes = markRaw({ arch: ArchNode });
@@ -36,6 +37,9 @@ const selectedNode = computed(() => {
   if (!selectedId.value || !model.value) return null;
   return model.value.nodes.find((n) => n.id === selectedId.value) || null;
 });
+const selectedProse = computed(() =>
+  selectedId.value ? props.prose?.[selectedId.value] || null : null,
+);
 
 function selectNode(id) {
   selectedId.value = id;
@@ -102,7 +106,7 @@ const edgeCount = computed(() => (model.value ? model.value.edges.length : 0));
         <MiniMap pannable zoomable :node-color="miniMapNodeColor" />
       </VueFlow>
 
-      <DetailPanel :node="selectedNode" @close="selectedId = null" />
+      <DetailPanel :node="selectedNode" :prose="selectedProse" @close="selectedId = null" />
     </div>
   </div>
 </template>

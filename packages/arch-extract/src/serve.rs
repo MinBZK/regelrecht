@@ -24,6 +24,7 @@ use axum::Router;
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::build::{self, DeepScope};
+use crate::prose;
 
 /// Fixed default port inside the container's forwarded 7100–7300 range.
 /// Override with `--port` or `ARCH_EXPLORE_PORT`.
@@ -153,6 +154,7 @@ async fn serve(state: Arc<AppState>, ui_dir: PathBuf, port: u16) -> ExitCode {
 
     let app = Router::new()
         .route("/api/model", get(model_handler))
+        .route("/api/prose", get(prose_handler))
         .with_state(state)
         .fallback_service(assets);
 
@@ -203,6 +205,28 @@ async fn model_handler(State(state): State<Arc<AppState>>) -> Response {
 
     store_cache(&state, latest, json.clone());
     json_response(json)
+}
+
+/// `GET /api/prose` — the prose sidecar as a `{ node-id: markdown }` map, read
+/// fresh from `packages/arch-extract/prose` on each request (a small directory,
+/// so no caching is needed). Only entries with actual narrative are returned, so
+/// the explorer overlays prose only where it exists. A missing directory yields
+/// an empty object rather than an error.
+async fn prose_handler(State(state): State<Arc<AppState>>) -> Response {
+    let dir = state.repo_root.join(prose::PROSE_DIR);
+    let entries = match prose::load_prose(&dir) {
+        Ok(e) => e,
+        Err(e) => return server_error(format!("loading prose: {e}")),
+    };
+    let map: std::collections::BTreeMap<&str, &str> = entries
+        .values()
+        .filter(|e| e.has_prose())
+        .map(|e| (e.node.as_str(), e.body.as_str()))
+        .collect();
+    match serde_json::to_string(&map) {
+        Ok(json) => json_response(Arc::from(json.as_str())),
+        Err(e) => server_error(format!("serializing prose: {e}")),
+    }
 }
 
 /// Returns the cached JSON when its mtime matches `latest`. Poisoned-lock safe
