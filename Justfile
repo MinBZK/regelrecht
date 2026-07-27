@@ -67,7 +67,7 @@ conformance:
 # Run all quality checks (format + lint + check + validate + validate-annotations + tests)
 # Note: pipeline-integration-test excluded — it requires Docker (testcontainers)
 # Note: the conformance suite runs as part of `test` (cargo test --all-features).
-check: format lint build-check validate validate-annotations test github-test harvester-test pipeline-test admin-fmt admin-lint admin-check admin-test editor-api-fmt editor-api-lint editor-api-check
+check: format lint build-check validate validate-annotations test github-test harvester-test pipeline-test admin-fmt admin-lint admin-check admin-test editor-api-fmt editor-api-lint editor-api-check arch-test
 
 # --- Tests ---
 
@@ -603,3 +603,45 @@ docs-a11y:
 # without starting the explorer.
 arch-generate:
     cd packages && {{ci_flags}} cargo run --quiet -p regelrecht-arch-extract -- generate
+
+# Start the local architecture explorer: build the Vue Flow UI, then run the
+# arch-extract server, which regenerates the model on-demand from the working
+# tree (GET /api/model, cached on source mtime) and serves the UI on
+# 0.0.0.0:7180. Open http://localhost:7180. Override the port with
+# ARCH_EXPLORE_PORT (stay in 7100–7300 for the dev container). See
+# packages/arch-extract/README.md.
+arch-explore:
+    cd packages/arch-extract/ui && npm install && npm run build
+    cd packages && cargo run --release --quiet -p regelrecht-arch-extract -- serve
+
+# Run the arch-extract tests (schema validation of the generated model + the
+# prose-sidecar drift logic). Part of `just check`.
+arch-test:
+    cd packages && {{ci_flags}} cargo test -p regelrecht-arch-extract
+
+# --- Architecture prose sidecar ---
+# Per-node "wat/waarom" narrative lives beside the model in
+# packages/arch-extract/prose/, keyed by node id, at container + component level.
+
+# Report drift between the on-demand model and the prose sidecar.
+arch-prose-status:
+    cd packages && cargo run --quiet -p regelrecht-arch-extract -- prose status
+
+# Like arch-prose-status, but exit non-zero on any drift (for the scheduled flow).
+arch-prose-check:
+    cd packages && cargo run --quiet -p regelrecht-arch-extract -- prose check
+
+# Scaffold empty prose stubs for undocumented in-scope nodes (seeded with each
+# node's doc-comment as a starting point).
+arch-prose-sync:
+    cd packages && cargo run --quiet -p regelrecht-arch-extract -- prose sync
+
+# Refresh the fingerprint of prose entries after rewriting their text (clears a
+# stale flag). Pass one or more node ids, or --all.
+arch-prose-bless *ARGS:
+    cd packages && cargo run --quiet -p regelrecht-arch-extract -- prose bless {{ARGS}}
+
+# Run the scheduled prose-drift flow: diff model vs. sidecar and, on drift, open
+# a draft PR with proposals. Meant to run on a schedule; DRY_RUN=true to preview.
+arch-prose-drift-pr:
+    packages/arch-extract/scripts/prose-drift-pr.sh

@@ -171,6 +171,196 @@ fn source_level_extraction_ran() {
     assert!(has_service, "expected engine type nodes");
 }
 
+/// The crate short-name a `prefix:crate::…` node id belongs to, e.g.
+/// `type:corpus::dto::PaginationParams` -> `corpus`. Returns `None` for a bare
+/// `crate:corpus` (no `::`).
+fn edge_crate(id: &str) -> Option<&str> {
+    let after = id.split_once(':')?.1;
+    after.split_once("::").map(|(head, _)| head)
+}
+
+#[test]
+fn cross_crate_use_and_impl_edges_resolved() {
+    // Before this pass, `uses`/`impl` edges were resolved by leaf-matching a
+    // type name against the *same crate's* types only, so cross-crate
+    // relationships (the interesting ones for an architecture map) were all
+    // missed. The workspace-wide symbol table plus per-file `use` resolution
+    // now captures them. Assert that concrete, well-known relationships appear —
+    // both proving the coverage improvement and guarding against a regression.
+    let model = model();
+    let edges = model["edges"].as_array().expect("edges array");
+
+    let uses_between = |from_crate: &str, to_crate: &str| {
+        edges.iter().any(|e| {
+            e["kind"] == "uses"
+                && e["from"].as_str().and_then(edge_crate) == Some(from_crate)
+                && e["to"].as_str().and_then(edge_crate) == Some(to_crate)
+                && e["to"].as_str().is_some_and(|t| t.starts_with("type:"))
+        })
+    };
+
+    // editor-api and admin both build on the corpus library.
+    assert!(
+        uses_between("editor-api", "corpus"),
+        "expected editor-api → corpus cross-crate uses edges"
+    );
+    assert!(
+        uses_between("corpus", "github"),
+        "expected corpus → github cross-crate uses edges"
+    );
+
+    // A cross-crate trait impl: `ArticleBasedLaw` (law-model) implements the
+    // engine's `LawLoad` trait — resolvable now that the trait's crate is
+    // identified from the `use` path.
+    let has_cross_impl = edges.iter().any(|e| {
+        e["kind"] == "impl"
+            && e["from"] == "type:law-model::model::ArticleBasedLaw"
+            && e["to"] == "type:engine::article::LawLoad"
+    });
+    assert!(
+        has_cross_impl,
+        "expected the law-model → engine LawLoad impl edge"
+    );
+
+    // The improvement should be broad, not a one-off: many cross-crate uses.
+    let cross_uses = edges
+        .iter()
+        .filter(|e| {
+            e["kind"] == "uses"
+                && e["to"].as_str().is_some_and(|t| t.starts_with("type:"))
+                && matches!(
+                    (
+                        e["from"].as_str().and_then(edge_crate),
+                        e["to"].as_str().and_then(edge_crate),
+                    ),
+                    (Some(a), Some(b)) if a != b
+                )
+        })
+        .count();
+    assert!(
+        cross_uses >= 20,
+        "expected a broad set of cross-crate uses edges, got {cross_uses}"
+    );
+}
+
+#[test]
+fn no_edge_leaves_the_workspace() {
+    // The "no false edges" guarantee at the model level: every edge endpoint is
+    // a real node in the model (the canonicalizer drops dangling edges), and no
+    // edge points at a node in a crate that does not exist. A leaf-match that
+    // guessed a non-existent target would surface here.
+    let model = model();
+    let node_ids: std::collections::HashSet<&str> = model["nodes"]
+        .as_array()
+        .expect("nodes array")
+        .iter()
+        .filter_map(|n| n["id"].as_str())
+        .collect();
+
+    for e in model["edges"].as_array().expect("edges array") {
+        let from = e["from"].as_str().expect("edge from");
+        let to = e["to"].as_str().expect("edge to");
+        assert!(
+            node_ids.contains(from),
+            "edge from a non-existent node: {from}"
+        );
+        assert!(node_ids.contains(to), "edge to a non-existent node: {to}");
+        assert_ne!(from, to, "self-edge should have been dropped");
+    }
+}
+
+/// Set of node ids of a given kind.
+fn ids_of_kind(model: &Value, kind: &str) -> std::collections::BTreeSet<String> {
+    model["nodes"]
+        .as_array()
+        .expect("nodes array")
+        .iter()
+        .filter(|n| n["kind"] == kind)
+        .filter_map(|n| n["id"].as_str().map(str::to_string))
+        .collect()
+}
+
+#[test]
+fn frontend_apps_extracted() {
+    let model = model();
+
+    // The three npm-workspace frontends appear as `app` containers.
+    let apps = ids_of_kind(model, "app");
+    let expected_apps: std::collections::BTreeSet<String> = [
+        "app:frontend",
+        "app:frontend-lawmaking",
+        "app:frontend-shared",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    assert_eq!(apps, expected_apps, "expected the three frontend apps");
+
+    // Components (.vue) and composables (useXxx) are extracted, with lang set.
+    let nodes = model["nodes"].as_array().expect("nodes array");
+    let vue_components = nodes
+        .iter()
+        .filter(|n| n["kind"] == "component" && n["lang"] == "vue")
+        .count();
+    assert!(vue_components > 0, "expected Vue component nodes");
+    assert!(
+        !ids_of_kind(model, "composable").is_empty(),
+        "expected composable nodes"
+    );
+
+    // Containment: every frontend node (below the app) reaches its app via
+    // `parent`, and no frontend node is left parentless.
+    let below_app = nodes.iter().filter(|n| {
+        matches!(n["kind"].as_str(), Some("component" | "composable" | "dir"))
+            || (n["kind"] == "module" && n["lang"] != "rust")
+    });
+    for n in below_app {
+        assert!(
+            n["parent"].is_string(),
+            "frontend node {} must have a parent",
+            n["id"]
+        );
+    }
+}
+
+#[test]
+fn frontend_import_edges_present() {
+    let model = model();
+    let edges = model["edges"].as_array().expect("edges array");
+
+    // Both Vue apps depend on the shared package (a cross-app `depends-on`).
+    let app_depends = |from: &str| {
+        edges.iter().any(|e| {
+            e["kind"] == "depends-on" && e["from"] == from && e["to"] == "app:frontend-shared"
+        })
+    };
+    assert!(
+        app_depends("app:frontend"),
+        "frontend should depend on frontend-shared"
+    );
+    assert!(
+        app_depends("app:frontend-lawmaking"),
+        "frontend-lawmaking should depend on frontend-shared"
+    );
+
+    // Imports within a frontend become `uses` edges — in particular a component
+    // that imports a composable (the acceptance criterion "which component uses
+    // which composable").
+    let component_uses_composable = edges.iter().any(|e| {
+        e["kind"] == "uses"
+            && e["from"]
+                .as_str()
+                .is_some_and(|f| f.starts_with("component:frontend::"))
+            && e["to"]
+                .as_str()
+                .is_some_and(|t| t.starts_with("composable:frontend::"))
+    });
+    assert!(
+        component_uses_composable,
+        "expected a component→composable uses edge"
+    );
+}
+
 /// The crate prefix of a `kind:crate::…` node id, e.g. `mod:engine::service`
 /// -> `engine`. Returns `None` for a bare `crate:engine` (no `::`).
 fn crate_prefix(id: &str) -> Option<&str> {

@@ -1,0 +1,23 @@
+{
+  "name": "regelrecht-arch-explorer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local architecture explorer UI (Vue 3 + Vue Flow) for the regelrecht workspace. Served by `arch-extract serve` / `just arch-explore`.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@vue-flow/background": "^1.3.2",
+    "@vue-flow/controls": "^1.1.3",
+    "@vue-flow/core": "^1.48.2",
+    "@vue-flow/minimap": "^1.5.4",
+    "vue": "^3.5.38"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.7",
+    "vite": "^8.0.16"
+  }
+}

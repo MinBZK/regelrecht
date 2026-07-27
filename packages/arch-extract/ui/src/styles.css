@@ -1,0 +1,490 @@
+/*
+ * Global styles for the architecture explorer.
+ *
+ * Dark/light strategy mirrors the shared frontends: the theme is driven by
+ * `<html data-scheme>` (set by useColorScheme.js). Absence of the attribute =
+ * 'auto', so the OS `prefers-color-scheme` decides. This is a standalone
+ * internal tool with no design-system dependency, so the palette is defined
+ * here with plain CSS custom properties rather than NDD tokens.
+ */
+
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #eef1f5;
+  --border: #d3d9e0;
+  --text: #1c2430;
+  --text-muted: #5a6472;
+  --accent: #6366f1;
+  --shadow: 0 1px 3px rgba(20, 30, 50, 0.12);
+
+  --kind-crate: #6366f1;
+  --kind-binary: #8b5cf6;
+  --kind-module: #0ea5e9;
+  --kind-trait: #d946ef;
+  --kind-struct: #0d9488;
+  --kind-enum: #ca8a04;
+  --kind-fn: #64748b;
+  --kind-method: #64748b;
+
+  /* JS/TS/Vue frontends. Kept in a warm/green family so the two tiers (Rust
+     crates vs. Vue apps) read as distinct at a glance. */
+  --kind-app: #16a34a;
+  --kind-dir: #0891b2;
+  --kind-component: #42b883; /* Vue green */
+  --kind-composable: #db7734;
+}
+
+/* Dark palette, shared by "OS dark + not forced light" and "forced dark". */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-scheme='light']) {
+    --bg: #0f1420;
+    --surface: #1a2130;
+    --surface-2: #232c3d;
+    --border: #38445a;
+    --text: #e6ebf2;
+    --text-muted: #9aa7b8;
+    --accent: #818cf8;
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  }
+}
+[data-scheme='dark'] {
+  --bg: #0f1420;
+  --surface: #1a2130;
+  --surface-2: #232c3d;
+  --border: #38445a;
+  --text: #e6ebf2;
+  --text-muted: #9aa7b8;
+  --accent: #818cf8;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app-root {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- Loading / error status --------------------------------------------- */
+.app-status {
+  margin: auto;
+  text-align: center;
+  color: var(--text-muted);
+  padding: 24px;
+}
+.app-status--error {
+  color: var(--text);
+}
+.app-status__detail {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  text-align: left;
+  max-width: 640px;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+.app-status__spinner {
+  width: 28px;
+  height: 28px;
+  margin: 0 auto 12px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- Layout ------------------------------------------------------------- */
+.arch-explorer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.arch-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.arch-toolbar__title {
+  font-size: 14px;
+}
+.arch-toolbar__stat {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.arch-toolbar__spacer {
+  flex: 1;
+}
+
+.arch-btn {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+}
+.arch-btn:hover {
+  border-color: var(--accent);
+}
+
+.arch-legend {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.arch-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.arch-legend .lg {
+  width: 18px;
+  height: 0;
+  border-top-width: 2px;
+  border-top-style: solid;
+}
+.lg-depends {
+  border-top-color: #6366f1;
+}
+.lg-impl {
+  border-top-color: #10b981;
+  border-top-style: dashed;
+}
+.lg-uses {
+  border-top-color: #94a3b8;
+  border-top-style: dotted;
+}
+
+.arch-canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+/* --- Vue Flow theming --------------------------------------------------- */
+.vue-flow {
+  background: var(--bg);
+}
+
+/* Reset the default node chrome — our ArchNode draws its own box. */
+.vue-flow__node.arch-node {
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+  font-size: 12px;
+  color: var(--text);
+  text-align: left;
+  width: auto;
+}
+
+.arch-node {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+/* Expanded containers: translucent body so nested children read as "inside". */
+.arch-node.is-expanded {
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  overflow: visible;
+}
+
+.arch-node__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 46px;
+  padding: 0 10px;
+  cursor: pointer;
+  border-bottom: 1px solid transparent;
+}
+.arch-node.is-expanded > .arch-node__header {
+  border-bottom-color: var(--border);
+  background: var(--surface);
+  border-radius: 8px 8px 0 0;
+}
+
+.arch-node__toggle {
+  font: inherit;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+}
+.arch-node__toggle:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.arch-node__leaf-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+  flex: 0 0 auto;
+}
+
+.arch-node__kind {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #fff;
+  background: var(--text-muted);
+  padding: 1px 6px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+.arch-node__name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.arch-node__count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 0 7px;
+  flex: 0 0 auto;
+}
+
+/* Kind accents: a coloured left edge + matching badge. */
+.arch-node.kind-crate {
+  border-left: 4px solid var(--kind-crate);
+}
+.arch-node.kind-binary {
+  border-left: 4px solid var(--kind-binary);
+}
+.arch-node.kind-module {
+  border-left: 4px solid var(--kind-module);
+}
+.arch-node.kind-trait {
+  border-left: 4px solid var(--kind-trait);
+}
+.arch-node.kind-struct {
+  border-left: 4px solid var(--kind-struct);
+}
+.arch-node.kind-enum {
+  border-left: 4px solid var(--kind-enum);
+}
+.arch-node.kind-fn,
+.arch-node.kind-method {
+  border-left: 4px solid var(--kind-fn);
+}
+.arch-node.kind-app {
+  border-left: 4px solid var(--kind-app);
+}
+.arch-node.kind-dir {
+  border-left: 4px solid var(--kind-dir);
+}
+.arch-node.kind-component {
+  border-left: 4px solid var(--kind-component);
+}
+.arch-node.kind-composable {
+  border-left: 4px solid var(--kind-composable);
+}
+
+.kind-crate .arch-node__kind,
+.detail-panel__badge.kind-crate {
+  background: var(--kind-crate);
+}
+.kind-binary .arch-node__kind,
+.detail-panel__badge.kind-binary {
+  background: var(--kind-binary);
+}
+.kind-module .arch-node__kind,
+.detail-panel__badge.kind-module {
+  background: var(--kind-module);
+}
+.kind-trait .arch-node__kind,
+.detail-panel__badge.kind-trait {
+  background: var(--kind-trait);
+}
+.kind-struct .arch-node__kind,
+.detail-panel__badge.kind-struct {
+  background: var(--kind-struct);
+}
+.kind-enum .arch-node__kind,
+.detail-panel__badge.kind-enum {
+  background: var(--kind-enum);
+}
+.kind-fn .arch-node__kind,
+.kind-method .arch-node__kind,
+.detail-panel__badge.kind-fn,
+.detail-panel__badge.kind-method {
+  background: var(--kind-fn);
+}
+.kind-app .arch-node__kind,
+.detail-panel__badge.kind-app {
+  background: var(--kind-app);
+}
+.kind-dir .arch-node__kind,
+.detail-panel__badge.kind-dir {
+  background: var(--kind-dir);
+}
+.kind-component .arch-node__kind,
+.detail-panel__badge.kind-component {
+  background: var(--kind-component);
+}
+.kind-composable .arch-node__kind,
+.detail-panel__badge.kind-composable {
+  background: var(--kind-composable);
+}
+
+/* Handles exist for edge attachment but are not user-facing (no connecting). */
+.vue-flow__handle {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.vue-flow__minimap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.vue-flow__controls {
+  box-shadow: var(--shadow);
+}
+.vue-flow__controls-button {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  fill: var(--text);
+}
+
+/* --- Detail panel ------------------------------------------------------- */
+.detail-panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 320px;
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+  z-index: 10;
+}
+.detail-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.detail-panel__badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.detail-panel__close {
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.detail-panel__close:hover {
+  color: var(--text);
+}
+.detail-panel__name {
+  font-size: 16px;
+  margin: 10px 0 12px;
+  word-break: break-word;
+}
+.detail-panel__meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 12px;
+}
+.detail-panel__meta dt {
+  color: var(--text-muted);
+}
+.detail-panel__meta dd {
+  margin: 0;
+  word-break: break-word;
+}
+.detail-panel__meta code {
+  font-size: 11px;
+}
+.detail-panel__id {
+  color: var(--text-muted);
+}
+.detail-panel__prose {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.detail-panel__prose-title {
+  margin: 0 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.detail-panel__prose-body {
+  font-size: 13px;
+  line-height: 1.55;
+}
+.detail-panel__prose-body p {
+  margin: 0 0 8px;
+}
+.detail-panel__prose-body p:last-child {
+  margin-bottom: 0;
+}
+.detail-panel__prose-body code {
+  font-size: 11px;
+}
+.detail-panel__doc {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.detail-panel__doc--empty {
+  color: var(--text-muted);
+  font-style: italic;
+}

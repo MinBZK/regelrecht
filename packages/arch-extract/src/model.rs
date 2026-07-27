@@ -29,10 +29,14 @@ pub enum Level {
     Code,
 }
 
-/// The concrete code construct a node represents.
+/// The concrete code construct a node represents. The first block is the
+/// Rust-workspace vocabulary; the second is the JavaScript/TypeScript/Vue
+/// vocabulary for the frontends (see `js_pass.rs`). Both share one model — the
+/// `kind` just records which language construct a node stands for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
+    // Rust workspace (crate graph + `syn` pass).
     Crate,
     Binary,
     Module,
@@ -41,6 +45,17 @@ pub enum Kind {
     Trait,
     Method,
     Fn,
+    // JS/TS/Vue frontends (`js_pass`).
+    /// An npm-workspace frontend (a Vue app or the shared package) — the JS-side
+    /// analogue of a `crate`.
+    App,
+    /// A source directory that groups files — the JS-side analogue of a Rust
+    /// module directory.
+    Dir,
+    /// A Vue single-file component (`.vue`).
+    Component,
+    /// A `useXxx` composable module.
+    Composable,
 }
 
 /// A relationship between two nodes. `depends-on` is crate→crate (from cargo
@@ -60,8 +75,9 @@ pub struct Node {
     pub id: String,
     pub level: Level,
     pub kind: Kind,
-    /// Source language of the node. Everything is `"rust"` in v1; the field
-    /// exists so the frontends (a later phase) slot in without a shape change.
+    /// Source language of the node: `"rust"` for the workspace crates,
+    /// `"vue"`/`"ts"`/`"js"` for the frontends. The model is deliberately
+    /// language-agnostic — this field is how a consumer tells the tiers apart.
     pub lang: String,
     pub name: String,
     /// Repo-relative source location (a directory for crates, a file for the

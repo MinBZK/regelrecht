@@ -24,6 +24,12 @@ pub struct CrateInfo {
     pub node_id: String,
     /// Absolute crate directory (parent of Cargo.toml).
     pub dir: PathBuf,
+    /// The extern-crate identifier as it appears in `use` paths, i.e. the
+    /// package name with `-` turned into `_` (e.g. `regelrecht_law_model`).
+    /// Used by the syn pass to resolve cross-crate references without a
+    /// name-resolver: a `use regelrecht_law_model::…` path is matched against
+    /// this to find the target crate.
+    pub ident: String,
 }
 
 pub struct CrateGraph {
@@ -88,10 +94,12 @@ pub fn load(manifest_path: Option<&Path>) -> Result<CrateGraph, Box<dyn std::err
             .map(|p| p.as_std_path().to_path_buf())
             .unwrap_or_else(|| repo_root.clone());
         by_name.insert(pkg.name.to_string(), node_id.clone());
+        let ident = pkg.name.replace('-', "_");
         crates.push(CrateInfo {
             short,
             node_id,
             dir,
+            ident,
         });
     }
     crates.sort_by(|a, b| a.short.cmp(&b.short));
