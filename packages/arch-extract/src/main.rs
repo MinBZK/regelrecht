@@ -15,6 +15,7 @@
 
 mod crate_graph;
 mod model;
+mod render;
 mod syn_pass;
 
 use std::path::{Path, PathBuf};
@@ -25,22 +26,18 @@ use model::Model;
 /// Default, repo-relative location of the committed model.
 const DEFAULT_OUT: &str = "docs/src/content/architecture/model.json";
 
-/// Crates for which we run the deep source-level (`syn`) pass by default. The
-/// crate graph always covers all 10 workspace crates; the deeper
-/// module/type/method extraction is v1-scoped to these two (the ticket's Phase
-/// 1). Pass `--deep-all` to extract every crate, or `--deep a,b` to override.
-const DEFAULT_DEEP_CRATES: &[&str] = &["engine", "corpus"];
-
 enum Command {
     Generate,
     Check,
 }
 
-/// Which crates get the deep source-level pass.
+/// Which crates get the deep source-level pass. The default is every crate:
+/// the architecture site renders the deep structure (modules/types/methods) for
+/// all ten crates. `--deep a,b` narrows it to a subset (e.g. for a quick run).
 enum DeepScope {
-    /// The default set (`DEFAULT_DEEP_CRATES`) or an explicit `--deep` list.
+    /// An explicit `--deep` list — only these crates get the deep pass.
     Only(Vec<String>),
-    /// Every workspace crate (`--deep-all`).
+    /// Every workspace crate (the default, also selectable with `--deep-all`).
     All,
 }
 
@@ -57,7 +54,7 @@ fn parse_args() -> Result<Args, String> {
     let mut out = None;
     let mut stdout = false;
     let mut manifest_path = None;
-    let mut deep = DeepScope::Only(DEFAULT_DEEP_CRATES.iter().map(|s| s.to_string()).collect());
+    let mut deep = DeepScope::All;
 
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -127,6 +124,12 @@ fn run() -> Result<ExitCode, Box<dyn std::error::Error>> {
     let (mvalue, repo_root) = build_model(args.manifest_path.as_deref(), &args.deep)?;
     let json = mvalue.to_json()?;
 
+    // The derived docs pages (C4 views + per-crate pages). Only written when the
+    // model goes to its default committed location — a `--stdout`/`--out` run is
+    // a one-off inspection and must not scatter page files.
+    let pages = render::render(&mvalue);
+    let default_out = args.out.is_none();
+
     match args.command {
         Command::Generate => {
             if args.stdout {
@@ -144,18 +147,47 @@ fn run() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 mvalue.edges.len(),
                 out.display()
             );
+            if default_out {
+                for page in &pages {
+                    let path = repo_root.join(&page.rel_path);
+                    if let Some(dir) = path.parent() {
+                        std::fs::create_dir_all(dir)?;
+                    }
+                    std::fs::write(&path, &page.content)?;
+                }
+                eprintln!(
+                    "arch-extract: wrote {} page(s) → {}",
+                    pages.len(),
+                    render::PAGES_DIR
+                );
+            }
             Ok(ExitCode::SUCCESS)
         }
         Command::Check => {
             let out = resolve_out(args.out, &repo_root);
+            let mut stale: Vec<String> = Vec::new();
+
             let existing = std::fs::read_to_string(&out).unwrap_or_default();
-            if existing == json {
-                eprintln!("arch-extract: {} is up to date", out.display());
+            if existing != json {
+                stale.push(out.display().to_string());
+            }
+            if default_out {
+                for page in &pages {
+                    let path = repo_root.join(&page.rel_path);
+                    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+                    if existing != page.content {
+                        stale.push(page.rel_path.clone());
+                    }
+                }
+            }
+
+            if stale.is_empty() {
+                eprintln!("arch-extract: model and generated pages are up to date");
                 Ok(ExitCode::SUCCESS)
             } else {
                 eprintln!(
-                    "arch-extract: {} is stale — run `just arch-generate` and commit the result",
-                    out.display()
+                    "arch-extract: stale — run `just arch-generate` and commit the result:\n  {}",
+                    stale.join("\n  ")
                 );
                 Ok(ExitCode::FAILURE)
             }

@@ -1,28 +1,53 @@
 # arch-extract
 
 Generates the **code-derived architecture model** (`model.json`) for the
-regelrecht workspace. One language-agnostic file describes the workspace from
-application → crate → module → type → method, plus how the parts depend on and
-use each other, so the docs site can render it without the diagrams drifting
-from the code.
+regelrecht workspace **and the docs-site pages derived from it**. One
+language-agnostic file describes the workspace from application → crate → module
+→ type → method, plus how the parts depend on and use each other; from that same
+model the tool renders the Mermaid C4 views and a page per crate, so the docs
+site shows the high-level architecture without the diagrams drifting from the
+code.
 
 This is a build-time developer tool — an 11th, tooling-only workspace member. It
-is not shipped or deployed; it only writes a file that the docs site consumes.
+is not shipped or deployed; it only writes files that the docs site consumes.
 
 ## Usage
 
 ```bash
-just arch-generate   # regenerate docs/src/content/architecture/model.json
-just arch-check      # fail if model.json is stale vs. the code (CI gate primitive)
+just arch-generate   # regenerate model.json + the docs/src/content/docs/architecture pages
+just arch-check      # fail if the model or any generated page is stale (CI gate primitive)
 ```
 
 Both recipes run the `arch-extract` binary from `packages/` so `cargo metadata`
 discovers the workspace. Direct invocation:
 
 ```bash
-cargo run -p regelrecht-arch-extract -- generate [--out <path>] [--stdout]
+cargo run -p regelrecht-arch-extract -- generate [--out <path>] [--stdout] [--deep a,b]
 cargo run -p regelrecht-arch-extract -- check   [--out <path>]
 ```
+
+`--stdout` and a custom `--out` are inspection-only: they write just the model
+JSON and skip the page files (which only make sense at their fixed docs
+location).
+
+## Generated docs pages
+
+`generate` also writes, under `docs/src/content/docs/architecture/` (a section
+of the docs content collection, so each file is a `/architecture/...` route):
+
+- `context.md` — **C4Context**: the platform as one system.
+- `container.md` — **C4Container**: the ten crates and their `depends-on` graph.
+- `component.md` — **C4Component**: the top-level modules inside each crate.
+- `crates/<crate>.md` — one page per crate: doc, dependencies/dependents, a
+  C4Component diagram of its modules, and a table of its types.
+- `index.md` — a hub linking the above.
+
+The pages are plain Markdown with fenced ```mermaid C4 blocks; the docs build
+renders them through the existing `rehype-mermaid` (inline SVG) +
+`rehype-mermaid-alt.ts` (accessible name) pipeline. Rendering is deterministic
+(everything sorted, no timestamp), so `just arch-check` gates staleness with a
+clean `git diff`. **Do not hand-edit these files** — change the code and
+regenerate.
 
 ## What it extracts
 
@@ -38,11 +63,28 @@ Two tiers feed one model (see `../../docs/src/content/architecture/model.schema.
   crate's `src/**.rs`. Plus best-effort `impl` (type → trait) and `uses`
   (type → type) edges. Test-only code (`#[cfg(test)]`, `#[test]`) is skipped.
 
-  **Scope (v1):** the deep source pass runs for `engine` + `corpus` by default
-  (`DEFAULT_DEEP_CRATES`). The crate graph above always covers all 10 crates;
-  scaling the deep pass to the whole workspace is a config flip — `--deep-all`,
-  or `--deep <a,b,…>` for a custom set — deferred to a follow-up so this first
-  cut stays reviewable and the committed model small.
+  **Scope:** the deep source pass runs for **all ten crates** by default. Pass
+  `--deep <a,b,…>` to narrow it to a subset (e.g. a quick local run);
+  `--deep-all` is the explicit form of the default.
+
+### Committed model size
+
+Deep extraction of all ten crates makes `model.json` roughly **755 KB**
+(pretty-printed). That is above the 500 KB `check-added-large-files` pre-commit
+threshold, so a note on the choice:
+
+- We keep the file **pretty-printed and committed**. Byte-stable, line-oriented
+  output is a core property of this tool — it is what lets `arch-check` /
+  `git diff --exit-code` gate drift and lets a reviewer read the change.
+  Minifying would collapse the file to a single line (destroying diff
+  readability) and still leave it ≈587 KB — over the threshold — so it buys
+  nothing.
+- `check-added-large-files` (no `--enforce-all`) only inspects **newly-added**
+  files; `model.json` is already tracked, so a size bump on an existing file is
+  not blocked by the gate.
+- If a hard cap is ever wanted, the model can move to CI-only generation. That
+  belongs with the CI staleness gate (a later phase); for now the committed,
+  readable model is the source of truth for the tests and the generated pages.
 
 Nodes carry stable, path-shaped ids (`crate:engine`, `mod:engine::service`,
 `type:engine::service::LawExecutionService`,
