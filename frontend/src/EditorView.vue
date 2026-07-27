@@ -234,17 +234,32 @@ watch(activeTrajectRef, async (next) => {
   if (route.params.lawId) {
     // A URL that still names a law in the new traject can only come from a deep
     // link or browser back/forward now (the traject switcher navigates to the
-    // bare root - see trajectSwitchTarget). onBeforeRouteUpdate already ran
-    // switchLaw for that law through the new traject before this watch fired -
-    // but only reflect it as the active tab if it actually LOADED for this
-    // traject. When the new traject doesn't have the law, switchLaw 404s: it
-    // sets `error` and leaves `lawId`/`selectedArticleNumber` holding the
-    // PREVIOUS traject's law. Adopting those here would add that foreign law as
-    // an open+active tab and persist it under this traject - re-introducing the
-    // exact leak this PR fixes. Require a clean load whose id matches the URL;
-    // the error view renders the "niet beschikbaar" dialog for the failed case.
+    // bare root - see trajectSwitchTarget). Make sure that law is loaded THROUGH
+    // the new traject before adopting it as a tab.
+    //
+    // onBeforeRouteUpdate only (re)loads when the URL's lawId *changes*; a
+    // cross-traject nav that keeps the SAME lawId (a bookmarked/back-forward URL
+    // differing only in trajectRef, or a law shared across trajects) skips it,
+    // leaving law.value / selectedArticleNumber / useLaw's currentTrajectRef
+    // pointed at the PREVIOUS traject's copy. Reload here whenever the open law
+    // isn't already this traject's copy, so we never adopt stale, wrong-traject
+    // content - and so a later save PUTs to the right traject. When the id and
+    // traject already match (the lawId-changed deep link, loaded by
+    // onBeforeRouteUpdate), this is skipped - no duplicate fetch.
+    if (lawTrajectRef.value !== next || lawId.value !== route.params.lawId) {
+      await switchLaw(route.params.lawId, route.params.articleNumber, next);
+    }
+    // Only reflect the URL's law as this traject's active tab when it actually
+    // loaded FOR this traject. When the traject doesn't have the law, switchLaw
+    // 404s: `error` is set and lawId/selectedArticleNumber still hold the
+    // previous traject's law. Adopting that would add a foreign law as an
+    // open+active tab and persist it under this traject - re-introducing the
+    // exact leak this PR fixes. Require a clean load, for this traject, whose id
+    // matches the URL; the error view renders the "niet beschikbaar" dialog for
+    // the failed case.
     const loaded =
       !error.value &&
+      lawTrajectRef.value === next &&
       lawId.value === route.params.lawId &&
       selectedArticleNumber.value != null;
     if (loaded) {
