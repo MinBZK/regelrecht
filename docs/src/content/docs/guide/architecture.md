@@ -5,16 +5,58 @@ description: "A high-level tour of the two pillars, the Corpus Juris and the Exe
 
 RegelRecht is built on two pillars: the **Corpus Juris** (a git-versioned body of all Dutch law) and the **Execution Engine** (a runtime that evaluates laws deterministically).
 
-## Code-derived architecture views
+## System Context
 
-The C4 diagrams for this system are **generated from the source tree** rather than drawn by hand, so they cannot drift from the code. The `arch-extract` build tool reads the crate graph (`cargo metadata`) and internal structure (a `syn` parse) into one model and renders these pages:
+```mermaid
+C4Context
+    title RegelRecht - System Context
 
-- [System context](/architecture/context) — the platform as one system (C4 level 1).
-- [Containers](/architecture/container) — the ten crates and how they depend on each other (C4 level 2).
-- [Components](/architecture/component) — the top-level modules inside each crate (C4 level 3).
-- [Architecture hub](/architecture) — the above plus a page per crate.
+    Person(lawmaker, "Lawmaker", "Drafts and publishes legislation")
+    Person(citizen, "Citizen", "Checks eligibility for services")
+    Person(agency, "Government Agency", "Makes decisions based on law")
 
-Regenerate with `just arch-generate`; `just arch-check` fails if a page is stale versus the code.
+    System(regelrecht, "RegelRecht", "Machine-readable law platform")
+    System_Ext(bwb, "BWB / wetten.nl", "Official Dutch law publication")
+
+    Rel(lawmaker, regelrecht, "Edits laws, reviews interpretations")
+    Rel(citizen, regelrecht, "Checks eligibility")
+    Rel(agency, regelrecht, "Executes laws for decisions")
+    Rel(bwb, regelrecht, "Source of law text")
+```
+
+## Container Diagram
+
+```mermaid
+C4Container
+    title RegelRecht - Containers
+
+    Person(user, "User")
+
+    System_Boundary(rr, "RegelRecht") {
+        Container(editor, "Editor", "Vue 3 / Vite", "Law editing and browsing")
+        Container(editorapi, "Editor API", "Rust / Axum", "Serves the editor and corpus REST API")
+        Container(engine, "Engine", "Rust / WASM", "Deterministic law execution")
+        Container(pipeline, "Pipeline", "Rust / PostgreSQL", "Job queue and law status tracking")
+        Container(harvester, "Harvester", "Rust", "Downloads laws from BWB / CVDR")
+        Container(enrich, "Enrich Worker", "Rust / LLM", "Adds machine_readable sections")
+        Container(admin, "Admin", "Rust + Vue", "Operations dashboard")
+        ContainerDb(corpus, "Corpus Juris", "Git / YAML", "All laws in machine-readable format")
+        ContainerDb(db, "PostgreSQL", "Database", "Job queue and law status")
+    }
+
+    Rel(user, editor, "Browses and edits laws")
+    Rel(editor, editorapi, "REST API calls")
+    Rel(editor, engine, "Executes laws (WASM)")
+    Rel(editorapi, corpus, "Reads and writes law files")
+    Rel(harvester, corpus, "Writes harvested laws")
+    Rel(enrich, corpus, "Writes enriched laws")
+    Rel(pipeline, db, "Manages jobs")
+    Rel(pipeline, harvester, "Triggers harvesting")
+    Rel(pipeline, enrich, "Triggers enrichment")
+    Rel(admin, db, "Monitors pipeline")
+```
+
+The editor, TUI, lawmaking visualization, Grafana, and the engine's WASM/CLI builds are additional surfaces over the same engine and corpus; they are omitted here to keep the container view readable. See the [component docs](/components/engine) for each.
 
 ## Data Flow
 

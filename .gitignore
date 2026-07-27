@@ -51,6 +51,11 @@ mutants.out/
 # BDD trace output
 trace_output/
 
+# Architecture model — generated on-demand by `arch-extract` for the local
+# architecture explorer (`just arch-generate`). Never committed: the explorer
+# regenerates it from the working tree, so it is always current by construction.
+docs/src/content/architecture/model.json
+
 # Dev stack
 .dev-pids
 

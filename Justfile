@@ -596,13 +596,10 @@ docs-a11y:
 
 # --- Architecture model ---
 
-# Regenerate the code-derived architecture model
-# (packages/arch-extract → docs/src/content/architecture/model.json). Run this
-# after changing crate structure and commit the result.
+# Generate the code-derived architecture model
+# (packages/arch-extract → docs/src/content/architecture/model.json, a gitignored
+# path). The model is generated on-demand, never committed: the local architecture
+# explorer regenerates it from the working tree. Run this to inspect the model
+# without starting the explorer.
 arch-generate:
     cd packages && {{ci_flags}} cargo run --quiet -p regelrecht-arch-extract -- generate
-
-# Staleness gate: fail if model.json is out of date with the code. This is the
-# primitive a CI drift-check wraps (regenerate + `git diff --exit-code`).
-arch-check:
-    cd packages && {{ci_flags}} cargo run --quiet -p regelrecht-arch-extract -- check

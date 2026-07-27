@@ -1,14 +1,14 @@
 //! The architecture model: the single, language-agnostic artifact this tool
 //! emits. Containment is expressed with `parent`; relationships with `edges`.
 //!
-//! The shape mirrors a C4-style hierarchy so the docs site can render both the
-//! high-level Mermaid C4 diagrams and the interactive deep-zoom explorer from
-//! one file. Node ids are stable paths (`crate:engine`,
+//! The shape mirrors a C4-style hierarchy so the architecture explorer can
+//! render both the high-level view and the interactive deep-zoom from one file.
+//! Node ids are stable paths (`crate:engine`,
 //! `mod:engine::service`, `type:engine::service::LawExecutionService`,
 //! `fn:engine::service::LawExecutionService::execute`) so diffs stay meaningful
 //! across regenerations. Deliberately **no timestamp** lives in the generator
-//! output (a timestamp would make every regeneration a diff); CI may add a
-//! `generatedAt` sidecar field separately.
+//! output, so a node keeps a stable identity between runs — the architecture
+//! explorer relies on that.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -17,9 +17,9 @@ use std::collections::BTreeSet;
 /// schema and any consumers can guard against a mismatch.
 pub const SCHEMA_VERSION: &str = "1";
 
-/// C4-style coarse tier. `system` is reserved for the render layer (the docs
-/// site synthesizes the system boundary that wraps the containers); the
-/// generator emits `container`, `component` and `code` nodes in v1.
+/// C4-style coarse tier. `system` is reserved for the explorer (which
+/// synthesizes the system boundary that wraps the containers); the generator
+/// emits `container`, `component` and `code` nodes in v1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Level {
@@ -83,7 +83,7 @@ pub struct Edge {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Model {
-    /// Points editors at the schema; ignored by the render layer.
+    /// Points editors at the schema; ignored by consumers of the model.
     #[serde(rename = "$schema")]
     pub schema: String,
     #[serde(rename = "schemaVersion")]
@@ -95,8 +95,8 @@ pub struct Model {
 impl Model {
     /// Assembles a model from collected nodes/edges, then canonicalizes it:
     /// nodes sorted by id, edges sorted and de-duplicated, dangling edges
-    /// dropped. Determinism here is what makes the CI staleness gate a clean
-    /// `git diff --exit-code`.
+    /// dropped. This determinism gives every node a stable identity between
+    /// runs, which the architecture explorer relies on.
     pub fn new(mut nodes: Vec<Node>, edges: Vec<Edge>) -> Self {
         nodes.sort_by(|a, b| a.id.cmp(&b.id));
         nodes.dedup_by(|a, b| a.id == b.id);

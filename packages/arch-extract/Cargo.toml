@@ -1,10 +1,11 @@
 # regelrecht-arch-extract — the architecture-model generator.
 #
-# This is a build-time developer tool (an 11th, tooling-only workspace member),
-# not a runtime component of the product. It reads the workspace and emits a
-# single language-agnostic `model.json` that the docs site renders. See
-# `README.md` for the extraction approach and the deliberate stable-toolchain
-# choice (cargo metadata + syn) over rustdoc-JSON.
+# This is a build-time developer tool (a tooling-only workspace member), not a
+# runtime component of the product. It reads the workspace and emits a single
+# language-agnostic `model.json` — generated on-demand, never committed — that
+# the local architecture explorer renders. See `README.md` for the extraction
+# approach and the deliberate stable-toolchain choice (cargo metadata + syn)
+# over rustdoc-JSON.
 [package]
 name = "regelrecht-arch-extract"
 version = "0.1.0"
@@ -33,8 +34,8 @@ serde_json.workspace = true
 walkdir.workspace = true
 
 [dev-dependencies]
-# Validates the committed model.json against the JSON schema in a test, so drift
-# in the model shape is caught by `cargo test` (and thus `just check`).
+# Validates the generated model against the JSON schema in a test, so drift in
+# the model shape is caught by `cargo test` (and thus `just check`).
 jsonschema = "0.47"
 
 [lints]
