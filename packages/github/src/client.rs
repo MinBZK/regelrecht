@@ -182,8 +182,11 @@ mod tests {
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    // `GITHUB_API_BASE` mutates process-global env, so the env-sensitive
-    // assertions share one serialized test to avoid cross-test races.
+    // `GITHUB_API_BASE` mutates process-global env, which every test in this
+    // binary shares, so the env-sensitive assertions live in this ONE test.
+    // No other test may read or write that var — not even defensively — because
+    // a `remove_var` racing this test's `set_var` makes it fail intermittently.
+    // Tests that need a specific base URL use `with_base_url`/`set_base_url`.
     #[test]
     fn env_base_url_is_read_at_construction_and_trimmed() {
         // Unset: falls back to api.github.com.
@@ -206,7 +209,6 @@ mod tests {
 
     #[test]
     fn set_base_url_trims_trailing_slash() {
-        std::env::remove_var("GITHUB_API_BASE");
         let mut c = GithubClient::new().unwrap();
         c.set_base_url("http://127.0.0.1:1234/");
         assert_eq!(c.api_base, "http://127.0.0.1:1234");
@@ -216,7 +218,6 @@ mod tests {
 
     #[test]
     fn default_headers_carry_the_shared_set() {
-        std::env::remove_var("GITHUB_API_BASE");
         let c = GithubClient::new().unwrap();
         let headers = c.default_headers(Some("tok")).unwrap();
         assert_eq!(headers.get(USER_AGENT).unwrap(), USER_AGENT_VALUE);
@@ -234,7 +235,6 @@ mod tests {
 
     #[test]
     fn malformed_token_is_invalid_token_error() {
-        std::env::remove_var("GITHUB_API_BASE");
         let c = GithubClient::new().unwrap();
         // An embedded newline can't form a valid header value.
         let err = c
@@ -250,7 +250,6 @@ mod tests {
 
     #[tokio::test]
     async fn etag_roundtrip_sends_if_none_match_and_handles_304() {
-        std::env::remove_var("GITHUB_API_BASE");
         let server = MockServer::start().await;
 
         // First response carries an ETag; second request must echo it back
