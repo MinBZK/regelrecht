@@ -142,11 +142,16 @@ describe('sectionTarget - traject preserved across tab switches', () => {
     expect(t.params.lawId).toBe('wet_op_de_zorgtoeslag');
   });
 
-  it('re-stamps a stale stored traject with the currently active one', () => {
+  it('drops a foreign lawId on a cross-traject editor path, landing on the editor root', () => {
+    // The stored editor path names a DIFFERENT traject: its lawId belongs to
+    // that traject and may not exist in the active one. Stamping it across gave
+    // a "niet beschikbaar in dit traject" dead end, so we now land on the active
+    // traject's editor root and let the restore-on-entry flow open the right
+    // article (same rule as trajectSwitchTarget).
     const t = sectionTarget(router, '/trajecten/old-deadbeef/editor/foo', REF);
     expect(t.name).toBe('editor-traject');
     expect(t.params.trajectRef).toBe(REF);
-    expect(t.params.lawId).toBe('foo');
+    expect(t.params.lawId).toBeUndefined();
   });
 
   it('strips the traject when none is active (Geen traject)', () => {

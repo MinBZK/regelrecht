@@ -141,6 +141,17 @@ export function sectionTarget(router, storedPath, activeRef) {
 
   if (isEditor) {
     if (activeRef) {
+      const storedRef = loc.params.trajectRef || null;
+      // Cross-traject: the stored path names a DIFFERENT traject, so its lawId
+      // belongs to that traject and may not exist here. Do NOT stamp it onto
+      // the active traject (that produced the "niet beschikbaar in dit traject"
+      // dead end). Land on the active traject's editor root and let the
+      // restore-on-entry flow open the right article - the same rule as
+      // trajectSwitchTarget. (A traject-less chooser/global editor path carries
+      // an unscoped law and is handled below.)
+      if (storedRef && storedRef !== activeRef) {
+        return { name: 'editor-traject', params: { trajectRef: activeRef } };
+      }
       params.trajectRef = activeRef;
       // A stored chooser path carries the intended law as query.
       if (loc.query?.law) params.lawId = loc.query.law;
@@ -196,15 +207,29 @@ export function sectionTarget(router, storedPath, activeRef) {
   });
 }
 
-// Target for the Home tab: the last-visited Home path, with the ACTIVE
-// traject re-stamped onto it (via sectionTarget) so a Home<->Editor tab
-// switch keeps you in the traject you're working in instead of restoring a
-// stale scope (e.g. Corpus juris after opening a public deep-link). When the
-// stored path already carries the active scope it's returned verbatim, so
-// query/hash (the open werkdocument's `?task=`, the #yaml detail tab)
-// survive exactly like before.
-export function homeTabTarget(router, storedPath, activeRef) {
+// Shared same-traject shortcut for the top-level tab targets: when the stored
+// path already carries the active scope, return it VERBATIM so query/hash (a
+// werkdocument's `?task=`, the #yaml detail tab, the editor's exact article)
+// survive exactly; otherwise re-stamp/rebuild via sectionTarget. Both the Home
+// and Editor tab reuse this instead of each duplicating the check.
+function tabTargetFor(router, storedPath, activeRef) {
   const storedRef = router.resolve(storedPath).params.trajectRef || null;
   if (storedRef === (activeRef || null)) return storedPath;
   return sectionTarget(router, storedPath, activeRef);
+}
+
+// Target for the Home tab: the last-visited Home path, with the ACTIVE traject
+// re-stamped onto it so a Home<->Editor tab switch keeps you in the traject
+// you're working in instead of restoring a stale scope (e.g. Corpus juris after
+// opening a public deep-link).
+export function homeTabTarget(router, storedPath, activeRef) {
+  return tabTargetFor(router, storedPath, activeRef);
+}
+
+// Target for the Editor tab: same same-traject-verbatim / cross-traject-rebuild
+// rule as the Home tab. On a cross-traject stored path sectionTarget now lands
+// on the active traject's editor ROOT (dropping the foreign lawId), and the
+// editor's restore-on-entry flow opens the right article.
+export function editorTabTarget(router, storedPath, activeRef) {
+  return tabTargetFor(router, storedPath, activeRef);
 }
