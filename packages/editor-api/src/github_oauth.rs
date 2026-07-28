@@ -54,8 +54,6 @@ use subtle::ConstantTimeEq;
 use tower_sessions::Session;
 use uuid::Uuid;
 
-use regelrecht_corpus::backend::RepoBackend;
-
 use crate::accounts::AccountRecord;
 use crate::crypto::TokenCipher;
 use crate::state::AppState;
@@ -87,9 +85,9 @@ pub struct GithubOAuth {
     /// middle" mode). This is one of TWO switches: the `github.user_oauth`
     /// feature flag enforces the same thing at runtime, so enabling the
     /// GitHub-koppeling UI also enables enforcement — linking is never
-    /// offered-but-inert. See [`write_requires_user_token`] for the combined
-    /// decision; this env var remains as a deployment-wide override that wins
-    /// regardless of the flag.
+    /// offered-but-inert. See [`crate::credentials::write_requires_user_token`]
+    /// for the combined decision; this env var remains as a deployment-wide
+    /// override that wins regardless of the flag.
     ///
     /// * required off (both switches): writes **always** use the backend's
     ///   configured token — byte-identical to pre-spike behaviour for every
@@ -97,7 +95,8 @@ pub struct GithubOAuth {
     ///   central repo can't start 403-ing because their personal token lacks
     ///   access.
     /// * required on (either switch): a configured service token still takes
-    ///   precedence per backend (see [`user_write_token_for_backend`]); only
+    ///   precedence per backend (see
+    ///   [`crate::credentials::TrajectCredentials::for_write`]); only
     ///   writes to token-less, override-capable backends must carry the
     ///   acting user's token, and a save there with no linked (or an
     ///   expired) token is refused with 428.
@@ -387,6 +386,35 @@ fn open_token_cookie(
         return None;
     }
     Some(payload)
+}
+
+/// The sealed per-user GitHub link, opened for one request. The cookie
+/// internals (encryption, account binding, the `expired` computation) stay
+/// private to this module; [`crate::credentials`] consumes this narrow view to
+/// apply the requiredness / 428 policy.
+pub(crate) struct OpenedLink {
+    /// The GitHub access token to authenticate as the linked user.
+    pub access_token: String,
+    /// Whether the provider-reported expiry has passed.
+    pub expired: bool,
+    /// GitHub login (handle) — for the authorizing-as log line only.
+    pub github_login: String,
+}
+
+/// Open the sealed per-user token cookie for `account_id`, exposing only what
+/// the credential policy needs. `None` on *any* cookie failure (absent,
+/// undecodable, tampered, wrong-key, foreign-account) — all of which mean "not
+/// linked" and fail closed into the 428 connect-flow at the policy layer.
+pub(crate) fn open_link(
+    oauth: &GithubOAuth,
+    headers: &HeaderMap,
+    account_id: Uuid,
+) -> Option<OpenedLink> {
+    open_token_cookie(oauth, headers, account_id).map(|cookie| OpenedLink {
+        expired: cookie.expired(),
+        github_login: cookie.github_login,
+        access_token: cookie.access_token,
+    })
 }
 
 /// Extract a cookie value from the request's `Cookie` header(s).
@@ -807,7 +835,7 @@ pub async fn status(
     };
     // Effective requiredness (env var OR feature flag), so the frontend's
     // `required` mirrors what the write path will actually enforce.
-    let required = write_requires_user_token(&state, oauth)
+    let required = crate::credentials::write_requires_user_token(&state, oauth)
         .await
         .map_err(|(code, _)| code)?;
     Ok(Json(match open_token_cookie(oauth, &headers, account.id) {
@@ -856,256 +884,6 @@ pub async fn disconnect(
     let mut response = StatusCode::NO_CONTENT.into_response();
     append_set_cookie(&mut response, &clear_token_cookie_header(secure));
     Ok(response)
-}
-
-// --- Write-path helper -----------------------------------------------------
-
-/// Whether traject writes must carry the acting user's own GitHub token.
-///
-/// Two switches, OR-ed:
-/// * the `GITHUB_USER_TOKEN_REQUIRED` env var — static, deployment-wide
-///   override;
-/// * the `github.user_oauth` feature flag — the same toggle that shows the
-///   GitHub-koppeling UI, so switching the feature on in the Functies menu
-///   also switches enforcement on. Linking is never offered-but-inert.
-///
-/// A flag-read failure propagates as 500: on a token-less backend the
-/// requiredness decision determines whether a write may proceed at all,
-/// and that must not be guessed when the flag store is unreadable. (In
-/// practice the session store shares the same database, so requests
-/// rarely get this far with a broken pool.)
-pub async fn write_requires_user_token(
-    state: &AppState,
-    oauth: &GithubOAuth,
-) -> Result<bool, (StatusCode, String)> {
-    if oauth.require_user_token {
-        return Ok(true);
-    }
-    // Without a database there is no flag store either (the toggle PUT 503s),
-    // so the env var is the only switch — e.g. OIDC-off local dev.
-    let Some(pool) = &state.pool else {
-        return Ok(false);
-    };
-    crate::feature_flags::flag_enabled(pool, crate::feature_flags::GITHUB_USER_OAUTH)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "failed to read github.user_oauth feature flag");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Kon de feature-flags niet lezen; probeer het opnieuw.".to_string(),
-            )
-        })
-}
-
-/// [`write_requires_user_token`], tolerating an unconfigured OAuth
-/// integration: `false` when `github_oauth` is absent (the pre-spike
-/// service-token world).
-///
-/// Used by the traject write resolvers to decide whether a backend that is
-/// read-only **at rest** (no configured service token) may still be
-/// written through: in user-token mode the acting user's own GitHub token
-/// authenticates the commit (`WriteContext::token_override`), so "no
-/// service token" must not 403 the write up-front — the deployed
-/// federation config for a user-created traject repo intentionally has no
-/// `CORPUS_AUTH_*` token for that repo (fail-closed against shipping the
-/// central token to a user-chosen repo).
-pub async fn user_token_write_mode(state: &AppState) -> Result<bool, (StatusCode, String)> {
-    match state.config.github_oauth.as_ref() {
-        Some(oauth) => write_requires_user_token(state, oauth).await,
-        None => Ok(false),
-    }
-}
-
-/// Resolve the per-user GitHub credential to attach to an editor write, read
-/// from the sealed token cookie riding on this request.
-///
-/// * `Ok(None)` — no override; the write uses the backend's configured token
-///   (pre-spike behaviour, or the user simply hasn't linked GitHub and this
-///   deployment doesn't require it).
-/// * `Ok(Some(token))` — use the acting user's own token for this write.
-/// * `Err((428, msg))` — this deployment requires a user token but the user
-///   hasn't linked one (or it expired); the frontend bounces this straight
-///   into the GitHub connect flow (`apiAuthGuard.js`).
-///
-/// **428 is reserved editor-wide for this flow.** `apiAuthGuard.js` redirects
-/// every same-origin `/api/*` response with status 428 into the GitHub
-/// connect flow, keyed on nothing but the status code — an endpoint that
-/// returns 428 for any other reason would silently hijack its callers into
-/// the koppel-flow. Pick a different status for other preconditions.
-///
-/// Precedence contract: a configured service token goes first; the
-/// user-token requirement (incl. the 428 connect-flow) applies only to
-/// token-less write targets. Write handlers should therefore prefer
-/// [`user_write_token_for_backend`], which encodes that rule (and skips
-/// enforcement for backends that ignore the override). Callers of this
-/// bare function must apply the same precedence themselves — resolve the
-/// configured token first and only demand the user token when there is
-/// none (see the create-traject preflight in `trajects.rs`).
-pub async fn user_write_token(
-    state: &AppState,
-    account_id: Uuid,
-    headers: &HeaderMap,
-) -> Result<Option<String>, (StatusCode, String)> {
-    user_token_when_required(
-        state,
-        account_id,
-        headers,
-        "Je GitHub-koppeling is verlopen. Koppel je account opnieuw om op te slaan.",
-        "Koppel je GitHub-account om in dit traject op te slaan. \
-         De wijziging wordt met jouw eigen GitHub-toegang weggeschreven.",
-    )
-    .await
-}
-
-/// Shared core of [`user_write_token`] and [`user_read_token_for_backend`]:
-/// the requiredness gate, the cookie resolution, and the 428 semantics —
-/// parameterised only in the user-facing messages so the read path can say
-/// "lezen" where the write path says "opslaan".
-async fn user_token_when_required(
-    state: &AppState,
-    account_id: Uuid,
-    headers: &HeaderMap,
-    expired_msg: &str,
-    missing_msg: &str,
-) -> Result<Option<String>, (StatusCode, String)> {
-    let Some(oauth) = state.config.github_oauth.as_ref() else {
-        return Ok(None);
-    };
-
-    // The override is gated *entirely* on the requiredness decision. With it
-    // off (the default), every write keeps using the backend's configured
-    // token — byte-identical to pre-spike behaviour, and crucially this holds
-    // even for users who HAVE linked GitHub. That matters for the
-    // operator-managed central repo: routing a linked user's write there
-    // through their personal token would 403 if they lack direct push access,
-    // silently breaking saves that worked before. So linking is inert for
-    // writes until this deployment opts into the "editor is not in the
-    // middle" mode via the feature flag or the env var.
-    if !write_requires_user_token(state, oauth).await? {
-        return Ok(None);
-    }
-
-    // From here the user-token mode is on AND the caller established that
-    // no configured service token applies (the `_for_backend` wrappers
-    // return early on `is_writable` backends): the only outcomes are the
-    // user's own token or a 428. `open_token_cookie` folds every failure
-    // mode (absent, tampered, wrong key, foreign account) into `None` =
-    // not linked, which fails closed into the 428 below.
-    match open_token_cookie(oauth, headers, account_id) {
-        Some(link) if !link.expired() => {
-            tracing::debug!(
-                github_login = %link.github_login,
-                "authorizing traject access as the linked GitHub user"
-            );
-            Ok(Some(link.access_token))
-        }
-        Some(_expired) => Err((StatusCode::PRECONDITION_REQUIRED, expired_msg.to_string())),
-        None => Err((StatusCode::PRECONDITION_REQUIRED, missing_msg.to_string())),
-    }
-}
-
-/// [`user_write_token`], scoped to the backend the write actually goes to.
-///
-/// Enforcement only makes sense for a backend whose `persist` honors
-/// `WriteContext::token_override` (the GitHub Contents-API backend). A
-/// writable-own source can also be `SourceType::Local` — the supported
-/// preview/local-stack configuration — whose backend never touches GitHub or
-/// any token at all. Demanding a linked GitHub account there would 428 every
-/// save with a requirement linking can never satisfy. So: resolve the write
-/// target first, then call this with the resolved backend.
-///
-/// Mirrors [`user_read_token_for_backend`]: a backend with its own
-/// configured (service) token keeps writing with it — `Ok(None)`, so
-/// `persist` uses the backend token and stamps the commit with the
-/// session identity, exactly the pre-user-token flow. The user-token
-/// requirement (and its 428 connect-flow) applies only to token-less,
-/// override-capable backends. Routing writes on a service-token repo
-/// through the user's personal token instead would 403 for every member
-/// whose token GitHub refuses on that repo (no direct push access, or an
-/// org's OAuth App access restrictions blocking the editor app).
-pub async fn user_write_token_for_backend(
-    state: &AppState,
-    account_id: Uuid,
-    headers: &HeaderMap,
-    backend: &dyn RepoBackend,
-) -> Result<Option<String>, (StatusCode, String)> {
-    if !backend.supports_token_override() {
-        return Ok(None);
-    }
-    // `is_writable` on the Contents-API backend means "has a configured
-    // rest token" — the one backend kind that reaches this point. A
-    // configured service token takes precedence over the user token.
-    if backend.is_writable() {
-        return Ok(None);
-    }
-    user_write_token(state, account_id, headers).await
-}
-
-/// The read-path analogue of [`user_write_token_for_backend`]: resolve the
-/// per-user GitHub credential for a **read** on `backend`.
-///
-/// Same precedence rule as the write path: a backend that has its own
-/// configured (service) token keeps using it — `Ok(None)`, behaviour
-/// unchanged — even in the user-token write mode. Rerouting working
-/// service-token traffic through personal tokens would break members
-/// without direct repo access (or whose token GitHub blocks via OAuth App
-/// access restrictions).
-///
-/// So the outcomes are:
-///
-/// * backend ignores token overrides (local source, clone-based git) →
-///   `Ok(None)`;
-/// * backend has a service token → `Ok(None)` (read uses it, as before);
-/// * backend is token-less and override-capable (the traject writable-own
-///   Contents-API backend on a user-chosen repo) → the user's own token,
-///   or the same 428 connect-flow the write path uses when the user hasn't
-///   linked GitHub. Without the user-token mode enabled this stays
-///   `Ok(None)` — the pre-existing (silently degrading) behaviour, exactly
-///   like writes stay on the service-token path there.
-pub async fn user_read_token_for_backend(
-    state: &AppState,
-    account_id: Uuid,
-    headers: &HeaderMap,
-    backend: &dyn RepoBackend,
-) -> Result<Option<String>, (StatusCode, String)> {
-    if !backend.supports_token_override() {
-        return Ok(None);
-    }
-    // `is_writable` on the Contents-API backend means "has a configured
-    // rest token" — the one backend kind that reaches this point.
-    if backend.is_writable() {
-        return Ok(None);
-    }
-    user_read_token(state, account_id, headers).await
-}
-
-/// [`user_read_token_for_backend`] without the backend probes: the raw
-/// requiredness gate + cookie resolution with the read-path messages.
-///
-/// Exists for the one caller that needs the token *before* any backend
-/// exists — the traject **index scan**, which resolves a candidate token
-/// ahead of `build_traject_corpus` so the enumeration of a token-less
-/// writable-own repo can authenticate as the acting user. Because there is
-/// no backend to scope the decision to, callers must treat the result as a
-/// *candidate*: apply it only where a server-side token is absent (the
-/// corpus-side [`regelrecht_corpus::ScanTokenOverride`] enforces that) and
-/// defer the `Err` (428 connect-flow) until a traject-scoped read actually
-/// needs the writable-own source.
-pub async fn user_read_token(
-    state: &AppState,
-    account_id: Uuid,
-    headers: &HeaderMap,
-) -> Result<Option<String>, (StatusCode, String)> {
-    user_token_when_required(
-        state,
-        account_id,
-        headers,
-        "Je GitHub-koppeling is verlopen. Koppel je account opnieuw om de \
-         inhoud van dit traject te kunnen lezen.",
-        "Koppel je GitHub-account om de inhoud van dit traject te kunnen \
-         lezen. De traject-repo wordt met jouw eigen GitHub-toegang gelezen.",
-    )
-    .await
 }
 
 // --- GitHub HTTP calls -----------------------------------------------------

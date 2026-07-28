@@ -19,6 +19,7 @@ use tower_sessions_sqlx_store::PostgresStore;
 mod accounts;
 mod config;
 mod corpus_handlers;
+mod credentials;
 mod crypto;
 mod favorites;
 mod feature_flags;
