@@ -57,6 +57,13 @@ const lastSavedPr = shallowRef(null);
 const documentTabs = shallowRef([]);
 const activeDocumentTab = shallowRef(null);
 const tabActions = shallowRef(null); // { key, displayName, select, close, reorder }
+// The traject ref the current `documentTabs` belong to, published in the SAME
+// update as the tabs. The shell keys its `<nldd-document-tab-bar>` rebuild on
+// this (not on its own `activeTrajectRef`, which flips a tick earlier than the
+// tabs and would rebuild the bar against the previous traject's set, leaving a
+// spooktab). A rebuild tears down the bar's overflow menu, ResizeObserver and
+// every element reference it holds.
+const documentTabsTrajectRef = shallowRef(null);
 // Article-level pending-changes bar (Wijzigingenbalk). The editor publishes
 // the dirty/saving/undo state reactively and registers the action callbacks;
 // the shell renders the bar while there are unsaved changes.
@@ -74,6 +81,7 @@ export function useAppChrome() {
     lastSavedPr,
     documentTabs,
     activeDocumentTab,
+    documentTabsTrajectRef,
     tabActions,
     editorChanges,
     editorActions,
@@ -87,10 +95,11 @@ export function setLibraryEmpty(empty) {
   libraryEmpty.value = !!empty;
 }
 
-export function setEditorChrome({ pr, tabs, activeTab }) {
+export function setEditorChrome({ pr, tabs, activeTab, trajectRef }) {
   lastSavedPr.value = pr ?? null;
   documentTabs.value = tabs ?? [];
   activeDocumentTab.value = activeTab ?? null;
+  documentTabsTrajectRef.value = trajectRef ?? null;
 }
 
 export function registerTabActions(actions) {
@@ -115,6 +124,7 @@ export function clearEditorChrome() {
   lastSavedPr.value = null;
   documentTabs.value = [];
   activeDocumentTab.value = null;
+  documentTabsTrajectRef.value = null;
   tabActions.value = null;
   editorChanges.value = null;
   editorActions.value = null;

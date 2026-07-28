@@ -31,17 +31,14 @@ import {
   openActionEditor,
   saveActionSheet,
   expectScenarioResult,
+  clearOpenTabsStorage,
 } from './helpers.js';
 
 const MINOR = 'Minderjarige heeft geen recht';
 
 test.describe('Edit → re-execute loop via the structured operation editor', () => {
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => {
-      try {
-        window.localStorage.removeItem('regelrecht-open-tabs');
-      } catch { /* ignore */ }
-    });
+    await clearOpenTabsStorage(page);
   });
 
   test('editing the age threshold via the ActionSheet turns the scenario green', async ({ page }) => {

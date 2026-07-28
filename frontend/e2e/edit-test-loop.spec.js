@@ -23,18 +23,14 @@
 import { test, expect } from '@playwright/test';
 import * as yaml from 'js-yaml';
 import { loadCorpus, loadScenario, mockCorpusApi } from './helpers-corpus.js';
-import { gotoEditor, readYamlSource, setYamlPane, expectScenarioResult } from './helpers.js';
+import { gotoEditor, readYamlSource, setYamlPane, expectScenarioResult, clearOpenTabsStorage } from './helpers.js';
 
 const MINOR = 'Minderjarige heeft geen recht';
 
 test.describe('Edit → re-execute loop', () => {
   test.beforeEach(async ({ page }) => {
-    // Clear localStorage tabs to avoid bleed-over between test runs.
-    await page.addInitScript(() => {
-      try {
-        window.localStorage.removeItem('regelrecht-open-tabs');
-      } catch { /* ignore */ }
-    });
+    // Clear the per-traject open-tab storage (by prefix) to avoid bleed-over.
+    await clearOpenTabsStorage(page);
   });
 
   test('Minderjarige scenario goes red → green after adding age check', async ({ page }) => {
