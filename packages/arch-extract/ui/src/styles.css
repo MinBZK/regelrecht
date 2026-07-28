@@ -429,8 +429,11 @@ body,
 }
 
 /* The edge label layer is click-through as a whole; only the badge inside it
-   accepts clicks, so nothing over a node steals the node's toggle clicks. */
-.vue-flow__edgelabel-renderer {
+   accepts clicks, so nothing over a node steals the node's toggle clicks.
+   `EdgeLabelRenderer` teleports into `.vue-flow__edge-labels` (Vue Flow already
+   defaults it to `pointer-events: none`; pinned here so the #982 safety net does
+   not silently depend on the vendored default). */
+.vue-flow__edge-labels {
   pointer-events: none;
 }
 .arch-edge__badge {
