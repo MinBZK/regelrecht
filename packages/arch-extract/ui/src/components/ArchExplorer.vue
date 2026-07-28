@@ -1,6 +1,6 @@
 <script setup>
-import { computed, markRaw, provide, ref, watch } from 'vue';
-import { VueFlow } from '@vue-flow/core';
+import { computed, markRaw, nextTick, provide, ref, watch } from 'vue';
+import { VueFlow, useVueFlow } from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
 import { Controls } from '@vue-flow/controls';
 import { MiniMap } from '@vue-flow/minimap';
@@ -10,6 +10,7 @@ import '@vue-flow/controls/dist/style.css';
 import '@vue-flow/minimap/dist/style.css';
 
 import ArchNode from './ArchNode.vue';
+import ArchEdge from './ArchEdge.vue';
 import DetailPanel from './DetailPanel.vue';
 import { useArchGraph } from '../composables/useArchGraph.js';
 import { useColorScheme } from '../composables/useColorScheme.js';
@@ -20,8 +21,24 @@ const props = defineProps({
 });
 
 const nodeTypes = markRaw({ arch: ArchNode });
+const edgeTypes = markRaw({ arch: ArchEdge });
 
-const { model, nodes, edges, setModel, toggle, expandSubtree, collapseAll } = useArchGraph();
+const {
+  model,
+  nodes,
+  edges,
+  stats,
+  setModel,
+  toggle,
+  expandSubtree,
+  collapseAll,
+  revealEdge,
+  toggleKind,
+  kindEnabled,
+  FILTERABLE_KINDS,
+} = useArchGraph();
+
+const { fitView } = useVueFlow();
 
 watch(
   () => props.model,
@@ -51,6 +68,15 @@ provide('toggleExpand', toggle);
 provide('expandSubtree', expandSubtree);
 provide('selectNode', selectNode);
 
+// Clicking a rolled-up line's badge reveals its underlying relations, then the
+// canvas eases to the involved nodes. Same injection pattern as above.
+provide('revealEdge', (data) => {
+  const fitIds = revealEdge(data);
+  nextTick(() => {
+    fitView({ nodes: fitIds, duration: 500, padding: 0.3 });
+  });
+});
+
 // --- Theme ----------------------------------------------------------------
 const { colorScheme, cycleColorScheme } = useColorScheme();
 const themeLabel = computed(
@@ -67,21 +93,34 @@ function miniMapNodeColor(node) {
 }
 
 const nodeCount = computed(() => (model.value ? model.value.nodes.length : 0));
-const edgeCount = computed(() => (model.value ? model.value.edges.length : 0));
+
+// Which CSS legend swatch class an edge kind maps to.
+const KIND_SWATCH = { 'depends-on': 'lg-depends', impl: 'lg-impl', uses: 'lg-uses' };
 </script>
 
 <template>
   <div class="arch-explorer">
     <header class="arch-toolbar">
       <strong class="arch-toolbar__title">Architectuurverkenner</strong>
-      <span class="arch-toolbar__stat">{{ nodeCount }} nodes · {{ edgeCount }} edges</span>
+      <span class="arch-toolbar__stat">
+        {{ nodeCount }} nodes · {{ stats.visible }}/{{ stats.total }} relaties zichtbaar
+      </span>
 
       <div class="arch-toolbar__spacer"></div>
 
-      <div class="arch-legend" aria-hidden="true">
-        <span class="arch-legend__item"><i class="lg lg-depends"></i>depends-on</span>
-        <span class="arch-legend__item"><i class="lg lg-impl"></i>impl</span>
-        <span class="arch-legend__item"><i class="lg lg-uses"></i>uses</span>
+      <div class="arch-filters" role="group" aria-label="Relatiesoorten filteren">
+        <button
+          v-for="kind in FILTERABLE_KINDS"
+          :key="kind"
+          type="button"
+          class="arch-filter"
+          :class="{ 'arch-filter--off': !kindEnabled(kind) }"
+          :aria-pressed="kindEnabled(kind)"
+          :title="kindEnabled(kind) ? `${kind} verbergen` : `${kind} tonen`"
+          @click="toggleKind(kind)"
+        >
+          <i class="lg" :class="KIND_SWATCH[kind]"></i>{{ kind }}
+        </button>
       </div>
 
       <button type="button" class="arch-btn" @click="collapseAll">Alles inklappen</button>
@@ -95,6 +134,7 @@ const edgeCount = computed(() => (model.value ? model.value.edges.length : 0));
         :nodes="nodes"
         :edges="edges"
         :node-types="nodeTypes"
+        :edge-types="edgeTypes"
         :nodes-connectable="false"
         :min-zoom="0.05"
         :max-zoom="4"

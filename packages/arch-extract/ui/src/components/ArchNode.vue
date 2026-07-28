@@ -30,10 +30,18 @@ function onExpandAll(event) {
 </script>
 
 <template>
-  <!-- Handles are hidden via CSS (edges are not user-connectable) but must
-       exist for relationship edges to attach to. -->
-  <Handle type="target" :position="Position.Left" />
-  <Handle type="source" :position="Position.Right" />
+  <!-- Eight handles (source + target on each side), hidden via CSS. Edges are
+       not user-connectable; the handles exist so buildFlow can attach a
+       relationship line to whichever side faces the other endpoint, keeping
+       lines from always running left-to-right. -->
+  <Handle id="source-top" type="source" :position="Position.Top" />
+  <Handle id="target-top" type="target" :position="Position.Top" />
+  <Handle id="source-right" type="source" :position="Position.Right" />
+  <Handle id="target-right" type="target" :position="Position.Right" />
+  <Handle id="source-bottom" type="source" :position="Position.Bottom" />
+  <Handle id="target-bottom" type="target" :position="Position.Bottom" />
+  <Handle id="source-left" type="source" :position="Position.Left" />
+  <Handle id="target-left" type="target" :position="Position.Left" />
 
   <div class="arch-node__header" @click="onSelect">
     <button
@@ -49,6 +57,11 @@ function onExpandAll(event) {
 
     <span class="arch-node__kind">{{ kindLabel }}</span>
     <span class="arch-node__name" :title="node.name">{{ node.name }}</span>
+    <span
+      v-if="data.internalCount > 0"
+      class="arch-node__internal"
+      :title="`${data.internalCount} interne relatie(s) tussen onderliggende onderdelen`"
+    >↺ {{ data.internalCount }}</span>
     <span v-if="data.expandable" class="arch-node__count">{{ data.childCount }}</span>
   </div>
 </template>

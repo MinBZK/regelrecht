@@ -614,10 +614,13 @@ arch-explore:
     cd packages/arch-extract/ui && npm install && npm run build
     cd packages && cargo run --release --quiet -p regelrecht-arch-extract -- serve
 
-# Run the arch-extract tests (schema validation of the generated model + the
-# prose-sidecar drift logic). Part of `just check`.
+# Run the arch-extract tests: the Rust side (schema validation of the generated
+# model + the prose-sidecar drift logic) and the explorer UI's vitest suite
+# (edge-lifting / aggregation logic). Part of `just check`.
 arch-test:
     cd packages && {{ci_flags}} cargo test -p regelrecht-arch-extract
+    npm --prefix packages/arch-extract/ui install
+    npm --prefix packages/arch-extract/ui test
 
 # --- Architecture prose sidecar ---
 # Per-node "wat/waarom" narrative lives beside the model in

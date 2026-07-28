@@ -156,22 +156,40 @@ body,
   border-color: var(--accent);
 }
 
-.arch-legend {
+/* Edge-kind filter toggles (replace the old passive legend). Each toggle keeps
+   the legend swatch and dims to "off" when its kind is filtered out. */
+.arch-filters {
   display: flex;
-  gap: 12px;
-  font-size: 12px;
-  color: var(--text-muted);
+  gap: 6px;
 }
-.arch-legend__item {
+.arch-filter {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
 }
-.arch-legend .lg {
+.arch-filter:hover {
+  border-color: var(--accent);
+}
+.arch-filter--off {
+  opacity: 0.45;
+  background: transparent;
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+.arch-filter .lg {
   width: 18px;
   height: 0;
   border-top-width: 2px;
   border-top-style: solid;
+  flex: 0 0 auto;
 }
 .lg-depends {
   border-top-color: #6366f1;
@@ -292,6 +310,23 @@ body,
   padding: 0 7px;
   flex: 0 0 auto;
 }
+/* Internal-relation counter: relations whose both ends roll up to this node.
+   Shown as a teller on the node instead of a line (criterion 2). */
+.arch-node__internal {
+  margin-left: auto;
+  font-size: 10px;
+  color: #fff;
+  background: var(--accent);
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+/* When the child-count badge is present it takes the right-most slot, so the
+   internal counter sits just before it rather than grabbing the auto margin. */
+.arch-node__internal + .arch-node__count {
+  margin-left: 6px;
+}
 
 /* Kind accents: a coloured left edge + matching badge. */
 .arch-node.kind-crate {
@@ -383,11 +418,48 @@ body,
 }
 
 /* Vue Flow lays an invisible 20px-wide stroke over every edge to make it easy
-   to hover/click. Nothing here reacts to an edge click, so that hit path only
-   steals clicks from the node controls underneath it. Belt and braces next to
-   the edge z-index: a wide stroke would still cover a node it crosses. */
-.vue-flow__edge-interaction {
+   to hover/click. The line itself is not a click target — only the count badge
+   is (see below) — so that hit path only steals clicks from the node controls
+   underneath it. Keeping it `pointer-events: none` is the #982 fix; the new
+   badge layer re-enables pointer events on the badge alone. Belt and braces
+   next to the edge z-index: a wide stroke would still cover a node it crosses. */
+.vue-flow__edge-interaction,
+.vue-flow__edge-path {
   pointer-events: none;
+}
+
+/* The edge label layer is click-through as a whole; only the badge inside it
+   accepts clicks, so nothing over a node steals the node's toggle clicks. */
+.vue-flow__edgelabel-renderer {
+  pointer-events: none;
+}
+.arch-edge__badge {
+  position: absolute;
+  pointer-events: auto;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  min-width: 20px;
+  padding: 3px 6px;
+  border: 1px solid var(--surface);
+  border-radius: 999px;
+  color: #fff;
+  background: var(--text-muted);
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+.arch-edge__badge:hover {
+  filter: brightness(1.12);
+}
+.arch-edge__badge--depends-on {
+  background: #6366f1;
+}
+.arch-edge__badge--impl {
+  background: #10b981;
+}
+.arch-edge__badge--uses {
+  background: #64748b;
 }
 
 .vue-flow__minimap {
