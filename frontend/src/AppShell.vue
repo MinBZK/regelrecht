@@ -14,7 +14,7 @@ import { useAddActions } from './composables/useAddActions.js';
 import {
   lastHomePath,
   lastEditorPath,
-  sectionTarget,
+  editorTabTarget as buildEditorTabTarget,
   homeTabTarget,
   isHomeSection,
   rememberHarvesterOrigin,
@@ -129,7 +129,7 @@ const libraryTabTarget = computed(() =>
   homeTabTarget(router, lastHomePath.value, activeTrajectRef.value),
 );
 const editorTabTarget = computed(() =>
-  sectionTarget(router, lastEditorPath.value, activeTrajectRef.value),
+  buildEditorTabTarget(router, lastEditorPath.value, activeTrajectRef.value),
 );
 const libraryTabHref = computed(() => router.resolve(libraryTabTarget.value).href);
 const editorTabHref = computed(() => router.resolve(editorTabTarget.value).href);
@@ -230,7 +230,7 @@ function onEnforcementConfirmClose() {
 }
 
 // View-specific toolbar bits published by the active view.
-const { lastSavedPr, documentTabs, activeDocumentTab, tabActions, editorChanges, editorActions, libraryEmpty } = useAppChrome();
+const { lastSavedPr, documentTabs, activeDocumentTab, documentTabsTrajectRef, tabActions, editorChanges, editorActions, libraryEmpty } = useAppChrome();
 
 // Just-in-time coach-mark on the toolbar search affordance: shown while the
 // library is empty (nothing curated yet). In the bare corpus it's app-driven and
@@ -562,20 +562,31 @@ function onTabDismiss(e) {
           <!-- `tabdismiss` (the bar), not `dismiss` (the item): the bar picks
                the replacement for a dismissed tab itself and hands it over as
                `nextItem`. See onTabDismiss. -->
+          <!-- `:key` on the bar (the traject the tabs belong to, published WITH
+               the tabs by the editor - see documentTabsTrajectRef): a traject
+               switch rebuilds the whole bar, tearing down its overflow menu,
+               ResizeObserver and every element reference it holds, so no
+               orphaned <nldd-document-tab-bar-item> ("spooktab") can survive
+               into the next traject. Keying on this shell's own activeTrajectRef
+               would flip a tick before documentTabs and rebuild against the old
+               set. The item :key is traject-prefixed for the same reason.
+               No has-dismiss-button (the item renders its own dismiss button in
+               0.8.44); accessible-label names the navigation landmark. -->
           <nldd-document-tab-bar
+            :key="documentTabsTrajectRef ?? ''"
+            accessible-label="Open artikelen"
             @nldd-reorder="tabActions.reorder($event.detail.fromIndex, $event.detail.toIndex)"
             @tabdismiss="onTabDismiss"
           >
             <nldd-document-tab-bar-item
               v-for="tab in documentTabs"
-              :key="tabActions.key(tab)"
+              :key="`${documentTabsTrajectRef ?? ''}:${tabActions.key(tab)}`"
               :data-tab-key="tabActions.key(tab)"
               :text="`Artikel ${tab.articleNumber}`"
               :supporting-text="tabActions.displayName(tab)"
               :short-text="`Art. ${tab.articleNumber}`"
               :short-supporting-text="tabActions.displayName(tab)"
               :selected="activeDocumentTab && tabActions.key(activeDocumentTab) === tabActions.key(tab) || undefined"
-              has-dismiss-button
               @click="tabActions.select(tab)"
             >
             </nldd-document-tab-bar-item>

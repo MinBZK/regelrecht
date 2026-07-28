@@ -12,10 +12,22 @@
  * never breaks the editor - tab persistence is best-effort.
  *
  * A tab has the shape `{ lawId, articleNumber }`.
+ *
+ * Reads are sanitised (see `sanitizeTabs`): earlier builds of the per-traject
+ * feature briefly wrote one traject's law under another traject's key, and
+ * nothing validated the stored content, so that pollution outlived the write
+ * fix. Sanitising on read (drop malformed entries, normalise `articleNumber`
+ * to a string, de-duplicate, cap at `MAX_TABS`) heals such storage the moment
+ * it is loaded.
  */
 
 const TABS_STORAGE_PREFIX = 'regelrecht-open-tabs:';
 const ACTIVE_TAB_STORAGE_PREFIX = 'regelrecht-active-tab:';
+
+// Cap on how many law tabs a traject keeps open; the oldest are dropped past
+// this. Lives here (rather than in EditorView) so both the sanitising read and
+// the in-memory store (`useOpenTabs`) enforce the same bound.
+export const MAX_TABS = 20;
 
 function tabsKey(trajectRef) {
   return `${TABS_STORAGE_PREFIX}${trajectRef ?? ''}`;
@@ -25,12 +37,45 @@ function activeTabKey(trajectRef) {
   return `${ACTIVE_TAB_STORAGE_PREFIX}${trajectRef ?? ''}`;
 }
 
+/**
+ * Coerce one stored value into a valid tab `{ lawId, articleNumber }` or
+ * `null`. A tab needs a non-empty string `lawId` and an `articleNumber`; the
+ * latter is normalised to a string so a legacy numeric value and a string
+ * value never read as two different tabs.
+ */
+export function sanitizeTab(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const { lawId, articleNumber } = raw;
+  if (typeof lawId !== 'string' || lawId === '') return null;
+  if (articleNumber == null || articleNumber === '') return null;
+  return { lawId, articleNumber: String(articleNumber) };
+}
+
+/**
+ * Sanitise a parsed tab array: drop malformed entries, normalise
+ * `articleNumber` to a string, de-duplicate by `lawId:articleNumber`
+ * (first occurrence wins) and cap at `MAX_TABS` (keeping the newest).
+ */
+export function sanitizeTabs(parsed) {
+  if (!Array.isArray(parsed)) return [];
+  const seen = new Set();
+  const clean = [];
+  for (const raw of parsed) {
+    const tab = sanitizeTab(raw);
+    if (!tab) continue;
+    const key = `${tab.lawId}:${tab.articleNumber}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    clean.push(tab);
+  }
+  return clean.length > MAX_TABS ? clean.slice(-MAX_TABS) : clean;
+}
+
 /** The saved open tabs for a traject, or `[]` when there are none / on error. */
 export function loadSavedTabs(trajectRef) {
   try {
     const saved = localStorage.getItem(tabsKey(trajectRef));
-    const parsed = saved ? JSON.parse(saved) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    return sanitizeTabs(saved ? JSON.parse(saved) : []);
   } catch {
     return [];
   }
@@ -49,7 +94,7 @@ export function saveTabs(trajectRef, tabs) {
 export function loadSavedActiveTab(trajectRef) {
   try {
     const saved = localStorage.getItem(activeTabKey(trajectRef));
-    return saved ? JSON.parse(saved) : null;
+    return sanitizeTab(saved ? JSON.parse(saved) : null);
   } catch {
     return null;
   }

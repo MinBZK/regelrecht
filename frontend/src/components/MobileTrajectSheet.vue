@@ -15,7 +15,7 @@ import TrajectCreateForm from './TrajectCreateForm.vue';
 // document-tab-bar. Hergebruikt dezelfde composables/handlers als TrajectMenu.
 const { trajects, activeTrajectRef, activeTraject, loading, createTraject } = useTrajects();
 const { authenticated } = useAuth();
-const { documentTabs, activeDocumentTab, tabActions } = useAppChrome();
+const { documentTabs, activeDocumentTab, documentTabsTrajectRef, tabActions } = useAppChrome();
 const route = useRoute();
 const router = useRouter();
 
@@ -325,7 +325,7 @@ onBeforeUnmount(() => {
             <nldd-list variant="box">
               <nldd-list-item
                 v-for="tab in documentTabs"
-                :key="tabActions.key(tab)"
+                :key="`${documentTabsTrajectRef ?? ''}:${tabActions.key(tab)}`"
                 size="md"
                 button
                 :selected="isActiveTab(tab) || undefined"

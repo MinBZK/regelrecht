@@ -65,6 +65,67 @@ describe('openTabsStorage', () => {
     expect(loadSavedActiveTab('nope')).toBeNull();
   });
 
+  describe('sanitises stored content on read', () => {
+    it('drops entries missing lawId or articleNumber', () => {
+      localStorage.setItem(
+        'regelrecht-open-tabs:x',
+        JSON.stringify([
+          TAB_A,
+          { articleNumber: '3' }, // no lawId
+          { lawId: 'some_law' }, // no articleNumber
+          null,
+          'not-an-object',
+          TAB_B,
+        ]),
+      );
+      expect(loadSavedTabs('x')).toEqual([TAB_A, TAB_B]);
+    });
+
+    it('normalises a numeric articleNumber to a string', () => {
+      localStorage.setItem(
+        'regelrecht-open-tabs:x',
+        JSON.stringify([{ lawId: 'some_law', articleNumber: 5 }]),
+      );
+      expect(loadSavedTabs('x')).toEqual([{ lawId: 'some_law', articleNumber: '5' }]);
+    });
+
+    it('de-duplicates identical tabs (numeric vs string article collapse)', () => {
+      localStorage.setItem(
+        'regelrecht-open-tabs:x',
+        JSON.stringify([
+          { lawId: 'some_law', articleNumber: 5 },
+          { lawId: 'some_law', articleNumber: '5' },
+        ]),
+      );
+      expect(loadSavedTabs('x')).toEqual([{ lawId: 'some_law', articleNumber: '5' }]);
+    });
+
+    it('caps the stored set at MAX_TABS, keeping the newest', () => {
+      const many = Array.from({ length: 25 }, (_, i) => ({
+        lawId: `law_${i}`,
+        articleNumber: '1',
+      }));
+      localStorage.setItem('regelrecht-open-tabs:x', JSON.stringify(many));
+      const loaded = loadSavedTabs('x');
+      expect(loaded).toHaveLength(20);
+      expect(loaded[0]).toEqual({ lawId: 'law_5', articleNumber: '1' });
+      expect(loaded[19]).toEqual({ lawId: 'law_24', articleNumber: '1' });
+    });
+
+    it('drops a malformed active tab', () => {
+      localStorage.setItem('regelrecht-active-tab:x', JSON.stringify({ articleNumber: '3' }));
+      expect(loadSavedActiveTab('x')).toBeNull();
+    });
+
+    it('normalises a numeric articleNumber on the active tab', () => {
+      localStorage.setItem(
+        'regelrecht-active-tab:x',
+        JSON.stringify({ lawId: 'some_law', articleNumber: 5 }),
+      );
+      expect(loadSavedActiveTab('x')).toEqual({ lawId: 'some_law', articleNumber: '5' });
+    });
+  });
+
   describe('safe defaults when storage is unavailable', () => {
     afterEach(() => {
       vi.restoreAllMocks();
