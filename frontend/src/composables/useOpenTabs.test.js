@@ -71,12 +71,12 @@ describe('useOpenTabs', () => {
     expect(store.tabs.value).toEqual([{ lawId: 'law_a', articleNumber: '5' }]);
   });
 
-  it('openTab with activate:false leaves the active tab unchanged', () => {
+  it('openTab activates the newly opened tab', () => {
     const active = ref(A);
     const store = useOpenTabs(active);
     store.openTab(A, TAB_A1);
-    store.openTab(A, TAB_A2, { activate: false });
-    expect(store.activeTab.value).toEqual(TAB_A1);
+    store.openTab(A, TAB_A2);
+    expect(store.activeTab.value).toEqual(TAB_A2);
     expect(store.tabs.value).toEqual([TAB_A1, TAB_A2]);
   });
 

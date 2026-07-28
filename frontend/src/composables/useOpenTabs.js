@@ -94,10 +94,10 @@ export function useOpenTabs(activeTrajectRef) {
   // --- Mutations (explicit trajectRef; never mutate an array in place). ---
 
   /**
-   * Add a tab to a traject's bucket (de-duplicated, `MAX_TABS`-capped) and, by
-   * default, mark it active. Persists both keys it touches.
+   * Add a tab to a traject's bucket (de-duplicated, `MAX_TABS`-capped) and mark
+   * it active. Persists both keys it touches.
    */
-  function openTab(trajectRef, tab, { activate = true } = {}) {
+  function openTab(trajectRef, tab) {
     const b = bucket(trajectRef);
     const t = normalize(tab);
     if (!b.tabs.some((x) => tabKey(x) === tabKey(t))) {
@@ -105,10 +105,8 @@ export function useOpenTabs(activeTrajectRef) {
       b.tabs = next.length > MAX_TABS ? next.slice(-MAX_TABS) : next;
       saveTabs(trajectRef, b.tabs);
     }
-    if (activate) {
-      b.active = t;
-      saveActiveTab(trajectRef, t);
-    }
+    b.active = t;
+    saveActiveTab(trajectRef, t);
     version.value++;
     return t;
   }
