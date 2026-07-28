@@ -11,6 +11,8 @@ const FIXTURE_DIR = resolve(import.meta.dirname, 'fixtures');
  * hangs under `/api/trajects/${TEST_TRAJECT_REF}/corpus/...`.
  */
 export const TEST_TRAJECT_REF = 'test-traject-0a1b2c3d';
+// A SECOND traject, so specs can exercise a traject switch (per-traject tabs).
+export const TEST_TRAJECT_B_REF = 'test-traject-b-0b1c2d3e';
 
 // Fake, non-personal signed-in identity for the mocked `/auth/status`. No real
 // names, emails, roles or tokens — just the shape `useAuth` reads. `.test` is a
@@ -36,11 +38,46 @@ const TEST_TRAJECT = {
   role: 'owner',
 };
 
+const TEST_TRAJECT_B = {
+  id: '00000000-0000-0000-0000-00000b1c2d3e',
+  ref: TEST_TRAJECT_B_REF,
+  name: 'E2E Test Traject B',
+  description: '',
+  scope: '',
+  status: 'bezig',
+  role: 'owner',
+};
+
+// The trajects the membership list returns. Both are always present so a spec
+// can switch between them; single-traject specs simply ignore the second.
+const TEST_TRAJECTS = [TEST_TRAJECT, TEST_TRAJECT_B];
+
 /**
  * Load a YAML fixture file as a string.
  */
 export function loadFixture(name) {
   return readFileSync(resolve(FIXTURE_DIR, name), 'utf-8');
+}
+
+/**
+ * Wipe the editor's per-traject open-tab storage before a run so tabs don't
+ * bleed across tests. The keys are now per-traject (`regelrecht-open-tabs:<ref>`
+ * / `regelrecht-active-tab:<ref>`), so a single un-suffixed removeItem is a
+ * no-op - clear by PREFIX instead. This matters more than before: a leftover
+ * `regelrecht-active-tab:<ref>` now makes the editor auto-open a document and
+ * replace the URL on entry.
+ * @param {import('@playwright/test').Page} page
+ */
+export async function clearOpenTabsStorage(page) {
+  await page.addInitScript(() => {
+    try {
+      for (const key of Object.keys(window.localStorage)) {
+        if (key.startsWith('regelrecht-open-tabs') || key.startsWith('regelrecht-active-tab')) {
+          window.localStorage.removeItem(key);
+        }
+      }
+    } catch { /* ignore */ }
+  });
 }
 
 /**
@@ -72,19 +109,24 @@ export async function mockAuthedEditor(page) {
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify([TEST_TRAJECT]),
+      body: JSON.stringify(TEST_TRAJECTS),
     }),
   );
-  // GET /api/trajects/{id} - single traject detail. Only the bare detail path;
+  // GET /api/trajects/{ref} - single traject detail. Only the bare detail path;
   // `/api/trajects/{ref}/corpus/...` falls through to the corpus handlers.
+  // Resolves whichever of the known trajects the URL segment names (falling
+  // back to the first) so a two-traject spec gets the right detail per ref.
   await page.route('**/api/trajects/*', (route, request) => {
     const { pathname } = new URL(request.url());
-    if (!/^\/api\/trajects\/[^/]+$/.test(pathname)) return route.fallback();
+    const match = pathname.match(/^\/api\/trajects\/([^/]+)$/);
+    if (!match) return route.fallback();
+    const ref = decodeURIComponent(match[1]);
+    const traject = TEST_TRAJECTS.find((t) => t.ref === ref) ?? TEST_TRAJECT;
     return route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        ...TEST_TRAJECT,
+        ...traject,
         members: [],
         pending_invites: [],
         sources: [],

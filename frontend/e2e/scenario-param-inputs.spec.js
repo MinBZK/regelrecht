@@ -8,7 +8,7 @@
  * (no editor-api / Postgres needed) and opens the scenario edit sheet.
  */
 import { test, expect } from '@playwright/test';
-import { loadFixture, gotoEditor } from './helpers.js';
+import { loadFixture, gotoEditor, clearOpenTabsStorage } from './helpers.js';
 import { mockCorpusApi } from './helpers-corpus.js';
 
 // A minimal scenario that passes one parameter of each declared datatype:
@@ -29,9 +29,7 @@ const SCENARIO = `Feature: Typed input controls
 
 test.describe('Scenario parameter input controls', () => {
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => {
-      try { window.localStorage.removeItem('regelrecht-open-tabs'); } catch { /* ignore */ }
-    });
+    await clearOpenTabsStorage(page);
 
     const fixture = loadFixture('zorgtoeslag-full.yaml');
     const corpus = new Map([
