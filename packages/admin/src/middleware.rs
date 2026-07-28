@@ -18,10 +18,12 @@ use crate::state::AppState;
 
 /// Methods allowed via API key authentication (no OIDC session required).
 ///
-/// Covers every method the API exposes (GET reads, POST enqueues harvest/enrich
-/// jobs and triggers resets/syncs, DELETE removes jobs), so the key is a full
-/// admin-equivalent for programmatic access. POST is included so scripts and
-/// services can enqueue jobs without driving an interactive OIDC/SSO session.
+/// Within this set the key is an admin-equivalent for programmatic access: GET
+/// reads, POST enqueues harvest/enrich jobs and triggers resets/syncs, DELETE
+/// removes jobs. POST is included so scripts and services can enqueue jobs
+/// without driving an interactive OIDC/SSO session. Any method outside the set
+/// is rejected, so a route added with a different method does not silently
+/// widen what the key can do.
 const API_KEY_ALLOWED_METHODS: &[Method] = &[Method::GET, Method::POST, Method::DELETE];
 
 type RequireAuthFuture = Pin<Box<dyn Future<Output = Result<Response, ApiError>> + Send>>;
@@ -30,9 +32,9 @@ type RequireAuthFuture = Pin<Box<dyn Future<Output = Result<Response, ApiError>>
 ///
 /// Two trust paths:
 /// 1. A valid bearer API key — out-of-band trust, treated as regelrecht-admin
-///    equivalent for the methods listed in [`API_KEY_ALLOWED_METHODS`]
-///    (GET/POST/DELETE — i.e. all of them). The key holder is whoever
-///    provisioned the deployment.
+///    equivalent for the methods listed in [`API_KEY_ALLOWED_METHODS`]; other
+///    methods are refused. The key holder is whoever provisioned the
+///    deployment.
 /// 2. An authenticated OIDC session — must carry `required_role` in
 ///    `SESSION_KEY_ROLES`. Composite expansion in Keycloak means higher
 ///    roles automatically satisfy lower-role checks.

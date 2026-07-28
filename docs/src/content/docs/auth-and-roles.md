@@ -327,7 +327,7 @@ Keycloak.
 
 The harvester-admin service accepts a bearer API key on **GET**, **POST** and
 **DELETE** requests (`ADMIN_API_KEY` env var). This is an out-of-band trust path,
-the holder is treated as a `regelrecht-admin`-equivalent for every method — so
+the holder is treated as a `regelrecht-admin`-equivalent on those methods — so
 scripts and services can enqueue harvest/enrich jobs (`POST /api/harvest-jobs`,
 `POST /api/enrich-jobs`) without driving an interactive OIDC/SSO session. Because
 the trust is method-based (not route-based), the key also reaches the admin-tier
