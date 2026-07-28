@@ -13,16 +13,16 @@
   },
   "dependencies": {
     "@astrojs/markdown-remark": "^7.2.1",
-    "@astrojs/mdx": "^7.0.2",
+    "@astrojs/mdx": "^7.0.4",
     "@nldd/design-system": "^0.8.69",
-    "astro": "^7.0.7",
+    "astro": "^7.1.4",
     "astro-pagefind": "^2.0.1",
     "rehype-mermaid": "^3",
     "remark-gfm": "^4"
   },
   "devDependencies": {
     "pa11y-ci": "^4.1.1",
-    "playwright": "^1.61",
+    "playwright": "^1.62",
     "start-server-and-test": "^3",
     "typescript": "^7.0"
   },
