@@ -25,7 +25,7 @@ import { useLatest } from '../lib/useLatest.js';
  * @param {(ref: string|null) => Tab|null} deps.activeTabFor - saved active tab
  * @param {(ref: string|null, tab: Tab|null) => void} deps.setActiveTab
  * @param {(ref: string|null, lawId: string) => void} deps.dropLaw
- * @param {(lawId: string, article: string, ref: string|null) => Promise<void>} deps.switchLaw
+ * @param {(lawId: string, article: string, ref: string|null) => Promise<boolean>} deps.switchLaw - resolves to whether THIS call won the shared staleness race
  * @param {() => void} deps.clearLaw
  * @param {{ value: { status?: number } | null }} deps.error - useLaw's error ref
  * @param {{ replace: Function }} deps.router
@@ -99,9 +99,18 @@ export function createTabRestore({
       // Set active synchronously BEFORE the await (mirrors `selectTab`) so the
       // neutral empty state never flashes between rounds.
       setActiveTab(trajectRef, candidate);
-      await switchLaw(candidate.lawId, candidate.articleNumber, trajectRef);
+      const won = await switchLaw(candidate.lawId, candidate.articleNumber, trajectRef);
       // A newer restore superseded us: drop every write from here on.
       if (!isCurrent()) return;
+      // `switchLaw` shares one staleness token across ALL callers, so a
+      // concurrent `selectTab` / route-switch (the user clicking a different
+      // tab mid-restore) can win that race and make OUR call a silent no-op -
+      // it returns `false` and leaves `error.value`/`law.value` reflecting the
+      // OTHER call's result. Our own `isCurrent()` (a private restore token)
+      // can't see that, so without this check we'd read a foreign `error`
+      // (wrongly pruning `candidate`, or stamping the URL at a law that never
+      // loaded). Drop our writes; the winning caller drives the bar/URL.
+      if (!won) return;
 
       // Prune ONLY on a confirmed hard 404. `canPrune` gates on settled traject
       // membership: at mount the membership list is still loading and every

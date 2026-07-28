@@ -235,6 +235,18 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
    * article / traject in one step. Passing `newTrajectRef` is how a
    * cross-traject URL change drives a fresh fetch (and the cache key
    * keeps the previous traject's copy untouched).
+   *
+   * `claimSwitch` is a SHARED staleness token across every caller
+   * (`selectTab`, `onBeforeRouteUpdate`, `watch(activeTrajectRef)`,
+   * `restoreForTraject`, retry): a later call supersedes an earlier one
+   * regardless of which site started it. On supersession this returns `false`
+   * WITHOUT touching `law.value`/`error.value` (the winning call owns those);
+   * on a completed load (success OR its own error) it returns `true`. A caller
+   * whose own guard can't tell "someone else's call won the shared race" apart
+   * from "my call finished" must check this so it doesn't act on refs that now
+   * reflect a different request.
+   *
+   * @returns {Promise<boolean>} whether THIS call was the one that completed.
    */
   async function switchLaw(newLawId, articleNumber, newTrajectRef, { minLoadingMs = 0 } = {}) {
     const isCurrent = claimSwitch();
@@ -250,7 +262,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
         lawTrajectRef.value = currentTrajectRef;
       }
       const entry = await fetchLaw(currentTrajectRef, newLawId);
-      if (!isCurrent()) return;
+      if (!isCurrent()) return false;
       law.value = entry.law;
       rawYaml.value = entry.rawYaml;
       currentEtag.value = entry.etag ?? null;
@@ -260,7 +272,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
         selectedArticleNumber.value = String(articles.value[0].number);
       }
     } catch (e) {
-      if (!isCurrent()) return;
+      if (!isCurrent()) return false;
       failed = true;
       error.value = e;
     } finally {
@@ -271,6 +283,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
         if (isCurrent()) loading.value = false;
       }
     }
+    return true;
   }
 
   /**

@@ -12,9 +12,11 @@ const T2 = { lawId: 'law_2', articleNumber: '3' };
 /**
  * Build a restore instance over a fake bucket + a fake `switchLaw` that sets
  * `error` from a `laws` status map. `laws[lawId]` is 404 | 500 | 'network' |
- * undefined(ok). `canPrune` defaults to true.
+ * undefined(ok). `switchLaw` resolves to whether THIS call won the shared
+ * staleness race (defaults to always winning; `switchWon: false` simulates a
+ * concurrent caller superseding it). `canPrune` defaults to true.
  */
-function harness({ tabs = [], active = null, laws = {}, canPrune = true } = {}) {
+function harness({ tabs = [], active = null, laws = {}, canPrune = true, switchWon = true } = {}) {
   const state = {
     tabs: [...tabs],
     active,
@@ -38,11 +40,16 @@ function harness({ tabs = [], active = null, laws = {}, canPrune = true } = {}) 
     },
     switchLaw: async (lawId) => {
       const status = laws[lawId];
+      // Model `error` as whatever is VISIBLE after the await. When this call is
+      // superseded (`switchWon: false`) the value on the shared ref belongs to
+      // the winning caller - surface it anyway, so the test proves restore
+      // ignores a foreign error (no wrong prune / URL stamp) purely on `won`.
       state.error.value =
         status === 404 ? { status: 404 }
         : status === 500 ? { status: 500 }
         : status === 'network' ? new TypeError('fetch failed')
         : null;
+      return switchWon;
     },
     clearLaw: () => { state.cleared++; },
     error: state.error,
@@ -152,5 +159,25 @@ describe('createTabRestore', () => {
     const second = restore.restoreForTraject(REF, { hasLawInUrl: false });
     await Promise.all([first, second]);
     expect(state.replaced).toEqual([{ lawId: 'law_1', articleNumber: '1' }]);
+  });
+
+  it('drops its writes when a concurrent caller wins the shared switchLaw race', async () => {
+    // switchLaw shares one staleness token across all callers; a concurrent
+    // selectTab / route-switch (the user clicking another tab mid-restore) can
+    // win it, making OUR switchLaw a no-op that returns false and leaves
+    // error/law reflecting the OTHER call. Restore must not stamp the URL for a
+    // candidate that never loaded, nor prune it on a foreign error.
+    const { restore, state } = harness({
+      tabs: [T1],
+      active: T1,
+      // Even if the shared error looked like a 404, a superseded call must not
+      // prune: the 404 belongs to whatever the winning caller requested.
+      laws: { law_1: 404 },
+      switchWon: false,
+    });
+    await restore.restoreForTraject(REF, { hasLawInUrl: false });
+    expect(state.replaced).toEqual([]);
+    expect(state.dropped).toEqual([]);
+    expect(state.tabs).toEqual([T1]);
   });
 });
