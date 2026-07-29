@@ -217,18 +217,22 @@ async function submitCreate() {
       icon="tasks"
       @click="goToTaken"
     ></nldd-menu-item>
-    <nldd-menu-item
-      v-if="activeTraject"
-      text="Leden"
-      icon="person-2"
-      @click="goToInstellingen('leden')"
-    ></nldd-menu-item>
-    <nldd-menu-item
-      v-if="activeTraject"
-      text="Traject details"
-      icon="traject"
-      @click="goToInstellingen('details')"
-    ></nldd-menu-item>
+    <!-- Zelfde nesting als de zijbalk: Instellingen met Algemeen en Leden
+         eronder, zodat het menu en de navigatie hetzelfde model tonen. -->
+    <nldd-menu-item v-if="activeTraject" text="Instellingen" icon="settings">
+      <nldd-menu>
+        <nldd-menu-item
+          text="Algemeen"
+          icon="traject"
+          @click="goToInstellingen('details')"
+        ></nldd-menu-item>
+        <nldd-menu-item
+          text="Leden"
+          icon="person-2"
+          @click="goToInstellingen('leden')"
+        ></nldd-menu-item>
+      </nldd-menu>
+    </nldd-menu-item>
     <!-- The group draws its own divider above (auto-suppressed when it's the
          first child, i.e. no active-traject actions precede it), so no manual
          nldd-menu-divider here. -->

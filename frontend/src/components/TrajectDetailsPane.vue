@@ -116,10 +116,10 @@ async function confirmLeave() {
 
 <template>
   <nldd-simple-section>
-    <nldd-title v-if="paneChromeVisible(loading)" id="instellingen-pane-titel" size="3"><h3>Traject details</h3></nldd-title>
+    <nldd-title v-if="paneChromeVisible(loading)" id="instellingen-pane-titel" size="3"><h3>Algemeen</h3></nldd-title>
     <nldd-spacer v-if="paneChromeVisible(loading)" size="16"></nldd-spacer>
 
-    <nldd-activity-indicator v-if="loading" text="Traject details laden" show-text></nldd-activity-indicator>
+    <nldd-activity-indicator v-if="loading" text="Trajectgegevens laden" show-text></nldd-activity-indicator>
     <nldd-inline-dialog v-else-if="loadError" variant="alert" :text="loadError.message || 'Fout bij laden'"></nldd-inline-dialog>
     <template v-else-if="detail">
     <nldd-list variant="box">
@@ -179,13 +179,38 @@ async function confirmLeave() {
       </nldd-list-item>
     </nldd-list>
 
+    <!-- De onomkeerbare actie in een eigen vlak, met een kopje erboven: zo zie je
+         bij het scrollen dat er nog iets komt, in plaats van dat je een rode knop
+         onder een tabel moet ontdekken. -->
     <template v-if="detail.role === 'owner'">
       <nldd-spacer size="24"></nldd-spacer>
-      <nldd-button variant="destructive" size="md" text="Traject verwijderen" @click="askDelete"></nldd-button>
+      <nldd-box>
+        <nldd-title size="5"><h4>Traject verwijderen</h4></nldd-title>
+        <nldd-spacer size="4"></nldd-spacer>
+        <nldd-rich-text>
+          <p>
+            Het traject verdwijnt met zijn leden en uitnodigingen. De
+            traject-branch op GitHub blijft bestaan.
+          </p>
+        </nldd-rich-text>
+        <nldd-spacer size="8"></nldd-spacer>
+        <nldd-button variant="destructive" size="md" text="Traject verwijderen" @click="askDelete"></nldd-button>
+      </nldd-box>
     </template>
     <template v-else-if="detail.role">
       <nldd-spacer size="24"></nldd-spacer>
-      <nldd-button variant="destructive" size="md" text="Traject verlaten" @click="askLeave"></nldd-button>
+      <nldd-box>
+        <nldd-title size="5"><h4>Traject verlaten</h4></nldd-title>
+        <nldd-spacer size="4"></nldd-spacer>
+        <nldd-rich-text>
+          <p>
+            Je verliest toegang tot dit traject. Een eigenaar kan je later
+            opnieuw uitnodigen.
+          </p>
+        </nldd-rich-text>
+        <nldd-spacer size="8"></nldd-spacer>
+        <nldd-button variant="destructive" size="md" text="Traject verlaten" @click="askLeave"></nldd-button>
+      </nldd-box>
     </template>
     </template>
   </nldd-simple-section>
