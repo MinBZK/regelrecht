@@ -8,7 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@nldd/design-system": "^0.8.71",
+    "@nldd/design-system": "^0.8.72",
     "@regelrecht/frontend-shared": "*",
     "vue": "^3.5.38"
   },
