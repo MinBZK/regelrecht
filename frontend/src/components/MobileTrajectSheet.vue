@@ -259,15 +259,14 @@ onBeforeUnmount(() => {
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell text="Taken"></nldd-text-cell>
             </nldd-list-item>
-            <nldd-list-item size="md" button @click="goToInstellingen('leden')">
-              <nldd-icon-cell size="20"><nldd-icon name="person-2"></nldd-icon></nldd-icon-cell>
+            <!-- Eén rij naar Instellingen, net als in de zijbalk: Algemeen en
+                 Leden staan daarbinnen, niet ernaast. -->
+            <nldd-list-item size="md" button @click="goToInstellingen()">
+              <nldd-icon-cell size="20"><nldd-icon name="settings"></nldd-icon></nldd-icon-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
-              <nldd-text-cell text="Leden"></nldd-text-cell>
-            </nldd-list-item>
-            <nldd-list-item size="md" button @click="goToInstellingen('details')">
-              <nldd-icon-cell size="20"><nldd-icon name="traject"></nldd-icon></nldd-icon-cell>
+              <nldd-text-cell text="Instellingen"></nldd-text-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
-              <nldd-text-cell text="Traject details"></nldd-text-cell>
+              <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
             </nldd-list-item>
           </nldd-list>
 
@@ -289,10 +288,10 @@ onBeforeUnmount(() => {
               :selected="!activeTrajectRef || undefined"
               @click="goToCorpusJuris"
             >
-              <nldd-spacer-cell slot="start" size="12"></nldd-spacer-cell>
-              <nldd-icon-cell v-if="!activeTrajectRef" slot="start" size="20"><nldd-icon name="check-mark"></nldd-icon></nldd-icon-cell>
-              <nldd-spacer-cell v-else slot="start" size="20"></nldd-spacer-cell>
-              <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+              <nldd-spacer-cell size="12"></nldd-spacer-cell>
+              <nldd-icon-cell v-if="!activeTrajectRef" size="20"><nldd-icon name="check-mark"></nldd-icon></nldd-icon-cell>
+              <nldd-spacer-cell v-else size="20"></nldd-spacer-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell text="Corpus juris"></nldd-text-cell>
             </nldd-list-item>
             <nldd-list-item
@@ -303,10 +302,10 @@ onBeforeUnmount(() => {
               :selected="t.ref === activeTrajectRef || undefined"
               @click="selectTraject(t)"
             >
-              <nldd-spacer-cell slot="start" size="12"></nldd-spacer-cell>
-              <nldd-icon-cell v-if="t.ref === activeTrajectRef" slot="start" size="20"><nldd-icon name="check-mark"></nldd-icon></nldd-icon-cell>
-              <nldd-spacer-cell v-else slot="start" size="20"></nldd-spacer-cell>
-              <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+              <nldd-spacer-cell size="12"></nldd-spacer-cell>
+              <nldd-icon-cell v-if="t.ref === activeTrajectRef" size="20"><nldd-icon name="check-mark"></nldd-icon></nldd-icon-cell>
+              <nldd-spacer-cell v-else size="20"></nldd-spacer-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell :text="`${t.name}${t.status === 'afgerond' ? ' (afgerond)' : ''}`"></nldd-text-cell>
             </nldd-list-item>
             <nldd-list-item size="md" button @click="startCreate">
@@ -331,10 +330,10 @@ onBeforeUnmount(() => {
                 :selected="isActiveTab(tab) || undefined"
                 @click="selectTab(tab)"
               >
-                <nldd-spacer-cell slot="start" size="12"></nldd-spacer-cell>
-                <nldd-icon-cell v-if="isActiveTab(tab)" slot="start" size="20"><nldd-icon name="check-mark"></nldd-icon></nldd-icon-cell>
-                <nldd-spacer-cell v-else slot="start" size="20"></nldd-spacer-cell>
-                <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+                <nldd-spacer-cell size="12"></nldd-spacer-cell>
+                <nldd-icon-cell v-if="isActiveTab(tab)" size="20"><nldd-icon name="check-mark"></nldd-icon></nldd-icon-cell>
+                <nldd-spacer-cell v-else size="20"></nldd-spacer-cell>
+                <nldd-spacer-cell size="8"></nldd-spacer-cell>
                 <nldd-text-cell :text="tabText(tab)" :supporting-text="tabSupporting(tab)"></nldd-text-cell>
                 <nldd-spacer-cell size="8"></nldd-spacer-cell>
                 <nldd-cell>

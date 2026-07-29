@@ -47,13 +47,13 @@ const rows = computed(() => {
         :selected="row.job.target_path === selectedPath || undefined"
         @click="$emit('select', row.job.target_path)"
       >
-        <nldd-cell v-if="row.job.status !== 'failed'" slot="start">
+        <nldd-cell v-if="row.job.status !== 'failed'">
           <nldd-activity-indicator size="20" timing="instant"></nldd-activity-indicator>
         </nldd-cell>
-        <nldd-icon-cell v-else slot="start" size="20">
+        <nldd-icon-cell v-else size="20">
           <nldd-icon name="alert"></nldd-icon>
         </nldd-icon-cell>
-        <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+        <nldd-spacer-cell size="8"></nldd-spacer-cell>
         <nldd-text-cell
           :text="jobTitle(row.job)"
           :supporting-text="row.job.status === 'failed' ? 'Conversie mislukt' : undefined"
@@ -70,8 +70,8 @@ const rows = computed(() => {
         :selected="row.doc.path === selectedPath || undefined"
         @click="$emit('select', row.doc.path)"
       >
-        <nldd-icon-cell slot="start" size="20"><nldd-icon name="text-document"></nldd-icon></nldd-icon-cell>
-        <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+        <nldd-icon-cell size="20"><nldd-icon name="text-document"></nldd-icon></nldd-icon-cell>
+        <nldd-spacer-cell size="8"></nldd-spacer-cell>
         <nldd-text-cell :text="title(row.doc.path)"></nldd-text-cell>
         <nldd-spacer-cell size="8"></nldd-spacer-cell>
         <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>

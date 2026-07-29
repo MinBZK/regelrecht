@@ -71,7 +71,7 @@ function openAbout() {
   nextTick(() => aboutSheet.value?.show?.());
 }
 
-// "Ondersteuning" support sheet, opened from the account menu.
+// "Help" sheet, opened from the account menu.
 const supportSheet = ref(null);
 function openSupport() {
   // Let the account menu popover close first, then raise the sheet.
@@ -353,7 +353,7 @@ function onTabDismiss(e) {
             <nldd-toolbar-item slot="end" v-if="trajectActive || (!authLoading && oidcConfigured && !authenticated)">
               <nldd-icon-button id="add-menu-btn-md" size="md" icon="plus-small" text="Nieuw" tooltip-timing="never" expandable popup-type="menu" popovertarget="add-menu-md"></nldd-icon-button>
               <nldd-menu v-if="trajectActive" id="add-menu-md" anchor="add-menu-btn-md">
-                <nldd-menu-item icon="book" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
+                <nldd-menu-item icon="new-book" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
                 <nldd-menu-item icon="new-text-document" text="Werkdocument toevoegen">
                   <nldd-menu>
                     <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="triggerNewWerkdoc"></nldd-menu-item>
@@ -422,7 +422,7 @@ function onTabDismiss(e) {
                 </nldd-menu-item>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
-                <nldd-menu-item text="Ondersteuning" icon="support" @click="openSupport"></nldd-menu-item>
+                <nldd-menu-item text="Help" icon="help" @click="openSupport"></nldd-menu-item>
                 <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
                 <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
                 <template v-if="!authLoading && authenticated">
@@ -470,7 +470,7 @@ function onTabDismiss(e) {
             <nldd-toolbar-item slot="end" v-if="trajectActive || (!authLoading && oidcConfigured && !authenticated)">
               <nldd-icon-button id="add-menu-btn-lg" size="md" icon="plus-small" text="Nieuw" tooltip-timing="never" expandable popup-type="menu" popovertarget="add-menu-lg"></nldd-icon-button>
               <nldd-menu v-if="trajectActive" id="add-menu-lg" anchor="add-menu-btn-lg">
-                <nldd-menu-item icon="book" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
+                <nldd-menu-item icon="new-book" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
                 <nldd-menu-item icon="new-text-document" text="Werkdocument toevoegen">
                   <nldd-menu>
                     <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="triggerNewWerkdoc"></nldd-menu-item>
@@ -535,7 +535,7 @@ function onTabDismiss(e) {
                 </nldd-menu-item>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
-                <nldd-menu-item text="Ondersteuning" icon="support" @click="openSupport"></nldd-menu-item>
+                <nldd-menu-item text="Help" icon="help" @click="openSupport"></nldd-menu-item>
                 <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
                 <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
                 <template v-if="!authLoading && authenticated">
@@ -719,7 +719,7 @@ function onTabDismiss(e) {
             <nldd-toolbar-item slot="end" v-if="trajectActive || (!authLoading && oidcConfigured && !authenticated)">
               <nldd-icon-button id="add-menu-btn-sm" size="lg" icon="plus-small" text="Nieuw" tooltip-timing="never" popup-type="menu" popovertarget="add-menu-sm"></nldd-icon-button>
               <nldd-menu v-if="trajectActive" id="add-menu-sm" anchor="add-menu-btn-sm">
-                <nldd-menu-item icon="book" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
+                <nldd-menu-item icon="new-book" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
                 <nldd-menu-item icon="new-text-document" text="Werkdocument toevoegen">
                   <nldd-menu>
                     <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="triggerNewWerkdoc"></nldd-menu-item>
@@ -780,7 +780,7 @@ function onTabDismiss(e) {
                 </nldd-menu-item>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
-                <nldd-menu-item text="Ondersteuning" icon="support" @click="openSupport"></nldd-menu-item>
+                <nldd-menu-item text="Help" icon="help" @click="openSupport"></nldd-menu-item>
                 <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
                 <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
                 <template v-if="!authLoading && authenticated">
