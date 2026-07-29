@@ -197,12 +197,17 @@ mod tests {
         let store = MemoryStore::default();
         let session_layer = SessionManagerLayer::new(store);
 
+        // PUT is registered only so the API-key method gate can be exercised
+        // on a method outside `API_KEY_ALLOWED_METHODS`; the service itself
+        // serves no PUT route. Without a matching handler axum answers 405
+        // before `route_layer` runs, so the gate would never be reached.
         Router::new()
             .route(
                 "/test",
                 get(|| async { "ok" })
                     .post(|| async { "ok" })
-                    .delete(|| async { "ok" }),
+                    .delete(|| async { "ok" })
+                    .put(|| async { "ok" }),
             )
             .route_layer(axum_middleware::from_fn_with_state(
                 state.clone(),
@@ -397,6 +402,29 @@ mod tests {
         // POST is admin-equivalent via API key so scripts can enqueue jobs
         // without an OIDC session.
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn api_key_method_outside_allowlist_returns_403() {
+        // The allowlist is a deliberate subset, not "every method": a valid
+        // key on a method that is not listed is refused before any role check,
+        // so a route added on a new method does not silently widen the key.
+        let state = test_state_with_api_key(true, Some("test-key"));
+        let app = test_app(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("PUT")
+                    .uri("/test")
+                    .header("authorization", "Bearer test-key")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]
