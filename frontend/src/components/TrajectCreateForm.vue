@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 
 // Gedeeld aanmaakformulier voor een traject - gebruikt door de
 // TrajectMenu-sheet en de /editor/nieuw-traject-pagina. Gebouwd op de
@@ -41,6 +41,25 @@ function emptyForm() {
 
 const form = ref(emptyForm());
 const nameFieldEl = ref(null);
+
+// The backend derives the token's env-var name from the repo coordinates
+// (`derive_auth_ref` + `token_env_name`): lowercase `owner/repo`, runs of
+// non-alphanumerics collapsed to one separator, then uppercased. Showing the
+// exact name saves the operator from re-deriving it by hand.
+const tokenEnvName = computed(() => {
+  const owner = form.value.repo_owner.trim();
+  const repo = form.value.repo_name.trim();
+  if (!owner || !repo) return '';
+  const slug = `${owner}/${repo}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return `CORPUS_AUTH_${slug.toUpperCase()}_TOKEN`;
+});
+
+const repoIsCompleet = computed(() =>
+  Boolean(form.value.repo_owner.trim() && form.value.repo_name.trim()),
+);
 
 function reset() {
   form.value = emptyForm();
@@ -134,6 +153,11 @@ function bind(field) {
           :checked="form.useCustomRepo ? true : undefined"
           @change="form.useCustomRepo = Boolean($event.detail?.checked)"
         ></nldd-switch-field>
+        <nldd-form-field-help-text>
+          De standaardrepo is publiek: wat je in dit traject bewerkt, is voor
+          iedereen te zien. Kies een eigen repo als het werk nog niet openbaar mag
+          zijn, of als de regelgeving bij je eigen organisatie thuishoort.
+        </nldd-form-field-help-text>
       </nldd-form-field>
 
       <template v-if="form.useCustomRepo">
@@ -174,16 +198,18 @@ function bind(field) {
         </nldd-form-field>
       </template>
 
-      <nldd-form-field>
+      <!-- Bij een eigen repo pas tonen zodra eigenaar en repository ingevuld zijn:
+           een zin met lege plekken erin leest als een fout. -->
+      <nldd-form-field v-if="!form.useCustomRepo || repoIsCompleet">
         <nldd-rich-text>
           <p v-if="form.useCustomRepo">
             Bewerkingen worden gepusht naar
-            <code>{{ form.repo_owner || '…' }}/{{ form.repo_name || '…' }}</code>
-            (basis: <code>{{ form.base_branch || 'main' }}</code>).
-            Je beheerder moet voor deze repo een <code>CORPUS_AUTH_*_TOKEN</code>
-            env-var hebben gezet - anders krijg je een foutmelding bij aanmaken.
-            Commits verschijnen onder je eigen naam (uit je SSO-account), niet
-            onder het service-account.
+            <code>{{ form.repo_owner.trim() }}/{{ form.repo_name.trim() }}</code>
+            (basis: <code>{{ form.base_branch.trim() || 'main' }}</code>).
+            Je beheerder moet voor deze repo de env-var
+            <code>{{ tokenEnvName }}</code> hebben gezet - anders krijg je een
+            foutmelding bij aanmaken. Commits verschijnen onder je eigen naam
+            (uit je SSO-account), niet onder het service-account.
           </p>
           <p v-else>
             Bewerkingen in dit traject worden gepusht naar een aparte branch op
