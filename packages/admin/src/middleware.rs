@@ -17,7 +17,14 @@ use crate::error::ApiError;
 use crate::state::AppState;
 
 /// Methods allowed via API key authentication (no OIDC session required).
-const API_KEY_ALLOWED_METHODS: &[Method] = &[Method::GET, Method::DELETE];
+///
+/// Within this set the key is an admin-equivalent for programmatic access: GET
+/// reads, POST enqueues harvest/enrich jobs and triggers resets/syncs, DELETE
+/// removes jobs. POST is included so scripts and services can enqueue jobs
+/// without driving an interactive OIDC/SSO session. Any method outside the set
+/// is rejected, so a route added with a different method does not silently
+/// widen what the key can do.
+const API_KEY_ALLOWED_METHODS: &[Method] = &[Method::GET, Method::POST, Method::DELETE];
 
 type RequireAuthFuture = Pin<Box<dyn Future<Output = Result<Response, ApiError>> + Send>>;
 
@@ -25,8 +32,9 @@ type RequireAuthFuture = Pin<Box<dyn Future<Output = Result<Response, ApiError>>
 ///
 /// Two trust paths:
 /// 1. A valid bearer API key — out-of-band trust, treated as regelrecht-admin
-///    equivalent for the methods listed in [`API_KEY_ALLOWED_METHODS`]
-///    (GET/DELETE). The key holder is whoever provisioned the deployment.
+///    equivalent for the methods listed in [`API_KEY_ALLOWED_METHODS`]; other
+///    methods are refused. The key holder is whoever provisioned the
+///    deployment.
 /// 2. An authenticated OIDC session — must carry `required_role` in
 ///    `SESSION_KEY_ROLES`. Composite expansion in Keycloak means higher
 ///    roles automatically satisfy lower-role checks.
@@ -189,12 +197,17 @@ mod tests {
         let store = MemoryStore::default();
         let session_layer = SessionManagerLayer::new(store);
 
+        // PUT is registered only so the API-key method gate can be exercised
+        // on a method outside `API_KEY_ALLOWED_METHODS`; the service itself
+        // serves no PUT route. Without a matching handler axum answers 405
+        // before `route_layer` runs, so the gate would never be reached.
         Router::new()
             .route(
                 "/test",
                 get(|| async { "ok" })
                     .post(|| async { "ok" })
-                    .delete(|| async { "ok" }),
+                    .delete(|| async { "ok" })
+                    .put(|| async { "ok" }),
             )
             .route_layer(axum_middleware::from_fn_with_state(
                 state.clone(),
@@ -370,7 +383,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn api_key_valid_post_returns_403() {
+    async fn api_key_valid_post_passes() {
         let state = test_state_with_api_key(true, Some("test-key"));
         let app = test_app(state);
 
@@ -378,6 +391,31 @@ mod tests {
             .oneshot(
                 axum::http::Request::builder()
                     .method("POST")
+                    .uri("/test")
+                    .header("authorization", "Bearer test-key")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        // POST is admin-equivalent via API key so scripts can enqueue jobs
+        // without an OIDC session.
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn api_key_method_outside_allowlist_returns_403() {
+        // The allowlist is a deliberate subset, not "every method": a valid
+        // key on a method that is not listed is refused before any role check,
+        // so a route added on a new method does not silently widen the key.
+        let state = test_state_with_api_key(true, Some("test-key"));
+        let app = test_app(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("PUT")
                     .uri("/test")
                     .header("authorization", "Bearer test-key")
                     .body(Body::empty())
@@ -826,9 +864,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn api_key_post_still_rejected_regardless_of_role() {
-        // POST is not in API_KEY_ALLOWED_METHODS — the bearer path rejects
-        // it before role checks. Verifies the order of operations is unchanged.
+    async fn api_key_post_passes_regardless_of_role() {
+        // POST is in API_KEY_ALLOWED_METHODS — the bearer path accepts it
+        // without consulting the session role, so a valid key can enqueue jobs
+        // on any role-gated route. A non-admin gate (harvester-writer) is used
+        // here so the pass is evidently a method-based bypass, not a role match;
+        // together with `api_key_valid_post_passes` (a reader-gated route) the
+        // two cases span the "regardless of role" claim.
         let state = test_state_with_api_key(true, Some("test-key"));
         let app = role_app(state, "harvester-writer");
         let response = app
@@ -842,6 +884,6 @@ mod tests {
             )
             .await
             .expect("response");
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(response.status(), StatusCode::OK);
     }
 }
