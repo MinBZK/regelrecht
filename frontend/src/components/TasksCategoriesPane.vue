@@ -88,8 +88,8 @@ function select(categorie, lawId = null) {
       :selected="isSelected(PRIORITEIT) || undefined"
       @click="select(PRIORITEIT)"
     >
-      <nldd-icon-cell slot="start" size="20"><nldd-icon name="exclamation-circle"></nldd-icon></nldd-icon-cell>
-      <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+      <nldd-icon-cell size="20"><nldd-icon name="exclamation-circle"></nldd-icon></nldd-icon-cell>
+      <nldd-spacer-cell size="8"></nldd-spacer-cell>
       <nldd-text-cell text="Prioriteit"></nldd-text-cell>
       <nldd-spacer-cell size="8"></nldd-spacer-cell>
       <nldd-text-cell
@@ -109,8 +109,8 @@ function select(categorie, lawId = null) {
       :selected="isSelected(WACHTEN) || undefined"
       @click="select(WACHTEN)"
     >
-      <nldd-icon-cell slot="start" size="20"><nldd-icon name="clock"></nldd-icon></nldd-icon-cell>
-      <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+      <nldd-icon-cell size="20"><nldd-icon name="clock"></nldd-icon></nldd-icon-cell>
+      <nldd-spacer-cell size="8"></nldd-spacer-cell>
       <nldd-text-cell text="Wachten op"></nldd-text-cell>
       <nldd-spacer-cell size="8"></nldd-spacer-cell>
       <nldd-text-cell
@@ -129,8 +129,8 @@ function select(categorie, lawId = null) {
       :selected="isSelected(ALLE) || undefined"
       @click="select(ALLE)"
     >
-      <nldd-icon-cell slot="start" size="20"><nldd-icon name="circle-grid-2x2-top-left-check-mark"></nldd-icon></nldd-icon-cell>
-      <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+      <nldd-icon-cell size="20"><nldd-icon name="circle-grid-2x2-top-left-check-mark"></nldd-icon></nldd-icon-cell>
+      <nldd-spacer-cell size="8"></nldd-spacer-cell>
       <nldd-text-cell text="Alle taken"></nldd-text-cell>
       <nldd-spacer-cell size="8"></nldd-spacer-cell>
       <nldd-text-cell
@@ -163,8 +163,8 @@ function select(categorie, lawId = null) {
         :selected="isSelected(WERKDOCUMENTEN) || undefined"
         @click="select(WERKDOCUMENTEN)"
       >
-        <nldd-icon-cell slot="start" size="20"><nldd-icon name="label"></nldd-icon></nldd-icon-cell>
-        <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+        <nldd-icon-cell size="20"><nldd-icon name="label"></nldd-icon></nldd-icon-cell>
+        <nldd-spacer-cell size="8"></nldd-spacer-cell>
         <nldd-text-cell text="Werkdocumenten"></nldd-text-cell>
         <nldd-spacer-cell size="8"></nldd-spacer-cell>
         <nldd-text-cell
@@ -186,8 +186,8 @@ function select(categorie, lawId = null) {
         :selected="isSelected(WET, law.lawId) || undefined"
         @click="select(WET, law.lawId)"
       >
-        <nldd-icon-cell slot="start" size="20"><nldd-icon name="label"></nldd-icon></nldd-icon-cell>
-        <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+        <nldd-icon-cell size="20"><nldd-icon name="label"></nldd-icon></nldd-icon-cell>
+        <nldd-spacer-cell size="8"></nldd-spacer-cell>
         <nldd-text-cell :text="law.name"></nldd-text-cell>
         <nldd-spacer-cell size="8"></nldd-spacer-cell>
         <nldd-text-cell

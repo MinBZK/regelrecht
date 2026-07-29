@@ -162,12 +162,11 @@ function viewLaw(job) {
   <nldd-list v-if="!isEmpty" variant="simple">
     <nldd-list-item v-for="task in shownTasks" :key="task.id" size="md">
       <nldd-icon-cell
-        slot="start"
         size="20"
         :icon="taskIcon(task)"
         :color="task.task_type === 'job_failed' ? 'critical' : undefined"
       ></nldd-icon-cell>
-      <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+      <nldd-spacer-cell size="8"></nldd-spacer-cell>
       <!-- Geen supporting-text met de foutmelding: die is technisch en lang, en
            duwt de rij uit z'n voegen. Hij staat achter "Toon details". -->
       <nldd-text-cell
@@ -220,14 +219,14 @@ function viewLaw(job) {
            timing="instant": de anti-flash-vertraging van 1000ms is bedoeld voor
            laadjes die zo weer weg zijn. Deze staan er minutenlang, dus die
            vertraging levert alleen een gat op waar de rij al zichtbaar is. -->
-      <nldd-cell slot="start" vertical-alignment="center">
+      <nldd-cell vertical-alignment="center">
         <nldd-activity-indicator
           size="20"
           timing="instant"
           :text="runningTitle(job, displayName)"
         ></nldd-activity-indicator>
       </nldd-cell>
-      <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+      <nldd-spacer-cell size="8"></nldd-spacer-cell>
       <nldd-text-cell :text="runningTitle(job, displayName)"></nldd-text-cell>
       <nldd-spacer-cell size="8"></nldd-spacer-cell>
       <nldd-cell>
