@@ -58,9 +58,11 @@ const tokenEnvName = computed(() => {
   return tokenEnvNameFor(authRef);
 });
 
-const repoIsCompleet = computed(() =>
-  Boolean(form.value.repo_owner.trim() && form.value.repo_name.trim()),
-);
+// Complete enough to describe: the coordinates yield a token name. Checking the
+// derived name rather than the raw fields also catches input that trims to
+// something non-empty but carries no letters or digits ("..."), which leaves no
+// ref and so no env-var to point the operator at.
+const repoIsCompleet = computed(() => Boolean(tokenEnvName.value));
 
 function reset() {
   form.value = emptyForm();
@@ -199,8 +201,8 @@ function bind(field) {
         </nldd-form-field>
       </template>
 
-      <!-- Bij een eigen repo pas tonen zodra eigenaar en repository ingevuld zijn:
-           een zin met lege plekken erin leest als een fout. -->
+      <!-- Bij een eigen repo pas tonen zodra eigenaar en repository een naam
+           opleveren: een zin met lege plekken erin leest als een fout. -->
       <nldd-form-field v-if="!form.useCustomRepo || repoIsCompleet">
         <nldd-rich-text>
           <p v-if="form.useCustomRepo">
