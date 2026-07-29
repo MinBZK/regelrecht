@@ -66,6 +66,37 @@ cargo run -p regelrecht-arch-extract -- serve      # terminal 1 (API on :7180)
 npm --prefix packages/arch-extract/ui run dev        # terminal 2 (UI on :7181)
 ```
 
+### Relations in the explorer (rolled-up edges)
+
+The model holds ~1500 relations over ~2400 nodes, but only a handful of nodes
+are on screen at once (the explorer expands lazily). So the explorer **rolls
+every relation up to the detail level currently on screen** — no relation is
+ever silently dropped:
+
+- **Edge-lifting.** Each end of a relation is lifted to its nearest *visible*
+  ancestor, and relations between the same lifted pair, of the same kind, are
+  aggregated into **one line with a count**. The line's colour still encodes the
+  kind (`depends-on` / `impl` / `uses`); its thickness scales logarithmically
+  with the count. Expanding one side refines the line — its endpoint slides from
+  crate to module to type.
+- **The number on a line** is how many underlying relations it represents.
+  Lines with a count greater than one carry a small **clickable badge**: click
+  it to reveal the underlying relations. The line then splits into its exact
+  sub-lines and the canvas eases to the involved nodes. To avoid opening
+  hundreds of nodes at once, a very wide roll-up (more than ~25 underlying
+  pairs) opens only one level per click; click again to keep refining.
+- **Internal relations become a counter, not a line.** When *both* ends of a
+  relation roll up to the *same* visible node, there is nothing to draw between —
+  it is an internal relation of that subtree. It shows as a small ↺ counter on
+  the node instead of a self-loop. (A relation whose lifted ends are in a
+  containment relation — one contains the other — is nesting, not a relation,
+  and is drawn as neither a line nor a counter.)
+- **Filters.** The toolbar has a toggle per relation kind (`depends-on` /
+  `impl` / `uses`), all on by default and persisted in localStorage. A disabled
+  kind is excluded from the lines, the weights and the counters; the toolbar
+  shows how many relations are currently visible of the total. (`calls` is not
+  offered — the model deliberately never produces that kind.)
+
 ### Known limitations
 
 - **Accessibility.** The explorer is an internal-only developer tool. Its Vue
@@ -372,3 +403,13 @@ now resolve (and that no edge points outside the workspace — the "no false edg
 guard), and confirms generation is deterministic — so a malformed model or a lost
 edge fails CI. The edge-resolution logic itself (path/`use` resolution, the
 drop-don't-guess rules) is unit-tested in `src/syn_pass.rs`.
+
+The explorer UI has its own unit tests (`ui/`, `vitest`): the edge-lifting and
+aggregation logic in `useArchGraph.js` is a pure function of
+`(model, expanded, enabledKinds)`, so `ui/src/composables/useArchGraph.test.js`
+covers lifting to the nearest visible ancestor, internal relations becoming a
+counter, containment pairs being skipped, aggregation weight/pairs, refinement
+on expand, a disabled kind counting nowhere, and the reveal policy (including the
+one-level fallback above the limit) without a DOM. `just arch-test` runs both the
+Rust tests and `npm --prefix packages/arch-extract/ui test`, so `just check`
+gates them together.

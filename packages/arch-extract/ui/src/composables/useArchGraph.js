@@ -13,9 +13,19 @@
  * positions relative to their parent, and each expanded parent is grown to a
  * padded grid that contains its (recursively laid out) children. Collapsed and
  * leaf nodes get a fixed header-sized box.
+ *
+ * Relationships are **edge-lifted**: every edge in the model is always
+ * accounted for, rolled up to whatever detail level is currently on screen.
+ * Each endpoint is lifted to its nearest *visible* ancestor; edges that lift to
+ * the same node become an internal counter on that node instead of a line;
+ * edges whose lifted ends are in an ancestor/descendant relation are containment
+ * and drawn as nesting, not a line; the rest are aggregated per
+ * `kind|from->to` into one weighted line. Expanding a node refines the lines
+ * that touched it. See packages/arch-extract/README.md.
  */
 import { computed, ref, shallowRef } from 'vue';
 import { MarkerType } from '@vue-flow/core';
+import { useEdgeFilters } from './useEdgeFilters.js';
 
 // --- Layout constants -------------------------------------------------------
 const NODE_W = 220; // width of a collapsed / leaf node
@@ -23,9 +33,18 @@ const HEADER_H = 46; // height of a node's own header strip
 const PAD = 20; // inner padding around a parent's children
 const GAP = 18; // gap between sibling children
 const MAX_COLS = 5; // cap the grid width so deep crates don't sprawl sideways
-const ROOT_GAP_X = 80;
-const ROOT_GAP_Y = 80;
-const ROOT_ROW_MAX_W = 1800; // wrap the crate row past this width
+
+// Layered root layout (see layoutRoots). Roots become topological layers on the
+// aggregated `depends-on` graph so dependencies overwhelmingly flow one way.
+const ROOT_LAYER_GAP_X = 140; // horizontal gap between dependency layers
+const ROOT_COL_GAP_X = 70; // gap between wrapped sub-columns inside one layer
+const ROOT_GAP_Y = 80; // vertical gap between stacked roots
+const ROOT_MAX_PER_COL = 4; // wrap a layer into a new sub-column past this many
+
+// Above this many underlying pairs, revealing a rolled-up line opens only one
+// level instead of every ancestor chain, so one click never opens hundreds of
+// nodes. Repeated clicks refine step by step. (Acceptance criterion 7.)
+export const REVEAL_LIMIT = 25;
 
 // Sort order for children: coarse kinds first, then alphabetically. Keeps a
 // crate's modules above its loose fns, types above their methods, etc. The
@@ -47,13 +66,27 @@ const KIND_RANK = {
 };
 
 // Per-edge-kind styling. Visually distinct so `depends-on` / `impl` / `uses`
-// are told apart at a glance (acceptance criterion).
+// are told apart at a glance (acceptance criterion). `strokeWidth` is the
+// *base* dikte per soort; a rolled-up line scales up logarithmically from it
+// (see scaledStrokeWidth) so the colour coding stays intact.
 const EDGE_STYLE = {
   'depends-on': { stroke: '#6366f1', strokeWidth: 2.5 },
   impl: { stroke: '#10b981', strokeWidth: 2, strokeDasharray: '7 4' },
   uses: { stroke: '#94a3b8', strokeWidth: 1.5, strokeDasharray: '2 4' },
   calls: { stroke: '#f59e0b', strokeWidth: 1.5 },
 };
+
+export { EDGE_STYLE };
+
+/**
+ * Log-scale a rolled-up line's width off the per-kind base. weight 1 → base
+ * (so a single relation keeps its kind's dikte); heavier lines grow toward a
+ * ~9px cap. (Acceptance criterion 4.)
+ */
+function scaledStrokeWidth(base, weight) {
+  const w = base + Math.log2(Math.max(1, weight)) * 1.2;
+  return Math.min(9, Math.max(1.5, Math.round(w * 10) / 10));
+}
 
 function sortChildren(byId) {
   return (a, b) => {
@@ -67,11 +100,103 @@ function sortChildren(byId) {
 }
 
 /**
- * Build the Vue Flow `nodes` + `edges` for the current `expanded` set.
- * Pure function of (model, expanded) so it is trivial to recompute on toggle.
+ * Order the crate/app roots into topological layers on the aggregated
+ * `depends-on` relations, so dependencies overwhelmingly point one way instead
+ * of sitting in an alphabetical row. This is a structural port of
+ * `frontend/src/composables/useLawGraph.js` → `applyLayeredLayout()`
+ * (Kahn-style layering with `dependents`/`dependencies`/`incomingCount` and
+ * column wrapping); the explorer is a standalone npm project that cannot import
+ * from `frontend/`, so the algorithm is reproduced here. Keep the two in step.
+ *
+ * Unlike the law graph it is size-aware: layer columns are spaced by the actual
+ * node widths/heights (roots vary wildly once expanded) rather than a fixed
+ * pitch, so expanded crates do not overlap.
+ *
+ * Writes absolute positions into `pos` for every root id.
  */
-function buildFlow(model, expanded) {
+function layoutRoots(roots, rootDepends, sizes, pos) {
+  const rootSet = new Set(roots);
+  const dependents = new Map(); // id → ids that depend on it
+  const dependencies = new Map(); // id → ids it depends on
+  const incomingCount = new Map();
+  for (const id of roots) {
+    dependents.set(id, new Set());
+    dependencies.set(id, new Set());
+    incomingCount.set(id, 0);
+  }
+
+  for (const { from, to } of rootDepends) {
+    if (from === to || !rootSet.has(from) || !rootSet.has(to)) continue;
+    // `from depends-on to`: `to` gains a dependent, `from` gains a dependency.
+    if (!dependents.get(to).has(from)) {
+      dependents.get(to).add(from);
+      dependencies.get(from).add(to);
+      incomingCount.set(from, incomingCount.get(from) + 1);
+    }
+  }
+
+  const layers = [];
+  const processed = new Set();
+  let currentLayer = roots.filter((id) => incomingCount.get(id) === 0);
+
+  while (currentLayer.length > 0) {
+    layers.push(currentLayer);
+    for (const id of currentLayer) processed.add(id);
+    const next = new Set();
+    for (const id of currentLayer) {
+      for (const dependent of dependents.get(id) || []) {
+        if (processed.has(dependent)) continue;
+        let allDepsDone = true;
+        for (const dep of dependencies.get(dependent) || []) {
+          if (!processed.has(dep)) {
+            allDepsDone = false;
+            break;
+          }
+        }
+        if (allDepsDone) next.add(dependent);
+      }
+    }
+    currentLayer = [...next];
+  }
+  // Any root left over (a dependency cycle) goes in a final layer so nothing
+  // is dropped.
+  const leftover = roots.filter((id) => !processed.has(id));
+  if (leftover.length > 0) layers.push(leftover);
+
+  // Place each layer as one or more stacked sub-columns, spaced by real sizes.
+  let layerX = 0;
+  for (const layer of layers) {
+    let colX = layerX;
+    let layerRight = layerX;
+    for (let start = 0; start < layer.length; start += ROOT_MAX_PER_COL) {
+      const chunk = layer.slice(start, start + ROOT_MAX_PER_COL);
+      let colW = 0;
+      let y = 0;
+      for (const id of chunk) {
+        const s = sizes.get(id) || { w: NODE_W, h: HEADER_H };
+        pos.set(id, { x: colX, y });
+        colW = Math.max(colW, s.w);
+        y += s.h + ROOT_GAP_Y;
+      }
+      colX += colW + ROOT_COL_GAP_X;
+      layerRight = colX;
+    }
+    layerX = layerRight + ROOT_LAYER_GAP_X;
+  }
+}
+
+/**
+ * Build the Vue Flow `nodes` + `edges` for the current `expanded` set and the
+ * currently-enabled edge kinds.
+ *
+ * Pure function of (model, expanded, enabledKinds) so the whole lifting /
+ * aggregation pipeline is testable without a DOM. `enabledKinds` is a Set of
+ * edge kinds to include; anything not in it is filtered out *before*
+ * aggregation, so weights and counters never include a disabled kind.
+ */
+function buildFlow(model, expanded, enabledKinds) {
   const byId = new Map(model.nodes.map((n) => [n.id, n]));
+  const parentOf = (id) => byId.get(id)?.parent;
 
   const childrenMap = new Map();
   for (const n of model.nodes) {
@@ -144,28 +269,34 @@ function buildFlow(model, expanded) {
 
   roots.forEach(layout);
 
-  // Place crate roots in a wrapping row.
-  let rx = 0;
-  let ry = 0;
-  let rowMaxH = 0;
-  for (const id of roots) {
-    const { w, h } = sizes.get(id);
-    if (rx > 0 && rx + w > ROOT_ROW_MAX_W) {
-      rx = 0;
-      ry += rowMaxH + ROOT_GAP_Y;
-      rowMaxH = 0;
-    }
-    pos.set(id, { x: rx, y: ry });
-    rx += w + ROOT_GAP_X;
-    rowMaxH = Math.max(rowMaxH, h);
+  // Root positions: topological layers on the aggregated `depends-on` graph.
+  // Aggregate to the root level regardless of the kind filter so the layout is
+  // stable as filters toggle.
+  const rootOf = (id) => {
+    let cur = id;
+    while (cur && byId.get(cur)?.parent) cur = byId.get(cur).parent;
+    return cur;
+  };
+  const rootDepends = [];
+  for (const e of model.edges) {
+    if (e.kind !== 'depends-on') continue;
+    const rf = rootOf(e.from);
+    const rt = rootOf(e.to);
+    if (rf && rt && rf !== rt) rootDepends.push({ from: rf, to: rt });
   }
+  layoutRoots(roots, rootDepends, sizes, pos);
 
   // Emit Vue Flow nodes in pre-order (parent before child, as Vue Flow expects).
+  // Accumulate absolute positions so edge-lifting can pick a handle side from
+  // the two visible endpoints' centres.
   const flowNodes = [];
-  const emit = (id, depth) => {
+  const absCenter = new Map(); // id -> { x, y } absolute centre
+  const emit = (id, depth, parentAbs) => {
     const n = byId.get(id);
     const size = sizes.get(id);
     const p = pos.get(id) || { x: 0, y: 0 };
+    const abs = { x: parentAbs.x + p.x, y: parentAbs.y + p.y };
+    absCenter.set(id, { x: abs.x + size.w / 2, y: abs.y + size.h / 2 });
     const exp = expanded.has(id);
     const expandable = isExpandable(id);
     flowNodes.push({
@@ -179,6 +310,8 @@ function buildFlow(model, expanded) {
         expandable,
         expanded: exp,
         childCount: (childrenMap.get(id) || []).length,
+        // Set below, once edges are lifted: relations that roll up to this node.
+        internalCount: 0,
       },
       class: [
         'arch-node',
@@ -194,56 +327,179 @@ function buildFlow(model, expanded) {
       // deeper nodes still stack above their own container.
       zIndex: depth + 1,
     });
-    for (const k of visibleChildren(id)) emit(k, depth + 1);
+    for (const k of visibleChildren(id)) emit(k, depth + 1, abs);
   };
-  roots.forEach((id) => emit(id, 0));
+  roots.forEach((id) => emit(id, 0, { x: 0, y: 0 }));
 
-  // Edges between currently-visible nodes only.
   const visibleIds = new Set(flowNodes.map((n) => n.id));
-  const flowEdges = [];
+
+  // Lift an id to its nearest visible ancestor. Roots are always visible, so
+  // the walk always terminates; returns undefined only for an id not in the
+  // tree at all (a dangling edge endpoint).
+  const lift = (id) => {
+    let cur = id;
+    while (cur && !visibleIds.has(cur)) cur = parentOf(cur);
+    return cur;
+  };
+  // Is `anc` a (strict) ancestor of `desc`?
+  const isAncestor = (anc, desc) => {
+    let cur = parentOf(desc);
+    while (cur) {
+      if (cur === anc) return true;
+      cur = parentOf(cur);
+    }
+    return false;
+  };
+
+  // --- Edge lifting + aggregation ------------------------------------------
+  const aggregates = new Map(); // `${kind}|${from}->${to}` -> aggregate
+  const internal = new Map(); // nodeId -> internal relation count
+  let totalRelations = 0;
+  let visibleRelations = 0;
+
   for (const e of model.edges) {
-    if (!visibleIds.has(e.from) || !visibleIds.has(e.to)) continue;
-    const style = EDGE_STYLE[e.kind] || EDGE_STYLE.uses;
+    if (!enabledKinds.has(e.kind)) continue;
+    const from = lift(e.from);
+    const to = lift(e.to);
+    if (!from || !to) continue; // dangling endpoint, nothing to draw
+    totalRelations += 1;
+
+    if (from === to) {
+      // Both ends roll up to the same visible node: an internal relation. It
+      // becomes a counter on that node, not a line. (Criterion 2.)
+      internal.set(from, (internal.get(from) || 0) + 1);
+      visibleRelations += 1;
+      continue;
+    }
+    if (isAncestor(from, to) || isAncestor(to, from)) {
+      // One lifted end contains the other: that is containment (nesting), not a
+      // relation. No line, and it is not "visible" as a relation. (Criterion 3.)
+      continue;
+    }
+
+    const key = `${e.kind}|${from}->${to}`;
+    let agg = aggregates.get(key);
+    if (!agg) {
+      agg = { kind: e.kind, from, to, weight: 0, pairs: [] };
+      aggregates.set(key, agg);
+    }
+    agg.weight += 1;
+    agg.pairs.push({ from: e.from, to: e.to });
+    visibleRelations += 1;
+  }
+
+  // Publish internal counters onto their nodes.
+  for (const n of flowNodes) {
+    const c = internal.get(n.id);
+    if (c) n.data.internalCount = c;
+  }
+
+  // Choose a handle side per aggregated edge from the two centres' dominant
+  // axis, so lines leave/enter on the facing sides instead of always L→R.
+  const pickHandles = (a, b) => {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      return dx >= 0 ? ['source-right', 'target-left'] : ['source-left', 'target-right'];
+    }
+    return dy >= 0 ? ['source-bottom', 'target-top'] : ['source-top', 'target-bottom'];
+  };
+
+  const flowEdges = [];
+  for (const agg of aggregates.values()) {
+    const base = EDGE_STYLE[agg.kind] || EDGE_STYLE.uses;
+    const strokeWidth = scaledStrokeWidth(base.strokeWidth, agg.weight);
+    const ca = absCenter.get(agg.from) || { x: 0, y: 0 };
+    const cb = absCenter.get(agg.to) || { x: 0, y: 0 };
+    const [sourceHandle, targetHandle] = pickHandles(ca, cb);
     flowEdges.push({
-      id: `${e.kind}:${e.from}->${e.to}`,
-      source: e.from,
-      target: e.to,
-      class: `edge-${e.kind}`,
-      data: { kind: e.kind },
-      type: 'default',
-      style,
-      markerEnd: { type: MarkerType.ArrowClosed, color: style.stroke, width: 16, height: 16 },
-      // Below every node (which start at 1). Edges used to sit at 2000, which
-      // drew the lines over the node boxes and — worse — put Vue Flow's
-      // invisible 20px-wide `.vue-flow__edge-interaction` hit path on top of
-      // the expand toggles, swallowing the click on most nodes.
+      id: `${agg.kind}|${agg.from}->${agg.to}`,
+      source: agg.from,
+      target: agg.to,
+      sourceHandle,
+      targetHandle,
+      class: `edge-${agg.kind}`,
+      type: 'arch',
+      data: {
+        kind: agg.kind,
+        weight: agg.weight,
+        from: agg.from,
+        to: agg.to,
+        pairs: agg.pairs,
+      },
+      style: { ...base, strokeWidth },
+      markerEnd: { type: MarkerType.ArrowClosed, color: base.stroke, width: 16, height: 16 },
+      // Below every node (which start at 1). Keeps Vue Flow's invisible 20px
+      // interaction path from stealing clicks off the node toggles.
       zIndex: 0,
     });
   }
 
-  return { nodes: flowNodes, edges: flowEdges, childrenMap };
+  return {
+    nodes: flowNodes,
+    edges: flowEdges,
+    childrenMap,
+    stats: { visible: visibleRelations, total: totalRelations },
+  };
+}
+
+export { buildFlow };
+
+/**
+ * Compute the next `expanded` set when a rolled-up line's badge is clicked.
+ *
+ * Pure so the reveal policy is unit-testable. Below `limit` underlying pairs it
+ * fully reveals — expands every ancestor of every underlying endpoint, so the
+ * line splits into its exact sub-lines. At or above the limit it opens only one
+ * level (expands the two currently-lifted endpoints), so a single click never
+ * opens hundreds of nodes; repeated clicks refine step by step. (Criteria 6, 7.)
+ */
+export function computeReveal({ parentOf, childrenMap, expanded, data, limit = REVEAL_LIMIT }) {
+  const next = new Set(expanded);
+  const addAncestors = (id) => {
+    let cur = parentOf.get(id);
+    while (cur) {
+      next.add(cur);
+      cur = parentOf.get(cur);
+    }
+  };
+
+  if (data.pairs.length > limit) {
+    if (childrenMap.has(data.from)) next.add(data.from);
+    if (childrenMap.has(data.to)) next.add(data.to);
+  } else {
+    for (const { from, to } of data.pairs) {
+      addAncestors(from);
+      addAncestors(to);
+    }
+  }
+  return next;
 }
 
 export function useArchGraph() {
   const model = shallowRef(null);
   const expanded = ref(new Set());
+  const { enabledKinds, toggleKind, kindEnabled, FILTERABLE_KINDS } = useEdgeFilters();
 
-  // Cache childrenMap for subtree expansion without rebuilding the whole map.
+  // Cache maps for subtree expansion / reveal without rebuilding them.
   let childrenMap = new Map();
+  let parentOf = new Map();
 
   const built = computed(() => {
-    if (!model.value) return { nodes: [], edges: [] };
-    const result = buildFlow(model.value, expanded.value);
+    if (!model.value) return { nodes: [], edges: [], stats: { visible: 0, total: 0 } };
+    const result = buildFlow(model.value, expanded.value, enabledKinds.value);
     childrenMap = result.childrenMap;
     return result;
   });
 
   const nodes = computed(() => built.value.nodes);
   const edges = computed(() => built.value.edges);
+  const stats = computed(() => built.value.stats);
 
   function setModel(m) {
     model.value = m;
     expanded.value = new Set(); // start collapsed at crate level
+    parentOf = new Map(m.nodes.map((n) => [n.id, n.parent || null]));
   }
 
   function toggle(id) {
@@ -270,5 +526,29 @@ export function useArchGraph() {
     expanded.value = new Set();
   }
 
-  return { model, nodes, edges, expanded, setModel, toggle, expandSubtree, collapseAll };
+  /**
+   * Reveal a rolled-up line. Returns the ids the caller should `fitView` to
+   * (the two lifted endpoints, which contain the newly-split lines).
+   */
+  function revealEdge(data) {
+    expanded.value = computeReveal({ parentOf, childrenMap, expanded: expanded.value, data });
+    return [data.from, data.to];
+  }
+
+  return {
+    model,
+    nodes,
+    edges,
+    stats,
+    expanded,
+    enabledKinds,
+    toggleKind,
+    kindEnabled,
+    FILTERABLE_KINDS,
+    setModel,
+    toggle,
+    expandSubtree,
+    collapseAll,
+    revealEdge,
+  };
 }
