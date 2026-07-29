@@ -353,7 +353,7 @@ function onTabDismiss(e) {
             <nldd-toolbar-item slot="end" v-if="trajectActive || (!authLoading && oidcConfigured && !authenticated)">
               <nldd-icon-button id="add-menu-btn-md" size="md" icon="plus-small" text="Nieuw" tooltip-timing="never" expandable popup-type="menu" popovertarget="add-menu-md"></nldd-icon-button>
               <nldd-menu v-if="trajectActive" id="add-menu-md" anchor="add-menu-btn-md">
-                <nldd-menu-item icon="book-badge-plus" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
+                <nldd-menu-item icon="new-book" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
                 <nldd-menu-item icon="new-text-document" text="Werkdocument toevoegen">
                   <nldd-menu>
                     <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="triggerNewWerkdoc"></nldd-menu-item>
@@ -470,7 +470,7 @@ function onTabDismiss(e) {
             <nldd-toolbar-item slot="end" v-if="trajectActive || (!authLoading && oidcConfigured && !authenticated)">
               <nldd-icon-button id="add-menu-btn-lg" size="md" icon="plus-small" text="Nieuw" tooltip-timing="never" expandable popup-type="menu" popovertarget="add-menu-lg"></nldd-icon-button>
               <nldd-menu v-if="trajectActive" id="add-menu-lg" anchor="add-menu-btn-lg">
-                <nldd-menu-item icon="book-badge-plus" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
+                <nldd-menu-item icon="new-book" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
                 <nldd-menu-item icon="new-text-document" text="Werkdocument toevoegen">
                   <nldd-menu>
                     <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="triggerNewWerkdoc"></nldd-menu-item>
@@ -719,7 +719,7 @@ function onTabDismiss(e) {
             <nldd-toolbar-item slot="end" v-if="trajectActive || (!authLoading && oidcConfigured && !authenticated)">
               <nldd-icon-button id="add-menu-btn-sm" size="lg" icon="plus-small" text="Nieuw" tooltip-timing="never" popup-type="menu" popovertarget="add-menu-sm"></nldd-icon-button>
               <nldd-menu v-if="trajectActive" id="add-menu-sm" anchor="add-menu-btn-sm">
-                <nldd-menu-item icon="book-badge-plus" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
+                <nldd-menu-item icon="new-book" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
                 <nldd-menu-item icon="new-text-document" text="Werkdocument toevoegen">
                   <nldd-menu>
                     <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="triggerNewWerkdoc"></nldd-menu-item>
