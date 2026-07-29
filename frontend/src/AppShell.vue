@@ -71,7 +71,7 @@ function openAbout() {
   nextTick(() => aboutSheet.value?.show?.());
 }
 
-// "Ondersteuning" support sheet, opened from the account menu.
+// "Help" sheet, opened from the account menu.
 const supportSheet = ref(null);
 function openSupport() {
   // Let the account menu popover close first, then raise the sheet.
@@ -422,7 +422,7 @@ function onTabDismiss(e) {
                 </nldd-menu-item>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
-                <nldd-menu-item text="Ondersteuning" icon="support" @click="openSupport"></nldd-menu-item>
+                <nldd-menu-item text="Help" icon="help" @click="openSupport"></nldd-menu-item>
                 <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
                 <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
                 <template v-if="!authLoading && authenticated">
@@ -535,7 +535,7 @@ function onTabDismiss(e) {
                 </nldd-menu-item>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
-                <nldd-menu-item text="Ondersteuning" icon="support" @click="openSupport"></nldd-menu-item>
+                <nldd-menu-item text="Help" icon="help" @click="openSupport"></nldd-menu-item>
                 <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
                 <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
                 <template v-if="!authLoading && authenticated">
@@ -780,7 +780,7 @@ function onTabDismiss(e) {
                 </nldd-menu-item>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
-                <nldd-menu-item text="Ondersteuning" icon="support" @click="openSupport"></nldd-menu-item>
+                <nldd-menu-item text="Help" icon="help" @click="openSupport"></nldd-menu-item>
                 <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
                 <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
                 <template v-if="!authLoading && authenticated">
