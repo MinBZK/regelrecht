@@ -23,7 +23,7 @@ regelrecht-law-model = { path = "../law-model" }
 # direct reqwest dependency any more.
 regelrecht-github = { path = "../github", optional = true }
 serde_json = { workspace = true, optional = true }
-jsonschema = { version = "0.47", optional = true }
+jsonschema = { version = "0.49", optional = true }
 flate2 = { version = "1", optional = true }
 tar = { version = "0.4", optional = true }
 walkdir.workspace = true
