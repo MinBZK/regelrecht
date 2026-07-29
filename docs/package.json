@@ -14,7 +14,7 @@
   "dependencies": {
     "@astrojs/markdown-remark": "^7.2.1",
     "@astrojs/mdx": "^7.0.4",
-    "@nldd/design-system": "^0.8.69",
+    "@nldd/design-system": "^0.8.71",
     "astro": "^7.1.4",
     "astro-pagefind": "^2.0.1",
     "rehype-mermaid": "^3",
