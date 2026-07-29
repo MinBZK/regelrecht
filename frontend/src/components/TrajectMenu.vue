@@ -200,6 +200,7 @@ async function submitCreate() {
     :text="activeLabel"
     :popovertarget="menuId"
     :width="fullWidth ? 'full' : undefined"
+    :max-width="fullWidth ? undefined : '220px'"
     :horizontal-alignment="fullWidth ? 'left' : undefined"
   ></nldd-button>
   <!-- Logged in: the active traject's actions first, then the scope switcher
