@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue';
+import { deriveAuthRef, tokenEnvName as tokenEnvNameFor } from '../lib/corpusAuth.js';
 
 // Gedeeld aanmaakformulier voor een traject - gebruikt door de
 // TrajectMenu-sheet en de /editor/nieuw-traject-pagina. Gebouwd op de
@@ -42,19 +43,19 @@ function emptyForm() {
 const form = ref(emptyForm());
 const nameFieldEl = ref(null);
 
-// The backend derives the token's env-var name from the repo coordinates
-// (`derive_auth_ref` + `token_env_name`): lowercase `owner/repo`, runs of
-// non-alphanumerics collapsed to one separator, then uppercased. Showing the
-// exact name saves the operator from re-deriving it by hand.
+// Showing the exact env-var name saves the operator from deriving it by hand.
+// The derivation itself lives in lib/corpusAuth.js, next to the test that pins
+// it to the backend.
 const tokenEnvName = computed(() => {
   const owner = form.value.repo_owner.trim();
   const repo = form.value.repo_name.trim();
   if (!owner || !repo) return '';
-  const slug = `${owner}/${repo}`
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-  return `CORPUS_AUTH_${slug.toUpperCase()}_TOKEN`;
+  const authRef = deriveAuthRef(owner, repo);
+  // Input of nothing but separators leaves no ref, and the backend rejects that
+  // before the insert. Naming CORPUS_AUTH__TOKEN would send the operator off to
+  // set a variable that resolves nothing.
+  if (!authRef) return '';
+  return tokenEnvNameFor(authRef);
 });
 
 const repoIsCompleet = computed(() =>
