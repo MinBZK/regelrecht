@@ -1806,7 +1806,7 @@ watch(activeTrajectRef, () => {
                 <nldd-toolbar v-if="paneChromeVisible(selectedLawLoading)" label="Favorieten">
                   <nldd-toolbar-item slot="start">
                     <nldd-icon-button
-                      :icon="favorites?.has(selectedLawId) ? 'heart-filled' : 'heart'"
+                      :icon="favorites?.has(selectedLawId) ? 'star-filled' : 'star'"
                       :text="favorites?.has(selectedLawId) ? 'Verwijder uit favorieten' : 'Voeg toe aan favorieten'"
                       @click="onFavoriteClick"
                     ></nldd-icon-button>
