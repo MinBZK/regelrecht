@@ -453,6 +453,141 @@ jobs:
         if: needs.changes.outputs.ci != 'true'
         run: echo "No relevant changes, skipping WASM build"
 
+  # De enige job die de editor in een echte browser laadt. Unit-tests draaien op
+  # happy-dom, en die ziet het WASM-laadpad in
+  # frontend/src/composables/useEngine.js niet: fetch -> Blob -> object-URL ->
+  # `import(/* @vite-ignore */ blobUrl)` wordt door de bundler juist buiten de
+  # analyse gehouden, dus een groene build zegt daar niets over.
+  #
+  # Alleen de gemockte suite (frontend/e2e/). De smoketest uit
+  # `just smoke-preview` draait tegen een gedeployde preview met echte Keycloak-
+  # credentials en hoort niet in de PR-gate.
+  e2e:
+    name: E2E (mocked)
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # Parity met de andere npm-jobs: de workspace kan @nldd-pakketten van
+      # npm.pkg.github.com halen.
+      packages: read
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        if: needs.changes.outputs.ci == 'true'
+
+      - name: Install just
+        if: needs.changes.outputs.ci == 'true'
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
+
+      - name: Install Rust toolchain
+        if: needs.changes.outputs.ci == 'true'
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Run sccache
+        if: needs.changes.outputs.ci == 'true'
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696  # v0.0.10
+
+      - name: Cache cargo registry (shared)
+        if: needs.changes.outputs.ci == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+
+      # `just test-e2e` hangt aan `wasm-build`, dat `wasm-bindgen` op PATH
+      # verwacht. De versie wordt uit packages/Cargo.lock gelezen in plaats van
+      # hier hardgecodeerd: wasm-bindgen-cli moet exact overeenkomen met de
+      # wasm-bindgen-crate, anders faalt het bindgen-stap met een versie-mismatch.
+      - name: Resolve wasm-bindgen version
+        id: wasm-bindgen-version
+        if: needs.changes.outputs.ci == 'true'
+        run: |
+          version=$(grep -A1 '^name = "wasm-bindgen"$' packages/Cargo.lock \
+            | sed -n 's/^version = "\(.*\)"$/\1/p' | head -1)
+          if [ -z "$version" ]; then
+            echo "::error::kon wasm-bindgen-versie niet uit packages/Cargo.lock lezen"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache wasm-bindgen-cli
+        id: wasm-bindgen-cache
+        if: needs.changes.outputs.ci == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cargo/bin/wasm-bindgen
+          key: ${{ runner.os }}-wasm-bindgen-${{ steps.wasm-bindgen-version.outputs.version }}
+
+      # Overslaan bij een cache-hit. Zonder deze guard faalt elke run ná de
+      # eerste: de cache legt alleen het binary terug, niet `.crates.toml`,
+      # waardoor cargo het bestand niet als het zijne herkent en weigert te
+      # overschrijven ("binary `wasm-bindgen` already exists in destination").
+      - name: Install wasm-bindgen-cli
+        if: needs.changes.outputs.ci == 'true' && steps.wasm-bindgen-cache.outputs.cache-hit != 'true'
+        run: cargo install wasm-bindgen-cli@${{ steps.wasm-bindgen-version.outputs.version }} --locked
+
+      - name: Setup Node.js
+        if: needs.changes.outputs.ci == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
+        with:
+          node-version: '22'
+          registry-url: https://npm.pkg.github.com
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install workspace dependencies
+        if: needs.changes.outputs.ci == 'true'
+        run: npm ci
+
+      # De browserdownload (~150 MB) is de duurste stap; cache hem op de
+      # playwright-versie uit de lockfile. De apt-kant van `--with-deps` is niet
+      # cachebaar en draait hieronder sowieso.
+      - name: Cache Playwright browsers
+        if: needs.changes.outputs.ci == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          restore-keys: ${{ runner.os }}-playwright-
+
+      # `--with-deps` is niet optioneel: het trekt naast de Chromium-libs ook
+      # fontconfig en een lettertypepakket binnen. Zonder fontconfig sterft
+      # Chromium bij het eerste renderen op
+      # `SkFontMgr_FontConfigInterface.cpp:163 Not implemented`. Zelfde aanpak
+      # als docs/Dockerfile en de docs-a11y-job.
+      - name: Install Playwright Chromium
+        if: needs.changes.outputs.ci == 'true'
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      # Bouwt eerst het WASM-artefact (frontend/public/wasm/pkg) en start dan de
+      # vite-dev-server via playwright's webServer-config.
+      - name: Run mocked e2e suite
+        if: needs.changes.outputs.ci == 'true'
+        run: just test-e2e
+
+      - name: Upload Playwright report
+        if: failure() && needs.changes.outputs.ci == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: playwright-report
+          path: frontend/playwright-report
+          retention-days: 7
+
+      - name: Skip (no relevant changes)
+        if: needs.changes.outputs.ci != 'true'
+        run: echo "No relevant changes, skipping e2e suite"
+
   # Security audit
   audit:
     name: Security Audit

@@ -4,6 +4,12 @@ export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
   retries: process.env.CI ? 1 : 0,
+  // Eén worker in CI. De suite leunt op vaste wachttijden in plaats van op
+  // condities, en valt daardoor onder parallelle belasting om (full-roundtrip
+  // "YAML textarea round-trips without data loss" is de bekende). Als
+  // verplichte check moet hij deterministisch zijn; lokaal blijft de default
+  // parallellisme, want daar is een herstart goedkoop.
+  workers: process.env.CI ? 1 : undefined,
   use: {
     baseURL: 'http://localhost:7100',
     headless: true,
