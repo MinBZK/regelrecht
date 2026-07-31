@@ -62,7 +62,7 @@ stateDiagram-v2
     Processing --> Failed: reap_orphaned_jobs (no retries)
 ```
 
-Workers claim jobs atomically using PostgreSQL's `FOR UPDATE SKIP LOCKED` - multiple workers can safely process jobs concurrently without blocking each other.
+Workers claim jobs atomically using PostgreSQL's `FOR UPDATE SKIP LOCKED`, so multiple workers can safely process jobs concurrently without blocking each other.
 
 ### Automatic Retries
 
@@ -70,7 +70,7 @@ When a job fails and has attempts remaining (`attempts < max_attempts`), it retu
 
 ### Orphan Reaping
 
-Jobs stuck in `Processing` beyond the orphan timeout (default: 30 minutes) are reset to `Pending` or marked `Failed`, handling crashed workers gracefully.
+Jobs stuck in `Processing` beyond the orphan timeout (default: 30 minutes) are reset to `Pending` or marked `Failed`, which is how a crashed worker is handled.
 
 ## Law Status Tracking
 
@@ -122,7 +122,7 @@ order, from a **worker-owned cursor**:
   `.enrichment.yaml` on the `enrich/{provider}` branch. It only applies when
   recorded for the same YAML path and within bounds; otherwise it resets to 0
   (covers new law versions and legacy metadata).
-- Each successful chunk commits and pushes its own result — a failing later
+- Each successful chunk commits and pushes its own result, so a failing later
   chunk never loses earlier chunks.
 - While the law is not finished (`law_complete = false`), its status stays
   `enriching` and a continuation job is created **in the same database
@@ -176,7 +176,7 @@ just pipeline-test               # Unit tests (no Docker)
 just pipeline-integration-test   # Integration tests (Docker + testcontainers)
 ```
 
-Integration tests use `testcontainers` to spin up ephemeral PostgreSQL instances - no local database setup required.
+Integration tests use `testcontainers` to spin up ephemeral PostgreSQL instances; no local database setup is required.
 
 ## Further Reading
 

@@ -35,9 +35,9 @@ It installs the [mold](https://github.com/rui314/mold) linker (a hard
 requirement; the dev recipes won't link without it) plus `sccache`, and points
 every git worktree at a single shared cargo `target-dir` so a new worktree
 reuses the already-built dependency graph instead of cold-building from scratch.
-When the repo lives on a slow mount (9p/NFS/SMB, e.g. a WSL2 or Docker-Desktop
+When the repo is on a slow mount (9p/NFS/SMB, e.g. a WSL2 or Docker-Desktop
 dev container backed by a Windows drive), it relocates that target dir to fast
-local storage under `~/.cache/regelrecht/`, which is usually the single biggest
+local storage under `~/.cache/regelrecht/`, which is usually the biggest
 build-time win. `sccache` is installed but left off locally (it disables
 incremental compilation, which hurts the hot-reload loop); CI uses both.
 

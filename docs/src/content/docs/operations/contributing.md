@@ -3,7 +3,7 @@ title: "Contributing"
 description: "The branching model, quality checks, and workflow for contributing to RegelRecht."
 ---
 
-RegelRecht is open source and welcomes contributions. This page covers the workflow.
+RegelRecht is open source and welcomes contributions. The workflow is below.
 
 ## Branching model
 

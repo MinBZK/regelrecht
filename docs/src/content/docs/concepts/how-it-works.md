@@ -9,7 +9,7 @@ RegelRecht turns Dutch legislation into structured files that a computer can exe
 
 When Parliament passes a law, government agencies translate it into software independently. The same law gets coded dozens of times by dozens of organizations. Nobody can check whether any of those implementations match what Parliament intended.
 
-The result: errors, opacity, duplication, and no way to test whether software follows the law correctly.
+That produces errors, opacity and duplication, and no way to test whether software follows the law correctly.
 
 ## The approach
 
@@ -80,7 +80,7 @@ To answer "does person X qualify for healthcare allowance?", the engine:
 
 Same inputs always produce the same result. The engine runs as native code on servers and as WebAssembly in browsers, with identical behavior.
 
-The engine has zero built-in domain knowledge. No hardcoded holidays, no built-in tax rates, no special cases. Everything comes from the law files. This makes the engine simple, but it means every law must be self-contained (or reference other laws for the values it needs).
+The engine has zero built-in domain knowledge. No hardcoded holidays, no built-in tax rates. Everything comes from the law files. This makes the engine simple, but it means every law must be self-contained (or reference other laws for the values it needs).
 
 ## Core concepts
 
@@ -120,11 +120,11 @@ Sometimes a specific law overrides a general rule. The Aliens Act (*Vreemdelinge
 
 ### Untranslatables
 
-The engine's operation set is deliberately small. When a legal construct cannot yet be faithfully expressed, rounding rules, complex table lookups, discretionary assessments, it is flagged as an **untranslatable** rather than approximated. "Untranslatable" means "not yet", not "never": each flag is a named gap in the engine and a tracked signal for what operation to build next. The engine can error, warn, or propagate taint through downstream outputs, depending on the mode. This prevents silent divergence between law text and machine-readable interpretation. See [Untranslatables](./untranslatables).
+The engine's operation set is small by design. When a legal construct cannot yet be faithfully expressed, rounding rules, complex table lookups, discretionary assessments, it is flagged as an **untranslatable** rather than approximated. "Untranslatable" means "not yet", not "never": each flag is a named gap in the engine and a tracked signal for what operation to build next. The engine can error, warn, or propagate taint through downstream outputs, depending on the mode. This prevents silent divergence between law text and machine-readable interpretation. See [Untranslatables](./untranslatables).
 
 ### Execution provenance
 
-Every execution produces a receipt: a sealed envelope containing the engine version, schema version, all loaded regulations (with content hashes), input parameters, outputs, and trace. This makes every decision reproducible and auditable, satisfying legal requirements from the Awb, AERIUS rulings, and EU AI Act. For cross-organization decisions, the receipt also captures the provenance of accepted values from other authorities. See [Execution Provenance](./execution-provenance).
+Every execution produces a receipt: a sealed envelope containing the engine version, schema version, all loaded regulations (with content hashes), input parameters, outputs, and trace. This makes every decision reproducible and auditable, as required by the Awb, the AERIUS rulings, and the EU AI Act. For cross-organization decisions, the receipt also captures the provenance of accepted values from other authorities. See [Execution Provenance](./execution-provenance).
 
 ### Organizational boundaries and federated corpus
 

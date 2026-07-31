@@ -83,7 +83,7 @@ The app is split into two top-level shells, `LibraryApp.vue` (the law browser) a
 | `AnnotatedText.vue` / `NoteCreator.vue` | Stand-off notes (RFC-018) |
 | `TrajectMenu.vue` / `TrajectMembersDialog.vue` | Traject collaboration |
 
-Shared logic lives in composables (`useLaw.js` for loading and article selection, plus others for settings and corpus URLs).
+Composables hold the shared logic (`useLaw.js` for loading and article selection, plus others for settings and corpus URLs).
 
 ## Data Loading
 
