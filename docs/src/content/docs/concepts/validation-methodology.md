@@ -7,9 +7,9 @@ description: "The full research background for RegelRecht's execution-first vali
 
 Turning law into working software is hard. For fifteen years, teams have worked in silos on methods, frameworks, and languages for formalizing legal rules. None of them scale.
 
-This document traces the thread through those fifteen years, identifies the shift that RegelRecht makes, and proposes a validation method that fits the new way of working.
+This document traces those fifteen years and proposes a validation method that fits the way RegelRecht works.
 
-## Existing methods: an analysis-first tradition
+## Existing methods
 
 ### Wetsanalyse
 
@@ -31,13 +31,13 @@ flowchart TD
     G --> H[Specification for IT system]
 ```
 
-Three characteristics define it:
+It has three characteristics:
 
 1. **People do everything**: annotation, definition, modeling, and validation are all human work
 2. **Validation checks your own work**: the multidisciplinary team reviews models it built itself
 3. **Traceability is built in**: every element in the knowledge model points back to the source text in the law
 
-The output is a knowledge model consisting of a data model (FBM/ER), rule model (DMN decision tables), and process model (BPMN). This model serves as the basis for building an IT system.
+The output is a knowledge model consisting of a data model (FBM/ER), rule model (DMN decision tables), and process model (BPMN). This model is the basis for building an IT system.
 
 ### Common ground across existing methods
 
@@ -52,29 +52,29 @@ Despite differences in terminology, existing methods follow the same pattern:
 
 All these methods are *analysis-first*: they start from the law and work toward a model or rule set. The translation is done entirely by people.
 
-## RegelRecht: an execution ecosystem
+## The RegelRecht ecosystem
 
-RegelRecht is not just a method or a DSL. It is a broad execution ecosystem for making laws machine-executable. Three principles set it apart from the analysis-first tradition.
+RegelRecht is a broad execution ecosystem for making laws machine-executable, wider in scope than a method or a DSL. Three principles set it apart from the analysis-first tradition.
 
-### Principle 1: Execution-first
+### Execution-first
 
 Where existing methods share an analysis-first approach, RegelRecht aims to create a coherent system of machine-executable legislation. Laws interact across boundaries and citizens are not burdened with complexity.
 
-The rule specification gets *single source of truth* status for how the law works. It is not an analysis layer that leads to a translation, the output of the analysis **is** the law in executable form.
+The rule specification gets *single source of truth* status for how the law works. It is not an analysis layer that leads to a translation. The output of the analysis **is** the law in executable form.
 
-### Principle 2: Transparent and simple
+### Transparent and simple
 
-The execution-first starting point requires transparency: not just open source, but understandable to experts from different disciplines when they need to reach a joint decision on how laws work.
+The execution-first starting point requires transparency: open source, and understandable to experts from different disciplines when they need to reach a joint decision on how laws work.
 
 The core of the rule specification schema consists of simple logical operators that people can verify. No vendor lock-in, no convoluted stack of schemas.
 
-### Principle 3: Scalable analysis
+### Scalable analysis
 
-Existing methods laid the groundwork for dealing with the legal reality of machine-executability. That is an inherently interdisciplinary and intensive process.
+Existing methods laid the groundwork for dealing with the legal reality of machine-executability. That process is interdisciplinary and intensive.
 
-Within the RegelRecht ecosystem, generative AI serves as a foundation: AI generates candidate rule specifications, and the analysis (or validation) runs against those candidates. This creates potential for faster and broader coverage.
+Within the RegelRecht ecosystem, generative AI is the starting point: AI generates candidate rule specifications, and the analysis (or validation) runs against those candidates. This creates potential for faster and broader coverage.
 
-## The shift: from building to challenging
+## The expert's changing role
 
 AI changes the role of the legal expert:
 
@@ -102,7 +102,7 @@ flowchart LR
 | Interpretation choices | Explicitly documented | Implicit in AI output |
 | Scale | Limited by human capacity | Limited by validation capacity |
 
-The bottleneck moves from *creation* to *validation*. That makes validation the critical link.
+The bottleneck moves from *creation* to *validation*.
 
 ### Risks of the shift
 
@@ -113,7 +113,7 @@ The shift introduces specific risks that do not exist in analysis-first:
 - **Blind spots**: the AI does not know what it does not know; neither does a reviewer who is not actively searching
 - **Implicit interpretation choices**: where the law is ambiguous, the AI makes a choice without documenting it
 
-## Problem identification: the missing link
+## The missing link
 
 The current RegelRecht ecosystem already has an automated pipeline:
 
@@ -133,13 +133,13 @@ The automated steps cover:
 - **Behavioral correctness**: BDD tests based on MvT examples
 - **Traceability**: reverse validation checks whether every element points to the legal text
 
-What is missing: a **structured process for legal experts to systematically assess the AI proposals**. This differs from the Wetsanalyse validation step (step 4), because:
+A **structured process for legal experts to systematically assess the AI proposals** is missing. This differs from the Wetsanalyse validation step (step 4), because:
 
-1. The expert did not build the proposal, the mental model is absent
+1. The expert did not build the proposal; the mental model is absent
 2. The AI does not document its interpretation choices; they must be uncovered
-3. The scale demands an efficient process, not every law can take weeks
+3. The scale demands an efficient process; not every law can take weeks
 
-## Proposal: validation method in three phases
+## Validation method in four phases
 
 ```mermaid
 flowchart TD
@@ -185,7 +185,7 @@ flowchart TD
 
 ### Phase A: Generate (automated, existing)
 
-This is the current pipeline. The AI generates a candidate rule specification and automated checks filter structural errors and untraceable elements. The output is not a finished product but a *proposal with documentation*:
+This is the current pipeline. The AI generates a candidate rule specification and automated checks filter structural errors and untraceable elements. The output is a *proposal with documentation*:
 
 - **Traceability report**: which elements are grounded in the legal text, which are assumptions
 - **BDD results**: which MvT scenarios pass and fail
@@ -195,15 +195,15 @@ This is the current pipeline. The AI generates a candidate rule specification an
 
 The expert reviews the proposal *before* scenarios are run. This is the phase missing from the current pipeline and it draws on insights from Wetsanalyse:
 
-**B1. Completeness check**: Are all articles covered? Did the AI skip articles that contain executable logic? This is analogous to the scope step (step 1) of Wetsanalyse, but after the fact: not "what will we analyze" but "has everything been analyzed."
+**B1. Completeness check**: Are all articles covered? Did the AI skip articles that contain executable logic? This is analogous to the scope step (step 1) of Wetsanalyse, asked after the fact: has everything been analyzed?
 
 **B2. Assumption assessment**: Reverse validation has flagged assumptions. The expert assesses each one: is this a defensible choice, or does it need to change? This addresses the risk of implicit interpretation choices.
 
-**B3. Interpretation inventory**: Where does the law allow multiple readings? Which reading did the AI pick? Is it defensible? This is analogous to the meaning step (step 3) of Wetsanalyse, but reactive: not "what does this mean" but "is the AI's reading correct." This step counters automation bias.
+**B3. Interpretation inventory**: Where does the law allow multiple readings? Which reading did the AI pick? Is it defensible? This is analogous to the meaning step (step 3) of Wetsanalyse, asked in reverse: is the AI's reading correct? This step counters automation bias.
 
 ### Phase C: Scenario validation (workshop)
 
-The expert validates the *behavior* of the specification, not the YAML itself. This is the heart of the method:
+The expert validates the *behavior* of the specification, not the YAML itself.
 
 **C1. Walk through MvT scenarios**: The engine runs scenarios from parliamentary documents. The expert checks whether outcomes match legislative intent.
 
@@ -232,9 +232,9 @@ The expert reviews *reports* and *outcomes*, not the specification itself. The a
 - Scenario outcomes with references to legal articles
 - A list of assumptions and interpretation choices
 
-### Validation means challenging, not building
+### The expert challenges the proposal
 
-The difference with Wetsanalyse validation matters: the expert did not build the proposal and must actively search for errors. The method structures that search by explicitly asking for adversarial scenarios.
+The difference with Wetsanalyse validation matters: the expert did not build the proposal and must actively search for errors. The method structures that search by asking for adversarial scenarios.
 
 ### MvT examples are ground truth
 

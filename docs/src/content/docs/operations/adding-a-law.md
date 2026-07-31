@@ -3,7 +3,7 @@ title: "Adding a Law"
 description: "A step-by-step walkthrough from downloading a law's text to running tests against it."
 ---
 
-This guide walks through adding a new law to the corpus, from downloading the legal text to running tests against it.
+Adding a new law to the corpus takes six steps, from downloading the legal text to running tests against it.
 
 ## Step 1: Find the law
 
@@ -50,7 +50,7 @@ Fix any schema errors before proceeding.
 
 ## Step 5: Write BDD test scenarios
 
-Derive test scenarios from the Memorie van Toelichting (MvT) - the explanatory memorandum that accompanies the law. The MvT contains worked examples of how the legislature intended the law to be applied.
+Derive test scenarios from the Memorie van Toelichting (MvT), the explanatory memorandum that accompanies the law. The MvT contains worked examples of how the legislature intended the law to be applied.
 
 Create a Gherkin feature file in `features/`. Use the step phrasings the cucumber-rs suite actually defines (see `packages/engine/tests/bdd/steps/` and the existing `features/*.feature` files for the full vocabulary). A minimal scenario looks like:
 

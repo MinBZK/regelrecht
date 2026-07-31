@@ -5,7 +5,7 @@ description: "Short overview of RegelRecht's execution-first validation method a
 
 RegelRecht uses an **execution-first** approach to validate machine-readable law interpretations. This page is a short overview; for the research background and the full argument, see [RegelRecht Validation: From Analysis-First to Execution-First](./validation-methodology).
 
-## From Analysis-First to Execution-First
+## Execution-First
 
 Traditional approaches analyze law text extensively before writing any code. RegelRecht inverts this:
 
@@ -21,11 +21,11 @@ flowchart LR
     F -->|Yes| G[Published]
 ```
 
-### Why Execution-First?
+### Reasons
 
-Errors surface immediately through execution rather than after lengthy analysis. Test cases from the Memorie van Toelichting (MvT) provide ground truth. Each cycle improves the interpretation based on actual results. And after generation, every element is checked against the source text to catch hallucinated logic.
+Execution surfaces errors immediately, without waiting for a lengthy analysis to finish. Test cases from the Memorie van Toelichting (MvT) provide ground truth, so each cycle improves the interpretation on the basis of actual results. After generation, every element is checked against the source text to catch hallucinated logic.
 
-## The Loop: Generate, Validate, Reverse-Check
+## The Loop
 
 ### 1. Generate
 
@@ -49,4 +49,4 @@ The MvT is the explanatory memorandum that accompanies Dutch legislation. It con
 - Concrete examples of how the law should be applied
 - Edge cases the legislature considered
 
-These examples serve as the primary test cases for machine-readable interpretations.
+These examples are the primary test cases for machine-readable interpretations.

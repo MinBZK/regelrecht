@@ -11,7 +11,7 @@ In RegelRecht, this delegation is modeled through two constructs: the higher law
 
 A Dutch ministerial regulation typically opens with a preamble: *"Gelet op artikel 4 van de Wet op de zorgtoeslag"* ("In consideration of article 4 of the Healthcare Allowance Act"). This is the lower regulation registering itself as the authority that fills in a delegated value.
 
-RegelRecht mirrors this exactly. The higher law does not need to know which lower regulation exists. The lower regulation registers itself.
+RegelRecht mirrors this. The higher law does not need to know which lower regulation exists. The lower regulation registers itself.
 
 ## How it works
 

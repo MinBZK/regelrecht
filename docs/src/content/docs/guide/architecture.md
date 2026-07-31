@@ -1,9 +1,9 @@
 ---
 title: "System Overview"
-description: "A high-level tour of the two pillars, the Corpus Juris and the Execution Engine, and how the pieces fit."
+description: "A tour of the two parts, the Corpus Juris and the Execution Engine, and how the pieces fit."
 ---
 
-RegelRecht is built on two pillars: the **Corpus Juris** (a git-versioned body of all Dutch law) and the **Execution Engine** (a runtime that evaluates laws deterministically).
+RegelRecht has two parts: the **Corpus Juris** (a git-versioned body of all Dutch law) and the **Execution Engine** (a runtime that evaluates laws deterministically).
 
 ## System Context
 
@@ -68,7 +68,7 @@ The editor, TUI, lawmaking visualization, Grafana, and the engine's WASM/CLI bui
 
 ## Design Principles
 
-The YAML format stays close to the original legal text structure. Same inputs always produce the same outputs. Every computed value traces back to a specific article and paragraph. Text interpretation is separate from execution. And all laws, tooling, and decisions are publicly auditable.
+The YAML format stays close to the original legal text structure. Same inputs always produce the same outputs. Every computed value traces back to a specific article and paragraph. Text interpretation is separate from execution. All laws, tooling, and decisions are publicly auditable.
 
 ## Further Reading
 
