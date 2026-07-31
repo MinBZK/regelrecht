@@ -68,11 +68,11 @@ When a decision depends on values from other organizations (via [Multi-Org Execu
 }
 ```
 
-When reproducing the decision, the engine uses these **sealed accepted values** rather than re-calling the other organization. The other organization may now be running a different engine version. A *beschikking* stands once issued, the accepted value at the time is a legal fact.
+When reproducing the decision, the engine uses these **sealed accepted values** rather than re-calling the other organization. The other organization may now be running a different engine version. A *beschikking* stands once issued; the accepted value at the time is a legal fact.
 
 ## What this enables
 
-A reproducible decision with a sealed receipt is a different animal from an opaque one. A citizen requests their trace and sees which rules applied. An auditor re-runs the computation and gets the same number. A court reconstructs the reasoning step by step. And when a bug surfaces, every affected decision can be found by querying receipts for the engine version and regulation hash.
+A citizen can request their trace and see which rules applied. An auditor re-runs the computation and gets the same number. A court reconstructs the reasoning step by step. When a bug surfaces, every affected decision can be found by querying receipts for the engine version and regulation hash.
 
 ## Further reading
 
