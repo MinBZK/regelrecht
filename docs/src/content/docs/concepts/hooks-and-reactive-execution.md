@@ -37,7 +37,7 @@ Hooks can fire at two moments during article execution:
 - **`pre_actions`** - after open term resolution, before the article's own logic runs. Used for prerequisites like the Awb reasoning requirement (3:46): the decision must include a motivation.
 - **`post_actions`** - after the article's logic completes. Used for consequences like the objection period (6:7) and notification deadlines (6:8).
 
-## Triggering hooks: the `produces` annotation
+## The `produces` annotation
 
 For hooks to fire, the target article must declare what kind of legal product it produces:
 
@@ -51,7 +51,7 @@ execution:
 
 The engine builds a hook index at load time. When it encounters an article with a `produces` annotation, it checks the index for matching hooks and fires them.
 
-## A real chain: objection deadline calculation
+## The objection-deadline chain
 
 Awb hooks compose into a chain:
 
@@ -133,7 +133,7 @@ The Awb does not know it is being overridden. The Vreemdelingenwet unilaterally 
 
 ## Administrative procedure stages
 
-A *beschikking* is not an instant event. It moves through stages over time: application, review, decision, notification, objection. Hooks bind to specific stages via `applies_to.stage`.
+A *beschikking* takes shape over time, moving through stages: application, review, decision, notification, objection. Hooks bind to specific stages via `applies_to.stage`.
 
 The Awb defines a procedure lifecycle:
 
