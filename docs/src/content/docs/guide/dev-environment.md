@@ -135,6 +135,25 @@ PROMETHEUS_PORT=9090
 RUST_LOG=info
 ```
 
+### Logging
+
+Five binaries read these variables: editor-api, admin, and the three pipeline
+binaries (harvest worker, enrich worker, pipeline API). The harvester CLI builds
+its own subscriber and reads only `RUST_LOG`.
+
+| Variable | Values | Default | Effect |
+|---|---|---|---|
+| `RUST_LOG` | `tracing` filter | `info` (harvester CLI: `warn`) | Which events are emitted |
+| `LOG_FORMAT` | `text` (`plain`), `json` | `text` | Output format |
+| `LOG_SPAN_EVENTS` | `none`, `close`, `new`, `active`, `full` | per service: `close` for editor-api, `none` elsewhere | Per-span timing lines |
+
+`LOG_FORMAT=json` writes one JSON object per event. The event's own fields are
+flattened to the top level; the enclosing spans are added as nested `span` and
+`spans` keys, so a log backend can search per field. Set it per deployment in
+ZAD; locally the text lines read better, so leave the variable unset. An
+unrecognised value falls back to text
+and warns on stderr — a typo never silences logging.
+
 ## Pre-commit Hooks
 
 Install pre-commit hooks:
