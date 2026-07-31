@@ -52,12 +52,12 @@ the pipeline.
 
 ## Step 2.5: Schema Version Check
 
-Before generating, verify the target file's `$schema` URL points to v0.5.0. If it points
-to an older version (e.g., v0.3.2 or v0.4.0), update it to:
+Before generating, verify the target file's `$schema` URL points to v0.5.6. If it points
+to an older version (e.g., v0.3.2, v0.4.0, or v0.5.0), update it to:
 ```
-https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.0/schema.json
+https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.6/schema.json
 ```
-This prevents generating v0.5.0 logic against an old schema declaration.
+This prevents generating v0.5.6 logic against an old schema declaration.
 
 ## Step 3: Generate Machine-Readable Logic
 
