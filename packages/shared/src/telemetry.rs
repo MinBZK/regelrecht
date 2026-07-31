@@ -94,7 +94,10 @@ fn resolve_log_format() -> LogFormat {
     match std::env::var("LOG_FORMAT") {
         Ok(raw) => parse_log_format(Some(&raw)),
         // Set but not valid UTF-8: it cannot name a format, so fall back to text.
-        Err(VarError::NotUnicode(_)) => LogFormat::Text,
+        Err(VarError::NotUnicode(_)) => {
+            eprintln!("LOG_FORMAT is not valid UTF-8; falling back to text");
+            LogFormat::Text
+        }
         Err(VarError::NotPresent) => parse_log_format(None),
     }
 }
