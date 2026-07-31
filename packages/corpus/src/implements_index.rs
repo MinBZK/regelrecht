@@ -17,11 +17,14 @@
 //!   re-fetch nearly the whole corpus on every snapshot TTL.
 //! - **`.yml` counts alongside `.yaml`**, matching the tarball scan in
 //!   [`crate::github`].
-//! - **Unparseable laws fail generation.** `collect_law_implements`
-//!   degrades a parse failure to "implements nothing"; committing that to
-//!   an index would make the failure permanent and invisible. The scan
-//!   therefore uses the fallible parse and reports failures; the generator
-//!   exits non-zero on any.
+//! - **Unparseable laws are omitted, never indexed as empty.**
+//!   `collect_law_implements` degrades a parse failure to "implements
+//!   nothing"; committing that to an index would make the failure
+//!   permanent and invisible. The scan therefore uses the fallible parse
+//!   and reports failures separately, and the generator leaves those paths
+//!   out of the index — a missing key means "fetch and parse this law",
+//!   which is exactly the behaviour without an index. See
+//!   [`generator`] for how a *systematic* parse failure is caught.
 //! - **Branch/checkout freshness is verifiable.** The index records the
 //!   git tree sha of the scanned subtree (`tree_sha`). A consumer compares
 //!   it against the same subtree in its own checkout (`git rev-parse
@@ -45,6 +48,8 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{CorpusError, Result};
+
+pub mod generator;
 
 /// Filename of the index at the corpus repository root.
 pub const IMPLEMENTS_INDEX_FILENAME: &str = "implements-index.json";
@@ -97,6 +102,29 @@ impl ImplementsIndex {
             )));
         }
         Ok(index)
+    }
+
+    /// Whether this index actually describes a source rooted at
+    /// `sub_path`. The scan only covered [`Self::root`], so a source rooted
+    /// elsewhere (a differently-rooted registry entry, or an index
+    /// generated with a narrower `--root`) is simply not described here.
+    ///
+    /// Without this check [`Self::to_source_relative`] would return an
+    /// empty list for such a source, which the consumer cannot distinguish
+    /// from "this corpus contains no laws" — it would read as a complete,
+    /// authoritative, empty answer.
+    pub fn covers(&self, sub_path: Option<&str>) -> bool {
+        let root = self.root.trim_matches('/');
+        match sub_path {
+            Some(sub) if !sub.trim_matches('/').is_empty() => {
+                let sub = sub.trim_matches('/');
+                root.is_empty() || sub == root || sub.starts_with(&format!("{root}/"))
+            }
+            // A source at the repo root is covered only by a repo-root
+            // scan; a `regulation`-rooted index would silently omit
+            // everything outside it.
+            _ => root.is_empty(),
+        }
     }
 
     /// Project the repo-relative entries onto a source rooted at
@@ -354,6 +382,35 @@ articles:
         assert!(err.contains("version"), "unexpected error: {err}");
 
         assert!(ImplementsIndex::parse("not json").is_err());
+    }
+
+    #[test]
+    fn covers_only_sources_inside_the_scanned_root() {
+        let index = ImplementsIndex {
+            version: IMPLEMENTS_INDEX_VERSION,
+            root: "regulation".to_string(),
+            tree_sha: "abc".to_string(),
+            files: BTreeMap::new(),
+        };
+
+        assert!(index.covers(Some("regulation")));
+        assert!(index.covers(Some("regulation/nl")));
+        assert!(index.covers(Some("regulation/nl/")));
+
+        // A sibling that merely shares a prefix is NOT inside the root.
+        assert!(!index.covers(Some("regulations")));
+        // A source rooted above the scan: the index says nothing about
+        // everything outside `regulation`, so it must not be served.
+        assert!(!index.covers(None));
+        assert!(!index.covers(Some("")));
+
+        // A repo-root scan covers every source.
+        let whole = ImplementsIndex {
+            root: String::new(),
+            ..index
+        };
+        assert!(whole.covers(None));
+        assert!(whole.covers(Some("regulation/nl")));
     }
 
     #[test]

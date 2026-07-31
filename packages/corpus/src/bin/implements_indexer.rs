@@ -12,29 +12,26 @@
 //! implements-indexer --check <checkout>
 //! ```
 //!
-//! The generator refuses to run on a dirty scan subtree (the recorded
-//! tree sha would not describe what was scanned) and refuses to emit an
-//! index when any YAML file under the subtree fails to parse — a parse
-//! failure recorded as "implements nothing" in a committed artefact would
-//! be permanent and invisible.
+//! The generator refuses to run on a dirty scan subtree (the recorded tree
+//! sha would not describe what was scanned). Individual unparseable laws
+//! are reported and left out of the index; a systematic parse failure is
+//! fatal. See [`regelrecht_corpus::implements_index::generator`].
 //!
 //! Exit codes: 0 = success / in sync; 1 = `--check` drift or missing
-//! index; 2 = any other failure (parse errors, dirty tree, git errors).
+//! index; 2 = any other failure (dirty tree, git errors, systematic parse
+//! breakage).
 
-use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+use std::path::PathBuf;
+use std::process::ExitCode;
 
-use regelrecht_corpus::implements_index::{
-    scan_tree, ImplementsIndex, IMPLEMENTS_INDEX_FILENAME, IMPLEMENTS_INDEX_VERSION,
+use regelrecht_corpus::implements_index::generator::{
+    run, Args, Drift, Outcome, Skipped, DEFAULT_SCAN_ROOT,
 };
+use regelrecht_corpus::implements_index::IMPLEMENTS_INDEX_FILENAME;
 
-const DEFAULT_SCAN_ROOT: &str = "regulation";
-
-struct Args {
-    repo_root: PathBuf,
-    scan_root: String,
-    check: bool,
-}
+/// Cap on how many failing paths are listed individually, so a noisy
+/// corpus does not bury the actual result in CI output.
+const MAX_LISTED_FAILURES: usize = 20;
 
 fn parse_args() -> Result<Args, String> {
     let mut repo_root = None;
@@ -77,114 +74,23 @@ fn parse_args() -> Result<Args, String> {
     })
 }
 
-/// Run a git command in `repo_root`, returning trimmed stdout.
-fn git(repo_root: &Path, args: &[&str]) -> Result<String, String> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(repo_root)
-        .args(args)
-        .output()
-        .map_err(|e| format!("failed to run git: {e}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "git {} failed: {}",
-            args.first().unwrap_or(&""),
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
+/// Report the laws that were left out. They fall through to a per-law
+/// fetch at read time, so this is a corpus-quality signal, not an error.
+fn report_skipped(skipped: &Skipped) {
+    if skipped.is_empty() {
+        return;
     }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-fn run(args: &Args) -> Result<ExitCode, String> {
-    // The tree sha is only honest about what was scanned when the subtree
-    // has no uncommitted changes. Refuse a dirty subtree — no bypass.
-    let dirty = git(
-        &args.repo_root,
-        &["status", "--porcelain", "--", &args.scan_root],
-    )?;
-    if !dirty.is_empty() {
-        return Err(format!(
-            "scan subtree '{}' has uncommitted changes; commit or stash them first \
-             (the recorded tree sha must describe exactly what was scanned):\n{dirty}",
-            args.scan_root
-        ));
-    }
-
-    let tree_sha = git(
-        &args.repo_root,
-        &["rev-parse", &format!("HEAD:{}", args.scan_root)],
-    )
-    .map_err(|e| format!("cannot resolve tree sha of '{}': {e}", args.scan_root))?;
-
-    let outcome =
-        scan_tree(&args.repo_root, &args.scan_root).map_err(|e| format!("scan failed: {e}"))?;
-
-    if !outcome.failures.is_empty() {
-        eprintln!(
-            "error: {} file(s) failed to parse — refusing to emit an index that would \
-             record them as \"implements nothing\":",
-            outcome.failures.len()
-        );
-        for failure in &outcome.failures {
-            eprintln!("  {}: {}", failure.path, failure.error);
-        }
-        return Ok(ExitCode::from(2));
-    }
-
-    let declaring = outcome.files.values().filter(|v| !v.is_empty()).count();
-    let index = ImplementsIndex {
-        version: IMPLEMENTS_INDEX_VERSION,
-        root: args.scan_root.clone(),
-        tree_sha,
-        files: outcome.files,
-    };
-    let json = index.to_json();
-    let index_path = args.repo_root.join(IMPLEMENTS_INDEX_FILENAME);
-
-    if args.check {
-        let committed = match std::fs::read_to_string(&index_path) {
-            Ok(raw) => raw,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                eprintln!(
-                    "check failed: {} does not exist; run implements-indexer to generate it",
-                    index_path.display()
-                );
-                return Ok(ExitCode::FAILURE);
-            }
-            Err(e) => return Err(format!("cannot read {}: {e}", index_path.display())),
-        };
-        let committed = ImplementsIndex::parse(&committed)
-            .map_err(|e| format!("committed index is unreadable: {e}"))?;
-        if committed != index {
-            eprintln!(
-                "check failed: {} is out of date with the checkout \
-                 (committed tree {}, checkout tree {}); regenerate it",
-                index_path.display(),
-                committed.tree_sha,
-                index.tree_sha
-            );
-            return Ok(ExitCode::FAILURE);
-        }
-        println!(
-            "index in sync: {} files ({} declaring implements), tree {}",
-            index.files.len(),
-            declaring,
-            index.tree_sha
-        );
-        return Ok(ExitCode::SUCCESS);
-    }
-
-    std::fs::write(&index_path, &json)
-        .map_err(|e| format!("cannot write {}: {e}", index_path.display()))?;
-    println!(
-        "wrote {}: {} files ({} declaring implements), {} bytes, tree {}",
-        index_path.display(),
-        index.files.len(),
-        declaring,
-        json.len(),
-        index.tree_sha
+    eprintln!(
+        "warning: {} file(s) could not be parsed and were left out of the index \
+         (readers fetch and parse those laws individually):",
+        skipped.len()
     );
-    Ok(ExitCode::SUCCESS)
+    for failure in skipped.iter().take(MAX_LISTED_FAILURES) {
+        eprintln!("  {}: {}", failure.path, failure.error);
+    }
+    if skipped.len() > MAX_LISTED_FAILURES {
+        eprintln!("  ... and {} more", skipped.len() - MAX_LISTED_FAILURES);
+    }
 }
 
 fn main() -> ExitCode {
@@ -195,8 +101,55 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+
     match run(&args) {
-        Ok(code) => code,
+        Ok(Outcome::Wrote {
+            path,
+            files,
+            declaring,
+            bytes,
+            tree_sha,
+            skipped,
+        }) => {
+            report_skipped(&skipped);
+            println!(
+                "wrote {}: {files} files ({declaring} declaring implements), {bytes} bytes, \
+                 tree {tree_sha}",
+                path.display()
+            );
+            ExitCode::SUCCESS
+        }
+        Ok(Outcome::InSync {
+            files,
+            declaring,
+            tree_sha,
+            skipped,
+        }) => {
+            report_skipped(&skipped);
+            println!(
+                "index in sync: {files} files ({declaring} declaring implements), tree {tree_sha}"
+            );
+            ExitCode::SUCCESS
+        }
+        Ok(Outcome::Drifted(Drift::Missing { path })) => {
+            eprintln!(
+                "check failed: {} does not exist; run implements-indexer to generate it",
+                path.display()
+            );
+            ExitCode::FAILURE
+        }
+        Ok(Outcome::Drifted(Drift::OutOfDate {
+            path,
+            committed_tree,
+            checkout_tree,
+        })) => {
+            eprintln!(
+                "check failed: {} is out of date with the checkout \
+                 (committed tree {committed_tree}, checkout tree {checkout_tree}); regenerate it",
+                path.display()
+            );
+            ExitCode::FAILURE
+        }
         Err(msg) => {
             eprintln!("error: {msg}");
             ExitCode::from(2)

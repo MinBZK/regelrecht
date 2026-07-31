@@ -789,9 +789,10 @@ impl RepoBackend for GitBackend {
     /// Fallback matrix:
     /// - fresh index → serve it (an **empty but fresh** index is
     ///   authoritative: genuinely no YAML files, no fallback);
-    /// - missing / unparseable / stale index → full checkout scan, with a
-    ///   warning — **unless** the checkout is sparse, in which case the
-    ///   scan would be silently incomplete and the call errors instead.
+    /// - missing / unparseable / stale index, or one rooted outside this
+    ///   source → full checkout scan, with a warning — **unless** the
+    ///   checkout is sparse, in which case the scan would be silently
+    ///   incomplete and the call errors instead.
     ///
     /// Known limit: the tree sha describes `HEAD`, not the working tree,
     /// so uncommitted local writes are invisible to the freshness check.
@@ -815,9 +816,27 @@ impl RepoBackend for GitBackend {
 
         match raw {
             Some(raw) => match ImplementsIndex::parse(&raw) {
+                // An index rooted elsewhere does not describe this source.
+                // Projecting anyway yields an empty list, which the caller
+                // reads as an authoritative "no laws" — worse than no index.
+                Ok(index) if !index.covers(self.repo_subpath.as_deref()) => {
+                    tracing::warn!(
+                        index_root = %index.root,
+                        source_root = self.repo_subpath.as_deref().unwrap_or("<repo root>"),
+                        "implements index does not cover this source's root; \
+                         falling back to a scan"
+                    );
+                }
                 Ok(index) => match self.client.subtree_sha(&index.root).await {
                     Ok(checkout_sha) if checkout_sha == index.tree_sha => {
-                        return Ok(index.to_source_relative(self.repo_subpath.as_deref()));
+                        let entries = index.to_source_relative(self.repo_subpath.as_deref());
+                        tracing::info!(
+                            entries = entries.len(),
+                            root = %index.root,
+                            tree = %index.tree_sha,
+                            "served implements map from the precomputed index"
+                        );
+                        return Ok(entries);
                     }
                     Ok(checkout_sha) => {
                         tracing::warn!(
@@ -1504,10 +1523,16 @@ mod tests {
         use tokio::process::Command;
 
         tokio::fs::create_dir_all(path).await.unwrap();
+        // Empty template dir: an ambient global `init.templateDir` would
+        // otherwise install this repo's hooks into the fixture.
+        let template = path.join(".empty-template");
+        tokio::fs::create_dir_all(&template).await.unwrap();
+        let template_arg = format!("--template={}", template.display());
         for args in [
-            vec!["init", "--initial-branch=development"],
+            vec!["init", "--initial-branch=development", &template_arg],
             vec!["config", "user.name", "test"],
             vec!["config", "user.email", "test@test.nl"],
+            vec!["config", "commit.gpgsign", "false"],
         ] {
             Command::new("git")
                 .args(&args)
@@ -1516,6 +1541,7 @@ mod tests {
                 .await
                 .unwrap();
         }
+        tokio::fs::remove_dir_all(&template).await.unwrap();
 
         let write = |rel: &str, content: &str| {
             let abs = path.join(rel);
@@ -1548,7 +1574,10 @@ mod tests {
 
     async fn git_commit_all(path: &Path, message: &str) {
         use tokio::process::Command;
-        for args in [vec!["add", "-A"], vec!["commit", "-m", message]] {
+        for args in [
+            vec!["add", "-A"],
+            vec!["commit", "--no-verify", "-m", message],
+        ] {
             let out = Command::new("git")
                 .args(&args)
                 .current_dir(path)
@@ -1686,6 +1715,40 @@ mod tests {
                 "wet/wet_a/2025-01-01.yaml",
                 "wet/wet_kort/2025-01-01.yml",
             ]
+        );
+    }
+
+    /// An index generated for a narrower subtree than this source's root
+    /// describes none of this source. Serving it would project to an empty
+    /// list, which the caller cannot tell apart from "this corpus has no
+    /// laws" — so the backend must ignore it and scan.
+    #[tokio::test]
+    async fn git_read_all_implements_ignores_an_index_that_does_not_cover_the_source() {
+        let dir = TempDir::new().unwrap();
+        setup_corpus_checkout(dir.path()).await;
+
+        // Source root is `regulation/nl`; index root is `regulation/be`.
+        let outcome = crate::implements_index::scan_tree(dir.path(), "regulation/be").unwrap();
+        let index = crate::implements_index::ImplementsIndex {
+            version: crate::implements_index::IMPLEMENTS_INDEX_VERSION,
+            root: "regulation/be".to_string(),
+            tree_sha: "irrelevant".to_string(),
+            files: outcome.files,
+        };
+        std::fs::write(
+            dir.path()
+                .join(crate::implements_index::IMPLEMENTS_INDEX_FILENAME),
+            index.to_json(),
+        )
+        .unwrap();
+        git_commit_all(dir.path(), "commit a non-covering index").await;
+
+        let backend = git_backend_on(dir.path(), false);
+        let got = backend.read_all_implements().await.unwrap();
+        assert_eq!(
+            got.len(),
+            3,
+            "expected the full scan of regulation/nl, got {got:?}"
         );
     }
 
