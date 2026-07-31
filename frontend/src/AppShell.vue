@@ -79,9 +79,9 @@ function openSupport() {
 }
 
 const colorSchemeOptions = [
-  ['auto', 'Systeem'],
-  ['light', 'Licht'],
-  ['dark', 'Donker'],
+  ['auto', 'Systeem', 'display'],
+  ['light', 'Licht', 'light-mode'],
+  ['dark', 'Donker', 'dark-mode'],
 ];
 
 // Editor panel feature flags, toggled from the settings menu of either
@@ -397,16 +397,19 @@ function onTabDismiss(e) {
                     <nldd-spacer-cell size="10"></nldd-spacer-cell>
                   </nldd-list-item>
                 </nldd-list>
-                <nldd-menu-group text="Thema">
-                <nldd-menu-item
-                  v-for="[value, label] in colorSchemeOptions"
-                  :key="`scheme-md-${value}`"
-                  type="radio"
-                  :selected="colorScheme === value || undefined"
-                  :text="label"
-                  @select="setColorScheme(value)"
-                ></nldd-menu-item>
-                </nldd-menu-group>
+                <nldd-menu-item text="Weergave" icon="appearance">
+                  <nldd-menu>
+                    <nldd-menu-item
+                      v-for="[value, label, icon] in colorSchemeOptions"
+                      :key="`scheme-md-${value}`"
+                      type="radio"
+                      :selected="colorScheme === value || undefined"
+                      :text="label"
+                      :icon="icon"
+                      @select="setColorScheme(value)"
+                    ></nldd-menu-item>
+                  </nldd-menu>
+                </nldd-menu-item>
                 <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvest" @click.stop="goToHarvesting"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Feature flags" icon="flag">
                   <nldd-menu>
@@ -510,16 +513,19 @@ function onTabDismiss(e) {
                     <nldd-spacer-cell size="10"></nldd-spacer-cell>
                   </nldd-list-item>
                 </nldd-list>
-                <nldd-menu-group text="Thema">
-                <nldd-menu-item
-                  v-for="[value, label] in colorSchemeOptions"
-                  :key="`scheme-lg-${value}`"
-                  type="radio"
-                  :selected="colorScheme === value || undefined"
-                  :text="label"
-                  @select="setColorScheme(value)"
-                ></nldd-menu-item>
-                </nldd-menu-group>
+                <nldd-menu-item text="Weergave" icon="appearance">
+                  <nldd-menu>
+                    <nldd-menu-item
+                      v-for="[value, label, icon] in colorSchemeOptions"
+                      :key="`scheme-lg-${value}`"
+                      type="radio"
+                      :selected="colorScheme === value || undefined"
+                      :text="label"
+                      :icon="icon"
+                      @select="setColorScheme(value)"
+                    ></nldd-menu-item>
+                  </nldd-menu>
+                </nldd-menu-item>
                 <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvest" @click.stop="goToHarvesting"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Feature flags" icon="flag">
                   <nldd-menu>
@@ -755,16 +761,19 @@ function onTabDismiss(e) {
                     <nldd-spacer-cell size="10"></nldd-spacer-cell>
                   </nldd-list-item>
                 </nldd-list>
-                <nldd-menu-group text="Thema">
-                <nldd-menu-item
-                  v-for="[value, label] in colorSchemeOptions"
-                  :key="`scheme-sm-${value}`"
-                  type="radio"
-                  :selected="colorScheme === value || undefined"
-                  :text="label"
-                  @select="setColorScheme(value)"
-                ></nldd-menu-item>
-                </nldd-menu-group>
+                <nldd-menu-item text="Weergave" icon="appearance">
+                  <nldd-menu>
+                    <nldd-menu-item
+                      v-for="[value, label, icon] in colorSchemeOptions"
+                      :key="`scheme-sm-${value}`"
+                      type="radio"
+                      :selected="colorScheme === value || undefined"
+                      :text="label"
+                      :icon="icon"
+                      @select="setColorScheme(value)"
+                    ></nldd-menu-item>
+                  </nldd-menu>
+                </nldd-menu-item>
                 <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvest" @click.stop="goToHarvesting"></nldd-menu-item>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Feature flags" icon="flag">
                   <nldd-menu>

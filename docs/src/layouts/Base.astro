@@ -142,9 +142,9 @@ const skipText = lang === 'en' ? 'Skip to content' : 'Direct naar de inhoud';
 const navLabel = lang === 'en' ? 'Main navigation' : 'Hoofdnavigatie';
 const themeMenuLabel = lang === 'en' ? 'Theme' : 'Thema';
 const themeOptions = [
-  { value: 'system', label: lang === 'en' ? 'System' : 'Systeem' },
-  { value: 'light', label: lang === 'en' ? 'Light' : 'Licht' },
-  { value: 'dark', label: lang === 'en' ? 'Dark' : 'Donker' },
+  { value: 'system', label: lang === 'en' ? 'System' : 'Systeem', icon: 'display' },
+  { value: 'light', label: lang === 'en' ? 'Light' : 'Licht', icon: 'light-mode' },
+  { value: 'dark', label: lang === 'en' ? 'Dark' : 'Donker', icon: 'dark-mode' },
 ];
 const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
 
@@ -344,6 +344,7 @@ const legalLinks = [
                       type="radio"
                       value={opt.value}
                       text={opt.label}
+                      icon={opt.icon}
                       selected={opt.value === 'system' || undefined}
                     />
                   ))
@@ -460,33 +461,6 @@ const legalLinks = [
                 </nldd-rich-text>
               </nldd-container>
             </nldd-container>
-          )}
-          {isLanding && (
-            <Fragment>
-              {/* Internet.nl 100% badge. Per the internet.nl badge policy
-                  (https://internet.nl/faqs/badges/) the SVG is served from our
-                  own domain (no hot-link), the page's domain matches the
-                  100%-scoring domain, and the badge hyperlinks to
-                  https://internet.nl/. Rendered only on the landing
-                  (regelrecht.rijks.app), not on docs or signup. */}
-              <nldd-spacer size="24" />
-              <nldd-rich-text>
-                <p>
-                  <a
-                    href={t.compliance.internetNlUrl}
-                    rel="noopener external"
-                    aria-label={t.compliance.label}
-                  >
-                    <img
-                      src="/internet-nl-100-website.svg"
-                      alt={t.compliance.alt}
-                      width="204"
-                      height="38"
-                    />
-                  </a>
-                </p>
-              </nldd-rich-text>
-            </Fragment>
           )}
           <nldd-page-footer-legal-bar slot="legal-bar" accessible-label={legalLabel}>
             <nldd-page-footer-legal-bar-item slot="start" text={copyrightText} />

@@ -948,20 +948,33 @@ onBeforeUnmount(() => setLibraryEmpty(false));
 
 const articles = computed(() => selectedLaw.value?.articles ?? []);
 
+// "Algemeen" rides the existing :articleNumber segment as a reserved value, so
+// deep-linking and the browser back button work without a new route. Article
+// numbers are digits with an optional letter suffix (1, 1a), so the word can
+// never collide with a real one.
+const ALGEMEEN_KEY = 'algemeen';
+const isAlgemeen = computed(() => selectedArticleNumber.value === ALGEMEEN_KEY);
+
+// A header field may be an internal reference like '#wet_naam': the value is
+// produced by an action in one of the articles, not written in the header.
+function resolveLawReference(value) {
+  if (typeof value !== 'string' || !value.startsWith('#')) return value ?? null;
+  const outputName = value.slice(1);
+  for (const article of articles.value) {
+    const actions = article.machine_readable?.execution?.actions;
+    if (!actions) continue;
+    for (const action of actions) {
+      if (action.output === outputName) return action.value;
+    }
+  }
+  return null;
+}
+
 const lawName = computed(() => {
   if (!selectedLaw.value) return '';
   const nameRef = selectedLaw.value.name;
-  if (typeof nameRef === 'string' && nameRef.startsWith('#')) {
-    const outputName = nameRef.slice(1);
-    for (const article of articles.value) {
-      const actions = article.machine_readable?.execution?.actions;
-      if (!actions) continue;
-      for (const action of actions) {
-        if (action.output === outputName) return action.value;
-      }
-    }
-  }
-  if (nameRef) return nameRef;
+  const resolved = resolveLawReference(nameRef);
+  if (resolved) return resolved;
   return humanizeLawId(selectedLaw.value.$id || selectedLaw.value.law_id || '');
 });
 
@@ -992,17 +1005,73 @@ watch([selectedLawId, lawName, indexedLawName], () => {
 }, { immediate: true });
 
 const selectedArticle = computed(() => {
-  if (!selectedArticleNumber.value) return null;
+  if (!selectedArticleNumber.value || isAlgemeen.value) return null;
   return articles.value.find(
     (a) => String(a.number) === String(selectedArticleNumber.value)
   ) ?? null;
 });
 
+// The general-information rows, built from what the corpus document actually
+// carries. Fields the law leaves empty are dropped rather than shown blank:
+// across the corpus only the first handful is filled everywhere. Identifiers
+// that belong to an external source (bwb_id, and the source url) stay out:
+// RegelRecht is meant to become the record itself, not a view onto another one.
+const REGULATORY_LAYER_LABELS = {
+  GRONDWET: 'Grondwet',
+  WET: 'Wet',
+  AMVB: 'Algemene maatregel van bestuur',
+  KONINKLIJK_BESLUIT: 'Koninklijk besluit',
+  MINISTERIELE_REGELING: 'Ministeriële regeling',
+  BELEIDSREGEL: 'Beleidsregel',
+  EU_VERORDENING: 'EU-verordening',
+  EU_RICHTLIJN: 'EU-richtlijn',
+  VERDRAG: 'Verdrag',
+  UITVOERINGSBELEID: 'Uitvoeringsbeleid',
+  GEMEENTELIJKE_VERORDENING: 'Gemeentelijke verordening',
+  PROVINCIALE_VERORDENING: 'Provinciale verordening',
+  WATERSCHAPS_VERORDENING: 'Waterschapsverordening',
+};
+
+function formatLawDate(value) {
+  if (!value || typeof value !== 'string' || value.startsWith('#')) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+const algemeenRows = computed(() => {
+  const law = selectedLaw.value;
+  if (!law) return [];
+  const rows = [
+    { label: 'Naam', value: lawName.value || indexedLawName.value },
+    { label: 'Soort regeling', value: REGULATORY_LAYER_LABELS[law.regulatory_layer] || law.regulatory_layer },
+    { label: 'Officiële titel', value: law.officiele_titel },
+    { label: 'Bevoegd gezag', value: resolveLawReference(law.competent_authority) },
+    { label: 'Publicatiedatum', value: formatLawDate(law.publication_date) },
+    { label: 'Inwerkingtreding', value: formatLawDate(law.valid_from) },
+    { label: 'Geldig tot en met', value: formatLawDate(law.valid_to) },
+    { label: 'Gemeentecode', value: law.gemeente_code },
+    { label: 'Provinciecode', value: law.provincie_code },
+    { label: 'Waterschapscode', value: law.waterschap_code },
+    { label: 'CELEX-nummer', value: law.celex_nummer },
+    { label: 'ELI', value: law.eli },
+    { label: 'Tractatenblad', value: law.tractatenblad_id },
+    { label: 'UNTS-nummer', value: law.unts_nummer },
+    { label: 'Staatscourant', value: law.stcrt_id },
+    { label: 'Organisatie', value: law.organisation },
+    { label: 'Aantal artikelen', value: articles.value.length ? String(articles.value.length) : null },
+  ];
+  return rows.filter((row) => row.value);
+});
+
+// `legal_basis` points at other laws in the corpus, so these become links.
+const algemeenLegalBasis = computed(() => selectedLaw.value?.legal_basis ?? []);
+
 // True when the URL points at an article that doesn't exist in the
 // loaded law. Distinct from "no article selected" (where no article
 // number is in the URL).
 const articleNotFound = computed(() =>
-  !!(selectedLaw.value && selectedArticleNumber.value && !selectedArticle.value)
+  !!(selectedLaw.value && selectedArticleNumber.value && !isAlgemeen.value && !selectedArticle.value)
 );
 
 // 404 means the law isn't in the active traject's corpus; the error UI shows a traject-specific message.
@@ -1369,6 +1438,105 @@ function selectArticle(number) {
     ...libraryRouteFor({ lawId: selectedLawId.value, articleNumber: articleStr }),
     hash: route.hash,
   });
+}
+
+function selectAlgemeen() {
+  selectArticle(ALGEMEEN_KEY);
+}
+
+// Article filter: a toolbar toggle reveals the field, so the list stays
+// undisturbed until someone asks for it.
+const articleFilterOpen = ref(false);
+const articleFilter = ref('');
+const articleFilterField = ref(null);
+
+function toggleArticleFilter() {
+  articleFilterOpen.value = !articleFilterOpen.value;
+  if (articleFilterOpen.value) {
+    nextTick(() => articleFilterField.value?.focus?.());
+  } else {
+    articleFilter.value = '';
+  }
+}
+
+// Machine-uitvoerbaar = het artikel draagt een uitvoerbare regel, niet alleen
+// een definitie: `execution` is wat de engine kan draaien.
+function isMachineReadable(article) {
+  return !!article.machine_readable?.execution;
+}
+
+const ARTICLE_FILTERS = [
+  { key: 'alles', label: 'Alles' },
+  { key: 'machine', label: 'Machine-uitvoerbaar' },
+  { key: 'geen-machine', label: 'Niet machine-uitvoerbaar' },
+];
+const articleTypeFilter = ref('alles');
+
+function setArticleTypeFilter(key) {
+  articleTypeFilter.value = key;
+}
+
+function resetArticleFilters() {
+  articleTypeFilter.value = 'alles';
+  articleFilter.value = '';
+}
+
+// Zeg wát er niets opleverde, niet alleen dát er niets is: de zoekterm en het
+// typefilter kunnen allebei de oorzaak zijn en vragen om een ander antwoord.
+const articleEmptyText = computed(() => {
+  const term = articleFilter.value.trim();
+  if (term) return `Geen artikelen gevonden voor "${term}"`;
+  if (articleTypeFilter.value === 'machine') return 'Geen machine-uitvoerbare artikelen';
+  if (articleTypeFilter.value === 'geen-machine') return 'Alle artikelen zijn machine-uitvoerbaar';
+  return 'Geen artikelen';
+});
+
+// Alleen het typefilter krijgt een token: een zoekterm staat al zichtbaar in
+// het veld, terwijl de filterkeuze anders onzichtbaar in een menu verdwijnt.
+const activeTypeFilterLabel = computed(() =>
+  articleTypeFilter.value === 'alles'
+    ? ''
+    : ARTICLE_FILTERS.find((f) => f.key === articleTypeFilter.value)?.label ?? ''
+);
+
+const articleFiltersActive = computed(
+  () => articleTypeFilter.value !== 'alles' || !!articleFilter.value.trim()
+);
+
+// Filters horen bij de wet die je bekijkt, niet bij de sessie: van wet wisselen
+// wist ze, ongeacht de route ernaartoe (klik, deeplink of de backknop).
+watch(selectedLawId, () => {
+  resetArticleFilters();
+  articleFilterOpen.value = false;
+});
+
+const filteredArticles = computed(() => {
+  const term = articleFilter.value.trim().toLowerCase();
+  const byType = articles.value.filter((article) => {
+    if (articleTypeFilter.value === 'machine') return isMachineReadable(article);
+    if (articleTypeFilter.value === 'geen-machine') return !isMachineReadable(article);
+    return true;
+  });
+  if (!term) return byType;
+  return byType.filter((article) => {
+    const number = `artikel ${article.number}`.toLowerCase();
+    const description = (articleDescription(article) || '').toLowerCase();
+    return number.includes(term) || description.includes(term) || String(article.text || '').toLowerCase().includes(term);
+  });
+});
+
+// Web Share is absent on most desktop browsers, so the button only appears
+// where the OS can actually take over. Checked once: it cannot change at runtime.
+const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+
+async function shareLaw() {
+  if (!canShare) return;
+  try {
+    await navigator.share({ title: lawName.value || lawTitle.value, url: window.location.href });
+  } catch (err) {
+    // An abort is the user closing the sheet, not a failure worth surfacing.
+    if (err?.name !== 'AbortError') console.warn('Delen is niet gelukt', err);
+  }
 }
 
 /**
@@ -1803,16 +1971,57 @@ watch(activeTrajectRef, () => {
                      favourite button runs entirely off `selectedLawId` (route)
                      + `favorites`, never the loaded law, so waiting for
                      `selectedLaw` only hid the toolbar during the load. -->
-                <nldd-toolbar v-if="paneChromeVisible(selectedLawLoading)" label="Favorieten">
-                  <nldd-toolbar-item slot="start">
+                <nldd-toolbar v-if="paneChromeVisible(selectedLawLoading)" label="Wetacties">
+                  <!-- priority: hoger blijft langer staan, lager verdwijnt als
+                       eerste in het overflow-menu. -->
+                  <nldd-toolbar-item slot="start" :priority="2">
                     <nldd-icon-button
                       :icon="favorites?.has(selectedLawId) ? 'star-filled' : 'star'"
                       :text="favorites?.has(selectedLawId) ? 'Verwijder uit favorieten' : 'Voeg toe aan favorieten'"
                       @click="onFavoriteClick"
                     ></nldd-icon-button>
                   </nldd-toolbar-item>
+                  <nldd-toolbar-item v-if="canShare" slot="start" :priority="1">
+                    <nldd-icon-button icon="share" text="Delen" @click="shareLaw"></nldd-icon-button>
+                  </nldd-toolbar-item>
+                  <nldd-toolbar-item slot="end" :priority="4">
+                    <nldd-icon-button
+                      icon="search"
+                      text="Artikelen zoeken"
+                      :expanded="articleFilterOpen || undefined"
+                      @click="toggleArticleFilter"
+                    ></nldd-icon-button>
+                  </nldd-toolbar-item>
+                  <nldd-toolbar-item slot="end" :priority="3">
+                    <nldd-icon-button
+                      id="article-filter-btn"
+                      icon="filter"
+                      text="Artikelen filteren"
+                      popup-type="menu"
+                    ></nldd-icon-button>
+                    <nldd-menu anchor="article-filter-btn">
+                      <nldd-menu-item
+                        v-for="option in ARTICLE_FILTERS"
+                        :key="option.key"
+                        type="radio"
+                        :text="option.label"
+                        :selected="articleTypeFilter === option.key || undefined"
+                        @select="setArticleTypeFilter(option.key)"
+                      ></nldd-menu-item>
+                    </nldd-menu>
+                  </nldd-toolbar-item>
                 </nldd-toolbar>
                 <nldd-spacer v-if="paneChromeVisible(selectedLawLoading)" size="16"></nldd-spacer>
+                <template v-if="paneChromeVisible(selectedLawLoading) && articleFilterOpen">
+                  <nldd-search-field
+                    ref="articleFilterField"
+                    :value="articleFilter"
+                    placeholder="Artikelen zoeken"
+                    accessible-label="Artikelen zoeken"
+                    @input="articleFilter = $event.target?.value ?? ''"
+                  ></nldd-search-field>
+                  <nldd-spacer size="16"></nldd-spacer>
+                </template>
                 <nldd-popover ref="favoriteLoginWarning" accessible-label="Inloggen" width="320px">
                   <nldd-container padding="16">
                     <nldd-inline-dialog
@@ -1827,16 +2036,51 @@ watch(activeTrajectRef, () => {
                 </nldd-popover>
                 <nldd-activity-indicator v-if="selectedLawLoading" text="Wet laden" show-text></nldd-activity-indicator>
                 <nldd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een wet"></nldd-inline-dialog>
-                <nldd-list v-else variant="simple" arrow-navigation>
+                <template v-else>
+                <nldd-list variant="simple" arrow-navigation>
+                  <nldd-list-item size="md" button :selected="isAlgemeen || undefined" @click="selectAlgemeen()">
+                    <nldd-icon-cell size="20">
+                      <nldd-icon name="book"></nldd-icon>
+                    </nldd-icon-cell>
+                    <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                    <nldd-text-cell text="Algemeen"></nldd-text-cell>
+                    <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                    <nldd-icon-cell size="20">
+                      <nldd-icon name="chevron-right"></nldd-icon>
+                    </nldd-icon-cell>
+                  </nldd-list-item>
+                </nldd-list>
+                <nldd-spacer size="24"></nldd-spacer>
+                <nldd-title size="5">
+                  <h4>Artikelen</h4>
+                </nldd-title>
+                <nldd-spacer size="8"></nldd-spacer>
+                <template v-if="activeTypeFilterLabel">
+                  <nldd-token
+                    control="dismiss"
+                    :text="activeTypeFilterLabel"
+                    dismiss-text="Filter wissen"
+                    @dismiss="setArticleTypeFilter('alles')"
+                  ></nldd-token>
+                  <nldd-spacer size="8"></nldd-spacer>
+                </template>
+                <!-- Zonder rijen valt de lege staat in het niets; het kader van
+                     variant="box" geeft hem dezelfde begrenzing als de lijst had. -->
+                <nldd-list :variant="filteredArticles.length ? 'simple' : 'box'" arrow-navigation>
+                  <nldd-inline-dialog v-if="articleFiltersActive" slot="empty" :text="articleEmptyText">
+                    <nldd-button slot="actions" variant="primary" text="Toon alles" @click="resetArticleFilters"></nldd-button>
+                  </nldd-inline-dialog>
                   <nldd-list-item
-                    v-for="article in articles"
+                    v-for="article in filteredArticles"
                     :key="article.number"
                     size="md"
                     button
                     :selected="String(article.number) === String(selectedArticleNumber) || undefined"
                     @click="selectArticle(article.number)"
                   >
-                    <nldd-text-cell :text="`Artikel ${article.number}`" :supporting-text="articleDescription(article)">
+                    <nldd-text-cell :supporting-text="articleDescription(article)">
+                      Artikel {{ article.number }}
+                      <nldd-tag v-if="isMachineReadable(article)" size="sm" color="accent">Machine</nldd-tag>
                     </nldd-text-cell>
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <nldd-icon-cell size="20">
@@ -1844,6 +2088,7 @@ watch(activeTrajectRef, () => {
                     </nldd-icon-cell>
                   </nldd-list-item>
                 </nldd-list>
+                </template>
               </nldd-simple-section>
             </nldd-page>
           </nldd-split-view-pane>
@@ -1980,14 +2225,14 @@ watch(activeTrajectRef, () => {
           </nldd-split-view-pane>
 
           <!-- Main: Artikel Detail -->
-          <nldd-split-view-pane v-else slot="main" :has-content="selectedArticle || lawError || articleNotFound ? true : undefined">
+          <nldd-split-view-pane v-else slot="main" :has-content="selectedArticle || isAlgemeen || lawError || articleNotFound ? true : undefined">
             <nldd-page sticky-header>
               <nldd-top-title-bar
                 slot="header"
-                :text="selectedArticle ? `Artikel ${selectedArticle.number}` : undefined"
-                :supporting-text="selectedArticle ? lawName : undefined"
+                :text="isAlgemeen ? 'Algemeen' : (selectedArticle ? `Artikel ${selectedArticle.number}` : undefined)"
+                :supporting-text="isAlgemeen || selectedArticle ? lawName : undefined"
                 :back-text="lawError ? LIBRARY_HOME_BACK_TEXT : (lawName || 'Terug')"
-                :collapse-anchor="selectedArticle ? 'article-titel' : undefined"
+                :collapse-anchor="isAlgemeen ? 'algemeen-titel' : (selectedArticle ? 'article-titel' : undefined)"
               ></nldd-top-title-bar>
 
               <nldd-simple-section width="full" v-if="!selectedLawId">
@@ -2028,6 +2273,45 @@ watch(activeTrajectRef, () => {
                   <nldd-button slot="actions" class="article-not-found__back-button" variant="primary" text="Bekijk artikelen" @click="goToLawRoot"></nldd-button>
                   <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
                 </nldd-inline-dialog>
+              </nldd-simple-section>
+              <nldd-simple-section width="full" v-else-if="isAlgemeen">
+                <nldd-title id="algemeen-titel" size="3">
+                  <h3>Algemeen</h3>
+                  <span slot="subtitle">{{ lawName }}</span>
+                </nldd-title>
+                <nldd-spacer size="16"></nldd-spacer>
+                <nldd-list variant="box" accessible-label="Algemene informatie">
+                  <nldd-list-item v-for="row in algemeenRows" :key="row.label">
+                    <nldd-text-cell :text="row.label" width="200px"></nldd-text-cell>
+                    <nldd-spacer-cell size="16"></nldd-spacer-cell>
+                    <nldd-text-cell :text="row.value"></nldd-text-cell>
+                  </nldd-list-item>
+                </nldd-list>
+                <template v-if="algemeenLegalBasis.length">
+                  <nldd-spacer size="24"></nldd-spacer>
+                  <nldd-title size="4">
+                    <h4>Grondslag</h4>
+                  </nldd-title>
+                  <nldd-spacer size="8"></nldd-spacer>
+                  <nldd-list variant="simple">
+                    <nldd-list-item
+                      v-for="basis in algemeenLegalBasis"
+                      :key="`${basis.law_id}-${basis.article}`"
+                      size="md"
+                      button
+                      @click="selectLaw(basis.law_id)"
+                    >
+                      <nldd-text-cell
+                        :text="basis.article ? `Artikel ${basis.article}` : humanizeLawId(basis.law_id)"
+                        :supporting-text="basis.description || (basis.article ? humanizeLawId(basis.law_id) : undefined)"
+                      ></nldd-text-cell>
+                      <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                      <nldd-icon-cell size="20">
+                        <nldd-icon name="chevron-right"></nldd-icon>
+                      </nldd-icon-cell>
+                    </nldd-list-item>
+                  </nldd-list>
+                </template>
               </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="!selectedArticle">
                 <nldd-inline-dialog text="Selecteer een artikel"></nldd-inline-dialog>
