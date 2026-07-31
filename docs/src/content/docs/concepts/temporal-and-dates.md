@@ -7,9 +7,9 @@ A calculation always happens *as of* a date. The rules and amounts in force on 1
 
 ## Which version is in force
 
-A law version carries `valid_from`, and optionally `valid_to`: the first and last calendar days on which it is in force, both inclusive. The engine selects the version where `valid_from <= reference_date <= valid_to`, where the reference date is the calculation date supplied by the caller.
+A law version declares `valid_from`, and optionally `valid_to`: the first and last calendar days on which it is in force, both inclusive. The engine selects the version where `valid_from <= reference_date <= valid_to`, where the reference date is the calculation date supplied by the caller.
 
-`valid_to` is what lets a law expire without a successor. A version with `valid_to: 2024-12-31` resolves on its last day:
+`valid_to` lets a law expire without a successor. A version with `valid_to: 2024-12-31` resolves on its last day:
 
 ```gherkin
 Given the calculation date is "2024-12-31"
@@ -18,7 +18,7 @@ Then the execution succeeds
 And the output "normbedrag" is "500"
 ```
 
-and the day after, it is gone. Selection does **not** fall through to an older version once the in-force one has ended; an expired law is expired, not replaced by its predecessor. A reference to a law that has ended fails with the data fact rather than a vague "no rule found":
+and the day after, it is gone. Selection does **not** fall through to an older version once the in-force one has ended: an expired law is expired, and its predecessor does not take over. A reference to a law that has ended fails with the concrete dates:
 
 ```gherkin
 Given the calculation date is "2025-06-01"
@@ -27,11 +27,11 @@ Then the execution fails with
   "No version of law 'test_einddatum' in force on 2025-06-01; last in force until 2024-12-31"
 ```
 
-The same applies across a cross-law reference: a law that reads an ended law reports which law ended and when, instead of computing on no-longer-valid rules. The selection outcome is one of in force, not yet in force, or ended on a date (`SelectionReason` in `packages/engine/src/resolver.rs`), and both `valid_from` and `valid_to` are recorded in the [Execution Receipt](./execution-provenance) so the choice is reproducible. The scenarios above come from `features/einddatum.feature`.
+The same applies across a cross-law reference: a law that reads an ended law reports which law ended and when, and does not compute on rules that are no longer valid. The selection outcome is one of in force, not yet in force, or ended on a date (`SelectionReason` in `packages/engine/src/resolver.rs`), and both `valid_from` and `valid_to` are recorded in the [Execution Receipt](./execution-provenance) so the choice is reproducible. The scenarios above come from `features/einddatum.feature`.
 
 ## Comparing and subtracting dates
 
-Deadlines and durations need arithmetic on dates, not just on numbers. Two routes cover it.
+Deadlines and durations need arithmetic on dates. Two routes cover it.
 
 **Comparison operators dispatch on operand type.** `GREATER_THAN`, `LESS_THAN`, `LESS_THAN_OR_EQUAL` and the rest compare numbers when both operands are numeric, and compare chronologically when both are ISO 8601 dates. So `$indieningsdatum <= $peildatum` works directly, with no detour through `AGE`. `EQUALS` gains a date fallback for the mixed case (a date string against the `{iso, year, month, day}` object form of `referencedate`).
 
@@ -54,7 +54,7 @@ When the law "test_date_operations" is executed for outputs "doorlooptijd_maande
 Then the output "doorlooptijd_maanden" is "1"
 ```
 
-Dates must be in canonical `YYYY-MM-DD` form, zero-padded; `2025-1-1` is rejected rather than guessed. These scenarios come from `features/date_operations.feature`, and the related operations `AGE`, `DATE_ADD`, `DATE`, and `DAY_OF_WEEK` are listed in the [Law Format](./law-format) operation table.
+Dates must be in canonical `YYYY-MM-DD` form, zero-padded. `2025-1-1` is rejected; the engine does not guess. These scenarios come from `features/date_operations.feature`, and the related operations `AGE`, `DATE_ADD`, `DATE`, and `DAY_OF_WEEK` are listed in the [Law Format](./law-format) operation table.
 
 ## Further reading
 
