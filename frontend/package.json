@@ -15,7 +15,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@cucumber/gherkin": "^41.0.0",
+    "@cucumber/gherkin": "^42.0.0",
     "@cucumber/messages": "^34.2.0",
     "@nldd/design-system": "^0.8.72",
     "@regelrecht/frontend-shared": "*",
