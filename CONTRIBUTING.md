@@ -23,9 +23,6 @@ being redesigned.
 Open one anyway and we will read it. The likely outcome is an issue that
 records your point, with the change made separately.
 
-Two things make a pull request hard to use: review remarks written into the
-file instead of into the review, and several unrelated points in one change.
-
 ## Legal expertise
 
 If you work on legislation or public administration and you see something that
