@@ -36,7 +36,7 @@ De target-repo moet aan twee voorwaarden voldoen vóór je 'm kunt koppelen:
 Genereer een **fine-grained PAT** op [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new):
 
 - **Resource owner**: de owner van de target-repo (persoonlijk account of organisatie)
-- **Repository access**: "Only select repositories" → kies precies de target-repo (_niet_ "all repositories", houd de reikwijdte klein)
+- **Repository access**: "Only select repositories" → kies precies de target-repo (_niet_ "all repositories", houd de schade bij een lek klein)
 - **Repository permissions**:
   - `Contents`: **Read and write**, nodig voor commits + branch-creatie
   - `Pull requests`: **Read and write**, nodig om de session-PR te openen en bij te werken

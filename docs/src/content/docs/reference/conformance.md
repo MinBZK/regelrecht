@@ -22,7 +22,7 @@ What runs in CI is **operation coverage of the manifest itself**, nothing more. 
 - no level lists an operation the engine does not have,
 - no operation lands in two levels.
 
-So a new operation cannot be added to the engine without being classified into exactly one conformance level; CI fails otherwise. So the manifest stays complete, no level claims an operation the engine lacks, and no operation is counted twice. But it tests the *manifest*, not any law execution: it never runs a regulation, never checks an output. The cross-implementation guarantee a conformance suite is meant to provide does **not** hold today.
+So a new operation cannot be added to the engine without being classified into exactly one conformance level; CI fails otherwise, and those three properties keep holding as the engine grows. But it tests the *manifest*, not any law execution: it never runs a regulation, never checks an output. The cross-implementation guarantee a conformance suite is meant to provide does **not** hold today.
 
 ## The intended suite
 
