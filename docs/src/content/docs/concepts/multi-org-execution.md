@@ -5,7 +5,7 @@ description: "How the engine handles organizational boundaries, distinguishing f
 
 In practice, different government organizations handle different parts of the law chain. The Tax Authority determines your income. The Allowances Service determines your healthcare allowance. A municipality determines your social assistance.
 
-When the engine follows a cross-law reference, it crosses organizational boundaries. The question becomes: should it compute the value itself, or accept another organization's authoritative determination?
+When the engine follows a cross-law reference, it crosses organizational boundaries. It must then decide whether to compute the value itself or to accept another organization's authoritative determination.
 
 ## The legal distinction
 
@@ -14,7 +14,7 @@ Dutch administrative law distinguishes between two kinds of outputs:
 - A **beschikking** (formal decision) is a legally binding act that only the competent authority can issue. The Tax Authority's income determination is a beschikking.
 - A **berekening** (calculation) is a computation that anyone can perform. Multiplying two publicly known numbers does not require authority.
 
-This distinction determines the execution boundary. A calculation can be run by anyone. A beschikking requires the right organization.
+This distinction determines the execution boundary.
 
 ## How the engine decides
 

@@ -2,7 +2,7 @@ import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 
-// @cucumber/messages 33 runs `createRequire(import.meta.url)('../package.json')`
+// @cucumber/messages 34 runs `createRequire(import.meta.url)('../package.json')`
 // at import time (a Node-only API). In the browser build that throws and
 // crashes every view importing the gherkin parser, so alias `node:module` to a
 // browser shim that provides a harmless `createRequire`. Scope it to the build
@@ -54,7 +54,7 @@ export default defineConfig({
     pool: 'vmThreads',
     testTimeout: 10000,
     server: {
-      // @cucumber/gherkin 40 and @cucumber/messages 33 ship as pure ESM. The
+      // @cucumber/gherkin 41 and @cucumber/messages 34 ship as pure ESM. The
       // vmThreads pool loads external ESM in a separate VM context, which throws
       // "Linked modules must use the same context". Inlining lets vitest process
       // them in the test context instead. The @regelrecht/frontend-shared
