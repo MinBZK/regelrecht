@@ -5,7 +5,7 @@ description: "Hoe een traject aan een eigen (private) GitHub-repo gekoppeld word
 
 Vanaf [PR #704](https://github.com/MinBZK/regelrecht/pull/704) kan een traject in de editor gekoppeld worden aan een **eigen GitHub-repo** in plaats van de centrale `MinBZK/regelrecht-corpus`. Handig voor organisaties of teams die hun regelgeving in een private repo willen beheren, met behoud van RegelRecht's editor- en attributie-eigenschappen.
 
-Deze pagina beschrijft de end-to-end flow: wat je als eindgebruiker, traject-eigenaar en operator moet doen.
+Wat je moet doen hangt af van je rol: eindgebruiker, traject-eigenaar of operator.
 
 ## Hoe het werkt op hoofdlijnen
 
@@ -36,7 +36,7 @@ De target-repo moet aan twee voorwaarden voldoen vóór je 'm kunt koppelen:
 Genereer een **fine-grained PAT** op [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new):
 
 - **Resource owner**: de owner van de target-repo (persoonlijk account of organisatie)
-- **Repository access**: "Only select repositories" → kies precies de target-repo (níét "all repositories", houd de blast radius klein)
+- **Repository access**: "Only select repositories" → kies precies de target-repo (_niet_ "all repositories", houd de reikwijdte klein)
 - **Repository permissions**:
   - `Contents`: **Read and write**, nodig voor commits + branch-creatie
   - `Pull requests`: **Read and write**, nodig om de session-PR te openen en bij te werken
@@ -126,11 +126,11 @@ Tijdens het bewerken kunnen ook saves falen. De meeste meldingen zijn vergelijkb
 - **Per-repo PAT, niet per-user**. Alle deelnemers aan het traject committen via dezelfde token, maar onder hun eigen naam (via Author/Co-authored-by). GitHub Push Events tonen altijd het service-account als "pushed by", voor harde per-user audit is dat niet voldoende; gebruik daarvoor de editor-API's audit-logs of de PR's commit-graaf.
 - **PAT-verloop is operator-werk**. De editor weigert reads/writes zodra de PAT door GitHub geweigerd wordt; de operator moet 'm dan verversen. Plan dit in.
 - **Geen self-service**. Voor elke nieuwe repo moet een operator een env var configureren. Voor occasioneel gebruik is dat prima; voor schaalbare zelfbediening is een **GitHub App** een betere richting (geparkeerd voor latere fase).
-- **Geen tokens in DB of browser**. Bewust ontwerp: een bug, breach of insider met DB-toegang kan geen tokens exfiltreren. Wel betekent dit dat tokens niet "even snel" zelf zijn in te stellen.
+- **Geen tokens in DB of browser**. Ontwerpkeuze: een bug, breach of insider met DB-toegang kan geen tokens exfiltreren. Wel betekent dit dat tokens niet "even snel" zelf zijn in te stellen.
 
 ## Rollout-aandachtspunten (alleen relevant bij de eerste deploy)
 
 De eerste deploy met deze feature scherpt twee oude paden aan; controleer onderstaande punten op je deployment vóór je de release uitrolt.
 
 - **De writable-own source gebruikt voortaan strikte token-resolutie** (geen `CORPUS_GIT_TOKEN`-fallback). Bestaande trajects die via de central MinBZK-repo committen, hebben dus `CORPUS_AUTH_MINBZK_CENTRAL_TOKEN` nodig als losse env var. Deployments die tot nu toe leunden op alleen `CORPUS_GIT_TOKEN` voor het centrale schrijfpad, zien stille push-failures na de release als die env var ontbreekt. Zet 'm vóór deploy en check de editor-logs op de eerste run; de diagnostic-log toont expliciet de verwachte env-var-naam wanneer de resolver `None` returnt voor de writable-own source.
-- **Bestaande SSO-sessies missen de nieuwe `email_verified`-claim**. Eerste save na deploy levert dan een 403 op met de melding "log opnieuw in". Geen onderhoud, geen migratie, gewoon eenmalig opnieuw inloggen lost het op.
+- **Bestaande SSO-sessies missen de nieuwe `email_verified`-claim**. Eerste save na deploy levert dan een 403 op met de melding "log opnieuw in". Eenmalig opnieuw inloggen lost het op; onderhoud of migratie is niet nodig.
