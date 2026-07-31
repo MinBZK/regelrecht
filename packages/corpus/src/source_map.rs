@@ -844,11 +844,24 @@ pub fn collect_law_outputs(yaml: &str) -> Vec<CollectedOutput> {
 /// scenario dependency loader doesn't have to fetch and parse every law in
 /// the corpus over HTTP just to find the handful of implementing regulations.
 pub fn collect_law_implements(yaml: &str) -> Vec<String> {
-    let doc: LawDoc = match serde_yaml_ng::from_str(yaml) {
-        Ok(d) => d,
-        Err(_) => return Vec::new(),
-    };
-    collect_implements_from_doc(&doc)
+    try_collect_law_implements(yaml).unwrap_or_default()
+}
+
+/// Fallible variant of [`collect_law_implements`]: returns `Err` exactly
+/// when the tolerant law parse fails — the case the infallible variant
+/// silently degrades to "implements nothing".
+///
+/// The implements-index *generator* must use this one: recording a parse
+/// failure as an empty list in a committed index artefact would make the
+/// failure permanent and invisible (the consumer trusts the index and never
+/// re-parses the body), so the generator counts these and refuses to emit
+/// an index. Read paths that merely degrade per-request keep using the
+/// infallible variant.
+pub fn try_collect_law_implements(
+    yaml: &str,
+) -> std::result::Result<Vec<String>, serde_yaml_ng::Error> {
+    let doc: LawDoc = serde_yaml_ng::from_str(yaml)?;
+    Ok(collect_implements_from_doc(&doc))
 }
 
 /// Doc-based core of [`collect_law_implements`], shared with the
@@ -1567,5 +1580,16 @@ articles:
         assert!(collect_law_implements(yaml).is_empty());
         // Malformed YAML is tolerated as "no implements".
         assert!(collect_law_implements("not: [valid").is_empty());
+    }
+
+    #[test]
+    fn test_try_collect_law_implements_distinguishes_parse_failure_from_empty() {
+        // A law that genuinely implements nothing: Ok(empty).
+        let empty = try_collect_law_implements("$id: x\narticles: []\n").unwrap();
+        assert!(empty.is_empty());
+
+        // Malformed YAML: Err — the index generator must fail on this
+        // instead of committing "implements nothing".
+        assert!(try_collect_law_implements("not: [valid").is_err());
     }
 }

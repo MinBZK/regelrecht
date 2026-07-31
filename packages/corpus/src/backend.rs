@@ -213,25 +213,21 @@ pub trait RepoBackend: Send + Sync {
     /// corpus-wide scan must never hold every law body in memory at once
     /// (that OOMs on a large corpus). The default implementation reads one
     /// file at a time via [`list_files_recursive`] + [`read_file`], parsing
-    /// and dropping each body as it goes. A backend that can fetch in bulk
-    /// (the GitHub API backend downloads the repo archive in a single
-    /// request) overrides this — but still streams bodies through the
-    /// parser one at a time.
+    /// and dropping each body as it goes. Backends that can do better
+    /// override this: `GitBackend` reads the precomputed
+    /// [`implements_index`](crate::implements_index) committed at the
+    /// corpus repo root, the GitHub API backend downloads the repo archive
+    /// in a single request — both still without materialising all bodies.
+    ///
+    /// The result must contain an entry for **every** YAML file the source
+    /// holds, including files that implement nothing: callers use the map
+    /// as a negative cache, and a missing entry triggers a per-law body
+    /// fetch + parse.
     ///
     /// [`list_files_recursive`]: RepoBackend::list_files_recursive
     /// [`read_file`]: RepoBackend::read_file
     async fn read_all_implements(&self) -> Result<Vec<(String, Vec<String>)>> {
-        let entries = self
-            .list_files_recursive(Path::new(""), Some("yaml"))
-            .await?;
-        let mut out = Vec::with_capacity(entries.len());
-        for entry in entries {
-            if let Some(content) = self.read_file(Path::new(&entry.relative_path)).await? {
-                let implements = crate::source_map::collect_law_implements(&content);
-                out.push((entry.relative_path, implements));
-            }
-        }
-        Ok(out)
+        scan_implements_via_listing(self).await
     }
 
     /// Persist pending changes.
@@ -270,6 +266,34 @@ pub trait RepoBackend: Send + Sync {
     async fn changed_files(&self) -> Result<Vec<String>> {
         Ok(Vec::new())
     }
+}
+
+/// Shared body of the default [`RepoBackend::read_all_implements`]: list
+/// every `.yaml` **and** `.yml` file under the source root and parse each
+/// body one at a time. Both extensions are law carriers (the corpus
+/// convention is `.yaml`, but `.yml` occurs and the GitHub archive scan
+/// counts it too) — a `.yaml`-only scan would silently drop those laws
+/// from the negative cache.
+async fn scan_implements_via_listing<B: RepoBackend + ?Sized>(
+    backend: &B,
+) -> Result<Vec<(String, Vec<String>)>> {
+    let mut entries = Vec::new();
+    for ext in ["yaml", "yml"] {
+        entries.extend(
+            backend
+                .list_files_recursive(Path::new(""), Some(ext))
+                .await?,
+        );
+    }
+    entries.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    let mut out = Vec::with_capacity(entries.len());
+    for entry in entries {
+        if let Some(content) = backend.read_file(Path::new(&entry.relative_path)).await? {
+            let implements = crate::source_map::collect_law_implements(&content);
+            out.push((entry.relative_path, implements));
+        }
+    }
+    Ok(out)
 }
 
 // ---------------------------------------------------------------------------
@@ -747,6 +771,102 @@ impl RepoBackend for GitBackend {
     ) -> Result<Vec<RecursiveFileEntry>> {
         let abs = self.resolve(dir)?;
         walk_local_tree(abs, extension.map(str::to_string)).await
+    }
+
+    /// Serve the corpus-wide implements map from the precomputed index
+    /// committed at the checkout root ([`implements_index`]) instead of
+    /// parsing every YAML file on disk.
+    ///
+    /// The index lives at the **repo root**, outside this backend's
+    /// source sandbox (`resolve` prefixes every path with `repo_subpath`,
+    /// e.g. `regulation/nl`), so it is read directly off the checkout
+    /// root. Freshness is verified against the checkout itself: the
+    /// index's recorded tree sha must equal `git rev-parse HEAD:<root>` in
+    /// this clone. That makes the check branch-aware by construction — a
+    /// `pr<N>` corpus branch that received commits after its index was
+    /// last regenerated fails the comparison and falls back to the scan.
+    ///
+    /// Fallback matrix:
+    /// - fresh index → serve it (an **empty but fresh** index is
+    ///   authoritative: genuinely no YAML files, no fallback);
+    /// - missing / unparseable / stale index → full checkout scan, with a
+    ///   warning — **unless** the checkout is sparse, in which case the
+    ///   scan would be silently incomplete and the call errors instead.
+    ///
+    /// Known limit: the tree sha describes `HEAD`, not the working tree,
+    /// so uncommitted local writes are invisible to the freshness check.
+    /// That matches how this backend is used — the editor's central read
+    /// clone never receives local writes (editor writes go through the
+    /// session/API backends), and post-save reads ride the caller's
+    /// overlay.
+    ///
+    /// [`implements_index`]: crate::implements_index
+    async fn read_all_implements(&self) -> Result<Vec<(String, Vec<String>)>> {
+        use crate::implements_index::{ImplementsIndex, IMPLEMENTS_INDEX_FILENAME};
+
+        let index_path = self.client.repo_path().join(IMPLEMENTS_INDEX_FILENAME);
+        let raw = match tokio::fs::read_to_string(&index_path).await {
+            Ok(raw) => Some(raw),
+            // Missing is a distinct state from empty: the corpus repo
+            // simply doesn't publish an index (yet) on this branch.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(e.into()),
+        };
+
+        match raw {
+            Some(raw) => match ImplementsIndex::parse(&raw) {
+                Ok(index) => match self.client.subtree_sha(&index.root).await {
+                    Ok(checkout_sha) if checkout_sha == index.tree_sha => {
+                        return Ok(index.to_source_relative(self.repo_subpath.as_deref()));
+                    }
+                    Ok(checkout_sha) => {
+                        tracing::warn!(
+                            index_tree = %index.tree_sha,
+                            checkout_tree = %checkout_sha,
+                            root = %index.root,
+                            "implements index does not match this checkout's content \
+                             (stale index on this corpus branch?); falling back to a scan"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            root = %index.root,
+                            error = %e,
+                            "implements index freshness could not be verified against \
+                             the checkout; falling back to a scan"
+                        );
+                    }
+                },
+                Err(e) => {
+                    tracing::warn!(
+                        path = %index_path.display(),
+                        error = %e,
+                        "implements index is unreadable; falling back to a scan"
+                    );
+                }
+            },
+            None => {
+                tracing::warn!(
+                    path = %index_path.display(),
+                    "no implements index in this corpus checkout; falling back to a scan"
+                );
+            }
+        }
+
+        // A sparse working tree only materialises the configured cone —
+        // a filesystem scan over it would return a silently *incomplete*
+        // implements map (missing entries read as "fetch this law
+        // per-request", or worse, as "law does not exist"). Refuse
+        // loudly instead.
+        if self.client.is_sparse() {
+            return Err(CorpusError::Config(
+                "implements index unavailable and this is a sparse checkout: \
+                 a filesystem scan would be silently incomplete"
+                    .to_string(),
+            ));
+        }
+
+        scan_implements_via_listing(self).await
     }
 
     async fn persist(&self, ctx: &WriteContext) -> Result<PersistOutcome> {
@@ -1374,6 +1494,214 @@ mod tests {
             LocalBackend::new("test".to_string(), PathBuf::from("/nonexistent/path"), true);
         let result = backend.ensure_ready().await;
         assert!(result.is_err());
+    }
+
+    /// Init a standalone git repo at `path` with a committed corpus tree:
+    /// two laws under `regulation/nl` (one declaring `implements`) plus a
+    /// non-law `.yml` under a second country subtree. Returns nothing —
+    /// callers inspect via git / the backend.
+    async fn setup_corpus_checkout(path: &Path) {
+        use tokio::process::Command;
+
+        tokio::fs::create_dir_all(path).await.unwrap();
+        for args in [
+            vec!["init", "--initial-branch=development"],
+            vec!["config", "user.name", "test"],
+            vec!["config", "user.email", "test@test.nl"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(path)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        let write = |rel: &str, content: &str| {
+            let abs = path.join(rel);
+            std::fs::create_dir_all(abs.parent().unwrap()).unwrap();
+            std::fs::write(abs, content).unwrap();
+        };
+        write(
+            "regulation/nl/wet/wet_a/2025-01-01.yaml",
+            "$id: wet_a\narticles: []\n",
+        );
+        write(
+            "regulation/nl/regeling/reg_b/2025-01-01.yaml",
+            "$id: reg_b\narticles:\n  - number: '1'\n    machine_readable:\n      implements:\n        - law: wet_a\n          open_term: iets\n",
+        );
+        // `.yml` law inside the source root — the fallback scan must count
+        // it (the corpus convention is `.yaml`, but `.yml` occurs).
+        write(
+            "regulation/nl/wet/wet_kort/2025-01-01.yml",
+            "$id: wet_kort\narticles: []\n",
+        );
+        // Law outside the source root (different country subtree): present
+        // in the repo-level index but must be dropped from the
+        // source-relative result.
+        write(
+            "regulation/be/wet/wet_be/2025-01-01.yaml",
+            "$id: wet_be\narticles: []\n",
+        );
+        git_commit_all(path, "seed corpus").await;
+    }
+
+    async fn git_commit_all(path: &Path, message: &str) {
+        use tokio::process::Command;
+        for args in [vec!["add", "-A"], vec!["commit", "-m", message]] {
+            let out = Command::new("git")
+                .args(&args)
+                .current_dir(path)
+                .output()
+                .await
+                .unwrap();
+            assert!(out.status.success(), "git {args:?} failed");
+        }
+    }
+
+    async fn regulation_tree_sha(path: &Path) -> String {
+        let out = tokio::process::Command::new("git")
+            .args(["rev-parse", "HEAD:regulation"])
+            .current_dir(path)
+            .output()
+            .await
+            .unwrap();
+        assert!(out.status.success());
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    /// Generate + commit the implements index for the checkout, exactly as
+    /// the `implements-indexer` binary would.
+    async fn write_index(path: &Path) {
+        let outcome = crate::implements_index::scan_tree(path, "regulation").unwrap();
+        assert!(outcome.failures.is_empty());
+        let index = crate::implements_index::ImplementsIndex {
+            version: crate::implements_index::IMPLEMENTS_INDEX_VERSION,
+            root: "regulation".to_string(),
+            tree_sha: regulation_tree_sha(path).await,
+            files: outcome.files,
+        };
+        std::fs::write(
+            path.join(crate::implements_index::IMPLEMENTS_INDEX_FILENAME),
+            index.to_json(),
+        )
+        .unwrap();
+        git_commit_all(path, "regenerate implements index").await;
+    }
+
+    fn git_backend_on(path: &Path, sparse: bool) -> GitBackend {
+        let mut config = CorpusConfig::new("https://example.invalid/corpus.git", path);
+        if sparse {
+            config.sparse_paths = Some(vec!["regulation/nl/wet".to_string()]);
+        }
+        let client = CorpusClient::new(config);
+        GitBackend::new(client, Some("regulation/nl".to_string()))
+    }
+
+    #[tokio::test]
+    async fn git_read_all_implements_serves_fresh_index_not_the_working_tree() {
+        let dir = TempDir::new().unwrap();
+        setup_corpus_checkout(dir.path()).await;
+        write_index(dir.path()).await;
+
+        // Uncommitted working-tree edit AFTER index generation: HEAD (and
+        // so the index) is unchanged, and the documented semantics are
+        // that a fresh index wins over the working tree. This divergence
+        // is what proves the index is actually being read.
+        std::fs::write(
+            dir.path().join("regulation/nl/wet/wet_a/2025-01-01.yaml"),
+            "$id: wet_a\narticles:\n  - number: '1'\n    machine_readable:\n      implements:\n        - law: iets_nieuws\n          open_term: x\n",
+        )
+        .unwrap();
+
+        let backend = git_backend_on(dir.path(), false);
+        let mut got = backend.read_all_implements().await.unwrap();
+        got.sort();
+
+        assert_eq!(
+            got,
+            vec![
+                (
+                    "regeling/reg_b/2025-01-01.yaml".to_string(),
+                    vec!["wet_a".to_string()]
+                ),
+                // Entry present with an EMPTY list — and still the
+                // committed (pre-edit) content, proving the index served.
+                ("wet/wet_a/2025-01-01.yaml".to_string(), Vec::new()),
+                // `.yml` law has an entry too.
+                ("wet/wet_kort/2025-01-01.yml".to_string(), Vec::new()),
+            ],
+            "expected index-served, source-relative entries for every law \
+             under regulation/nl (and wet_be dropped as outside the root)"
+        );
+    }
+
+    #[tokio::test]
+    async fn git_read_all_implements_stale_index_falls_back_to_scan() {
+        let dir = TempDir::new().unwrap();
+        setup_corpus_checkout(dir.path()).await;
+        write_index(dir.path()).await;
+
+        // A committed corpus change after the last index regeneration —
+        // the pr<N>-branch scenario. The regulation tree sha moves, the
+        // index's recorded sha doesn't.
+        std::fs::create_dir_all(dir.path().join("regulation/nl/wet/wet_nieuw")).unwrap();
+        std::fs::write(
+            dir.path()
+                .join("regulation/nl/wet/wet_nieuw/2026-01-01.yaml"),
+            "$id: wet_nieuw\narticles: []\n",
+        )
+        .unwrap();
+        git_commit_all(dir.path(), "add law without regenerating index").await;
+
+        let backend = git_backend_on(dir.path(), false);
+        let got = backend.read_all_implements().await.unwrap();
+        let paths: Vec<&str> = got.iter().map(|(p, _)| p.as_str()).collect();
+
+        assert!(
+            paths.contains(&"wet/wet_nieuw/2026-01-01.yaml"),
+            "stale index must not shadow the newer checkout content; got {paths:?}"
+        );
+        assert!(
+            paths.contains(&"wet/wet_kort/2025-01-01.yml"),
+            "fallback scan must include .yml laws; got {paths:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn git_read_all_implements_missing_index_scans_checkout() {
+        let dir = TempDir::new().unwrap();
+        setup_corpus_checkout(dir.path()).await;
+        // No index written at all.
+
+        let backend = git_backend_on(dir.path(), false);
+        let mut got = backend.read_all_implements().await.unwrap();
+        got.sort();
+
+        let paths: Vec<&str> = got.iter().map(|(p, _)| p.as_str()).collect();
+        assert_eq!(
+            paths,
+            vec![
+                "regeling/reg_b/2025-01-01.yaml",
+                "wet/wet_a/2025-01-01.yaml",
+                "wet/wet_kort/2025-01-01.yml",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn git_read_all_implements_refuses_scan_on_sparse_checkout() {
+        let dir = TempDir::new().unwrap();
+        setup_corpus_checkout(dir.path()).await;
+        // No index + sparse checkout: a scan would be silently incomplete
+        // (only the cone is materialised), so the call must error instead
+        // of returning a partial implements map.
+        let backend = git_backend_on(dir.path(), true);
+        let err = backend.read_all_implements().await.unwrap_err();
+        assert!(
+            err.to_string().contains("sparse"),
+            "unexpected error: {err}"
+        );
     }
 
     #[tokio::test]
