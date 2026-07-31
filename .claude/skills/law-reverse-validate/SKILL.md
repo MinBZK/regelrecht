@@ -111,7 +111,8 @@ does not close it.
 
 ## Operation Correctness Check
 
-Verify that no v0.4.0-only operations are used:
+Verify that none of these operations, removed from the schema as of v0.5.0 and still absent
+in v0.5.6, are used:
 - No `when`/`then`/`else` on IF operations (must be `cases`/`default`)
 - No SUBTRACT_DATE (must be AGE)
 - No CONCAT (must be ADD with string values)
