@@ -11,7 +11,7 @@ Machine-readable Dutch law execution. regelrecht takes legal texts, encodes them
 ## What does it do
 
 - The engine takes a regulation and a set of inputs, evaluates the decision logic, and returns a result with a full explanation trail
-- Laws are tested against real-world scenarios using BDD (Gherkin) tests, many derived from legislative explanatory memoranda
+- Laws are tested against real-world scenarios using BDD (Gherkin) tests, many derived from legislative explanatory memoranda. The vocabulary those scenarios speak lives in `bdd/grammar.yaml` and every engine's step bindings are generated from it
 - A harvester downloads and tracks Dutch legislation from the official BWB repository
 - Regulations can be edited through a web UI with live execution preview
 
@@ -22,12 +22,16 @@ Machine-readable Dutch law execution. regelrecht takes legal texts, encodes them
 | Package | Description |
 |---------|-------------|
 | [packages/engine/](packages/engine/) | Law execution engine (also compiles to WASM) |
+| [packages/law-model/](packages/law-model/) | The Rust representation of the law format, conforming to `schema/` |
 | [packages/harvester/](packages/harvester/) | Downloads Dutch legislation from BWB |
 | [packages/pipeline/](packages/pipeline/) | PostgreSQL job queue for law processing |
-| [packages/admin/](packages/admin/) | Admin dashboard API (Axum) |
+| [packages/admin/](packages/admin/) | Harvester-admin API; its dashboard UI lives in the editor |
 | [packages/editor-api/](packages/editor-api/) | Backend API for the law editor |
 | [packages/corpus/](packages/corpus/) | Git integration for the regulation corpus |
+| [packages/auth/](packages/auth/) | Shared OIDC/SSO authentication |
+| [packages/github/](packages/github/) | Shared GitHub REST client |
 | [packages/shared/](packages/shared/) | Shared domain types across crates |
+| [packages/arch-extract/](packages/arch-extract/) | Derives the architecture model from the code (`just arch-explore`) |
 | [packages/tui/](packages/tui/) | Terminal dashboard (Ratatui) |
 
 ### Frontends and sites
@@ -36,6 +40,7 @@ Machine-readable Dutch law execution. regelrecht takes legal texts, encodes them
 |-----------|-------------|
 | [frontend/](frontend/) | Law editor UI (Vue 3 + Vite) |
 | [frontend-lawmaking/](frontend-lawmaking/) | Law-making process visualization (Vue 3 + Vite) |
+| [packages/frontend-shared/](packages/frontend-shared/) | Shared frontend primitives (auth, colour scheme, API fetch) |
 | [docs/](docs/) | Astro site: landing page + documentation |
 
 ### Data and testing
@@ -43,9 +48,10 @@ Machine-readable Dutch law execution. regelrecht takes legal texts, encodes them
 | Directory | Description |
 |-----------|-------------|
 | [corpus/regulation/](corpus/regulation/) | Dutch regulations in machine-readable YAML |
-| [schema/](schema/) | Versioned JSON schema for the law format (current: v0.5.2) |
-| [features/](features/) | Gherkin BDD scenarios for law execution |
-| [packages/grafana/](packages/grafana/) | Grafana monitoring dashboards |
+| [schema/](schema/) | Versioned JSON schema for the law format (`schema/latest` points at the current version) |
+| [bdd/](bdd/) | The Gherkin vocabulary (`grammar.yaml`) and the engine-conformance suite |
+| `corpus/regulation/**/scenarios/` | Law-validation scenarios, next to the law they test |
+| [packages/grafana/](packages/grafana/) | Grafana monitoring dashboards (provisioning, not a crate) |
 
 ## Deployed services
 
@@ -58,6 +64,8 @@ Machine-readable Dutch law execution. regelrecht takes legal texts, encodes them
 | Harvester admin | https://harvester-admin.regelrecht.rijks.app |
 | Grafana | https://grafana.regelrecht.rijks.app |
 
+The pipeline API and the harvester and enrich workers deploy alongside these but have no web UI of their own.
+
 PR preview environments are deployed automatically and cleaned up when the PR is closed.
 
 ## Getting started
@@ -65,10 +73,16 @@ PR preview environments are deployed automatically and cleaned up when the PR is
 Prerequisites: [Rust](https://rustup.rs/) (stable) and [just](https://github.com/casey/just).
 
 ```bash
-just check    # run all quality checks (format, lint, build, validate, tests)
-just test     # unit tests only
-just bdd      # BDD tests only
+just check           # everything CI runs (format, lint, build, validate, tests)
+just test            # every Rust test in the workspace
+just test-no-docker  # the same, minus the container-backed suites
+just bdd             # the BDD suites: law scenarios and engine conformance
 ```
+
+`just test` and `just check` start PostgreSQL containers for the crates that
+need one, so they want a Docker daemon. Without one, `just test-no-docker`
+covers everything else. `just bdd` runs separately: it executes against the real
+corpus and is deliberately not part of `just test`.
 
 ### Faster builds (recommended)
 
