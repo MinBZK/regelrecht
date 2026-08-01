@@ -24,3 +24,37 @@ pub fn law_id_from_source(source: &str) -> Option<&str> {
     let rest = source.strip_prefix("regelrecht://")?;
     Some(rest.split('/').next().unwrap_or(rest))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::law_id_from_source;
+
+    #[test]
+    fn bare_law_uri_yields_the_law_id() {
+        assert_eq!(
+            law_id_from_source("regelrecht://wet_op_de_zorgtoeslag"),
+            Some("wet_op_de_zorgtoeslag")
+        );
+    }
+
+    #[test]
+    fn path_and_fragment_are_stripped_from_the_law_id() {
+        assert_eq!(
+            law_id_from_source("regelrecht://wet_op_de_zorgtoeslag/hoogte_zorgtoeslag#field"),
+            Some("wet_op_de_zorgtoeslag")
+        );
+    }
+
+    #[test]
+    fn non_regelrecht_uri_has_no_law_id() {
+        assert_eq!(law_id_from_source("https://example.com/wet"), None);
+        assert_eq!(law_id_from_source("wet_op_de_zorgtoeslag"), None);
+    }
+
+    #[test]
+    fn empty_authority_yields_an_empty_law_id_rather_than_none() {
+        // `regelrecht://` without a law is malformed input; it must not be
+        // mistaken for "not a regelrecht reference at all".
+        assert_eq!(law_id_from_source("regelrecht://"), Some(""));
+    }
+}

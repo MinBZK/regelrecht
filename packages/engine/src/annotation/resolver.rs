@@ -112,13 +112,27 @@ fn finalize_fuzzy(matches: Vec<TextMatch>) -> MatchResult {
         return MatchResult::orphaned();
     }
     let deduped = deduplicate_overlapping(matches);
-    if deduped.len() == 1 {
-        return MatchResult::found(deduped);
+    match clear_winner(&deduped) {
+        Some(winner) => MatchResult::found(vec![winner]),
+        None => MatchResult::ambiguous(deduped),
     }
-    if deduped.len() > 1 && deduped[0].confidence - deduped[1].confidence > TIEBREAK_MARGIN {
-        return MatchResult::found(vec![deduped[0].clone()]);
+}
+
+/// The one candidate that stands out, if there is one.
+///
+/// A lone candidate wins by default; with several, the best has to beat the
+/// runner-up by *more* than [`TIEBREAK_MARGIN`]. `None` means the field is
+/// tied, and what a tie means is up to the caller: ambiguous for a full
+/// search, a failed hint for [`resolve_hint`]. Candidates arrive sorted by
+/// confidence descending (both callers dedupe first, which sorts).
+fn clear_winner(deduped: &[TextMatch]) -> Option<TextMatch> {
+    match deduped {
+        [only] => Some(only.clone()),
+        [best, second, ..] if best.confidence - second.confidence > TIEBREAK_MARGIN => {
+            Some(best.clone())
+        }
+        _ => None,
     }
-    MatchResult::ambiguous(deduped)
 }
 
 /// Try the hinted article (optionally a hinted position) before any full
@@ -165,16 +179,12 @@ fn resolve_hint(
     for m in &mut fuzzy {
         m.article_number = article.number.clone();
     }
-    if fuzzy.is_empty() {
-        return MatchResult::orphaned();
-    }
     let deduped = deduplicate_overlapping(fuzzy);
-    if deduped.len() == 1 {
-        MatchResult::found(deduped)
-    } else if deduped.len() > 1 && deduped[0].confidence - deduped[1].confidence > TIEBREAK_MARGIN {
-        MatchResult::found(vec![deduped[0].clone()])
-    } else {
-        MatchResult::orphaned()
+    match clear_winner(&deduped) {
+        Some(winner) => MatchResult::found(vec![winner]),
+        // A tie inside the hinted article is not an answer: the hint is
+        // non-authoritative, so the caller falls back to the full search.
+        None => MatchResult::orphaned(),
     }
 }
 
@@ -425,6 +435,33 @@ mod tests {
         }
     }
 
+    fn hinted(
+        exact: &str,
+        prefix: &str,
+        suffix: &str,
+        article_number: &str,
+        span: Option<(usize, usize)>,
+    ) -> TextQuoteSelector {
+        let mut sel = selector(exact, prefix, suffix);
+        sel.hint = Some(SelectorHint {
+            article_number: article_number.to_string(),
+            start: span.map(|(s, _)| s),
+            end: span.map(|(_, e)| e),
+        });
+        sel
+    }
+
+    /// A candidate as the fuzzy scan produces them, for the collapsing helpers.
+    fn candidate(article_number: &str, start: usize, end: usize, confidence: f64) -> TextMatch {
+        TextMatch {
+            article_number: article_number.to_string(),
+            start,
+            end,
+            confidence,
+            matched_text: String::new(),
+        }
+    }
+
     #[test]
     fn exact_match_single() {
         let arts = vec![article(
@@ -538,6 +575,399 @@ mod tests {
         let r = resolve(&sel, &arts);
         assert!(r.is_found());
         assert_eq!(r.single().unwrap().article_number, "2");
+    }
+
+    // === Exact matching: every occurrence, and the context that filters them ===
+
+    #[test]
+    fn every_occurrence_is_reported_when_the_context_does_not_disambiguate() {
+        // Without prefix/suffix all three occurrences are equally good. They
+        // must all be reported: the number of candidates is what tells the
+        // editor how ambiguous the anchor really is.
+        let arts = vec![article(
+            "2",
+            "de verzekerde en de verzekerde en nog een verzekerde",
+        )];
+        let sel = selector("verzekerde", "", "");
+        let r = resolve(&sel, &arts);
+        assert!(r.is_ambiguous());
+        let starts: Vec<usize> = r.matches.iter().map(|m| m.start).collect();
+        assert_eq!(starts, vec![3, 20, 42]);
+    }
+
+    #[test]
+    fn without_context_a_quote_also_matches_inside_a_longer_word() {
+        // An empty prefix and suffix impose no context at all, so "toeslag"
+        // also matches inside "zorgtoeslagen". That is exactly why an anchor
+        // without context comes back ambiguous instead of found.
+        let arts = vec![article("2", "de zorgtoeslagen en de aanvullende toeslag")];
+        let sel = selector("toeslag", "", "");
+        let r = resolve(&sel, &arts);
+        assert!(r.is_ambiguous());
+        assert_eq!(r.matches.len(), 2);
+    }
+
+    #[test]
+    fn context_matches_across_a_single_whitespace_difference() {
+        // Prefix and suffix are stored without the whitespace that separates
+        // them from the quote in the law text. One character of slack plus
+        // trimming absorbs that, so this stays an exact hit (confidence 1.0)
+        // instead of degrading to a fuzzy one.
+        let arts = vec![article(
+            "2",
+            "heeft recht op een zorgtoeslag ter grootte van dat verschil",
+        )];
+        let sel = selector("zorgtoeslag", "op een", "ter grootte");
+        let r = resolve(&sel, &arts);
+        assert!(r.is_found());
+        let m = r.single().unwrap();
+        assert_eq!(m.start, 19);
+        assert_eq!(
+            m.confidence, 1.0,
+            "a hit on the literal text must not degrade to a fuzzy match"
+        );
+    }
+
+    #[test]
+    fn both_prefix_and_suffix_have_to_match() {
+        // The first occurrence has the right prefix but the wrong suffix. Only
+        // the occurrence that matches both sides is the anchor.
+        let text =
+            "recht op een zorgtoeslag krachtens deze wet en recht op een zorgtoeslag van rechtswege";
+        let arts = vec![article("2", text)];
+        let sel = selector("zorgtoeslag", "op een", "van rechtswege");
+        let r = resolve(&sel, &arts);
+        assert!(r.is_found(), "got {:?}", r.status);
+        let m = r.single().unwrap();
+        assert!(text[m.end..].starts_with(" van rechtswege"));
+    }
+
+    // === Hints: which article, which position, and when to ignore them ===
+
+    #[test]
+    fn a_hint_picks_the_article_when_the_same_text_occurs_twice() {
+        // Both articles carry the quote, so a full search is ambiguous; the
+        // hint records which article the note was written on. No word in the
+        // quote is longer than three characters, so fuzzy matching cannot
+        // rescue this: the exact search inside the hinted article answers it.
+        let arts = vec![
+            article("2", "Deze verplichting vloeit voort uit de wet."),
+            article("3", "De inspecteur handelt overeenkomstig de wet."),
+        ];
+        let sel = hinted("de wet", "", "", "3", None);
+        let r = resolve(&sel, &arts);
+        assert!(r.is_found(), "got {:?}", r.status);
+        assert_eq!(r.single().unwrap().article_number, "3");
+    }
+
+    #[test]
+    fn a_position_hint_picks_one_of_two_identical_occurrences() {
+        // The same phrase occurs twice with identical context, so prefix and
+        // suffix cannot tell them apart and a plain search is ambiguous. The
+        // recorded position says the note sits on the second one. The sentence
+        // runs on after that second occurrence, so the suffix window has to be
+        // bounded by the suffix length instead of by the end of the article.
+        let text = "recht op een zorgtoeslag van rechtswege en recht op een zorgtoeslag van rechtswege, aldus de toelichting";
+        let arts = vec![article("2", text)];
+        let start = text.rfind("zorgtoeslag").unwrap();
+        let sel = hinted(
+            "zorgtoeslag",
+            "op een",
+            "van rechtswege",
+            "2",
+            Some((start, start + "zorgtoeslag".len())),
+        );
+        let r = resolve(&sel, &arts);
+        assert!(r.is_found(), "the position must break the tie, got {:?}", r);
+        assert_eq!(r.single().unwrap().start, start);
+    }
+
+    #[test]
+    fn a_position_hint_with_the_wrong_prefix_is_rejected() {
+        // The article was rewritten and the recorded offsets now land on
+        // another occurrence: same words, different context. The hint is
+        // non-authoritative, so the text search decides.
+        let text =
+            "een voorschot zorgtoeslag van rechtswege; recht op een zorgtoeslag van rechtswege";
+        let arts = vec![article("2", text)];
+        let stale = text.find("zorgtoeslag").unwrap();
+        let sel = hinted(
+            "zorgtoeslag",
+            "op een",
+            "van rechtswege",
+            "2",
+            Some((stale, stale + "zorgtoeslag".len())),
+        );
+        let r = resolve(&sel, &arts);
+        assert!(r.is_found(), "got {:?}", r.status);
+        assert_eq!(
+            r.single().unwrap().start,
+            text.rfind("zorgtoeslag").unwrap(),
+            "the occurrence with the wrong prefix must not win"
+        );
+    }
+
+    #[test]
+    fn a_position_hint_with_the_wrong_suffix_is_rejected() {
+        let text =
+            "recht op een zorgtoeslag krachtens deze wet en recht op een zorgtoeslag van rechtswege";
+        let arts = vec![article("2", text)];
+        let stale = text.find("zorgtoeslag").unwrap();
+        let sel = hinted(
+            "zorgtoeslag",
+            "op een",
+            "van rechtswege",
+            "2",
+            Some((stale, stale + "zorgtoeslag".len())),
+        );
+        let r = resolve(&sel, &arts);
+        assert!(r.is_found(), "got {:?}", r.status);
+        assert_eq!(
+            r.single().unwrap().start,
+            text.rfind("zorgtoeslag").unwrap(),
+            "the occurrence with the wrong suffix must not win"
+        );
+    }
+
+    #[test]
+    fn a_position_hint_past_the_end_of_the_article_is_ignored() {
+        // The article was shortened; the recorded offsets now point beyond it.
+        // That must not panic and must not stop the search.
+        let arts = vec![article("2", "heeft recht op een zorgtoeslag hier")];
+        let sel = hinted("zorgtoeslag", "op een", "hier", "2", Some((120, 131)));
+        let r = resolve(&sel, &arts);
+        assert!(r.is_found());
+        assert_eq!(r.single().unwrap().start, 19);
+    }
+
+    // === Fuzzy matching: which windows, which span, which threshold ===
+
+    #[test]
+    fn a_fuzzy_anchor_covers_the_changed_phrase() {
+        // The note quotes "aanspraak op een zorgtoeslag"; the article now says
+        // "recht op een zorgtoeslag". The anchor has to cover that whole
+        // phrase and nothing else: it is the span the editor highlights.
+        let arts = vec![article(
+            "2",
+            "heeft de verzekerde recht op een zorgtoeslag ter grootte van het verschil",
+        )];
+        let sel = selector(
+            "aanspraak op een zorgtoeslag",
+            "heeft de verzekerde",
+            "ter grootte",
+        );
+        let r = resolve(&sel, &arts);
+        assert!(r.is_found(), "expected a fuzzy match, got {:?}", r.status);
+        let m = r.single().unwrap();
+        assert_eq!(
+            m.matched_text.trim(),
+            "recht op een zorgtoeslag",
+            "the anchor must cover the changed phrase, not an arbitrary window of about the right size"
+        );
+        assert!(m.confidence < 1.0);
+    }
+
+    #[test]
+    fn fuzzy_windows_stay_within_the_length_tolerance() {
+        // Candidates are windows of the quote's length ±30%. A window far off
+        // that length is a different phrase, not a changed one, and scoring it
+        // only invites the resolver to anchor on the wrong text.
+        let sel = selector("zorgtoeslag", "", "");
+        let text = "de zorgtoeslag wordt jaarlijks vastgesteld door de Belastingdienst";
+        let matches = find_fuzzy_matches(text, &sel, DEFAULT_FUZZY_THRESHOLD);
+        assert!(!matches.is_empty());
+        for m in &matches {
+            let len = m.end - m.start;
+            assert!(
+                (8..=14).contains(&len),
+                "window of {len} chars for an 11-char quote: {m:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_fuzzy_window_may_span_the_whole_article() {
+        // The article text is the changed quote and nothing else, so the only
+        // window that covers it is the full text.
+        let arts = vec![article("2", "recht op een zorgtoeslag")];
+        let sel = selector("recht op de zorgtoeslag", "", "");
+        let r = resolve(&sel, &arts);
+        assert!(r.is_found(), "got {:?}", r.status);
+        assert_eq!(r.single().unwrap().matched_text, "recht op een zorgtoeslag");
+    }
+
+    #[test]
+    fn a_rewrite_that_only_shares_a_word_does_not_anchor() {
+        // "belanghebbende" gets these windows past the pre-filter, but none of
+        // them scores at the threshold. The note must orphan rather than
+        // anchor onto text it is not about.
+        let arts = vec![article(
+            "2",
+            "de belanghebbende dient de aanvraag in bij de Belastingdienst",
+        )];
+        let sel = selector(
+            "stelt het verzamelinkomen van de belanghebbende ambtshalve vast",
+            "de inspecteur",
+            "voor het jaar",
+        );
+        let r = resolve(&sel, &arts);
+        assert!(r.is_orphaned(), "got {:?} at {:?}", r.status, r.matches);
+    }
+
+    #[test]
+    fn a_quote_of_only_short_words_does_not_fuzzily_anchor() {
+        // "in de wet" has no word longer than three characters, so there is
+        // nothing to key a fuzzy match on. Once the phrase is replaced the note
+        // orphans instead of drifting onto text that merely looks like it.
+        let arts = vec![article("2", "Deze bevoegdheid is opgenomen in het besluit")];
+        let sel = selector("in de wet", "", "");
+        let r = resolve(&sel, &arts);
+        assert!(r.is_orphaned(), "got {:?} at {:?}", r.status, r.matches);
+    }
+
+    // === Scoring and collapsing helpers ===
+
+    #[test]
+    fn similarity_treats_a_missing_side_as_no_similarity() {
+        // A window at the very start of an article has no text before it. That
+        // scores zero against a non-empty prefix, not a free 1.0.
+        assert_eq!(similarity("op een", ""), 0.0);
+        assert_eq!(similarity("", "op een"), 0.0);
+        assert_eq!(similarity("", ""), 1.0);
+        assert_eq!(similarity("zorgtoeslag", "zorgtoeslag"), 1.0);
+        assert!(similarity("aanspraak", "aanzoek") > 0.0);
+    }
+
+    #[test]
+    fn only_words_longer_than_three_characters_are_significant() {
+        let words = significant_words("Recht op een zorgtoeslag van de wet");
+        assert!(words.contains("recht"), "lowercased: {words:?}");
+        assert!(words.contains("zorgtoeslag"));
+        assert!(
+            !words.contains("wet"),
+            "three characters is too common to key on"
+        );
+        assert!(!words.contains("op"));
+    }
+
+    #[test]
+    fn the_prefilter_needs_a_word_shared_with_the_quote() {
+        let quote = significant_words("aanspraak op zorgtoeslag");
+        assert!(shares_significant_content(&quote, "recht op zorgtoeslag"));
+        assert!(
+            !shares_significant_content(&quote, "vastgesteld bij ministeriële regeling"),
+            "long words that the quote does not use are not shared content"
+        );
+        assert!(!shares_significant_content(&quote, "op de wet"));
+    }
+
+    #[test]
+    fn touching_candidates_are_not_overlapping() {
+        // Two spans that touch (one ends where the next begins) are separate
+        // anchors; only genuinely overlapping spans collapse onto the best one.
+        let kept = deduplicate_overlapping(vec![
+            candidate("2", 0, 10, 0.80),
+            candidate("2", 10, 20, 0.90),
+            candidate("2", 20, 30, 0.85),
+        ]);
+        assert_eq!(kept.len(), 3, "kept {kept:?}");
+    }
+
+    #[test]
+    fn overlapping_candidates_collapse_onto_the_best() {
+        let kept = deduplicate_overlapping(vec![
+            candidate("2", 0, 10, 0.80),
+            candidate("2", 5, 15, 0.90),
+        ]);
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].confidence, 0.90);
+    }
+
+    #[test]
+    fn the_same_span_in_another_article_is_a_separate_candidate() {
+        let kept = deduplicate_overlapping(vec![
+            candidate("2", 0, 10, 0.90),
+            candidate("3", 0, 10, 0.80),
+        ]);
+        assert_eq!(kept.len(), 2);
+    }
+
+    #[test]
+    fn a_winner_has_to_beat_the_runner_up_by_more_than_the_margin() {
+        assert_eq!(
+            clear_winner(&[candidate("2", 0, 10, 0.80)]).map(|w| w.start),
+            Some(0),
+            "a lone candidate wins by default"
+        );
+        assert_eq!(
+            clear_winner(&[candidate("2", 0, 10, 0.95), candidate("2", 20, 30, 0.80)])
+                .map(|w| w.start),
+            Some(0),
+            "0.15 ahead is a clear winner"
+        );
+
+        // Exactly the margin is not "more than": still a tie. 0.2 and 0.1 are
+        // chosen because their difference is exactly 0.1 in binary floating
+        // point, which is what puts this case on the boundary.
+        let (best, second) = (0.2, 0.1);
+        assert_eq!(best - second, TIEBREAK_MARGIN, "fixture sits on the margin");
+        assert!(
+            clear_winner(&[candidate("2", 0, 10, best), candidate("2", 20, 30, second)]).is_none()
+        );
+
+        assert!(
+            clear_winner(&[candidate("2", 0, 10, 0.75), candidate("2", 20, 30, 0.72)]).is_none(),
+            "within the margin is a tie"
+        );
+        assert!(clear_winner(&[]).is_none());
+    }
+
+    #[test]
+    fn find_subslice_reports_the_first_position() {
+        let hay: Vec<char> = "zorgtoeslag".chars().collect();
+        let needle = |s: &str| s.chars().collect::<Vec<char>>();
+        assert_eq!(find_subslice(&hay, &needle("toeslag")), Some(4));
+        assert_eq!(find_subslice(&hay, &needle("zorgtoeslag")), Some(0));
+        assert_eq!(find_subslice(&hay, &needle("premie")), None);
+        assert_eq!(
+            find_subslice(&hay, &needle("zorgtoeslagen")),
+            None,
+            "a needle longer than the haystack cannot be in it"
+        );
+        assert_eq!(
+            find_subslice(&hay, &[]),
+            None,
+            "an empty quote matches nothing"
+        );
+    }
+
+    // === Resolving against raw text, without articles ===
+
+    #[test]
+    fn raw_text_resolves_a_single_exact_quote() {
+        let sel = selector("de wet", "", "");
+        let r = resolve_in_text(
+            &sel,
+            "Deze verplichting vloeit voort uit de wet.",
+            DEFAULT_FUZZY_THRESHOLD,
+        );
+        assert!(r.is_found(), "got {:?}", r.status);
+        let m = r.single().unwrap();
+        assert_eq!(m.matched_text, "de wet");
+        assert_eq!(m.confidence, 1.0);
+        assert_eq!(m.article_number, "", "raw text has no article to name");
+    }
+
+    #[test]
+    fn raw_text_with_a_repeated_quote_is_ambiguous() {
+        let sel = selector("de wet", "", "");
+        let r = resolve_in_text(
+            &sel,
+            "de wet verwijst naar de wet.",
+            DEFAULT_FUZZY_THRESHOLD,
+        );
+        assert!(r.is_ambiguous(), "got {:?}", r.status);
+        assert_eq!(r.matches.len(), 2);
     }
 
     #[test]

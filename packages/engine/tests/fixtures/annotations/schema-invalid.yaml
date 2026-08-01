@@ -1,0 +1,13 @@
+---
+# Fixture for tests/validate_annotations_cli.rs: the note has no `body`, which
+# the annotation schema requires. This is the only defect class that makes
+# `validate-annotations` exit non-zero.
+annotations:
+  - type: Annotation
+    motivation: commenting
+    creator: fictieve-annotator
+    target:
+      source: regelrecht://wet_die_niet_bestaat
+      selector:
+        type: TextQuoteSelector
+        exact: verzekerde
