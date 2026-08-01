@@ -168,6 +168,25 @@ smoke-preview TARGET="":
 mutants *ARGS:
     cd packages/engine && cargo mutants --in-place --timeout-multiplier 3 {{ARGS}}
 
+# Mutation testing on your own changes only — the local tegenhanger of the
+# mutation-diff CI-poort. De volledige set kost uren, dit een paar minuten.
+#
+# Het pad-detail dat dit recept wegneemt: cargo-mutants noemt bestanden
+# relatief aan de workspace-root (packages/), dus de diff moet `b/engine/src/…`
+# bevatten en niet `b/packages/engine/src/…`. Voer je een diff met de verkeerde
+# prefix in, dan vindt hij nul mutanten en lijkt alles in orde.
+mutants-diff BASE="origin/main":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    diff_file="$(mktemp -t mutants-diff-XXXXXX.diff)"
+    git -C packages diff --relative "{{BASE}}" -- engine > "$diff_file"
+    if [ ! -s "$diff_file" ]; then
+        echo "Geen gewijzigde regels in packages/engine ten opzichte van {{BASE}}."
+        exit 0
+    fi
+    cd packages/engine
+    cargo mutants --in-place --timeout-multiplier 3 --in-diff "$diff_file"
+
 # --- Benchmarks ---
 
 _bench_flags := "--bench uri_parsing --bench variable_resolution --bench operations --bench article_evaluation --bench law_loading --bench priority --bench service_e2e"
