@@ -66,11 +66,17 @@ validate-annotations *FILES:
 conformance:
     cd packages && {{ci_flags}} cargo test -p regelrecht-engine --features validate --test conformance
 
+# Pins the deploy filters against the real cargo graph. Node's built-in test
+# runner, so no dependency for one file. Needs `cargo metadata`, not a build.
+[doc("Check the deploy filters against the real cargo dependency graph")]
+deploy-filters-test:
+    node --test script/deploy-filters.test.mjs
+
 # Run all quality checks, exactly what CI runs. Needs Docker for the
 # container-backed suites; on a machine without a daemon, swap `test` for
 # `test-no-docker`.
 [doc("Run all quality checks, exactly what CI runs (needs Docker)")]
-check: format lint build-check validate validate-annotations test
+check: format lint build-check validate validate-annotations deploy-filters-test test
 
 # --- Tests ---
 

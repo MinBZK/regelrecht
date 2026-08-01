@@ -18,11 +18,12 @@
 // zijn, en dat is precies de fout die dit script moet uitbannen.
 
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 // Per component: de crate waar het image aan hangt (of null), plus de paden
 // buiten de graaf die het image beïnvloeden.
-const COMPONENTS = {
+export const COMPONENTS = {
   editor: {
     crate: 'regelrecht-editor-api',
     paths: [
@@ -64,7 +65,7 @@ const RUST_WIDE = [
   'rust-toolchain.toml',
 ];
 
-function workspaceGraph() {
+export function workspaceGraph() {
   const raw = execFileSync(
     'cargo',
     ['metadata', '--no-deps', '--format-version', '1'],
@@ -94,6 +95,49 @@ function workspaceGraph() {
   return { byName, closure, dirOf };
 }
 
+// Eén implementatie van "hoe rapporteren we een component-uitkomst", zodat de
+// fallback hieronder hem kan hergebruiken in plaats van hem na te bouwen.
+function emit(name, value) {
+  console.log(`${name}=${value}`);
+  const out = process.env.GITHUB_OUTPUT;
+  if (out) appendFileSync(out, `${name}=${value}\n`);
+}
+
+// De padprefixen die dit component raken: de handmatige lijst, en voor een
+// component met een image de crate zelf plus zijn hele normal/build-closure.
+export function prefixesFor(spec, graph) {
+  const prefixes = [...spec.paths];
+  if (!spec.crate) return prefixes;
+
+  if (!graph.byName.has(spec.crate)) {
+    throw new Error(`crate ${spec.crate} niet gevonden in de workspace`);
+  }
+  prefixes.push(...RUST_WIDE);
+  for (const dep of [spec.crate, ...graph.closure(spec.crate)]) {
+    const dir = graph.dirOf(dep);
+    if (!dir) throw new Error(`geen pad voor crate ${dep}`);
+    prefixes.push(dir);
+  }
+  return prefixes;
+}
+
+// Welke componenten raakt deze lijst gewijzigde bestanden? Een lege lijst
+// betekent "we weten het niet" en dus alles bouwen, dezelfde kant op als de
+// fallback: een overbodige build is goedkoper dan een stille overslag.
+export function componentsFor(changed, graph) {
+  const result = {};
+  const unknown = changed.length === 0;
+  for (const [name, spec] of Object.entries(COMPONENTS)) {
+    if (unknown) {
+      result[name] = true;
+      continue;
+    }
+    const prefixes = prefixesFor(spec, graph);
+    result[name] = changed.some((file) => prefixes.some((p) => file.startsWith(p)));
+  }
+  return result;
+}
+
 function main() {
   // Uit een bestand als het er is: een grote PR heeft meer bestandsnamen dan
   // er in een commandoregel passen.
@@ -102,45 +146,31 @@ function main() {
     args[0] === '--from-file'
       ? readFileSync(args[1], 'utf8').split('\n').filter(Boolean)
       : args.filter(Boolean);
-  const out = process.env.GITHUB_OUTPUT;
-  const emit = (name, value) => {
-    console.log(`${name}=${value}`);
-    if (out) appendFileSync(out, `${name}=${value}\n`);
-  };
 
   if (changed.length === 0) {
     console.log('Geen lijst met gewijzigde bestanden: alles bouwen.');
-    for (const name of Object.keys(COMPONENTS)) emit(name, true);
+    for (const [name, hit] of Object.entries(componentsFor(changed, null))) {
+      emit(name, hit);
+    }
     return;
   }
 
-  const { byName, closure, dirOf } = workspaceGraph();
-
-  for (const [name, spec] of Object.entries(COMPONENTS)) {
-    const prefixes = [...spec.paths];
-    if (spec.crate) {
-      if (!byName.has(spec.crate)) {
-        throw new Error(`crate ${spec.crate} niet gevonden in de workspace`);
-      }
-      prefixes.push(...RUST_WIDE);
-      for (const dep of [spec.crate, ...closure(spec.crate)]) {
-        const dir = dirOf(dep);
-        if (!dir) throw new Error(`geen pad voor crate ${dep}`);
-        prefixes.push(dir);
-      }
-    }
-    const hit = changed.some((file) => prefixes.some((p) => file.startsWith(p)));
+  const graph = workspaceGraph();
+  for (const [name, hit] of Object.entries(componentsFor(changed, graph))) {
     emit(name, hit);
   }
 }
 
-try {
-  main();
-} catch (error) {
-  console.log(`::warning::deploy-filters faalde (${error.message}); alles bouwen.`);
-  const out = process.env.GITHUB_OUTPUT;
-  for (const name of Object.keys(COMPONENTS)) {
-    console.log(`${name}=true`);
-    if (out) appendFileSync(out, `${name}=true\n`);
+// Alleen draaien als het script zelf is aangeroepen; bij `import` vanuit de
+// test moet er niets gebeuren.
+const invokedDirectly =
+  process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+
+if (invokedDirectly) {
+  try {
+    main();
+  } catch (error) {
+    console.log(`::warning::deploy-filters faalde (${error.message}); alles bouwen.`);
+    for (const name of Object.keys(COMPONENTS)) emit(name, true);
   }
 }
