@@ -6,6 +6,14 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    # Een nieuwe versie moet vijf dagen bestaan voordat Dependabot er een PR
+    # van maakt. De registry-compromitteringen van het afgelopen jaar
+    # (chalk/debug, shai-hulud) werden binnen uren tot dagen ontdekt en
+    # ingetrokken; met dit venster is dat gebeurd voordat de bump hier
+    # binnenkomt. Security-updates vallen er buiten en komen onmiddellijk,
+    # ongeacht deze instelling.
+    cooldown:
+      default-days: 5
     # Zonder dit gebruikt Dependabot `chore(deps-dev)` voor dev-dependencies,
     # en die scope staat niet in de lijst van `pr-title.yml` — waardoor elke
     # dev-dependency-PR op de titelcheck strandt. Eén spelling voor één
@@ -67,6 +75,8 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    cooldown:
+      default-days: 5
     # Zie de toelichting bij het cargo-blok hierboven.
     commit-message:
       prefix: chore(deps)
@@ -88,6 +98,8 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    cooldown:
+      default-days: 5
     labels:
       - dependencies
       - docker
@@ -112,6 +124,8 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    cooldown:
+      default-days: 5
     labels:
       - dependencies
       - docker
@@ -135,6 +149,8 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    cooldown:
+      default-days: 5
     labels:
       - dependencies
       - docker
@@ -151,6 +167,8 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    cooldown:
+      default-days: 5
     # Zie de toelichting bij het cargo-blok hierboven.
     commit-message:
       prefix: chore(deps)
@@ -172,6 +190,8 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    cooldown:
+      default-days: 5
     labels:
       - dependencies
       - github-actions
