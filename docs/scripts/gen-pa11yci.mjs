@@ -95,11 +95,11 @@ const scoped = scopeRoutes(routes);
 const checked = scoped ?? routes;
 
 const config = {
-  // pa11y-ci draait de URL's standaard twee tegelijk; de runners zijn
-  // IO-gebonden (Chromium per pagina), dus vier past op een runner met vier
-  // kernen en scheelt ruwweg de helft van de wandklok.
-  concurrency: 4,
   defaults: {
+    // pa11y-ci draait standaard één URL tegelijk, en de sleutel hoort in
+    // `defaults` — op het hoogste niveau wordt hij genegeerd. Elke URL is een
+    // eigen Chromium, dus vier past op een runner met vier kernen.
+    concurrency: 4,
     standard: 'WCAG2AA',
     runners: ['htmlcs', 'axe'],
     timeout: 30000,
