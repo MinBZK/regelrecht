@@ -32,6 +32,27 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # chacha20poly1305 0.11 stapt over op de nieuwe RustCrypto
+      # core-traits (crypto-common 0.2, aead 0.6, rand_core 0.10). Dat is
+      # geen mechanische bump: `aead::OsRng` bestaat niet meer en
+      # rand_core 0.10 heeft helemaal geen OsRng, dus de nonce-generatie in
+      # packages/editor-api/src/crypto.rs moet met de hand een andere
+      # randomness-bron krijgen (security-sensitief: nonce-hergebruik breekt
+      # de versleuteling van de OAuth-tokencookie). Zolang sha2/hmac/digest
+      # nog op crypto-common 0.1 zitten levert de bump alleen een dubbele
+      # crypto-stack op zonder functioneel voordeel.
+      # Let op: een ignore-regel onderdrukt ook Dependabot-*security*-updates
+      # in het genegeerde bereik, niet alleen gewone versie-bumps. Op 0.10.1
+      # staat vandaag geen advisory; komt die er wel, dan blijft `just audit`
+      # (cargo-deny, blokkerende CI-job) het vangnet dat de build rood maakt.
+      # Dat is meteen het signaal om deze regel te schrappen.
+      # Patch-releases op de 0.10-lijn blijven welkom; minor/major pas als de
+      # hele workspace in één keer meegaat.
+      - dependency-name: chacha20poly1305
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
 
 
   # Single entry for the root npm workspace. frontend, frontend-lawmaking and
