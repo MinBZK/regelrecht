@@ -182,10 +182,10 @@ impl LlmRunner for ProcessLlmRunner {
         let progress_path = progress_file_path(yaml_abs);
         // Chunked runs get the explicit-article-subset prompt; whole-law runs
         // keep the original prompt byte-identical.
-        // A repair round asks for one thing and gives the agent nothing
+        // A feedback pass asks for one thing and gives the agent nothing
         // else to do, so it cannot wander back into translating.
-        if let Some(errors) = &payload.repair_errors {
-            let prompt = build_repair_prompt(&payload.yaml_path, errors);
+        if let Pass::Feedback(feedback) = &payload.pass {
+            let prompt = build_feedback_prompt(&payload.yaml_path, feedback);
             return run_llm_subprocess(
                 &config.provider,
                 &prompt,
@@ -521,6 +521,63 @@ fn parse_vmrss_kb(status: &str) -> Option<u64> {
         .and_then(|kb| kb.parse::<u64>().ok())
 }
 
+/// What kind of run this is. A chain is a sequence of passes over the same
+/// law, and a gate between two of them decides whether the next pass is a
+/// translation or a response to what the gate found.
+///
+/// Modelled as data rather than as a set of optional fields on the payload,
+/// because the number of gates grows and each one would otherwise add
+/// another flag nobody can see the shape of. RFC-028 generalises this into a
+/// step with its own runtime and model; this is the domain half of that,
+/// without the machinery.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum Pass {
+    /// Translate: read the law and write `machine_readable`.
+    #[default]
+    Translate,
+    /// Respond to what a gate found. The artefact exists; this pass is about
+    /// what is wrong with it.
+    Feedback(Feedback),
+}
+
+/// What a gate found and what the agent may do about it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Feedback {
+    pub gate: Gate,
+    /// The findings, verbatim. Never paraphrased: an instance path is what
+    /// says where the problem sits, and the agent cannot run the check
+    /// itself to look again.
+    pub findings: Vec<String>,
+}
+
+/// The gate that produced the findings. Its kind decides what an acceptable
+/// answer is, which is the difference that matters most in this design.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Gate {
+    /// A fact about the artefact that must hold: the YAML validates. Not
+    /// open to interpretation, so the only answers are repair or stop.
+    Schema,
+    /// A question the statutory text raises: this lid says "in afwijking
+    /// van" and the model has no branch; this article computes over a
+    /// berekeningsjaar and no binding carries a period. The answer may be a
+    /// change to the model, and it may equally be a marking that says why
+    /// not. A gate that only accepts changes turns every open norm into a
+    /// defect and pushes the translator into inventing something.
+    Checks,
+    /// The record rather than the translation: a marking filed in the wrong
+    /// drawer, or a source named that the agent had no way of reading. Soft,
+    /// because a misfiled marking is still better than silence, and because
+    /// failing here would punish the very behaviour this design wants.
+    Marking,
+}
+
+impl Gate {
+    /// Whether a marking is an acceptable answer instead of a change.
+    fn accepts_marking(self) -> bool {
+        matches!(self, Gate::Checks | Gate::Marking)
+    }
+}
+
 /// Payload for an enrich job, stored as JSON in the job queue.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EnrichPayload {
@@ -554,11 +611,11 @@ pub struct EnrichPayload {
     /// `document_etag()` van de wet-YAML op aanvraagmoment (staleness-check).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_etag: Option<String>,
-    /// Schemafouten uit de vorige ronde. Aanwezig betekent: dit is de
-    /// reparatieronde, en de prompt vraagt alleen die fouten te verhelpen.
-    /// Rijdt niet mee in de jobpayload; hij bestaat alleen binnen een run.
+    /// Welke soort run dit is. Rijdt niet mee in de jobpayload: hij bestaat
+    /// alleen binnen één uitvoering en zegt wat de agent nu geacht wordt te
+    /// doen. Zie [`Pass`].
     #[serde(skip)]
-    pub repair_errors: Option<Vec<String>>,
+    pub pass: Pass,
     /// `true` wanneer deze enrichment een NIEUWE wet betreft die nog niet in
     /// het traject bestaat (geketend vanuit een `law_convert`-job). Stuurt de
     /// review-taak: `kind: "law_create"` + eigen titel, zodat de editor het
@@ -1113,35 +1170,87 @@ Use the Write tool. Keep it brief — just one write per phase transition."#
     )
 }
 
-/// Prompt for the repair round after schema validation failed.
+/// Prompt for a feedback pass: the artefact exists and a gate found
+/// something.
 ///
-/// The errors are handed over verbatim, because the agent has no way to run
-/// the validator itself and a paraphrase would lose the instance path that
-/// says where the problem sits.
-fn build_repair_prompt(yaml_path: &str, errors: &[String]) -> String {
-    let list = errors
+/// Two things make the difference between a useful round and a harmful one.
+/// The findings go over verbatim, because the agent cannot run the check
+/// itself and a paraphrase loses the instance path that says where the
+/// problem sits. And what counts as an answer depends on the gate: a schema
+/// error must be fixed, while a question the text raises may equally be
+/// answered by recording why the model does not do what the check expected.
+fn build_feedback_prompt(yaml_path: &str, feedback: &Feedback) -> String {
+    let list = feedback
+        .findings
         .iter()
-        .map(|e| format!("- {e}"))
+        .map(|f| format!("- {f}"))
         .collect::<Vec<_>>()
         .join("\n");
+
+    let (what_happened, what_to_do) = match feedback.gate {
+        Gate::Schema => (
+            "does not validate against the regelrecht JSON schema",
+            "Fix it in place so it validates. Change as little as possible.",
+        ),
+        Gate::Marking => (
+            "records things in the wrong drawer, or names a source it cannot have read",
+            "Two things, and they are about the record rather than about the translation.\n\n\
+             **Put each marking in the drawer it belongs to.** An `untranslatable` says the \
+             engine's operations cannot express a construct, and it is resolved by building \
+             the operation. A `norm_gap` says the norm is open and gets its content from a \
+             regulation or beleidsregel that is not in the corpus, and it is resolved by \
+             harvesting that source or, absent one, by the competent authority deciding per \
+             case. Recording the second as the first sends it to a queue where nobody will \
+             ever work it.\n\n\
+             **Do not cite what you were not given.** You have no network and no search. A \
+             kamerstuk, a Staatsblad number or a URL that appears in none of the text in front \
+             of you is something you recall, and a recalled citation is indistinguishable from \
+             a read one to whoever comes after. If you believe a source exists, name it as a \
+             lead in prose (\"the explanatory memorandum probably covers this\") without a \
+             number and without a link. A lead invites someone to look; a citation claims \
+             someone already did.",
+        ),
+        Gate::Checks => (
+            "raised questions that the statutory text puts to the model",
+            "Answer every one of them. There are two acceptable answers and you \
+             choose per finding.\n\n\
+             **Change the model**, when the text does say what the check \
+             expected and the model missed it. A lid that derogates from \
+             another needs a branch; an article that computes over a \
+             berekeningsjaar needs a binding that carries that period.\n\n\
+             **Record why not**, when the text does not support what the check \
+             expected. Use `untranslatables` when the engine's operations \
+             cannot express the construct, and `norm_gaps` when the norm is \
+             open and gets its content from a regulation or beleidsregel that \
+             is not in the corpus. Both are first-class answers and neither is \
+             an admission of failure.\n\n\
+             What you may not do is leave a finding unanswered, or make it go \
+             away by removing the logic it was about.",
+        ),
+    };
+
+    let marking_note = if feedback.gate.accepts_marking() {
+        ""
+    } else {
+        "\n\nDo not delete a `machine_readable` section to make an error go \
+         away. A construct that cannot be expressed belongs in \
+         `untranslatables` with a reason."
+    };
+
     format!(
-        r#"The law YAML you just wrote does not validate against the regelrecht JSON schema.
+        r#"The law YAML you just wrote {what_happened}.
 
 The file is: {yaml_path}
 
-Fix it in place so it validates. Change as little as possible.
+{what_to_do}
 
 **Do not touch any `text` field.** Those hold the statutory text and are not
-yours to edit; every error below is about `machine_readable`.
+yours to edit.{marking_note}
 
-**Do not delete a `machine_readable` section to make an error go away.** If a
-construct cannot be expressed within the schema, record it as an
-`untranslatable` with a reason, which is what that field is for.
-
-The validation errors, verbatim:
+The findings, verbatim:
 {list}
 
-Write the corrected YAML back to the same file. Do not ask questions."#
+Write the result back to the same file. Do not ask questions."#
     )
 }
 
@@ -1743,52 +1852,89 @@ pub(crate) fn normalize_yaml_path(yaml_path: &str) -> Result<String> {
 /// step. The worker's `chunk_no_output_is_not_deterministic` test pins this.
 pub(crate) const CHUNK_NO_OUTPUT_MARKER: &str = "enrichment chunk produced no reviewable output";
 
-/// Validate the enriched law against the schema version it declares and,
-/// when it fails, give the agent one round to repair it.
+/// Run one feedback round against a gate: evaluate it, and when it has
+/// something to say, give the agent one pass to answer.
 ///
-/// One round on purpose. A second failure is content trouble rather than a
-/// slip, and the retry ladder above this is the place for that.
-async fn repair_schema_errors(
+/// One round on purpose. A second disagreement is rarely a slip. It is either
+/// something the text genuinely leaves open, which the marking channels
+/// exist for, or a defect in the instruction, which no amount of retrying
+/// inside one law will fix.
+async fn feedback_round(
+    gate: Gate,
     yaml_abs: &Path,
+    corpus_root: &Path,
     payload: &EnrichPayload,
     repo_path: &Path,
     config: &EnrichConfig,
     runner: &dyn LlmRunner,
 ) -> Result<()> {
-    let errors = schema_errors_for(yaml_abs).await?;
-    if errors.is_empty() {
+    let findings = evaluate_gate(gate, yaml_abs, corpus_root).await?;
+    if findings.is_empty() {
         return Ok(());
     }
 
-    tracing::warn!(
-        errors = errors.len(),
-        first = %errors.first().cloned().unwrap_or_default(),
-        "enriched law does not validate; running one repair round"
+    tracing::info!(
+        gate = ?gate,
+        findings = findings.len(),
+        first = %findings.first().cloned().unwrap_or_default(),
+        "gate has findings; running one feedback round"
     );
 
-    let relative = yaml_abs
-        .strip_prefix(repo_path)
-        .unwrap_or(yaml_abs)
-        .to_string_lossy()
-        .into_owned();
-    let repair_payload = EnrichPayload {
-        repair_errors: Some(errors.clone()),
+    let feedback_payload = EnrichPayload {
+        pass: Pass::Feedback(Feedback {
+            gate,
+            findings: findings.clone(),
+        }),
         ..payload.clone()
     };
     runner
-        .run(&repair_payload, yaml_abs, repo_path, config)
+        .run(&feedback_payload, yaml_abs, repo_path, config)
         .await?;
 
-    let remaining = schema_errors_for(yaml_abs).await?;
+    let remaining = evaluate_gate(gate, yaml_abs, corpus_root).await?;
     if remaining.is_empty() {
-        tracing::info!(law = %relative, "repair round fixed the schema errors");
+        tracing::info!(gate = ?gate, "feedback round cleared the gate");
         return Ok(());
     }
+
+    // A soft gate does not fail the job on what survives. The agent had its
+    // chance to answer and what is left is recorded rather than fatal:
+    // failing here would turn every open norm into a defect, which is the
+    // outcome this design exists to avoid.
+    if gate.accepts_marking() {
+        tracing::warn!(
+            gate = ?gate,
+            remaining = remaining.len(),
+            "findings survived the feedback round; recorded, not fatal"
+        );
+        return Ok(());
+    }
+
     Err(PipelineError::Enrich(format!(
-        "enriched law still has {} schema error(s) after the repair round: {}",
+        "enriched law still has {} schema error(s) after the feedback round: {}",
         remaining.len(),
         remaining.join("; ")
     )))
+}
+
+/// What a gate says about the law as it stands.
+async fn evaluate_gate(gate: Gate, yaml_abs: &Path, corpus_root: &Path) -> Result<Vec<String>> {
+    let raw = tokio::fs::read_to_string(yaml_abs).await?;
+    Ok(match gate {
+        Gate::Schema => crate::enrich_v2::checks::schema_errors(&raw),
+        Gate::Marking | Gate::Checks => crate::enrich_v2::checks::run(&raw, Some(corpus_root))
+            .findings
+            .into_iter()
+            .filter(|f| {
+                let is_record = matches!(f.check, "marking" | "citation");
+                matches!(gate, Gate::Marking) == is_record
+            })
+            .map(|f| match f.article {
+                Some(number) => format!("[{}] art. {number}: {}", f.check, f.detail),
+                None => format!("[{}] {}", f.check, f.detail),
+            })
+            .collect(),
+    })
 }
 
 /// Content fingerprint of a file, or `None` when it cannot be read. Only
@@ -1797,14 +1943,6 @@ async fn file_digest(path: &Path) -> Option<String> {
     use sha2::{Digest, Sha256};
     let bytes = tokio::fs::read(path).await.ok()?;
     Some(format!("{:x}", Sha256::digest(&bytes)))
-}
-
-/// Schema errors of the law at `path`, against the version it declares.
-/// An unreadable or unparseable file is itself an error, because the
-/// caller cannot proceed either way.
-async fn schema_errors_for(path: &Path) -> Result<Vec<String>> {
-    let raw = tokio::fs::read_to_string(path).await?;
-    Ok(crate::enrich_v2::checks::schema_errors(&raw))
 }
 
 /// Execute the enrichment using the default process-based LLM runner.
@@ -1908,7 +2046,7 @@ pub async fn execute_enrich_with_runner(
             clear_stale_chunk_report(&yaml_abs).await;
         }
         let normalized_payload = EnrichPayload {
-            repair_errors: None,
+            pass: Pass::Translate,
             yaml_path: normalized_path.clone(),
             chunk_articles: chunk_window.as_ref().map(|(_, numbers)| numbers.clone()),
             // MvT research runs once, during the first chunk (cursor 0).
@@ -1934,7 +2072,41 @@ pub async fn execute_enrich_with_runner(
     // already in whatever state it was in, and validating it here would
     // fail a job for someone else's defect.
     if file_changed_this_run {
-        repair_schema_errors(&yaml_abs, payload, repo_path, config, runner).await?;
+        // The hard gate first: a law that does not validate cannot be
+        // meaningfully asked about coverage, and the checks would report
+        // noise over a broken tree.
+        feedback_round(
+            Gate::Schema,
+            &yaml_abs,
+            repo_path,
+            payload,
+            repo_path,
+            config,
+            runner,
+        )
+        .await?;
+        feedback_round(
+            Gate::Checks,
+            &yaml_abs,
+            repo_path,
+            payload,
+            repo_path,
+            config,
+            runner,
+        )
+        .await?;
+        // Last, because the previous round produces markings and this one
+        // is about where they landed.
+        feedback_round(
+            Gate::Marking,
+            &yaml_abs,
+            repo_path,
+            payload,
+            repo_path,
+            config,
+            runner,
+        )
+        .await?;
     }
 
     // Count articles with machine_readable after enrichment.
@@ -2302,7 +2474,7 @@ mod tests {
     #[test]
     fn test_enrich_payload_serde_roundtrip() {
         let payload = EnrichPayload {
-            repair_errors: None,
+            pass: Pass::Translate,
             law_id: "BWBR0018451".to_string(),
             yaml_path: "regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
             provider: Some("claude".to_string()),
@@ -2325,7 +2497,7 @@ mod tests {
         // Verify backward compatibility: provider and depth are optional and
         // skipped when None (old queued payloads omit them entirely).
         let payload_no_provider = EnrichPayload {
-            repair_errors: None,
+            pass: Pass::Translate,
             law_id: "BWBR0018451".to_string(),
             yaml_path: "regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
             provider: None,
@@ -2354,7 +2526,7 @@ mod tests {
     /// Minimale corpus-brede payload; de guard-tests zetten er traject-velden op.
     fn corpus_wide_payload() -> EnrichPayload {
         EnrichPayload {
-            repair_errors: None,
+            pass: Pass::Translate,
             law_id: "BWBR0018451".to_string(),
             yaml_path: "regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
             provider: None,
@@ -2654,7 +2826,7 @@ related_legislation:
         // Nieuwe payloads dragen de taak-velden mee.
         let account = uuid::Uuid::new_v4();
         let new = EnrichPayload {
-            repair_errors: None,
+            pass: Pass::Translate,
             law_id: "x".into(),
             yaml_path: "laws/x/law.yaml".into(),
             provider: Some("claude".into()),
@@ -2975,7 +3147,7 @@ articles:
             _repo_path: &Path,
             _config: &EnrichConfig,
         ) -> Result<()> {
-            let is_repair = payload.repair_errors.is_some();
+            let is_repair = matches!(payload.pass, Pass::Feedback(_));
             #[allow(clippy::unwrap_used)]
             self.calls.lock().unwrap().push(is_repair);
 
@@ -3024,7 +3196,7 @@ articles:
             calls: calls.clone(),
         };
         let payload = EnrichPayload {
-            repair_errors: None,
+            pass: Pass::Translate,
             law_id: "BWBR0000001".into(),
             yaml_path: "nl/wet/test_law/2025-01-01.yaml".into(),
             ..Default::default()
@@ -3052,6 +3224,102 @@ articles:
         assert!(crate::enrich_v2::checks::schema_errors(&yaml).is_empty());
     }
 
+    /// A soft gate hands its findings over and accepts a marking as an
+    /// answer. What survives the round is recorded rather than fatal:
+    /// failing here would turn every open norm into a defect.
+    #[tokio::test]
+    async fn a_soft_gate_does_not_fail_the_job() {
+        /// Writes a model that leaves a coverage question standing: the text
+        /// derogates and the model has no branch, which is exactly what the
+        /// checks report and what the agent may answer with a marking.
+        struct UnansweringRunner {
+            passes: std::sync::Arc<std::sync::Mutex<Vec<&'static str>>>,
+        }
+
+        #[async_trait::async_trait]
+        impl LlmRunner for UnansweringRunner {
+            async fn run(
+                &self,
+                payload: &EnrichPayload,
+                yaml_abs: &Path,
+                _repo_path: &Path,
+                _config: &EnrichConfig,
+            ) -> Result<()> {
+                #[allow(clippy::unwrap_used)]
+                self.passes.lock().unwrap().push(match &payload.pass {
+                    Pass::Translate => "translate",
+                    Pass::Feedback(f) => match f.gate {
+                        Gate::Schema => "schema",
+                        Gate::Checks => "checks",
+                    },
+                });
+                if !matches!(payload.pass, Pass::Translate) {
+                    return Ok(()); // answers nothing, on purpose
+                }
+                let content = tokio::fs::read_to_string(yaml_abs).await?;
+                let mut value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&content)?;
+                if let serde_yaml_ng::Value::Mapping(ref mut map) = value {
+                    if let Some(serde_yaml_ng::Value::Sequence(ref mut arts)) =
+                        map.get_mut("articles")
+                    {
+                        for a in arts.iter_mut() {
+                            if let serde_yaml_ng::Value::Mapping(ref mut m) = a {
+                                m.insert(
+                                    "machine_readable".into(),
+                                    serde_yaml_ng::Value::Mapping(Default::default()),
+                                );
+                            }
+                        }
+                    }
+                }
+                tokio::fs::write(yaml_abs, serde_yaml_ng::to_string(&value)?).await?;
+                Ok(())
+            }
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let path = law_dir.join("2025-01-01.yaml");
+        // A lid that derogates: the checks will say the model has no branch.
+        let law = MINIMAL_LAW.replace(
+            "    text: Article one.",
+            "    text: |-\n      1. De hoofdregel geldt.\n\n      2. In afwijking van het eerste lid geldt de helft.",
+        );
+        tokio::fs::write(&path, law).await.unwrap();
+
+        let passes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let runner = UnansweringRunner {
+            passes: passes.clone(),
+        };
+        let payload = EnrichPayload {
+            pass: Pass::Translate,
+            law_id: "BWBR0000001".into(),
+            yaml_path: "nl/wet/test_law/2025-01-01.yaml".into(),
+            ..Default::default()
+        };
+        let config = EnrichConfig::for_test(LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        });
+
+        let result = execute_enrich_with_runner(&payload, dir.path(), &config, "", &runner).await;
+        assert!(
+            result.is_ok(),
+            "a surviving coverage finding must not fail the job: {result:?}"
+        );
+
+        let passes = passes.lock().unwrap().clone();
+        assert!(
+            passes.contains(&"checks"),
+            "the checks gate must have handed its findings over: {passes:?}"
+        );
+        assert!(
+            !passes.contains(&"schema"),
+            "the schema gate had nothing to say: {passes:?}"
+        );
+    }
+
     /// A run that changed nothing must not be validated: the file was already
     /// in whatever state it was in, and failing here would fail a job for
     /// someone else's defect.
@@ -3070,7 +3338,7 @@ articles:
         .unwrap();
 
         let payload = EnrichPayload {
-            repair_errors: None,
+            pass: Pass::Translate,
             law_id: "BWBR0000001".into(),
             yaml_path: "nl/wet/test_law/2025-01-01.yaml".into(),
             ..Default::default()
@@ -3160,7 +3428,7 @@ articles:
             .unwrap();
 
         let payload = EnrichPayload {
-            repair_errors: None,
+            pass: Pass::Translate,
             law_id: "BWBR0000001".into(),
             yaml_path: yaml_path.into(),
             provider: Some("opencode".into()),
@@ -3234,7 +3502,7 @@ articles:
             .unwrap();
 
         let payload = EnrichPayload {
-            repair_errors: None,
+            pass: Pass::Translate,
             law_id: "BWBR0000001".into(),
             yaml_path: yaml_path.into(),
             provider: None,
@@ -3291,7 +3559,7 @@ articles:
             .unwrap();
 
         let payload = EnrichPayload {
-            repair_errors: None,
+            pass: Pass::Translate,
             law_id: "BWBR0000001".into(),
             yaml_path: yaml_path.into(),
             provider: None,
@@ -3535,7 +3803,7 @@ Use the Write tool. Keep it brief — just one write per phase transition."#;
     fn enrich_payload_chunk_fields_are_transport_only() {
         // Queue payloads never carry the chunk fields: absent when None…
         let bare = EnrichPayload {
-            repair_errors: None,
+            pass: Pass::Translate,
             law_id: "x".into(),
             yaml_path: "regulation/a.yaml".into(),
             provider: None,
@@ -3688,7 +3956,7 @@ articles:
 
     fn chunk_test_payload(yaml_path: &str) -> EnrichPayload {
         EnrichPayload {
-            repair_errors: None,
+            pass: Pass::Translate,
             law_id: "BWBR0000001".into(),
             yaml_path: yaml_path.into(),
             provider: Some("opencode".into()),

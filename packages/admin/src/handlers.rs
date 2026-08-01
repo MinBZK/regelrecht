@@ -1056,7 +1056,7 @@ pub async fn create_enrich_jobs(
 
     for provider_name in ENRICH_PROVIDERS {
         let enrich_payload = EnrichPayload {
-            repair_errors: None,
+            pass: Default::default(),
             law_id: law_id.clone(),
             yaml_path: yaml_path.clone(),
             provider: Some((*provider_name).to_string()),

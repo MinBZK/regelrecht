@@ -337,6 +337,184 @@ pub fn enum_provenance(doc: &Value) -> Vec<Finding> {
     findings
 }
 
+/// Operations the engine has. An `untranslatable` whose reason is that one
+/// of these does not exist is stale rather than true, and the translator
+/// took a detour it did not have to take.
+///
+/// Kept here rather than derived from the schema because the schema's enums
+/// are not one list: rounding, date arithmetic and comparison live in
+/// different definitions. Out of date is better than absent, and the check
+/// only ever suggests.
+pub const AVAILABLE_OPERATIONS: &[(&str, &[&str])] = &[
+    ("ROUND", &["afronden", "afronding", "rounding", "round"]),
+    (
+        "CEIL",
+        &["naar boven afronden", "ceil", "afronden naar boven"],
+    ),
+    (
+        "FLOOR",
+        &["naar beneden afronden", "floor", "afronden naar beneden"],
+    ),
+    (
+        "DATE_DIFF",
+        &[
+            "datumverschil",
+            "verschil tussen data",
+            "date difference",
+            "aantal dagen tussen",
+        ],
+    ),
+    (
+        "DATE_ADD",
+        &["datum optellen", "date add", "termijn optellen bij"],
+    ),
+    ("AGE", &["leeftijd berekenen", "leeftijd op", "age"]),
+    (
+        "DAY_OF_WEEK",
+        &["dag van de week", "day of week", "weekdag"],
+    ),
+];
+
+/// Ways of saying "the engine cannot do this". An untranslatable that does
+/// not make that claim is about the shape of the model rather than about a
+/// missing operation, and comparing it against the operation list would
+/// only produce noise.
+const ABSENCE_CLAIMS: &[&str] = &[
+    "kent geen",
+    "heeft geen",
+    "ondersteunt geen",
+    "bestaat niet",
+    "is niet beschikbaar",
+    "niet beschikbaar als",
+    "geen operatie",
+    "not available as an engine operation",
+    "the engine cannot",
+    "no such operation",
+];
+
+/// Words that give a marking away as being about the corpus rather than
+/// about the engine's language. A norm filled by a regulation that has not
+/// been harvested is a `norm_gap`, and recording it as an `untranslatable`
+/// sends it to the wrong queue: nobody builds an operation for it and the
+/// harvest never learns it is wanted.
+const CORPUS_GAP_SIGNALS: &[&str] = &[
+    "niet in het corpus",
+    "niet geoogst",
+    "ministeriële regeling",
+    "ministeriele regeling",
+    "beleidsregel",
+    "amvb",
+    "algemene maatregel van bestuur",
+    "bij regeling",
+    "nadere regels",
+    "nog niet beschikbaar",
+];
+
+/// Patterns that look like a citation of a document outside the corpus.
+/// An agent without network cannot have read one, so a citation is either
+/// something the worker put in front of it or something it recalled, and
+/// the two are indistinguishable to a reader.
+const CITATION_SIGNALS: &[&str] = &[
+    "kst-",
+    "kamerstukken",
+    "zoek.officielebekendmakingen.nl",
+    "stb-",
+    "staatsblad",
+    "stcrt-",
+    "staatscourant",
+    "ecli:",
+];
+
+/// Whether the markings are in the channel they belong to, and whether the
+/// file cites anything it cannot have read.
+///
+/// Neither is a defect in the translation. Both are a defect in the record,
+/// and the record is what a reader has to trust.
+pub fn marking_discipline(doc: &Value, text_corpus: &str) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    let corpus_lower = text_corpus.to_lowercase();
+
+    for article in articles(doc).iter() {
+        let number = article_number(article).unwrap_or_default();
+        let Some(mr) = article.get("machine_readable") else {
+            continue;
+        };
+
+        // Untranslatables that describe a corpus gap or a solved one.
+        if let Some(seq) = mr.get("untranslatables").and_then(Value::as_sequence) {
+            for entry in seq {
+                let construct = entry
+                    .get("construct")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let reason = entry
+                    .get("reason")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let both = format!("{construct} {reason}").to_lowercase();
+
+                if let Some(signal) = CORPUS_GAP_SIGNALS.iter().find(|s| both.contains(**s)) {
+                    findings.push(Finding::new(
+                        "marking",
+                        Some(&number),
+                        format!(
+                            "untranslatable \"{}\" mentions \"{signal}\"; a norm filled elsewhere                              is a norm_gap, not a gap in the engine's language",
+                            truncate(construct)
+                        ),
+                    ));
+                }
+
+                // Only when the reason asserts an absence. A construct that
+                // merely mentions a date says nothing about which operation
+                // it needs, and flagging on that alone cries wolf: the
+                // eighteenth-birthday rule wants a month boundary, not AGE.
+                let reason_lower = reason.to_lowercase();
+                let claims_absence = ABSENCE_CLAIMS.iter().any(|c| reason_lower.contains(c));
+                if claims_absence {
+                    for (op, phrases) in AVAILABLE_OPERATIONS {
+                        if phrases.iter().any(|p| reason_lower.contains(p)) {
+                            findings.push(Finding::new(
+                                "marking",
+                                Some(&number),
+                                format!(
+                                    "untranslatable \"{}\" says the engine cannot do this, and names                                      something {op} does",
+                                    truncate(construct)
+                                ),
+                            ));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Anything that reads as a citation of a document outside the corpus.
+        let rendered = render(mr).to_lowercase();
+        for signal in CITATION_SIGNALS {
+            if rendered.contains(signal) && !corpus_lower.contains(signal) {
+                findings.push(Finding::new(
+                    "citation",
+                    Some(&number),
+                    format!(
+                        "cites \"{signal}\", which appears in no text that was provided;                          a source that was not read may be named as a lead but not as a citation"
+                    ),
+                ));
+                break;
+            }
+        }
+    }
+    findings
+}
+
+fn truncate(s: &str) -> String {
+    let cut: String = s.chars().take(60).collect();
+    if s.chars().count() > 60 {
+        format!("{cut}…")
+    } else {
+        cut
+    }
+}
+
 /// `$variable` resolution within the file, and cross-law `source` targets.
 /// `corpus_root` is the directory that holds `<country>/<layer>/<law>/…`;
 /// when it is `None` the cross-law half is skipped.
@@ -771,9 +949,11 @@ pub fn run(yaml: &str, corpus_root: Option<&Path>) -> Report {
             findings: Vec::new(),
         };
     };
+    let statutory_text = all_article_text(&doc);
     let mut findings = coverage(&doc);
     findings.extend(enum_provenance(&doc));
     findings.extend(binding_integrity(&doc, corpus_root));
+    findings.extend(marking_discipline(&doc, &statutory_text));
     Report { schema, findings }
 }
 
@@ -1013,6 +1193,107 @@ articles:
         let findings = binding_integrity(&doc, None);
         assert!(findings.iter().any(|f| f.detail.contains("$onbekend")));
         assert!(!findings.iter().any(|f| f.detail.contains("$drempel")));
+    }
+
+    #[test]
+    fn a_marking_that_claims_a_missing_operation_the_engine_has_is_flagged() {
+        let yaml = r#"
+articles:
+  - number: '1'
+    text: De uitkomst wordt afgerond op hele euro's.
+    machine_readable:
+      untranslatables:
+        - construct: afronden op hele euro's
+          reason: De engine kent geen operatie voor afronding.
+"#;
+        let doc: Value = serde_yaml_ng::from_str(yaml).unwrap();
+        let findings = marking_discipline(&doc, "De uitkomst wordt afgerond.");
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(
+            findings[0].detail.contains("ROUND"),
+            "{}",
+            findings[0].detail
+        );
+    }
+
+    #[test]
+    fn a_marking_about_the_shape_of_the_model_is_left_alone() {
+        // The eighteenth-birthday rule wants a month boundary rather than
+        // an age, and it makes no claim about a missing operation. Flagging
+        // it on the word "kalendermaand" alone would cry wolf, and a check
+        // that cries wolf gets ignored.
+        let yaml = r#"
+articles:
+  - number: '1'
+    text: Verzekerde is hij, vanaf de eerste dag van de kalendermaand volgend op zijn achttiende verjaardag.
+    machine_readable:
+      untranslatables:
+        - construct: de eerste dag van de kalendermaand volgend op de achttiende verjaardag
+          kind: model_form
+          reason: De regel vraagt om afkappen naar een maandgrens, wat het model niet als grootheid draagt.
+"#;
+        let doc: Value = serde_yaml_ng::from_str(yaml).unwrap();
+        assert!(marking_discipline(&doc, "kalendermaand achttiende").is_empty());
+    }
+
+    #[test]
+    fn a_corpus_gap_recorded_as_an_untranslatable_is_flagged() {
+        let yaml = r#"
+articles:
+  - number: '4'
+    text: Bij ministeriële regeling wordt de standaardpremie vastgesteld.
+    machine_readable:
+      untranslatables:
+        - construct: de standaardpremie
+          reason: Wordt bij ministeriële regeling vastgesteld en die regeling zit niet in het corpus.
+"#;
+        let doc: Value = serde_yaml_ng::from_str(yaml).unwrap();
+        let findings = marking_discipline(
+            &doc,
+            "Bij ministeriële regeling wordt de standaardpremie vastgesteld.",
+        );
+        assert!(
+            findings.iter().any(|f| f.detail.contains("norm_gap")),
+            "a norm filled elsewhere belongs in norm_gaps: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_citation_the_agent_cannot_have_read_is_flagged() {
+        let yaml = r#"
+articles:
+  - number: '2'
+    text: De normpremie bedraagt een percentage.
+    machine_readable:
+      untranslatables:
+        - construct: de percentages
+          reason: 'Zie Kamerstukken II 2004/05, 29 762, nr. 3 voor de bedoeling.'
+"#;
+        let doc: Value = serde_yaml_ng::from_str(yaml).unwrap();
+        let findings = marking_discipline(&doc, "De normpremie bedraagt een percentage.");
+        assert!(
+            findings.iter().any(|f| f.check == "citation"),
+            "a source that was not provided may be a lead, not a citation: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_citation_that_is_in_the_statutory_text_is_not_flagged() {
+        let yaml = r#"
+articles:
+  - number: '2'
+    text: 'Zie Staatsblad 2005, 358.'
+    machine_readable:
+      untranslatables:
+        - construct: iets
+          reason: 'Verwijst naar Staatsblad 2005, 358, zoals het artikel zelf doet.'
+"#;
+        let doc: Value = serde_yaml_ng::from_str(yaml).unwrap();
+        let findings = marking_discipline(&doc, "Zie Staatsblad 2005, 358.");
+        assert!(
+            findings.iter().all(|f| f.check != "citation"),
+            "{findings:?}"
+        );
     }
 
     #[test]

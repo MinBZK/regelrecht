@@ -445,7 +445,7 @@ pub async fn chain_enrich_and_complete(
     // feature-file detection in execute_enrich.
     let yaml_path = format!("laws/{}/law.yaml", law.meta.law_id);
     let enrich_payload = EnrichPayload {
-        repair_errors: None,
+        pass: Default::default(),
         law_id: law.meta.law_id.clone(),
         yaml_path: yaml_path.clone(),
         provider: ctx.provider.clone(),

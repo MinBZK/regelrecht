@@ -76,7 +76,7 @@ pub async fn request_enrich(
     let yaml_path = format!("laws/{law_id}/law.yaml");
 
     let payload = regelrecht_pipeline::enrich::EnrichPayload {
-        repair_errors: None,
+        pass: Default::default(),
         law_id: law_id.clone(),
         yaml_path: yaml_path.clone(),
         provider: Some(state.config.task_enrich_provider.clone()),
