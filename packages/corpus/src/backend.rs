@@ -1384,7 +1384,13 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let bare_path = dir.path().join("bare.git");
         Command::new("git")
-            .args(["init", "--bare", "--initial-branch=development"])
+            .args([
+                "-c",
+                "init.templateDir=",
+                "init",
+                "--bare",
+                "--initial-branch=development",
+            ])
             .arg(&bare_path)
             .output()
             .await
@@ -1394,7 +1400,7 @@ mod tests {
         // Push an initial commit
         let tmp_clone = dir.path().join("tmp-clone");
         Command::new("git")
-            .args(["clone", &bare_url])
+            .args(["-c", "init.templateDir=", "clone", &bare_url])
             .arg(&tmp_clone)
             .output()
             .await
@@ -1478,7 +1484,13 @@ mod tests {
 
         let bare_path = dir.join("bare.git");
         Command::new("git")
-            .args(["init", "--bare", "--initial-branch=development"])
+            .args([
+                "-c",
+                "init.templateDir=",
+                "init",
+                "--bare",
+                "--initial-branch=development",
+            ])
             .arg(&bare_path)
             .output()
             .await
@@ -1489,7 +1501,7 @@ mod tests {
         // Seed initial commit on development
         let seed = dir.join("seed");
         Command::new("git")
-            .args(["clone", &bare_url])
+            .args(["-c", "init.templateDir=", "clone", &bare_url])
             .arg(&seed)
             .output()
             .await
@@ -1511,7 +1523,14 @@ mod tests {
         // Working checkout the SessionGitBackend will use
         let work = dir.join("work");
         Command::new("git")
-            .args(["clone", "--branch", "development", &bare_url])
+            .args([
+                "-c",
+                "init.templateDir=",
+                "clone",
+                "--branch",
+                "development",
+                &bare_url,
+            ])
             .arg(&work)
             .output()
             .await

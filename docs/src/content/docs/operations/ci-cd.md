@@ -16,13 +16,16 @@ Continuous integration runs on every push to `main` and every pull request via `
 
 ### Tests (on Rust changes)
 
-CI runs `just test-all`, which covers:
+CI runs `just test`, which is `cargo test --workspace` over every crate. A new
+crate is covered without anyone having to add it to a list; the pipeline and
+editor-api suites use testcontainers for PostgreSQL, so the runner needs Docker.
 
-- **Unit tests** - `just test`
-- **Harvester tests** - `just harvester-test`
-- **Pipeline tests** - `just pipeline-test` and `just pipeline-integration-test` (the latter uses testcontainers for PostgreSQL)
+`just test-no-docker` is the same coverage minus those container-backed suites,
+for a machine without Docker. It is what `just check` runs.
 
-The BDD suite (`just bdd`, cucumber-rs with Gherkin scenarios) is **not** part of `test-all` and does not run in CI; run it locally.
+The BDD suite (`just bdd`, cucumber-rs with Gherkin scenarios) runs against the
+live corpus and is **not** part of `just test`; the target carries `test = false`
+so it only runs when called by name. Run it locally.
 
 ### WASM build (on engine changes)
 

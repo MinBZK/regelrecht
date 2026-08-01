@@ -51,9 +51,9 @@ just lint        # Run clippy lints on all packages
 just build-check # Run cargo check on all packages
 just validate    # Validate regulation YAML files (all, or pass specific files)
 just check       # Run all quality checks (format + lint + check + validate + tests)
-just test       # Run Rust unit tests
-just bdd        # Run Rust BDD tests (cucumber-rs)
-just test-all   # Run all tests (unit + BDD + harvester + pipeline)
+just test       # Run every Rust test in the workspace (needs Docker)
+just test-no-docker  # Same, minus the container-backed suites
+just bdd        # Run Rust BDD tests (cucumber-rs; not part of `just test`)
 
 # Pipeline commands
 just pipeline-test              # Run pipeline unit tests (no Docker/DB required)
