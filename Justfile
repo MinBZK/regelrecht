@@ -54,6 +54,7 @@ validate *FILES:
 
 # Validate note sidecar files (RFC-005, RFC-016)
 # Orphaned/ambiguous notes and unknown tags are warnings, not errors.
+[doc("Validate note sidecar files (RFC-005, RFC-016)")]
 validate-annotations *FILES:
     script/validate-annotations.sh {{FILES}}
 
@@ -61,12 +62,14 @@ validate-annotations *FILES:
 # canonical schema.json. Standalone helper; `just test` already runs it via
 # --all-features. Needs the `validate` feature (jsonschema). See
 # packages/engine/tests/conformance/README.md.
+[doc("Prove the Rust law-model conforms to the canonical schema.json")]
 conformance:
     cd packages && {{ci_flags}} cargo test -p regelrecht-engine --features validate --test conformance
 
 # Run all quality checks, exactly what CI runs. Needs Docker for the
 # container-backed suites; on a machine without a daemon, swap `test` for
 # `test-no-docker`.
+[doc("Run all quality checks, exactly what CI runs (needs Docker)")]
 check: format lint build-check validate validate-annotations test
 
 # --- Tests ---
@@ -86,12 +89,14 @@ db_crates := "-p regelrecht-pipeline -p regelrecht-editor-api -p regelrecht-admi
 
 # Run every Rust test in the workspace. Needs Docker for the testcontainers
 # suites. This is what `just check` runs.
+[doc("Run every Rust test in the workspace (needs Docker)")]
 test:
     cd packages && {{ci_flags}} cargo test --workspace --all-features
 
 # Every test that needs no external services: the workspace minus the
 # container-backed crates. For a machine without a Docker daemon, and the
 # `unit` leg of the CI matrix.
+[doc("Run every Rust test that needs no external services")]
 test-no-docker:
     cd packages && {{ci_flags}} cargo test --workspace --all-features {{db_crates_exclude}}
 
@@ -123,6 +128,7 @@ harvester-test:
 
 # Run pipeline unit tests. Five of these are container-backed and carry
 # #[ignore]; add `-- --ignored` to run those instead.
+[doc("Run pipeline unit tests (the container-backed ones are #[ignore]d)")]
 pipeline-test:
     cd packages/pipeline && {{ci_flags}} cargo test --lib
 
@@ -134,6 +140,7 @@ pipeline-integration-test:
 # Depends on wasm-build: the scenario-execution specs run the real WASM engine
 # in-browser, so the compiled artifact under frontend/public/wasm/pkg must exist.
 # cargo caches, so the build is a near-no-op once warm.
+[doc("Run the frontend Playwright e2e specs against a mocked backend")]
 test-e2e: wasm-build
     npm run test:e2e -w frontend
 
@@ -153,6 +160,7 @@ URL := ""
 #   just smoke-preview 886                                    # PR-preview #886
 #   just smoke-preview https://editor.regelrecht.rijks.app    # exacte URL
 #   just PR=886 smoke-preview                                 # via variabele
+[doc("Browser smoketest against a deployed editor preview or production")]
 smoke-preview TARGET="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -202,6 +210,7 @@ mutants *ARGS:
 # Driepunts (`BASE...HEAD`), niet tweepunts: tweepunts vergelijkt twee bomen,
 # dus alles wat main na jouw aftakking veranderde komt in de diff terecht als
 # jouw wijziging. Op een branch die achterloopt muteer je dan andermans regels.
+[doc("Mutation testing on your own changed lines only")]
 mutants-diff BASE="origin/main":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -297,6 +306,7 @@ editor-api-fmt:
 # (the latter require Docker for testcontainers). This is what CI runs on
 # editor-api changes; excluded from `just check` for the same reason
 # `pipeline-integration-test` is.
+[doc("Run ALL editor API tests, unit and integration (needs Docker)")]
 editor-api-test:
     cd packages && {{ci_flags}} cargo test --package regelrecht-editor-api
 
@@ -647,6 +657,7 @@ docs-a11y:
 # path). The model is generated on-demand, never committed: the local architecture
 # explorer regenerates it from the working tree. Run this to inspect the model
 # without starting the explorer.
+[doc("Generate the code-derived architecture model")]
 arch-generate:
     cd packages && {{ci_flags}} cargo run --quiet -p regelrecht-arch-extract -- generate
 
@@ -656,6 +667,7 @@ arch-generate:
 # 0.0.0.0:7180. Open http://localhost:7180. Override the port with
 # ARCH_EXPLORE_PORT (stay in 7100–7300 for the dev container). See
 # packages/arch-extract/README.md.
+[doc("Start the local architecture explorer on http://localhost:7180")]
 arch-explore:
     cd packages/arch-extract/ui && npm install && npm run build
     cd packages && cargo run --release --quiet -p regelrecht-arch-extract -- serve
@@ -663,6 +675,7 @@ arch-explore:
 # Run the arch-extract tests: the Rust side (schema validation of the generated
 # model + the prose-sidecar drift logic) and the explorer UI's vitest suite
 # (edge-lifting / aggregation logic). Part of `just check`.
+[doc("Run the arch-extract tests, Rust and explorer UI")]
 arch-test:
     cd packages && {{ci_flags}} cargo test -p regelrecht-arch-extract
     npm --prefix packages/arch-extract/ui install
@@ -682,15 +695,18 @@ arch-prose-check:
 
 # Scaffold empty prose stubs for undocumented in-scope nodes (seeded with each
 # node's doc-comment as a starting point).
+[doc("Scaffold empty prose stubs for undocumented in-scope nodes")]
 arch-prose-sync:
     cd packages && cargo run --quiet -p regelrecht-arch-extract -- prose sync
 
 # Refresh the fingerprint of prose entries after rewriting their text (clears a
 # stale flag). Pass one or more node ids, or --all.
+[doc("Refresh the fingerprint of prose entries after rewriting them")]
 arch-prose-bless *ARGS:
     cd packages && cargo run --quiet -p regelrecht-arch-extract -- prose bless {{ARGS}}
 
 # Run the scheduled prose-drift flow: diff model vs. sidecar and, on drift, open
 # a draft PR with proposals. Meant to run on a schedule; DRY_RUN=true to preview.
+[doc("Run the scheduled prose-drift flow and open a draft PR on drift")]
 arch-prose-drift-pr:
     packages/arch-extract/scripts/prose-drift-pr.sh
