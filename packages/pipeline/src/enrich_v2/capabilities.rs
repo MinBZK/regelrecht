@@ -6,7 +6,11 @@
 //! documents; that skill declares `WebFetch` and `WebSearch`; the agent is
 //! spawned with `Read,Edit,Write,Grep,Glob`. The instruction is therefore
 //! impossible. Nothing compared the two, the step ran to a clean exit, and
-//! what came back was a fabricated `kst-` number with a URL.
+//! what came back was a `kst-` citation with a URL for a document the agent
+//! had not read. That the number happened to be right makes it worse: the
+//! agent applied the "dossier number plus 3" convention, which holds often
+//! enough to survive a spot check and fails silently on any dossier where
+//! number 3 is the Council of State's advice.
 //!
 //! Removing the two offending lines from the prompt would fix this round and
 //! nothing after it: the next skill edit reintroduces the mismatch silently.

@@ -3820,7 +3820,7 @@ articles:
     fn prompt_omits_the_step_this_runtime_cannot_perform() {
         // The measured failure of round 2: the agent was told to search for
         // parliamentary documents without any way to retrieve them, and
-        // answered with a fabricated kst- number.
+        // answered with a kst- citation for a document it never read.
         let prompt = build_prompt("law.yaml", "/tmp/p.json", &lane_plan(), None, false);
         assert!(!prompt.contains("law-mvt-research/SKILL.md"));
         assert!(!prompt.contains("Memorie van Toelichting"));
