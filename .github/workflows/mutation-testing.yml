@@ -37,7 +37,7 @@ env:
   # Bij ~1050 mutanten van elk zo'n 18 seconden bouwen-plus-testen (gemeten,
   # niet geschat) kost de hele run ruim vijf uur. Over twaalf shards is dat
   # zo'n halfuur per shard en past het ruim binnen de timeout hieronder.
-  # Dit getal moet gelijk lopen met de matrix in de job eronder.
+  # De matrix wordt hieruit afgeleid, dus dit is de enige plek waar het staat.
   SHARD_COUNT: 12
   # Zolang er meer dan dit aantal mutanten overleeft, is de opdracht simpel:
   # dat getal omlaag, elke week met dezelfde multiplier zodat de cijfers
@@ -60,6 +60,7 @@ jobs:
     outputs:
       multiplier: ${{ steps.decide.outputs.multiplier }}
       prev-run: ${{ steps.decide.outputs.prev-run }}
+      shards: ${{ steps.decide.outputs.shards }}
     steps:
       - name: Kies de timeout-multiplier voor deze run
         id: decide
@@ -125,6 +126,14 @@ jobs:
           echo "multiplier=$multiplier" >> "$GITHUB_OUTPUT"
           echo "prev-run=$prev_run" >> "$GITHUB_OUTPUT"
 
+          # De matrix wordt hieruit afgeleid, zodat SHARD_COUNT de enige plek is
+          # waar dat getal staat. Twee handmatig gelijkgehouden bronnen zouden
+          # stil uit elkaar kunnen lopen: een SHARD_COUNT die hoger is dan het
+          # aantal matrix-entries laat mutanten ongetest zonder één foutmelding.
+          shards=$(seq 0 $((SHARD_COUNT - 1)) | jq -sRc 'split("\n")[:-1] | map(tonumber)')
+          echo "Shards: $shards"
+          echo "shards=$shards" >> "$GITHUB_OUTPUT"
+
   mutants:
     needs: plan
     name: Mutation Testing (shard ${{ matrix.shard }})
@@ -133,7 +142,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        # Afgeleid van SHARD_COUNT door de plan-job, zodat dat getal maar op
+        # één plek staat.
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
     defaults:
       run:
         working-directory: packages/engine
@@ -148,8 +159,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y mold
 
       - name: Restore cargo registry (shared met CI)
-        # Alleen restore, geen save: acht shards die dezelfde sleutel wegschrijven
-        # leveren zeven waarschuwingen op. De CI-run op main vult deze cache.
+        # Alleen restore, geen save: alle shards die dezelfde sleutel
+        # wegschrijven leveren op één na allemaal een waarschuwing op. De
+        # CI-run op main vult deze cache.
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
@@ -243,7 +255,7 @@ jobs:
             touch "report/$f"
             cat shards/*/"$f" 2>/dev/null | sort -u > "report/$f" || true
           done
-          # Acht losse outcomes.json'en zijn geen geldige JSON als je ze achter
+          # Losse outcomes.json'en zijn geen geldige JSON als je ze achter
           # elkaar plakt, dus ze blijven per shard staan.
           for d in shards/*/; do
             shard=$(basename "$d" | sed 's/.*-//')
