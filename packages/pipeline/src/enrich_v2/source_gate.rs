@@ -487,7 +487,7 @@ pub fn verify(corpus: &serde_yaml_ng::Value, official: &[SourceArticle]) -> Gate
 /// object are `additionalProperties: false` on a released schema version,
 /// so carrying placement there needs a version bump plus a corpus-wide
 /// migration. Until that is decided, the worker reads this file and puts
-/// the placement in front of the agent, which is what layer 3 of RFC-026
+/// the placement in front of the agent, which is what layer 3 of RFC-027
 /// describes anyway: the worker assembles, the agent reads.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ContextSidecar {

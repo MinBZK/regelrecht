@@ -4,7 +4,7 @@
 //! `execute_enrich_with_runner` needs a path and a payload, not a job queue
 //! and not a checkout, so the real loop can run on a developer machine
 //! against a single law. That is the difference between a design that can
-//! be tried and one that can only be argued about: every layer of RFC-026
+//! be tried and one that can only be argued about: every layer of RFC-027
 //! is a change to the worker, and this is how those changes get exercised
 //! before they touch the pipeline.
 //!
