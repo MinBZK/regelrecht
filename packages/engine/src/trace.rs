@@ -213,23 +213,15 @@ impl PathNode {
             let is_last_child = i == child_count - 1;
             let child_str = child.render_internal(0, is_last_child, false);
 
-            // Add proper indentation to each line of the child's output
-            for (j, child_line) in child_str.lines().enumerate() {
-                if j == 0 {
-                    // First line gets the current indentation
-                    lines.push(format!(
-                        "{}{}",
-                        " ".repeat(indent * 4) + &child_indent,
-                        child_line
-                    ));
-                } else {
-                    // Subsequent lines need continued indentation
-                    lines.push(format!(
-                        "{}{}",
-                        " ".repeat(indent * 4) + &child_indent,
-                        child_line
-                    ));
-                }
+            // Add proper indentation to each line of the child's output. The
+            // child already prefixed its own descendants, so every line of its
+            // output gets the same indentation here.
+            for child_line in child_str.lines() {
+                lines.push(format!(
+                    "{}{}",
+                    " ".repeat(indent * 4) + &child_indent,
+                    child_line
+                ));
             }
         }
 
@@ -885,6 +877,64 @@ mod tests {
     }
 
     #[test]
+    fn test_trace_builder_untimed_records_no_durations() {
+        let mut builder = TraceBuilder::new_untimed();
+        assert!(builder.is_enabled(), "untimed builder still traces");
+
+        builder.push("root", PathNodeType::Resolve);
+        builder.push("child", PathNodeType::Operation);
+        builder.set_result(Value::Int(1));
+        builder.pop();
+        builder.set_result(Value::Int(1));
+        let root = builder.build().unwrap();
+
+        assert_eq!(
+            root.duration_us, None,
+            "untimed builder must not record a duration"
+        );
+        assert_eq!(
+            root.children[0].duration_us, None,
+            "untimed builder must not record a duration on nested nodes"
+        );
+    }
+
+    #[test]
+    fn test_trace_builder_depth_follows_stack() {
+        let mut builder = TraceBuilder::new();
+        assert_eq!(builder.depth(), 0, "a fresh builder has no open scopes");
+
+        builder.push("level1", PathNodeType::Action);
+        assert_eq!(builder.depth(), 1);
+
+        builder.push("level2", PathNodeType::Operation);
+        assert_eq!(builder.depth(), 2, "nested push deepens the stack");
+
+        builder.pop();
+        assert_eq!(builder.depth(), 1, "pop leaves the parent open");
+
+        builder.pop();
+        assert_eq!(builder.depth(), 0);
+    }
+
+    #[test]
+    fn test_trace_builder_is_empty_follows_stack() {
+        let mut builder = TraceBuilder::new();
+        assert!(builder.is_empty());
+
+        builder.push("root", PathNodeType::Resolve);
+        assert!(
+            !builder.is_empty(),
+            "a builder with an open scope is not empty"
+        );
+
+        builder.pop();
+        assert!(
+            builder.is_empty(),
+            "popping the last scope empties the stack"
+        );
+    }
+
+    #[test]
     fn test_trace_builder_disabled() {
         let mut builder = TraceBuilder::disabled();
         assert!(!builder.is_enabled());
@@ -996,6 +1046,56 @@ mod tests {
     }
 
     #[test]
+    fn test_render_marks_only_the_last_child_with_a_corner() {
+        let root = PathNode::new(PathNodeType::Operation, "ADD")
+            .with_child(PathNode::new(PathNodeType::Resolve, "first"))
+            .with_child(PathNode::new(PathNodeType::Resolve, "middle"))
+            .with_child(PathNode::new(PathNodeType::Resolve, "last"));
+
+        let rendered = root.render(0, false);
+        let line_for = |name: &str| {
+            rendered
+                .lines()
+                .find(|l| l.contains(name))
+                .unwrap_or_else(|| panic!("no line for {} in:\n{}", name, rendered))
+                .to_string()
+        };
+
+        assert!(
+            line_for("first").starts_with("+-- "),
+            "a non-last child branches with +-- in:\n{}",
+            rendered
+        );
+        assert!(
+            line_for("middle").starts_with("+-- "),
+            "a non-last child branches with +-- in:\n{}",
+            rendered
+        );
+        assert!(
+            line_for("last").starts_with("`-- "),
+            "the last child closes the branch with `-- in:\n{}",
+            rendered
+        );
+    }
+
+    #[test]
+    fn test_render_only_shows_significant_durations() {
+        let quick = PathNode::new(PathNodeType::Operation, "quick").with_duration(99);
+        assert!(
+            !quick.render(0, false).contains("μs"),
+            "durations under 0.1ms are noise and stay out of the trace: {}",
+            quick.render(0, false)
+        );
+
+        let slow = PathNode::new(PathNodeType::Operation, "slow").with_duration(100);
+        assert!(
+            slow.render(0, false).contains("(100μs)"),
+            "durations from 0.1ms up are shown: {}",
+            slow.render(0, false)
+        );
+    }
+
+    #[test]
     fn test_render_complex_tree() {
         // Build a more complex tree
         let resolve_a = PathNode::new(PathNodeType::Resolve, "var_a").with_result(Value::Int(100));
@@ -1042,6 +1142,25 @@ mod tests {
         let formatted = format_value_compact(&Value::String(long_string.to_string()));
         assert!(formatted.len() < long_string.len());
         assert!(formatted.contains("..."));
+    }
+
+    #[test]
+    fn test_format_value_compact_truncation_boundary() {
+        // Exactly 20 characters still fits and is shown in full.
+        let exactly_twenty = "12345678901234567890";
+        assert_eq!(exactly_twenty.chars().count(), 20);
+        assert_eq!(
+            format_value_compact(&Value::String(exactly_twenty.to_string())),
+            "\"12345678901234567890\""
+        );
+
+        // One character more and the value is truncated to 17 characters.
+        let twenty_one = "123456789012345678901";
+        assert_eq!(twenty_one.chars().count(), 21);
+        assert_eq!(
+            format_value_compact(&Value::String(twenty_one.to_string())),
+            "\"12345678901234567...\""
+        );
     }
 
     #[test]
