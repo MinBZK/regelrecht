@@ -1390,10 +1390,15 @@ fn parse_iso_date(s: &str) -> Result<NaiveDate> {
 ///
 /// Used by DATE_DIFF with `in: months`.
 fn calculate_months_difference(date1: NaiveDate, date2: NaiveDate) -> i64 {
-    let (earlier, later, sign) = if date1 >= date2 {
-        (date2, date1, 1)
+    // Het teken als tak in plaats van als vermenigvuldiging: `total * sign` met
+    // sign in {1, -1} levert een mutant op die per constructie hetzelfde
+    // antwoord geeft (delen door -1 is vermenigvuldigen met -1), en die mutant
+    // deelt zijn omschrijving met `years_diff * 12` een paar regels lager. Eén
+    // uitsluiting zou daarmee ook echte rekenkunde stilzwijgend afdekken.
+    let (earlier, later, negate) = if date1 >= date2 {
+        (date2, date1, false)
     } else {
-        (date1, date2, -1)
+        (date1, date2, true)
     };
 
     let years_diff = later.year() - earlier.year();
@@ -1410,7 +1415,12 @@ fn calculate_months_difference(date1: NaiveDate, date2: NaiveDate) -> i64 {
         total_months -= 1;
     }
 
-    (total_months as i64) * sign
+    let total = total_months as i64;
+    if negate {
+        -total
+    } else {
+        total
+    }
 }
 
 /// Return the number of days in a given month.
@@ -1434,10 +1444,12 @@ fn days_in_month(year: i32, month: u32) -> u32 {
 /// Uses proper calendar arithmetic. A year is counted as complete when
 /// the anniversary date (or Feb 28 for leap year births on Feb 29) is reached.
 fn calculate_years_difference(date1: NaiveDate, date2: NaiveDate) -> i64 {
-    let (earlier, later, sign) = if date1 >= date2 {
-        (date2, date1, 1)
+    // Zie calculate_months_difference: het teken staat als tak, niet als
+    // vermenigvuldiging, zodat er geen gedragsequivalente mutant ontstaat.
+    let (earlier, later, negate) = if date1 >= date2 {
+        (date2, date1, false)
     } else {
-        (date1, date2, -1)
+        (date1, date2, true)
     };
 
     let mut years = later.year() - earlier.year();
@@ -1461,7 +1473,12 @@ fn calculate_years_difference(date1: NaiveDate, date2: NaiveDate) -> i64 {
         years -= 1;
     }
 
-    (years as i64) * sign
+    let years = years as i64;
+    if negate {
+        -years
+    } else {
+        years
+    }
 }
 
 // =============================================================================
