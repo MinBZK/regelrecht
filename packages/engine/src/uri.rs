@@ -392,6 +392,43 @@ mod tests {
         }
 
         #[test]
+        fn test_parse_preserves_original_uri_string() {
+            // A parsed reference keeps the reference exactly as it was written in
+            // the law, including the fragment: it is what error messages and
+            // provenance report back to the reader.
+            for original in [
+                "regelrecht://zvw/is_verzekerd",
+                "regelrecht://wet_op_de_zorgtoeslag/bereken_zorgtoeslag#heeft_recht_op_zorgtoeslag",
+                "regulation/nl/ministeriele_regeling/regeling_standaardpremie#standaardpremie",
+                "#standaardpremie",
+            ] {
+                let uri = RegelrechtUri::parse(original).unwrap();
+                assert_eq!(uri.uri(), original);
+                assert_eq!(uri.to_string(), original);
+            }
+        }
+
+        #[test]
+        fn test_reference_type_is_exclusive() {
+            // Internal and external are the two halves of one choice; a reference
+            // is never both, and never neither.
+            let internal = RegelrechtUri::parse("#standaardpremie").unwrap();
+            assert!(internal.is_internal());
+            assert!(!internal.is_external());
+            assert_eq!(internal.reference_type(), ReferenceType::Internal);
+
+            for external in [
+                "regelrecht://zvw/is_verzekerd",
+                "regulation/nl/wet/wet_op_de_zorgtoeslag",
+            ] {
+                let uri = RegelrechtUri::parse(external).unwrap();
+                assert!(uri.is_external());
+                assert!(!uri.is_internal());
+                assert_eq!(uri.reference_type(), ReferenceType::External);
+            }
+        }
+
+        #[test]
         fn test_parse_invalid_regelrecht_no_output() {
             let result = RegelrechtUri::parse("regelrecht://zvw");
             assert!(result.is_err());
