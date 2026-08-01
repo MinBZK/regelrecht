@@ -320,6 +320,223 @@ articles:
         assert!(reason.contains("lex posterior"));
     }
 
+    /// Lex superior beats lex posterior: a lower layer loses even when its
+    /// `valid_from` is later than that of the higher layer.
+    #[test]
+    fn test_compare_lower_layer_loses_despite_newer_date() {
+        let wet = ArticleBasedLaw::from_yaml_str(
+            r#"
+$id: higher_law
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+articles:
+  - number: '1'
+    text: Higher law article
+"#,
+        )
+        .unwrap();
+
+        let regeling = ArticleBasedLaw::from_yaml_str(
+            r#"
+$id: lower_regulation
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Lower regulation article
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            compare_law_priority(&regeling, &wet).unwrap(),
+            std::cmp::Ordering::Less,
+            "the ministerial regulation must lose to the formal law, even though it is newer"
+        );
+        assert_eq!(
+            compare_law_priority(&wet, &regeling).unwrap(),
+            std::cmp::Ordering::Greater,
+            "the formal law must win regardless of argument order"
+        );
+    }
+
+    /// Lex posterior in both directions: the older law loses to the newer one.
+    #[test]
+    fn test_compare_older_date_loses_at_same_layer() {
+        let older = ArticleBasedLaw::from_yaml_str(
+            r#"
+$id: older_regulation
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+articles:
+  - number: '1'
+    text: Older regulation
+"#,
+        )
+        .unwrap();
+
+        let newer = ArticleBasedLaw::from_yaml_str(
+            r#"
+$id: newer_regulation
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Newer regulation
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            compare_law_priority(&older, &newer).unwrap(),
+            std::cmp::Ordering::Less,
+            "the older regulation must lose"
+        );
+        assert_eq!(
+            compare_law_priority(&newer, &older).unwrap(),
+            std::cmp::Ordering::Greater,
+            "the newer regulation must win"
+        );
+    }
+
+    /// Same layer plus same `valid_from` has no winner: the engine must refuse
+    /// to pick one rather than silently preferring an argument position.
+    #[test]
+    fn test_compare_same_layer_and_date_is_ambiguous() {
+        let one = ArticleBasedLaw::from_yaml_str(
+            r#"
+$id: regulation_one
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: First regulation
+"#,
+        )
+        .unwrap();
+
+        let two = ArticleBasedLaw::from_yaml_str(
+            r#"
+$id: regulation_two
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Second regulation
+"#,
+        )
+        .unwrap();
+
+        for (a, b) in [(&one, &two), (&two, &one)] {
+            let err = compare_law_priority(a, b).expect_err(
+                "two regulations at the same layer with the same valid_from must not resolve",
+            );
+            assert!(
+                err.to_string().contains("Ambiguous priority"),
+                "Expected an ambiguity error, got: {err}"
+            );
+        }
+    }
+
+    /// The same ambiguity must surface through `resolve_candidate`, so a caller
+    /// never gets an arbitrary winner from an unresolvable pair.
+    #[test]
+    fn test_resolve_candidate_ambiguous_is_error() {
+        let one = ArticleBasedLaw::from_yaml_str(
+            r#"
+$id: regulation_one
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: First regulation
+"#,
+        )
+        .unwrap();
+
+        let two = ArticleBasedLaw::from_yaml_str(
+            r#"
+$id: regulation_two
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Second regulation
+"#,
+        )
+        .unwrap();
+
+        let candidates = vec![
+            Candidate {
+                law: &one,
+                article_number: "1".to_string(),
+            },
+            Candidate {
+                law: &two,
+                article_number: "1".to_string(),
+            },
+        ];
+
+        let err = resolve_candidate(&candidates).unwrap_err();
+        assert!(
+            err.to_string().contains("Ambiguous priority"),
+            "Expected an ambiguity error, got: {err}"
+        );
+    }
+
+    /// The winner must not depend on candidate order: the newer regulation wins
+    /// even when it is already the incumbent best.
+    #[test]
+    fn test_resolve_candidate_lex_posterior_newest_first() {
+        let newer = ArticleBasedLaw::from_yaml_str(
+            r#"
+$id: newer_regulation
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Newer regulation
+"#,
+        )
+        .unwrap();
+
+        let older = ArticleBasedLaw::from_yaml_str(
+            r#"
+$id: older_regulation
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+articles:
+  - number: '1'
+    text: Older regulation
+"#,
+        )
+        .unwrap();
+
+        let candidates = vec![
+            Candidate {
+                law: &newer,
+                article_number: "1".to_string(),
+            },
+            Candidate {
+                law: &older,
+                article_number: "1".to_string(),
+            },
+        ];
+
+        let (winner, _reason) = resolve_candidate(&candidates).unwrap().unwrap();
+        assert_eq!(winner.id, "newer_regulation");
+    }
+
     #[test]
     fn test_resolve_candidate_missing_valid_from_is_error() {
         let without_date = ArticleBasedLaw::from_yaml_str(

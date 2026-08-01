@@ -1,0 +1,22 @@
+---
+# Schema-geldig en unit-schoon: de OK-tak van de corpuspoort.
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
+$id: test_validate_cli_valid
+regulatory_layer: WET
+publication_date: '2025-01-01'
+bwb_id: BWBR0123456
+url: https://example.invalid/law
+articles:
+  - number: '1'
+    text: Het normbedrag bedraagt 500 eurocent.
+    url: https://example.invalid/law/artikel/1
+    machine_readable:
+      execution:
+        output:
+          - name: normbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: normbedrag
+            value: 500
