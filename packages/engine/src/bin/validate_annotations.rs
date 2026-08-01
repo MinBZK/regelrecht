@@ -269,3 +269,154 @@ fn load_vocabulary() -> HashSet<String> {
         })
         .unwrap_or_default()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn vocabulary_of(ids: &[&str]) -> HashSet<String> {
+        ids.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    fn tag_note(tag: &str) -> serde_json::Value {
+        json!({
+            "body": {"type": "TextualBody", "value": tag, "purpose": "tagging"}
+        })
+    }
+
+    /// A note anchored to a law that is in the corpus, so that the selector is
+    /// really resolved instead of silently skipped.
+    fn zorgtoeslag_note(exact: &str) -> serde_json::Value {
+        json!({
+            "target": {
+                "source": "regelrecht://wet_op_de_zorgtoeslag",
+                "selector": {"type": "TextQuoteSelector", "exact": exact}
+            }
+        })
+    }
+
+    #[test]
+    fn tagging_value_is_read_from_a_single_body() {
+        assert_eq!(
+            tagging_values(&tag_note("open-norm-partial")),
+            vec!["open-norm-partial".to_string()]
+        );
+    }
+
+    #[test]
+    fn every_tagging_body_in_a_list_is_read() {
+        let note = json!({"body": [
+            {"type": "TextualBody", "value": "open-norm-partial", "purpose": "tagging"},
+            {"type": "TextualBody", "value": "een toelichting", "purpose": "commenting"},
+            {"type": "TextualBody", "value": "missing-document", "purpose": "tagging"},
+        ]});
+        assert_eq!(
+            tagging_values(&note),
+            vec![
+                "open-norm-partial".to_string(),
+                "missing-document".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn a_body_without_the_tagging_purpose_is_no_tag() {
+        let note = json!({
+            "body": {"type": "TextualBody", "value": "een toelichting", "purpose": "commenting"}
+        });
+        assert!(tagging_values(&note).is_empty());
+        assert!(tagging_values(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn every_tag_outside_the_vocabulary_gives_one_warning() {
+        let doc = json!({"annotations": [tag_note("staat-er-niet"), tag_note("ook-niet")]});
+        assert_eq!(
+            check_notes(
+                Path::new("notes.yaml"),
+                &doc,
+                &vocabulary_of(&["open-norm-partial"])
+            ),
+            2
+        );
+    }
+
+    #[test]
+    fn a_tag_from_the_vocabulary_gives_no_warning() {
+        let doc = json!({"annotations": [tag_note("open-norm-partial")]});
+        assert_eq!(
+            check_notes(
+                Path::new("notes.yaml"),
+                &doc,
+                &vocabulary_of(&["open-norm-partial"])
+            ),
+            0
+        );
+    }
+
+    #[test]
+    fn a_file_without_annotations_gives_no_warning() {
+        assert_eq!(
+            check_notes(Path::new("notes.yaml"), &json!({}), &vocabulary_of(&[])),
+            0
+        );
+    }
+
+    /// A term from another area of law: no article of the Wet op de
+    /// zorgtoeslag contains it, and it is far enough from anything in the text
+    /// that the fuzzy matcher finds no candidate either.
+    #[test]
+    fn a_selector_that_no_longer_occurs_warns_as_orphaned() {
+        let doc = json!({"annotations": [zorgtoeslag_note("motorrijtuigenbelasting")]});
+        assert_eq!(
+            check_notes(Path::new("notes.yaml"), &doc, &vocabulary_of(&[])),
+            1
+        );
+    }
+
+    #[test]
+    fn a_selector_that_occurs_more_than_once_warns_as_ambiguous() {
+        let doc = json!({"annotations": [zorgtoeslag_note("verzekerde")]});
+        assert_eq!(
+            check_notes(Path::new("notes.yaml"), &doc, &vocabulary_of(&[])),
+            1
+        );
+    }
+
+    #[test]
+    fn a_law_is_found_by_its_id_in_the_corpus() {
+        let law = load_law_by_id("wet_op_de_zorgtoeslag").expect("law is in the corpus");
+        assert_eq!(law.id, "wet_op_de_zorgtoeslag");
+        assert!(!law.articles.is_empty());
+    }
+
+    #[test]
+    fn an_unknown_law_id_resolves_to_no_law_at_all() {
+        assert!(load_law_by_id("wet_die_niet_bestaat").is_none());
+    }
+
+    #[test]
+    fn note_discovery_finds_the_sidecars_and_skips_the_vocabulary() {
+        let files = discover_note_files();
+        assert!(
+            !files.is_empty(),
+            "corpus/annotations holds at least one note file"
+        );
+        for file in &files {
+            assert_eq!(file.extension().and_then(|e| e.to_str()), Some("yaml"));
+            assert!(
+                !file.components().any(|c| c.as_os_str() == "_vocabulary"),
+                "{} is vocabulary, not a note file",
+                file.display()
+            );
+        }
+    }
+
+    #[test]
+    fn the_vocabulary_holds_the_ambiguity_ids() {
+        let vocabulary = load_vocabulary();
+        assert!(vocabulary.contains("open-norm-not-filled"));
+        assert!(vocabulary.contains("needs-uitvoeringsbeleid"));
+    }
+}
