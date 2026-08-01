@@ -69,6 +69,31 @@ very strictly, even when the law is illogical, redundant, or inefficient.
 - Do NOT add "obvious" conditions that aren't in the text. If the article doesn't mention
   an age check, don't add one — even if you know it's required by another article.
 
+**The rule cuts both ways, and the second half is easier to forget.** Everything
+above punishes pulling a condition in. Nothing above punishes producing a
+condition that then restricts nothing, and that is the failure this corpus
+actually has.
+
+If your article produces an output that expresses a restriction (an age test, an
+asset test, an insurance requirement), some article must read it. Where the
+restriction belongs to the entitlement in *this* article, this model reads it.
+Where it belongs elsewhere, the article that grants the entitlement reads it
+across a `source` binding. An output that nothing consumes is not a faithful
+translation held at arm's length; it is a restriction that does not restrict.
+
+Measured on the zorgtoeslag in round 3: the age test of article 1 and the asset
+test of article 3 were both produced and neither was ever read. The model grants
+the allowance to a sixteen-year-old and to a millionaire, and every individual
+article looks correct.
+
+**One convention that is not a scope question but breaks in the same place.**
+Pick the money unit of the law you bind to, and if the two conventions differ,
+say so in a `norm_gap` or an `untranslatable` rather than converting silently.
+`unit` is a label and never a conversion (RFC-023), so two labels on one binding
+mean a factor is missing. Round 3 had the zorgtoeslag in eurocent and the Awir
+in euro, each internally consistent, and the same person came out at € 827,63 or
+€ 1.550,46 depending on which file you believed.
+
 **What to do instead:**
 - Use `input` with `source.regulation` to reference other laws
 - Use `input` with `source.output` to reference other articles in the same law
@@ -454,22 +479,97 @@ For monetary values, use `type: amount` with `type_spec: { unit: eurocent }`.
 caller passes for that parameter name. Some corpus files use it as a convention,
 but it has no special status in the engine.
 
-### When to Skip Articles
+### Every Article Gets One of Four Outcomes
 
-Skip articles that have no computable output. Heuristics for non-computable articles:
-- **Pure definitions** — "In deze wet wordt verstaan onder..." (definition articles)
-- **Procedural** — describes who must do what, deadlines for filing, appeal procedures
-- **Delegation** — "Bij of krachtens algemene maatregel van bestuur worden regels gesteld..." (delegates to AMvB without computable logic)
-- **Scope/applicability** — "Deze wet is van toepassing op..." (unless it has testable conditions)
-- **Transitional provisions** — "overgangsrecht" articles about old-to-new transitions
+Silence is not one of them. An article you pass over without a word is
+indistinguishable from an article nobody looked at, and the reviewer cannot tell
+which of the two happened.
 
-Articles that SHOULD be made executable:
-- Eligibility checks ("heeft recht op ... indien")
-- Calculations ("bedraagt", "wordt berekend", "vermenigvuldigd met")
-- Thresholds ("niet meer dan", "ten minste")
-- Conditional amounts (IF patterns based on categories)
-- Age-dependent rules ("de leeftijd van X jaar heeft bereikt")
-- Deadline calculations ("binnen X weken na")
+1. **`machine_readable`** — the article is executable and you translated it.
+2. **`norm_gaps`** — the norm is real but is filled in elsewhere: a ministerial
+   regulation, an AMvB, a beleidsregel. The article is not executable *yet*, and
+   the gap names where the filling belongs. See the section below.
+3. **`untranslatables`** — the engine's operation set cannot express the
+   construct. This is a shortcoming of the machine, not of the corpus.
+4. **Explicitly skipped**, recorded in `.enrichment-result.yaml` under
+   `articles_skipped` with the reason, because the article carries no norm at
+   all: a citation title, an entry-into-force provision, a repeal.
+
+Choosing between 2 and 3 matters more than it looks. They go to different
+people. A `norm_gap` is work for an analyst who finds the missing document; an
+`untranslatable` is work for whoever extends the engine. Marking an open norm as
+untranslatable sends the file to the wrong desk and it stays there.
+
+### Which Outcome Fits Which Article
+
+These shapes usually land on outcome 2 or 3 rather than 1, and never on silence:
+
+- **Pure definitions** — "In deze wet wordt verstaan onder..." Often outcome 4
+  when the term is used elsewhere and the definition itself computes nothing,
+  but a definition with a testable condition is outcome 1.
+- **Delegation** — "Bij of krachtens algemene maatregel van bestuur worden
+  regels gesteld..." This is outcome 2, always. The norm exists; its content
+  sits in a document the corpus does not have yet.
+- **Discretion** — "kan", "is bevoegd", "naar het oordeel van", "voor zover dat
+  redelijk is". A discretionary power modelled as an automatic rule turns a
+  civil servant's decision into arithmetic. Outcome 2 or 3, never 1.
+- **Procedure and deadlines** — outcome 1 whenever the provision has a legal
+  consequence you can express, which is most of them. A deadline whose
+  consequence you cannot express is outcome 3.
+
+**One rule overrides all of the above.** A provision that *limits* what the
+administration may do is never outcome 4. Limitation periods, minimum and
+maximum amounts, rounding floors, hardship clauses, revision windows,
+proportionality requirements: these bound the citizen's exposure, and leaving
+them out shifts the balance in one direction while every rule you did translate
+shifts it in the other. If you cannot express one, mark it. Do not pass over it.
+
+Measured on the Awir in round 3: the five-year limitation periods that protect
+the administration were translated, and the € 24 rounding floor, the € 121
+threshold, the revision limitation period and the hardship clause were all
+passed over without a word. Nobody chose that. It is what this section used to
+ask for.
+
+### Norm Gaps — When the Norm Is Real but Its Content Lives Elsewhere
+
+The article states a norm the engine could execute, and the content of that norm
+is not in this corpus. "Bij ministeriële regeling wordt de standaardpremie
+vastgesteld" is a complete legal instruction; what it lacks is a number that
+lives in another document.
+
+This is a corpus gap, not a language gap. Building an engine operation never
+resolves it. Two things do, and they stand beside each other: harvest the
+regulation or beleidsregel that fills it, or, where no general specification
+exists, have the competent authority fill it for the individual case with a
+motivation. That second route is why a norm gap sits closer to a discretionary
+judgement than to a missing fact.
+
+```yaml
+norm_gaps:
+  - norm: "de standaardpremie"          # in the words the article uses
+    kind: delegated                      # delegated | policy | open
+    blocks: [hoogte_zorgtoeslag]         # which outputs cannot be computed
+    expected_source: "ministeriële regeling op grond van artikel 4"
+    legal_text_excerpt: "Bij ministeriële regeling wordt de standaardpremie ..."
+```
+
+`kind` says who fills it. **delegated**: the law names the instrument (bij
+ministeriële regeling, bij amvb). **policy**: a beleidsregel or implementing
+policy fills it, which is not an algemeen verbindend voorschrift. **open**: the
+law leaves it to be weighed in the individual case ("redelijkerwijs", "naar het
+oordeel van", "voor zover dat billijk is").
+
+**Keep this strictly apart from `untranslatables`,** which says the opposite:
+the norm is perfectly clear and the engine cannot express it. Mixing them up is
+not a labelling detail. A norm gap is work for an analyst who goes and finds the
+document; an untranslatable is work for whoever extends the engine. Put a norm
+gap in the untranslatables list and it lands on a desk where nobody can act on
+it, and there it stays.
+
+A useful test: if someone handed you the missing document, would the article
+become executable? Then it is a norm gap. If it would still not be executable
+because the engine has no way to say what the article says, it is an
+untranslatable. Both can be true at once, and then you write both.
 
 ### Untranslatables — When to Flag Instead of Approximate (RFC-012)
 

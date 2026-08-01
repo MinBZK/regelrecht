@@ -938,6 +938,273 @@ fn walk_inner<'a>(
 
 /// Locate a law directory by `$id` under `corpus_root`, returning the most
 /// recent version file. The corpus lays out `<country>/<layer>/<id>/<date>.yaml`.
+/// Overrides that name an article the corpus does not have.
+///
+/// An override displaces another article's output, and the resolver matches it
+/// on the literal triple of regulation, article number and output name. Miss
+/// the article number and the override is inert: it neither fires nor fails,
+/// and the engine returns both the displaced value and the displacing one
+/// without complaint.
+///
+/// The failure has one cause, measured on round 3. The corpus splits below
+/// article level, so the producer of `hoogte_zorgtoeslag` sits at entry `2.1`
+/// while the statute cites it as "artikel 2". The agent writes what the statute
+/// says. It gets `requires` right (72 of 72 targets resolve in the Awir,
+/// including `2.1.e.1°`), so it knows the fragment numbering; it only falls
+/// back to the statutory citation here, because nothing ever told it otherwise.
+/// `binding_integrity` walks `source` and has never looked at `overrides`.
+pub fn override_targets(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding> {
+    let own_id = doc.get("$id").and_then(Value::as_str).unwrap_or_default();
+    let mut findings = Vec::new();
+
+    for (article, mr) in articles_with_models(doc) {
+        let Some(overrides) = mr.get("overrides").and_then(Value::as_sequence) else {
+            continue;
+        };
+        for entry in overrides {
+            let Some(target_article) = entry.get("article").and_then(Value::as_str) else {
+                continue;
+            };
+            let law = entry
+                .get("regulation")
+                .or_else(|| entry.get("law"))
+                .and_then(Value::as_str)
+                .unwrap_or(own_id);
+            let output = entry.get("output").and_then(Value::as_str);
+
+            // Same file: resolve against the document in hand.
+            let target_doc = if law == own_id || law.is_empty() {
+                Some(std::borrow::Cow::Borrowed(doc))
+            } else {
+                match corpus_root.and_then(|root| find_law_file(root, law)) {
+                    Some(path) => std::fs::read_to_string(&path)
+                        .ok()
+                        .and_then(|raw| serde_yaml_ng::from_str::<Value>(&raw).ok())
+                        .map(std::borrow::Cow::Owned),
+                    // A law outside the corpus is not this file's problem, and
+                    // `binding_integrity` already reports the unresolvable
+                    // regulation itself. Saying it twice trains people to skim.
+                    None => continue,
+                }
+            };
+            let Some(target_doc) = target_doc else {
+                continue;
+            };
+
+            let numbers = article_numbers(&target_doc);
+            if !numbers.iter().any(|n| n == target_article) {
+                let near = numbers
+                    .iter()
+                    .filter(|n| {
+                        n.starts_with(&format!("{target_article}."))
+                            || target_article.starts_with(&format!("{n}."))
+                    })
+                    .take(3)
+                    .cloned()
+                    .collect::<Vec<_>>();
+                let hint = if near.is_empty() {
+                    String::new()
+                } else {
+                    format!(", did you mean {}", near.join(" or "))
+                };
+                findings.push(Finding::new(
+                    "override",
+                    Some(&article),
+                    format!(
+                        "overrides {law} article {target_article}, which this corpus does not \
+                         have{hint}. The override never fires and both values are returned"
+                    ),
+                ));
+                continue;
+            }
+
+            if let Some(output) = output {
+                if !doc_article_defines_output(&target_doc, target_article, output) {
+                    findings.push(Finding::new(
+                        "override",
+                        Some(&article),
+                        format!(
+                            "overrides output {output} on {law} article {target_article}, which \
+                             that article does not produce"
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+    findings
+}
+
+/// Cross-law bindings whose two sides label the same quantity differently.
+///
+/// `unit` is a label and never a conversion (RFC-023), so two different labels
+/// on one binding mean a factor is missing. Within one article the engine
+/// checks this; across a law boundary `resolver.rs` checks nothing, which is
+/// why the failure is silent rather than loud.
+///
+/// Measured cost of the silence: the zorgtoeslag counts in eurocent 42 times
+/// and the Awir in euro 67 times, and the same person on the same income comes
+/// out at € 827,63 or € 1.550,46 depending on which convention wins. Nothing
+/// warns.
+///
+/// Says nothing when either side omits `unit`. A year number and a month index
+/// are properly dimensionless, and demanding a label there would train people
+/// to add meaningless ones.
+pub fn binding_units(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding> {
+    let Some(corpus_root) = corpus_root else {
+        return Vec::new();
+    };
+    let mut findings = Vec::new();
+    let mut cache: BTreeMap<String, Option<Value>> = BTreeMap::new();
+
+    for (article, mr) in articles_with_models(doc) {
+        for (name, input) in declared_inputs(mr) {
+            let Some(source) = input.get("source") else {
+                continue;
+            };
+            let (Some(law), Some(output)) = (
+                source
+                    .get("regulation")
+                    .or_else(|| source.get("law"))
+                    .and_then(Value::as_str),
+                source.get("output").and_then(Value::as_str),
+            ) else {
+                continue;
+            };
+            let Some(here) = unit_of(input) else { continue };
+
+            let target = cache.entry(law.to_owned()).or_insert_with(|| {
+                find_law_file(corpus_root, law)
+                    .and_then(|p| std::fs::read_to_string(p).ok())
+                    .and_then(|raw| serde_yaml_ng::from_str::<Value>(&raw).ok())
+            });
+            let Some(target) = target.as_ref() else {
+                continue;
+            };
+            let Some(there) = output_unit(target, output) else {
+                continue;
+            };
+
+            if here != there {
+                findings.push(Finding::new(
+                    "unit",
+                    Some(&article),
+                    format!(
+                        "input {name} is labelled {here} and reads {law}.{output}, which is \
+                         labelled {there}. A unit is a label and never a conversion, so a factor \
+                         is missing on one side"
+                    ),
+                ));
+            }
+        }
+    }
+    findings
+}
+
+/// Article numbers this document carries, in document order.
+fn article_numbers(doc: &Value) -> Vec<String> {
+    doc.get("articles")
+        .and_then(Value::as_sequence)
+        .map(|arts| {
+            arts.iter()
+                .filter_map(|a| a.get("number").and_then(Value::as_str))
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Whether one named article of a document declares one named output.
+fn doc_article_defines_output(doc: &Value, article: &str, output: &str) -> bool {
+    let Some(arts) = doc.get("articles").and_then(Value::as_sequence) else {
+        return false;
+    };
+    for entry in arts {
+        if entry.get("number").and_then(Value::as_str) != Some(article) {
+            continue;
+        }
+        let Some(mr) = entry.get("machine_readable") else {
+            return false;
+        };
+        let mut found = false;
+        walk_outside_sources(mr, &mut |key, node| {
+            if key != Some("output") {
+                return;
+            }
+            match node {
+                Value::Sequence(seq) => {
+                    if seq
+                        .iter()
+                        .any(|item| item.get("name").and_then(Value::as_str) == Some(output))
+                    {
+                        found = true;
+                    }
+                }
+                Value::String(s) if s == output => found = true,
+                _ => {}
+            }
+        });
+        return found;
+    }
+    false
+}
+
+/// The `unit` a declared value carries, if it carries one.
+fn unit_of(node: &Value) -> Option<&str> {
+    node.get("type_spec")
+        .and_then(|t| t.get("unit"))
+        .and_then(Value::as_str)
+}
+
+/// The unit declared on one named output of a document.
+fn output_unit<'a>(doc: &'a Value, output: &str) -> Option<&'a str> {
+    let arts = doc.get("articles").and_then(Value::as_sequence)?;
+    for entry in arts {
+        let mr = entry.get("machine_readable")?;
+        let outputs = mr.get("output").and_then(Value::as_sequence);
+        if let Some(seq) = outputs {
+            for item in seq {
+                if item.get("name").and_then(Value::as_str) == Some(output) {
+                    return unit_of(item);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// The declared inputs of a model, by name.
+fn declared_inputs(mr: &Value) -> Vec<(String, &Value)> {
+    mr.get("input")
+        .and_then(Value::as_sequence)
+        .map(|seq| {
+            seq.iter()
+                .filter_map(|i| {
+                    i.get("name")
+                        .and_then(Value::as_str)
+                        .map(|n| (n.to_owned(), i))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Article number paired with its model, for every article that has one.
+fn articles_with_models(doc: &Value) -> Vec<(String, &Value)> {
+    doc.get("articles")
+        .and_then(Value::as_sequence)
+        .map(|arts| {
+            arts.iter()
+                .filter_map(|a| {
+                    let number = a.get("number").and_then(Value::as_str)?;
+                    let mr = a.get("machine_readable")?;
+                    Some((number.to_owned(), mr))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn find_law_file(corpus_root: &Path, law_id: &str) -> Option<std::path::PathBuf> {
     let mut newest: Option<std::path::PathBuf> = None;
     let mut stack = vec![corpus_root.to_path_buf()];
@@ -1056,6 +1323,8 @@ pub fn run(yaml: &str, corpus_root: Option<&Path>) -> Report {
     let mut findings = coverage(&doc);
     findings.extend(enum_provenance(&doc));
     findings.extend(binding_integrity(&doc, corpus_root));
+    findings.extend(override_targets(&doc, corpus_root));
+    findings.extend(binding_units(&doc, corpus_root));
     findings.extend(marking_discipline(&doc, &statutory_text));
     Report { schema, findings }
 }
@@ -1275,6 +1544,200 @@ articles:
 "#;
         let doc: Value = serde_yaml_ng::from_str(yaml).unwrap();
         assert!(enum_provenance(&doc).is_empty());
+    }
+
+    /// Round 3, wet_op_de_zorgtoeslag article 2.4: the override names "2"
+    /// while the producer sits at entry "2.1", so it never fires and the
+    /// engine returns both the halved and the unhalved amount.
+    #[test]
+    fn override_naming_an_article_the_corpus_splits_is_flagged() {
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+$id: wet_op_de_zorgtoeslag
+articles:
+  - number: "2.1"
+    machine_readable:
+      output:
+        - name: hoogte_zorgtoeslag
+  - number: "2.4"
+    machine_readable:
+      overrides:
+        - article: "2"
+          output: hoogte_zorgtoeslag
+"#,
+        )
+        .expect("yaml");
+        let f = override_targets(&doc, None);
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert_eq!(f[0].check, "override");
+        assert_eq!(f[0].article.as_deref(), Some("2.4"));
+        assert!(
+            f[0].detail.contains("2.1"),
+            "should point at the real entry"
+        );
+    }
+
+    #[test]
+    fn override_naming_an_article_that_exists_is_left_alone() {
+        // Article 4 is not fragmented in the real corpus, and that override
+        // is the one of five that works. A check that flags it too is worse
+        // than no check.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+$id: wet_op_de_zorgtoeslag
+articles:
+  - number: "4"
+    machine_readable:
+      output:
+        - name: standaardpremie
+  - number: "4a.1"
+    machine_readable:
+      overrides:
+        - article: "4"
+          output: standaardpremie
+"#,
+        )
+        .expect("yaml");
+        assert!(override_targets(&doc, None).is_empty());
+    }
+
+    #[test]
+    fn override_on_an_article_that_does_not_produce_that_output_is_flagged() {
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+$id: test_wet
+articles:
+  - number: "2"
+    machine_readable:
+      output:
+        - name: bedrag
+  - number: "5"
+    machine_readable:
+      overrides:
+        - article: "2"
+          output: iets_anders
+"#,
+        )
+        .expect("yaml");
+        let f = override_targets(&doc, None);
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert!(f[0].detail.contains("does not produce"));
+    }
+
+    #[test]
+    fn override_into_a_law_outside_the_corpus_is_not_reported_twice() {
+        // binding_integrity already reports the unresolvable regulation.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+$id: test_wet
+articles:
+  - number: "1"
+    machine_readable:
+      overrides:
+        - regulation: wet_die_niet_bestaat
+          article: "3"
+          output: x
+"#,
+        )
+        .expect("yaml");
+        assert!(override_targets(&doc, None).is_empty());
+    }
+
+    #[test]
+    fn a_binding_across_a_unit_boundary_is_flagged() {
+        // The measured silence: eurocent on one side, euro on the other, and
+        // the same person comes out at 827,63 or 1550,46 with no warning.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let awir = dir.path().join("regulation/nl/wet/awir");
+        std::fs::create_dir_all(&awir).expect("mkdir");
+        std::fs::write(
+            awir.join("2026-01-01.yaml"),
+            r#"
+$id: awir
+articles:
+  - number: "8.1"
+    machine_readable:
+      output:
+        - name: toetsingsinkomen
+          type_spec:
+            unit: euro
+"#,
+        )
+        .expect("write");
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+$id: wet_op_de_zorgtoeslag
+articles:
+  - number: "2.2"
+    machine_readable:
+      input:
+        - name: toetsingsinkomen
+          type_spec:
+            unit: eurocent
+          source:
+            regulation: awir
+            output: toetsingsinkomen
+"#,
+        )
+        .expect("yaml");
+        let f = binding_units(&doc, Some(dir.path()));
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert_eq!(f[0].check, "unit");
+        assert!(f[0].detail.contains("eurocent") && f[0].detail.contains("euro"));
+    }
+
+    #[test]
+    fn matching_units_and_missing_units_are_both_silent() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let awir = dir.path().join("regulation/nl/wet/awir");
+        std::fs::create_dir_all(&awir).expect("mkdir");
+        std::fs::write(
+            awir.join("2026-01-01.yaml"),
+            r#"
+$id: awir
+articles:
+  - number: "8.1"
+    machine_readable:
+      output:
+        - name: toetsingsinkomen
+          type_spec:
+            unit: euro
+        - name: berekeningsjaar
+"#,
+        )
+        .expect("write");
+        // Same label: nothing to say.
+        let same: Value = serde_yaml_ng::from_str(
+            r#"
+$id: wzt
+articles:
+  - number: "1"
+    machine_readable:
+      input:
+        - name: toetsingsinkomen
+          type_spec:
+            unit: euro
+          source: {regulation: awir, output: toetsingsinkomen}
+"#,
+        )
+        .expect("yaml");
+        assert!(binding_units(&same, Some(dir.path())).is_empty());
+
+        // No label on either side: a year is properly dimensionless, and
+        // demanding a unit there teaches people to add meaningless ones.
+        let bare: Value = serde_yaml_ng::from_str(
+            r#"
+$id: wzt
+articles:
+  - number: "1"
+    machine_readable:
+      input:
+        - name: berekeningsjaar
+          source: {regulation: awir, output: berekeningsjaar}
+"#,
+        )
+        .expect("yaml");
+        assert!(binding_units(&bare, Some(dir.path())).is_empty());
     }
 
     #[test]
