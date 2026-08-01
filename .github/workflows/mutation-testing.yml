@@ -3,12 +3,26 @@
 # mutation-diff.yml: die bewaakt nieuwe code op de PR waar hij geschreven
 # wordt, deze inventariseert wekelijks wat er al ligt. De uitkomst gaat naar
 # een issue, want een artifact dat niemand opent is geen bevinding.
+#
+# De run heeft geheugen: het artifact van de vorige week is de invoer van deze.
+# Daaruit volgt de vergelijking in het issue (wat is nieuw, wat is opgelost,
+# wat verschoof tussen caught en timeout) en de keuze van de timeout-multiplier.
+# Zolang de voorraad boven VARIATION_THRESHOLD ligt blijft die vast, zodat de
+# weken vergelijkbaar zijn; daaronder rouleert hij, om zichtbaar te maken welke
+# mutanten alleen door de klok sneuvelen in plaats van door een assertie.
 name: Mutation Testing
 
 on:
   schedule:
     - cron: '0 6 * * 1'  # Monday 06:00 UTC
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      timeout_multiplier:
+        description: >-
+          Overschrijf de timeout-multiplier voor deze run. Leeg laten is de
+          normale gang van zaken: dan kiest de plan-job hem.
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -25,9 +39,94 @@ env:
   # zo'n halfuur per shard en past het ruim binnen de timeout hieronder.
   # Dit getal moet gelijk lopen met de matrix in de job eronder.
   SHARD_COUNT: 12
+  # Zolang er meer dan dit aantal mutanten overleeft, is de opdracht simpel:
+  # dat getal omlaag, elke week met dezelfde multiplier zodat de cijfers
+  # vergelijkbaar blijven. Zakt het eronder, dan is de voorraad weggewerkt en
+  # wordt de vraag interessanter: welke mutanten worden alleen door de klok
+  # gevangen in plaats van door een assertie? Vanaf dat moment rouleert de
+  # multiplier wekelijks over VARIATION_MULTIPLIERS.
+  VARIATION_THRESHOLD: 25
+  VARIATION_MULTIPLIERS: "3 2 5"
+  DEFAULT_MULTIPLIER: 3
 
 jobs:
+  plan:
+    name: Plannen
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      multiplier: ${{ steps.decide.outputs.multiplier }}
+      prev-run: ${{ steps.decide.outputs.prev-run }}
+    steps:
+      - name: Kies de timeout-multiplier voor deze run
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OVERRIDE: ${{ inputs.timeout_multiplier }}
+        # Het geheugen van deze workflow is het artifact van de vorige run.
+        # Daar staat in run-meta.json welke multiplier toen gebruikt is en
+        # hoeveel mutanten er overleefden. Dat is genoeg om te beslissen, en
+        # het scheelt een bot die in de repo moet schrijven.
+        run: |
+          multiplier=""
+          prev_run=""
+
+          candidates=$(gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow mutation-testing.yml --status completed --limit 10 \
+            --json databaseId --jq '.[].databaseId')
+
+          for id in $candidates; do
+            if [ "$id" = "$GITHUB_RUN_ID" ]; then continue; fi
+            if gh run download "$id" --repo "$GITHUB_REPOSITORY" \
+                 -n mutation-report -D prev 2>/dev/null; then
+              prev_run="$id"
+              break
+            fi
+          done
+
+          if [ -n "$prev_run" ] && [ -f prev/run-meta.json ]; then
+            prev_missed=$(jq -r '.missed // empty' prev/run-meta.json)
+            prev_mult=$(jq -r '.multiplier // empty' prev/run-meta.json)
+            echo "Vorige run $prev_run: $prev_missed overlevers bij multiplier $prev_mult."
+
+            if [ -n "$prev_missed" ] && [ "$prev_missed" -le "$VARIATION_THRESHOLD" ]; then
+              # Onder de drempel: pak de volgende multiplier uit de reeks, zodat
+              # opeenvolgende weken elkaars tegenhanger zijn.
+              set -- $VARIATION_MULTIPLIERS
+              first="$1"
+              found=""
+              for m in "$@"; do
+                if [ -n "$found" ]; then multiplier="$m"; break; fi
+                if [ "$m" = "$prev_mult" ]; then found=1; fi
+              done
+              # Geen `[ … ] && …`: onder `bash -e` laat dat de stap vallen zodra
+              # de test onwaar is.
+              if [ -z "$multiplier" ]; then multiplier="$first"; fi
+              echo "Onder de drempel van $VARIATION_THRESHOLD: variatie aan, multiplier $multiplier."
+            else
+              multiplier="$DEFAULT_MULTIPLIER"
+              echo "Boven de drempel: vaste multiplier $multiplier, zodat de weken vergelijkbaar blijven."
+            fi
+          else
+            multiplier="$DEFAULT_MULTIPLIER"
+            echo "Geen bruikbaar rapport van een vorige run; multiplier $multiplier."
+          fi
+
+          # Een handmatige run wint altijd, zodat een variatie ook los te
+          # proberen is zonder op de drempel te wachten.
+          if [ -n "$OVERRIDE" ]; then
+            multiplier="$OVERRIDE"
+            echo "Handmatig overschreven naar multiplier $multiplier."
+          fi
+
+          echo "multiplier=$multiplier" >> "$GITHUB_OUTPUT"
+          echo "prev-run=$prev_run" >> "$GITHUB_OUTPUT"
+
   mutants:
+    needs: plan
     name: Mutation Testing (shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -84,7 +183,8 @@ jobs:
         # mogen de job dus niet laten falen. Alles daarboven is wel een storing.
         run: |
           set +e
-          cargo mutants --in-place --timeout-multiplier 3 \
+          cargo mutants --in-place \
+            --timeout-multiplier "${{ needs.plan.outputs.multiplier }}" \
             --shard "${{ matrix.shard }}/${SHARD_COUNT}"
           code=$?
           set -e
@@ -108,13 +208,14 @@ jobs:
 
   report:
     name: Rapporteren
-    needs: mutants
+    needs: [plan, mutants]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
       issues: write
+      actions: read
     steps:
       - name: Download shard-rapporten
         # Faalt als geen enkele shard iets heeft opgeleverd; dat geval wordt
@@ -134,6 +235,8 @@ jobs:
 
       - name: Voeg de shards samen
         id: merge
+        env:
+          MULTIPLIER: ${{ needs.plan.outputs.multiplier }}
         run: |
           mkdir -p report
           for f in missed.txt caught.txt timeout.txt unviable.txt; do
@@ -172,11 +275,26 @@ jobs:
               | while read -r count file; do echo "| \`$file\` | $count |"; done
           } > report/top-files.md
 
+          # Het geheugen voor de volgende run: hiermee weet de plan-job welke
+          # multiplier er gebruikt is en hoe groot de voorraad was.
+          cat > report/run-meta.json <<META
+          {
+            "multiplier": ${MULTIPLIER},
+            "missed": ${missed},
+            "caught": ${caught},
+            "timeout": ${timeout},
+            "unviable": ${unviable},
+            "run_id": "${GITHUB_RUN_ID}",
+            "date": "$(date -u +%Y-%m-%d)"
+          }
+          META
+
           # Het overzicht hoort ook in het artifact zelf te staan, zodat het
           # buiten het issue om leesbaar blijft.
           {
             echo "# Mutatietesten, run van $(date -u +%Y-%m-%d)"
             echo
+            echo "- timeout-multiplier: $MULTIPLIER"
             echo "- overleefd: $missed"
             echo "- gevangen: $caught"
             echo "- vastgelopen: $timeout"
@@ -184,6 +302,73 @@ jobs:
             echo
             cat report/top-files.md
           } > report/README.md
+
+      - name: Vergelijk met de vorige run
+        id: compare
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREV_RUN: ${{ needs.plan.outputs.prev-run }}
+          MULTIPLIER: ${{ needs.plan.outputs.multiplier }}
+        # Dit draait elke week, ook als de multiplier niet verandert. Zo is het
+        # mechanisme in gebruik lang voordat de variatie aangaat, in plaats van
+        # een tak die maanden ligt te wachten op zijn eerste beurt.
+        run: |
+          if [ -z "$PREV_RUN" ] || \
+             ! gh run download "$PREV_RUN" --repo "$GITHUB_REPOSITORY" \
+                 -n mutation-report -D prev 2>/dev/null; then
+            echo "_Geen vorige run om mee te vergelijken; dit is het startpunt._" \
+              > report/vergelijking.md
+            exit 0
+          fi
+
+          prev_mult=$(jq -r '.multiplier // "?"' prev/run-meta.json 2>/dev/null || echo "?")
+          prev_date=$(jq -r '.date // "?"' prev/run-meta.json 2>/dev/null || echo "?")
+
+          for f in missed caught timeout; do
+            sort -u "prev/$f.txt" > "prev-$f.sorted" 2>/dev/null || : > "prev-$f.sorted"
+            sort -u "report/$f.txt" > "now-$f.sorted"
+          done
+
+          comm -13 prev-missed.sorted now-missed.sorted > nieuw.txt
+          comm -23 prev-missed.sorted now-missed.sorted > opgelost.txt
+          comm -12 prev-caught.sorted now-timeout.sorted > caught-naar-timeout.txt
+          comm -12 prev-timeout.sorted now-caught.sorted > timeout-naar-caught.txt
+
+          section() {
+            title="$1"; file="$2"
+            count=$(wc -l < "$file")
+            if [ "$count" -eq 0 ]; then return; fi
+            echo "**$title ($count)**"
+            echo
+            echo '```'
+            head -20 "$file"
+            if [ "$count" -gt 20 ]; then echo "… en nog $((count - 20)); zie het artifact."; fi
+            echo '```'
+            echo
+          }
+
+          {
+            echo "Vergeleken met de run van ${prev_date} (multiplier ${prev_mult}, deze run ${MULTIPLIER})."
+            echo
+            if [ "$prev_mult" != "$MULTIPLIER" ]; then
+              echo "> De multiplier verschilt van vorige week. Verschuivingen tussen"
+              echo "> \`caught\` en \`timeout\` komen dan waarschijnlijk door de klok en niet"
+              echo "> door een wijziging in de code. Dat is precies wat deze variatie moet"
+              echo "> blootleggen: een mutant die alleen door een timeout sneuvelt, wordt"
+              echo "> door geen enkele assertie gevangen."
+              echo
+            fi
+            section "Nieuw overlevend sinds de vorige run" nieuw.txt
+            section "Opgelost sinds de vorige run" opgelost.txt
+            section "Was gevangen, nu een timeout" caught-naar-timeout.txt
+            section "Was een timeout, nu gevangen" timeout-naar-caught.txt
+            if [ ! -s nieuw.txt ] && [ ! -s opgelost.txt ] && \
+               [ ! -s caught-naar-timeout.txt ] && [ ! -s timeout-naar-caught.txt ]; then
+              echo "Geen enkel verschil met de vorige run."
+            fi
+          } > report/vergelijking.md
+
+          cp nieuw.txt opgelost.txt caught-naar-timeout.txt timeout-naar-caught.txt report/
 
       - name: Upload samengevoegd rapport
         id: upload
@@ -201,6 +386,7 @@ jobs:
           TIMEOUT: ${{ steps.merge.outputs.timeout }}
           UNVIABLE: ${{ steps.merge.outputs.unviable }}
           TOTAL: ${{ steps.merge.outputs.total }}
+          MULTIPLIER: ${{ needs.plan.outputs.multiplier }}
           ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -220,10 +406,15 @@ jobs:
             echo "| Gevangen (\`caught\`) | ${CAUGHT} |"
             echo "| Vastgelopen (\`timeout\`) | ${TIMEOUT} |"
             echo "| Niet compileerbaar (\`unviable\`) | ${UNVIABLE} |"
+            echo "| Timeout-multiplier | ${MULTIPLIER} |"
             echo
             echo "**[Volledig rapport downloaden](${ARTIFACT_URL})** — \`missed.txt\` bevat"
             echo "elke overlevende mutatie met bestand, regel en de doorgevoerde wijziging."
             echo "De [run](${RUN_URL}) bewaart het artifact negentig dagen."
+            echo
+            echo "### Sinds de vorige run"
+            echo
+            cat report/vergelijking.md
             echo
             echo "### Waar ze zitten"
             echo
