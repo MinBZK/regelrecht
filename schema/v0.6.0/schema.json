@@ -1808,7 +1808,7 @@
         },
         "norm_gaps": {
           "type": "array",
-          "description": "Norms in this article that the engine could execute, but not yet: they are open and get their content from a further specification that is not in the corpus. This is a corpus gap and not a language gap. It is resolved by harvesting the regulation, beleidsregel or implementing policy that fills the norm, never by adding an engine operation. Keep it strictly apart from untranslatables, which say the opposite: the norm is clear and the engine cannot express it.",
+          "description": "Norms in this article that the engine could execute, but not yet: they are open and get their content from a further specification that is not in the corpus. This is a corpus gap and not a language gap, so adding an engine operation never resolves it. Two routes do, and they stand beside each other: harvest the regulation or beleidsregel that fills the norm, or, where no general specification exists, have the competent authority fill it for the individual case with a motivation. The second route makes this a question for that authority, which is why a norm gap is closer to a discretionary judgement than to a missing fact. Keep it strictly apart from untranslatables, which say the opposite: the norm is clear and the engine cannot express it.",
           "items": {
             "type": "object",
             "required": [
@@ -1828,7 +1828,7 @@
                   "policy",
                   "open"
                 ],
-                "description": "delegated: the law names who fills it and how (bij ministeriële regeling, bij amvb). policy: it is filled by beleidsregel or implementing policy, which is not an algemeen verbindend voorschrift (Awb 1:3 lid 4). open: the law leaves it open without naming a filler ('redelijkerwijs', 'in bijzondere gevallen')."
+                "description": "delegated: the law names who fills it and how (bij ministeriële regeling, bij amvb). policy: it is filled by beleidsregel or implementing policy, which is not an algemeen verbindend voorschrift (Awb 1:3 lid 4). open: the law leaves it open without naming a filler ('redelijkerwijs', 'in bijzondere gevallen'), so absent a general specification the competent authority decides per case."
               },
               "blocks": {
                 "type": "array",
@@ -1840,6 +1840,10 @@
               "expected_source": {
                 "type": "string",
                 "description": "The regulation or policy that would fill it, when the law names one. A BWB id when known."
+              },
+              "decided_per_case_by": {
+                "type": "string",
+                "description": "The authority that fills this norm in the individual case while no general specification exists, with the article that makes it competent. Its answer needs a motivation (Awb 3:46) and is part of the besluit, not a ground for it."
               },
               "searched": {
                 "type": "string",
