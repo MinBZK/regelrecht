@@ -662,6 +662,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # De gate beperkt zich tot de gewijzigde pagina's als dat veilig kan,
+          # en daarvoor is de diff tegen de base nodig.
+          fetch-depth: 0
 
       - name: Install just
         if: needs.changes.outputs.docs == 'true'
@@ -688,10 +692,31 @@ jobs:
         working-directory: docs
         run: npx playwright install --with-deps chromium
 
+      # Alleen op een pull request: de lijst gewijzigde bestanden, waarmee
+      # gen-pa11yci.mjs de gate tot de geraakte pagina's beperkt. Raakt de PR
+      # iets anders dan inhoud (layout, component, stylesheet, configuratie),
+      # dan valt dat script terug op de volledige site. Bij een push naar main
+      # blijft de lijst leeg en draait de gate altijd volledig.
+      - name: Bepaal gewijzigde bestanden
+        if: needs.changes.outputs.docs == 'true'
+        id: changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -n "$BASE_SHA" ]; then
+            files=$(git diff --name-only "$BASE_SHA" HEAD | tr '\n' ' ')
+          else
+            files=""
+          fi
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+
       # `just docs-a11y` builds the site, regenerates .pa11yci from the build,
-      # then runs pa11y-ci (htmlcs + axe) over every page. Non-zero exit fails.
+      # then runs pa11y-ci (htmlcs + axe) over the selected pages. Non-zero
+      # exit fails. Welke pagina's dat waren staat in het log van die stap.
       - name: Run accessibility gate
         if: needs.changes.outputs.docs == 'true'
+        env:
+          A11Y_CHANGED_FILES: ${{ steps.changed.outputs.files }}
         run: just docs-a11y
 
       - name: Skip (no relevant changes)
