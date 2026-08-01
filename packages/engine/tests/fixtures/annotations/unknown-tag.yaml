@@ -1,0 +1,17 @@
+---
+# Fixture for tests/validate_annotations_cli.rs: schema-valid, but the tag value
+# is not in corpus/annotations/_vocabulary/ambiguity.yaml. Exactly one warning,
+# and per RFC-018 Decision 9 a warning must not fail the build.
+annotations:
+  - type: Annotation
+    motivation: questioning
+    creator: fictieve-annotator
+    target:
+      source: regelrecht://wet_die_niet_bestaat
+      selector:
+        type: TextQuoteSelector
+        exact: verzekerde
+    body:
+      type: TextualBody
+      value: deze-tag-staat-niet-in-de-vocabulaire
+      purpose: tagging
