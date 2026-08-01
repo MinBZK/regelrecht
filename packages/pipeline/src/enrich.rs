@@ -221,7 +221,16 @@ impl LlmRunner for ProcessLlmRunner {
         // its place in the structure and without what bears on it inside its
         // own law. The worker assembles that and writes it down; the agent
         // reads a file rather than hunting through the YAML.
-        let brief = context::write_brief(yaml_abs, payload.chunk_articles.as_deref());
+        // `ENRICH_CONTEXT_BRIEF=0` withholds the brief. It exists so a round
+        // can be run twice over the same laws with only this changed, which is
+        // the only way to say what the brief is worth rather than that the
+        // numbers moved.
+        let brief = if std::env::var("ENRICH_CONTEXT_BRIEF").as_deref() == Ok("0") {
+            tracing::info!("context brief withheld by ENRICH_CONTEXT_BRIEF=0");
+            None
+        } else {
+            context::write_brief(yaml_abs, payload.chunk_articles.as_deref())
+        };
         if brief.is_none() {
             tracing::warn!(law = %payload.yaml_path, "no context brief written");
         }

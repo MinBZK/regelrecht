@@ -299,17 +299,33 @@ pub fn write_brief(
     if law.articles.is_empty() {
         return None;
     }
-    let all: Vec<String>;
-    let scope = match window {
-        Some(w) => w,
-        None => {
-            all = law.articles.iter().map(|a| a.number.clone()).collect();
-            &all
+    // The window arrives in corpus entry numbers (`1.1.c`), while the brief
+    // speaks in article numbers (`1`), because the article is the unit of work
+    // and the entry is a fragment of one. Mapping the window through the same
+    // split the assembler uses is what keeps the two from silently missing
+    // each other: an unmapped window matches nothing and yields a brief with
+    // a heading and no content.
+    let scope: Vec<String> = match window {
+        Some(w) => {
+            let mut mapped: Vec<String> = w
+                .iter()
+                .map(|entry| super::assemble::split_number(&known, entry).0.to_owned())
+                .filter(|a| !a.is_empty())
+                .collect();
+            mapped.sort();
+            mapped.dedup();
+            mapped
         }
+        None => law.articles.iter().map(|a| a.number.clone()).collect(),
+    };
+    let scope = if scope.is_empty() {
+        law.articles.iter().map(|a| a.number.clone()).collect()
+    } else {
+        scope
     };
 
     let path = dir.join(CONTEXT_BRIEF);
-    std::fs::write(&path, render_brief(&law, scope)).ok()?;
+    std::fs::write(&path, render_brief(&law, &scope)).ok()?;
     Some(path)
 }
 
@@ -455,6 +471,58 @@ mod tests {
         let brief = render_brief(&l, &["8".to_owned()]);
         assert!(brief.contains("No definition provision governs this article."));
         assert!(brief.contains("No other article in this law modifies it."));
+    }
+
+    #[test]
+    fn window_in_entry_numbers_still_finds_its_articles() {
+        // The corpus splits below article level, so a window is a list of
+        // entries like `1.1.c` while the brief speaks in article numbers. When
+        // those two miss each other the brief comes out as a heading with
+        // nothing under it, and nothing fails: exactly the silence this flow
+        // is built to remove.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let law = dir.path().join("2026-01-01.yaml");
+        std::fs::write(
+            &law,
+            r#"$schema: https://regelrecht.rijks.app/schema/v0.6.0/schema.json
+articles:
+  - number: "1.1.a"
+    text: "In deze wet wordt verstaan onder: a. toeslag: een tegemoetkoming."
+  - number: "8.1"
+    text: "Het toetsingsinkomen is het verzamelinkomen."
+  - number: "10.1"
+    text: "In afwijking van artikel 8 blijft het inkomen buiten beschouwing."
+"#,
+        )
+        .expect("write law");
+
+        // The source gate runs first and leaves the real article numbers
+        // behind; without it the split of `8.1` is guesswork.
+        std::fs::write(
+            dir.path().join(super::super::source_gate::CONTEXT_SIDECAR),
+            r#"bwb_id: BWBR0000000
+valid_from: "2026-01-01"
+articles:
+  "1":
+    verdict: verified
+  "8":
+    path: "Hoofdstuk 2 Toeslag"
+    verdict: verified
+  "10":
+    path: "Hoofdstuk 2 Toeslag"
+    verdict: verified
+"#,
+        )
+        .expect("write sidecar");
+
+        let written = write_brief(&law, Some(&["8.1".to_owned()])).expect("brief written");
+        let brief = std::fs::read_to_string(written).expect("read brief");
+
+        assert!(brief.contains("## Article 8"), "brief was: {brief}");
+        assert!(
+            brief.contains("**Article 10**"),
+            "inbound modifier missing from:\n{brief}"
+        );
     }
 
     #[test]
