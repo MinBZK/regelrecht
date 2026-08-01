@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
@@ -21,8 +25,6 @@ jobs:
     timeout-minutes: 5
     outputs:
       ci: ${{ steps.filter.outputs.ci }}
-      admin: ${{ steps.filter.outputs.admin }}
-      editor-api: ${{ steps.filter.outputs.editor-api }}
       docs: ${{ steps.filter.outputs.docs }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -32,11 +34,8 @@ jobs:
         with:
           filters: |
             ci:
-              - packages/corpus/**
-              - packages/github/**
-              - packages/engine/**
-              - packages/harvester/**
-              - packages/pipeline/**
+              # Alle crates; een handmatige opsomming dreef eerder weg.
+              - packages/**
               - frontend/**
               - packages/frontend-shared/**
               - bdd/**
@@ -51,21 +50,8 @@ jobs:
               - .pre-commit-config.yaml
               - .yamllint
               - .github/workflows/ci.yml
-            admin:
-              - packages/admin/**
-              - Justfile
-              - .github/workflows/ci.yml
-            editor-api:
-              - packages/editor-api/**
-              - packages/corpus/**
-              - packages/github/**
-              - packages/pipeline/**
-              - packages/harvester/**
-              - Justfile
-              - .github/workflows/ci.yml
             docs:
               - docs/**
-              - Justfile
               - .github/workflows/ci.yml
 
   protect-schema:
@@ -135,12 +121,10 @@ jobs:
     if: needs.changes.outputs.ci == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        if: needs.changes.outputs.ci == 'true'
         with:
           fetch-depth: 0
 
       - name: Check schema versions registered in schema.rs
-        if: needs.changes.outputs.ci == 'true'
         run: |
           # Every schema/vX.Y.Z/ directory must appear in the embedded schema table.
           VALIDATE_RS="packages/engine/src/schema.rs"
@@ -159,7 +143,6 @@ jobs:
           echo "All schema versions registered in schema.rs"
 
       - name: Check corpus schema references
-        if: needs.changes.outputs.ci == 'true'
         run: |
           # Every $schema URL in corpus YAML must reference a known schema version
           KNOWN_VERSIONS=$(ls -d schema/v*/ | xargs -n1 basename)
@@ -195,7 +178,6 @@ jobs:
           echo "All corpus schema references valid"
 
       - name: Check schema/latest symlink
-        if: needs.changes.outputs.ci == 'true'
         run: |
           TARGET=$(readlink schema/latest)
           HIGHEST=$(ls -d schema/v*/ | xargs -n1 basename | sort -V | tail -1)
@@ -209,13 +191,11 @@ jobs:
       # it tracks schema/latest so a schema bump can't leave the docs behind.
       # Node-only, reads source files (no astro build).
       - name: Setup Node.js
-        if: needs.changes.outputs.ci == 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
         with:
           node-version: '22'
 
       - name: Check schema reference doc tracks schema/latest
-        if: needs.changes.outputs.ci == 'true'
         run: node docs/scripts/check-schema-version.mjs
 
       - name: Check engine version bump on source changes
@@ -247,10 +227,6 @@ jobs:
             echo "Engine version bumped: $MAIN_VERSION -> $PR_VERSION"
           fi
 
-      - name: Skip (no relevant changes)
-        if: needs.changes.outputs.ci != 'true'
-        run: echo "No relevant changes, skipping provenance checks"
-
   cross-law-integrity:
     name: Cross-law integrity
     needs: changes
@@ -276,6 +252,7 @@ jobs:
 
   pre-commit:
     name: Pre-commit
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -331,7 +308,13 @@ jobs:
             echo "WAARSCHUWING: geen SKILLS_CASUS_DENYLIST secret — alleen laag 1 (domein-loze vorm) draait. Casus-/sector-patronen worden in deze run NIET gescand."
           fi
 
+      # De hooks draaien over de hele boom (--all-files). Raakt de PR geen Rust
+      # of corpus, dan zijn rust-format, rust-lint en validate-law-yaml drie
+      # minuten werk aan bestanden die niemand heeft aangeraakt; die worden dan
+      # overgeslagen. De job blijft `Pre-commit` heten: dat is een required check.
       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd  # v3.0.1
+        env:
+          SKIP: ${{ needs.changes.outputs.ci == 'true' && '' || 'rust-format,rust-lint,validate-law-yaml' }}
 
   test:
     name: Test
@@ -372,10 +355,6 @@ jobs:
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-registry-
 
-      - name: Run all tests
-        if: needs.changes.outputs.ci == 'true'
-        run: just test-all
-
       - name: Setup Node.js
         if: needs.changes.outputs.ci == 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
@@ -405,6 +384,10 @@ jobs:
       - name: Run shared-package tests
         if: needs.changes.outputs.ci == 'true'
         run: npm test -w packages/frontend-shared
+
+      - name: Run all tests
+        if: needs.changes.outputs.ci == 'true'
+        run: just test
 
       - name: Skip (no relevant changes)
         if: needs.changes.outputs.ci != 'true'
@@ -644,84 +627,6 @@ jobs:
   # package changed; per-step guards on the package's own changes filter make
   # the matrix leg of an unchanged package a no-op (every step skips), so an
   # admin-only change does not actually build editor-api and vice versa.
-  package-checks:
-    name: Package checks (${{ matrix.package }})
-    needs: changes
-    if: >-
-      needs.changes.outputs.admin == 'true' ||
-      needs.changes.outputs['editor-api'] == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      # Needed by the admin leg to install @nldd packages from
-      # npm.pkg.github.com; harmless (read-only) for editor-api.
-      packages: read
-    strategy:
-      fail-fast: false
-      matrix:
-        package: [admin, editor-api]
-    env:
-      RUSTC_WRAPPER: sccache
-      SCCACHE_GHA_ENABLED: "true"
-      CARGO_INCREMENTAL: "0"
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        if: needs.changes.outputs[matrix.package] == 'true'
-
-      - name: Install Rust toolchain
-        if: needs.changes.outputs[matrix.package] == 'true'
-        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Cache cargo registry (shared)
-        if: needs.changes.outputs[matrix.package] == 'true'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-registry-
-
-      - name: Install mold linker
-        if: needs.changes.outputs[matrix.package] == 'true'
-        run: sudo apt-get update && sudo apt-get install -y mold
-
-      - name: Run sccache
-        if: needs.changes.outputs[matrix.package] == 'true'
-        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba  # v0.0.11
-
-      - name: Install just
-        if: needs.changes.outputs[matrix.package] == 'true'
-        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
-
-      - name: Check formatting
-        if: needs.changes.outputs[matrix.package] == 'true'
-        run: just ${{ matrix.package }}-fmt
-
-      - name: Run clippy
-        if: needs.changes.outputs[matrix.package] == 'true'
-        run: just ${{ matrix.package }}-lint
-
-      - name: Run cargo check
-        if: needs.changes.outputs[matrix.package] == 'true'
-        run: just ${{ matrix.package }}-check
-
-      # Uniform per-package test step: `just admin-test` / `just editor-api-test`.
-      # The editor-api recipe covers src unit tests AND tests/*.rs integration
-      # tests (testcontainers — Docker is present on the hosted runner); before
-      # this step existed those tests were never even compiled in CI and rotted
-      # silently. (The admin frontend moved into the editor, so there is no
-      # longer an admin frontend build here — admin is an API-only Rust binary.)
-      - name: Run tests
-        if: needs.changes.outputs[matrix.package] == 'true'
-        run: just ${{ matrix.package }}-test
-
-      - name: Skip (no relevant changes)
-        if: needs.changes.outputs[matrix.package] != 'true'
-        run: echo "No ${{ matrix.package }} changes, skipping"
 
   docs-a11y:
     name: Docs accessibility gate
