@@ -1860,6 +1860,39 @@
             },
             "additionalProperties": false
           }
+        },
+        "declares": {
+          "type": "array",
+          "description": "Document properties this article establishes. A citation title, a commencement date or a scope in time is not a calculation, and it is not nothing either: it fixes a value the rest of the corpus and every trace depend on. Article 51 of the Awir says what that law is called, and a trace that names the law is quoting that article. Recording it here makes the article accounted for and lets a check hold the document header against the provision that decides it.",
+          "items": {
+            "type": "object",
+            "required": [
+              "property",
+              "value"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "property": {
+                "type": "string",
+                "enum": [
+                  "name",
+                  "officiele_titel",
+                  "valid_from",
+                  "valid_to",
+                  "regulatory_layer",
+                  "legal_basis"
+                ],
+                "description": "The top-level document property this article fixes."
+              },
+              "value": {
+                "description": "The value the article gives it, verbatim from the text."
+              },
+              "applies_from": {
+                "type": "string",
+                "description": "Where the article limits the property in time beyond the value itself, e.g. Awir article 50, which commences on 1 September 2005 but applies to berekeningsjaren from 1 January 2006."
+              }
+            }
+          }
         }
       },
       "additionalProperties": false

@@ -2126,7 +2126,10 @@ async fn evaluate_gate(gate: Gate, yaml_abs: &Path, corpus_root: &Path) -> Resul
         .findings
         .into_iter()
         .filter(|f| {
-            let is_record = matches!(f.check, "marking" | "citation");
+            // `accounted` asks whether the article carries any outcome at
+            // all, and the answer may be a marking. That makes it a question
+            // for the soft gate, beside the other two, rather than a defect.
+            let is_record = matches!(f.check, "marking" | "citation" | "accounted");
             matches!(gate, Gate::Marking) == is_record
         })
         .map(|f| match f.article {
@@ -3278,6 +3281,11 @@ articles:
   - number: '1'
     text: Article one.
     url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1
+    machine_readable:
+      norm_gaps:
+        - norm: fixture
+          kind: delegated
+          blocks: [nothing]
 "#;
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("law.yaml");
@@ -3334,6 +3342,11 @@ articles:
   - number: '1'
     text: Article one.
     url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1
+    machine_readable:
+      norm_gaps:
+        - norm: fixture
+          kind: delegated
+          blocks: [nothing]
 "#;
 
     /// Writes something the schema rejects on the first run and repairs it
@@ -3417,9 +3430,13 @@ articles:
         );
 
         let calls = calls.lock().unwrap().clone();
+        // The translation, then the schema repair. A third call follows from
+        // the soft marking gate, which asks about the article that the fake
+        // runner leaves without an outcome; this test is about the repair.
+        assert_eq!(calls.first(), Some(&false), "the first call translates");
         assert_eq!(
-            calls,
-            vec![false, true],
+            calls.get(1),
+            Some(&true),
             "expected one enrichment run and one repair run"
         );
 
@@ -4189,10 +4206,12 @@ chunk_report:
             _repo_path: &Path,
             _config: &EnrichConfig,
         ) -> Result<()> {
-            let chunk = payload
-                .chunk_articles
-                .clone()
-                .expect("chunked run must pass chunk_articles");
+            // A feedback pass carries no window: it asks about the file as
+            // it now stands. Only the translating passes are the subject of
+            // this test, so record those and let the rest through.
+            let Some(chunk) = payload.chunk_articles.clone() else {
+                return Ok(());
+            };
             self.calls
                 .lock()
                 .unwrap()
@@ -4447,11 +4466,16 @@ articles:
         impl LlmRunner for OutOfWindowRunner {
             async fn run(
                 &self,
-                _payload: &EnrichPayload,
+                payload: &EnrichPayload,
                 yaml_abs: &Path,
                 _repo_path: &Path,
                 _config: &EnrichConfig,
             ) -> Result<()> {
+                // Only the translating pass edits. A feedback pass that
+                // repeated this edit would write the key twice.
+                if !matches!(payload.pass, Pass::Translate) {
+                    return Ok(());
+                }
                 let content = tokio::fs::read_to_string(yaml_abs).await?;
                 let updated = content.replace(
                     "  - number: '3'\n    text: Article three.",

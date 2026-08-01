@@ -938,6 +938,130 @@ fn walk_inner<'a>(
 
 /// Locate a law directory by `$id` under `corpus_root`, returning the most
 /// recent version file. The corpus lays out `<country>/<layer>/<id>/<date>.yaml`.
+/// Articles that carry no outcome at all.
+///
+/// An article passed over without a word is indistinguishable from an article
+/// nobody read, and the reviewer cannot tell which happened. The skill now asks
+/// for one of four outcomes per article; this is what makes that checkable
+/// rather than merely instructed.
+///
+/// The fourth outcome deserves its own note, because looking for "articles that
+/// cannot be executed" turned up almost none. A definition by reference is a
+/// cross-law binding. A naming provision belongs to an output computed
+/// elsewhere. A statement that the amount depends on income and assets is a
+/// property the model must have, and in round 3 it was the property the model
+/// broke. Even the citation title fixes what every trace calls this law. What
+/// looks like an empty article is usually a provision of a kind nobody looked
+/// for yet, which is why `declares` exists and why this check reports the
+/// remainder rather than excusing it.
+pub fn every_article_accounted(doc: &Value) -> Vec<Finding> {
+    let empty = Vec::new();
+    let articles = doc
+        .get("articles")
+        .and_then(Value::as_sequence)
+        .unwrap_or(&empty);
+    let mut findings = Vec::new();
+
+    for entry in articles {
+        let Some(number) = entry.get("number").and_then(Value::as_str) else {
+            continue;
+        };
+        let text = entry
+            .get("text")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if text.trim().is_empty() {
+            continue;
+        }
+        let mr = entry.get("machine_readable");
+        let carries = |key: &str| {
+            mr.and_then(|m| m.get(key))
+                .and_then(Value::as_sequence)
+                .is_some_and(|s| !s.is_empty())
+        };
+        let has_logic = mr.is_some_and(|m| {
+            m.get("execution").is_some()
+                || m.get("definitions").is_some()
+                || m.get("requires").is_some()
+                || m.get("open_terms").is_some()
+                || m.get("implements").is_some()
+        });
+        if has_logic
+            || carries("untranslatables")
+            || carries("norm_gaps")
+            || carries("declares")
+            || carries("overrides")
+        {
+            continue;
+        }
+        findings.push(Finding::new(
+            "accounted",
+            Some(number),
+            "carries no outcome: no logic, no untranslatable, no norm gap and no \
+             declaration. Passing an article over without a word cannot be told \
+             apart from not having read it",
+        ));
+    }
+    findings
+}
+
+/// Declarations that contradict the document header they fix.
+///
+/// A `declares` entry is the provision that decides a top-level property, so a
+/// mismatch means one of the two is wrong and neither side knows it. Compares
+/// only what is present: an article may fix a property the header omits, and
+/// that is a finding on the header rather than on the article.
+pub fn declaration_agrees_with_header(doc: &Value) -> Vec<Finding> {
+    let empty = Vec::new();
+    let mut findings = Vec::new();
+    for entry in doc
+        .get("articles")
+        .and_then(Value::as_sequence)
+        .unwrap_or(&empty)
+    {
+        let Some(number) = entry.get("number").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(declares) = entry
+            .get("machine_readable")
+            .and_then(|m| m.get("declares"))
+            .and_then(Value::as_sequence)
+        else {
+            continue;
+        };
+        for d in declares {
+            let (Some(property), Some(value)) = (
+                d.get("property").and_then(Value::as_str),
+                d.get("value").and_then(Value::as_str),
+            ) else {
+                continue;
+            };
+            match doc.get(property).and_then(Value::as_str) {
+                None => findings.push(Finding::new(
+                    "declares",
+                    Some(number),
+                    format!(
+                        "fixes {property} as {value:?}, and the document header does not \
+                         carry {property} at all"
+                    ),
+                )),
+                Some(header) if header.trim() != value.trim() => {
+                    findings.push(Finding::new(
+                        "declares",
+                        Some(number),
+                        format!(
+                            "fixes {property} as {value:?} while the header says {header:?}. \
+                             The article decides; the header is a copy"
+                        ),
+                    ));
+                }
+                Some(_) => {}
+            }
+        }
+    }
+    findings
+}
+
 /// Overrides that name an article the corpus does not have.
 ///
 /// An override displaces another article's output, and the resolver matches it
@@ -1324,6 +1448,8 @@ pub fn run(yaml: &str, corpus_root: Option<&Path>) -> Report {
     findings.extend(enum_provenance(&doc));
     findings.extend(binding_integrity(&doc, corpus_root));
     findings.extend(override_targets(&doc, corpus_root));
+    findings.extend(every_article_accounted(&doc));
+    findings.extend(declaration_agrees_with_header(&doc));
     findings.extend(binding_units(&doc, corpus_root));
     findings.extend(marking_discipline(&doc, &statutory_text));
     Report { schema, findings }
@@ -1549,6 +1675,103 @@ articles:
     /// Round 3, wet_op_de_zorgtoeslag article 2.4: the override names "2"
     /// while the producer sits at entry "2.1", so it never fires and the
     /// engine returns both the halved and the unhalved amount.
+    #[test]
+    fn an_article_without_any_outcome_is_reported() {
+        // Round 3, zorgtoeslag 1.2: "De hoogte van de zorgtoeslag is
+        // afhankelijk van de draagkracht op basis van het inkomen en het
+        // vermogen." Passed over in silence, and it is exactly the property
+        // the model went on to break.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: "1.2"
+    text: De hoogte van de zorgtoeslag is afhankelijk van inkomen en vermogen.
+"#,
+        )
+        .expect("yaml");
+        let f = every_article_accounted(&doc);
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].check, "accounted");
+        assert_eq!(f[0].article.as_deref(), Some("1.2"));
+    }
+
+    #[test]
+    fn any_of_the_four_outcomes_settles_an_article() {
+        for outcome in [
+            "machine_readable:\n      execution:\n        output: x",
+            "machine_readable:\n      untranslatables:\n        - construct: foreach",
+            "machine_readable:\n      norm_gaps:\n        - norm: de standaardpremie\n          kind: delegated\n          blocks: [x]",
+            "machine_readable:\n      declares:\n        - property: name\n          value: Testwet",
+        ] {
+            let doc: Value = serde_yaml_ng::from_str(&format!(
+                "articles:\n  - number: \"1\"\n    text: iets\n    {outcome}\n"
+            ))
+            .expect("yaml");
+            assert!(
+                every_article_accounted(&doc).is_empty(),
+                "outcome should settle the article: {outcome}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_empty_marking_list_does_not_count_as_an_outcome() {
+        // Writing `untranslatables: []` is the cheapest way to silence a check
+        // and says nothing at all.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: "1"
+    text: iets
+    machine_readable:
+      untranslatables: []
+"#,
+        )
+        .expect("yaml");
+        assert_eq!(every_article_accounted(&doc).len(), 1);
+    }
+
+    #[test]
+    fn a_declaration_that_contradicts_the_header_is_reported() {
+        // Awir article 51 fixes what this law is called, and every trace that
+        // names the law is quoting it. If the header disagrees, one of the two
+        // is wrong and nothing says which.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+name: Iets anders
+articles:
+  - number: "51"
+    text: "Deze wet wordt aangehaald als: Algemene wet inkomensafhankelijke regelingen."
+    machine_readable:
+      declares:
+        - property: name
+          value: Algemene wet inkomensafhankelijke regelingen
+"#,
+        )
+        .expect("yaml");
+        let f = declaration_agrees_with_header(&doc);
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert!(f[0].detail.contains("Iets anders"));
+    }
+
+    #[test]
+    fn a_declaration_that_matches_the_header_is_silent() {
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+name: Algemene wet inkomensafhankelijke regelingen
+articles:
+  - number: "51"
+    text: "Deze wet wordt aangehaald als: Algemene wet inkomensafhankelijke regelingen."
+    machine_readable:
+      declares:
+        - property: name
+          value: Algemene wet inkomensafhankelijke regelingen
+"#,
+        )
+        .expect("yaml");
+        assert!(declaration_agrees_with_header(&doc).is_empty());
+    }
+
     #[test]
     fn override_naming_an_article_the_corpus_splits_is_flagged() {
         let doc: Value = serde_yaml_ng::from_str(

@@ -491,9 +491,26 @@ which of the two happened.
    the gap names where the filling belongs. See the section below.
 3. **`untranslatables`** — the engine's operation set cannot express the
    construct. This is a shortcoming of the machine, not of the corpus.
-4. **Explicitly skipped**, recorded in `.enrichment-result.yaml` under
-   `articles_skipped` with the reason, because the article carries no norm at
-   all: a citation title, an entry-into-force provision, a repeal.
+4. **`declares`** — the article fixes a document property rather than
+   computing anything: what this law is called, when it commences, from which
+   berekeningsjaar it applies. Record it in the article, not in the session
+   report, because it belongs to the law and outlives the run.
+
+Look hard before you conclude an article carries nothing. Going through the
+Awir and the zorgtoeslag article by article turned up almost none, and every
+candidate turned out to be a provision of a kind nobody had looked for. A
+definition by reference ("zorgverzekering: de schadeverzekering, bedoeld in
+artikel 1 van de Zorgverzekeringswet") is a cross-law binding. A naming
+provision ("de normpremie: de aan de hand van het drempelinkomen berekende
+premie") belongs to an output another article computes. A statement that the
+amount depends on income and assets is a property the model must have, and in
+round 3 it was precisely the property the model broke. Even the citation title
+fixes what every execution trace calls this law.
+
+So if you find nothing to write, that is a sign you have not identified the
+kind of provision yet, not that the article is empty. An article you pass over
+in silence is indistinguishable from an article nobody read, and a check now
+reports it as such.
 
 Choosing between 2 and 3 matters more than it looks. They go to different
 people. A `norm_gap` is work for an analyst who finds the missing document; an
@@ -529,6 +546,29 @@ the administration were translated, and the € 24 rounding floor, the € 121
 threshold, the revision limitation period and the hardship clause were all
 passed over without a word. Nobody chose that. It is what this section used to
 ask for.
+
+### Declarations — When the Article Fixes a Property Instead of a Value
+
+Some provisions compute nothing and are not gaps either. They establish
+something the rest of the corpus depends on.
+
+```yaml
+declares:
+  - property: name                     # name | officiele_titel | valid_from
+    value: "Algemene wet inkomensafhankelijke regelingen"
+```
+
+Awir article 51 ("Deze wet wordt aangehaald als: ...") is the clearest case:
+every execution trace that names this law is quoting that article. Article 50
+("treedt in werking op 1 september 2005 en geldt voor berekeningsjaren die
+aanvangen op of na 1 januari 2006") fixes `valid_from` and, through
+`applies_from`, a floor on the berekeningsjaar that no calculation may go
+below.
+
+The document header already carries these values, copied there by the
+harvester. Recording the article that decides them turns a copy into a
+derivation, and a check holds the two against each other: when they disagree,
+the article is right and the header is stale.
 
 ### Norm Gaps — When the Norm Is Real but Its Content Lives Elsewhere
 
