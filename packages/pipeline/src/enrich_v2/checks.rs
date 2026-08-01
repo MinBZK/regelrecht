@@ -938,6 +938,196 @@ fn walk_inner<'a>(
 
 /// Locate a law directory by `$id` under `corpus_root`, returning the most
 /// recent version file. The corpus lays out `<country>/<layer>/<id>/<date>.yaml`.
+/// Articles whose text points at another law that the model never reads.
+///
+/// This is the gate that round 3 lacked, and its absence flattered the wrong
+/// variant. The run without a context brief laid no cross-law binding at all,
+/// so it drew no binding findings and scored better than the run that tried.
+/// A model that attempts nothing cannot be wrong about anything, and no check
+/// then distinguishes restraint from emptiness.
+///
+/// The hook is sturdier than a word list. The harvested text carries the
+/// reference links of the statute, and every one of them names a BWB
+/// identifier: "artikel 1 van de Zorgverzekeringswet" arrives with
+/// `BWBR0018450` beside it. That identifier is what the corpus files carry in
+/// their own header, so the question "does this article read the law it cites"
+/// is a lookup rather than an interpretation.
+///
+/// Soft on purpose. Not every citation must become a binding: a reference can
+/// be descriptive, or the target may sit outside this corpus. But it must be
+/// answered, and an answer may be a marking.
+pub fn cross_law_references(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding> {
+    let own_bwb = doc
+        .get("bwb_id")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let empty = Vec::new();
+    let articles = doc
+        .get("articles")
+        .and_then(Value::as_sequence)
+        .unwrap_or(&empty);
+    let Some(root) = corpus_root else {
+        return Vec::new();
+    };
+    let index = bwb_index(root);
+    let mut findings = Vec::new();
+
+    for entry in articles {
+        let (Some(number), Some(text)) = (
+            entry.get("number").and_then(Value::as_str),
+            entry.get("text").and_then(Value::as_str),
+        ) else {
+            continue;
+        };
+        let cited: BTreeSet<&str> = bwb_ids(text)
+            .into_iter()
+            .filter(|id| *id != own_bwb)
+            .collect();
+        if cited.is_empty() {
+            continue;
+        }
+        let mr = entry.get("machine_readable");
+        // An article that says nothing at all is the `accounted` check's
+        // business; saying it twice about the same article helps nobody.
+        if mr.is_none() {
+            continue;
+        }
+        let bound = bound_regulations(mr);
+        // A marking excuses the reference it names, and only that one. An
+        // untranslatable about rounding says nothing about whether this
+        // article reads the Zorgverzekeringswet, and treating any marking as
+        // a blanket answer is how a gate stops asking.
+        let marking_text = mr.map(marking_prose).unwrap_or_default();
+
+        for id in cited {
+            let Some(law_id) = index.get(id) else {
+                // Outside the corpus. RFC-026 calls that a known gap, and the
+                // work queue owns it rather than this file.
+                continue;
+            };
+            if bound.contains(law_id.as_str()) {
+                continue;
+            }
+            if marking_text.contains(law_id.as_str()) || marking_text.contains(id) {
+                continue;
+            }
+            findings.push(Finding::new(
+                "reference",
+                Some(number),
+                format!(
+                    "text cites {law_id} ({id}) and the model reads nothing from it. Bind to \
+                     the article it names, or record why the reference carries no value"
+                ),
+            ));
+        }
+    }
+    findings
+}
+
+/// Everything the markings of one model say, as one lowercased string.
+///
+/// Used to check whether a marking mentions the law a reference points at.
+/// Crude by design: the question is only whether the agent addressed this
+/// reference somewhere, and a substring answers that without prescribing where
+/// in the entry the name has to sit.
+fn marking_prose(mr: &Value) -> String {
+    let mut out = String::new();
+    for key in ["untranslatables", "norm_gaps", "structural_choices"] {
+        if let Some(seq) = mr.get(key).and_then(Value::as_sequence) {
+            for item in seq {
+                if let Ok(text) = serde_yaml_ng::to_string(item) {
+                    out.push_str(&text.to_lowercase());
+                }
+            }
+        }
+    }
+    out
+}
+
+/// BWB identifiers appearing in a text, in order of first appearance.
+fn bwb_ids(text: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while let Some(pos) = text[i..].find("BWBR") {
+        let start = i + pos;
+        let mut end = start + 4;
+        while end < bytes.len() && bytes[end].is_ascii_digit() {
+            end += 1;
+        }
+        if end > start + 4 {
+            let id = &text[start..end];
+            if !out.contains(&id) {
+                out.push(id);
+            }
+        }
+        i = end.max(start + 4);
+    }
+    out
+}
+
+/// Regulations this model reads from, through any channel.
+fn bound_regulations(mr: Option<&Value>) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    let Some(mr) = mr else { return out };
+    walk(mr, &mut |key, node| {
+        if !matches!(key, Some("source") | Some("overrides") | Some("implements")) {
+            return;
+        }
+        let mut take = |v: &Value| {
+            if let Some(s) = v
+                .get("regulation")
+                .or_else(|| v.get("law"))
+                .and_then(Value::as_str)
+            {
+                out.insert(s.to_owned());
+            }
+        };
+        match node {
+            Value::Sequence(seq) => seq.iter().for_each(&mut take),
+            other => take(other),
+        }
+    });
+    out
+}
+
+/// Map from BWB identifier to law id, built by walking the corpus once.
+fn bwb_index(root: &Path) -> BTreeMap<String, String> {
+    let mut index = BTreeMap::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("yaml") {
+                continue;
+            }
+            let Ok(raw) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            // Read the header only: these files run to hundreds of kilobytes
+            // and both fields sit at the top.
+            let head: String = raw.lines().take(40).collect::<Vec<_>>().join("\n");
+            let Ok(doc) = serde_yaml_ng::from_str::<Value>(&head) else {
+                continue;
+            };
+            if let (Some(bwb), Some(id)) = (
+                doc.get("bwb_id").and_then(Value::as_str),
+                doc.get("$id").and_then(Value::as_str),
+            ) {
+                index.insert(bwb.to_owned(), id.to_owned());
+            }
+        }
+    }
+    index
+}
+
 /// Articles that carry no outcome at all.
 ///
 /// An article passed over without a word is indistinguishable from an article
@@ -1449,6 +1639,7 @@ pub fn run(yaml: &str, corpus_root: Option<&Path>) -> Report {
     findings.extend(binding_integrity(&doc, corpus_root));
     findings.extend(override_targets(&doc, corpus_root));
     findings.extend(every_article_accounted(&doc));
+    findings.extend(cross_law_references(&doc, corpus_root));
     findings.extend(declaration_agrees_with_header(&doc));
     findings.extend(binding_units(&doc, corpus_root));
     findings.extend(marking_discipline(&doc, &statutory_text));
@@ -1675,6 +1866,120 @@ articles:
     /// Round 3, wet_op_de_zorgtoeslag article 2.4: the override names "2"
     /// while the producer sits at entry "2.1", so it never fires and the
     /// engine returns both the halved and the unhalved amount.
+    /// A corpus with one law the citing file can resolve.
+    fn corpus_with_awir() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let awir = dir.path().join("regulation/nl/wet/awir");
+        std::fs::create_dir_all(&awir).expect("mkdir");
+        std::fs::write(
+            awir.join("2026-01-01.yaml"),
+            "$id: awir\nbwb_id: BWBR0018472\narticles: []\n",
+        )
+        .expect("write");
+        dir
+    }
+
+    #[test]
+    fn an_article_that_cites_a_law_it_never_reads_is_flagged() {
+        // Round 3, variant without a context brief: nought cross-law bindings
+        // across the whole file, and therefore nought binding findings. A
+        // model that attempts nothing cannot be wrong about anything.
+        let dir = corpus_with_awir();
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+bwb_id: BWBR0018451
+articles:
+  - number: "5.2"
+    text: "het toetsingsinkomen, bedoeld in artikel 8 van de Awir [ref]: https://wetten.overheid.nl/BWBR0018472#Artikel8"
+    machine_readable:
+      execution:
+        output: iets
+"#,
+        )
+        .expect("yaml");
+        let f = cross_law_references(&doc, Some(dir.path()));
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert_eq!(f[0].check, "reference");
+        assert!(f[0].detail.contains("awir"));
+    }
+
+    #[test]
+    fn a_binding_to_the_cited_law_settles_it() {
+        let dir = corpus_with_awir();
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+bwb_id: BWBR0018451
+articles:
+  - number: "5.2"
+    text: "bedoeld in artikel 8 [ref]: https://wetten.overheid.nl/BWBR0018472#Artikel8"
+    machine_readable:
+      input:
+        - name: toetsingsinkomen
+          source: {regulation: awir, output: toetsingsinkomen}
+"#,
+        )
+        .expect("yaml");
+        assert!(cross_law_references(&doc, Some(dir.path())).is_empty());
+    }
+
+    #[test]
+    fn a_marking_excuses_only_the_reference_it_names() {
+        // An untranslatable about rounding says nothing about whether this
+        // article reads the law it cites.
+        let dir = corpus_with_awir();
+        let unrelated: Value = serde_yaml_ng::from_str(
+            r#"
+bwb_id: BWBR0018451
+articles:
+  - number: "5.2"
+    text: "bedoeld in artikel 8 [ref]: https://wetten.overheid.nl/BWBR0018472#Artikel8"
+    machine_readable:
+      untranslatables:
+        - construct: rounding
+          reason: the engine cannot round
+"#,
+        )
+        .expect("yaml");
+        assert_eq!(cross_law_references(&unrelated, Some(dir.path())).len(), 1);
+
+        let named: Value = serde_yaml_ng::from_str(
+            r#"
+bwb_id: BWBR0018451
+articles:
+  - number: "5.2"
+    text: "bedoeld in artikel 8 [ref]: https://wetten.overheid.nl/BWBR0018472#Artikel8"
+    machine_readable:
+      norm_gaps:
+        - norm: toetsingsinkomen
+          kind: delegated
+          blocks: [x]
+          expected_source: awir article 8, not yet enriched
+"#,
+        )
+        .expect("yaml");
+        assert!(cross_law_references(&named, Some(dir.path())).is_empty());
+    }
+
+    #[test]
+    fn a_citation_outside_the_corpus_is_a_known_gap_and_stays_quiet() {
+        // The Zorgverzekeringswet is cited 38 times by the zorgtoeslag and is
+        // not in this corpus. RFC-026 calls that the work queue's business.
+        let dir = corpus_with_awir();
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+bwb_id: BWBR0018451
+articles:
+  - number: "1.1"
+    text: "de schadeverzekering [ref]: https://wetten.overheid.nl/BWBR0018450#Artikel1"
+    machine_readable:
+      execution:
+        output: iets
+"#,
+        )
+        .expect("yaml");
+        assert!(cross_law_references(&doc, Some(dir.path())).is_empty());
+    }
+
     #[test]
     fn an_article_without_any_outcome_is_reported() {
         // Round 3, zorgtoeslag 1.2: "De hoogte van de zorgtoeslag is

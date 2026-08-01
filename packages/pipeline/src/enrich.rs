@@ -2129,7 +2129,7 @@ async fn evaluate_gate(gate: Gate, yaml_abs: &Path, corpus_root: &Path) -> Resul
             // `accounted` asks whether the article carries any outcome at
             // all, and the answer may be a marking. That makes it a question
             // for the soft gate, beside the other two, rather than a defect.
-            let is_record = matches!(f.check, "marking" | "citation" | "accounted");
+            let is_record = matches!(f.check, "marking" | "citation" | "accounted" | "reference");
             matches!(gate, Gate::Marking) == is_record
         })
         .map(|f| match f.article {
