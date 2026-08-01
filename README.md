@@ -47,11 +47,31 @@ Machine-readable Dutch law execution. regelrecht takes legal texts, encodes them
 
 | Directory | Description |
 |-----------|-------------|
-| [corpus/regulation/](corpus/regulation/) | Dutch regulations in machine-readable YAML |
+| [corpus/regulation/](corpus/regulation/) | A working set of regulations in machine-readable YAML, plus synthetic `test_*` laws |
 | [schema/](schema/) | Versioned JSON schema for the law format (`schema/latest` points at the current version) |
 | [bdd/](bdd/) | The Gherkin vocabulary (`grammar.yaml`) and the engine-conformance suite |
 | `corpus/regulation/**/scenarios/` | Law-validation scenarios, next to the law they test |
 | [packages/grafana/](packages/grafana/) | Grafana monitoring dashboards (provisioning, not a crate) |
+
+### The full corpus lives elsewhere
+
+`corpus/regulation/` in this repo holds a couple of dozen laws: the ones the
+tests and BDD scenarios run against, plus synthetic `test_*` laws for the
+conformance suite. The harvested body of Dutch legislation is far too large to
+carry here and lives in its own repository:
+
+**[MinBZK/regelrecht-corpus](https://github.com/MinBZK/regelrecht-corpus)** — currently some 22,000 YAML files under `regulation/nl`.
+
+Which branch you want depends on what you are after:
+
+| Branch | What is on it |
+|--------|---------------|
+| `development` | The working branch, and what `corpus-registry.yaml` points this repo at. Harvested laws land here first |
+| `main` | Only moves when `development` is merged into it, so it lags |
+| `enrich/*` | Output of the enrichment runs, one branch per enricher (`enrich/claude`, `enrich/opencode`) |
+
+Short-lived `prN` and `editor/*` branches belong to preview deployments and
+editor sessions; they are not meant to be read directly.
 
 ## Deployed services
 
