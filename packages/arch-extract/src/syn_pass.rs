@@ -583,7 +583,7 @@ impl<'ast> Visit<'ast> for ItemVisitor<'_> {
 
         // `impl Trait for Type` → pending impl edge (type → trait). The trait
         // may live in another crate; resolution handles that.
-        if let Some((_, path, _)) = &node.trait_ {
+        if let Some((path, _)) = &node.trait_ {
             let tr_segs: Vec<String> = path.segments.iter().map(|s| s.ident.to_string()).collect();
             if let (Some(ty), Some(tr)) = (self_target.clone(), self.resolve(&tr_segs)) {
                 self.items.trait_impls.push(PendingImpl { ty, tr });

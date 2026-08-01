@@ -32,9 +32,9 @@ RegelRecht makes Dutch law machine-readable and executable. Some branches of law
 
 Bestuursrecht is the natural home for machine-readable law. Government bodies apply structured rules to individual cases and produce formal decisions (*beschikkingen*). The Awb provides a uniform procedural framework; sector-specific laws define the substance.
 
-Eligibility checks, benefit calculations, permit conditions: these follow deterministic if/then logic with defined inputs and outputs. The engine's cross-law reference mechanism maps directly to how administrative law works, where higher laws delegate to lower regulations and ministeriële regelingen fill in concrete values.
+Eligibility checks, benefit calculations, permit conditions: these follow deterministic if/then logic with defined inputs and outputs. The engine's cross-law reference mechanism maps to how administrative law works, where higher laws delegate to lower regulations and ministeriële regelingen fill in concrete values.
 
-The corpus already contains the Awb, Participatiewet, Zorgtoeslag, Wlz, and Zorgverzekeringswet. The sheer number of laws, regulations, and policy rules that interact is what makes scaling hard.
+The corpus already contains the Awb, Participatiewet, Zorgtoeslag, Wlz, and Zorgverzekeringswet. Scaling is hard because so many laws, regulations, and policy rules interact.
 
 ### Belastingrecht (Tax Law)
 
@@ -66,7 +66,7 @@ There are some structured edges. The Grondwet prescribes formal requirements for
 
 Intestate succession in BW Boek 4 is pure math. Fractions of the estate are distributed based on family tree structure and parentele. The *wettelijke verdeling*, *legitieme portie*, and *plaatsvervulling* all follow defined algorithms.
 
-What makes this a worthwhile modeling exercise: the input is not a flat set of parameters but a graph of family relationships. The engine would need recursive or tree-based computation, which differs from the current linear decision-tree model.
+This is a worthwhile modeling exercise because the input is a graph of family relationships. The engine's other cases take a flat set of parameters. The engine would need recursive or tree-based computation, which differs from the current linear decision-tree model.
 
 ### Strafrecht (Criminal Law)
 
@@ -86,7 +86,7 @@ Many employment law provisions are *semi-dwingend recht*, meaning collective lab
 
 Immigration law has structured decision trees. Each residence permit type has defined conditions and income requirements. The MVV requirement has a defined exemption list. Naturalization conditions are a checklist with defined exceptions. The Vreemdelingenwet 2000 is already in the corpus.
 
-The law on paper is only part of the story. IND *werkinstructies* and policy rules matter as much as the statute, and discretionary powers like *schrijnendheid* allow deviation from the structured rules. Modeling this branch well means incorporating not just the wet but the entire policy layer underneath.
+The law on paper is only part of the story. IND *werkinstructies* and policy rules matter as much as the statute, and discretionary powers like *schrijnendheid* allow deviation from the structured rules. Modeling this branch well means incorporating the entire policy layer underneath the wet.
 
 ### Procesrecht (Procedural Law)
 
@@ -104,7 +104,7 @@ The Wet forensische zorg is already in the corpus. The computable parts are proc
 
 ### Milieurecht (Environmental Law)
 
-The Omgevingswet, in effect since 2024, was explicitly designed with machine-readability in mind. The DSO/STOP-TPOD standards provide a data model for environmental plans and rules. The core question, "is a permit needed for activity X at location Y?", is a giant decision tree already implemented in the government's Omgevingsloket.
+The Omgevingswet, in effect since 2024, was designed with machine-readability in mind. The DSO/STOP-TPOD standards provide a data model for environmental plans and rules. The core question, "is a permit needed for activity X at location Y?", is a giant decision tree already implemented in the government's Omgevingsloket.
 
 Complexity comes from layering: national rules, provincial rules, municipal rules, and location-specific plans all interact. Rules depend on location, making the input space enormous. This branch would push the engine toward spatial reasoning and plan-based rule resolution.
 

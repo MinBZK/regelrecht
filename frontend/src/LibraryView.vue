@@ -1040,7 +1040,7 @@ watchEffect(() => {
   } else if (isInstellingenMode.value) {
     detail.push(
       instellingenTab.value === 'leden' ? 'Leden'
-        : instellingenTab.value === 'details' ? 'Traject details'
+        : instellingenTab.value === 'details' ? 'Algemeen'
           : 'Instellingen',
     );
   } else {
@@ -1611,15 +1611,15 @@ watch(activeTrajectRef, () => {
                   <template v-if="activeTrajectRef">
                     <nldd-list variant="simple" arrow-navigation>
                       <nldd-list-item size="md" button :selected="isInstellingenMode || undefined" @click="goToInstellingen()">
-                        <nldd-icon-cell slot="start" size="20"><nldd-icon name="gear"></nldd-icon></nldd-icon-cell>
-                        <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+                        <nldd-icon-cell size="20"><nldd-icon name="gear"></nldd-icon></nldd-icon-cell>
+                        <nldd-spacer-cell size="8"></nldd-spacer-cell>
                         <nldd-text-cell text="Instellingen"></nldd-text-cell>
                         <nldd-spacer-cell size="8"></nldd-spacer-cell>
                         <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
                       </nldd-list-item>
                       <nldd-list-item size="md" button :selected="isWerkdocMode || undefined" @click="goToWerkdocumenten">
-                        <nldd-icon-cell slot="start" size="20"><nldd-icon name="documents"></nldd-icon></nldd-icon-cell>
-                        <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+                        <nldd-icon-cell size="20"><nldd-icon name="documents"></nldd-icon></nldd-icon-cell>
+                        <nldd-spacer-cell size="8"></nldd-spacer-cell>
                         <nldd-text-cell text="Werkdocumenten"></nldd-text-cell>
                         <nldd-spacer-cell size="8"></nldd-spacer-cell>
                         <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
@@ -1714,15 +1714,15 @@ watch(activeTrajectRef, () => {
                        twee openen dezelfde bestemmingen, dus ze horen er niet
                        anders uit te zien afhankelijk van waar je ze aanklikt. -->
                   <nldd-list-item size="md" button :selected="instellingenTab === 'details' || undefined" @click="goToInstellingen('details')">
-                    <nldd-icon-cell slot="start" size="20"><nldd-icon name="traject"></nldd-icon></nldd-icon-cell>
-                    <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
-                    <nldd-text-cell text="Traject details"></nldd-text-cell>
+                    <nldd-icon-cell size="20"><nldd-icon name="traject"></nldd-icon></nldd-icon-cell>
+                    <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                    <nldd-text-cell text="Algemeen"></nldd-text-cell>
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
                   </nldd-list-item>
                   <nldd-list-item size="md" button :selected="instellingenTab === 'leden' || undefined" @click="goToInstellingen('leden')">
-                    <nldd-icon-cell slot="start" size="20"><nldd-icon name="person-2"></nldd-icon></nldd-icon-cell>
-                    <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+                    <nldd-icon-cell size="20"><nldd-icon name="person-2"></nldd-icon></nldd-icon-cell>
+                    <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <nldd-text-cell text="Leden"></nldd-text-cell>
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
@@ -1806,7 +1806,7 @@ watch(activeTrajectRef, () => {
                 <nldd-toolbar v-if="paneChromeVisible(selectedLawLoading)" label="Favorieten">
                   <nldd-toolbar-item slot="start">
                     <nldd-icon-button
-                      :icon="favorites?.has(selectedLawId) ? 'heart-filled' : 'heart'"
+                      :icon="favorites?.has(selectedLawId) ? 'star-filled' : 'star'"
                       :text="favorites?.has(selectedLawId) ? 'Verwijder uit favorieten' : 'Voeg toe aan favorieten'"
                       @click="onFavoriteClick"
                     ></nldd-icon-button>
@@ -1853,7 +1853,7 @@ watch(activeTrajectRef, () => {
             <nldd-page sticky-header>
               <nldd-top-title-bar
                 slot="header"
-                :text="instellingenTab === 'leden' ? 'Leden' : (instellingenTab === 'details' ? 'Traject details' : undefined)"
+                :text="instellingenTab === 'leden' ? 'Leden' : (instellingenTab === 'details' ? 'Algemeen' : undefined)"
                 back-text="Instellingen"
                 :collapse-anchor="instellingenTab ? 'instellingen-pane-titel' : undefined"
               ></nldd-top-title-bar>

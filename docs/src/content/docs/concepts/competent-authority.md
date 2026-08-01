@@ -3,7 +3,7 @@ title: "Competent Authority"
 description: "How an article records the bevoegd gezag: the authority whose execution produces a binding decision, as a named organization or a category resolved per context."
 ---
 
-A *beschikking* is only binding when the right body issues it. Income is assessed by the Tax Authority, but a long-term care indication is the CIZ's to decide, and social assistance is granted by a municipal college. An article records which body that is in `competent_authority`, the *bevoegd gezag*. This is what lets the engine tell a binding decision apart from a calculation anyone may run (see [Multi-Org Execution](./multi-org-execution)), and it is the anchor for deriving who may authoritatively annotate a law (see [Notes and Annotations](./notes-and-annotations)).
+A *beschikking* is only binding when the right body issues it. Income is assessed by the Tax Authority, but a long-term care indication is the CIZ's to decide, and social assistance is granted by a municipal college. An article records which body that is in `competent_authority`, the *bevoegd gezag*. The engine uses it to tell a binding decision apart from a calculation anyone may run (see [Multi-Org Execution](./multi-org-execution)), and to derive who may authoritatively annotate a law (see [Notes and Annotations](./notes-and-annotations)).
 
 ## The two forms
 
@@ -34,7 +34,7 @@ The `#` form points at an output computed elsewhere in the same law. The Wet lan
 
 ## One law, several authorities
 
-A single law can name a different authority per article, because different articles describe different acts. In the Wet langdurige zorg the indication decision is the CIZ's, while later articles assign other steps to the Zorgkantoor and the Wlz-uitvoerder. Each carries its own `competent_authority`. The authority is a property of the act in the article, not of the law as a whole.
+A single law can name a different authority per article, because different articles describe different acts. In the Wet langdurige zorg the indication decision is the CIZ's, while later articles assign other steps to the Zorgkantoor and the Wlz-uitvoerder. Each article has its own `competent_authority`. The authority is a property of the act described in the article. A law as a whole has no single competent authority.
 
 ## Further reading
 

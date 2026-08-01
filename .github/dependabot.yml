@@ -6,6 +6,14 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    # Zonder dit gebruikt Dependabot `chore(deps-dev)` voor dev-dependencies,
+    # en die scope staat niet in de lijst van `pr-title.yml` — waardoor elke
+    # dev-dependency-PR op de titelcheck strandt. Eén spelling voor één
+    # begrip is beter dan de scope-lijst uitbreiden: `deps` blijft dan de
+    # enige term waar een toekomstig filter of changelog op hoeft te letten.
+    commit-message:
+      prefix: chore(deps)
+      prefix-development: chore(deps)
     labels:
       - dependencies
       - rust
@@ -59,6 +67,10 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    # Zie de toelichting bij het cargo-blok hierboven.
+    commit-message:
+      prefix: chore(deps)
+      prefix-development: chore(deps)
     labels:
       - dependencies
       - javascript
@@ -139,6 +151,10 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    # Zie de toelichting bij het cargo-blok hierboven.
+    commit-message:
+      prefix: chore(deps)
+      prefix-development: chore(deps)
     labels:
       - dependencies
       - javascript

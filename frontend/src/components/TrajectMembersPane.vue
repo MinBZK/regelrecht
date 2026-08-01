@@ -135,9 +135,8 @@ async function confirmRemoveInvite() {
     <nldd-list variant="box">
       <template v-for="m in members" :key="m.account_id">
         <nldd-list-item size="md">
-          <nldd-spacer-cell slot="start" size="12"></nldd-spacer-cell>
-          <nldd-icon-cell slot="start" size="20"><nldd-icon name="user"></nldd-icon></nldd-icon-cell>
-          <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+          <nldd-icon-cell size="24"><nldd-icon name="user"></nldd-icon></nldd-icon-cell>
+          <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-text-cell :supporting-text="m.name ? m.email : null">
             <span class="member-name">
               <span>{{ m.name || m.email }}</span>
@@ -177,9 +176,8 @@ async function confirmRemoveInvite() {
            instead of scrolling them out of view in a separate section below. -->
       <template v-for="inv in pendingInvites" :key="inv.email">
         <nldd-list-item size="md">
-          <nldd-spacer-cell slot="start" size="12"></nldd-spacer-cell>
-          <nldd-icon-cell slot="start" size="20"><nldd-icon name="user"></nldd-icon></nldd-icon-cell>
-          <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+          <nldd-icon-cell size="24"><nldd-icon name="user"></nldd-icon></nldd-icon-cell>
+          <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-text-cell supporting-text="Openstaande uitnodiging. Wacht op eerste login voor activatie.">
             <span class="member-name">
               <span>{{ inv.email }}</span>
