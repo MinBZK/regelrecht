@@ -10,17 +10,26 @@
 //! here until the harvester takes it back.
 //!
 //! `--cache` keeps the fetched XML so a second run costs nothing;
-//! `--offline` uses only what is cached.
+//! `--offline` uses only what is cached. `--rewrite` replaces the file's
+//! `text` fields with the official text, drops articles the law does not
+//! have, adds the ones it does, and writes the document structure to a
+//! sidecar beside the file. Existing `machine_readable` is carried over by
+//! article number: discarding it would throw away work, and the checks that
+//! run afterwards are what decide whether the translation still holds
+//! against the corrected text.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use regelrecht_pipeline::enrich_v2::source_gate::{parse_toestand, toestand_url, verify, Verdict};
+use regelrecht_pipeline::enrich_v2::source_gate::{
+    parse_toestand, rewrite, toestand_url, verify, Verdict, CONTEXT_SIDECAR,
+};
 
 #[tokio::main]
 async fn main() -> ExitCode {
     let mut cache: Option<PathBuf> = None;
     let mut offline = false;
+    let mut do_rewrite = false;
     let mut files: Vec<PathBuf> = Vec::new();
 
     let mut args = std::env::args().skip(1);
@@ -34,8 +43,11 @@ async fn main() -> ExitCode {
                 }
             },
             "--offline" => offline = true,
+            "--rewrite" => do_rewrite = true,
             "--help" | "-h" => {
-                println!("usage: law-source [--cache <dir>] [--offline] <file.yaml>...");
+                println!(
+                    "usage: law-source [--cache <dir>] [--offline] [--rewrite] <file.yaml>..."
+                );
                 return ExitCode::SUCCESS;
             }
             other if other.starts_with('-') => {
@@ -47,13 +59,13 @@ async fn main() -> ExitCode {
     }
 
     if files.is_empty() {
-        eprintln!("usage: law-source [--cache <dir>] [--offline] <file.yaml>...");
+        eprintln!("usage: law-source [--cache <dir>] [--offline] [--rewrite] <file.yaml>...");
         return ExitCode::from(2);
     }
 
     let mut failed = 0usize;
     for file in &files {
-        match check_one(file, cache.as_deref(), offline).await {
+        match check_one(file, cache.as_deref(), offline, do_rewrite).await {
             Ok(true) => {}
             Ok(false) => failed += 1,
             Err(e) => {
@@ -75,7 +87,12 @@ async fn main() -> ExitCode {
     }
 }
 
-async fn check_one(path: &Path, cache: Option<&Path>, offline: bool) -> Result<bool, String> {
+async fn check_one(
+    path: &Path,
+    cache: Option<&Path>,
+    offline: bool,
+    do_rewrite: bool,
+) -> Result<bool, String> {
     let raw = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let doc: serde_yaml_ng::Value =
         serde_yaml_ng::from_str(&raw).map_err(|e| format!("not YAML: {e}"))?;
@@ -150,6 +167,27 @@ async fn check_one(path: &Path, cache: Option<&Path>, offline: bool) -> Result<b
         if placed.len() > 6 {
             println!("    ... and {} more", placed.len() - 6);
         }
+    }
+
+    if do_rewrite {
+        let (fixed, sidecar) = rewrite(&doc, &official, &report);
+        let yaml = serde_yaml_ng::to_string(&fixed).map_err(|e| e.to_string())?;
+        std::fs::write(path, yaml).map_err(|e| e.to_string())?;
+
+        let sidecar_path = path
+            .parent()
+            .ok_or("law file has no parent directory")?
+            .join(CONTEXT_SIDECAR);
+        let sidecar_yaml = serde_yaml_ng::to_string(&sidecar).map_err(|e| e.to_string())?;
+        std::fs::write(&sidecar_path, sidecar_yaml).map_err(|e| e.to_string())?;
+
+        println!(
+            "  rewritten: {} article(s) now carry the official text; structure in {}",
+            official.len(),
+            sidecar_path.display()
+        );
+        // After a rewrite the file does carry the law, so it may proceed.
+        return Ok(true);
     }
 
     Ok(report.passes())

@@ -3,7 +3,7 @@
 //!
 //! Only compiled with the `validate` feature (which pulls in `jsonschema`).
 //! Keeping the schema-loading list and version detection here means there is a
-//! single copy of the 12-version `include_str!` table — see the CI guard
+//! single copy of the 13-version `include_str!` table — see the CI guard
 //! "Check schema versions registered in schema.rs" which greps this file.
 
 use std::collections::HashMap;
@@ -23,6 +23,7 @@ macro_rules! with_schema_versions {
         $callback! {
             "v0.2.0", "v0.3.0", "v0.3.1", "v0.3.2", "v0.4.0", "v0.5.0",
             "v0.5.1", "v0.5.2", "v0.5.3", "v0.5.4", "v0.5.5", "v0.5.6",
+            "v0.6.0",
         }
     };
 }

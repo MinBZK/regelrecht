@@ -362,6 +362,136 @@ pub fn verify(corpus: &serde_yaml_ng::Value, official: &[SourceArticle]) -> Gate
     report
 }
 
+/// The context sidecar: everything the official source knows about an
+/// article that the law YAML has no field for.
+///
+/// This does not go into the law file. `machine_readable` and the article
+/// object are `additionalProperties: false` on a released schema version,
+/// so carrying placement there needs a version bump plus a corpus-wide
+/// migration. Until that is decided, the worker reads this file and puts
+/// the placement in front of the agent, which is what layer 3 of RFC-026
+/// describes anyway: the worker assembles, the agent reads.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ContextSidecar {
+    pub bwb_id: String,
+    pub valid_from: String,
+    /// Article number to what the source says about it.
+    pub articles: BTreeMap<String, ArticleContext>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ArticleContext {
+    /// Readable path, e.g. "Hoofdstuk 3 Besluiten > Afdeling 3.3 Advisering".
+    #[serde(skip_serializing_if = "String::is_empty", default)]
+    pub path: String,
+    #[serde(skip_serializing_if = "Placement::is_empty", default)]
+    pub placement: Placement,
+    /// The article's own heading, when the law gives it one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub heading: Option<String>,
+    /// What the gate said about this article before the rewrite.
+    pub verdict: String,
+}
+
+/// Filename of the context sidecar, beside the law YAML.
+pub const CONTEXT_SIDECAR: &str = ".source-context.yaml";
+
+/// Rewrite a corpus law document so its `text` is the official text and its
+/// article set is the official article set.
+///
+/// A `machine_readable` section is carried over by article number when the
+/// article still exists. It is deliberately kept even when the text
+/// drifted: dropping it would silently discard work, and the checks that
+/// run afterwards are what decide whether the translation still holds
+/// against the corrected text.
+///
+/// Returns the rewritten document and the sidecar.
+pub fn rewrite(
+    corpus: &serde_yaml_ng::Value,
+    official: &[SourceArticle],
+    report: &GateReport,
+) -> (serde_yaml_ng::Value, ContextSidecar) {
+    use serde_yaml_ng::{Mapping, Value};
+
+    let mut existing_mr: BTreeMap<String, Value> = BTreeMap::new();
+    let mut existing_url: BTreeMap<String, Value> = BTreeMap::new();
+    if let Some(seq) = corpus.get("articles").and_then(Value::as_sequence) {
+        for article in seq {
+            let Some(number) = article.get("number").and_then(Value::as_str) else {
+                continue;
+            };
+            if let Some(mr) = article.get("machine_readable") {
+                existing_mr.insert(number.to_string(), mr.clone());
+            }
+            if let Some(url) = article.get("url") {
+                existing_url.insert(number.to_string(), url.clone());
+            }
+        }
+    }
+
+    let base_url = corpus
+        .get("url")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+
+    let mut sidecar = ContextSidecar {
+        bwb_id: corpus
+            .get("bwb_id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        valid_from: corpus
+            .get("valid_from")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        articles: BTreeMap::new(),
+    };
+
+    let mut articles = Vec::new();
+    for source in official {
+        let mut map = Mapping::new();
+        map.insert(Value::from("number"), Value::from(source.number.as_str()));
+        map.insert(Value::from("text"), Value::from(source.text.as_str()));
+        let url = existing_url
+            .get(&source.number)
+            .cloned()
+            .unwrap_or_else(|| {
+                Value::from(format!(
+                    "{base_url}#Artikel{}",
+                    source.number.replace(' ', "")
+                ))
+            });
+        map.insert(Value::from("url"), url);
+        if let Some(mr) = existing_mr.get(&source.number) {
+            map.insert(Value::from("machine_readable"), mr.clone());
+        }
+        articles.push(Value::Mapping(map));
+
+        sidecar.articles.insert(
+            source.number.clone(),
+            ArticleContext {
+                path: source.placement.path(),
+                placement: source.placement.clone(),
+                heading: source.heading.clone(),
+                verdict: match report.verdicts.get(&source.number) {
+                    Some(Verdict::Verified) => "verified".into(),
+                    Some(Verdict::Drift { .. }) => "text replaced (had drifted)".into(),
+                    Some(Verdict::Missing) => "text added (was absent)".into(),
+                    Some(Verdict::Fabricated) | None => "new".into(),
+                },
+            },
+        );
+    }
+
+    let mut doc = corpus.clone();
+    if let Value::Mapping(map) = &mut doc {
+        map.insert(Value::from("articles"), Value::Sequence(articles));
+    }
+    (doc, sidecar)
+}
+
 /// A short, quotable description of how two texts differ: the first point
 /// where they diverge, with a little context on both sides.
 fn describe_difference(corpus: &str, source: &str) -> String {
@@ -488,6 +618,55 @@ mod tests {
             panic!("expected drift, got {:?}", report.verdicts["1"]);
         };
         assert!(detail.contains("Een heel ander"), "{detail}");
+    }
+
+    #[test]
+    fn rewrite_replaces_the_text_and_keeps_the_translation() {
+        let official = parse_toestand(XML).unwrap();
+        let corpus: serde_yaml_ng::Value = serde_yaml_ng::from_str(
+            r#"
+bwb_id: BWBR0000001
+url: https://wetten.overheid.nl/BWBR0000001
+articles:
+  - number: '1'
+    text: iets heel anders
+    url: u
+    machine_readable: {a: 1}
+  - number: 1a
+    text: verzonnen artikel
+    url: u
+"#,
+        )
+        .unwrap();
+        let report = verify(&corpus, &official);
+        let (doc, sidecar) = rewrite(&corpus, &official, &report);
+
+        let arts = doc.get("articles").unwrap().as_sequence().unwrap();
+        let numbers: Vec<&str> = arts
+            .iter()
+            .filter_map(|a| a.get("number").and_then(serde_yaml_ng::Value::as_str))
+            .collect();
+        // The fabricated article is gone and the ones the law has are there.
+        assert!(!numbers.contains(&"1a"), "{numbers:?}");
+        assert!(numbers.contains(&"3:9"), "{numbers:?}");
+
+        let a1 = arts
+            .iter()
+            .find(|a| a.get("number").and_then(serde_yaml_ng::Value::as_str) == Some("1"))
+            .unwrap();
+        assert_eq!(
+            a1.get("text").and_then(serde_yaml_ng::Value::as_str),
+            Some("1. Eerste lid. 2. Tweede lid.")
+        );
+        // Existing work is carried over rather than silently discarded; the
+        // checks that follow decide whether it still holds.
+        assert!(a1.get("machine_readable").is_some());
+
+        assert_eq!(
+            sidecar.articles["3:9"].path,
+            "Hoofdstuk 3 Besluiten > Afdeling 3.3 Advisering"
+        );
+        assert_eq!(sidecar.articles["1"].verdict, "text replaced (had drifted)");
     }
 
     #[test]
