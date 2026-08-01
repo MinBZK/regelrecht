@@ -1,5 +1,0 @@
-## Wat
-
-## Waarom
-
-## Verificatie
