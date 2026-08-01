@@ -126,7 +126,9 @@ impl LawStructurer for LlmLawStructurer {
         config: &EnrichConfig,
         allow_bash: bool,
     ) -> Result<()> {
-        run_llm_subprocess(&config.provider, prompt, None, work_dir, config, allow_bash).await
+        run_llm_subprocess(&config.provider, prompt, None, work_dir, config, allow_bash)
+            .await
+            .map(|_| ())
     }
 }
 

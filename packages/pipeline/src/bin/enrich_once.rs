@@ -4,7 +4,7 @@
 //! `execute_enrich_with_runner` needs a path and a payload, not a job queue
 //! and not a checkout, so the real loop can run on a developer machine
 //! against a single law. That is the difference between a design that can
-//! be tried and one that can only be argued about: every layer of RFC-027
+//! be tried and one that can only be argued about: every layer of RFC-026
 //! is a change to the worker, and this is how those changes get exercised
 //! before they touch the pipeline.
 //!
@@ -126,6 +126,17 @@ async fn main() -> ExitCode {
     // the previous run. Locally there is no base branch to compare with, so
     // an empty hash means "adopt whatever is here", which is what a first
     // run does in production too.
+    // Without a subscriber the accounting line the worker emits goes nowhere,
+    // and a round can then only be compared on wall clock. Default to info so
+    // a plain run reports what it cost; RUST_LOG still overrides.
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .with_target(false)
+        .init();
+
     let outcome =
         execute_enrich_with_runner(&payload, &args.corpus, &config, "", &ProcessLlmRunner).await;
 

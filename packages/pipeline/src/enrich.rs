@@ -164,10 +164,75 @@ pub trait LlmRunner: Send + Sync {
     ) -> Result<()>;
 }
 
+/// What one agent run cost, as the provider reports it.
+///
+/// Round 3 could compare variants on outcome and wall clock and on nothing
+/// else, so the question whether the context brief is expensive because the
+/// input grew or because the agent did more work stayed open. The provider
+/// already answers that on its own stdout, which this worker drained and threw
+/// away. RFC-028 asks for it under "every agent run must be countable".
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentUsage {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    /// Tokens served from the provider's prompt cache. Large here, because
+    /// every window resends the same skill files.
+    pub cache_read_tokens: u64,
+    /// Cost in tenths of a cent, so the figure stays an integer. The provider
+    /// reports dollars as a float and money in a float is a bug waiting.
+    pub cost_millicents: u64,
+}
+
+impl AgentUsage {
+    /// Read the usage out of the provider's final JSON object.
+    ///
+    /// Takes the tail of stdout rather than the whole stream: the object we
+    /// want is the last one, and opencode inlines multi-megabyte bodies
+    /// earlier in the stream that nobody should hold in memory to reach it.
+    /// Returns `None` when the tail carries no recognisable object, which is
+    /// the normal case for a provider that reports nothing.
+    #[must_use]
+    pub fn from_stdout_tail(tail: &str) -> Option<Self> {
+        let start = tail.rfind("{\"type\"").or_else(|| tail.rfind('{'))?;
+        let value: serde_json::Value = serde_json::from_str(tail[start..].trim()).ok()?;
+        let usage = value.get("usage")?;
+        let n = |key: &str| {
+            usage
+                .get(key)
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0)
+        };
+        Some(Self {
+            input_tokens: n("input_tokens"),
+            output_tokens: n("output_tokens"),
+            cache_read_tokens: n("cache_read_input_tokens"),
+            cost_millicents: value
+                .get("total_cost_usd")
+                .and_then(serde_json::Value::as_f64)
+                .map_or(0, |usd| (usd * 100_000.0).round() as u64),
+        })
+    }
+
+    /// Add a second run's usage, for reporting a whole chain as one figure.
+    #[must_use]
+    pub fn plus(self, other: Self) -> Self {
+        Self {
+            input_tokens: self.input_tokens + other.input_tokens,
+            output_tokens: self.output_tokens + other.output_tokens,
+            cache_read_tokens: self.cache_read_tokens + other.cache_read_tokens,
+            cost_millicents: self.cost_millicents + other.cost_millicents,
+        }
+    }
+}
+
 /// Max bytes of the LLM subprocess's stderr to retain for diagnostics. The tail
 /// (most recent output) is kept and appended to the error on a non-zero exit, so
 /// a failure reports the real cause (e.g. an auth `401`) instead of a bare code.
 const MAX_STDERR_CAPTURE: usize = 4096;
+
+/// Max bytes of the agent's stdout to retain, enough to hold the provider's
+/// closing JSON object with the usage figures and nothing before it.
+const MAX_STDOUT_TAIL: usize = 32 * 1024;
 
 /// Default runner that spawns a real CLI process.
 pub struct ProcessLlmRunner;
@@ -196,7 +261,8 @@ impl LlmRunner for ProcessLlmRunner {
                 config,
                 false,
             )
-            .await;
+            .await
+            .map(|_| ());
         }
 
         // What the chain may instruct depends on what this runtime grants.
@@ -252,6 +318,7 @@ impl LlmRunner for ProcessLlmRunner {
             false,
         )
         .await
+        .map(|_| ())
     }
 }
 
@@ -274,7 +341,7 @@ pub(crate) async fn run_llm_subprocess(
     cwd: &Path,
     config: &EnrichConfig,
     allow_bash: bool,
-) -> Result<()> {
+) -> Result<Option<AgentUsage>> {
     let provider_name = provider.name().to_string();
 
     let mut cmd = build_command(provider, prompt, file_arg, cwd, allow_bash);
@@ -343,6 +410,11 @@ pub(crate) async fn run_llm_subprocess(
     // keep reading it: if the OS pipe buffer (64 KB) fills, the child blocks
     // indefinitely — the same deadlock the stderr comment above warns about.
     // The task ends on EOF when the process exits or is killed.
+    // Tail of stdout, kept so the provider's closing JSON object can be read
+    // after the process exits. Bounded: everything before the last object is
+    // of no interest, and the stream can carry megabytes.
+    let stdout_tail = std::sync::Arc::new(Mutex::new(String::new()));
+    let tail_writer = std::sync::Arc::clone(&stdout_tail);
     if let Some(mut stdout) = child.stdout.take() {
         let drain_provider = provider_name.clone();
         tokio::spawn(async move {
@@ -365,6 +437,19 @@ pub(crate) async fn run_llm_subprocess(
                         let preview = preview.trim_end();
                         if !preview.is_empty() {
                             tracing::debug!(provider = %drain_provider, %preview, "agent stdout");
+                        }
+                        #[allow(clippy::unwrap_used)]
+                        if let Ok(mut tail) = tail_writer.lock() {
+                            tail.push_str(&String::from_utf8_lossy(&buf[..n]));
+                            if tail.len() > MAX_STDOUT_TAIL {
+                                let cut = tail.len() - MAX_STDOUT_TAIL;
+                                let cut = tail
+                                    .char_indices()
+                                    .map(|(i, _)| i)
+                                    .find(|i| *i >= cut)
+                                    .unwrap_or(tail.len());
+                                *tail = tail.split_off(cut);
+                            }
                         }
                     }
                 }
@@ -434,7 +519,22 @@ pub(crate) async fn run_llm_subprocess(
     if let Some(t) = &stderr_task {
         t.abort();
     }
-    Ok(())
+
+    let usage = stdout_tail
+        .lock()
+        .ok()
+        .and_then(|tail| AgentUsage::from_stdout_tail(&tail));
+    if let Some(u) = usage {
+        tracing::info!(
+            provider = %provider_name,
+            input_tokens = u.input_tokens,
+            output_tokens = u.output_tokens,
+            cache_read_tokens = u.cache_read_tokens,
+            cost_millicents = u.cost_millicents,
+            "agent run accounted"
+        );
+    }
+    Ok(usage)
 }
 
 /// Kill the LLM subprocess and reap it.
@@ -1600,6 +1700,11 @@ fn build_command(
                 .arg(prompt)
                 .arg("--allowedTools")
                 .arg(allowed_tools)
+                // Makes the run report its own token use on stdout, which the
+                // drain now keeps the tail of. Without it a round can only be
+                // compared on wall clock.
+                .arg("--output-format")
+                .arg("json")
                 .current_dir(cwd);
             if let Some(ref m) = model {
                 cmd.arg("--model").arg(m);
@@ -3846,6 +3951,71 @@ articles:
                 (spec, capabilities::plan_step(spec, &grant, Some(declared)))
             })
             .collect()
+    }
+
+    #[test]
+    fn usage_is_read_from_the_providers_closing_object() {
+        // The shape the claude CLI emits under `--output-format json`.
+        let tail = r#"{"type":"result","subtype":"success","is_error":false,
+            "duration_ms":812345,"num_turns":42,"result":"done",
+            "total_cost_usd":1.2345,
+            "usage":{"input_tokens":1200,"output_tokens":34567,
+                     "cache_read_input_tokens":980000,"cache_creation_input_tokens":45}}"#;
+        let u = AgentUsage::from_stdout_tail(tail).expect("usage");
+        assert_eq!(u.input_tokens, 1200);
+        assert_eq!(u.output_tokens, 34567);
+        assert_eq!(u.cache_read_tokens, 980_000);
+        // Money as an integer: 1.2345 dollar is 123450 tenths of a cent.
+        assert_eq!(u.cost_millicents, 123_450);
+    }
+
+    #[test]
+    fn only_the_last_object_in_the_stream_counts() {
+        // The stream carries earlier objects; the accounting is the final one.
+        let tail = concat!(
+            r#"{"type":"assistant","usage":{"input_tokens":1,"output_tokens":1}}"#,
+            "\n",
+            r#"{"type":"result","usage":{"input_tokens":99,"output_tokens":7}}"#,
+        );
+        let u = AgentUsage::from_stdout_tail(tail).expect("usage");
+        assert_eq!(u.input_tokens, 99);
+        assert_eq!(u.output_tokens, 7);
+    }
+
+    #[test]
+    fn a_truncated_tail_reports_nothing_rather_than_guessing() {
+        // The tail is bounded, so a large stream can cut an object in half.
+        // Half a figure is worse than no figure.
+        assert!(AgentUsage::from_stdout_tail(r#"put_tokens":1200,"output_"#).is_none());
+        assert!(AgentUsage::from_stdout_tail("").is_none());
+        assert!(AgentUsage::from_stdout_tail("no json here at all").is_none());
+    }
+
+    #[test]
+    fn an_object_without_usage_reports_nothing() {
+        // A provider that reports no accounting must not read as zero cost.
+        assert!(AgentUsage::from_stdout_tail(r#"{"type":"result","result":"ok"}"#).is_none());
+    }
+
+    #[test]
+    fn usage_adds_up_over_a_chain() {
+        let a = AgentUsage {
+            input_tokens: 10,
+            output_tokens: 20,
+            cache_read_tokens: 30,
+            cost_millicents: 40,
+        };
+        let b = AgentUsage {
+            input_tokens: 1,
+            output_tokens: 2,
+            cache_read_tokens: 3,
+            cost_millicents: 4,
+        };
+        let sum = a.plus(b);
+        assert_eq!(sum.input_tokens, 11);
+        assert_eq!(sum.output_tokens, 22);
+        assert_eq!(sum.cache_read_tokens, 33);
+        assert_eq!(sum.cost_millicents, 44);
     }
 
     #[test]

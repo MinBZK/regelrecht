@@ -325,6 +325,7 @@ impl DocumentConverter for LlmDocumentConverter {
             true,
         )
         .await
+        .map(|_| ())
     }
 }
 
