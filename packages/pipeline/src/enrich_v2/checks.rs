@@ -465,6 +465,12 @@ pub fn citations_in_companion_files(dir: &Path, provided: &str) -> Vec<Finding> 
             if name.ends_with(".yaml") && !name.starts_with('.') {
                 continue;
             }
+            // The context brief is written by the worker, not the agent, and
+            // citing it is allowed by construction. Scanning it would flag
+            // the worker's own work as an unsupported claim.
+            if name == super::context::CONTEXT_BRIEF {
+                continue;
+            }
             let Ok(body) = std::fs::read_to_string(&path) else {
                 continue;
             };

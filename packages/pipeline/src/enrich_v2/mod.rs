@@ -22,4 +22,5 @@
 pub mod assemble;
 pub mod capabilities;
 pub mod checks;
+pub mod context;
 pub mod source_gate;

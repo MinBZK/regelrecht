@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
 use uuid::Uuid;
 
-use crate::enrich_v2::capabilities;
+use crate::enrich_v2::{capabilities, context};
 use crate::error::{PipelineError, Result};
 
 /// Per-process cache of branch names already confirmed to exist on the
@@ -217,12 +217,21 @@ impl LlmRunner for ProcessLlmRunner {
                 report.trim_end()
             )));
         }
+        // Requirement 6 of RFC-026: an article never reaches an agent without
+        // its place in the structure and without what bears on it inside its
+        // own law. The worker assembles that and writes it down; the agent
+        // reads a file rather than hunting through the YAML.
+        let brief = context::write_brief(yaml_abs, payload.chunk_articles.as_deref());
+        if brief.is_none() {
+            tracing::warn!(law = %payload.yaml_path, "no context brief written");
+        }
         let prompt = build_prompt(
             &payload.yaml_path,
             &progress_path.to_string_lossy(),
             &plan,
             payload.chunk_articles.as_deref(),
             payload.skip_mvt.unwrap_or(false),
+            brief.is_some(),
         );
         run_llm_subprocess(
             &config.provider,
@@ -1225,6 +1234,7 @@ fn build_prompt(
     plan: &[(&'static capabilities::StepSpec, capabilities::StepPlan)],
     chunk_articles: Option<&[String]>,
     skip_mvt: bool,
+    has_brief: bool,
 ) -> String {
     let mut out =
         String::from("You are interpreting a Dutch law to make it machine-executable.\n\n");
@@ -1236,6 +1246,18 @@ fn build_prompt(
             "This is one chunk of a larger law. Process ONLY these articles (by their\n\
              `number` field) and leave every other article completely untouched:\n\n{}\n",
             articles.join(", ")
+        );
+    }
+
+    if has_brief {
+        let _ = writeln!(
+            out,
+            "Read `{}` in the same directory first. It states, per article in scope,\n\
+             where the article sits in the document structure, which definition\n\
+             provisions govern it, and which other articles of this law modify it.\n\
+             An article that another article bends must be translated as they leave\n\
+             it, not as it reads alone.\n",
+            context::CONTEXT_BRIEF
         );
     }
 
@@ -2868,6 +2890,7 @@ related_legislation:
             &full_plan(),
             None,
             false,
+            false,
         );
         assert!(prompt.contains("law-mvt-research/SKILL.md"));
         assert!(prompt.contains("law-generate/SKILL.md"));
@@ -3821,7 +3844,7 @@ articles:
         // The measured failure of round 2: the agent was told to search for
         // parliamentary documents without any way to retrieve them, and
         // answered with a kst- citation for a document it never read.
-        let prompt = build_prompt("law.yaml", "/tmp/p.json", &lane_plan(), None, false);
+        let prompt = build_prompt("law.yaml", "/tmp/p.json", &lane_plan(), None, false, false);
         assert!(!prompt.contains("law-mvt-research/SKILL.md"));
         assert!(!prompt.contains("Memorie van Toelichting"));
         assert!(prompt.contains("Not part of this run: MvT research"));
@@ -3833,7 +3856,7 @@ articles:
         // law-generate declares Bash for its validate loop; the step still
         // runs, and the prompt must say the loop is not available here and
         // what replaces it.
-        let prompt = build_prompt("law.yaml", "/tmp/p.json", &lane_plan(), None, false);
+        let prompt = build_prompt("law.yaml", "/tmp/p.json", &lane_plan(), None, false, false);
         assert!(prompt.contains("law-generate/SKILL.md"));
         assert!(prompt.contains("Bash"));
         assert!(prompt.contains("do not simulate"));
@@ -3841,10 +3864,24 @@ articles:
     }
 
     #[test]
+    fn prompt_points_at_the_context_brief_when_there_is_one() {
+        // Requirement 6 of RFC-026: the agent must be told what bears on the
+        // article, not left to find it.
+        let with = build_prompt("law.yaml", "/tmp/p.json", &lane_plan(), None, false, true);
+        assert!(with.contains(context::CONTEXT_BRIEF));
+        assert!(with.contains("modify it"));
+        assert!(with.contains("not as it reads alone"));
+
+        // And never point at a file that was not written.
+        let without = build_prompt("law.yaml", "/tmp/p.json", &lane_plan(), None, false, false);
+        assert!(!without.contains(context::CONTEXT_BRIEF));
+    }
+
+    #[test]
     fn steps_are_numbered_consecutively_after_an_omission() {
         // A gap in the numbering tells the agent something was withheld and
         // invites it to fill in the blank.
-        let prompt = build_prompt("law.yaml", "/tmp/p.json", &lane_plan(), None, false);
+        let prompt = build_prompt("law.yaml", "/tmp/p.json", &lane_plan(), None, false, false);
         assert!(prompt.contains("## Step 1: Generate machine_readable"));
         assert!(prompt.contains("## Step 2: Reverse validation"));
         assert!(prompt.contains("## Step 3: Session report"));
@@ -3853,7 +3890,7 @@ articles:
 
     #[test]
     fn full_grant_restores_the_mvt_step() {
-        let prompt = build_prompt("law.yaml", "/tmp/p.json", &full_plan(), None, false);
+        let prompt = build_prompt("law.yaml", "/tmp/p.json", &full_plan(), None, false, false);
         assert!(prompt.contains("## Step 1: MvT research"));
         assert!(prompt.contains("law-mvt-research/SKILL.md"));
         assert!(!prompt.contains("Not part of this run"));
@@ -3867,6 +3904,7 @@ articles:
             "/tmp/repo/.enrichment-progress.json",
             &full_plan(),
             Some(&numbers),
+            false,
             false,
         );
         assert!(prompt.contains("Process ONLY these articles"));
@@ -3886,6 +3924,7 @@ articles:
             &full_plan(),
             Some(&numbers),
             true,
+            false,
         );
         assert!(!prompt.contains("law-mvt-research/SKILL.md"));
         assert!(prompt.contains("already done for this law"));
