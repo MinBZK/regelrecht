@@ -432,14 +432,17 @@ jobs:
             echo
             cat report/top-files.md
             echo
-            echo "### Wat een regel betekent"
+            echo "### Hoe je ze wegwerkt"
             echo
             echo "Elke regel in \`missed.txt\` is een wijziging in de engine die geen enkele"
-            echo "test rood maakt. Dat is een testgat of dode code. Niet elke regel is het"
-            echo "oplossen waard: een mutatie op een debug-helper zegt weinig. Zet die"
-            echo "gevallen vast met \`#[mutants::skip]\` bij de functie, of met \`exclude_re\`"
-            echo "in \`packages/.cargo/mutants.toml\`. Dan zakt het getal hierboven ook als"
-            echo "het antwoord \"dit hoeft niet\" is, en blijft het signaal scherp."
+            echo "test rood maakt. Dat is een testgat, een mutant die niets zegt, of dode"
+            echo "code, en die drie vragen om een ander antwoord."
+            echo
+            echo "De methode staat in de skill \`mutation-cleanup\`"
+            echo "(\`.claude/skills/mutation-cleanup/SKILL.md\`): hoe je classificeert, wat"
+            echo "de grenzen zijn omdat de engine juridische uitkomsten bepaalt, en hoe je"
+            echo "verifieert met \`just mutants-diff\`. Een agent in deze repo vindt hem"
+            echo "vanzelf; typ anders \`/mutation-cleanup\`."
             echo
             echo "Nieuwe code wordt sinds \`mutation-diff.yml\` op de PR zelf bewaakt; dit"
             echo "issue gaat over de voorraad die daarvoor al bestond."
