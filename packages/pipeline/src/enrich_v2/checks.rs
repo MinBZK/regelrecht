@@ -91,57 +91,88 @@ pub fn schema_errors(yaml: &str) -> Vec<String> {
 }
 
 /// Split an article's `text` into its leden. Dutch statutory text numbers
-/// leden as `1. `, `2. ` at the start of a line or after a blank line. An
-/// article without that numbering is a single lid.
+/// leden as `1. `, `2. `. An article without that numbering is a single lid.
+///
+/// Scans the whole string rather than line starts. A folded YAML scalar
+/// (`>-` without blank lines) puts an entire article on one line, and a
+/// line-based split would then count every article as a single lid. That
+/// silently disabled the per-lid accounting on every law whose harvest
+/// happened to fold, while it worked on laws that kept blank lines.
 pub fn split_leden(text: &str) -> Vec<(u32, String)> {
-    let mut out: Vec<(u32, String)> = Vec::new();
-    let mut current: Option<(u32, String)> = None;
-
-    for raw in text.lines() {
-        let line = raw.trim_start();
-        let lid = leading_lid_number(line);
-        match lid {
-            Some((n, rest)) => {
-                if let Some(prev) = current.take() {
-                    out.push(prev);
-                }
-                current = Some((n, rest.to_string()));
-            }
-            None => {
-                if let Some((_, body)) = current.as_mut() {
-                    if !line.is_empty() {
-                        body.push(' ');
-                        body.push_str(line);
-                    }
-                } else if !line.is_empty() {
-                    // Text before any numbering: the chapeau, or an
-                    // unnumbered single-lid article.
-                    current = Some((1, line.to_string()));
-                }
-            }
-        }
+    let marks = lid_marks(text);
+    if marks.is_empty() {
+        let body = text.trim();
+        return if body.is_empty() {
+            Vec::new()
+        } else {
+            vec![(1, body.to_string())]
+        };
     }
-    if let Some(prev) = current {
-        out.push(prev);
+
+    let mut out = Vec::new();
+    // Anything before the first marker is the chapeau; it belongs to the
+    // article, not to a lid, so it is not counted as one.
+    for (i, (num, _, body_start)) in marks.iter().enumerate() {
+        let end = marks
+            .get(i + 1)
+            .map_or(text.len(), |(_, next_marker, _)| *next_marker);
+        let body = text[*body_start..end.max(*body_start)].trim();
+        out.push((*num, normalize_ws(body)));
     }
     out
 }
 
-/// `"3. De percentages…"` → `Some((3, "De percentages…"))`. Only accepts a
-/// small number followed by `. ` so an amount like `2.18` never matches.
-fn leading_lid_number(line: &str) -> Option<(u32, &str)> {
-    let digits: String = line.chars().take_while(char::is_ascii_digit).collect();
-    if digits.is_empty() || digits.len() > 2 {
-        return None;
+/// `(lid number, byte offset of the marker, byte offset of its body)`. A
+/// marker only counts at the start of the text or after whitespace, so
+/// `artikel 2.18` never matches, and the number is capped at two digits.
+fn lid_marks(text: &str) -> Vec<(u32, usize, usize)> {
+    let bytes = text.as_bytes();
+    let mut marks = Vec::new();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if !bytes[i].is_ascii_digit() {
+            i += 1;
+            continue;
+        }
+        let at_boundary = i == 0 || bytes[i - 1].is_ascii_whitespace();
+        if !at_boundary {
+            // Skip the rest of this number so `2.18` cannot re-enter at `18`.
+            while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'.') {
+                i += 1;
+            }
+            continue;
+        }
+        let start = i;
+        while i < bytes.len() && bytes[i].is_ascii_digit() {
+            i += 1;
+        }
+        let digits = &text[start..i];
+        if digits.len() <= 2
+            && i < bytes.len()
+            && bytes[i] == b'.'
+            && bytes.get(i + 1).is_some_and(u8::is_ascii_whitespace)
+        {
+            if let Ok(n) = digits.parse::<u32>() {
+                // Consume the dot and the following whitespace.
+                let mut body = i + 1;
+                while body < bytes.len() && bytes[body].is_ascii_whitespace() {
+                    body += 1;
+                }
+                marks.push((n, start, body));
+                i = body;
+                continue;
+            }
+        }
+        // Not a marker: skip any decimal tail so `2.18` is consumed whole.
+        while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'.') {
+            i += 1;
+        }
     }
-    let rest = &line[digits.len()..];
-    let rest = rest.strip_prefix('.')?;
-    // Require whitespace after the dot: "2. De normpremie" is a lid,
-    // "2.18 van de Wet IB" is a reference.
-    if !rest.starts_with(char::is_whitespace) {
-        return None;
-    }
-    digits.parse().ok().map(|n| (n, rest.trim_start()))
+    marks
+}
+
+fn normalize_ws(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Case-insensitive whole-phrase search.
@@ -205,47 +236,72 @@ pub fn coverage(doc: &Value) -> Vec<Finding> {
             continue;
         }
 
-        // Modelled: every lid and every connective needs a counterpart.
-        let model_text = render(mr.unwrap_or(&Value::Null)).to_lowercase();
-        for (n, body) in &leden {
-            let body_lower = body.to_lowercase();
-            let hits: Vec<&str> = CONNECTIVES
+        // Modelled. Every finding here is held against the model, so a
+        // correct model produces none. An earlier version fired on every
+        // connective unconditionally, which meant modelling an article
+        // raised its score and a correct and a wrong model were
+        // indistinguishable. The check must reward the work, not the silence.
+        let mr = mr.unwrap_or(&Value::Null);
+        let model_text = render(mr).to_lowercase();
+        let branches = branch_count(mr);
+        let connectives_in_text: usize = leden
+            .iter()
+            .map(|(_, body)| {
+                let body_lower = body.to_lowercase();
+                CONNECTIVES
+                    .iter()
+                    .filter(|c| contains_phrase(&body_lower, c))
+                    .count()
+            })
+            .sum();
+
+        // A derogation or exception has to show up as a branch somewhere.
+        // One branch can carry several connectives, so the test is that
+        // there is at least one, not that the counts match.
+        if connectives_in_text > 0 && branches == 0 {
+            let words: Vec<String> = leden
                 .iter()
-                .copied()
-                .filter(|c| contains_phrase(&body_lower, c))
+                .flat_map(|(n, body)| {
+                    let body_lower = body.to_lowercase();
+                    CONNECTIVES
+                        .iter()
+                        .filter(move |c| contains_phrase(&body_lower, c))
+                        .map(move |c| format!("lid {n}: {c}"))
+                        .collect::<Vec<_>>()
+                })
                 .collect();
-            for hit in hits {
-                findings.push(Finding::new(
-                    "coverage",
-                    Some(&number),
-                    format!("lid {n} contains \"{hit}\"; confirm the model branches on it"),
-                ));
-            }
-            let time_hits: Vec<&str> = TIME_WORDS
-                .iter()
-                .copied()
-                .filter(|w| contains_phrase(&body_lower, w))
-                .collect();
-            for hit in time_hits {
-                if !model_text.contains(hit) {
-                    findings.push(Finding::new(
-                        "coverage",
-                        Some(&number),
-                        format!("lid {n} is bound to \"{hit}\" but no binding carries a period"),
-                    ));
-                }
-            }
-        }
-        if leden.len() > 1 {
             findings.push(Finding::new(
                 "coverage",
                 Some(&number),
                 format!(
-                    "{} leden; account for each one in the model or state why not",
-                    leden.len()
+                    "text is conditional but the model has no branch ({})",
+                    words.join(", ")
                 ),
             ));
         }
+
+        for (n, body) in &leden {
+            let body_lower = body.to_lowercase();
+            for hit in TIME_WORDS
+                .iter()
+                .copied()
+                .filter(|w| contains_phrase(&body_lower, w))
+            {
+                // A period must be carried by a name the engine can use, not
+                // by prose: a `description` mentioning "peildatum" satisfied
+                // the old check without changing a single binding.
+                if !names_carry(mr, hit) {
+                    findings.push(Finding::new(
+                        "coverage",
+                        Some(&number),
+                        format!(
+                            "lid {n} is bound to \"{hit}\" but no parameter, input or output names a period"
+                        ),
+                    ));
+                }
+            }
+        }
+        let _ = model_text;
     }
     findings
 }
@@ -303,17 +359,32 @@ pub fn binding_integrity(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding
                 ));
             }
         }
-        for (regulation, output) in cross_law_sources(mr) {
+        for (regulation, output, has_description) in cross_law_sources(mr) {
             // A source without `regulation` resolves inside this law: it
             // names an output another article here produces. That is
             // legitimate, so check it against this file instead of the
             // corpus.
             if regulation.is_empty() {
                 if output.is_empty() {
+                    // A source with only a `description` is an input the
+                    // model could not bind and said so. That is a different
+                    // claim from an empty `source: {}`, and lumping them
+                    // together made a motivated external fact score the same
+                    // as a silent hole.
+                    let described = has_description;
                     findings.push(Finding::new(
-                        "binding",
+                        if described {
+                            "external-input"
+                        } else {
+                            "binding"
+                        },
                         Some(&number),
-                        "source names neither a regulation nor an output",
+                        if described {
+                            "input is declared external and unbound; the engine cannot supply it"
+                                .to_string()
+                        } else {
+                            "empty source: no regulation, no output, no reason".to_string()
+                        },
                     ));
                 } else if !own_outputs.contains(&output) {
                     findings.push(Finding::new(
@@ -375,6 +446,62 @@ fn render(v: &Value) -> String {
     serde_yaml_ng::to_string(v).unwrap_or_default()
 }
 
+/// How many conditional constructs the model carries. Used to test whether
+/// a conditional statutory text has any branch at all.
+fn branch_count(mr: &Value) -> usize {
+    let mut n = 0usize;
+    walk(mr, &mut |key, node| {
+        if matches!(key, Some("conditions") | Some("cases")) && node.as_sequence().is_some() {
+            n += 1;
+        }
+        if key == Some("operation") {
+            if let Some(op) = node.as_str() {
+                if matches!(op, "IF" | "IF_ELSE" | "SWITCH" | "CASE") {
+                    n += 1;
+                }
+            }
+        }
+    });
+    n
+}
+
+/// Whether a parameter, input or output name (or a `period`/`type_spec`
+/// field) mentions `word`. Prose in a `description` deliberately does not
+/// count: the point is that the value carries the period, not the comment.
+fn names_carry(mr: &Value, word: &str) -> bool {
+    let mut found = false;
+    walk(mr, &mut |key, node| {
+        match key {
+            Some("parameters") | Some("input") | Some("output") => {
+                if let Some(seq) = node.as_sequence() {
+                    for item in seq {
+                        if item
+                            .get("name")
+                            .and_then(Value::as_str)
+                            .is_some_and(|n| n.to_lowercase().contains(word))
+                        {
+                            found = true;
+                        }
+                    }
+                }
+            }
+            // A declared period on a quantity counts whatever it says: the
+            // field itself is the statement that a period was considered.
+            Some("period") | Some("reference_date") | Some("tijdvak") if node.is_string() => {
+                found = true;
+            }
+            _ => {}
+        }
+        // A definition or variable named after the period counts too.
+        if let Some(k) = key {
+            if k.to_lowercase().contains(word) {
+                found = true;
+            }
+        }
+    });
+    found
+}
+
 /// Values under any `value:` key that holds a sequence of scalars. That is
 /// the shape an enumerated domain takes in the corpus.
 fn collect_enum_values(v: &Value) -> Vec<String> {
@@ -397,7 +524,7 @@ fn collect_enum_values(v: &Value) -> Vec<String> {
 /// `inputs` and `outputs` entries with a `name`.
 fn defined_names(doc: &Value) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
-    walk(doc, &mut |key, node| {
+    walk_outside_sources(doc, &mut |key, node| {
         if key == Some("definitions") {
             if let Some(map) = node.as_mapping() {
                 for k in map.keys() {
@@ -433,7 +560,7 @@ fn defined_names(doc: &Value) -> BTreeSet<String> {
 /// list and every action's `output` name.
 fn declared_outputs(doc: &Value) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
-    walk(doc, &mut |key, node| {
+    walk_outside_sources(doc, &mut |key, node| {
         if key != Some("output") {
             return;
         }
@@ -470,7 +597,7 @@ fn referenced_variables(v: &Value) -> BTreeSet<String> {
 }
 
 /// `(regulation, output)` for every `source` mapping in the subtree.
-fn cross_law_sources(v: &Value) -> Vec<(String, String)> {
+fn cross_law_sources(v: &Value) -> Vec<(String, String, bool)> {
     let mut out = Vec::new();
     walk(v, &mut |key, node| {
         if key == Some("source") {
@@ -485,7 +612,8 @@ fn cross_law_sources(v: &Value) -> Vec<(String, String)> {
                     .and_then(Value::as_str)
                     .unwrap_or_default()
                     .to_string();
-                out.push((reg, output));
+                let described = map.get(Value::from("description")).is_some();
+                out.push((reg, output, described));
             }
         }
     });
@@ -495,6 +623,37 @@ fn cross_law_sources(v: &Value) -> Vec<(String, String)> {
 /// Depth-first walk calling `f(key_of_this_node, node)`.
 fn walk<'a>(v: &'a Value, f: &mut impl FnMut(Option<&'a str>, &'a Value)) {
     walk_inner(None, v, f);
+}
+
+/// Like [`walk`] but never descends into a `source` mapping. Inside a
+/// `source`, `output` names what is being *read*; counting that as a
+/// declaration let every internal reference certify itself, which made the
+/// unresolved-reference branch unreachable.
+fn walk_outside_sources<'a>(v: &'a Value, f: &mut impl FnMut(Option<&'a str>, &'a Value)) {
+    fn inner<'a>(
+        key: Option<&'a str>,
+        v: &'a Value,
+        f: &mut impl FnMut(Option<&'a str>, &'a Value),
+    ) {
+        if key == Some("source") {
+            return;
+        }
+        f(key, v);
+        match v {
+            Value::Mapping(map) => {
+                for (k, val) in map {
+                    inner(k.as_str(), val, f);
+                }
+            }
+            Value::Sequence(seq) => {
+                for item in seq {
+                    inner(key, item, f);
+                }
+            }
+            _ => {}
+        }
+    }
+    inner(None, v, f);
 }
 
 fn walk_inner<'a>(
@@ -558,7 +717,7 @@ fn law_defines_output(path: &Path, output: &str) -> bool {
         return false;
     };
     let mut found = false;
-    walk(&doc, &mut |key, node| {
+    walk_outside_sources(&doc, &mut |key, node| {
         if key != Some("output") {
             return;
         }
@@ -640,6 +799,125 @@ mod tests {
     fn unnumbered_article_is_one_lid() {
         let leden = split_leden("In deze wet wordt verstaan onder verzekerde: degene die …");
         assert_eq!(leden.len(), 1);
+    }
+
+    #[test]
+    fn leden_split_works_on_folded_text_without_line_breaks() {
+        // A harvest that folds an article onto one line used to collapse
+        // every article to a single lid, which silently disabled the
+        // per-lid accounting on entire laws.
+        let folded = "1. De eerste regel geldt. 2. De tweede regel geldt, tenzij                       artikel 2.18 anders bepaalt. 3. De derde regel geldt.";
+        let leden = split_leden(folded);
+        assert_eq!(leden.len(), 3, "{leden:?}");
+        assert_eq!(leden[1].0, 2);
+        assert!(leden[1].1.contains("2.18"), "{:?}", leden[1].1);
+        assert!(leden[2].1.starts_with("De derde"));
+    }
+
+    #[test]
+    fn coverage_stays_silent_when_a_conditional_text_has_a_branch() {
+        // The point of the check is to reward the work. An earlier version
+        // fired on every connective regardless of the model, so a correct
+        // and a wrong model scored the same.
+        let yaml = r#"
+articles:
+  - number: '2'
+    text: |-
+      1. De verzekerde heeft aanspraak op een zorgtoeslag.
+
+      4. In afwijking van het eerste lid bedraagt de aanspraak vijftig procent.
+    machine_readable:
+      execution:
+        actions:
+          - output: hoogte_zorgtoeslag
+            operation: IF
+            conditions:
+              - test: {operation: EQUALS, subject: $partner_is_verzekerde, value: false}
+                then: $halve_aanspraak
+              - else: $volle_aanspraak
+"#;
+        let doc: Value = serde_yaml_ng::from_str(yaml).unwrap();
+        let findings = coverage(&doc);
+        assert!(
+            !findings.iter().any(|f| f.detail.contains("no branch")),
+            "a branched model must not be reported: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn coverage_is_not_satisfied_by_a_period_mentioned_only_in_prose() {
+        let yaml = r#"
+articles:
+  - number: '2'
+    text: |-
+      5. De aanspraak wordt voor iedere kalendermaand afzonderlijk bepaald.
+    machine_readable:
+      execution:
+        input:
+          - name: bedrag
+            source:
+              description: wordt per kalendermaand vastgesteld
+"#;
+        let doc: Value = serde_yaml_ng::from_str(yaml).unwrap();
+        let findings = coverage(&doc);
+        assert!(
+            findings.iter().any(|f| f.detail.contains("kalendermaand")),
+            "prose must not satisfy the period requirement: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_described_unbound_source_is_not_the_same_as_an_empty_one() {
+        let described = r#"
+articles:
+  - number: '2'
+    text: tekst
+    machine_readable:
+      execution:
+        input:
+          - name: extern_feit
+            source:
+              description: dit gegeven komt van buiten het corpus
+"#;
+        let empty = r#"
+articles:
+  - number: '2'
+    text: tekst
+    machine_readable:
+      execution:
+        input:
+          - name: extern_feit
+            source: {}
+"#;
+        let d: Value = serde_yaml_ng::from_str(described).unwrap();
+        let e: Value = serde_yaml_ng::from_str(empty).unwrap();
+        assert_eq!(binding_integrity(&d, None)[0].check, "external-input");
+        assert_eq!(binding_integrity(&e, None)[0].check, "binding");
+    }
+
+    #[test]
+    fn an_internal_reference_does_not_certify_itself() {
+        // `source: {output: X}` reads X; it does not declare it. Counting it
+        // as a declaration made the unresolved-reference branch unreachable.
+        let yaml = r#"
+articles:
+  - number: '2'
+    text: tekst
+    machine_readable:
+      execution:
+        input:
+          - name: premie
+            source:
+              output: standaardpremie
+"#;
+        let doc: Value = serde_yaml_ng::from_str(yaml).unwrap();
+        let findings = binding_integrity(&doc, None);
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.detail.contains("standaardpremie")),
+            "expected the dangling internal reference to be reported: {findings:?}"
+        );
     }
 
     #[test]
