@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -10,6 +11,7 @@ use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
 use uuid::Uuid;
 
+use crate::enrich_v2::capabilities;
 use crate::error::{PipelineError, Result};
 
 /// Per-process cache of branch names already confirmed to exist on the
@@ -197,15 +199,31 @@ impl LlmRunner for ProcessLlmRunner {
             .await;
         }
 
-        let prompt = match &payload.chunk_articles {
-            Some(articles) => build_chunk_prompt(
-                &payload.yaml_path,
-                &progress_path.to_string_lossy(),
-                articles,
-                payload.skip_mvt.unwrap_or(false),
-            ),
-            None => build_prompt(&payload.yaml_path, &progress_path.to_string_lossy()),
-        };
+        // What the chain may instruct depends on what this runtime grants.
+        // A step whose tools are absent is left out and recorded, rather than
+        // asked for and answered with an invention (issue #1036).
+        let plan = chain_plan(repo_path);
+        let report = capabilities::plan_report(&plan);
+        if !report.is_empty() {
+            tracing::info!(plan = %report.trim_end(), "enrichment chain planned");
+        }
+        if let Some((spec, _)) = plan
+            .iter()
+            .find(|(_, p)| matches!(p, capabilities::StepPlan::Blocked { .. }))
+        {
+            return Err(PipelineError::Config(format!(
+                "required step {:?} cannot run in this runtime: {}",
+                spec.name,
+                report.trim_end()
+            )));
+        }
+        let prompt = build_prompt(
+            &payload.yaml_path,
+            &progress_path.to_string_lossy(),
+            &plan,
+            payload.chunk_articles.as_deref(),
+            payload.skip_mvt.unwrap_or(false),
+        );
         run_llm_subprocess(
             &config.provider,
             &prompt,
@@ -1131,43 +1149,161 @@ pub fn enrich_branch_name(provider_name: &str) -> String {
 }
 
 /// Build the prompt that tells the LLM to follow the skill pipeline.
-fn build_prompt(yaml_path: &str, progress_file_path: &str) -> String {
-    format!(
-        r#"You are interpreting a Dutch law to make it machine-executable.
+/// Plan the chain against what this runtime grants, reading each skill's own
+/// declaration from disk.
+///
+/// A skill that cannot be read counts as declaring nothing. The step then runs
+/// undegraded and fails later on its artefact if the file really is missing,
+/// which is a clearer failure than a capability error about a file that does
+/// not exist.
+fn chain_plan(repo_path: &Path) -> Vec<(&'static capabilities::StepSpec, capabilities::StepPlan)> {
+    let grant: std::collections::BTreeSet<String> = capabilities::ENRICH_GRANT
+        .iter()
+        .map(|t| (*t).to_owned())
+        .collect();
+    capabilities::CHAIN
+        .iter()
+        .map(|spec| {
+            let markdown = std::fs::read_to_string(repo_path.join(spec.skill)).ok();
+            let plan = capabilities::plan_step(spec, &grant, markdown.as_deref());
+            (spec, plan)
+        })
+        .collect()
+}
 
-The law YAML file is: {yaml_path}
+/// The instruction body of one step, without its heading.
+///
+/// Kept here rather than in [`capabilities`] because this is prompt wording,
+/// and the capability module decides which steps exist rather than what they
+/// say. `chunked` switches the generate and reverse-validation steps to the
+/// article subset; everything else is identical between the two shapes, which
+/// is why they are no longer two prompts.
+fn step_body(spec: &capabilities::StepSpec, chunked: bool) -> String {
+    let scope_generate = if chunked {
+        " — restricted to the article subset listed above"
+    } else {
+        ""
+    };
+    let scope_reverse = if chunked {
+        " — only for the articles you edited in this session"
+    } else {
+        ""
+    };
+    match spec.name {
+        "MvT research" => format!(
+            "Read {} and follow its instructions to search for Memorie van Toelichting\n\
+             documents and generate Gherkin test scenarios.",
+            spec.skill
+        ),
+        "Generate machine_readable" => format!(
+            "Read {} and its reference.md and examples.md.\n\
+             Create machine_readable sections for each executable article{scope_generate}.",
+            spec.skill
+        ),
+        "Reverse validation" => format!(
+            "Read {} and follow its instructions to verify every element in\n\
+             machine_readable traces back to the original legal text{scope_reverse}.",
+            spec.skill
+        ),
+        other => format!("Read {} and follow its instructions. ({other})", spec.skill),
+    }
+}
 
-Follow this pipeline in order. For each step, read the referenced skill file
-and follow its instructions completely.
+/// Build the translation prompt from the planned chain.
+///
+/// Steps that the runtime cannot support are absent rather than present and
+/// impossible. A degraded step carries the note that names what it cannot do
+/// and what runs in its place, because an agent that is only told a tool is
+/// missing still has to decide what to do about the instruction that needed
+/// it, and in round 2 it decided to report success.
+///
+/// `skip_mvt` is honoured on top of the plan: an earlier session in the same
+/// law may already have produced the feature file.
+fn build_prompt(
+    yaml_path: &str,
+    progress_file_path: &str,
+    plan: &[(&'static capabilities::StepSpec, capabilities::StepPlan)],
+    chunk_articles: Option<&[String]>,
+    skip_mvt: bool,
+) -> String {
+    let mut out =
+        String::from("You are interpreting a Dutch law to make it machine-executable.\n\n");
+    let _ = writeln!(out, "The law YAML file is: {yaml_path}\n");
 
-## Step 1: MvT Research
-Read .claude/skills/law-mvt-research/SKILL.md and follow its instructions to
-search for Memorie van Toelichting documents and generate Gherkin test scenarios.
-If no MvT documents are found, proceed to step 2 anyway.
+    if let Some(articles) = chunk_articles {
+        let _ = writeln!(
+            out,
+            "This is one chunk of a larger law. Process ONLY these articles (by their\n\
+             `number` field) and leave every other article completely untouched:\n\n{}\n",
+            articles.join(", ")
+        );
+    }
 
-## Step 2: Generate machine_readable
-Read .claude/skills/law-generate/SKILL.md and its reference.md and examples.md.
-Follow the generate→validate→test loop to create machine_readable sections for
-each executable article.
+    out.push_str(
+        "Follow this pipeline in order. Every step it does not list is a step this\n\
+         runtime cannot support; do not perform it from memory and do not report it.\n\n",
+    );
 
-## Step 3: Reverse Validation
-Read .claude/skills/law-reverse-validate/SKILL.md and follow its instructions
-to verify every element in machine_readable traces back to the original legal text.
+    let mut number = 0usize;
+    let mut omitted: Vec<String> = Vec::new();
+    for (spec, step_plan) in plan {
+        if !step_plan.is_in_prompt() {
+            omitted.push((*spec.name).to_string());
+            continue;
+        }
+        if spec.name == "MvT research" && skip_mvt {
+            omitted.push(format!("{} (already done for this law)", spec.name));
+            continue;
+        }
+        number += 1;
+        let _ = writeln!(out, "## Step {number}: {}", spec.name);
+        out.push_str(&step_body(spec, chunk_articles.is_some()));
+        out.push('\n');
+        if let capabilities::StepPlan::Degraded { missing } = step_plan {
+            let _ = writeln!(out, "\n{}", capabilities::degraded_note(missing));
+        }
+        out.push('\n');
+    }
 
-Write all changes to disk. Do not ask questions — proceed autonomously.
+    if !omitted.is_empty() {
+        let _ = writeln!(
+            out,
+            "Not part of this run: {}. Produce nothing that would have come from them,\n\
+             and cite no source you have not read in this session.\n",
+            omitted.join(", ")
+        );
+    }
 
-## Progress tracking
-Before starting each step, write a JSON progress file to report your current phase.
-Write to: {progress_file_path}
+    number += 1;
+    let _ = writeln!(
+        out,
+        "## Step {number}: Session report\n\
+         Write (or update) the file `.enrichment-result.yaml` next to the law YAML with\n\
+         a `chunk_report` mapping recording what you did in this session:\n\
+         \n\
+         ```yaml\n\
+         chunk_report:\n\
+         \x20 articles_reviewed: [\"<number>\", ...]\n\
+         \x20 articles_skipped:\n\
+         \x20   - number: \"<number>\"\n\
+         \x20     reason: \"<why no machine_readable, e.g. definition/transitional article>\"\n\
+         ```\n\
+         \n\
+         This report is REQUIRED even when no article needed a machine_readable\n\
+         section. Keep any existing `related_legislation` entries in that file intact.\n"
+    );
 
-Write this file at these moments:
-- Before Step 1: {{"phase": "mvt_research", "step": 1, "total_steps": 3}}
-- Before Step 2: {{"phase": "generating", "step": 2, "total_steps": 3, "article_count": N}}
-- After validation in Step 2: {{"phase": "validating", "step": 2, "total_steps": 3, "iteration": M}}
-- Before Step 3: {{"phase": "reverse_validating", "step": 3, "total_steps": 3}}
+    let _ = writeln!(
+        out,
+        "Write all changes to disk. Do not ask questions — proceed autonomously.\n\
+         \n\
+         ## Progress tracking\n\
+         Before starting each step, write a JSON progress file to: {progress_file_path}\n\
+         Use the Write tool, one brief write per phase transition, with the fields\n\
+         `phase`, `step` and `total_steps`."
+    );
 
-Use the Write tool. Keep it brief — just one write per phase transition."#
-    )
+    out
 }
 
 /// Prompt for a feedback pass: the artefact exists and a gate found
@@ -1263,82 +1399,6 @@ Write the result back to the same file. Do not ask questions."#
 /// to the articles edited this session; and the agent must record a
 /// `chunk_report` in `.enrichment-result.yaml` so a legitimately-empty chunk
 /// (e.g. transitional law) still proves it was reviewed.
-fn build_chunk_prompt(
-    yaml_path: &str,
-    progress_file_path: &str,
-    article_numbers: &[String],
-    skip_mvt: bool,
-) -> String {
-    let article_list = article_numbers.join(", ");
-    let mvt_step = if skip_mvt {
-        "## Step 1: MvT Research — SKIP\n\
-         MvT research already ran during an earlier session for this law; its\n\
-         feature file is already present. Do NOT redo it. Proceed to step 2."
-            .to_string()
-    } else {
-        "## Step 1: MvT Research\n\
-         Read .claude/skills/law-mvt-research/SKILL.md and follow its instructions to\n\
-         search for Memorie van Toelichting documents and generate Gherkin test scenarios.\n\
-         If no MvT documents are found, proceed to step 2 anyway."
-            .to_string()
-    };
-    format!(
-        r#"You are interpreting a Dutch law to make it machine-executable.
-
-The law YAML file is: {yaml_path}
-
-This is one chunk of a larger law. Process ONLY these articles (by their
-`number` field) and leave every other article completely untouched:
-
-{article_list}
-
-Follow this pipeline in order. For each step, read the referenced skill file
-and follow its instructions completely.
-
-{mvt_step}
-
-## Step 2: Generate machine_readable
-Read .claude/skills/law-generate/SKILL.md and its reference.md and examples.md.
-Follow the generate→validate→test loop to create machine_readable sections for
-each executable article — restricted to the article subset listed above.
-
-## Step 3: Reverse Validation
-Read .claude/skills/law-reverse-validate/SKILL.md and follow its instructions
-to verify every element in machine_readable traces back to the original legal
-text — only for the articles you edited in this session.
-
-## Step 4: Chunk report
-Write (or update) the file `.enrichment-result.yaml` next to the law YAML with
-a `chunk_report` mapping recording what you did in this session:
-
-```yaml
-chunk_report:
-  articles_reviewed: ["<number>", ...]
-  articles_skipped:
-    - number: "<number>"
-      reason: "<why no machine_readable, e.g. definition/transitional article>"
-```
-
-This report is REQUIRED even when no article in this chunk needed a
-machine_readable section. Keep any existing `related_legislation` entries in
-that file intact.
-
-Write all changes to disk. Do not ask questions — proceed autonomously.
-
-## Progress tracking
-Before starting each step, write a JSON progress file to report your current phase.
-Write to: {progress_file_path}
-
-Write this file at these moments:
-- Before Step 1: {{"phase": "mvt_research", "step": 1, "total_steps": 3}}
-- Before Step 2: {{"phase": "generating", "step": 2, "total_steps": 3, "article_count": N}}
-- After validation in Step 2: {{"phase": "validating", "step": 2, "total_steps": 3, "iteration": M}}
-- Before Step 3: {{"phase": "reverse_validating", "step": 3, "total_steps": 3}}
-
-Use the Write tool. Keep it brief — just one write per phase transition."#
-    )
-}
-
 /// Compute the path of the progress file for a given law YAML file.
 ///
 /// The progress file sits next to the YAML (e.g.
@@ -2805,6 +2865,9 @@ related_legislation:
         let prompt = build_prompt(
             "regulation/nl/wet/test/2025-01-01.yaml",
             "/tmp/repo/regulation/nl/wet/test/.enrichment-progress.json",
+            &full_plan(),
+            None,
+            false,
         );
         assert!(prompt.contains("law-mvt-research/SKILL.md"));
         assert!(prompt.contains("law-generate/SKILL.md"));
@@ -3255,6 +3318,7 @@ articles:
                     Pass::Feedback(f) => match f.gate {
                         Gate::Schema => "schema",
                         Gate::Checks => "checks",
+                        Gate::Marking => "marking",
                     },
                 });
                 if !matches!(payload.pass, Pass::Translate) {
@@ -3721,85 +3785,110 @@ articles:
         );
     }
 
-    #[test]
-    fn test_build_prompt_is_byte_stable() {
-        // The whole-law prompt must stay byte-identical to the pre-chunking
-        // prompt: chunking must not change what an N=0 (or legacy) run sends
-        // to the LLM. Pin the exact text — an intentional prompt change must
-        // update this fixture consciously.
-        let expected = r#"You are interpreting a Dutch law to make it machine-executable.
+    /// Plan with every step available, for prompt tests that are not about
+    /// capabilities.
+    fn full_plan() -> Vec<(&'static capabilities::StepSpec, capabilities::StepPlan)> {
+        capabilities::CHAIN
+            .iter()
+            .map(|s| (s, capabilities::StepPlan::Run))
+            .collect()
+    }
 
-The law YAML file is: regulation/nl/wet/test/2025-01-01.yaml
-
-Follow this pipeline in order. For each step, read the referenced skill file
-and follow its instructions completely.
-
-## Step 1: MvT Research
-Read .claude/skills/law-mvt-research/SKILL.md and follow its instructions to
-search for Memorie van Toelichting documents and generate Gherkin test scenarios.
-If no MvT documents are found, proceed to step 2 anyway.
-
-## Step 2: Generate machine_readable
-Read .claude/skills/law-generate/SKILL.md and its reference.md and examples.md.
-Follow the generate→validate→test loop to create machine_readable sections for
-each executable article.
-
-## Step 3: Reverse Validation
-Read .claude/skills/law-reverse-validate/SKILL.md and follow its instructions
-to verify every element in machine_readable traces back to the original legal text.
-
-Write all changes to disk. Do not ask questions — proceed autonomously.
-
-## Progress tracking
-Before starting each step, write a JSON progress file to report your current phase.
-Write to: /tmp/repo/.enrichment-progress.json
-
-Write this file at these moments:
-- Before Step 1: {"phase": "mvt_research", "step": 1, "total_steps": 3}
-- Before Step 2: {"phase": "generating", "step": 2, "total_steps": 3, "article_count": N}
-- After validation in Step 2: {"phase": "validating", "step": 2, "total_steps": 3, "iteration": M}
-- Before Step 3: {"phase": "reverse_validating", "step": 3, "total_steps": 3}
-
-Use the Write tool. Keep it brief — just one write per phase transition."#;
-        assert_eq!(
-            build_prompt(
-                "regulation/nl/wet/test/2025-01-01.yaml",
-                "/tmp/repo/.enrichment-progress.json"
-            ),
-            expected
-        );
+    /// Plan as the enrichment lane actually runs today: no retrieval, no
+    /// shell.
+    fn lane_plan() -> Vec<(&'static capabilities::StepSpec, capabilities::StepPlan)> {
+        let grant: std::collections::BTreeSet<String> = capabilities::ENRICH_GRANT
+            .iter()
+            .map(|t| (*t).to_owned())
+            .collect();
+        capabilities::CHAIN
+            .iter()
+            .map(|spec| {
+                let declared = match spec.name {
+                    "MvT research" => "---\nallowed-tools: Read, Write, WebFetch, WebSearch, Bash, Grep, Glob\n---\n",
+                    "Generate machine_readable" => {
+                        "---\nallowed-tools: Read, Edit, Write, Bash, Grep, Glob\n---\n"
+                    }
+                    _ => "---\nallowed-tools: Read, Edit, Write, Grep, Glob\n---\n",
+                };
+                (spec, capabilities::plan_step(spec, &grant, Some(declared)))
+            })
+            .collect()
     }
 
     #[test]
-    fn test_build_chunk_prompt_first_chunk_includes_mvt() {
+    fn prompt_omits_the_step_this_runtime_cannot_perform() {
+        // The measured failure of round 2: the agent was told to search for
+        // parliamentary documents without any way to retrieve them, and
+        // answered with a fabricated kst- number.
+        let prompt = build_prompt("law.yaml", "/tmp/p.json", &lane_plan(), None, false);
+        assert!(!prompt.contains("law-mvt-research/SKILL.md"));
+        assert!(!prompt.contains("Memorie van Toelichting"));
+        assert!(prompt.contains("Not part of this run: MvT research"));
+        assert!(prompt.contains("cite no source you have not read"));
+    }
+
+    #[test]
+    fn prompt_names_what_a_degraded_step_may_not_simulate() {
+        // law-generate declares Bash for its validate loop; the step still
+        // runs, and the prompt must say the loop is not available here and
+        // what replaces it.
+        let prompt = build_prompt("law.yaml", "/tmp/p.json", &lane_plan(), None, false);
+        assert!(prompt.contains("law-generate/SKILL.md"));
+        assert!(prompt.contains("Bash"));
+        assert!(prompt.contains("do not simulate"));
+        assert!(prompt.contains("worker validates"));
+    }
+
+    #[test]
+    fn steps_are_numbered_consecutively_after_an_omission() {
+        // A gap in the numbering tells the agent something was withheld and
+        // invites it to fill in the blank.
+        let prompt = build_prompt("law.yaml", "/tmp/p.json", &lane_plan(), None, false);
+        assert!(prompt.contains("## Step 1: Generate machine_readable"));
+        assert!(prompt.contains("## Step 2: Reverse validation"));
+        assert!(prompt.contains("## Step 3: Session report"));
+        assert!(!prompt.contains("## Step 4"));
+    }
+
+    #[test]
+    fn full_grant_restores_the_mvt_step() {
+        let prompt = build_prompt("law.yaml", "/tmp/p.json", &full_plan(), None, false);
+        assert!(prompt.contains("## Step 1: MvT research"));
+        assert!(prompt.contains("law-mvt-research/SKILL.md"));
+        assert!(!prompt.contains("Not part of this run"));
+    }
+
+    #[test]
+    fn chunk_prompt_restricts_to_the_window() {
         let numbers = vec!["1".to_string(), "2".to_string(), "3a".to_string()];
-        let prompt = build_chunk_prompt(
+        let prompt = build_prompt(
             "regulation/nl/wet/test/2025-01-01.yaml",
             "/tmp/repo/.enrichment-progress.json",
-            &numbers,
+            &full_plan(),
+            Some(&numbers),
             false,
         );
         assert!(prompt.contains("Process ONLY these articles"));
         assert!(prompt.contains("1, 2, 3a"));
-        assert!(prompt.contains("law-mvt-research/SKILL.md"));
-        assert!(!prompt.contains("SKIP"));
+        assert!(prompt.contains("restricted to the article subset"));
+        assert!(prompt.contains("only for the articles you edited"));
         assert!(prompt.contains("chunk_report"));
         assert!(prompt.contains("articles_skipped"));
-        assert!(prompt.contains("law-generate/SKILL.md"));
-        assert!(prompt.contains("law-reverse-validate/SKILL.md"));
     }
 
     #[test]
-    fn test_build_chunk_prompt_continuation_skips_mvt() {
+    fn skip_mvt_reports_the_omission_rather_than_hiding_it() {
         let numbers = vec!["16".to_string(), "17".to_string()];
-        let prompt = build_chunk_prompt(
+        let prompt = build_prompt(
             "regulation/nl/wet/test/2025-01-01.yaml",
             "/tmp/repo/.enrichment-progress.json",
-            &numbers,
+            &full_plan(),
+            Some(&numbers),
             true,
         );
-        assert!(prompt.contains("MvT Research — SKIP"));
         assert!(!prompt.contains("law-mvt-research/SKILL.md"));
+        assert!(prompt.contains("already done for this law"));
         assert!(prompt.contains("16, 17"));
     }
 

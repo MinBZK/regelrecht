@@ -14,8 +14,12 @@
 //! worker validates, the worker checks. The agent reads and writes.
 //!
 //! [`checks`] is the part that needs no model at all and runs today over any
-//! law file, enriched by either flow.
+//! law file, enriched by either flow. [`capabilities`] is the other half of
+//! that constraint: it compares what a step needs against what the runtime
+//! grants, so an instruction the agent cannot carry out is left out of the
+//! prompt instead of being answered with an invention.
 
 pub mod assemble;
+pub mod capabilities;
 pub mod checks;
 pub mod source_gate;
