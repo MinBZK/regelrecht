@@ -198,11 +198,15 @@ mutants *ARGS:
 # relatief aan de workspace-root (packages/), dus de diff moet `b/engine/src/…`
 # bevatten en niet `b/packages/engine/src/…`. Voer je een diff met de verkeerde
 # prefix in, dan vindt hij nul mutanten en lijkt alles in orde.
+#
+# Driepunts (`BASE...HEAD`), niet tweepunts: tweepunts vergelijkt twee bomen,
+# dus alles wat main na jouw aftakking veranderde komt in de diff terecht als
+# jouw wijziging. Op een branch die achterloopt muteer je dan andermans regels.
 mutants-diff BASE="origin/main":
     #!/usr/bin/env bash
     set -euo pipefail
     diff_file="$(mktemp -t mutants-diff-XXXXXX.diff)"
-    git -C packages diff --relative "{{BASE}}" -- engine > "$diff_file"
+    git -C packages diff --relative "{{BASE}}...HEAD" -- engine > "$diff_file"
     if [ ! -s "$diff_file" ]; then
         echo "Geen gewijzigde regels in packages/engine ten opzichte van {{BASE}}."
         exit 0

@@ -77,8 +77,13 @@ jobs:
         # cargo-mutants noemt bestanden relatief aan de workspace-root
         # (packages/), dus de diff moet dezelfde prefix hebben: `b/engine/src/…`
         # en niet `b/packages/engine/src/…`. Vandaar --relative vanuit packages/.
+        #
+        # Driepunts (`base...HEAD`), niet tweepunts: tweepunts vergelijkt twee
+        # bomen, dus alles wat main na de aftakking veranderde telt mee als
+        # wijziging van deze PR. Dan muteert de poort regels die de auteur niet
+        # heeft aangeraakt, en kan hij rood worden op andermans werk.
         run: |
-          git diff --relative "${{ github.event.pull_request.base.sha }}" HEAD \
+          git diff --relative "${{ github.event.pull_request.base.sha }}...HEAD" \
             -- engine > "$RUNNER_TEMP/pr.diff"
           if [ -s "$RUNNER_TEMP/pr.diff" ]; then
             echo "has-changes=true" >> "$GITHUB_OUTPUT"
