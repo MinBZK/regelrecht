@@ -32,7 +32,7 @@ expert-workshop.
 | `provenance-checks` (RFC-013) | schema-registratie, `$schema`-refs, symlink | repo-structuur | CI-gate (PR) |
 | Engine-resolver (runtime) | bestaan wet/artikel/output, cycles, types | de geladen corpus zelf | alleen bij uitvoering (BDD) |
 | **cross-law-integriteit** | MISPLACED/DANGLING/PLAIN-PARAM/IMPL-DANGLING/IMPL-NO-DATE | `regulation → outputs` + `open_terms`-index uit de corpus | **CI-gate** (`cross-law-integrity` job) |
-| BDD-features | end-to-end reken-uitkomsten incl. IoC | verwachte waarden in `features/*.feature` | CI-gate — *let op meta-check* |
+| BDD-features | end-to-end reken-uitkomsten incl. IoC | verwachte waarden in `corpus/regulation/**/scenarios/*.feature` | CI-gate — *let op meta-check* |
 | RFC-013 execution receipt | reproduceerbaarheid | engine+schema+regulation-hash+scope | runtime |
 | **drift-check** (Step 0) | `text:` ≡ geldende wettekst (structureel + tekstueel) | **wetten.overheid.nl/`<bwb>`/`<valid_from>`** (+ Staatsblad) | methodologisch (WebFetch + kalibratie) |
 | 4-weg-classificatie | oorzaak/route van een bevinding | wet + jurisprudentie + schema/engine | methodologisch |

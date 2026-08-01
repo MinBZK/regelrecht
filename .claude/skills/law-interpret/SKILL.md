@@ -34,10 +34,16 @@ Invoke `/law-mvt-research` on the target law file.
 This searches for Memorie van Toelichting documents and generates Gherkin
 test scenarios from legislature-intended examples.
 
-**Context passing:** The MvT skill writes its output to `features/{slug}.feature`.
-The `/law-generate` skill in Step 3 picks this up automatically when running
-`just bdd`, which executes all feature files in `features/`. No manual context
-transfer is needed — the file system is the interface.
+**Context passing:** The MvT skill writes its output beside the law it tests, as
+`{directory of the law YAML}/scenarios/{topic}.feature`. The `/law-generate`
+skill in Step 3 picks this up automatically when running `just bdd`, which
+collects every `*.feature` under a `scenarios/` directory in
+`corpus/regulation/` plus the conformance suite in `bdd/conformance/`. No manual
+context transfer is needed — the file system is the interface.
+
+A scenario written anywhere else is never run, and `just bdd` stays green while
+it sits there. If Step 2 reports a feature file outside a `scenarios/`
+directory, that is a bug in the run and not something to work around.
 
 After completion, note the results:
 - How many MvT documents were found
@@ -136,6 +142,6 @@ Interpreted {LAW_NAME}
   TODOs:
   - {external laws that need to be downloaded/implemented}
 
-  Feature file: features/{slug}.feature
+  Feature file: {law directory}/scenarios/{topic}.feature
   The law is now executable via the engine!
 ```
