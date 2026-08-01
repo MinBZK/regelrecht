@@ -72,11 +72,30 @@ pub struct Inbound {
 /// abbreviations that would trip this up ("art.", "jo.", "e.d.") do not change
 /// which connective sits next to which article number. Getting a boundary
 /// wrong widens or narrows the quoted sentence and never changes the verdict.
-fn sentences(text: &str) -> Vec<&str> {
-    text.split_inclusive(['.', ';'])
-        .map(str::trim)
+fn sentences(text: &str) -> Vec<String> {
+    strip_reference_links(text)
+        .split_inclusive(['.', ';'])
+        .map(|s| s.trim().to_owned())
         .filter(|s| !s.is_empty())
         .collect()
+}
+
+/// Drop the markdown reference-link machinery the harvester leaves in the text.
+///
+/// Two separate hazards. The footer lines (`[ref1]: https://wetten.nl/...`)
+/// contain full stops inside a URL, so sentence splitting cuts through them and
+/// the halves end up quoted as statutory text in the brief. And the fragment
+/// `#Artikel1` reads as a reference to article 1 to anything scanning for the
+/// word, which is how article 1 of the Awir acquired two modifiers it does not
+/// have.
+fn strip_reference_links(text: &str) -> String {
+    text.lines()
+        .filter(|line| {
+            let t = line.trim_start();
+            !(t.starts_with('[') && t.contains("]: ") && t.contains("://"))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Article numbers referred to in one sentence.
@@ -91,6 +110,19 @@ fn referenced_articles(sentence: &str) -> Vec<String> {
     let mut rest = lower.as_str();
     while let Some(pos) = rest.find("artikel") {
         let after = &rest[pos + "artikel".len()..];
+        // `#artikel1` in a URL is not a reference. A real one separates the
+        // word from the number, with a space or the plural ending.
+        if after.starts_with(|c: char| c.is_ascii_digit()) {
+            rest = after;
+            continue;
+        }
+        // "artikel 8 van de Zorgverzekeringswet" points outside this law, and
+        // this brief is about what one law does to itself. Cross-law edges are
+        // the work queue's business, not the brief's.
+        if is_external_reference(after) {
+            rest = after;
+            continue;
+        }
         // "artikelen 8 en 9" enumerates; "artikel 8" does not.
         let tail = after.strip_prefix("en").unwrap_or(after);
         let mut scan = tail;
@@ -128,6 +160,45 @@ fn referenced_articles(sentence: &str) -> Vec<String> {
     out
 }
 
+/// Whether what follows an article number sends it to another law.
+///
+/// "van de", "van het" and "van die" introduce the statute the article belongs
+/// to. Without this the brief claims that an article of some other law modifies
+/// an article here, which is worse than saying nothing: it is a relation the
+/// reader cannot check against the file in front of them.
+fn is_external_reference(after_word: &str) -> bool {
+    let tail: String = after_word
+        .chars()
+        .skip_while(|c| c.is_whitespace() || c.is_ascii_digit() || *c == ',')
+        .take(60)
+        .collect();
+    let tail = tail.trim_start();
+    for lead in [
+        "van de ",
+        "van het ",
+        "van die ",
+        "van deze wet",
+        "van dat ",
+    ] {
+        if tail.starts_with(lead) {
+            // "van deze wet" points back here, so it is not external.
+            return !tail.starts_with("van deze wet");
+        }
+    }
+    // A lid qualifier may sit in between: "artikel 8, tweede lid, van de Awir".
+    if let Some(rest) = tail.strip_prefix("tweede lid").or_else(|| {
+        ["eerste lid", "derde lid", "vierde lid", "vijfde lid"]
+            .iter()
+            .find_map(|l| tail.strip_prefix(l))
+    }) {
+        let rest = rest.trim_start_matches([',', ' ']);
+        return rest.starts_with("van de ")
+            || rest.starts_with("van het ")
+            || rest.starts_with("van die ");
+    }
+    false
+}
+
 /// Articles outside the window that modify articles inside it.
 ///
 /// Scans the whole law: an article that bends the window can sit anywhere, and
@@ -146,7 +217,7 @@ pub fn inbound_modifiers(law: &LawContext, window: &[String]) -> Vec<Inbound> {
             let Some(connective) = MODIFYING.iter().find(|c| lower.contains(**c)) else {
                 continue;
             };
-            for number in referenced_articles(sentence) {
+            for number in referenced_articles(&sentence) {
                 if !target.contains(number.as_str()) {
                     continue;
                 }
@@ -154,7 +225,7 @@ pub fn inbound_modifiers(law: &LawContext, window: &[String]) -> Vec<Inbound> {
                     from: article.number.clone(),
                     to: number,
                     connective: (*connective).to_owned(),
-                    sentence: sentence.to_owned(),
+                    sentence: sentence.clone(),
                 });
             }
         }
@@ -430,6 +501,58 @@ mod tests {
             vec![],
         );
         assert!(inbound_modifiers(&l, &["8".to_owned()]).is_empty());
+    }
+
+    #[test]
+    fn a_url_fragment_is_not_a_reference() {
+        // Measured on the Awir in round 3: the harvested text carries markdown
+        // reference footers, and `#Artikel1` inside a URL made article 1 look
+        // like the target of two modifications it does not have.
+        assert!(referenced_articles("zie https://wetten.nl/BWBR0008659#Artikel1").is_empty());
+    }
+
+    #[test]
+    fn reference_footers_are_not_statutory_text() {
+        // The footer holds full stops inside a URL, so splitting on sentences
+        // cuts through it and the halves get quoted as if they were the law.
+        let text = "In afwijking van artikel 8 geldt nihil.\n\n[ref1]: https://wetten.nl/BWBR0008659#Artikel1\n";
+        let found = sentences(text);
+        assert!(
+            found.iter().all(|s| !s.contains("wetten.nl")),
+            "got: {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_reference_into_another_law_is_not_an_inbound_modifier() {
+        // The brief is about what one law does to itself. A relation to some
+        // other statute cannot be checked against the file in front of the
+        // reader, and cross-law edges belong to the work queue.
+        let l = law(
+            vec![
+                article("1", "", "Begripsbepalingen."),
+                article(
+                    "31ter",
+                    "",
+                    "In afwijking van artikel 31bis geldt dit voor wie recht heeft op een tegemoetkoming als bedoeld in artikel 1 van die wet.",
+                ),
+            ],
+            vec![],
+        );
+        assert!(
+            inbound_modifiers(&l, &["1".to_owned()]).is_empty(),
+            "article 1 of another law was read as article 1 of this one"
+        );
+    }
+
+    #[test]
+    fn a_lid_qualifier_does_not_hide_the_other_law() {
+        assert!(is_external_reference(
+            " 8, tweede lid, van de Zorgverzekeringswet"
+        ));
+        assert!(is_external_reference(" 8 van de Awir"));
+        assert!(!is_external_reference(" 8 geldt niet"));
+        assert!(!is_external_reference(" 8 van deze wet"));
     }
 
     #[test]
