@@ -457,10 +457,16 @@ fn get_property(value: &Value, property_path: &str, depth: usize) -> Result<Valu
         )));
     }
 
-    // Handle nested paths recursively
+    // Handle nested paths recursively. Beide aanroepen krijgen dezelfde,
+    // eenmaal opgehoogde diepte. Twee losse `depth + 1`-uitdrukkingen leverden
+    // twee mutanten op met exact dezelfde omschrijving, waarvan alleen die op
+    // de `rest`-tak te doden is: de `first`-tak stopt altijd meteen, want daar
+    // zit per definitie geen punt meer in. Eén uitdrukking, één mutant, en die
+    // wordt gedood door test_property_depth_limit_boundary.
     if let Some((first, rest)) = property_path.split_once('.') {
-        let intermediate = get_property(value, first, depth + 1)?;
-        return get_property(&intermediate, rest, depth + 1);
+        let deeper = depth + 1;
+        let intermediate = get_property(value, first, deeper)?;
+        return get_property(&intermediate, rest, deeper);
     }
 
     match value {
