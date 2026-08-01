@@ -71,31 +71,33 @@ check: format lint build-check validate validate-annotations test
 
 # --- Tests ---
 
-# Crates whose tests/ targets need Docker (testcontainers). Enumerates the
-# exceptions, not the members: a new crate is covered by --workspace. The list
-# is exactly the crates that dev-depend on regelrecht-pipeline/test-utils:
+# Crates with testcontainers-backed suites. Enumerates the exceptions, not the
+# members: a new crate is covered by --workspace. The list is exactly the crates
+# that dev-depend on regelrecht-pipeline/test-utils:
 #   grep -l 'regelrecht-pipeline.*test-utils' packages/*/Cargo.toml
-docker_test_crates := "--exclude regelrecht-pipeline --exclude regelrecht-editor-api --exclude regelrecht-admin"
-docker_test_pkgs := "-p regelrecht-pipeline -p regelrecht-editor-api -p regelrecht-admin"
+db_crates_exclude := "--exclude regelrecht-pipeline --exclude regelrecht-editor-api --exclude regelrecht-admin"
+db_crates := "-p regelrecht-pipeline -p regelrecht-editor-api -p regelrecht-admin"
+
+# Every recipe below is ONE cargo invocation, and that is load-bearing. Cargo
+# unifies features over the selected packages, so two invocations with different
+# selections in the same target dir resolve dependencies differently and rebuild
+# each other's artefacts. Splitting `just test` into four invocations cost 240
+# seconds of pure rebuild in CI, with regelrecht-engine compiled four times.
 
 # Run every Rust test in the workspace. Needs Docker for the testcontainers
-# suites. This is what CI runs.
-#
-# --test-threads on the container-backed suites: each test starts its own
-# PostgreSQL container, and cargo scales its parallelism with the core count.
-# On a 16-core machine that means sixteen simultaneous container creations and
-# the daemon starts refusing connections (EAGAIN), which reads as a test
-# failure while nothing is wrong with the code.
-test: test-no-docker
-    cd packages && {{ci_flags}} cargo test {{docker_test_pkgs}} --all-features --tests -- --test-threads=4
-    # --lib scoped: the network-dependent test in pipeline/tests stays ignored.
-    cd packages && {{ci_flags}} cargo test -p regelrecht-pipeline --all-features --lib -- --ignored --test-threads=4
+# suites. This is what `just check` runs.
+test:
+    cd packages && {{ci_flags}} cargo test --workspace --all-features
 
-# Run every Rust test that needs no external services. Same coverage as `test`
-# minus the container-backed suites.
+# Every test that needs no external services: the workspace minus the
+# container-backed crates. For a machine without a Docker daemon, and the
+# `unit` leg of the CI matrix.
 test-no-docker:
-    cd packages && {{ci_flags}} cargo test --workspace --all-features --lib --bins
-    cd packages && {{ci_flags}} cargo test --workspace --all-features --tests {{docker_test_crates}}
+    cd packages && {{ci_flags}} cargo test --workspace --all-features {{db_crates_exclude}}
+
+# Only the container-backed crates: the `db` leg of the CI matrix.
+test-db:
+    cd packages && {{ci_flags}} cargo test {{db_crates}} --all-features
 
 # Run Rust BDD tests
 bdd:

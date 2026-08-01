@@ -12,7 +12,9 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Op main niet afbreken: een tweede merge zou de run van de eerste afkappen
+  # en main zonder afgeronde CI achterlaten.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -316,37 +318,44 @@ jobs:
         env:
           SKIP: ${{ needs.changes.outputs.ci == 'true' && '' || 'rust-format,rust-lint,validate-law-yaml' }}
 
-  test:
-    name: Test
+  rust-tests:
+    name: Rust tests (${{ matrix.leg }})
     needs: changes
+    if: needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # Gesneden langs de grens die er al is: de crates met een
+        # testcontainers-suite tegenover de rest. Beide benen zijn precies één
+        # cargo-aanroep, want twee selecties in dezelfde target-dir laten cargo
+        # elkaars artefacten herbouwen.
+        include:
+          - leg: unit
+            recipe: test-no-docker
+          - leg: db
+            recipe: test-db
     env:
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: "true"
       CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        if: needs.changes.outputs.ci == 'true'
 
       - name: Install just
-        if: needs.changes.outputs.ci == 'true'
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
 
       - name: Install Rust toolchain
-        if: needs.changes.outputs.ci == 'true'
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
 
       - name: Install mold linker
-        if: needs.changes.outputs.ci == 'true'
         run: sudo apt-get update && sudo apt-get install -y mold
 
       - name: Run sccache
-        if: needs.changes.outputs.ci == 'true'
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba  # v0.0.11
 
       - name: Cache cargo registry (shared)
-        if: needs.changes.outputs.ci == 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
@@ -355,8 +364,19 @@ jobs:
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-registry-
 
+      - name: Run tests
+        run: just ${{ matrix.recipe }}
+
+  frontend-tests:
+    name: Frontend tests
+    needs: changes
+    if: needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
       - name: Setup Node.js
-        if: needs.changes.outputs.ci == 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
         with:
           node-version: '22'
@@ -365,33 +385,40 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install frontend dependencies
-        if: needs.changes.outputs.ci == 'true'
         run: npm ci
 
       - name: BDD grammar codegen is in sync
-        if: needs.changes.outputs.ci == 'true'
         run: |
           node bdd/codegen/gen-js.mjs
           git diff --exit-code frontend/src/gherkin/grammar.generated.js \
             || { echo "::error::grammar.generated.js is stale — run 'just bdd-codegen' and commit the result"; exit 1; }
 
       - name: Run frontend tests
-        if: needs.changes.outputs.ci == 'true'
         # Directory form (`-w frontend`) rather than the package name, so a
         # rename of the `name` field can't silently skip the tests.
         run: npm test -w frontend
 
       - name: Run shared-package tests
-        if: needs.changes.outputs.ci == 'true'
         run: npm test -w packages/frontend-shared
 
-      - name: Run all tests
-        if: needs.changes.outputs.ci == 'true'
-        run: just test
-
-      - name: Skip (no relevant changes)
-        if: needs.changes.outputs.ci != 'true'
-        run: echo "No relevant changes, skipping tests"
+  # Verplichte check op main. De benen hierboven dragen nieuwe namen en mogen
+  # dus van vorm veranderen; deze naam moet blijven bestaan, want een required
+  # check die niet verschijnt laat elke PR eeuwig hangen. Skipped benen (geen
+  # relevante wijziging) gelden hier als geslaagd.
+  test:
+    name: Test
+    needs: [rust-tests, frontend-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Gate
+        run: |
+          echo "rust-tests: ${{ needs.rust-tests.result }}"
+          echo "frontend-tests: ${{ needs.frontend-tests.result }}"
+          case "${{ needs.rust-tests.result }} ${{ needs.frontend-tests.result }}" in
+            *failure*|*cancelled*) echo "::error::een testbeen faalde"; exit 1 ;;
+          esac
 
   wasm:
     name: WASM Build

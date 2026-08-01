@@ -3368,7 +3368,6 @@ mod contract_tests {
     }
 
     #[tokio::test]
-    #[ignore = "container-backed (testcontainers); run with `just test` or `-- --ignored`"]
     async fn document_convert_without_task_delivery_fails_terminally() {
         // Een pre-taken-mechanisme-payload (geen deliver-veld): het oude
         // directe-push-gedrag bestaat niet meer, dus dit moet terminaal falen.
@@ -3388,7 +3387,6 @@ mod contract_tests {
     }
 
     #[tokio::test]
-    #[ignore = "container-backed (testcontainers); run with `just test` or `-- --ignored`"]
     async fn document_convert_task_delivery_without_requested_by_fails_terminally() {
         // deliver=task zonder aanvrager: geen assignee voor de review-taak,
         // dus ook geen aflever-pad — zelfde terminale weigering.
