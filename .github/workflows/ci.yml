@@ -334,12 +334,34 @@ jobs:
         include:
           - leg: unit
             recipe: test-no-docker
+            postgres-url: ''
           - leg: db
             recipe: test-db
+            # De testhelper start zelf een container als deze leeg is. Hier
+            # staat er al een als service naast de job, en dat scheelt de
+            # opstart in elk van de ruim twintig testbinaries.
+            postgres-url: postgres://postgres:postgres@127.0.0.1:5432
+    services:
+      # Dezelfde image als de testhelper zelf zou starten, zodat de tests op
+      # dezelfde Postgres draaien als lokaal zonder deze variabele. Het
+      # unit-been gebruikt hem niet; die paar seconden opstart zijn de
+      # eenvoud van één matrix waard.
+      postgres:
+        image: postgres:11-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: "true"
       CARGO_INCREMENTAL: "0"
+      TEST_POSTGRES_URL: ${{ matrix.postgres-url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
