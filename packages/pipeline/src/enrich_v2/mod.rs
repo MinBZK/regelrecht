@@ -16,5 +16,6 @@
 //! [`checks`] is the part that needs no model at all and runs today over any
 //! law file, enriched by either flow.
 
+pub mod assemble;
 pub mod checks;
 pub mod source_gate;
