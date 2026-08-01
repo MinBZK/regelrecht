@@ -64,16 +64,38 @@ validate-annotations *FILES:
 conformance:
     cd packages && {{ci_flags}} cargo test -p regelrecht-engine --features validate --test conformance
 
-# Run all quality checks (format + lint + check + validate + validate-annotations + tests)
-# Note: pipeline-integration-test excluded — it requires Docker (testcontainers)
-# Note: the conformance suite runs as part of `test` (cargo test --all-features).
-check: format lint build-check validate validate-annotations test github-test harvester-test pipeline-test admin-fmt admin-lint admin-check admin-test editor-api-fmt editor-api-lint editor-api-check arch-test
+# Run all quality checks, exactly what CI runs. Needs Docker for the
+# container-backed suites; on a machine without a daemon, swap `test` for
+# `test-no-docker`.
+check: format lint build-check validate validate-annotations test
 
 # --- Tests ---
 
-# Run Rust unit and integration tests
-test:
-    cd packages/engine && {{ci_flags}} cargo test --all-features
+# Crates whose tests/ targets need Docker (testcontainers). Enumerates the
+# exceptions, not the members: a new crate is covered by --workspace. The list
+# is exactly the crates that dev-depend on regelrecht-pipeline/test-utils:
+#   grep -l 'regelrecht-pipeline.*test-utils' packages/*/Cargo.toml
+docker_test_crates := "--exclude regelrecht-pipeline --exclude regelrecht-editor-api --exclude regelrecht-admin"
+docker_test_pkgs := "-p regelrecht-pipeline -p regelrecht-editor-api -p regelrecht-admin"
+
+# Run every Rust test in the workspace. Needs Docker for the testcontainers
+# suites. This is what CI runs.
+#
+# --test-threads on the container-backed suites: each test starts its own
+# PostgreSQL container, and cargo scales its parallelism with the core count.
+# On a 16-core machine that means sixteen simultaneous container creations and
+# the daemon starts refusing connections (EAGAIN), which reads as a test
+# failure while nothing is wrong with the code.
+test: test-no-docker
+    cd packages && {{ci_flags}} cargo test {{docker_test_pkgs}} --all-features --tests -- --test-threads=4
+    # --lib scoped: the network-dependent test in pipeline/tests stays ignored.
+    cd packages && {{ci_flags}} cargo test -p regelrecht-pipeline --all-features --lib -- --ignored --test-threads=4
+
+# Run every Rust test that needs no external services. Same coverage as `test`
+# minus the container-backed suites.
+test-no-docker:
+    cd packages && {{ci_flags}} cargo test --workspace --all-features --lib --bins
+    cd packages && {{ci_flags}} cargo test --workspace --all-features --tests {{docker_test_crates}}
 
 # Run Rust BDD tests
 bdd:
@@ -97,7 +119,8 @@ github-test:
 harvester-test:
     cd packages/harvester && {{ci_flags}} cargo test
 
-# Run pipeline unit tests (no Docker/DB required)
+# Run pipeline unit tests. Five of these are container-backed and carry
+# #[ignore]; add `-- --ignored` to run those instead.
 pipeline-test:
     cd packages/pipeline && {{ci_flags}} cargo test --lib
 
@@ -112,8 +135,6 @@ pipeline-integration-test:
 test-e2e: wasm-build
     npm run test:e2e -w frontend
 
-# Run all tests (engine + github + harvester + pipeline unit + pipeline integration + editor-api)
-test-all: test github-test harvester-test pipeline-test pipeline-integration-test editor-api-test
 
 # Optionele variabelen-overrides (moeten VOOR de recipe-naam staan in just):
 #   just PR=886 smoke-preview
