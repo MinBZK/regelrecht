@@ -22,6 +22,11 @@ path = "src/bin/enrich_worker.rs"
 name = "regelrecht-pipeline-api"
 path = "src/bin/pipeline_api.rs"
 
+# Deterministic law checks: no database, no model, no shell.
+[[bin]]
+name = "law-check"
+path = "src/bin/law_check.rs"
+
 [dependencies]
 regelrecht-corpus = { path = "../corpus" }
 # `validate` voor de JSON-schema-validatie van gegenereerde basis-wet-YAML
