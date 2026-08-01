@@ -96,10 +96,12 @@ const checked = scoped ?? routes;
 
 const config = {
   defaults: {
-    // pa11y-ci draait standaard één URL tegelijk, en de sleutel hoort in
-    // `defaults` — op het hoogste niveau wordt hij genegeerd. Elke URL is een
-    // eigen Chromium, dus vier past op een runner met vier kernen.
-    concurrency: 4,
+    // Geen `concurrency` hier. Het scheelt fors (261 → 143 seconden op 89
+    // pagina's), maar pa11y-ci deelt dan één Chromium en struikelt over
+    // `Target.closeTarget`: 54 van de 89 pagina's faalden op die protocolfout
+    // in plaats van op een bevinding. Een wisselvallige gate is erger dan een
+    // trage; de winst zit in minder pagina's controleren, niet in ze
+    // tegelijk controleren.
     standard: 'WCAG2AA',
     runners: ['htmlcs', 'axe'],
     timeout: 30000,
