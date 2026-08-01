@@ -258,7 +258,12 @@ pub fn coverage(doc: &Value) -> Vec<Finding> {
         // A derogation or exception has to show up as a branch somewhere.
         // One branch can carry several connectives, so the test is that
         // there is at least one, not that the counts match.
-        if connectives_in_text > 0 && branches == 0 {
+        // A definition provision states what words mean. Its chapeau caveat
+        // ("tenzij anders is geregeld") and its enumerations ("dan wel")
+        // are not conditions on a value, so expecting a branch there is
+        // noise, and noise is what teaches a reader to stop looking.
+        let is_definition = is_definition_text(text);
+        if connectives_in_text > 0 && branches == 0 && !is_definition {
             let words: Vec<String> = leden
                 .iter()
                 .flat_map(|(n, body)| {
@@ -424,6 +429,66 @@ const CITATION_SIGNALS: &[&str] = &[
     "staatscourant",
     "ecli:",
 ];
+
+/// Whether anything the agent wrote beside the law names a source it cannot
+/// have read.
+///
+/// The law YAML is not the only file an agent produces. It writes scenario
+/// files, result envelopes and notes, and a check that only looks at the law
+/// misses whatever landed elsewhere. That is not hypothetical: a fabricated
+/// kamerstuk reference with a working URL appeared in a `.feature` file while
+/// the law itself was clean.
+///
+/// `provided` is every text the agent was given, so a reference that occurs
+/// there is one it read rather than recalled.
+pub fn citations_in_companion_files(dir: &Path, provided: &str) -> Vec<Finding> {
+    let provided_lower = provided.to_lowercase();
+    let mut findings = Vec::new();
+
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&current) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            // The law itself is covered by `marking_discipline`, which knows
+            // its structure and can say which article a finding belongs to.
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default();
+            if name.ends_with(".yaml") && !name.starts_with('.') {
+                continue;
+            }
+            let Ok(body) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let lower = body.to_lowercase();
+            for signal in CITATION_SIGNALS {
+                if lower.contains(signal) && !provided_lower.contains(signal) {
+                    findings.push(Finding::new(
+                        "citation",
+                        None,
+                        format!(
+                            "{name} cites \"{signal}\", which appears in no text that was \
+                             provided; a source that was not read may be named as a lead but \
+                             not as a citation"
+                        ),
+                    ));
+                    break;
+                }
+            }
+        }
+    }
+    findings.sort_by(|a, b| a.detail.cmp(&b.detail));
+    findings.dedup();
+    findings
+}
 
 /// Whether the markings are in the channel they belong to, and whether the
 /// file cites anything it cannot have read.
@@ -622,6 +687,16 @@ fn all_article_text(doc: &Value) -> String {
 /// Flatten a YAML subtree to a string, for substring checks.
 fn render(v: &Value) -> String {
     serde_yaml_ng::to_string(v).unwrap_or_default()
+}
+
+/// Whether an article is a definition provision. Recognised by the fixed
+/// words the legislator uses, because the scope of what it defines and the
+/// absence of a rule are both consequences of that.
+fn is_definition_text(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    lower.contains("wordt verstaan onder")
+        || lower.contains("verstaan onder:")
+        || lower.contains("wordt in deze")
 }
 
 /// How many conditional constructs the model carries. Used to test whether
@@ -938,6 +1013,28 @@ impl Report {
         }
         counts
     }
+}
+
+/// Run every deterministic check over one law file.
+///
+/// `companion_dir`, when given, is the directory the agent worked in: every
+/// non-law file under it is checked for citations too, because an agent
+/// writes more than the law and a check that only reads the law misses it.
+pub fn run_with_companions(
+    yaml: &str,
+    corpus_root: Option<&Path>,
+    companion_dir: Option<&Path>,
+) -> Report {
+    let mut report = run(yaml, corpus_root);
+    if let Some(dir) = companion_dir {
+        let statutory_text = serde_yaml_ng::from_str::<Value>(yaml)
+            .map(|doc| all_article_text(&doc))
+            .unwrap_or_default();
+        report
+            .findings
+            .extend(citations_in_companion_files(dir, &statutory_text));
+    }
+    report
 }
 
 /// Run every deterministic check over one law file.

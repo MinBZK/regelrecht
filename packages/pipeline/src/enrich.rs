@@ -1922,18 +1922,22 @@ async fn evaluate_gate(gate: Gate, yaml_abs: &Path, corpus_root: &Path) -> Resul
     let raw = tokio::fs::read_to_string(yaml_abs).await?;
     Ok(match gate {
         Gate::Schema => crate::enrich_v2::checks::schema_errors(&raw),
-        Gate::Marking | Gate::Checks => crate::enrich_v2::checks::run(&raw, Some(corpus_root))
-            .findings
-            .into_iter()
-            .filter(|f| {
-                let is_record = matches!(f.check, "marking" | "citation");
-                matches!(gate, Gate::Marking) == is_record
-            })
-            .map(|f| match f.article {
-                Some(number) => format!("[{}] art. {number}: {}", f.check, f.detail),
-                None => format!("[{}] {}", f.check, f.detail),
-            })
-            .collect(),
+        Gate::Marking | Gate::Checks => crate::enrich_v2::checks::run_with_companions(
+            &raw,
+            Some(corpus_root),
+            yaml_abs.parent(),
+        )
+        .findings
+        .into_iter()
+        .filter(|f| {
+            let is_record = matches!(f.check, "marking" | "citation");
+            matches!(gate, Gate::Marking) == is_record
+        })
+        .map(|f| match f.article {
+            Some(number) => format!("[{}] art. {number}: {}", f.check, f.detail),
+            None => format!("[{}] {}", f.check, f.detail),
+        })
+        .collect(),
     })
 }
 
