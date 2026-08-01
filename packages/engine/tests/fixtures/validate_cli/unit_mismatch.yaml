@@ -1,0 +1,42 @@
+---
+# Schema-geldig, maar de unit-algebra (RFC-023) telt eurocent bij dagen op.
+# Alleen de statische unit-controle vangt dit; het schema ziet er niets in.
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
+$id: test_validate_cli_unit_mismatch
+regulatory_layer: WET
+publication_date: '2025-01-01'
+bwb_id: BWBR0123456
+url: https://example.invalid/law
+articles:
+  - number: '1'
+    text: Een bedrag en een aantal dagen worden bij elkaar opgeteld.
+    url: https://example.invalid/law/artikel/1
+    machine_readable:
+      execution:
+        input:
+          - name: bedrag
+            type: amount
+            source:
+              regulation: test_validate_cli_valid
+              output: normbedrag
+            type_spec:
+              unit: eurocent
+          - name: dagen
+            type: number
+            source:
+              regulation: test_validate_cli_valid
+              output: dagen
+            type_spec:
+              unit: days
+        output:
+          - name: onzin
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: onzin
+            value:
+              operation: ADD
+              values:
+                - $bedrag
+                - $dagen
