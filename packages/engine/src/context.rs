@@ -820,6 +820,194 @@ mod tests {
         assert_eq!(x, Value::Int(200));
     }
 
+    // -------------------------------------------------------------------------
+    // Accessor Tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_get_output_returns_stored_value() {
+        let mut ctx = make_context();
+        ctx.set_output("amount", Value::Int(1000));
+
+        assert_eq!(ctx.get_output("amount"), Some(&Value::Int(1000)));
+        assert_eq!(ctx.get_output("never_set"), None);
+    }
+
+    #[test]
+    fn test_reference_date_matches_calculation_date() {
+        let ctx = make_context();
+
+        assert_eq!(
+            ctx.reference_date(),
+            NaiveDate::from_ymd_opt(2025, 6, 15).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_get_calculation_date_returns_the_iso_date() {
+        let ctx = make_context();
+
+        assert_eq!(ctx.get_calculation_date(), "2025-06-15");
+    }
+
+    // -------------------------------------------------------------------------
+    // Trace Tests
+    // -------------------------------------------------------------------------
+
+    fn traced_context() -> (RuleContext, Rc<RefCell<TraceBuilder>>) {
+        let mut ctx = make_context();
+        let trace = Rc::new(RefCell::new(TraceBuilder::new_untimed()));
+        ctx.set_trace(Rc::clone(&trace));
+        (ctx, trace)
+    }
+
+    /// Resolve `path` with tracing on and return the value plus the resolve node
+    /// that was recorded for it.
+    fn traced_resolve(path: &str) -> (Result<Value>, crate::trace::PathNode) {
+        let (ctx, trace) = traced_context();
+        // A parent node, so the resolve node is kept as its child on pop.
+        trace.borrow_mut().push("root", PathNodeType::Action);
+
+        let value = ctx.resolve(path);
+
+        let root = trace.borrow_mut().pop().expect("root node should pop");
+        let node = root
+            .children
+            .into_iter()
+            .next()
+            .expect("resolving should record a node");
+        (value, node)
+    }
+
+    #[test]
+    fn test_trace_is_absent_until_set() {
+        let ctx = make_context();
+        assert!(ctx.trace().is_none());
+        assert!(!ctx.has_trace());
+        assert!(!ValueResolver::has_trace(&ctx));
+
+        let (traced, trace) = traced_context();
+        assert!(traced.has_trace());
+        assert!(ValueResolver::has_trace(&traced));
+        let held = traced.trace().expect("trace should be set");
+        assert!(
+            Rc::ptr_eq(held, &trace),
+            "context must hand back the builder it was given"
+        );
+    }
+
+    #[test]
+    fn test_child_context_shares_the_trace_builder() {
+        let (ctx, trace) = traced_context();
+
+        let child = ctx.create_child();
+
+        let held = child.trace().expect("child should inherit the trace");
+        assert!(
+            Rc::ptr_eq(held, &trace),
+            "child must write into the same trace as its parent"
+        );
+    }
+
+    #[test]
+    fn test_value_resolver_records_result_on_current_node() {
+        let (ctx, trace) = traced_context();
+
+        ValueResolver::trace_push(&ctx, "operation", PathNodeType::Operation);
+        ValueResolver::trace_set_result(&ctx, Value::Int(42));
+
+        let node = trace.borrow_mut().pop().expect("pushed node should pop");
+        assert_eq!(node.name, "operation");
+        assert_eq!(node.result, Some(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_trace_reports_referencedate_parts_as_context() {
+        let cases = [
+            ("referencedate.year", Value::Int(2025)),
+            ("referencedate.month", Value::Int(6)),
+            ("referencedate.day", Value::Int(15)),
+            ("referencedate.iso", Value::String("2025-06-15".to_string())),
+        ];
+
+        for (path, expected) in cases {
+            let (value, node) = traced_resolve(path);
+            assert_eq!(value.unwrap(), expected, "value for {}", path);
+            assert_eq!(node.name, path);
+            assert_eq!(
+                node.resolve_type,
+                Some(ResolveType::Context),
+                "{} should be reported as resolved from the context",
+                path
+            );
+            assert_eq!(node.result, Some(expected), "traced result for {}", path);
+        }
+    }
+
+    #[test]
+    fn test_date_like_properties_come_from_their_own_object() {
+        let mut ctx = make_context();
+
+        let mut period = BTreeMap::new();
+        period.insert("year".to_string(), Value::Int(1999));
+        period.insert("month".to_string(), Value::Int(1));
+        period.insert("day".to_string(), Value::Int(2));
+        period.insert("iso".to_string(), Value::String("1999-01-02".to_string()));
+        ctx.set_output("period", Value::Object(period));
+
+        // Only `referencedate` gets the built-in date parts; any other object
+        // keeps its own values.
+        assert_eq!(ctx.resolve("period.year").unwrap(), Value::Int(1999));
+        assert_eq!(ctx.resolve("period.month").unwrap(), Value::Int(1));
+        assert_eq!(ctx.resolve("period.day").unwrap(), Value::Int(2));
+        assert_eq!(
+            ctx.resolve("period.iso").unwrap(),
+            Value::String("1999-01-02".to_string())
+        );
+    }
+
+    #[test]
+    fn test_property_depth_limit_boundary() {
+        // `levels` wrappers of "n" around {"end": 999}, reached by a path with
+        // `levels + 1` property segments after the base variable.
+        fn nested(levels: usize) -> Value {
+            let mut inner = BTreeMap::new();
+            inner.insert("end".to_string(), Value::Int(999));
+            let mut value = Value::Object(inner);
+            for _ in 0..levels {
+                let mut wrapper = BTreeMap::new();
+                wrapper.insert("n".to_string(), value);
+                value = Value::Object(wrapper);
+            }
+            value
+        }
+        fn path(levels: usize) -> String {
+            let mut p = String::from("root");
+            for _ in 0..levels {
+                p.push_str(".n");
+            }
+            p.push_str(".end");
+            p
+        }
+
+        let max = config::MAX_PROPERTY_DEPTH;
+
+        // Exactly MAX_PROPERTY_DEPTH property segments is still allowed.
+        let mut ctx = make_context();
+        ctx.set_output("root", nested(max - 1));
+        assert_eq!(ctx.resolve(&path(max - 1)).unwrap(), Value::Int(999));
+
+        // One segment more is refused.
+        let mut ctx = make_context();
+        ctx.set_output("root", nested(max));
+        let result = ctx.resolve(&path(max));
+        assert!(
+            matches!(result, Err(EngineError::InvalidOperation(ref msg)) if msg.contains("depth exceeds")),
+            "Expected InvalidOperation error one level past the limit, got: {:?}",
+            result
+        );
+    }
+
     #[test]
     fn test_recursion_depth_limit() {
         let mut ctx = make_context();
