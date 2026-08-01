@@ -101,6 +101,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "container-backed (testcontainers); run with `just test` or `-- --ignored`"]
     async fn replace_inserts_captured_entries() {
         let db = TestDb::new().await;
         let job_id = seed_enrich_job(&db, "test_law").await;
@@ -127,6 +128,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "container-backed (testcontainers); run with `just test` or `-- --ignored`"]
     async fn replace_is_idempotent_per_law_and_provider() {
         let db = TestDb::new().await;
         let job_id = seed_enrich_job(&db, "test_law").await;
@@ -161,6 +163,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "container-backed (testcontainers); run with `just test` or `-- --ignored`"]
     async fn replace_leaves_other_providers_untouched() {
         let db = TestDb::new().await;
         let job_id = seed_enrich_job(&db, "test_law").await;
