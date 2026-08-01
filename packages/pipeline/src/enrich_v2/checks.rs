@@ -938,6 +938,178 @@ fn walk_inner<'a>(
 
 /// Locate a law directory by `$id` under `corpus_root`, returning the most
 /// recent version file. The corpus lays out `<country>/<layer>/<id>/<date>.yaml`.
+/// What a translation attempted, counted rather than judged.
+///
+/// The gates say whether something is wrong. Nothing said whether anything was
+/// attempted, and round 3 paid for that: the variant that laid no cross-law
+/// binding at all drew no binding findings and therefore looked better than the
+/// variant that tried. Restraint and emptiness produce the same score under a
+/// gate, and only a tally tells them apart.
+///
+/// Deliberately free of judgement. A high `bindings` is not better than a low
+/// one; it is a different translation of the same text, and comparing two runs
+/// needs both these numbers and the findings beside them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Tally {
+    /// Article entries in the file.
+    pub articles: usize,
+    /// Entries whose model carries executable logic.
+    pub with_logic: usize,
+    /// Entries whose model carries only markings or declarations.
+    pub marked_only: usize,
+    /// Entries with no outcome at all. Mirrors the `accounted` check, and is
+    /// here so a run can be read without cross-referencing the findings.
+    pub bare: usize,
+    /// Bindings that read from another regulation.
+    pub cross_law_bindings: usize,
+    /// Distinct regulations this file reads from.
+    pub laws_read: usize,
+    /// Regulations the statutory text cites, whether read or not. The gap
+    /// between this and `laws_read` is what the reference gate reports.
+    pub laws_cited: usize,
+    pub untranslatables: usize,
+    pub norm_gaps: usize,
+    pub declares: usize,
+    pub overrides: usize,
+    /// Outputs declared anywhere in the file.
+    pub outputs: usize,
+    /// Outputs some other model reads, in this file or through a binding it
+    /// declares. An output nothing consumes is either dead or a restriction
+    /// that restricts nothing.
+    pub outputs_consumed: usize,
+}
+
+/// Count what a file attempted.
+#[must_use]
+pub fn tally(doc: &Value) -> Tally {
+    let empty = Vec::new();
+    let articles = doc
+        .get("articles")
+        .and_then(Value::as_sequence)
+        .unwrap_or(&empty);
+    let own_bwb = doc
+        .get("bwb_id")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+
+    let mut t = Tally {
+        articles: articles.len(),
+        ..Tally::default()
+    };
+    let mut laws_read: BTreeSet<String> = BTreeSet::new();
+    let mut laws_cited: BTreeSet<String> = BTreeSet::new();
+    // Keyed by article, because an output that only its own model mentions is
+    // not consumed by anything: the question is whether some other provision
+    // reads it. Counting a declaration as its own consumer put the figure at
+    // 60 of 61 and said nothing.
+    let mut declared_outputs: BTreeMap<String, String> = BTreeMap::new();
+    let mut consumed: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+
+    for entry in articles {
+        let here = entry
+            .get("number")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        if let Some(text) = entry.get("text").and_then(Value::as_str) {
+            for id in bwb_ids(text) {
+                if id != own_bwb {
+                    laws_cited.insert(id.to_owned());
+                }
+            }
+        }
+        let Some(mr) = entry.get("machine_readable") else {
+            if entry
+                .get("text")
+                .and_then(Value::as_str)
+                .is_some_and(|t| !t.trim().is_empty())
+            {
+                t.bare += 1;
+            }
+            continue;
+        };
+
+        let count = |key: &str| mr.get(key).and_then(Value::as_sequence).map_or(0, Vec::len);
+        t.untranslatables += count("untranslatables");
+        t.norm_gaps += count("norm_gaps");
+        t.declares += count("declares");
+        t.overrides += count("overrides");
+
+        let has_logic = mr.get("execution").is_some()
+            || mr.get("definitions").is_some()
+            || mr.get("requires").is_some()
+            || mr.get("open_terms").is_some();
+        let has_marking = count("untranslatables") + count("norm_gaps") + count("declares") > 0;
+        if has_logic {
+            t.with_logic += 1;
+        } else if has_marking {
+            t.marked_only += 1;
+        } else {
+            t.bare += 1;
+        }
+
+        laws_read.extend(bound_regulations(Some(mr)));
+
+        // Outputs declared here, and the values this model reads.
+        walk_outside_sources(mr, &mut |key, node| {
+            if key != Some("output") {
+                return;
+            }
+            match node {
+                Value::Sequence(seq) => {
+                    for item in seq {
+                        if let Some(n) = item.get("name").and_then(Value::as_str) {
+                            declared_outputs.insert(n.to_owned(), here.clone());
+                        }
+                    }
+                }
+                Value::String(s) => {
+                    declared_outputs.insert(s.clone(), here.clone());
+                }
+                _ => {}
+            }
+        });
+        // A source can sit at any depth: inputs live under `execution`,
+        // under `parameters`, and nested inside operations. Counting only the
+        // top-level `input` list reported nought bindings on a file with
+        // eight of them.
+        walk(mr, &mut |key, node| {
+            if key != Some("source") {
+                return;
+            }
+            if node.get("regulation").or_else(|| node.get("law")).is_some() {
+                t.cross_law_bindings += 1;
+            }
+            if let Some(out) = node.get("output").and_then(Value::as_str) {
+                consumed
+                    .entry(out.to_owned())
+                    .or_default()
+                    .insert(here.clone());
+            }
+        });
+        // A model that names a value by the name another article produces is
+        // reading it, whether or not it declared a source.
+        walk(mr, &mut |key, node| {
+            if let (Some("name" | "value" | "variable"), Value::String(s)) = (key, node) {
+                consumed.entry(s.clone()).or_default().insert(here.clone());
+            }
+        });
+    }
+
+    t.laws_read = laws_read.len();
+    t.laws_cited = laws_cited.len();
+    t.outputs = declared_outputs.len();
+    t.outputs_consumed = declared_outputs
+        .iter()
+        .filter(|(name, declared_in)| {
+            consumed
+                .get(*name)
+                .is_some_and(|readers| readers.iter().any(|r| r != *declared_in))
+        })
+        .count();
+    t
+}
+
 /// Articles whose text points at another law that the model never reads.
 ///
 /// This is the gate that round 3 lacked, and its absence flattered the wrong
@@ -1877,6 +2049,80 @@ articles:
         )
         .expect("write");
         dir
+    }
+
+    #[test]
+    fn the_tally_separates_restraint_from_emptiness() {
+        // Round 3: the variant without a context brief laid nought cross-law
+        // bindings and therefore drew nought binding findings, which made it
+        // look better than the variant that tried. Only a tally tells those
+        // two apart.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+bwb_id: BWBR0018451
+articles:
+  - number: "1"
+    text: "bedoeld in [ref]: https://wetten.overheid.nl/BWBR0018472#Artikel8"
+    machine_readable:
+      execution:
+        output:
+          - name: toeslag
+        input:
+          - name: inkomen
+            source: {regulation: awir, output: toetsingsinkomen}
+  - number: "2"
+    text: iets
+    machine_readable:
+      norm_gaps:
+        - norm: standaardpremie
+          kind: delegated
+          blocks: [toeslag]
+  - number: "3"
+    text: iets zonder uitkomst
+"#,
+        )
+        .expect("yaml");
+        let t = tally(&doc);
+        assert_eq!(t.articles, 3);
+        assert_eq!(t.with_logic, 1);
+        assert_eq!(t.marked_only, 1);
+        assert_eq!(t.bare, 1);
+        assert_eq!(t.cross_law_bindings, 1);
+        assert_eq!(t.laws_read, 1);
+        assert_eq!(t.laws_cited, 1);
+        assert_eq!(t.norm_gaps, 1);
+    }
+
+    #[test]
+    fn an_output_only_its_own_article_mentions_is_not_consumed() {
+        // Counting a declaration as its own reader put the figure at 60 of 61
+        // and said nothing. The question is whether another provision reads
+        // it, which is what makes a dangling restriction visible.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: "1"
+    text: iets
+    machine_readable:
+      execution:
+        output:
+          - name: heeft_vermogen_boven_grens
+  - number: "2"
+    text: iets
+    machine_readable:
+      execution:
+        output:
+          - name: toeslag
+        input:
+          - name: heeft_vermogen_boven_grens
+"#,
+        )
+        .expect("yaml");
+        let t = tally(&doc);
+        assert_eq!(t.outputs, 2);
+        // `heeft_vermogen_boven_grens` is read by article 2; `toeslag` by
+        // nobody.
+        assert_eq!(t.outputs_consumed, 1);
     }
 
     #[test]

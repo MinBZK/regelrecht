@@ -84,6 +84,29 @@ fn report_one(path: &Path, corpus: Option<&Path>) -> std::io::Result<bool> {
         }
     }
 
+    // What the file attempted, beside what it got wrong. Without this a run
+    // that translated less scores better, which is how round 3 flattered the
+    // variant that laid no cross-law binding at all.
+    if let Ok(doc) = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&yaml) {
+        let t = checks::tally(&doc);
+        println!(
+            "  attempted: {}/{} articles with logic, {} marked only, {} bare",
+            t.with_logic, t.articles, t.marked_only, t.bare
+        );
+        println!(
+            "  reaches:   {} cross-law bindings into {} of {} cited laws",
+            t.cross_law_bindings, t.laws_read, t.laws_cited
+        );
+        println!(
+            "  marks:     {} untranslatable, {} norm gap, {} declares, {} overrides",
+            t.untranslatables, t.norm_gaps, t.declares, t.overrides
+        );
+        println!(
+            "  outputs:   {} declared, {} read by something",
+            t.outputs, t.outputs_consumed
+        );
+    }
+
     let counts = report.by_check();
     if counts.is_empty() {
         println!("  checks: nothing to report");
