@@ -118,8 +118,9 @@ the pull-request gate, so a clean result here means a green gate there.
 Exit code 2 means a mutant survived in your own changed lines, which is the
 gate doing its job. Exit code 3 means a test ran out of time under mutation.
 
-Commit per file, in small commits, conventional-commit subjects in Dutch. Do not
-push; that is Eelco's step.
+Commit per file, in small commits, conventional-commit subjects in Dutch. Leave
+pushing and opening the pull request to the repository owner; see
+`CONTRIBUTING.md`.
 
 ## What the numbers do next
 
