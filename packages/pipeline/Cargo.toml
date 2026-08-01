@@ -33,6 +33,12 @@ path = "src/bin/law_check.rs"
 name = "law-source"
 path = "src/bin/law_source.rs"
 
+# Draait de echte enrichment-lus tegen een map op schijf, zonder database
+# en zonder git, zodat elke wijziging aan de worker lokaal te beproeven is.
+[[bin]]
+name = "enrich-once"
+path = "src/bin/enrich_once.rs"
+
 [dependencies]
 regelrecht-corpus = { path = "../corpus" }
 # `validate` voor de JSON-schema-validatie van gegenereerde basis-wet-YAML
