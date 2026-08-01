@@ -59,6 +59,7 @@ tracing.workspace = true
 axum.workspace = true
 tower-http = { workspace = true, features = ["trace"] }
 roxmltree.workspace = true
+regex.workspace = true
 url.workspace = true
 testcontainers = { workspace = true, optional = true }
 testcontainers-modules = { workspace = true, optional = true }

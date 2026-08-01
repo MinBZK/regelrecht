@@ -87,6 +87,11 @@ pub struct SourceArticle {
     /// The statutory text, leden numbered as `1. `, `2. `, separated by a
     /// blank line, matching the convention the corpus already uses.
     pub text: String,
+    /// The article addressed below its own level, because the harvested
+    /// corpus splits there: a lid becomes its own entry (`3.2`) holding the
+    /// chapeau, and each onderdeel another (`3.2.a`). Keys are the path
+    /// after the article number, so `"2"` and `"2.a"`.
+    pub parts: BTreeMap<String, String>,
     pub placement: Placement,
 }
 
@@ -258,8 +263,60 @@ fn read_article(node: roxmltree::Node, placement: &Placement) -> Option<SourceAr
         number,
         heading,
         text: normalize_ws(&text),
+        parts: read_parts(node),
         placement: placement.clone(),
     })
+}
+
+/// Address an article below its own level, the way the harvested corpus
+/// does. A lid holds its chapeau without the list that hangs under it,
+/// because that is what the corpus stores at `3.2` when it stores the items
+/// separately at `3.2.a`.
+fn read_parts(node: roxmltree::Node) -> BTreeMap<String, String> {
+    let mut parts = BTreeMap::new();
+    for lid in node
+        .children()
+        .filter(|c| c.is_element() && c.tag_name().name() == "lid")
+    {
+        let Some(nr) = child_text(lid, "lidnr").filter(|s| !s.is_empty()) else {
+            continue;
+        };
+        parts.insert(
+            nr.clone(),
+            element_text_excluding(lid, &["lidnr", "meta-data", "lijst"]),
+        );
+        collect_items(lid, &nr, &mut parts);
+    }
+    parts
+}
+
+/// Walk the `lijst`/`li` nesting under a node, keying each item by the path
+/// that leads to it. `li.nr` carries its own punctuation (`a.`, `1°`), which
+/// the corpus strips.
+fn collect_items(node: roxmltree::Node, prefix: &str, parts: &mut BTreeMap<String, String>) {
+    for lijst in node
+        .children()
+        .filter(|c| c.is_element() && c.tag_name().name() == "lijst")
+    {
+        for li in lijst
+            .children()
+            .filter(|c| c.is_element() && c.tag_name().name() == "li")
+        {
+            let Some(raw) = child_text(li, "li.nr") else {
+                continue;
+            };
+            let label = raw.trim_end_matches(['.', ')', ' ']).to_string();
+            if label.is_empty() {
+                continue;
+            }
+            let key = format!("{prefix}.{label}");
+            parts.insert(
+                key.clone(),
+                element_text_excluding(li, &["li.nr", "meta-data", "lijst"]),
+            );
+            collect_items(li, &key, parts);
+        }
+    }
 }
 
 fn child_text(node: roxmltree::Node, name: &str) -> Option<String> {
@@ -297,12 +354,47 @@ fn normalize_ws(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// Compare a corpus law document against the official articles.
+/// Strip the presentation the harvester adds, so the comparison is about
+/// what the text says rather than how it is written down.
 ///
-/// Comparison is on normalised whitespace only. Anything else (accents,
-/// punctuation, casing) is treated as a difference on purpose: a
-/// translation is checked word for word against this text, so a silent
-/// tolerance here would be a silent tolerance there.
+/// Two harvester conventions are deliberate and must not read as drift.
+/// Cross-references become markdown reference links (`[artikel 7, derde
+/// lid][ref1]`) with a footer block of `[ref1]: https://…` lines, which is
+/// how a reader gets a working link. And a lid is numbered `1 ` where this
+/// module writes `1. `, which is a rendering choice on both sides.
+///
+/// Everything else stays significant. Accents, punctuation inside the
+/// sentence and casing are differences on purpose: a translation is checked
+/// word for word against this text, so a tolerance here would be a
+/// tolerance there.
+#[allow(clippy::expect_used)] // Static regexes that are guaranteed to be valid
+fn normalize_for_comparison(s: &str) -> String {
+    use std::sync::LazyLock;
+
+    // `[ref1]: https://…` footer lines carry no statutory text.
+    static FOOTER: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"\[[^\]]+\]:\s*\S+").expect("valid regex"));
+    // `[label][ref1]` and `[label](url)` keep only the label.
+    static LINK: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"\[([^\]]*)\](?:\[[^\]]*\]|\([^)]*\))").expect("valid regex")
+    });
+    // A lid number is written `1 ` here and `1. ` there.
+    static LIDNR: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"(^|(?:[.;:] ))(\d{1,2})\.? ").expect("valid regex"));
+
+    let without_footers = FOOTER.replace_all(s, "");
+    let without_links = LINK.replace_all(&without_footers, "$1");
+    let collapsed = normalize_ws(&without_links);
+    // Joining XML elements with a space puts one in front of the
+    // punctuation that follows them ("Zorgverzekeringswet , de"). That is an
+    // artefact of reading the source, not a difference in the law.
+    static SPACED_PUNCT: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r" +([,;:.])").expect("valid regex"));
+    let tightened = SPACED_PUNCT.replace_all(&collapsed, "$1");
+    LIDNR.replace_all(&tightened, "${1}${2}. ").into_owned()
+}
+
+/// Compare a corpus law document against the official articles.
 pub fn verify(corpus: &serde_yaml_ng::Value, official: &[SourceArticle]) -> GateReport {
     let mut report = GateReport::default();
     let mut official_by_number: BTreeMap<&str, &SourceArticle> = BTreeMap::new();
@@ -330,31 +422,57 @@ pub fn verify(corpus: &serde_yaml_ng::Value, official: &[SourceArticle]) -> Gate
             None => continue,
         };
         seen.insert(number.clone());
-        let corpus_text = normalize_ws(
+        let corpus_text = normalize_for_comparison(
             article
                 .get("text")
                 .and_then(serde_yaml_ng::Value::as_str)
                 .unwrap_or_default(),
         );
-        match official_by_number.get(number.as_str()) {
+        // The harvested corpus splits below article level, so a number
+        // like `3.2.a` addresses lid 2 onderdeel a of article 3. Resolve by
+        // longest matching article prefix: in a law whose articles are
+        // themselves numbered `5.2`, that prefix wins over `5`.
+        match resolve(&official_by_number, &number) {
             None => {
                 report.verdicts.insert(number, Verdict::Fabricated);
             }
-            Some(source) => {
-                let verdict = if corpus_text == source.text {
-                    Verdict::Verified
+            Some((source, path)) => {
+                let expected = if path.is_empty() {
+                    Some(source.text.clone())
                 } else {
-                    Verdict::Drift {
-                        detail: describe_difference(&corpus_text, &source.text),
+                    source.parts.get(path).cloned()
+                };
+                let verdict = match expected {
+                    None => Verdict::Fabricated,
+                    Some(expected) => {
+                        if corpus_text == normalize_for_comparison(&expected) {
+                            Verdict::Verified
+                        } else {
+                            Verdict::Drift {
+                                detail: describe_difference(&corpus_text, &expected),
+                            }
+                        }
                     }
                 };
+                report
+                    .placements
+                    .entry(number.clone())
+                    .or_insert_with(|| source.placement.clone());
                 report.verdicts.insert(number, verdict);
             }
         }
     }
 
     for a in official {
-        if !seen.contains(&a.number) {
+        // An article is present when the file has it whole or has any of
+        // its parts; a fragmented corpus never carries the article number
+        // by itself.
+        let covered = seen.iter().any(|s: &String| {
+            s == &a.number
+                || s.strip_prefix(&a.number)
+                    .is_some_and(|r| r.starts_with('.'))
+        });
+        if !covered {
             report.verdicts.insert(a.number.clone(), Verdict::Missing);
         }
     }
@@ -490,6 +608,29 @@ pub fn rewrite(
         map.insert(Value::from("articles"), Value::Sequence(articles));
     }
     (doc, sidecar)
+}
+
+/// Split a corpus article number into the source article it belongs to and
+/// the path within it. Longest prefix wins, so in a law with articles `5`
+/// and `5.2` the number `5.2.1` resolves to article `5.2` part `1`.
+fn resolve<'a>(
+    official: &'a BTreeMap<&str, &SourceArticle>,
+    number: &'a str,
+) -> Option<(&'a SourceArticle, &'a str)> {
+    if let Some(article) = official.get(number) {
+        return Some((article, ""));
+    }
+    let mut best: Option<(&SourceArticle, &str)> = None;
+    for (candidate, article) in official {
+        if let Some(rest) = number.strip_prefix(*candidate) {
+            if let Some(path) = rest.strip_prefix('.') {
+                if best.is_none_or(|(cur, _)| cur.number.len() < candidate.len()) {
+                    best = Some((article, path));
+                }
+            }
+        }
+    }
+    best
 }
 
 /// A short, quotable description of how two texts differ: the first point
@@ -667,6 +808,82 @@ articles:
             "Hoofdstuk 3 Besluiten > Afdeling 3.3 Advisering"
         );
         assert_eq!(sidecar.articles["1"].verdict, "text replaced (had drifted)");
+    }
+
+    const FRAGMENTED_XML: &str = r#"<toestand bwb-id="BWBR0000002">
+      <wettekst>
+        <artikel><kop><label>Artikel</label><nr>3</nr></kop>
+          <lid><lidnr>1</lidnr><al>Eerste lid.</al></lid>
+          <lid><lidnr>2</lidnr><al>Chapeau van het tweede lid:</al>
+            <lijst><li><li.nr>a.</li.nr><al>onderdeel a;</al></li>
+                   <li><li.nr>b.</li.nr><al>onderdeel b.</al></li></lijst>
+          </lid>
+        </artikel>
+        <artikel><kop><label>Artikel</label><nr>5.2</nr></kop>
+          <lid><lidnr>1</lidnr><al>Artikel vijf punt twee, eerste lid.</al></lid>
+        </artikel>
+      </wettekst>
+    </toestand>"#;
+
+    #[test]
+    fn a_lid_holds_its_chapeau_and_the_items_stand_apart() {
+        let arts = parse_toestand(FRAGMENTED_XML).unwrap();
+        let a3 = arts.iter().find(|a| a.number == "3").unwrap();
+        // The corpus stores the chapeau at `3.2` and the items at `3.2.a`,
+        // so the lid must not swallow its own list.
+        assert_eq!(a3.parts["2"], "Chapeau van het tweede lid:");
+        assert_eq!(a3.parts["2.a"], "onderdeel a;");
+        assert_eq!(a3.parts["2.b"], "onderdeel b.");
+        assert_eq!(a3.parts["1"], "Eerste lid.");
+    }
+
+    #[test]
+    fn a_fragmented_corpus_verifies_against_the_parts() {
+        let official = parse_toestand(FRAGMENTED_XML).unwrap();
+        let corpus: serde_yaml_ng::Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '3.1'
+    text: Eerste lid.
+  - number: '3.2'
+    text: 'Chapeau van het tweede lid:'
+  - number: 3.2.a
+    text: onderdeel a;
+  - number: 3.2.b
+    text: onderdeel b.
+  - number: 5.2.1
+    text: Artikel vijf punt twee, eerste lid.
+"#,
+        )
+        .unwrap();
+        let report = verify(&corpus, &official);
+        assert!(
+            report.verdicts.values().all(Verdict::is_ok),
+            "expected every fragment to verify: {:?}",
+            report.verdicts
+        );
+    }
+
+    #[test]
+    fn the_longest_article_prefix_wins() {
+        // `5.2.1` is article `5.2` lid 1, not article `5` lid 2 item 1.
+        let official = parse_toestand(FRAGMENTED_XML).unwrap();
+        let by: BTreeMap<&str, &SourceArticle> =
+            official.iter().map(|a| (a.number.as_str(), a)).collect();
+        let (article, path) = resolve(&by, "5.2.1").unwrap();
+        assert_eq!(article.number, "5.2");
+        assert_eq!(path, "1");
+    }
+
+    #[test]
+    fn an_article_covered_only_by_its_fragments_is_not_missing() {
+        let official = parse_toestand(FRAGMENTED_XML).unwrap();
+        let corpus: serde_yaml_ng::Value =
+            serde_yaml_ng::from_str("articles:\n  - number: '3.1'\n    text: Eerste lid.\n")
+                .unwrap();
+        let report = verify(&corpus, &official);
+        assert!(!report.verdicts.contains_key("3"), "{:?}", report.verdicts);
+        assert_eq!(report.verdicts["5.2"], Verdict::Missing);
     }
 
     #[test]
