@@ -721,6 +721,57 @@ articles:
         assert_eq!(engine.list_laws(), vec!["test_law".to_string()]);
     }
 
+    /// `loadLaw()` is de enige weg waarlangs JavaScript een wet de engine in
+    /// krijgt, en het is het contract dat de aanroeper het `$id` terugkrijgt om
+    /// mee verder te werken (`execute(lawId, ...)`). De andere tests laden via
+    /// de service en zouden een kapotte wrapper dus niet zien.
+    #[test]
+    fn test_wasm_engine_load_law_returns_law_id() {
+        let mut engine = WasmEngine::new();
+
+        let law_id = engine.load_law(MINIMAL_LAW_YAML).ok();
+
+        assert_eq!(law_id.as_deref(), Some("test_law"));
+        assert!(engine.has_law("test_law"));
+    }
+
+    /// De grens van `MAX_YAML_SIZE` is inclusief: een document van precies de
+    /// maximumgrootte hoort geladen te worden, pas één byte meer wordt
+    /// geweigerd. Een wet die exact op de grens valt mag niet stilletjes
+    /// onbruikbaar worden.
+    ///
+    /// De afkeurkant van dezelfde grens is native niet te testen: die tak bouwt
+    /// een `JsValue` en wasm-bindgen aborteert het proces buiten wasm32.
+    #[test]
+    fn test_wasm_engine_load_law_accepts_exactly_max_size() {
+        let mut engine = WasmEngine::new();
+
+        let mut yaml = String::from(MINIMAL_LAW_YAML);
+        yaml.push_str("# ");
+        let padding = config::MAX_YAML_SIZE - yaml.len();
+        yaml.push_str(&"x".repeat(padding));
+        assert_eq!(yaml.len(), config::MAX_YAML_SIZE);
+
+        let law_id = engine.load_law(&yaml).ok();
+
+        assert_eq!(
+            law_id.as_deref(),
+            Some("test_law"),
+            "a law of exactly MAX_YAML_SIZE bytes should still load"
+        );
+    }
+
+    /// De engine-versie reist mee in elk uitvoeringsresultaat en is daarmee
+    /// onderdeel van de herleidbaarheid van een beschikking: hij moet de
+    /// werkelijke crate-versie zijn, geen placeholder.
+    #[test]
+    fn test_wasm_engine_version() {
+        let engine = WasmEngine::new();
+
+        assert_eq!(engine.version(), env!("CARGO_PKG_VERSION"));
+        assert!(!engine.version().is_empty());
+    }
+
     #[test]
     fn test_wasm_engine_unload_law() {
         let mut engine = WasmEngine::new();
