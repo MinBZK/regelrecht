@@ -182,6 +182,21 @@ impl LlmRunner for ProcessLlmRunner {
         let progress_path = progress_file_path(yaml_abs);
         // Chunked runs get the explicit-article-subset prompt; whole-law runs
         // keep the original prompt byte-identical.
+        // A repair round asks for one thing and gives the agent nothing
+        // else to do, so it cannot wander back into translating.
+        if let Some(errors) = &payload.repair_errors {
+            let prompt = build_repair_prompt(&payload.yaml_path, errors);
+            return run_llm_subprocess(
+                &config.provider,
+                &prompt,
+                Some(yaml_abs),
+                repo_path,
+                config,
+                false,
+            )
+            .await;
+        }
+
         let prompt = match &payload.chunk_articles {
             Some(articles) => build_chunk_prompt(
                 &payload.yaml_path,
@@ -507,7 +522,7 @@ fn parse_vmrss_kb(status: &str) -> Option<u64> {
 }
 
 /// Payload for an enrich job, stored as JSON in the job queue.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EnrichPayload {
     pub law_id: String,
     /// Relative path to the harvested YAML file within the repo.
@@ -539,6 +554,11 @@ pub struct EnrichPayload {
     /// `document_etag()` van de wet-YAML op aanvraagmoment (staleness-check).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_etag: Option<String>,
+    /// Schemafouten uit de vorige ronde. Aanwezig betekent: dit is de
+    /// reparatieronde, en de prompt vraagt alleen die fouten te verhelpen.
+    /// Rijdt niet mee in de jobpayload; hij bestaat alleen binnen een run.
+    #[serde(skip)]
+    pub repair_errors: Option<Vec<String>>,
     /// `true` wanneer deze enrichment een NIEUWE wet betreft die nog niet in
     /// het traject bestaat (geketend vanuit een `law_convert`-job). Stuurt de
     /// review-taak: `kind: "law_create"` + eigen titel, zodat de editor het
@@ -937,6 +957,23 @@ impl EnrichConfig {
 }
 
 impl EnrichConfig {
+    /// Build a config for a run outside the worker: the `enrich-once`
+    /// binary, which exercises the real loop against a directory on disk.
+    /// Deliberately not `from_env`: a local run should say what it does
+    /// rather than inherit whatever the shell happens to carry.
+    pub fn for_local_run(provider: LlmProvider, timeout: Duration, max_articles: usize) -> Self {
+        let mut provider_configs = std::collections::HashMap::new();
+        provider_configs.insert("claude".to_string(), provider.clone());
+        Self {
+            provider,
+            timeout,
+            code_commit: String::new(),
+            max_rss_mb: 0,
+            max_articles_per_run: max_articles,
+            provider_configs,
+        }
+    }
+
     pub fn from_env() -> Self {
         let provider_name = std::env::var("LLM_PROVIDER").unwrap_or_else(|_| "opencode".into());
 
@@ -1073,6 +1110,38 @@ Write this file at these moments:
 - Before Step 3: {{"phase": "reverse_validating", "step": 3, "total_steps": 3}}
 
 Use the Write tool. Keep it brief — just one write per phase transition."#
+    )
+}
+
+/// Prompt for the repair round after schema validation failed.
+///
+/// The errors are handed over verbatim, because the agent has no way to run
+/// the validator itself and a paraphrase would lose the instance path that
+/// says where the problem sits.
+fn build_repair_prompt(yaml_path: &str, errors: &[String]) -> String {
+    let list = errors
+        .iter()
+        .map(|e| format!("- {e}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        r#"The law YAML you just wrote does not validate against the regelrecht JSON schema.
+
+The file is: {yaml_path}
+
+Fix it in place so it validates. Change as little as possible.
+
+**Do not touch any `text` field.** Those hold the statutory text and are not
+yours to edit; every error below is about `machine_readable`.
+
+**Do not delete a `machine_readable` section to make an error go away.** If a
+construct cannot be expressed within the schema, record it as an
+`untranslatable` with a reason, which is what that field is for.
+
+The validation errors, verbatim:
+{list}
+
+Write the corrected YAML back to the same file. Do not ask questions."#
     )
 }
 
@@ -1674,6 +1743,70 @@ pub(crate) fn normalize_yaml_path(yaml_path: &str) -> Result<String> {
 /// step. The worker's `chunk_no_output_is_not_deterministic` test pins this.
 pub(crate) const CHUNK_NO_OUTPUT_MARKER: &str = "enrichment chunk produced no reviewable output";
 
+/// Validate the enriched law against the schema version it declares and,
+/// when it fails, give the agent one round to repair it.
+///
+/// One round on purpose. A second failure is content trouble rather than a
+/// slip, and the retry ladder above this is the place for that.
+async fn repair_schema_errors(
+    yaml_abs: &Path,
+    payload: &EnrichPayload,
+    repo_path: &Path,
+    config: &EnrichConfig,
+    runner: &dyn LlmRunner,
+) -> Result<()> {
+    let errors = schema_errors_for(yaml_abs).await?;
+    if errors.is_empty() {
+        return Ok(());
+    }
+
+    tracing::warn!(
+        errors = errors.len(),
+        first = %errors.first().cloned().unwrap_or_default(),
+        "enriched law does not validate; running one repair round"
+    );
+
+    let relative = yaml_abs
+        .strip_prefix(repo_path)
+        .unwrap_or(yaml_abs)
+        .to_string_lossy()
+        .into_owned();
+    let repair_payload = EnrichPayload {
+        repair_errors: Some(errors.clone()),
+        ..payload.clone()
+    };
+    runner
+        .run(&repair_payload, yaml_abs, repo_path, config)
+        .await?;
+
+    let remaining = schema_errors_for(yaml_abs).await?;
+    if remaining.is_empty() {
+        tracing::info!(law = %relative, "repair round fixed the schema errors");
+        return Ok(());
+    }
+    Err(PipelineError::Enrich(format!(
+        "enriched law still has {} schema error(s) after the repair round: {}",
+        remaining.len(),
+        remaining.join("; ")
+    )))
+}
+
+/// Content fingerprint of a file, or `None` when it cannot be read. Only
+/// used to decide whether a run changed anything.
+async fn file_digest(path: &Path) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    let bytes = tokio::fs::read(path).await.ok()?;
+    Some(format!("{:x}", Sha256::digest(&bytes)))
+}
+
+/// Schema errors of the law at `path`, against the version it declares.
+/// An unreadable or unparseable file is itself an error, because the
+/// caller cannot proceed either way.
+async fn schema_errors_for(path: &Path) -> Result<Vec<String>> {
+    let raw = tokio::fs::read_to_string(path).await?;
+    Ok(crate::enrich_v2::checks::schema_errors(&raw))
+}
+
 /// Execute the enrichment using the default process-based LLM runner.
 ///
 /// Convenience wrapper around `execute_enrich_with_runner` using `ProcessLlmRunner`.
@@ -1706,6 +1839,10 @@ pub async fn execute_enrich_with_runner(
             yaml_abs.display()
         )));
     }
+
+    // Fingerprint before the run, so the schema gate below can tell an
+    // enrichment that produced something from one that did not.
+    let digest_before = file_digest(&yaml_abs).await;
 
     // Parse the law once for the pre-run stats, the chunk window's article
     // numbers, and the untranslatables baseline of the chunk no-op guard.
@@ -1771,6 +1908,7 @@ pub async fn execute_enrich_with_runner(
             clear_stale_chunk_report(&yaml_abs).await;
         }
         let normalized_payload = EnrichPayload {
+            repair_errors: None,
             yaml_path: normalized_path.clone(),
             chunk_articles: chunk_window.as_ref().map(|(_, numbers)| numbers.clone()),
             // MvT research runs once, during the first chunk (cursor 0).
@@ -1782,6 +1920,21 @@ pub async fn execute_enrich_with_runner(
             .await?;
 
         tracing::info!(law_id = %payload.law_id, provider = %provider_name, "enrichment completed");
+    }
+    let file_changed_this_run = file_digest(&yaml_abs).await != digest_before;
+
+    // Schema validation with one repair round, but only over what this run
+    // added. The `law-generate` skill instructs a `just validate` loop and
+    // the agent has no shell, no `Justfile` and no `schema/` in its
+    // checkout, so that loop cannot run and nothing establishes whether the
+    // output is schema-valid. Doing it here needs none of those, because
+    // the engine's validator is a library call.
+    //
+    // A run that changed nothing is not this run's business: the file was
+    // already in whatever state it was in, and validating it here would
+    // fail a job for someone else's defect.
+    if file_changed_this_run {
+        repair_schema_errors(&yaml_abs, payload, repo_path, config, runner).await?;
     }
 
     // Count articles with machine_readable after enrichment.
@@ -2149,6 +2302,7 @@ mod tests {
     #[test]
     fn test_enrich_payload_serde_roundtrip() {
         let payload = EnrichPayload {
+            repair_errors: None,
             law_id: "BWBR0018451".to_string(),
             yaml_path: "regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
             provider: Some("claude".to_string()),
@@ -2171,6 +2325,7 @@ mod tests {
         // Verify backward compatibility: provider and depth are optional and
         // skipped when None (old queued payloads omit them entirely).
         let payload_no_provider = EnrichPayload {
+            repair_errors: None,
             law_id: "BWBR0018451".to_string(),
             yaml_path: "regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
             provider: None,
@@ -2199,6 +2354,7 @@ mod tests {
     /// Minimale corpus-brede payload; de guard-tests zetten er traject-velden op.
     fn corpus_wide_payload() -> EnrichPayload {
         EnrichPayload {
+            repair_errors: None,
             law_id: "BWBR0018451".to_string(),
             yaml_path: "regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
             provider: None,
@@ -2498,6 +2654,7 @@ related_legislation:
         // Nieuwe payloads dragen de taak-velden mee.
         let account = uuid::Uuid::new_v4();
         let new = EnrichPayload {
+            repair_errors: None,
             law_id: "x".into(),
             yaml_path: "laws/x/law.yaml".into(),
             provider: Some("claude".into()),
@@ -2629,17 +2786,23 @@ related_legislation:
         // canonical top-level fields ($id/regulatory_layer/publication_date) and
         // articles with number+text, so the fixture mirrors a real harvested law.
         let yaml = r#"---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
 $id: test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
+bwb_id: BWBR0000001
+url: https://wetten.overheid.nl/BWBR0000001/2025-01-01
 valid_from: '2025-01-01'
 articles:
   - number: '1'
     text: Article one.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1
   - number: '2'
     text: Article two.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel2
   - number: '3'
     text: Article three.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel3
     machine_readable:
       execution:
         actions: []
@@ -2660,13 +2823,17 @@ articles:
         // flatten every entry, attach the owning article number, and preserve the
         // optional fields + accepted flag.
         let yaml = r#"---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
 $id: test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
+bwb_id: BWBR0000001
+url: https://wetten.overheid.nl/BWBR0000001/2025-01-01
 valid_from: '2025-01-01'
 articles:
   - number: '1'
     text: Article one.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1
     machine_readable:
       untranslatables:
         - construct: rounding
@@ -2676,11 +2843,13 @@ articles:
           accepted: false
   - number: '2'
     text: Article two.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel2
     machine_readable:
       execution:
         actions: []
   - number: '3'
     text: Article three.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel3
     machine_readable:
       untranslatables:
         - construct: table_lookup
@@ -2723,12 +2892,16 @@ articles:
     #[tokio::test]
     async fn test_collect_untranslatables_none() {
         let yaml = r#"---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
 $id: test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
+bwb_id: BWBR0000001
+url: https://wetten.overheid.nl/BWBR0000001/2025-01-01
 articles:
   - number: '1'
     text: Article one.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1
 "#;
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("law.yaml");
@@ -2746,18 +2919,24 @@ articles:
         // as un-enriched; no corpus file uses the bare/null form, so the typed
         // count matches the previous `contains_key` behavior in practice.
         let yaml = r#"---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
 $id: test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
+bwb_id: BWBR0000001
+url: https://wetten.overheid.nl/BWBR0000001/2025-01-01
 articles:
   - number: '1'
     text: Empty section, enriched.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1
     machine_readable: {}
   - number: '2'
     text: Null section, not enriched.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel2
     machine_readable: null
   - number: '3'
     text: No section at all.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel3
 "#;
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("law.yaml");
@@ -2766,6 +2945,146 @@ articles:
         let (total, with_mr) = count_article_stats(&path).await.unwrap();
         assert_eq!(total, 3);
         assert_eq!(with_mr, 1);
+    }
+
+    const MINIMAL_LAW: &str = r#"---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$id: test_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+bwb_id: BWBR0000001
+url: https://wetten.overheid.nl/BWBR0000001/2025-01-01
+articles:
+  - number: '1'
+    text: Article one.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1
+"#;
+
+    /// Writes something the schema rejects on the first run and repairs it
+    /// when handed the errors, which is the shape of the repair round.
+    struct InvalidThenRepairingRunner {
+        calls: std::sync::Arc<std::sync::Mutex<Vec<bool>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl LlmRunner for InvalidThenRepairingRunner {
+        async fn run(
+            &self,
+            payload: &EnrichPayload,
+            yaml_abs: &Path,
+            _repo_path: &Path,
+            _config: &EnrichConfig,
+        ) -> Result<()> {
+            let is_repair = payload.repair_errors.is_some();
+            #[allow(clippy::unwrap_used)]
+            self.calls.lock().unwrap().push(is_repair);
+
+            let content = tokio::fs::read_to_string(yaml_abs).await?;
+            let mut value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&content)?;
+            if let serde_yaml_ng::Value::Mapping(ref mut map) = value {
+                if let Some(serde_yaml_ng::Value::Sequence(ref mut articles)) =
+                    map.get_mut("articles")
+                {
+                    for article in articles.iter_mut() {
+                        if let serde_yaml_ng::Value::Mapping(ref mut m) = article {
+                            let mut mr = serde_yaml_ng::Mapping::new();
+                            if is_repair {
+                                // The repair round drops the invented key.
+                                mr.insert(
+                                    "untranslatables".into(),
+                                    serde_yaml_ng::Value::Sequence(vec![]),
+                                );
+                            } else {
+                                // An invented key: `machine_readable` is
+                                // `additionalProperties: false`.
+                                mr.insert("verzonnen_sleutel".into(), "iets".into());
+                            }
+                            m.insert("machine_readable".into(), serde_yaml_ng::Value::Mapping(mr));
+                        }
+                    }
+                }
+            }
+            tokio::fs::write(yaml_abs, serde_yaml_ng::to_string(&value)?).await?;
+            Ok(())
+        }
+    }
+
+    /// The gate that the `law-generate` skill asks for and the runtime cannot
+    /// give it: schema validation, with one round to put it right.
+    #[tokio::test]
+    async fn invalid_output_gets_one_repair_round() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let path = law_dir.join("2025-01-01.yaml");
+        tokio::fs::write(&path, MINIMAL_LAW).await.unwrap();
+
+        let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let runner = InvalidThenRepairingRunner {
+            calls: calls.clone(),
+        };
+        let payload = EnrichPayload {
+            repair_errors: None,
+            law_id: "BWBR0000001".into(),
+            yaml_path: "nl/wet/test_law/2025-01-01.yaml".into(),
+            ..Default::default()
+        };
+        let config = EnrichConfig::for_test(LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        });
+
+        let result = execute_enrich_with_runner(&payload, dir.path(), &config, "", &runner).await;
+        assert!(
+            result.is_ok(),
+            "repair round should have fixed it: {result:?}"
+        );
+
+        let calls = calls.lock().unwrap().clone();
+        assert_eq!(
+            calls,
+            vec![false, true],
+            "expected one enrichment run and one repair run"
+        );
+
+        // And the file on disk is valid, which is the whole point.
+        let yaml = tokio::fs::read_to_string(&path).await.unwrap();
+        assert!(crate::enrich_v2::checks::schema_errors(&yaml).is_empty());
+    }
+
+    /// A run that changed nothing must not be validated: the file was already
+    /// in whatever state it was in, and failing here would fail a job for
+    /// someone else's defect.
+    #[tokio::test]
+    async fn an_unchanged_file_is_not_validated() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let path = law_dir.join("2025-01-01.yaml");
+        // Deliberately invalid: no `$schema` at all.
+        tokio::fs::write(
+            &path,
+            "---\n$id: test_law\narticles:\n  - number: '1'\n    text: Iets.\n",
+        )
+        .await
+        .unwrap();
+
+        let payload = EnrichPayload {
+            repair_errors: None,
+            law_id: "BWBR0000001".into(),
+            yaml_path: "nl/wet/test_law/2025-01-01.yaml".into(),
+            ..Default::default()
+        };
+        let config = EnrichConfig::for_test(LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        });
+
+        let result =
+            execute_enrich_with_runner(&payload, dir.path(), &config, "", &NoopLlmRunner).await;
+        // It fails on producing nothing, not on the pre-existing schema state.
+        let err = format!("{result:?}");
+        assert!(!err.contains("schema error"), "{err}");
     }
 
     /// Fake LLM runner that simulates enrichment by adding `machine_readable`
@@ -2814,20 +3133,26 @@ articles:
         tokio::fs::create_dir_all(&law_dir).await.unwrap();
 
         let yaml_content = r#"---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
 $id: test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
+bwb_id: BWBR0000001
+url: https://wetten.overheid.nl/BWBR0000001/2025-01-01
 valid_from: '2025-01-01'
 articles:
   - number: '1'
     text: Article one.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1
   - number: '2'
     text: Article two.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel2
     machine_readable:
       execution:
         actions: []
   - number: '3'
     text: Article three.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel3
 "#;
         let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
         tokio::fs::write(dir.path().join(yaml_path), yaml_content)
@@ -2835,6 +3160,7 @@ articles:
             .unwrap();
 
         let payload = EnrichPayload {
+            repair_errors: None,
             law_id: "BWBR0000001".into(),
             yaml_path: yaml_path.into(),
             provider: Some("opencode".into()),
@@ -2901,13 +3227,14 @@ articles:
         let law_dir = dir.path().join("regulation/nl/wet/test_law");
         tokio::fs::create_dir_all(&law_dir).await.unwrap();
 
-        let yaml_content = "---\n$id: test_law\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Article one.\n";
+        let yaml_content = "---\n$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json\n$id: test_law\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Article one.\n";
         let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
         tokio::fs::write(dir.path().join(yaml_path), yaml_content)
             .await
             .unwrap();
 
         let payload = EnrichPayload {
+            repair_errors: None,
             law_id: "BWBR0000001".into(),
             yaml_path: yaml_path.into(),
             provider: None,
@@ -2957,13 +3284,14 @@ articles:
         let law_dir = dir.path().join("regulation/nl/wet/test_law");
         tokio::fs::create_dir_all(&law_dir).await.unwrap();
 
-        let yaml_content = "---\n$id: test_law\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Article one.\n";
+        let yaml_content = "---\n$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json\n$id: test_law\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Article one.\n";
         let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
         tokio::fs::write(dir.path().join(yaml_path), yaml_content)
             .await
             .unwrap();
 
         let payload = EnrichPayload {
+            repair_errors: None,
             law_id: "BWBR0000001".into(),
             yaml_path: yaml_path.into(),
             provider: None,
@@ -3207,6 +3535,7 @@ Use the Write tool. Keep it brief — just one write per phase transition."#;
     fn enrich_payload_chunk_fields_are_transport_only() {
         // Queue payloads never carry the chunk fields: absent when None…
         let bare = EnrichPayload {
+            repair_errors: None,
             law_id: "x".into(),
             yaml_path: "regulation/a.yaml".into(),
             provider: None,
@@ -3334,24 +3663,32 @@ chunk_report:
 
     fn four_article_law() -> &'static str {
         r#"---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
 $id: test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
+bwb_id: BWBR0000001
+url: https://wetten.overheid.nl/BWBR0000001/2025-01-01
 valid_from: '2025-01-01'
 articles:
   - number: '1'
     text: Article one.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1
   - number: '2'
     text: Article two.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel2
   - number: '3'
     text: Article three.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel3
   - number: '4'
     text: Article four.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel4
 "#
     }
 
     fn chunk_test_payload(yaml_path: &str) -> EnrichPayload {
         EnrichPayload {
+            repair_errors: None,
             law_id: "BWBR0000001".into(),
             yaml_path: yaml_path.into(),
             provider: Some("opencode".into()),

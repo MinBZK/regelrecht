@@ -538,6 +538,7 @@ async fn process_next_job(
             } else {
                 for provider_name in crate::enrich::ENRICH_PROVIDERS {
                     let enrich_payload = EnrichPayload {
+                        repair_errors: None,
                         law_id: job.law_id.clone(),
                         yaml_path: result.file_path.clone(),
                         provider: Some((*provider_name).to_string()),
@@ -2216,6 +2217,7 @@ pub async fn complete_enrich_success_tx(
         // cursor on the enrich branch at claim time, so it does NOT ride in
         // the queue payload (`chunk_articles`/`skip_mvt` stay transport-only).
         let continuation_payload = EnrichPayload {
+            repair_errors: None,
             law_id: payload.law_id.clone(),
             yaml_path: payload.yaml_path.clone(),
             provider: Some(result.provider.clone()),
