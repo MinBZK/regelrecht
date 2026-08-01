@@ -65,8 +65,17 @@ function scopeRoutes(allRoutes) {
       return null;
     }
     const [, collection, rest] = match;
-    const slug = rest.replace(/\/index$/, '');
-    const route = collection === 'rfcs' ? `/rfcs/${slug}` : `/${slug}`;
+    // Een kale `index` hoort ook weg, niet alleen `…/index`: src/content/
+    // rfcs/index.md is de route /rfcs, niet /rfcs/index.
+    const slug = rest.replace(/(^|\/)index$/, '');
+    const route =
+      collection === 'rfcs'
+        ? slug === ''
+          ? '/rfcs'
+          : `/rfcs/${slug}`
+        : slug === ''
+          ? '/docs'
+          : `/${slug}`;
     if (!allRoutes.includes(route)) {
       console.log(`Volledige gate: ${file} kon niet op een route worden afgebeeld (${route}).`);
       return null;
