@@ -1,4 +1,8 @@
 ---
+# De volledige mutatierun over de hele engine. Dit is de tegenhanger van
+# mutation-diff.yml: die bewaakt nieuwe code op de PR waar hij geschreven
+# wordt, deze inventariseert wekelijks wat er al ligt. De uitkomst gaat naar
+# een issue, want een artifact dat niemand opent is geen bevinding.
 name: Mutation Testing
 
 on:
@@ -9,14 +13,28 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: mutation-testing
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: always
+  CARGO_MUTANTS_VERSION: 27.1.0
+  # Bij ~1050 mutanten van elk zo'n 18 seconden bouwen-plus-testen (gemeten,
+  # niet geschat) kost de hele run ruim vijf uur. Over twaalf shards is dat
+  # zo'n halfuur per shard en past het ruim binnen de timeout hieronder.
+  # Dit getal moet gelijk lopen met de matrix in de job eronder.
+  SHARD_COUNT: 12
 
 jobs:
   mutants:
-    name: Mutation Testing
+    name: Mutation Testing (shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
     defaults:
       run:
         working-directory: packages/engine
@@ -30,27 +48,214 @@ jobs:
         # Required by packages/.cargo/config.toml (mold linker on x86_64-linux).
         run: sudo apt-get update && sudo apt-get install -y mold
 
-      - name: Cache cargo registry
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      - name: Restore cargo registry (shared met CI)
+        # Alleen restore, geen save: acht shards die dezelfde sleutel wegschrijven
+        # leveren zeven waarschuwingen op. De CI-run op main vult deze cache.
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            ~/.cargo/bin/cargo-mutants
-            packages/engine/target
-          key: ${{ runner.os }}-cargo-mutants-${{ hashFiles('packages/engine/Cargo.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-mutants-
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+
+      - name: Restore cargo-mutants binary
+        id: mutants-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cargo/bin/cargo-mutants
+          key: ${{ runner.os }}-cargo-mutants-bin-${{ env.CARGO_MUTANTS_VERSION }}
 
       - name: Install cargo-mutants
-        run: cargo install cargo-mutants --locked || true
+        if: steps.mutants-cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-mutants --locked --version "$CARGO_MUTANTS_VERSION"
+
+      - name: Save cargo-mutants binary
+        # Alleen shard 0 schrijft, om dezelfde reden als bij de registry-cache.
+        if: matrix.shard == 0 && steps.mutants-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cargo/bin/cargo-mutants
+          key: ${{ runner.os }}-cargo-mutants-bin-${{ env.CARGO_MUTANTS_VERSION }}
 
       - name: Run mutation testing
-        run: cargo mutants --in-place --timeout-multiplier 3
+        # Overlevende mutanten (2) en vastgelopen tests (3) zijn de bevinding
+        # zelf, niet een storing: die horen in het issue terecht te komen en
+        # mogen de job dus niet laten falen. Alles daarboven is wel een storing.
+        run: |
+          set +e
+          cargo mutants --in-place --timeout-multiplier 3 \
+            --shard "${{ matrix.shard }}/${SHARD_COUNT}"
+          code=$?
+          set -e
+          case "$code" in
+            0|2|3) exit 0 ;;
+            *) exit "$code" ;;
+          esac
 
-      - name: Upload mutation report
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+      - name: Upload shard-rapport
         if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: mutants-out-shard-${{ matrix.shard }}
+          # cargo-mutants schrijft naar de workspace-root (packages/), ook als
+          # het commando vanuit packages/engine wordt gestart. De oude workflow
+          # wees naar packages/engine/mutants.out en leverde daardoor een leeg
+          # artifact op, los van de timeout die de upload nooit bereikte.
+          path: packages/mutants.out/
+          if-no-files-found: warn
+          retention-days: 90
+
+  report:
+    name: Rapporteren
+    needs: mutants
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Download shard-rapporten
+        # Faalt als geen enkele shard iets heeft opgeleverd; dat geval wordt
+        # hieronder afgevangen en als storing gemeld in plaats van als "nul
+        # overlevende mutanten".
+        continue-on-error: true
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131  # v7
+        with:
+          pattern: mutants-out-shard-*
+          path: shards
+
+      - name: Geen enkele shard leverde een rapport op
+        if: hashFiles('shards/**/missed.txt') == ''
+        run: |
+          echo "::error::Geen enkele shard heeft een rapport opgeleverd. De mutatierun is gestrand voordat er iets te melden viel; zie de shard-jobs."
+          exit 1
+
+      - name: Voeg de shards samen
+        id: merge
+        run: |
+          mkdir -p report
+          for f in missed.txt caught.txt timeout.txt unviable.txt; do
+            touch "report/$f"
+            cat shards/*/"$f" 2>/dev/null | sort -u > "report/$f" || true
+          done
+          # Acht losse outcomes.json'en zijn geen geldige JSON als je ze achter
+          # elkaar plakt, dus ze blijven per shard staan.
+          for d in shards/*/; do
+            shard=$(basename "$d" | sed 's/.*-//')
+            if [ -f "$d/outcomes.json" ]; then
+              cp "$d/outcomes.json" "report/outcomes-shard-$shard.json"
+            fi
+          done
+
+          missed=$(wc -l < report/missed.txt)
+          caught=$(wc -l < report/caught.txt)
+          timeout=$(wc -l < report/timeout.txt)
+          unviable=$(wc -l < report/unviable.txt)
+          total=$((missed + caught + timeout + unviable))
+
+          {
+            echo "missed=$missed"
+            echo "caught=$caught"
+            echo "timeout=$timeout"
+            echo "unviable=$unviable"
+            echo "total=$total"
+          } >> "$GITHUB_OUTPUT"
+
+          # De tien bestanden met de meeste overlevende mutanten, als
+          # markdown-tabel voor in het issue.
+          {
+            echo '| Bestand | Overlevende mutanten |'
+            echo '| --- | ---: |'
+            cut -d: -f1 report/missed.txt | sort | uniq -c | sort -rn | head -10 \
+              | while read -r count file; do echo "| \`$file\` | $count |"; done
+          } > report/top-files.md
+
+          # Het overzicht hoort ook in het artifact zelf te staan, zodat het
+          # buiten het issue om leesbaar blijft.
+          {
+            echo "# Mutatietesten, run van $(date -u +%Y-%m-%d)"
+            echo
+            echo "- overleefd: $missed"
+            echo "- gevangen: $caught"
+            echo "- vastgelopen: $timeout"
+            echo "- niet compileerbaar: $unviable"
+            echo
+            cat report/top-files.md
+          } > report/README.md
+
+      - name: Upload samengevoegd rapport
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: mutation-report
-          path: packages/engine/mutants.out/
+          path: report/
+          retention-days: 90
+
+      - name: Meld de bevindingen als issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MISSED: ${{ steps.merge.outputs.missed }}
+          CAUGHT: ${{ steps.merge.outputs.caught }}
+          TIMEOUT: ${{ steps.merge.outputs.timeout }}
+          UNVIABLE: ${{ steps.merge.outputs.unviable }}
+          TOTAL: ${{ steps.merge.outputs.total }}
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh label create mutation-testing \
+            --color FBCA04 \
+            --description "Overlevende mutanten uit de wekelijkse mutatierun" \
+            --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
+
+          today=$(date -u +%Y-%m-%d)
+          {
+            echo "De wekelijkse volledige mutatierun is klaar. Van de ${TOTAL} geteste"
+            echo "mutanten kwamen er **${MISSED}** ongemerkt door de tests heen."
+            echo
+            echo "| | |"
+            echo "| --- | ---: |"
+            echo "| Overleefd (\`missed\`) | ${MISSED} |"
+            echo "| Gevangen (\`caught\`) | ${CAUGHT} |"
+            echo "| Vastgelopen (\`timeout\`) | ${TIMEOUT} |"
+            echo "| Niet compileerbaar (\`unviable\`) | ${UNVIABLE} |"
+            echo
+            echo "**[Volledig rapport downloaden](${ARTIFACT_URL})** — \`missed.txt\` bevat"
+            echo "elke overlevende mutatie met bestand, regel en de doorgevoerde wijziging."
+            echo "De [run](${RUN_URL}) bewaart het artifact negentig dagen."
+            echo
+            echo "### Waar ze zitten"
+            echo
+            cat report/top-files.md
+            echo
+            echo "### Wat een regel betekent"
+            echo
+            echo "Elke regel in \`missed.txt\` is een wijziging in de engine die geen enkele"
+            echo "test rood maakt. Dat is een testgat of dode code. Niet elke regel is het"
+            echo "oplossen waard: een mutatie op een debug-helper zegt weinig. Zet die"
+            echo "gevallen vast met \`#[mutants::skip]\` bij de functie, of met \`exclude_re\`"
+            echo "in \`packages/.cargo/mutants.toml\`. Dan zakt het getal hierboven ook als"
+            echo "het antwoord \"dit hoeft niet\" is, en blijft het signaal scherp."
+            echo
+            echo "Nieuwe code wordt sinds \`mutation-diff.yml\` op de PR zelf bewaakt; dit"
+            echo "issue gaat over de voorraad die daarvoor al bestond."
+          } > body.md
+
+          new_issue=$(gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Mutatietesten: ${MISSED} overlevende mutanten (${today})" \
+            --label mutation-testing \
+            --body-file body.md)
+          echo "Aangemaakt: $new_issue"
+
+          # Het vorige issue is een momentopname van dezelfde voorraad en wordt
+          # door dit issue vervangen. Wat er nog in stond, staat er opnieuw in.
+          gh issue list --repo "$GITHUB_REPOSITORY" --label mutation-testing \
+            --state open --json number --jq '.[].number' \
+            | while read -r n; do
+                if [ "${new_issue##*/}" != "$n" ]; then
+                  gh issue close "$n" --repo "$GITHUB_REPOSITORY" \
+                    --comment "Vervangen door de run van ${today}: ${new_issue}"
+                fi
+              done
