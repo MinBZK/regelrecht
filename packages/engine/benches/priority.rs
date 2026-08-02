@@ -18,6 +18,7 @@ fn make_law(id: &str, layer: RegulatoryLayer, valid_from: &str) -> ArticleBasedL
         url: None,
         identifiers: None,
         gemeente_code: None,
+        provincie_code: None,
         waterschap_code: None,
         officiele_titel: None,
         jaar: None,

@@ -422,7 +422,9 @@ mod tests {
             number: number.to_string(),
             text: text.to_string(),
             url: None,
+            placement: None,
             machine_readable: None,
+            references: None,
         }
     }
 

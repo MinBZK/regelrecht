@@ -301,7 +301,9 @@ impl RegelrechtWorld {
                 number: row[0].trim().to_string(),
                 text: row[1].trim().to_string(),
                 url: None,
+                placement: None,
                 machine_readable: None,
+                references: None,
             });
         }
     }

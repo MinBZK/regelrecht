@@ -20,11 +20,12 @@ use std::path::Path;
 
 /// Re-export the canonical document model at the historical `article` path.
 pub use regelrecht_law_model::{
-    Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, Case, CompetentAuthority,
-    Definition, Execution, HookDeclaration, HookFilter, HookPoint, ImplementsDeclaration, Input,
-    LegalBasis, MachineReadable, OpenTerm, OpenTermDefault, Output, OverrideDeclaration, Parameter,
-    ProcedureAppliesTo, ProcedureDefinition, Produces, Source, Stage, StageRequirement, TypeSpec,
-    UntranslatableEntry,
+    Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, ArticleReference, Case,
+    CompetentAuthority, Declaration, DeclaredProperty, Definition, Execution, HookDeclaration,
+    HookFilter, HookPoint, ImplementsDeclaration, Input, LegalBasis, MachineReadable, Marking,
+    MarkingResolution, OpenTerm, OpenTermDefault, Output, OverrideDeclaration, Parameter,
+    Placement, PlacementContainer, ProcedureAppliesTo, ProcedureDefinition, Produces, Source,
+    Stage, StageRequirement, TypeSpec, UntranslatableEntry,
 };
 
 /// Engine-side loading of an [`ArticleBasedLaw`] from YAML, with the security
@@ -1042,6 +1043,130 @@ articles:
             assert!(law.articles[0].get_implements().is_none());
             // Existing functionality still works
             assert!(law.articles[0].has_output("test_output"));
+        }
+    }
+
+    // Schema v0.6.0: markings, declares and placement.
+    //
+    // The engine reads these and does not act on them. What execution should do
+    // with a marked article is a separate decision; until it is taken, parsing
+    // is what keeps a v0.6.0 law from silently losing what it declares.
+    mod v0_6_0 {
+        use super::*;
+
+        const LAW_V0_6_0: &str = r#"
+$schema: https://example.org/schema/v0.6.0/schema.json
+$id: test_markings
+regulatory_layer: WET
+publication_date: '2025-01-01'
+bwb_id: BWBR0000000
+articles:
+  - number: '1'
+    text: "Deze wet wordt aangehaald als: Testwet."
+    placement:
+      hoofdstuk:
+        number: '1'
+        heading: Algemene bepalingen
+      afdeling:
+        number: '1.2'
+    machine_readable:
+      endpoint: begripsbepalingen
+      declares:
+        - property: name
+          value: Testwet
+        - property: valid_from
+          value: '2025-01-01'
+          applies_from: '2026-01-01'
+      markings:
+        - about: het kalenderjaar waarop de tegemoetkoming betrekking heeft
+          resolution: engine
+          resolved_by: "Een YEAR-bewerking die het jaardeel van een datum oplevert"
+          target: [berekeningsjaar]
+          legal_text_excerpt: "het berekeningsjaar waarop de tegemoetkoming betrekking heeft"
+        - about: kwantificatie over de leden van het huishouden
+          resolution: model
+          target: []
+          legal_text_excerpt: "de leden van het huishouden"
+          accepted: true
+"#;
+
+        #[test]
+        fn test_parse_markings() {
+            let law = ArticleBasedLaw::from_yaml_str(LAW_V0_6_0).unwrap();
+            let markings = law.articles[0].get_markings().unwrap();
+
+            assert_eq!(markings.len(), 2);
+            assert_eq!(markings[0].resolution, MarkingResolution::Engine);
+            assert_eq!(markings[0].target, vec!["berekeningsjaar".to_string()]);
+            assert!(markings[0].resolved_by.is_some());
+            assert!(!markings[0].accepted);
+
+            // An empty target is a statement, not an omission: the article stays
+            // executable and only its explanation is incomplete.
+            assert_eq!(markings[1].resolution, MarkingResolution::Model);
+            assert!(markings[1].target.is_empty());
+            assert!(markings[1].resolved_by.is_none());
+            assert!(markings[1].accepted);
+        }
+
+        #[test]
+        fn test_parse_declares() {
+            let law = ArticleBasedLaw::from_yaml_str(LAW_V0_6_0).unwrap();
+            let declares = law.articles[0].get_declares().unwrap();
+
+            assert_eq!(declares.len(), 2);
+            assert_eq!(declares[0].property, DeclaredProperty::Name);
+            assert_eq!(declares[0].value, Value::String("Testwet".to_string()));
+            assert!(declares[0].applies_from.is_none());
+            assert_eq!(declares[1].property, DeclaredProperty::ValidFrom);
+            assert_eq!(declares[1].applies_from.as_deref(), Some("2026-01-01"));
+        }
+
+        #[test]
+        fn test_parse_placement_and_endpoint() {
+            let law = ArticleBasedLaw::from_yaml_str(LAW_V0_6_0).unwrap();
+            let placement = law.articles[0].placement.as_ref().unwrap();
+
+            let hoofdstuk = placement.hoofdstuk.as_ref().unwrap();
+            assert_eq!(hoofdstuk.number, "1");
+            assert_eq!(hoofdstuk.heading.as_deref(), Some("Algemene bepalingen"));
+
+            // A container may carry a number without an opschrift.
+            let afdeling = placement.afdeling.as_ref().unwrap();
+            assert_eq!(afdeling.number, "1.2");
+            assert!(afdeling.heading.is_none());
+            assert!(placement.boek.is_none());
+
+            let mr = law.articles[0].machine_readable.as_ref().unwrap();
+            assert_eq!(mr.endpoint.as_deref(), Some("begripsbepalingen"));
+        }
+
+        /// A v0.5 law carries no markings, and the RFC-012 untranslatables it
+        /// does carry keep parsing — the model serves every supported schema
+        /// version at once.
+        #[test]
+        fn test_untranslatables_still_parse_beside_markings() {
+            let law = ArticleBasedLaw::from_yaml_str(
+                r#"
+$id: test_legacy
+regulatory_layer: WET
+publication_date: '2025-01-01'
+bwb_id: BWBR0000000
+articles:
+  - number: '1'
+    text: "Afronding op hele euro's."
+    machine_readable:
+      untranslatables:
+        - construct: "afronden op hele euro's"
+          reason: "geen ROUND-bewerking op eurocenten"
+          accepted: true
+"#,
+            )
+            .unwrap();
+            let mr = law.articles[0].machine_readable.as_ref().unwrap();
+            assert_eq!(mr.untranslatables.as_ref().unwrap().len(), 1);
+            assert!(mr.markings.is_none());
+            assert!(law.articles[0].placement.is_none());
         }
     }
 
