@@ -10,6 +10,8 @@
 //!
 //! The checks are ordered by what they cost and what they can prove:
 //!
+//! - [`parse_diagnosis`] — before everything. Does the file parse as YAML at
+//!   all; nothing below can be asked of bytes libyaml refused to read.
 //! - [`schema_errors`] — L0. Is it valid against the declared schema version.
 //! - [`coverage`] — L2. Which leden and which connectives in the statutory
 //!   text have no counterpart in the model. This is the accounting
@@ -87,10 +89,14 @@ pub const TIME_WORDS: &[&str] = &[
 
 /// Schema validation against the version declared in the file. An empty
 /// vector means valid. A missing or unknown `$schema` is itself an error.
+///
+/// A file that does not parse is reported as one finding and nothing else:
+/// the schema has nothing to say about bytes libyaml refused to read, and a
+/// second error would only compete with the one that has to be fixed first.
 pub fn schema_errors(yaml: &str) -> Vec<String> {
     let value: serde_json::Value = match serde_yaml_ng::from_str(yaml) {
         Ok(v) => v,
-        Err(e) => return vec![format!("YAML parse error: {e}")],
+        Err(e) => return vec![parse_diagnosis(yaml, &e)],
     };
     match regelrecht_engine::schema::detect_version(&value) {
         Some(version) => match regelrecht_engine::schema::validation_errors_for(version, &value) {
@@ -98,6 +104,123 @@ pub fn schema_errors(yaml: &str) -> Vec<String> {
             Err(e) => vec![format!("schema validation failed: {e}")],
         },
         None => vec!["$schema: missing or unknown schema version".to_string()],
+    }
+}
+
+/// What a parser error means and what to do about it, for whoever has to
+/// repair the file.
+///
+/// `mapping values are not allowed in this context at line 1661 column 38`
+/// names a position and a rule of the YAML grammar. It does not name the
+/// sentence that broke, and it does not say what an acceptable repair looks
+/// like, so an agent handed that string re-reads the file, guesses, and often
+/// deletes the line instead of quoting it. This quotes the offending line,
+/// names the trap in the words of the value that fell into it, and shows the
+/// repaired line ready to be written back.
+///
+/// The traps are the ones Dutch legal prose actually walks into: a colon
+/// followed by a space inside an unquoted value ("Eerste lid: ", "Let op: ",
+/// "aangehaald als: "), and a value opening with a character YAML reserves.
+pub fn parse_diagnosis(yaml: &str, err: &serde_yaml_ng::Error) -> String {
+    let Some(location) = err.location() else {
+        return format!("YAML parse error: {err}\n\n{PARSE_TAIL}");
+    };
+    let line_no = location.line();
+    let Some(line) = yaml.lines().nth(line_no.saturating_sub(1)) else {
+        return format!("YAML parse error: {err}\n\n{PARSE_TAIL}");
+    };
+
+    let head = format!(
+        "YAML parse error: {err}\n\n  {line_no} | {}\n",
+        clip_line(line)
+    );
+    let Some((prefix, key, value)) = split_key_value(line) else {
+        return format!("{head}\n{PARSE_TAIL}");
+    };
+
+    let Some(trap) = yaml_trap(value) else {
+        return format!("{head}\n{PARSE_TAIL}");
+    };
+    let repaired = format!("{prefix}{key}: {}", quote_scalar(value));
+    format!(
+        "{head}\n{trap} Quote the value and the line reads as one string again:\n\n  \
+         {line_no} | {}\n\n{PARSE_TAIL}",
+        clip_line(&repaired)
+    )
+}
+
+/// One line of the file as it appears in a diagnosis. Long enough that a
+/// repaired line of legal prose can be copied back whole; a statutory
+/// sentence runs past any width that would fit a terminal anyway.
+fn clip_line(line: &str) -> String {
+    let cut: String = line.chars().take(400).collect();
+    if line.chars().count() > 400 {
+        format!("{cut}…")
+    } else {
+        cut
+    }
+}
+
+/// Closing advice on every parse diagnosis. A parse error is the only finding
+/// the file can produce, and saying so keeps a repair from wandering off into
+/// the rest of the file.
+const PARSE_TAIL: &str =
+    "Repair this line and change nothing else: while the file does not parse, \
+     no other check has run and there is nothing else to go on. Do not delete \
+     the line or shorten the sentence — the words are the record, the quoting \
+     is the fix.";
+
+/// Split `  - key: value` or `  key: value` into indent-with-dash, key and
+/// the raw value. `None` when the line is not a mapping entry with a value.
+fn split_key_value(line: &str) -> Option<(&str, &str, &str)> {
+    let indent_len = line.len() - line.trim_start().len();
+    let (indent, rest) = line.split_at(indent_len);
+    let (dash, rest) = match rest.strip_prefix("- ") {
+        Some(after) => (&rest[..2], after),
+        None => (&rest[..0], rest),
+    };
+    let colon = rest.find(": ")?;
+    let key = &rest[..colon];
+    if key.is_empty() || !key.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        return None;
+    }
+    let value = rest[colon + 2..].trim_end();
+    if value.is_empty() {
+        return None;
+    }
+    Some((&line[..indent.len() + dash.len()], key, value))
+}
+
+/// The YAML trap an unquoted value falls into, phrased as the rule it broke.
+/// `None` when the value looks harmless and the error is somewhere else.
+fn yaml_trap(value: &str) -> Option<String> {
+    if value.starts_with('"') || value.starts_with('\'') {
+        return None;
+    }
+    if value.contains(": ") || value.ends_with(':') {
+        return Some(
+            "An unquoted value may not contain a colon followed by a space: YAML reads \
+             everything before it as a second key, which is what \"mapping values are not \
+             allowed\" means. Dutch legal prose produces this constantly — \"Eerste lid: \", \
+             \"Let op: \", \"wordt aangehaald als: \"."
+                .to_string(),
+        );
+    }
+    let reserved = value.chars().next().filter(|c| "*&!%@`[{|>".contains(*c))?;
+    Some(format!(
+        "An unquoted value may not begin with `{reserved}`: YAML reserves that character at the \
+         start of a scalar (for an alias, an anchor, a tag, a directive or a block style), so it \
+         is read as syntax rather than as text."
+    ))
+}
+
+/// A scalar quoted so YAML reads it as one string. Double quotes unless the
+/// value contains one, in which case single quotes cost fewer escapes.
+fn quote_scalar(value: &str) -> String {
+    if value.contains('"') || value.contains('\\') {
+        format!("'{}'", value.replace('\'', "''"))
+    } else {
+        format!("\"{value}\"")
     }
 }
 
@@ -949,15 +1072,31 @@ pub fn binding_integrity(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding
                          is what resolves this"
                     ),
                 )),
-                Some(path) => {
-                    if !output.is_empty() && !law_defines_output(&path, &output) {
-                        findings.push(Finding::new(
-                            "binding",
-                            Some(&number),
-                            format!("\"{regulation}\" does not produce output \"{output}\""),
-                        ));
-                    }
-                }
+                Some(path) if !output.is_empty() => match target_output(&path, &output) {
+                    TargetOutput::Produced => {}
+                    // Harvested but not yet interpreted. The binding may be
+                    // exactly right and there is nothing in this file to
+                    // change: the target law carries no model at all yet, so
+                    // it produces nothing whatsoever. Round 5 measured this
+                    // straight: 12 of 19 checks findings were of this shape,
+                    // they survived both feedback rounds untouched, and they
+                    // could not have done otherwise.
+                    TargetOutput::NotYetInterpreted => findings.push(Finding::new(
+                        "outside-corpus",
+                        Some(&number),
+                        format!(
+                            "reads \"{regulation}\", which the corpus has but has not yet \
+                             interpreted: it carries no machine_readable and therefore produces \
+                             nothing. Interpreting that law is what resolves this"
+                        ),
+                    )),
+                    TargetOutput::Absent => findings.push(Finding::new(
+                        "binding",
+                        Some(&number),
+                        format!("\"{regulation}\" does not produce output \"{output}\""),
+                    )),
+                },
+                Some(_) => {}
             }
         }
     }
@@ -2741,15 +2880,43 @@ fn find_law_file(corpus_root: &Path, law_id: &str) -> Option<std::path::PathBuf>
     newest
 }
 
-fn law_defines_output(path: &Path, output: &str) -> bool {
+/// What a cross-law binding finds at the other end.
+#[derive(Debug, PartialEq, Eq)]
+enum TargetOutput {
+    /// The target law declares the output the binding asks for.
+    Produced,
+    /// The target law is interpreted and does not declare it. This is an
+    /// error in the binding, and the file that holds the binding can fix it.
+    Absent,
+    /// The target law carries no `machine_readable` anywhere: it has been
+    /// harvested and not yet interpreted, so it produces nothing at all and
+    /// says nothing about whether this binding is right.
+    NotYetInterpreted,
+}
+
+fn target_output(path: &Path, output: &str) -> TargetOutput {
     let Ok(raw) = std::fs::read_to_string(path) else {
-        return false;
+        return TargetOutput::NotYetInterpreted;
     };
     let Ok(doc) = serde_yaml_ng::from_str::<Value>(&raw) else {
-        return false;
+        return TargetOutput::NotYetInterpreted;
     };
+    if law_defines_output_in(&doc, output) {
+        return TargetOutput::Produced;
+    }
+    let interpreted = articles(&doc)
+        .iter()
+        .any(|a| a.get("machine_readable").is_some_and(is_substantive));
+    if interpreted {
+        TargetOutput::Absent
+    } else {
+        TargetOutput::NotYetInterpreted
+    }
+}
+
+fn law_defines_output_in(doc: &Value, output: &str) -> bool {
     let mut found = false;
-    walk_outside_sources(&doc, &mut |key, node| {
+    walk_outside_sources(doc, &mut |key, node| {
         if key != Some("output") {
             return;
         }
@@ -2817,13 +2984,23 @@ pub fn run_with_companions(
 }
 
 /// Run every deterministic check over one law file.
+///
+/// Parsing comes first and, when it fails, comes alone. Every other check
+/// reads a `Value`, so an unparseable file used to produce an empty finding
+/// list: the run that broke a law on line 1661 was reported as having nothing
+/// to say about it, and the real defect of that run stayed invisible behind
+/// the silence. A `parses` finding makes the file's unreadability the finding
+/// rather than the reason there are none.
 pub fn run(yaml: &str, corpus_root: Option<&Path>) -> Report {
     let schema = schema_errors(yaml);
-    let Ok(doc) = serde_yaml_ng::from_str::<Value>(yaml) else {
-        return Report {
-            schema,
-            findings: Vec::new(),
-        };
+    let doc = match serde_yaml_ng::from_str::<Value>(yaml) {
+        Ok(doc) => doc,
+        Err(e) => {
+            return Report {
+                schema,
+                findings: vec![Finding::new("parses", None, parse_diagnosis(yaml, &e))],
+            };
+        }
     };
     let statutory_text = all_article_text(&doc);
     let mut findings = coverage(&doc);
@@ -2848,6 +3025,103 @@ pub fn run(yaml: &str, corpus_root: Option<&Path>) -> Report {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    /// The line that broke a whole law in round 5: an unquoted `explanation`
+    /// carrying "Eerste lid: ". The diagnosis has to name the line, the rule
+    /// and the repair, because the parser message names none of the three.
+    #[test]
+    fn parse_diagnosis_quotes_the_line_that_broke_and_shows_the_repair() {
+        let yaml = "articles:\n  - number: '1'\n    explanation: Eerste lid: de Dienst Toeslagen is belast met de uitvoering van deze wet.\n";
+        let errors = schema_errors(yaml);
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        let d = &errors[0];
+        assert!(d.contains("3 | "), "cites the line number: {d}");
+        assert!(
+            d.contains("explanation: Eerste lid: de Dienst Toeslagen"),
+            "quotes the offending line: {d}"
+        );
+        assert!(
+            d.contains("colon followed by a space"),
+            "names the rule: {d}"
+        );
+        assert!(
+            d.contains(
+                "explanation: \"Eerste lid: de Dienst Toeslagen is belast met de uitvoering van deze wet.\""
+            ),
+            "shows the repaired line: {d}"
+        );
+        assert!(
+            d.contains("Do not delete the line"),
+            "forbids the cheap repair: {d}"
+        );
+    }
+
+    /// Quoting the value is a repair, so the diagnosis must propose something
+    /// that actually parses. Round-trip it rather than trust the string.
+    #[test]
+    fn the_repair_the_diagnosis_proposes_parses() {
+        let broken = "explanation: Eerste lid: de Dienst Toeslagen is belast.\n";
+        let d = schema_errors(broken).remove(0);
+        let repaired = d
+            .lines()
+            .find(|l| l.contains("| explanation: \""))
+            .and_then(|l| l.split_once("| "))
+            .map(|(_, yaml)| yaml.to_string())
+            .unwrap_or_else(|| panic!("no repaired line in: {d}"));
+        let doc: Value = serde_yaml_ng::from_str(&repaired).unwrap();
+        assert_eq!(
+            doc.get("explanation").and_then(Value::as_str),
+            Some("Eerste lid: de Dienst Toeslagen is belast."),
+            "the repair keeps the sentence whole"
+        );
+
+        // The skill offers a block scalar as the second way out. It has to
+        // survive the same sentence, or the advice sends the next run back
+        // into the same wall.
+        let folded: Value = serde_yaml_ng::from_str(
+            "explanation: >-\n  Eerste lid: de Dienst Toeslagen is belast.\n",
+        )
+        .unwrap();
+        assert_eq!(
+            folded.get("explanation").and_then(Value::as_str),
+            Some("Eerste lid: de Dienst Toeslagen is belast.")
+        );
+    }
+
+    /// A colon without a following space is legal YAML, and Dutch legal prose
+    /// is full of them ("artikel 5:2 Awb", "AWB 4:1"). Firing on those would
+    /// teach the agent to quote everything and to distrust the check.
+    #[test]
+    fn an_article_number_colon_is_not_a_trap() {
+        let yaml = "articles:\n  - number: '1'\n    explanation: Zie artikel 5:2 Awb en AWB 4:1.\n";
+        assert_eq!(schema_errors(yaml).len(), 1, "only the $schema is missing");
+        assert!(
+            schema_errors(yaml)[0].contains("$schema"),
+            "{:?}",
+            schema_errors(yaml)
+        );
+    }
+
+    #[test]
+    fn a_value_opening_with_a_reserved_character_is_named_as_such() {
+        let yaml = "explanation: *bijzondere gevallen*\n";
+        let d = schema_errors(yaml).remove(0);
+        assert!(d.contains("may not begin with `*`"), "{d}");
+        assert!(d.contains("explanation: \"*bijzondere gevallen*\""), "{d}");
+    }
+
+    /// While the file does not parse, no other check can run. The report used
+    /// to come back with an empty finding list, which reads as "nothing wrong"
+    /// to whoever measures the run afterwards.
+    #[test]
+    fn an_unparseable_file_yields_the_parse_finding_and_no_silence() {
+        let yaml = "articles:\n  - number: '1'\n    explanation: Let op: dit breekt.\n";
+        let report = run(yaml, None);
+        assert_eq!(report.findings.len(), 1, "{:?}", report.findings);
+        assert_eq!(report.findings[0].check, "parses");
+        assert!(report.findings[0].detail.contains("Let op: dit breekt."));
+        assert!(!report.is_clean());
+    }
 
     #[test]
     fn leden_split_on_numbering_and_not_on_article_references() {
@@ -3028,6 +3302,44 @@ articles:
         let findings = binding_integrity(&doc, Some(corpus.path()));
         assert_eq!(findings.len(), 1, "{findings:?}");
         assert_eq!(findings[0].check, "binding");
+    }
+
+    /// Round 5 stripped every model from the corpus before it started, so
+    /// twelve bindings read laws that produce nothing at all yet. Reported as
+    /// binding errors they were unanswerable: no edit to the reading file
+    /// makes another law produce an output. They belong with the other known
+    /// gap, and the message has to name what resolves them.
+    #[test]
+    fn a_law_that_carries_no_model_yet_is_a_known_gap_and_not_a_binding_error() {
+        let corpus = tempfile::tempdir().expect("tempdir");
+        let dir = corpus.path().join("nl/wet/awir");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("2025-01-01.yaml"),
+            "$id: awir\nbwb_id: BWBR0018472\narticles:\n  - number: '1'\n    text: tekst\n",
+        )
+        .unwrap();
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '2'
+    text: tekst
+    machine_readable:
+      execution:
+        input:
+          - name: x
+            source: {regulation: awir, output: toetsingsinkomen}
+"#,
+        )
+        .unwrap();
+        let findings = binding_integrity(&doc, Some(corpus.path()));
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].check, "outside-corpus");
+        assert!(
+            findings[0].detail.contains("has not yet interpreted"),
+            "{:?}",
+            findings[0].detail
+        );
     }
 
     #[test]
