@@ -4461,12 +4461,91 @@ articles:
     }
 
     #[test]
-    fn an_open_term_that_decides_per_case_names_a_filler() {
-        // "Redelijkerwijs" is a discretionary power somebody holds, and the
-        // schema has a field for who holds it. Naming it is the difference
-        // between an open norm and an omission.
+    fn the_flag_only_finding_says_which_channel_emptied_the_article() {
+        // Which of the two channels a translation reached for is the thing a
+        // reader has to see: the marking channel and the open-term channel
+        // are worked by different people.
+        let cases = [
+            (
+                "      markings:\n        - about: iets\n          resolution: model\n          \
+                 resolved_by: een vorm voor iets anders\n          target: []\n          \
+                 legal_text_excerpt: In deze wet wordt verstaan",
+                "a marking",
+            ),
+            (
+                "      open_terms:\n        - id: iets\n          type: string\n          \
+                 delegated_to: Onze Minister",
+                "an open term",
+            ),
+            (
+                "      markings:\n        - about: iets\n          resolution: model\n          \
+                 resolved_by: een vorm voor iets anders\n          target: []\n          \
+                 legal_text_excerpt: In deze wet wordt verstaan\n      open_terms:\n        \
+                 - id: iets\n          type: string\n          delegated_to: Onze Minister",
+                "a marking and an open term",
+            ),
+        ];
+        for (model, expected) in cases {
+            let doc: Value = serde_yaml_ng::from_str(&format!(
+                "articles:\n  - number: '1'\n    text: In deze wet wordt verstaan onder…\n    \
+                 machine_readable:\n{model}\n"
+            ))
+            .expect("yaml");
+            let findings = flags_leave_something_standing(&doc);
+            assert_eq!(findings.len(), 1, "{expected}: {findings:?}");
+            assert!(
+                findings[0].detail.contains(expected),
+                "expected {expected} in {findings:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_relative_link_target_is_plumbing_too() {
+        // The harvest does not always write an absolute URL, and the
+        // definition line is plumbing either way. Its markdown title is the
+        // only quotable text in it, so it is the one that must not pass for
+        // words of the article.
         let doc: Value = serde_yaml_ng::from_str(
             r#"
+articles:
+  - number: '5.2'
+    text: |-
+      Het toetsingsinkomen wordt afgerond op hele euro's.
+
+      [ref1]: /BWBR0018472/2026-01-01 "Algemene wet inkomensafhankelijke regelingen"
+    machine_readable:
+      markings:
+        - about: de verwijzing
+          resolution: model
+          resolved_by: een vorm voor een verwijzend begrip
+          target: []
+          legal_text_excerpt: Algemene wet inkomensafhankelijke regelingen
+"#,
+        )
+        .expect("yaml");
+        let findings = marking_discipline(&doc, "");
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(
+            findings[0].detail.contains("does not appear"),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn each_of_the_three_ways_of_naming_a_filler_stands_on_its_own() {
+        // A Dutch statute appoints a filler in three ways and the schema
+        // carries all three. Any one of them answers the question, so each is
+        // held against the gate alone. `decided_per_case_by` is the
+        // "redelijkerwijs" case: a discretionary power somebody holds and has
+        // to motivate, which is a different thing from an absence.
+        for field in [
+            "delegated_to: Onze Minister",
+            "expected_source: Regeling zorgverzekering",
+            "decided_per_case_by: de inspecteur, artikel 5",
+        ] {
+            let doc: Value = serde_yaml_ng::from_str(&format!(
+                r#"
 articles:
   - number: '5'
     text: De inspecteur kan in bijzondere gevallen afwijken.
@@ -4474,11 +4553,16 @@ articles:
       open_terms:
         - id: bijzonder_geval
           type: boolean
-          decided_per_case_by: de inspecteur, artikel 5
-"#,
-        )
-        .expect("yaml");
-        assert!(open_terms_name_a_filler(&doc).is_empty());
+          {field}
+"#
+            ))
+            .expect("yaml");
+            assert!(
+                open_terms_name_a_filler(&doc).is_empty(),
+                "{field} names a filler"
+            );
+            assert_eq!(tally(&doc).open_terms_unattributed, 0, "{field}");
+        }
     }
 
     #[test]
