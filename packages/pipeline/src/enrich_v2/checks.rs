@@ -4501,6 +4501,32 @@ articles:
     }
 
     #[test]
+    fn stripping_the_plumbing_leaves_the_sentence_and_nothing_else() {
+        // Held character for character, because this decides which words
+        // count as the article's own and the gate above it is only as honest
+        // as this line.
+        assert_eq!(
+            prose_only(
+                "Het inkomen, bedoeld in [artikel 8](https://wetten.overheid.nl/BWBR0018472), \
+                 wordt afgerond."
+            ),
+            "Het inkomen, bedoeld in [artikel 8], wordt afgerond.\n"
+        );
+        // A reference definition line goes entirely.
+        assert_eq!(
+            prose_only("De aanspraak.\n\n[ref1]: https://wetten.overheid.nl/BWBR0018472\n"),
+            "De aanspraak.\n\n"
+        );
+        // A relative target is a target too.
+        assert_eq!(prose_only("[ref1]: /BWBR0018472\n"), "");
+        // And a begripsbepaling that happens to look like one is prose.
+        assert_eq!(
+            prose_only("[verzekerde][ref1]: degene die verzekerd is"),
+            "[verzekerde][ref1]: degene die verzekerd is\n"
+        );
+    }
+
+    #[test]
     fn a_relative_link_target_is_plumbing_too() {
         // The harvest does not always write an absolute URL, and the
         // definition line is plumbing either way. Its markdown title is the
