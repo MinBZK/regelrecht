@@ -86,7 +86,10 @@ export async function runCase(cfg) {
   let thickMs = 0;
   if (thickEdges > 0) {
     const t = performance.now();
-    const layer = new ThickEdgeLayer(shared.palette, { width: 3 });
+    // Capacity has to match the case: the layer refuses to draw more segments
+    // than it allocated, and a silently capped measurement would report the
+    // cap's frame time instead of the case's.
+    const layer = new ThickEdgeLayer(shared.palette, { width: 3, capacity: thickEdges });
     layer.setResolution(scene.width, scene.height);
     const idx = new Uint32Array(Math.min(thickEdges, graph.edgeCount));
     for (let i = 0; i < idx.length; i++) idx[i] = i;

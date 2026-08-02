@@ -71,6 +71,9 @@ const CASES = [
   { name: 'kanten-2m', nodes: 100000, edges: 2000000 },
   { name: 'kanten-5m', nodes: 150000, edges: 5000000, labels: false },
   { name: 'h3-500k', nodes: 500000, edges: 1500000, labels: false },
+  // 4.000 is the renderer's default limit for the highlighted subgraph; the
+  // larger ones are there to find where thickness stops being affordable.
+  { name: 'dikke-kanten-4k', nodes: 4138, edges: 50000, thickEdges: 4000 },
   { name: 'dikke-kanten-20k', nodes: 4138, edges: 50000, thickEdges: 20000 },
   { name: 'dikke-kanten-100k', nodes: 4138, edges: 200000, thickEdges: 100000 },
   { name: 'dikke-kanten-300k', nodes: 4138, edges: 400000, thickEdges: 300000 },

@@ -135,7 +135,12 @@ const DEFAULT_OPTIONS = {
   labelBudget: 400,
   labelInterval: 120,
   maxNeighbourHighlight: 400,
-  thickEdgeLimit: 4000,
+  // Thick edges are quads, and on a software rasteriser they cost a fixed
+  // ~220 ms per frame from four thousand segments upwards - measured, not
+  // guessed. They are therefore only for the highlighted subgraph, and the
+  // limit is low on purpose: the base graph stays on thin LineSegments, which
+  // costs a thousandth of that.
+  thickEdgeLimit: 1024,
   reducedMotion: false,
   weightMode: true,
   showLabels: true,
