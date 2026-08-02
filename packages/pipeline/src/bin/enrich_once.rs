@@ -225,35 +225,71 @@ fn plan_from_args(args: &Args) -> Result<Option<Plan>, String> {
         StopRules::default(),
     )?;
 
-    println!(
-        "=== bouwplan op diepte {depth} vanaf artikel {}",
-        args.article.join(", ")
-    );
-    for line in plan.describe() {
-        println!("  {line}");
-    }
-    println!(
-        "  totaal: {} wetten, {} artikelen, {} entries",
-        plan.tasks.len(),
-        plan.articles(),
-        plan.entries()
-    );
-    if !plan.cards.is_empty() {
-        println!("  kaderwetten (naast de diepte): {}", plan.cards.join(", "));
-    }
-    if !plan.gaps.is_empty() {
-        let mut by_kind: std::collections::BTreeMap<String, usize> = Default::default();
-        for gap in &plan.gaps {
-            *by_kind.entry(format!("{:?}", gap.kind)).or_default() += gap.occurrences;
-        }
-        let summary: Vec<String> = by_kind.iter().map(|(k, v)| format!("{k} {v}")).collect();
-        println!("  bekende gaten: {}", summary.join(", "));
+    for line in plan_report(&plan, depth, &args.article) {
+        println!("{line}");
     }
 
     if let Some(refusal) = plan.refuse_above(args.max_plan_articles) {
         return Err(refusal);
     }
     Ok(Some(plan))
+}
+
+/// The report a plan prints before the first agent is spawned.
+///
+/// Built as lines rather than printed straight out because this is the only
+/// account of a run that costs hours: it names every law, the totals it will
+/// work through, and the edges it decided not to follow. A gap count that
+/// silently drops an occurrence, or a "kaderwetten" line that appears when
+/// there are none, misstates what the run is about to do, and nobody re-reads
+/// the plan afterwards to catch it.
+fn plan_report(plan: &Plan, depth: usize, articles: &[String]) -> Vec<String> {
+    let mut lines = vec![format!(
+        "=== bouwplan op diepte {depth} vanaf artikel {}",
+        articles.join(", ")
+    )];
+    lines.extend(plan.describe().into_iter().map(|line| format!("  {line}")));
+    lines.push(format!(
+        "  totaal: {} wetten, {} artikelen, {} entries",
+        plan.tasks.len(),
+        plan.articles(),
+        plan.entries()
+    ));
+    if !plan.cards.is_empty() {
+        lines.push(format!(
+            "  kaderwetten (naast de diepte): {}",
+            plan.cards.join(", ")
+        ));
+    }
+    if !plan.gaps.is_empty() {
+        // Per kind and summed over the laws: the same reason for not following
+        // an edge occurs at many laws, and what the reader needs is how much of
+        // the closure each reason accounts for.
+        let mut by_kind: std::collections::BTreeMap<String, usize> = Default::default();
+        for gap in &plan.gaps {
+            *by_kind.entry(format!("{:?}", gap.kind)).or_default() += gap.occurrences;
+        }
+        let summary: Vec<String> = by_kind.iter().map(|(k, v)| format!("{k} {v}")).collect();
+        lines.push(format!("  bekende gaten: {}", summary.join(", ")));
+    }
+    lines
+}
+
+/// The payload the local run hands the worker.
+///
+/// `law_id` is empty on purpose: locally there is no database row to name, and
+/// the worker keys on the path. Everything else has to arrive, and the two
+/// fields below are the ones with nothing to catch them — an absent
+/// `yaml_path` enriches nothing at all, and an absent `provider` silently falls
+/// back to the worker's environment, so `--provider opencode` would run
+/// against Claude and the output would look like an ordinary result.
+fn payload_from_args(args: &Args) -> EnrichPayload {
+    EnrichPayload {
+        law_id: String::new(),
+        yaml_path: args.law.clone(),
+        provider: Some(args.provider.clone()),
+        ..Default::default()
+    }
 }
 
 #[tokio::main]
@@ -333,12 +369,7 @@ async fn main() -> ExitCode {
     );
     let mut config = config;
     config.steps = args.steps;
-    let payload = EnrichPayload {
-        law_id: String::new(),
-        yaml_path: args.law.clone(),
-        provider: Some(args.provider.clone()),
-        ..Default::default()
-    };
+    let payload = payload_from_args(&args);
 
     // `source_hash` guards against enriching a law whose text moved under
     // the previous run. Locally there is no base branch to compare with, so
@@ -592,4 +623,243 @@ fn skills_present(corpus: &Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use regelrecht_pipeline::enrich_v2::closure::{Gap, GapKind, Task};
+
+    /// Three laws, the same shape the closure tests use: A reads B and C
+    /// straight, B reads C. The paths are what `--law` and the plan's tasks
+    /// carry, so the fixture has to be a real directory and not a stub.
+    fn corpus() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            &dir,
+            "regulation/nl/wet/wet_a/2026-01-01.yaml",
+            r"$id: wet_a
+regulatory_layer: WET
+bwb_id: BWBR0000001
+articles:
+  - number: '1'
+    text: De hoogte volgt uit artikel 5 van wet B en uit artikel 9 van wet C.
+    references:
+      - id: ref1
+        bwb_id: BWBR0000002
+        artikel: '5'
+      - id: ref2
+        bwb_id: BWBR0000003
+        artikel: '9'
+",
+        );
+        write(
+            &dir,
+            "regulation/nl/wet/wet_b/2026-01-01.yaml",
+            r"$id: wet_b
+regulatory_layer: WET
+bwb_id: BWBR0000002
+articles:
+  - number: '5'
+    text: Het bedrag wordt berekend met artikel 6.
+",
+        );
+        write(
+            &dir,
+            "regulation/nl/wet/wet_c/2026-01-01.yaml",
+            r"$id: wet_c
+regulatory_layer: WET
+bwb_id: BWBR0000003
+articles:
+  - number: '9'
+    text: Het percentage is tien procent.
+",
+        );
+        dir
+    }
+
+    fn write(dir: &tempfile::TempDir, rel: &str, body: &str) {
+        let path = dir.path().join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, body).unwrap();
+    }
+
+    fn args(corpus: &tempfile::TempDir) -> Args {
+        Args {
+            corpus: corpus.path().to_path_buf(),
+            law: "regulation/nl/wet/wet_a/2026-01-01.yaml".to_string(),
+            provider: "claude".to_string(),
+            model: None,
+            effort: None,
+            timeout: 900,
+            articles: 15,
+            article: Vec::new(),
+            depth: None,
+            max_plan_articles: 200,
+            kaderwetten: None,
+            rounds: FeedbackRounds::default(),
+            session_reuse: SessionReuse::default(),
+            steps: RunSteps::all(),
+        }
+    }
+
+    /// Without `--depth` the run is the single law it always was, and planning
+    /// must not invent a closure around it.
+    #[test]
+    fn test_without_depth_there_is_no_plan() {
+        let dir = corpus();
+        assert_eq!(plan_from_args(&args(&dir)), Ok(None));
+    }
+
+    /// With a depth the plan is the closure, and it has to arrive whole: the
+    /// laws it found, deepest first, so a producer is translated before the law
+    /// that reads it. A run that receives no plan quietly enriches one law and
+    /// reports success for a job it did not do.
+    #[test]
+    fn test_a_depth_plans_the_laws_it_reaches() {
+        let dir = corpus();
+        let mut args = args(&dir);
+        args.depth = Some(1);
+        args.article = vec!["1".to_string()];
+
+        let plan = plan_from_args(&args)
+            .expect("the corpus is readable")
+            .expect("a depth resolves to a plan");
+
+        let law_ids: Vec<&str> = plan.tasks.iter().map(|t| t.law_id.as_str()).collect();
+        assert!(
+            law_ids.contains(&"wet_a") && law_ids.contains(&"wet_b") && law_ids.contains(&"wet_c"),
+            "the plan must carry every law the depth reaches: {law_ids:?}"
+        );
+        assert!(
+            plan.tasks.first().map(|t| t.depth) >= plan.tasks.last().map(|t| t.depth),
+            "deepest first, so a producer comes before its reader"
+        );
+        assert!(
+            plan.articles() > 0,
+            "a plan with no articles enriches nothing"
+        );
+    }
+
+    /// A depth is a distance from an article. Without one there is no centre,
+    /// and the refusal happens before an agent is spawned.
+    #[test]
+    fn test_a_depth_without_an_article_is_refused() {
+        let dir = corpus();
+        let mut args = args(&dir);
+        args.depth = Some(1);
+
+        let err = plan_from_args(&args).unwrap_err();
+        assert!(
+            err.contains("--article"),
+            "the refusal must name what is missing: {err}"
+        );
+    }
+
+    /// The limit is a refusal and not a warning: a plan over it stops the run
+    /// rather than starting days of work nobody asked for.
+    #[test]
+    fn test_a_plan_over_the_limit_is_refused() {
+        let dir = corpus();
+        let mut args = args(&dir);
+        args.depth = Some(1);
+        args.article = vec!["1".to_string()];
+        args.max_plan_articles = 0;
+
+        let err = plan_from_args(&args).unwrap_err();
+        assert!(
+            err.contains("--depth") || err.contains("limit"),
+            "the refusal must say what to lower: {err}"
+        );
+    }
+
+    fn task(law_id: &str, articles: usize) -> Task {
+        Task {
+            depth: 0,
+            bwb_id: "BWBR0000001".to_string(),
+            law_id: law_id.to_string(),
+            path: format!("regulation/nl/wet/{law_id}/2026-01-01.yaml"),
+            articles: (0..articles).map(|n| n.to_string()).collect(),
+            entries: articles * 2,
+        }
+    }
+
+    /// A line per thing the plan actually has. An empty list is not a finding,
+    /// and printing "kaderwetten:" or "bekende gaten:" with nothing behind it
+    /// reads as the opposite of what it means.
+    #[test]
+    fn test_the_report_leaves_out_what_the_plan_does_not_have() {
+        let plan = Plan {
+            tasks: vec![task("wet_a", 2)],
+            cards: Vec::new(),
+            gaps: Vec::new(),
+        };
+        let report = plan_report(&plan, 1, &["1".to_string()]).join("\n");
+
+        assert!(report.contains("bouwplan op diepte 1 vanaf artikel 1"));
+        assert!(report.contains("totaal: 1 wetten, 2 artikelen, 4 entries"));
+        assert!(
+            !report.contains("kaderwetten"),
+            "no framework law came along, so the line must not appear: {report}"
+        );
+        assert!(
+            !report.contains("bekende gaten"),
+            "no edge was left unfollowed, so the line must not appear: {report}"
+        );
+    }
+
+    /// And the other way round: what the plan does have is reported, with the
+    /// occurrences summed per reason.
+    ///
+    /// Summed, because the same reason occurs at several laws and the reader
+    /// needs the share of the closure it accounts for. A count that is one
+    /// law's occurrences instead of the total makes an unharvested corpus look
+    /// like an incident.
+    #[test]
+    fn test_the_gap_summary_sums_the_occurrences_per_reason() {
+        let plan = Plan {
+            tasks: vec![task("wet_a", 2)],
+            cards: vec!["awb".to_string(), "awr".to_string()],
+            gaps: vec![
+                Gap {
+                    kind: GapKind::OutsideCorpus,
+                    bwb_id: "BWBR0000004".to_string(),
+                    occurrences: 3,
+                },
+                Gap {
+                    kind: GapKind::OutsideCorpus,
+                    bwb_id: "BWBR0000005".to_string(),
+                    occurrences: 4,
+                },
+                Gap {
+                    kind: GapKind::Delegated,
+                    bwb_id: "BWBR0000006".to_string(),
+                    occurrences: 2,
+                },
+            ],
+        };
+        let report = plan_report(&plan, 2, &["1".to_string(), "2".to_string()]).join("\n");
+
+        assert!(report.contains("vanaf artikel 1, 2"));
+        assert!(report.contains("kaderwetten (naast de diepte): awb, awr"));
+        assert!(
+            report.contains("bekende gaten: Delegated 2, OutsideCorpus 7"),
+            "seven edges point outside the corpus, not four and not three: {report}"
+        );
+    }
+
+    /// The path and the provider have to reach the worker. `yaml_path` is the
+    /// law that gets enriched, and an absent `provider` falls back to the
+    /// worker's environment, so `--provider opencode` would run against the
+    /// other model and produce a result that looks ordinary.
+    #[test]
+    fn test_the_payload_names_the_law_and_the_provider() {
+        let dir = corpus();
+        let mut args = args(&dir);
+        args.provider = "opencode".to_string();
+
+        let payload = payload_from_args(&args);
+        assert_eq!(payload.yaml_path, "regulation/nl/wet/wet_a/2026-01-01.yaml");
+        assert_eq!(payload.provider.as_deref(), Some("opencode"));
+    }
 }
