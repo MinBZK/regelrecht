@@ -949,11 +949,16 @@ onBeforeUnmount(() => setLibraryEmpty(false));
 const articles = computed(() => selectedLaw.value?.articles ?? []);
 
 // "Algemeen" rides the existing :articleNumber segment as a reserved value, so
-// deep-linking and the browser back button work without a new route. Article
-// numbers are digits with an optional letter suffix (1, 1a), so the word can
-// never collide with a real one.
+// deep-linking and the browser back button work without a new route. The
+// schema types article numbers as free-form strings, so a real article could
+// in theory be called 'algemeen' too; when that happens the real article wins
+// and the pane is simply not reachable for that law.
 const ALGEMEEN_KEY = 'algemeen';
-const isAlgemeen = computed(() => selectedArticleNumber.value === ALGEMEEN_KEY);
+const isAlgemeen = computed(
+  () =>
+    selectedArticleNumber.value === ALGEMEEN_KEY &&
+    !articles.value.some((article) => article.number === ALGEMEEN_KEY),
+);
 
 // A header field may be an internal reference like '#wet_naam': the value is
 // produced by an action in one of the articles, not written in the header.
@@ -1034,9 +1039,20 @@ const REGULATORY_LAYER_LABELS = {
 
 function formatLawDate(value) {
   if (!value || typeof value !== 'string' || value.startsWith('#')) return null;
-  const parsed = new Date(value);
+  // Parse the calendar date by hand: new Date('YYYY-MM-DD') means UTC
+  // midnight, and formatting that in a timezone behind UTC renders the day
+  // before the legal date. Anchoring both the parse and the formatting to UTC
+  // keeps the written date identical in every timezone.
+  const match = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(value);
+  if (!match) return value;
+  const parsed = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+  return parsed.toLocaleDateString('nl-NL', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
 }
 
 const algemeenRows = computed(() => {
@@ -1048,7 +1064,7 @@ const algemeenRows = computed(() => {
     { label: 'Officiële titel', value: law.officiele_titel },
     { label: 'Bevoegd gezag', value: resolveLawReference(law.competent_authority) },
     { label: 'Publicatiedatum', value: formatLawDate(law.publication_date) },
-    { label: 'Inwerkingtreding', value: formatLawDate(law.valid_from) },
+    { label: 'Inwerkingtreding', value: formatLawDate(resolveLawReference(law.valid_from)) },
     { label: 'Geldig tot en met', value: formatLawDate(law.valid_to) },
     { label: 'Gemeentecode', value: law.gemeente_code },
     { label: 'Provinciecode', value: law.provincie_code },
