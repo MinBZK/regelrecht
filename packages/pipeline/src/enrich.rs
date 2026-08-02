@@ -1969,7 +1969,7 @@ pub struct EnrichConfig {
     /// set. The run fails when the law has no such entry; it leaves the
     /// cursor where it was, because a repair is not progress through the
     /// document.
-    pub target_article: Option<String>,
+    pub target_articles: Vec<String>,
     /// Feedback rounds per gate. Default one everywhere.
     pub feedback_rounds: FeedbackRounds,
     /// What a window is (`ENRICH_WINDOW_MODE`). See [`WindowMode`]; default
@@ -2035,7 +2035,7 @@ impl EnrichConfig {
             max_rss_mb: 3500,
             // Chunking off by default in tests; chunk tests opt in explicitly.
             max_articles_per_run: 0,
-            target_article: None,
+            target_articles: Vec::new(),
             feedback_rounds: FeedbackRounds::default(),
             window_mode: WindowMode::default(),
             window_concurrency: 1,
@@ -2058,7 +2058,7 @@ impl EnrichConfig {
         provider: LlmProvider,
         timeout: Duration,
         max_articles: usize,
-        target_article: Option<String>,
+        target_articles: Vec<String>,
         feedback_rounds: FeedbackRounds,
         effort: Option<String>,
         session_reuse: SessionReuse,
@@ -2071,7 +2071,7 @@ impl EnrichConfig {
             code_commit: String::new(),
             max_rss_mb: 0,
             max_articles_per_run: max_articles,
-            target_article,
+            target_articles,
             feedback_rounds,
             window_mode: WindowMode::default(),
             window_concurrency: 1,
@@ -2185,7 +2185,7 @@ impl EnrichConfig {
             max_articles_per_run,
             // A worker walks whole laws; a named entry is a local, targeted
             // instruction and has no env var to arrive through.
-            target_article: None,
+            target_articles: Vec::new(),
             feedback_rounds,
             window_mode,
             window_concurrency,
@@ -2226,7 +2226,7 @@ impl EnrichConfig {
             code_commit: self.code_commit.clone(),
             max_rss_mb: self.max_rss_mb,
             max_articles_per_run: self.max_articles_per_run,
-            target_article: self.target_article.clone(),
+            target_articles: self.target_articles.clone(),
             feedback_rounds: self.feedback_rounds,
             window_mode: self.window_mode,
             window_concurrency: self.window_concurrency,
@@ -3906,32 +3906,43 @@ pub async fn execute_enrich_with_runner(
     // ordinary walk past articles no agent has seen. The termination property
     // of the cursor mode is therefore untouched: it still advances only when a
     // window is walked, in `ceil(total / N)` successful runs.
-    let targeted = config.target_article.is_some();
+    let targeted = !config.target_articles.is_empty();
     // Entry numbers in document order, so the window boundary can keep a
     // top-level article together (see `plan_chunk`).
     let entry_numbers: Vec<String> = law.articles.iter().map(|a| a.number.clone()).collect();
-    let (chunk_window, law_complete, next_cursor) = match &config.target_article {
-        Some(number) => {
-            // An article, not an entry. The harvest splits below article level
+    let (chunk_window, law_complete, next_cursor) = match targeted {
+        true => {
+            // Articles, not entries. The harvest splits below article level
             // (the Zorgverzekeringswet has 742 entries over far fewer
             // articles), so `--article 69` names 22 of them, and asking for one
             // at a time would pay the fixed per-session cost 22 times for one
             // article. `entries_of` takes the article and everything the
             // harvest hung under it.
-            let numbers = entries_of(&entry_numbers, number);
-            let index = numbers
-                .first()
-                .and_then(|first| entry_numbers.iter().position(|n| n == first))
-                .ok_or_else(|| {
+            //
+            // More than one article arrives here from `--depth`: the closure
+            // plans a set of articles per law, and enriching them in one window
+            // pays the session cost once instead of once per article.
+            let mut numbers: Vec<String> = Vec::new();
+            for article in &config.target_articles {
+                let found = entries_of(&entry_numbers, article);
+                if found.is_empty() {
                     // Loud on purpose: naming an entry that is not there is a
                     // mistake in the caller's query, and a run that quietly
                     // enriched nothing would look like a run that found
                     // nothing to do.
-                    PipelineError::Enrich(format!(
-                        "law {normalized_path} has no article {number}; it has {articles_before} \
-                         entries and this run enriches nothing else"
-                    ))
-                })?;
+                    return Err(PipelineError::Enrich(format!(
+                        "law {normalized_path} has no article {article}; it has \
+                         {articles_before} entries and this run enriches nothing else"
+                    )));
+                }
+                numbers.extend(found);
+            }
+            // Document order, so the window reads as the law reads.
+            numbers.sort_by_key(|n| entry_numbers.iter().position(|e| e == n));
+            let index = numbers
+                .first()
+                .and_then(|first| entry_numbers.iter().position(|n| n == first))
+                .unwrap_or(0);
             // What the ordinary walk had reached, under the same reset rule
             // `plan_chunk` applies: a cursor recorded for another path or
             // beyond the document does not survive into this run's metadata.
@@ -3951,7 +3962,7 @@ pub async fn execute_enrich_with_runner(
         // another and can therefore be translated in any order among
         // themselves. The cursor counts layers here, so the walk still ends in
         // a fixed number of runs.
-        None if config.window_mode == WindowMode::Layer && config.max_articles_per_run > 0 => {
+        false if config.window_mode == WindowMode::Layer && config.max_articles_per_run > 0 => {
             let raw = tokio::fs::read_to_string(&yaml_abs).await?;
             let graph = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&raw)
                 .map(|doc| crate::enrich_v2::refgraph::Graph::scan(&doc))
@@ -3969,7 +3980,7 @@ pub async fn execute_enrich_with_runner(
                 .unwrap_or(0);
             (Some((start, numbers)), complete, layer_index + 1)
         }
-        None => {
+        false => {
             let plan = plan_chunk(
                 config.max_articles_per_run,
                 articles_before,
@@ -7814,7 +7825,7 @@ articles:
             model: None,
         });
         config.max_articles_per_run = 2;
-        config.target_article = Some("4".into());
+        config.target_articles = vec!["4".into()];
         let payload = chunk_test_payload(yaml_path);
         let runner = FakeChunkRunner::new(false);
 
@@ -7842,7 +7853,7 @@ articles:
 
         // And the ordinary walk still starts at the beginning, which is the
         // termination property the cursor mode may not lose.
-        config.target_article = None;
+        config.target_articles = Vec::new();
         let (result, _) =
             execute_enrich_with_runner(&payload, dir.path(), &config, "sha1", &runner)
                 .await
@@ -7871,7 +7882,7 @@ articles:
             path: "fake".into(),
             model: None,
         });
-        config.target_article = Some("2.1.i".into());
+        config.target_articles = vec!["2.1.i".into()];
         let runner = FakeChunkRunner::new(false);
 
         let err = execute_enrich_with_runner(

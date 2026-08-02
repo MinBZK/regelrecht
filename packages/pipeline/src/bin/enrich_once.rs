@@ -21,10 +21,27 @@
 //! lands there, so a second run continues where the first stopped, exactly
 //! as it does in production.
 //!
-//! `--article` names one entry and enriches exactly that one: the run does
-//! not walk the document and does not move the cursor, because repairing an
-//! entry is not progress through the law. A number the law does not have
-//! fails the run rather than enriching nothing in silence.
+//! `--article` names one article and enriches that one, with every entry the
+//! harvest hung under it: the run does not walk the document and does not move
+//! the cursor, because repairing an article is not progress through the law. A
+//! number the law does not have fails the run rather than enriching nothing in
+//! silence.
+//!
+//! `--depth` only goes with `--article`, and it counts **wetssprongen** and not
+//! artikelen. Concentric circles, and the circle is the law: staying inside a
+//! law is free, crossing to another costs a point, and a law reached straight
+//! from the start costs one point however long the route that also finds it.
+//! The plan is printed before anything runs and the laws are enriched deepest
+//! first, so a producer is translated before the law that reads it.
+//!
+//! What that costs is measured and it is not small. From `--article 69` of the
+//! Zorgverzekeringswet: depth 0 is 53 articles, depth 1 is 624 across 21 laws,
+//! depth 2 is 2 694 across 99, depth 3 is 5 274 across 233.
+//! `--max-plan-articles` therefore refuses anything over 200 until it is raised
+//! on purpose, which means even depth 1 on this law has to be asked for twice.
+//! `--article` repeats, so the seven articles the Wet op de zorgtoeslag reads
+//! plan as the one closure they form rather than as seven overlapping ones.
+//! See `enrich_v2::closure` for the whole table and the stop rules.
 //!
 //! `--session-reuse` says whether the calls in this window share one agent
 //! session: `window` (the default — every call continues the same session,
@@ -49,6 +66,9 @@ use regelrecht_pipeline::enrich::{
     FeedbackRounds, LlmProvider, ProcessLlmRunner, RunSteps, SessionReuse,
 };
 use regelrecht_pipeline::enrich_v2::checks;
+use regelrecht_pipeline::enrich_v2::closure::{
+    plan_closure, Kaderwetten, LawIndex, Plan, StopRules,
+};
 
 struct Args {
     corpus: PathBuf,
@@ -58,7 +78,10 @@ struct Args {
     effort: Option<String>,
     timeout: u64,
     articles: usize,
-    article: Option<String>,
+    article: Vec<String>,
+    depth: Option<usize>,
+    max_plan_articles: usize,
+    kaderwetten: Option<PathBuf>,
     rounds: FeedbackRounds,
     session_reuse: SessionReuse,
     steps: RunSteps,
@@ -72,7 +95,10 @@ fn parse_args() -> Result<Args, String> {
     let mut effort = None;
     let mut timeout = 900u64;
     let mut articles = 15usize;
-    let mut article = None;
+    let mut article: Vec<String> = Vec::new();
+    let mut depth = None;
+    let mut max_plan_articles = 200usize;
+    let mut kaderwetten = None;
     let mut rounds = FeedbackRounds::default();
     let mut steps = RunSteps::all();
     let mut session_reuse = SessionReuse::default();
@@ -88,7 +114,23 @@ fn parse_args() -> Result<Args, String> {
             "--provider" => provider = value("--provider")?,
             "--model" => model = Some(value("--model")?),
             "--effort" => effort = Some(value("--effort")?),
-            "--article" => article = Some(value("--article")?),
+            // Repeatable: the Wet op de zorgtoeslag reads seven articles of
+            // the Zorgverzekeringswet, and planning them one at a time would
+            // plan seven overlapping closures instead of the one they form.
+            "--article" => article.push(value("--article")?),
+            "--kaderwetten" => kaderwetten = Some(PathBuf::from(value("--kaderwetten")?)),
+            "--depth" => {
+                depth = Some(
+                    value("--depth")?
+                        .parse()
+                        .map_err(|_| "--depth wants a number of law jumps".to_string())?,
+                );
+            }
+            "--max-plan-articles" => {
+                max_plan_articles = value("--max-plan-articles")?
+                    .parse()
+                    .map_err(|_| "--max-plan-articles wants a number".to_string())?;
+            }
             "--rounds" => rounds = FeedbackRounds::parse(&value("--rounds")?)?,
             "--steps" => steps = RunSteps::parse(&value("--steps")?)?,
             "--session-reuse" => session_reuse = SessionReuse::parse(&value("--session-reuse")?)?,
@@ -106,7 +148,8 @@ fn parse_args() -> Result<Args, String> {
                 return Err(
                     "usage: enrich-once --corpus <root> --law <path.yaml> [--provider claude] \
                      [--model opus] [--effort medium] [--timeout 900] [--articles 15] \
-                     [--rounds 2|checks=2,marking=2] [--article 2.1.i] [--steps window,reconcile] \
+                     [--rounds 2|checks=2,marking=2] [--article 69]... [--depth 1] \
+                     [--max-plan-articles 200] [--kaderwetten <path>] [--steps window,reconcile] \
                      [--session-reuse window|repair|off]"
                         .to_string(),
                 )
@@ -124,10 +167,93 @@ fn parse_args() -> Result<Args, String> {
         timeout,
         articles,
         article,
+        depth,
+        max_plan_articles,
+        kaderwetten,
         rounds,
         session_reuse,
         steps,
     })
+}
+
+/// Resolve `--depth` into a plan, or `None` when the run is the plain single
+/// law it always was.
+///
+/// Every refusal here happens before an agent is spawned: a depth without an
+/// article has no centre to be concentric around, a plan bigger than the caller
+/// accepts is a run of days, and both are cheaper to say now than to discover
+/// halfway.
+fn plan_from_args(args: &Args) -> Result<Option<Plan>, String> {
+    let Some(depth) = args.depth else {
+        return Ok(None);
+    };
+    if args.article.is_empty() {
+        return Err(
+            "--depth needs --article: the depth is a distance from an article of one law, and \
+             without that centre there is nothing to be a distance from"
+                .to_string(),
+        );
+    }
+
+    let index = LawIndex::scan(&args.corpus)
+        .map_err(|e| format!("cannot read the corpus at {}: {e}", args.corpus.display()))?;
+    let kaderwetten = match &args.kaderwetten {
+        Some(path) => Kaderwetten::parse(
+            &std::fs::read_to_string(path)
+                .map_err(|e| format!("cannot read {}: {e}", path.display()))?,
+        ),
+        None => Kaderwetten::load(&args.corpus),
+    };
+    if kaderwetten.bwb_ids.is_empty() {
+        // Not fatal, and not silent either. RFC-026 names the hand-written list
+        // as the one place a silent gap can arise, so an absent list is said
+        // out loud rather than read as "there are none".
+        eprintln!(
+            "note: {}/kaderwetten.yaml is absent, so no framework law is designated. A law that \
+             declares itself applicable without being referenced will not be found",
+            args.corpus.display()
+        );
+    }
+
+    let plan = plan_closure(
+        &args.corpus,
+        &args.law,
+        &args.article,
+        depth,
+        &kaderwetten,
+        &index,
+        StopRules::default(),
+    )?;
+
+    println!(
+        "=== bouwplan op diepte {depth} vanaf artikel {}",
+        args.article.join(", ")
+    );
+    for line in plan.describe() {
+        println!("  {line}");
+    }
+    println!(
+        "  totaal: {} wetten, {} artikelen, {} entries",
+        plan.tasks.len(),
+        plan.articles(),
+        plan.entries()
+    );
+    if !plan.cards.is_empty() {
+        println!("  kaderwetten (naast de diepte): {}", plan.cards.join(", "));
+    }
+    if !plan.gaps.is_empty() {
+        let mut by_kind: std::collections::BTreeMap<String, usize> = Default::default();
+        for gap in &plan.gaps {
+            *by_kind.entry(format!("{:?}", gap.kind)).or_default() += gap.occurrences;
+        }
+        let summary: Vec<String> = by_kind.iter().map(|(k, v)| format!("{k} {v}")).collect();
+        println!("  bekende gaten: {}", summary.join(", "));
+    }
+
+    if let Some(refusal) = plan.refuse_above(args.max_plan_articles) {
+        return Err(refusal);
+    }
+    Ok(Some(plan))
 }
 
 #[tokio::main]
@@ -136,6 +262,19 @@ async fn main() -> ExitCode {
         Ok(a) => a,
         Err(msg) => {
             eprintln!("{msg}");
+            return ExitCode::from(2);
+        }
+    };
+
+    // The closure: which laws and which of their articles this order pulls in.
+    // Planned first of all, printed whole, and refused when it is bigger than
+    // the caller said it would accept. Before the skills check on purpose: a
+    // plan that is going to be refused should say so without needing a corpus
+    // that is set up to run, and planning writes nothing.
+    let plan = match plan_from_args(&args) {
+        Ok(plan) => plan,
+        Err(message) => {
+            eprintln!("{message}");
             return ExitCode::from(2);
         }
     };
@@ -215,6 +354,59 @@ async fn main() -> ExitCode {
         )
         .with_target(false)
         .init();
+
+    // With a plan the run walks it, deepest first; without one it is the
+    // single law the caller named, which is every run that existed before
+    // `--depth`.
+    if let Some(plan) = &plan {
+        for (number, task) in plan.tasks.iter().enumerate() {
+            println!(
+                "\n=== [{}/{}] diepte {} — {} ({} artikelen, {} entries)",
+                number + 1,
+                plan.tasks.len(),
+                task.depth,
+                task.law_id,
+                task.articles.len(),
+                task.entries
+            );
+            let mut task_config = config.clone();
+            task_config.target_articles = task.articles.clone();
+            let task_payload = EnrichPayload {
+                yaml_path: task.path.clone(),
+                ..payload.clone()
+            };
+            match execute_enrich_with_runner(
+                &task_payload,
+                &args.corpus,
+                &task_config,
+                "",
+                &ProcessLlmRunner,
+            )
+            .await
+            {
+                Ok((result, changed)) => {
+                    println!(
+                        "  {} of {} articles carry machine_readable, files touched {}",
+                        result.articles_with_machine_readable,
+                        result.articles_total,
+                        changed.len()
+                    );
+                    print_feedback(&result.feedback);
+                }
+                Err(e) => {
+                    // One law out of many. Stopping the whole plan on it would
+                    // throw away every law already translated, and the laws
+                    // after it do not depend on this one being finished — they
+                    // are shallower, so they read it rather than feed it.
+                    // Loud, and the run reports a failure at the end.
+                    eprintln!("  enrichment failed for {}: {e}", task.law_id);
+                    return ExitCode::FAILURE;
+                }
+            }
+        }
+        println!("\n=== plan afgelopen: {} wetten", plan.tasks.len());
+        return ExitCode::SUCCESS;
+    }
 
     let outcome =
         execute_enrich_with_runner(&payload, &args.corpus, &config, "", &ProcessLlmRunner).await;
