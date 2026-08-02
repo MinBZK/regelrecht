@@ -398,6 +398,49 @@ const CORPUS_GAP_SIGNALS: &[&str] = &[
     "nog niet beschikbaar",
 ];
 
+/// Shapes the format already has, with the statutory words that announce them.
+///
+/// The twin of [`AVAILABLE_OPERATIONS`], and it exists for the same reason. A
+/// marking with `resolution: engine` claims an operation does not exist, and
+/// that claim is held against the operation list. A marking with `resolution:
+/// model` claims the *format* has no shape for the construct, and until now
+/// nothing held that against anything: a model marking could not be wrong,
+/// which made it the bin every hard case fell into, mechanically encouraged by
+/// the gates themselves. This is the list it can be wrong about.
+///
+/// Deliberately short. Only constructs with a field or a form of their own,
+/// announced by words a drafter actually writes. A quantification over persons
+/// or a co-signature duty is not here, because those really are shapes the
+/// format lacks.
+const EXPRESSIBLE_SHAPES: &[(&str, &[&str])] = &[
+    (
+        "an `overrides` entry",
+        &["in afwijking van", "derogeert", "verdringt"],
+    ),
+    (
+        "a branch in the action",
+        &["tenzij", "voor zover", "behoudens", "indien en voor zover"],
+    ),
+    (
+        "a `definitions` entry",
+        &["wordt verstaan onder", "begripsbepaling", "definitie van"],
+    ),
+    (
+        "a `declares` entry",
+        &[
+            "citeertitel",
+            "wordt aangehaald als",
+            "treedt in werking",
+            "inwerkingtreding",
+        ],
+    ),
+];
+// A row for cross-references was tried here and removed. "Bedoeld in artikel"
+// is how a Dutch provision names any value at all, so it matched 52 of the 221
+// markings in the round-4 corpus, and a gate that fires on half its input
+// teaches rewording rather than binding. The citation itself is better
+// evidence than prose about it, and `cross_law_references` holds it.
+
 /// Patterns that look like a citation of a document outside the corpus.
 /// An agent without network cannot have read one, so a citation is either
 /// something the worker put in front of it or something it recalled, and
@@ -524,10 +567,9 @@ pub fn marking_discipline(doc: &Value, text_corpus: &str) -> Vec<Finding> {
 
             // `resolution: engine` is itself the claim that the operation does
             // not exist, so it can be held against the operation list without
-            // reading the prose for an absence claim first. A `model` marking
-            // makes no such claim and is left alone: the eighteenth-birthday
-            // rule wants a month boundary, not AGE.
-            if entry.get("resolution").and_then(Value::as_str) == Some("engine") {
+            // reading the prose for an absence claim first.
+            let resolution = entry.get("resolution").and_then(Value::as_str);
+            if resolution == Some("engine") {
                 for (op, phrases) in AVAILABLE_OPERATIONS {
                     if phrases.iter().any(|p| both.contains(p)) {
                         findings.push(Finding::new(
@@ -542,6 +584,64 @@ pub fn marking_discipline(doc: &Value, text_corpus: &str) -> Vec<Finding> {
                         break;
                     }
                 }
+            }
+
+            // And `resolution: model` is the claim that the format has no
+            // shape for the construct, which is held against the shapes it
+            // has. Without this half a model marking could not be wrong about
+            // anything, and a resolution nothing can refute is where every
+            // hard case goes.
+            if resolution == Some("model") {
+                for (shape, phrases) in EXPRESSIBLE_SHAPES {
+                    if phrases.iter().any(|p| both.contains(p)) {
+                        findings.push(Finding::new(
+                            "marking",
+                            Some(&number),
+                            format!(
+                                "marking \"{}\" says the format has no shape for this and names \
+                                 something {shape} expresses",
+                                truncate(about)
+                            ),
+                        ));
+                        break;
+                    }
+                }
+            }
+
+            // `resolved_by` names the change that would close the gap. The
+            // schema requires the field; what a schema cannot require is that
+            // it says anything, and that is the half worth checking. A
+            // restatement of `about` names no work, and naming the work is
+            // where the two resolutions come apart: writing out what would
+            // close a co-signature duty is how you notice it is not a missing
+            // operation. Absence is left to the schema, which reports it
+            // better than a second voice would.
+            let resolved_lower = resolved_by.to_lowercase();
+            let about_lower = about.to_lowercase();
+            if resolved_by.trim().is_empty() {
+                // The schema's business.
+            } else if word_count(resolved_by) < QUOTE_MIN_WORDS {
+                findings.push(Finding::new(
+                    "marking",
+                    Some(&number),
+                    format!(
+                        "marking \"{}\" names no change that would resolve it; without that a \
+                         marking is a complaint and never becomes work",
+                        truncate(about)
+                    ),
+                ));
+            } else if !about.trim().is_empty()
+                && (resolved_lower.contains(&about_lower) || about_lower.contains(&resolved_lower))
+            {
+                findings.push(Finding::new(
+                    "marking",
+                    Some(&number),
+                    format!(
+                        "marking \"{}\" restates itself as its own resolution. What has to \
+                         change is a different sentence from what does not fit",
+                        truncate(about)
+                    ),
+                ));
             }
 
             // The excerpt is what ties the marking to this provision. A
@@ -562,7 +662,19 @@ pub fn marking_discipline(doc: &Value, text_corpus: &str) -> Vec<Finding> {
                         truncate(about)
                     ),
                 ));
-            } else if !normalised(own_text).contains(&normalised(quote)) {
+            } else if word_count(quote) < QUOTE_MIN_WORDS {
+                findings.push(Finding::new(
+                    "marking",
+                    Some(&number),
+                    format!(
+                        "marking \"{}\" quotes {:?}, which is a token and not words. A \
+                         quotation is a phrase somebody copied; a single identifier can be \
+                         guessed from the header",
+                        truncate(about),
+                        truncate(quote)
+                    ),
+                ));
+            } else if !normalised(&prose_only(own_text)).contains(&normalised(quote)) {
                 findings.push(Finding::new(
                     "marking",
                     Some(&number),
@@ -594,19 +706,55 @@ pub fn marking_discipline(doc: &Value, text_corpus: &str) -> Vec<Finding> {
     findings
 }
 
+/// The keys whose presence means a model does something beyond flagging.
+///
+/// `open_terms` is not among them, and that is the correction of a mistake
+/// that ran the wrong way. An open term is a gap: it says the content of this
+/// norm is settled elsewhere. Counting it as logic made an article whose whole
+/// model was one open term register as an article with logic, drawing no
+/// finding at all — the chapeau of article 1 of the zorgtoeslag, the very
+/// failure this consolidation exists to fix, moved from a marking that was
+/// reported to an open term that was scored as progress. A gap counts as an
+/// outcome, never as work done.
+const LOGIC_KEYS: &[&str] = &["execution", "definitions", "requires", "implements"];
+
+/// The same question as [`LOGIC_KEYS`] asks it in round 4, kept so a bucket
+/// count can be compared across rounds instead of being caveated. `implements`
+/// was not part of it then.
+const LOGIC_KEYS_R4: &[&str] = &["execution", "definitions", "requires", "open_terms"];
+
+/// Whether a node says anything at all. An empty sequence, an empty mapping,
+/// an empty string and a null all say nothing, and `Value::get` cannot tell
+/// them apart from a filled one.
+///
+/// This is the difference between a gate and a formality: `open_terms: []`
+/// costs one line, is `Some`, and used to buy an article out of every check
+/// that asks whether the model does anything.
+fn is_substantive(node: &Value) -> bool {
+    match node {
+        Value::Null => false,
+        Value::Sequence(seq) => !seq.is_empty(),
+        Value::Mapping(map) => !map.is_empty(),
+        Value::String(s) => !s.trim().is_empty(),
+        _ => true,
+    }
+}
+
 /// Whether a model does anything beyond flagging. Shared by the tally and by
 /// the accounting gate so the two can never disagree about what "worked out"
 /// means.
 fn carries_logic(mr: &Value) -> bool {
-    [
-        "execution",
-        "definitions",
-        "requires",
-        "open_terms",
-        "implements",
-    ]
-    .iter()
-    .any(|key| mr.get(key).is_some())
+    carries_any(mr, LOGIC_KEYS)
+}
+
+/// [`carries_logic`] under the round-4 key set.
+fn carries_logic_r4(mr: &Value) -> bool {
+    carries_any(mr, LOGIC_KEYS_R4)
+}
+
+fn carries_any(mr: &Value, keys: &[&str]) -> bool {
+    keys.iter()
+        .any(|key| mr.get(key).is_some_and(is_substantive))
 }
 
 /// The values a marking says it blocks.
@@ -1190,6 +1338,18 @@ pub struct Tally {
     /// Entries with no outcome at all. Mirrors the `accounted` check, and is
     /// here so a run can be read without cross-referencing the findings.
     pub bare: usize,
+    /// The same three buckets under the round-4 key set, so a figure from
+    /// then and a figure from now compare like with like.
+    ///
+    /// The consolidation moved two keys: `implements` counts as logic now and
+    /// did not then, `overrides` counts as a marking now and did not then. The
+    /// gate and the counter agree with each other either way, which is what
+    /// matters inside one run and says nothing across two. Both are computed
+    /// rather than only the definition being recorded, because a caveat in a
+    /// comment does not survive being pasted into a table.
+    pub with_logic_r4: usize,
+    pub marked_only_r4: usize,
+    pub bare_r4: usize,
     /// Bindings that read from another regulation.
     pub cross_law_bindings: usize,
     /// Distinct regulations this file reads from.
@@ -1203,6 +1363,17 @@ pub struct Tally {
     /// somewhere. Both are the same known gap, so they draw the same finding,
     /// and only these two numbers say which of the two a run chose.
     pub unnamed_sources: usize,
+    /// `input` entries carrying no `source` at all.
+    ///
+    /// An `input` is a value from another source or another article, so
+    /// leaving the `source` off is the cheapest way to make a cross-reference
+    /// disappear: no finding, and until now no counter either. It stays a
+    /// count and not a finding, because a genuine external fact — a date of
+    /// birth, a registration — is a legitimate bare input and flooding the
+    /// findings with those would teach a run to bind nothing at all. Beside
+    /// `cross_law_bindings` and `unnamed_sources` this is what tells a run
+    /// that bound its references apart from one that dropped them.
+    pub bare_inputs: usize,
     /// Markings, in total and split by what has to change before the article
     /// can be translated in full.
     pub markings: usize,
@@ -1219,6 +1390,11 @@ pub struct Tally {
     /// from one waiting on a named ministerial regulation.
     pub open_terms: usize,
     pub open_terms_delegated: usize,
+    /// Open terms naming nobody at all: no authority, no expected regulation,
+    /// no authority deciding per case. The counter beside the gate, so a run
+    /// that moved its markings into the open-term channel shows it in the
+    /// numbers as well as in the findings.
+    pub open_terms_unattributed: usize,
     pub declares: usize,
     pub overrides: usize,
     /// Outputs declared anywhere in the file.
@@ -1275,6 +1451,7 @@ pub fn tally(doc: &Value) -> Tally {
                 .is_some_and(|t| !t.trim().is_empty())
             {
                 t.bare += 1;
+                t.bare_r4 += 1;
             }
             continue;
         };
@@ -1288,8 +1465,13 @@ pub fn tally(doc: &Value) -> Tally {
             .and_then(Value::as_sequence)
             .map_or(&[][..], Vec::as_slice)
         {
-            if term.get("delegated_to").is_some() {
+            if term.get("delegated_to").is_some_and(is_substantive) {
                 t.open_terms_delegated += 1;
+            }
+            let names = |key: &str| term.get(key).is_some_and(is_substantive);
+            if !names("delegated_to") && !names("expected_source") && !names("decided_per_case_by")
+            {
+                t.open_terms_unattributed += 1;
             }
         }
         for marking in markings(mr) {
@@ -1308,13 +1490,26 @@ pub fn tally(doc: &Value) -> Tally {
         }
 
         let has_logic = carries_logic(mr);
-        let has_marking = count("markings") + count("declares") + count("overrides") > 0;
+        // An open term is a gap, so it counts here and not as logic.
+        let has_marking =
+            count("markings") + count("declares") + count("overrides") + count("open_terms") > 0;
         if has_logic {
             t.with_logic += 1;
         } else if has_marking {
             t.marked_only += 1;
         } else {
             t.bare += 1;
+        }
+
+        // Round 4 asked the same question of a smaller key set.
+        let has_logic_r4 = carries_logic_r4(mr);
+        let has_marking_r4 = count("markings") + count("declares") > 0;
+        if has_logic_r4 {
+            t.with_logic_r4 += 1;
+        } else if has_marking_r4 {
+            t.marked_only_r4 += 1;
+        } else {
+            t.bare_r4 += 1;
         }
 
         laws_read.extend(bound_regulations(Some(mr)));
@@ -1342,6 +1537,19 @@ pub fn tally(doc: &Value) -> Tally {
         // under `parameters`, and nested inside operations. Counting only the
         // top-level `input` list reported nought bindings on a file with
         // eight of them.
+        // An `input` reads a value from somewhere else, so an `input` without
+        // a `source` says where from by saying nothing.
+        walk_outside_sources(mr, &mut |key, node| {
+            if key != Some("input") {
+                return;
+            }
+            if let Value::Sequence(seq) = node {
+                t.bare_inputs += seq
+                    .iter()
+                    .filter(|item| item.is_mapping() && item.get("source").is_none())
+                    .count();
+            }
+        });
         walk(mr, &mut |key, node| {
             if key != Some("source") {
                 return;
@@ -1396,25 +1604,32 @@ pub fn tally(doc: &Value) -> Tally {
 /// their own header, so the question "does this article read the law it cites"
 /// is a lookup rather than an interpretation.
 ///
-/// Not every citation must become a binding: a reference can be descriptive,
-/// or the target may sit outside this corpus. But it must be answered, and
-/// there are exactly two answers.
+/// A marking is not an answer here, and that is the point. A marking says the
+/// format cannot express a construct; a citation of a law that exists is not a
+/// construct the format cannot express, and the schema says so in as many
+/// words: a value another law produces is an input with a `source`. In round 4
+/// this gate accepted any marking whose prose carried the BWB number, and 43 of
+/// the 101 norm gaps were cross-references written up as gaps because that was
+/// the short way past it. Requiring the marking to quote the citation instead
+/// only raises the price of the same wrong answer: the article's text sits in
+/// the window and copying costs nothing. The exit is gone rather than made
+/// dearer.
 ///
-/// The second answer used to be any marking whose prose contained the law id
-/// or the BWB number anywhere. That is the cheapest sentence an agent can
-/// write, and a gate with a cheap exit shapes the output that passes it: 43 of
-/// the 101 norm gaps in round 4 were cross-references to laws that exist,
-/// written up as gaps, because writing the BWB number into a gap was the short
-/// way past this check. A value another law produces is an input with a
-/// `source`, never a gap.
+/// Two answers remain, and both say something a reader can act on.
 ///
-/// So a marking now has to be demonstrably about *this* reference, and the
-/// evidence is the one the schema already requires. Every reference in the
-/// harvested text is a markdown link whose label is the words of the citation
-/// and whose target carries the BWB number, so the citation has a known
-/// literal form. A marking answers the reference when its `legal_text_excerpt`
-/// contains those words. Quoting the sentence that carries the citation is
-/// something you can only do by having read it; naming the number is not.
+/// The first is a binding: a `source`, an `overrides` or an `implements` that
+/// names the law.
+///
+/// The second is an `open_term` whose `expected_source` names it. That is the
+/// case where the article does not read the other regulation but appoints it —
+/// "bij ministeriële regeling worden regels gesteld" beside the regulation the
+/// article names. Which regulation a law appoints is a property of the law, so
+/// the claim survives a corpus that changes around it, and it is checkable
+/// against the delegation the same open term declares.
+///
+/// A citation the article merely mentions in passing has no answer left and
+/// draws a finding. That is deliberate: a mention nobody can act on is exactly
+/// what a reader cannot tell apart from an overlooked binding.
 pub fn cross_law_references(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding> {
     let own_bwb = doc
         .get("bwb_id")
@@ -1438,33 +1653,23 @@ pub fn cross_law_references(doc: &Value, corpus_root: Option<&Path>) -> Vec<Find
         ) else {
             continue;
         };
-        let cited: BTreeSet<&str> = bwb_ids(text)
-            .into_iter()
-            .filter(|id| *id != own_bwb)
-            .collect();
+        // The reference block is part of the citation too. An article can
+        // carry the link definitions in `references` and the words in the
+        // text, and reading only the text then loses the citation entirely.
+        let mut cited: BTreeSet<&str> = bwb_ids(text).into_iter().collect();
+        cited.extend(reference_block_ids(entry));
+        cited.remove(own_bwb);
         if cited.is_empty() {
             continue;
         }
         let mr = entry.get("machine_readable");
         // An article that says nothing at all is the `accounted` check's
         // business; saying it twice about the same article helps nobody.
-        if mr.is_none() {
+        let Some(mr) = mr else {
             continue;
-        }
-        let bound = bound_regulations(mr);
-        // A marking excuses the reference whose words it quotes, and only that
-        // one. A marking about rounding says nothing about whether this
-        // article reads the Zorgverzekeringswet, and treating any marking as a
-        // blanket answer is how a gate stops asking.
-        let quotes: Vec<String> = mr
-            .map(|mr| {
-                markings(mr)
-                    .iter()
-                    .filter_map(|m| m.get("legal_text_excerpt").and_then(Value::as_str))
-                    .map(normalised)
-                    .collect()
-            })
-            .unwrap_or_default();
+        };
+        let bound = bound_regulations(Some(mr));
+        let appointed = appointed_regulations(mr);
 
         for id in cited {
             let Some(law_id) = index.get(id) else {
@@ -1475,16 +1680,7 @@ pub fn cross_law_references(doc: &Value, corpus_root: Option<&Path>) -> Vec<Find
             if bound.contains(law_id.as_str()) {
                 continue;
             }
-            let labels = citation_labels(entry, text, id);
-            let quoted = quotes.iter().any(|quote| {
-                if labels.is_empty() {
-                    // No markdown link to quote, so the number is all there is.
-                    quote.contains(&normalised(id))
-                } else {
-                    labels.iter().any(|label| quote.contains(label))
-                }
-            });
-            if quoted {
+            if names_regulation(&appointed, id, law_id) {
                 continue;
             }
             findings.push(Finding::new(
@@ -1492,7 +1688,7 @@ pub fn cross_law_references(doc: &Value, corpus_root: Option<&Path>) -> Vec<Find
                 Some(number),
                 format!(
                     "text cites {law_id} ({id}) and the model reads nothing from it. Bind to \
-                     the article it names, or mark it and quote the words that cite it"
+                     the article it names with a source, or name it on the open term it fills"
                 ),
             ));
         }
@@ -1500,44 +1696,40 @@ pub fn cross_law_references(doc: &Value, corpus_root: Option<&Path>) -> Vec<Find
     findings
 }
 
-/// The words with which an article cites one law, normalised.
-///
-/// The harvest renders every reference as a markdown link: the label is the
-/// citation as the legislator wrote it ("artikel 2.18 van de Wet
-/// inkomstenbelasting 2001") and the link target carries the BWB number. The
-/// article's `references` list maps the link id to that number, so the citation
-/// of a given law has a known literal form and a quotation can be held against
-/// it.
-///
-/// Returns every label for this law, because one article can cite the same law
-/// in several places and quoting any one of them addresses that citation.
-fn citation_labels(article: &Value, text: &str, bwb_id: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let refs = article
+/// BWB identifiers named in an article's `references` block.
+fn reference_block_ids(article: &Value) -> Vec<&str> {
+    article
         .get("references")
         .and_then(Value::as_sequence)
-        .map_or(&[][..], Vec::as_slice);
-    for reference in refs {
-        if reference.get("bwb_id").and_then(Value::as_str) != Some(bwb_id) {
-            continue;
-        }
-        let Some(id) = reference.get("id").and_then(Value::as_str) else {
-            continue;
-        };
-        let needle = format!("][{id}]");
-        let mut from = 0;
-        while let Some(pos) = text[from..].find(&needle) {
-            let close = from + pos;
-            if let Some(open) = text[..close].rfind('[') {
-                let label = normalised(&text[open + 1..close]);
-                if !label.is_empty() && !out.contains(&label) {
-                    out.push(label);
-                }
-            }
-            from = close + needle.len();
-        }
-    }
-    out
+        .map_or(&[][..], Vec::as_slice)
+        .iter()
+        .filter_map(|reference| reference.get("bwb_id").and_then(Value::as_str))
+        .collect()
+}
+
+/// The regulations this model's open terms appoint as their filler, lowercased.
+fn appointed_regulations(mr: &Value) -> Vec<String> {
+    mr.get("open_terms")
+        .and_then(Value::as_sequence)
+        .map_or(&[][..], Vec::as_slice)
+        .iter()
+        .filter_map(|term| term.get("expected_source").and_then(Value::as_str))
+        .map(normalised)
+        .collect()
+}
+
+/// Whether one of `named` points at the law `bwb_id` / `law_id` identifies.
+///
+/// `expected_source` is prose or a BWB id, and the corpus knows the law under
+/// an `$id` with underscores. Matching on both spellings is what lets an
+/// article name "Regeling zorgverzekering" and still answer the citation the
+/// harvest recorded as `BWBR0018492`.
+fn names_regulation(named: &[String], bwb_id: &str, law_id: &str) -> bool {
+    let bwb = normalised(bwb_id);
+    let spelled = normalised(&law_id.replace('_', " "));
+    named
+        .iter()
+        .any(|name| name.contains(&bwb) || (!spelled.is_empty() && name.contains(&spelled)))
 }
 
 /// BWB identifiers appearing in a text, in order of first appearance.
@@ -1666,7 +1858,12 @@ pub fn every_article_accounted(doc: &Value) -> Vec<Finding> {
                 .is_some_and(|s| !s.is_empty())
         };
         let has_logic = mr.is_some_and(carries_logic);
-        if has_logic || carries("markings") || carries("declares") || carries("overrides") {
+        if has_logic
+            || carries("markings")
+            || carries("open_terms")
+            || carries("declares")
+            || carries("overrides")
+        {
             continue;
         }
         findings.push(Finding::new(
@@ -1729,51 +1926,206 @@ pub fn blocked_values_are_absent(doc: &Value) -> Vec<Finding> {
     findings
 }
 
-/// Articles that carry a marking and nothing else.
+/// Open terms that say the content is settled elsewhere and name no elsewhere.
 ///
-/// A marking is a flag on an article that is otherwise worked out: it names
-/// the one thing that does not fit and leaves everything that does fit
-/// standing. An article whose whole model is a marking made the opposite move,
-/// and in round 4 that was the largest failure class: the chapeau of article 1
-/// of the zorgtoeslag got one marking and nothing more, while the definitions
-/// under it were perfectly translatable.
+/// Three checks watched the marking channel and none watched this one, while
+/// `marking_discipline` actively pushes work across: a marking that mentions a
+/// ministerial regulation is told to become an open term. A gate that moves
+/// work to an unwatched place is not a gate, and the open term is the cheaper
+/// of the two channels to begin with — `id` and `type` are all the schema
+/// demands, so two lines emptied an article and were counted as logic besides.
 ///
-/// One exception holds, and it is read off `target` rather than off a field of
-/// its own. A marking with `resolution: model` says the format has no shape
-/// for this construct, and when it also names the values that consequently
-/// cannot be produced, it has said that nothing is left to write down. An
-/// empty `target` claims the opposite in the same breath — the article stays
-/// executable — so it cannot excuse an article that produces nothing. And a
-/// marking with `resolution: engine` never excuses one: a missing operation
-/// blocks a step, so the inputs, the parameters and the rest of the
-/// calculation can all be written down and only that step is missing.
-pub fn markings_leave_something_standing(doc: &Value) -> Vec<Finding> {
+/// An open term makes a claim about the law: this norm is left open, and the
+/// law says who closes it. The schema carries all three ways a Dutch statute
+/// does that. `delegated_to` names the authority the article authorises,
+/// `expected_source` the regulation it points at, and `decided_per_case_by`
+/// the authority that decides in the individual case when no general
+/// specification exists — the "redelijkerwijs" and "in bijzondere gevallen"
+/// case, which is a discretionary power somebody holds and has to motivate,
+/// not an absence.
+///
+/// An open term with none of the three says only that something is missing.
+/// That is not an open norm, it is an omission, and the difference is the
+/// whole reason the term exists.
+pub fn open_terms_name_a_filler(doc: &Value) -> Vec<Finding> {
     let mut findings = Vec::new();
     for (number, mr) in articles_with_models(doc) {
-        let marks = markings(mr);
-        if marks.is_empty() || carries_logic(mr) {
-            continue;
+        for term in mr
+            .get("open_terms")
+            .and_then(Value::as_sequence)
+            .map_or(&[][..], Vec::as_slice)
+        {
+            let names = |key: &str| term.get(key).is_some_and(is_substantive);
+            if names("delegated_to") || names("expected_source") || names("decided_per_case_by") {
+                continue;
+            }
+            let id = term.get("id").and_then(Value::as_str).unwrap_or("?");
+            findings.push(Finding::new(
+                "open-term",
+                Some(&number),
+                format!(
+                    "open term {id} names nobody who fills it: no authority it is delegated \
+                     to, no regulation it expects, no authority that decides per case. A norm \
+                     nobody is competent to fill is not left open, it is left out"
+                ),
+            ));
         }
+    }
+    findings
+}
+
+/// Names a marking blocks that the article's own model never declares.
+///
+/// `target` is the one field of a marking with a consequence, and until now
+/// nothing said what a name in it has to refer to. `blocked_values_are_absent`
+/// only checks that the name is *not* computed, which a fabricated name
+/// satisfies by construction, and the exception in
+/// [`markings_leave_something_standing`] then reads a non-empty `target` as
+/// proof that nothing was left to write down. One invented word bought an
+/// empty article — the largest failure class of round 4, with the escape
+/// spelled out in the instructions.
+///
+/// So a target name means one thing: a value this article's model declares as
+/// its own. An input, a parameter, an output, a definition, an open term. That
+/// is the smallest reading under which the name is checkable at all, and it is
+/// what the schema already says the field holds ("the values in this article
+/// … outputs, inputs or parameters by name"). Naming what the article would
+/// have produced is the work; a name nobody can look up is not.
+pub fn marking_targets_are_declared(doc: &Value) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    for (number, mr) in articles_with_models(doc) {
+        let declared = declared_value_names(mr);
+        for marking in markings(mr) {
+            for name in marking_targets(marking) {
+                if declared.contains(name) {
+                    continue;
+                }
+                findings.push(Finding::new(
+                    "target",
+                    Some(&number),
+                    format!(
+                        "marking blocks {name}, and this model declares no such value. A \
+                         target names a value of this article: an input, a parameter, an \
+                         output, a definition or an open term. A name nothing declares can \
+                         be neither found nor contradicted"
+                    ),
+                ));
+            }
+        }
+    }
+    findings
+}
+
+/// The names one model declares as values of its own.
+fn declared_value_names(mr: &Value) -> BTreeSet<String> {
+    let mut names = defined_names(mr);
+    for term in mr
+        .get("open_terms")
+        .and_then(Value::as_sequence)
+        .map_or(&[][..], Vec::as_slice)
+    {
+        if let Some(id) = term.get("id").and_then(Value::as_str) {
+            names.insert(id.to_owned());
+        }
+    }
+    names
+}
+
+/// Articles that carry a flag and nothing else.
+///
+/// A flag — a marking or an open term — sits on an article that is otherwise
+/// worked out: it names the one thing that is not settled here and leaves
+/// everything that is settled standing. An article whose whole model is a flag
+/// made the opposite move, and in round 4 that was the largest failure class:
+/// the chapeau of article 1 of the zorgtoeslag got one marking and nothing
+/// more, while the definitions under it were perfectly translatable.
+///
+/// Both channels are held to it, because a gate on one of them is a funnel
+/// into the other. `marking_discipline` pushes a marking about delegated
+/// content towards `open_terms` by design, and while this gate asked about
+/// markings only, that push led straight out of the checked area: one open
+/// term with an `id` and a `type` emptied an article and counted as an article
+/// with logic besides.
+///
+/// There used to be an exception, read off `target`: a `model`-resolution
+/// marking that named the values it blocked was taken to have said that
+/// nothing was left to write down. It rested on nothing. No check asked what a
+/// name in `target` referred to, so one invented word bought a whole empty
+/// article, and the instructions spelled the route out. The name now has to be
+/// a value the model declares ([`marking_targets_are_declared`]), and a model
+/// that declares a value is not a model that consists of a marking — the
+/// exception has nothing left to apply to and is gone.
+///
+/// Which is what the rule said all along: a marking that leaves an article
+/// empty is a defect. Not a defect unless it names something.
+pub fn flags_leave_something_standing(doc: &Value) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    for (number, mr) in articles_with_models(doc) {
         let carries = |key: &str| {
             mr.get(key)
                 .and_then(Value::as_sequence)
                 .is_some_and(|s| !s.is_empty())
         };
+        let flagged = !markings(mr).is_empty() || carries("open_terms");
+        if !flagged || carries_logic(mr) {
+            continue;
+        }
         if carries("declares") || carries("overrides") {
             continue;
         }
-        if marks.iter().any(|m| {
-            m.get("resolution").and_then(Value::as_str) == Some("model")
-                && !marking_targets(m).is_empty()
-        }) {
+        let what = match (!markings(mr).is_empty(), carries("open_terms")) {
+            (true, true) => "a marking and an open term",
+            (true, false) => "a marking",
+            _ => "an open term",
+        };
+        findings.push(Finding::new(
+            "flag-only",
+            Some(&number),
+            format!(
+                "the whole model is {what}. A flag names the one thing that is not settled \
+                 here and leaves what is settled standing; an article it empties is a \
+                 defect, and writing down what does fit is the model that is missing"
+            ),
+        ));
+    }
+    findings
+}
+
+/// Models that declare values and contain nothing that produces them.
+///
+/// This is the hole the previous gate left behind. Once a `target` name has to
+/// be a value the model declares, the cheapest way to keep an empty article is
+/// to declare the values and stop there: `execution` with an `output` list and
+/// no `actions` counts as logic everywhere else, and nothing asked whether the
+/// article computes anything. A declaration without a single action is the
+/// same empty article with a longer preamble.
+///
+/// Narrow on purpose. It fires only when the model has no action anywhere, so
+/// an article that computes some of its outputs and not others is left to the
+/// checks that judge coverage.
+pub fn declared_values_are_produced(doc: &Value) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    for (number, mr) in articles_with_models(doc) {
+        if !action_subtrees(mr).is_empty() {
+            continue;
+        }
+        let outputs = declared_outputs(mr);
+        if outputs.is_empty() {
+            continue;
+        }
+        // A definition, an open term or an implements says where the value
+        // comes from without an action of its own.
+        if carries_any(mr, &["definitions", "open_terms", "implements", "requires"]) {
             continue;
         }
         findings.push(Finding::new(
-            "marking-only",
+            "unproduced",
             Some(&number),
-            "the whole model is a marking. A marking flags the one thing that does not \
-             fit and leaves what does fit standing; only a model-resolution marking that \
-             names what it blocks can say there is nothing left",
+            format!(
+                "declares {} value(s) and contains no action, definition or open term that \
+                 produces any of them. Naming an output is not computing it",
+                outputs.len()
+            ),
         ));
     }
     findings
@@ -2105,6 +2457,64 @@ fn normalised(text: &str) -> String {
     out.trim().to_owned()
 }
 
+/// The words a quotation has to carry before it counts as one.
+///
+/// A `legal_text_excerpt` is evidence that somebody read the provision, and
+/// evidence is only worth what it costs to fake. A single token is not: the
+/// harvested text carries its link plumbing beside the prose, so
+/// `BWBR0018472` is literally present in the article and can be lifted from
+/// the header without reading a word. Three words is the shortest thing that
+/// still has to be copied out of a sentence.
+const QUOTE_MIN_WORDS: usize = 3;
+
+/// Word tokens in a string: whitespace-separated runs carrying a letter.
+fn word_count(text: &str) -> usize {
+    normalised(text)
+        .split(' ')
+        .filter(|token| token.chars().any(char::is_alphabetic))
+        .count()
+}
+
+/// The statutory prose of a harvested text, without the markdown plumbing
+/// that carries the link targets.
+///
+/// The harvest renders a citation as `[artikel 8][ref1]` with a definition
+/// line `[ref1]: https://wetten.overheid.nl/BWBR0018472#Artikel8` beneath the
+/// article. Those targets are not words the legislator wrote, and leaving them
+/// in makes every BWB number the article cites a quotable phrase: the marking
+/// gate would accept `legal_text_excerpt: BWBR0018472` as a quotation of this
+/// article's own text, which is the sentence the reference gate exists to
+/// refuse.
+fn prose_only(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+        // `[ref1]: <target>` is a link definition and carries no prose.
+        if trimmed.starts_with('[') {
+            if let Some(close) = trimmed.find("]:") {
+                if !trimmed[close + 2..].trim().is_empty() {
+                    continue;
+                }
+            }
+        }
+        // `[label](target)`: keep the label, drop the target.
+        let mut rest = line;
+        while let Some(pos) = rest.find("](") {
+            out.push_str(&rest[..=pos]);
+            match rest[pos..].find(')') {
+                Some(end) => rest = &rest[pos + end + 1..],
+                None => {
+                    rest = "";
+                    break;
+                }
+            }
+        }
+        out.push_str(rest);
+        out.push('\n');
+    }
+    out
+}
+
 /// Article numbers this document carries, in document order.
 fn article_numbers(doc: &Value) -> Vec<String> {
     doc.get("articles")
@@ -2330,7 +2740,10 @@ pub fn run(yaml: &str, corpus_root: Option<&Path>) -> Report {
     findings.extend(override_targets(&doc, corpus_root));
     findings.extend(every_article_accounted(&doc));
     findings.extend(blocked_values_are_absent(&doc));
-    findings.extend(markings_leave_something_standing(&doc));
+    findings.extend(marking_targets_are_declared(&doc));
+    findings.extend(open_terms_name_a_filler(&doc));
+    findings.extend(flags_leave_something_standing(&doc));
+    findings.extend(declared_values_are_produced(&doc));
     findings.extend(cross_law_references(&doc, corpus_root));
     findings.extend(output_promises(&doc));
     findings.extend(declaration_agrees_with_header(&doc));
@@ -2840,12 +3253,19 @@ articles:
           - name: b
             source:
               description: komt van buiten
+          - name: c
+            type: number
 "#,
         )
         .expect("yaml");
         let t = tally(&doc);
         assert_eq!(t.cross_law_bindings, 1);
         assert_eq!(t.unnamed_sources, 1);
+        // And the cheapest of the three: leave the `source` off altogether.
+        // An input says a value comes from elsewhere, so this is a
+        // cross-reference dropped without a word, and until now it moved no
+        // number at all.
+        assert_eq!(t.bare_inputs, 1);
     }
 
     #[test]
@@ -2970,10 +3390,12 @@ articles:
     }
 
     #[test]
-    fn a_marking_excuses_only_the_reference_whose_words_it_quotes() {
-        // A marking about rounding says nothing about whether this article
-        // reads the law it cites, and quoting the rounding sentence must not
-        // buy off the citation sitting elsewhere in the same article.
+    fn no_marking_answers_a_reference_however_well_it_quotes() {
+        // A marking is never an answer to a citation of a law that exists:
+        // the value that law produces is an input with a source. Quoting the
+        // sentence that carries the citation only makes the wrong answer
+        // longer, and the article's text sits in the window while it is being
+        // written.
         let dir = corpus_with_awir();
         let unrelated = citing_article(
             "      markings:\n        - about: afronden\n          resolution: engine\n          \
@@ -2986,10 +3408,151 @@ articles:
              target: [toetsingsinkomen]\n          legal_text_excerpt: >-\n            het toetsingsinkomen, \
              bedoeld in artikel 8 van de Algemene wet inkomensafhankelijke regelingen",
         );
-        assert!(
-            cross_law_references(&quoting, Some(dir.path())).is_empty(),
-            "quoting the words that carry the citation answers it"
+        assert_eq!(
+            cross_law_references(&quoting, Some(dir.path())).len(),
+            1,
+            "quoting the citation is not a binding and not a delegation"
         );
+    }
+
+    #[test]
+    fn an_open_term_that_names_the_regulation_answers_the_reference() {
+        // The second answer that survives: the article does not read the
+        // other regulation, it appoints it.
+        let dir = corpus_with_awir();
+        let appointing = citing_article(
+            "      open_terms:\n        - id: toetsingsinkomen\n          type: amount\n          \
+             delegated_to: Onze Minister\n          expected_source: BWBR0018472",
+        );
+        assert!(
+            cross_law_references(&appointing, Some(dir.path())).is_empty(),
+            "an open term naming the regulation answers the citation"
+        );
+    }
+
+    #[test]
+    fn a_regulation_is_recognised_by_its_number_or_by_its_name() {
+        // `expected_source` is prose or a BWB id, and the corpus knows the law
+        // by an `$id` with underscores.
+        let id = "algemene_wet_inkomensafhankelijke_regelingen";
+        assert!(names_regulation(
+            &[normalised("Algemene wet inkomensafhankelijke regelingen")],
+            "BWBR0018472",
+            id
+        ));
+        assert!(names_regulation(
+            &[normalised("BWBR0018472")],
+            "BWBR0018472",
+            id
+        ));
+        assert!(!names_regulation(
+            &[normalised("Regeling zorgverzekering")],
+            "BWBR0018472",
+            id
+        ));
+    }
+
+    #[test]
+    fn a_reference_only_the_reference_block_records_is_still_a_citation() {
+        // The citation lives in the link plumbing as often as in the prose.
+        // Reading only the running text lost it entirely.
+        let dir = corpus_with_awir();
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+bwb_id: BWBR0018451
+articles:
+  - number: "5.2"
+    text: het toetsingsinkomen, bedoeld in artikel 8, wordt afgerond.
+    references:
+      - id: ref1
+        bwb_id: BWBR0018472
+    machine_readable:
+      execution:
+        actions:
+          - output: afgerond
+            operation: ROUND
+            value: 1
+"#,
+        )
+        .expect("yaml");
+        assert_eq!(cross_law_references(&doc, Some(dir.path())).len(), 1);
+    }
+
+    #[test]
+    fn a_bwb_number_lifted_from_the_link_target_is_not_a_quotation() {
+        // Both gates at once, in eleven characters. The harvested text
+        // carries `BWBR0018472` in the link definition beneath the article,
+        // so `legal_text_excerpt: BWBR0018472` used to be a quotation of the
+        // article's own text and an answer to the citation in the same
+        // breath.
+        let doc = citing_article(
+            "      markings:\n        - about: de verwijzing\n          resolution: model\n          \
+             target: []\n          legal_text_excerpt: BWBR0018472",
+        );
+        let findings = marking_discipline(&doc, "");
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(
+            findings[0].detail.contains("token and not words"),
+            "{findings:?}"
+        );
+
+        let dir = corpus_with_awir();
+        assert_eq!(cross_law_references(&doc, Some(dir.path())).len(), 1);
+    }
+
+    #[test]
+    fn a_quotation_of_the_link_plumbing_does_not_pass_for_article_text() {
+        // Longer than three words and still nothing a legislator wrote: the
+        // words sit in the link definition under the article, not in the
+        // provision.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '5.2'
+    text: |-
+      Het toetsingsinkomen wordt afgerond op hele euro's.
+
+      [ref1]: https://wetten.overheid.nl/BWBR0018472 "Algemene wet inkomensafhankelijke regelingen"
+    machine_readable:
+      markings:
+        - about: de verwijzing
+          resolution: model
+          target: []
+          legal_text_excerpt: Algemene wet inkomensafhankelijke regelingen
+"#,
+        )
+        .expect("yaml");
+        let findings = marking_discipline(&doc, "");
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(
+            findings[0].detail.contains("does not appear"),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_quotation_of_the_words_of_a_citation_still_passes() {
+        // The label of a link is prose the legislator wrote, so stripping the
+        // plumbing must not strip the citation itself.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '5.2'
+    text: |-
+      Het toetsingsinkomen, bedoeld in [artikel 8 van de Algemene wet
+      inkomensafhankelijke regelingen][ref1], wordt afgerond.
+
+      [ref1]: https://wetten.overheid.nl/BWBR0018472
+    machine_readable:
+      markings:
+        - about: de verwijzing
+          resolution: model
+          target: []
+          legal_text_excerpt: artikel 8 van de Algemene wet inkomensafhankelijke regelingen
+"#,
+        )
+        .expect("yaml");
+        assert!(marking_discipline(&doc, "").is_empty());
     }
 
     #[test]
@@ -3722,22 +4285,54 @@ articles:
 "#,
         )
         .expect("yaml");
-        let findings = markings_leave_something_standing(&doc);
+        let findings = flags_leave_something_standing(&doc);
         assert_eq!(findings.len(), 1, "{findings:?}");
-        assert_eq!(findings[0].check, "marking-only");
+        assert_eq!(findings[0].check, "flag-only");
     }
 
     #[test]
-    fn a_model_marking_that_names_what_it_blocks_may_stand_alone() {
-        // The one defensible bare article: the format has no shape for this
-        // provision at all, and the marking says which values fall away with
-        // it. Everything written beside that would be padding.
+    fn one_invented_target_name_no_longer_buys_an_empty_article() {
+        // The failure scenario in full: the largest error class of round 4,
+        // written the way the exception invited. `begripsbepalingen` is a word
+        // nothing declares, so nothing could contradict it, and all four gates
+        // fell silent for one line.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '1'
+    text: In deze wet wordt verstaan onder verzekerde…
+    machine_readable:
+      markings:
+        - about: de begripsbepalingen
+          resolution: model
+          target: [begripsbepalingen]
+          legal_text_excerpt: In deze wet wordt verstaan onder
+"#,
+        )
+        .expect("yaml");
+        let targets = marking_targets_are_declared(&doc);
+        assert_eq!(targets.len(), 1, "{targets:?}");
+        assert_eq!(targets[0].check, "target");
+
+        let standing = flags_leave_something_standing(&doc);
+        assert_eq!(standing.len(), 1, "{standing:?}");
+        assert_eq!(standing[0].check, "flag-only");
+    }
+
+    #[test]
+    fn a_target_the_model_declares_is_accepted() {
+        // The name has to be findable, not absent. An output the model
+        // declares and no action produces is exactly what a marking blocks.
         let doc: Value = serde_yaml_ng::from_str(
             r#"
 articles:
   - number: '3'
     text: Voor elk van de tot het huishouden behorende personen wordt…
     machine_readable:
+      execution:
+        output:
+          - name: aanspraak_per_persoon
+            type: amount
       markings:
         - about: kwantificeren over personen
           resolution: model
@@ -3746,7 +4341,176 @@ articles:
 "#,
         )
         .expect("yaml");
-        assert!(markings_leave_something_standing(&doc).is_empty());
+        assert!(marking_targets_are_declared(&doc).is_empty());
+        assert!(flags_leave_something_standing(&doc).is_empty());
+        // But declaring the value and computing nothing at all is the same
+        // empty article with a longer preamble.
+        let unproduced = declared_values_are_produced(&doc);
+        assert_eq!(unproduced.len(), 1, "{unproduced:?}");
+        assert_eq!(unproduced[0].check, "unproduced");
+    }
+
+    #[test]
+    fn an_article_whose_whole_model_is_an_open_term_is_reported() {
+        // The failure scenario, moved one channel across: the chapeau of
+        // article 1 with two lines instead of four, drawing no finding at all
+        // and counting as an article with logic besides.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '1'
+    text: In deze wet wordt verstaan onder verzekerde…
+    machine_readable:
+      open_terms:
+        - id: begripsbepalingen
+          type: string
+"#,
+        )
+        .expect("yaml");
+        let flags = flags_leave_something_standing(&doc);
+        assert_eq!(flags.len(), 1, "{flags:?}");
+        assert_eq!(flags[0].check, "flag-only");
+
+        let named = open_terms_name_a_filler(&doc);
+        assert_eq!(named.len(), 1, "{named:?}");
+        assert_eq!(named[0].check, "open-term");
+
+        // And it is not counted as work done.
+        let t = tally(&doc);
+        assert_eq!((t.with_logic, t.marked_only, t.bare), (0, 1, 0));
+        assert_eq!(t.open_terms_unattributed, 1);
+        // Round 4 counted exactly this as an article with logic. Both numbers
+        // are reported so the two rounds can be compared without a footnote.
+        assert_eq!(t.with_logic_r4, 1);
+    }
+
+    #[test]
+    fn an_open_term_that_decides_per_case_names_a_filler() {
+        // "Redelijkerwijs" is a discretionary power somebody holds, and the
+        // schema has a field for who holds it. Naming it is the difference
+        // between an open norm and an omission.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '5'
+    text: De inspecteur kan in bijzondere gevallen afwijken.
+    machine_readable:
+      open_terms:
+        - id: bijzonder_geval
+          type: boolean
+          decided_per_case_by: de inspecteur, artikel 5
+"#,
+        )
+        .expect("yaml");
+        assert!(open_terms_name_a_filler(&doc).is_empty());
+    }
+
+    #[test]
+    fn a_model_marking_can_be_wrong_about_the_format() {
+        // The twin of the operation gate. Without it a model marking could not
+        // be contradicted by anything, which is why every hard case landed in
+        // it.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '2'
+    text: In afwijking van het eerste lid bedraagt de aanspraak vijftig procent.
+    machine_readable:
+      execution:
+        actions:
+          - output: aanspraak
+            operation: MULTIPLY
+            values: [1, 2]
+      markings:
+        - about: de uitzondering in afwijking van het eerste lid
+          resolution: model
+          resolved_by: een vorm om een lid opzij te zetten
+          target: []
+          legal_text_excerpt: In afwijking van het eerste lid
+"#,
+        )
+        .expect("yaml");
+        let findings = marking_discipline(&doc, "");
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(findings[0].detail.contains("overrides"), "{findings:?}");
+    }
+
+    #[test]
+    fn a_marking_that_restates_itself_names_no_work() {
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '3'
+    text: Voor elk van de tot het huishouden behorende personen wordt…
+    machine_readable:
+      execution:
+        actions:
+          - output: aanspraak
+            operation: MULTIPLY
+            values: [1, 2]
+      markings:
+        - about: kwantificeren over personen
+          resolution: model
+          resolved_by: kwantificeren over personen
+          target: []
+          legal_text_excerpt: Voor elk van de tot het huishouden behorende personen
+"#,
+        )
+        .expect("yaml");
+        let findings = marking_discipline(&doc, "");
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(findings[0].detail.contains("restates"), "{findings:?}");
+    }
+
+    #[test]
+    fn an_open_term_id_counts_as_a_declared_value() {
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '4'
+    text: Bij ministeriële regeling wordt de standaardpremie vastgesteld.
+    machine_readable:
+      open_terms:
+        - id: standaardpremie
+          type: amount
+      markings:
+        - about: de vaststelling
+          resolution: model
+          target: [standaardpremie]
+          legal_text_excerpt: Bij ministeriële regeling
+"#,
+        )
+        .expect("yaml");
+        assert!(marking_targets_are_declared(&doc).is_empty());
+    }
+
+    #[test]
+    fn an_empty_logic_key_is_not_logic() {
+        // `open_terms: []` is `Some`, costs one line, and used to buy an
+        // article out of every gate that asks whether the model does
+        // anything.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '1'
+    text: In deze wet wordt verstaan onder verzekerde…
+    machine_readable:
+      open_terms: []
+      requires: []
+      definitions: {}
+      execution: {}
+      markings:
+        - about: de begripsbepalingen
+          resolution: model
+          target: []
+          legal_text_excerpt: In deze wet wordt verstaan onder
+"#,
+        )
+        .expect("yaml");
+        assert_eq!(flags_leave_something_standing(&doc).len(), 1);
+        assert_eq!(every_article_accounted(&doc).len(), 0, "a marking accounts");
+        let t = tally(&doc);
+        assert_eq!((t.with_logic, t.marked_only, t.bare), (0, 1, 0));
     }
 
     #[test]
@@ -3767,7 +4531,7 @@ articles:
 "#,
         )
         .expect("yaml");
-        assert_eq!(markings_leave_something_standing(&doc).len(), 1);
+        assert_eq!(flags_leave_something_standing(&doc).len(), 1);
     }
 
     #[test]
@@ -3791,7 +4555,7 @@ articles:
 "#,
         )
         .expect("yaml");
-        assert!(markings_leave_something_standing(&doc).is_empty());
+        assert!(flags_leave_something_standing(&doc).is_empty());
     }
 
     #[test]

@@ -93,10 +93,16 @@ fn report_one(path: &Path, corpus: Option<&Path>) -> std::io::Result<bool> {
             "  attempted: {}/{} articles with logic, {} marked only, {} bare",
             t.with_logic, t.articles, t.marked_only, t.bare
         );
+        // The buckets moved between rounds; both definitions are printed so a
+        // comparison with a round-4 figure does not need a footnote.
+        println!(
+            "  (round 4 buckets: {} with logic, {} marked only, {} bare)",
+            t.with_logic_r4, t.marked_only_r4, t.bare_r4
+        );
         println!(
             "  reaches:   {} cross-law bindings into {} of {} cited laws, \
-             {} sources naming no law",
-            t.cross_law_bindings, t.laws_read, t.laws_cited, t.unnamed_sources
+             {} sources naming no law, {} inputs with no source",
+            t.cross_law_bindings, t.laws_read, t.laws_cited, t.unnamed_sources, t.bare_inputs
         );
         println!(
             "  marks:     {} markings ({} engine, {} model, {} blocking, {} accepted)",
@@ -107,8 +113,13 @@ fn report_one(path: &Path, corpus: Option<&Path>) -> std::io::Result<bool> {
             t.markings_accepted
         );
         println!(
-            "  leaves:    {} open terms ({} with a named filler), {} declares, {} overrides",
-            t.open_terms, t.open_terms_delegated, t.declares, t.overrides
+            "  leaves:    {} open terms ({} delegated, {} naming nobody), \
+             {} declares, {} overrides",
+            t.open_terms,
+            t.open_terms_delegated,
+            t.open_terms_unattributed,
+            t.declares,
+            t.overrides
         );
         println!(
             "  outputs:   {} declared, {} read by something",
