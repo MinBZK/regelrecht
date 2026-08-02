@@ -38,7 +38,43 @@ use std::fmt::Write as _;
 /// Kept beside the `--allowedTools` argument in `enrich.rs` rather than
 /// derived from it, because the two providers spell their allowlists
 /// differently while the capability question is the same for both.
+///
+/// This list was fiction until [`ungranted`] existed. `--allowedTools` is an
+/// auto-approve list and not a restriction: a tool left off it is still there,
+/// it merely has to be asked for, and the settings in the checkout already
+/// answered yes. So the plan said "Generate machine_readable: degraded,
+/// missing Bash" while the agent made twenty successful `Bash` calls in the
+/// same session, and "MvT research: skipped, this runtime grants no WebFetch"
+/// while nothing stopped it from fetching. Both halves of that are damaging:
+/// the agent is told a step runs degraded when it does not, and the operator
+/// is told a step was left out when it was available all along. What the
+/// planner reports and what the process withholds are now the same set.
 pub const ENRICH_GRANT: &[&str] = &["Read", "Edit", "Write", "Grep", "Glob"];
+
+/// Every tool the chain asks for anywhere that this lane does not grant.
+///
+/// The union over both halves of the question, because they fail differently
+/// and both were live. A step's own `needs` are what it cannot write its
+/// artefact without, and leaving those reachable lets a skipped step run
+/// anyway. A skill's `allowed-tools` are what it asks for on top, and leaving
+/// those reachable lets a degraded step do the thing the prompt just told it
+/// it could not do — and then report it, which is the round-2 failure exactly.
+///
+/// A tool named here is passed to the provider as denied, so the plan is not a
+/// description of the runtime but the thing that sets it.
+#[must_use]
+pub fn ungranted(grant: &BTreeSet<String>, steps: &[(&StepSpec, Option<String>)]) -> Vec<String> {
+    let mut out: BTreeSet<String> = BTreeSet::new();
+    for (spec, markdown) in steps {
+        let declared = markdown.as_deref().map(skill_tools).unwrap_or_default();
+        for tool in spec.needs.iter().map(|t| (*t).to_owned()).chain(declared) {
+            if !grant.contains(&tool) {
+                out.insert(tool);
+            }
+        }
+    }
+    out.into_iter().collect()
+}
 
 /// One step of the chain, with what it needs stated separately from what the
 /// skill it reads happens to declare.
@@ -380,6 +416,71 @@ mod tests {
         assert!(report.contains("MvT research: skipped"));
         assert!(report.contains("WebFetch"));
         assert!(!report.contains("Generate machine_readable"));
+    }
+
+    #[test]
+    fn what_the_plan_reports_missing_is_what_the_runtime_withholds() {
+        // The measured contradiction: the plan said "Generate machine_readable:
+        // degraded, missing Bash" and "MvT research: skipped, this runtime
+        // grants no WebFetch", and the same session then made twenty
+        // successful Bash calls. Both halves of the report come from the same
+        // set as the deny list now, so they cannot say different things.
+        let steps: Vec<(&StepSpec, Option<String>)> = vec![
+            (
+                &CHAIN[0],
+                Some(
+                    "---\nallowed-tools: Read, Write, WebFetch, WebSearch, Bash\n---\n".to_owned(),
+                ),
+            ),
+            (
+                &CHAIN[1],
+                Some("---\nallowed-tools: Read, Edit, Write, Bash, Grep, Glob\n---\n".to_owned()),
+            ),
+            (
+                &CHAIN[2],
+                Some("---\nallowed-tools: Read, Edit, Write, Grep, Glob\n---\n".to_owned()),
+            ),
+        ];
+        let denied = ungranted(&enrich_grant(), &steps);
+        assert_eq!(denied, vec!["Bash", "WebFetch", "WebSearch"]);
+
+        // The direction that matters: nothing the report calls missing may
+        // still be reachable. The deny list may be wider — a skipped step
+        // reports only its own minimum while its skill asks for more — but it
+        // can never be narrower, because that is the gap the report lies over.
+        let planned: Vec<(&StepSpec, StepPlan)> = steps
+            .iter()
+            .map(|(spec, md)| (*spec, plan_step(spec, &enrich_grant(), md.as_deref())))
+            .collect();
+        for (_, plan) in &planned {
+            let missing = match plan {
+                StepPlan::Run => continue,
+                StepPlan::Degraded { missing }
+                | StepPlan::Skipped { missing }
+                | StepPlan::Blocked { missing } => missing,
+            };
+            for tool in missing {
+                assert!(
+                    denied.contains(tool),
+                    "{tool} is reported missing but reachable"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_fully_granted_lane_withholds_nothing() {
+        let wide = grant(&["Read", "Edit", "Write", "Grep", "Glob", "Bash", "WebFetch"]);
+        let steps: Vec<(&StepSpec, Option<String>)> = CHAIN
+            .iter()
+            .map(|s| {
+                (
+                    s,
+                    Some("---\nallowed-tools: Read, Edit, Write, Bash, WebFetch\n---\n".to_owned()),
+                )
+            })
+            .collect();
+        assert!(ungranted(&wide, &steps).is_empty());
     }
 
     #[test]
