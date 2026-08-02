@@ -22,6 +22,7 @@
 pub mod assemble;
 pub mod capabilities;
 pub mod checks;
+pub mod closure;
 pub mod context;
 pub mod reconcile;
 pub mod refgraph;
