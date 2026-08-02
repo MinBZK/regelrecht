@@ -10,7 +10,7 @@ bwb_id: BWBR0123457
 url: https://example.invalid/law
 articles:
   - number: '1'
-    text: "Deze wet wordt aangehaald als: Testwet."
+    text: 'Deze wet wordt aangehaald als: Testwet.'
     url: https://example.invalid/law/artikel/1
     placement:
       hoofdstuk:
