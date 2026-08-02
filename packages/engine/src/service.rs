@@ -4753,6 +4753,180 @@ articles:
         }
     }
 
+    /// Build the pair of laws for the mis-addressing tests.
+    ///
+    /// `stray` is an extra override declaration that the specialis article
+    /// carries *before* the one that really addresses the output under test. It
+    /// voids, and it names a target that differs from that output on exactly one
+    /// of the three addressing fields. An article may carry several override
+    /// declarations, so the engine has to read all three fields; matching on
+    /// fewer would let a void meant for one output take another one away.
+    fn misaddressed_void_laws(stray: &str) -> (String, String) {
+        let target = r#"
+$id: misaddress_target_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het bedrag bedraagt 100.
+    machine_readable:
+      execution:
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 100
+"#
+        .to_string();
+        let specialis = format!(
+            r#"
+$id: misaddress_specialis_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Vraagt het bedrag op.
+    machine_readable:
+      execution:
+        input:
+          - name: bedrag
+            type: number
+            source:
+              regulation: misaddress_target_law
+              output: bedrag
+        output:
+          - name: result
+            type: number
+        actions:
+          - output: result
+            value: $bedrag
+  - number: '2'
+    text: In afwijking van het bedrag.
+    machine_readable:
+      overrides:
+{stray}        - law: misaddress_target_law
+          article: '1'
+          output: bedrag
+      execution:
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 200
+"#
+        );
+        (target, specialis)
+    }
+
+    /// The stray declaration must not void: `result` is the replacement value,
+    /// not an absence.
+    fn assert_misaddressed_void_does_not_bite(stray: &str) {
+        let (target, specialis) = misaddressed_void_laws(stray);
+        let mut service = LawExecutionService::new();
+        service.load_law(&target).unwrap();
+        service.load_law(&specialis).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "misaddress_specialis_law",
+                "result",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .expect("a void addressed elsewhere must leave this output standing");
+        assert_eq!(result.outputs.get("result"), Some(&Value::Int(200)));
+    }
+
+    #[test]
+    fn a_void_for_another_law_does_not_remove_this_output() {
+        assert_misaddressed_void_does_not_bite(
+            "        - law: misaddress_other_law\n          article: '1'\n          output: bedrag\n          voids: true\n          legal_text_excerpt: bestaat geen aanspraak\n",
+        );
+    }
+
+    #[test]
+    fn a_void_for_another_article_does_not_remove_this_output() {
+        assert_misaddressed_void_does_not_bite(
+            "        - law: misaddress_target_law\n          article: '9'\n          output: bedrag\n          voids: true\n          legal_text_excerpt: bestaat geen aanspraak\n",
+        );
+    }
+
+    #[test]
+    fn a_void_for_another_output_does_not_remove_this_output() {
+        assert_misaddressed_void_does_not_bite(
+            "        - law: misaddress_target_law\n          article: '1'\n          output: ander_bedrag\n          voids: true\n          legal_text_excerpt: bestaat geen aanspraak\n",
+        );
+    }
+
+    /// The other side of the same coin: when all three fields address this
+    /// output, the value goes and the ground stays.
+    #[test]
+    fn a_void_that_addresses_this_output_removes_it_with_its_ground() {
+        let target = r#"
+$id: void_provenance_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Er bestaat aanspraak, en de toelichting hoort erbij.
+    machine_readable:
+      execution:
+        output:
+          - name: aanspraak
+            type: number
+          - name: toelichting
+            type: number
+        actions:
+          - output: aanspraak
+            value: 155045
+          - output: toelichting
+            value: 1
+  - number: '2'
+    text: In afwijking daarvan bestaat geen aanspraak.
+    machine_readable:
+      overrides:
+        - law: void_provenance_law
+          article: '1'
+          output: aanspraak
+          voids: true
+          legal_text_excerpt: bestaat geen aanspraak
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(target).unwrap();
+
+        // Asking for the neighbouring output keeps the result readable while
+        // the voided one is gone from it.
+        let result = service
+            .evaluate_law(
+                "void_provenance_law",
+                &["toelichting"],
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .expect("the article still produces its other output");
+
+        assert_eq!(result.outputs.get("toelichting"), Some(&Value::Int(1)));
+        assert!(
+            !result.outputs.contains_key("aanspraak"),
+            "a voided entitlement must not carry a value: {:?}",
+            result.outputs
+        );
+        match result.output_provenance.get("aanspraak") {
+            Some(OutputProvenance::Voided {
+                law_id,
+                article,
+                grounds,
+            }) => {
+                assert_eq!(law_id, "void_provenance_law");
+                assert_eq!(article, "2");
+                assert_eq!(grounds.as_deref(), Some("bestaat geen aanspraak"));
+            }
+            other => panic!("expected a Voided provenance with its ground, got {other:?}"),
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Procedure stages (RFC-008)
     // -------------------------------------------------------------------------
