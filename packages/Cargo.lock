@@ -4214,6 +4214,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "regelrecht-graph"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng",
+ "tempfile",
+ "thiserror 2.0.19",
+ "tracing",
+ "walkdir",
+]
+
+[[package]]
 name = "regelrecht-harvester"
 version = "0.1.0"
 dependencies = [
