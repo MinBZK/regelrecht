@@ -31,6 +31,8 @@ machine_readable:
       required: true
       delegated_to: Onze Minister              # omit when the article names nobody
       delegation_type: MINISTERIELE_REGELING   # omit likewise
+      expected_source: Regeling zorgverzekering  # when the text names the regulation
+      decided_per_case_by: het college          # when the article appoints nobody
       legal_basis: artikel 4 Wet op de zorgtoeslag
 
   markings:                     # The format cannot express a construct (optional)
@@ -149,9 +151,11 @@ rule about a set rather than a value, a legal fiction).
 An **open term** says the law leaves the content open and a lower regulation or
 implementing policy fills it. The language expresses it fine; the content sits
 elsewhere. `delegated_to` and `delegation_type` say who may fill it and with what
-kind of regulation. Where the article names nobody ("redelijkerwijs", "in
-bijzondere gevallen"), both fields stay absent and any competent authority fills
-the term through implementing policy.
+kind of regulation, and `expected_source` names the filling regulation where the
+text itself names it. Where the article names nobody ("redelijkerwijs", "in
+bijzondere gevallen"), those fields stay absent and `decided_per_case_by` names
+the authority that fills the term in the individual case. One of the three is
+always present; a check reports a term that names nobody.
 
 A value another law produces is neither. It is an `input` with a `source`.
 
@@ -160,11 +164,14 @@ Required on an open term: `id`, `type`.
 
 `target` names the values in this article that cannot be produced because of the
 marking. An empty list asserts the article stays executable, which is the normal
-case. A name in the list must be absent from the article's actions: computing a
-value you declared blocked is a contradiction, and a check reports it.
+case. A name in the list is a value this article's model declares (input,
+parameter, output, definition, open term) and is absent from its actions:
+computing or calculating with a value you declared blocked is a contradiction,
+and a check reports both, as it reports a name the model declares nowhere.
 
 Do not record whether the filling regulation is currently in the corpus. That is
-a state of the corpus, not a property of the law (RFC-029).
+a state of the corpus, not a property of the law (RFC-031); the resolve step and
+the work queue track it (RFC-026).
 
 ## Operation Types
 

@@ -42,15 +42,34 @@ term, both described below, and never by quietly modelling the intent instead.
 1. Read the target law YAML file.
 2. Read `reference.md` (schema shapes) and `examples.md` (worked patterns) in
    this skill directory.
-3. Count the entries. Over 20, work in batches of roughly 15.
+3. Count the entries. Over 20, work in batches of roughly 15. This does not
+   apply when the prompt names the entries: then that list is the batch.
 
 Do not read another corpus law as a template. The existing corpus predates
 several of the rules below and copying its habits reproduces its defects;
 `examples.md` has the patterns that are current.
 
-**Explicit article subset (chunked enrichment):** when the prompt supplies a list
-of article numbers, that subset is your entire scope. Leave every entry outside
-it untouched. Later runs handle the rest.
+## The entries you were given
+
+**When the prompt names entry numbers, that list is your entire scope.** Leave
+every entry outside it untouched, including one that plainly needs work.
+
+The length of the list says which kind of run this is, and the two ask different
+things of you.
+
+**Several entries is a window of a walk through the law.** A run before this one
+took the entries above and a run after it takes the ones below. Covering the
+window is the assignment: every entry in the list is answered, with a model, a
+marking, an open term or a declaration, and none is passed over. The worker
+measures progress inside the window and rejects a run that shows none.
+
+**One entry is targeted work, and there is no walk.** No later run picks up the
+rest, and the entry was named because something specific is wanted from it: an
+article a waiting root needs, an article whose open term a newly harvested
+regulation now fills, or an entry that came back wrong. Coverage of the law is
+not the assignment here. Judge what the entry needs from the entry, report on it
+alone, and do not list what other entries still lack: that reads as work someone
+forgot rather than work nobody asked for.
 
 ## Scope
 
@@ -77,8 +96,9 @@ test of article 3 were both produced and neither was ever read. The
 model granted the allowance to a sixteen-year-old and to a millionaire, and every
 individual article looked correct.
 
-Binding to an entry outside your chunk is allowed and expected. Editing your own
-entry to add a binding is not editing another entry.
+Binding to an entry outside your scope is allowed and expected, in a window run
+and in a targeted one alike. Editing your own entry to add a binding is not
+editing another entry.
 
 **The law may be inefficient, redundant or circular. Model it as written.**
 
@@ -129,9 +149,10 @@ standaardpremie vastgesteld" is a complete legal instruction that lacks a number
 So is "voor zover dat redelijk is", "zo spoedig mogelijk" and "onverwijld": the
 law states a norm and leaves its content to be filled. Where the article names
 who fills it, `delegated_to` and `delegation_type` say so; where it names nobody,
-those fields stay absent and any competent authority fills the term through
-implementing policy with a motivation. The concept does not change with the
-question whether the law appoints a filler.
+`decided_per_case_by` names the authority that is competent in the individual
+case and fills the term through implementing policy with a motivation. The
+concept does not change with the question whether the law appoints a filler, and
+every open term names one of the three (see below).
 
 **3. The format cannot express the construct: `markings`.** The words are clear
 and the language has no shape for them. See below.
@@ -222,11 +243,16 @@ name.
 
 - **An empty list is a claim, not an omission.** It says the entry stays
   executable and only its explanation is incomplete. That is the normal case.
+- **A name in the list is a value this entry's own model declares:** an input, a
+  parameter, an output, a definition or an open term. An invented word is not a
+  target, and a check reports a name the entry declares nowhere.
+  Naming what the entry would have produced is the work.
 - **A name in the list means that value is computed nowhere in this entry.** If
-  an action produces it anyway, the marking contradicts the model.
+  an action produces it anyway, the marking contradicts the model. The same
+  holds for reading it: an action that calculates with a targeted name rests on
+  a value the marking says is not there, and the check reports both shapes.
 
-A check enforces this: every name in `target` must be absent from the entry's
-actions. Today the predecessor field `blocks` is empty in 39 of 39 markings, and
+Today the predecessor field `blocks` is empty in 39 of 39 markings, and
 of the 72 values that stood marked as blocked not one is actually left out. Both
 halves of that are wrong and both are cheap to get right. Name the values the
 entry genuinely does not produce, and make sure the actions really leave them
@@ -279,9 +305,29 @@ machine_readable:
 The output name in the lower regulation matches the open term `id`. Priority
 between competing implementations follows lex superior and lex posterior.
 
+### Who fills it
+
+Every open term names someone. A check reports a term with none of
+`delegated_to`, `expected_source` and `decided_per_case_by` filled in: a norm
+nobody is competent to fill is not left open, it is left out.
+
+- `delegated_to` plus `delegation_type` where the article authorises a layer
+  ("bij ministeriële regeling wordt ... vastgesteld"). The type is a closed list
+  and it is a competence claim: a regulation at another layer does not fill this
+  term.
+- `expected_source` where the text names the filling regulation itself ("de
+  regeling, bedoeld in artikel 1 van de Regeling zorgverzekering"), by title or
+  by BWB id. Which regulation is meant is a property of the law. Whether that
+  regulation is in the corpus today is not, and it is recorded nowhere.
+- `decided_per_case_by` where the article appoints nobody and the norm is filled
+  in the individual case ("voor zover dat redelijk is", "in bijzondere
+  gevallen"). Name the authority and the article that makes it competent. Its
+  answer needs a motivation under Awb 3:46 and is part of the besluit, which is
+  what separates a discretionary power from a value that is merely missing.
+
 Do not record whether the filling regulation is currently in the corpus. That is
 a state of the corpus, it is untrue by next week, and nobody cleans it up. The
-resolve step and the work queue track it (RFC-029).
+resolve step and the work queue track it (RFC-026).
 
 ## Declarations
 
@@ -380,6 +426,11 @@ model the rounding the law states and round nothing where it states none.
 Every action has an `output` and a `value`. The `value` is a literal, a
 `$variable`, or an operation.
 
+Naming an output is not computing it. An entry that declares outputs and has no
+action, definition, open term or `implements` that produces any of them is
+reported by a check, because from the outside it promises a value the engine
+never delivers.
+
 ```yaml
 actions:
   - output: heeft_recht
@@ -475,6 +526,13 @@ Where the target law does not produce the output you need, add that output to th
 target law first, on the article that should own it, then bind to it. Do not
 leave the reference in a description only.
 
+**Every law the entry's text cites is read by the model or fills an open term.**
+The harvester records the citation in the entry's `references` block, and a check
+holds that block against what the model does: a cited law that the model neither
+binds to nor names on an open term is a reference nobody acted on. Bind to the
+article the text names, or put the regulation in `expected_source` on the term it
+fills.
+
 ## Hooks and produces
 
 ```yaml
@@ -539,6 +597,9 @@ best effort.
 schema-conformant. There is no `related_legislation:` key anywhere inside it.
 
 ## Report
+
+Report on the entries you were given and on nothing else. `{TOTAL}` is the size
+of that scope, not the size of the law: a targeted run of one entry reports one.
 
 ```
 Interpreted {LAW_NAME}
