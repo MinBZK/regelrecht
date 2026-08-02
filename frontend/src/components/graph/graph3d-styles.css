@@ -1,0 +1,71 @@
+/* Custom CSS for the 3D corpus graph.
+ *
+ * The design system has no graph canvas and no overlay-on-canvas layout, so
+ * these rules exist and no others: every control on top of the canvas is an
+ * ndd-* component and only its placement is custom. The list is deliberately
+ * short - if it grows, that is a signal for a design-system change, not for
+ * more CSS here.
+ *
+ * Colours are never written here. The renderer reads the NDD palette tokens
+ * through getComputedStyle (see graph3d/palette.js), which keeps light and
+ * dark mode working through the same light-dark() tokens the 2D graph uses.
+ */
+
+/* 1. The canvas needs a box with a real height; NDD has no layout component
+ *    that gives a canvas the remaining height of a pane. */
+.graph3d-stage {
+  position: relative;
+  inline-size: 100%;
+  block-size: min(80vh, 900px);
+  overflow: hidden;
+}
+
+/* 2. Canvas is inline by default (descender gap), and OrbitControls fights
+ *    the browser's touch scrolling without touch-action: none. */
+.graph3d-stage canvas {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  touch-action: none;
+}
+
+/* 3. The canvas is focusable (tabindex) so the keyboard can reach the graph;
+ *    without this the focus ring is invisible on it. */
+.graph3d-stage canvas:focus-visible {
+  outline: 2px solid var(--semantics-focus-color, currentColor);
+  outline-offset: -2px;
+}
+
+/* 4. HUD overlay: the controls float above the canvas. Components inside are
+ *    NDD; only the placement is custom. */
+.graph3d-hud {
+  position: absolute;
+  inset-block-start: var(--spacing-sm, 8px);
+  inset-inline: var(--spacing-sm, 8px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm, 8px);
+  align-items: center;
+  pointer-events: none;
+}
+
+.graph3d-hud > * {
+  pointer-events: auto;
+}
+
+.graph3d-readout {
+  position: absolute;
+  inset-block-end: var(--spacing-sm, 8px);
+  inset-inline-start: var(--spacing-sm, 8px);
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 5. The loading indicator sits in the middle of the canvas box; NDD has no
+ *    "centred over this element" placement. */
+.graph3d-loading {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: 50%;
+  transform: translate(-50%, -50%);
+}

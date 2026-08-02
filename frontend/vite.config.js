@@ -68,6 +68,16 @@ export default defineConfig({
   build: {
     cssTarget: ['chrome123', 'edge123', 'firefox120', 'safari18'],
     outDir: 'dist',
+    rollupOptions: {
+      // Vite only builds index.html by default; the 3D-graph pages are extra
+      // entries, so they exist in a production build too instead of only under
+      // `vite dev`.
+      input: {
+        index: fileURLToPath(new URL('./index.html', import.meta.url)),
+        graph3d: fileURLToPath(new URL('./graph3d.html', import.meta.url)),
+        benchGraph3d: fileURLToPath(new URL('./bench-graph3d.html', import.meta.url)),
+      },
+    },
   },
   server: {
     port: 3000,
