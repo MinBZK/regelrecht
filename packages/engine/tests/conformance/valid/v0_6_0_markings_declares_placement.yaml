@@ -35,6 +35,9 @@ articles:
           legal_text_excerpt: het berekeningsjaar waarop de tegemoetkoming betrekking heeft
         - about: kwantificatie over de leden van het huishouden
           resolution: model
+          resolved_by: >-
+            Een vorm die een regel over een verzameling personen uitdrukt in plaats van
+            over één waarde
           target: []
           legal_text_excerpt: de leden van het huishouden
           accepted: true
