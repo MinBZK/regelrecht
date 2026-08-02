@@ -4539,6 +4539,74 @@ articles:
     }
 
     #[test]
+    fn both_bucket_definitions_are_counted_side_by_side() {
+        // The measurement is the point of gebrek 4, so every article shape
+        // that lands in a different bucket under the two definitions is here
+        // at once. `implements` is logic now and was not in round 4;
+        // `overrides` is a flag now and was not; `open_terms` was logic then
+        // and is a flag now.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: 'A'
+    text: Deze wet wordt aangehaald als Wet op de zorgtoeslag.
+    machine_readable:
+      declares:
+        - property: citeertitel
+          value: Wet op de zorgtoeslag
+  - number: 'B'
+    text: In afwijking van artikel 3 geldt dit niet.
+    machine_readable:
+      overrides:
+        - voids: iets
+          legal_text_excerpt: In afwijking van artikel 3
+  - number: 'C'
+    text: De standaardpremie bedraagt het bedrag, bedoeld in de regeling.
+    machine_readable:
+      implements:
+        - law: wet_op_de_zorgtoeslag
+          article: '4'
+          open_term: standaardpremie
+  - number: 'D'
+    text: Bij ministeriële regeling wordt de standaardpremie vastgesteld.
+    machine_readable:
+      open_terms:
+        - id: standaardpremie
+          type: amount
+          delegated_to: Onze Minister
+  - number: 'E'
+    text: Voor elk van de tot het huishouden behorende personen wordt…
+    machine_readable:
+      markings:
+        - about: kwantificeren over personen
+          resolution: model
+          resolved_by: een vorm voor een regel over een verzameling
+          target: []
+          legal_text_excerpt: Voor elk van de tot het huishouden behorende personen
+  - number: 'F'
+    text: Deze wet treedt in werking op een bij koninklijk besluit te bepalen tijdstip.
+  - number: 'G'
+    text: De aanspraak wordt vastgesteld.
+    machine_readable:
+      endpoint: aanspraak
+"#,
+        )
+        .expect("yaml");
+        let t = tally(&doc);
+        assert_eq!(t.articles, 7);
+        // Now: only `implements` is logic; declares, overrides, open_terms and
+        // markings are outcomes without logic; the endpoint-only model and the
+        // article without a model carry nothing.
+        assert_eq!((t.with_logic, t.marked_only, t.bare), (1, 4, 2));
+        // Round 4: `open_terms` counted as logic, `implements` did not, and
+        // `overrides` was not an outcome at all.
+        assert_eq!((t.with_logic_r4, t.marked_only_r4, t.bare_r4), (1, 2, 4));
+        // And the open term names its filler, so it is not unattributed.
+        assert_eq!((t.open_terms, t.open_terms_delegated), (1, 1));
+        assert_eq!(t.open_terms_unattributed, 0);
+    }
+
+    #[test]
     fn a_resolution_that_only_pads_the_marking_is_a_restatement_too() {
         // Not only the literal copy. "Een vorm voor kwantificeren over
         // personen" is the same sentence with a preamble, and it names no
