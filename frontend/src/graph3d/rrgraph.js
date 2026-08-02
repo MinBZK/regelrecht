@@ -53,6 +53,19 @@ export function familyFor(kindName, layerName) {
   }
 }
 
+/**
+ * `enrichment_states` value -> renderer status.
+ *
+ * `partial` and `full` both get colour, because both mean somebody has worked
+ * on this law; the difference between them is a shade of the same hue, not
+ * grey against colour.
+ */
+export function enrichmentStatus(state) {
+  if (state === 'full') return STATUS_IDS.validated;
+  if (state === 'partial') return STATUS_IDS.enriched;
+  return STATUS_IDS.harvested;
+}
+
 /** Parse only the header. Cheap, and enough to decide whether to load at all. */
 export function readHeader(buffer) {
   const bytes = new Uint8Array(buffer);
@@ -102,7 +115,10 @@ export function decodeRrgraph(buffer, { lawLevelOnly = false, labels = true } = 
   const nodeCluster = section('node_cluster');
   const nodeParent = section('node_parent');
   const nodeFlags = section('node_flags');
-  const nodeStatus = section('node_status'); // not written yet; see below
+  const nodeEnrichment = section('node_enrichment');
+  const nodeActivity = section('node_activity');
+  const nodeArticles = section('node_articles');
+  const nodeArticlesEnriched = section('node_articles_enriched');
   const edgeSrc = section('edge_src');
   const edgeDst = section('edge_dst');
   const edgeTypeSec = section('edge_type');
@@ -140,12 +156,33 @@ export function decodeRrgraph(buffer, { lawLevelOnly = false, labels = true } = 
     cluster[i] = isFramework ? 0 : c;
   }
 
-  // Enrichment status is on its way into the payload. Until it lands every
-  // node is `harvested`, which is exactly the picture the corpus deserves: a
-  // grey field with colour only where work has been done.
+  // Enrichment status: the one thing colour is spent on.
+  //
+  // `node_enrichment` is `none | partial | full` and `node_activity` says the
+  // enricher is inside this law right now. Activity wins over enrichment,
+  // because "being worked on" is the more urgent thing to see. A payload
+  // without these sections (an older build) leaves everything grey, which is
+  // the honest picture rather than a guess.
+  const states = header.enrichment_states ?? [];
   const status = new Uint8Array(nodeCount);
-  if (nodeStatus) status.set(nodeStatus.subarray(0, nodeCount));
-  else status.fill(STATUS_IDS.harvested);
+  if (nodeEnrichment) {
+    for (let i = 0; i < nodeCount; i++) {
+      if (nodeActivity?.[i]) {
+        status[i] = STATUS_IDS.enriching;
+        continue;
+      }
+      status[i] = enrichmentStatus(states[nodeEnrichment[i]]);
+    }
+  } else {
+    status.fill(STATUS_IDS.harvested);
+  }
+
+  const articles = nodeArticles
+    ? nodeArticles.slice(0, nodeCount)
+    : new Uint32Array(nodeCount);
+  const articlesEnriched = nodeArticlesEnriched
+    ? nodeArticlesEnriched.slice(0, nodeCount)
+    : new Uint32Array(nodeCount);
 
   const weight = new Float32Array(nodeCount);
   const src = nodeWeight ?? nodeRank;
@@ -192,6 +229,8 @@ export function decodeRrgraph(buffer, { lawLevelOnly = false, labels = true } = 
     positions,
     kind,
     status,
+    articles,
+    articlesEnriched,
     cluster,
     framework,
     weight,

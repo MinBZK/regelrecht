@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { decodeRrgraph, readHeader, familyFor } from './rrgraph.js';
+import { decodeRrgraph, readHeader, familyFor, enrichmentStatus } from './rrgraph.js';
 import { KIND_IDS, STATUS_IDS } from './graphSchema.js';
 
 /**
@@ -24,15 +24,19 @@ function encode(header, sections) {
       offset += pad;
     }
   }
-  const fullHeader = enc.encode(JSON.stringify({ ...header, sections: meta, data_offset: 0 }));
+  // The header's own length depends on `data_offset`, which depends on the
+  // header's length. Two passes settle it; the padding to a multiple of eight
+  // absorbs the last digit of difference.
   const headerStart = 12;
-  let dataOffset = headerStart + fullHeader.length;
-  dataOffset += (8 - (dataOffset % 8)) % 8;
-  const finalHeader = enc.encode(
-    JSON.stringify({ ...header, sections: meta, data_offset: dataOffset }),
-  );
-  const total = Math.max(dataOffset, headerStart + finalHeader.length) + offset;
-  const buf = new ArrayBuffer(total);
+  let dataOffset = 0;
+  let finalHeader = enc.encode(JSON.stringify({ ...header, sections: meta, data_offset: 0 }));
+  for (let pass = 0; pass < 3; pass++) {
+    dataOffset = headerStart + finalHeader.length;
+    dataOffset += (8 - (dataOffset % 8)) % 8;
+    finalHeader = enc.encode(JSON.stringify({ ...header, sections: meta, data_offset: dataOffset }));
+    if (headerStart + finalHeader.length <= dataOffset) break;
+  }
+  const buf = new ArrayBuffer(dataOffset + offset);
   const bytes = new Uint8Array(buf);
   bytes.set(enc.encode('RRGRAPH'), 0);
   bytes[7] = 1;
@@ -63,6 +67,7 @@ function samplePayload() {
     layers: ['GRONDWET', 'WET', 'AMVB'],
     clusters: 2,
     framework_cluster: 65535,
+    enrichment_states: ['none', 'partial', 'full'],
     strings: ['wet_a', 'Wet A', 'wet_b', 'Wet B', 'wet_a:art1', 'Artikel 1'],
   };
   return encode(header, [
@@ -79,6 +84,10 @@ function samplePayload() {
     ['edge_dst', 'u32', Uint32Array.from([1, 0, 1])],
     ['edge_type', 'u8', Uint8Array.from([1, 1, 2])],
     ['edge_count', 'u32', Uint32Array.from([3, 1, 1])],
+    ['node_enrichment', 'u8', Uint8Array.from([1, 0, 2])],
+    ['node_activity', 'u8', Uint8Array.from([0, 1, 0])],
+    ['node_articles', 'u32', Uint32Array.from([10, 0, 0])],
+    ['node_articles_enriched', 'u32', Uint32Array.from([6, 0, 0])],
   ]);
 }
 
@@ -133,13 +142,17 @@ describe('decodeRrgraph', () => {
     expect(g.cluster[0]).toBe(1);
   });
 
-  it('defaults every node to harvested while the payload has no status', () => {
+  it('reads the enrichment status, with activity winning over it', () => {
     const g = decodeRrgraph(samplePayload());
+    // Law A is partial, law B is untouched but has the enricher in it right
+    // now, the article is fully modelled.
     expect(Array.from(g.status)).toEqual([
-      STATUS_IDS.harvested,
-      STATUS_IDS.harvested,
-      STATUS_IDS.harvested,
+      STATUS_IDS.enriched,
+      STATUS_IDS.enriching,
+      STATUS_IDS.validated,
     ]);
+    expect(g.articles[0]).toBe(10);
+    expect(g.articlesEnriched[0]).toBe(6);
   });
 
   it('rejects a future payload version instead of misreading it', () => {
@@ -162,5 +175,17 @@ describe('familyFor', () => {
     expect(familyFor('law', 'MINISTERIELE_REGELING')).toBe(KIND_IDS.ministeriele_regeling);
     expect(familyFor('law', 'WET')).toBe(KIND_IDS.law);
     expect(familyFor('law', 'ONBEKEND')).toBe(KIND_IDS.law);
+  });
+});
+
+describe('enrichmentStatus', () => {
+  it('keeps grey for untouched laws and colour for the rest', () => {
+    expect(enrichmentStatus('none')).toBe(STATUS_IDS.harvested);
+    expect(enrichmentStatus('partial')).toBe(STATUS_IDS.enriched);
+    expect(enrichmentStatus('full')).toBe(STATUS_IDS.validated);
+    // An unknown state from a newer builder stays grey rather than claiming
+    // work that may not have happened.
+    expect(enrichmentStatus('iets-nieuws')).toBe(STATUS_IDS.harvested);
+    expect(enrichmentStatus(undefined)).toBe(STATUS_IDS.harvested);
   });
 });
