@@ -623,6 +623,13 @@ impl MarkingResolution {
 pub struct Marking {
     /// The construct that cannot be expressed, in the words the article uses.
     pub about: String,
+    /// Why the construct does not fit, in terms of what the format does have.
+    ///
+    /// The diagnosis, and the half that cannot be recovered from the other
+    /// fields: `resolved_by` follows from it and not the other way round.
+    /// Without it a marking states a wish, and a gap someone examined reads
+    /// the same as one nobody did.
+    pub reason: String,
     /// Whether resolving this needs a new engine operation or a new model shape.
     pub resolution: MarkingResolution,
     /// The change that would resolve it, named concretely enough to become work.

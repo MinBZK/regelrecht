@@ -28,12 +28,20 @@ articles:
           applies_from: '2026-01-01'
       markings:
         - about: het kalenderjaar waarop de tegemoetkoming betrekking heeft
+          reason: >-
+            Het berekeningsjaar volgt uit de periode waarop de tegemoetkoming betrekking heeft.
+            De motor kent geen bewerking die het jaardeel uit een datum licht, dus is dat jaar
+            niet uit die periode af te leiden.
           resolution: engine
           resolved_by: Een YEAR-bewerking die het jaardeel van een datum oplevert
           target:
             - berekeningsjaar
           legal_text_excerpt: het berekeningsjaar waarop de tegemoetkoming betrekking heeft
         - about: kwantificatie over de leden van het huishouden
+          reason: >-
+            De bepaling stelt een eis aan de verzameling personen in het huishouden en niet aan
+            een waarde die bij één persoon hoort. Het model bindt elke uitkomst aan één subject,
+            dus er is geen vorm om over die verzameling te tellen.
           resolution: model
           resolved_by: >-
             Een vorm die een regel over een verzameling personen uitdrukt in plaats van

@@ -1682,6 +1682,7 @@
             "type": "object",
             "required": [
               "about",
+              "reason",
               "resolution",
               "resolved_by",
               "target",
@@ -1691,6 +1692,10 @@
               "about": {
                 "type": "string",
                 "description": "The construct that cannot be expressed, in the words the article uses (e.g. 'het kalenderjaar waarop de tegemoetkoming betrekking heeft')"
+              },
+              "reason": {
+                "type": "string",
+                "description": "Why this construct does not fit the format, in terms of what the format does have. This is the diagnosis, and it is the field a reviewer needs to tell a well-examined gap from a wish: resolved_by follows from it, and not the other way round. Round 4 showed the asymmetry: 'voor zover limits application per provision of this law rather than the law as a whole, and the model only knows applicability of a whole law' yields the change that would close it, while the change on its own recovers none of the reading behind it."
               },
               "resolution": {
                 "type": "string",
