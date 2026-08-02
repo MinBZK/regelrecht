@@ -116,7 +116,10 @@ describe('TasksListPane', () => {
     expect(btns[0].attributes('text')).toBe('Acties');
     // Geen `expandable`: dat zou nog een chevron naast het more-icoon zetten.
     expect(btns[0].attributes('icon')).toBe('more');
-    expect(btns[0].attributes('popup-type')).toBe('menu');
+    // Het menu zit in de popup-slot van de knop, die het daarmee zelf ankert
+    // en togglet. Sinds design-system 0.8.76 volgt aria-haspopup daaruit, dus
+    // die staat niet meer als popup-type in de markup.
+    expect(btns[0].find('nldd-menu[slot="popup"]').exists()).toBe(true);
   });
 
   const FAILED_TASK = {

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, useId } from 'vue';
+import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { RE_HARVESTABLE_STATUSES, ENRICHABLE_STATUSES } from '../constants.js';
 import { apiFetch } from '@regelrecht/frontend-shared';
@@ -15,9 +15,6 @@ const router = useRouter();
 function onViewJobs() {
   router.push({ name: 'jobs', query: { law_id: props.row.law_id } });
 }
-
-const uid = useId();
-const menuAnchor = computed(() => `row-actions-${uid}`);
 
 const canHarvest = computed(() => RE_HARVESTABLE_STATUSES.includes(props.row.status));
 const canEnrich = computed(() => ENRICHABLE_STATUSES.includes(props.row.status));
@@ -85,18 +82,20 @@ async function onResetExhausted() {
 </script>
 
 <template>
+  <!-- The menu sits in the button's popup slot: the button anchors and toggles
+       it itself, so no per-instance id is needed. -->
   <nldd-icon-button
-    :id="menuAnchor"
     icon="ellipsis"
     text="Actions"
     tooltip-timing="never"
     variant="neutral-tinted"
     size="md"
-  />
-  <nldd-menu :anchor="menuAnchor">
-    <nldd-menu-item v-if="canHarvest" text="Harvest" @click.stop="onHarvest" />
-    <nldd-menu-item v-if="canEnrich" text="Enrich" @click.stop="onEnrich" />
-    <nldd-menu-item v-if="canReset" text="Reset exhausted" @click.stop="onResetExhausted" />
-    <nldd-menu-item text="View job details" @click.stop="onViewJobs" />
-  </nldd-menu>
+  >
+    <nldd-menu slot="popup">
+      <nldd-menu-item v-if="canHarvest" text="Harvest" @click.stop="onHarvest" />
+      <nldd-menu-item v-if="canEnrich" text="Enrich" @click.stop="onEnrich" />
+      <nldd-menu-item v-if="canReset" text="Reset exhausted" @click.stop="onResetExhausted" />
+      <nldd-menu-item text="View job details" @click.stop="onViewJobs" />
+    </nldd-menu>
+  </nldd-icon-button>
 </template>

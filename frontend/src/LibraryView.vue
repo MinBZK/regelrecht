@@ -1188,18 +1188,11 @@ async function fetchChangedLawIds(trajectRef) {
 
 const togglingFavorites = ref(new Set());
 
-const favoriteLoginWarning = ref(null);
-// Heart button when not logged in: nudge to log in via a popover anchored to the
-// button (same pattern as the Editor tab + Trajecten button) instead of silently
-// doing nothing.
-function onFavoriteClick(e) {
-  if (!authenticated.value) {
-    if (favoriteLoginWarning.value) {
-      favoriteLoginWarning.value.anchorElement = e.currentTarget;
-      favoriteLoginWarning.value.show();
-    }
-    return;
-  }
+// Star button when not logged in: the login nudge sits in the button's popup
+// slot, so the component anchors and toggles it. Logged in there is no popover
+// and the click marks the law.
+function onFavoriteClick() {
+  if (!authenticated.value) return;
   toggleFavorite(selectedLawId.value);
 }
 
@@ -1445,6 +1438,27 @@ const highlightSection = computed(() => {
   return sections.find(s => s.laws.some(l => l.law_id === id))?.key ?? null;
 });
 
+// A Grondslag entry points at an article in another law: select that law and
+// land on the authorizing article itself, instead of dropping the reader at
+// the law's front door to re-find it. A dangling article reference degrades
+// to the law's own empty state.
+function selectLawArticle(lawId, articleNumber) {
+  if (!articleNumber) {
+    selectLaw(lawId);
+    return;
+  }
+  const articleStr = String(articleNumber);
+  selectedSection.value = null;
+  if (lawId !== selectedLawId.value || lawError.value) {
+    selectedLawId.value = lawId;
+    lawError.value = null;
+    loadLaw(lawId);
+  }
+  selectedArticleNumber.value = articleStr;
+  activeAction.value = null;
+  router.push(libraryRouteFor({ lawId, articleNumber: articleStr }));
+}
+
 function selectArticle(number) {
   const articleStr = String(number);
   if (articleStr === selectedArticleNumber.value) return;
@@ -1478,13 +1492,18 @@ function toggleArticleFilter() {
 // Machine-uitvoerbaar = het artikel draagt een uitvoerbare regel, niet alleen
 // een definitie: `execution` is wat de engine kan draaien.
 function isMachineReadable(article) {
-  return !!article.machine_readable?.execution;
+  // The Machine tab renders whatever machine_readable holds, and a machine
+  // version with only definitions (no execution yet) is still a machine
+  // version - the tag and the filter follow that same notion.
+  const mr = article.machine_readable;
+  if (!mr) return false;
+  return !!mr.execution || Object.keys(mr.definitions ?? {}).length > 0;
 }
 
 const ARTICLE_FILTERS = [
   { key: 'alles', label: 'Alles' },
-  { key: 'machine', label: 'Machine-uitvoerbaar' },
-  { key: 'geen-machine', label: 'Niet machine-uitvoerbaar' },
+  { key: 'machine', label: 'Met machine-versie' },
+  { key: 'geen-machine', label: 'Zonder machine-versie' },
 ];
 const articleTypeFilter = ref('alles');
 
@@ -1944,18 +1963,16 @@ watch(activeTrajectRef, () => {
                 <nldd-toolbar label="Documentacties">
                   <nldd-toolbar-item slot="start">
                     <nldd-icon-button
-                      id="werkdoc-add-btn"
                       icon="plus-small"
                       text="Document toevoegen"
                       expandable
                       tooltip-timing="never"
-                      popup-type="menu"
-                      popovertarget="werkdoc-add-menu"
-                    ></nldd-icon-button>
-                    <nldd-menu id="werkdoc-add-menu" anchor="werkdoc-add-btn">
-                      <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="onDocNew"></nldd-menu-item>
-                      <nldd-menu-item icon="upload-to-cloud" text="Document uploaden…" @select="onDocUpload"></nldd-menu-item>
-                    </nldd-menu>
+                    >
+                      <nldd-menu slot="popup">
+                        <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="onDocNew"></nldd-menu-item>
+                        <nldd-menu-item icon="upload-to-cloud" text="Document uploaden…" @select="onDocUpload"></nldd-menu-item>
+                      </nldd-menu>
+                    </nldd-icon-button>
                   </nldd-toolbar-item>
                 </nldd-toolbar>
                 <nldd-spacer size="16"></nldd-spacer>
@@ -1995,7 +2012,28 @@ watch(activeTrajectRef, () => {
                       :icon="favorites?.has(selectedLawId) ? 'star-filled' : 'star'"
                       :text="favorites?.has(selectedLawId) ? 'Verwijder uit favorieten' : 'Voeg toe aan favorieten'"
                       @click="onFavoriteClick"
-                    ></nldd-icon-button>
+                    >
+                      <!-- In de popup-slot: het component ankert en toggelt de
+                           popover zelf, dus een tweede klik sluit hem weer.
+                           Alleen zinvol zolang je niet bent ingelogd. -->
+                      <nldd-popover
+                        v-if="!authenticated"
+                        slot="popup"
+                        accessible-label="Inloggen"
+                        width="320px"
+                      >
+                        <nldd-container padding="16">
+                          <nldd-inline-dialog
+                            icon="login"
+                            text="Log in om wetten als favoriet te markeren"
+                            supporting-text="Zodra je bent ingelogd kun je wetten bewaren en snel terugvinden."
+                          >
+                            <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
+                            <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
+                          </nldd-inline-dialog>
+                        </nldd-container>
+                      </nldd-popover>
+                    </nldd-icon-button>
                   </nldd-toolbar-item>
                   <nldd-toolbar-item v-if="canShare" slot="start" :priority="1">
                     <nldd-icon-button icon="share" text="Delen" @click="shareLaw"></nldd-icon-button>
@@ -2009,22 +2047,18 @@ watch(activeTrajectRef, () => {
                     ></nldd-icon-button>
                   </nldd-toolbar-item>
                   <nldd-toolbar-item slot="end" :priority="3">
-                    <nldd-icon-button
-                      id="article-filter-btn"
-                      icon="filter"
-                      text="Artikelen filteren"
-                      popup-type="menu"
-                    ></nldd-icon-button>
-                    <nldd-menu anchor="article-filter-btn">
-                      <nldd-menu-item
-                        v-for="option in ARTICLE_FILTERS"
-                        :key="option.key"
-                        type="radio"
-                        :text="option.label"
-                        :selected="articleTypeFilter === option.key || undefined"
-                        @select="setArticleTypeFilter(option.key)"
-                      ></nldd-menu-item>
-                    </nldd-menu>
+                    <nldd-icon-button icon="filter" text="Artikelen filteren">
+                      <nldd-menu slot="popup">
+                        <nldd-menu-item
+                          v-for="option in ARTICLE_FILTERS"
+                          :key="option.key"
+                          type="radio"
+                          :text="option.label"
+                          :selected="articleTypeFilter === option.key || undefined"
+                          @select="setArticleTypeFilter(option.key)"
+                        ></nldd-menu-item>
+                      </nldd-menu>
+                    </nldd-icon-button>
                   </nldd-toolbar-item>
                 </nldd-toolbar>
                 <nldd-spacer v-if="paneChromeVisible(selectedLawLoading)" size="16"></nldd-spacer>
@@ -2034,29 +2068,17 @@ watch(activeTrajectRef, () => {
                     :value="articleFilter"
                     placeholder="Artikelen zoeken"
                     accessible-label="Artikelen zoeken"
-                    @input="articleFilter = $event.target?.value ?? ''"
+                    @input="articleFilter = $event.detail?.value ?? ''"
                   ></nldd-search-field>
                   <nldd-spacer size="16"></nldd-spacer>
                 </template>
-                <nldd-popover ref="favoriteLoginWarning" accessible-label="Inloggen" width="320px">
-                  <nldd-container padding="16">
-                    <nldd-inline-dialog
-                      icon="login"
-                      text="Log in om wetten als favoriet te markeren"
-                      supporting-text="Zodra je bent ingelogd kun je wetten bewaren en snel terugvinden."
-                    >
-                      <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
-                      <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
-                    </nldd-inline-dialog>
-                  </nldd-container>
-                </nldd-popover>
                 <nldd-activity-indicator v-if="selectedLawLoading" text="Wet laden" show-text></nldd-activity-indicator>
                 <nldd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een wet"></nldd-inline-dialog>
                 <template v-else>
                 <nldd-list variant="simple" arrow-navigation>
                   <nldd-list-item size="md" button :selected="isAlgemeen || undefined" @click="selectAlgemeen()">
                     <nldd-icon-cell size="20">
-                      <nldd-icon name="book"></nldd-icon>
+                      <nldd-icon name="information"></nldd-icon>
                     </nldd-icon-cell>
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <nldd-text-cell text="Algemeen"></nldd-text-cell>
@@ -2080,12 +2102,18 @@ watch(activeTrajectRef, () => {
                   ></nldd-token>
                   <nldd-spacer size="8"></nldd-spacer>
                 </template>
-                <!-- Zonder rijen valt de lege staat in het niets; het kader van
-                     variant="box" geeft hem dezelfde begrenzing als de lijst had. -->
-                <nldd-list :variant="filteredArticles.length ? 'simple' : 'box'" arrow-navigation>
-                  <nldd-inline-dialog v-if="articleFiltersActive" slot="empty" :text="articleEmptyText">
-                    <nldd-button slot="actions" variant="primary" text="Toon alles" @click="resetArticleFilters"></nldd-button>
-                  </nldd-inline-dialog>
+                <!-- Geen lijst maar een losse dialog zodra er niets te tonen is:
+                     die vult de resterende hoogte en zet de boodschap in het
+                     midden, in plaats van als blokje bovenin te blijven hangen. -->
+                <nldd-inline-dialog v-if="!filteredArticles.length" :text="articleEmptyText">
+                  <nldd-button
+                    v-if="articleFiltersActive"
+                    slot="actions"
+                    text="Toon alles"
+                    @click="resetArticleFilters"
+                  ></nldd-button>
+                </nldd-inline-dialog>
+                <nldd-list v-else variant="simple" arrow-navigation>
                   <nldd-list-item
                     v-for="article in filteredArticles"
                     :key="article.number"
@@ -2315,7 +2343,7 @@ watch(activeTrajectRef, () => {
                       :key="`${basis.law_id}-${basis.article}`"
                       size="md"
                       button
-                      @click="selectLaw(basis.law_id)"
+                      @click="selectLawArticle(basis.law_id, basis.article)"
                     >
                       <nldd-text-cell
                         :text="basis.article ? `Artikel ${basis.article}` : humanizeLawId(basis.law_id)"

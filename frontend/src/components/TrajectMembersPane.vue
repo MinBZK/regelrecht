@@ -146,26 +146,24 @@ async function confirmRemoveInvite() {
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-cell v-if="canManageMember(m)">
             <nldd-icon-button
-              :id="`member-more-${m.account_id}`"
               icon="more"
               text="Meer acties"
               tooltip-timing="never"
-              popup-type="menu"
-              :popovertarget="`member-menu-${m.account_id}`"
               :disabled="rowBusy.has(m.account_id) || undefined"
-            ></nldd-icon-button>
-            <nldd-menu :id="`member-menu-${m.account_id}`" :anchor="`member-more-${m.account_id}`">
-              <nldd-menu-item
-                v-if="m.role === 'owner'"
-                text="Maak bijdrager"
-                @select="changeMemberRole(m, 'contributor')"
-              ></nldd-menu-item>
-              <template v-else>
-                <nldd-menu-item text="Maak beheerder" @select="changeMemberRole(m, 'owner')"></nldd-menu-item>
-                <nldd-menu-divider></nldd-menu-divider>
-                <nldd-menu-item text="Verwijder lid" destructive @select="clickRemoveMember(m)"></nldd-menu-item>
-              </template>
-            </nldd-menu>
+            >
+              <nldd-menu slot="popup">
+                <nldd-menu-item
+                  v-if="m.role === 'owner'"
+                  text="Maak bijdrager"
+                  @select="changeMemberRole(m, 'contributor')"
+                ></nldd-menu-item>
+                <template v-else>
+                  <nldd-menu-item text="Maak beheerder" @select="changeMemberRole(m, 'owner')"></nldd-menu-item>
+                  <nldd-menu-divider></nldd-menu-divider>
+                  <nldd-menu-item text="Verwijder lid" destructive @select="clickRemoveMember(m)"></nldd-menu-item>
+                </template>
+              </nldd-menu>
+            </nldd-icon-button>
           </nldd-cell>
         </nldd-list-item>
         <div v-if="rowError.get(m.account_id)" class="members-row-error">

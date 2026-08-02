@@ -1,5 +1,5 @@
 <script setup>
-import { computed, useId } from 'vue';
+import { computed } from 'vue';
 import {
   OPERATION_LABELS,
   collectAvailableVariables,
@@ -7,13 +7,6 @@ import {
 } from '../utils/operationTree.js';
 import BreakableName from './BreakableName.vue';
 
-// Per-instance prefix for the per-value action menu DOM ids. operation.number
-// is stable within a law but identical across editor panes, so two panes
-// showing the same operation would collide and nldd-menu would anchor to the
-// first match (wrong pane). useId() is unique per component instance; ${i}
-// still disambiguates the value rows within one instance. Mirrors the
-// useId() pattern in RowActionsMenu.vue.
-const valueMenuId = useId();
 const props = defineProps({
   operation: { type: Object, default: null },
   article: { type: Object, default: null },
@@ -626,37 +619,36 @@ function addValue() {
           </template>
           <template v-if="hasValueMenu(val)">
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
-            <nldd-icon-button
-              :id="`val-actions-${valueMenuId}-${i}`"
-              icon="more"
-              text="Acties"
-              tooltip-timing="never"
-              variant="neutral-tinted"
-            ></nldd-icon-button>
-            <nldd-menu :anchor="`val-actions-${valueMenuId}-${i}`">
-              <nldd-menu-group v-if="canChangeValueKind(val)" text="Type">
+            <!-- The menu sits in the button's popup slot, so it anchors to this
+                 exact button instead of to whichever element happens to own a
+                 matching id — two panes showing the same operation used to
+                 collide. -->
+            <nldd-icon-button icon="more" text="Acties" tooltip-timing="never" variant="neutral-tinted">
+              <nldd-menu slot="popup">
+                <nldd-menu-group v-if="canChangeValueKind(val)" text="Type">
+                  <nldd-menu-item
+                    type="radio"
+                    text="Waarde"
+                    :selected="!isNestedOperation(val._value) || undefined"
+                    @click.stop="changeValueKind(val, 'value')"
+                  ></nldd-menu-item>
+                  <nldd-menu-item
+                    type="radio"
+                    text="Operatie"
+                    :selected="isNestedOperation(val._value) || undefined"
+                    @click.stop="changeValueKind(val, 'operatie')"
+                  ></nldd-menu-item>
+                </nldd-menu-group>
+                <nldd-menu-divider v-if="canChangeValueKind(val) && canRemoveValue(val)"></nldd-menu-divider>
                 <nldd-menu-item
-                  type="radio"
-                  text="Waarde"
-                  :selected="!isNestedOperation(val._value) || undefined"
-                  @click.stop="changeValueKind(val, 'value')"
+                  v-if="canRemoveValue(val)"
+                  text="Verwijder"
+                  icon="delete"
+                  destructive
+                  @click.stop="removeValue(val)"
                 ></nldd-menu-item>
-                <nldd-menu-item
-                  type="radio"
-                  text="Operatie"
-                  :selected="isNestedOperation(val._value) || undefined"
-                  @click.stop="changeValueKind(val, 'operatie')"
-                ></nldd-menu-item>
-              </nldd-menu-group>
-              <nldd-menu-divider v-if="canChangeValueKind(val) && canRemoveValue(val)"></nldd-menu-divider>
-              <nldd-menu-item
-                v-if="canRemoveValue(val)"
-                text="Verwijder"
-                icon="delete"
-                destructive
-                @click.stop="removeValue(val)"
-              ></nldd-menu-item>
-            </nldd-menu>
+              </nldd-menu>
+            </nldd-icon-button>
           </template>
         </template>
         <template v-else>

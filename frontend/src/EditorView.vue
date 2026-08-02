@@ -2332,48 +2332,43 @@ async function handleActionSave() {
                   <!-- Weergave-keuze (alle panes). Hoogste prioriteit zodat
                        deze als laatste naar het overflow-menu verhuist. -->
                   <nldd-toolbar-item slot="start" label="Weergave" :priority="4">
-                    <nldd-button
-                      :id="`pane-view-btn-${idx}`"
-                      size="md"
-                      expandable
-                      :text="viewLabel(view)"
-                      :popovertarget="`pane-view-menu-${idx}`"
-                    ></nldd-button>
-                    <nldd-menu :id="`pane-view-menu-${idx}`" :anchor="`pane-view-btn-${idx}`">
-                      <nldd-menu-item
-                        v-for="opt in availableViews"
-                        :key="opt.id"
-                        type="radio"
-                        :selected="view === opt.id || undefined"
-                        :text="opt.label"
-                        @select="setPaneView(idx, opt.id)"
-                      ></nldd-menu-item>
-                      <nldd-menu-divider></nldd-menu-divider>
-                      <nldd-menu-item
-                        text="Verplaats naar links"
-                        icon="arrow-left"
-                        :disabled="idx === 0 || undefined"
-                        @select="movePane(idx, 'left')"
-                      ></nldd-menu-item>
-                      <nldd-menu-item
-                        text="Verplaats naar rechts"
-                        icon="arrow-right"
-                        :disabled="idx === paneViews.length - 1 || undefined"
-                        @select="movePane(idx, 'right')"
-                      ></nldd-menu-item>
-                      <nldd-menu-item
-                        text="Verplaats uiterst links"
-                        icon="arrow-left-to-line"
-                        :disabled="idx === 0 || undefined"
-                        @select="movePane(idx, 'start')"
-                      ></nldd-menu-item>
-                      <nldd-menu-item
-                        text="Verplaats uiterst rechts"
-                        icon="arrow-right-to-line"
-                        :disabled="idx === paneViews.length - 1 || undefined"
-                        @select="movePane(idx, 'end')"
-                      ></nldd-menu-item>
-                    </nldd-menu>
+                    <nldd-button size="md" expandable :text="viewLabel(view)">
+                      <nldd-menu slot="popup">
+                        <nldd-menu-item
+                          v-for="opt in availableViews"
+                          :key="opt.id"
+                          type="radio"
+                          :selected="view === opt.id || undefined"
+                          :text="opt.label"
+                          @select="setPaneView(idx, opt.id)"
+                        ></nldd-menu-item>
+                        <nldd-menu-divider></nldd-menu-divider>
+                        <nldd-menu-item
+                          text="Verplaats naar links"
+                          icon="arrow-left"
+                          :disabled="idx === 0 || undefined"
+                          @select="movePane(idx, 'left')"
+                        ></nldd-menu-item>
+                        <nldd-menu-item
+                          text="Verplaats naar rechts"
+                          icon="arrow-right"
+                          :disabled="idx === paneViews.length - 1 || undefined"
+                          @select="movePane(idx, 'right')"
+                        ></nldd-menu-item>
+                        <nldd-menu-item
+                          text="Verplaats uiterst links"
+                          icon="arrow-left-to-line"
+                          :disabled="idx === 0 || undefined"
+                          @select="movePane(idx, 'start')"
+                        ></nldd-menu-item>
+                        <nldd-menu-item
+                          text="Verplaats uiterst rechts"
+                          icon="arrow-right-to-line"
+                          :disabled="idx === paneViews.length - 1 || undefined"
+                          @select="movePane(idx, 'end')"
+                        ></nldd-menu-item>
+                      </nldd-menu>
+                    </nldd-button>
                     <nldd-menu-group slot="overflow" text="Weergave">
                       <nldd-menu-item
                         v-for="opt in availableViews"
@@ -2582,18 +2577,17 @@ async function handleActionSave() {
                     :priority="3"
                   >
                     <nldd-icon-button
-                      :id="`notes-export-btn-${idx}`"
                       icon="download"
                       text="Notities downloaden"
                       variant="secondary"
                       size="md"
                       expandable
-                      :popovertarget="`notes-export-menu-${idx}`"
-                    ></nldd-icon-button>
-                    <nldd-menu :id="`notes-export-menu-${idx}`" :anchor="`notes-export-btn-${idx}`">
-                      <nldd-menu-item icon="document" text="Artikel-notities als YAML" @select="exportArticleNotes"></nldd-menu-item>
-                      <nldd-menu-item icon="document" text="Wet-notities als YAML" @select="exportNotes"></nldd-menu-item>
-                    </nldd-menu>
+                    >
+                      <nldd-menu slot="popup">
+                        <nldd-menu-item icon="document" text="Artikel-notities als YAML" @select="exportArticleNotes"></nldd-menu-item>
+                        <nldd-menu-item icon="document" text="Wet-notities als YAML" @select="exportNotes"></nldd-menu-item>
+                      </nldd-menu>
+                    </nldd-icon-button>
                     <nldd-menu-group slot="overflow" text="Notities downloaden">
                       <nldd-menu-item icon="document" text="Artikel-notities als YAML" @select="exportArticleNotes"></nldd-menu-item>
                       <nldd-menu-item icon="document" text="Wet-notities als YAML" @select="exportNotes"></nldd-menu-item>
@@ -2618,17 +2612,16 @@ async function handleActionSave() {
                     :priority="1"
                   >
                     <nldd-icon-button
-                      id="law-actions-btn"
                       icon="ai"
                       text="Wet acties"
                       variant="secondary"
                       size="md"
                       expandable
-                      popovertarget="law-actions-menu"
-                    ></nldd-icon-button>
-                    <nldd-menu id="law-actions-menu" anchor="law-actions-btn">
-                      <nldd-menu-item icon="ai" text="Verrijk deze wet" @select="enrichLaw"></nldd-menu-item>
-                    </nldd-menu>
+                    >
+                      <nldd-menu slot="popup">
+                        <nldd-menu-item icon="ai" text="Verrijk deze wet" @select="enrichLaw"></nldd-menu-item>
+                      </nldd-menu>
+                    </nldd-icon-button>
                     <nldd-menu-group slot="overflow" text="Wet acties">
                       <nldd-menu-item icon="ai" text="Verrijk deze wet" @select="enrichLaw"></nldd-menu-item>
                     </nldd-menu-group>
