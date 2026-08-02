@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 
 use crate::engine::OutputProvenance;
-use crate::resolver::DelegationRefusal;
+use crate::resolver::{DeclarationsFromOtherVersion, DelegationRefusal};
 use crate::trace::PathNode;
 use crate::types::{Connectivity, LegalStatus, UntranslatableMode, Value};
 
@@ -123,6 +123,11 @@ pub struct ReceiptResults {
     /// the refusal is on the receipt even when no trace was requested.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub delegation_refusals: Vec<DelegationRefusal>,
+    /// Laws whose hooks, overrides and procedures were read from a version
+    /// other than the one in force on the reference date, so that "none found"
+    /// on this receipt is not read as "none exist".
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub declaration_version_notes: Vec<DeclarationsFromOtherVersion>,
 }
 
 /// A value accepted from another organisation's engine (RFC-009).

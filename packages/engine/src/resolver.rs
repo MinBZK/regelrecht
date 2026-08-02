@@ -28,7 +28,7 @@ use crate::priority::{self, Candidate};
 use crate::types::Value;
 use chrono::NaiveDate;
 use regelrecht_shared::RegulatoryLayer;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Why a law version could not be selected for a reference date.
 ///
@@ -45,6 +45,10 @@ pub enum SelectionReason {
     /// The most recent applicable version ended before the reference date.
     /// Carries the `valid_to` date that was last in force.
     EndedOn(NaiveDate),
+    /// A version's `valid_from` is an internal reference (RFC-001) instead of a
+    /// date, so whether it was in force on the reference date cannot be
+    /// determined from the file. Carries the reference as written.
+    UndeterminedStart(String),
 }
 
 /// A regulation that declared it fills an open term, but was refused because
@@ -98,6 +102,95 @@ pub struct ImplementationLookup<'a> {
     pub implementations: Vec<(&'a ArticleBasedLaw, &'a Article)>,
     /// Candidates refused by the delegation gate, in index order.
     pub refusals: Vec<DelegationRefusal>,
+}
+
+/// Why no procedure definition was found (RFC-008).
+///
+/// Only the first variant means "this article has no lifecycle"; the other two
+/// mean the corpus asked for one the engine could not find.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProcedureMiss {
+    /// No procedure is defined for this legal character in any loaded law.
+    /// An ordinary fact: the article is executed in one go.
+    NoneForCharacter,
+    /// The article names a procedure that no loaded law defines.
+    NamedNotFound(String),
+    /// A default procedure is registered for this legal character, but its
+    /// definition is missing from the index — the two disagree.
+    DefaultDangling(String),
+}
+
+/// A law whose hooks, overrides and procedures were read from a version other
+/// than the one in force on the reference date.
+///
+/// Not a finding about the law, but about the answer: for this execution,
+/// "no hook, no override, no procedure" came from the wrong version and cannot
+/// be relied on.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct DeclarationsFromOtherVersion {
+    /// The law whose declarations were consulted.
+    pub law_id: String,
+    /// `valid_from` of the version the indexes were built from (the newest).
+    pub indexed_version: Option<String>,
+    /// `valid_from` of the version actually in force on the reference date.
+    pub in_force_version: Option<String>,
+}
+
+impl DeclarationsFromOtherVersion {
+    /// One sentence for the trace and the receipt.
+    #[must_use]
+    pub fn message(&self) -> String {
+        let named = |v: &Option<String>| v.clone().unwrap_or_else(|| "no valid_from".to_string());
+        format!(
+            "Hooks, overrides and procedures of {} were read from the version of {}, \
+             while the version of {} is in force on this date: absence of any of them \
+             is not established here",
+            self.law_id,
+            named(&self.indexed_version),
+            named(&self.in_force_version),
+        )
+    }
+}
+
+/// What a version declares beyond its own articles' execution: the material the
+/// hooks, overrides and procedure indexes are built from. Two versions with the
+/// same fingerprint index identically, so which one was indexed cannot matter.
+fn declaration_fingerprint(law: &ArticleBasedLaw) -> Vec<String> {
+    let mut parts = Vec::new();
+    if let Some(procedures) = &law.procedure {
+        for proc_def in procedures {
+            parts.push(format!(
+                "procedure\0{}\0{}\0{}",
+                proc_def.id,
+                proc_def.applies_to.legal_character,
+                proc_def.default.unwrap_or(false)
+            ));
+        }
+    }
+    for article in &law.articles {
+        if let Some(hooks) = article.get_hooks() {
+            for decl in hooks {
+                parts.push(format!(
+                    "hook\0{}\0{:?}\0{:?}\0{:?}\0{:?}",
+                    article.number,
+                    decl.hook_point,
+                    decl.applies_to.legal_character,
+                    decl.applies_to.decision_type,
+                    decl.applies_to.stage
+                ));
+            }
+        }
+        if let Some(overrides) = article.get_overrides() {
+            for decl in overrides {
+                parts.push(format!(
+                    "override\0{}\0{}\0{}\0{}",
+                    article.number, decl.law, decl.article, decl.output
+                ));
+            }
+        }
+    }
+    parts.sort();
+    parts
 }
 
 /// A reference to a law article, used in implements and overrides indexes.
@@ -169,6 +262,12 @@ pub struct RuleResolver {
     procedure_index: HashMap<(String, String), (ProcedureDefinition, String)>,
     /// Maps legal_character -> default procedure_id for that character.
     procedure_defaults: HashMap<String, String>,
+    /// Law ids that have more than one loaded version where the declarations
+    /// differ between versions (hooks, overrides, procedures). Kept so
+    /// [`Self::declarations_from_another_version`] can answer in O(size of this
+    /// set) instead of scanning every loaded law on every execution. Almost
+    /// always empty.
+    versioned_declarers: HashSet<String>,
 }
 
 impl Default for RuleResolver {
@@ -188,6 +287,7 @@ impl RuleResolver {
             overrides_index: HashMap::new(),
             procedure_index: HashMap::new(),
             procedure_defaults: HashMap::new(),
+            versioned_declarers: HashSet::new(),
         }
     }
 
@@ -221,6 +321,21 @@ impl RuleResolver {
                 ))
             })?;
         }
+
+        // Same reasoning for the lower bound, with the one form the schema
+        // allows besides a date: a `#`-reference (RFC-001). Anything else is a
+        // typo, and a typo here reads in `select_in` as "this version has no
+        // start date", which puts it in force on every date there is.
+        if let Some(valid_from) = &law.valid_from {
+            if !is_internal_reference(valid_from) && parse_date(valid_from).is_err() {
+                return Err(EngineError::LoadError(format!(
+                    "law '{law_id}': valid_from '{valid_from}' is neither a valid date \
+                     (YYYY-MM-DD) nor an internal reference (#...)"
+                )));
+            }
+        }
+
+        Self::check_hook_filters(&law)?;
 
         // Count total laws across all versions
         let total_laws: usize = self.law_versions.values().map(|v| v.len()).sum();
@@ -269,6 +384,39 @@ impl RuleResolver {
 
         let total_laws: usize = self.law_versions.values().map(|v| v.len()).sum();
         tracing::debug!(law_id = %law_id, total = total_laws, "Law loaded");
+        Ok(())
+    }
+
+    /// Refuse a hook that does not say which legal character it applies to.
+    ///
+    /// The hooks index is keyed by (hook_point, legal_character), so a hook
+    /// without one has no key. Dropping it while loading the rest of the law is
+    /// the worst of the three options: the article declares that it fires on an
+    /// event, the engine keeps that article, and the hook never fires — a
+    /// motiveringsplicht or a bezwaartermijn that quietly does not happen.
+    ///
+    /// Reading it as "applies to every legal character" is the other tempting
+    /// option, and it is guesswork: schema v0.6.0 makes `legal_character`
+    /// required on `applies_to`, so nothing in the corpus says what an absent
+    /// one would mean. The model is more permissive than the schema, which is
+    /// exactly why this check exists here. Like the unknown `delegation_type`
+    /// in [`Self::matches_delegation`], it is a safety net a schema-conformant
+    /// corpus never trips.
+    fn check_hook_filters(law: &ArticleBasedLaw) -> Result<()> {
+        for article in &law.articles {
+            let Some(hooks) = article.get_hooks() else {
+                continue;
+            };
+            for decl in hooks {
+                if decl.applies_to.legal_character.is_none() {
+                    return Err(EngineError::LoadError(format!(
+                        "law '{}' article {}: hook declares no applies_to.legal_character, \
+                         so it can never fire",
+                        law.id, article.number
+                    )));
+                }
+            }
+        }
         Ok(())
     }
 
@@ -396,15 +544,42 @@ impl RuleResolver {
         versions: &[ArticleBasedLaw],
         reference_date: NaiveDate,
     ) -> std::result::Result<&ArticleBasedLaw, SelectionReason> {
-        let candidate = versions
-            .iter()
-            .find(|v| {
-                v.valid_from
-                    .as_ref()
-                    .and_then(|s| parse_date(s).ok())
-                    .is_none_or(|valid_from| valid_from <= reference_date)
-            })
-            .ok_or(SelectionReason::NotYetInForce)?;
+        // Walk newest-first and take the first version that can be the answer.
+        //
+        // A version whose commencement date the engine cannot read is not a
+        // version without a lower bound. `load_law` has already refused a
+        // malformed date, so what reaches this point is a `#`-reference
+        // (RFC-001): the law says its commencement is fixed elsewhere, and the
+        // engine does not resolve that. Treating it as "no start date" put such
+        // a version in force on every date there is, including dates before it
+        // existed. Reaching one here means no younger version applied and this
+        // one cannot be ruled in or out, so the honest answer is that we do not
+        // know. Versions sort with the unparseable ones last, so a `#`-reference
+        // on some old version never blocks a date a real version covers.
+        let mut candidate = None;
+        for version in versions {
+            match version.valid_from.as_deref() {
+                Some(raw) if is_internal_reference(raw) => {
+                    return Err(SelectionReason::UndeterminedStart(raw.to_string()));
+                }
+                Some(raw) => {
+                    // Unparseable dates are refused at load; treat a stray one
+                    // as undetermined rather than as no lower bound.
+                    let Ok(valid_from) = parse_date(raw) else {
+                        return Err(SelectionReason::UndeterminedStart(raw.to_string()));
+                    };
+                    if valid_from <= reference_date {
+                        candidate = Some(version);
+                        break;
+                    }
+                }
+                None => {
+                    candidate = Some(version);
+                    break;
+                }
+            }
+        }
+        let candidate = candidate.ok_or(SelectionReason::NotYetInForce)?;
 
         // Upper bound (inclusive): in force iff reference_date <= valid_to.
         if let Some(valid_to) = candidate.valid_to.as_ref().and_then(|s| parse_date(s).ok()) {
@@ -855,6 +1030,9 @@ impl RuleResolver {
 
     /// Rebuild output, implements, hook, override, and procedure indexes for a specific law.
     fn rebuild_indexes_for_law(&mut self, law_id: &str) {
+        // Record whether the newest version speaks for the older ones here.
+        self.note_versioned_declarations(law_id);
+
         // Remove old output index entries
         self.output_index
             .retain(|key, _| key.split_once('\0').is_none_or(|(id, _)| id != law_id));
@@ -940,7 +1118,9 @@ impl RuleResolver {
                         }
                     }
 
-                    // Hooks index
+                    // Hooks index. A hook without a legal_character never gets
+                    // here: `load_law` refuses the law, because there is no
+                    // honest key to file it under (see `check_hook_filters`).
                     if let Some(hook_decls) = article.get_hooks() {
                         for decl in hook_decls {
                             if let Some(ref legal_char) = decl.applies_to.legal_character {
@@ -976,6 +1156,8 @@ impl RuleResolver {
 
     /// Remove all indexes for a law.
     fn remove_indexes_for_law(&mut self, law_id: &str) {
+        self.versioned_declarers.remove(law_id);
+
         // Remove output index entries
         self.output_index
             .retain(|key, _| key.split_once('\0').is_none_or(|(id, _)| id != law_id));
@@ -1004,6 +1186,80 @@ impl RuleResolver {
         let proc_index = &self.procedure_index;
         self.procedure_defaults
             .retain(|lc, proc_id| proc_index.contains_key(&(lc.clone(), proc_id.clone())));
+    }
+
+    /// Record whether this law's declarations vary across its versions.
+    ///
+    /// The hooks, overrides and procedure indexes are built from the newest
+    /// version only. That is invisible to [`Self::find_hooks`],
+    /// [`Self::find_overrides`] and [`Self::find_procedure`], which take no
+    /// reference date and cannot take one without threading a date through
+    /// every index (see `declarations_from_another_version`). Until then, at
+    /// least know when it matters: only a law whose declarations actually
+    /// differ between versions can give a wrong answer for an older date.
+    fn note_versioned_declarations(&mut self, law_id: &str) {
+        let Some(versions) = self.law_versions.get(law_id) else {
+            self.versioned_declarers.remove(law_id);
+            return;
+        };
+        let Some(indexed) = versions.first() else {
+            self.versioned_declarers.remove(law_id);
+            return;
+        };
+        let varies = versions
+            .iter()
+            .skip(1)
+            .any(|other| declaration_fingerprint(other) != declaration_fingerprint(indexed));
+        if varies {
+            tracing::warn!(
+                law_id = %law_id,
+                indexed_version = ?indexed.valid_from,
+                "Law declares different hooks/overrides/procedures per version; \
+                 the indexes only carry the newest version"
+            );
+            self.versioned_declarers.insert(law_id.to_string());
+        } else {
+            self.versioned_declarers.remove(law_id);
+        }
+    }
+
+    /// Laws whose hooks, overrides and procedures were answered from a version
+    /// other than the one in force on `reference_date`.
+    ///
+    /// A caller that gets "no hook, no override, no procedure" for such a law
+    /// has not been told that none exist; it has been told what the newest
+    /// version declares. That difference decides whether a motiveringsplicht or
+    /// a bezwaartermijn fires, so it must not read as a finding. Callers put
+    /// this on the trace and on the receipt.
+    pub fn declarations_from_another_version(
+        &self,
+        reference_date: Option<NaiveDate>,
+    ) -> Vec<DeclarationsFromOtherVersion> {
+        let mut notes = Vec::new();
+        for law_id in &self.versioned_declarers {
+            let Some(versions) = self.law_versions.get(law_id) else {
+                continue;
+            };
+            let Some(indexed) = versions.first() else {
+                continue;
+            };
+            let in_force = match reference_date {
+                None => Some(indexed),
+                Some(date) => Self::select_in(versions, date).ok(),
+            };
+            let Some(in_force) = in_force else {
+                continue;
+            };
+            if !std::ptr::eq(indexed, in_force) {
+                notes.push(DeclarationsFromOtherVersion {
+                    law_id: law_id.clone(),
+                    indexed_version: indexed.valid_from.clone(),
+                    in_force_version: in_force.valid_from.clone(),
+                });
+            }
+        }
+        notes.sort_by(|a, b| a.law_id.cmp(&b.law_id));
+        notes
     }
 
     /// Find hooks that match a given lifecycle event.
@@ -1067,17 +1323,50 @@ impl RuleResolver {
     /// Find a procedure definition for a given legal character and optional procedure ID.
     ///
     /// If procedure_id is None, returns the default procedure for the legal character.
+    ///
+    /// Prefer [`Self::find_procedure_reported`] on execution paths: this method
+    /// answers `None` to two very different questions, and a caller that cannot
+    /// tell them apart executes an article without its procedure.
     pub fn find_procedure(
         &self,
         legal_character: &str,
         procedure_id: Option<&str>,
     ) -> Option<&ProcedureDefinition> {
-        let proc_id = match procedure_id {
-            Some(id) => id.to_string(),
-            None => self.procedure_defaults.get(legal_character)?.clone(),
+        self.find_procedure_reported(legal_character, procedure_id)
+            .ok()
+    }
+
+    /// Like [`Self::find_procedure`], but says *why* no procedure was found.
+    ///
+    /// The distinction is the whole point. "This legal character has no
+    /// procedure anywhere in the corpus" is an ordinary fact: a law executed
+    /// without the AWB loaded produces a BESCHIKKING and simply has no
+    /// lifecycle, so the caller runs the article once and is right to do so.
+    /// "This article asks for procedure X and no loaded law defines X" is a
+    /// defect, and answering it with the same `None` drops the stages the
+    /// procedure would have imposed — the hearing, the notification, the
+    /// objection period. Those are the rights of the person the decision is
+    /// about, and they must not fall away because a lookup missed.
+    pub fn find_procedure_reported(
+        &self,
+        legal_character: &str,
+        procedure_id: Option<&str>,
+    ) -> std::result::Result<&ProcedureDefinition, ProcedureMiss> {
+        let (proc_id, named) = match procedure_id {
+            Some(id) => (id.to_string(), true),
+            None => match self.procedure_defaults.get(legal_character) {
+                Some(default_id) => (default_id.clone(), false),
+                None => return Err(ProcedureMiss::NoneForCharacter),
+            },
         };
-        let key = (legal_character.to_string(), proc_id);
-        self.procedure_index.get(&key).map(|(def, _)| def)
+        let key = (legal_character.to_string(), proc_id.clone());
+        match self.procedure_index.get(&key) {
+            Some((def, _)) => Ok(def),
+            None if named => Err(ProcedureMiss::NamedNotFound(proc_id)),
+            // The default was registered from a procedure definition, so its
+            // absence here means the two indexes disagree.
+            None => Err(ProcedureMiss::DefaultDangling(proc_id)),
+        }
     }
 
     /// Validate that all override targets exist in loaded laws.
@@ -1121,6 +1410,16 @@ impl RuleResolver {
         }
         errors
     }
+}
+
+/// Whether a `valid_from` is an internal reference rather than a date.
+///
+/// RFC-001 allows `valid_from` to point at an article instead of naming a date,
+/// for a law whose commencement is fixed elsewhere ("treedt in werking op een
+/// bij koninklijk besluit te bepalen tijdstip"). The schema pins the two forms:
+/// `^([0-9]{4}-[0-9]{2}-[0-9]{2}|#.+)$`.
+fn is_internal_reference(valid_from: &str) -> bool {
+    valid_from.starts_with('#') && valid_from.len() > 1
 }
 
 /// Parse a date string in ISO 8601 format (YYYY-MM-DD).
@@ -2927,6 +3226,317 @@ articles:
         assert!(resolver
             .find_procedure("ALGEMEEN_VERBINDEND_VOORSCHRIFT", None)
             .is_some());
+    }
+
+    // -------------------------------------------------------------------------
+    // Fail-open: what cannot be determined must not read as "no requirement"
+    // -------------------------------------------------------------------------
+
+    /// A `valid_from` that is neither a date nor an internal reference is a
+    /// typo, and a typo used to read as "this version has no start date", which
+    /// put it in force on every date there is. Refused at load, like `valid_to`.
+    #[test]
+    fn test_a_malformed_valid_from_is_refused_at_load() {
+        let mut resolver = RuleResolver::new();
+        let err = resolver
+            .load_from_yaml(
+                r#"
+$id: wet_met_kapotte_datum
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2023-02-30'
+articles: []
+"#,
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("valid_from") && err.contains("2023-02-30"),
+            "the error must name the field and the value: {err}"
+        );
+        assert_eq!(resolver.law_count(), 0, "the law must not be half-loaded");
+    }
+
+    /// A `#`-reference is the one non-date form the schema allows: the law says
+    /// its commencement is fixed elsewhere. It loads, but selection refuses to
+    /// pretend it knows the answer.
+    #[test]
+    fn test_an_internal_reference_valid_from_loads_but_does_not_select() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(
+                r#"
+$id: wet_bij_kb
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '#artikel_12'
+articles:
+  - number: '1'
+    text: Deze wet treedt in werking op een bij koninklijk besluit te bepalen tijdstip
+    machine_readable:
+      execution:
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 1
+"#,
+            )
+            .unwrap();
+
+        let reason = resolver
+            .get_law_for_date_result("wet_bij_kb", NaiveDate::from_ymd_opt(2025, 6, 1).unwrap())
+            .unwrap_err();
+        assert_eq!(
+            reason,
+            SelectionReason::UndeterminedStart("#artikel_12".to_string()),
+            "an undetermined commencement must be reported, not read as 'always in force'"
+        );
+    }
+
+    /// The refusal is about this date, not about the law: a version with a real
+    /// date that covers the reference date still answers, even when an older
+    /// version leaves its commencement to a koninklijk besluit.
+    #[test]
+    fn test_an_undetermined_older_version_does_not_block_a_dated_one() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(
+                r#"
+$id: wet_gemengd
+regulatory_layer: WET
+publication_date: '2020-01-01'
+valid_from: '#artikel_12'
+articles: []
+"#,
+            )
+            .unwrap();
+        resolver
+            .load_from_yaml(
+                r#"
+$id: wet_gemengd
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles: []
+"#,
+            )
+            .unwrap();
+
+        let selected = resolver
+            .get_law_for_date_result("wet_gemengd", NaiveDate::from_ymd_opt(2025, 6, 1).unwrap())
+            .expect("the dated version covers this date");
+        assert_eq!(selected.valid_from.as_deref(), Some("2025-01-01"));
+
+        // Before that version commenced, the only candidate left is the one
+        // whose start date the file does not give.
+        let reason = resolver
+            .get_law_for_date_result("wet_gemengd", NaiveDate::from_ymd_opt(2021, 6, 1).unwrap())
+            .unwrap_err();
+        assert_eq!(
+            reason,
+            SelectionReason::UndeterminedStart("#artikel_12".to_string())
+        );
+    }
+
+    /// A hook with no `legal_character` has no key to be filed under, so it
+    /// would be dropped and never fire while the article claiming it stays.
+    /// The law is refused instead.
+    #[test]
+    fn test_a_hook_without_legal_character_is_refused_at_load() {
+        let mut resolver = RuleResolver::new();
+        let err = resolver
+            .load_from_yaml(
+                r#"
+$id: wet_met_stille_hook
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '3:46'
+    text: Een besluit dient te berusten op een deugdelijke motivering
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            stage: BESLUIT
+      execution:
+        output:
+          - name: motivering_vereist
+            type: boolean
+        actions:
+          - output: motivering_vereist
+            value: true
+"#,
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("3:46") && err.contains("legal_character"),
+            "the error must name the article and what it lacks: {err}"
+        );
+        assert_eq!(resolver.law_count(), 0);
+    }
+
+    /// A procedure asked for by name and not found is a defect, and must be
+    /// distinguishable from "this legal character has no procedure at all".
+    #[test]
+    fn test_procedure_lookup_distinguishes_absent_from_missing() {
+        let mut resolver = RuleResolver::new();
+
+        // Nothing loaded: no procedure exists for this character.
+        assert_eq!(
+            resolver.find_procedure_reported("BESCHIKKING", None),
+            Err(ProcedureMiss::NoneForCharacter)
+        );
+
+        resolver
+            .load_from_yaml(&make_law_with_procedure(
+                "awb_test",
+                "BESCHIKKING",
+                "beschikking",
+            ))
+            .unwrap();
+
+        // The default is found by character, and by its own name.
+        assert!(resolver
+            .find_procedure_reported("BESCHIKKING", None)
+            .is_ok());
+        assert!(resolver
+            .find_procedure_reported("BESCHIKKING", Some("beschikking"))
+            .is_ok());
+
+        // A named procedure that no law defines is a different answer.
+        assert_eq!(
+            resolver.find_procedure_reported("BESCHIKKING", Some("beschikking_uov")),
+            Err(ProcedureMiss::NamedNotFound("beschikking_uov".to_string())),
+            "asking for a procedure by name and missing it must not read as 'no procedure'"
+        );
+
+        // And another character still has none at all.
+        assert_eq!(
+            resolver.find_procedure_reported("TOETS", None),
+            Err(ProcedureMiss::NoneForCharacter)
+        );
+    }
+
+    /// The hooks, overrides and procedure indexes carry only the newest version
+    /// of a law. When an older version is in force on the reference date and it
+    /// declares something different, the resolver says so, so that "no hook"
+    /// cannot pass as a finding.
+    #[test]
+    fn test_declarations_from_another_version_are_reported() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(
+                r#"
+$id: wet_met_hook
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+articles:
+  - number: '1'
+    text: Oude versie met een hook
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BESLUIT
+      execution:
+        output:
+          - name: motivering_vereist
+            type: boolean
+        actions:
+          - output: motivering_vereist
+            value: true
+"#,
+            )
+            .unwrap();
+        resolver
+            .load_from_yaml(
+                r#"
+$id: wet_met_hook
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Nieuwe versie zonder hook
+    machine_readable:
+      execution:
+        output:
+          - name: motivering_vereist
+            type: boolean
+        actions:
+          - output: motivering_vereist
+            value: true
+"#,
+            )
+            .unwrap();
+
+        // On a date the newest version covers, the index speaks for it.
+        assert!(resolver
+            .declarations_from_another_version(Some(NaiveDate::from_ymd_opt(2025, 6, 1).unwrap()))
+            .is_empty());
+
+        // On a date the older version covers, it does not.
+        let notes = resolver
+            .declarations_from_another_version(Some(NaiveDate::from_ymd_opt(2024, 6, 1).unwrap()));
+        assert_eq!(notes.len(), 1, "expected one note, got {notes:?}");
+        assert_eq!(notes[0].law_id, "wet_met_hook");
+        assert_eq!(notes[0].indexed_version.as_deref(), Some("2025-01-01"));
+        assert_eq!(notes[0].in_force_version.as_deref(), Some("2024-01-01"));
+        assert!(
+            notes[0].message().contains("not established"),
+            "the note must say that absence was not established: {}",
+            notes[0].message()
+        );
+    }
+
+    /// Two versions that declare the same hooks, overrides and procedures index
+    /// identically, so which one was indexed cannot change an answer. Saying
+    /// otherwise on every multi-version law would make the note meaningless.
+    #[test]
+    fn test_identical_declarations_across_versions_are_not_reported() {
+        let mut resolver = RuleResolver::new();
+        for publication in ["2024-01-01", "2025-01-01"] {
+            resolver
+                .load_from_yaml(&format!(
+                    r#"
+$id: wet_gelijk
+regulatory_layer: WET
+publication_date: '{publication}'
+valid_from: '{publication}'
+articles:
+  - number: '1'
+    text: Beide versies verklaren hetzelfde
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BESLUIT
+      execution:
+        output:
+          - name: motivering_vereist
+            type: boolean
+        actions:
+          - output: motivering_vereist
+            value: true
+"#
+                ))
+                .unwrap();
+        }
+
+        assert!(
+            resolver
+                .declarations_from_another_version(Some(
+                    NaiveDate::from_ymd_opt(2024, 6, 1).unwrap()
+                ))
+                .is_empty(),
+            "versions that declare the same thing need no note"
+        );
     }
 
     /// The output index must lose exactly the unloaded law's outputs.
