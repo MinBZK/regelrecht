@@ -1922,8 +1922,8 @@ impl LawExecutionService {
                         number: format!("default:{}", term.id),
                         text: String::new(),
                         url: None,
+                        placement: None,
                         machine_readable: Some(MachineReadable {
-                            definitions: None,
                             execution: Some(Execution {
                                 produces: None,
                                 parameters: None,
@@ -1931,14 +1931,9 @@ impl LawExecutionService {
                                 output: None,
                                 actions: Some(actions.clone()),
                             }),
-                            requires: None,
-                            competent_authority: None,
-                            open_terms: None,
-                            implements: None,
-                            hooks: None,
-                            overrides: None,
-                            untranslatables: None,
+                            ..Default::default()
                         }),
+                        references: None,
                     };
 
                     let engine = ArticleEngine::new(&synthetic_article, law);
