@@ -19,6 +19,17 @@
 //!   appear in the statutory text of the same file.
 //! - [`binding_integrity`] — L1. Every `$variable` resolves, and every
 //!   cross-law `source` names a law and output that exist.
+//!
+//! A word about the two channels a translation may use to say something does
+//! not fit. A `marking` says the format cannot express a construct; an
+//! `open_term` says the law leaves the content to somebody else. Both are
+//! legitimate and both are cheap to write, so both are watched, and by the
+//! same rules: the flag names one thing and leaves the rest of the article
+//! standing ([`flags_leave_something_standing`]), what it points at has to
+//! exist ([`marking_targets_are_declared`], [`open_terms_name_a_filler`]),
+//! and the claim it makes has to be one the file can be held to
+//! ([`marking_discipline`]). A gate on one channel alone is a funnel into the
+//! other.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -618,30 +629,31 @@ pub fn marking_discipline(doc: &Value, text_corpus: &str) -> Vec<Finding> {
             // better than a second voice would.
             let resolved_lower = resolved_by.to_lowercase();
             let about_lower = about.to_lowercase();
-            if resolved_by.trim().is_empty() {
-                // The schema's business.
-            } else if word_count(resolved_by) < QUOTE_MIN_WORDS {
-                findings.push(Finding::new(
-                    "marking",
-                    Some(&number),
-                    format!(
-                        "marking \"{}\" names no change that would resolve it; without that a \
-                         marking is a complaint and never becomes work",
-                        truncate(about)
-                    ),
-                ));
-            } else if !about.trim().is_empty()
-                && (resolved_lower.contains(&about_lower) || about_lower.contains(&resolved_lower))
-            {
-                findings.push(Finding::new(
-                    "marking",
-                    Some(&number),
-                    format!(
-                        "marking \"{}\" restates itself as its own resolution. What has to \
-                         change is a different sentence from what does not fit",
-                        truncate(about)
-                    ),
-                ));
+            if !resolved_by.trim().is_empty() {
+                if word_count(resolved_by) < QUOTE_MIN_WORDS {
+                    findings.push(Finding::new(
+                        "marking",
+                        Some(&number),
+                        format!(
+                            "marking \"{}\" names no change that would resolve it; without that \
+                             a marking is a complaint and never becomes work",
+                            truncate(about)
+                        ),
+                    ));
+                } else if !about.trim().is_empty()
+                    && (resolved_lower.contains(&about_lower)
+                        || about_lower.contains(&resolved_lower))
+                {
+                    findings.push(Finding::new(
+                        "marking",
+                        Some(&number),
+                        format!(
+                            "marking \"{}\" restates itself as its own resolution. What has to \
+                             change is a different sentence from what does not fit",
+                            truncate(about)
+                        ),
+                    ));
+                }
             }
 
             // The excerpt is what ties the marking to this provision. A
@@ -3530,6 +3542,42 @@ articles:
         assert!(
             findings[0].detail.contains("does not appear"),
             "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_law_without_a_reference_block_gets_no_softer_gate() {
+        // The measured shape of the escape: of the 23 corpus files carrying a
+        // BWB number in their text, 22 have no `references` block. The gate
+        // used to fall back to "is the number a substring of the excerpt"
+        // exactly there, so leaving data out weakened it. Nothing falls back
+        // now.
+        let dir = corpus_with_awir();
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+bwb_id: BWBR0018451
+articles:
+  - number: "5.2"
+    text: |-
+      Het toetsingsinkomen, bedoeld in artikel 8 van de Algemene wet
+      inkomensafhankelijke regelingen (BWBR0018472), wordt afgerond.
+    machine_readable:
+      markings:
+        - about: het toetsingsinkomen
+          resolution: model
+          resolved_by: een vorm voor een verwijzend begrip
+          target: []
+          legal_text_excerpt: BWBR0018472
+"#,
+        )
+        .expect("yaml");
+        assert_eq!(cross_law_references(&doc, Some(dir.path())).len(), 1);
+        // And the same eleven characters do not pass for a quotation either.
+        let quoting = marking_discipline(&doc, "");
+        assert_eq!(quoting.len(), 1, "{quoting:?}");
+        assert!(
+            quoting[0].detail.contains("token and not words"),
+            "{quoting:?}"
         );
     }
 
