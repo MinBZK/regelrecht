@@ -1436,11 +1436,19 @@ pub fn cross_law_references(doc: &Value, corpus_root: Option<&Path>) -> Vec<Find
             continue;
         }
         let bound = bound_regulations(mr);
-        // A marking excuses the reference it names, and only that one. An
-        // untranslatable about rounding says nothing about whether this
-        // article reads the Zorgverzekeringswet, and treating any marking as
-        // a blanket answer is how a gate stops asking.
-        let marking_text = mr.map(marking_prose).unwrap_or_default();
+        // A marking excuses the reference whose words it quotes, and only that
+        // one. A marking about rounding says nothing about whether this
+        // article reads the Zorgverzekeringswet, and treating any marking as a
+        // blanket answer is how a gate stops asking.
+        let quotes: Vec<String> = mr
+            .map(|mr| {
+                markings(mr)
+                    .iter()
+                    .filter_map(|m| m.get("legal_text_excerpt").and_then(Value::as_str))
+                    .map(normalised)
+                    .collect()
+            })
+            .unwrap_or_default();
 
         for id in cited {
             let Some(law_id) = index.get(id) else {
@@ -1451,7 +1459,16 @@ pub fn cross_law_references(doc: &Value, corpus_root: Option<&Path>) -> Vec<Find
             if bound.contains(law_id.as_str()) {
                 continue;
             }
-            if marking_text.contains(law_id.as_str()) || marking_text.contains(id) {
+            let labels = citation_labels(entry, text, id);
+            let quoted = quotes.iter().any(|quote| {
+                if labels.is_empty() {
+                    // No markdown link to quote, so the number is all there is.
+                    quote.contains(&normalised(id))
+                } else {
+                    labels.iter().any(|label| quote.contains(label))
+                }
+            });
+            if quoted {
                 continue;
             }
             findings.push(Finding::new(
@@ -1459,7 +1476,7 @@ pub fn cross_law_references(doc: &Value, corpus_root: Option<&Path>) -> Vec<Find
                 Some(number),
                 format!(
                     "text cites {law_id} ({id}) and the model reads nothing from it. Bind to \
-                     the article it names, or record why the reference carries no value"
+                     the article it names, or mark it and quote the words that cite it"
                 ),
             ));
         }
@@ -1467,21 +1484,41 @@ pub fn cross_law_references(doc: &Value, corpus_root: Option<&Path>) -> Vec<Find
     findings
 }
 
-/// Everything the markings of one model say, as one lowercased string.
+/// The words with which an article cites one law, normalised.
 ///
-/// Used to check whether a marking mentions the law a reference points at.
-/// Crude by design: the question is only whether the agent addressed this
-/// reference somewhere, and a substring answers that without prescribing where
-/// in the entry the name has to sit.
-fn marking_prose(mr: &Value) -> String {
-    let mut out = String::new();
-    for key in ["untranslatables", "norm_gaps", "structural_choices"] {
-        if let Some(seq) = mr.get(key).and_then(Value::as_sequence) {
-            for item in seq {
-                if let Ok(text) = serde_yaml_ng::to_string(item) {
-                    out.push_str(&text.to_lowercase());
+/// The harvest renders every reference as a markdown link: the label is the
+/// citation as the legislator wrote it ("artikel 2.18 van de Wet
+/// inkomstenbelasting 2001") and the link target carries the BWB number. The
+/// article's `references` list maps the link id to that number, so the citation
+/// of a given law has a known literal form and a quotation can be held against
+/// it.
+///
+/// Returns every label for this law, because one article can cite the same law
+/// in several places and quoting any one of them addresses that citation.
+fn citation_labels(article: &Value, text: &str, bwb_id: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let refs = article
+        .get("references")
+        .and_then(Value::as_sequence)
+        .map_or(&[][..], Vec::as_slice);
+    for reference in refs {
+        if reference.get("bwb_id").and_then(Value::as_str) != Some(bwb_id) {
+            continue;
+        }
+        let Some(id) = reference.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        let needle = format!("][{id}]");
+        let mut from = 0;
+        while let Some(pos) = text[from..].find(&needle) {
+            let close = from + pos;
+            if let Some(open) = text[..close].rfind('[') {
+                let label = normalised(&text[open + 1..close]);
+                if !label.is_empty() && !out.contains(&label) {
+                    out.push(label);
                 }
             }
+            from = close + needle.len();
         }
     }
     out
@@ -2679,42 +2716,76 @@ articles:
         assert!(cross_law_references(&doc, Some(dir.path())).is_empty());
     }
 
-    #[test]
-    fn a_marking_excuses_only_the_reference_it_names() {
-        // An untranslatable about rounding says nothing about whether this
-        // article reads the law it cites.
-        let dir = corpus_with_awir();
-        let unrelated: Value = serde_yaml_ng::from_str(
+    /// One article citing the Awir through a markdown link, with `{marking}`
+    /// spliced into its model.
+    fn citing_article(marking: &str) -> Value {
+        let yaml = format!(
             r#"
 bwb_id: BWBR0018451
 articles:
   - number: "5.2"
-    text: "bedoeld in artikel 8 [ref]: https://wetten.overheid.nl/BWBR0018472#Artikel8"
+    text: |-
+      het toetsingsinkomen, bedoeld in [artikel 8 van de Algemene wet
+      inkomensafhankelijke regelingen][ref1], wordt afgerond.
+
+      [ref1]: https://wetten.overheid.nl/BWBR0018472#Artikel8
+    references:
+      - id: ref1
+        bwb_id: BWBR0018472
     machine_readable:
-      untranslatables:
-        - construct: rounding
-          reason: the engine cannot round
-"#,
-        )
-        .expect("yaml");
+{marking}
+"#
+        );
+        serde_yaml_ng::from_str(&yaml).expect("yaml")
+    }
+
+    #[test]
+    fn a_marking_excuses_only_the_reference_whose_words_it_quotes() {
+        // A marking about rounding says nothing about whether this article
+        // reads the law it cites, and quoting the rounding sentence must not
+        // buy off the citation sitting elsewhere in the same article.
+        let dir = corpus_with_awir();
+        let unrelated = citing_article(
+            "      markings:\n        - about: afronden\n          resolution: engine\n          \
+             target: []\n          legal_text_excerpt: wordt afgerond",
+        );
         assert_eq!(cross_law_references(&unrelated, Some(dir.path())).len(), 1);
 
-        let named: Value = serde_yaml_ng::from_str(
-            r#"
-bwb_id: BWBR0018451
-articles:
-  - number: "5.2"
-    text: "bedoeld in artikel 8 [ref]: https://wetten.overheid.nl/BWBR0018472#Artikel8"
-    machine_readable:
-      norm_gaps:
-        - norm: toetsingsinkomen
-          kind: delegated
-          blocks: [x]
-          expected_source: awir article 8, not yet enriched
-"#,
-        )
-        .expect("yaml");
-        assert!(cross_law_references(&named, Some(dir.path())).is_empty());
+        let quoting = citing_article(
+            "      markings:\n        - about: het toetsingsinkomen\n          resolution: model\n          \
+             target: [toetsingsinkomen]\n          legal_text_excerpt: >-\n            het toetsingsinkomen, \
+             bedoeld in artikel 8 van de Algemene wet inkomensafhankelijke regelingen",
+        );
+        assert!(
+            cross_law_references(&quoting, Some(dir.path())).is_empty(),
+            "quoting the words that carry the citation answers it"
+        );
+    }
+
+    #[test]
+    fn naming_the_bwb_number_in_a_marking_no_longer_buys_off_a_reference() {
+        // The measured failure of round 4: 43 of 101 norm gaps were
+        // cross-references to laws that exist, written up as gaps, because
+        // writing the number into a gap was the short way past this gate.
+        let dir = corpus_with_awir();
+        let doc = citing_article(
+            "      markings:\n        - about: toetsingsinkomen komt uit BWBR0018472 (awir)\n          \
+             resolution: model\n          target: [toetsingsinkomen]\n          \
+             legal_text_excerpt: wordt afgerond",
+        );
+        let findings = cross_law_references(&doc, Some(dir.path()));
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].check, "reference");
+    }
+
+    #[test]
+    fn a_binding_still_answers_a_reference() {
+        let dir = corpus_with_awir();
+        let doc = citing_article(
+            "      execution:\n        input:\n          - name: toetsingsinkomen\n            \
+             source: {regulation: awir, output: toetsingsinkomen}",
+        );
+        assert!(cross_law_references(&doc, Some(dir.path())).is_empty());
     }
 
     #[test]
