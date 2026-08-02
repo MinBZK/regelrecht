@@ -5705,6 +5705,57 @@ articles:
         );
     }
 
+    /// Ignore mode is the quiet one, and quiet is not the same as permissive:
+    /// it drops the logging, not the refusal. An unaccepted flagged construct
+    /// still stops execution, and only an accepted one runs. Without this the
+    /// mode name would read as "execute anyway", which is what it must not do.
+    #[test]
+    fn test_ignore_mode_still_refuses_an_unaccepted_construct() {
+        fn law(accepted: bool) -> String {
+            format!(
+                r#"
+$id: wet_stil
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het bedrag wordt naar boven afgerond op hele euro's.
+    machine_readable:
+      markings:
+        - about: afronden op hele euro's
+          resolution: engine
+          resolved_by: Een CEIL-bewerking op eurocenten
+          target: []
+          legal_text_excerpt: naar boven afgerond
+          accepted: {accepted}
+      execution:
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 1234
+"#
+            )
+        }
+
+        let run = |accepted: bool| {
+            let mut service = LawExecutionService::new();
+            service.load_law(&law(accepted)).unwrap();
+            service.set_untranslatable_mode(UntranslatableMode::Ignore);
+            service.evaluate_law_output("wet_stil", "bedrag", BTreeMap::new(), "2025-01-01")
+        };
+
+        let unaccepted = run(false);
+        assert!(
+            matches!(unaccepted, Err(EngineError::Untranslatable { .. })),
+            "ignore mode must still refuse an unaccepted construct: {unaccepted:?}"
+        );
+
+        let accepted = run(true).expect("an accepted construct executes silently");
+        assert_eq!(accepted.outputs.get("bedrag"), Some(&Value::Int(1234)));
+    }
+
     /// Both channels on one article are handled, and neither hides the other:
     /// the v0.5.x entry is not silently dropped now that markings exist, and a
     /// marking is not ignored because an untranslatable came first.
