@@ -71,8 +71,6 @@ const isEmpty = computed(() => shownTasks.value.length === 0 && shownRunning.val
 // Menu-ids: een taak-id is een UUID en kan met een cijfer beginnen, wat een
 // ongeldige CSS-selector oplevert voor de anchor-lookup. Het prefix houdt 'm
 // geldig.
-const menuId = (id) => `taak-acties-menu-${id}`;
-const btnId = (id) => `taak-acties-${id}`;
 
 function dismiss(task) {
   resolveTask(task.id, 'dismissed');
@@ -177,39 +175,32 @@ function viewLaw(job) {
       <nldd-cell>
         <!-- Bewust géén `expandable`: die zet nog een chevron náást het icoon,
              en een overflow-knop die al "meer" zegt heeft geen tweede
-             open-signaal nodig. `popup-type` levert de aria-haspopup/-expanded
-             die `expandable` anders zou geven. -->
-        <nldd-icon-button
-          :id="btnId(task.id)"
-          size="sm"
-          icon="more"
-          text="Acties"
-          tooltip-timing="never"
-          popup-type="menu"
-          :popovertarget="menuId(task.id)"
-        ></nldd-icon-button>
-        <nldd-menu :id="menuId(task.id)" :anchor="btnId(task.id)">
-          <!-- Details bovenaan: bij een mislukking wil je eerst weten wát er
-               misging voordat je 'm opnieuw probeert of wegzet. Kijken staat
-               dus los van de twee acties die er iets mee doen. -->
-          <template v-if="task.task_type === 'job_failed'">
-            <nldd-menu-item text="Toon details" @select="showDetails(task)"></nldd-menu-item>
-            <nldd-menu-divider></nldd-menu-divider>
-            <nldd-menu-item text="Probeer opnieuw" @select="retry(task)"></nldd-menu-item>
-          </template>
-          <template v-else>
-            <nldd-menu-item
-              text="Beoordelen"
-              :disabled="!reviewTarget(task) || undefined"
-              @select="review(task)"
-            ></nldd-menu-item>
-          </template>
-          <nldd-menu-divider></nldd-menu-divider>
-          <!-- "Markeer als gedaan" is `dismissed`: van je lijst af, zonder
-               oordeel. `rejected` (het voorstel deugt niet) hoort in de
-               review-UI - daar zie je wat je verwerpt. -->
-          <nldd-menu-item text="Markeer als gedaan" @select="dismiss(task)"></nldd-menu-item>
-        </nldd-menu>
+             open-signaal nodig. De aria-haspopup/-expanded komen van het menu
+             in de popup-slot, dat de knop zelf ankert en togglet. -->
+        <nldd-icon-button size="sm" icon="more" text="Acties" tooltip-timing="never">
+          <nldd-menu slot="popup">
+              <!-- Details bovenaan: bij een mislukking wil je eerst weten wát er
+                   misging voordat je 'm opnieuw probeert of wegzet. Kijken staat
+                   dus los van de twee acties die er iets mee doen. -->
+              <template v-if="task.task_type === 'job_failed'">
+                <nldd-menu-item text="Toon details" @select="showDetails(task)"></nldd-menu-item>
+                <nldd-menu-divider></nldd-menu-divider>
+                <nldd-menu-item text="Probeer opnieuw" @select="retry(task)"></nldd-menu-item>
+              </template>
+              <template v-else>
+                <nldd-menu-item
+                  text="Beoordelen"
+                  :disabled="!reviewTarget(task) || undefined"
+                  @select="review(task)"
+                ></nldd-menu-item>
+              </template>
+              <nldd-menu-divider></nldd-menu-divider>
+              <!-- "Markeer als gedaan" is `dismissed`: van je lijst af, zonder
+                   oordeel. `rejected` (het voorstel deugt niet) hoort in de
+                   review-UI - daar zie je wat je verwerpt. -->
+              <nldd-menu-item text="Markeer als gedaan" @select="dismiss(task)"></nldd-menu-item>
+          </nldd-menu>
+        </nldd-icon-button>
       </nldd-cell>
     </nldd-list-item>
 
@@ -230,16 +221,8 @@ function viewLaw(job) {
       <nldd-text-cell :text="runningTitle(job, displayName)"></nldd-text-cell>
       <nldd-spacer-cell size="8"></nldd-spacer-cell>
       <nldd-cell>
-        <nldd-icon-button
-          :id="btnId(job.job_id)"
-          size="sm"
-          icon="more"
-          text="Acties"
-          tooltip-timing="never"
-          popup-type="menu"
-          :popovertarget="menuId(job.job_id)"
-        ></nldd-icon-button>
-        <nldd-menu :id="menuId(job.job_id)" :anchor="btnId(job.job_id)">
+        <nldd-icon-button size="sm" icon="more" text="Acties" tooltip-timing="never">
+          <nldd-menu slot="popup">
           <template v-if="jobContext(job) === WERKDOCUMENTEN">
             <nldd-menu-item text="Bekijk document" @select="viewDocument(job)"></nldd-menu-item>
             <!-- Annuleren gooit de job én de bron-upload weg, dus het staat los
@@ -252,7 +235,8 @@ function viewLaw(job) {
             ></nldd-menu-item>
           </template>
           <nldd-menu-item v-else text="Bekijk wet" @select="viewLaw(job)"></nldd-menu-item>
-        </nldd-menu>
+          </nldd-menu>
+        </nldd-icon-button>
       </nldd-cell>
     </nldd-list-item>
   </nldd-list>

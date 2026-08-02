@@ -132,7 +132,9 @@ test.describe('Per-traject open tabs', () => {
     // 3. In-app switch to traject B via the traject menu: exactly one item, B's
     //    key (a spooktab would be a second item), and the URL restored to B's
     //    article by the restore-on-entry flow.
-    await page.locator('#traject-menu-btn-lg').click();
+    // Elke viewport rendert zijn eigen TrajectMenu en verbergt de andere, dus
+    // filter op zichtbaarheid in plaats van op een per-viewport id.
+    await page.locator('[data-testid="traject-menu-trigger"]:visible').first().click();
     const trajectItemB = page.locator('nldd-menu-item[text="E2E Test Traject B"]').first();
     await trajectItemB.waitFor({ state: 'attached', timeout: 5_000 });
     // The traject menu-item is a radio that fires a custom `select` event (not a

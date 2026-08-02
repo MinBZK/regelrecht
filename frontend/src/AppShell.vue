@@ -79,9 +79,9 @@ function openSupport() {
 }
 
 const colorSchemeOptions = [
-  ['auto', 'Systeem'],
-  ['light', 'Licht'],
-  ['dark', 'Donker'],
+  ['auto', 'Systeem', 'display'],
+  ['light', 'Licht', 'light-mode'],
+  ['dark', 'Donker', 'dark-mode'],
 ];
 
 // Editor panel feature flags, toggled from the settings menu of either
@@ -347,89 +347,94 @@ function onTabDismiss(e) {
                 :dismissable="trajectActive || undefined"
                 @nldd-close="onSearchHintClose"
               >
-                <nldd-button size="md" start-icon="search" text="Zoeken" @click="openSearch"></nldd-button>
+                <nldd-button data-search-trigger size="md" start-icon="search" text="Zoeken" @click="openSearch"></nldd-button>
               </nldd-just-in-time-education>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end" v-if="trajectActive || (!authLoading && oidcConfigured && !authenticated)">
-              <nldd-icon-button id="add-menu-btn-md" size="md" icon="plus-small" text="Nieuw" tooltip-timing="never" expandable popup-type="menu" popovertarget="add-menu-md"></nldd-icon-button>
-              <nldd-menu v-if="trajectActive" id="add-menu-md" anchor="add-menu-btn-md">
-                <nldd-menu-item icon="new-book" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
-                <nldd-menu-item icon="new-text-document" text="Werkdocument toevoegen">
-                  <nldd-menu>
-                    <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="triggerNewWerkdoc"></nldd-menu-item>
-                    <nldd-menu-item icon="upload-to-cloud" text="Document uploaden…" @select="triggerUploadWerkdoc"></nldd-menu-item>
-                  </nldd-menu>
-                </nldd-menu-item>
-                <nldd-menu-item icon="add-user" text="Leden uitnodigen…" @select="triggerInviteMembers"></nldd-menu-item>
-              </nldd-menu>
-              <!-- Niet ingelogd: dezelfde "+" blijft staan als ontdekpunt, maar
-                   opent een popover die uitnodigt in te loggen. Zelfde id als het
-                   menu, zodat de knop-popovertarget statisch blijft (patroon van
-                   de trajecten-knop). -->
-              <nldd-popover v-else id="add-menu-md" anchor="add-menu-btn-md" accessible-label="Toevoegen" width="320px">
-                <nldd-container padding="16">
-                  <nldd-inline-dialog
-                    icon="login"
-                    text="Log in om iets toe te voegen"
-                    supporting-text="Zodra je bent ingelogd kun je wetten, werkdocumenten en leden aan een traject toevoegen."
-                  >
-                    <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
-                    <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
-                  </nldd-inline-dialog>
-                </nldd-container>
-              </nldd-popover>
+              <nldd-icon-button size="md" icon="plus-small" text="Nieuw" tooltip-timing="never" expandable>
+                <nldd-menu v-if="trajectActive" slot="popup">
+                  <nldd-menu-item icon="new-book" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
+                  <nldd-menu-item icon="new-text-document" text="Werkdocument toevoegen">
+                    <nldd-menu>
+                      <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="triggerNewWerkdoc"></nldd-menu-item>
+                      <nldd-menu-item icon="upload-to-cloud" text="Document uploaden…" @select="triggerUploadWerkdoc"></nldd-menu-item>
+                    </nldd-menu>
+                  </nldd-menu-item>
+                  <nldd-menu-item icon="add-user" text="Leden uitnodigen…" @select="triggerInviteMembers"></nldd-menu-item>
+                </nldd-menu>
+                <!-- Niet ingelogd: dezelfde "+" blijft staan als ontdekpunt, maar
+                     opent een popover die uitnodigt in te loggen. Zelfde id als het
+                     menu, zodat de knop-popovertarget statisch blijft (patroon van
+                     de trajecten-knop). -->
+                <nldd-popover v-else slot="popup" accessible-label="Toevoegen" width="320px">
+                  <nldd-container padding="16">
+                    <nldd-inline-dialog
+                      icon="login"
+                      text="Log in om iets toe te voegen"
+                      supporting-text="Zodra je bent ingelogd kun je wetten, werkdocumenten en leden aan een traject toevoegen."
+                    >
+                      <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
+                      <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
+                    </nldd-inline-dialog>
+                  </nldd-container>
+                </nldd-popover>
+              </nldd-icon-button>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
               <nldd-button-bar size="md">
-                <TrajectMenu id-suffix="md" />
+                <TrajectMenu />
                 <nldd-button-bar-divider></nldd-button-bar-divider>
-                <nldd-icon-button id="settings-menu-btn-md" size="md" :icon="authenticated ? undefined : 'account'" text="Account" tooltip-timing="never" expandable popovertarget="settings-menu-md">
+                <nldd-icon-button size="md" :icon="authenticated ? undefined : 'account'" text="Account" tooltip-timing="never" expandable>
                   <nldd-avatar v-if="authenticated" slot="icon" :name="person?.name || person?.email" color="inherit" icon-aligned decorative></nldd-avatar>
+                <nldd-menu slot="popup">
+                  <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
+                  <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
+                  <nldd-list v-if="!authLoading && authenticated" slot="header" variant="simple" no-dividers>
+                    <nldd-list-item>
+                      <nldd-spacer-cell size="10"></nldd-spacer-cell>
+                      <nldd-text-cell :text="person?.name || person?.email" :supporting-text="person?.name ? person?.email : ''"></nldd-text-cell>
+                      <nldd-spacer-cell size="10"></nldd-spacer-cell>
+                    </nldd-list-item>
+                  </nldd-list>
+                  <nldd-menu-divider v-if="!authLoading && oidcConfigured && !authenticated"></nldd-menu-divider>
+                  <nldd-menu-item text="Weergave" icon="appearance">
+                    <nldd-menu>
+                      <nldd-menu-item
+                        v-for="[value, label, icon] in colorSchemeOptions"
+                        :key="`scheme-md-${value}`"
+                        type="radio"
+                        :selected="colorScheme === value || undefined"
+                        :text="label"
+                        :icon="icon"
+                        @select="setColorScheme(value)"
+                      ></nldd-menu-item>
+                    </nldd-menu>
+                  </nldd-menu-item>
+                  <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvest" @click.stop="goToHarvesting"></nldd-menu-item>
+                  <nldd-menu-item v-if="!authLoading && authenticated" text="Feature flags" icon="flag">
+                    <nldd-menu>
+                      <nldd-menu-item
+                        v-for="[key, label] in functieFlags"
+                        :key="key"
+                        type="checkbox"
+                        :selected="isEnabled(key) || undefined"
+                        :text="label"
+                        @select="onFunctieFlagSelect(key, $event)"
+                      ></nldd-menu-item>
+                    </nldd-menu>
+                  </nldd-menu-item>
+                  <nldd-menu-divider></nldd-menu-divider>
+                  <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
+                  <nldd-menu-item text="Help" icon="help" @click="openSupport"></nldd-menu-item>
+                  <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
+                  <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
+                  <template v-if="!authLoading && authenticated">
+                    <nldd-menu-divider></nldd-menu-divider>
+                    <nldd-menu-item text="Log uit" icon="logout" @click="logout"></nldd-menu-item>
+                  </template>
+                </nldd-menu>
                 </nldd-icon-button>
               </nldd-button-bar>
-              <nldd-menu id="settings-menu-md" anchor="settings-menu-btn-md">
-                <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
-                <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
-                <nldd-list v-if="!authLoading && authenticated" slot="header" variant="simple" no-dividers>
-                  <nldd-list-item>
-                    <nldd-spacer-cell size="10"></nldd-spacer-cell>
-                    <nldd-text-cell :text="person?.name || person?.email" :supporting-text="person?.name ? person?.email : ''"></nldd-text-cell>
-                    <nldd-spacer-cell size="10"></nldd-spacer-cell>
-                  </nldd-list-item>
-                </nldd-list>
-                <nldd-menu-group text="Thema">
-                <nldd-menu-item
-                  v-for="[value, label] in colorSchemeOptions"
-                  :key="`scheme-md-${value}`"
-                  type="radio"
-                  :selected="colorScheme === value || undefined"
-                  :text="label"
-                  @select="setColorScheme(value)"
-                ></nldd-menu-item>
-                </nldd-menu-group>
-                <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvest" @click.stop="goToHarvesting"></nldd-menu-item>
-                <nldd-menu-item v-if="!authLoading && authenticated" text="Feature flags" icon="flag">
-                  <nldd-menu>
-                    <nldd-menu-item
-                      v-for="[key, label] in functieFlags"
-                      :key="key"
-                      type="checkbox"
-                      :selected="isEnabled(key) || undefined"
-                      :text="label"
-                      @select="onFunctieFlagSelect(key, $event)"
-                    ></nldd-menu-item>
-                  </nldd-menu>
-                </nldd-menu-item>
-                <nldd-menu-divider></nldd-menu-divider>
-                <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
-                <nldd-menu-item text="Help" icon="help" @click="openSupport"></nldd-menu-item>
-                <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
-                <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
-                <template v-if="!authLoading && authenticated">
-                  <nldd-menu-divider></nldd-menu-divider>
-                  <nldd-menu-item text="Log uit" icon="logout" @click="logout"></nldd-menu-item>
-                </template>
-              </nldd-menu>
             </nldd-toolbar-item>
           </nldd-toolbar>
         </nldd-container>
@@ -456,6 +461,7 @@ function onTabDismiss(e) {
                 @nldd-close="onSearchHintClose"
               >
                 <nldd-search-field
+                  data-search-trigger
                   size="md"
                   :placeholder="SEARCH_PLACEHOLDER"
                   :accessible-label="SEARCH_ACCESSIBLE_LABEL"
@@ -468,81 +474,86 @@ function onTabDismiss(e) {
               <nldd-button size="md" start-icon="external-link" :text="`PR #${lastSavedPr.number}`" :href="lastSavedPr.url" target="_blank" rel="noopener"></nldd-button>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end" v-if="trajectActive || (!authLoading && oidcConfigured && !authenticated)">
-              <nldd-icon-button id="add-menu-btn-lg" size="md" icon="plus-small" text="Nieuw" tooltip-timing="never" expandable popup-type="menu" popovertarget="add-menu-lg"></nldd-icon-button>
-              <nldd-menu v-if="trajectActive" id="add-menu-lg" anchor="add-menu-btn-lg">
-                <nldd-menu-item icon="new-book" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
-                <nldd-menu-item icon="new-text-document" text="Werkdocument toevoegen">
-                  <nldd-menu>
-                    <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="triggerNewWerkdoc"></nldd-menu-item>
-                    <nldd-menu-item icon="upload-to-cloud" text="Document uploaden…" @select="triggerUploadWerkdoc"></nldd-menu-item>
-                  </nldd-menu>
-                </nldd-menu-item>
-                <nldd-menu-item icon="add-user" text="Leden uitnodigen…" @select="triggerInviteMembers"></nldd-menu-item>
-              </nldd-menu>
-              <nldd-popover v-else id="add-menu-lg" anchor="add-menu-btn-lg" accessible-label="Toevoegen" width="320px">
-                <nldd-container padding="16">
-                  <nldd-inline-dialog
-                    icon="login"
-                    text="Log in om iets toe te voegen"
-                    supporting-text="Zodra je bent ingelogd kun je wetten, werkdocumenten en leden aan een traject toevoegen."
-                  >
-                    <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
-                    <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
-                  </nldd-inline-dialog>
-                </nldd-container>
-              </nldd-popover>
+              <nldd-icon-button size="md" icon="plus-small" text="Nieuw" tooltip-timing="never" expandable>
+                <nldd-menu v-if="trajectActive" slot="popup">
+                  <nldd-menu-item icon="new-book" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
+                  <nldd-menu-item icon="new-text-document" text="Werkdocument toevoegen">
+                    <nldd-menu>
+                      <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="triggerNewWerkdoc"></nldd-menu-item>
+                      <nldd-menu-item icon="upload-to-cloud" text="Document uploaden…" @select="triggerUploadWerkdoc"></nldd-menu-item>
+                    </nldd-menu>
+                  </nldd-menu-item>
+                  <nldd-menu-item icon="add-user" text="Leden uitnodigen…" @select="triggerInviteMembers"></nldd-menu-item>
+                </nldd-menu>
+                <nldd-popover v-else slot="popup" accessible-label="Toevoegen" width="320px">
+                  <nldd-container padding="16">
+                    <nldd-inline-dialog
+                      icon="login"
+                      text="Log in om iets toe te voegen"
+                      supporting-text="Zodra je bent ingelogd kun je wetten, werkdocumenten en leden aan een traject toevoegen."
+                    >
+                      <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
+                      <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
+                    </nldd-inline-dialog>
+                  </nldd-container>
+                </nldd-popover>
+              </nldd-icon-button>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
               <nldd-button-bar size="md">
-                <TrajectMenu id-suffix="lg" />
+                <TrajectMenu />
                 <nldd-button-bar-divider></nldd-button-bar-divider>
-                <nldd-icon-button id="settings-menu-btn-lg" size="md" :icon="authenticated ? undefined : 'account'" text="Account" tooltip-timing="never" expandable popovertarget="settings-menu-lg">
+                <nldd-icon-button size="md" :icon="authenticated ? undefined : 'account'" text="Account" tooltip-timing="never" expandable>
                   <nldd-avatar v-if="authenticated" slot="icon" :name="person?.name || person?.email" color="inherit" icon-aligned decorative></nldd-avatar>
+                <nldd-menu slot="popup">
+                  <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
+                  <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
+                  <nldd-list v-if="!authLoading && authenticated" slot="header" variant="simple" no-dividers>
+                    <nldd-list-item>
+                      <nldd-spacer-cell size="10"></nldd-spacer-cell>
+                      <nldd-text-cell :text="person?.name || person?.email" :supporting-text="person?.name ? person?.email : ''"></nldd-text-cell>
+                      <nldd-spacer-cell size="10"></nldd-spacer-cell>
+                    </nldd-list-item>
+                  </nldd-list>
+                  <nldd-menu-divider v-if="!authLoading && oidcConfigured && !authenticated"></nldd-menu-divider>
+                  <nldd-menu-item text="Weergave" icon="appearance">
+                    <nldd-menu>
+                      <nldd-menu-item
+                        v-for="[value, label, icon] in colorSchemeOptions"
+                        :key="`scheme-lg-${value}`"
+                        type="radio"
+                        :selected="colorScheme === value || undefined"
+                        :text="label"
+                        :icon="icon"
+                        @select="setColorScheme(value)"
+                      ></nldd-menu-item>
+                    </nldd-menu>
+                  </nldd-menu-item>
+                  <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvest" @click.stop="goToHarvesting"></nldd-menu-item>
+                  <nldd-menu-item v-if="!authLoading && authenticated" text="Feature flags" icon="flag">
+                    <nldd-menu>
+                      <nldd-menu-item
+                        v-for="[key, label] in functieFlags"
+                        :key="key"
+                        type="checkbox"
+                        :selected="isEnabled(key) || undefined"
+                        :text="label"
+                        @select="onFunctieFlagSelect(key, $event)"
+                      ></nldd-menu-item>
+                    </nldd-menu>
+                  </nldd-menu-item>
+                  <nldd-menu-divider></nldd-menu-divider>
+                  <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
+                  <nldd-menu-item text="Help" icon="help" @click="openSupport"></nldd-menu-item>
+                  <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
+                  <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
+                  <template v-if="!authLoading && authenticated">
+                    <nldd-menu-divider></nldd-menu-divider>
+                    <nldd-menu-item text="Log uit" icon="logout" @click="logout"></nldd-menu-item>
+                  </template>
+                </nldd-menu>
                 </nldd-icon-button>
               </nldd-button-bar>
-              <nldd-menu id="settings-menu-lg" anchor="settings-menu-btn-lg">
-                <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
-                <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
-                <nldd-list v-if="!authLoading && authenticated" slot="header" variant="simple" no-dividers>
-                  <nldd-list-item>
-                    <nldd-spacer-cell size="10"></nldd-spacer-cell>
-                    <nldd-text-cell :text="person?.name || person?.email" :supporting-text="person?.name ? person?.email : ''"></nldd-text-cell>
-                    <nldd-spacer-cell size="10"></nldd-spacer-cell>
-                  </nldd-list-item>
-                </nldd-list>
-                <nldd-menu-group text="Thema">
-                <nldd-menu-item
-                  v-for="[value, label] in colorSchemeOptions"
-                  :key="`scheme-lg-${value}`"
-                  type="radio"
-                  :selected="colorScheme === value || undefined"
-                  :text="label"
-                  @select="setColorScheme(value)"
-                ></nldd-menu-item>
-                </nldd-menu-group>
-                <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvest" @click.stop="goToHarvesting"></nldd-menu-item>
-                <nldd-menu-item v-if="!authLoading && authenticated" text="Feature flags" icon="flag">
-                  <nldd-menu>
-                    <nldd-menu-item
-                      v-for="[key, label] in functieFlags"
-                      :key="key"
-                      type="checkbox"
-                      :selected="isEnabled(key) || undefined"
-                      :text="label"
-                      @select="onFunctieFlagSelect(key, $event)"
-                    ></nldd-menu-item>
-                  </nldd-menu>
-                </nldd-menu-item>
-                <nldd-menu-divider></nldd-menu-divider>
-                <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
-                <nldd-menu-item text="Help" icon="help" @click="openSupport"></nldd-menu-item>
-                <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
-                <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
-                <template v-if="!authLoading && authenticated">
-                  <nldd-menu-divider></nldd-menu-divider>
-                  <nldd-menu-item text="Log uit" icon="logout" @click="logout"></nldd-menu-item>
-                </template>
-              </nldd-menu>
             </nldd-toolbar-item>
           </nldd-toolbar>
         </nldd-container>
@@ -610,21 +621,15 @@ function onTabDismiss(e) {
             <!-- Discard zit bewust achter een 'meer'-menu zodat deze
                  destructieve actie niet per ongeluk gekozen wordt. -->
             <nldd-toolbar-item slot="start" label="Meer acties" :priority="1">
-              <nldd-icon-button
-                id="changes-more-btn"
-                icon="more"
-                text="Meer acties"
-                tooltip-timing="never"
-                popup-type="menu"
-                popovertarget="changes-more-menu"
-              ></nldd-icon-button>
-              <nldd-menu id="changes-more-menu" anchor="changes-more-btn">
-                <nldd-menu-item
-                  text="Maak alle wijzigingen ongedaan"
-                  destructive
-                  @select="editorActions?.discard?.()"
-                ></nldd-menu-item>
-              </nldd-menu>
+              <nldd-icon-button icon="more" text="Meer acties" tooltip-timing="never">
+                <nldd-menu slot="popup">
+                  <nldd-menu-item
+                    text="Maak alle wijzigingen ongedaan"
+                    destructive
+                    @select="editorActions?.discard?.()"
+                  ></nldd-menu-item>
+                </nldd-menu>
+              </nldd-icon-button>
               <nldd-menu-item
                 slot="overflow"
                 text="Maak alle wijzigingen ongedaan"
@@ -713,81 +718,86 @@ function onTabDismiss(e) {
                 :dismissable="trajectActive || undefined"
                 @nldd-close="onSearchHintClose"
               >
-                <nldd-icon-button size="lg" icon="search" text="Zoeken" @click="openSearch"></nldd-icon-button>
+                <nldd-icon-button data-search-trigger size="lg" icon="search" text="Zoeken" @click="openSearch"></nldd-icon-button>
               </nldd-just-in-time-education>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end" v-if="trajectActive || (!authLoading && oidcConfigured && !authenticated)">
-              <nldd-icon-button id="add-menu-btn-sm" size="lg" icon="plus-small" text="Nieuw" tooltip-timing="never" popup-type="menu" popovertarget="add-menu-sm"></nldd-icon-button>
-              <nldd-menu v-if="trajectActive" id="add-menu-sm" anchor="add-menu-btn-sm">
-                <nldd-menu-item icon="new-book" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
-                <nldd-menu-item icon="new-text-document" text="Werkdocument toevoegen">
-                  <nldd-menu>
-                    <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="triggerNewWerkdoc"></nldd-menu-item>
-                    <nldd-menu-item icon="upload-to-cloud" text="Document uploaden…" @select="triggerUploadWerkdoc"></nldd-menu-item>
-                  </nldd-menu>
-                </nldd-menu-item>
-                <nldd-menu-item icon="add-user" text="Leden uitnodigen…" @select="triggerInviteMembers"></nldd-menu-item>
-              </nldd-menu>
-              <nldd-popover v-else id="add-menu-sm" anchor="add-menu-btn-sm" accessible-label="Toevoegen" width="320px">
-                <nldd-container padding="16">
-                  <nldd-inline-dialog
-                    icon="login"
-                    text="Log in om iets toe te voegen"
-                    supporting-text="Zodra je bent ingelogd kun je wetten, werkdocumenten en leden aan een traject toevoegen."
-                  >
-                    <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
-                    <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
-                  </nldd-inline-dialog>
-                </nldd-container>
-              </nldd-popover>
+              <nldd-icon-button size="lg" icon="plus-small" text="Nieuw" tooltip-timing="never">
+                <nldd-menu v-if="trajectActive" slot="popup">
+                  <nldd-menu-item icon="new-book" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
+                  <nldd-menu-item icon="new-text-document" text="Werkdocument toevoegen">
+                    <nldd-menu>
+                      <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="triggerNewWerkdoc"></nldd-menu-item>
+                      <nldd-menu-item icon="upload-to-cloud" text="Document uploaden…" @select="triggerUploadWerkdoc"></nldd-menu-item>
+                    </nldd-menu>
+                  </nldd-menu-item>
+                  <nldd-menu-item icon="add-user" text="Leden uitnodigen…" @select="triggerInviteMembers"></nldd-menu-item>
+                </nldd-menu>
+                <nldd-popover v-else slot="popup" accessible-label="Toevoegen" width="320px">
+                  <nldd-container padding="16">
+                    <nldd-inline-dialog
+                      icon="login"
+                      text="Log in om iets toe te voegen"
+                      supporting-text="Zodra je bent ingelogd kun je wetten, werkdocumenten en leden aan een traject toevoegen."
+                    >
+                      <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
+                      <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
+                    </nldd-inline-dialog>
+                  </nldd-container>
+                </nldd-popover>
+              </nldd-icon-button>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <nldd-icon-button id="settings-menu-btn-sm" size="lg" :icon="authenticated ? undefined : 'account'" text="Account" tooltip-timing="never" popovertarget="settings-menu-sm">
+              <nldd-icon-button size="lg" :icon="authenticated ? undefined : 'account'" text="Account" tooltip-timing="never">
                 <nldd-avatar v-if="authenticated" slot="icon" :name="person?.name || person?.email" color="inherit" icon-aligned decorative></nldd-avatar>
-              </nldd-icon-button>
-              <nldd-menu id="settings-menu-sm" anchor="settings-menu-btn-sm">
-                <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
-                <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
-                <nldd-list v-if="!authLoading && authenticated" slot="header" variant="simple" no-dividers>
-                  <nldd-list-item>
-                    <nldd-spacer-cell size="10"></nldd-spacer-cell>
-                    <nldd-text-cell :text="person?.name || person?.email" :supporting-text="person?.name ? person?.email : ''"></nldd-text-cell>
-                    <nldd-spacer-cell size="10"></nldd-spacer-cell>
-                  </nldd-list-item>
-                </nldd-list>
-                <nldd-menu-group text="Thema">
-                <nldd-menu-item
-                  v-for="[value, label] in colorSchemeOptions"
-                  :key="`scheme-sm-${value}`"
-                  type="radio"
-                  :selected="colorScheme === value || undefined"
-                  :text="label"
-                  @select="setColorScheme(value)"
-                ></nldd-menu-item>
-                </nldd-menu-group>
-                <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvest" @click.stop="goToHarvesting"></nldd-menu-item>
-                <nldd-menu-item v-if="!authLoading && authenticated" text="Feature flags" icon="flag">
-                  <nldd-menu>
-                    <nldd-menu-item
-                      v-for="[key, label] in functieFlags"
-                      :key="key"
-                      type="checkbox"
-                      :selected="isEnabled(key) || undefined"
-                      :text="label"
-                      @select="onFunctieFlagSelect(key, $event)"
-                    ></nldd-menu-item>
-                  </nldd-menu>
-                </nldd-menu-item>
-                <nldd-menu-divider></nldd-menu-divider>
-                <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
-                <nldd-menu-item text="Help" icon="help" @click="openSupport"></nldd-menu-item>
-                <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
-                <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
-                <template v-if="!authLoading && authenticated">
+                <nldd-menu slot="popup">
+                  <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
+                  <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
+                  <nldd-list v-if="!authLoading && authenticated" slot="header" variant="simple" no-dividers>
+                    <nldd-list-item>
+                      <nldd-spacer-cell size="10"></nldd-spacer-cell>
+                      <nldd-text-cell :text="person?.name || person?.email" :supporting-text="person?.name ? person?.email : ''"></nldd-text-cell>
+                      <nldd-spacer-cell size="10"></nldd-spacer-cell>
+                    </nldd-list-item>
+                  </nldd-list>
+                  <nldd-menu-divider v-if="!authLoading && oidcConfigured && !authenticated"></nldd-menu-divider>
+                  <nldd-menu-item text="Weergave" icon="appearance">
+                    <nldd-menu>
+                      <nldd-menu-item
+                        v-for="[value, label, icon] in colorSchemeOptions"
+                        :key="`scheme-sm-${value}`"
+                        type="radio"
+                        :selected="colorScheme === value || undefined"
+                        :text="label"
+                        :icon="icon"
+                        @select="setColorScheme(value)"
+                      ></nldd-menu-item>
+                    </nldd-menu>
+                  </nldd-menu-item>
+                  <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvest" @click.stop="goToHarvesting"></nldd-menu-item>
+                  <nldd-menu-item v-if="!authLoading && authenticated" text="Feature flags" icon="flag">
+                    <nldd-menu>
+                      <nldd-menu-item
+                        v-for="[key, label] in functieFlags"
+                        :key="key"
+                        type="checkbox"
+                        :selected="isEnabled(key) || undefined"
+                        :text="label"
+                        @select="onFunctieFlagSelect(key, $event)"
+                      ></nldd-menu-item>
+                    </nldd-menu>
+                  </nldd-menu-item>
                   <nldd-menu-divider></nldd-menu-divider>
-                  <nldd-menu-item text="Log uit" icon="logout" @click="logout"></nldd-menu-item>
-                </template>
-              </nldd-menu>
+                  <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
+                  <nldd-menu-item text="Help" icon="help" @click="openSupport"></nldd-menu-item>
+                  <nldd-menu-item v-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth') && githubStatus?.connected" :text="'GitHub ontkoppelen (' + githubStatus.github_login + ')'" icon="dismiss" @click="disconnectGithub"></nldd-menu-item>
+                  <nldd-menu-item v-else-if="authenticated && githubStatus?.configured && isEnabled('github.user_oauth')" text="Koppel GitHub-account" icon="external-link" @click="connectGithub()"></nldd-menu-item>
+                  <template v-if="!authLoading && authenticated">
+                    <nldd-menu-divider></nldd-menu-divider>
+                    <nldd-menu-item text="Log uit" icon="logout" @click="logout"></nldd-menu-item>
+                  </template>
+                </nldd-menu>
+              </nldd-icon-button>
             </nldd-toolbar-item>
           </nldd-toolbar>
         </nldd-container>

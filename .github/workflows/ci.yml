@@ -429,6 +429,15 @@ jobs:
           git diff --exit-code frontend/src/gherkin/grammar.generated.js \
             || { echo "::error::grammar.generated.js is stale — run 'just bdd-codegen' and commit the result"; exit 1; }
 
+      # Niet in `npm run build`: de Docker-images bouwen met alleen hun eigen
+      # workspace als context (docs/Dockerfile doet `COPY docs/ .`), dus een
+      # script buiten die map is daar onbereikbaar. Hier is de hele repo
+      # uitgecheckt.
+      - name: Ontwerpsysteem-imports in sync met de gebruikte tags
+        run: |
+          node script/check-nldd-imports.mjs frontend/src frontend/src/nldd-components.js
+          node script/check-nldd-imports.mjs docs/src docs/src/nldd-components.js
+
       - name: Run frontend tests
         # Directory form (`-w frontend`) rather than the package name, so a
         # rename of the `name` field can't silently skip the tests.

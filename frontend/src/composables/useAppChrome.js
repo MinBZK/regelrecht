@@ -32,7 +32,7 @@ export function registerSearchPopover(ref_) {
 }
 
 export function openSearch(e, initialSearch = '') {
-  popoverRef?.value?.show(e?.currentTarget, initialSearch);
+  popoverRef?.value?.show(e?.currentTarget, initialSearch, e);
 }
 
 /**

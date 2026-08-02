@@ -49,7 +49,6 @@ export interface LandingContent {
     cases: {
       img: string
       alt: string
-      caption: string
       h: string
       p: string
       bullets: string[]
@@ -58,14 +57,10 @@ export interface LandingContent {
   }
   innovation: {
     title: string
-    ledeBefore: string
-    ledeLink: NavLink
-    ledeAfter: string
     cards: { meta: string; h: string; p: string }[]
   }
   references: {
     title: string
-    lede: string
     items: {
       title: string
       meta: string
@@ -93,7 +88,6 @@ export interface LandingContent {
     }[]
   }
   feedback: { title: string; body: string; cta: string; ctaHref: string }
-  compliance: { label: string; alt: string; internetNlUrl: string }
   footer: {
     blurb: string
     linksTitle: string
@@ -176,7 +170,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
     },
     whatIsIt: {
-      title: 'Wat is RegelRecht?',
+      title: 'Wetten uitvoeren zonder te programmeren',
       lede: 'De uitvoering van wetgeving kent verschillende uitdagingen: verschillende interpretaties, ondoorzichtige systemen en complex programmeerwerk dat vaak ver af staat van de oorspronkelijke wet. RegelRecht verkent of machine-uitvoerbare wetgeving een antwoord kan bieden: wetten die direct als uitvoerbare code geschreven worden, zonder tussenkomst van programmeurs.',
       cards: [
         {
@@ -194,8 +188,8 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
     },
     whyImportant: {
-      title: 'Waarom deze verkenning?',
-      lede: 'De huidige manier waarop wetten worden toegepast kent verschillende uitdagingen in onze rechtsstaat. We onderzoeken of nieuwe technische benaderingen kunnen bijdragen aan oplossingen voor deze structurele vraagstukken.',
+      title: 'Het toepassen van wetten kent momenteel verschillende uitdagingen in onze rechtsstaat',
+      lede: 'We onderzoeken of nieuwe technische benaderingen kunnen bijdragen aan oplossingen voor deze structurele vraagstukken.',
       problemSolutions: [
         {
           problemTitle: 'Verschillende interpretaties',
@@ -224,8 +218,8 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
     },
     howItWorks: {
-      title: 'Van analoog recht naar digitaal rechtsstelsel',
-      lede: 'Hoe zou de overgang van traditionele wetgeving naar een digitaal rechtsstelsel kunnen verlopen? We verkennen zeven mogelijke stappen en onderzoeken wat daardoor mogelijk zou kunnen worden:',
+      title: 'De overgang van analoog recht naar digitaal rechtsstelsel',
+      lede: 'Hoe zou dat kunnen verlopen? We verkennen 7 mogelijke stappen en onderzoeken wat daardoor mogelijk zou kunnen worden:',
       steps: [
         {
           title: 'Analoog naar digitaal',
@@ -316,14 +310,12 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
     },
     example: {
-      title: 'Hoe zou dit eruit kunnen zien?',
-      lede: 'Wat zouden de mogelijkheden van het RegelRecht-ecosysteem in de praktijk kunnen zijn? Een paar denkrichtingen voor transparante regeltoepassing, wetgevingstesting en de werkomgeving van de juridische experts zelf.',
+      title: 'Een aantal denkrichtingen voor de praktijk',
+      lede: 'Wat zouden de mogelijkheden van het RegelRecht-ecosysteem kunnen zijn? Een paar denkrichtingen voor transparante regeltoepassing, wetgevingstesting en de werkomgeving van de juridische experts zelf.',
       cases: [
         {
           img: '/burger-nl-screenshot.png',
           alt: 'Schermafbeelding van een persoonlijk regeldashboard: een lijst met toeslagen en uitkeringen waarbij per regel de herkomst in de wet wordt getoond.',
-          caption:
-            'Concept: een persoonlijk dashboard waarin elke uitkomst herleidbaar is naar de onderliggende wet.',
           h: 'Persoonlijk regeldashboard',
           p: 'Wat als burgers op één plek al hun toeslagen, uitkeringen en verplichtingen zouden kunnen zien? Elke regel zou dan traceerbaar kunnen zijn terug naar de machine-uitvoerbare wetgeving, met volledige transparantie over hoe besluiten tot stand komen.',
           bullets: [
@@ -335,7 +327,6 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           img: '/simulatie-screenshot.png',
           alt: 'Schermafbeelding van een simulatieomgeving waarin het effect van een wetswijziging op verschillende voorbeeldsituaties wordt doorgerekend.',
-          caption: 'Concept: nieuwe wetgeving doorrekenen vóór invoering.',
           h: 'Wetgeving simulatie & testing',
           p: 'Wat als beleidsmakers de gevolgen van nieuwe wetgeving zouden kunnen testen in een simulatieomgeving voordat deze wordt ingevoerd? Zou dit onbedoelde effecten kunnen voorkomen en de kwaliteit van wetgeving kunnen verbeteren?',
           bullets: [
@@ -349,7 +340,6 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           img: '/editor-notities-screenshot.png',
           alt: 'Schermafbeelding van de RegelRecht-editor: de tekst van de Wet op de zorgtoeslag links, machine-leesbare definities en outputs in het midden, en scenario’s met verwachte uitkomsten rechts. Bij een geselecteerd begrip is een notitie-popup geopend.',
-          caption: 'Concept: één werkomgeving waarin tekst, machine-leesbare regels en scenario’s naast elkaar staan.',
           h: 'Editor met notities en scenario’s',
           p: 'Wat als juristen, beleidsmakers en programmeurs in dezelfde omgeving aan wetgeving kunnen werken? Notities bij begrippen, machine-leesbare definities en testbare scenario’s, allemaal naast de oorspronkelijke wettekst.',
           bullets: [
@@ -361,13 +351,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
     },
     innovation: {
-      title: 'Verkenning binnen Innovatiebudget 2025',
-      ledeBefore: 'RegelRecht draagt bij aan twee projecten uit het ',
-      ledeLink: {
-        label: 'Innovatiebudget 2025',
-        href: 'https://www.digitaleoverheid.nl/overzicht-van-alle-onderwerpen/innovatie/innovatiebudget/toekenning-innovatiebudget-2025/',
-      },
-      ledeAfter: ' van de Digitale Overheid:',
+      title: 'RegelRecht draagt bij aan projecten uit het Innovatiebudget 2025',
       cards: [
         {
           meta: 'In samenwerking met VNG',
@@ -382,8 +366,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
     },
     references: {
-      title: 'Relevante rapporten en bronnen',
-      lede: 'Een overzicht van belangrijke rapporten, onderzoeken en bronnen die de noodzaak voor machine-uitvoerbare wetgeving onderbouwen.',
+      title: 'Belangrijke rapporten, onderzoeken en bronnen over de noodzaak van machine-uitvoerbare wetgeving',
       items: [
         {
           title: 'Factsheet digitale uitvoering van wetgeving',
@@ -461,7 +444,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
     },
     faq: {
-      title: 'Vragen bij deze verkenning',
+      title: 'Veelgestelde vragen',
       // Item order is tuned so the two-column masonry layout (see
       // LandingSections.astro) ends up with roughly equal column heights:
       // the long answers are spread across both columns instead of stacking
@@ -548,15 +531,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
     },
     feedback: {
-      title: 'Wat denk jij?',
+      title: 'Denk mee over deze verkenning',
       body: 'Deze verkenning van machine-uitvoerbare wetgeving roept veel vragen op. Hoe zie jij de toekomst van de digitale overheid? Wat zijn je zorgen en verwachtingen bij deze ontwikkelingen? Jouw input helpt ons deze verkenning verder vorm te geven.',
       cta: 'Meld je aan of deel je gedachten',
       ctaHref: SIGNUP_NL_PATH,
-    },
-    compliance: {
-      label: '100% score op de Internet.nl websitetest',
-      alt: 'Badge: 100% score op de Internet.nl websitetest',
-      internetNlUrl: 'https://internet.nl/',
     },
     footer: {
       blurb:
@@ -647,7 +625,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
     },
     whatIsIt: {
-      title: 'What is RegelRecht?',
+      title: 'Running laws without programming',
       lede: 'Executing legislation comes with several challenges: differing interpretations, opaque systems, and complex programming work that often sits far from the original law. RegelRecht explores whether machine-executable legislation can offer an answer: laws written directly as executable code, without programmers in between.',
       cards: [
         {
@@ -665,8 +643,8 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
     },
     whyImportant: {
-      title: 'Why this exploration?',
-      lede: 'The current way laws are applied raises several challenges for the rule of law. We are investigating whether new technical approaches can contribute to solutions for these structural questions.',
+      title: 'Applying laws currently raises several challenges for the rule of law',
+      lede: 'We are investigating whether new technical approaches can contribute to solutions for these structural questions.',
       problemSolutions: [
         {
           problemTitle: 'Differing interpretations',
@@ -695,8 +673,8 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
     },
     howItWorks: {
-      title: 'From analogue law to a digital legal system',
-      lede: 'How might the transition from traditional legislation to a digital legal system unfold? We explore seven possible steps and what each could make possible:',
+      title: 'The transition from analog law to a digital legal system',
+      lede: 'How might that unfold? We explore 7 possible steps and what each could make possible:',
       steps: [
         {
           title: 'Analogue to digital',
@@ -787,14 +765,12 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
     },
     example: {
-      title: 'What could this look like?',
-      lede: 'What could the RegelRecht ecosystem make possible in practice? A handful of directions for transparent rule application, legislative testing, and the working environment of the legal experts themselves.',
+      title: 'A few directions for practice',
+      lede: 'What could the RegelRecht ecosystem make possible? A handful of directions for transparent rule application, legislative testing, and the working environment of the legal experts themselves.',
       cases: [
         {
           img: '/burger-nl-screenshot.png',
           alt: 'Screenshot of a personal rules dashboard: a list of benefits and allowances where each rule shows its origin in the law.',
-          caption:
-            'Concept: a personal dashboard where every outcome is traceable back to the underlying law.',
           h: 'Personal rules dashboard',
           p: 'What if citizens could see all their benefits, allowances and obligations in one place? Every rule could then be traceable back to the machine-executable legislation, with full transparency about how decisions are reached.',
           bullets: [
@@ -806,7 +782,6 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           img: '/simulatie-screenshot.png',
           alt: 'Screenshot of a simulation environment that computes the effect of a legislative change across different example situations.',
-          caption: 'Concept: running new legislation through the numbers before it takes effect.',
           h: 'Legislative simulation & testing',
           p: 'What if policy makers could test the consequences of new legislation in a simulation environment before it is introduced? Could this prevent unintended effects and improve the quality of legislation?',
           bullets: [
@@ -820,7 +795,6 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           img: '/editor-notities-screenshot.png',
           alt: 'Screenshot of the RegelRecht editor: the text of the Health-Care Allowance Act on the left, machine-readable definitions and outputs in the middle, and scenarios with expected outcomes on the right. A note popup is open on a selected term.',
-          caption: 'Concept: one working environment where text, machine-readable rules and scenarios sit side by side.',
           h: 'Editor with notes and scenarios',
           p: 'What if legal experts, policy makers and programmers could work on legislation in the same environment? Notes on terms, machine-readable definitions and runnable scenarios, all alongside the original legal text.',
           bullets: [
@@ -832,13 +806,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
     },
     innovation: {
-      title: 'Exploration within the 2025 Innovation Budget',
-      ledeBefore: 'RegelRecht contributes to two projects from the ',
-      ledeLink: {
-        label: '2025 Innovation Budget',
-        href: 'https://www.digitaleoverheid.nl/overzicht-van-alle-onderwerpen/innovatie/innovatiebudget/toekenning-innovatiebudget-2025/',
-      },
-      ledeAfter: ' of the Dutch Digital Government:',
+      title: 'RegelRecht contributes to projects from the 2025 Innovation Budget',
       cards: [
         {
           meta: 'In collaboration with VNG',
@@ -853,8 +821,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
     },
     references: {
-      title: 'Relevant reports and sources',
-      lede: 'An overview of key reports, research and sources that underpin the need for machine-executable legislation.',
+      title: 'Important reports, studies, and sources on the need for machine-executable legislation',
       items: [
         {
           title: 'Factsheet on the digital execution of legislation',
@@ -932,7 +899,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
     },
     faq: {
-      title: 'Questions about this exploration',
+      title: 'Frequently asked questions',
       // Item order is tuned for the two-column masonry layout (see
       // LandingSections.astro) so the columns end up roughly equal in height;
       // the long answers are spread across both columns. Cards read
@@ -1018,15 +985,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
     },
     feedback: {
-      title: 'What do you think?',
+      title: 'Help shape this exploration',
       body: 'This exploration of machine-executable legislation raises many questions. How do you see the future of digital government? What are your concerns and expectations around these developments? Your input helps us shape this exploration further.',
       cta: 'Sign up or share your thoughts',
       ctaHref: SIGNUP_EN_PATH,
-    },
-    compliance: {
-      label: '100% score on the Internet.nl website test',
-      alt: 'Badge: 100% score on the Internet.nl website test',
-      internetNlUrl: 'https://internet.nl/',
     },
     footer: {
       blurb:

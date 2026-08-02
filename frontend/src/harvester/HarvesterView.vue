@@ -107,45 +107,38 @@ function goToLibrary() {
             ></nldd-icon-button>
           </nldd-toolbar-item>
           <nldd-toolbar-item slot="end">
-            <nldd-icon-button
-              id="harvesting-account-btn"
-              size="md"
-              icon="account"
-              text="Account"
-              tooltip-timing="never"
-              expandable
-              popovertarget="harvesting-account-menu"
-            ></nldd-icon-button>
-            <nldd-menu id="harvesting-account-menu" anchor="harvesting-account-btn">
-              <nldd-menu-item
-                v-if="!authLoading && authenticated"
-                :text="person?.name || person?.email"
-                disabled
-              ></nldd-menu-item>
-              <nldd-menu-group text="Thema">
+            <nldd-icon-button size="md" icon="account" text="Account" tooltip-timing="never" expandable>
+              <nldd-menu slot="popup">
                 <nldd-menu-item
-                  v-for="[value, label] in colorSchemeOptions"
-                  :key="`scheme-${value}`"
-                  type="radio"
-                  :selected="colorScheme === value || undefined"
-                  :text="label"
-                  @select="setColorScheme(value)"
+                  v-if="!authLoading && authenticated"
+                  :text="person?.name || person?.email"
+                  disabled
                 ></nldd-menu-item>
-              </nldd-menu-group>
-              <nldd-menu-divider></nldd-menu-divider>
-              <nldd-menu-item
-                v-if="!authLoading && authenticated"
-                text="Uitloggen"
-                icon="logout"
-                @click="logout"
-              ></nldd-menu-item>
-              <nldd-menu-item
-                v-else-if="!authLoading && oidcConfigured"
-                text="Inloggen"
-                icon="login"
-                @click="login()"
-              ></nldd-menu-item>
-            </nldd-menu>
+                <nldd-menu-group text="Weergave">
+                  <nldd-menu-item
+                    v-for="[value, label] in colorSchemeOptions"
+                    :key="`scheme-${value}`"
+                    type="radio"
+                    :selected="colorScheme === value || undefined"
+                    :text="label"
+                    @select="setColorScheme(value)"
+                  ></nldd-menu-item>
+                </nldd-menu-group>
+                <nldd-menu-divider></nldd-menu-divider>
+                <nldd-menu-item
+                  v-if="!authLoading && authenticated"
+                  text="Uitloggen"
+                  icon="logout"
+                  @click="logout"
+                ></nldd-menu-item>
+                <nldd-menu-item
+                  v-else-if="!authLoading && oidcConfigured"
+                  text="Inloggen"
+                  icon="login"
+                  @click="login()"
+                ></nldd-menu-item>
+              </nldd-menu>
+            </nldd-icon-button>
           </nldd-toolbar-item>
         </nldd-toolbar>
       </nldd-container>

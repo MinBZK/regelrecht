@@ -228,3 +228,133 @@ describe('SearchPopover zonder "Toevoegen aan traject" in zoekresultaten', () =>
     expect(promoteCalls).toHaveLength(0);
   });
 });
+
+describe('SearchPopover: tweede klik op de trigger sluit', () => {
+  // De triggers staan in de app-shell en deze popover in de routed view, dus
+  // de knop is niet de invoker van de popover en de browser levert geen toggle.
+  // show() doet dat zelf; zonder die stap opende een tweede klik alleen opnieuw
+  // en leek er niets te gebeuren.
+  function mountMetPopoverStub() {
+    const wrapper = mount(SearchPopover);
+    const el = wrapper.find('nldd-popover').element;
+    const state = { open: false };
+    el.show = () => {
+      state.open = true;
+    };
+    el.hide = () => {
+      state.open = false;
+    };
+    // happy-dom kent :popover-open niet; stub 'm zoals het echte component 'm zou melden.
+    el.matches = (selector) => selector === ':popover-open' && state.open;
+    return { wrapper, state };
+  }
+
+  it('sluit bij een tweede show() zonder zoektekst', async () => {
+    const { wrapper, state } = mountMetPopoverStub();
+    await wrapper.vm.show(document.createElement('button'));
+    expect(state.open).toBe(true);
+    await wrapper.vm.show(document.createElement('button'));
+    expect(state.open).toBe(false);
+  });
+
+  it('houdt hem open bij type-to-open, want dat is geen her-trigger', async () => {
+    const { wrapper, state } = mountMetPopoverStub();
+    await wrapper.vm.show(document.createElement('button'));
+    await wrapper.vm.show(document.createElement('button'), 'a');
+    expect(state.open).toBe(true);
+  });
+});
+
+describe('SearchPopover volgt het breakpoint terwijl hij openstaat', () => {
+  // Zonder dit blijft een open popover in de layout van het vorige breakpoint
+  // hangen: een lg-gecentreerd paneel dat op md los in beeld zweeft, of een
+  // md-geankerd paneel dat nog naar een knop wijst die inmiddels het brede
+  // zoekveld is. Sluiten bij resize zou simpeler zijn maar gooit weg wat de
+  // gebruiker aan het typen was.
+  function stubMatchMedia(breedte) {
+    const luisteraars = new Set();
+    vi.stubGlobal('matchMedia', (query) => {
+      const min = Number(/min-width:\s*(\d+)/.exec(query)?.[1] ?? 0);
+      const max = Number(/max-width:\s*(\d+)/.exec(query)?.[1] ?? Infinity);
+      const mql = {
+        get matches() {
+          return breedte.waarde >= min && breedte.waarde <= max;
+        },
+        addEventListener: (_, fn) => luisteraars.add(fn),
+        removeEventListener: (_, fn) => luisteraars.delete(fn),
+      };
+      return mql;
+    });
+    return { verander: (nieuw) => {
+      breedte.waarde = nieuw;
+      for (const fn of luisteraars) fn();
+    } };
+  }
+
+  it('wisselt van gecentreerd naar geankerd als lg naar md gaat', async () => {
+    const breedte = { waarde: 1280 };
+    const { verander } = stubMatchMedia(breedte);
+    const wrapper = mount(SearchPopover);
+    const el = wrapper.find('nldd-popover').element;
+    el.show = () => {};
+    el.matches = () => true;
+    el.reposition = vi.fn();
+
+    await wrapper.vm.show(document.createElement('button'));
+    expect(wrapper.vm.useCenteredPosition).toBe(true);
+    expect(wrapper.vm.isAnchored).toBe(false);
+
+    verander(768);
+    await nextTick();
+    expect(wrapper.vm.useCenteredPosition).toBe(false);
+    expect(wrapper.vm.isAnchored).toBe(true);
+    expect(el.reposition).toHaveBeenCalled();
+  });
+
+  it('herankert naar de trigger die in het nieuwe breakpoint zichtbaar is', async () => {
+    // Elk viewport toont zijn eigen trigger en verbergt de andere. Zonder
+    // herankeren wijst de popover na een resize naar een element van nul bij
+    // nul en parkeert Floating UI 'm linksboven.
+    const verborgen = document.createElement('div');
+    verborgen.setAttribute('data-search-trigger', '');
+    verborgen.getBoundingClientRect = () => ({ width: 0, height: 0 });
+    const zichtbaar = document.createElement('div');
+    zichtbaar.setAttribute('data-search-trigger', '');
+    zichtbaar.getBoundingClientRect = () => ({ width: 120, height: 40 });
+    document.body.append(verborgen, zichtbaar);
+
+    const breedte = { waarde: 1280 };
+    const { verander } = stubMatchMedia(breedte);
+    const wrapper = mount(SearchPopover);
+    const el = wrapper.find('nldd-popover').element;
+    const staat = { open: false };
+    el.show = () => {
+      staat.open = true;
+    };
+    el.matches = (selector) => selector === ':popover-open' && staat.open;
+    el.reposition = vi.fn();
+
+    await wrapper.vm.show(verborgen);
+    expect(el.anchorElement).toBe(verborgen);
+
+    verander(768);
+    await nextTick();
+    expect(el.anchorElement).toBe(zichtbaar);
+
+    verborgen.remove();
+    zichtbaar.remove();
+  });
+
+  it('laat een gesloten popover met rust', async () => {
+    const breedte = { waarde: 1280 };
+    const { verander } = stubMatchMedia(breedte);
+    const wrapper = mount(SearchPopover);
+    const el = wrapper.find('nldd-popover').element;
+    el.matches = () => false;
+    el.reposition = vi.fn();
+
+    verander(768);
+    await nextTick();
+    expect(el.reposition).not.toHaveBeenCalled();
+  });
+});

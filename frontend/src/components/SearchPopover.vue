@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { useBwbSearch, MIN_QUERY_LENGTH } from '../composables/useBwbSearch.js';
 import { useBwbHarvest } from '../composables/useBwbHarvest.js';
 import { useAuth } from '../composables/useAuth.js';
@@ -209,6 +209,94 @@ function selectLaw(lawId) {
 }
 
 /**
+ * Pick the presentation for the current viewport.
+ *
+ * On lg the popover is centered top (large dropdown overlay style). On md it
+ * anchors below the trigger button (Floating UI placement), matching the
+ * smaller toolbar's button-as-trigger feel. On sm it renders as a full-height
+ * sheet (CSS-driven).
+ *
+ * Re-run on resize while open, not only on open: crossing a breakpoint with
+ * the popover up otherwise leaves it in the previous viewport's layout — an
+ * lg-centered panel floating loose at md, or an md-anchored panel still
+ * pointing at a button that has since become the wide search field. Closing on
+ * resize would be simpler but throws away what the user was typing.
+ */
+const lgQuery = window.matchMedia(`(min-width: ${BREAKPOINT_LG_MIN}px)`);
+const mdQuery = window.matchMedia(
+  `(min-width: ${BREAKPOINT_MD_MIN}px) and (max-width: ${BREAKPOINT_LG_MIN - 1}px)`,
+);
+
+function applyBreakpointLayout() {
+  useCenteredPosition.value = lgQuery.matches;
+  isAnchored.value = mdQuery.matches;
+}
+
+/**
+ * The trigger that is on screen right now.
+ *
+ * Each viewport shows its own trigger (the wide search field on lg, the
+ * "Zoeken" button on md, the icon on sm) and hides the others. The anchor
+ * captured when the popover opened therefore goes zero-sized after a
+ * breakpoint change, and Floating UI parks the panel in the top-left corner.
+ * The app shell marks all three with data-search-trigger so we can re-anchor
+ * without knowing the shell's layout.
+ */
+function visibleTrigger() {
+  return (
+    [...document.querySelectorAll('[data-search-trigger]')].find((el) => {
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    }) ?? null
+  );
+}
+
+/**
+ * Keep an open popover in step with the viewport.
+ *
+ * Bound to both the media queries and `resize`: the media queries are the
+ * precise signal, `resize` also catches an anchor that goes zero-sized without
+ * a breakpoint being crossed. Both paths are cheap — this returns immediately
+ * while closed, and while nothing that matters has moved.
+ */
+async function syncToViewport() {
+  if (!popoverRef.value?.matches?.(':popover-open')) return;
+  const wasCentered = useCenteredPosition.value;
+  const wasAnchored = isAnchored.value;
+  applyBreakpointLayout();
+  const anchor = popoverRef.value.anchorElement;
+  const anchorHidden = !anchor || anchor.getBoundingClientRect().width === 0;
+  const layoutChanged =
+    useCenteredPosition.value !== wasCentered || isAnchored.value !== wasAnchored;
+  if (!layoutChanged && !anchorHidden) return;
+  const trigger = visibleTrigger();
+  if (trigger) popoverRef.value.anchorElement = trigger;
+  // Let the changed centered/top/width props reach the element before asking
+  // it to recompute — same ordering reason as in show().
+  await nextTick();
+  popoverRef.value.reposition?.();
+}
+
+// Snapshot of the open state taken before the browser's light-dismiss runs;
+// see show() for why the click handler cannot read it itself.
+let wasOpenOnPointerdown = false;
+function onDocumentPointerdown() {
+  wasOpenOnPointerdown = popoverRef.value?.matches?.(':popover-open') ?? false;
+}
+onMounted(() => {
+  document.addEventListener('pointerdown', onDocumentPointerdown, true);
+  lgQuery.addEventListener('change', syncToViewport);
+  mdQuery.addEventListener('change', syncToViewport);
+  window.addEventListener('resize', syncToViewport);
+});
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', onDocumentPointerdown, true);
+  lgQuery.removeEventListener('change', syncToViewport);
+  mdQuery.removeEventListener('change', syncToViewport);
+  window.removeEventListener('resize', syncToViewport);
+});
+
+/**
  * Public API: open the popover anchored to the given trigger element.
  * Parent calls this from its trigger click/focus handlers and passes
  * `event.currentTarget` (or any DOM element) as the anchor. We set
@@ -222,16 +310,32 @@ function selectLaw(lawId) {
  * initial query in the popover. Stashed in `pendingSearch` and applied by
  * onPopoverOpen (the listbox's input only exists once it's rendered).
  */
-async function show(anchorEl, initialSearch = '') {
+async function show(anchorEl, initialSearch = '', event) {
   if (!popoverRef.value) return;
+  // A second click on the trigger closes again. The triggers live in the app
+  // shell and this popover in the routed view, so the button is not the
+  // popover's invoker and the browser gives us no toggle for free.
+  //
+  // Reading the open state here would be too late for a pointer click: the
+  // popover light-dismisses on pointerdown, so by the time this runs it is
+  // already closed and re-opening looks like nothing happened. Hence the
+  // pointerdown snapshot, mirroring the design system's PopupAnchorController.
+  // A keyboard activation has no preceding pointerdown (detail === 0), so it
+  // reads the live state instead of a stale snapshot.
+  //
+  // Only for a plain re-trigger: type-to-open passes a character and should
+  // keep the popover open and seed it.
+  const pointerDriven = (event?.detail ?? 0) > 0;
+  const wasOpen = pointerDriven
+    ? wasOpenOnPointerdown
+    : (popoverRef.value.matches?.(':popover-open') ?? false);
+  if (!initialSearch && wasOpen) {
+    close();
+    return;
+  }
   if (anchorEl) popoverRef.value.anchorElement = anchorEl;
   pendingSearch.value = initialSearch;
-  // On lg the popover is centered top (large dropdown overlay style).
-  // On md it anchors below the trigger button (Floating UI placement),
-  // matching the smaller toolbar's button-as-trigger feel.
-  // On sm the popover renders as a full-height sheet (CSS-driven).
-  useCenteredPosition.value = window.matchMedia(`(min-width: ${BREAKPOINT_LG_MIN}px)`).matches;
-  isAnchored.value = window.matchMedia(`(min-width: ${BREAKPOINT_MD_MIN}px) and (max-width: ${BREAKPOINT_LG_MIN - 1}px)`).matches;
+  applyBreakpointLayout();
   // Wait for Vue to propagate the new `centered` / `top` / `width` props
   // onto the popover element before opening - otherwise the first
   // reposition() inside the popover's toggle handler runs against the
