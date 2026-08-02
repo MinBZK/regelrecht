@@ -63,6 +63,10 @@ const RUST_WIDE = [
   'packages/Cargo.toml',
   'packages/.cargo/',
   'rust-toolchain.toml',
+  // Elk Rust-image doet `COPY schema/ /schema/`, en corpus bakt er een schema
+  // uit in met `include_str!`. Zonder deze regel levert een schemawijziging
+  // stille, verouderde images op.
+  'schema/',
 ];
 
 export function workspaceGraph() {
@@ -124,6 +128,14 @@ export function prefixesFor(spec, graph) {
 // Welke componenten raakt deze lijst gewijzigde bestanden? Een lege lijst
 // betekent "we weten het niet" en dus alles bouwen, dezelfde kant op als de
 // fallback: een overbodige build is goedkoper dan een stille overslag.
+// Een Dockerfile in een cratemap hoort niet bij de crate maar bij het image dat
+// hem gebruikt. Zonder dit onderscheid zet een wijziging in
+// packages/pipeline/Dockerfile ook editor en admin op true, want die hangen via
+// de graaf aan pipeline terwijl ze die Dockerfile niet gebruiken: twee builds
+// van een kwartier voor niets. Welke component welke Dockerfile gebruikt staat
+// in `paths`, en dat blijft handwerk omdat het niet uit de graaf volgt.
+const isDockerfile = (file) => /(^|\/)Dockerfile[^/]*$/.test(file);
+
 export function componentsFor(changed, graph) {
   const result = {};
   const unknown = changed.length === 0;
@@ -132,8 +144,13 @@ export function componentsFor(changed, graph) {
       result[name] = true;
       continue;
     }
-    const prefixes = prefixesFor(spec, graph);
-    result[name] = changed.some((file) => prefixes.some((p) => file.startsWith(p)));
+    const explicit = spec.paths;
+    const derived = prefixesFor(spec, graph).filter((p) => !explicit.includes(p));
+    result[name] = changed.some(
+      (file) =>
+        explicit.some((p) => file.startsWith(p)) ||
+        (!isDockerfile(file) && derived.some((p) => file.startsWith(p))),
+    );
   }
   return result;
 }
