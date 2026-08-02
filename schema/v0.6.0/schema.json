@@ -1458,6 +1458,10 @@
                 "type": "string",
                 "description": "The regulation the article itself names as the one that fills this term (e.g. 'Regeling zorgverzekering'), a BWB id when the text carries one. Which regulation is meant is a property of the law, so it belongs here, next to delegated_to and delegation_type. Whether that regulation is currently in the corpus is not: that changes without the law changing, and it belongs to the resolve step."
               },
+              "decided_per_case_by": {
+                "type": "string",
+                "description": "The authority that fills this norm in the individual case while no general specification exists, with the article that makes it competent. Which authority may decide is a property of the law, so it belongs here. Its answer needs a motivation (Awb 3:46) and is part of the besluit rather than a ground for it, which is what separates a discretionary power from a value that is merely missing."
+              },
               "legal_basis": {
                 "type": "string",
                 "description": "Legal basis text (e.g., 'artikel 4 Wet op de zorgtoeslag')"
@@ -1679,6 +1683,7 @@
             "required": [
               "about",
               "resolution",
+              "resolved_by",
               "target",
               "legal_text_excerpt"
             ],
@@ -1697,7 +1702,7 @@
               },
               "resolved_by": {
                 "type": "string",
-                "description": "The change that would resolve it, named concretely enough to become work (e.g. 'Een YEAR-bewerking die het jaardeel van een datum oplevert'). Grouping markings by this field is how the backlog of missing operations is read off the corpus."
+                "description": "The change that would resolve it, named concretely enough to become work (e.g. 'Een YEAR-bewerking die het jaardeel van een datum oplevert', or the shape the format lacks). Required, and it is the field that keeps resolution: model from becoming the bin everything awkward falls into: a marking that cannot say what would fix it has not been diagnosed. Grouping markings by this field is how the backlog is read off the corpus."
               },
               "target": {
                 "type": "array",
