@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json",
-  "title": "Machine-Readable Dutch Law Schema v0.5.6",
+  "title": "Machine-Readable Dutch Law Schema v0.6.0",
   "description": "Article-based schema for machine-readable representation of Dutch laws and regulations",
   "type": "object",
   "required": [
@@ -1437,7 +1437,26 @@
               },
               "delegation_type": {
                 "type": "string",
-                "description": "The regulatory layer the article requires of the implementation (e.g. 'MINISTERIELE_REGELING'). An implementation at another layer does not fill this term."
+                "enum": [
+                  "GRONDWET",
+                  "WET",
+                  "AMVB",
+                  "KONINKLIJK_BESLUIT",
+                  "MINISTERIELE_REGELING",
+                  "BELEIDSREGEL",
+                  "EU_VERORDENING",
+                  "EU_RICHTLIJN",
+                  "VERDRAG",
+                  "UITVOERINGSBELEID",
+                  "GEMEENTELIJKE_VERORDENING",
+                  "PROVINCIALE_VERORDENING",
+                  "WATERSCHAPS_VERORDENING"
+                ],
+                "description": "The regulatory layer the article requires of the implementation. An implementation at another layer does not fill this term: delegation is a question of competence, and a regulation that takes on what the law did not delegate to it has nothing to give. Closed here rather than free text, so a misspelling is caught when the file is written instead of years later when the filling regulation is finally harvested."
+              },
+              "expected_source": {
+                "type": "string",
+                "description": "The regulation the article itself names as the one that fills this term (e.g. 'Regeling zorgverzekering'), a BWB id when the text carries one. Which regulation is meant is a property of the law, so it belongs here, next to delegated_to and delegation_type. Whether that regulation is currently in the corpus is not: that changes without the law changing, and it belongs to the resolve step."
               },
               "legal_basis": {
                 "type": "string",
