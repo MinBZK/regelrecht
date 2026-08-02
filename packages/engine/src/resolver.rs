@@ -27,6 +27,7 @@ use crate::error::{EngineError, Result};
 use crate::priority::{self, Candidate};
 use crate::types::Value;
 use chrono::NaiveDate;
+use regelrecht_shared::RegulatoryLayer;
 use std::collections::HashMap;
 
 /// Why a law version could not be selected for a reference date.
@@ -410,6 +411,16 @@ impl RuleResolver {
                 _ => return false,
             }
         }
+        if let Some(ref law_provincie) = law.provincie_code {
+            let scope_value = scope.get("provincie_code").and_then(|v| match v {
+                Value::String(s) => Some(s.as_str()),
+                _ => None,
+            });
+            match scope_value {
+                Some(sp) if sp == law_provincie => {}
+                _ => return false,
+            }
+        }
         if let Some(ref law_waterschap) = law.waterschap_code {
             let scope_value = scope.get("waterschap_code").and_then(|v| match v {
                 Value::String(s) => Some(s.as_str()),
@@ -421,6 +432,67 @@ impl RuleResolver {
             }
         }
         true
+    }
+
+    /// The `delegation_type` an open term requires of its implementations.
+    ///
+    /// Returns `None` when the declaring law, article or term cannot be found,
+    /// or when the term names no layer — all four mean the same thing here: the
+    /// law demands nothing of the layer, so every layer may fill the term.
+    fn required_delegation_type(
+        &self,
+        law_id: &str,
+        article: &str,
+        open_term_id: &str,
+        reference_date: Option<NaiveDate>,
+    ) -> Option<&str> {
+        self.get_law_for_date(law_id, reference_date)?
+            .find_article_by_number(article)?
+            .get_open_terms()?
+            .iter()
+            .find(|t| t.id == open_term_id)?
+            .delegation_type
+            .as_deref()
+    }
+
+    /// Whether `law` may fill an open term that requires `delegation_type`.
+    ///
+    /// Delegation is a question of competence, not of precedence: an article
+    /// that reserves a term for a ministeriële regeling has not authorised a
+    /// beleidsregel to fill it, and a beleidsregel that does so anyway is not a
+    /// weaker implementation but no implementation at all. So the gate sits
+    /// *before* [`priority::resolve_candidate`], which ranks implementations
+    /// that are all competent.
+    ///
+    /// A mismatching layer is rejected silently, the way
+    /// [`Self::matches_scope`] rejects a regulation from another municipality:
+    /// the candidate simply is not one, and a competent candidate lower in the
+    /// ranking should still be able to win. Erroring here would let an
+    /// unauthorised regulation take the whole resolution down with it, and it
+    /// would also make "no implementation found" — which the caller already
+    /// handles, via the open term's `default` or its `required` flag —
+    /// unreachable for exactly the case where the law never granted anyone the
+    /// power in the first place.
+    ///
+    /// A `delegation_type` that names no known regulatory layer is a different
+    /// matter and is an error. Comparing an unknown string against every layer
+    /// would silently reject every candidate, so the engine would answer "no
+    /// implementation" to a question it did not understand. That is the same
+    /// reason `compare_law_priority` errors on an unresolvable collision rather
+    /// than guessing.
+    fn matches_delegation(
+        law: &ArticleBasedLaw,
+        declaring_law_id: &str,
+        open_term_id: &str,
+        delegation_type: &str,
+    ) -> Result<bool> {
+        if RegulatoryLayer::from_yaml_str(delegation_type).is_none() {
+            return Err(EngineError::ResolutionError(format!(
+                "Open term '{open_term_id}' on {declaring_law_id} declares delegation_type \
+                 '{delegation_type}', which is not a known regulatory layer"
+            )));
+        }
+        Ok(law.regulatory_layer.as_str() == delegation_type)
     }
 
     /// Looks up the implements index for regulations that declare they fill
@@ -460,6 +532,11 @@ impl RuleResolver {
             "Finding implementations for open term"
         );
 
+        // What layer the declaring article demands of an implementation. Absent
+        // means the law demands nothing, and then every layer may fill the term.
+        let delegation_type =
+            self.required_delegation_type(law_id, article, open_term_id, reference_date);
+
         // Resolve each candidate to actual (law, article) references
         let mut candidates: Vec<Candidate> = Vec::new();
         let mut resolved: Vec<(&ArticleBasedLaw, &Article)> = Vec::new();
@@ -479,6 +556,20 @@ impl RuleResolver {
                     "Skipping: scope fields do not match execution parameters"
                 );
                 continue;
+            }
+
+            // Delegation gate: a layer the declaring article did not authorise
+            // is not a weaker candidate but no candidate at all.
+            if let Some(expected) = delegation_type {
+                if !Self::matches_delegation(law, law_id, open_term_id, expected)? {
+                    tracing::debug!(
+                        candidate = %entry.law_id,
+                        candidate_layer = %law.regulatory_layer.as_str(),
+                        delegation_type = %expected,
+                        "Skipping: regulatory_layer is not the layer the open term delegates to"
+                    );
+                    continue;
+                }
             }
 
             let Some(art) = law
@@ -1681,6 +1772,215 @@ articles:
         // Winner (newest) should be first
         assert_eq!(results[0].0.id, "regeling_standaardpremie");
         assert_eq!(results[1].0.id, "regeling_standaardpremie_2024");
+    }
+
+    // -------------------------------------------------------------------------
+    // Delegation gate: who the law authorises to fill an open term
+    // -------------------------------------------------------------------------
+
+    /// A beleidsregel claiming an open term that the law reserves for a
+    /// ministeriële regeling. Uitvoeringsbeleid is not an algemeen verbindend
+    /// voorschrift, so it cannot fill a delegated term however recent it is.
+    fn make_beleidsregel_claiming_standaardpremie() -> &'static str {
+        r#"
+$id: beleidsregel_standaardpremie
+regulatory_layer: BELEIDSREGEL
+publication_date: '2026-01-01'
+valid_from: '2026-01-01'
+articles:
+  - number: '1'
+    text: De standaardpremie bedraagt 2500
+    machine_readable:
+      implements:
+        - law: wet_op_de_zorgtoeslag
+          article: '4'
+          open_term: standaardpremie
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: 2500
+"#
+    }
+
+    #[test]
+    fn test_find_implementations_rejects_wrong_delegation_layer() {
+        let mut resolver = RuleResolver::new();
+
+        resolver.load_from_yaml(make_law_with_open_term()).unwrap();
+        resolver
+            .load_from_yaml(make_beleidsregel_claiming_standaardpremie())
+            .unwrap();
+
+        // The declaration is indexed — the gate is about competence, not indexing.
+        assert_eq!(resolver.implements_count(), 1);
+
+        let results = resolver
+            .find_implementations(
+                "wet_op_de_zorgtoeslag",
+                "4",
+                "standaardpremie",
+                None,
+                &HashMap::new(),
+            )
+            .unwrap();
+        assert!(
+            results.is_empty(),
+            "a BELEIDSREGEL may not fill a term delegated to a MINISTERIELE_REGELING"
+        );
+    }
+
+    /// The gate must not merely demote an unauthorised candidate: the
+    /// ministeriële regeling wins even though the beleidsregel is newer, and
+    /// the beleidsregel does not appear among the results at all.
+    #[test]
+    fn test_find_implementations_wrong_layer_does_not_shadow_authorised_one() {
+        let mut resolver = RuleResolver::new();
+
+        resolver.load_from_yaml(make_law_with_open_term()).unwrap();
+        resolver
+            .load_from_yaml(make_beleidsregel_claiming_standaardpremie())
+            .unwrap();
+        resolver
+            .load_from_yaml(make_implementing_regulation())
+            .unwrap();
+
+        let results = resolver
+            .find_implementations(
+                "wet_op_de_zorgtoeslag",
+                "4",
+                "standaardpremie",
+                None,
+                &HashMap::new(),
+            )
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0.id, "regeling_standaardpremie");
+    }
+
+    /// An open term without a `delegation_type` demands nothing of the layer,
+    /// so uitvoeringsbeleid may fill it.
+    #[test]
+    fn test_find_implementations_without_delegation_type_accepts_any_layer() {
+        let mut resolver = RuleResolver::new();
+
+        resolver
+            .load_from_yaml(
+                r#"
+$id: wet_zonder_delegatie
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het bestuursorgaan handelt redelijkerwijs
+    machine_readable:
+      open_terms:
+        - id: redelijke_termijn_dagen
+          type: number
+          required: true
+"#,
+            )
+            .unwrap();
+        resolver
+            .load_from_yaml(
+                r#"
+$id: beleid_redelijke_termijn
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Een redelijke termijn is acht weken
+    machine_readable:
+      implements:
+        - law: wet_zonder_delegatie
+          article: '1'
+          open_term: redelijke_termijn_dagen
+      execution:
+        output:
+          - name: redelijke_termijn_dagen
+            type: number
+        actions:
+          - output: redelijke_termijn_dagen
+            value: 56
+"#,
+            )
+            .unwrap();
+
+        let results = resolver
+            .find_implementations(
+                "wet_zonder_delegatie",
+                "1",
+                "redelijke_termijn_dagen",
+                None,
+                &HashMap::new(),
+            )
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0.id, "beleid_redelijke_termijn");
+    }
+
+    /// A `delegation_type` naming no known layer is an error, not a silent
+    /// rejection of everything: the engine must not answer "no implementation"
+    /// to a question it did not understand.
+    #[test]
+    fn test_find_implementations_unknown_delegation_type_is_error() {
+        let mut resolver = RuleResolver::new();
+
+        resolver
+            .load_from_yaml(
+                r#"
+$id: wet_met_typo
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Bij ministeriele regeling wordt het bedrag vastgesteld
+    machine_readable:
+      open_terms:
+        - id: bedrag
+          type: amount
+          required: true
+          delegation_type: MINISTERIELE_REGELIN
+"#,
+            )
+            .unwrap();
+        resolver
+            .load_from_yaml(
+                r#"
+$id: regeling_bedrag
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het bedrag bedraagt 100
+    machine_readable:
+      implements:
+        - law: wet_met_typo
+          article: '1'
+          open_term: bedrag
+      execution:
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 100
+"#,
+            )
+            .unwrap();
+
+        let err = resolver
+            .find_implementations("wet_met_typo", "1", "bedrag", None, &HashMap::new())
+            .unwrap_err();
+        assert!(
+            matches!(err, EngineError::ResolutionError(ref m)
+                if m.contains("MINISTERIELE_REGELIN") && m.contains("not a known regulatory layer")),
+            "unexpected error: {err:?}"
+        );
     }
 
     #[test]

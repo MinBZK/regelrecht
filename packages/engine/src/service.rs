@@ -1839,24 +1839,10 @@ impl LawExecutionService {
                 }
             };
 
+            // Every candidate that survives `find_implementations` is competent:
+            // the resolver drops implementations whose regulatory_layer is not
+            // the layer the open term delegates to, before priority ranking.
             if let Some((impl_law, impl_article)) = implementations.first() {
-                // Validate that the implementing regulation's layer matches the
-                // delegation_type declared on the open term (if specified).
-                if let Some(ref expected_type) = term.delegation_type {
-                    let actual_layer = impl_law.regulatory_layer.as_str();
-                    if actual_layer != expected_type {
-                        res_ctx.trace_set_message(format!(
-                            "Open term '{}': implementation {} has regulatory_layer {} but delegation_type requires {}",
-                            term.id, impl_law.id, actual_layer, expected_type
-                        ));
-                        res_ctx.leave(&ot_key);
-                        return Err(EngineError::ResolutionError(format!(
-                            "Implementation {} for open term '{}' has regulatory_layer {} but delegation_type requires {}",
-                            impl_law.id, term.id, actual_layer, expected_type
-                        )));
-                    }
-                }
-
                 tracing::debug!(
                     open_term = %term.id,
                     implementing_law = %impl_law.id,
@@ -3891,6 +3877,58 @@ articles:
             result.outputs.get("standaardpremie"),
             Some(&Value::Int(1928))
         );
+    }
+
+    /// End to end: a beleidsregel that declares it fills a term the law reserves
+    /// for a ministeriële regeling leaves that term unresolved. The execution
+    /// fails on the required open term, not on the beleidsregel's value —
+    /// nobody the law authorised has spoken.
+    #[test]
+    fn test_ioc_unauthorised_layer_leaves_required_open_term_unresolved() {
+        let mut service = LawExecutionService::new();
+        service.load_law(make_law_with_open_term()).unwrap();
+        service
+            .load_law(
+                r#"
+$id: beleidsregel_sp_ioc
+regulatory_layer: BELEIDSREGEL
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: De standaardpremie bedraagt 2500
+    machine_readable:
+      implements:
+        - law: zorgtoeslag_ioc
+          article: '4'
+          open_term: standaardpremie
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: 2500
+"#,
+            )
+            .unwrap();
+
+        let result = service.evaluate_law_output(
+            "zorgtoeslag_ioc",
+            "standaardpremie",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
+
+        match result {
+            Err(EngineError::ResolutionError(msg)) => {
+                assert!(
+                    msg.contains("standaardpremie") && msg.contains("no implementation"),
+                    "expected an unresolved-open-term error, got: {msg}"
+                );
+            }
+            other => panic!("expected ResolutionError, got: {other:?}"),
+        }
     }
 
     #[test]
