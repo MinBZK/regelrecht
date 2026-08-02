@@ -1,119 +1,383 @@
 ---
 name: law-generate
 description: >
-  Generates machine_readable execution logic for Dutch law YAML files through an
-  iterative generate-validate-test loop. Creates machine_readable sections,
-  validates against the schema, runs BDD tests, and iterates until correct
-  (up to 3 iterations). Use this skill proactively when: editing or creating
-  machine_readable sections in law YAML files, working with corpus regulation
-  files, or when user mentions 'generate', 'machine_readable', or wants to make
-  a law executable. Activate automatically when user discusses law YAML files
-  that need executable logic.
+  Generates machine_readable execution logic for Dutch law YAML files: writes the
+  machine_readable sections, validates against the schema, and (when a shell is
+  available) runs the BDD suites until the model is correct. Use this skill
+  proactively when: editing or creating machine_readable sections in law YAML
+  files, working with corpus regulation files, or when user mentions 'generate',
+  'machine_readable', or wants to make a law executable. Activate automatically
+  when user discusses law YAML files that need executable logic.
 allowed-tools: Read, Edit, Write, Bash, Grep, Glob
 user-invocable: true
 ---
 
-# Law Generate — Generate→Validate→Test Loop
+# Law Generate
 
-Generates `machine_readable` sections for Dutch law YAML files through an iterative
-cycle of creation, validation, and BDD testing.
+Writes `machine_readable` sections for Dutch law YAML files against
+`schema/latest/schema.json`. The schema is the single source of truth and
+`just validate` is the arbiter. When in doubt, read the schema.
 
-**CRITICAL**: All generated YAML MUST pass `just validate <file>`. The schema is the
-single source of truth. When in doubt, consult `schema/latest/schema.json` and study
-working examples in the corpus.
+## The rule that outranks the rest
+
+**The specification describes what the legal text says, not what the legislature
+meant.** You translate the words in the `text` field of the entry you are
+working on. Nothing else.
+
+This goes wrong through competence. You will read an article, see which outcome
+is evidently intended, and model the shortest route to that outcome. That route
+is almost always simpler than the text, and it is almost always wrong: it drops a
+condition the text states, or supplies one the text does not, and the model then
+produces the right answer for the wrong reason until a case arrives where the
+intent and the text part ways.
+
+So no shortcuts and no repair of a provision that reads badly. When faithfulness
+to the text yields something other than what was evidently intended, that is the
+correct result, and it is the kind of finding this corpus exists to surface.
+Record it and move on. Where the text genuinely cannot be followed, say so with a
+marking or an open term, both described below, and never by quietly modelling the
+intent instead.
 
 ## Setup
 
-1. Read the target law YAML file
-2. Read reference examples as few-shot context:
-   - `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` — basic patterns, IF/cases, cross-law references
-   - `corpus/regulation/nl/wet/algemene_wet_bestuursrecht/2026-01-01.yaml` — hooks, procedures, DATE_ADD
-   - `corpus/regulation/nl/wet/vreemdelingenwet_2000/2026-01-01.yaml` — overrides (lex specialis)
-3. Read the schema reference: `.claude/skills/law-generate/reference.md`
-4. Read the examples: `.claude/skills/law-generate/examples.md`
-5. Read an existing feature file as Gherkin reference:
-   `corpus/regulation/nl/wet/participatiewet/scenarios/bijstand.feature`
-6. Count articles; if >20 articles, process in batches of ~15
+1. Read the target law YAML file.
+2. Read `reference.md` (schema shapes) and `examples.md` (worked patterns) in
+   this skill directory.
+3. Count the entries. Over 20, work in batches of roughly 15.
 
-**Explicit article subset (chunked enrichment):** when the enrichment prompt
-supplies an explicit list of article numbers to process, that subset defines
-your entire scope. The internal batching above applies *within that subset*
-only, and every article outside the subset must be left completely untouched —
-do not add, edit, or remove `machine_readable` sections elsewhere in the file.
-The pipeline processes the remaining articles in later runs.
+Do not read another corpus law as a template. The existing corpus predates
+several of the rules below and copying its habits reproduces its defects;
+`examples.md` carries the patterns that are current.
 
-## FUNDAMENTAL RULE: Stay Within Scope
+**Explicit article subset (chunked enrichment):** when the prompt supplies a list
+of article numbers, that subset is your entire scope. Leave every entry outside
+it untouched. Later runs handle the rest.
 
-Each `machine_readable` section must faithfully interpret ONLY the legal provision it
-belongs to — nothing more, nothing less. The scope is defined by the text field of the
-article, lid, or provision that the machine_readable is attached to.
+## Scope covers only this provision, and all of it
 
-**Why this matters:** The purpose of machine-readable law is to execute what the law says,
-not what an engineer thinks is efficient. It is very tempting for the engineering mind to
-optimize: to combine conditions from multiple articles into one check, to pull in eligibility
-rules from elsewhere "because they're needed anyway", or to hardcode values that technically
-come from another provision. Resist this temptation. The whole point is to follow the law
-very strictly, even when the law is illogical, redundant, or inefficient.
+Each `machine_readable` interprets ONLY the text of its own entry.
 
-**Scope violations to avoid:**
-- Do NOT add conditions from other articles. If article 2 says "de verzekerde heeft
-  aanspraak op zorgtoeslag" and the age requirement comes from article 11 of another law,
-  do NOT put `leeftijd >= 18` in article 2's machine_readable. Instead, use a cross-law
-  reference (`source.regulation`) to let the other article determine eligibility.
-- Do NOT hardcode values that come from other provisions. If article 2 uses "drempelinkomen"
-  but the amount is set by a ministerial regulation, declare it as an `open_term` or
-  `input` with `source`, not as a `definition`.
-- Do NOT combine multiple leden into one action unless the law text explicitly combines them.
-  If lid 1 sets a base rule and lid 4 adds an exception, model them as separate outputs
-  or use the structure the text prescribes.
-- Do NOT add "obvious" conditions that aren't in the text. If the article doesn't mention
-  an age check, don't add one — even if you know it's required by another article.
+**Do not pull anything in.** No conditions from other articles, no hardcoded
+values that another provision sets, no "obvious" requirement the text does not
+mention, no merging of two leden the text keeps apart. If article 2 grants an
+entitlement and the age requirement sits in article 11 of another law, article 2
+gets a cross-law `input`, not an inline `leeftijd >= 18`.
 
-**The rule cuts both ways, and the second half is easier to forget.** Everything
-above punishes pulling a condition in. Nothing above punishes producing a
-condition that then restricts nothing, and that is the failure this corpus
-actually has.
+**And do not leave a condition unconnected.** This half is easier to forget, and
+it is the half this corpus actually gets wrong. If your entry produces an output
+that expresses a restriction (an age test, an asset test, an insurance
+requirement), some entry has to read it. Where the restriction belongs to the
+entitlement in *this* entry, this model reads it. Where it belongs elsewhere, the
+entry that grants the entitlement reads it across a `source` binding, and that is
+not a scope violation: the condition it then carries is "geen aanspraak op grond
+van artikel 3", which its own text does refer to.
 
-If your article produces an output that expresses a restriction (an age test, an
-asset test, an insurance requirement), some article must read it. Where the
-restriction belongs to the entitlement in *this* article, this model reads it.
-Where it belongs elsewhere, the article that grants the entitlement reads it
-across a `source` binding. An output that nothing consumes is not a faithful
-translation held at arm's length; it is a restriction that does not restrict.
+An output that nothing consumes is not caution. It is a restriction that does not
+restrict. Measured on the zorgtoeslag in round 3: the age test of article 1 and
+the asset test of article 3 were both produced and neither was ever read. The
+model granted the allowance to a sixteen-year-old and to a millionaire, and every
+individual article looked correct.
 
-Measured on the zorgtoeslag in round 3: the age test of article 1 and the asset
-test of article 3 were both produced and neither was ever read. The model grants
-the allowance to a sixteen-year-old and to a millionaire, and every individual
-article looks correct.
+Binding to an entry outside your chunk is allowed and expected. Editing your own
+entry to add a binding is not editing another entry.
 
-**One convention that is not a scope question but breaks in the same place.**
-Pick the money unit of the law you bind to, and if the two conventions differ,
-say so in a `norm_gap` or an `untranslatable` rather than converting silently.
-`unit` is a label and never a conversion (RFC-023), so two labels on one binding
-mean a factor is missing. Round 3 had the zorgtoeslag in eurocent and the Awir
-in euro, each internally consistent, and the same person came out at € 827,63 or
-€ 1.550,46 depending on which file you believed.
+**The law may be inefficient, redundant or circular. Model it as written.**
 
-**What to do instead:**
-- Use `input` with `source.regulation` to reference other laws
-- Use `input` with `source.output` to reference other articles in the same law
-- Use `open_terms` for values delegated to lower regulations
-- If an article is a pure orchestration point (like "het college stelt het recht vast"),
-  model it as cross-law references to the articles that define the substantive rules,
-  not as a reimplementation of those rules
+## Aanhef and onderdelen are one norm in several entries
 
-**The law may be inefficient. That's fine. Model it as written.**
+The corpus splits below article level. A lid with an enumeration is stored as one
+entry for the aanhef (`3.2`) and one per onderdeel (`3.2.a` to `3.2.f`), each
+with its own `text` and its own place for a `machine_readable`. Neither entry
+states a rule on its own.
 
-## Phase 1: Generate `machine_readable` Sections
+**The model for such a lid goes on the aanhef entry; the onderdeel entries stay
+without a `machine_readable`.** The aanhef carries the operative words ("wordt
+mede verstaan onder partner degene die ... en:"), so it is the only entry whose
+text names what is being decided. Each onderdeel then appears in that model as
+its own named parameter or intermediate output, with the onderdeel letter in its
+`description` and its own `legal_basis`, so a reader can still see which onderdeel
+produced which branch. The condition the aanhef states applies to all of them and
+is modelled once, as an `AND` around the `OR` of the onderdelen.
 
-For each article with computable logic, generate the `machine_readable` section.
+Modelling an onderdeel by itself drops that condition silently. In round 3
+`is_partner_op_grond_van_erkenning` came out as a bare `OR` of the two
+erkenningsvormen, without the requirement that both are registered at the same
+woonadres, which makes the rule wider than the law.
 
-### Action Format (CRITICAL — two valid patterns)
+An onderdeel that is a self-standing definition ("Onze Minister: Onze Minister
+van Volksgezondheid, Welzijn en Sport") is the exception: it states a complete
+norm and carries its own model.
 
-Actions are the core of the execution logic. Each action MUST have an `output` field.
-There are **two valid patterns** for specifying what to compute:
+## The four roads at a hard spot
 
-**Pattern 1: `value` — for assignments, comparisons, conditionals, and logical ops**
+At every place where an entry resists translation, exactly one of these applies.
+Work down the list in order and take the first that fits. Round 4 chose the
+cheapest road structurally, and the cheapest road is the last one.
+
+**1. The value comes from another law or another article: bind to it.**
+"de schadeverzekering, bedoeld in artikel 1, onder d, van de Zorgverzekeringswet"
+is not a gap. It is an `input` with `source.regulation` and `source.output`. That
+the target law is not in the corpus yet changes nothing about the entry: whether
+a regulation has been harvested is a state of the corpus, it is fixed by
+harvesting, and it does not belong in the law file. Write the binding and leave
+it standing. In round 4, 43 of the 101 norm gaps were cross-law references
+written up as gaps.
+
+**2. The law leaves the content open and a lower regulation or implementing
+policy fills it: `open_terms`.** "Bij ministeriële regeling wordt de
+standaardpremie vastgesteld" is a complete legal instruction that lacks a number.
+So is "voor zover dat redelijk is", "zo spoedig mogelijk" and "onverwijld": the
+law states a norm and leaves its content to be filled. Where the article names
+who fills it, `delegated_to` and `delegation_type` say so; where it names nobody,
+those fields stay absent and any competent authority fills the term through
+implementing policy with a motivation. The concept does not change with the
+question whether the law appoints a filler.
+
+**3. The format cannot express the construct: `markings`.** The words are clear
+and the language has no shape for them. See below.
+
+**4. None of the above: model it.** Most articles land here, including many that
+look procedural at first read.
+
+Two mistakes from round 4 come straight from skipping this list. "Zo spoedig
+mogelijk" and "onverwijld" were marked as untranslatable while they are open
+norms (road 2). The citeertitel was marked as untranslatable while `declares`
+exists for exactly that (road 4, see Declarations below).
+
+**Silence is never one of the roads.** An entry you pass over without a word is
+indistinguishable from an entry nobody read, and a check now reports it as such.
+Look hard before concluding an entry carries nothing: going through the Awir and
+the zorgtoeslag entry by entry turned up almost none, and every candidate turned
+out to be a kind of provision nobody had looked for. A definition by reference is
+a cross-law binding. A naming provision ("de normpremie: de aan de hand van het
+drempelinkomen berekende premie") belongs to an output another entry computes.
+Even the citation title fixes what every execution trace calls this law.
+
+**A provision that limits what the administration may do is never passed over.**
+Limitation periods, minimum and maximum amounts, rounding floors, hardship
+clauses, revision windows, exclusions, transitional law: these bound the
+citizen's exposure, and leaving them out shifts the balance one way while every
+rule you did translate shifts it the other. Measured on the Awir in round 3: the
+five-year limitation periods that protect the administration were translated, and
+the € 24 rounding floor, the € 121 threshold, the revision limitation period and
+the hardship clause were all passed over without a word.
+
+## Markings flag an article that is otherwise worked out
+
+A marking says the format cannot express one construct. It names that construct
+and leaves standing everything that does fit.
+
+```yaml
+machine_readable:
+  markings:
+    - about: het jaar waarin de peildatum valt
+      resolution: engine          # engine | model
+      resolved_by: Een YEAR-bewerking die het jaardeel van een datum oplevert
+      target: []
+      legal_text_excerpt: het kalenderjaar waarop de tegemoetkoming betrekking heeft
+      accepted: false
+  execution:
+    # everything that CAN be expressed, which is nearly always most of it
+```
+
+`resolution: engine` means the operation does not exist and has to be built.
+`resolution: model` means the operation set is not the problem: the format has no
+shape for the construct at all (quantification over persons, a rule about a set
+rather than a value, a legal fiction). Nothing else belongs in a marking. Group
+markings by `resolved_by` and you can read the backlog of missing operations off
+the corpus, which is what the field is for.
+
+`legal_text_excerpt` is required and quotes this entry's own text. A marking that
+cannot quote the words it is about is about something else.
+
+### The test is not "can I execute this article"
+
+The test is: **which word can I not fill in, and what is left when I leave that
+word as an open value?**
+
+An entry that stays empty behind a marking is a defect. You lose every rule that
+was derivable, and the marking then measures the gap far larger than it is. This
+was the biggest failure form of round 4, and the file shows both shapes two
+entries apart, in
+`corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2026-01-01.yaml`:
+
+- Entry `1.1`, the aanhef of article 1, got one marking about the reach of a
+  begrippenlijst and nothing else. No outputs, no actions, nothing a reader can
+  do anything with.
+- Entry `1.1.c`, the definition of "verzekerde", is fully worked out: parameters,
+  four cross-law inputs, an output and the actions that compute it. It carries
+  one marking, for "vanaf de eerste dag van de kalendermaand volgende op de maand
+  waarin hij achttien jaar wordt", because no operation reads the month out of a
+  date. The model asks for the first day of the assessed month as a parameter,
+  compares the eighteenth birthday against it, and still produces `is_verzekerde`.
+
+The second is what a marking looks like. Write that one.
+
+### `target` is an assertion, so it has to be true
+
+`target` lists the values in this entry that cannot be produced because of this
+marking: outputs, inputs or parameters by name.
+
+- **An empty list is a claim, not an omission.** It says the entry stays
+  executable and only its explanation is incomplete. That is the normal case.
+- **A name in the list means that value is computed nowhere in this entry.** If
+  an action produces it anyway, the marking contradicts the model.
+
+A check enforces this: every name in `target` must be absent from the entry's
+actions. Today the predecessor field `blocks` is empty in 39 of 39 markings, and
+of the 72 values that stood marked as blocked not one is actually left out. Both
+halves of that are wrong, and both are cheap to get right: name what you really
+left out, and leave out what you really named.
+
+Do not approximate around a marking. No ten-case `IF` tree standing in for a
+table, no arithmetic trick standing in for rounding, no pre-computed aggregate
+hardcoded as a literal.
+
+## Open terms
+
+The higher law declares the term and references it as a `$variable`; the lower
+regulation registers as filling it.
+
+```yaml
+# wet_op_de_zorgtoeslag, article 4
+machine_readable:
+  open_terms:
+    - id: standaardpremie
+      type: amount              # string | number | boolean | amount | date
+      required: true
+      delegated_to: Onze Minister          # omit when the article names nobody
+      delegation_type: MINISTERIELE_REGELING   # omit likewise
+      legal_basis: artikel 4 Wet op de zorgtoeslag
+  execution:
+    output:
+      - name: standaardpremie
+        type: amount
+        type_spec:
+          unit: eurocent
+    actions:
+      - output: standaardpremie
+        value: $standaardpremie   # the engine resolves this through implements
+```
+
+```yaml
+# regeling_standaardpremie, article 1
+machine_readable:
+  implements:
+    - law: wet_op_de_zorgtoeslag
+      article: '4'
+      open_term: standaardpremie
+      gelet_op: Gelet op artikel 4 van de Wet op de zorgtoeslag
+  execution:
+    actions:
+      - output: standaardpremie
+        value: 211200
+```
+
+The output name in the lower regulation matches the open term `id`. Priority
+between competing implementations follows lex superior and lex posterior.
+
+Do not record whether the filling regulation is currently in the corpus. That is
+a state of the corpus, it is untrue by next week, and nobody cleans it up. The
+resolve step and the work queue track it (RFC-029).
+
+## Declarations, where the article fixes a property
+
+Some provisions compute nothing and are not open either. They establish something
+the rest of the corpus depends on.
+
+```yaml
+declares:
+  - property: name        # name | officiele_titel | valid_from | valid_to |
+                          # regulatory_layer | legal_basis
+    value: Algemene wet inkomensafhankelijke regelingen
+```
+
+Awir article 51 ("Deze wet wordt aangehaald als: ...") is the clearest case:
+every execution trace that names this law is quoting that article. Article 50
+("treedt in werking op 1 september 2005 en geldt voor berekeningsjaren die
+aanvangen op of na 1 januari 2006") fixes `valid_from` and, through
+`applies_from`, a floor on the berekeningsjaar that no calculation may go below.
+
+The document header already carries these values, copied there by the harvester.
+Recording the article that decides them turns a copy into a derivation, and a
+check holds the two against each other: when they disagree, the article is right
+and the header is stale.
+
+## Displacement, "in afwijking van"
+
+Two things go wrong here often enough to state.
+
+**The article named is not the article displaced.** "In afwijking van artikel 7,
+derde lid, van de Awir, bestaat geen aanspraak op een zorgtoeslag" names the rule
+being departed from, while the subject of the clause says what is displaced: the
+entitlement that another article of *this* law establishes. Put the override on
+the article that produces the thing, not on the article the sentence cites. An
+override addressed at the wrong article never fires, and the engine then returns
+both the displaced value and the displacing one without complaint. The `article`
+field must match the producing entry's `number` exactly as this file writes it:
+in round 3 four of five overrides pointed at `"2"`, `"3"` and `"7"` while the
+producers are stored as `2.1`, `3.1` and `7.3`, so nothing fired.
+
+**"Bestaat geen aanspraak" is not an entitlement of zero.** With an entitlement
+of zero there is a decision, legal remedies and a ground for recovery; with no
+entitlement there is none of that. Article 2 of the zorgtoeslag says "aanspraak
+**ter grootte van** dat verschil": the amount is a property of the entitlement,
+so where the entitlement does not arise there is no amount to compute either.
+
+```yaml
+overrides:
+  - article: '2.1'                  # where the entitlement is produced
+    output: aanspraak_op_zorgtoeslag
+    voids: true                     # it does not arise, rather than becoming zero
+    legal_text_excerpt: bestaat geen aanspraak op een zorgtoeslag
+```
+
+`voids` is what the engine acts on. `legal_text_excerpt` is why, in this
+article's own words, quoted verbatim. Do not classify the ground into a category
+of your own; copy the statute.
+
+A derogation exists only where words say so. "In afwijking van", "onverminderd",
+"blijft buiten toepassing" and "met dien verstande" are such words. A second
+sentence that adds a ground is not one, and neither is a reading that makes the
+article tidier. Quote the words you relied on in the `legal_basis.explanation` of
+the action they shaped. If you cannot quote them, the derogation is yours and not
+the law's.
+
+Do not let the producing article read the exclusion instead. Article 2 says
+nothing about wealth, and pulling that condition in is a scope violation dressed
+up as helpfulness.
+
+## Numbers come from the text, in the unit the text writes them
+
+Every number in a model appears literally in the text of the entry that carries
+the model. Not "derivable from", not "equal to": present.
+
+- "vier weken" is `weeks: 4`, never `days: 28`.
+- "ten minste 10 percent lager" is a comparison against 10 percent, never a
+  multiplication by `0.9`.
+- "naar tijdsgelang herrekend" states no denominator. If the text names no
+  measure, the measure is an open term, not a division by 12 you supply.
+- A fallback that borrows a number from another lid is a number from another lid.
+  If this lid states no fallback, it has none.
+
+**The one sanctioned conversion is money.** Every monetary value in every file is
+`type: amount` with `type_spec: { unit: eurocent }`, and the literal from the text
+is multiplied by 100. This is a corpus-wide convention and it outranks the rule
+above, because `unit` is a label and never a conversion (RFC-023): a law written
+in euro and a law written in eurocent will bind to each other and the engine will
+not notice. In round 3 the Awir chose euro and the zorgtoeslag chose eurocent,
+each internally consistent, and the same person came out at € 827,63 or
+€ 1.550,46 depending on which file you believed. A file carrying `unit: euro`
+anywhere is broken even if it is consistent with itself.
+
+Rounding is not part of this. The engine has `ROUND`, `CEIL` and `FLOOR`, so
+model the rounding the law states and round nothing where it states none.
+
+## Actions and operations
+
+Every action has an `output` and a `value`. The `value` is a literal, a
+`$variable`, or an operation.
+
 ```yaml
 actions:
   - output: heeft_recht
@@ -126,250 +390,55 @@ actions:
         - operation: EQUALS
           subject: $is_verzekerd
           value: true
+    legal_basis:
+      law: Wet op de zorgtoeslag
+      article: '2'
+      paragraph: '1'
+      explanation: Dutch explanation of how this action follows from the text
 ```
 
-**Pattern 2: `value` — for direct literal/variable assignment**
-```yaml
-actions:
-  - output: wet_naam
-    value: Wet op de zorgtoeslag
-  - output: constante
-    value: $SOME_DEFINITION
-```
+| Category | Operations | Operand shape |
+|----------|-----------|---------------|
+| Arithmetic | `ADD`, `SUBTRACT`, `MULTIPLY`, `DIVIDE`, `MIN`, `MAX` | `values:` array |
+| Comparison | `EQUALS`, `GREATER_THAN`, `LESS_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN_OR_EQUAL` | `subject:` (must be a `$variable`) + `value:` |
+| Logical | `AND`, `OR` | `conditions:` array |
+| Negation | `NOT` | `value:` |
+| Membership | `IN` | `subject:` + `values:` or `value:` |
+| Conditional | `IF` | `cases:` (each `when`/`then`) + `default:` |
+| Collection | `LIST` | `items:` array |
+| Rounding | `ROUND`, `CEIL`, `FLOOR` | `value:` + `precision:` (required) |
+| Date | `AGE` (`date_of_birth`, `reference_date`), `DATE_ADD` (`date` + `years`/`months`/`weeks`/`days`), `DATE` (`year`, `month`, `day`), `DATE_DIFF` (`from`, `to`, `in`), `DAY_OF_WEEK` (`date`) | named fields |
 
-**Pattern 3: Open terms (IoC) — higher law declares, lower regulation fills**
+`ROUND` is half-up (rekenkundig, the Hoge Raad default), `CEIL` rounds up,
+`FLOOR` rounds down. `precision` counts decimals in the value's own unit, so a
+eurocent amount rounded to whole euros is `precision: -2`.
 
-The higher law declares an `open_term` and references it as `$variable`:
-```yaml
-# In the higher law (e.g., wet_op_de_zorgtoeslag article 4)
-machine_readable:
-  open_terms:
-    - id: standaardpremie
-      type: amount
-      required: true
-      delegated_to: minister
-      delegation_type: MINISTERIELE_REGELING
-  execution:
-    output:
-      - name: standaardpremie
-        type: amount
-        type_spec:
-          unit: eurocent
-    actions:
-      - output: standaardpremie
-        value: $standaardpremie
-```
+Operations nest: any operand may itself be an operation. `reference.md` has the
+full shapes and `examples.md` the worked cases.
 
-The lower regulation registers as implementing it:
-```yaml
-# In the lower regulation (e.g., regeling_standaardpremie article 1)
-machine_readable:
-  implements:
-    - law: wet_op_de_zorgtoeslag
-      article: '4'
-      open_term: standaardpremie
-      gelet_op: Gelet op artikel 4 van de Wet op de zorgtoeslag
-  execution:
-    output:
-      - name: standaardpremie
-        type: amount
-        type_spec:
-          unit: eurocent
-    actions:
-      - output: standaardpremie
-        value: 211200
-```
+### Legal text to operation
 
-### Operation Syntax by Category
+| Legal text | Operation |
+|------------|-----------|
+| "heeft de leeftijd van X jaar bereikt" | `AGE` + `GREATER_THAN_OR_EQUAL` |
+| "ten minste X" | `GREATER_THAN_OR_EQUAL` |
+| "niet meer dan X" | `LESS_THAN_OR_EQUAL` |
+| "indien ... en ... " / "indien ... of ..." | `AND` / `OR` with `conditions` |
+| "tenzij" / "niet" | `NOT` wrapping the positive condition |
+| "vermenigvuldigd met" / "verminderd met" / "vermeerderd met" | `MULTIPLY` / `SUBTRACT` / `ADD` |
+| "afgerond op hele euro's" | `ROUND` with `precision: -2` on a eurocent value |
+| "binnen X weken na" | `DATE_ADD` with `weeks` |
+| "het aantal maanden tussen" | `DATE_DIFF` with `in: months` |
+| "voor zover" | a bound on an amount: `MAX`/`MIN` around the qualifying part. A boolean here loses the partial case, and always in the citizen's disfavour |
+| "dan wel" (two measures side by side) | `OR` over two comparisons, each with its own parameter. One parameter whose description covers both is not a model of the disjunction |
+| "in afwijking van artikel X" | `overrides` declaration |
+| "bij ministeriële regeling" | `open_terms` + `implements` |
 
-**Arithmetic** — use `values` array (NOT `subject`/`value`):
-```yaml
-operation: ADD          # or SUBTRACT, MULTIPLY, DIVIDE, MIN, MAX
-values:
-  - $operand_1
-  - $operand_2
-```
+## Bindings
 
-**Comparison** — use `subject` + `value`:
-```yaml
-operation: EQUALS       # or GREATER_THAN, LESS_THAN,
-                        # GREATER_THAN_OR_EQUAL, LESS_THAN_OR_EQUAL
-subject: $variable      # MUST be a $variable reference
-value: 18               # literal or $variable
-```
-
-**Membership** — use `subject` + `value` or `values`:
-```yaml
-operation: IN
-subject: $status
-values: ["ACTIEF", "GEPAUZEERD"]
-# OR with a single reference:
-# value: $allowed_statuses
-```
-
-**Logical** — use `conditions` array:
-```yaml
-operation: AND          # or OR
-conditions:
-  - operation: EQUALS
-    subject: $a
-    value: true
-  - operation: EQUALS
-    subject: $b
-    value: true
-```
-
-**NOT** — negation, use `value`:
-```yaml
-operation: NOT
-value:
-  operation: EQUALS
-  subject: $is_verzekerd
-  value: true
-```
-
-**Conditional IF** — use `cases`/`default` (NOT `when`/`then`/`else`):
-```yaml
-operation: IF
-cases:
-  - when:
-      operation: EQUALS
-      subject: $heeft_partner
-      value: true
-    then: $bedrag_partner
-  - when:
-      operation: EQUALS
-      subject: $categorie
-      value: "B"
-    then: 75000
-default: $bedrag_alleenstaand
-```
-
-**Date: AGE** — calculate age in complete years:
-```yaml
-operation: AGE
-date_of_birth: $geboortedatum
-reference_date: $peildatum
-```
-
-**Date: DATE_ADD** — add duration to a date:
-```yaml
-operation: DATE_ADD
-date: $bekendmaking_datum
-weeks: 6              # optional: years, months, weeks, days
-```
-
-**Date: DATE** — construct date from components:
-```yaml
-operation: DATE
-year: $jaar
-month: 1
-day: 1
-```
-
-**Date: DAY_OF_WEEK** — get weekday (0=Monday, 6=Sunday):
-```yaml
-operation: DAY_OF_WEEK
-date: $datum
-```
-
-**Collection: LIST** — construct an array:
-```yaml
-operation: LIST
-items:
-  - $item_1
-  - $item_2
-  - "literal_value"
-```
-
-### Hooks — Reactive Execution (AWB cross-cutting concerns)
-
-Hooks allow articles (typically from the AWB) to fire automatically when matching
-lifecycle events occur. Used for cross-cutting legal requirements like motivation
-obligations and appeal deadlines.
-
-```yaml
-machine_readable:
-  hooks:
-    - hook_point: pre_actions    # or post_actions
-      applies_to:
-        legal_character: BESCHIKKING
-        stage: BESLUIT           # optional: AANVRAAG, BEHANDELING, BESLUIT, BEKENDMAKING, BEZWAAR
-  execution:
-    output:
-      - name: motivering_vereist
-        type: boolean
-    actions:
-      - output: motivering_vereist
-        value: true
-```
-
-### Overrides — Lex Specialis Declarations
-
-When a specific law overrides a general law's output (e.g., Vreemdelingenwet
-overriding AWB's appeal deadline):
-
-```yaml
-machine_readable:
-  overrides:
-    - law: algemene_wet_bestuursrecht
-      article: '6:7'
-      output: bezwaartermijn_weken
-  execution:
-    output:
-      - name: bezwaartermijn_weken
-        type: number
-    actions:
-      - output: bezwaartermijn_weken
-        value: 4
-```
-
-### Procedures — AWB Lifecycle Stages (top-level)
-
-Procedures define the lifecycle stages for administrative decisions. They are
-declared at the **top level** of the YAML file (not inside articles):
-
-```yaml
-procedure:
-  - id: beschikking
-    default: true
-    applies_to:
-      legal_character: BESCHIKKING
-    stages:
-      - name: AANVRAAG
-        description: Belanghebbende dient aanvraag in (AWB 4:1)
-        requires:
-          - name: aanvraag_datum
-            type: date
-      - name: BEHANDELING
-        description: Bestuursorgaan onderzoekt de aanvraag (AWB 3:2)
-      - name: BESLUIT
-        description: Bestuursorgaan neemt besluit (AWB 1:3)
-      - name: BEKENDMAKING
-        description: Besluit wordt bekendgemaakt (AWB 3:41)
-      - name: BEZWAAR
-        description: Bezwaarperiode (AWB 6:4 e.v.)
-```
-
-### Produces — Legal Character and Decision Type
-
-Articles that produce binding decisions should declare what they produce:
-
-```yaml
-execution:
-  produces:
-    legal_character: BESCHIKKING    # BESCHIKKING | TOETS | WAARDEBEPALING |
-                                    # BESLUIT_VAN_ALGEMENE_STREKKING | INFORMATIEF
-    decision_type: TOEKENNING       # TOEKENNING | AFWIJZING | GOEDKEURING |
-                                    # GEEN_BESLUIT | ALGEMEEN_VERBINDEND_VOORSCHRIFT |
-                                    # BELEIDSREGEL | VOORBEREIDINGSBESLUIT |
-                                    # ANDERE_HANDELING | AANSLAG
-    procedure_id: beschikking_uov   # optional: selects specific procedure variant
-```
-
-### Cross-Law References (source)
-
-Input fields reference other laws via `source`. Use `regulation` + `output`, NOT `url`:
+An `input` that names a concept another provision owns MUST carry a real
+`source:` block. A description is documentation; it makes the engine resolve
+nothing.
 
 ```yaml
 input:
@@ -384,632 +453,109 @@ input:
       unit: eurocent
 ```
 
-For **internal references** (same law, different article), omit `regulation`:
-```yaml
-input:
-  - name: vermogen_onder_grens
-    type: boolean
-    source:
-      output: vermogen_onder_grens
-```
+Omit `regulation` for a reference to another article of the same law.
 
-For **delegated values** (filled by lower regulations via IoC), the higher law
-declares an `open_term` and the engine resolves it automatically:
+**A `source:` lives under `input:`, never under `parameters:`.** This is the most
+common way a binding looks real and silently does nothing. `Parameter` has no
+`source` field, so a `source:` under `parameters:` is dropped at parse time and
+the value degrades to a plain caller-supplied parameter. It still passes any BDD
+scenario that injects the value directly, which hides the defect. The bound value
+goes under `input:` with its `source:`; the leaf parameters that feed
+`source.parameters` stay under `parameters:`.
+
+Never fall back to a plain parameter because "the engine cannot resolve multiple
+source bindings per article". It can, and they resolve.
+
+If the local name differs from the target's output name, put the target's name in
+`source.output`, the local name in `name`, and the reason in `description`.
+
+Where the target law does not produce the output you need, add that output to the
+target law first, on the article that should own it, then bind to it. Do not
+leave the reference stranded in a description.
+
+## Hooks and produces
+
 ```yaml
-# Higher law declares the open term
 machine_readable:
-  open_terms:
-    - id: verlaging_percentage
-      type: number
-      required: true
-      delegated_to: gemeenteraad
-      delegation_type: GEMEENTELIJKE_VERORDENING
+  hooks:
+    - hook_point: pre_actions        # pre_actions | post_actions
+      applies_to:
+        legal_character: BESCHIKKING # required
+        stage: BESLUIT               # AANVRAAG | BEHANDELING | BESLUIT |
+                                     # BEKENDMAKING | BEZWAAR
   execution:
-    output:
-      - name: verlaging_percentage
-        type: number
-    actions:
-      - output: verlaging_percentage
-        value: $verlaging_percentage
+    produces:
+      legal_character: BESCHIKKING   # BESCHIKKING | TOETS | WAARDEBEPALING |
+                                     # BESLUIT_VAN_ALGEMENE_STREKKING | INFORMATIEF
+      decision_type: TOEKENNING
 ```
 
-#### Binding purity — NEVER leave a cross-law input as a plain-param placeholder
+Hooks let an article (typically from the AWB) fire on every matching lifecycle
+event, which is how cross-cutting duties such as the motivation requirement are
+modelled. Procedures with their stages are declared at the top level of the file,
+not inside an article; `reference.md` has the shape.
 
-Every `input` that references a concept owned by another legal provision MUST carry a
-real `source:` block. A description is documentation, not a binding — it does not make the
-engine resolve anything.
-
-**Forbidden pattern:** an `input` whose description names another regulation, or uses words
-like "conceptueel", "forward naar", or "tijdelijk als directe parameter", but has NO
-`source:` block. This is a *plain-param placeholder*: it silently turns a cross-law value
-into a free input the caller must supply by hand, and real cross-document resolution never
-happens. If the target law does not yet produce the needed output, FIRST add that output to
-the target law (a `machine_readable` action on the correct article), then bind to it — do
-not leave the reference stranded in a description.
-
-**Never** use "the engine cannot resolve multiple source bindings per article" as a reason
-to fall back to a plain param. That assumption is false: schema v0.5.2 supports multiple
-`source:` bindings per article, and they resolve fine. When in doubt, bind for real and
-prove it with a BDD scenario.
-
-**Section placement — a `source:` MUST live under `input:`, NEVER under `parameters:`.**
-This is the single most common way a binding looks real but silently does nothing. The
-engine has two distinct structs: `Parameter` (the items under `parameters:`) has **no
-`source` field**, while `Input` (the items under `input:`) is the only one that carries
-`source`. A `source:` block placed under `parameters:` is therefore **dropped at parse time**
-— the value degrades to a plain caller-supplied parameter and cross-law resolution never
-fires. It will still "pass" any BDD scenario that injects the value directly, which hides
-the defect. Rule of thumb:
-- The cross-law-resolved value (the thing the other law produces) → declare under `input:` with its `source:`.
-- The leaf parameters that FEED that binding's `source.parameters` mapping → stay under `parameters:` as direct inputs.
-
-A binding only truly resolves when its `input:` entry is reached AND no overriding parameter
-of the same name is supplied. Verify with a BDD scenario that loads the target law and sets
-the *leaf* inputs (not the bound value), then asserts the dependent output flips.
-
-**Name-mismatch rule:** if the local input name differs from the target output name, put
-the *target's* output name in `source.output` and the *local* name in `name`, and note the
-difference in the `description`:
-```yaml
-input:
-  - name: lokaal_inkomen           # local name used by this article's logic
-    type: amount
-    description: "bindt aan output 'toetsingsinkomen' van de andere regeling (naam wijkt af)"
-    source:
-      regulation: algemene_wet_inkomensafhankelijke_regelingen
-      output: toetsingsinkomen     # the name the TARGET law actually produces
-    type_spec:
-      unit: eurocent
-```
-
-### Field Types
+## Field types
 
 | Context | Valid types |
 |---------|------------|
 | `parameters` | `string`, `number`, `boolean`, `date` |
-| `input` | `string`, `number`, `boolean`, `amount`, `object`, `array`, `date` |
-| `output` | `string`, `number`, `boolean`, `amount`, `object`, `array`, `date` |
+| `input` and `output` | `string`, `number`, `boolean`, `amount`, `object`, `array`, `date` |
 
-For monetary values, use `type: amount` with `type_spec: { unit: eurocent }`.
+`$referencedate` is not a built-in. Declare it as a `parameter` with `type: date`
+if you use it.
 
-### $referencedate Is NOT a Built-in Variable
+## Validate and test
 
-`$referencedate` is NOT automatically available. It must be declared as a
-`parameter` with `type: date` if used. The engine resolves it from whatever the
-caller passes for that parameter name. Some corpus files use it as a convention,
-but it has no special status in the engine.
+When a shell is available, follow `testing.md` in this skill directory for the
+validate-and-test loop. In the enrichment pipeline there is no shell and the
+worker validates instead.
 
-### Every Article Gets One of Four Outcomes
+## Write the related-legislation envelope
 
-Silence is not one of them. An article you pass over without a word is
-indistinguishable from an article nobody looked at, and the reviewer cannot tell
-which of the two happened.
-
-1. **`machine_readable`** — the article is executable and you translated it.
-2. **`norm_gaps`** — the norm is real but is filled in elsewhere: a ministerial
-   regulation, an AMvB, a beleidsregel. The article is not executable *yet*, and
-   the gap names where the filling belongs. See the section below.
-3. **`untranslatables`** — the engine's operation set cannot express the
-   construct. This is a shortcoming of the machine, not of the corpus.
-4. **`declares`** — the article fixes a document property rather than
-   computing anything: what this law is called, when it commences, from which
-   berekeningsjaar it applies. Record it in the article, not in the session
-   report, because it belongs to the law and outlives the run.
-
-Look hard before you conclude an article carries nothing. Going through the
-Awir and the zorgtoeslag article by article turned up almost none, and every
-candidate turned out to be a provision of a kind nobody had looked for. A
-definition by reference ("zorgverzekering: de schadeverzekering, bedoeld in
-artikel 1 van de Zorgverzekeringswet") is a cross-law binding. A naming
-provision ("de normpremie: de aan de hand van het drempelinkomen berekende
-premie") belongs to an output another article computes. A statement that the
-amount depends on income and assets is a property the model must have, and in
-round 3 it was precisely the property the model broke. Even the citation title
-fixes what every execution trace calls this law.
-
-So if you find nothing to write, that is a sign you have not identified the
-kind of provision yet, not that the article is empty. An article you pass over
-in silence is indistinguishable from an article nobody read, and a check now
-reports it as such.
-
-Choosing between 2 and 3 matters more than it looks. They go to different
-people. A `norm_gap` is work for an analyst who finds the missing document; an
-`untranslatable` is work for whoever extends the engine. Marking an open norm as
-untranslatable sends the file to the wrong desk and it stays there.
-
-### Which Outcome Fits Which Article
-
-These shapes usually land on outcome 2 or 3 rather than 1, and never on silence:
-
-- **Pure definitions** — "In deze wet wordt verstaan onder..." Often outcome 4
-  when the term is used elsewhere and the definition itself computes nothing,
-  but a definition with a testable condition is outcome 1.
-- **Delegation** — "Bij of krachtens algemene maatregel van bestuur worden
-  regels gesteld..." This is outcome 2, always. The norm exists; its content
-  sits in a document the corpus does not have yet.
-- **Discretion** — "kan", "is bevoegd", "naar het oordeel van", "voor zover dat
-  redelijk is". A discretionary power modelled as an automatic rule turns a
-  civil servant's decision into arithmetic. Outcome 2 or 3, never 1.
-- **Procedure and deadlines** — outcome 1 whenever the provision has a legal
-  consequence you can express, which is most of them. A deadline whose
-  consequence you cannot express is outcome 3.
-
-**One rule overrides all of the above.** A provision that *limits* what the
-administration may do is never outcome 4. Limitation periods, minimum and
-maximum amounts, rounding floors, hardship clauses, revision windows,
-proportionality requirements: these bound the citizen's exposure, and leaving
-them out shifts the balance in one direction while every rule you did translate
-shifts it in the other. If you cannot express one, mark it. Do not pass over it.
-
-Measured on the Awir in round 3: the five-year limitation periods that protect
-the administration were translated, and the € 24 rounding floor, the € 121
-threshold, the revision limitation period and the hardship clause were all
-passed over without a word. Nobody chose that. It is what this section used to
-ask for.
-
-### Declarations — When the Article Fixes a Property Instead of a Value
-
-Some provisions compute nothing and are not gaps either. They establish
-something the rest of the corpus depends on.
+After the `machine_readable` sections are final, write a sibling envelope so the
+pipeline can harvest the legislation this law depends on. It goes next to the law
+YAML as `.enrichment-result.yaml`.
 
 ```yaml
-declares:
-  - property: name                     # name | officiele_titel | valid_from
-    value: "Algemene wet inkomensafhankelijke regelingen"
-```
-
-Awir article 51 ("Deze wet wordt aangehaald als: ...") is the clearest case:
-every execution trace that names this law is quoting that article. Article 50
-("treedt in werking op 1 september 2005 en geldt voor berekeningsjaren die
-aanvangen op of na 1 januari 2006") fixes `valid_from` and, through
-`applies_from`, a floor on the berekeningsjaar that no calculation may go
-below.
-
-The document header already carries these values, copied there by the
-harvester. Recording the article that decides them turns a copy into a
-derivation, and a check holds the two against each other: when they disagree,
-the article is right and the header is stale.
-
-### Displacement — "In afwijking van"
-
-Two things go wrong here often enough to be worth stating.
-
-**The article named is not the article displaced.** "In afwijking van artikel 7,
-derde lid, van de Awir, bestaat geen aanspraak op een zorgtoeslag" names the rule
-being departed from, while the subject of the clause says what is displaced: the
-entitlement that another article of *this* law establishes. Put the override on
-the article that produces the thing, not on the article the sentence cites. An
-override addressed at the wrong article never fires, and the engine then returns
-both the displaced value and the displacing one without complaint.
-
-**"Bestaat geen aanspraak" is not an entitlement of zero.** With an entitlement
-of zero there is a decision, legal remedies and a ground for recovery; with no
-entitlement there is none of that. Article 2 of the zorgtoeslag says "aanspraak
-**ter grootte van** dat verschil": the amount is a property of the entitlement,
-so where the entitlement does not arise there is no amount to compute either.
-
-```yaml
-overrides:
-  - article: "2.1"                    # where the entitlement is produced
-    output: aanspraak_op_zorgtoeslag
-    voids: true                       # it does not arise, rather than becoming zero
-    legal_text_excerpt: bestaat geen aanspraak op een zorgtoeslag
-```
-
-`voids` is what the engine acts on. `legal_text_excerpt` is why, in the words of
-this article, quoted verbatim. Do not classify the ground into a category of
-your own; copy the statute. A check holds the quotation against this article's
-own text, exactly as it does for amounts.
-
-Do not let the producing article read the exclusion instead. Article 2 says
-nothing about wealth, and pulling that condition in would be a scope violation
-dressed up as helpfulness.
-
-### Norm Gaps — When the Norm Is Real but Its Content Lives Elsewhere
-
-The article states a norm the engine could execute, and the content of that norm
-is not in this corpus. "Bij ministeriële regeling wordt de standaardpremie
-vastgesteld" is a complete legal instruction; what it lacks is a number that
-lives in another document.
-
-This is a corpus gap, not a language gap. Building an engine operation never
-resolves it. Two things do, and they stand beside each other: harvest the
-regulation or beleidsregel that fills it, or, where no general specification
-exists, have the competent authority fill it for the individual case with a
-motivation. That second route is why a norm gap sits closer to a discretionary
-judgement than to a missing fact.
-
-```yaml
-norm_gaps:
-  - norm: "de standaardpremie"          # in the words the article uses
-    kind: delegated                      # delegated | policy | open
-    blocks: [hoogte_zorgtoeslag]         # which outputs cannot be computed
-    expected_source: "ministeriële regeling op grond van artikel 4"
-    legal_text_excerpt: "Bij ministeriële regeling wordt de standaardpremie ..."
-```
-
-`kind` says who fills it. **delegated**: the law names the instrument (bij
-ministeriële regeling, bij amvb). **policy**: a beleidsregel or implementing
-policy fills it, which is not an algemeen verbindend voorschrift. **open**: the
-law leaves it to be weighed in the individual case ("redelijkerwijs", "naar het
-oordeel van", "voor zover dat billijk is").
-
-**Keep this strictly apart from `untranslatables`,** which says the opposite:
-the norm is perfectly clear and the engine cannot express it. Mixing them up is
-not a labelling detail. A norm gap is work for an analyst who goes and finds the
-document; an untranslatable is work for whoever extends the engine. Put a norm
-gap in the untranslatables list and it lands on a desk where nobody can act on
-it, and there it stays.
-
-A useful test: if someone handed you the missing document, would the article
-become executable? Then it is a norm gap. If it would still not be executable
-because the engine has no way to say what the article says, it is an
-untranslatable. Both can be true at once, and then you write both.
-
-### Untranslatables — When to Flag Instead of Approximate (RFC-012)
-
-When the engine's operation set cannot faithfully express a legal construct, do NOT
-approximate. Instead, add an `untranslatables` entry and skip the inexpressible part.
-
-**Flag as untranslatable when you encounter:**
-- **Rounding** — "afronden", "naar boven afgerond", "afgerond op hele euro's"
-- **Aggregation over collections** — "het totaal van", "de som van" over a variable-length set
-- **Table/bracket lookups** — multi-dimensional tables that would need >8 IF cases
-- **Date differences** — "het aantal maanden/jaren tussen X en Y"
-- **String manipulation** — concatenation, pattern matching, substring extraction
-- **Domain-specific formulas** — "berekend volgens de actuariële methode"
-- **Ambiguous conditions** — "redelijke termijn", "zo spoedig mogelijk"
-
-**Format:**
-```yaml
-machine_readable:
-  untranslatables:
-    - construct: "afronden op hele euro's"
-      reason: "Rounding is not available as an engine operation"
-      suggestion: "Add ROUND/CEIL/FLOOR operation to engine"
-      legal_text_excerpt: "Het bedrag wordt naar boven afgerond op hele euro's"
-      accepted: false
-  execution:
-    # Only the parts that CAN be expressed
-```
-
-Required fields: `construct`, `reason`. Optional: `suggestion`, `legal_text_excerpt`,
-`accepted` (boolean, default false — set true only after human review).
-
-**Rules:**
-- Do NOT build a 10+ case IF tree to simulate a table lookup
-- Do NOT use arithmetic tricks to approximate rounding
-- Do NOT hardcode pre-computed aggregation results
-- An article CAN have both `untranslatables` AND `execution` — flag what you can't
-  express, implement what you can
-
-### Other Rules
-- Convert monetary amounts to eurocent (€100 = 10000)
-- Use `$variable` references for inter-action dependencies
-- `subject` in comparisons MUST be a `$variable`, never a nested operation
-- Operations can be nested: a `value` in an arithmetic array can itself be an operation
-- `endpoint` on `machine_readable` makes an article callable from other regulations
-
-### Available Operations
-| Category | Operations |
-|----------|------------|
-| Arithmetic | `ADD`, `SUBTRACT`, `MULTIPLY`, `DIVIDE`, `MIN`, `MAX` |
-| Comparison | `EQUALS`, `GREATER_THAN`, `LESS_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN_OR_EQUAL` |
-| Logical | `AND`, `OR`, `NOT` |
-| Membership | `IN` |
-| Conditional | `IF` (with `cases`/`default`) |
-| Collection | `LIST` |
-| Date | `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK` |
-
-### Common Legal Text → Operation Mappings
-| Legal Text | Operation |
-|------------|-----------|
-| "heeft bereikt de leeftijd van 18 jaar" | `AGE` + `GREATER_THAN_OR_EQUAL`, value: 18 |
-| "niet meer bedraagt dan X" | `LESS_THAN_OR_EQUAL` |
-| "ten minste X" | `GREATER_THAN_OR_EQUAL` |
-| "indien ... en ..." | `AND` with `conditions` array |
-| "indien ... of ..." | `OR` with `conditions` array |
-| "niet ..." / "tenzij" | `NOT` wrapping the positive condition |
-| "gelijk aan" | `EQUALS` |
-| "vermenigvuldigd met" | `MULTIPLY` with `values` array |
-| "verminderd met" | `SUBTRACT` with `values` array |
-| "vermeerderd met" | `ADD` with `values` array |
-| "binnen X weken na" | `DATE_ADD` with `weeks` |
-| "in afwijking van artikel X" | `overrides` declaration |
-
-## Phase 1.5: Capture BDD Baseline
-
-**Before modifying the law file**, capture the current BDD state so you can distinguish
-pre-existing failures from newly introduced ones:
-```bash
-just bdd 2>&1 | tail -100
-```
-Note the summary line and any pre-existing failures. This baseline is your reference
-for all subsequent Phase 3 runs.
-
-## Phase 2: Validate (with repair sub-loop)
-
-Run validation:
-```bash
-just validate <file_path>
-```
-
-- If OK → proceed to Phase 3
-- If errors → **Repair** (up to 2 rounds per iteration):
-  1. Read error output, identify broken articles/fields
-  2. Fix with Edit tool
-  3. Re-run `just validate`
-  4. If still failing after 2 repair rounds: **stop and report the validation errors
-     to the user**. Do NOT proceed to Phase 3 with invalid YAML — BDD tests against
-     a schema-invalid file will produce misleading failures that look like logic bugs,
-     wasting iterations on the wrong problem.
-
-## Phase 3: Run BDD Tests
-
-Run the Gherkin scenarios against the machine_readable logic:
-```bash
-just bdd
-```
-
-This runs both BDD buckets: every `*.feature` under a `scenarios/` directory in
-`corpus/regulation/` (law validation, including anything `/law-mvt-research`
-just wrote beside the law) and `bdd/conformance/*.feature` (engine conformance).
-A feature file outside those two places is not picked up and `just bdd` stays
-green regardless, so check that the scenarios you expect actually ran.
-The command is equivalent to:
-```bash
-cd packages/engine && cargo test --test bdd -- --nocapture
-```
-
-**Important:** Only investigate failures that are NEW compared to the baseline. Pre-existing
-failures from other laws are not your problem — do not attempt to fix them.
-
-### Creating New Step Definitions
-
-If the feature file uses Given/When/Then steps that don't exist yet, you must add
-them before running `just bdd`. The BDD harness lives in:
-
-```
-packages/engine/tests/bdd/
-├── main.rs              # Test runner (collects both buckets, runs cucumber)
-├── world.rs             # RegelrechtWorld state struct
-├── steps/
-│   ├── mod.rs           # Module exports
-│   ├── given.rs         # Setup steps (data input)
-│   ├── when.rs          # Action steps (law execution)
-│   └── then.rs          # Assertion steps (output checks)
-└── helpers/
-    ├── regulation_loader.rs  # Loads all YAML from corpus/regulation/nl/
-    └── value_conversion.rs   # Gherkin string → Value conversion
-```
-
-#### Adding a Given Step (data setup)
-
-For simple parameter tables (`| key | value |`), reuse the existing step:
-```gherkin
-Given a citizen with the following data:
-  | leeftijd | 35 |
-  | inkomen  | 2000000 |
-```
-
-For external data sources (RVIG, Belastingdienst, etc.), reuse existing steps like:
-```gherkin
-Given the following RVIG "personal_data" data:
-  | bsn | geboortedatum | land_verblijf |
-  | 999993653 | 1990-01-01 | NEDERLAND |
-```
-
-If a new external data source is needed, add a step in `steps/given.rs` following
-the existing pattern.
-
-**IMPORTANT: All BDD steps MUST be synchronous `fn`, NOT `async fn`.** The cucumber-rs
-harness in this project uses synchronous world execution. Using `async fn` will compile
-but cause runtime panics or silent test hangs.
-
-```rust
-#[given(regex = r#"the following NEWSOURCE "newsource_field" data:"#)]
-fn set_newsource_data(world: &mut RegelrechtWorld, step: &Step) {
-    if let Some(table) = &step.table {
-        parse_external_data_table(table, &mut world.external_data.newsource_field);
-    }
-}
-```
-
-And add the corresponding field to `ExternalData` in `world.rs`:
-```rust
-pub struct ExternalData {
-    // ... existing fields ...
-    pub newsource_field: HashMap<String, HashMap<String, Value>>,
-}
-```
-
-#### Adding a When Step (law execution)
-
-Each law needs a When step that triggers execution. **Use concrete law names in
-the regex, not placeholders.** All steps are synchronous `fn`. Example from the
-actual bijstand step:
-```rust
-#[when(regex = r"^the bijstandsaanvraag is executed for participatiewet article (\d+)$")]
-fn execute_bijstand(world: &mut RegelrechtWorld, _article: String) {
-    // Register any external data sources if this law uses them
-    register_if_present(&mut world.service, "rvig_personal_data", &world.external_data.rvig_personal_data);
-
-    // Execute the law for the desired output
-    world.execute_law("participatiewet", "bijstandsnorm");
-}
-```
-
-The `register_if_present` helper (already defined in `when.rs`) takes 3 arguments:
-```rust
-fn register_if_present(
-    service: &mut regelrecht_engine::LawExecutionService,
-    name: &str,
-    data: &std::collections::HashMap<String, std::collections::HashMap<String, Value>>,
-)
-```
-
-#### Adding a Then Step (assertions)
-
-For checking output values — **use the concrete output name in the regex**:
-```rust
-#[then(regex = r#"^the my_output is "(-?\d+)" eurocent$"#)]
-fn assert_my_output(world: &mut RegelrechtWorld, expected: String) {
-    assert!(world.is_success(), "Expected success, got error: {:?}", world.error_message());
-    let expected_amount: i64 = expected.parse().expect("Invalid eurocent value (must be integer, may be negative)");
-    let actual = world.get_output("my_output");
-    match actual {
-        Some(Value::Int(n)) => assert_eq!(*n, expected_amount),
-        Some(Value::Float(f)) => assert_eq!(f.round() as i64, expected_amount),
-        _ => panic!("Expected number, got {:?}", actual),
-    }
-}
-```
-
-For boolean checks:
-```rust
-#[then("the citizen has the right to my_benefit")]
-fn assert_has_right(world: &mut RegelrechtWorld) {
-    assert!(world.is_success());
-    let output = world.get_output("heeft_recht");
-    assert!(matches!(output, Some(Value::Bool(true))), "Expected true, got {:?}", output);
-}
-```
-
-#### Key World Methods
-
-- `world.execute_law(law_id, output_name)` — runs the engine, stores result/error
-- `world.get_output(name)` — retrieves a named output from the last result
-- `world.is_success()` — true if execution succeeded
-- `world.error_message()` — error string from last failed execution (`Option<String>`)
-- `world.parameters` — `HashMap<String, Value>` for simple inputs
-- `world.external_data` — `ExternalData` struct with fields:
-  `rvig_personal`, `rvig_relationship`, `rvz_insurance`, `bd_box1`, `bd_box2`,
-  `bd_box3`, `dji_detenties` (each `HashMap<String, HashMap<String, Value>>`)
-
-#### Prefer Reusing Existing Steps
-
-Before creating new steps, check if existing patterns cover your case. Read the
-existing step files first:
-- `packages/engine/tests/bdd/steps/given.rs`
-- `packages/engine/tests/bdd/steps/when.rs`
-- `packages/engine/tests/bdd/steps/then.rs`
-
-Many scenarios can be expressed using the existing generic steps. Only add new steps
-when the law requires a genuinely different execution pattern or data source.
-
-### If no MvT feature file was generated
-
-Fall back to ad-hoc testing: for each article with `execution.output`, build the
-evaluate binary and pipe a JSON payload to it:
-
-```bash
-cargo build --manifest-path packages/engine/Cargo.toml --bin evaluate --release
-```
-
-**Important:** Do NOT use `echo` to pipe JSON — Dutch law YAML contains quotes,
-newlines, and special characters that will break shell escaping. Instead, use the
-`Write` tool to create a temp file, then pipe from it:
-
-```bash
-cat /tmp/eval_payload.json | ./target/release/evaluate
-```
-
-The JSON payload format (written to the temp file):
-```json
-{
-  "law_yaml": "<full YAML content of the law file>",
-  "output_name": "heeft_recht",
-  "params": {"bsn": "123456789", "peildatum": "2025-01-01"},
-  "date": "2025-01-01",
-  "extra_laws": []
-}
-```
-
-### Cross-law Dependencies
-- If the law references other laws via `source.regulation`, find those law files
-  in `corpus/regulation/nl/` and include their YAML content in `extra_laws`:
-  ```json
-  "extra_laws": [
-    {"id": "wet_op_de_zorgtoeslag", "yaml": "<content>"}
-  ]
-  ```
-- Use Glob to find referenced law files
-
-## Phase 4: Iterate (up to 3 total iterations)
-
-- **All BDD scenarios pass** → proceed to Phase 5
-- **Failures** → analyze each failure:
-  - **Logic bug in machine_readable**: fix the YAML actions/operations
-  - **Wrong step definition**: fix the BDD step code
-  - **NEVER change the expected values in MvT-derived scenarios** — these are
-    the legislature's intended outcomes and serve as ground truth
-  - Go back to Phase 2 (validate → test again)
-- **After 3 iterations**: stop and report remaining issues. Each iteration includes
-    its own Phase 2 validation cycle (up to 2 repair rounds per iteration). For large
-    laws (>20 articles), this limit applies per batch — each batch of ~15 articles
-    gets its own 3-iteration budget
-
-## Phase 4.5: Write the related-legislation result envelope
-
-After the `machine_readable` sections are final, write a **sibling result
-envelope** so the pipeline can auto-harvest the legislation this law depends on
-(delegated regelingen and cross-law references the extref-only harvester misses).
-
-Write it next to the law YAML as `.enrichment-result.yaml` (same directory,
-e.g. `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/.enrichment-result.yaml`).
-Use the `Write` tool — no new agent tools are needed.
-
-```yaml
-# .enrichment-result.yaml — result envelope, NOT part of the law schema
 law_id: wet_op_de_zorgtoeslag
 related_legislation:
   - name: Regeling vaststelling standaardpremie en bestuursrechtelijke premie
     relation: delegated_regeling      # source_regulation | legal_basis | delegated_regeling
-    bwb_id: BWBR0037841               # optional, best-effort
-    slug: regeling_standaardpremie    # optional, best-effort
-    open_term: standaardpremie        # optional, only for delegations
+    bwb_id: BWBR0037841               # optional, best effort
+    slug: regeling_standaardpremie    # optional, best effort
+    open_term: standaardpremie        # optional, delegations only
   - name: Algemene wet inkomensafhankelijke regelingen
     relation: source_regulation
 ```
 
-Coverage: add one entry for **every** `source.regulation` you bound, every
-`legal_basis` you anchored on, and every `open_term` delegation you declared.
-Fields:
+One entry for every `source.regulation` you bound, every `legal_basis` you
+anchored on, and every open term you declared. `name` is required; the rest is
+best effort.
 
-- `name` — **required**; the human-readable law/regeling title (used for search
-  fallback when no id/slug is given).
-- `relation` — one of `source_regulation`, `legal_basis`, `delegated_regeling`.
-- `bwb_id`, `slug`, `open_term` — **optional**, best-effort. Supply what you know
-  (a known `bwb_id` resolves fastest); leave the rest out.
+**This must not go in the law YAML.** The law file stays strictly
+schema-conformant. There is no `related_legislation:` key anywhere inside it.
 
-**CRITICAL — this MUST NOT go in the law YAML.** The law file stays strictly
-schema-conformant (`just validate` must still pass). The related-legislation list
-lives only in the `.enrichment-result.yaml` sidecar, which the pipeline reads
-separately. Do not add a `related_legislation:` key anywhere inside the law YAML.
-
-## Phase 5: Report
-
-Report to the user:
+## Report
 
 ```
 Interpreted {LAW_NAME}
 
-  Articles processed: {TOTAL}
+  Entries processed: {TOTAL}
   Made executable: {EXECUTABLE_COUNT}
   Validation: {PASSED/FAILED}
+  BDD scenarios: {PASS}/{TOTAL}
 
-  BDD scenarios: {PASS}/{TOTAL} passing
-  (from MvT feature file and/or ad-hoc evaluate tests)
+  Markings: {N} in {N} entries
+  - {entry}: {about} ({resolution}), target: {names or "none"}
 
-  Iterations needed: {N}
-
-  Untranslatables: {N} construct(s) in {N} article(s)
-  - Article {N}: {construct} — {reason}
+  Open terms: {N} in {N} entries
+  - {entry}: {id}, filled by {delegated_to or "any competent authority"}
 
   Remaining issues:
-  - {description of any unresolved failures}
+  - {unresolved failures}
 
   TODOs:
-  - {external laws that need to be downloaded/implemented}
-  - Review untranslatables and set accepted: true for verified gaps
+  - {laws that still have to be harvested}
+  - Review markings and set accepted: true for the ones a human has confirmed
 ```
