@@ -610,6 +610,57 @@ not inside an article; `reference.md` has the shape.
 `$referencedate` is not a built-in. Declare it as a `parameter` with `type: date`
 if you use it.
 
+## Quoting in the YAML
+
+You write with Edit, straight into the file, and a file that stops parsing is
+broken from that keystroke onward. Nothing after it can be read: not by the
+schema check, not by the measurement afterwards, not by you. In round 5 one
+unquoted sentence in article 5 cost the whole law, and the actual defect of that
+run was never found because there was no longer a file to look at.
+
+**A value that contains a colon followed by a space must be quoted.** Everything
+before that colon is read as a key, and the file ends there. This is the sentence
+that broke:
+
+```yaml
+explanation: Eerste lid: de Dienst Toeslagen is belast met de uitvoering van deze wet.
+```
+
+Quoted, or as a block scalar, it is fine:
+
+```yaml
+explanation: "Eerste lid: de Dienst Toeslagen is belast met de uitvoering van deze wet."
+explanation: >-
+  Eerste lid: de Dienst Toeslagen is belast met de uitvoering van deze wet.
+```
+
+Dutch legal prose walks into this constantly, and the openings are recognisable:
+"Eerste lid: ", "Let op: ", "Onze Minister: ", "wordt aangehaald als: ". The
+corpus already quotes the ones it has: `text: 'Deze regeling wordt aangehaald
+als: Subsidieregeling …'`, `description: 'Leeftijd in jaren (bron: BRP)'`.
+
+The trap sits unnoticed because most colons in legal text are harmless. `Zie
+artikel 5:2 Awb` and `AWB 4:1` parse without a murmur: the rule is about the
+space, not about the colon. So the habit you build on article numbers does not
+carry over, and the one sentence that puts a space after the colon is the one
+that breaks the file. Quote on the punctuation you see, not on how dangerous
+the sentence feels.
+
+**Quote what would otherwise read as a number or a date.** `number` and
+`valid_from` are strings in the schema, and unquoted they change type silently:
+`number: 3.1` becomes the float 3.1, `valid_from: 2025-01-01` becomes a date.
+Every article number and every date in this corpus is quoted (`number: '3.1'`,
+`valid_from: '2025-01-01'`); keep it that way. A value that genuinely is a
+number, `value: 198700`, stays unquoted.
+
+The same caution covers a value that opens with punctuation YAML reserves
+(`*`, `&`, `!`, `%`, `@`, `` ` ``, `[`, `{`), which is read as syntax rather
+than as text. Quote it and the question does not come up.
+
+The safe default for any prose field is a `>-` block scalar. It holds a colon, a
+quote and an apostrophe without escaping, and it is what the rest of the file
+already does.
+
 ## Validate and test
 
 When a shell is available, follow `testing.md` in this skill directory for the
