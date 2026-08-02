@@ -12,8 +12,12 @@
 // die had moeten uitrollen. Dat is precies de klasse fouten waarvoor het script
 // bestaat.
 
+import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
+
+const SCRIPT = fileURLToPath(new URL('./deploy-filters.mjs', import.meta.url));
 
 import { COMPONENTS, componentsFor, prefixesFor, workspaceGraph } from './deploy-filters.mjs';
 
@@ -171,5 +175,39 @@ test('elk component in de tabel levert bruikbare prefixen op', () => {
       assert.equal(typeof prefix, 'string');
       assert.ok(prefix.length > 0, `${name} leverde een lege prefix op`);
     }
+  }
+});
+
+// --- Het vangnet zelf ---
+//
+// De tests hierboven dekken de stille kant: een verkeerde check levert `false`
+// op zonder te gooien. De twee hieronder dekken de luide kant, en die is het
+// vangnet waar de rest op leunt. Gaat er iets stuk in de afleiding, dan moet
+// alles gebouwd worden; blijft dat vangnet ongetest, dan kan het wegvallen
+// zonder dat iemand het merkt, en is een storing weer een stille overslag.
+
+test('een onbekende crate in de tabel gooit, zodat het vangnet aanslaat', () => {
+  assert.throws(
+    () => prefixesFor({ crate: 'regelrecht-bestaat-niet', paths: [] }, graph),
+    /niet gevonden in de workspace/,
+  );
+});
+
+test('faalt de afleiding, dan bouwt het script alles met een zichtbare waarschuwing', () => {
+  // Het script als geheel, niet de losse functies: het vangnet zit in de
+  // top-level try/catch. Zonder cargo op PATH faalt `cargo metadata`.
+  const result = spawnSync(process.execPath, [SCRIPT, 'packages/auth/src/lib.rs'], {
+    encoding: 'utf8',
+    env: { ...process.env, PATH: '/nonexistent' },
+  });
+
+  assert.equal(result.status, 0, 'het script hoort niet te falen, maar alles te bouwen');
+  assert.match(result.stdout, /::warning::/, 'de fallback hoort zichtbaar te zijn in het log');
+  for (const name of allComponents) {
+    assert.match(
+      result.stdout,
+      new RegExp(`^${name}=true$`, 'm'),
+      `${name} hoort op true te staan als de afleiding faalt`,
+    );
   }
 });

@@ -58,6 +58,13 @@ jobs:
       # packages/auth en packages/law-model stonden er nergens in, terwijl
       # editor-api en admin op auth leunen en engine, corpus, pipeline en
       # harvester op law-model. Faalt het script, dan zet het alles op true.
+      # Dezelfde Node als waarmee de testsuite in ci.yml draait. Dit script
+      # bepaalt wat er naar productie gaat; het hoort niet stil mee te
+      # verschuiven met wat er toevallig op de runner staat.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
+        with:
+          node-version: '22'
+
       - name: Bepaal geraakte componenten
         id: filter
         run: node script/deploy-filters.mjs --from-file changed.txt
