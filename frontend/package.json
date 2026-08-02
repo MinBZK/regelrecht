@@ -7,17 +7,19 @@
     "prebuild": "node scripts/copy-laws.js",
     "predev": "node ../bdd/codegen/gen-js.mjs && node scripts/copy-laws.js",
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run nldd:check && vite build",
     "preview": "vite preview",
     "pretest": "node ../bdd/codegen/gen-js.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "nldd:imports": "node ../scripts/check-nldd-imports.mjs src src/nldd-components.js --write",
+    "nldd:check": "node ../scripts/check-nldd-imports.mjs src src/nldd-components.js"
   },
   "dependencies": {
     "@cucumber/gherkin": "^42.0.0",
     "@cucumber/messages": "^34.2.0",
-    "@nldd/design-system": "^0.8.75",
+    "@nldd/design-system": "^0.8.77",
     "@regelrecht/frontend-shared": "*",
     "@vue-flow/background": "^1.3.2",
     "@vue-flow/controls": "^1.1.3",
