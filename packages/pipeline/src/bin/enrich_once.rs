@@ -32,7 +32,7 @@
 //! round can lower the findings by translating better and by declaring more
 //! of the law unmodellable, and the two must not read the same.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
@@ -122,6 +122,32 @@ async fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+
+    // The agent reads its instructions from `.claude/skills/` under the corpus
+    // root. Nothing put them there: `ensure_skills` is called from the worker
+    // and never from here, so every experiment run so far handed the agent the
+    // prompt and nothing else. It wrote `untranslatables` into a v0.6.0 file
+    // because that is what it knew, and the schema gate had to repair what an
+    // instruction would have prevented.
+    //
+    // Refusing is the point. A run without skills produces a plausible corpus
+    // and an unusable measurement, and the difference is invisible afterwards.
+    if let Err(e) = regelrecht_pipeline::enrich::ensure_skills(&args.corpus).await {
+        eprintln!(
+            "could not place skills under {}: {e}",
+            args.corpus.display()
+        );
+        return ExitCode::from(2);
+    }
+    if let Err(missing) = skills_present(&args.corpus) {
+        eprintln!(
+            "the corpus root carries no agent instructions: {missing} is absent.\n\
+             Point SKILLS_DIR at a checkout that has .claude/skills, e.g.\n\
+             \x20 SKILLS_DIR=/path/to/regelrecht enrich-once --corpus {} ...",
+            args.corpus.display()
+        );
+        return ExitCode::from(2);
+    }
 
     let before = report(&args, "before");
 
@@ -281,4 +307,20 @@ fn report(args: &Args, when: &str) -> (usize, usize) {
         println!("    schema: {e}");
     }
     (report.schema.len(), report.findings.len())
+}
+
+/// Whether the corpus root carries the instructions the agent needs.
+///
+/// Checked by path rather than by content: the prompt names these files and
+/// the agent opens them itself, so their absence is silent on both sides.
+fn skills_present(corpus: &Path) -> Result<(), String> {
+    for required in [
+        ".claude/skills/law-generate/SKILL.md",
+        ".claude/skills/law-generate/reference.md",
+    ] {
+        if !corpus.join(required).exists() {
+            return Err(required.to_string());
+        }
+    }
+    Ok(())
 }
