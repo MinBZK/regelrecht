@@ -1585,13 +1585,22 @@ fn build_feedback_prompt(yaml_path: &str, feedback: &Feedback, vocabulary: Vocab
                  the operation set is not the problem and the format has no shape for the \
                  construct. Recording an open term as a marking sends it to a queue where nobody \
                  will ever work it.\n\n\
-                 **A marking is a flag on an article that is otherwise worked out.** It names the \
+                 **A flag is a flag on an article that is otherwise worked out.** It names the \
                  one thing that does not fit and leaves everything that does fit standing; an \
-                 article whose whole model is a marking is a defect. `target` names the values in \
-                 this article that cannot be produced because of it, and an empty `target` is a \
+                 article whose whole model is a marking, or a single open term, is a defect. \
+                 That holds for both drawers: moving a gap from one to the other does not make \
+                 the article any less empty. `target` names the values in this article that \
+                 cannot be produced because of it, and it may only name values this model \
+                 declares itself, so an invented name is not an escape. An empty `target` is a \
                  statement rather than an omission: it says the article stays executable. \
                  `legal_text_excerpt` quotes this article's own words, because a marking that \
                  cannot quote what it is about is about something else.\n\n\
+                 **An open term names who fills it.** `delegated_to` when the article appoints \
+                 an authority, `expected_source` when it names the regulation, \
+                 `decided_per_case_by` when it appoints nobody and the competent authority \
+                 decides case by case with a motivation. An open term that names none of the \
+                 three is not an open norm but an omission, and it reads as though the law left \
+                 something open that it did not.\n\n\
                  {CITATION_RULE}"
             ),
         ),
