@@ -26,6 +26,14 @@
 //! entry is not progress through the law. A number the law does not have
 //! fails the run rather than enriching nothing in silence.
 //!
+//! `--session-reuse` says whether the calls in this window share one agent
+//! session: `window` (the default — every call continues the same session,
+//! and each resumed feedback prompt opens by ordering the agent to read the
+//! file again), `repair` (only the schema gate continues; the two gates that
+//! ask for judgement stay cold) or `off` (every call its own cold process,
+//! the behaviour before this existed). The run prints what every call cost, so
+//! the two modes can be held against each other on the same law.
+//!
 //! `--rounds` sets how many feedback rounds a gate may run, either one number
 //! for all three or per gate (`schema=1,checks=2`). The run prints what each
 //! round did per gate, with the marking count beside the finding count: a
@@ -37,8 +45,8 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use regelrecht_pipeline::enrich::{
-    execute_enrich_with_runner, EnrichConfig, EnrichPayload, FeedbackRounds, LlmProvider,
-    ProcessLlmRunner,
+    execute_enrich_with_runner, AgentCallRecord, AgentUsage, EnrichConfig, EnrichPayload,
+    FeedbackRounds, LlmProvider, ProcessLlmRunner, SessionReuse,
 };
 use regelrecht_pipeline::enrich_v2::checks;
 
@@ -52,6 +60,7 @@ struct Args {
     articles: usize,
     article: Option<String>,
     rounds: FeedbackRounds,
+    session_reuse: SessionReuse,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -64,6 +73,7 @@ fn parse_args() -> Result<Args, String> {
     let mut articles = 15usize;
     let mut article = None;
     let mut rounds = FeedbackRounds::default();
+    let mut session_reuse = SessionReuse::default();
 
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -78,6 +88,7 @@ fn parse_args() -> Result<Args, String> {
             "--effort" => effort = Some(value("--effort")?),
             "--article" => article = Some(value("--article")?),
             "--rounds" => rounds = FeedbackRounds::parse(&value("--rounds")?)?,
+            "--session-reuse" => session_reuse = SessionReuse::parse(&value("--session-reuse")?)?,
             "--timeout" => {
                 timeout = value("--timeout")?
                     .parse()
@@ -92,7 +103,8 @@ fn parse_args() -> Result<Args, String> {
                 return Err(
                     "usage: enrich-once --corpus <root> --law <path.yaml> [--provider claude] \
                      [--model opus] [--effort medium] [--timeout 900] [--articles 15] \
-                     [--rounds 2|checks=2,marking=2] [--article 2.1.i]"
+                     [--rounds 2|checks=2,marking=2] [--article 2.1.i] \
+                     [--session-reuse window|repair|off]"
                         .to_string(),
                 )
             }
@@ -110,6 +122,7 @@ fn parse_args() -> Result<Args, String> {
         articles,
         article,
         rounds,
+        session_reuse,
     })
 }
 
@@ -173,6 +186,7 @@ async fn main() -> ExitCode {
         args.article.clone(),
         args.rounds,
         args.effort.clone(),
+        args.session_reuse,
     );
     let payload = EnrichPayload {
         law_id: String::new(),
@@ -211,6 +225,7 @@ async fn main() -> ExitCode {
             }
             println!("  files touched: {}", changed.len());
             print_feedback(&result.feedback);
+            print_cost(&result.session_reuse, &result.agent_calls, result.usage);
         }
         Err(e) => {
             println!("\n=== enrichment failed: {e}");
@@ -307,6 +322,59 @@ fn report(args: &Args, when: &str) -> (usize, usize) {
         println!("    schema: {e}");
     }
     (report.schema.len(), report.findings.len())
+}
+
+/// Print what the window cost: one line per call, then the total.
+///
+/// Per call and not only per window, because the question this setting exists
+/// to answer is which call got cheaper. A resumed round beside a cold one, on
+/// the same law and in the same window, is the only comparison that settles
+/// whether continuing the session paid for itself.
+fn print_cost(mode: &str, calls: &[AgentCallRecord], total: Option<AgentUsage>) {
+    if calls.is_empty() {
+        return;
+    }
+    println!("\n=== cost (session reuse: {mode})");
+    println!(
+        "  {:<10} {:>8} {:>10} {:>10} {:>12} {:>9}",
+        "step", "session", "input", "output", "cache read", "cost"
+    );
+    for call in calls {
+        let (input, output, cache, cost) = call.usage.map_or((0, 0, 0, 0), |u| {
+            (
+                u.input_tokens,
+                u.output_tokens,
+                u.cache_read_tokens,
+                u.cost_millicents,
+            )
+        });
+        println!(
+            "  {:<10} {:>8} {:>10} {:>10} {:>12} {:>9}",
+            call.step,
+            if call.resumed { "resumed" } else { "cold" },
+            input,
+            output,
+            cache,
+            money(cost)
+        );
+    }
+    if let Some(u) = total {
+        println!(
+            "  {:<10} {:>8} {:>10} {:>10} {:>12} {:>9}",
+            "window",
+            calls.len(),
+            u.input_tokens,
+            u.output_tokens,
+            u.cache_read_tokens,
+            money(u.cost_millicents)
+        );
+    }
+}
+
+/// Tenths of a cent as dollars, because that is the unit the provider reports
+/// and an integer is the only honest way to carry money through a struct.
+fn money(millicents: u64) -> String {
+    format!("${}.{:04}", millicents / 100_000, millicents % 100_000 / 10)
 }
 
 /// Whether the corpus root carries the instructions the agent needs.

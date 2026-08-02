@@ -23,7 +23,7 @@ use uuid::Uuid;
 use regelrecht_shared::RegulatoryLayer;
 
 use crate::document_convert::{extension_for, try_deterministic_convert, Upload};
-use crate::enrich::{run_llm_subprocess, EnrichConfig, EnrichPayload};
+use crate::enrich::{run_llm_subprocess, EnrichConfig, EnrichPayload, SessionAction};
 use crate::error::{PipelineError, Result};
 use crate::job_queue::{self, CreateJobRequest};
 use crate::models::{Job, JobType, Priority};
@@ -126,9 +126,18 @@ impl LawStructurer for LlmLawStructurer {
         config: &EnrichConfig,
         allow_bash: bool,
     ) -> Result<()> {
-        run_llm_subprocess(&config.provider, prompt, None, work_dir, config, allow_bash)
-            .await
-            .map(|_| ())
+        // Structuring a law is one call of its own; no window shares it.
+        run_llm_subprocess(
+            &config.provider,
+            prompt,
+            None,
+            work_dir,
+            config,
+            allow_bash,
+            SessionAction::Cold,
+        )
+        .await
+        .map(|_| ())
     }
 }
 
@@ -460,6 +469,8 @@ pub async fn chain_enrich_and_complete(
         new_law: Some(true),
         chunk_articles: None,
         skip_mvt: None,
+        // Queue payload: the session belongs to the run, not to the row.
+        session: None,
     };
     let payload_json = serde_json::to_value(&enrich_payload)
         .map_err(|e| PipelineError::Enrich(format!("serialize enrich payload: {e}")))?;

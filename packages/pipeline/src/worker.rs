@@ -557,6 +557,8 @@ async fn process_next_job(
                         new_law: None,
                         chunk_articles: None,
                         skip_mvt: None,
+                        // Queue payload: a session never outlives its window.
+                        session: None,
                     };
                     let payload_json = match serde_json::to_value(&enrich_payload) {
                         Ok(json) => json,
@@ -2230,6 +2232,8 @@ pub async fn complete_enrich_success_tx(
             new_law: None,
             chunk_articles: None,
             skip_mvt: None,
+            // The continuation is a new window and opens its own session.
+            session: None,
         };
         let continuation_json = serde_json::to_value(&continuation_payload).map_err(|e| {
             PipelineError::Enrich(format!("serialize continuation enrich payload: {e}"))

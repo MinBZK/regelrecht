@@ -1070,6 +1070,8 @@ pub async fn create_enrich_jobs(
             new_law: None,
             chunk_articles: None,
             skip_mvt: None,
+            // Wachtrij-payload: de sessie hoort bij de run, niet bij de rij.
+            session: None,
         };
 
         let payload_json = serde_json::to_value(&enrich_payload).map_err(|e| {

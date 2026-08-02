@@ -225,6 +225,236 @@ impl AgentUsage {
     }
 }
 
+/// Whether the calls in one window share one agent session.
+///
+/// A window is one law and one article range. The translation pass and the
+/// feedback rounds that follow it argue about the same articles, with the same
+/// skills and the same context brief, and every one of them is a cold process
+/// that reads all of it again: up to seven starts per window, five windows for
+/// the zorgtoeslag. Continuing the session instead is what this setting buys.
+///
+/// Never across windows. An agent that keeps everything it wrote carries half
+/// the Awir into the last window, and that is dearer than starting over.
+///
+/// Whether reuse is cheaper is a question with a number behind it, not a
+/// given. In the round-3/4 transcripts a cold feedback round took a median 43
+/// turns over a context that started near nothing, and a translation pass
+/// ended at ~134k tokens. A resumed round pays every one of its turns over
+/// that ending context, so it only comes out ahead if knowing the law already
+/// cuts it to about 17 turns or fewer. That is what the per-call accounting on
+/// [`EnrichResult`] exists to settle, and why `off` stays one env var away.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SessionReuse {
+    /// Every call is its own cold process — the behaviour before this existed,
+    /// and the way back if reuse turns out to cost more than it saves.
+    Off,
+    /// The translation pass and the schema gate share a session; the checks
+    /// and marking gates stay cold. A schema error is a fact about the file
+    /// and repairing it asks for no fresh judgement, while those two gates ask
+    /// the agent to look again at a choice it made — which is the one thing an
+    /// agent that remembers making it is worst at.
+    Repair,
+    /// Every call in the window continues the same session. The default: the
+    /// budget is going on the rounds, and withholding reuse from the rounds
+    /// keeps almost none of it. What guards the fresh look here is the
+    /// [`REREAD_INSTRUCTION`] each resumed feedback prompt opens with.
+    #[default]
+    Window,
+}
+
+impl SessionReuse {
+    /// Parse `ENRICH_SESSION_REUSE`.
+    pub fn parse(spec: &str) -> std::result::Result<Self, String> {
+        match spec.trim() {
+            "off" | "0" => Ok(Self::Off),
+            "repair" => Ok(Self::Repair),
+            "window" | "1" => Ok(Self::Window),
+            other => Err(format!("unknown session reuse mode: {other}")),
+        }
+    }
+
+    /// Stable lowercase name for logs and the measurement record.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Repair => "repair",
+            Self::Window => "window",
+        }
+    }
+}
+
+/// What a resumed feedback prompt opens with.
+///
+/// The point of a gate is a fresh look at what stands in the file. An agent
+/// that still remembers why it wrote something can answer from that memory and
+/// defend the choice instead of reading the finding — the exact failure the
+/// gates exist to catch. It cannot be ruled out from here, so it is met head
+/// on: the first thing the resumed prompt says is that memory is not evidence
+/// and the file is.
+const REREAD_INSTRUCTION: &str = "Read the article you are about to change from the file before \
+     you answer, even though you wrote it yourself earlier in this conversation. What you remember \
+     writing is not evidence of what is in the file: the finding below comes from a check that ran \
+     over the file as it now stands, and other rounds may have touched it since. Judge the finding \
+     against what you read there, not against what you meant to write. If the finding is right, \
+     change the file; do not explain why the earlier choice was defensible.";
+
+/// What one call must do with the window's session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SessionAction {
+    /// No session id at all: the provider opens and forgets its own.
+    Cold,
+    /// Open the window's session under an id the worker chose.
+    Start(Uuid),
+    /// Continue the window's session.
+    Resume(Uuid),
+}
+
+impl SessionAction {
+    /// Whether this call continues an existing conversation.
+    fn resumed(self) -> bool {
+        matches!(self, Self::Resume(_))
+    }
+}
+
+/// What one call to the agent was and what it cost.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentCallRecord {
+    /// `translate`, or the label of the gate this feedback round answered.
+    pub step: String,
+    /// Whether the call continued the window's session rather than starting
+    /// cold. Reading a run means comparing these two against each other.
+    pub resumed: bool,
+    /// What the provider reported, or `None` when it reported nothing.
+    pub usage: Option<AgentUsage>,
+}
+
+/// The agent session of one window: the id every call in it shares, whether it
+/// has been opened yet, and what each call cost.
+///
+/// Owned by `execute_enrich_with_runner` and handed to the runner on the
+/// payload, so it lives exactly as long as the window does.
+#[derive(Debug)]
+pub struct AgentSession {
+    id: Uuid,
+    reuse: SessionReuse,
+    state: Mutex<SessionState>,
+}
+
+#[derive(Debug, Default)]
+struct SessionState {
+    /// True once a call has successfully opened the session, so the next
+    /// shareable call resumes it instead of starting a second one.
+    open: bool,
+    calls: Vec<AgentCallRecord>,
+}
+
+impl AgentSession {
+    #[must_use]
+    pub fn new(reuse: SessionReuse) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            reuse,
+            state: Mutex::new(SessionState::default()),
+        }
+    }
+
+    /// The id every call in this window shares.
+    #[must_use]
+    pub fn id(&self) -> Uuid {
+        self.id
+    }
+
+    #[must_use]
+    pub fn reuse(&self) -> SessionReuse {
+        self.reuse
+    }
+
+    /// Decide what this call does with the session. Pure with respect to the
+    /// session's own state, which only changes when the call is recorded.
+    pub(crate) fn plan(&self, pass: &Pass) -> SessionAction {
+        let shareable = match (self.reuse, pass) {
+            (SessionReuse::Off, _) => false,
+            (_, Pass::Translate) => true,
+            (SessionReuse::Window, Pass::Feedback(_)) => true,
+            (SessionReuse::Repair, Pass::Feedback(f)) => f.gate == Gate::Schema,
+        };
+        if !shareable {
+            return SessionAction::Cold;
+        }
+        let open = self.state.lock().map(|s| s.open).unwrap_or(false);
+        if open {
+            SessionAction::Resume(self.id)
+        } else {
+            SessionAction::Start(self.id)
+        }
+    }
+
+    /// Record a finished call. Called only after the subprocess succeeded, so
+    /// a failed start does not leave the session marked open — the next call
+    /// would then resume an id the provider never wrote.
+    pub(crate) fn record(&self, step: &str, action: SessionAction, usage: Option<AgentUsage>) {
+        if let Ok(mut state) = self.state.lock() {
+            if matches!(action, SessionAction::Start(_)) {
+                state.open = true;
+            }
+            state.calls.push(AgentCallRecord {
+                step: step.to_string(),
+                resumed: action.resumed(),
+                usage,
+            });
+        }
+    }
+
+    /// What every call in this window was and cost, in order.
+    #[must_use]
+    pub fn calls(&self) -> Vec<AgentCallRecord> {
+        self.state
+            .lock()
+            .map(|s| s.calls.clone())
+            .unwrap_or_default()
+    }
+
+    /// The window's total, or `None` when no call reported anything.
+    #[must_use]
+    pub fn total(&self) -> Option<AgentUsage> {
+        let calls = self.calls();
+        let reported: Vec<AgentUsage> = calls.iter().filter_map(|c| c.usage).collect();
+        if reported.is_empty() {
+            return None;
+        }
+        Some(
+            reported
+                .into_iter()
+                .fold(AgentUsage::default(), |a, b| a.plus(b)),
+        )
+    }
+}
+
+/// The label a call is accounted under.
+fn pass_label(pass: &Pass) -> &'static str {
+    match pass {
+        Pass::Translate => "translate",
+        Pass::Feedback(f) => f.gate.label(),
+    }
+}
+
+/// Decide what this call does with the window's session. A payload without a
+/// session (document-convert, a test that does not care) is always cold.
+fn begin_call(payload: &EnrichPayload) -> SessionAction {
+    payload
+        .session
+        .as_ref()
+        .map_or(SessionAction::Cold, |s| s.plan(&payload.pass))
+}
+
+/// Record a finished call against the window's session.
+fn end_call(payload: &EnrichPayload, action: SessionAction, usage: Option<AgentUsage>) {
+    if let Some(session) = payload.session.as_ref() {
+        session.record(pass_label(&payload.pass), action, usage);
+    }
+}
+
 /// Max bytes of the LLM subprocess's stderr to retain for diagnostics. The tail
 /// (most recent output) is kept and appended to the error on a non-zero exit, so
 /// a failure reports the real cause (e.g. an auth `401`) instead of a bare code.
@@ -251,19 +481,30 @@ impl LlmRunner for ProcessLlmRunner {
         // keep the original prompt byte-identical.
         // A feedback pass asks for one thing and gives the agent nothing
         // else to do, so it cannot wander back into translating.
+        let action = begin_call(payload);
         if let Pass::Feedback(feedback) = &payload.pass {
             let prompt =
                 build_feedback_prompt(&payload.yaml_path, feedback, vocabulary_of(yaml_abs).await);
-            return run_llm_subprocess(
+            // A resumed round starts from a conversation in which the agent
+            // wrote the very thing the gate is complaining about, so it is
+            // told first of all to go and look.
+            let prompt = if action.resumed() {
+                format!("{REREAD_INSTRUCTION}\n\n{prompt}")
+            } else {
+                prompt
+            };
+            let usage = run_llm_subprocess(
                 &config.provider,
                 &prompt,
                 Some(yaml_abs),
                 repo_path,
                 config,
                 false,
+                action,
             )
-            .await
-            .map(|_| ());
+            .await?;
+            end_call(payload, action, usage);
+            return Ok(());
         }
 
         // What the chain may instruct depends on what this runtime grants.
@@ -309,7 +550,7 @@ impl LlmRunner for ProcessLlmRunner {
             payload.skip_mvt.unwrap_or(false),
             brief.is_some(),
         );
-        run_llm_subprocess(
+        let usage = run_llm_subprocess(
             &config.provider,
             &prompt,
             Some(yaml_abs),
@@ -317,9 +558,11 @@ impl LlmRunner for ProcessLlmRunner {
             config,
             // Enrich edits YAML in place; it does not need shell access.
             false,
+            action,
         )
-        .await
-        .map(|_| ())
+        .await?;
+        end_call(payload, action, usage);
+        Ok(())
     }
 }
 
@@ -335,6 +578,8 @@ impl LlmRunner for ProcessLlmRunner {
 /// `allow_bash` widens the `claude` provider's tool allowlist to include `Bash`
 /// (enrich keeps it off; document-convert needs it so the agent can run/install
 /// a converter). It has no effect on `opencode`, which has its own tool model.
+/// `session` says whether this call opens, continues or ignores a session; a
+/// caller with no window to speak of passes [`SessionAction::Cold`].
 pub(crate) async fn run_llm_subprocess(
     provider: &LlmProvider,
     prompt: &str,
@@ -342,6 +587,7 @@ pub(crate) async fn run_llm_subprocess(
     cwd: &Path,
     config: &EnrichConfig,
     allow_bash: bool,
+    session: SessionAction,
 ) -> Result<Option<AgentUsage>> {
     let provider_name = provider.name().to_string();
 
@@ -352,6 +598,7 @@ pub(crate) async fn run_llm_subprocess(
         cwd,
         allow_bash,
         config.effort.as_deref(),
+        session,
     );
 
     // Both streams are piped and drained. stdout is drained-and-discarded: a
@@ -535,6 +782,7 @@ pub(crate) async fn run_llm_subprocess(
     if let Some(u) = usage {
         tracing::info!(
             provider = %provider_name,
+            resumed = session.resumed(),
             input_tokens = u.input_tokens,
             output_tokens = u.output_tokens,
             cache_read_tokens = u.cache_read_tokens,
@@ -913,6 +1161,14 @@ pub struct EnrichPayload {
     /// runner trait untouched). `None` means whole-law mode.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chunk_articles: Option<Vec<String>>,
+    /// De agent-sessie van dít venster: gedeeld door de vertaalslag en de
+    /// terugkoppelrondes erna, en samen met het venster afgelopen. Rijdt net
+    /// als [`Pass`] niet mee in de jobpayload — hij bestaat alleen binnen één
+    /// uitvoering, en een sessie-id dat een wachtrij overleeft zou een gesprek
+    /// heropenen dat nergens meer bij hoort. `None` betekent koud: elke
+    /// aanroep een eigen proces.
+    #[serde(skip)]
+    pub session: Option<std::sync::Arc<AgentSession>>,
     /// `true` on continuation chunks (cursor > 0): the MvT-research step ran
     /// during the first chunk and its feature file is already on the branch,
     /// so the prompt tells the agent to skip step 1. Transport-only, like
@@ -1165,6 +1421,21 @@ pub struct EnrichResult {
     /// translating better.
     #[serde(default)]
     pub feedback: Vec<GateFeedback>,
+    /// What this window cost in total, as the provider reported it. `None`
+    /// when nothing was reported (opencode, a fake runner, a run with no LLM
+    /// call at all).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<AgentUsage>,
+    /// The same figure per call, with the step it belongs to and whether it
+    /// continued the window's session. This is what answers whether sharing
+    /// the session paid: a resumed round beside a cold one, in the same
+    /// window, on the same law.
+    #[serde(default)]
+    pub agent_calls: Vec<AgentCallRecord>,
+    /// Which session mode the window ran under (`off`, `repair`, `window`),
+    /// so a stored result says what produced its figures.
+    #[serde(default)]
+    pub session_reuse: String,
 }
 
 /// Serde default for [`EnrichResult::law_complete`]: results stored before
@@ -1309,6 +1580,9 @@ pub struct EnrichConfig {
     pub target_article: Option<String>,
     /// Feedback rounds per gate. Default one everywhere.
     pub feedback_rounds: FeedbackRounds,
+    /// Whether the calls in one window share a session
+    /// (`ENRICH_SESSION_REUSE`). See [`SessionReuse`].
+    pub session_reuse: SessionReuse,
     /// Reasoning effort handed to the provider (`claude --effort`: low,
     /// medium, high, xhigh, max). `None` leaves the provider's own default,
     /// which is what every run did before this existed.
@@ -1346,6 +1620,9 @@ impl EnrichConfig {
             max_articles_per_run: 0,
             target_article: None,
             feedback_rounds: FeedbackRounds::default(),
+            // Tests that do not opt in run cold, so a fake runner's calls read
+            // as they always did; the session tests set this themselves.
+            session_reuse: SessionReuse::Off,
             effort: None,
             provider_configs,
         }
@@ -1364,6 +1641,7 @@ impl EnrichConfig {
         target_article: Option<String>,
         feedback_rounds: FeedbackRounds,
         effort: Option<String>,
+        session_reuse: SessionReuse,
     ) -> Self {
         let mut provider_configs = std::collections::HashMap::new();
         provider_configs.insert("claude".to_string(), provider.clone());
@@ -1375,6 +1653,7 @@ impl EnrichConfig {
             max_articles_per_run: max_articles,
             target_article,
             feedback_rounds,
+            session_reuse,
             effort,
             provider_configs,
         }
@@ -1435,6 +1714,17 @@ impl EnrichConfig {
             Err(_) => FeedbackRounds::default(),
         };
 
+        // Session reuse. A bad spec must not silently read as the default —
+        // this is the setting whose whole point is being able to say which of
+        // the two a run used.
+        let session_reuse = match std::env::var("ENRICH_SESSION_REUSE") {
+            Ok(spec) => SessionReuse::parse(&spec).unwrap_or_else(|e| {
+                tracing::warn!(spec = %spec, error = %e, "ignoring ENRICH_SESSION_REUSE");
+                SessionReuse::default()
+            }),
+            Err(_) => SessionReuse::default(),
+        };
+
         let effort = std::env::var("LLM_EFFORT").ok().filter(|e| !e.is_empty());
 
         let provider = match provider_name.as_str() {
@@ -1456,6 +1746,7 @@ impl EnrichConfig {
             // instruction and has no env var to arrive through.
             target_article: None,
             feedback_rounds,
+            session_reuse,
             effort,
             provider_configs,
         }
@@ -1484,6 +1775,7 @@ impl EnrichConfig {
             max_articles_per_run: self.max_articles_per_run,
             target_article: self.target_article.clone(),
             feedback_rounds: self.feedback_rounds,
+            session_reuse: self.session_reuse,
             effort: self.effort.clone(),
             provider_configs: self.provider_configs.clone(),
         }
@@ -1995,6 +2287,7 @@ fn build_command(
     cwd: &Path,
     allow_bash: bool,
     effort: Option<&str>,
+    session: SessionAction,
 ) -> tokio::process::Command {
     // Collect allowed env vars before creating the command.
     let safe_env: Vec<(String, String)> =
@@ -2052,6 +2345,12 @@ fn build_command(
             if effort.is_some() {
                 tracing::warn!("effort is not supported by opencode; ignored");
             }
+            // Session reuse is a claude-provider affair. Under opencode every
+            // call stays cold, and it says so rather than letting a run be
+            // read as though the windows had been shared.
+            if !matches!(session, SessionAction::Cold) {
+                tracing::warn!("session reuse is not wired for opencode; this call runs cold");
+            }
             cmd
         }
         LlmProvider::Claude { path, model } => {
@@ -2106,6 +2405,20 @@ fn build_command(
             // it: one flag for which model, one for how hard it thinks.
             if let Some(e) = effort {
                 cmd.arg("--effort").arg(e);
+            }
+            // The window's session. The worker chooses the id rather than
+            // reading it back out of the provider's closing JSON: an id we
+            // hand in is known before the process starts, so a run that dies
+            // before it prints anything still leaves a resumable session, and
+            // nothing has to be parsed to continue.
+            match session {
+                SessionAction::Cold => {}
+                SessionAction::Start(id) => {
+                    cmd.arg("--session-id").arg(id.to_string());
+                }
+                SessionAction::Resume(id) => {
+                    cmd.arg("--resume").arg(id.to_string());
+                }
             }
             cmd
         }
@@ -2653,6 +2966,17 @@ pub async fn execute_enrich_with_runner(
 ) -> Result<(EnrichResult, Vec<PathBuf>)> {
     let normalized_path = normalize_yaml_path(&payload.yaml_path)?;
 
+    // One session for this window, opened by the translation pass and
+    // continued by whichever feedback rounds the mode allows. It is created
+    // here and dropped when this call returns, which is exactly what "the
+    // session ends with the window" means: nothing carries it to the next
+    // chunk of the same law.
+    let session = std::sync::Arc::new(AgentSession::new(config.session_reuse));
+    let payload = &EnrichPayload {
+        session: Some(std::sync::Arc::clone(&session)),
+        ..payload.clone()
+    };
+
     let yaml_abs = repo_path.join(&normalized_path);
     if !yaml_abs.exists() {
         return Err(PipelineError::Enrich(format!(
@@ -2974,6 +3298,39 @@ pub async fn execute_enrich_with_runner(
 
     let branch = enrich_branch_name(&provider_name);
 
+    // What the window cost, and what each call in it cost. One line per call
+    // and one for the total: a run is only worth comparing with another if
+    // both say which calls were resumed and what each of them took.
+    let agent_calls = session.calls();
+    let usage = session.total();
+    for call in &agent_calls {
+        if let Some(u) = call.usage {
+            tracing::info!(
+                law_id = %payload.law_id,
+                step = %call.step,
+                resumed = call.resumed,
+                input_tokens = u.input_tokens,
+                output_tokens = u.output_tokens,
+                cache_read_tokens = u.cache_read_tokens,
+                cost_millicents = u.cost_millicents,
+                "agent call accounted"
+            );
+        }
+    }
+    if let Some(u) = usage {
+        tracing::info!(
+            law_id = %payload.law_id,
+            session_reuse = config.session_reuse.label(),
+            calls = agent_calls.len(),
+            resumed_calls = agent_calls.iter().filter(|c| c.resumed).count(),
+            input_tokens = u.input_tokens,
+            output_tokens = u.output_tokens,
+            cache_read_tokens = u.cache_read_tokens,
+            cost_millicents = u.cost_millicents,
+            "window accounted"
+        );
+    }
+
     let result = EnrichResult {
         law_id: payload.law_id.clone(),
         yaml_path: normalized_path,
@@ -2988,6 +3345,9 @@ pub async fn execute_enrich_with_runner(
         law_complete,
         enrich_cursor: next_cursor,
         feedback,
+        usage,
+        agent_calls,
+        session_reuse: config.session_reuse.label().to_string(),
     };
 
     Ok((result, written_files))
@@ -3238,6 +3598,7 @@ mod tests {
             new_law: None,
             chunk_articles: None,
             skip_mvt: None,
+            session: None,
         };
 
         let json = serde_json::to_string(&payload).unwrap();
@@ -3261,6 +3622,7 @@ mod tests {
             new_law: None,
             chunk_articles: None,
             skip_mvt: None,
+            session: None,
         };
         let json_no_provider = serde_json::to_string(&payload_no_provider).unwrap();
         assert!(!json_no_provider.contains("provider"));
@@ -3290,6 +3652,7 @@ mod tests {
             new_law: None,
             chunk_articles: None,
             skip_mvt: None,
+            session: None,
         }
     }
 
@@ -3338,6 +3701,9 @@ mod tests {
             law_complete: true,
             enrich_cursor: 0,
             feedback: Vec::new(),
+            usage: None,
+            agent_calls: Vec::new(),
+            session_reuse: SessionReuse::Off.label().to_string(),
         };
 
         let json = serde_json::to_value(&result).unwrap();
@@ -3596,6 +3962,7 @@ related_legislation:
             new_law: None,
             chunk_articles: None,
             skip_mvt: None,
+            session: None,
         };
         let roundtrip: EnrichPayload =
             serde_json::from_value(serde_json::to_value(&new).unwrap()).unwrap();
@@ -4147,6 +4514,321 @@ articles:
         assert_eq!(*runner.calls.lock().unwrap(), 0);
     }
 
+    // ---- one session per window -----------------------------------------
+
+    fn feedback_pass(gate: Gate) -> Pass {
+        Pass::Feedback(Feedback {
+            gate,
+            findings: vec!["[schema] art. 1: iets".to_string()],
+        })
+    }
+
+    #[test]
+    fn a_window_opens_its_session_once_and_continues_it() {
+        // The first call of the window opens the session under an id the
+        // worker chose; every call after it continues that same id. This is
+        // the whole point: one window, one reading of the law.
+        let session = AgentSession::new(SessionReuse::Window);
+        let first = session.plan(&Pass::Translate);
+        assert_eq!(first, SessionAction::Start(session.id()));
+
+        session.record("translate", first, None);
+        assert_eq!(
+            session.plan(&feedback_pass(Gate::Schema)),
+            SessionAction::Resume(session.id())
+        );
+        session.record("schema", SessionAction::Resume(session.id()), None);
+        assert_eq!(
+            session.plan(&feedback_pass(Gate::Marking)),
+            SessionAction::Resume(session.id()),
+            "in window mode the soft gates continue the session too"
+        );
+    }
+
+    #[test]
+    fn a_new_window_is_a_new_session() {
+        // Nothing carries a session across windows: the agent that enriched
+        // the first chunk of the Awir must not walk into the last one still
+        // holding everything it wrote.
+        let first = AgentSession::new(SessionReuse::Window);
+        first.record("translate", first.plan(&Pass::Translate), None);
+        assert!(first.plan(&feedback_pass(Gate::Checks)).resumed());
+
+        let second = AgentSession::new(SessionReuse::Window);
+        assert_ne!(second.id(), first.id(), "each window has its own id");
+        assert_eq!(
+            second.plan(&Pass::Translate),
+            SessionAction::Start(second.id()),
+            "a fresh window starts cold, whatever the previous one did"
+        );
+    }
+
+    #[test]
+    fn repair_mode_keeps_the_judgement_gates_cold() {
+        // The schema gate repairs a fact and may remember; the checks and
+        // marking gates ask the agent to look again at a choice it made, and
+        // an agent that remembers making it is the failure those gates exist
+        // to catch.
+        let session = AgentSession::new(SessionReuse::Repair);
+        session.record("translate", session.plan(&Pass::Translate), None);
+
+        assert_eq!(
+            session.plan(&feedback_pass(Gate::Schema)),
+            SessionAction::Resume(session.id())
+        );
+        assert_eq!(
+            session.plan(&feedback_pass(Gate::Checks)),
+            SessionAction::Cold
+        );
+        assert_eq!(
+            session.plan(&feedback_pass(Gate::Marking)),
+            SessionAction::Cold
+        );
+    }
+
+    #[test]
+    fn reuse_off_never_shares_a_session() {
+        let session = AgentSession::new(SessionReuse::Off);
+        assert_eq!(session.plan(&Pass::Translate), SessionAction::Cold);
+        session.record("translate", SessionAction::Cold, None);
+        assert_eq!(
+            session.plan(&feedback_pass(Gate::Schema)),
+            SessionAction::Cold
+        );
+    }
+
+    #[test]
+    fn a_failed_first_call_leaves_the_session_unopened() {
+        // `record` only runs after the subprocess succeeded. Without a
+        // successful start there is no conversation on disk, so the next call
+        // must start rather than resume an id the provider never wrote.
+        let session = AgentSession::new(SessionReuse::Window);
+        let planned = session.plan(&Pass::Translate);
+        assert_eq!(planned, SessionAction::Start(session.id()));
+        // …call fails, nothing recorded…
+        assert_eq!(
+            session.plan(&feedback_pass(Gate::Schema)),
+            SessionAction::Start(session.id())
+        );
+    }
+
+    #[test]
+    fn session_reuse_parses_its_three_modes() {
+        assert_eq!(SessionReuse::parse("off").unwrap(), SessionReuse::Off);
+        assert_eq!(SessionReuse::parse("repair").unwrap(), SessionReuse::Repair);
+        assert_eq!(
+            SessionReuse::parse(" window ").unwrap(),
+            SessionReuse::Window
+        );
+        assert_eq!(SessionReuse::default(), SessionReuse::Window);
+        assert!(SessionReuse::parse("sometimes").is_err());
+    }
+
+    #[test]
+    fn the_claude_command_starts_and_resumes_a_session() {
+        let provider = LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        };
+        let id = Uuid::new_v4();
+        let args = |action: SessionAction| -> Vec<String> {
+            build_command(
+                &provider,
+                "prompt",
+                None,
+                Path::new("/tmp"),
+                false,
+                None,
+                action,
+            )
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect()
+        };
+
+        let cold = args(SessionAction::Cold);
+        assert!(!cold.iter().any(|a| a == "--session-id" || a == "--resume"));
+
+        let start = args(SessionAction::Start(id));
+        let at = start
+            .iter()
+            .position(|a| a == "--session-id")
+            .expect("start");
+        assert_eq!(start[at + 1], id.to_string());
+
+        let resume = args(SessionAction::Resume(id));
+        let at = resume.iter().position(|a| a == "--resume").expect("resume");
+        assert_eq!(resume[at + 1], id.to_string());
+    }
+
+    /// Answers a round like [`MarkingRunner`], but takes the session decision
+    /// the same way the process runner does — through `begin_call`/`end_call`
+    /// — and writes down what it decided. Anything less would test a copy of
+    /// the rule rather than the rule.
+    struct SessionRunner {
+        inner: MarkingRunner,
+        actions: std::sync::Mutex<Vec<(String, SessionAction)>>,
+    }
+
+    impl SessionRunner {
+        fn new() -> Self {
+            Self {
+                inner: MarkingRunner {
+                    calls: std::sync::Mutex::new(0),
+                },
+                actions: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+
+        #[allow(clippy::unwrap_used)]
+        fn actions(&self) -> Vec<(String, SessionAction)> {
+            self.actions.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl LlmRunner for SessionRunner {
+        async fn run(
+            &self,
+            payload: &EnrichPayload,
+            yaml_abs: &Path,
+            repo_path: &Path,
+            config: &EnrichConfig,
+        ) -> Result<()> {
+            let action = begin_call(payload);
+            #[allow(clippy::unwrap_used)]
+            {
+                self.actions
+                    .lock()
+                    .unwrap()
+                    .push((pass_label(&payload.pass).to_string(), action));
+            }
+            self.inner.run(payload, yaml_abs, repo_path, config).await?;
+            end_call(payload, action, None);
+            Ok(())
+        }
+    }
+
+    async fn rounds_with_session(
+        reuse: SessionReuse,
+        session: &std::sync::Arc<AgentSession>,
+    ) -> Vec<(String, SessionAction)> {
+        let (dir, path) = silent_law_on_disk(3).await;
+        let mut config = rounds_config(FeedbackRounds {
+            marking: 2,
+            ..FeedbackRounds::default()
+        });
+        config.session_reuse = reuse;
+        let payload = EnrichPayload {
+            session: Some(std::sync::Arc::clone(session)),
+            ..chunk_test_payload("regulation/nl/wet/test_law/2025-01-01.yaml")
+        };
+        let runner = SessionRunner::new();
+
+        run_feedback_rounds(
+            Gate::Marking,
+            &path,
+            dir.path(),
+            &payload,
+            dir.path(),
+            &config,
+            &runner,
+        )
+        .await
+        .expect("rounds run");
+
+        runner.actions()
+    }
+
+    #[tokio::test]
+    async fn a_second_round_in_the_same_window_continues_the_session() {
+        // Two rounds at the same gate, over the same articles: the second
+        // must continue the first rather than start a seventh cold process.
+        let session = std::sync::Arc::new(AgentSession::new(SessionReuse::Window));
+        let actions = rounds_with_session(SessionReuse::Window, &session).await;
+
+        assert_eq!(actions.len(), 2, "both rounds ran");
+        assert_eq!(
+            actions[0],
+            ("marking".to_string(), SessionAction::Start(session.id()))
+        );
+        assert_eq!(
+            actions[1],
+            ("marking".to_string(), SessionAction::Resume(session.id()))
+        );
+
+        // And both calls are accounted, so a run can be read per call.
+        let calls = session.calls();
+        assert_eq!(calls.len(), 2);
+        assert!(!calls[0].resumed);
+        assert!(calls[1].resumed);
+        assert_eq!(calls[1].step, "marking");
+    }
+
+    #[tokio::test]
+    async fn the_next_window_does_not_continue_the_previous_one() {
+        // Same law, same gate, a new window: nothing is resumed. The saving
+        // stops at the window boundary on purpose.
+        let first = std::sync::Arc::new(AgentSession::new(SessionReuse::Window));
+        let first_actions = rounds_with_session(SessionReuse::Window, &first).await;
+        assert!(first_actions.iter().any(|(_, a)| a.resumed()));
+
+        let second = std::sync::Arc::new(AgentSession::new(SessionReuse::Window));
+        let second_actions = rounds_with_session(SessionReuse::Window, &second).await;
+        assert_eq!(
+            second_actions[0].1,
+            SessionAction::Start(second.id()),
+            "a new window opens its own session"
+        );
+        assert_ne!(second.id(), first.id());
+    }
+
+    #[tokio::test]
+    async fn the_marking_gate_stays_cold_under_repair_mode() {
+        let session = std::sync::Arc::new(AgentSession::new(SessionReuse::Repair));
+        let actions = rounds_with_session(SessionReuse::Repair, &session).await;
+
+        assert_eq!(actions.len(), 2);
+        assert!(
+            actions.iter().all(|(_, a)| *a == SessionAction::Cold),
+            "repair mode gives the marking gate a fresh process, got {actions:?}"
+        );
+    }
+
+    #[test]
+    fn the_window_total_is_the_sum_of_its_calls() {
+        // Cost per window and per call come from the same record, so the
+        // total can never disagree with the lines above it.
+        let session = AgentSession::new(SessionReuse::Window);
+        assert_eq!(session.total(), None, "no call, no figure");
+
+        let translate = AgentUsage {
+            input_tokens: 100,
+            output_tokens: 20,
+            cache_read_tokens: 900,
+            cost_millicents: 1500,
+        };
+        let repair = AgentUsage {
+            input_tokens: 10,
+            output_tokens: 5,
+            cache_read_tokens: 400,
+            cost_millicents: 300,
+        };
+        session.record(
+            "translate",
+            SessionAction::Start(session.id()),
+            Some(translate),
+        );
+        session.record("schema", SessionAction::Resume(session.id()), Some(repair));
+
+        let total = session.total().expect("two calls reported");
+        assert_eq!(total.input_tokens, 110);
+        assert_eq!(total.output_tokens, 25);
+        assert_eq!(total.cache_read_tokens, 1300);
+        assert_eq!(total.cost_millicents, 1800);
+    }
+
     #[test]
     fn feedback_rounds_default_to_one_per_gate() {
         let rounds = FeedbackRounds::default();
@@ -4554,6 +5236,7 @@ articles:
             new_law: None,
             chunk_articles: None,
             skip_mvt: None,
+            session: None,
         };
 
         let config = test_config(LlmProvider::OpenCode {
@@ -4584,6 +5267,67 @@ articles:
         assert_eq!(meta.law_id, "BWBR0000001");
         assert_eq!(meta.provider, "opencode");
         assert_eq!(meta.articles_with_machine_readable, 3);
+    }
+
+    #[tokio::test]
+    async fn one_run_shares_one_session_and_accounts_every_call() {
+        // The window boundary is the run: `execute_enrich_with_runner` opens
+        // one session, the translation pass and the gates after it share it,
+        // and a second run over the same law opens another. Everything the
+        // measurement needs rides back in the result.
+        let mut config = rounds_config(FeedbackRounds::default());
+        config.session_reuse = SessionReuse::Window;
+
+        let ids_of = |actions: Vec<(String, SessionAction)>| -> Vec<Uuid> {
+            actions
+                .into_iter()
+                .filter_map(|(_, a)| match a {
+                    SessionAction::Start(id) | SessionAction::Resume(id) => Some(id),
+                    SessionAction::Cold => None,
+                })
+                .collect()
+        };
+
+        let run = |config: EnrichConfig| async move {
+            let (dir, _) = silent_law_on_disk(3).await;
+            let payload = chunk_test_payload("regulation/nl/wet/test_law/2025-01-01.yaml");
+            let runner = SessionRunner::new();
+            let (result, _) =
+                execute_enrich_with_runner(&payload, dir.path(), &config, "", &runner)
+                    .await
+                    .expect("run");
+            (result, runner.actions())
+        };
+
+        let (first_result, first_actions) = run(config.clone()).await;
+        let first_ids = ids_of(first_actions);
+        assert!(
+            first_ids.len() > 1,
+            "the run made several calls; got {first_ids:?}"
+        );
+        assert!(
+            first_ids.windows(2).all(|w| w[0] == w[1]),
+            "every call in one window carries the same session: {first_ids:?}"
+        );
+        assert_eq!(first_result.session_reuse, "window");
+        assert_eq!(
+            first_result.agent_calls.len(),
+            first_ids.len(),
+            "every call is accounted, resumed or not"
+        );
+        assert!(first_result.agent_calls[0].step == "translate");
+        assert!(
+            first_result.agent_calls.iter().skip(1).any(|c| c.resumed),
+            "the gates after the translation continue the session"
+        );
+
+        let (_, second_actions) = run(config).await;
+        let second_ids = ids_of(second_actions);
+        assert_ne!(
+            second_ids.first(),
+            first_ids.first(),
+            "a second run is a second window and opens its own session"
+        );
     }
 
     /// Fake runner that fails, to test error path.
@@ -4628,6 +5372,7 @@ articles:
             new_law: None,
             chunk_articles: None,
             skip_mvt: None,
+            session: None,
         };
 
         let config = test_config(LlmProvider::OpenCode {
@@ -4685,6 +5430,7 @@ articles:
             new_law: None,
             chunk_articles: None,
             skip_mvt: None,
+            session: None,
         };
 
         let config = test_config(LlmProvider::OpenCode {
@@ -5140,6 +5886,7 @@ articles:
             new_law: None,
             chunk_articles: None,
             skip_mvt: None,
+            session: None,
         };
         let json = serde_json::to_string(&bare).unwrap();
         assert!(!json.contains("chunk_articles"));
@@ -5304,6 +6051,7 @@ articles:
             new_law: None,
             chunk_articles: None,
             skip_mvt: None,
+            session: None,
         }
     }
 

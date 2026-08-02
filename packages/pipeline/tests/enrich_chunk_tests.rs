@@ -33,6 +33,7 @@ fn payload(provider: &str) -> EnrichPayload {
         // Niet geserialiseerd; een payload uit de wachtrij is altijd een
         // vertaalslag, en de terugkoppelpassen ontstaan binnen de run.
         pass: Pass::Translate,
+        session: None,
     }
 }
 
@@ -51,6 +52,9 @@ fn chunk_result(provider: &str, law_complete: bool, enrich_cursor: usize) -> Enr
         law_complete,
         enrich_cursor,
         feedback: Vec::new(),
+        usage: None,
+        agent_calls: Vec::new(),
+        session_reuse: "off".into(),
     }
 }
 
