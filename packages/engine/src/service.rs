@@ -33,7 +33,7 @@ use crate::engine::{ArticleEngine, ArticleResult, OutputProvenance};
 use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
 use crate::priority;
-use crate::resolver::{RuleResolver, SelectionReason};
+use crate::resolver::{DelegationRefusal, RuleResolver, SelectionReason};
 use crate::trace::TraceBuilder;
 use crate::types::{
     Connectivity, LegalStatus, PathNodeType, RegulatoryLayer, ResolveType, UntranslatableMode,
@@ -102,6 +102,10 @@ struct ResolutionContext<'a> {
     /// The law that initiated the current execution chain (for override scoping).
     /// Overrides only apply when declared by this law.
     contextual_law_id: Option<String>,
+    /// Implementations refused by the delegation gate during this execution.
+    /// Collected independently of tracing so the refusal reaches the receipt
+    /// even when no trace was requested.
+    delegation_refusals: Vec<DelegationRefusal>,
 }
 
 /// Parse the calculation date, rejecting malformed input: an unparseable date
@@ -143,6 +147,7 @@ impl<'a> ResolutionContext<'a> {
             trace: None,
             cache: HashMap::new(),
             contextual_law_id: None,
+            delegation_refusals: Vec::new(),
         })
     }
 
@@ -545,6 +550,7 @@ impl LawExecutionService {
                 outputs: result.outputs.clone(),
                 output_provenance: result.output_provenance.clone(),
                 trace: result.trace.clone(),
+                delegation_refusals: result.delegation_refusals.clone(),
             },
             accepted_values: Vec::new(),
             timestamp: chrono::Utc::now().to_rfc3339(),
@@ -744,7 +750,12 @@ impl LawExecutionService {
     ) -> Result<ArticleResult> {
         let mut res_ctx = ResolutionContext::with_trace(calculation_date, trace)?;
         res_ctx.contextual_law_id = Some(law_id.to_string());
-        self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx)
+        let mut result =
+            self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx)?;
+        result
+            .delegation_refusals
+            .clone_from(&res_ctx.delegation_refusals);
+        Ok(result)
     }
 
     /// Execute a single lifecycle stage of a procedure-aware law (RFC-008).
@@ -1009,6 +1020,9 @@ impl LawExecutionService {
         // All stages complete
         let mut final_result = result;
         final_result.outputs = stage_state.accumulated_outputs;
+        final_result
+            .delegation_refusals
+            .clone_from(&res_ctx.delegation_refusals);
         Ok(ExecutionOutcome::Complete(Box::new(final_result)))
     }
 
@@ -1092,6 +1106,12 @@ impl LawExecutionService {
         // causally-entailed outputs (hooks, overrides). A beschikking is legally
         // indivisible per AWB 1:3 — its consequences cannot be stripped.
 
+        // Every refusal seen anywhere in this execution chain, not just in the
+        // article that happened to be merged first.
+        result
+            .delegation_refusals
+            .clone_from(&res_ctx.delegation_refusals);
+
         Ok(result)
     }
 
@@ -1138,6 +1158,9 @@ impl LawExecutionService {
                     schema_version: None,
                     regulation_hash: None,
                     regulation_valid_from: None,
+                    // Filled in by the outermost call from the resolution
+                    // context, which outlives this cached partial result.
+                    delegation_refusals: Vec::new(),
                 });
             }
         }
@@ -1821,14 +1844,14 @@ impl LawExecutionService {
                 .iter()
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect();
-            let implementations = match self.resolver.find_implementations(
+            let lookup = match self.resolver.find_implementations(
                 &law.id,
                 &article.number,
-                &term.id,
+                term,
                 res_ctx.reference_date(),
                 &scope,
             ) {
-                Ok(impls) => impls,
+                Ok(lookup) => lookup,
                 Err(e) => {
                     res_ctx.trace_set_message(format!(
                         "Open term '{}': implementation lookup failed: {}",
@@ -1839,10 +1862,38 @@ impl LawExecutionService {
                 }
             };
 
+            // A regulation that arrogates a term the law delegates elsewhere is
+            // skipped, so a competent regulation lower in the ranking can still
+            // win. But it is a defect in the corpus, not a property of this
+            // case, so it is recorded: it stands in the trace under this open
+            // term and travels to the receipt even when tracing is off. Without
+            // that record a citizen would read "no implementation found, using
+            // default" and never learn that a filling was offered and refused.
+            for refusal in &lookup.refusals {
+                tracing::warn!(
+                    law_id = %refusal.declaring_law,
+                    article = %refusal.declaring_article,
+                    open_term = %refusal.open_term,
+                    required_layer = %refusal.required_layer,
+                    refused_law = %refusal.refused_law,
+                    refused_layer = %refusal.refused_layer,
+                    "Implementation refused: regulatory_layer is not the delegated layer"
+                );
+                let message = refusal.message();
+                {
+                    let _refusal_guard =
+                        res_ctx.trace_guard(&refusal.refused_law, PathNodeType::OpenTermResolution);
+                    res_ctx.trace_set_message(message);
+                }
+            }
+            res_ctx
+                .delegation_refusals
+                .extend(lookup.refusals.iter().cloned());
+
             // Every candidate that survives `find_implementations` is competent:
             // the resolver drops implementations whose regulatory_layer is not
             // the layer the open term delegates to, before priority ranking.
-            if let Some((impl_law, impl_article)) = implementations.first() {
+            if let Some((impl_law, impl_article)) = lookup.implementations.first() {
                 tracing::debug!(
                     open_term = %term.id,
                     implementing_law = %impl_law.id,
@@ -4026,6 +4077,117 @@ articles:
         assert_eq!(
             result.outputs.get("redelijk_percentage"),
             Some(&Value::Int(6))
+        );
+    }
+
+    /// The law reserves the term for a ministeriële regeling and carries last
+    /// year's amount as a default. A beleidsregel offers this year's amount and
+    /// is refused. The default runs — but the refusal is on the receipt and in
+    /// the trace, so someone contesting the decision can read that a filling
+    /// was offered and why it did not count. Before, the beleidsregel vanished
+    /// without a word and the trace said only "using default".
+    #[test]
+    fn test_ioc_refused_layer_is_recorded_while_the_default_runs() {
+        let law_yaml = r#"
+$id: wet_met_default
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '4'
+    text: De standaardpremie wordt vastgesteld bij ministeriele regeling
+    machine_readable:
+      open_terms:
+        - id: standaardpremie
+          type: amount
+          required: true
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+          default:
+            actions:
+              - output: standaardpremie
+                value: 1889
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: "$standaardpremie"
+"#;
+        let beleidsregel_yaml = r#"
+$id: beleidsregel_met_default
+regulatory_layer: BELEIDSREGEL
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: De standaardpremie bedraagt 1928
+    machine_readable:
+      implements:
+        - law: wet_met_default
+          article: '4'
+          open_term: standaardpremie
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: 1928
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law_yaml).unwrap();
+        service.load_law(beleidsregel_yaml).unwrap();
+
+        // Without a trace: the refusal still travels on the result, and from
+        // there onto the receipt.
+        let result = service
+            .evaluate_law_output(
+                "wet_met_default",
+                "standaardpremie",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("standaardpremie"),
+            Some(&Value::Int(1889)),
+            "the default runs: no authorised regulation filled the term"
+        );
+        assert!(result.trace.is_none(), "this run asked for no trace");
+        assert_eq!(result.delegation_refusals.len(), 1);
+        let refusal = &result.delegation_refusals[0];
+        assert_eq!(refusal.refused_law, "beleidsregel_met_default");
+        assert_eq!(refusal.refused_layer, "BELEIDSREGEL");
+        assert_eq!(refusal.required_layer, "MINISTERIELE_REGELING");
+        assert_eq!(refusal.open_term, "standaardpremie");
+
+        let receipt = service.build_receipt(&result, &BTreeMap::new(), "2025-01-01");
+        assert_eq!(
+            receipt.results.delegation_refusals, result.delegation_refusals,
+            "the receipt carries the refusal even without a trace"
+        );
+
+        // With a trace: the refusal is a node under the open term, next to the
+        // default that ran in its place.
+        let traced = service
+            .evaluate_law_output_with_trace(
+                "wet_met_default",
+                "standaardpremie",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(traced.delegation_refusals.len(), 1);
+        let rendered = traced
+            .trace
+            .as_ref()
+            .expect("a traced run has a trace")
+            .render_box_drawing();
+        assert!(
+            rendered.contains("beleidsregel_met_default")
+                && rendered.contains("may not fill open term 'standaardpremie'"),
+            "the refusal must be readable in the trace:\n{rendered}"
         );
     }
 

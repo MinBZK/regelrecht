@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 
 use crate::engine::OutputProvenance;
+use crate::resolver::DelegationRefusal;
 use crate::trace::PathNode;
 use crate::types::{Connectivity, LegalStatus, UntranslatableMode, Value};
 
@@ -116,6 +117,12 @@ pub struct ReceiptResults {
     pub output_provenance: BTreeMap<String, OutputProvenance>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trace: Option<PathNode>,
+    /// Implementations refused by the delegation gate: regulations that
+    /// declared they fill an open term but sit at a layer the declaring
+    /// article does not delegate to. Recorded independently of the trace, so
+    /// the refusal is on the receipt even when no trace was requested.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub delegation_refusals: Vec<DelegationRefusal>,
 }
 
 /// A value accepted from another organisation's engine (RFC-009).

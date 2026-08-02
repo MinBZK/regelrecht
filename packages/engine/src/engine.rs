@@ -23,6 +23,7 @@ use crate::article::{Action, ActionOperation, Article, ArticleBasedLaw};
 use crate::context::RuleContext;
 use crate::error::{EngineError, Result};
 use crate::operations::{evaluate_value, execute_operation};
+use crate::resolver::DelegationRefusal;
 use crate::trace::{PathNode, TraceBuilder};
 use crate::types::{PathNodeType, Value};
 use std::cell::RefCell;
@@ -82,6 +83,11 @@ pub struct ArticleResult {
     pub regulation_hash: Option<String>,
     /// valid_from date of the regulation version that was evaluated (RFC-013)
     pub regulation_valid_from: Option<String>,
+    /// Implementations refused by the delegation gate during this execution:
+    /// regulations that declared they fill an open term but sit at a layer the
+    /// declaring article does not delegate to. Populated by the service layer,
+    /// independently of tracing, so a refusal reaches the receipt.
+    pub delegation_refusals: Vec<DelegationRefusal>,
 }
 
 /// Executes a single article's machine_readable.execution section.
@@ -239,6 +245,7 @@ impl<'a> ArticleEngine<'a> {
             schema_version: self.law.schema_version().map(String::from),
             regulation_hash: self.law.content_hash.clone(),
             regulation_valid_from: self.law.valid_from.clone(),
+            delegation_refusals: Vec::new(),
         };
 
         tracing::debug!(

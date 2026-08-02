@@ -75,7 +75,7 @@ pub use engine::{ArticleEngine, ArticleResult, OutputProvenance};
 pub use error::{EngineError, ExternalError, Result};
 pub use operations::{evaluate_value, execute_operation, ValueResolver};
 pub use receipt::ExecutionReceipt;
-pub use resolver::RuleResolver;
+pub use resolver::{DelegationRefusal, ImplementationLookup, RuleResolver};
 pub use service::{ExecutionOutcome, LawExecutionService, LawInfo, ServiceProvider, StageState};
 pub use trace::{PathNode, TraceBuilder};
 pub use types::{

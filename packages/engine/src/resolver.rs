@@ -20,7 +20,7 @@
 //! to prevent memory exhaustion attacks.
 
 use crate::article::{
-    Article, ArticleBasedLaw, HookFilter, HookPoint, LawLoad, ProcedureDefinition,
+    Article, ArticleBasedLaw, HookFilter, HookPoint, LawLoad, OpenTerm, ProcedureDefinition,
 };
 use crate::config;
 use crate::error::{EngineError, Result};
@@ -45,6 +45,59 @@ pub enum SelectionReason {
     /// The most recent applicable version ended before the reference date.
     /// Carries the `valid_to` date that was last in force.
     EndedOn(NaiveDate),
+}
+
+/// A regulation that declared it fills an open term, but was refused because
+/// its regulatory layer is not the layer the declaring article delegates to.
+///
+/// A refusal is a defect in the corpus, not a property of the case: someone
+/// wrote a regulation that arrogates what the law does not delegate to it. It
+/// is therefore recorded rather than dropped, so a citizen contesting the
+/// decision can read that a filling was offered and why it did not count.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct DelegationRefusal {
+    /// The law whose article declares the open term.
+    pub declaring_law: String,
+    /// The article number that declares the open term.
+    pub declaring_article: String,
+    /// The open term that was to be filled.
+    pub open_term: String,
+    /// The regulatory layer that article reserves the term for.
+    pub required_layer: String,
+    /// The regulation that offered to fill it.
+    pub refused_law: String,
+    /// The article of that regulation that declared the `implements`.
+    pub refused_article: String,
+    /// That regulation's own regulatory layer.
+    pub refused_layer: String,
+}
+
+impl DelegationRefusal {
+    /// One sentence naming both regulations, the layer required and the layer
+    /// offered. Used verbatim in the trace, so the receipt reads as prose.
+    #[must_use]
+    pub fn message(&self) -> String {
+        format!(
+            "Refused: {} article {} is a {} and may not fill open term '{}', \
+             which {} article {} reserves for a {}",
+            self.refused_law,
+            self.refused_article,
+            self.refused_layer,
+            self.open_term,
+            self.declaring_law,
+            self.declaring_article,
+            self.required_layer,
+        )
+    }
+}
+
+/// The outcome of an implements-index lookup for one open term.
+#[derive(Debug, Default)]
+pub struct ImplementationLookup<'a> {
+    /// Competent implementations, winner first.
+    pub implementations: Vec<(&'a ArticleBasedLaw, &'a Article)>,
+    /// Candidates refused by the delegation gate, in index order.
+    pub refusals: Vec<DelegationRefusal>,
 }
 
 /// A reference to a law article, used in implements and overrides indexes.
@@ -434,27 +487,6 @@ impl RuleResolver {
         true
     }
 
-    /// The `delegation_type` an open term requires of its implementations.
-    ///
-    /// Returns `None` when the declaring law, article or term cannot be found,
-    /// or when the term names no layer — all four mean the same thing here: the
-    /// law demands nothing of the layer, so every layer may fill the term.
-    fn required_delegation_type(
-        &self,
-        law_id: &str,
-        article: &str,
-        open_term_id: &str,
-        reference_date: Option<NaiveDate>,
-    ) -> Option<&str> {
-        self.get_law_for_date(law_id, reference_date)?
-            .find_article_by_number(article)?
-            .get_open_terms()?
-            .iter()
-            .find(|t| t.id == open_term_id)?
-            .delegation_type
-            .as_deref()
-    }
-
     /// Whether `law` may fill an open term that requires `delegation_type`.
     ///
     /// Delegation is a question of competence, not of precedence: an article
@@ -464,15 +496,16 @@ impl RuleResolver {
     /// *before* [`priority::resolve_candidate`], which ranks implementations
     /// that are all competent.
     ///
-    /// A mismatching layer is rejected silently, the way
-    /// [`Self::matches_scope`] rejects a regulation from another municipality:
-    /// the candidate simply is not one, and a competent candidate lower in the
-    /// ranking should still be able to win. Erroring here would let an
-    /// unauthorised regulation take the whole resolution down with it, and it
-    /// would also make "no implementation found" — which the caller already
-    /// handles, via the open term's `default` or its `required` flag —
-    /// unreachable for exactly the case where the law never granted anyone the
-    /// power in the first place.
+    /// A mismatching layer is skipped rather than fatal, so that a competent
+    /// candidate lower in the ranking can still win and so that "no
+    /// implementation found" — which the caller handles via the open term's
+    /// `default` or its `required` flag — stays reachable. Skipping is not the
+    /// same as staying silent: unlike [`Self::matches_scope`], which rejects a
+    /// regulation from another municipality because it simply does not apply to
+    /// this case, a wrong layer is a defect in the corpus. Someone wrote a
+    /// regulation that arrogates what the law does not delegate. The refusal is
+    /// therefore reported back to the caller as a [`DelegationRefusal`], which
+    /// records it in the trace and on the receipt.
     ///
     /// A `delegation_type` that names no known regulatory layer is a different
     /// matter and is an error. Comparing an unknown string against every layer
@@ -480,6 +513,13 @@ impl RuleResolver {
     /// implementation" to a question it did not understand. That is the same
     /// reason `compare_law_priority` errors on an unresolvable collision rather
     /// than guessing.
+    ///
+    /// Since v0.6.0 the schema declares `delegation_type` as an enum of the
+    /// thirteen layers, so a typo is caught when the file is written. That does
+    /// not make this check dead: the schema binds only v0.6.0 files, older
+    /// versions arrive unvalidated, and the engine loads YAML without running
+    /// the schema over it. The error stays as a safety net that a
+    /// schema-conformant corpus never trips.
     fn matches_delegation(
         law: &ArticleBasedLaw,
         declaring_law_id: &str,
@@ -498,22 +538,30 @@ impl RuleResolver {
     /// Looks up the implements index for regulations that declare they fill
     /// the given open term. Optionally filters by temporal validity.
     ///
-    /// Returns candidates sorted by priority (winner first), along with
-    /// each candidate's (law, article) pair.
+    /// Returns the competent candidates sorted by priority (winner first),
+    /// together with every candidate refused by the delegation gate.
+    ///
+    /// The open term is passed in by the caller rather than looked up again
+    /// here. A second, independent lookup of the declaring law, article and
+    /// term would fail open: for an older version of the declaring law the
+    /// article may carry another number, or the term may not exist yet, and
+    /// every one of those misses would read as "this law demands no particular
+    /// layer" — opening the gate for the very case the gate exists for.
     ///
     /// # Arguments
     /// * `law_id` - The law that declares the open term
     /// * `article` - The article number that declares the open term
-    /// * `open_term_id` - The open term identifier
+    /// * `open_term` - The open term as declared by that article
     /// * `reference_date` - Optional date to filter by temporal validity
     pub fn find_implementations(
         &self,
         law_id: &str,
         article: &str,
-        open_term_id: &str,
+        open_term: &OpenTerm,
         reference_date: Option<NaiveDate>,
         scope: &HashMap<String, Value>,
-    ) -> Result<Vec<(&ArticleBasedLaw, &Article)>> {
+    ) -> Result<ImplementationLookup<'_>> {
+        let open_term_id = open_term.id.as_str();
         let key = (
             law_id.to_string(),
             article.to_string(),
@@ -521,7 +569,7 @@ impl RuleResolver {
         );
         let candidate_entries = match self.implements_index.get(&key) {
             Some(entries) => entries,
-            None => return Ok(Vec::new()),
+            None => return Ok(ImplementationLookup::default()),
         };
 
         tracing::debug!(
@@ -534,12 +582,11 @@ impl RuleResolver {
 
         // What layer the declaring article demands of an implementation. Absent
         // means the law demands nothing, and then every layer may fill the term.
-        let delegation_type =
-            self.required_delegation_type(law_id, article, open_term_id, reference_date);
+        let delegation_type = open_term.delegation_type.as_deref();
 
         // Resolve each candidate to actual (law, article) references
         let mut candidates: Vec<Candidate> = Vec::new();
-        let mut resolved: Vec<(&ArticleBasedLaw, &Article)> = Vec::new();
+        let mut lookup = ImplementationLookup::default();
 
         for entry in candidate_entries {
             let Some(law) = self.get_law_for_date(&entry.law_id, reference_date) else {
@@ -568,6 +615,15 @@ impl RuleResolver {
                         delegation_type = %expected,
                         "Skipping: regulatory_layer is not the layer the open term delegates to"
                     );
+                    lookup.refusals.push(DelegationRefusal {
+                        declaring_law: law_id.to_string(),
+                        declaring_article: article.to_string(),
+                        open_term: open_term_id.to_string(),
+                        required_layer: expected.to_string(),
+                        refused_law: law.id.clone(),
+                        refused_article: entry.article_number.clone(),
+                        refused_layer: law.regulatory_layer.as_str().to_string(),
+                    });
                     continue;
                 }
             }
@@ -577,6 +633,16 @@ impl RuleResolver {
                 .iter()
                 .find(|a| a.number == entry.article_number)
             else {
+                // The index is built from the newest version of each law, but
+                // the candidate was resolved for the reference date. An article
+                // number that the newest version has and this one does not is a
+                // version mismatch, not an absent implementation — say so
+                // rather than letting the candidate disappear without a word.
+                tracing::warn!(
+                    candidate = %entry.law_id,
+                    article = %entry.article_number,
+                    "Skipping: the version in force on the reference date has no such article"
+                );
                 continue;
             };
 
@@ -584,11 +650,11 @@ impl RuleResolver {
                 law,
                 article_number: entry.article_number.clone(),
             });
-            resolved.push((law, art));
+            lookup.implementations.push((law, art));
         }
 
         if candidates.is_empty() {
-            return Ok(Vec::new());
+            return Ok(lookup);
         }
 
         // Use priority resolution to sort — return winner first
@@ -600,15 +666,18 @@ impl RuleResolver {
             );
 
             // Put winner first, then the rest
-            let winner_idx = resolved.iter().position(|(law, _)| law.id == winner_law.id);
+            let winner_idx = lookup
+                .implementations
+                .iter()
+                .position(|(law, _)| law.id == winner_law.id);
             if let Some(idx) = winner_idx {
                 if idx != 0 {
-                    resolved.swap(0, idx);
+                    lookup.implementations.swap(0, idx);
                 }
             }
         }
 
-        Ok(resolved)
+        Ok(lookup)
     }
 
     /// Get the number of entries in the implements index.
@@ -1699,6 +1768,25 @@ articles:
 "#
     }
 
+    /// The open term as the declaring article declares it — the same value the
+    /// service hands to `find_implementations`, rather than one built in the
+    /// test, so the tests cannot drift from what the corpus actually says.
+    fn open_term<'a>(
+        resolver: &'a RuleResolver,
+        law_id: &str,
+        article: &str,
+        term_id: &str,
+    ) -> &'a OpenTerm {
+        resolver
+            .get_law(law_id)
+            .and_then(|law| law.find_article_by_number(article))
+            .and_then(|a| a.get_open_terms())
+            .and_then(|terms| terms.iter().find(|t| t.id == term_id))
+            .unwrap_or_else(|| {
+                panic!("{law_id} article {article} should declare open term '{term_id}'")
+            })
+    }
+
     #[test]
     fn test_implements_index_populated() {
         let mut resolver = RuleResolver::new();
@@ -1716,11 +1804,12 @@ articles:
             .find_implementations(
                 "wet_op_de_zorgtoeslag",
                 "4",
-                "standaardpremie",
+                open_term(&resolver, "wet_op_de_zorgtoeslag", "4", "standaardpremie"),
                 None,
                 &HashMap::new(),
             )
-            .unwrap();
+            .unwrap()
+            .implementations;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0.id, "regeling_standaardpremie");
         assert_eq!(results[0].1.number, "1");
@@ -1737,11 +1826,12 @@ articles:
             .find_implementations(
                 "wet_op_de_zorgtoeslag",
                 "4",
-                "standaardpremie",
+                open_term(&resolver, "wet_op_de_zorgtoeslag", "4", "standaardpremie"),
                 None,
                 &HashMap::new(),
             )
-            .unwrap();
+            .unwrap()
+            .implementations;
         assert!(results.is_empty());
     }
 
@@ -1763,11 +1853,12 @@ articles:
             .find_implementations(
                 "wet_op_de_zorgtoeslag",
                 "4",
-                "standaardpremie",
+                open_term(&resolver, "wet_op_de_zorgtoeslag", "4", "standaardpremie"),
                 None,
                 &HashMap::new(),
             )
-            .unwrap();
+            .unwrap()
+            .implementations;
         assert_eq!(results.len(), 2);
         // Winner (newest) should be first
         assert_eq!(results[0].0.id, "regeling_standaardpremie");
@@ -1821,14 +1912,100 @@ articles:
             .find_implementations(
                 "wet_op_de_zorgtoeslag",
                 "4",
-                "standaardpremie",
+                open_term(&resolver, "wet_op_de_zorgtoeslag", "4", "standaardpremie"),
+                None,
+                &HashMap::new(),
+            )
+            .unwrap()
+            .implementations;
+        assert!(
+            results.is_empty(),
+            "a BELEIDSREGEL may not fill a term delegated to a MINISTERIELE_REGELING"
+        );
+    }
+
+    /// A refused candidate is skipped, but not without a word: the lookup
+    /// hands the caller what was offered, by whom, and which layer the law
+    /// reserves the term for.
+    #[test]
+    fn test_find_implementations_reports_the_refused_candidate() {
+        let mut resolver = RuleResolver::new();
+
+        resolver.load_from_yaml(make_law_with_open_term()).unwrap();
+        resolver
+            .load_from_yaml(make_beleidsregel_claiming_standaardpremie())
+            .unwrap();
+
+        let lookup = resolver
+            .find_implementations(
+                "wet_op_de_zorgtoeslag",
+                "4",
+                open_term(&resolver, "wet_op_de_zorgtoeslag", "4", "standaardpremie"),
                 None,
                 &HashMap::new(),
             )
             .unwrap();
+
+        assert_eq!(
+            lookup.refusals,
+            vec![DelegationRefusal {
+                declaring_law: "wet_op_de_zorgtoeslag".to_string(),
+                declaring_article: "4".to_string(),
+                open_term: "standaardpremie".to_string(),
+                required_layer: "MINISTERIELE_REGELING".to_string(),
+                refused_law: "beleidsregel_standaardpremie".to_string(),
+                refused_article: "1".to_string(),
+                refused_layer: "BELEIDSREGEL".to_string(),
+            }],
+            "a refused implementation must be reported, not dropped"
+        );
+
+        let message = lookup.refusals[0].message();
+        for part in [
+            "beleidsregel_standaardpremie",
+            "BELEIDSREGEL",
+            "standaardpremie",
+            "wet_op_de_zorgtoeslag",
+            "MINISTERIELE_REGELING",
+        ] {
+            assert!(
+                message.contains(part),
+                "the refusal message must name {part}: {message}"
+            );
+        }
+    }
+
+    /// A candidate rejected for scope is not a refusal: a verordening from
+    /// another municipality does not apply to this case, which is a property of
+    /// the case and not a defect in the corpus.
+    #[test]
+    fn test_find_implementations_scope_mismatch_is_not_a_refusal() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(make_law_with_open_term_scoped())
+            .unwrap();
+        resolver
+            .load_from_yaml(&make_scoped_implementation(
+                "verordening_g0363",
+                "gemeente_code: 'GM0363'",
+                7,
+            ))
+            .unwrap();
+
+        let lookup = resolver
+            .find_implementations(
+                "kaderwet",
+                "1",
+                open_term(&resolver, "kaderwet", "1", "tarief"),
+                None,
+                &scope_of("gemeente_code", "GM0599"),
+            )
+            .unwrap();
+
+        assert!(lookup.implementations.is_empty());
         assert!(
-            results.is_empty(),
-            "a BELEIDSREGEL may not fill a term delegated to a MINISTERIELE_REGELING"
+            lookup.refusals.is_empty(),
+            "another municipality's verordening is silently inapplicable, not refused"
         );
     }
 
@@ -1851,13 +2028,120 @@ articles:
             .find_implementations(
                 "wet_op_de_zorgtoeslag",
                 "4",
-                "standaardpremie",
+                open_term(&resolver, "wet_op_de_zorgtoeslag", "4", "standaardpremie"),
                 None,
                 &HashMap::new(),
             )
-            .unwrap();
+            .unwrap()
+            .implementations;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0.id, "regeling_standaardpremie");
+    }
+
+    /// The gate must not depend on finding the declaring term a second time.
+    ///
+    /// Here the term is declared on article '4' of the version in force in
+    /// 2026, while the version in force in 2025 numbers the same provision '3'.
+    /// A gate that re-derived `delegation_type` from the law selected for the
+    /// reference date would look for article '4' in the 2025 version, find
+    /// nothing, and read that miss as "this law demands no particular layer" —
+    /// letting a beleidsregel fill a term reserved for a ministeriële regeling.
+    /// Passing the term in makes that whole class impossible; this test holds
+    /// the door shut.
+    #[test]
+    fn test_find_implementations_gate_holds_when_the_older_version_renumbered() {
+        let mut resolver = RuleResolver::new();
+
+        // The version in force in 2025: same provision, article '3'.
+        resolver
+            .load_from_yaml(
+                r#"
+$id: wet_hernummerd
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '3'
+    text: De standaardpremie wordt vastgesteld bij ministeriele regeling
+    machine_readable:
+      open_terms:
+        - id: standaardpremie
+          type: amount
+          required: true
+          delegation_type: MINISTERIELE_REGELING
+"#,
+            )
+            .unwrap();
+        // The version in force in 2026: the provision is renumbered to '4'.
+        resolver
+            .load_from_yaml(
+                r#"
+$id: wet_hernummerd
+regulatory_layer: WET
+publication_date: '2026-01-01'
+valid_from: '2026-01-01'
+articles:
+  - number: '4'
+    text: De standaardpremie wordt vastgesteld bij ministeriele regeling
+    machine_readable:
+      open_terms:
+        - id: standaardpremie
+          type: amount
+          required: true
+          delegation_type: MINISTERIELE_REGELING
+"#,
+            )
+            .unwrap();
+        resolver
+            .load_from_yaml(
+                r#"
+$id: beleidsregel_hernummerd
+regulatory_layer: BELEIDSREGEL
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: De standaardpremie bedraagt 2500
+    machine_readable:
+      implements:
+        - law: wet_hernummerd
+          article: '4'
+          open_term: standaardpremie
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: 2500
+"#,
+            )
+            .unwrap();
+
+        // Article '4' as the 2026 version declares it, evaluated against a
+        // reference date on which the 2025 version is in force.
+        let term = open_term(&resolver, "wet_hernummerd", "4", "standaardpremie");
+        let lookup = resolver
+            .find_implementations(
+                "wet_hernummerd",
+                "4",
+                term,
+                Some(NaiveDate::from_ymd_opt(2025, 6, 1).unwrap()),
+                &HashMap::new(),
+            )
+            .unwrap();
+
+        assert!(
+            lookup.implementations.is_empty(),
+            "a BELEIDSREGEL may not fill this term, whichever version of the \
+             declaring law the reference date selects"
+        );
+        assert_eq!(
+            lookup.refusals.len(),
+            1,
+            "and the refusal is reported: {:?}",
+            lookup.refusals
+        );
     }
 
     /// An open term without a `delegation_type` demands nothing of the layer,
@@ -1913,11 +2197,17 @@ articles:
             .find_implementations(
                 "wet_zonder_delegatie",
                 "1",
-                "redelijke_termijn_dagen",
+                open_term(
+                    &resolver,
+                    "wet_zonder_delegatie",
+                    "1",
+                    "redelijke_termijn_dagen",
+                ),
                 None,
                 &HashMap::new(),
             )
-            .unwrap();
+            .unwrap()
+            .implementations;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0.id, "beleid_redelijke_termijn");
     }
@@ -1974,7 +2264,13 @@ articles:
             .unwrap();
 
         let err = resolver
-            .find_implementations("wet_met_typo", "1", "bedrag", None, &HashMap::new())
+            .find_implementations(
+                "wet_met_typo",
+                "1",
+                open_term(&resolver, "wet_met_typo", "1", "bedrag"),
+                None,
+                &HashMap::new(),
+            )
             .unwrap_err();
         assert!(
             matches!(err, EngineError::ResolutionError(ref m)
@@ -2001,11 +2297,12 @@ articles:
             .find_implementations(
                 "wet_op_de_zorgtoeslag",
                 "4",
-                "standaardpremie",
+                open_term(&resolver, "wet_op_de_zorgtoeslag", "4", "standaardpremie"),
                 None,
                 &HashMap::new(),
             )
-            .unwrap();
+            .unwrap()
+            .implementations;
         assert!(results.is_empty());
     }
 
@@ -2291,8 +2588,15 @@ articles:
 
         let find = |scope: &HashMap<String, Value>| {
             resolver
-                .find_implementations("kaderwet", "1", "tarief", None, scope)
+                .find_implementations(
+                    "kaderwet",
+                    "1",
+                    open_term(&resolver, "kaderwet", "1", "tarief"),
+                    None,
+                    scope,
+                )
                 .unwrap()
+                .implementations
         };
 
         // Own waterschap: applies.
@@ -2327,8 +2631,15 @@ articles:
 
         let find = |scope: &HashMap<String, Value>| {
             resolver
-                .find_implementations("kaderwet", "1", "tarief", None, scope)
+                .find_implementations(
+                    "kaderwet",
+                    "1",
+                    open_term(&resolver, "kaderwet", "1", "tarief"),
+                    None,
+                    scope,
+                )
                 .unwrap()
+                .implementations
         };
 
         assert_eq!(find(&scope_of("gemeente_code", "GM0363")).len(), 1);
@@ -2391,8 +2702,15 @@ articles:
 
         let find = |scope: &HashMap<String, Value>| {
             resolver
-                .find_implementations("kaderwet_provinciaal", "1", "tarief", None, scope)
+                .find_implementations(
+                    "kaderwet_provinciaal",
+                    "1",
+                    open_term(&resolver, "kaderwet_provinciaal", "1", "tarief"),
+                    None,
+                    scope,
+                )
                 .unwrap()
+                .implementations
         };
 
         assert_eq!(find(&scope_of("provincie_code", "PV27")).len(), 1);
@@ -2649,11 +2967,12 @@ articles:
             .find_implementations(
                 "wet_op_de_zorgtoeslag",
                 "4",
-                "standaardpremie",
+                open_term(&resolver, "wet_op_de_zorgtoeslag", "4", "standaardpremie"),
                 None,
                 &HashMap::new(),
             )
-            .unwrap();
+            .unwrap()
+            .implementations;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0.id, "regeling_standaardpremie");
     }
