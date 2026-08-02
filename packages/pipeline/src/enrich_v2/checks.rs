@@ -4539,6 +4539,93 @@ articles:
     }
 
     #[test]
+    fn a_resolution_that_only_pads_the_marking_is_a_restatement_too() {
+        // Not only the literal copy. "Een vorm voor kwantificeren over
+        // personen" is the same sentence with a preamble, and it names no
+        // more work than the copy does; the containment runs both ways.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '3'
+    text: Voor elk van de tot het huishouden behorende personen wordt…
+    machine_readable:
+      execution:
+        actions:
+          - output: aanspraak
+            operation: MULTIPLY
+            values: [1, 2]
+      markings:
+        - about: kwantificeren over personen
+          resolution: model
+          resolved_by: een vorm voor kwantificeren over personen in het formaat
+          target: []
+          legal_text_excerpt: Voor elk van de tot het huishouden behorende personen
+"#,
+        )
+        .expect("yaml");
+        let findings = marking_discipline(&doc, "");
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(findings[0].detail.contains("restates"), "{findings:?}");
+    }
+
+    #[test]
+    fn three_words_are_enough_for_a_quotation_and_for_a_resolution() {
+        // The threshold sits exactly here: three words is the shortest thing
+        // that had to be copied out of a sentence, and it passes.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '3'
+    text: De aanspraak wordt in bijzondere gevallen anders vastgesteld.
+    machine_readable:
+      execution:
+        actions:
+          - output: aanspraak
+            operation: MULTIPLY
+            values: [1, 2]
+      markings:
+        - about: de bijzondere vaststelling
+          resolution: model
+          resolved_by: een vorm hiervoor
+          target: []
+          legal_text_excerpt: in bijzondere gevallen anders
+"#,
+        )
+        .expect("yaml");
+        assert!(marking_discipline(&doc, "").is_empty());
+    }
+
+    #[test]
+    fn a_null_or_empty_field_says_nothing() {
+        // `is_substantive` decides what counts as content, and every shape a
+        // YAML author can write an emptiness in has to fall on the same side.
+        assert!(!is_substantive(&Value::Null));
+        assert!(!is_substantive(&Value::String("   ".into())));
+        assert!(is_substantive(&Value::String("iets".into())));
+
+        // Which matters where it is read: a logic key written as null is not
+        // logic, and an open term whose filler is an empty string names
+        // nobody.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '1'
+    text: In deze wet wordt verstaan onder verzekerde…
+    machine_readable:
+      execution:
+      open_terms:
+        - id: begripsbepalingen
+          type: string
+          delegated_to: ''
+"#,
+        )
+        .expect("yaml");
+        assert_eq!(flags_leave_something_standing(&doc).len(), 1);
+        assert_eq!(open_terms_name_a_filler(&doc).len(), 1);
+        assert_eq!(tally(&doc).open_terms_unattributed, 1);
+    }
+
+    #[test]
     fn an_open_term_id_counts_as_a_declared_value() {
         let doc: Value = serde_yaml_ng::from_str(
             r#"
