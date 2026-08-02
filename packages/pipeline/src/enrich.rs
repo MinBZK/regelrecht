@@ -3811,6 +3811,25 @@ async fn file_digest(path: &Path) -> Option<String> {
 
 /// Execute the enrichment using the default process-based LLM runner.
 ///
+/// The entries of one article, in document order.
+///
+/// The harvest splits below article level, so article `69` of the
+/// Zorgverzekeringswet is `69.1` through `69.17` with sub-items under those,
+/// and `2.1.b` of the Awir is an item of article 2. An article is the unit a
+/// reader and a lawyer both recognise; an entry is a rendering choice of the
+/// harvester.
+///
+/// Matches the entry itself and anything the harvest hung under it, on the
+/// separator rather than on the prefix, so `69` does not take `690`.
+fn entries_of(entry_numbers: &[String], article: &str) -> Vec<String> {
+    let with_dot = format!("{article}.");
+    entry_numbers
+        .iter()
+        .filter(|n| n.as_str() == article || n.starts_with(&with_dot))
+        .cloned()
+        .collect()
+}
+
 /// Convenience wrapper around `execute_enrich_with_runner` using `ProcessLlmRunner`.
 pub async fn execute_enrich(
     payload: &EnrichPayload,
@@ -3893,17 +3912,23 @@ pub async fn execute_enrich_with_runner(
     let entry_numbers: Vec<String> = law.articles.iter().map(|a| a.number.clone()).collect();
     let (chunk_window, law_complete, next_cursor) = match &config.target_article {
         Some(number) => {
-            let index = law
-                .articles
-                .iter()
-                .position(|a| a.number == *number)
+            // An article, not an entry. The harvest splits below article level
+            // (the Zorgverzekeringswet has 742 entries over far fewer
+            // articles), so `--article 69` names 22 of them, and asking for one
+            // at a time would pay the fixed per-session cost 22 times for one
+            // article. `entries_of` takes the article and everything the
+            // harvest hung under it.
+            let numbers = entries_of(&entry_numbers, number);
+            let index = numbers
+                .first()
+                .and_then(|first| entry_numbers.iter().position(|n| n == first))
                 .ok_or_else(|| {
                     // Loud on purpose: naming an entry that is not there is a
                     // mistake in the caller's query, and a run that quietly
                     // enriched nothing would look like a run that found
                     // nothing to do.
                     PipelineError::Enrich(format!(
-                        "law {normalized_path} has no entry {number}; it has {articles_before} \
+                        "law {normalized_path} has no article {number}; it has {articles_before} \
                          entries and this run enriches nothing else"
                     ))
                 })?;
@@ -3919,11 +3944,7 @@ pub async fn execute_enrich_with_runner(
             // A targeted run claims no completion it did not achieve. It only
             // carries forward a walk that had already finished.
             let walk_finished = config.max_articles_per_run > 0 && cursor_now >= articles_before;
-            (
-                Some((index, vec![number.clone()])),
-                walk_finished,
-                cursor_now,
-            )
+            (Some((index, numbers)), walk_finished, cursor_now)
         }
         // A window derived from the law instead of counted off the document:
         // one layer of the reference graph, whose members do not depend on one
@@ -8042,6 +8063,25 @@ articles:
         assert_eq!(result.markings[0].article, "1");
         assert_eq!(result.markings[0].resolution, "model");
         assert!(result.markings[0].target.is_empty());
+    }
+
+    #[test]
+    fn an_article_takes_every_entry_the_harvest_hung_under_it() {
+        // The Zorgverzekeringswet splits article 69 into 69.1 .. 69.17 with
+        // sub-items. Asking for the article has to take all of them, or one
+        // article costs 22 sessions.
+        let entries: Vec<String> = ["68b", "68b.5", "69", "69.1", "69.4.a", "69.17", "690", "7"]
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
+        assert_eq!(
+            super::entries_of(&entries, "69"),
+            vec!["69", "69.1", "69.4.a", "69.17"]
+        );
+        // On the separator, not the prefix: 690 is a different article.
+        assert!(!super::entries_of(&entries, "69").contains(&"690".to_string()));
+        // An entry number still works, and takes only what hangs under it.
+        assert_eq!(super::entries_of(&entries, "68b.5"), vec!["68b.5"]);
     }
 
     #[test]
