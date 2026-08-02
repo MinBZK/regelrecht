@@ -1,0 +1,29 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$id: test_conformance_comparison_without_value
+regulatory_layer: WET
+bwb_id: BWBR9999903
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.invalid/law
+articles:
+  - number: '1'
+    text: >-
+      De vergelijking noemt een subject en geen waarde, dus zij vergelijkt met
+      niets. Het model leest zo'n operatie via zijn untagged fallback als een
+      letterlijk object, zonder fout en zonder spoor in de trace, en de
+      uitvoering levert dan een antwoord dat compleet oogt.
+    url: https://example.invalid/law/artikel/1
+    machine_readable:
+      execution:
+        parameters:
+          - name: leeftijd
+            type: number
+        output:
+          - name: is_meerderjarig
+            type: boolean
+        actions:
+          - output: is_meerderjarig
+            value:
+              operation: GREATER_THAN_OR_EQUAL
+              subject: $leeftijd

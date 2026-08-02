@@ -117,6 +117,7 @@ impl LawLoad for ArticleBasedLaw {
 
         // Validate array sizes after parsing
         validate_array_sizes(&law)?;
+        reject_literal_operations(&law)?;
 
         // Validate schema version is supported (RFC-013)
         if let Some(version) = law.schema_version() {
@@ -144,6 +145,76 @@ impl LawLoad for ArticleBasedLaw {
 /// Validate that all arrays in the law are within size limits.
 ///
 /// This prevents DoS attacks via YAML documents with extremely large arrays.
+/// Reject an operation that quietly became a literal.
+///
+/// `ActionValue` is untagged with `Operation` before `Literal`, and the
+/// doc-comment on it argues that this is safe because a map without an
+/// `operation` key cannot deserialise as an operation. True, and it misses the
+/// other half: a map *with* an `operation` key that is malformed also falls
+/// through, and lands in `Literal` as a plain object.
+///
+/// A comparison written without its `value` is the case that found this. The
+/// engine then compares nothing, raises nothing, writes nothing to the trace,
+/// and returns an answer that looks complete. Refusing to load is the only
+/// honest response: a law that says something the engine cannot read must not
+/// run half of it.
+fn reject_literal_operations(law: &ArticleBasedLaw) -> Result<()> {
+    fn walk(v: &regelrecht_law_model::Value, where_: &str) -> Result<()> {
+        match v {
+            regelrecht_law_model::Value::Object(map) => {
+                if let Some(regelrecht_law_model::Value::String(op)) = map.get("operation") {
+                    return Err(EngineError::LoadError(format!(
+                        "{where_}: operation {op} could not be read as an operation and was \
+                         taken as a literal value. It is missing a field the operation needs, \
+                         or carries one it does not know."
+                    )));
+                }
+                for inner in map.values() {
+                    walk(inner, where_)?;
+                }
+                Ok(())
+            }
+            regelrecht_law_model::Value::Array(items) => {
+                for inner in items {
+                    walk(inner, where_)?;
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
+    fn walk_action_value(v: &ActionValue, where_: &str) -> Result<()> {
+        match v {
+            ActionValue::Literal(lit) => walk(lit, where_),
+            ActionValue::Operation(_) => Ok(()),
+        }
+    }
+
+    for article in &law.articles {
+        let Some(mr) = &article.machine_readable else {
+            continue;
+        };
+        let Some(execution) = &mr.execution else {
+            continue;
+        };
+        let Some(actions) = &execution.actions else {
+            continue;
+        };
+        for action in actions {
+            let where_ = format!(
+                "article {}, output {}",
+                article.number,
+                action.output.as_deref().unwrap_or("(unnamed)")
+            );
+            if let Some(value) = &action.value {
+                walk_action_value(value, &where_)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 fn validate_array_sizes(law: &ArticleBasedLaw) -> Result<()> {
     // Check articles array
     if law.articles.len() > config::MAX_ARRAY_SIZE {

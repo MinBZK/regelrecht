@@ -758,10 +758,11 @@
     },
     "comparisonOperation": {
       "type": "object",
-      "description": "Comparison operations that compare values. Operands may be numbers or ISO 8601 dates (YYYY-MM-DD); when both operands are dates they are compared chronologically (RFC-021).",
+      "description": "Comparison operations that compare values. Operands may be numbers or ISO 8601 dates (YYYY-MM-DD); when both operands are dates they are compared chronologically (RFC-021). `value` is required: all five of these compare two operands, and a comparison with only a subject compares against nothing. It was optional, and the Rust model's untagged fallback turned such an operation into a literal object without an error, a warning or a line in the trace, so the execution carried on and produced an answer that looked complete.",
       "required": [
         "operation",
-        "subject"
+        "subject",
+        "value"
       ],
       "properties": {
         "operation": {
