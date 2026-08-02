@@ -1899,6 +1899,54 @@ impl LlmProvider {
 /// Configuration for enrichment execution.
 ///
 /// All env vars are read once at startup and stored. `with_provider_override()`
+/// Which steps of one run to perform.
+///
+/// Named rather than boolean-per-call because a step is separately useful: the
+/// closing reconcile over a law that other windows already finished needs no
+/// window of its own, and asking for it should not mean re-running work that
+/// is done.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RunSteps {
+    /// Translate the window and run the gates over it.
+    pub window: bool,
+    /// The closing pass that connects what now exists.
+    pub reconcile: bool,
+}
+
+impl RunSteps {
+    #[must_use]
+    pub const fn all() -> Self {
+        Self {
+            window: true,
+            reconcile: true,
+        }
+    }
+
+    /// Parse a comma-separated list of step names.
+    ///
+    /// An unknown name is an error rather than a silent skip: a run that
+    /// performs fewer steps than asked, without saying so, is the failure this
+    /// codebase spends most of its checks on.
+    pub fn parse(spec: &str) -> std::result::Result<Self, String> {
+        let mut steps = Self {
+            window: false,
+            reconcile: false,
+        };
+        for name in spec.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+            match name {
+                "window" => steps.window = true,
+                "reconcile" => steps.reconcile = true,
+                "all" => steps = Self::all(),
+                other => return Err(format!("unknown step: {other} (window, reconcile, all)")),
+            }
+        }
+        if !steps.window && !steps.reconcile {
+            return Err("no steps selected".to_string());
+        }
+        Ok(steps)
+    }
+}
+
 /// selects from pre-built provider configs without re-reading the environment.
 #[derive(Debug, Clone)]
 pub struct EnrichConfig {
@@ -1940,6 +1988,15 @@ pub struct EnrichConfig {
     /// thing at four thousand laws, which is why this is a setting and not a
     /// design choice.
     pub window_concurrency: usize,
+    /// Which steps of the run to perform (`ENRICH_STEPS`), default all.
+    ///
+    /// The steps are named because they are separately useful. The closing
+    /// reconcile used to hang off `law_complete` as the tail of a window, which
+    /// made it unreachable for a law that was already finished: the only way to
+    /// reach it was to re-enrich a window with nothing left to do, and the
+    /// first attempt cost $4.62 to remove one finding. What that pass looks for
+    /// was left behind by earlier windows, so it needs no window of its own.
+    pub steps: RunSteps,
     /// Whether the calls in one window share a session
     /// (`ENRICH_SESSION_REUSE`). See [`SessionReuse`].
     pub session_reuse: SessionReuse,
@@ -1982,6 +2039,7 @@ impl EnrichConfig {
             feedback_rounds: FeedbackRounds::default(),
             window_mode: WindowMode::default(),
             window_concurrency: 1,
+            steps: RunSteps::all(),
             // Tests that do not opt in run cold, so a fake runner's calls read
             // as they always did; the session tests set this themselves.
             session_reuse: SessionReuse::Off,
@@ -2017,6 +2075,7 @@ impl EnrichConfig {
             feedback_rounds,
             window_mode: WindowMode::default(),
             window_concurrency: 1,
+            steps: RunSteps::all(),
             session_reuse,
             effort,
             provider_configs,
@@ -2130,6 +2189,16 @@ impl EnrichConfig {
             feedback_rounds,
             window_mode,
             window_concurrency,
+            steps: std::env::var("ENRICH_STEPS")
+                .ok()
+                .and_then(|spec| match RunSteps::parse(&spec) {
+                    Ok(steps) => Some(steps),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "ENRICH_STEPS unreadable, running every step");
+                        None
+                    }
+                })
+                .unwrap_or_else(RunSteps::all),
             session_reuse,
             effort,
             provider_configs,
@@ -2161,6 +2230,7 @@ impl EnrichConfig {
             feedback_rounds: self.feedback_rounds,
             window_mode: self.window_mode,
             window_concurrency: self.window_concurrency,
+            steps: RunSteps::all(),
             session_reuse: self.session_reuse,
             effort: self.effort.clone(),
             provider_configs: self.provider_configs.clone(),
@@ -3924,7 +3994,8 @@ pub async fn execute_enrich_with_runner(
     // An empty window (valid cursor already at the end of the document) means
     // the chunk loop finished this law earlier: nothing to process, no LLM run
     // — complete trivially instead of prompting an agent with zero articles.
-    let empty_window = matches!(&chunk_window, Some((_, numbers)) if numbers.is_empty());
+    let empty_window =
+        matches!(&chunk_window, Some((_, numbers)) if numbers.is_empty()) || !config.steps.window;
     if empty_window {
         tracing::info!(
             law_id = %payload.law_id,
@@ -4036,7 +4107,7 @@ pub async fn execute_enrich_with_runner(
     // Not conditional on this run having changed anything: what it looks for
     // was left by the windows before it, and a last window that added nothing
     // does not make those earlier bindings any less connectable.
-    if law_complete {
+    if (law_complete || !config.steps.window) && config.steps.reconcile {
         feedback
             .extend(run_closing_reconcile(&yaml_abs, repo_path, payload, config, runner).await?);
     }

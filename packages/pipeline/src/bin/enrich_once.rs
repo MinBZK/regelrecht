@@ -46,7 +46,7 @@ use std::time::Duration;
 
 use regelrecht_pipeline::enrich::{
     execute_enrich_with_runner, AgentCallRecord, AgentUsage, EnrichConfig, EnrichPayload,
-    FeedbackRounds, LlmProvider, ProcessLlmRunner, SessionReuse,
+    FeedbackRounds, LlmProvider, ProcessLlmRunner, RunSteps, SessionReuse,
 };
 use regelrecht_pipeline::enrich_v2::checks;
 
@@ -61,6 +61,7 @@ struct Args {
     article: Option<String>,
     rounds: FeedbackRounds,
     session_reuse: SessionReuse,
+    steps: RunSteps,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -73,6 +74,7 @@ fn parse_args() -> Result<Args, String> {
     let mut articles = 15usize;
     let mut article = None;
     let mut rounds = FeedbackRounds::default();
+    let mut steps = RunSteps::all();
     let mut session_reuse = SessionReuse::default();
 
     let mut it = std::env::args().skip(1);
@@ -88,6 +90,7 @@ fn parse_args() -> Result<Args, String> {
             "--effort" => effort = Some(value("--effort")?),
             "--article" => article = Some(value("--article")?),
             "--rounds" => rounds = FeedbackRounds::parse(&value("--rounds")?)?,
+            "--steps" => steps = RunSteps::parse(&value("--steps")?)?,
             "--session-reuse" => session_reuse = SessionReuse::parse(&value("--session-reuse")?)?,
             "--timeout" => {
                 timeout = value("--timeout")?
@@ -103,7 +106,7 @@ fn parse_args() -> Result<Args, String> {
                 return Err(
                     "usage: enrich-once --corpus <root> --law <path.yaml> [--provider claude] \
                      [--model opus] [--effort medium] [--timeout 900] [--articles 15] \
-                     [--rounds 2|checks=2,marking=2] [--article 2.1.i] \
+                     [--rounds 2|checks=2,marking=2] [--article 2.1.i] [--steps window,reconcile] \
                      [--session-reuse window|repair|off]"
                         .to_string(),
                 )
@@ -123,6 +126,7 @@ fn parse_args() -> Result<Args, String> {
         article,
         rounds,
         session_reuse,
+        steps,
     })
 }
 
@@ -188,6 +192,8 @@ async fn main() -> ExitCode {
         args.effort.clone(),
         args.session_reuse,
     );
+    let mut config = config;
+    config.steps = args.steps;
     let payload = EnrichPayload {
         law_id: String::new(),
         yaml_path: args.law.clone(),
