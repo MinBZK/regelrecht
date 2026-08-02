@@ -336,36 +336,39 @@ fn print_cost(mode: &str, calls: &[AgentCallRecord], total: Option<AgentUsage>) 
     }
     println!("\n=== cost (session reuse: {mode})");
     println!(
-        "  {:<10} {:>8} {:>10} {:>10} {:>12} {:>9}",
-        "step", "session", "input", "output", "cache read", "cost"
+        "  {:<10} {:>8} {:>9} {:>9} {:>12} {:>12} {:>9}",
+        "step", "session", "input", "output", "cache read", "cache write", "cost"
     );
     for call in calls {
-        let (input, output, cache, cost) = call.usage.map_or((0, 0, 0, 0), |u| {
+        let (input, output, cache, write, cost) = call.usage.map_or((0, 0, 0, 0, 0), |u| {
             (
                 u.input_tokens,
                 u.output_tokens,
                 u.cache_read_tokens,
+                u.cache_write_tokens,
                 u.cost_millicents,
             )
         });
         println!(
-            "  {:<10} {:>8} {:>10} {:>10} {:>12} {:>9}",
+            "  {:<10} {:>8} {:>9} {:>9} {:>12} {:>12} {:>9}",
             call.step,
             if call.resumed { "resumed" } else { "cold" },
             input,
             output,
             cache,
+            write,
             money(cost)
         );
     }
     if let Some(u) = total {
         println!(
-            "  {:<10} {:>8} {:>10} {:>10} {:>12} {:>9}",
+            "  {:<10} {:>8} {:>9} {:>9} {:>12} {:>12} {:>9}",
             "window",
             calls.len(),
             u.input_tokens,
             u.output_tokens,
             u.cache_read_tokens,
+            u.cache_write_tokens,
             money(u.cost_millicents)
         );
     }

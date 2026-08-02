@@ -178,6 +178,10 @@ pub struct AgentUsage {
     /// Tokens served from the provider's prompt cache. Large here, because
     /// every window resends the same skill files.
     pub cache_read_tokens: u64,
+    /// Tokens written into the prompt cache. Counted separately because it is
+    /// billed above the plain input rate where a cache read is billed well
+    /// below it, so the two must never be added together.
+    pub cache_write_tokens: u64,
     /// Cost in tenths of a cent, so the figure stays an integer. The provider
     /// reports dollars as a float and money in a float is a bug waiting.
     pub cost_millicents: u64,
@@ -193,8 +197,17 @@ impl AgentUsage {
     /// the normal case for a provider that reports nothing.
     #[must_use]
     pub fn from_stdout_tail(tail: &str) -> Option<Self> {
-        let start = tail.rfind("{\"type\"").or_else(|| tail.rfind('{'))?;
-        let value: serde_json::Value = serde_json::from_str(tail[start..].trim()).ok()?;
+        // The whole tail first. `--output-format json` writes one object, and
+        // looking for the last `{` lands inside it: this payload nests
+        // `iterations` and `cache_creation`, so the scan found a fragment with
+        // no `usage` and every figure came out zero.
+        //
+        // The scan stays for the streaming shape, where the closing object
+        // really is the last one on the stream.
+        let value: serde_json::Value = serde_json::from_str(tail.trim()).ok().or_else(|| {
+            let start = tail.rfind("{\"type\"").or_else(|| tail.rfind('{'))?;
+            serde_json::from_str(tail[start..].trim()).ok()
+        })?;
         let usage = value.get("usage")?;
         let n = |key: &str| {
             usage
@@ -206,6 +219,7 @@ impl AgentUsage {
             input_tokens: n("input_tokens"),
             output_tokens: n("output_tokens"),
             cache_read_tokens: n("cache_read_input_tokens"),
+            cache_write_tokens: n("cache_creation_input_tokens"),
             cost_millicents: value
                 .get("total_cost_usd")
                 .and_then(serde_json::Value::as_f64)
@@ -220,6 +234,7 @@ impl AgentUsage {
             input_tokens: self.input_tokens + other.input_tokens,
             output_tokens: self.output_tokens + other.output_tokens,
             cache_read_tokens: self.cache_read_tokens + other.cache_read_tokens,
+            cache_write_tokens: self.cache_write_tokens + other.cache_write_tokens,
             cost_millicents: self.cost_millicents + other.cost_millicents,
         }
     }
@@ -1938,7 +1953,7 @@ fn build_prompt(
     progress_file_path: &str,
     plan: &[(&'static capabilities::StepSpec, capabilities::StepPlan)],
     chunk_articles: Option<&[String]>,
-    skip_mvt: bool,
+    _skip_mvt: bool,
     has_brief: bool,
 ) -> String {
     let mut out =
@@ -1978,10 +1993,6 @@ fn build_prompt(
             omitted.push((*spec.name).to_string());
             continue;
         }
-        if spec.name == "MvT research" && skip_mvt {
-            omitted.push(format!("{} (already done for this law)", spec.name));
-            continue;
-        }
         number += 1;
         let _ = writeln!(out, "## Step {number}: {}", spec.name);
         out.push_str(&step_body(spec, chunk_articles.is_some()));
@@ -1995,11 +2006,22 @@ fn build_prompt(
     if !omitted.is_empty() {
         let _ = writeln!(
             out,
-            "Not part of this run: {}. Produce nothing that would have come from them,\n\
-             and cite no source you have not read in this session.\n",
+            "Not part of this run: {}. Produce nothing that would have come from them.\n",
             omitted.join(", ")
         );
     }
+
+    // Unconditional, and it used to hang off the sentence above. When the
+    // retrieval step left the chain nothing was omitted any more, so the rule
+    // left with it. The pull towards a remembered citation does not need a
+    // missing step to invite it: round 2 answered with a kst- number for a
+    // document it never opened, and to whoever reads the law afterwards that
+    // reads exactly like a citation someone checked.
+    out.push_str(
+        "Cite no source you have not read in this session. If you believe a source exists, \
+         name it as a lead in prose without a number and without a link: a lead invites \
+         someone to look, a citation claims someone already did.\n\n",
+    );
 
     number += 1;
     let _ = writeln!(
@@ -3627,7 +3649,6 @@ pub async fn execute_enrich_with_runner(
 /// This lets you detect when skill instructions changed between enrichments.
 async fn compute_prompt_hash(repo_path: &Path) -> String {
     let skill_files = [
-        ".claude/skills/law-mvt-research/SKILL.md",
         ".claude/skills/law-generate/SKILL.md",
         ".claude/skills/law-generate/reference.md",
         ".claude/skills/law-generate/examples.md",
@@ -4194,7 +4215,6 @@ related_legislation:
             false,
             false,
         );
-        assert!(prompt.contains("law-mvt-research/SKILL.md"));
         assert!(prompt.contains("law-generate/SKILL.md"));
         assert!(prompt.contains("law-reverse-validate/SKILL.md"));
         assert!(prompt.contains("regulation/nl/wet/test/2025-01-01.yaml"));
@@ -5280,12 +5300,14 @@ articles:
             input_tokens: 100,
             output_tokens: 20,
             cache_read_tokens: 900,
+            cache_write_tokens: 0,
             cost_millicents: 1500,
         };
         let repair = AgentUsage {
             input_tokens: 10,
             output_tokens: 5,
             cache_read_tokens: 400,
+            cache_write_tokens: 0,
             cost_millicents: 300,
         };
         session.record(
@@ -6130,12 +6152,14 @@ articles:
             input_tokens: 10,
             output_tokens: 20,
             cache_read_tokens: 30,
+            cache_write_tokens: 0,
             cost_millicents: 40,
         };
         let b = AgentUsage {
             input_tokens: 1,
             output_tokens: 2,
             cache_read_tokens: 3,
+            cache_write_tokens: 0,
             cost_millicents: 4,
         };
         let sum = a.plus(b);
@@ -6146,15 +6170,16 @@ articles:
     }
 
     #[test]
-    fn prompt_omits_the_step_this_runtime_cannot_perform() {
+    fn the_prompt_asks_for_no_source_it_cannot_hand_over() {
         // The measured failure of round 2: the agent was told to search for
         // parliamentary documents without any way to retrieve them, and
-        // answered with a kst- citation for a document it never read.
+        // answered with a kst- citation for a document it never read. The step
+        // that asked for it is gone from the chain; what has to stay is the
+        // rule, because the pull towards a remembered citation does not need an
+        // instruction to invite it.
         let prompt = build_prompt("law.yaml", "/tmp/p.json", &lane_plan(), None, false, false);
-        assert!(!prompt.contains("law-mvt-research/SKILL.md"));
         assert!(!prompt.contains("Memorie van Toelichting"));
-        assert!(prompt.contains("Not part of this run: MvT research"));
-        assert!(prompt.contains("cite no source you have not read"));
+        assert!(prompt.contains("Cite no source you have not read"));
     }
 
     #[test]
@@ -6195,14 +6220,6 @@ articles:
     }
 
     #[test]
-    fn full_grant_restores_the_mvt_step() {
-        let prompt = build_prompt("law.yaml", "/tmp/p.json", &full_plan(), None, false, false);
-        assert!(prompt.contains("## Step 1: MvT research"));
-        assert!(prompt.contains("law-mvt-research/SKILL.md"));
-        assert!(!prompt.contains("Not part of this run"));
-    }
-
-    #[test]
     fn chunk_prompt_restricts_to_the_window() {
         let numbers = vec!["1".to_string(), "2".to_string(), "3a".to_string()];
         let prompt = build_prompt(
@@ -6219,22 +6236,6 @@ articles:
         assert!(prompt.contains("only for the articles you edited"));
         assert!(prompt.contains("chunk_report"));
         assert!(prompt.contains("articles_skipped"));
-    }
-
-    #[test]
-    fn skip_mvt_reports_the_omission_rather_than_hiding_it() {
-        let numbers = vec!["16".to_string(), "17".to_string()];
-        let prompt = build_prompt(
-            "regulation/nl/wet/test/2025-01-01.yaml",
-            "/tmp/repo/.enrichment-progress.json",
-            &full_plan(),
-            Some(&numbers),
-            true,
-            false,
-        );
-        assert!(!prompt.contains("law-mvt-research/SKILL.md"));
-        assert!(prompt.contains("already done for this law"));
-        assert!(prompt.contains("16, 17"));
     }
 
     fn feedback(gate: Gate) -> Feedback {
