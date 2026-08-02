@@ -677,21 +677,20 @@ pub fn binding_integrity(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding
                     // claim from an empty `source: {}`, and lumping them
                     // together made a motivated external fact score the same
                     // as a silent hole.
-                    let described = has_description;
-                    findings.push(Finding::new(
-                        if described {
-                            "external-input"
-                        } else {
-                            "binding"
-                        },
-                        Some(&number),
-                        if described {
-                            "input is declared external and unbound; the engine cannot supply it"
-                                .to_string()
-                        } else {
-                            "empty source: no regulation, no output, no reason".to_string()
-                        },
-                    ));
+                    if has_description {
+                        findings.push(Finding::new(
+                            "outside-corpus",
+                            Some(&number),
+                            "input is declared external and unbound, and names no law. The \
+                             value has to come from somewhere and this file does not say where",
+                        ));
+                    } else {
+                        findings.push(Finding::new(
+                            "binding",
+                            Some(&number),
+                            "empty source: no regulation, no output, no reason",
+                        ));
+                    }
                 } else if !own_outputs.contains(&output) {
                     findings.push(Finding::new(
                         "binding",
@@ -703,10 +702,18 @@ pub fn binding_integrity(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding
             }
             let Some(root) = corpus_root else { continue };
             match find_law_file(root, &regulation) {
+                // A law the corpus does not have is a known gap that the work
+                // queue owns, not an error in this file. It lands in the same
+                // bucket as an input that names no law at all: both say the
+                // value comes from outside, and only the tally says which of
+                // the two named where.
                 None => findings.push(Finding::new(
-                    "binding",
+                    "outside-corpus",
                     Some(&number),
-                    format!("source regulation \"{regulation}\" not found in the corpus"),
+                    format!(
+                        "reads \"{regulation}\", which the corpus does not have. Harvesting it \
+                         is what resolves this"
+                    ),
                 )),
                 Some(path) => {
                     if !output.is_empty() && !law_defines_output(&path, &output) {
@@ -2438,8 +2445,76 @@ articles:
 "#;
         let d: Value = serde_yaml_ng::from_str(described).unwrap();
         let e: Value = serde_yaml_ng::from_str(empty).unwrap();
-        assert_eq!(binding_integrity(&d, None)[0].check, "external-input");
+        assert_eq!(binding_integrity(&d, None)[0].check, "outside-corpus");
         assert_eq!(binding_integrity(&e, None)[0].check, "binding");
+    }
+
+    #[test]
+    fn a_law_outside_the_corpus_lands_where_an_unnamed_external_input_lands() {
+        // The same legal situation written two ways: variant a demoted the
+        // binding to a bare input, variant b named the law it could not
+        // reach. Round 4 put those in different buckets, so steering on
+        // findings picked the variant that said less.
+        let corpus = tempfile::tempdir().expect("tempdir");
+        let named = r#"
+articles:
+  - number: '2'
+    text: tekst
+    machine_readable:
+      execution:
+        input:
+          - name: verzamelinkomen
+            source: {regulation: wet_inkomstenbelasting_2001, output: verzamelinkomen}
+"#;
+        let unnamed = r#"
+articles:
+  - number: '2'
+    text: tekst
+    machine_readable:
+      execution:
+        input:
+          - name: verzamelinkomen
+            source:
+              description: komt uit een wet die het corpus niet heeft
+"#;
+        let a: Value = serde_yaml_ng::from_str(named).unwrap();
+        let b: Value = serde_yaml_ng::from_str(unnamed).unwrap();
+        let fa = binding_integrity(&a, Some(corpus.path()));
+        let fb = binding_integrity(&b, Some(corpus.path()));
+        assert_eq!(fa.len(), 1, "{fa:?}");
+        assert_eq!(fb.len(), 1, "{fb:?}");
+        assert_eq!(fa[0].check, "outside-corpus");
+        assert_eq!(fb[0].check, "outside-corpus");
+    }
+
+    #[test]
+    fn an_output_a_present_law_does_not_produce_stays_hard() {
+        // A law the corpus has, read for something it does not deliver, is an
+        // error in this file and no harvest fixes it.
+        let corpus = tempfile::tempdir().expect("tempdir");
+        let dir = corpus.path().join("nl/wet/awir");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("2025-01-01.yaml"),
+            "$id: awir\nbwb_id: BWBR0018472\narticles:\n  - number: '1'\n    machine_readable:\n      execution:\n        output:\n          - name: toetsingsinkomen\n",
+        )
+        .unwrap();
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '2'
+    text: tekst
+    machine_readable:
+      execution:
+        input:
+          - name: x
+            source: {regulation: awir, output: bestaat_niet}
+"#,
+        )
+        .unwrap();
+        let findings = binding_integrity(&doc, Some(corpus.path()));
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].check, "binding");
     }
 
     #[test]
