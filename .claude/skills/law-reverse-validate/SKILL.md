@@ -18,14 +18,14 @@ Verifies that every element in a `machine_readable` section traces back to the
 legal text of its own entry. This catches invented logic, phantom
 conditions and bindings to outputs that do not exist.
 
-The standard is the text, not the intent. A model that reaches the evidently
-intended outcome by a route the words do not describe is a finding, and it is the
-kind of finding that survives review longest because the answer looks right.
+The text is the standard. A model that reaches the evidently intended outcome by
+a route the words do not describe is a finding, and one that survives review
+longest, because the answer looks right.
 
 ## Scope, both directions
 
 Each `machine_readable` interprets ONLY the text of its own entry. Two opposite
-failures follow, and the second one is the one that gets missed.
+failures follow, and the second one gets missed more often.
 
 **Leaked in.** A condition, threshold or value from another provision,
 reimplemented here instead of referenced. Flag it: the correct mechanism is an
@@ -35,7 +35,7 @@ the law leaves open, or `hooks`/`overrides` for reactive interaction. Also flag 
 on a norm article that only sets an amount.
 
 **Left unconnected.** An output that restricts an entitlement and that nothing in
-this file reads. That is not caution; it is a restriction that does not restrict.
+this file reads. A restriction nothing reads does not restrict.
 A scope violation makes a model too strict in the wrong place, a dangling
 restriction makes it too generous everywhere, so the two rank equally.
 
@@ -113,7 +113,7 @@ Markings say the format cannot express a construct. Four things go wrong.
 "redelijkerwijs", "in bijzondere gevallen": the language expresses these fine and
 the content is filled by an implementing regulation or by the competent authority
 in the individual case. They are `open_terms`. A marking here sends the file to
-whoever extends the engine, where nobody can act on it, and there it stays.
+whoever extends the engine, where nobody can act on it.
 
 **A marking standing in for a binding.** A value another law produces is an
 `input` with a `source`. In round 4, 43 of 101 gaps were cross-law references
@@ -131,7 +131,7 @@ from that entry's actions; a value the entry computes anyway contradicts its own
 marking. And a marking whose `target` is empty asserts that the entry stays
 executable, so check that it does. Both halves fail today: `blocks`, the
 predecessor field, is empty in 39 of 39 markings, and of the 72 values marked as
-blocked not one is actually left out.
+blocked not one is left out.
 
 Also verify `legal_text_excerpt` occurs in this entry's own `text`, and that
 `resolution` is `engine` (the operation does not exist) or `model` (the format
@@ -145,11 +145,11 @@ Signs that a construct was approximated instead of marked:
 - arithmetic that approximates rounding, such as a `MULTIPLY` followed by a
   `DIVIDE` by a power of ten. The engine has `ROUND`, `CEIL` and `FLOOR`, so
   where the law says "afgerond" the model uses one of those, and where the law
-  says nothing the model rounds nothing
+  says nothing the model does not round
 - hardcoded values that this text does not mention, which may be pre-computed
   results of a calculation the translator could not express
-- a boolean where the text says "voor zover", which loses the partial case and
-  always in the citizen's disfavour
+- a boolean where the text says "voor zover", which loses the partial case,
+  always to the citizen's disadvantage
 - a derived constant: `days: 28` for "vier weken", `0.9` for "ten minste tien
   percent lager", a division by 12 for "naar tijdsgelang herrekend"
 
