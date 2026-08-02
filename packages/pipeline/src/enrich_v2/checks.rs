@@ -1664,6 +1664,151 @@ pub fn every_article_accounted(doc: &Value) -> Vec<Finding> {
     findings
 }
 
+/// Values a marking declares blocked and the same article computes anyway.
+///
+/// `target` is the marking's pointer: it names the values in this article that
+/// cannot be produced, and an empty list is a statement rather than an
+/// omission, namely that the article stays executable. Either way the claim
+/// has a consequence the file itself can be held to, and in round 4 it had
+/// none: of the 72 outputs recorded as blocked not one was left out, and every
+/// one of them was computed by an action in the same article. A declaration
+/// that costs nothing to write and contradicts what sits beside it is worse
+/// than no declaration, because a reader believes it.
+///
+/// Hard on purpose. This is not a judgement about the translation but a
+/// contradiction inside one file, and no reading of the statute makes both
+/// halves true.
+pub fn blocked_values_are_absent(doc: &Value) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    for (number, mr) in articles_with_models(doc) {
+        let actions = action_subtrees(mr);
+        if actions.is_empty() {
+            continue;
+        }
+        for marking in markings(mr) {
+            for name in marking_targets(marking) {
+                if actions.iter().any(|node| produces(node, name)) {
+                    findings.push(Finding::new(
+                        "contradiction",
+                        Some(&number),
+                        format!(
+                            "marking blocks {name}, and an action in this article computes it. \
+                             A value you declared unproducible cannot also be produced"
+                        ),
+                    ));
+                } else if actions.iter().any(|node| reads(node, name)) {
+                    findings.push(Finding::new(
+                        "contradiction",
+                        Some(&number),
+                        format!(
+                            "marking blocks {name}, and an action in this article calculates \
+                             with it. Whatever that action produces rests on a value the \
+                             marking says is not there"
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+    findings
+}
+
+/// Articles that carry a marking and nothing else.
+///
+/// A marking is a flag on an article that is otherwise worked out: it names
+/// the one thing that does not fit and leaves everything that does fit
+/// standing. An article whose whole model is a marking made the opposite move,
+/// and in round 4 that was the largest failure class: the chapeau of article 1
+/// of the zorgtoeslag got one marking and nothing more, while the definitions
+/// under it were perfectly translatable.
+///
+/// One exception holds, and it is read off `target` rather than off a field of
+/// its own. A marking with `resolution: model` says the format has no shape
+/// for this construct, and when it also names the values that consequently
+/// cannot be produced, it has said that nothing is left to write down. An
+/// empty `target` claims the opposite in the same breath — the article stays
+/// executable — so it cannot excuse an article that produces nothing. And a
+/// marking with `resolution: engine` never excuses one: a missing operation
+/// blocks a step, so the inputs, the parameters and the rest of the
+/// calculation can all be written down and only that step is missing.
+pub fn markings_leave_something_standing(doc: &Value) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    for (number, mr) in articles_with_models(doc) {
+        let marks = markings(mr);
+        if marks.is_empty() || carries_logic(mr) {
+            continue;
+        }
+        let carries = |key: &str| {
+            mr.get(key)
+                .and_then(Value::as_sequence)
+                .is_some_and(|s| !s.is_empty())
+        };
+        if carries("declares") || carries("overrides") {
+            continue;
+        }
+        if marks.iter().any(|m| {
+            m.get("resolution").and_then(Value::as_str) == Some("model")
+                && !marking_targets(m).is_empty()
+        }) {
+            continue;
+        }
+        findings.push(Finding::new(
+            "marking-only",
+            Some(&number),
+            "the whole model is a marking. A marking flags the one thing that does not \
+             fit and leaves what does fit standing; only a model-resolution marking that \
+             names what it blocks can say there is nothing left",
+        ));
+    }
+    findings
+}
+
+/// Every `actions` list in a model, at any depth.
+fn action_subtrees(mr: &Value) -> Vec<&Value> {
+    let mut out = Vec::new();
+    walk(mr, &mut |key, node| {
+        if key == Some("actions") && node.as_sequence().is_some() {
+            out.push(node);
+        }
+    });
+    out
+}
+
+/// Whether a subtree declares `name` as something it produces.
+fn produces(node: &Value, name: &str) -> bool {
+    let mut found = false;
+    walk_outside_sources(node, &mut |key, node| {
+        if key != Some("output") {
+            return;
+        }
+        match node {
+            Value::String(s) if s == name => found = true,
+            Value::Sequence(seq) => {
+                if seq
+                    .iter()
+                    .any(|item| item.get("name").and_then(Value::as_str) == Some(name))
+                {
+                    found = true;
+                }
+            }
+            _ => {}
+        }
+    });
+    found
+}
+
+/// Whether a subtree calculates with `name`.
+fn reads(node: &Value, name: &str) -> bool {
+    let reference = format!("${name}");
+    let mut found = false;
+    walk(node, &mut |_, node| {
+        if node.as_str() == Some(reference.as_str()) {
+            found = true;
+        }
+    });
+    found
+}
+
 /// Declarations that contradict the document header they fix.
 ///
 /// A `declares` entry is the provision that decides a top-level property, so a
@@ -2169,6 +2314,8 @@ pub fn run(yaml: &str, corpus_root: Option<&Path>) -> Report {
     findings.extend(binding_integrity(&doc, corpus_root));
     findings.extend(override_targets(&doc, corpus_root));
     findings.extend(every_article_accounted(&doc));
+    findings.extend(blocked_values_are_absent(&doc));
+    findings.extend(markings_leave_something_standing(&doc));
     findings.extend(cross_law_references(&doc, corpus_root));
     findings.extend(output_promises(&doc));
     findings.extend(declaration_agrees_with_header(&doc));
@@ -3387,6 +3534,181 @@ articles:
             findings.iter().all(|f| f.check != "citation"),
             "{findings:?}"
         );
+    }
+
+    #[test]
+    fn a_blocked_value_the_same_article_computes_is_a_contradiction() {
+        // Round 4: of the 72 outputs recorded as blocked, all 72 were
+        // computed by an action in the same article.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '2.1'
+    text: iets
+    machine_readable:
+      markings:
+        - about: kwantificeren over personen
+          resolution: model
+          target: [hoogte_zorgtoeslag]
+          legal_text_excerpt: iets
+      execution:
+        actions:
+          - output: hoogte_zorgtoeslag
+            operation: ADD
+            values: [$a, $b]
+"#,
+        )
+        .expect("yaml");
+        let findings = blocked_values_are_absent(&doc);
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].check, "contradiction");
+        assert!(findings[0].detail.contains("computes it"));
+    }
+
+    #[test]
+    fn a_blocked_value_an_action_calculates_with_is_a_contradiction() {
+        // Blocking an input and then adding it up is the same contradiction
+        // read from the other side: whatever comes out rests on a value the
+        // marking says is not there.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '2.1'
+    text: iets
+    machine_readable:
+      markings:
+        - about: de standaardpremie
+          resolution: model
+          target: [standaardpremie]
+          legal_text_excerpt: iets
+      execution:
+        actions:
+          - output: hoogte
+            operation: SUBTRACT
+            values: [$standaardpremie, $normpremie]
+"#,
+        )
+        .expect("yaml");
+        let findings = blocked_values_are_absent(&doc);
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(findings[0].detail.contains("calculates with it"));
+    }
+
+    #[test]
+    fn a_blocked_value_that_is_genuinely_left_out_passes() {
+        // The honest shape: the article computes what it can and the blocked
+        // value appears nowhere in its actions.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '2.1'
+    text: iets
+    machine_readable:
+      markings:
+        - about: de standaardpremie
+          resolution: model
+          target: [standaardpremie]
+          legal_text_excerpt: iets
+      execution:
+        actions:
+          - output: normpremie
+            operation: MULTIPLY
+            values: [$inkomen, $percentage]
+"#,
+        )
+        .expect("yaml");
+        assert!(blocked_values_are_absent(&doc).is_empty());
+    }
+
+    #[test]
+    fn an_article_whose_whole_model_is_a_marking_is_reported() {
+        // Round 4: the chapeau of article 1 of the zorgtoeslag got one
+        // marking and nothing else, while the definitions under it were
+        // perfectly translatable.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '1'
+    text: In deze wet wordt verstaan onder verzekerde…
+    machine_readable:
+      markings:
+        - about: de begripsbepalingen
+          resolution: engine
+          target: []
+          legal_text_excerpt: In deze wet wordt verstaan onder
+"#,
+        )
+        .expect("yaml");
+        let findings = markings_leave_something_standing(&doc);
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].check, "marking-only");
+    }
+
+    #[test]
+    fn a_model_marking_that_names_what_it_blocks_may_stand_alone() {
+        // The one defensible bare article: the format has no shape for this
+        // provision at all, and the marking says which values fall away with
+        // it. Everything written beside that would be padding.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '3'
+    text: Voor elk van de tot het huishouden behorende personen wordt…
+    machine_readable:
+      markings:
+        - about: kwantificeren over personen
+          resolution: model
+          target: [aanspraak_per_persoon]
+          legal_text_excerpt: Voor elk van de tot het huishouden behorende personen
+"#,
+        )
+        .expect("yaml");
+        assert!(markings_leave_something_standing(&doc).is_empty());
+    }
+
+    #[test]
+    fn an_empty_target_cannot_excuse_an_article_that_produces_nothing() {
+        // An empty `target` says the article stays executable. Saying that
+        // and producing nothing is a contradiction in one breath.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '3'
+    text: iets
+    machine_readable:
+      markings:
+        - about: een regel over een verzameling
+          resolution: model
+          target: []
+          legal_text_excerpt: iets
+"#,
+        )
+        .expect("yaml");
+        assert_eq!(markings_leave_something_standing(&doc).len(), 1);
+    }
+
+    #[test]
+    fn a_marking_beside_a_worked_out_model_is_left_alone() {
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '3'
+    text: iets
+    machine_readable:
+      markings:
+        - about: afronden
+          resolution: engine
+          target: []
+          legal_text_excerpt: iets
+      execution:
+        actions:
+          - output: x
+            operation: ADD
+            values: [$a, $b]
+"#,
+        )
+        .expect("yaml");
+        assert!(markings_leave_something_standing(&doc).is_empty());
     }
 
     #[test]
