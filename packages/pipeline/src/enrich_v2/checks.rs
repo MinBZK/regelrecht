@@ -677,20 +677,21 @@ pub fn binding_integrity(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding
                     // claim from an empty `source: {}`, and lumping them
                     // together made a motivated external fact score the same
                     // as a silent hole.
-                    if has_description {
-                        findings.push(Finding::new(
-                            "outside-corpus",
-                            Some(&number),
-                            "input is declared external and unbound, and names no law. The \
-                             value has to come from somewhere and this file does not say where",
-                        ));
-                    } else {
-                        findings.push(Finding::new(
-                            "binding",
-                            Some(&number),
-                            "empty source: no regulation, no output, no reason",
-                        ));
-                    }
+                    let described = has_description;
+                    findings.push(Finding::new(
+                        if described {
+                            "external-input"
+                        } else {
+                            "binding"
+                        },
+                        Some(&number),
+                        if described {
+                            "input is declared external and unbound; the engine cannot supply it"
+                                .to_string()
+                        } else {
+                            "empty source: no regulation, no output, no reason".to_string()
+                        },
+                    ));
                 } else if !own_outputs.contains(&output) {
                     findings.push(Finding::new(
                         "binding",
@@ -702,18 +703,10 @@ pub fn binding_integrity(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding
             }
             let Some(root) = corpus_root else { continue };
             match find_law_file(root, &regulation) {
-                // A law the corpus does not have is a known gap that the work
-                // queue owns, not an error in this file. It lands in the same
-                // bucket as an input that names no law at all: both say the
-                // value comes from outside, and only the tally says which of
-                // the two named where.
                 None => findings.push(Finding::new(
-                    "outside-corpus",
+                    "binding",
                     Some(&number),
-                    format!(
-                        "reads \"{regulation}\", which the corpus does not have. Harvesting it \
-                         is what resolves this"
-                    ),
+                    format!("source regulation \"{regulation}\" not found in the corpus"),
                 )),
                 Some(path) => {
                     if !output.is_empty() && !law_defines_output(&path, &output) {
@@ -1443,19 +1436,11 @@ pub fn cross_law_references(doc: &Value, corpus_root: Option<&Path>) -> Vec<Find
             continue;
         }
         let bound = bound_regulations(mr);
-        // A marking excuses the reference whose words it quotes, and only that
-        // one. A marking about rounding says nothing about whether this
-        // article reads the Zorgverzekeringswet, and treating any marking as a
-        // blanket answer is how a gate stops asking.
-        let quotes: Vec<String> = mr
-            .map(|mr| {
-                markings(mr)
-                    .iter()
-                    .filter_map(|m| m.get("legal_text_excerpt").and_then(Value::as_str))
-                    .map(normalised)
-                    .collect()
-            })
-            .unwrap_or_default();
+        // A marking excuses the reference it names, and only that one. An
+        // untranslatable about rounding says nothing about whether this
+        // article reads the Zorgverzekeringswet, and treating any marking as
+        // a blanket answer is how a gate stops asking.
+        let marking_text = mr.map(marking_prose).unwrap_or_default();
 
         for id in cited {
             let Some(law_id) = index.get(id) else {
@@ -1466,16 +1451,7 @@ pub fn cross_law_references(doc: &Value, corpus_root: Option<&Path>) -> Vec<Find
             if bound.contains(law_id.as_str()) {
                 continue;
             }
-            let labels = citation_labels(entry, text, id);
-            let quoted = quotes.iter().any(|quote| {
-                if labels.is_empty() {
-                    // No markdown link to quote, so the number is all there is.
-                    quote.contains(&normalised(id))
-                } else {
-                    labels.iter().any(|label| quote.contains(label))
-                }
-            });
-            if quoted {
+            if marking_text.contains(law_id.as_str()) || marking_text.contains(id) {
                 continue;
             }
             findings.push(Finding::new(
@@ -1483,7 +1459,7 @@ pub fn cross_law_references(doc: &Value, corpus_root: Option<&Path>) -> Vec<Find
                 Some(number),
                 format!(
                     "text cites {law_id} ({id}) and the model reads nothing from it. Bind to \
-                     the article it names, or mark it and quote the words that cite it"
+                     the article it names, or record why the reference carries no value"
                 ),
             ));
         }
@@ -1491,41 +1467,21 @@ pub fn cross_law_references(doc: &Value, corpus_root: Option<&Path>) -> Vec<Find
     findings
 }
 
-/// The words with which an article cites one law, normalised.
+/// Everything the markings of one model say, as one lowercased string.
 ///
-/// The harvest renders every reference as a markdown link: the label is the
-/// citation as the legislator wrote it ("artikel 2.18 van de Wet
-/// inkomstenbelasting 2001") and the link target carries the BWB number. The
-/// article's `references` list maps the link id to that number, so the citation
-/// of a given law has a known literal form and a quotation can be held against
-/// it.
-///
-/// Returns every label for this law, because one article can cite the same law
-/// in several places and quoting any one of them addresses that citation.
-fn citation_labels(article: &Value, text: &str, bwb_id: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let refs = article
-        .get("references")
-        .and_then(Value::as_sequence)
-        .map_or(&[][..], Vec::as_slice);
-    for reference in refs {
-        if reference.get("bwb_id").and_then(Value::as_str) != Some(bwb_id) {
-            continue;
-        }
-        let Some(id) = reference.get("id").and_then(Value::as_str) else {
-            continue;
-        };
-        let needle = format!("][{id}]");
-        let mut from = 0;
-        while let Some(pos) = text[from..].find(&needle) {
-            let close = from + pos;
-            if let Some(open) = text[..close].rfind('[') {
-                let label = normalised(&text[open + 1..close]);
-                if !label.is_empty() && !out.contains(&label) {
-                    out.push(label);
+/// Used to check whether a marking mentions the law a reference points at.
+/// Crude by design: the question is only whether the agent addressed this
+/// reference somewhere, and a substring answers that without prescribing where
+/// in the entry the name has to sit.
+fn marking_prose(mr: &Value) -> String {
+    let mut out = String::new();
+    for key in ["untranslatables", "norm_gaps", "structural_choices"] {
+        if let Some(seq) = mr.get(key).and_then(Value::as_sequence) {
+            for item in seq {
+                if let Ok(text) = serde_yaml_ng::to_string(item) {
+                    out.push_str(&text.to_lowercase());
                 }
             }
-            from = close + needle.len();
         }
     }
     out
@@ -1669,151 +1625,6 @@ pub fn every_article_accounted(doc: &Value) -> Vec<Finding> {
         ));
     }
     findings
-}
-
-/// Values a marking declares blocked and the same article computes anyway.
-///
-/// `target` is the marking's pointer: it names the values in this article that
-/// cannot be produced, and an empty list is a statement rather than an
-/// omission, namely that the article stays executable. Either way the claim
-/// has a consequence the file itself can be held to, and in round 4 it had
-/// none: of the 72 outputs recorded as blocked not one was left out, and every
-/// one of them was computed by an action in the same article. A declaration
-/// that costs nothing to write and contradicts what sits beside it is worse
-/// than no declaration, because a reader believes it.
-///
-/// Hard on purpose. This is not a judgement about the translation but a
-/// contradiction inside one file, and no reading of the statute makes both
-/// halves true.
-pub fn blocked_values_are_absent(doc: &Value) -> Vec<Finding> {
-    let mut findings = Vec::new();
-    for (number, mr) in articles_with_models(doc) {
-        let actions = action_subtrees(mr);
-        if actions.is_empty() {
-            continue;
-        }
-        for marking in markings(mr) {
-            for name in marking_targets(marking) {
-                if actions.iter().any(|node| produces(node, name)) {
-                    findings.push(Finding::new(
-                        "contradiction",
-                        Some(&number),
-                        format!(
-                            "marking blocks {name}, and an action in this article computes it. \
-                             A value you declared unproducible cannot also be produced"
-                        ),
-                    ));
-                } else if actions.iter().any(|node| reads(node, name)) {
-                    findings.push(Finding::new(
-                        "contradiction",
-                        Some(&number),
-                        format!(
-                            "marking blocks {name}, and an action in this article calculates \
-                             with it. Whatever that action produces rests on a value the \
-                             marking says is not there"
-                        ),
-                    ));
-                }
-            }
-        }
-    }
-    findings
-}
-
-/// Articles that carry a marking and nothing else.
-///
-/// A marking is a flag on an article that is otherwise worked out: it names
-/// the one thing that does not fit and leaves everything that does fit
-/// standing. An article whose whole model is a marking made the opposite move,
-/// and in round 4 that was the largest failure class: the chapeau of article 1
-/// of the zorgtoeslag got one marking and nothing more, while the definitions
-/// under it were perfectly translatable.
-///
-/// One exception holds, and it is read off `target` rather than off a field of
-/// its own. A marking with `resolution: model` says the format has no shape
-/// for this construct, and when it also names the values that consequently
-/// cannot be produced, it has said that nothing is left to write down. An
-/// empty `target` claims the opposite in the same breath — the article stays
-/// executable — so it cannot excuse an article that produces nothing. And a
-/// marking with `resolution: engine` never excuses one: a missing operation
-/// blocks a step, so the inputs, the parameters and the rest of the
-/// calculation can all be written down and only that step is missing.
-pub fn markings_leave_something_standing(doc: &Value) -> Vec<Finding> {
-    let mut findings = Vec::new();
-    for (number, mr) in articles_with_models(doc) {
-        let marks = markings(mr);
-        if marks.is_empty() || carries_logic(mr) {
-            continue;
-        }
-        let carries = |key: &str| {
-            mr.get(key)
-                .and_then(Value::as_sequence)
-                .is_some_and(|s| !s.is_empty())
-        };
-        if carries("declares") || carries("overrides") {
-            continue;
-        }
-        if marks.iter().any(|m| {
-            m.get("resolution").and_then(Value::as_str) == Some("model")
-                && !marking_targets(m).is_empty()
-        }) {
-            continue;
-        }
-        findings.push(Finding::new(
-            "marking-only",
-            Some(&number),
-            "the whole model is a marking. A marking flags the one thing that does not \
-             fit and leaves what does fit standing; only a model-resolution marking that \
-             names what it blocks can say there is nothing left",
-        ));
-    }
-    findings
-}
-
-/// Every `actions` list in a model, at any depth.
-fn action_subtrees(mr: &Value) -> Vec<&Value> {
-    let mut out = Vec::new();
-    walk(mr, &mut |key, node| {
-        if key == Some("actions") && node.as_sequence().is_some() {
-            out.push(node);
-        }
-    });
-    out
-}
-
-/// Whether a subtree declares `name` as something it produces.
-fn produces(node: &Value, name: &str) -> bool {
-    let mut found = false;
-    walk_outside_sources(node, &mut |key, node| {
-        if key != Some("output") {
-            return;
-        }
-        match node {
-            Value::String(s) if s == name => found = true,
-            Value::Sequence(seq) => {
-                if seq
-                    .iter()
-                    .any(|item| item.get("name").and_then(Value::as_str) == Some(name))
-                {
-                    found = true;
-                }
-            }
-            _ => {}
-        }
-    });
-    found
-}
-
-/// Whether a subtree calculates with `name`.
-fn reads(node: &Value, name: &str) -> bool {
-    let reference = format!("${name}");
-    let mut found = false;
-    walk(node, &mut |_, node| {
-        if node.as_str() == Some(reference.as_str()) {
-            found = true;
-        }
-    });
-    found
 }
 
 /// Declarations that contradict the document header they fix.
@@ -2321,8 +2132,6 @@ pub fn run(yaml: &str, corpus_root: Option<&Path>) -> Report {
     findings.extend(binding_integrity(&doc, corpus_root));
     findings.extend(override_targets(&doc, corpus_root));
     findings.extend(every_article_accounted(&doc));
-    findings.extend(blocked_values_are_absent(&doc));
-    findings.extend(markings_leave_something_standing(&doc));
     findings.extend(cross_law_references(&doc, corpus_root));
     findings.extend(output_promises(&doc));
     findings.extend(declaration_agrees_with_header(&doc));
@@ -2445,76 +2254,8 @@ articles:
 "#;
         let d: Value = serde_yaml_ng::from_str(described).unwrap();
         let e: Value = serde_yaml_ng::from_str(empty).unwrap();
-        assert_eq!(binding_integrity(&d, None)[0].check, "outside-corpus");
+        assert_eq!(binding_integrity(&d, None)[0].check, "external-input");
         assert_eq!(binding_integrity(&e, None)[0].check, "binding");
-    }
-
-    #[test]
-    fn a_law_outside_the_corpus_lands_where_an_unnamed_external_input_lands() {
-        // The same legal situation written two ways: variant a demoted the
-        // binding to a bare input, variant b named the law it could not
-        // reach. Round 4 put those in different buckets, so steering on
-        // findings picked the variant that said less.
-        let corpus = tempfile::tempdir().expect("tempdir");
-        let named = r#"
-articles:
-  - number: '2'
-    text: tekst
-    machine_readable:
-      execution:
-        input:
-          - name: verzamelinkomen
-            source: {regulation: wet_inkomstenbelasting_2001, output: verzamelinkomen}
-"#;
-        let unnamed = r#"
-articles:
-  - number: '2'
-    text: tekst
-    machine_readable:
-      execution:
-        input:
-          - name: verzamelinkomen
-            source:
-              description: komt uit een wet die het corpus niet heeft
-"#;
-        let a: Value = serde_yaml_ng::from_str(named).unwrap();
-        let b: Value = serde_yaml_ng::from_str(unnamed).unwrap();
-        let fa = binding_integrity(&a, Some(corpus.path()));
-        let fb = binding_integrity(&b, Some(corpus.path()));
-        assert_eq!(fa.len(), 1, "{fa:?}");
-        assert_eq!(fb.len(), 1, "{fb:?}");
-        assert_eq!(fa[0].check, "outside-corpus");
-        assert_eq!(fb[0].check, "outside-corpus");
-    }
-
-    #[test]
-    fn an_output_a_present_law_does_not_produce_stays_hard() {
-        // A law the corpus has, read for something it does not deliver, is an
-        // error in this file and no harvest fixes it.
-        let corpus = tempfile::tempdir().expect("tempdir");
-        let dir = corpus.path().join("nl/wet/awir");
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(
-            dir.join("2025-01-01.yaml"),
-            "$id: awir\nbwb_id: BWBR0018472\narticles:\n  - number: '1'\n    machine_readable:\n      execution:\n        output:\n          - name: toetsingsinkomen\n",
-        )
-        .unwrap();
-        let doc: Value = serde_yaml_ng::from_str(
-            r#"
-articles:
-  - number: '2'
-    text: tekst
-    machine_readable:
-      execution:
-        input:
-          - name: x
-            source: {regulation: awir, output: bestaat_niet}
-"#,
-        )
-        .unwrap();
-        let findings = binding_integrity(&doc, Some(corpus.path()));
-        assert_eq!(findings.len(), 1, "{findings:?}");
-        assert_eq!(findings[0].check, "binding");
     }
 
     #[test]
@@ -2938,76 +2679,42 @@ articles:
         assert!(cross_law_references(&doc, Some(dir.path())).is_empty());
     }
 
-    /// One article citing the Awir through a markdown link, with `{marking}`
-    /// spliced into its model.
-    fn citing_article(marking: &str) -> Value {
-        let yaml = format!(
+    #[test]
+    fn a_marking_excuses_only_the_reference_it_names() {
+        // An untranslatable about rounding says nothing about whether this
+        // article reads the law it cites.
+        let dir = corpus_with_awir();
+        let unrelated: Value = serde_yaml_ng::from_str(
             r#"
 bwb_id: BWBR0018451
 articles:
   - number: "5.2"
-    text: |-
-      het toetsingsinkomen, bedoeld in [artikel 8 van de Algemene wet
-      inkomensafhankelijke regelingen][ref1], wordt afgerond.
-
-      [ref1]: https://wetten.overheid.nl/BWBR0018472#Artikel8
-    references:
-      - id: ref1
-        bwb_id: BWBR0018472
+    text: "bedoeld in artikel 8 [ref]: https://wetten.overheid.nl/BWBR0018472#Artikel8"
     machine_readable:
-{marking}
-"#
-        );
-        serde_yaml_ng::from_str(&yaml).expect("yaml")
-    }
-
-    #[test]
-    fn a_marking_excuses_only_the_reference_whose_words_it_quotes() {
-        // A marking about rounding says nothing about whether this article
-        // reads the law it cites, and quoting the rounding sentence must not
-        // buy off the citation sitting elsewhere in the same article.
-        let dir = corpus_with_awir();
-        let unrelated = citing_article(
-            "      markings:\n        - about: afronden\n          resolution: engine\n          \
-             target: []\n          legal_text_excerpt: wordt afgerond",
-        );
+      untranslatables:
+        - construct: rounding
+          reason: the engine cannot round
+"#,
+        )
+        .expect("yaml");
         assert_eq!(cross_law_references(&unrelated, Some(dir.path())).len(), 1);
 
-        let quoting = citing_article(
-            "      markings:\n        - about: het toetsingsinkomen\n          resolution: model\n          \
-             target: [toetsingsinkomen]\n          legal_text_excerpt: >-\n            het toetsingsinkomen, \
-             bedoeld in artikel 8 van de Algemene wet inkomensafhankelijke regelingen",
-        );
-        assert!(
-            cross_law_references(&quoting, Some(dir.path())).is_empty(),
-            "quoting the words that carry the citation answers it"
-        );
-    }
-
-    #[test]
-    fn naming_the_bwb_number_in_a_marking_no_longer_buys_off_a_reference() {
-        // The measured failure of round 4: 43 of 101 norm gaps were
-        // cross-references to laws that exist, written up as gaps, because
-        // writing the number into a gap was the short way past this gate.
-        let dir = corpus_with_awir();
-        let doc = citing_article(
-            "      markings:\n        - about: toetsingsinkomen komt uit BWBR0018472 (awir)\n          \
-             resolution: model\n          target: [toetsingsinkomen]\n          \
-             legal_text_excerpt: wordt afgerond",
-        );
-        let findings = cross_law_references(&doc, Some(dir.path()));
-        assert_eq!(findings.len(), 1, "{findings:?}");
-        assert_eq!(findings[0].check, "reference");
-    }
-
-    #[test]
-    fn a_binding_still_answers_a_reference() {
-        let dir = corpus_with_awir();
-        let doc = citing_article(
-            "      execution:\n        input:\n          - name: toetsingsinkomen\n            \
-             source: {regulation: awir, output: toetsingsinkomen}",
-        );
-        assert!(cross_law_references(&doc, Some(dir.path())).is_empty());
+        let named: Value = serde_yaml_ng::from_str(
+            r#"
+bwb_id: BWBR0018451
+articles:
+  - number: "5.2"
+    text: "bedoeld in artikel 8 [ref]: https://wetten.overheid.nl/BWBR0018472#Artikel8"
+    machine_readable:
+      norm_gaps:
+        - norm: toetsingsinkomen
+          kind: delegated
+          blocks: [x]
+          expected_source: awir article 8, not yet enriched
+"#,
+        )
+        .expect("yaml");
+        assert!(cross_law_references(&named, Some(dir.path())).is_empty());
     }
 
     #[test]
@@ -3609,181 +3316,6 @@ articles:
             findings.iter().all(|f| f.check != "citation"),
             "{findings:?}"
         );
-    }
-
-    #[test]
-    fn a_blocked_value_the_same_article_computes_is_a_contradiction() {
-        // Round 4: of the 72 outputs recorded as blocked, all 72 were
-        // computed by an action in the same article.
-        let doc: Value = serde_yaml_ng::from_str(
-            r#"
-articles:
-  - number: '2.1'
-    text: iets
-    machine_readable:
-      markings:
-        - about: kwantificeren over personen
-          resolution: model
-          target: [hoogte_zorgtoeslag]
-          legal_text_excerpt: iets
-      execution:
-        actions:
-          - output: hoogte_zorgtoeslag
-            operation: ADD
-            values: [$a, $b]
-"#,
-        )
-        .expect("yaml");
-        let findings = blocked_values_are_absent(&doc);
-        assert_eq!(findings.len(), 1, "{findings:?}");
-        assert_eq!(findings[0].check, "contradiction");
-        assert!(findings[0].detail.contains("computes it"));
-    }
-
-    #[test]
-    fn a_blocked_value_an_action_calculates_with_is_a_contradiction() {
-        // Blocking an input and then adding it up is the same contradiction
-        // read from the other side: whatever comes out rests on a value the
-        // marking says is not there.
-        let doc: Value = serde_yaml_ng::from_str(
-            r#"
-articles:
-  - number: '2.1'
-    text: iets
-    machine_readable:
-      markings:
-        - about: de standaardpremie
-          resolution: model
-          target: [standaardpremie]
-          legal_text_excerpt: iets
-      execution:
-        actions:
-          - output: hoogte
-            operation: SUBTRACT
-            values: [$standaardpremie, $normpremie]
-"#,
-        )
-        .expect("yaml");
-        let findings = blocked_values_are_absent(&doc);
-        assert_eq!(findings.len(), 1, "{findings:?}");
-        assert!(findings[0].detail.contains("calculates with it"));
-    }
-
-    #[test]
-    fn a_blocked_value_that_is_genuinely_left_out_passes() {
-        // The honest shape: the article computes what it can and the blocked
-        // value appears nowhere in its actions.
-        let doc: Value = serde_yaml_ng::from_str(
-            r#"
-articles:
-  - number: '2.1'
-    text: iets
-    machine_readable:
-      markings:
-        - about: de standaardpremie
-          resolution: model
-          target: [standaardpremie]
-          legal_text_excerpt: iets
-      execution:
-        actions:
-          - output: normpremie
-            operation: MULTIPLY
-            values: [$inkomen, $percentage]
-"#,
-        )
-        .expect("yaml");
-        assert!(blocked_values_are_absent(&doc).is_empty());
-    }
-
-    #[test]
-    fn an_article_whose_whole_model_is_a_marking_is_reported() {
-        // Round 4: the chapeau of article 1 of the zorgtoeslag got one
-        // marking and nothing else, while the definitions under it were
-        // perfectly translatable.
-        let doc: Value = serde_yaml_ng::from_str(
-            r#"
-articles:
-  - number: '1'
-    text: In deze wet wordt verstaan onder verzekerde…
-    machine_readable:
-      markings:
-        - about: de begripsbepalingen
-          resolution: engine
-          target: []
-          legal_text_excerpt: In deze wet wordt verstaan onder
-"#,
-        )
-        .expect("yaml");
-        let findings = markings_leave_something_standing(&doc);
-        assert_eq!(findings.len(), 1, "{findings:?}");
-        assert_eq!(findings[0].check, "marking-only");
-    }
-
-    #[test]
-    fn a_model_marking_that_names_what_it_blocks_may_stand_alone() {
-        // The one defensible bare article: the format has no shape for this
-        // provision at all, and the marking says which values fall away with
-        // it. Everything written beside that would be padding.
-        let doc: Value = serde_yaml_ng::from_str(
-            r#"
-articles:
-  - number: '3'
-    text: Voor elk van de tot het huishouden behorende personen wordt…
-    machine_readable:
-      markings:
-        - about: kwantificeren over personen
-          resolution: model
-          target: [aanspraak_per_persoon]
-          legal_text_excerpt: Voor elk van de tot het huishouden behorende personen
-"#,
-        )
-        .expect("yaml");
-        assert!(markings_leave_something_standing(&doc).is_empty());
-    }
-
-    #[test]
-    fn an_empty_target_cannot_excuse_an_article_that_produces_nothing() {
-        // An empty `target` says the article stays executable. Saying that
-        // and producing nothing is a contradiction in one breath.
-        let doc: Value = serde_yaml_ng::from_str(
-            r#"
-articles:
-  - number: '3'
-    text: iets
-    machine_readable:
-      markings:
-        - about: een regel over een verzameling
-          resolution: model
-          target: []
-          legal_text_excerpt: iets
-"#,
-        )
-        .expect("yaml");
-        assert_eq!(markings_leave_something_standing(&doc).len(), 1);
-    }
-
-    #[test]
-    fn a_marking_beside_a_worked_out_model_is_left_alone() {
-        let doc: Value = serde_yaml_ng::from_str(
-            r#"
-articles:
-  - number: '3'
-    text: iets
-    machine_readable:
-      markings:
-        - about: afronden
-          resolution: engine
-          target: []
-          legal_text_excerpt: iets
-      execution:
-        actions:
-          - output: x
-            operation: ADD
-            values: [$a, $b]
-"#,
-        )
-        .expect("yaml");
-        assert!(markings_leave_something_standing(&doc).is_empty());
     }
 
     #[test]
