@@ -154,7 +154,10 @@ An **open term** says the law leaves the content open and a lower regulation or
 implementing policy fills it. The language expresses it fine; the content sits
 elsewhere. `delegated_to` and `delegation_type` say who may fill it and with what
 kind of regulation, and `expected_source` names the filling regulation where the
-text itself names it. Where the article names nobody ("redelijkerwijs", "in
+text itself names it. `delegation_type` takes a value from the same closed list
+as the document's own `regulatory_layer` (see Regulatory Layers below): the layer
+the article requires of the implementation, and an implementation at another
+layer does not fill the term. Where the article names nobody ("redelijkerwijs", "in
 bijzondere gevallen"), those fields stay absent and `decided_per_case_by` names
 the authority that fills the term in the individual case. One of the three is
 always present; a check reports a term that names nobody.
