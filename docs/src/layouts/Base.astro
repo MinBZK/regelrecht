@@ -196,7 +196,7 @@ const legalLinks = [
 ---
 
 <!doctype html>
-<html lang={lang} data-scheme="light">
+<html lang={lang} data-scheme="light" data-landing={isLanding ? "" : undefined}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -273,16 +273,17 @@ const legalLinks = [
       })();
     </script>
     <script is:inline>
-      // Remembered language: seeded with the language someone starts in and
-      // overwritten only by a deliberate pick in the language menu (see the
-      // 'lang' branch of the menu handler). Applied on the two landing
-      // homepages alone, so a shared deep link never gets hijacked - the docs
-      // are English-only, and visiting them is not a language choice.
-      // Same storage pattern as the theme above: localStorage plus an
-      // in-memory fallback, re-checked on astro:after-swap because
-      // ClientRouter swaps the document without re-running head scripts.
+      // Remembered language: written only by a deliberate pick in the
+      // language menu (the 'lang' branch of the menu handler). Landing in the
+      // docs is not a choice - they are English-only - so until someone picks,
+      // the site's default (Dutch) stands. Without a stored choice nothing is
+      // ever redirected: a shared link to /en/ shows English. Same storage
+      // pattern as the theme above: localStorage plus an in-memory fallback,
+      // re-checked on astro:after-swap because ClientRouter swaps the document
+      // without re-running head scripts.
       (function () {
         var KEY = 'rr-lang';
+        var DEFAULT_LANG = 'nl';
         function read() {
           try {
             var v = localStorage.getItem(KEY);
@@ -299,39 +300,36 @@ const legalLinks = [
         // The home and back links from the docs point at one landing hardcoded
         // (the docs are English-only, so the server cannot know the reader's
         // language). Retarget any of them that point at a landing homepage to
-        // the remembered one, so the click goes there directly instead of via
-        // the homepage redirect below.
-        function retargetHomeLinks(stored) {
+        // the chosen language, or to the default when nothing was chosen. On
+        // the landing itself the links already match the page, so without a
+        // choice they are left alone.
+        function retargetHomeLinks(target) {
           var bar = document.querySelector('nldd-top-navigation-bar');
           if (!bar) return;
           ['logo-href', 'website-href', 'back-href'].forEach(function (attr) {
             var v = bar.getAttribute(attr);
-            if (v && isHome(v) && v !== homeFor(stored)) {
-              bar.setAttribute(attr, homeFor(stored));
+            if (v && isHome(v) && v !== homeFor(target)) {
+              bar.setAttribute(attr, homeFor(target));
             }
           });
         }
         function apply() {
           var stored = read();
           var current = document.documentElement.lang || 'en';
-          if (!stored) {
-            stored = current;
-            window.__rrLang = current;
-            try {
-              localStorage.setItem(KEY, current);
-            } catch (e) {}
-          } else if (isHome(location.pathname) && stored !== current) {
+          var onLanding = document.documentElement.hasAttribute('data-landing');
+          if (stored && isHome(location.pathname) && stored !== current) {
             location.replace(homeFor(stored));
             return;
           }
+          var target = stored || (onLanding ? current : DEFAULT_LANG);
           // In the head the body does not exist yet; the after-swap runs land
           // after the new DOM is in place and can retarget straight away.
           if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', function () {
-              retargetHomeLinks(stored);
+              retargetHomeLinks(target);
             });
           } else {
-            retargetHomeLinks(stored);
+            retargetHomeLinks(target);
           }
         }
         apply();
