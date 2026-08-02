@@ -25,13 +25,21 @@ machine_readable:
     # Or simple key-value:
     simple_key: "simple value"
 
-  open_terms:                   # IoC declarations (optional)
+  open_terms:                   # The law leaves the content open (optional)
     - id: standaardpremie
-      type: amount
+      type: amount              # string | number | boolean | amount | date
       required: true
-      delegated_to: minister
-      delegation_type: MINISTERIELE_REGELING
+      delegated_to: Onze Minister              # omit when the article names nobody
+      delegation_type: MINISTERIELE_REGELING   # omit likewise
       legal_basis: artikel 4 Wet op de zorgtoeslag
+
+  markings:                     # The format cannot express a construct (optional)
+    - about: het jaar waarin de peildatum valt
+      resolution: engine        # engine | model
+      resolved_by: Een YEAR-bewerking die het jaardeel van een datum oplevert
+      target: []                # values this article therefore does not produce
+      legal_text_excerpt: het kalenderjaar waarop de tegemoetkoming betrekking heeft
+      accepted: false
 
   implements:                   # IoC fulfillment (optional)
     - law: wet_op_de_zorgtoeslag
@@ -47,9 +55,11 @@ machine_readable:
         stage: BESLUIT                # optional (default: BESLUIT)
 
   overrides:                    # Lex specialis declarations (optional, RFC-007)
-    - law: algemene_wet_bestuursrecht
-      article: '6:7'
+    - law: algemene_wet_bestuursrecht   # omit for an article of this same law
+      article: '6:7'            # the producing entry's number as this file writes it
       output: bezwaartermijn_weken
+      voids: false              # true: the output does not arise at all
+      legal_text_excerpt: In afwijking van artikel 6:7 ...
 
   execution:
     produces:                   # Legal character (optional)
@@ -129,9 +139,36 @@ procedure:
         description: Bezwaarperiode (AWB 6:4 e.v.)
 ```
 
-## Operation Types (all 21)
+## Markings and Open Terms, Two Fields With Two Meanings
 
-### Arithmetic Operations — use `values` array
+A **marking** says the format cannot express a construct. That is a language gap,
+resolved by extending the engine (`resolution: engine`, e.g. a YEAR operation) or
+by changing the format (`resolution: model`, e.g. quantification over persons, a
+rule about a set rather than a value, a legal fiction).
+
+An **open term** says the law leaves the content open and a lower regulation or
+implementing policy fills it. The language expresses it fine; the content sits
+elsewhere. `delegated_to` and `delegation_type` say who may fill it and with what
+kind of regulation. Where the article names nobody ("redelijkerwijs", "in
+bijzondere gevallen"), both fields stay absent and any competent authority fills
+the term through implementing policy.
+
+A value another law produces is neither. It is an `input` with a `source`.
+
+Required on a marking: `about`, `resolution`, `target`, `legal_text_excerpt`.
+Required on an open term: `id`, `type`.
+
+`target` names the values in this article that cannot be produced because of the
+marking. An empty list asserts the article stays executable, which is the normal
+case. A name in the list must be absent from the article's actions: computing a
+value you declared blocked is a contradiction, and a check reports it.
+
+Do not record whether the filling regulation is currently in the corpus. That is
+a state of the corpus, not a property of the law (RFC-029).
+
+## Operation Types
+
+### Arithmetic Operations, with a `values` array
 ```yaml
 operation: ADD              # ADD | SUBTRACT | MULTIPLY | DIVIDE | MIN | MAX
 values:
@@ -139,7 +176,7 @@ values:
   - $operand_2              # (literal, $variable, or nested operation)
 ```
 
-### Logical Operations — use `conditions` array
+### Logical Operations, with a `conditions` array
 ```yaml
 operation: AND              # AND | OR
 conditions:
@@ -151,7 +188,7 @@ conditions:
     value: 0
 ```
 
-### NOT — negation, use `value`
+### NOT, negation, with `value`
 ```yaml
 operation: NOT
 value:                      # operationValue (literal, $var, or operation)
@@ -162,7 +199,7 @@ value:                      # operationValue (literal, $var, or operation)
 
 Can also negate compound conditions or simple variables:
 ```yaml
-# Negate a compound: "tenzij zowel A als B" → NOT(A AND B)
+# Negate a compound ("tenzij zowel A als B") to NOT(A AND B)
 operation: NOT
 value:
   operation: AND
@@ -174,12 +211,12 @@ value:
       subject: $b
       value: true
 
-# Negate a variable directly: NOT($flag)
+# Negate a variable directly, NOT($flag)
 operation: NOT
 value: $heeft_relatieve_weigeringsgrond
 ```
 
-### Comparison Operations — use `subject` + `value`
+### Comparison Operations, with `subject` + `value`
 ```yaml
 operation: EQUALS           # EQUALS | GREATER_THAN | LESS_THAN
                             # GREATER_THAN_OR_EQUAL | LESS_THAN_OR_EQUAL
@@ -187,7 +224,7 @@ subject: $variable          # MUST be a $variable reference
 value: 18                   # operationValue (literal, $var, or operation)
 ```
 
-### Conditional IF — use `cases` array + `default`
+### Conditional IF, with a `cases` array + `default`
 ```yaml
 operation: IF
 cases:
@@ -206,7 +243,7 @@ default: $single_amount     # Value if no case matches (operationValue, optional
 
 Cases are evaluated in order; the first matching case wins.
 
-### IN — membership test, use `subject` + `value` or `values`
+### IN, membership test, with `subject` + `value` or `values`
 ```yaml
 # With inline list:
 operation: IN
@@ -219,7 +256,7 @@ subject: $status
 value: $allowed_statuses
 ```
 
-### LIST — construct an array
+### LIST, construct an array
 ```yaml
 operation: LIST
 items:
@@ -228,14 +265,14 @@ items:
   - "literal_value"
 ```
 
-### AGE — calculate age in complete years
+### AGE, age in complete years
 ```yaml
 operation: AGE
 date_of_birth: $geboortedatum     # Date (operationValue)
 reference_date: $peildatum         # Date (operationValue)
 ```
 
-### DATE_ADD — add duration to a date
+### DATE_ADD, add a duration to a date
 ```yaml
 operation: DATE_ADD
 date: $bekendmaking_datum          # Base date (operationValue)
@@ -249,7 +286,7 @@ Applied coarsest-to-finest: years → months → weeks → days.
 Month/year additions use the Dutch legal "corresponding numbered day" rule:
 the day is clamped to the last day of the target month (e.g., Jan 31 + 1 month = Feb 28).
 
-### DATE — construct a date from components
+### DATE, construct a date from components
 ```yaml
 operation: DATE
 year: $jaar                        # Year (operationValue)
@@ -257,12 +294,38 @@ month: 1                           # Month 1-12 (operationValue)
 day: 1                             # Day 1-31 (operationValue)
 ```
 
-### DAY_OF_WEEK — get weekday number
+### DAY_OF_WEEK, weekday number
 ```yaml
 operation: DAY_OF_WEEK
 date: $datum                       # Date (operationValue)
-# Returns: 0=Monday, 1=Tuesday, ..., 6=Sunday
+# Returns 0=Monday, 1=Tuesday, ..., 6=Sunday
 ```
+
+### DATE_DIFF, signed difference between two dates (RFC-021)
+```yaml
+operation: DATE_DIFF
+from: $aanvraagdatum               # Start date (operationValue)
+to: $besluitdatum                  # End date (operationValue)
+in: months                         # days | months | years (or a $variable)
+```
+
+Positive when `to` is on or after `from`. Months and years count complete
+calendar units.
+
+### ROUND, CEIL and FLOOR, rounding (RFC-024)
+```yaml
+operation: ROUND                   # ROUND | CEIL | FLOOR
+value: $bedrag                     # Operand (operationValue)
+precision: -2                      # Required: decimals in the value's own unit
+```
+
+`ROUND` is half-up (rekenkundig, the Hoge Raad default), `CEIL` rounds up
+("naar boven"), `FLOOR` rounds down ("naar beneden", afkapping). `precision`
+counts decimals in the value's **own** unit (RFC-023), so rounding a eurocent
+amount to whole euros is `precision: -2` and to whole tens of euros `-3`.
+
+Rounding is never implicit: a law that rounds says so, and a law that does not
+say so is not rounded.
 
 ## Variable References
 
@@ -300,10 +363,12 @@ source:
   # No regulation field = same law
 ```
 
-### Open Terms (IoC — Inversion of Control)
+### Open Terms (IoC, Inversion of Control)
 
-When a higher law delegates a value to a lower regulation (e.g., "bij ministeriële
-regeling" or "bij gemeentelijke verordening"), use the `open_terms` + `implements` pattern:
+When a law leaves a value to a lower regulation ("bij ministeriële regeling",
+"bij gemeentelijke verordening"), use the `open_terms` + `implements` pattern.
+An open term whose article names no filler works the same way, with
+`delegated_to` and `delegation_type` left out.
 
 **Higher law** declares an open term:
 ```yaml
@@ -312,7 +377,7 @@ machine_readable:
     - id: standaardpremie
       type: amount
       required: true
-      delegated_to: minister
+      delegated_to: Onze Minister
       delegation_type: MINISTERIELE_REGELING
       legal_basis: artikel 4 Wet op de zorgtoeslag
   execution:
@@ -348,7 +413,7 @@ machine_readable:
 The engine automatically resolves `$standaardpremie` by finding the regulation
 that `implements` the open term, using lex superior / lex posterior priority rules.
 
-## Hooks — Reactive Execution
+## Hooks, Reactive Execution
 
 Hooks allow articles to fire automatically when matching lifecycle events occur.
 Used by the AWB for cross-cutting requirements (motivation, appeal deadlines).
@@ -366,14 +431,14 @@ machine_readable:
         legal_character: BESCHIKKING
         stage: BEKENDMAKING
   execution:
-    # Normal execution section — output, actions, etc.
+    # Normal execution section, output, actions, etc.
 ```
 
 Valid `hook_point` values: `pre_actions`, `post_actions`
 Valid `legal_character` values: `BESCHIKKING`, `TOETS`, `WAARDEBEPALING`,
 `BESLUIT_VAN_ALGEMENE_STREKKING`, `INFORMATIEF`
 
-## Overrides — Lex Specialis
+## Overrides, Lex Specialis
 
 When a specific law needs to replace an output from a more general law:
 
@@ -404,33 +469,18 @@ regulatory_layer: WET  # One of:
 # UITVOERINGSBELEID | GEMEENTELIJKE_VERORDENING | PROVINCIALE_VERORDENING
 ```
 
-## Eurocent Conversion Table
+## Eurocent Conversion
 
-| Written Amount | Eurocent Value | Note |
-|----------------|----------------|------|
-| €1 | 100 | |
-| €10 | 1000 | |
-| €100 | 10000 | |
-| €795,47 | 79547 | comma = decimal separator |
-| €2.112 | 211200 | dot = thousands separator (two thousand one hundred twelve) |
-| €79.547 | 7954700 | dot = thousands separator (seventy-nine thousand) |
-| €154.859 | 15485900 | dot = thousands separator |
-| €1.000.000 | 100000000 | dots = thousands separators (one million) |
+In Dutch notation `.` is the thousands separator and `,` is the decimal
+separator, the opposite of English. `€1.234,56` is one thousand two hundred
+thirty-four euro and fifty-six cents, so `123456` eurocent. `€2.112` is two
+thousand one hundred twelve euro, so `211200` eurocent, not `2112`.
 
-**Dutch number format:** In Dutch, `.` is the thousands separator and `,` is the decimal separator.
-This is the opposite of English. So `€1.234,56` means one thousand two hundred thirty-four euro and fifty-six cents.
-
-**Rules:**
-1. Remove currency symbol (€)
-2. Remove thousands separators (.) — these are the dots between digit groups (e.g., `1.000.000`)
-3. Replace decimal comma (,) with decimal point (.) — this is the comma before cents (e.g., `795,47` → `795.47`)
-4. Parse as decimal number (euros) — e.g., `795.47`
-5. Multiply by 100 and round to integer — e.g., `795.47 × 100 = 79547`
-
-**Examples applying the rules:**
-- `€2.112` → remove `€` → `2.112` → remove thousands `.` → `2112` → no decimal comma → parse `2112.0` → × 100 = `211200`
-- `€795,47` → remove `€` → `795,47` → no thousands sep → `795,47` → replace `,` with `.` → parse `795.47` → × 100 = `79547`
-- `€1.234,56` → remove `€` → `1.234,56` → remove thousands `.` → `1234,56` → replace `,` with `.` → parse `1234.56` → × 100 = `123456`
+Every monetary value in every file is `type: amount` with
+`type_spec: { unit: eurocent }`. A file carrying `unit: euro` is broken even
+when it is consistent with itself, because `unit` is a label and never a
+conversion (RFC-023) and the engine will not notice the factor of a hundred at a
+law boundary.
 
 ## Common Legal Phrases → Operations
 
@@ -452,57 +502,42 @@ This is the opposite of English. So `€1.234,56` means one thousand two hundred
 | "ingevolge" | Cross-law reference via source.regulation |
 | "bedoeld in artikel X" | Internal reference via source.output |
 | "binnen X weken na" | `DATE_ADD`, date: ..., weeks: X |
+| "het aantal maanden tussen X en Y" | `DATE_DIFF`, from: X, to: Y, in: months |
+| "afgerond op hele euro's" | `ROUND` with `precision: -2` on a eurocent value |
+| "voor zover" | A bound on an amount: `MAX`/`MIN` around the qualifying part. A boolean here loses the partial case, and always in the citizen's disfavour |
+| "dan wel" (two measures side by side) | `OR` over two comparisons, each with its own parameter. One parameter whose description covers both is not a model of the disjunction |
 | "in afwijking van artikel X" | `overrides` declaration |
 | "bij ministeriële regeling" | `open_terms` + `implements` IoC pattern |
 
-## Data Type Mapping
-
-### Common Parameters
-| Legal Concept | Parameter Name | Type |
-|--------------|---------------|------|
-| Citizen | bsn | string |
-| Date | peildatum | date |
-| Year | jaar | number |
-| Municipality | gemeente_code | string |
-
-### Common Input Fields
-| Legal Concept | Input Name | Type | Source |
-|--------------|-----------|------|--------|
-| Age | leeftijd | number | wet_basisregistratie_personen |
-| Insured status | is_verzekerd | boolean | zorgverzekeringswet |
-| Partner status | heeft_toeslagpartner | boolean | algemene_wet_inkomensafhankelijke_regelingen |
-| Test income | toetsingsinkomen | amount | algemene_wet_inkomensafhankelijke_regelingen |
-| Assets | vermogen | amount | belastingdienst |
-
-### Common Outputs
-| Legal Concept | Output Name | Type | type_spec |
-|--------------|------------|------|-----------|
-| Eligibility | heeft_recht | boolean | — |
-| Amount | hoogte_toeslag | amount | unit: eurocent |
-| Below threshold | onder_grens | boolean | — |
+Do not carry a stock list of input names and sources in your head. Every binding
+is to an output that the target law in this corpus really produces, found by
+reading that law. A plausible name is how a hallucinated dependency gets written.
 
 ## Debugging Tips
 
-1. **Run `just validate <file>`** — catches schema violations with exact paths
-2. **Check action patterns**: `value:` for assignments/operations, `operation:`+`values:` for arithmetic only
-3. **IF uses cases/default** — NOT when/then/else or condition/then_value/else_value
-4. **Arithmetic uses values array** — NOT subject/value
-5. **Logical uses conditions array** — NOT values
-6. **Comparison uses subject (must be $var)** — and value
-7. **NOT uses value** — NOT conditions or subject
-8. **Source uses regulation/output** — NOT url
-9. **Monetary fields**: type `amount` with `type_spec: { unit: eurocent }`
-10. **AGE uses date_of_birth/reference_date** — NOT subject/value/unit
-11. **DATE_ADD uses date + optional years/months/weeks/days** — NOT subject/value
-12. **$referencedate is NOT a built-in** — must be declared as a parameter
+1. `just validate <file>` catches schema violations with exact paths
+2. Action patterns: `value:` for assignments and operations; `operation:` with
+   `values:` only for arithmetic
+3. `IF` takes `cases`/`default`, never `when`/`then`/`else`
+4. Arithmetic takes a `values` array, never `subject`/`value`
+5. Logical operations take a `conditions` array, never `values`
+6. Comparison takes `subject` (a `$variable`) plus `value`
+7. `NOT` takes `value`, never `conditions` or `subject`
+8. `source` takes `regulation` and `output`, never `url`
+9. Monetary fields are `type: amount` with `type_spec: { unit: eurocent }`
+10. `AGE` takes `date_of_birth` and `reference_date`
+11. `DATE_ADD` takes `date` plus optional `years`/`months`/`weeks`/`days`
+12. `ROUND`, `CEIL` and `FLOOR` require `precision`
+13. `$referencedate` is not a built-in and must be declared as a parameter
 
 ## External Resources
 
-- **Schema**: `schema/latest/schema.json`
-- **Working examples**:
-  - `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` — basic patterns
-  - `corpus/regulation/nl/wet/algemene_wet_bestuursrecht/2026-01-01.yaml` — hooks, procedures
-  - `corpus/regulation/nl/wet/vreemdelingenwet_2000/2026-01-01.yaml` — overrides
-  - `corpus/regulation/nl/wet/wet_open_overheid/2025-02-12.yaml` — AGE, complex IF
+- **Schema**: `schema/latest/schema.json`, the arbiter
+- **Worked patterns**: `examples.md` in this directory
 - **Engine source**: `packages/engine/src/`
 - **Validation binary**: `packages/engine/src/bin/validate.rs`
+
+The corpus files under `corpus/regulation/nl/` are on an older schema version and
+predate several of the rules in `SKILL.md`. Read one to see how an operation
+behaves in practice; do not read one as a model of how complete a law file should
+be.
