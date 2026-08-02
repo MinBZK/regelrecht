@@ -2699,7 +2699,41 @@ pub async fn ensure_skills(repo_path: &Path) -> Result<()> {
         }
     }
 
+    link_schema(&skills_source, repo_path).await;
+
     Ok(())
+}
+
+/// Put the schema where the agent looks for it.
+///
+/// It writes YAML against a contract with required fields, closed enums and
+/// `additionalProperties: false`, so it needs to read that contract. A run in a
+/// bare corpus checkout went looking (`ls schema/`, `find . -name schema.json`)
+/// and found nothing, then wrote fields the schema forbids.
+///
+/// Letting the gate catch that afterwards is the wrong division of labour: it
+/// makes a check do the work an instruction should have done, and it spends a
+/// repair round on something the agent could have known before it started.
+///
+/// Best effort on purpose. A missing schema is worth a warning and not a failed
+/// run, because the skills carry a readable digest of the same contract.
+async fn link_schema(source_root: &Path, repo_path: &Path) {
+    let source = source_root.join("schema");
+    if !source.exists() {
+        tracing::warn!(path = %source.display(), "no schema dir to link; the agent will work without the contract");
+        return;
+    }
+    let link = repo_path.join("schema");
+    if let Ok(meta) = tokio::fs::symlink_metadata(&link).await {
+        if meta.is_dir() && !meta.file_type().is_symlink() {
+            return; // A real schema directory is already there.
+        }
+        let _ = tokio::fs::remove_file(&link).await;
+    }
+    match tokio::fs::symlink(&source, &link).await {
+        Ok(()) => tracing::debug!("symlinked schema into corpus root"),
+        Err(e) => tracing::warn!(error = %e, "could not link schema into corpus root"),
+    }
 }
 
 /// Known absolute prefixes that may appear in yaml_path values from
