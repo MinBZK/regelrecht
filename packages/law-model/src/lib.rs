@@ -25,6 +25,6 @@ pub use model::{
     HookFilter, HookPoint, ImplementsDeclaration, Input, LegalBasis, MachineReadable, Marking,
     MarkingResolution, OpenTerm, OpenTermDefault, Output, OverrideDeclaration, Parameter,
     Placement, PlacementContainer, ProcedureAppliesTo, ProcedureDefinition, Produces, Source,
-    Stage, StageRequirement, TypeSpec, UntranslatableEntry,
+    Stage, StageRequirement, TypeSpec,
 };
 pub use value::{Operation, ParameterType, RegulatoryLayer, Value};

@@ -12,23 +12,24 @@ use serde::{Deserialize, Serialize};
 /// Re-export the canonical document-model value types from the law-model crate.
 pub use regelrecht_law_model::{Operation, ParameterType, RegulatoryLayer, Value};
 
-/// How the engine handles articles with `untranslatables` annotations (RFC-012).
+/// How the engine handles a marked article (RFC-012).
 ///
-/// Controls runtime behavior when an article declares legal constructs that
-/// cannot be faithfully expressed with the current engine operation set.
+/// Controls runtime behavior when an article declares, through `markings`, a
+/// construct the format cannot express. The modes are unchanged from when they
+/// read `untranslatables`; only the field they read moved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum UntranslatableMode {
-    /// Hard error on any unaccepted untranslatable. Accepted ones execute partial logic.
+    /// Hard error on any unaccepted marking. Accepted ones execute partial logic.
     #[default]
     Error,
-    /// Execute partial logic. Outputs from articles with untranslatables carry an
+    /// Execute partial logic. Outputs from marked articles carry an
     /// `UNTRANSLATABLE` taint that propagates through downstream operations (like NaN).
     Propagate,
     /// Execute partial logic, log warning in trace. No taint propagation.
     Warn,
-    /// Execute partial logic silently. Only valid for entries with `accepted: true` —
-    /// unaccepted untranslatables still error.
+    /// Execute partial logic silently. Only valid for markings with `accepted: true` —
+    /// unaccepted markings still error.
     Ignore,
 }
 

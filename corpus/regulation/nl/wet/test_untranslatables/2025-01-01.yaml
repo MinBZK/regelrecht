@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.1/schema/v0.5.1/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
 $id: test_untranslatables
 name: Testwet onvertaalbare constructies
 regulatory_layer: WET
@@ -30,10 +30,12 @@ articles:
     text: >-
       Het bedrag wordt naar boven afgerond op hele euro's.
     machine_readable:
-      untranslatables:
-        - construct: afronden op hele euro's
-          reason: Rounding is not available as an engine operation
-          suggestion: Add ROUND/CEIL operation to engine
+      markings:
+        - about: afronden op hele euro's
+          resolution: engine
+          resolved_by: >-
+            Een CEIL-bewerking die een bedrag naar boven op hele euro's afrondt
+          target: []
           legal_text_excerpt: Het bedrag wordt naar boven afgerond op hele euro's
           accepted: false
       execution:
@@ -80,10 +82,13 @@ articles:
       De som van alle deeltoeslagen wordt berekend. Dit artikel
       is geaccepteerd als onvertaalbaar.
     machine_readable:
-      untranslatables:
-        - construct: som van alle deeltoeslagen
-          reason: Aggregation over variable-length collections is not supported
-          suggestion: Add SUM/FOREACH operation to engine
+      markings:
+        - about: som van alle deeltoeslagen
+          resolution: model
+          resolved_by: >-
+            Een vorm in het model voor een regel over een verzameling
+            deeltoeslagen in plaats van over een enkele waarde
+          target: []
           legal_text_excerpt: De som van alle deeltoeslagen wordt berekend
           accepted: true
       execution:

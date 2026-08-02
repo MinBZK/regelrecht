@@ -1,26 +1,27 @@
 @tier:untranslatable
-Feature: Untranslatables — RFC-012
-  The engine handles articles with untranslatable constructs according to the
-  configured mode: error (default), propagate, warn, or ignore.
+Feature: Markings — RFC-012
+  An article that carries a marking says the format cannot express one of its
+  constructs. The engine handles such an article according to the configured
+  untranslatable mode: error (default), propagate, warn, or ignore.
 
   Background:
     Given the calculation date is "2025-01-01"
 
   # === Error mode (default) ===
 
-  Scenario: Error mode rejects unaccepted untranslatable
+  Scenario: Error mode rejects an unaccepted marking
     Given the untranslatable mode is "error"
     When I evaluate "afgerond_bedrag" of "test_untranslatables"
     Then the execution fails with "Untranslatable construct"
 
-  Scenario: Error mode allows accepted untranslatable
+  Scenario: Error mode allows an accepted marking
     Given the untranslatable mode is "error"
     When I evaluate "som_deeltoeslagen" of "test_untranslatables"
     Then the execution succeeds
 
   # === Propagate mode ===
 
-  Scenario: Propagate mode taints outputs from articles with untranslatables
+  Scenario: Propagate mode taints outputs from marked articles
     Given the untranslatable mode is "propagate"
     Given the following parameters:
       | bedrag | 1234 |
@@ -28,7 +29,7 @@ Feature: Untranslatables — RFC-012
     Then the execution succeeds
     Then output "afgerond_bedrag" is tainted as untranslatable
 
-  Scenario: Propagate mode allows clean articles to execute normally
+  Scenario: Propagate mode allows unmarked articles to execute normally
     Given the untranslatable mode is "propagate"
     When I evaluate "basistoeslag" of "test_untranslatables"
     Then the execution succeeds
@@ -42,7 +43,7 @@ Feature: Untranslatables — RFC-012
 
   # === Warn mode ===
 
-  Scenario: Warn mode executes unaccepted untranslatable with partial logic
+  Scenario: Warn mode executes an unaccepted marking with partial logic
     Given the untranslatable mode is "warn"
     Given the following parameters:
       | bedrag | 1234 |
@@ -52,25 +53,25 @@ Feature: Untranslatables — RFC-012
 
   # === Ignore mode ===
 
-  Scenario: Ignore mode rejects unaccepted untranslatable
+  Scenario: Ignore mode rejects an unaccepted marking
     Given the untranslatable mode is "ignore"
     When I evaluate "afgerond_bedrag" of "test_untranslatables"
     Then the execution fails with "Untranslatable construct"
 
-  Scenario: Ignore mode allows accepted untranslatable
+  Scenario: Ignore mode allows an accepted marking
     Given the untranslatable mode is "ignore"
     When I evaluate "som_deeltoeslagen" of "test_untranslatables"
     Then the execution succeeds
 
-  # === Articles without untranslatables work normally ===
+  # === Articles without markings work normally ===
 
-  Scenario: Clean article executes normally in error mode
+  Scenario: Unmarked article executes normally in error mode
     Given the untranslatable mode is "error"
     When I evaluate "basistoeslag" of "test_untranslatables"
     Then the execution succeeds
     Then output "basistoeslag" equals 1000
 
-  Scenario: Clean article with cross-ref executes normally
+  Scenario: Unmarked article with cross-ref executes normally
     Given the untranslatable mode is "error"
     When I evaluate "toegekende_toeslag" of "test_untranslatables"
     Then the execution succeeds

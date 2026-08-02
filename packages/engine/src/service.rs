@@ -295,6 +295,25 @@ fn hash_value(value: &Value, hasher: &mut impl Hasher) {
     }
 }
 
+/// What a marking says has to change, as one sentence.
+///
+/// A v0.5.x `untranslatables` entry carried a free-text `reason`; a marking
+/// splits that into `resolution` (engine or model) and `resolved_by` (the
+/// change, named concretely). This puts them back together for the error
+/// message and the trace, so a reader learns which of the two has to move.
+/// `resolved_by` is required by schema v0.6.0 but optional on the model, which
+/// must also read older files; when it is absent the layer alone is the answer.
+fn marking_reason(marking: &crate::article::Marking) -> String {
+    let layer = match marking.resolution {
+        crate::article::MarkingResolution::Engine => "needs an engine operation",
+        crate::article::MarkingResolution::Model => "needs a new shape in the format",
+    };
+    match marking.resolved_by {
+        Some(ref resolved_by) => format!("{layer}: {resolved_by}"),
+        None => layer.to_string(),
+    }
+}
+
 /// Trait for resolving cross-law references.
 ///
 /// Implement this trait to provide custom law loading and resolution strategies.
@@ -1393,78 +1412,83 @@ impl LawExecutionService {
         Ok((hook_outputs, hook_provenance))
     }
 
-    /// Handle untranslatable constructs based on the configured mode (RFC-012).
+    /// Handle an article's markings based on the configured mode (RFC-012).
     ///
-    /// Called before article execution when the article has `untranslatables` annotations.
+    /// Called before article execution when the article carries `markings`.
     /// Behavior depends on `self.untranslatable_mode`:
-    /// - `Error`: hard error on unaccepted entries, accepted ones log to trace
+    /// - `Error`: hard error on unaccepted markings, accepted ones log to trace
     /// - `Propagate`: always log to trace (taint propagation happens at output level)
     /// - `Warn`: log warning to trace, continue
-    /// - `Ignore`: only error on unaccepted entries, otherwise silent
+    /// - `Ignore`: only error on unaccepted markings, otherwise silent
+    ///
+    /// This is the RFC-012 machinery unchanged, reading the v0.6.0 field: what
+    /// used to be `untranslatables.construct` is `markings.about`, and where an
+    /// entry gave a free-text `reason` a marking gives `resolution` plus the
+    /// change that would resolve it. What execution should do with a marked
+    /// article beyond this is a separate decision, still open.
     ///
     /// Returns a list of (article, construct) pairs that should taint outputs
     /// in propagate mode. Empty vec means no tainting.
-    fn handle_untranslatables(
+    fn handle_markings(
         &self,
         law_id: &str,
         article_number: &str,
-        untranslatables: &[crate::article::UntranslatableEntry],
+        markings: &[crate::article::Marking],
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<Vec<(String, String)>> {
         let mut taints = Vec::new();
 
-        for entry in untranslatables {
+        for marking in markings {
+            let reason = marking_reason(marking);
             // Always record in trace regardless of mode
-            let msg = format!("Untranslatable: {} — {}", entry.construct, entry.reason);
+            let msg = format!("Marking: {} — {}", marking.about, reason);
             {
-                let _guard = res_ctx.trace_guard(
-                    format!("untranslatable:{}", entry.construct),
-                    PathNodeType::Article,
-                );
+                let _guard = res_ctx
+                    .trace_guard(format!("marking:{}", marking.about), PathNodeType::Article);
                 res_ctx.trace_set_message(msg.clone());
             }
 
             match self.untranslatable_mode {
                 UntranslatableMode::Error => {
-                    if !entry.accepted {
+                    if !marking.accepted {
                         return Err(EngineError::Untranslatable {
                             law_id: law_id.to_string(),
                             article: article_number.to_string(),
-                            construct: entry.construct.clone(),
-                            reason: entry.reason.clone(),
+                            construct: marking.about.clone(),
+                            reason,
                         });
                     }
                     tracing::info!(
                         law_id,
                         article = article_number,
-                        construct = %entry.construct,
-                        "Accepted untranslatable, proceeding with partial logic"
+                        construct = %marking.about,
+                        "Accepted marking, proceeding with partial logic"
                     );
                 }
                 UntranslatableMode::Propagate => {
                     tracing::info!(
                         law_id,
                         article = article_number,
-                        construct = %entry.construct,
-                        "Untranslatable construct — tainting outputs (propagate mode)"
+                        construct = %marking.about,
+                        "Marked construct — tainting outputs (propagate mode)"
                     );
-                    taints.push((article_number.to_string(), entry.construct.clone()));
+                    taints.push((article_number.to_string(), marking.about.clone()));
                 }
                 UntranslatableMode::Warn => {
                     tracing::warn!(
                         law_id,
                         article = article_number,
-                        construct = %entry.construct,
-                        "Untranslatable construct — executing partial logic"
+                        construct = %marking.about,
+                        "Marked construct — executing partial logic"
                     );
                 }
                 UntranslatableMode::Ignore => {
-                    if !entry.accepted {
+                    if !marking.accepted {
                         return Err(EngineError::Untranslatable {
                             law_id: law_id.to_string(),
                             article: article_number.to_string(),
-                            construct: entry.construct.clone(),
-                            reason: entry.reason.clone(),
+                            construct: marking.about.clone(),
+                            reason,
                         });
                     }
                 }
@@ -1630,14 +1654,14 @@ impl LawExecutionService {
         stage: &str,
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<ArticleResult> {
-        // RFC-012: Check for untranslatable constructs before execution
-        let taints = if let Some(untranslatables) = article
+        // RFC-012: check the article's markings before execution
+        let taints = if let Some(markings) = article
             .machine_readable
             .as_ref()
-            .and_then(|mr| mr.untranslatables.as_ref())
+            .and_then(|mr| mr.markings.as_ref())
         {
-            if !untranslatables.is_empty() {
-                self.handle_untranslatables(&law.id, &article.number, untranslatables, res_ctx)?
+            if !markings.is_empty() {
+                self.handle_markings(&law.id, &article.number, markings, res_ctx)?
             } else {
                 Vec::new()
             }
@@ -1754,13 +1778,13 @@ impl LawExecutionService {
         // does so with an explicit ROUND/CEIL/FLOOR operation. Outputs flow
         // out as exact Decimals; `unit` is a label, never a rounding trigger (RFC-023).
 
-        // RFC-012 Propagate mode: taint all outputs from articles with untranslatables
+        // RFC-012 Propagate mode: taint all outputs from marked articles
         if !taints.is_empty() {
             if taints.len() > 1 {
                 tracing::warn!(
                     article = %taints[0].0,
                     count = taints.len(),
-                    "Article has multiple untranslatable constructs; combining into single taint"
+                    "Article has multiple markings; combining into single taint"
                 );
             }
             let taint_article = taints[0].0.clone();

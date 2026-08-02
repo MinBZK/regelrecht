@@ -25,7 +25,7 @@ pub use regelrecht_law_model::{
     HookFilter, HookPoint, ImplementsDeclaration, Input, LegalBasis, MachineReadable, Marking,
     MarkingResolution, OpenTerm, OpenTermDefault, Output, OverrideDeclaration, Parameter,
     Placement, PlacementContainer, ProcedureAppliesTo, ProcedureDefinition, Produces, Source,
-    Stage, StageRequirement, TypeSpec, UntranslatableEntry,
+    Stage, StageRequirement, TypeSpec,
 };
 
 /// Engine-side loading of an [`ArticleBasedLaw`] from YAML, with the security
@@ -1141,12 +1141,14 @@ articles:
             assert_eq!(mr.endpoint.as_deref(), Some("begripsbepalingen"));
         }
 
-        /// A v0.5 law carries no markings, and the RFC-012 untranslatables it
-        /// does carry keep parsing — the model serves every supported schema
-        /// version at once.
+        /// `untranslatables` is gone, and a law that still carries it is
+        /// refused rather than read as if the field were not there. An article
+        /// that says it cannot express something, read by an engine that
+        /// computes anyway and says nothing, is the silent gap this guard
+        /// exists to prevent.
         #[test]
-        fn test_untranslatables_still_parse_beside_markings() {
-            let law = ArticleBasedLaw::from_yaml_str(
+        fn test_a_law_with_untranslatables_is_refused_not_silently_ignored() {
+            let err = ArticleBasedLaw::from_yaml_str(
                 r#"
 $id: test_legacy
 regulatory_layer: WET
@@ -1162,11 +1164,39 @@ articles:
           accepted: true
 "#,
             )
-            .unwrap();
-            let mr = law.articles[0].machine_readable.as_ref().unwrap();
-            assert_eq!(mr.untranslatables.as_ref().unwrap().len(), 1);
-            assert!(mr.markings.is_none());
-            assert!(law.articles[0].placement.is_none());
+            .unwrap_err()
+            .to_string();
+            assert!(
+                err.contains("untranslatables"),
+                "the error must name the field it refuses: {err}"
+            );
+        }
+
+        /// The same guard catches a typo in any other field of the section, so
+        /// a misspelled `open_terms` cannot quietly disable a delegation.
+        #[test]
+        fn test_a_typo_in_a_machine_readable_field_is_refused() {
+            let err = ArticleBasedLaw::from_yaml_str(
+                r#"
+$id: test_typo
+regulatory_layer: WET
+publication_date: '2025-01-01'
+bwb_id: BWBR0000000
+articles:
+  - number: '1'
+    text: "Bij ministeriele regeling wordt het bedrag vastgesteld."
+    machine_readable:
+      open_term:
+        - id: bedrag
+          type: amount
+"#,
+            )
+            .unwrap_err()
+            .to_string();
+            assert!(
+                err.contains("open_term"),
+                "the error must name the unknown field: {err}"
+            );
         }
     }
 
