@@ -4656,10 +4656,12 @@ articles:
           resolution: model
           resolved_by: een vorm hiervoor
           target: []
-          legal_text_excerpt: in bijzondere gevallen anders
+          legal_text_excerpt: in bijzondere gevallen
 "#,
         )
         .expect("yaml");
+        assert_eq!(word_count("in bijzondere gevallen"), QUOTE_MIN_WORDS);
+        assert_eq!(word_count("een vorm hiervoor"), QUOTE_MIN_WORDS);
         assert!(marking_discipline(&doc, "").is_empty());
     }
 
