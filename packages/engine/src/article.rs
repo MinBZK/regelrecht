@@ -20,12 +20,13 @@ use std::path::Path;
 
 /// Re-export the canonical document model at the historical `article` path.
 pub use regelrecht_law_model::{
-    Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, ArticleReference, Case,
-    CompetentAuthority, Declaration, DeclaredProperty, Definition, Execution, HookDeclaration,
-    HookFilter, HookPoint, ImplementsDeclaration, Input, LegalBasis, MachineReadable, Marking,
-    MarkingResolution, OpenTerm, OpenTermDefault, Output, OverrideDeclaration, Parameter,
-    Placement, PlacementContainer, ProcedureAppliesTo, ProcedureDefinition, Produces, Source,
-    Stage, StageRequirement, TypeSpec, UntranslatableEntry,
+    Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, ArticleReference,
+    ArticleRequirement, AuthorityType, Case, CompetentAuthority, Declaration, DeclaredProperty,
+    Definition, Execution, FieldLegalBasis, HookDeclaration, HookFilter, HookPoint,
+    ImplementsDeclaration, Input, LegalBasis, MachineReadable, Marking, MarkingResolution,
+    OpenTerm, OpenTermDefault, Output, OverrideDeclaration, Parameter, Placement,
+    PlacementContainer, Preamble, ProcedureAppliesTo, ProcedureDefinition, Produces, ResolveSpec,
+    Source, Stage, StageRequirement, Temporal, TypeSpec, UntranslatableEntry,
 };
 
 /// Engine-side loading of an [`ArticleBasedLaw`] from YAML, with the security
@@ -523,7 +524,7 @@ articles: []
 "#;
         let law = ArticleBasedLaw::from_yaml_str(yaml).unwrap();
         match law.competent_authority {
-            Some(CompetentAuthority::Structured { name }) => {
+            Some(CompetentAuthority::Structured { name, .. }) => {
                 assert_eq!(name, "Minister van Test")
             }
             _ => panic!("Expected structured authority"),

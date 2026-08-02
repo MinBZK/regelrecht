@@ -16,7 +16,65 @@ pub enum CompetentAuthority {
     /// Simple string reference (e.g., "#bevoegd_gezag")
     String(String),
     /// Structured authority with name field
-    Structured { name: String },
+    Structured {
+        name: String,
+        /// `INSTANCE` (a named organisation, the schema default) or `CATEGORY`
+        /// (must be resolved per context)
+        #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
+        authority_type: Option<AuthorityType>,
+    },
+}
+
+/// Whether a competent authority names one organisation or a category of them
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AuthorityType {
+    /// A specific organisation (schema default)
+    #[serde(rename = "INSTANCE")]
+    Instance,
+    /// A category that must be resolved per context
+    #[serde(rename = "CATEGORY")]
+    Category,
+}
+
+/// Fine-grained anchoring of a field, action or operation in the legal text.
+///
+/// Distinct from the document-level [`LegalBasis`] (`law_id`/`article`/
+/// `description`); the schema defines both shapes under different names.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct FieldLegalBasis {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub law: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bwb_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub article: Option<String>,
+    /// Paragraph/lid number
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paragraph: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sentence: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// Juriconnect BWB 1.3 reference
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub juriconnect: Option<String>,
+    /// How this element relates to the law text
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub explanation: Option<String>,
+}
+
+/// How a field's value relates to time
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Temporal {
+    /// `period` or `point_in_time`
+    #[serde(rename = "type")]
+    pub temporal_type: String,
+    /// Granularity of the period (`year`, `month`, `continuous`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub period_type: Option<String>,
+    /// Reference date for point-in-time values (a `$`-prefixed variable)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<String>,
 }
 
 /// Legal basis reference to another law
@@ -41,10 +99,16 @@ pub struct TypeSpec {
     #[serde(default)]
     pub precision: Option<i64>,
     /// Minimum allowed value (issue #444). Parsed metadata, not yet enforced.
-    #[serde(default)]
+    ///
+    /// Serialized as a JSON number, because that is what the schema types it
+    /// as; `Decimal`'s default is a string, which makes the re-serialized
+    /// document schema-invalid. A bound beyond f64 precision is out of range
+    /// for what these fields describe.
+    #[serde(default, with = "rust_decimal::serde::float_option")]
     pub min: Option<rust_decimal::Decimal>,
     /// Maximum allowed value (issue #444). Parsed metadata, not yet enforced.
-    #[serde(default)]
+    /// Serialized as a JSON number; see [`TypeSpec::min`].
+    #[serde(default, with = "rust_decimal::serde::float_option")]
     pub max: Option<rust_decimal::Decimal>,
 }
 
@@ -65,6 +129,12 @@ pub struct Source {
     /// Parameters to pass to the source execution
     #[serde(default)]
     pub parameters: Option<BTreeMap<String, String>>,
+    /// Endpoint to call on the delegated regulation
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub endpoint: Option<String>,
+    /// Human-readable description or legal reference for this data source
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 /// Parameter definition in execution spec
@@ -77,6 +147,10 @@ pub struct Parameter {
     pub required: Option<bool>,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal: Option<Temporal>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legal_basis: Option<FieldLegalBasis>,
 }
 
 /// Input definition in execution spec
@@ -91,6 +165,10 @@ pub struct Input {
     pub type_spec: Option<TypeSpec>,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal: Option<Temporal>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legal_basis: Option<FieldLegalBasis>,
 }
 
 /// Output definition in execution spec
@@ -103,6 +181,10 @@ pub struct Output {
     pub type_spec: Option<TypeSpec>,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal: Option<Temporal>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legal_basis: Option<FieldLegalBasis>,
 }
 
 /// Produces specification for execution.
@@ -349,6 +431,28 @@ pub struct Action {
     /// Decimal places for rounding operations (ROUND/CEIL/FLOOR; RFC-024)
     #[serde(default)]
     pub precision: Option<i64>,
+    /// Delegation resolution: take the value from an implementing regulation.
+    /// Parsed but not yet executed by the engine.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolve: Option<ResolveSpec>,
+    /// Anchoring of this action in the legal text
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legal_basis: Option<FieldLegalBasis>,
+}
+
+/// Delegation resolution on an action: which implementing regulation supplies
+/// the value.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ResolveSpec {
+    /// Regulatory layer to search for an implementation
+    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
+    pub resolve_type: Option<String>,
+    /// Output field to retrieve from the implementation
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    /// Matching criteria for selecting the right implementation
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub r#match: Option<BTreeMap<String, Value>>,
 }
 
 /// Execution specification within machine_readable section
@@ -439,6 +543,12 @@ pub struct OpenTerm {
     /// Expected regulatory layer of the implementation
     #[serde(default)]
     pub delegation_type: Option<String>,
+    /// The regulation the article itself names as the one that fills this term
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_source: Option<String>,
+    /// The authority that decides this term per individual case (Awb 3:46)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decided_per_case_by: Option<String>,
     /// Legal basis text
     #[serde(default)]
     pub legal_basis: Option<String>,
@@ -449,6 +559,31 @@ pub struct OpenTerm {
 
 fn default_true() -> bool {
     true
+}
+
+/// A dependency of an article on another article, law, ministerial regulation
+/// or royal decree.
+///
+/// Every field is optional in the schema (`machineReadableSection.requires`),
+/// so an entry only names the dimensions it needs: an intra-law dependency
+/// carries just `article`, a cross-law dependency `law` + `values`.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ArticleRequirement {
+    /// Article number within this law
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub article: Option<String>,
+    /// Name of the external law depended on
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub law: Option<String>,
+    /// Name of the ministerial regulation depended on
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regeling: Option<String>,
+    /// Name of the royal decree depended on
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub koninklijk_besluit: Option<String>,
+    /// Values/outputs required from the dependency
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub values: Option<Vec<String>>,
 }
 
 /// Declares that this article fills an open term from a higher-level law.
@@ -761,8 +896,9 @@ pub struct MachineReadable {
     pub definitions: Option<HashMap<String, Definition>>,
     #[serde(default)]
     pub execution: Option<Execution>,
+    /// Dependencies on other articles, regelingen or external sources
     #[serde(default)]
-    pub requires: Option<Vec<String>>,
+    pub requires: Option<Vec<ArticleRequirement>>,
     #[serde(default)]
     pub competent_authority: Option<CompetentAuthority>,
     /// Open terms that can or must be filled by implementing regulations
@@ -823,12 +959,11 @@ impl Article {
             .and_then(|mr| mr.definitions.as_ref())
     }
 
-    /// Get required URI dependencies
-    pub fn get_requires(&self) -> Vec<&str> {
+    /// Get the declared dependencies of this article
+    pub fn get_requires(&self) -> &[ArticleRequirement] {
         self.machine_readable
             .as_ref()
-            .and_then(|mr| mr.requires.as_ref())
-            .map(|reqs| reqs.iter().map(|s| s.as_str()).collect())
+            .and_then(|mr| mr.requires.as_deref())
             .unwrap_or_default()
     }
 
@@ -928,14 +1063,32 @@ impl Article {
     }
 }
 
+/// Aanhef of a law: the text that precedes article 1.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Preamble {
+    /// Preamble text in markdown, as published
+    pub text: String,
+    /// URL to the preamble in the official publication
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// The schema allows the aanhef its own machine-readable section
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub machine_readable: Option<MachineReadable>,
+}
+
 /// Represents an article-based law document
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ArticleBasedLaw {
     /// JSON Schema URL
     #[serde(rename = "$schema", default)]
     pub schema: Option<String>,
-    /// Law identifier (slug for referencing)
-    #[serde(rename = "$id")]
+    /// Law identifier (slug for referencing).
+    ///
+    /// The schema does not list `$id` as required, so a schema-valid document
+    /// may omit it and the model must still load it (completeness). An empty
+    /// id means "unnamed law": it can be executed directly but nothing can
+    /// reference it.
+    #[serde(rename = "$id", default)]
     pub id: String,
     /// Unique UUID
     #[serde(default)]
@@ -977,6 +1130,24 @@ pub struct ArticleBasedLaw {
     /// Water board code for waterschapsverordeningen
     #[serde(default)]
     pub waterschap_code: Option<String>,
+    /// CELEX number, required by the schema for `EU_VERORDENING`/`EU_RICHTLIJN`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub celex_nummer: Option<String>,
+    /// European Legislation Identifier
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eli: Option<String>,
+    /// Tractatenblad identifier, required by the schema for `VERDRAG`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tractatenblad_id: Option<String>,
+    /// UN Treaty Series number
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unts_nummer: Option<String>,
+    /// Staatscourant identifier
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stcrt_id: Option<String>,
+    /// Issuing organisation
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub organisation: Option<String>,
     /// Official title for local regulations
     #[serde(default)]
     pub officiele_titel: Option<String>,
@@ -989,6 +1160,10 @@ pub struct ArticleBasedLaw {
     /// AWB-defined procedure lifecycles (RFC-008)
     #[serde(default)]
     pub procedure: Option<Vec<ProcedureDefinition>>,
+    /// Aanhef preceding article 1. Carries the "Gelet op"-chain, and the schema
+    /// allows it a `machine_readable` section of its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preamble: Option<Preamble>,
     /// Articles in the law
     #[serde(default)]
     pub articles: Vec<Article>,

@@ -20,11 +20,12 @@ mod value;
 
 pub use header::{parse_law_header, LawHeader};
 pub use model::{
-    Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, ArticleReference, Case,
-    CompetentAuthority, Declaration, DeclaredProperty, Definition, Execution, HookDeclaration,
-    HookFilter, HookPoint, ImplementsDeclaration, Input, LegalBasis, MachineReadable, Marking,
-    MarkingResolution, OpenTerm, OpenTermDefault, Output, OverrideDeclaration, Parameter,
-    Placement, PlacementContainer, ProcedureAppliesTo, ProcedureDefinition, Produces, Source,
-    Stage, StageRequirement, TypeSpec, UntranslatableEntry,
+    Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, ArticleReference,
+    ArticleRequirement, AuthorityType, Case, CompetentAuthority, Declaration, DeclaredProperty,
+    Definition, Execution, FieldLegalBasis, HookDeclaration, HookFilter, HookPoint,
+    ImplementsDeclaration, Input, LegalBasis, MachineReadable, Marking, MarkingResolution,
+    OpenTerm, OpenTermDefault, Output, OverrideDeclaration, Parameter, Placement,
+    PlacementContainer, Preamble, ProcedureAppliesTo, ProcedureDefinition, Produces, ResolveSpec,
+    Source, Stage, StageRequirement, Temporal, TypeSpec, UntranslatableEntry,
 };
 pub use value::{Operation, ParameterType, RegulatoryLayer, Value};
