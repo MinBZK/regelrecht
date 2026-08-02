@@ -584,7 +584,7 @@ const EXPRESSIBLE_SHAPES: &[(&str, &[&str])] = &[
         &["tenzij", "voor zover", "behoudens", "indien en voor zover"],
     ),
     (
-        "a `definitions` entry",
+        DEFINITIONS_SHAPE,
         &["wordt verstaan onder", "begripsbepaling", "definitie van"],
     ),
     (
@@ -597,6 +597,11 @@ const EXPRESSIBLE_SHAPES: &[(&str, &[&str])] = &[
         ],
     ),
 ];
+/// The row of [`EXPRESSIBLE_SHAPES`] that answers a marking about a
+/// definition. Named because one marking has to be kept out of it, see
+/// [`definition_reach_is_flagged`].
+const DEFINITIONS_SHAPE: &str = "a `definitions` entry";
+
 // A row for cross-references was tried here and removed. "Bedoeld in artikel"
 // is how a Dutch provision names any value at all, so it matched 52 of the 221
 // markings in the round-4 corpus, and a gate that fires on half its input
@@ -754,7 +759,19 @@ pub fn marking_discipline(doc: &Value, text_corpus: &str) -> Vec<Finding> {
             // anything, and a resolution nothing can refute is where every
             // hard case goes.
             if resolution == Some("model") {
+                // One exception, and it is the collision this table was
+                // always going to have. A marking about the reach of the
+                // begripsbepalingen says the words "begripsbepaling" and
+                // means the opposite of what the row asks: `definitions`
+                // holds what a term means, while the reach is where that
+                // meaning applies, and for a scope there is no field. The
+                // excerpt separates the two, and it has to stand verbatim in
+                // the article, so this is not an exit a rewording opens.
+                let about_the_reach = marking_names_the_reach(entry);
                 for (shape, phrases) in EXPRESSIBLE_SHAPES {
+                    if about_the_reach && *shape == DEFINITIONS_SHAPE {
+                        continue;
+                    }
                     if phrases.iter().any(|p| both.contains(p)) {
                         findings.push(Finding::new(
                             "marking",
@@ -1163,11 +1180,15 @@ fn render(v: &Value) -> String {
 /// Whether an article is a definition provision. Recognised by the fixed
 /// words the legislator uses, because the scope of what it defines and the
 /// absence of a rule are both consequences of that.
+///
+/// "Verstaan onder" without "wordt" in front of it, because a chapeau puts
+/// its caveat between the two: "wordt, tenzij anders is geregeld, verstaan
+/// onder". The corpus has no article that carries the shorter form and not
+/// one of the longer ones, so this widens what is recognised without changing
+/// what is currently found.
 fn is_definition_text(text: &str) -> bool {
     let lower = text.to_lowercase();
-    lower.contains("wordt verstaan onder")
-        || lower.contains("verstaan onder:")
-        || lower.contains("wordt in deze")
+    lower.contains("verstaan onder") || lower.contains("wordt in deze")
 }
 
 /// How many conditional constructs the model carries. Used to test whether
@@ -2121,6 +2142,98 @@ pub fn every_article_accounted(doc: &Value) -> Vec<Finding> {
     findings
 }
 
+/// The reach a begrippenlijst gives itself, in the formula Dutch legislation
+/// uses for it.
+const DEFINITION_REACH: &str = "daarop berustende bepalingen";
+
+/// Whether this article's own text gives the terms it defines a reach past
+/// this document.
+///
+/// Both formulas have to stand in the same entry. "Zo nodig in afwijking van
+/// artikel 2.1.1 en de daarop berustende bepalingen" (Wlz 2.1.2) carries the
+/// second and not the first: it departs from a body of rules rather than
+/// defining a word for it, and it is a derogation and not a scope.
+fn definitions_reach_past_the_document(text: &str) -> bool {
+    is_definition_text(text) && text.to_lowercase().contains(DEFINITION_REACH)
+}
+
+/// Whether a marking is the one that reach asks for. Held against the
+/// excerpt and not against the prose: the excerpt has to appear verbatim in
+/// the article's own text, so it points at words instead of describing them.
+fn marking_names_the_reach(marking: &Value) -> bool {
+    marking
+        .get("legal_text_excerpt")
+        .and_then(Value::as_str)
+        .is_some_and(|quote| quote.to_lowercase().contains(DEFINITION_REACH))
+}
+
+/// A begrippenlijst whose chapeau reaches past this document, beside a model
+/// that says nothing about that reach.
+///
+/// The other half of [`flags_leave_something_standing`]. That one reports a
+/// flag that emptied an article; this one reports the same rule read from the
+/// other side. A marking names one construct and leaves the rest standing, so
+/// an entry carrying only the model is incomplete in the direction nobody
+/// watched. It is the more expensive of the two failures, because a file that
+/// dropped the flag and kept the model looks finished: nothing is blank and
+/// no other check has anything to say.
+///
+/// Measured on the Wet op de zorgtoeslag. Article 1 came back with three
+/// definitions, four cross-law bindings and an executable `is_verzekerde`,
+/// and its chapeau appeared nowhere: "In deze wet en de daarop berustende
+/// bepalingen wordt, tenzij anders is geregeld, verstaan onder". Those words
+/// give the definitions a reach over every regulation resting on this law,
+/// without that regulation referring to them. The corpus has the opposite
+/// direction only, a `source` binding written by the document that reads, so
+/// there is no field for a reach and no operation supplies one.
+///
+/// Lexical, which needs defending, because a word list teaches steering on
+/// words. Two things carry it. The formula is fixed and it is legislation's
+/// own: Dutch drafting writes this scope one way, it stands in 8 of the 25
+/// law files in the corpus, and it means the same thing in each. And the text
+/// being read is the statute, which a run cannot edit, so the finding has one
+/// exit and that exit is the marking. A gate over the model's own prose has a
+/// cheaper exit — reword until it stops firing — and that is what separates
+/// this from the tables above.
+///
+/// The exit is a marking whose `legal_text_excerpt` quotes the reach. Any
+/// marking at all would be bought off by an unrelated flag on the same
+/// article, and the excerpt is already held against the article text, so
+/// asking for it opens no new place to write prose.
+pub fn definition_reach_is_flagged(doc: &Value) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    for article in articles(doc).iter() {
+        let Some(number) = article_number(article) else {
+            continue;
+        };
+        let text = article
+            .get("text")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        // An article without a model is reported by `accounted`, and a second
+        // voice on the same silence only competes with the first.
+        let Some(mr) = article.get("machine_readable") else {
+            continue;
+        };
+        if !definitions_reach_past_the_document(text) {
+            continue;
+        }
+        if markings(mr).iter().any(marking_names_the_reach) {
+            continue;
+        }
+        findings.push(Finding::new(
+            "reach",
+            Some(&number),
+            "the chapeau gives these definitions a reach over every regulation that rests \
+             on this law, and the model says nothing about it. The corpus binds the other \
+             way round, through a source the reading document writes, so a reach has no \
+             field: it is a marking with resolution model, and it stands next to whatever \
+             the article does express rather than instead of it",
+        ));
+    }
+    findings
+}
+
 /// Values a marking declares blocked and the same article computes anyway.
 ///
 /// `target` is the marking's pointer: it names the values in this article that
@@ -3040,6 +3153,7 @@ pub fn run(yaml: &str, corpus_root: Option<&Path>) -> Report {
     findings.extend(marking_targets_are_declared(&doc));
     findings.extend(open_terms_name_a_filler(&doc));
     findings.extend(flags_leave_something_standing(&doc));
+    findings.extend(definition_reach_is_flagged(&doc));
     findings.extend(declared_values_are_produced(&doc));
     findings.extend(cross_law_references(&doc, corpus_root));
     findings.extend(output_promises(&doc));
@@ -4813,6 +4927,207 @@ articles:
         )
         .expect("yaml");
         assert!(blocked_values_are_absent(&doc).is_empty());
+    }
+
+    /// The round-5 shape: article 1 of the zorgtoeslag, fully modelled, with
+    /// the chapeau that gives its definitions a reach past this file left out
+    /// of the model entirely. Every other check is satisfied, which is the
+    /// whole reason this one exists.
+    #[test]
+    fn a_begrippenlijst_that_reaches_past_the_file_and_says_nothing_is_reported() {
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '1'
+    text: >-
+      In deze wet en de daarop berustende bepalingen wordt, tenzij anders is geregeld,
+      verstaan onder a. Onze Minister: Onze Minister van Volksgezondheid, Welzijn en Sport.
+    machine_readable:
+      execution:
+        output:
+          - name: onze_minister
+            type: string
+        actions:
+          - output: onze_minister
+            value: Onze Minister van Volksgezondheid, Welzijn en Sport
+"#,
+        )
+        .expect("yaml");
+        let findings = definition_reach_is_flagged(&doc);
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].check, "reach");
+        assert!(findings[0].detail.contains("rests"), "{findings:?}");
+
+        // And the gates that watch the other direction stay quiet, so the
+        // article really does look finished to everything else.
+        assert!(flags_leave_something_standing(&doc).is_empty());
+        assert!(every_article_accounted(&doc).is_empty());
+    }
+
+    /// The exit, and the only one: a marking that quotes the reach. The
+    /// excerpt is verbatim article text, which `marking_discipline` already
+    /// holds it to, so nothing here can be satisfied by inventing a quotation.
+    #[test]
+    fn a_marking_that_quotes_the_reach_settles_it() {
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '1'
+    text: >-
+      In deze wet en de daarop berustende bepalingen wordt, tenzij anders is geregeld,
+      verstaan onder a. Onze Minister: Onze Minister van Volksgezondheid, Welzijn en Sport.
+    machine_readable:
+      markings:
+        - about: het bereik van de begrippen over de daarop berustende bepalingen
+          reason: >-
+            De begrippen beheersen ook het woordgebruik van elke regeling die op deze wet
+            berust, zonder dat die regeling ernaar verwijst. Het model kent alleen de
+            omgekeerde richting, een source-binding die het lezende document zelf schrijft.
+          resolution: model
+          resolved_by: >-
+            Een vorm waarin de begrippen van een wet in bereik komen bij het uitvoeren van
+            een regeling die op die wet berust.
+          target: []
+          legal_text_excerpt: In deze wet en de daarop berustende bepalingen
+      execution:
+        output:
+          - name: onze_minister
+            type: string
+        actions:
+          - output: onze_minister
+            value: Onze Minister van Volksgezondheid, Welzijn en Sport
+"#,
+        )
+        .expect("yaml");
+        assert!(
+            definition_reach_is_flagged(&doc).is_empty(),
+            "{:?}",
+            definition_reach_is_flagged(&doc)
+        );
+        // The marking is the answer, so the discipline gate has to let it
+        // through as well: the word "begrippen" next to `resolution: model`
+        // is the collision this exemption exists for.
+        assert!(marking_discipline(&doc, "").is_empty());
+    }
+
+    /// The same words with "begripsbepaling" spelled out. Without the
+    /// exemption the definitions row of EXPRESSIBLE_SHAPES answers it with
+    /// "you named something a `definitions` entry expresses", which is the
+    /// gate telling the run to delete the marking this file needs.
+    #[test]
+    fn a_marking_about_reach_is_not_a_marking_about_what_a_term_means() {
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '1'
+    text: >-
+      In deze wet en de daarop berustende bepalingen wordt verstaan onder verzekerde de
+      persoon bedoeld in artikel 1 van de Zorgverzekeringswet.
+    machine_readable:
+      markings:
+        - about: het bereik van de begripsbepalingen over de daarop berustende bepalingen
+          reason: >-
+            Het model kent alleen een source-binding die het lezende document zelf schrijft,
+            en een bereik geldt zonder dat de andere kant het aanroept.
+          resolution: model
+          resolved_by: >-
+            Een vorm waarin het bereik van een begripsbepaling volgt uit de legal_basis die
+            de lagere regeling declareert.
+          target: []
+          legal_text_excerpt: In deze wet en de daarop berustende bepalingen
+      execution:
+        actions:
+          - output: is_verzekerde
+            value: true
+"#,
+        )
+        .expect("yaml");
+        assert!(marking_discipline(&doc, "").is_empty());
+
+        // The exemption is narrow: strip the reach out of the excerpt and the
+        // same prose is a marking about a definition again.
+        let plain: Value =
+            serde_yaml_ng::from_str(&serde_yaml_ng::to_string(&doc).expect("render").replace(
+                "legal_text_excerpt: In deze wet en de daarop berustende bepalingen",
+                "legal_text_excerpt: wordt verstaan onder verzekerde de persoon",
+            ))
+            .expect("yaml");
+        let findings = marking_discipline(&plain, "");
+        assert!(
+            findings.iter().any(|f| f.detail.contains("definitions")),
+            "{findings:?}"
+        );
+    }
+
+    /// The formula also turns up in a derogation ("Zo nodig in afwijking van
+    /// artikel 2.1.1 en de daarop berustende bepalingen", Wlz 2.1.2). That
+    /// article departs from a body of rules and defines nothing, so it owes
+    /// no reach marking, and demanding one there would be the noise that
+    /// teaches a reader to stop looking.
+    #[test]
+    fn a_derogation_that_names_the_same_words_is_not_a_begrippenlijst() {
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: 2.1.2
+    text: >-
+      Zo nodig in afwijking van artikel 2.1.1 en de daarop berustende bepalingen wordt als
+      verzekerde aangemerkt de persoon van wie de verzekering voortvloeit uit een verdrag.
+    machine_readable:
+      execution:
+        actions:
+          - output: is_verzekerde
+            value: true
+"#,
+        )
+        .expect("yaml");
+        assert!(definition_reach_is_flagged(&doc).is_empty());
+    }
+
+    /// An unrelated flag on the same article does not buy the reach off. The
+    /// excerpt is what ties a marking to the words it is about, and these
+    /// words are somebody else's.
+    #[test]
+    fn an_unrelated_marking_does_not_answer_the_reach() {
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '1'
+    text: >-
+      In deze wet en de daarop berustende bepalingen wordt verstaan onder drempelinkomen
+      108% van het twaalfvoud van het minimumloon per kalendermaand.
+    machine_readable:
+      markings:
+        - about: het twaalfvoud per kalendermaand
+          reason: iets over de vorm van het model dat hier tekortschiet
+          resolution: model
+          resolved_by: een vorm hiervoor die per maand rekent
+          target: []
+          legal_text_excerpt: het twaalfvoud van het minimumloon per kalendermaand
+      execution:
+        actions:
+          - output: drempelinkomen
+            value: 0
+"#,
+        )
+        .expect("yaml");
+        assert_eq!(definition_reach_is_flagged(&doc).len(), 1);
+    }
+
+    /// A begrippenlijst nobody modelled is `accounted`'s finding. Two voices
+    /// on one silence make the second one noise.
+    #[test]
+    fn a_begrippenlijst_without_a_model_is_left_to_the_accounted_gate() {
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '1'
+    text: In deze wet en de daarop berustende bepalingen wordt verstaan onder verzekerde…
+"#,
+        )
+        .expect("yaml");
+        assert!(definition_reach_is_flagged(&doc).is_empty());
+        assert_eq!(every_article_accounted(&doc).len(), 1);
     }
 
     #[test]
