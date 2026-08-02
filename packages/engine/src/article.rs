@@ -1118,4 +1118,272 @@ articles:
             );
         }
     }
+
+    /// The size limits are inclusive: a document that is exactly at the limit
+    /// still loads, one element or byte over it is refused. Every test here
+    /// pins both sides of that boundary, because a limit that silently rejects
+    /// a legitimate law is as much a defect as one that lets a YAML bomb past.
+    mod limits {
+        use super::*;
+        use std::io::Write;
+
+        const HEADER: &str =
+            "$id: limits_test\nregulatory_layer: WET\npublication_date: '2025-01-01'\n";
+
+        /// A law with `count` articles and nothing else.
+        fn law_with_articles(count: usize) -> String {
+            let mut yaml = String::from(HEADER);
+            yaml.push_str("articles:\n");
+            for i in 0..count {
+                yaml.push_str(&format!("  - number: '{i}'\n    text: Artikel\n"));
+            }
+            yaml
+        }
+
+        /// A law with a single article whose `machine_readable` section is
+        /// `body` (indented six spaces, i.e. one level under `machine_readable:`).
+        fn law_with_machine_readable(body: &str) -> String {
+            format!(
+                "{HEADER}articles:\n  - number: '1'\n    text: Artikel\n    machine_readable:\n{body}"
+            )
+        }
+
+        fn law_with_open_terms(count: usize) -> String {
+            let mut body = String::from("      open_terms:\n");
+            for i in 0..count {
+                body.push_str(&format!("        - id: term_{i}\n          type: amount\n"));
+            }
+            law_with_machine_readable(&body)
+        }
+
+        fn law_with_implements(count: usize) -> String {
+            let mut body = String::from("      implements:\n");
+            for i in 0..count {
+                body.push_str(&format!(
+                    "        - law: andere_wet\n          article: '1'\n          open_term: term_{i}\n"
+                ));
+            }
+            law_with_machine_readable(&body)
+        }
+
+        fn law_with_parameters(count: usize) -> String {
+            let mut body = String::from("      execution:\n        parameters:\n");
+            for i in 0..count {
+                body.push_str(&format!(
+                    "          - name: parameter_{i}\n            type: number\n"
+                ));
+            }
+            law_with_machine_readable(&body)
+        }
+
+        fn law_with_inputs(count: usize) -> String {
+            let mut body = String::from("      execution:\n        input:\n");
+            for i in 0..count {
+                body.push_str(&format!(
+                    "          - name: invoer_{i}\n            type: number\n"
+                ));
+            }
+            law_with_machine_readable(&body)
+        }
+
+        fn law_with_outputs(count: usize) -> String {
+            let mut body = String::from("      execution:\n        output:\n");
+            for i in 0..count {
+                body.push_str(&format!(
+                    "          - name: uitvoer_{i}\n            type: number\n"
+                ));
+            }
+            law_with_machine_readable(&body)
+        }
+
+        fn law_with_actions(count: usize) -> String {
+            let mut body = String::from("      execution:\n        actions:\n");
+            for i in 0..count {
+                body.push_str(&format!(
+                    "          - output: uitvoer_{i}\n            value: 0\n"
+                ));
+            }
+            law_with_machine_readable(&body)
+        }
+
+        fn law_with_action_values(count: usize) -> String {
+            let mut body = String::from(
+                "      execution:\n        actions:\n          - output: resultaat\n            operation: ADD\n            values:\n",
+            );
+            for _ in 0..count {
+                body.push_str("              - 0\n");
+            }
+            law_with_machine_readable(&body)
+        }
+
+        fn law_with_action_conditions(count: usize) -> String {
+            let mut body = String::from(
+                "      execution:\n        actions:\n          - output: resultaat\n            operation: AND\n            conditions:\n",
+            );
+            for _ in 0..count {
+                body.push_str("              - true\n");
+            }
+            law_with_machine_readable(&body)
+        }
+
+        /// Assert that `yaml` is refused with a message mentioning `fragment`.
+        fn assert_rejected(yaml: &str, fragment: &str) {
+            let err = ArticleBasedLaw::from_yaml_str(yaml)
+                .expect_err("law over the array limit should be refused");
+            let message = err.to_string();
+            assert!(
+                message.contains(fragment),
+                "error should mention '{fragment}', got: {message}"
+            );
+        }
+
+        /// Assert that `yaml` loads.
+        fn assert_accepted(yaml: &str) {
+            ArticleBasedLaw::from_yaml_str(yaml)
+                .unwrap_or_else(|e| panic!("law exactly at the array limit should load: {e}"));
+        }
+
+        #[test]
+        fn test_articles_at_and_over_limit() {
+            assert_accepted(&law_with_articles(config::MAX_ARRAY_SIZE));
+            assert_rejected(
+                &law_with_articles(config::MAX_ARRAY_SIZE + 1),
+                "Too many articles",
+            );
+        }
+
+        #[test]
+        fn test_open_terms_at_and_over_limit() {
+            assert_accepted(&law_with_open_terms(config::MAX_ARRAY_SIZE));
+            assert_rejected(
+                &law_with_open_terms(config::MAX_ARRAY_SIZE + 1),
+                "Too many open_terms",
+            );
+        }
+
+        #[test]
+        fn test_implements_at_and_over_limit() {
+            assert_accepted(&law_with_implements(config::MAX_ARRAY_SIZE));
+            assert_rejected(
+                &law_with_implements(config::MAX_ARRAY_SIZE + 1),
+                "Too many implements",
+            );
+        }
+
+        #[test]
+        fn test_parameters_at_and_over_limit() {
+            assert_accepted(&law_with_parameters(config::MAX_ARRAY_SIZE));
+            assert_rejected(
+                &law_with_parameters(config::MAX_ARRAY_SIZE + 1),
+                "Too many parameters",
+            );
+        }
+
+        #[test]
+        fn test_inputs_at_and_over_limit() {
+            assert_accepted(&law_with_inputs(config::MAX_ARRAY_SIZE));
+            assert_rejected(
+                &law_with_inputs(config::MAX_ARRAY_SIZE + 1),
+                "Too many inputs",
+            );
+        }
+
+        #[test]
+        fn test_outputs_at_and_over_limit() {
+            assert_accepted(&law_with_outputs(config::MAX_ARRAY_SIZE));
+            assert_rejected(
+                &law_with_outputs(config::MAX_ARRAY_SIZE + 1),
+                "Too many outputs",
+            );
+        }
+
+        #[test]
+        fn test_actions_at_and_over_limit() {
+            assert_accepted(&law_with_actions(config::MAX_ARRAY_SIZE));
+            assert_rejected(
+                &law_with_actions(config::MAX_ARRAY_SIZE + 1),
+                "Too many actions",
+            );
+        }
+
+        #[test]
+        fn test_action_values_at_and_over_limit() {
+            assert_accepted(&law_with_action_values(config::MAX_ARRAY_SIZE));
+            assert_rejected(
+                &law_with_action_values(config::MAX_ARRAY_SIZE + 1),
+                "Too many values in action",
+            );
+        }
+
+        #[test]
+        fn test_action_conditions_at_and_over_limit() {
+            assert_accepted(&law_with_action_conditions(config::MAX_ARRAY_SIZE));
+            assert_rejected(
+                &law_with_action_conditions(config::MAX_ARRAY_SIZE + 1),
+                "Too many conditions in action",
+            );
+        }
+
+        /// A valid law padded with a trailing YAML comment to exactly `size` bytes.
+        fn law_of_exact_size(size: usize) -> String {
+            let base = format!("{HEADER}articles: []\n# ");
+            assert!(size > base.len(), "padding target must exceed the header");
+            let mut yaml = String::with_capacity(size);
+            yaml.push_str(&base);
+            yaml.push_str(&"x".repeat(size - base.len()));
+            debug_assert_eq!(yaml.len(), size);
+            yaml
+        }
+
+        #[test]
+        fn test_yaml_string_exactly_at_size_limit_is_accepted() {
+            let yaml = law_of_exact_size(config::MAX_YAML_SIZE);
+            assert_eq!(yaml.len(), config::MAX_YAML_SIZE);
+            let law = ArticleBasedLaw::from_yaml_str(&yaml)
+                .unwrap_or_else(|e| panic!("YAML exactly at MAX_YAML_SIZE should load: {e}"));
+            assert_eq!(law.id, "limits_test");
+        }
+
+        /// Write `content` to a uniquely named file under `OUT_DIR` (writable,
+        /// inside the build directory) and return the path.
+        fn write_temp_law(name: &str, content: &str) -> std::path::PathBuf {
+            let path = std::path::PathBuf::from(env!("OUT_DIR")).join(name);
+            let mut file = std::fs::File::create(&path).expect("should create temp law file");
+            file.write_all(content.as_bytes())
+                .expect("should write temp law file");
+            file.flush().expect("should flush temp law file");
+            path
+        }
+
+        #[test]
+        fn test_file_exactly_at_size_limit_is_accepted() {
+            let yaml = law_of_exact_size(config::MAX_YAML_SIZE);
+            let path = write_temp_law("law_at_size_limit.yaml", &yaml);
+
+            let law = ArticleBasedLaw::from_yaml_file(&path)
+                .unwrap_or_else(|e| panic!("file exactly at MAX_YAML_SIZE should load: {e}"));
+            assert_eq!(law.id, "limits_test");
+
+            let _ = std::fs::remove_file(&path);
+        }
+
+        #[test]
+        fn test_file_one_byte_over_size_limit_is_refused() {
+            let yaml = law_of_exact_size(config::MAX_YAML_SIZE + 1);
+            let path = write_temp_law("law_over_size_limit.yaml", &yaml);
+
+            let err = ArticleBasedLaw::from_yaml_file(&path)
+                .expect_err("file over MAX_YAML_SIZE should be refused");
+            let message = err.to_string();
+
+            let _ = std::fs::remove_file(&path);
+
+            // The file-size check must fire before the file is read, so the
+            // message is the file one, not the parsed-content one.
+            assert!(
+                message.contains("File exceeds maximum size limit"),
+                "size check should reject before reading, got: {message}"
+            );
+        }
+    }
 }

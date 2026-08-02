@@ -33,60 +33,34 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-
-      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706  # v4.0.2
-        id: filter
         with:
-          filters: |
-            editor:
-              - 'frontend/**'
-              - 'packages/frontend-shared/**'
-              - 'packages/editor-api/**'
-              - 'packages/engine/**'
-              - 'packages/corpus/**'
-              - 'packages/github/**'
-              - 'packages/shared/**'
-              - 'packages/Cargo.lock'
-              - 'corpus-registry.yaml'
-              - 'corpus/regulation/**'
-            admin:
-              - 'packages/admin/**'
-              - 'packages/frontend-shared/**'
-              - 'packages/pipeline/**'
-              - 'packages/corpus/**'
-              - 'packages/github/**'
-              - 'packages/harvester/**'
-              - 'packages/shared/**'
-              - 'packages/Cargo.lock'
-            harvester-worker:
-              - 'packages/pipeline/**'
-              - 'packages/harvester/**'
-              - 'packages/corpus/**'
-              - 'packages/github/**'
-              - 'packages/shared/**'
-              - 'packages/Cargo.lock'
-            enrich-worker:
-              - 'packages/pipeline/**'
-              - 'packages/corpus/**'
-              - 'packages/github/**'
-              - 'packages/harvester/**'
-              - 'packages/shared/**'
-              - 'packages/Cargo.lock'
-              - '.claude/skills/law-*/**'
-            pipeline-api:
-              - 'packages/pipeline/**'
-              - 'packages/corpus/**'
-              - 'packages/github/**'
-              - 'packages/harvester/**'
-              - 'packages/shared/**'
-              - 'packages/Cargo.lock'
-            grafana:
-              - 'packages/grafana/**'
-            lawmaking:
-              - 'frontend-lawmaking/**'
-              - 'packages/frontend-shared/**'
-            docs:
-              - 'docs/**'
+          # De diff tegen de base (PR) of tegen de vorige commit (push) bepaalt
+          # welke bestanden gewijzigd zijn.
+          fetch-depth: 0
+
+      - name: Bepaal gewijzigde bestanden
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          # Een lege of nul-SHA (nieuwe branch, eerste push) betekent: geen
+          # betrouwbare diff, dus alles bouwen. Dat regelt het script zelf als
+          # de lijst leeg blijft.
+          if [ -n "$BASE_SHA" ] && [ "$BASE_SHA" != "0000000000000000000000000000000000000000" ] \
+             && git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            git diff --name-only "$BASE_SHA" HEAD > changed.txt
+          else
+            : > changed.txt
+          fi
+          echo "Gewijzigde bestanden: $(wc -l < changed.txt)"
+
+      # Welke componenten geraakt worden volgt uit de dependency-graaf van
+      # cargo, niet uit een handmatige padenlijst. Die lijst dreef weg:
+      # packages/auth en packages/law-model stonden er nergens in, terwijl
+      # editor-api en admin op auth leunen en engine, corpus, pipeline en
+      # harvester op law-model. Faalt het script, dan zet het alles op true.
+      - name: Bepaal geraakte componenten
+        id: filter
+        run: node script/deploy-filters.mjs --from-file changed.txt
 
   # -- Build jobs --
   build:
@@ -245,7 +219,7 @@ jobs:
 
       - name: Deploy admin to ZAD (Preview)
         if: needs.build-admin.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
+        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -261,7 +235,7 @@ jobs:
 
       - name: Deploy harvester-worker to ZAD (Preview)
         if: needs.build-harvester-worker.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
+        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -277,7 +251,7 @@ jobs:
 
       - name: Deploy enrich-worker to ZAD (Preview)
         if: needs.build-enrich-worker.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
+        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -293,7 +267,7 @@ jobs:
 
       - name: Deploy pipeline-api to ZAD (Preview)
         if: needs.build-pipeline-api.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
+        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -309,7 +283,7 @@ jobs:
       - name: Deploy editor to ZAD (Preview)
         if: needs.build.result == 'success'
         id: deploy
-        uses: RijksICTGilde/zad-actions/deploy@v4
+        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -325,7 +299,7 @@ jobs:
 
       - name: Deploy lawmaking to ZAD (Preview)
         if: needs.build-lawmaking.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
+        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -341,7 +315,7 @@ jobs:
 
       - name: Deploy docs to ZAD (Preview)
         if: needs.build-docs.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
+        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -388,7 +362,7 @@ jobs:
 
       - name: Deploy admin to ZAD (Production)
         if: needs.build-admin.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
+        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -398,7 +372,7 @@ jobs:
 
       - name: Deploy pipeline-api to ZAD (Production)
         if: needs.build-pipeline-api.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
+        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -409,7 +383,7 @@ jobs:
       - name: Deploy editor to ZAD (Production)
         if: needs.build.result == 'success'
         id: deploy
-        uses: RijksICTGilde/zad-actions/deploy@v4
+        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -419,7 +393,7 @@ jobs:
 
       - name: Deploy harvester-worker to ZAD (Production)
         if: needs.build-harvester-worker.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
+        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -429,7 +403,7 @@ jobs:
 
       - name: Deploy enrich-worker to ZAD (Production)
         if: needs.build-enrich-worker.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
+        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -439,7 +413,7 @@ jobs:
 
       - name: Deploy grafana to ZAD (Production)
         if: needs.build-grafana.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
+        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -449,7 +423,7 @@ jobs:
 
       - name: Deploy lawmaking to ZAD (Production)
         if: needs.build-lawmaking.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
+        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -459,7 +433,7 @@ jobs:
 
       - name: Deploy docs to ZAD (Production)
         if: needs.build-docs.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
+        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -479,7 +453,7 @@ jobs:
 
     steps:
       - name: Cleanup ZAD deployment and container images
-        uses: RijksICTGilde/zad-actions/cleanup@v4
+        uses: RijksICTGilde/zad-actions/cleanup@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}

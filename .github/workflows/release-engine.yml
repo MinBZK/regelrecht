@@ -26,8 +26,12 @@ jobs:
             binary: evaluate
             asset: evaluate-linux-amd64
 
+          # macos-latest is arm64, waar dit target alleen gecross-compileerd kan
+          # worden. macos-15-intel is de Intel-runner die macos-13 opvolgt en
+          # bouwt dit target native. GitHub biedt x86_64-macOS aan tot het
+          # macOS 15-image in het najaar van 2027 vervalt.
           - target: x86_64-apple-darwin
-            os: macos-latest
+            os: macos-15-intel
             binary: evaluate
             asset: evaluate-macos-amd64
 

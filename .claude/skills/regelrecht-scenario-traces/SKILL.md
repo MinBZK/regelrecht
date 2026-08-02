@@ -89,7 +89,8 @@ cross-law-keten gebruikt alle vier.
    concrete wapen hiertegen — zie de hook naar `regelrecht-stelselanalyse`.
 
 6. **Schrijf naar het corpus/dossier, niet in de skill.** Persona's, matrices en
-   trace-snapshots horen bij het corpus (bijv. `scenarios/`, `features/`, `docs/`).
+   trace-snapshots horen bij het corpus: feature-files in de `scenarios/`-map
+   naast de wet die ze testen, verder `docs/`.
    Wijzig nooit de skill-bestanden met casus-inhoud. Commit/push alleen op verzoek.
 
 ## Bestanden in deze skill

@@ -214,6 +214,53 @@ regelrecht:hint:
         assert_eq!(hint.end, Some(56));
     }
 
+    fn a_match() -> TextMatch {
+        TextMatch {
+            article_number: "2".to_string(),
+            start: 0,
+            end: 4,
+            confidence: 1.0,
+            matched_text: "test".to_string(),
+        }
+    }
+
+    /// The three predicates classify a result into exactly one bucket: a
+    /// consumer branching on `is_orphaned()`/`is_ambiguous()` (as
+    /// `validate_annotations` does) must not report a resolved note as
+    /// unresolvable.
+    #[test]
+    fn status_predicates_are_mutually_exclusive() {
+        let found = MatchResult::found(vec![a_match()]);
+        assert!(found.is_found());
+        assert!(!found.is_orphaned());
+        assert!(!found.is_ambiguous());
+
+        let orphaned = MatchResult::orphaned();
+        assert!(orphaned.is_orphaned());
+        assert!(!orphaned.is_found());
+        assert!(!orphaned.is_ambiguous());
+
+        let ambiguous = MatchResult::ambiguous(vec![a_match(), a_match()]);
+        assert!(ambiguous.is_ambiguous());
+        assert!(!ambiguous.is_found());
+        assert!(!ambiguous.is_orphaned());
+    }
+
+    /// `single()` is only meaningful for a `Found` result; an ambiguous result
+    /// carries several candidates and must not hand out the first one as if it
+    /// were the answer.
+    #[test]
+    fn single_only_yields_a_match_when_found() {
+        assert_eq!(
+            MatchResult::found(vec![a_match()]).single(),
+            Some(&a_match())
+        );
+        assert!(MatchResult::orphaned().single().is_none());
+        assert!(MatchResult::ambiguous(vec![a_match(), a_match()])
+            .single()
+            .is_none());
+    }
+
     #[test]
     fn selector_without_hint() {
         let yaml = r#"

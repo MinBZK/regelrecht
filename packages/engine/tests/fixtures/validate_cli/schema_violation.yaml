@@ -1,0 +1,13 @@
+---
+# Het top-level veld `url` ontbreekt: het schema vereist het, het lenient
+# law-model accepteert het. Dit bestand komt dus voorbij de serde-stap en
+# struikelt pas over de schemavalidatie — precies de tak die getest wordt.
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
+$id: test_validate_cli_schema_violation
+regulatory_layer: WET
+publication_date: '2025-01-01'
+bwb_id: BWBR0123456
+articles:
+  - number: '1'
+    text: Top-level url ontbreekt.
+    url: https://example.invalid/law/artikel/1

@@ -26,6 +26,10 @@ use uuid::Uuid;
 /// Run a git command in `dir` and assert it succeeded.
 async fn run_git(dir: &Path, args: &[&str]) {
     let output = tokio::process::Command::new("git")
+        // Zonder hooks: een globale `init.templateDir` zet de hooks van de
+        // ontwikkelaar in elke tijdelijke repo en laat de commit falen.
+        .arg("-c")
+        .arg("core.hooksPath=")
         .args(args)
         .current_dir(dir)
         .output()

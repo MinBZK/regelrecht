@@ -38,7 +38,7 @@ This table is the single source of truth for which schema version introduced whi
 
 Multi-organization execution ([RFC-009](/rfcs/rfc-009)) reuses `competent_authority` (v0.2.0) and adds no schema construct of its own.
 
-The annotation schema (`annotation-schema.json`) versions independently of the law schema: it lives at `schema/v0.5.2/`, where it was introduced, and a new law-schema version does not republish it.
+The annotation schema (`annotation-schema.json`) versions independently of the law schema: it stays at `schema/v0.5.2/`, where it was introduced, and a new law-schema version does not republish it.
 
 ## Validation
 

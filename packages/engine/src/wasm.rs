@@ -66,6 +66,32 @@ use crate::service::{LawExecutionService, ServiceProvider};
 use crate::trace::{PathNode, TraceBuilder};
 use crate::types::{RegulatoryLayer, Value};
 
+/// Does this annotation note target a law other than `law_id`?
+///
+/// A federated `annotations.yaml` sidecar may carry notes for several laws, so
+/// `resolveNotes` has to leave the other laws' notes alone. A note without a
+/// `target.source`, or one whose source is not a `regelrecht://` law URI, is
+/// treated as belonging to the law being resolved: the sidecar was handed to
+/// this law and there is nothing that says otherwise.
+///
+/// Split out of `resolve_notes` so it can be tested natively — everything
+/// around it takes or returns a `JsValue`, which aborts outside wasm32. Phrased
+/// negatively so the call site needs no `!`: a negation there would be a second
+/// mutant in exactly the code that cannot be reached from a test.
+fn note_targets_another_law(note: &serde_json::Value, law_id: &str) -> bool {
+    let Some(source) = note
+        .get("target")
+        .and_then(|t| t.get("source"))
+        .and_then(|s| s.as_str())
+    else {
+        return false;
+    };
+    match law_id_from_source(source) {
+        Some(target_law) => target_law != law_id,
+        None => false,
+    }
+}
+
 /// Create a serializer that converts HashMaps to JavaScript objects (not Maps)
 fn js_serializer() -> Serializer {
     Serializer::new().serialize_maps_as_objects(true)
@@ -566,18 +592,8 @@ impl WasmEngine {
 
         let mut resolved: Vec<serde_json::Value> = Vec::with_capacity(notes.len());
         for note in notes {
-            // Skip notes that target a different law (federated sidecars may
-            // carry notes for several laws).
-            if let Some(source) = note
-                .get("target")
-                .and_then(|t| t.get("source"))
-                .and_then(|s| s.as_str())
-            {
-                if let Some(target_law) = law_id_from_source(source) {
-                    if target_law != law_id {
-                        continue;
-                    }
-                }
+            if note_targets_another_law(note, law_id) {
+                continue;
             }
 
             let (match_value, error) = match note.get("target").and_then(|t| t.get("selector")) {
@@ -719,6 +735,57 @@ articles:
         assert_eq!(engine.law_count(), 1);
         assert!(engine.has_law("test_law"));
         assert_eq!(engine.list_laws(), vec!["test_law".to_string()]);
+    }
+
+    /// `loadLaw()` is de enige weg waarlangs JavaScript een wet de engine in
+    /// krijgt, en het is het contract dat de aanroeper het `$id` terugkrijgt om
+    /// mee verder te werken (`execute(lawId, ...)`). De andere tests laden via
+    /// de service en zouden een kapotte wrapper dus niet zien.
+    #[test]
+    fn test_wasm_engine_load_law_returns_law_id() {
+        let mut engine = WasmEngine::new();
+
+        let law_id = engine.load_law(MINIMAL_LAW_YAML).ok();
+
+        assert_eq!(law_id.as_deref(), Some("test_law"));
+        assert!(engine.has_law("test_law"));
+    }
+
+    /// De grens van `MAX_YAML_SIZE` is inclusief: een document van precies de
+    /// maximumgrootte hoort geladen te worden, pas één byte meer wordt
+    /// geweigerd. Een wet die exact op de grens valt mag niet stilletjes
+    /// onbruikbaar worden.
+    ///
+    /// De afkeurkant van dezelfde grens is native niet te testen: die tak bouwt
+    /// een `JsValue` en wasm-bindgen aborteert het proces buiten wasm32.
+    #[test]
+    fn test_wasm_engine_load_law_accepts_exactly_max_size() {
+        let mut engine = WasmEngine::new();
+
+        let mut yaml = String::from(MINIMAL_LAW_YAML);
+        yaml.push_str("# ");
+        let padding = config::MAX_YAML_SIZE - yaml.len();
+        yaml.push_str(&"x".repeat(padding));
+        assert_eq!(yaml.len(), config::MAX_YAML_SIZE);
+
+        let law_id = engine.load_law(&yaml).ok();
+
+        assert_eq!(
+            law_id.as_deref(),
+            Some("test_law"),
+            "a law of exactly MAX_YAML_SIZE bytes should still load"
+        );
+    }
+
+    /// De engine-versie reist mee in elk uitvoeringsresultaat en is daarmee
+    /// onderdeel van de herleidbaarheid van een beschikking: hij moet de
+    /// werkelijke crate-versie zijn, geen placeholder.
+    #[test]
+    fn test_wasm_engine_version() {
+        let engine = WasmEngine::new();
+
+        assert_eq!(engine.version(), env!("CARGO_PKG_VERSION"));
+        assert!(!engine.version().is_empty());
     }
 
     #[test]
@@ -997,5 +1064,43 @@ articles:
         // Verify box-drawing rendering works
         let text = trace.render_box_drawing();
         assert!(!text.is_empty(), "Box-drawing trace should not be empty");
+    }
+
+    fn note_with_source(source: &str) -> serde_json::Value {
+        serde_json::json!({ "target": { "source": source } })
+    }
+
+    #[test]
+    fn a_note_for_another_law_is_not_resolved_against_this_one() {
+        // Een federatieve sidecar draagt notities voor meerdere wetten. Keert
+        // dit filter om, dan hangt de engine de annotaties van de ene wet aan
+        // de tekst van de andere.
+        let note = note_with_source("regelrecht://andere_wet");
+        assert!(note_targets_another_law(&note, "test_law"));
+        assert!(!note_targets_another_law(&note, "andere_wet"));
+    }
+
+    #[test]
+    fn a_note_for_this_law_survives_the_filter() {
+        let note = note_with_source("regelrecht://test_law/artikel/1");
+        assert!(!note_targets_another_law(&note, "test_law"));
+    }
+
+    #[test]
+    fn a_note_without_a_law_uri_belongs_to_the_law_being_resolved() {
+        // Geen target.source, of een source die geen regelrecht-wet aanwijst:
+        // de sidecar is bij deze wet aangeleverd en niets zegt het tegendeel.
+        assert!(!note_targets_another_law(
+            &serde_json::json!({}),
+            "test_law"
+        ));
+        assert!(!note_targets_another_law(
+            &serde_json::json!({ "target": {} }),
+            "test_law"
+        ));
+        assert!(!note_targets_another_law(
+            &note_with_source("https://example.com/bron"),
+            "test_law"
+        ));
     }
 }

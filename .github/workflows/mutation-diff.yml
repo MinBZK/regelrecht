@@ -1,0 +1,128 @@
+---
+# Mutatietesten op alleen de gewijzigde regels van een PR. De volledige run
+# (mutation-testing.yml) duurt uren en draait wekelijks; deze poort draait in
+# minuten en meldt een ongetest codepad op het moment dat het geschreven wordt.
+# De twee vervangen elkaar niet: --in-diff kijkt alleen naar productiecode die
+# in de diff staat, en een wijziging hier kan code elders slechter getest maken
+# zonder dat deze job dat ziet.
+name: Mutation Testing (diff)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/engine/**'
+      - '.github/workflows/mutation-diff.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_MUTANTS_VERSION: 27.1.0
+
+jobs:
+  in-diff:
+    name: Mutation Testing (diff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # De diff wordt tegen de base-SHA van de PR gemaakt, dus die commit
+          # moet lokaal bestaan.
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
+
+      - name: Install mold linker
+        # Required by packages/.cargo/config.toml (mold linker on x86_64-linux).
+        run: sudo apt-get update && sudo apt-get install -y mold
+
+      - name: Restore cargo registry (shared met CI)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+
+      - name: Restore cargo-mutants binary
+        id: mutants-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cargo/bin/cargo-mutants
+          key: ${{ runner.os }}-cargo-mutants-bin-${{ env.CARGO_MUTANTS_VERSION }}
+
+      - name: Install cargo-mutants
+        if: steps.mutants-cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-mutants --locked --version "$CARGO_MUTANTS_VERSION"
+
+      - name: Save cargo-mutants binary
+        if: steps.mutants-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cargo/bin/cargo-mutants
+          key: ${{ runner.os }}-cargo-mutants-bin-${{ env.CARGO_MUTANTS_VERSION }}
+
+      - name: Bepaal de gewijzigde regels
+        id: diff
+        working-directory: packages
+        # cargo-mutants noemt bestanden relatief aan de workspace-root
+        # (packages/), dus de diff moet dezelfde prefix hebben: `b/engine/src/…`
+        # en niet `b/packages/engine/src/…`. Vandaar --relative vanuit packages/.
+        #
+        # Driepunts (`base...HEAD`), niet tweepunts: tweepunts vergelijkt twee
+        # bomen, dus alles wat main na de aftakking veranderde telt mee als
+        # wijziging van deze PR. Dan muteert de poort regels die de auteur niet
+        # heeft aangeraakt, en kan hij rood worden op andermans werk.
+        run: |
+          git diff --relative "${{ github.event.pull_request.base.sha }}...HEAD" \
+            -- engine > "$RUNNER_TEMP/pr.diff"
+          if [ -s "$RUNNER_TEMP/pr.diff" ]; then
+            echo "has-changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-changes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Draai mutatietesten op de gewijzigde regels
+        if: steps.diff.outputs.has-changes == 'true'
+        working-directory: packages/engine
+        run: |
+          set +e
+          cargo mutants --in-place --timeout-multiplier 3 \
+            --in-diff "$RUNNER_TEMP/pr.diff"
+          code=$?
+          set -e
+          case "$code" in
+            0) echo "Alle mutanten in de gewijzigde regels werden gevangen." ;;
+            2)
+              echo "::error::Er zijn regels gewijzigd waar een mutatie ongemerkt doorheen komt. Zie mutants.out/missed.txt in het artifact."
+              exit 1
+              ;;
+            3)
+              echo "::error::Een test liep vast op een mutatie (mogelijk een oneindige lus, of de timeout staat te krap)."
+              exit 1
+              ;;
+            *) exit "$code" ;;
+          esac
+
+      - name: Geen wijzigingen in de engine
+        if: steps.diff.outputs.has-changes != 'true'
+        run: echo "Geen gewijzigde regels in packages/engine, niets te muteren."
+
+      - name: Upload rapport
+        if: always() && steps.diff.outputs.has-changes == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: mutation-report-diff
+          # cargo-mutants schrijft naar de workspace-root (packages/), ook als
+          # het commando vanuit packages/engine wordt gestart.
+          path: packages/mutants.out/
+          if-no-files-found: ignore

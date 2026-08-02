@@ -59,6 +59,10 @@ path = "src/bin/evaluate.rs"
 [[test]]
 name = "bdd"
 harness = false
+# Niet meelopen in `cargo test`: de BDD-suite draait tegen het echte corpus en
+# hoort bewust niet in CI (zie docs/operations/ci-cd.md). `just bdd` roept het
+# target expliciet aan.
+test = false
 
 [features]
 wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen"]
