@@ -100,7 +100,11 @@ fn report_one(path: &Path, corpus: Option<&Path>) -> std::io::Result<bool> {
         );
         println!(
             "  marks:     {} markings ({} engine, {} model, {} blocking, {} accepted)",
-            t.markings, t.markings_engine, t.markings_model, t.markings_blocking, t.markings_accepted
+            t.markings,
+            t.markings_engine,
+            t.markings_model,
+            t.markings_blocking,
+            t.markings_accepted
         );
         println!(
             "  leaves:    {} open terms ({} with a named filler), {} declares, {} overrides",

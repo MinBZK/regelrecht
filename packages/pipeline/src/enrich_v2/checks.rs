@@ -499,7 +499,10 @@ pub fn marking_discipline(doc: &Value, text_corpus: &str) -> Vec<Finding> {
         };
 
         for entry in markings(mr) {
-            let about = entry.get("about").and_then(Value::as_str).unwrap_or_default();
+            let about = entry
+                .get("about")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             let resolved_by = entry
                 .get("resolved_by")
                 .and_then(Value::as_str)
@@ -595,9 +598,15 @@ pub fn marking_discipline(doc: &Value, text_corpus: &str) -> Vec<Finding> {
 /// the accounting gate so the two can never disagree about what "worked out"
 /// means.
 fn carries_logic(mr: &Value) -> bool {
-    ["execution", "definitions", "requires", "open_terms", "implements"]
-        .iter()
-        .any(|key| mr.get(key).is_some())
+    [
+        "execution",
+        "definitions",
+        "requires",
+        "open_terms",
+        "implements",
+    ]
+    .iter()
+    .any(|key| mr.get(key).is_some())
 }
 
 /// The values a marking says it blocks.
