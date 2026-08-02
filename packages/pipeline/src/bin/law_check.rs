@@ -94,12 +94,17 @@ fn report_one(path: &Path, corpus: Option<&Path>) -> std::io::Result<bool> {
             t.with_logic, t.articles, t.marked_only, t.bare
         );
         println!(
-            "  reaches:   {} cross-law bindings into {} of {} cited laws",
-            t.cross_law_bindings, t.laws_read, t.laws_cited
+            "  reaches:   {} cross-law bindings into {} of {} cited laws, \
+             {} sources naming no law",
+            t.cross_law_bindings, t.laws_read, t.laws_cited, t.unnamed_sources
         );
         println!(
-            "  marks:     {} untranslatable, {} norm gap, {} declares, {} overrides",
-            t.untranslatables, t.norm_gaps, t.declares, t.overrides
+            "  marks:     {} markings ({} engine, {} model, {} blocking, {} accepted)",
+            t.markings, t.markings_engine, t.markings_model, t.markings_blocking, t.markings_accepted
+        );
+        println!(
+            "  leaves:    {} open terms ({} with a named filler), {} declares, {} overrides",
+            t.open_terms, t.open_terms_delegated, t.declares, t.overrides
         );
         println!(
             "  outputs:   {} declared, {} read by something",
