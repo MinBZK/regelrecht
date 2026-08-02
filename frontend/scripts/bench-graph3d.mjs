@@ -32,6 +32,11 @@ const PAYLOAD_DIR = process.env.CORPUSGRAAF_DIR || '/tmp/corpusgraaf';
 const args = process.argv.slice(2);
 const quick = args.includes('--quick');
 const only = args.includes('--case') ? args[args.indexOf('--case') + 1] : null;
+// Coverage instead of frame time: how much of the screen the nodes take. It is
+// the number that decides whether the map is a cloud or a ball, and unlike
+// frame time it does not depend on the rasteriser, so the figures from this
+// GPU-less container are the same ones a user with a graphics card sees.
+const coverage = args.includes('--coverage');
 
 // The corpus measured today: 4.138 laws. The larger cases are the design's
 // H2 and H3 horizons, and the last one is there to find the wall.
@@ -81,6 +86,8 @@ const CASES = [
 ];
 
 const QUICK = new Set(['echt-wetniveau', 'echt-artikelniveau', 'corpus-nu']);
+/** Coverage is about the real payloads: the synthetic sizes have no density of their own. */
+const COVERAGE_CASES = new Set(['echt-wetniveau', 'echt-artikelniveau']);
 
 const COLUMNS = [
   ['case', 22],
@@ -97,8 +104,23 @@ const COLUMNS = [
   ['heap MB', 8],
 ];
 
+const COVERAGE_COLUMNS = [
+  ['case', 22],
+  ['nodes', 8],
+  ['maat', 6],
+  ['beeld', 11],
+  ['dekking', 9],
+  ['inkt', 8],
+  ['buurafst', 9],
+  ['straal', 8],
+];
+
 function row(values) {
   return COLUMNS.map(([, w], i) => String(values[i] ?? '').padStart(w)).join(' ');
+}
+
+function row2(values) {
+  return COVERAGE_COLUMNS.map(([, w], i) => String(values[i] ?? '').padStart(w)).join(' ');
 }
 
 /**
@@ -199,6 +221,44 @@ async function main() {
     );
   }
   console.log(`viewport: 1600x900\n`);
+
+  if (coverage) {
+    console.log(row2(COVERAGE_COLUMNS.map(([n]) => n)));
+    console.log(COVERAGE_COLUMNS.map(([, w]) => '-'.repeat(w)).join(' '));
+    const covered = [];
+    for (const c of CASES) {
+      if (only ? c.name !== only : !COVERAGE_CASES.has(c.name)) continue;
+      for (const sizing of ['oud', 'nieuw']) {
+        const res = await page.evaluate((cfg) => window.__graphBench.measureCoverage(cfg), {
+          ...c,
+          labels: false,
+          sizing,
+        });
+        covered.push({ name: c.name, ...res });
+        for (const v of res.views) {
+          console.log(
+            row2([
+              c.name,
+              res.nodes,
+              sizing,
+              v.view,
+              `${v.coverage}%`,
+              `${v.ink}%`,
+              res.spacing,
+              res.baseSize,
+            ]),
+          );
+        }
+        await page.close().catch(() => {});
+        page = await freshPage();
+      }
+    }
+    if (process.env.BENCH_JSON) console.log(`\nJSON:\n${JSON.stringify(covered, null, 2)}`);
+    await browser.close();
+    await server.close();
+    return;
+  }
+
   console.log(row(COLUMNS.map(([n]) => n)));
   console.log(COLUMNS.map(([, w]) => '-'.repeat(w)).join(' '));
 

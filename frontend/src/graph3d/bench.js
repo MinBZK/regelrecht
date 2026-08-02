@@ -10,6 +10,7 @@
  * pipeline with perfect temporal coherence and flatters the result.
  */
 
+import { Color, NearestFilter, WebGLRenderTarget } from 'three';
 import { generateCorpusGraph } from './generateCorpusGraph.js';
 import { loadRrgraph } from './rrgraph.js';
 import { GraphScene } from './GraphScene.js';
@@ -17,6 +18,7 @@ import { buildSdfAtlas } from './sdfAtlas.js';
 import { readPalette } from './palette.js';
 import { FrameStats } from './frameStats.js';
 import { ThickEdgeLayer } from './edgeLayer.js';
+import { WEIGHT_SCALE_MAX, WEIGHT_SCALE_MIN } from './nodeLayer.js';
 
 let scene = null;
 let atlas = null;
@@ -228,6 +230,156 @@ export async function runCase(cfg) {
   };
 }
 
+/**
+ * How much of the screen is node.
+ *
+ * "Too big" and "opens up" are not opinions that can be argued about, they are
+ * a coverage number, and it is measurable exactly: the id pass already draws
+ * every node and nothing else, so rendering it over the whole viewport with the
+ * pick inflation turned off and counting the pixels that are not background
+ * gives the fraction of the picture the nodes take, to the pixel.
+ *
+ * @param {object} cfg the case, plus:
+ * @param {'nieuw'|'oud'} [cfg.sizing] measure the current rule or the previous one
+ */
+export async function measureCoverage(cfg) {
+  const { labels = false, sizing = 'nieuw' } = cfg;
+  const canvas = document.getElementById('graph-canvas');
+  if (scene) {
+    scene.dispose();
+    scene = null;
+  }
+  const shared = ensureShared();
+  const graph = cfg.file
+    ? await loadRrgraph(cfg.file, { lawLevelOnly: cfg.lawLevelOnly !== false, labels })
+    : generateCorpusGraph({
+        nodeCount: cfg.nodes,
+        edgeCount: cfg.edges,
+        hubs: cfg.hubs ?? 6,
+        seed: 7,
+        labels,
+      });
+  scene = new GraphScene(canvas, graph, {
+    palette: shared.palette,
+    atlas: shared.atlas,
+    showLabels: labels,
+    reducedMotion: true,
+  });
+
+  const nodes = scene.nodes;
+  const newBase = nodes.uniforms.uBaseSize.value;
+  if (sizing === 'oud') {
+    // The previous rule, reconstructed so the before-and-after is one
+    // measurement and not two builds of the source: radius a quarter of the
+    // mean spacing `2R/cbrt(N)`, weight multiplying that by 1..4, and no
+    // visibility floor at all.
+    const { radius } = scene.extent;
+    nodes.uniforms.uBaseSize.value = ((2 * radius) / Math.max(1, Math.cbrt(graph.nodeCount))) * 0.25;
+    nodes.uniforms.uMinPixels.value = 0;
+    for (const mesh of nodes.meshes) {
+      const attr = mesh.geometry.getAttribute('aScale');
+      if (!attr) continue;
+      for (let i = 0; i < attr.array.length; i++) {
+        const t = (attr.array[i] - WEIGHT_SCALE_MIN) / (WEIGHT_SCALE_MAX - WEIGHT_SCALE_MIN);
+        attr.array[i] = 1 + 3 * t;
+      }
+      attr.needsUpdate = true;
+    }
+  }
+
+  const gl = scene.renderer.getContext();
+  const width = gl.drawingBufferWidth;
+  const height = gl.drawingBufferHeight;
+  const target = new WebGLRenderTarget(width, height, {
+    minFilter: NearestFilter,
+    magFilter: NearestFilter,
+    depthBuffer: true,
+  });
+  const pixels = new Uint8Array(width * height * 4);
+
+  // The background in output bytes, to tell "painted" from "empty" in the
+  // frame below. `getHexString` gives sRGB, which is what lands in the buffer.
+  const bg = new Color();
+  bg.setStyle(scene.palette.background);
+  const bgHex = parseInt(bg.getHexString(), 16);
+  const bgR = (bgHex >> 16) & 0xff;
+  const bgG = (bgHex >> 8) & 0xff;
+  const bgB = bgHex & 0xff;
+
+  const shot = (name) => {
+    // The whole picture first: node coverage answers "how thick are the dots",
+    // but what the eye calls a ball is every pixel that is not background, and
+    // the difference between the two numbers is what the edges are doing.
+    const prevFrameTarget = scene.renderer.getRenderTarget();
+    scene.renderer.setRenderTarget(target);
+    scene.renderer.clear();
+    scene.renderer.render(scene.scene, scene.camera);
+    scene.renderer.readRenderTargetPixels(target, 0, 0, width, height, pixels);
+    scene.renderer.setRenderTarget(prevFrameTarget);
+    let inked = 0;
+    for (let p = 0; p < pixels.length; p += 4) {
+      // A tenth of the range: below that a pixel is a hint of a line, not ink.
+      const d =
+        Math.abs(pixels[p] - bgR) + Math.abs(pixels[p + 1] - bgG) + Math.abs(pixels[p + 2] - bgB);
+      if (d > 25) inked++;
+    }
+
+    // Inflation off and the id floor equal to the draw floor: the id pass then
+    // covers exactly the pixels the visible nodes cover, which is the thing
+    // being measured.
+    const inflate = nodes.uniforms.uPickInflate.value;
+    const pickFloor = nodes.uniforms.uPickMinPixels.value;
+    nodes.uniforms.uPickInflate.value = 1;
+    nodes.uniforms.uPickMinPixels.value = nodes.uniforms.uMinPixels.value;
+    nodes.useMaterial('pick');
+    scene.picker.hideNonPickable(true);
+    const prevTarget = scene.renderer.getRenderTarget();
+    scene.renderer.setRenderTarget(target);
+    scene.renderer.setClearColor(0x000000, 1);
+    scene.renderer.clear();
+    scene.renderer.render(scene.scene, scene.camera);
+    scene.renderer.readRenderTargetPixels(target, 0, 0, width, height, pixels);
+    scene.renderer.setRenderTarget(prevTarget);
+    scene.renderer.setClearColor(scene.palette.background, 1);
+    scene.picker.hideNonPickable(false);
+    nodes.useMaterial('draw');
+    nodes.uniforms.uPickInflate.value = inflate;
+    nodes.uniforms.uPickMinPixels.value = pickFloor;
+
+    let covered = 0;
+    for (let p = 0; p < pixels.length; p += 4) {
+      if (pixels[p] | pixels[p + 1] | pixels[p + 2]) covered++;
+    }
+    return {
+      view: name,
+      covered,
+      coverage: round((covered / (width * height)) * 100),
+      ink: round((inked / (width * height)) * 100),
+    };
+  };
+
+  scene.fitAll();
+  const whole = shot('geheel');
+  // Half the distance to the centre: the view you land in after one scroll,
+  // where the picture either opens up or stays a wall.
+  const dir = scene.camera.position.clone().sub(scene.controls.target);
+  scene.camera.position.copy(scene.controls.target).addScaledVector(dir, 0.35);
+  scene.camera.updateMatrixWorld();
+  const zoomed = shot('ingezoomd');
+
+  target.dispose();
+  return {
+    nodes: graph.nodeCount,
+    edges: graph.edgeCount,
+    sizing,
+    width,
+    height,
+    spacing: round(scene.extent.spacing),
+    baseSize: round(sizing === 'oud' ? nodes.uniforms.uBaseSize.value : newBase),
+    views: [whole, zoomed],
+  };
+}
+
 function round(v) {
   return Math.round(v * 100) / 100;
 }
@@ -241,5 +393,5 @@ export function currentScene() {
 }
 
 if (typeof window !== 'undefined') {
-  window.__graphBench = { runCase, currentScene };
+  window.__graphBench = { runCase, measureCoverage, currentScene };
 }
