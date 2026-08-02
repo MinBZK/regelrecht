@@ -358,7 +358,7 @@ machine_readable:
         De grens ligt op een maandovergang, en de motor rekent met een datum als
         geheel: er is geen bewerking die de maand uit een datum leest, dus de eerste
         dag van de maand is niet uit de peildatum af te leiden.
-      resolution: engine
+      resolution: operation
       resolved_by: >-
         Een bewerking die jaar en maand uit een datum leest, of een START_OF_MONTH,
         zodat de maandgrens uit de peildatum zelf volgt.

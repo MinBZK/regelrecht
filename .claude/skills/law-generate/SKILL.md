@@ -196,7 +196,7 @@ machine_readable:
       reason: >-
         De motor rekent met een datum als geheel en leest er geen jaardeel uit;
         het jaar is hier een zelfstandige waarde waarop de bepaling rust.
-      resolution: engine          # engine | model
+      resolution: operation       # operation | model
       resolved_by: Een YEAR-bewerking die het jaardeel van een datum oplevert
       target: []
       legal_text_excerpt: het kalenderjaar waarop de tegemoetkoming betrekking heeft
@@ -205,7 +205,10 @@ machine_readable:
     # everything that CAN be expressed, which is nearly always most of it
 ```
 
-`resolution: engine` means the operation does not exist and has to be built.
+`resolution: operation` means the operation does not exist and has to be built.
+The value names the thing to be added, not the place it runs: building one
+touches the schema, the model, the evaluation in the engine, the BDD grammar and
+the frontend.
 `resolution: model` means the operation set is not the problem: the format has no
 shape for the construct at all (quantification over persons, a rule about a set
 rather than a value, a legal fiction). Nothing else belongs in a marking. Group
@@ -214,6 +217,25 @@ the corpus, which is what the field is for.
 
 `legal_text_excerpt` is required and quotes this entry's own text. A marking that
 cannot quote the words it is about is about something else.
+
+### A provision that repeats per period
+
+A provision saying an outcome is established anew for every period, continuing
+through time, is `resolution: model`. The format has no shape for a result that
+is re-established per period, and no operation gives it one. Do not approximate
+it with a loop and do not file it as `operation`.
+
+Article 2, fifth paragraph of the Wet op de zorgtoeslag is the case: "De
+aanspraak op een zorgtoeslag wordt voor iedere kalendermaand afzonderlijk
+bepaald." An enricher asked for "periodieke evaluatie (iteratie over
+kalendermaanden) in de engine", which is the wrong answer. The entitlement is
+decided again each month, running through time, and that needs state outside the
+execution recording which months are already decided. One execution covers one
+month.
+
+`resolved_by` names what is missing: an execution per period with state held
+outside it. The marking is the result of reading the provision, not a shortfall
+in the model: it turns a silent gap into a known one.
 
 ### The three prose fields
 

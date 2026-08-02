@@ -374,7 +374,7 @@ fn flagged_constructs(machine_readable: &MachineReadable) -> Vec<FlaggedConstruc
 /// was; then the layer is the answer.
 fn marking_reason(marking: &crate::article::Marking) -> String {
     let layer = match marking.resolution {
-        crate::article::MarkingResolution::Engine => "needs an engine operation",
+        crate::article::MarkingResolution::Operation => "needs a new operation",
         crate::article::MarkingResolution::Model => "needs a new shape in the format",
     };
     let change = match marking.resolved_by {
@@ -5892,7 +5892,7 @@ articles:
       markings:
         - about: afronden op hele euro's
           reason: de motor kent geen wettelijke afronding op eurocenten
-          resolution: engine
+          resolution: operation
           resolved_by: Een CEIL-bewerking op eurocenten
           target: []
           legal_text_excerpt: naar boven afgerond
@@ -5988,11 +5988,14 @@ articles:
                 .to_string()
         };
 
-        let engine_side = run(law_with("engine", Some("Een CEIL-bewerking op eurocenten")));
+        let operation_side = run(law_with(
+            "operation",
+            Some("Een CEIL-bewerking op eurocenten"),
+        ));
         assert!(
-            engine_side.contains("needs an engine operation")
-                && engine_side.contains("Een CEIL-bewerking op eurocenten"),
-            "an engine marking must name the operation to build: {engine_side}"
+            operation_side.contains("needs a new operation")
+                && operation_side.contains("Een CEIL-bewerking op eurocenten"),
+            "an operation marking must name the operation to build: {operation_side}"
         );
 
         let model_side = run(law_with(
@@ -6034,7 +6037,7 @@ articles:
       markings:
         - about: afronden op hele euro's
           reason: de motor kent geen wettelijke afronding op eurocenten
-          resolution: engine
+          resolution: operation
           resolved_by: Een CEIL-bewerking op eurocenten
           target: []
           legal_text_excerpt: naar boven afgerond

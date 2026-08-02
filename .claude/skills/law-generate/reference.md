@@ -39,7 +39,7 @@ machine_readable:
     - about: het jaar waarin de peildatum valt
       reason: >-                # why it does not fit, in terms of what the format has
         De motor rekent met een datum als geheel en leest er geen jaardeel uit.
-      resolution: engine        # engine | model
+      resolution: operation     # operation | model
       resolved_by: Een YEAR-bewerking die het jaardeel van een datum oplevert
       target: []                # values this article therefore does not produce
       legal_text_excerpt: het kalenderjaar waarop de tegemoetkoming betrekking heeft
@@ -146,7 +146,7 @@ procedure:
 ## Markings and Open Terms
 
 A **marking** says the format cannot express a construct. That is a language gap,
-resolved by extending the engine (`resolution: engine`, e.g. a YEAR operation) or
+resolved by building an operation (`resolution: operation`, e.g. a YEAR operation) or
 by changing the format (`resolution: model`, e.g. quantification over persons, a
 rule about a set rather than a value, a legal fiction).
 

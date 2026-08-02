@@ -24,16 +24,16 @@
 //!
 //! What the old fields map to:
 //!
-//! | old (`untranslatables`)      | new (`markings`)     |
-//! |------------------------------|----------------------|
-//! | `construct`                  | `about`              |
-//! | `kind: engine_operation`     | `resolution: engine` |
-//! | `kind: model_form`           | `resolution: model`  |
-//! | `reason`                     | `reason`             |
-//! | `suggestion`                 | `resolved_by`        |
-//! | `blocks`                     | `target`             |
-//! | `legal_text_excerpt`         | `legal_text_excerpt` |
-//! | `accepted`                   | `accepted`           |
+//! | old (`untranslatables`)      | new (`markings`)        |
+//! |------------------------------|-------------------------|
+//! | `construct`                  | `about`                 |
+//! | `kind: engine_operation`     | `resolution: operation` |
+//! | `kind: model_form`           | `resolution: model`     |
+//! | `reason`                     | `reason`                |
+//! | `suggestion`                 | `resolved_by`           |
+//! | `blocks`                     | `target`                |
+//! | `legal_text_excerpt`         | `legal_text_excerpt`    |
+//! | `accepted`                   | `accepted`              |
 //!
 //! | old (`norm_gaps`)            | new (`open_terms`)   |
 //! |------------------------------|----------------------|
@@ -321,7 +321,7 @@ fn to_marking(item: &Value, article: &str, index: usize, blockers: &mut Vec<Bloc
         Some("engine_operation") => {
             out.insert(
                 Value::String("resolution".into()),
-                Value::String("engine".into()),
+                Value::String("operation".into()),
             );
         }
         Some("model_form") => {
@@ -550,7 +550,7 @@ articles:
             "expected a valid file, got {:?}",
             m.schema_errors
         );
-        assert!(m.yaml.contains("resolution: engine"));
+        assert!(m.yaml.contains("resolution: operation"));
         assert!(m.yaml.contains("about: afronden op hele euro's"));
         assert!(m.yaml.contains("resolved_by: een ROUND_HALF_UP-bewerking"));
         assert!(!m.yaml.contains("untranslatables"));

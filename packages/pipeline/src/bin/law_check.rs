@@ -105,9 +105,9 @@ fn report_one(path: &Path, corpus: Option<&Path>) -> std::io::Result<bool> {
             t.cross_law_bindings, t.laws_read, t.laws_cited, t.unnamed_sources, t.bare_inputs
         );
         println!(
-            "  marks:     {} markings ({} engine, {} model, {} blocking, {} accepted)",
+            "  marks:     {} markings ({} operation, {} model, {} blocking, {} accepted)",
             t.markings,
-            t.markings_engine,
+            t.markings_operation,
             t.markings_model,
             t.markings_blocking,
             t.markings_accepted

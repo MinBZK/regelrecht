@@ -476,7 +476,7 @@ pub fn enum_provenance(doc: &Value) -> Vec<Finding> {
     findings
 }
 
-/// Operations the engine has. A marking with `resolution: engine` that asks
+/// Operations the engine has. A marking with `resolution: operation` that asks
 /// for one of these is stale rather than true, and the translator took a
 /// detour it did not have to take.
 ///
@@ -535,7 +535,7 @@ const CORPUS_GAP_SIGNALS: &[&str] = &[
 /// Shapes the format already has, with the statutory words that announce them.
 ///
 /// The twin of [`AVAILABLE_OPERATIONS`], and it exists for the same reason. A
-/// marking with `resolution: engine` claims an operation does not exist, and
+/// marking with `resolution: operation` claims an operation does not exist, and
 /// that claim is held against the operation list. A marking with `resolution:
 /// model` claims the *format* has no shape for the construct, and until now
 /// nothing held that against anything: a model marking could not be wrong,
@@ -699,18 +699,18 @@ pub fn marking_discipline(doc: &Value, text_corpus: &str) -> Vec<Finding> {
                 ));
             }
 
-            // `resolution: engine` is itself the claim that the operation does
-            // not exist, so it can be held against the operation list without
-            // reading the prose for an absence claim first.
+            // `resolution: operation` is itself the claim that the operation
+            // does not exist, so it can be held against the operation list
+            // without reading the prose for an absence claim first.
             let resolution = entry.get("resolution").and_then(Value::as_str);
-            if resolution == Some("engine") {
+            if resolution == Some("operation") {
                 for (op, phrases) in AVAILABLE_OPERATIONS {
                     if phrases.iter().any(|p| both.contains(p)) {
                         findings.push(Finding::new(
                             "marking",
                             Some(&number),
                             format!(
-                                "marking \"{}\" asks for an engine operation and names something \
+                                "marking \"{}\" asks for a new operation and names something \
                                  {op} already does",
                                 truncate(about)
                             ),
@@ -1593,7 +1593,7 @@ pub struct Tally {
     /// Markings, in total and split by what has to change before the article
     /// can be translated in full.
     pub markings: usize,
-    pub markings_engine: usize,
+    pub markings_operation: usize,
     pub markings_model: usize,
     /// Markings that name at least one value they block. A marking with an
     /// empty `target` asserts the article stays executable, so the split
@@ -1693,7 +1693,7 @@ pub fn tally(doc: &Value) -> Tally {
         for marking in markings(mr) {
             t.markings += 1;
             match marking.get("resolution").and_then(Value::as_str) {
-                Some("engine") => t.markings_engine += 1,
+                Some("operation") => t.markings_operation += 1,
                 Some("model") => t.markings_model += 1,
                 _ => {}
             }
@@ -3600,7 +3600,7 @@ articles:
         assert_eq!(t.laws_cited, 1);
         assert_eq!(t.markings, 1);
         assert_eq!(t.markings_model, 1);
-        assert_eq!(t.markings_engine, 0);
+        assert_eq!(t.markings_operation, 0);
         assert_eq!(t.markings_blocking, 1);
     }
 
@@ -3620,7 +3620,7 @@ articles:
           - name: x
       markings:
         - about: afronden op hele euro
-          resolution: engine
+          resolution: operation
           target: []
           legal_text_excerpt: iets
         - about: een regel over een verzameling
@@ -3633,7 +3633,7 @@ articles:
         .expect("yaml");
         let t = tally(&doc);
         assert_eq!(t.markings, 2);
-        assert_eq!(t.markings_engine, 1);
+        assert_eq!(t.markings_operation, 1);
         assert_eq!(t.markings_model, 1);
         assert_eq!(t.markings_blocking, 1);
         assert_eq!(t.markings_accepted, 1);
@@ -3802,7 +3802,7 @@ articles:
         // written.
         let dir = corpus_with_awir();
         let unrelated = citing_article(
-            "      markings:\n        - about: afronden\n          resolution: engine\n          \
+            "      markings:\n        - about: afronden\n          resolution: operation\n          \
              target: []\n          legal_text_excerpt: wordt afgerond",
         );
         assert_eq!(cross_law_references(&unrelated, Some(dir.path())).len(), 1);
@@ -4498,7 +4498,7 @@ articles:
     machine_readable:
       markings:
         - about: afronden op hele euro's
-          resolution: engine
+          resolution: operation
           target: [uitkomst]
           legal_text_excerpt: De uitkomst wordt afgerond op hele euro's.
 "#;
@@ -4744,7 +4744,7 @@ articles:
     machine_readable:
       markings:
         - about: de begripsbepalingen
-          resolution: engine
+          resolution: operation
           target: []
           legal_text_excerpt: In deze wet wordt verstaan onder
 "#,
@@ -5378,7 +5378,7 @@ articles:
     machine_readable:
       markings:
         - about: afronden
-          resolution: engine
+          resolution: operation
           target: []
           legal_text_excerpt: iets
       execution:

@@ -1152,7 +1152,7 @@ articles:
       markings:
         - about: het kalenderjaar waarop de tegemoetkoming betrekking heeft
           reason: de motor leest het jaardeel niet uit een datum
-          resolution: engine
+          resolution: operation
           resolved_by: "Een YEAR-bewerking die het jaardeel van een datum oplevert"
           target: [berekeningsjaar]
           legal_text_excerpt: "het berekeningsjaar waarop de tegemoetkoming betrekking heeft"
@@ -1170,7 +1170,7 @@ articles:
             let markings = law.articles[0].get_markings().unwrap();
 
             assert_eq!(markings.len(), 2);
-            assert_eq!(markings[0].resolution, MarkingResolution::Engine);
+            assert_eq!(markings[0].resolution, MarkingResolution::Operation);
             assert_eq!(markings[0].target, vec!["berekeningsjaar".to_string()]);
             assert!(markings[0].resolved_by.is_some());
             assert!(!markings[0].accepted);

@@ -32,7 +32,7 @@ articles:
             Het berekeningsjaar volgt uit de periode waarop de tegemoetkoming betrekking heeft.
             De motor kent geen bewerking die het jaardeel uit een datum licht, dus is dat jaar
             niet uit die periode af te leiden.
-          resolution: engine
+          resolution: operation
           resolved_by: Een YEAR-bewerking die het jaardeel van een datum oplevert
           target:
             - berekeningsjaar

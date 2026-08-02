@@ -1701,10 +1701,10 @@
               "resolution": {
                 "type": "string",
                 "enum": [
-                  "engine",
+                  "operation",
                   "model"
                 ],
-                "description": "What has to change before this article can be translated in full. engine: the operation does not exist and must be built (statutory rounding, extracting the year from a date). model: the operation set is not the problem; the format has no shape for this construct (quantification over persons, a rule about a set rather than a value, a legal fiction). Nothing else belongs here: a norm whose content is filled by another regulation is an open_term, and a value produced by another law is an input with a source."
+                "description": "What has to change before this article can be translated in full. operation: the operation does not exist and must be built (statutory rounding, extracting the year from a date). Adding one reaches further than the engine: schema, model, evaluation, the BDD grammar and the frontend all carry it, so the value names the thing to be built rather than the place it happens to run. model: the operation set is not the problem; the format has no shape for this construct (quantification over persons, a rule about a set rather than a value, a legal fiction). Nothing else belongs here: a norm whose content is filled by another regulation is an open_term, and a value produced by another law is an input with a source."
               },
               "resolved_by": {
                 "type": "string",

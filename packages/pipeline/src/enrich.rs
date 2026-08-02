@@ -1523,7 +1523,7 @@ pub struct CapturedMarking {
     pub article: String,
     /// The construct the format cannot express, in the article's own words.
     pub about: String,
-    /// `engine` (the operation must be built) or `model` (the format has no
+    /// `operation` (the operation must be built) or `model` (the format has no
     /// shape for this construct).
     pub resolution: String,
     pub resolved_by: Option<String>,
@@ -2144,7 +2144,7 @@ fn build_feedback_prompt(yaml_path: &str, feedback: &Feedback, vocabulary: Vocab
                  format expresses it fine; the content lives somewhere else. Whether that \
                  somewhere else is already in the corpus is a state of the corpus and does not \
                  belong in the law file.\n\n\
-                 Only what the format itself cannot express is a `marking`: `resolution: engine` \
+                 Only what the format itself cannot express is a `marking`: `resolution: operation` \
                  when the operation does not exist and has to be built, `resolution: model` when \
                  the operation set is not the problem and the format has no shape for the \
                  construct. Recording an open term as a marking sends it to a queue where nobody \
@@ -2207,7 +2207,7 @@ fn build_feedback_prompt(yaml_path: &str, feedback: &Feedback, vocabulary: Vocab
              expected. Use an `open_term` when the norm is open and its content \
              is filled in by a lower regulation or by the executive policy of \
              the authority that applies it, and a `marking` when the format \
-             itself cannot express the construct — `resolution: engine` for an \
+             itself cannot express the construct — `resolution: operation` for an \
              operation that has to be built, `resolution: model` for a shape \
              the format does not have. A value that another law produces is \
              neither: that is an input with a `source`. Both are first-class \
@@ -4718,7 +4718,7 @@ articles:
       markings:
         - about: iets
           reason: waarom
-          resolution: engine
+          resolution: operation
           target: []
           legal_text_excerpt: woorden
   - number: '2'
@@ -6300,7 +6300,7 @@ articles:
         assert!(marking.contains("`open_term`"));
         assert!(marking.contains("redelijkerwijs"));
         // Only what the format cannot express is a marking, and it says how.
-        assert!(marking.contains("`resolution: engine`"));
+        assert!(marking.contains("`resolution: operation`"));
         assert!(marking.contains("`resolution: model`"));
         // And a marking leaves the rest of the article standing.
         assert!(marking.contains("otherwise worked out"));
@@ -6879,7 +6879,7 @@ articles:
         let with_marking: ArticleBasedLaw =
             serde_yaml_ng::from_str(&four_article_law_with_models().replace(
                 "  - number: '1'\n    text: Article one.\n    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1\n    machine_readable: {}\n",
-                "  - number: '1'\n    text: Article one.\n    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1\n    machine_readable:\n      markings:\n        - about: iets\n          reason: de motor kent geen wettelijke afronding op eurocenten\n          resolution: engine\n          target: []\n          legal_text_excerpt: Article one.\n",
+                "  - number: '1'\n    text: Article one.\n    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1\n    machine_readable:\n      markings:\n        - about: iets\n          reason: de motor kent geen wettelijke afronding op eurocenten\n          resolution: operation\n          target: []\n          legal_text_excerpt: Article one.\n",
             ))
             .unwrap();
         assert_eq!(window_progress_stats(&with_marking, 0, 2), (2, 1));

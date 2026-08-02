@@ -144,7 +144,7 @@ recovered. Without a diagnosis a gap somebody worked through reads like a gap
 nobody opened, which is exactly what this validation has to tell apart.
 
 Also verify `legal_text_excerpt` occurs in this entry's own `text`, and that
-`resolution` is `engine` (the operation does not exist) or `model` (the format
+`resolution` is `operation` (the operation does not exist) or `model` (the format
 has no shape for the construct at all).
 
 ## Workaround detection

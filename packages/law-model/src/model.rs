@@ -725,8 +725,10 @@ pub struct ProcedureDefinition {
 #[serde(rename_all = "lowercase")]
 pub enum MarkingResolution {
     /// The operation does not exist and must be built (statutory rounding,
-    /// extracting the year from a date).
-    Engine,
+    /// extracting the year from a date). Building one reaches past the engine:
+    /// schema, model, evaluation, the BDD grammar and the frontend all carry
+    /// it, so the value names what has to be added rather than where it runs.
+    Operation,
     /// The operation set is not the problem; the format has no shape for this
     /// construct (quantification over persons, a rule about a set rather than a
     /// value, a legal fiction).
@@ -737,7 +739,7 @@ impl MarkingResolution {
     /// The value as it is written in YAML.
     pub fn as_str(&self) -> &'static str {
         match self {
-            MarkingResolution::Engine => "engine",
+            MarkingResolution::Operation => "operation",
             MarkingResolution::Model => "model",
         }
     }
