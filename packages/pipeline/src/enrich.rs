@@ -482,6 +482,11 @@ impl LlmRunner for ProcessLlmRunner {
         // A feedback pass asks for one thing and gives the agent nothing
         // else to do, so it cannot wander back into translating.
         let action = begin_call(payload);
+        // Computed for both passes, because a feedback round runs in the same
+        // runtime as the translation it answers and the prompt tells it so
+        // ("You have no network and no search"). A deny list that only applied
+        // to the first pass would make that sentence false from round two on.
+        let (plan, deny) = chain_plan(repo_path);
         if let Pass::Feedback(feedback) = &payload.pass {
             let prompt =
                 build_feedback_prompt(&payload.yaml_path, feedback, vocabulary_of(yaml_abs).await);
@@ -499,7 +504,10 @@ impl LlmRunner for ProcessLlmRunner {
                 Some(yaml_abs),
                 repo_path,
                 config,
-                false,
+                ToolPolicy {
+                    allow_bash: false,
+                    deny: &deny,
+                },
                 action,
             )
             .await?;
@@ -510,7 +518,6 @@ impl LlmRunner for ProcessLlmRunner {
         // What the chain may instruct depends on what this runtime grants.
         // A step whose tools are absent is left out and recorded, rather than
         // asked for and answered with an invention (issue #1036).
-        let plan = chain_plan(repo_path);
         let report = capabilities::plan_report(&plan);
         if !report.is_empty() {
             tracing::info!(plan = %report.trim_end(), "enrichment chain planned");
@@ -537,7 +544,7 @@ impl LlmRunner for ProcessLlmRunner {
             tracing::info!("context brief withheld by ENRICH_CONTEXT_BRIEF=0");
             None
         } else {
-            context::write_brief(yaml_abs, payload.chunk_articles.as_deref())
+            context::write_brief(yaml_abs, payload.chunk_articles.as_deref(), repo_path)
         };
         if brief.is_none() {
             tracing::warn!(law = %payload.yaml_path, "no context brief written");
@@ -556,13 +563,57 @@ impl LlmRunner for ProcessLlmRunner {
             Some(yaml_abs),
             repo_path,
             config,
-            // Enrich edits YAML in place; it does not need shell access.
-            false,
+            ToolPolicy {
+                // Enrich edits YAML in place; it does not need shell access.
+                allow_bash: false,
+                deny: &deny,
+            },
             action,
         )
         .await?;
         end_call(payload, action, usage);
         Ok(())
+    }
+}
+
+/// What tools one agent call may use.
+///
+/// Two fields because the provider takes two answers and they are not the same
+/// question. The allowlist decides what is approved without asking; the deny
+/// list decides what is not there at all. Conflating them is how the enrichment
+/// lane came to report a shell-less runtime to an agent that had a shell.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ToolPolicy<'a> {
+    /// Whether the `claude` provider's allowlist includes `Bash` (enrich keeps
+    /// it off; document-convert needs it so the agent can run/install a
+    /// converter). No effect on `opencode`, which has its own tool model.
+    pub allow_bash: bool,
+    /// Tools withheld outright. Unlike leaving a tool off the allowlist, which
+    /// only means it has to be asked for, this takes it away.
+    pub deny: &'a [String],
+}
+
+impl ToolPolicy<'_> {
+    /// The claude provider's `--allowedTools` value.
+    fn allowed(self) -> &'static str {
+        if self.allow_bash {
+            "Bash,Read,Edit,Write,Grep,Glob"
+        } else {
+            "Read,Edit,Write,Grep,Glob"
+        }
+    }
+
+    /// The claude provider's `--disallowedTools` value, empty when nothing is
+    /// withheld. A caller that did not ask for the shell does not merely fail
+    /// to get it approved: it does not get it.
+    fn denied(self) -> Vec<String> {
+        let mut out: Vec<String> = self.deny.to_vec();
+        if !self.allow_bash {
+            out.push("Bash".to_owned());
+        }
+        out.sort();
+        out.dedup();
+        out
     }
 }
 
@@ -575,9 +626,7 @@ impl LlmRunner for ProcessLlmRunner {
 /// working directory the agent runs in (and writes its output into); `file_arg`
 /// is the optional single input file (OpenCode's `-f`). Callers supply their own
 /// `prompt` — enrich and document-convert differ only in that prompt.
-/// `allow_bash` widens the `claude` provider's tool allowlist to include `Bash`
-/// (enrich keeps it off; document-convert needs it so the agent can run/install
-/// a converter). It has no effect on `opencode`, which has its own tool model.
+/// `tools` says what this call may use (see [`ToolPolicy`]).
 /// `session` says whether this call opens, continues or ignores a session; a
 /// caller with no window to speak of passes [`SessionAction::Cold`].
 pub(crate) async fn run_llm_subprocess(
@@ -586,7 +635,7 @@ pub(crate) async fn run_llm_subprocess(
     file_arg: Option<&Path>,
     cwd: &Path,
     config: &EnrichConfig,
-    allow_bash: bool,
+    tools: ToolPolicy<'_>,
     session: SessionAction,
 ) -> Result<Option<AgentUsage>> {
     let provider_name = provider.name().to_string();
@@ -596,7 +645,7 @@ pub(crate) async fn run_llm_subprocess(
         prompt,
         file_arg,
         cwd,
-        allow_bash,
+        tools,
         config.effort.as_deref(),
         session,
     );
@@ -1108,6 +1157,12 @@ pub struct GateFeedback {
     /// no round ran).
     pub findings_final: usize,
     pub rounds: Vec<FeedbackRoundRecord>,
+    /// Findings this gate saw that no edit to this file could answer: a
+    /// binding onto a law the corpus does not have, or has and has not yet
+    /// interpreted. Never put to the agent, because the answer is a harvest or
+    /// an interpretation elsewhere, and recorded here because it is still work.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub outside_corpus: Vec<String>,
 }
 
 /// Payload for an enrich job, stored as JSON in the job queue.
@@ -1799,19 +1854,35 @@ pub fn enrich_branch_name(provider_name: &str) -> String {
 /// undegraded and fails later on its artefact if the file really is missing,
 /// which is a clearer failure than a capability error about a file that does
 /// not exist.
-fn chain_plan(repo_path: &Path) -> Vec<(&'static capabilities::StepSpec, capabilities::StepPlan)> {
+fn chain_plan(
+    repo_path: &Path,
+) -> (
+    Vec<(&'static capabilities::StepSpec, capabilities::StepPlan)>,
+    Vec<String>,
+) {
     let grant: std::collections::BTreeSet<String> = capabilities::ENRICH_GRANT
         .iter()
         .map(|t| (*t).to_owned())
         .collect();
-    capabilities::CHAIN
+    let read: Vec<(&'static capabilities::StepSpec, Option<String>)> = capabilities::CHAIN
         .iter()
         .map(|spec| {
-            let markdown = std::fs::read_to_string(repo_path.join(spec.skill)).ok();
-            let plan = capabilities::plan_step(spec, &grant, markdown.as_deref());
-            (spec, plan)
+            (
+                spec,
+                std::fs::read_to_string(repo_path.join(spec.skill)).ok(),
+            )
         })
-        .collect()
+        .collect();
+    let plan = read
+        .iter()
+        .map(|(spec, markdown)| {
+            (
+                *spec,
+                capabilities::plan_step(spec, &grant, markdown.as_deref()),
+            )
+        })
+        .collect();
+    (plan, capabilities::ungranted(&grant, &read))
 }
 
 /// The instruction body of one step, without its heading.
@@ -2141,6 +2212,14 @@ fn build_feedback_prompt(yaml_path: &str, feedback: &Feedback, vocabulary: Vocab
              the format does not have. A value that another law produces is \
              neither: that is an input with a `source`. Both are first-class \
              answers and neither is an admission of failure.\n\n\
+             **Both answers go in the law file, in the article the finding \
+             names.** The check runs over the law YAML and reads nothing else, \
+             so a note in `.enrichment-result.yaml` or any other sidecar is not \
+             an answer to it: the finding comes back next round word for word, \
+             and the reasoning you wrote is read by nobody. If your answer is \
+             that the check expected the wrong thing, that reasoning belongs in \
+             the `reason` of a marking or in the description of an open term, \
+             where it sits beside the thing it is about.\n\n\
              A marking flags the one thing that does not fit and leaves the \
              rest of the article standing. What you may not do is leave a \
              finding unanswered, or make it go away by removing the logic it \
@@ -2285,7 +2364,7 @@ fn build_command(
     prompt: &str,
     file_arg: Option<&Path>,
     cwd: &Path,
-    allow_bash: bool,
+    tools: ToolPolicy<'_>,
     effort: Option<&str>,
     session: SessionAction,
 ) -> tokio::process::Command {
@@ -2381,23 +2460,26 @@ fn build_command(
                     }
                 }
             }
-            // `Bash` is only granted when the caller asks for it (document-convert
-            // may need to run/install a converter); enrich keeps the shell off.
-            let allowed_tools = if allow_bash {
-                "Bash,Read,Edit,Write,Grep,Glob"
-            } else {
-                "Read,Edit,Write,Grep,Glob"
-            };
+            // Leaving a tool off `--allowedTools` does not take it away: that
+            // flag auto-approves, and what it omits merely has to be asked for,
+            // which the checkout's own settings then grant. Withholding needs
+            // `--disallowedTools`. Without this the enrichment agent made
+            // twenty `Bash` calls in a session whose plan reported the step as
+            // running degraded for want of a shell.
+            let denied = tools.denied();
             cmd.arg("-p")
                 .arg(prompt)
                 .arg("--allowedTools")
-                .arg(allowed_tools)
+                .arg(tools.allowed())
                 // Makes the run report its own token use on stdout, which the
                 // drain now keeps the tail of. Without it a round can only be
                 // compared on wall clock.
                 .arg("--output-format")
                 .arg("json")
                 .current_dir(cwd);
+            if !denied.is_empty() {
+                cmd.arg("--disallowedTools").arg(denied.join(","));
+            }
             if let Some(ref m) = model {
                 cmd.arg("--model").arg(m);
             }
@@ -2819,12 +2901,23 @@ async fn run_feedback_rounds(
     config: &EnrichConfig,
     runner: &dyn LlmRunner,
 ) -> Result<GateFeedback> {
-    let mut findings = evaluate_gate(gate, yaml_abs, corpus_root).await?;
+    let window = payload.chunk_articles.as_deref();
+    let reading = evaluate_gate(gate, yaml_abs, corpus_root, window).await?;
+    let mut findings = reading.answerable;
+    if !reading.outside_corpus.is_empty() {
+        tracing::info!(
+            gate = gate.label(),
+            outside_corpus = reading.outside_corpus.len(),
+            first = %reading.outside_corpus.first().cloned().unwrap_or_default(),
+            "findings recorded but not put to the agent: nothing in this file answers them"
+        );
+    }
     let mut progress = GateFeedback {
         gate: gate.label().to_string(),
         findings_initial: findings.len(),
         findings_final: findings.len(),
         rounds: Vec::new(),
+        outside_corpus: reading.outside_corpus,
     };
     let budget = config.feedback_rounds.for_gate(gate);
     if findings.is_empty() || budget == 0 {
@@ -2857,7 +2950,9 @@ async fn run_feedback_rounds(
             .run(&feedback_payload, yaml_abs, repo_path, config)
             .await?;
 
-        findings = evaluate_gate(gate, yaml_abs, corpus_root).await?;
+        let reading = evaluate_gate(gate, yaml_abs, corpus_root, window).await?;
+        findings = reading.answerable;
+        progress.outside_corpus = reading.outside_corpus;
         let findings_after = findings.len();
         let markings_after = marking_count(yaml_abs).await;
         let file_changed = file_digest(yaml_abs).await != digest_before;
@@ -2931,40 +3026,157 @@ async fn run_feedback_rounds(
     )))
 }
 
-/// Markings recorded in the law as it stands, or `None` when the file does
-/// not parse into the law model. `None` rather than 0: a file that cannot be
-/// read has an unknown number of markings, and reporting zero would read as
-/// "the agent marked nothing".
+/// Markings recorded in the law as it stands, or `None` when the file is not
+/// even YAML.
+///
+/// Counted off the untyped tree rather than the law model, and that is the
+/// whole point of the function. It used to go through [`load_law`], which
+/// deserialises the file into `ArticleBasedLaw` and fails on anything the
+/// model does not yet have a shape for. In the measured run the agent's very
+/// first edit wrote `requires:` as a list of mappings while the model had it
+/// as a list of strings, so every call returned `None` from the first round
+/// on, and the log recorded `markings_before=None markings_after=None` for
+/// every feedback round of the run. That is exactly the counter meant to catch
+/// a falling finding count bought by declaring more of the law unmodellable,
+/// which is the trade round 3 made, and it was blind for the whole run.
+///
+/// A counter is not a validator. Whether the file conforms to the model is the
+/// schema gate's question and it answers it out loud; this one only has to say
+/// how many markings are written down, and a shape it does not recognise
+/// elsewhere in the file is no reason to stop knowing that. `None` therefore
+/// now means what it says: the file could not be read at all.
 async fn marking_count(yaml_abs: &Path) -> Option<usize> {
-    let law = load_law(yaml_abs).await.ok()?;
-    Some(collect_markings_from(&law).len())
+    let raw = tokio::fs::read_to_string(yaml_abs).await.ok()?;
+    let doc: serde_yaml_ng::Value = match serde_yaml_ng::from_str(&raw) {
+        Ok(doc) => doc,
+        Err(error) => {
+            // Loud, because "unknown" is a real answer here and a silent one
+            // is how this went unnoticed for a whole run.
+            tracing::warn!(law = %yaml_abs.display(), %error, "cannot count markings: file is not YAML");
+            return None;
+        }
+    };
+    Some(count_markings_in(&doc))
+}
+
+/// Markings in an untyped law document.
+fn count_markings_in(doc: &serde_yaml_ng::Value) -> usize {
+    doc.get("articles")
+        .and_then(serde_yaml_ng::Value::as_sequence)
+        .map(|articles| {
+            articles
+                .iter()
+                .filter_map(|article| {
+                    article
+                        .get("machine_readable")?
+                        .get("markings")?
+                        .as_sequence()
+                        .map(Vec::len)
+                })
+                .sum()
+        })
+        .unwrap_or(0)
+}
+
+/// What a gate says about the law as it stands, split by who can answer it.
+#[derive(Debug, Default, Clone)]
+struct GateReading {
+    /// Findings the agent can answer by editing this file.
+    answerable: Vec<String>,
+    /// Findings whose resolution lies outside this file entirely: the law it
+    /// binds to is not in the corpus, or is there and carries no model yet.
+    outside_corpus: Vec<String>,
 }
 
 /// What a gate says about the law as it stands.
-async fn evaluate_gate(gate: Gate, yaml_abs: &Path, corpus_root: &Path) -> Result<Vec<String>> {
-    let raw = tokio::fs::read_to_string(yaml_abs).await?;
-    Ok(match gate {
-        Gate::Schema => crate::enrich_v2::checks::schema_errors(&raw),
-        Gate::Marking | Gate::Checks => crate::enrich_v2::checks::run_with_companions(
-            &raw,
-            Some(corpus_root),
-            yaml_abs.parent(),
-        )
-        .findings
-        .into_iter()
-        .filter(|f| {
-            // `accounted` asks whether the article carries any outcome at
-            // all, and the answer may be a marking. That makes it a question
-            // for the soft gate, beside the other two, rather than a defect.
-            let is_record = matches!(f.check, "marking" | "citation" | "accounted" | "reference");
-            matches!(gate, Gate::Marking) == is_record
-        })
-        .map(|f| match f.article {
-            Some(number) => format!("[{}] art. {number}: {}", f.check, f.detail),
-            None => format!("[{}] {}", f.check, f.detail),
-        })
-        .collect(),
+///
+/// The split is the point. Round 5 put nineteen checks findings to the agent
+/// and sixteen survived two rounds; twelve of those sixteen were of the form
+/// `"zorgverzekeringswet" does not produce output "is_verzekerde"`, against a
+/// corpus whose laws carry no model at all. No edit to the reading file can
+/// make another law produce an output, so those rounds could only ever end in
+/// the same list coming back unchanged. Asking anyway is not merely wasted: it
+/// teaches the agent that answering is not what the gate wants, and the way out
+/// it finds is to invent one.
+///
+/// They still have to be recorded — a binding onto a law nobody has harvested
+/// is work, just not this agent's — so they leave the loop and land in the run
+/// result instead.
+/// Whether a finding about `article` falls inside the window this run owns.
+///
+/// The prompt tells the agent to leave every article outside its list
+/// completely untouched, and the gate ran over the whole file, so a finding
+/// about article 3 in a window of 1 and 2 is an instruction to break the one
+/// rule the chunking rests on. Round 5 measured both halves of that: under the
+/// checks gate the agent declared four such findings out of scope and they came
+/// back unchanged twice, and under the marking gate's wording it modelled six
+/// out-of-window articles instead — correct work, done by the run that did not
+/// own it, on a file another run may be editing.
+///
+/// So the window filters the findings rather than the prompt explaining the
+/// contradiction away. Every article reaches a window eventually; the finding
+/// belongs to that run.
+///
+/// Matched in both directions because window and finding may be at different
+/// granularities: a window entry `3.2` is inside article `3`, and a finding
+/// about entry `3.2` is inside a window of `3`.
+fn in_window(window: Option<&[String]>, article: Option<&str>) -> bool {
+    let (Some(window), Some(article)) = (window, article) else {
+        return true;
+    };
+    window.iter().any(|entry| {
+        entry == article
+            || article.starts_with(&format!("{entry}."))
+            || entry.starts_with(&format!("{article}."))
     })
+}
+
+async fn evaluate_gate(
+    gate: Gate,
+    yaml_abs: &Path,
+    corpus_root: &Path,
+    window: Option<&[String]>,
+) -> Result<GateReading> {
+    let raw = tokio::fs::read_to_string(yaml_abs).await?;
+    let mut reading = GateReading::default();
+    match gate {
+        Gate::Schema => reading.answerable = crate::enrich_v2::checks::schema_errors(&raw),
+        Gate::Marking | Gate::Checks => {
+            for finding in crate::enrich_v2::checks::run_with_companions(
+                &raw,
+                Some(corpus_root),
+                yaml_abs.parent(),
+            )
+            .findings
+            {
+                // `accounted` asks whether the article carries any outcome at
+                // all, and the answer may be a marking. That makes it a question
+                // for the soft gate, beside the other two, rather than a defect.
+                let is_record = matches!(
+                    finding.check,
+                    "marking" | "citation" | "accounted" | "reference"
+                );
+                if matches!(gate, Gate::Marking) != is_record {
+                    continue;
+                }
+                if !in_window(window, finding.article.as_deref()) {
+                    continue;
+                }
+                let line = match &finding.article {
+                    Some(number) => {
+                        format!("[{}] art. {number}: {}", finding.check, finding.detail)
+                    }
+                    None => format!("[{}] {}", finding.check, finding.detail),
+                };
+                if finding.check == "outside-corpus" {
+                    reading.outside_corpus.push(line);
+                } else {
+                    reading.answerable.push(line);
+                }
+            }
+        }
+    }
+    Ok(reading)
 }
 
 /// Content fingerprint of a file, or `None` when it cannot be read. Only
@@ -3176,6 +3388,29 @@ pub async fn execute_enrich_with_runner(
                 .await?,
             );
         }
+        // The hard gate again, last, because the two soft gates write.
+        //
+        // Round 5 measured the cost of not doing this. The schema gate passed,
+        // the marking round then added an `overrides` entry without its `law`
+        // key, and nothing looked at the file again until `load_law` below,
+        // by which time the session was gone. The one agent that could have
+        // fixed it in a sentence — the one that had just written it, with the
+        // article still in front of it — was never asked. On a clean file this
+        // costs one evaluation and no agent call at all.
+        let mut closing = run_feedback_rounds(
+            Gate::Schema,
+            &yaml_abs,
+            repo_path,
+            payload,
+            repo_path,
+            config,
+            runner,
+        )
+        .await?;
+        // Named apart from the opening pass so a reader of the record can tell
+        // which of the two found what.
+        closing.gate = "schema-final".to_string();
+        feedback.push(closing);
     }
 
     // Count articles with machine_readable after enrichment.
@@ -4354,6 +4589,165 @@ articles:
         config
     }
 
+    #[test]
+    fn a_finding_outside_the_window_is_not_this_runs_question() {
+        // The contradiction round 5 ran into: the prompt says leave every
+        // article outside your list completely untouched, and the gate handed
+        // the same agent findings about articles 3 through 8.
+        let window = vec!["1".to_owned(), "2".to_owned()];
+        assert!(in_window(Some(&window), Some("1")));
+        assert!(!in_window(Some(&window), Some("3")));
+
+        // Granularity does not decide ownership, in either direction.
+        assert!(in_window(Some(&window), Some("2.1.a")));
+        assert!(in_window(Some(&["3.2".to_owned()]), Some("3")));
+
+        // A whole-law run owns everything, and a finding about the file rather
+        // than about an article is nobody's to duck.
+        assert!(in_window(None, Some("9")));
+        assert!(in_window(Some(&window), None));
+    }
+
+    #[tokio::test]
+    async fn a_finding_no_edit_here_can_answer_is_recorded_and_never_asked() {
+        // Twelve of the sixteen findings that survived round 5's checks gate
+        // were of the form `"zorgverzekeringswet" does not produce output
+        // "is_verzekerde"` against a corpus of laws that carry no model at
+        // all. No edit to this file makes another law produce an output, so
+        // every round could only return the same list. They are still work,
+        // so they land in the record instead of in a round.
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let path = law_dir.join("2025-01-01.yaml");
+        tokio::fs::write(
+            &path,
+            r#"$id: test_law
+name: Testwet
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: De aanspraak bestaat voor de verzekerde.
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+        input:
+          - name: is_verzekerde
+            type: boolean
+            source:
+              regulation: wet_die_niet_bestaat
+              output: is_verzekerde
+        actions:
+          - output: aanspraak
+            value: $is_verzekerde
+"#,
+        )
+        .await
+        .unwrap();
+
+        let reading = evaluate_gate(Gate::Checks, &path, dir.path(), None)
+            .await
+            .unwrap();
+        assert_eq!(reading.outside_corpus.len(), 1, "{reading:?}");
+        assert!(
+            reading.outside_corpus[0].contains("wet_die_niet_bestaat"),
+            "{reading:?}"
+        );
+        assert!(
+            !reading
+                .answerable
+                .iter()
+                .any(|f| f.contains("wet_die_niet_bestaat")),
+            "an unanswerable finding reached the loop: {reading:?}"
+        );
+
+        // And a run over it puts none of them to the agent while keeping them
+        // in the record.
+        let config = rounds_config(FeedbackRounds {
+            checks: 2,
+            ..FeedbackRounds::default()
+        });
+        let runner = MarkingRunner {
+            calls: std::sync::Mutex::new(0),
+        };
+        let payload = chunk_test_payload("regulation/nl/wet/test_law/2025-01-01.yaml");
+        let progress = run_feedback_rounds(
+            Gate::Checks,
+            &path,
+            dir.path(),
+            &payload,
+            dir.path(),
+            &config,
+            &runner,
+        )
+        .await
+        .unwrap();
+        assert_eq!(progress.outside_corpus.len(), 1);
+        assert_eq!(
+            *runner.calls.lock().unwrap(),
+            0,
+            "an agent was called for a finding it cannot answer"
+        );
+    }
+
+    #[tokio::test]
+    async fn markings_are_counted_even_when_the_law_model_cannot_read_the_file() {
+        // The regression, from the run that lost the count. Two shapes broke
+        // it there: `requires` written as a list of mappings against a model
+        // that had a list of strings, and an intra-law `overrides` entry with
+        // no `law` key. Every marking count in that run came back `None`, so
+        // the one number that would have shown round 3 buying a lower finding
+        // count with more markings showed nothing. The second shape is the one
+        // pinned here because the model still rejects it, and the assertion
+        // below fails loudly if that ever stops being true.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("2026-01-01.yaml");
+        tokio::fs::write(
+            &path,
+            r#"$id: test_law
+articles:
+  - number: '1'
+    text: tekst
+    machine_readable:
+      overrides:
+        - article: '4'
+          output: hoogte
+          voids: true
+      markings:
+        - about: iets
+          reason: waarom
+          resolution: engine
+          target: []
+          legal_text_excerpt: woorden
+  - number: '2'
+    text: tekst
+    machine_readable:
+      markings:
+        - about: iets anders
+          reason: waarom
+          resolution: model
+          target: []
+          legal_text_excerpt: woorden
+"#,
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            load_law(&path).await.is_err(),
+            "fixture must be a file the law model rejects, or it proves nothing"
+        );
+        assert_eq!(marking_count(&path).await, Some(2));
+
+        // And `None` still means what it says: unreadable, not "zero".
+        tokio::fs::write(&path, "articles: [ this is not yaml\n")
+            .await
+            .unwrap();
+        assert_eq!(marking_count(&path).await, None);
+    }
+
     #[tokio::test]
     async fn a_second_round_runs_and_is_measured_per_round() {
         // Three articles, three findings, two rounds allowed. Each round
@@ -4659,6 +5053,48 @@ articles:
     }
 
     #[test]
+    fn a_tool_the_lane_does_not_grant_is_denied_and_not_merely_left_off() {
+        // `--allowedTools` auto-approves; it does not withhold. Leaving Bash
+        // off it is what let the enrichment agent make twenty shell calls in a
+        // session whose plan reported the shell as absent. Whatever the
+        // capability planner calls ungranted has to arrive as `--disallowedTools`
+        // or the plan is a description of a runtime that does not exist.
+        let provider = LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        };
+        let args = |allow_bash: bool, deny: &[String]| -> Vec<String> {
+            build_command(
+                &provider,
+                "prompt",
+                None,
+                Path::new("/tmp"),
+                ToolPolicy { allow_bash, deny },
+                None,
+                SessionAction::Cold,
+            )
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect()
+        };
+
+        let lane = args(false, &["WebFetch".to_owned(), "WebSearch".to_owned()]);
+        let at = lane
+            .iter()
+            .position(|a| a == "--disallowedTools")
+            .expect("lane denies something");
+        assert_eq!(lane[at + 1], "Bash,WebFetch,WebSearch");
+
+        // A caller that asked for the shell keeps it.
+        let converter = args(true, &[]);
+        assert!(
+            !converter.iter().any(|a| a == "--disallowedTools"),
+            "document-convert must keep its shell: {converter:?}"
+        );
+    }
+
+    #[test]
     fn the_claude_command_starts_and_resumes_a_session() {
         let provider = LlmProvider::Claude {
             path: "claude".into(),
@@ -4671,7 +5107,10 @@ articles:
                 "prompt",
                 None,
                 Path::new("/tmp"),
-                false,
+                ToolPolicy {
+                    allow_bash: false,
+                    deny: &[],
+                },
                 None,
                 action,
             )
@@ -5874,6 +6313,12 @@ articles:
         assert!(checks.contains("`open_term`"));
         assert!(checks.contains("`marking`"));
         assert!(checks.contains("input with a `source`"));
+        // And it says where the answer goes. Round 5's agent wrote a correct,
+        // reasoned answer into `.enrichment-result.yaml`; the check reads only
+        // the law YAML, so every finding came back word for word and the
+        // reasoning was read by nobody.
+        assert!(checks.contains(".enrichment-result.yaml"), "{checks}");
+        assert!(checks.contains("is not \nan answer") || checks.contains("is not an answer"));
 
         // The schema gate is the one that may not be answered with a marking;
         // it still has to name the drawer a construct belongs in.
@@ -6118,6 +6563,17 @@ articles:
         assert_eq!(result.enrich_cursor, 2);
         assert_eq!(result.articles_with_machine_readable, 2);
         assert!((result.coverage_score - 0.5).abs() < f64::EPSILON);
+
+        // The hard gate runs again after the two soft ones, because those two
+        // write and round 5's marking round left the file unloadable. Without
+        // the closing pass nothing looks at the file until the session is
+        // already gone.
+        let gates: Vec<&str> = result.feedback.iter().map(|g| g.gate.as_str()).collect();
+        assert_eq!(
+            gates,
+            vec!["schema", "checks", "marking", "schema-final"],
+            "gate order changed"
+        );
 
         // Cursor persisted on disk for the continuation run.
         let meta: EnrichmentMetadata = serde_yaml_ng::from_str(

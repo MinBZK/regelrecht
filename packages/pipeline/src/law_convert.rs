@@ -133,7 +133,12 @@ impl LawStructurer for LlmLawStructurer {
             None,
             work_dir,
             config,
-            allow_bash,
+            // Nothing extra withheld: `allow_bash` already decides the shell,
+            // and this lane reads no skill that could ask for more.
+            crate::enrich::ToolPolicy {
+                allow_bash,
+                deny: &[],
+            },
             SessionAction::Cold,
         )
         .await
