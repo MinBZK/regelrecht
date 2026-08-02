@@ -512,6 +512,34 @@ pub const AVAILABLE_OPERATIONS: &[(&str, &[&str])] = &[
         "DAY_OF_WEEK",
         &["dag van de week", "day of week", "weekdag"],
     ),
+    // "de maand waarin" and "de dag van de maand" are deliberately absent: they
+    // are the opening words of the figure START_OF writes ("de eerste dag van de
+    // maand volgende op de maand waarin"), and a phrase that matches both
+    // entries would name whichever stands first in this list.
+    (
+        "DATE_PART",
+        &[
+            "jaar uit",
+            "kalenderjaar waarin",
+            "jaartal",
+            "maand uit",
+            "maandnummer",
+            "dagnummer",
+            "year of",
+            "month of",
+        ],
+    ),
+    (
+        "START_OF",
+        &[
+            "eerste dag van de maand",
+            "eerste dag van de kalendermaand",
+            "begin van de maand",
+            "eerste dag van het jaar",
+            "afkappen tot",
+            "start of month",
+        ],
+    ),
 ];
 
 /// Words that give a marking away as being about content that another
@@ -4507,6 +4535,62 @@ articles:
         assert_eq!(findings.len(), 1, "{findings:?}");
         assert!(
             findings[0].detail.contains("ROUND"),
+            "{}",
+            findings[0].detail
+        );
+    }
+
+    #[test]
+    fn a_marking_that_asks_for_the_first_day_of_the_next_month_is_flagged() {
+        // The figure the enricher asked for four times over. START_OF plus
+        // DATE_ADD writes it in two lines, so a marking is a detour.
+        let yaml = r#"
+articles:
+  - number: '1'
+    text: >-
+      Hij is verzekerd vanaf de eerste dag van de kalendermaand volgende op de
+      maand waarin hij achttien jaar wordt.
+    machine_readable:
+      markings:
+        - about: de eerste dag van de maand volgend op een gebeurtenis
+          resolution: operation
+          target: [ingangsdatum]
+          legal_text_excerpt: de eerste dag van de kalendermaand volgende op de maand
+"#;
+        let doc: Value = serde_yaml_ng::from_str(yaml).unwrap();
+        let findings = marking_discipline(
+            &doc,
+            "Hij is verzekerd vanaf de eerste dag van de kalendermaand volgende op de maand waarin hij achttien jaar wordt.",
+        );
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(
+            findings[0].detail.contains("START_OF"),
+            "{}",
+            findings[0].detail
+        );
+    }
+
+    #[test]
+    fn a_marking_that_asks_to_read_the_year_out_of_a_date_is_flagged() {
+        let yaml = r#"
+articles:
+  - number: '1'
+    text: Berekeningsjaar is het kalenderjaar waarin de peildatum valt.
+    machine_readable:
+      markings:
+        - about: het kalenderjaar waarin de peildatum valt
+          resolution: operation
+          target: [berekeningsjaar]
+          legal_text_excerpt: het kalenderjaar waarin de peildatum valt
+"#;
+        let doc: Value = serde_yaml_ng::from_str(yaml).unwrap();
+        let findings = marking_discipline(
+            &doc,
+            "Berekeningsjaar is het kalenderjaar waarin de peildatum valt.",
+        );
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(
+            findings[0].detail.contains("DATE_PART"),
             "{}",
             findings[0].detail
         );
