@@ -211,3 +211,30 @@ test('faalt de afleiding, dan bouwt het script alles met een zichtbare waarschuw
     );
   }
 });
+
+test('een schemawijziging raakt elk Rust-image', () => {
+  // Elk Rust-image doet `COPY schema/`, en corpus bakt er een schema uit in met
+  // include_str!. Zonder deze regel levert een schemawijziging stille,
+  // verouderde images op: de gevaarlijkste uitkomst, want niets wordt rood.
+  const hit = namesOf(['schema/v0.5.6/schema.json']);
+  for (const name of ['editor', 'admin', 'harvester-worker', 'enrich-worker', 'pipeline-api']) {
+    assert.equal(hit[name], true, name);
+  }
+});
+
+test('een Dockerfile raakt alleen de images die hem gebruiken', () => {
+  // packages/pipeline/Dockerfile ligt in de cratemap van pipeline, en editor en
+  // admin hangen via de graaf aan die crate. Ze gebruiken die Dockerfile niet,
+  // dus ze horen niet mee te bouwen.
+  const pipeline = namesOf(['packages/pipeline/Dockerfile']);
+  assert.equal(pipeline['harvester-worker'], true);
+  assert.equal(pipeline['enrich-worker'], true);
+  assert.equal(pipeline['pipeline-api'], true);
+  assert.equal(pipeline.editor, false);
+  assert.equal(pipeline.admin, false);
+
+  // En andersom blijft de crate zelf wel gewoon werken.
+  const source = namesOf(['packages/pipeline/src/worker.rs']);
+  assert.equal(source.editor, true);
+  assert.equal(source.admin, true);
+});
