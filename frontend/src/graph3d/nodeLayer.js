@@ -33,6 +33,24 @@ import {
 import { GEOMETRY_FAMILIES } from './graphSchema.js';
 import { nodeColor, colorToLinearRgb } from './palette.js';
 
+/**
+ * Visibility floor, as an on-screen radius in device pixels.
+ *
+ * Below roughly one device pixel across a node stops being small and starts
+ * being absent: without multisampling a sub-pixel triangle either misses the
+ * sample point entirely or catches it, so the node blinks as the camera turns,
+ * and multisampling is off above 60.000 nodes precisely where the nodes are
+ * smallest. 0,75 keeps a node one and a half pixels across, which on a normal
+ * screen is a dot you can see and on a HiDPI screen still a fine one.
+ */
+export const MIN_NODE_PIXELS = 0.75;
+
+/**
+ * The same floor for the id pass, in device pixels of radius. Larger, because
+ * a target you cannot hit is worse than a dot you cannot see.
+ */
+export const MIN_PICK_PIXELS = 3.0;
+
 export const STATE_NORMAL = 0;
 export const STATE_HIGHLIGHT = 1;
 export const STATE_SELECTED = 2;
@@ -46,6 +64,8 @@ const NODE_VERT = /* glsl */ `
 
   uniform float uWeightMix;
   uniform float uBaseSize;
+  uniform float uPixelScale;
+  uniform float uMinPixels;
 
   varying vec3 vColor;
   varying vec3 vNormalW;
@@ -53,7 +73,16 @@ const NODE_VERT = /* glsl */ `
   varying float vDepth;
 
   void main() {
-    float s = uBaseSize * mix(1.0, aScale, uWeightMix);
+    // World size first, then the visibility floor. Sized off the density the
+    // node is small enough that at "hele graaf in beeld" it can fall below a
+    // pixel, and a triangle smaller than a pixel does not go faint - it
+    // flickers on and off with the camera. The floor is stated in device
+    // pixels and converted to world units at this instance's own depth, so it
+    // only bites where the node would otherwise disappear and lets the real
+    // size take over the moment you zoom in.
+    float worldSize = uBaseSize * mix(1.0, aScale, uWeightMix);
+    float viewZ = max(-(modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).z, 1e-6);
+    float s = max(worldSize, uMinPixels * uPixelScale * viewZ);
     vec3 local = position * s;
     vec4 world = instanceMatrix * vec4(local, 1.0);
     vNormalW = normalize(mat3(instanceMatrix) * normal);
@@ -122,9 +151,16 @@ const PICK_VERT = /* glsl */ `
   uniform float uWeightMix;
   uniform float uBaseSize;
   uniform float uPickInflate;
+  uniform float uPixelScale;
+  uniform float uPickMinPixels;
   varying vec3 vPick;
   void main() {
+    // The id pass gets its own, larger floor: a node drawn one pixel wide is
+    // readable as a field but not hittable with a mouse, and a hover target
+    // that small would make the whole map feel broken.
     float s = uBaseSize * mix(1.0, aScale, uWeightMix) * uPickInflate;
+    float viewZ = max(-(modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).z, 1e-6);
+    s = max(s, uPickMinPixels * uPixelScale * viewZ);
     vec4 world = instanceMatrix * vec4(position * s, 1.0);
     vPick = aPick;
     gl_Position = projectionMatrix * modelViewMatrix * world;
@@ -181,16 +217,184 @@ export function decodePickId(r, g, b) {
   return id === 0 ? -1 : id - 1;
 }
 
+/** Smallest node scale in weight mode, as a factor on the base size. */
+export const WEIGHT_SCALE_MIN = 0.75;
+/** Largest node scale in weight mode. */
+export const WEIGHT_SCALE_MAX = 2.0;
+
 /**
- * Weight -> radius. Logarithmic, and hard-capped at 4:1 between the largest
- * and the smallest node so a heavyweight never hides its neighbours.
+ * Weight -> radius, as a factor on the base size.
+ *
+ * Logarithmic and capped at under 3:1 between the heaviest and the lightest
+ * node. The range is centred on 1 rather than starting there: the base size is
+ * calibrated on the spacing of the layout, so a weight factor that only ever
+ * multiplies would push every node past the spacing it was fitted to. Weight
+ * modulates the size; it does not set it.
  */
 export function weightScale(weight, minWeight, maxWeight) {
   const lo = Math.log(1 + Math.max(0, minWeight));
   const hi = Math.log(1 + Math.max(0, maxWeight));
   if (!(hi > lo)) return 1;
   const t = (Math.log(1 + Math.max(0, weight)) - lo) / (hi - lo);
-  return 1 + 3 * Math.min(1, Math.max(0, t));
+  return (
+    WEIGHT_SCALE_MIN + (WEIGHT_SCALE_MAX - WEIGHT_SCALE_MIN) * Math.min(1, Math.max(0, t))
+  );
+}
+
+/**
+ * Node radius as a fraction of the typical nearest-neighbour distance.
+ *
+ * At 0.22 a node of average weight is roughly a third of the way to its
+ * nearest neighbour and the heaviest one (x2, see `WEIGHT_SCALE_MAX`) still
+ * does not touch it. Everything larger than that closes the gaps between
+ * neighbours, and once the gaps are closed the corpus reads as one solid body
+ * whatever the layout underneath it says.
+ */
+export const NODE_RADIUS_FRACTION = 0.22;
+
+/**
+ * Distance from a node to its nearest neighbour, at a low quantile over a
+ * deterministic sample.
+ *
+ * This is the number the node size has to follow, and it is not the same thing
+ * as the size of the cloud. The layout puts a few framework laws far outside
+ * the body of the corpus, so the bounding radius is twice what the corpus
+ * itself spans, and it says nothing at all about whether two nodes touch. The
+ * mean spacing `2R/cbrt(N)` inherits both problems: it is inflated by the
+ * outliers and it assumes the nodes are spread evenly, while a force layout is
+ * dense in the middle by construction. Measured on the real corpus the two
+ * disagree by a factor of five at law level and twenty at article level, which
+ * is exactly the amount by which the picture was too thick.
+ *
+ * A low quantile (the default keeps the densest quarter) rather than the median
+ * because the size has to hold where the graph is dense; where it is sparse a
+ * node that is smaller than it could be costs nothing.
+ *
+ * @param {Float32Array} positions xyz per node
+ * @param {number} nodeCount
+ * @param {object} [opts]
+ * @returns {number} 0 when there is nothing to measure
+ */
+export function nearestNeighbourSpacing(
+  positions,
+  nodeCount,
+  { sample = 4000, quantile = 0.25 } = {},
+) {
+  if (nodeCount < 2) return 0;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let maxZ = -Infinity;
+  for (let i = 0; i < nodeCount; i++) {
+    const x = positions[i * 3];
+    const y = positions[i * 3 + 1];
+    const z = positions[i * 3 + 2];
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (z < minZ) minZ = z;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+    if (z > maxZ) maxZ = z;
+  }
+  if (!Number.isFinite(minX)) return 0;
+  const span = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
+  if (!(span > 0)) return 0;
+
+  // Grid over the layout, refined until no cell holds more than a handful of
+  // nodes. One pass at the average density is not enough: a force layout piles
+  // most of the corpus into the middle, and a cell there would hold thousands
+  // of nodes - which is either a scan of the whole core per sample, or a cap on
+  // that scan that reports the distance to some arbitrary node in the cell
+  // instead of to the nearest one. Shrinking the cell until the fullest one is
+  // small keeps both the cost and the answer honest, at O(N) per pass and at
+  // most a handful of passes.
+  const MAX_PER_CELL = 64;
+  let perAxis = Math.min(512, Math.max(2, Math.round(Math.cbrt(8 * nodeCount))));
+  let cell = span / perAxis;
+  let cellOf;
+  let buckets;
+  for (let pass = 0; ; pass++) {
+    cell = span / perAxis;
+    const axis = perAxis;
+    const size = cell;
+    cellOf = (v, lo) => Math.min(axis - 1, Math.max(0, Math.floor((v - lo) / size)));
+    buckets = new Map();
+    let fullest = 0;
+    for (let i = 0; i < nodeCount; i++) {
+      const key =
+        (cellOf(positions[i * 3], minX) * axis + cellOf(positions[i * 3 + 1], minY)) * axis +
+        cellOf(positions[i * 3 + 2], minZ);
+      const bucket = buckets.get(key);
+      if (bucket) {
+        bucket.push(i);
+        if (bucket.length > fullest) fullest = bucket.length;
+      } else buckets.set(key, [i]);
+    }
+    if (fullest <= MAX_PER_CELL || perAxis >= 512 || pass >= 3) break;
+    // Jump straight to the resolution the fullest cell asks for rather than
+    // halving: at corpus scale every extra pass is another walk over 200.000
+    // nodes, and this converges in one or two.
+    perAxis = Math.min(
+      512,
+      Math.max(perAxis + 1, Math.ceil(perAxis * Math.cbrt(fullest / MAX_PER_CELL))),
+    );
+  }
+
+  const step = Math.max(1, Math.floor(nodeCount / Math.max(1, sample)));
+  const found = [];
+  for (let i = 0; i < nodeCount; i += step) {
+    const gx = cellOf(positions[i * 3], minX);
+    const gy = cellOf(positions[i * 3 + 1], minY);
+    const gz = cellOf(positions[i * 3 + 2], minZ);
+    let best = Infinity;
+    // Rings outward until the nearest hit is closer than the part of the grid
+    // still unsearched. One ring is enough wherever the layout is dense, which
+    // is where the answer comes from; the further rings only exist so a node in
+    // a thin region is not silently dropped.
+    for (let r = 1; r <= 4; r++) {
+      for (let a = -r; a <= r; a++) {
+        const x = gx + a;
+        if (x < 0 || x >= perAxis) continue;
+        for (let b = -r; b <= r; b++) {
+          const y = gy + b;
+          if (y < 0 || y >= perAxis) continue;
+          for (let c = -r; c <= r; c++) {
+            const z = gz + c;
+            if (z < 0 || z >= perAxis) continue;
+            const bucket = buckets.get((x * perAxis + y) * perAxis + z);
+            if (!bucket) continue;
+            // Cap the scan: a layout can pile thousands of nodes into one cell,
+            // and an uncapped search would make this O(sample x N).
+            const upto = Math.min(bucket.length, 256);
+            for (let k = 0; k < upto; k++) {
+              const j = bucket[k];
+              if (j === i) continue;
+              const dx = positions[j * 3] - positions[i * 3];
+              const dy = positions[j * 3 + 1] - positions[i * 3 + 1];
+              const dz = positions[j * 3 + 2] - positions[i * 3 + 2];
+              const d2 = dx * dx + dy * dy + dz * dz;
+              if (d2 < best) best = d2;
+            }
+          }
+        }
+      }
+      // `best` is a squared distance: everything not yet searched lies at
+      // least r cells away, so a hit closer than that is already the nearest.
+      const reach = r * cell;
+      if (best <= reach * reach) break;
+    }
+    // A sample with nothing within four cells of itself sits in empty space. It
+    // is dropped rather than counted as "very far away": the size follows the
+    // dense part of the corpus, not the strays around it.
+    if (best < Infinity && best > 0) found.push(Math.sqrt(best));
+  }
+  if (found.length === 0) return 0;
+  found.sort((a, b) => a - b);
+  return found[Math.min(found.length - 1, Math.floor(quantile * (found.length - 1)))];
 }
 
 export class NodeLayer {
@@ -232,6 +436,11 @@ export class NodeLayer {
       uSelection: { value: new Color(palette.selection) },
       uDimOthers: { value: 0 },
       uPickInflate: { value: 1.6 },
+      // World units per device pixel at unit view depth; set from the viewport
+      // (see `setPixelScale`). Zero until then, which switches both floors off.
+      uPixelScale: { value: 0 },
+      uMinPixels: { value: MIN_NODE_PIXELS },
+      uPickMinPixels: { value: MIN_PICK_PIXELS },
       uFogColor: { value: new Color(palette.background) },
       uFogRange: { value: new Vector2(1e9, 1e9 + 1) },
     };
@@ -320,6 +529,19 @@ export class NodeLayer {
 
   setDimOthers(on) {
     this.uniforms.uDimOthers.value = on ? 1 : 0;
+  }
+
+  /**
+   * Tell the shader how many world units one device pixel is worth at unit
+   * view depth, so the pixel floors mean the same thing on every viewport and
+   * every device pixel ratio.
+   *
+   * @param {number} fovRadians vertical field of view
+   * @param {number} drawingBufferHeight height in device pixels
+   */
+  setPixelScale(fovRadians, drawingBufferHeight) {
+    const height = Math.max(1, drawingBufferHeight);
+    this.uniforms.uPixelScale.value = (2 * Math.tan(fovRadians / 2)) / height;
   }
 
   /**

@@ -23,7 +23,14 @@ import {
   WebGLRenderer,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { NodeLayer, STATE_NORMAL, STATE_HIGHLIGHT, STATE_SELECTED } from './nodeLayer.js';
+import {
+  NodeLayer,
+  NODE_RADIUS_FRACTION,
+  nearestNeighbourSpacing,
+  STATE_NORMAL,
+  STATE_HIGHLIGHT,
+  STATE_SELECTED,
+} from './nodeLayer.js';
 import { EdgeLayer, ThickEdgeLayer } from './edgeLayer.js';
 import { LabelLayer, selectLabels } from './labelLayer.js';
 import { isEnriched } from './graphSchema.js';
@@ -93,9 +100,13 @@ export function labelOrder(graph) {
  *
  * The payload's coordinates are whatever the layout produced - the real corpus
  * spans a few hundred units with the framework laws thrown far out - so a fixed
- * node radius is either invisible or a solid blob. Sizing off the mean spacing
- * (`2R / cbrt(N)`) keeps the density of the picture constant whatever the
- * layout's units happen to be.
+ * node radius is either invisible or a solid blob. The size therefore follows
+ * the layout, but from its density and not from its extent: what decides
+ * whether two nodes overlap is the distance to the nearest neighbour, and the
+ * radius of the cloud says nothing about that. See `nearestNeighbourSpacing`.
+ *
+ * The bounding box stays what it is - the camera has to frame every node,
+ * strays included - and only the size is measured differently.
  */
 export function graphExtent(graph) {
   let minX = Infinity;
@@ -121,13 +132,16 @@ export function graphExtent(graph) {
     maxX = maxY = maxZ = 1;
   }
   const radius = Math.max(1e-3, Math.max(maxX - minX, maxY - minY, maxZ - minZ) / 2);
-  const spacing = (2 * radius) / Math.max(1, Math.cbrt(graph.nodeCount));
+  // Fallback for a layout too small or too degenerate to measure a neighbour
+  // distance in: then the extent is all there is to go on.
+  const spacing =
+    nearestNeighbourSpacing(graph.positions, graph.nodeCount) ||
+    (2 * radius) / Math.max(1, Math.cbrt(graph.nodeCount));
   return {
     center: [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2],
     radius,
-    // A quarter of the mean spacing: dense enough to read as a field, open
-    // enough that a node does not hide its neighbours.
-    baseSize: Math.max(1e-4, spacing * 0.25),
+    spacing,
+    baseSize: Math.max(1e-4, spacing * NODE_RADIUS_FRACTION),
   };
 }
 
@@ -250,6 +264,13 @@ export class GraphScene {
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    // The node size floors are stated in device pixels, so they have to be
+    // retranslated into world units whenever the viewport or the pixel ratio
+    // changes.
+    this.nodes.setPixelScale(
+      (this.camera.fov * Math.PI) / 180,
+      height * this.renderer.getPixelRatio(),
+    );
     this.thickEdges.setResolution(width, height);
     if (this.labels) this.labels.setResolution(width, height);
     this.labelsDirty = true;
