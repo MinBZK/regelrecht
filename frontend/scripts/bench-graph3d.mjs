@@ -105,14 +105,15 @@ const COLUMNS = [
 ];
 
 const COVERAGE_COLUMNS = [
-  ['case', 22],
-  ['nodes', 8],
+  ['case', 20],
   ['maat', 6],
   ['beeld', 11],
-  ['dekking', 9],
-  ['inkt', 8],
-  ['buurafst', 9],
-  ['straal', 8],
+  ['knoopdek', 9],
+  ['kantdek', 9],
+  ['zwaarte', 8],
+  ['kant-zw', 8],
+  ['knoop:kant', 11],
+  ['straal', 7],
 ];
 
 function row(values) {
@@ -239,12 +240,13 @@ async function main() {
           console.log(
             row2([
               c.name,
-              res.nodes,
               sizing,
               v.view,
               `${v.coverage}%`,
-              `${v.ink}%`,
-              res.spacing,
+              `${v.edgeCoverage}%`,
+              `${v.weight}%`,
+              `${v.edgeWeight}%`,
+              `${res.contrast}x`,
               res.baseSize,
             ]),
           );

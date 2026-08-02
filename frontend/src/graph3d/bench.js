@@ -17,7 +17,7 @@ import { GraphScene } from './GraphScene.js';
 import { buildSdfAtlas } from './sdfAtlas.js';
 import { readPalette } from './palette.js';
 import { FrameStats } from './frameStats.js';
-import { ThickEdgeLayer } from './edgeLayer.js';
+import { buildEdgeColors, ThickEdgeLayer } from './edgeLayer.js';
 import { WEIGHT_SCALE_MAX, WEIGHT_SCALE_MIN } from './nodeLayer.js';
 
 let scene = null;
@@ -276,6 +276,26 @@ export async function measureCoverage(cfg) {
     const { radius } = scene.extent;
     nodes.uniforms.uBaseSize.value = ((2 * radius) / Math.max(1, Math.cbrt(graph.nodeCount))) * 0.25;
     nodes.uniforms.uMinPixels.value = 0;
+    // And the edges as they were: the same grey as the nodes, three times the
+    // strength, and no depth cue on them at all. Nearly every edge in the
+    // corpus is a citation, and citations are drawn through the per-edge colour
+    // buffer, so the old colour has to go back into that buffer and not onto
+    // the material - a tint on the material would multiply the two.
+    const wasPalette = {
+      ...scene.palette,
+      edgeTypes: [scene.palette.grey, ...scene.palette.edgeTypes.slice(1)],
+    };
+    if (scene.edges.perEdgeColor) {
+      const attr = scene.edges.mesh.geometry.getAttribute('color');
+      buildEdgeColors(graph, wasPalette, attr.array);
+      attr.needsUpdate = true;
+    } else {
+      scene.edges.material.color = new Color(scene.palette.grey);
+    }
+    scene.edges.setOpacity(
+      Math.max(0.06, Math.min(0.4, 0.4 * Math.pow(30000 / Math.max(graph.edgeCount, 1), 0.35))),
+    );
+    scene.setEdgeFog(1e9, 1e9 + 1);
     for (const mesh of nodes.meshes) {
       const attr = mesh.geometry.getAttribute('aScale');
       if (!attr) continue;
@@ -306,40 +326,61 @@ export async function measureCoverage(cfg) {
   const bgG = (bgHex >> 8) & 0xff;
   const bgB = bgHex & 0xff;
 
-  const shot = (name) => {
-    // The whole picture first: node coverage answers "how thick are the dots",
-    // but what the eye calls a ball is every pixel that is not background, and
-    // the difference between the two numbers is what the edges are doing.
-    const prevFrameTarget = scene.renderer.getRenderTarget();
-    scene.renderer.setRenderTarget(target);
-    scene.renderer.clear();
-    scene.renderer.render(scene.scene, scene.camera);
-    scene.renderer.readRenderTargetPixels(target, 0, 0, width, height, pixels);
-    scene.renderer.setRenderTarget(prevFrameTarget);
-    let inked = 0;
-    for (let p = 0; p < pixels.length; p += 4) {
-      // A tenth of the range: below that a pixel is a hint of a line, not ink.
-      const d =
-        Math.abs(pixels[p] - bgR) + Math.abs(pixels[p + 1] - bgG) + Math.abs(pixels[p + 2] - bgB);
-      if (d > 25) inked++;
-    }
+  const frame = new Uint8Array(width * height * 4);
+  const deviation = (buf, p) =>
+    Math.abs(buf[p] - bgR) + Math.abs(buf[p + 1] - bgG) + Math.abs(buf[p + 2] - bgB);
 
-    // Inflation off and the id floor equal to the draw floor: the id pass then
-    // covers exactly the pixels the visible nodes cover, which is the thing
-    // being measured.
+  const shot = (name) => {
+    // Three pictures of the same view, because "one grey mass" is a statement
+    // about two things at once - how much of the screen is painted, and how
+    // hard each layer paints it. A count of non-background pixels cannot see a
+    // weaker line at all: the line still covers the pixel, it just covers it
+    // more gently. So the strength is measured as the average distance from the
+    // background, and the contrast as that distance inside the nodes against
+    // the same distance in the web behind them.
+    const prevFrameTarget = scene.renderer.getRenderTarget();
+    const draw = () => {
+      scene.renderer.setRenderTarget(target);
+      scene.renderer.clear();
+      scene.renderer.render(scene.scene, scene.camera);
+      scene.renderer.readRenderTargetPixels(target, 0, 0, width, height, pixels);
+      scene.renderer.setRenderTarget(prevFrameTarget);
+    };
+
+    // 1. the whole picture
+    draw();
+    frame.set(pixels);
+
+    // 2. the edges alone
+    const wasVisible = nodes.meshes.map((m) => m.visible);
+    for (const m of nodes.meshes) m.visible = false;
+    draw();
+    let edgeCovered = 0;
+    let edgeWeight = 0;
+    for (let p = 0; p < pixels.length; p += 4) {
+      const d = deviation(pixels, p);
+      if (d > 25) edgeCovered++;
+      edgeWeight += d;
+    }
+    nodes.meshes.forEach((m, i) => {
+      m.visible = wasVisible[i];
+    });
+
+    // 3. the nodes as a mask, through the id pass: inflation off and the id
+    // floor equal to the draw floor, so it covers exactly the pixels the
+    // visible nodes cover.
     const inflate = nodes.uniforms.uPickInflate.value;
     const pickFloor = nodes.uniforms.uPickMinPixels.value;
     nodes.uniforms.uPickInflate.value = 1;
     nodes.uniforms.uPickMinPixels.value = nodes.uniforms.uMinPixels.value;
     nodes.useMaterial('pick');
     scene.picker.hideNonPickable(true);
-    const prevTarget = scene.renderer.getRenderTarget();
     scene.renderer.setRenderTarget(target);
     scene.renderer.setClearColor(0x000000, 1);
     scene.renderer.clear();
     scene.renderer.render(scene.scene, scene.camera);
     scene.renderer.readRenderTargetPixels(target, 0, 0, width, height, pixels);
-    scene.renderer.setRenderTarget(prevTarget);
+    scene.renderer.setRenderTarget(prevFrameTarget);
     scene.renderer.setClearColor(scene.palette.background, 1);
     scene.picker.hideNonPickable(false);
     nodes.useMaterial('draw');
@@ -347,14 +388,20 @@ export async function measureCoverage(cfg) {
     nodes.uniforms.uPickMinPixels.value = pickFloor;
 
     let covered = 0;
+    let frameWeight = 0;
     for (let p = 0; p < pixels.length; p += 4) {
+      frameWeight += deviation(frame, p);
       if (pixels[p] | pixels[p + 1] | pixels[p + 2]) covered++;
     }
+
+    const total = width * height;
+    // 765 is the largest distance three channels can be from the background.
     return {
       view: name,
-      covered,
-      coverage: round((covered / (width * height)) * 100),
-      ink: round((inked / (width * height)) * 100),
+      coverage: round((covered / total) * 100),
+      edgeCoverage: round((edgeCovered / total) * 100),
+      weight: round((frameWeight / total / 765) * 100),
+      edgeWeight: round((edgeWeight / total / 765) * 100),
     };
   };
 
@@ -367,8 +414,29 @@ export async function measureCoverage(cfg) {
   scene.camera.updateMatrixWorld();
   const zoomed = shot('ingezoomd');
 
+  // How far one node stands above one line, as a ratio of their distance from
+  // the background. Measured on the materials rather than on the frame,
+  // because in a dense region the lines stack and a pixel-average would report
+  // the stacking instead of the design: this is the "a line is context, a node
+  // is the thing" decision itself, in a number.
+  const channels = (c) => [(c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff];
+  const distance = (c) => {
+    const [r, g, b] = channels(c);
+    return Math.abs(r - bgR) + Math.abs(g - bgG) + Math.abs(b - bgB);
+  };
+  const nodeStrength = distance(scene.palette.grey);
+  // Almost every edge is a citation. With more than one type in the payload
+  // that colour lives in the per-edge buffer and the material is white, so the
+  // type colour is the one to weigh.
+  const lineColor = scene.edges.perEdgeColor
+    ? (sizing === 'oud' ? scene.palette.grey : scene.palette.edgeTypes[0])
+    : scene.edges.material.color.getHex();
+  const lineStrength = distance(lineColor) * scene.edges.material.opacity;
+
   target.dispose();
   return {
+    contrast: round(lineStrength > 0 ? nodeStrength / lineStrength : 0),
+    edgeOpacity: round(scene.edges.material.opacity),
     nodes: graph.nodeCount,
     edges: graph.edgeCount,
     sizing,
