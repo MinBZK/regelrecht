@@ -9,16 +9,38 @@
 //! without copying or parsing.
 //!
 //! ```text
-//! offset  0   8 bytes   magic "RRGRAPH\x01"
-//! offset  8   u32 LE    header_len
-//! offset 12   bytes     JSON header, header_len bytes, UTF-8
-//!             padding   zero bytes up to the next multiple of 8
-//!             bytes     the sections, back to back, in header order
+//! offset  0            8 bytes  magic "RRGRAPH\x01"
+//! offset  8            u32 LE   header_len
+//! offset 12            bytes    JSON header, exactly header_len bytes, UTF-8
+//! offset data_offset   bytes    the sections, back to back, in header order
 //! ```
 //!
-//! Every section offset in the header is relative to the start of the section
-//! block (i.e. to `data_offset`), and is a multiple of 8, so every typed array
-//! is naturally aligned.
+//! There is no padding between the header and the sections. The header is
+//! padded internally with trailing spaces so that the section block starts on a
+//! multiple of eight, and `header_len` counts those spaces, so `data_offset ==
+//! 12 + header_len` always holds. A JSON parser ignores the trailing spaces; do
+//! not trim them before using `header_len`.
+//!
+//! Every section offset in the header is relative to `data_offset`, not to the
+//! start of the file, and is a multiple of eight, so every typed array is
+//! naturally aligned.
+//!
+//! Reading it comes down to this:
+//!
+//! ```js
+//! const view = new DataView(buffer);
+//! const headerLen = view.getUint32(8, true);
+//! const header = JSON.parse(
+//!   new TextDecoder().decode(new Uint8Array(buffer, 12, headerLen)));
+//! const ctor = { f32: Float32Array, u32: Uint32Array,
+//!                u16: Uint16Array, u8: Uint8Array };
+//! const section = {};
+//! for (const s of header.sections) {
+//!   section[s.name] = new ctor[s.type](
+//!     buffer, header.data_offset + s.offset, s.len);
+//! }
+//! // section.node_pos is x,y,z interleaved; section.node_id indexes header.strings
+//! ```
 //!
 //! ## Header
 //!
@@ -362,12 +384,20 @@ pub fn encode_binary(graph: &CorpusGraph, built_at: &str) -> Vec<u8> {
     // length changes when that number is written into it. Serialising twice with
     // a fixed-width placeholder is the cheap way out and costs a millisecond.
     let probe = serde_json::to_vec(&header).unwrap_or_default();
-    let data_offset = align8(MAGIC.len() + 4 + probe.len() + 24);
+    let mut data_offset = align8(MAGIC.len() + 4 + probe.len() + 24);
     let header = Header {
         data_offset,
         ..header
     };
     let mut json = serde_json::to_vec(&header).unwrap_or_default();
+    // Writing `data_offset` into the header lengthens the header, so the value
+    // is estimated with slack and the header is padded out to it. If the slack
+    // ever fell short, `resize` would silently truncate the JSON and produce a
+    // file nobody can read, so grow instead of cutting.
+    let want = data_offset - MAGIC.len() - 4;
+    if json.len() > want {
+        data_offset = align8(MAGIC.len() + 4 + json.len());
+    }
     json.resize(data_offset - MAGIC.len() - 4, b' ');
 
     let mut out = Vec::with_capacity(data_offset + blob.len());
@@ -620,6 +650,19 @@ mod tests {
         let header = decode_header(&bytes);
 
         assert_eq!(header["format"], "rrgraph");
+
+        // The one thing every reader has to get right: the sections start at
+        // `data_offset`, and that is exactly the magic plus the length field
+        // plus the header itself. No padding in between.
+        let header_len = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]) as usize;
+        assert_eq!(
+            header["data_offset"].as_u64().expect("data_offset") as usize,
+            12 + header_len,
+            "data_offset moet gelijk zijn aan 12 + header_len"
+        );
+        // And the header must parse without trimming anything off the end.
+        let raw = std::str::from_utf8(&bytes[12..12 + header_len]).expect("utf8");
+        serde_json::from_str::<serde_json::Value>(raw).expect("header parst met padding en al");
         assert_eq!(header["node_count"], graph.nodes.len());
         assert_eq!(header["edge_count"], graph.edges.len());
 

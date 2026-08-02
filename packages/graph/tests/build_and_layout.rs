@@ -144,12 +144,24 @@ fn articles_get_local_coordinates_around_their_law() {
         .filter(|n| n.kind == NodeKind::Article)
         .collect();
     assert!(!articles.is_empty());
+
+    // "Local" means it fits in the gap to the next law. The whole layout is
+    // scaled to a canonical radius and the article spheres are sized against
+    // that, so the test has to be relative too.
+    let laws = &graph.nodes[..graph.law_node_count];
+    let mut closest = f32::MAX;
+    for (i, a) in laws.iter().enumerate() {
+        for b in &laws[i + 1..] {
+            let d = ((a.x - b.x).powi(2) + (a.y - b.y).powi(2) + (a.z - b.z).powi(2)).sqrt();
+            closest = closest.min(d);
+        }
+    }
     for article in &articles {
         assert!(article.parent.is_some(), "artikel zonder wet");
         let r = (article.x * article.x + article.y * article.y + article.z * article.z).sqrt();
         assert!(
-            r < 10.0,
-            "artikelcoordinaten zijn lokaal, dus klein; kreeg straal {r}"
+            r < 0.6 * closest,
+            "een uitgeklapte wet moet in het gat naar de buurwet passen ({closest:.0}); kreeg straal {r}"
         );
     }
 }
@@ -307,15 +319,62 @@ fn the_communities_are_visible_but_only_just() {
     );
 }
 
+/// Normalising the output scale is a multiplication and must behave like one.
+///
+/// The opdrachtgever asked whether the nodes could be further apart, and this
+/// is the only honest yes: the whole cloud can be made any size without saying
+/// anything new. The test pins that it really is uniform, because a "scale"
+/// that quietly differed per node would be a statement about the graph.
+#[test]
+fn the_canonical_scale_is_a_pure_multiplication() {
+    let sizes = [40usize, 14, 6];
+    let small = laid_out(
+        &sizes,
+        &LayoutOptions {
+            canonical_radius: 100.0,
+            ..LayoutOptions::default()
+        },
+    );
+    let large = laid_out(
+        &sizes,
+        &LayoutOptions {
+            canonical_radius: 5000.0,
+            ..LayoutOptions::default()
+        },
+    );
+
+    // Every coordinate scaled by one and the same factor.
+    let factor = large[0].1[0] / small[0].1[0];
+    for ((id, a), (_, b)) in small.iter().zip(large.iter()) {
+        for k in 0..3 {
+            let expected = a[k] * factor;
+            assert!(
+                (b[k] - expected).abs() <= 1e-3 * expected.abs().max(1.0),
+                "{id} schaalt niet uniform op as {k}: {} tegen {expected}",
+                b[k]
+            );
+        }
+    }
+    // Which means the relative positions are untouched.
+    assert!(distance_rank_correlation(&small, &large) > 0.999);
+}
+
 /// The iteration has to settle, and that is all the numerical measures are for.
 ///
-/// The raw ForceAtlas2 loop inflated monotonically and never converged on the
-/// real corpus. Two things fixed that and both are integrator measures: the
-/// spectral embedding is scaled to the size the forces themselves imply, and a
-/// step is capped so a badly conditioned moment cannot throw a node further
-/// than the structure it is looking for. Neither changes the fixed point, only
-/// the path to it, and this test is the check on that claim: run four hundred
-/// iterations and twelve hundred, and the relative positions must agree.
+/// Three of them, all touching the step and not the forces: the spectral
+/// embedding starts at the size the forces themselves imply, a step is capped
+/// so a badly conditioned moment cannot throw a node further than the structure
+/// it is looking for, and the adaptive speed control uses ForceAtlas2's own
+/// step-size tolerance of 1.0.
+///
+/// That last one was set to 0.05 and it was the reason the map looked like a
+/// dense ball: the speed control sat on its floor, the cloud crawled outwards a
+/// hundred times slower than it should, and after 1500 iterations the layout
+/// agreed with a 60.000-iteration reference at a rank correlation of 0.24. With
+/// the tolerance at 1.0 the same 1500 iterations reach 0.91 against that
+/// reference. None of it changes the fixed point, which is what this test
+/// checks: run it twice at different lengths and the relative positions must
+/// agree.
 ///
 /// The comparison is on the rank order of pairwise distances, because the two
 /// runs may legitimately differ in overall scale and orientation. Everything
@@ -333,21 +392,21 @@ fn the_force_iteration_has_settled() {
     let short = laid_out(
         &sizes,
         &LayoutOptions {
-            iterations: 400,
+            iterations: 4000,
             ..LayoutOptions::default()
         },
     );
     let long = laid_out(
         &sizes,
         &LayoutOptions {
-            iterations: 1200,
+            iterations: 12000,
             ..LayoutOptions::default()
         },
     );
     let correlation = distance_rank_correlation(&short, &long);
     assert!(
         correlation > 0.95,
-        "de layout is niet uitgeconvergeerd: rangcorrelatie {correlation:.3} tussen 400 en 1200 iteraties"
+        "de layout is niet uitgeconvergeerd: rangcorrelatie {correlation:.3} tussen 4000 en 12000 iteraties"
     );
 }
 

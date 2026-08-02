@@ -51,9 +51,32 @@ maken, dan verdwijnt de afstand tot dat midden. Die afstand is informatie: het
 bestuursrecht is niet alles, privaatrecht en strafrecht vallen er grotendeels
 buiten, en waar die uitkomen wil een jurist zien.
 
-Twee maatregelen mogen wel aan de rekenkant zitten, omdat ze het antwoord met
+Drie maatregelen mogen wel aan de rekenkant zitten, omdat ze het antwoord met
 rust laten. De spectrale inbedding start op de schaal die de krachten zelf
-impliceren, en een stap is begrensd. Geen van beide verplaatst het vaste punt.
+impliceren, een stap is begrensd, en de snelheidsregeling gebruikt de
+stapgroottetolerantie van ForceAtlas2 zelf (1,0).
+
+Die laatste stond op 0,05 en dat was de reden dat de kaart een dichte bal was.
+De snelheidsregeling zat op haar ondergrens, de wolk kroop honderd keer te
+langzaam naar buiten, en na 1.500 iteraties kwam de layout op een
+rangcorrelatie van 0,24 uit tegen een referentie van 60.000 iteraties. Met de
+tolerantie op 1,0 halen dezelfde 1.500 iteraties 0,91 tegen die referentie. Het
+vaste punt verandert niet, en dat is getest.
+
+Wat het niet oplost: de dichtheid. De afstand tot de naaste buur is 6,6% van de
+mediane straal, voor en na de correctie hetzelfde. Vierduizend knopen in drie
+dimensies zien er van buitenaf uit als een bal, en dat is de vorm van dit
+corpus. De leesbaarheid moet uit het tekenen komen: dieptecue, filteren,
+inzoomen, en de uitklapniveaus die het ontwerp al beschrijft.
+
+De bouwer print twee getallen over de convergentie en ze zeggen iets anders.
+"Beeld stabiel" is de rangcorrelatie van alle onderlinge afstanden over de
+laatste 200 iteraties en staat op het echte corpus op 0,996: de kaart verandert
+niet meer. "Lokale onrust" is de netto verplaatsing van de gemiddelde wet in
+diezelfde 200 iteraties, 1,6% van de straal: knopen blijven schuiven zonder dat
+het beeld verandert. De layout zit dus in een vlak dal en niet in een scherp
+minimum, en dat is relevant voor de vraag hoe hard een positie is bij een
+volgende oogst.
 
 Twee andere zijn gebouwd, gemeten en weer weggehaald, want ze veranderden het
 antwoord. Logaritmische aantrekking en een logaritmisch gedempte
@@ -69,9 +92,10 @@ model. Hij bereikt dus niet sneller hetzelfde antwoord maar een ander, waarin de
 gemeenschappen keurig uit elkaar liggen omdat ze daar zijn neergezet. De vlag
 blijft staan om het verschil te kunnen zien, nooit als standaard.
 
-De bouwer print hoe ver de layout is uitgeconvergeerd, want op het echte corpus
-is dat niet volledig en dat hoort de lezer te weten in plaats van te moeten
-aannemen.
+De uitvoer wordt uniform geschaald zodat de 99e percentiel van de straal op
+1000 uitkomt. Eén vermenigvuldiging over alle coördinaten, dus geen enkele
+verhouding verandert; het scheelt de renderer een gok naar de camera-afstand en
+de knoopgrootte.
 
 ## Kaderwetten
 

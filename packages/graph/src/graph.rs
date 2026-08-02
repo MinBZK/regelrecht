@@ -345,10 +345,14 @@ pub struct BuildStats {
     pub metrics_ms: u128,
     pub cluster_ms: u128,
     pub layout_ms: u128,
-    /// How far the average node still moved on the last layout iteration, as a
-    /// fraction of the layout scale. Zero is settled; anything you can see is
-    /// a picture that would still be drifting if you kept going.
+    /// Net drift of the average node over the last tenth of the layout run, as
+    /// a fraction of the radius of the cloud. Zero is settled; anything you can see is
+    /// a picture that would still be moving if you kept going.
     pub layout_unsettled: f32,
+    /// Rank correlation of all pairwise distances between the start and the end
+    /// of that same window. One means the picture stopped changing, whatever
+    /// the individual nodes are still doing.
+    pub layout_stability: f32,
     pub peak_rss_kb: u64,
 }
 

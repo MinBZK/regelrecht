@@ -49,6 +49,9 @@ use std::collections::HashMap;
 
 use crate::graph::{CorpusGraph, NodeIx, NodeKind};
 
+/// Iterations the convergence measurement looks back over.
+pub const DRIFT_WINDOW: usize = 200;
+
 #[derive(Debug, Clone)]
 pub struct LayoutOptions {
     /// ForceAtlas2 iterations on the law-level graph.
@@ -61,6 +64,24 @@ pub struct LayoutOptions {
     pub gravity: f32,
     /// Power-iteration steps per spectral eigenvector.
     pub spectral_steps: usize,
+    /// Step-size tolerance of the adaptive speed control (`jitterTolerance` in
+    /// the Gephi implementation, which defaults to 1.0).
+    ///
+    /// A pure integrator constant: it decides how large a step the iteration
+    /// dares to take, not what the forces are. Too small and the layout crawls
+    /// towards its equilibrium and looks like a dense ball because it has not
+    /// finished expanding yet; too large and it oscillates. The value is
+    /// checked against the fixed point in the tests, not against how the
+    /// picture looks.
+    pub jitter: f32,
+    /// Radius the 99th percentile of the law-level cloud is scaled to, so the
+    /// payload arrives in predictable units. Uniform, so it changes nothing
+    /// about the relative positions. Zero switches it off.
+    pub canonical_radius: f32,
+    /// Print the convergence curve every N iterations, for components above a
+    /// few hundred nodes. Diagnostics: it says how far the layout still has to
+    /// go, which is the only way to know whether an iteration count is enough.
+    pub trace_every: usize,
     /// Place the communities first and the laws inside them, instead of
     /// embedding the whole component in one go.
     ///
@@ -87,11 +108,14 @@ pub struct LayoutOptions {
 impl Default for LayoutOptions {
     fn default() -> Self {
         Self {
-            iterations: 1500,
+            iterations: 3000,
             theta: 1.2,
             repulsion: 1.0,
             gravity: 1.0,
             spectral_steps: 240,
+            jitter: 1.0,
+            canonical_radius: 1000.0,
+            trace_every: 0,
             hierarchical_init: false,
             cluster_pull: 0.0,
         }
@@ -126,7 +150,49 @@ impl Mechanical {
 /// ends up on the map.
 pub fn apply(graph: &mut CorpusGraph, opts: &LayoutOptions) {
     layout_law_level(graph, opts);
+    normalise_scale(graph, opts.canonical_radius);
+    // After the scaling, so an article sphere can be sized against the space
+    // that is actually available between two laws.
     layout_articles(graph);
+}
+
+/// Scale the whole layout so the 99th percentile of the radius lands on a fixed
+/// value.
+///
+/// One multiplication applied to every coordinate, so no two nodes change
+/// position relative to each other: the ratio of any two distances is exactly
+/// what it was. This is presentation and it is the only kind of "further apart"
+/// that is free. Making the cloud twice as big says nothing new, and neither
+/// does moving the camera twice as close.
+///
+/// It earns its place by making the payload predictable. Without it the units
+/// come out of the force constants and the corpus size, so a renderer has to
+/// guess a camera distance and a node radius from data that shifts between
+/// builds. The 99th percentile rather than the maximum, because a handful of
+/// far-flung disconnected regulations should not decide the scale of
+/// everything else.
+///
+/// The article coordinates are scaled by the same factor. They are local to
+/// their law and have to stay commensurate with the space between laws.
+fn normalise_scale(graph: &mut CorpusGraph, target: f32) {
+    if target <= 0.0 || graph.law_node_count == 0 {
+        return;
+    }
+    let mut radii: Vec<f32> = graph.nodes[..graph.law_node_count]
+        .iter()
+        .map(|n| (n.x * n.x + n.y * n.y + n.z * n.z).sqrt())
+        .collect();
+    radii.sort_by(f32::total_cmp);
+    let reference = radii[radii.len() * 99 / 100];
+    if reference <= f32::EPSILON {
+        return;
+    }
+    let factor = target / reference;
+    for node in graph.nodes.iter_mut() {
+        node.x *= factor;
+        node.y *= factor;
+        node.z *= factor;
+    }
 }
 
 fn layout_law_level(graph: &mut CorpusGraph, opts: &LayoutOptions) {
@@ -154,12 +220,16 @@ fn layout_law_level(graph: &mut CorpusGraph, opts: &LayoutOptions) {
     let mut positions = vec![[0.0f32; 3]; mech.len()];
     let mut placed: Vec<(Vec<usize>, f32)> = Vec::new();
     let mut unsettled = 0.0f32;
+    let mut picture = 1.0f32;
     for members in &components {
         let sub = subgraph(&mech, members);
         let scale = equilibrium_scale(&sub);
         let mut pos = initial_positions(&sub, opts, scale);
-        let settle = force_atlas2(&sub, &mut pos, opts, scale);
-        unsettled = unsettled.max(settle);
+        let (drift, stability) = force_atlas2(&sub, &mut pos, opts, scale);
+        if members.len() > 100 {
+            unsettled = unsettled.max(drift);
+            picture = picture.min(stability);
+        }
         let radius = recentre(&mut pos);
         for (local, &global) in members.iter().enumerate() {
             positions[global] = pos[local];
@@ -191,6 +261,7 @@ fn layout_law_level(graph: &mut CorpusGraph, opts: &LayoutOptions) {
         node.z = pos[2];
     }
     graph.stats.layout_unsettled = unsettled;
+    graph.stats.layout_stability = picture;
 }
 
 /// Articles are laid out inside their own law, in local coordinates.
@@ -206,9 +277,20 @@ fn layout_articles(graph: &mut CorpusGraph) {
             per_law.entry(parent).or_default().push(ix as NodeIx);
         }
     }
+    // A sphere has to fit in the gap to the next law, so it is sized against
+    // the typical spacing of the cloud it sits in rather than in units of its
+    // own. `spacing` is the mean distance between neighbouring points of a
+    // cloud of this size and radius; a sphere gets a fraction of it, growing
+    // with the cube root of the article count so the density inside stays
+    // constant.
+    let extent = graph.nodes[..graph.law_node_count]
+        .iter()
+        .map(|n| (n.x * n.x + n.y * n.y + n.z * n.z).sqrt())
+        .fold(1.0f32, f32::max);
+    let spacing = 2.0 * extent / (graph.law_node_count.max(1) as f32).cbrt();
     for (_, members) in per_law.iter() {
         let n = members.len();
-        let radius = 1.2 * (n as f32).cbrt();
+        let radius = 0.35 * spacing * (n as f32 / 24.0).cbrt();
         for (i, &ix) in members.iter().enumerate() {
             let dir = fibonacci_point(i, n);
             let node = &mut graph.nodes[ix as usize];
@@ -438,7 +520,7 @@ fn initial_positions(mech: &Mechanical, opts: &LayoutOptions, scale: f32) -> Vec
         let sub = subgraph(mech, members);
         let sub_scale = equilibrium_scale(&sub);
         let mut pos = spectral_init(&sub, opts.spectral_steps, sub_scale);
-        force_atlas2(&sub, &mut pos, &coarse_opts, sub_scale);
+        let _ = force_atlas2(&sub, &mut pos, &coarse_opts, sub_scale);
         radius.push(recentre(&mut pos));
         local.push(pos);
     }
@@ -665,8 +747,18 @@ fn canonical_sign(v: &mut [f32]) {
     }
 }
 
-/// Recentre on the centroid and report the radius. Returned so components can
-/// be placed without overlapping.
+/// Recentre on the centroid and report the 99th-percentile radius.
+///
+/// The percentile rather than the maximum, because the radius decides where the
+/// next component is parked and a single far-flung law would otherwise push
+/// every disconnected regulation three times as far out as the whole main
+/// cloud. The camera then fits to those stragglers and the part with the
+/// information in it shrinks to a dot in the middle.
+///
+/// Where a disconnected component goes is arbitrary by necessity: it shares no
+/// edge with anything else, so the force model has nothing to say about its
+/// distance to the rest. Any placement is a presentation choice, and this one
+/// spends the visible volume on the laws that do have relations.
 fn recentre(pos: &mut [[f32; 3]]) -> f32 {
     if pos.is_empty() {
         return 0.0;
@@ -680,35 +772,74 @@ fn recentre(pos: &mut [[f32; 3]]) -> f32 {
     for c in centre.iter_mut() {
         *c /= pos.len() as f32;
     }
-    let mut radius = 0.0f32;
+    let mut radii: Vec<f32> = Vec::with_capacity(pos.len());
     for p in pos.iter_mut() {
         for k in 0..3 {
             p[k] -= centre[k];
         }
-        radius = radius.max((p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt());
+        radii.push((p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt());
     }
-    radius
+    radii.sort_by(f32::total_cmp);
+    radii[radii.len() * 99 / 100]
 }
 
 /// ForceAtlas2 in three dimensions with Barnes-Hut repulsion and the adaptive
 /// global speed from the Gephi implementation.
 ///
-/// Returns how far the average node still moved on the last iteration, as a
-/// fraction of the layout's own scale. Near zero means the picture has settled;
-/// a number you can still see means it has not, and the builder prints it
-/// rather than leaving the reader to assume.
-fn force_atlas2(mech: &Mechanical, pos: &mut [[f32; 3]], opts: &LayoutOptions, scale: f32) -> f32 {
+/// Returns the net drift over the last [`DRIFT_WINDOW`] iterations: how far the
+/// average node ended up from where it started that window, as a fraction of
+/// the radius of the cloud.
+///
+/// Net drift and not per-step displacement. A force layout near its equilibrium
+/// keeps jiggling, so the size of one step never goes to zero and says nothing
+/// about whether the picture has settled. What matters is whether a node is
+/// still going somewhere.
+///
+/// Returns `(drift, stability)`: the average net movement over that window as a
+/// fraction of the cloud radius, and the rank correlation of all pairwise
+/// distances across it. Those two answer different questions and on this corpus
+/// they disagree, which is the finding: the laws keep shuffling locally while
+/// the map as a whole stops changing.
+fn force_atlas2(
+    mech: &Mechanical,
+    pos: &mut [[f32; 3]],
+    opts: &LayoutOptions,
+    scale: f32,
+) -> (f32, f32) {
     let n = mech.len();
     if n < 2 {
-        return 0.0;
+        return (0.0, 1.0);
     }
     let mut force = vec![[0.0f32; 3]; n];
     let mut previous = vec![[0.0f32; 3]; n];
     let mut speed = 1.0f32;
-    let jitter = 0.05f32;
-    let mut travelled = 0.0f32;
+    let jitter = opts.jitter.max(1e-4);
+    // A fixed window, not a fraction of the run: with a proportional window a
+    // longer run gets a longer window and accumulates more wandering, so two
+    // iteration counts could not be compared on the number that is supposed to
+    // say which of them is settled.
+    let window = DRIFT_WINDOW.min(opts.iterations / 2).max(1);
+    let checkpoint_at = opts.iterations.saturating_sub(window);
+    let mut checkpoint: Vec<[f32; 3]> = Vec::new();
 
-    for _ in 0..opts.iterations {
+    for iteration in 0..opts.iterations {
+        if iteration == checkpoint_at {
+            checkpoint = pos.to_vec();
+        }
+        if opts.trace_every > 0 && n > 500 && iteration % opts.trace_every == 0 {
+            let mut radii: Vec<f32> = pos
+                .iter()
+                .map(|p| (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt())
+                .collect();
+            radii.sort_by(f32::total_cmp);
+            eprintln!(
+                "  iteratie {iteration:>7}  straal p50={:>8.1} p99={:>8.1}  snelheid {speed:.5}  \
+                 verplaatsing {:.5}",
+                radii[radii.len() / 2],
+                radii[radii.len() * 99 / 100],
+                0.0
+            );
+        }
         std::mem::swap(&mut force, &mut previous);
         for f in force.iter_mut() {
             *f = [0.0; 3];
@@ -830,7 +961,6 @@ fn force_atlas2(mech: &Mechanical, pos: &mut [[f32; 3]], opts: &LayoutOptions, s
         // than the structure it is trying to find, and once that happens the
         // layout oscillates outwards instead of settling.
         let max_step = 0.1 * scale;
-        travelled = 0.0;
         for i in 0..n {
             let factor = speed / (1.0 + (speed * swing[i]).sqrt());
             let step = [
@@ -840,13 +970,95 @@ fn force_atlas2(mech: &Mechanical, pos: &mut [[f32; 3]], opts: &LayoutOptions, s
             ];
             let len = (step[0] * step[0] + step[1] * step[1] + step[2] * step[2]).sqrt();
             let clamp = if len > max_step { max_step / len } else { 1.0 };
-            travelled += len * clamp;
             for k in 0..3 {
                 pos[i][k] += step[k] * clamp;
             }
         }
     }
-    travelled / (n as f32 * scale.max(1e-6))
+    if checkpoint.len() != n {
+        return (0.0, 1.0);
+    }
+    let drift: f32 = pos
+        .iter()
+        .zip(checkpoint.iter())
+        .map(|(a, b)| {
+            ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
+        })
+        .sum::<f32>()
+        / n as f32;
+    // Against the size of the cloud it moved in, so the number reads as "the
+    // average law shifted this fraction of the picture".
+    let mut radii: Vec<f32> = pos
+        .iter()
+        .map(|p| (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt())
+        .collect();
+    radii.sort_by(f32::total_cmp);
+    let cloud = radii[radii.len() * 99 / 100].max(1e-6);
+    (drift / cloud, picture_stability(&checkpoint, pos))
+}
+
+/// How much the picture as a whole changed over the drift window.
+///
+/// Spearman correlation between the pairwise distances at the start and at the
+/// end of the window, over an evenly spaced sample of nodes. This is the number
+/// that answers "is it still moving": individual laws keep wandering in a force
+/// layout with a flat energy landscape, and that shows up in the drift, but if
+/// every distance keeps its rank then the map a reader learns is the same map.
+///
+/// The sample is every k-th node rather than a random draw, so the measurement
+/// adds no source of variation of its own.
+fn picture_stability(before: &[[f32; 3]], after: &[[f32; 3]]) -> f32 {
+    let n = before.len();
+    if n < 8 {
+        return 1.0;
+    }
+    let stride = (n / 400).max(1);
+    let sample: Vec<usize> = (0..n).step_by(stride).collect();
+    let mut a = Vec::with_capacity(sample.len() * sample.len() / 2);
+    let mut b = Vec::with_capacity(a.capacity());
+    let distance = |p: [f32; 3], q: [f32; 3]| {
+        ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2) + (p[2] - q[2]).powi(2)).sqrt()
+    };
+    for (i, &x) in sample.iter().enumerate() {
+        for &y in &sample[i + 1..] {
+            a.push(distance(before[x], before[y]));
+            b.push(distance(after[x], after[y]));
+        }
+    }
+    spearman(&a, &b)
+}
+
+/// Spearman rank correlation. Ties are given distinct ranks in index order,
+/// which is deterministic and close enough at this sample size.
+fn spearman(x: &[f32], y: &[f32]) -> f32 {
+    let rank = |v: &[f32]| -> Vec<f32> {
+        let mut order: Vec<usize> = (0..v.len()).collect();
+        order.sort_by(|&i, &j| v[i].total_cmp(&v[j]).then(i.cmp(&j)));
+        let mut out = vec![0.0f32; v.len()];
+        for (r, &i) in order.iter().enumerate() {
+            out[i] = r as f32;
+        }
+        out
+    };
+    let (rx, ry) = (rank(x), rank(y));
+    let n = rx.len() as f32;
+    if n < 2.0 {
+        return 1.0;
+    }
+    let (mx, my) = (rx.iter().sum::<f32>() / n, ry.iter().sum::<f32>() / n);
+    let mut num = 0.0f64;
+    let mut dx = 0.0f64;
+    let mut dy = 0.0f64;
+    for i in 0..rx.len() {
+        let (u, v) = ((rx[i] - mx) as f64, (ry[i] - my) as f64);
+        num += u * v;
+        dx += u * u;
+        dy += v * v;
+    }
+    if dx <= 0.0 || dy <= 0.0 {
+        return 1.0;
+    }
+    (num / (dx * dy).sqrt()) as f32
 }
 
 /// Barnes-Hut octree over the current positions.

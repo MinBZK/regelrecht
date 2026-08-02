@@ -153,7 +153,11 @@ fn report(
         s.framework_laws, s.designated_framework_laws, s.derived_framework_laws, s.clusters
     );
     println!(
-        "uitgeconvergeerd  {:.5} (verplaatsing in de laatste iteratie, als deel van de schaal)",
+        "beeld stabiel     {:.4} (rangcorrelatie van alle onderlinge afstanden over de\n                  laatste 200 iteraties; 1 is uitgeconvergeerd)",
+        s.layout_stability
+    );
+    println!(
+        "lokale onrust     {:.4} (netto verplaatsing van de gemiddelde wet in diezelfde\n                  200 iteraties, als deel van de straal van de wolk)",
         s.layout_unsettled
     );
     println!(
@@ -251,6 +255,21 @@ fn parse(args: &[String]) -> Result<Cli, String> {
             "--no-clusters" => options.skip_clusters = true,
             "--no-layout" => options.skip_layout = true,
             "--flat-init" => options.layout.hierarchical_init = false,
+            "--jitter" => {
+                options.layout.jitter = value()?
+                    .parse()
+                    .map_err(|_| "--jitter verwacht een getal")?
+            }
+            "--canonical-radius" => {
+                options.layout.canonical_radius = value()?
+                    .parse()
+                    .map_err(|_| "--canonical-radius verwacht een getal")?
+            }
+            "--trace-every" => {
+                options.layout.trace_every = value()?
+                    .parse()
+                    .map_err(|_| "--trace-every verwacht een getal")?
+            }
             "--cluster-pull" => {
                 options.layout.cluster_pull = value()?
                     .parse()
@@ -294,13 +313,17 @@ regelrecht-graph-build — corpus naar knopen, kanten en een voorberekende layou
   --no-external         geen knoop voor een BWB-nummer buiten het corpus
   --no-clusters         gemeenschapsdetectie overslaan
   --no-layout           layout overslaan
+  --jitter <f>          stapgrootte-tolerantie van de snelheidsregeling
+                        (standaard 1.0, zoals ForceAtlas2 zelf)
+  --canonical-radius <f> straal waarop de wolk uniform geschaald wordt (1000)
+  --trace-every <n>     print elke n iteraties hoe ver de layout is
   --flat-init           de hele component in een keer inbedden in plaats van
                         eerst de gemeenschappen (langzamer, zelfde eindstand)
   --cluster-pull <f>    veerstijfheid richting het clustermidden (standaard 0,
                         want het is een kracht die niet in de graaf zit)
   --kaderwetten <pad>   de lijst met aangewezen kaderwetten
                         (standaard <corpus>/kaderwetten.yaml)
-  --iterations <n>      ForceAtlas2-iteraties (standaard 1500)
+  --iterations <n>      ForceAtlas2-iteraties (standaard 3000)
   --gravity <f>         zwaartekracht naar de oorsprong (standaard 1.0)
   --repulsion <f>       afstotingssterkte (standaard 1.0)
   --theta <f>           Barnes-Hut-openingshoek (standaard 1.2)
