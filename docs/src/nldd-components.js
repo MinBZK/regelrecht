@@ -1,7 +1,7 @@
 // Design-system components this app renders, one entry point each.
 // The package root would pull in all ~110 components; this list is generated
 // from the nldd-* tags in the source and checked on every build by
-// scripts/check-nldd-imports.mjs, so a newly used component fails the build
+// script/check-nldd-imports.mjs, so a newly used component fails the build
 // instead of silently never upgrading.
 //
 // Regenerate: npm run nldd:imports

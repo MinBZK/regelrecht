@@ -5,7 +5,7 @@
 // an unknown element, never upgrades, and the FOUC guard holds the page hidden
 // until its 200ms fallback. That is a lot harder to spot than a failing build.
 //
-//   node scripts/check-nldd-imports.mjs <source-dir> <imports-file> [--write]
+//   node script/check-nldd-imports.mjs <source-dir> <imports-file> [--write]
 //
 // --write regenerates the imports file instead of failing.
 
@@ -22,7 +22,7 @@ const EXTENSIONS = new Set(['vue', 'js', 'ts', 'astro', 'mdx', 'md']);
 const HEADER = `// Design-system components this app renders, one entry point each.
 // The package root would pull in all ~110 components; this list is generated
 // from the nldd-* tags in the source and checked on every build by
-// scripts/check-nldd-imports.mjs, so a newly used component fails the build
+// script/check-nldd-imports.mjs, so a newly used component fails the build
 // instead of silently never upgrading.
 //
 // Regenerate: npm run nldd:imports

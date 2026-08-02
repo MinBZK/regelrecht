@@ -10,8 +10,8 @@
     "check:rfc-coverage": "node scripts/check-rfc-coverage.mjs",
     "check:schema-version": "node scripts/check-schema-version.mjs",
     "a11y": "astro build && node scripts/check-rfc-coverage.mjs && node scripts/check-mermaid-alt.mjs && node scripts/check-heading-order.mjs && node scripts/check-links.mjs && node scripts/gen-pa11yci.mjs && start-server-and-test 'astro preview --port 4173' http://localhost:4173 'pa11y-ci'",
-    "nldd:imports": "node ../scripts/check-nldd-imports.mjs src src/nldd-components.js --write",
-    "nldd:check": "node ../scripts/check-nldd-imports.mjs src src/nldd-components.js"
+    "nldd:imports": "node ../script/check-nldd-imports.mjs src src/nldd-components.js --write",
+    "nldd:check": "node ../script/check-nldd-imports.mjs src src/nldd-components.js"
   },
   "dependencies": {
     "@astrojs/markdown-remark": "^7.2.2",

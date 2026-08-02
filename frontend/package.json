@@ -13,8 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "nldd:imports": "node ../scripts/check-nldd-imports.mjs src src/nldd-components.js --write",
-    "nldd:check": "node ../scripts/check-nldd-imports.mjs src src/nldd-components.js"
+    "nldd:imports": "node ../script/check-nldd-imports.mjs src src/nldd-components.js --write",
+    "nldd:check": "node ../script/check-nldd-imports.mjs src src/nldd-components.js"
   },
   "dependencies": {
     "@cucumber/gherkin": "^42.0.0",
