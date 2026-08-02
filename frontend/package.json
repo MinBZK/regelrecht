@@ -14,7 +14,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "nldd:imports": "node ../script/check-nldd-imports.mjs src src/nldd-components.js --write",
-    "nldd:check": "node ../script/check-nldd-imports.mjs src src/nldd-components.js"
+    "nldd:check": "node ../script/check-nldd-imports.mjs src src/nldd-components.js",
+    "bench:graph3d": "node scripts/bench-graph3d.mjs"
   },
   "dependencies": {
     "@cucumber/gherkin": "^42.0.0",
@@ -28,6 +29,7 @@
     "dompurify": "^3.4.10",
     "echarts": "^6.1.0",
     "marked": "^18.0.5",
+    "three": "^0.185.1",
     "vue-echarts": "^8.0.1"
   },
   "devDependencies": {
