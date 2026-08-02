@@ -37,6 +37,8 @@ machine_readable:
 
   markings:                     # The format cannot express a construct (optional)
     - about: het jaar waarin de peildatum valt
+      reason: >-                # why it does not fit, in terms of what the format has
+        De motor rekent met een datum als geheel en leest er geen jaardeel uit.
       resolution: engine        # engine | model
       resolved_by: Een YEAR-bewerking die het jaardeel van een datum oplevert
       target: []                # values this article therefore does not produce
@@ -159,8 +161,18 @@ always present; a check reports a term that names nobody.
 
 A value another law produces is neither. It is an `input` with a `source`.
 
-Required on a marking: `about`, `resolution`, `target`, `legal_text_excerpt`.
-Required on an open term: `id`, `type`.
+Required on a marking: `about`, `reason`, `resolution`, `resolved_by`, `target`,
+`legal_text_excerpt`. Required on an open term: `id`, `type`.
+
+The three prose fields say different things and none of them substitutes for
+another. `about` is the construct in the words of the article. `reason` is why
+it does not fit, stated in terms of what the format does have: name the shape or
+the operation that comes closest and say where it falls short. `resolved_by` is
+the change that would close the gap, concrete enough to become work. The change
+follows from the reading; the reading cannot be recovered from the change, which
+is why the diagnosis has a field of its own. A reason that restates `about`, or
+that is `resolved_by` said twice, or that says no more than "this does not fit",
+is reported by a check.
 
 `target` names the values in this article that cannot be produced because of the
 marking. An empty list asserts the article stays executable, which is the normal

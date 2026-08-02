@@ -354,6 +354,10 @@ machine_readable:
   endpoint: is_verzekerde
   markings:
     - about: de eerste dag van de kalendermaand volgende op de maand waarin hij achttien jaar wordt
+      reason: >-
+        De grens ligt op een maandovergang, en de motor rekent met een datum als
+        geheel: er is geen bewerking die de maand uit een datum leest, dus de eerste
+        dag van de maand is niet uit de peildatum af te leiden.
       resolution: engine
       resolved_by: >-
         Een bewerking die jaar en maand uit een datum leest, of een START_OF_MONTH,
@@ -415,6 +419,11 @@ machine_readable:
 - A reference to a law that has not been harvested is still a binding. Whether
   the Zorgverzekeringswet is in the corpus is a state of the corpus and does not
   belong in this file.
+- `reason` says where the format falls short and `resolved_by` names what would
+  close it. The second follows from the first: once you have read that the
+  boundary is a month transition and that a date is atomic here, the operation to
+  build is obvious. Read only the second and you cannot tell whether it is
+  earned.
 - `target: []` because the marking blocks nothing: `is_verzekerde` is computed.
   The comparison gives exactly what the text says as long as the parameter really
   is the first day of a month.

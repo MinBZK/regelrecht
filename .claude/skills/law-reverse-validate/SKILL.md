@@ -107,7 +107,7 @@ as a defect in the model.
 
 ## Marking checks
 
-Markings say the format cannot express a construct. Four things go wrong.
+Markings say the format cannot express a construct. Five things go wrong.
 
 **A marking standing in for an open term.** "Zo spoedig mogelijk", "onverwijld",
 "redelijkerwijs", "in bijzondere gevallen": the language expresses these fine and
@@ -132,6 +132,16 @@ marking. And a marking whose `target` is empty asserts that the entry stays
 executable, so check that it does. Both halves fail today: `blocks`, the
 predecessor field, is empty in 39 of 39 markings, and of the 72 values marked as
 blocked not one is left out.
+
+**A reason that diagnoses nothing.** `reason` says why the construct does not
+fit, in terms of what the format does have: it names the shape or the operation
+that comes closest and says where it falls short. "Het model kent alleen
+toepasselijkheid van een hele wet" is a diagnosis; "dit past niet in het model"
+is the claim of the marking written out again. So is a reason that restates
+`about`, and so is one that repeats `resolved_by`. The order runs one way: the
+change follows from the reading, and from the change alone the reading cannot be
+recovered. Without a diagnosis a gap somebody worked through reads like a gap
+nobody opened, which is exactly what this validation has to tell apart.
 
 Also verify `legal_text_excerpt` occurs in this entry's own `text`, and that
 `resolution` is `engine` (the operation does not exist) or `model` (the format

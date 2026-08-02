@@ -193,6 +193,9 @@ everything that does fit.
 machine_readable:
   markings:
     - about: het jaar waarin de peildatum valt
+      reason: >-
+        De motor rekent met een datum als geheel en leest er geen jaardeel uit;
+        het jaar is hier een zelfstandige waarde waarop de bepaling rust.
       resolution: engine          # engine | model
       resolved_by: Een YEAR-bewerking die het jaardeel van een datum oplevert
       target: []
@@ -211,6 +214,48 @@ the corpus, which is what the field is for.
 
 `legal_text_excerpt` is required and quotes this entry's own text. A marking that
 cannot quote the words it is about is about something else.
+
+### The three prose fields
+
+`about`, `reason` and `resolved_by` do different work, and each of the three is
+required because none of them can be recovered from the other two.
+
+- **`about` is what.** The construct, in the words the article uses.
+- **`reason` is why.** Why that construct does not fit, stated in terms of what
+  the format does have. This is the diagnosis.
+- **`resolved_by` is what would close it.** The change, concrete enough to
+  become work.
+
+The order is not free. The change follows from the reading of the provision; the
+reading does not follow from the change. A marking from round 4 shows it:
+
+> **about:** de toepassing van deze wet voor zover een oude regeling haar van
+> toepassing verklaart
+>
+> **reason:** "Voor zover" beperkt de toepassing per bepaling van deze wet, en
+> niet de wet als geheel: een oude regeling kan deze wet voor het ene onderwerp
+> wel en voor het andere niet van toepassing verklaren. Het model kent alleen
+> toepasselijkheid van een hele wet.
+>
+> **resolved_by:** Een vorm waarin toepasselijkheid per bepaling van een wet kan
+> worden uitgedrukt, in plaats van als één booleaanse uitkomst voor de hele wet.
+
+Read the third line on its own and you have a wish. Nothing in it says what
+"voor zover" does in this provision, so nothing in it tells you whether the wish
+is earned. That is the half a reviewer needs, because without a diagnosis a gap
+somebody worked through reads exactly like a gap nobody opened.
+
+**What separates a good reason from a bad one:** a good one names what the
+format *does* have and says where it falls short. "Het model kent alleen
+toepasselijkheid van een hele wet" names the shape that comes closest and the
+distance to it. "Dit past niet in het model" names nothing: it is the claim the
+marking already makes by existing, written out a second time. Two more failures
+of the same kind, and a check reports all three:
+
+- A reason that restates `about`. A restatement answers the first question a
+  second time, and this field asks the second one.
+- A reason that is `resolved_by` said again. Then the wish stands there twice
+  and the reading is gone.
 
 ### The test for a marking
 
