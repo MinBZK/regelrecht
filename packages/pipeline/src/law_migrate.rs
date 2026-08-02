@@ -29,11 +29,11 @@
 //! | `construct`                  | `about`              |
 //! | `kind: engine_operation`     | `resolution: engine` |
 //! | `kind: model_form`           | `resolution: model`  |
+//! | `reason`                     | `reason`             |
 //! | `suggestion`                 | `resolved_by`        |
 //! | `blocks`                     | `target`             |
 //! | `legal_text_excerpt`         | `legal_text_excerpt` |
 //! | `accepted`                   | `accepted`           |
-//! | `reason`                     | — (dropped)          |
 //!
 //! | old (`norm_gaps`)            | new (`open_terms`)   |
 //! |------------------------------|----------------------|
@@ -231,18 +231,8 @@ fn migrate_article(
         changed = true;
         let items = old.as_sequence().cloned().unwrap_or_default();
         let mut markings = Vec::with_capacity(items.len());
-        let mut reasons = 0usize;
         for (index, item) in items.iter().enumerate() {
-            let (marking, dropped_reason) = to_marking(item, &number, index, blockers);
-            reasons += usize::from(dropped_reason);
-            markings.push(Value::Mapping(marking));
-        }
-        if reasons > 0 {
-            dropped.push(Dropped {
-                article: number.clone(),
-                field: "untranslatables.reason",
-                count: reasons,
-            });
+            markings.push(Value::Mapping(to_marking(item, &number, index, blockers)));
         }
         if !markings.is_empty() {
             mr.insert(Value::String("markings".into()), Value::Sequence(markings));
@@ -307,13 +297,8 @@ fn migrate_article(
     changed
 }
 
-/// Build a `markings` item. The bool says whether a `reason` was dropped.
-fn to_marking(
-    item: &Value,
-    article: &str,
-    index: usize,
-    blockers: &mut Vec<Blocker>,
-) -> (Mapping, bool) {
+/// Build a `markings` item.
+fn to_marking(item: &Value, article: &str, index: usize, blockers: &mut Vec<Blocker>) -> Mapping {
     let mut out = Mapping::new();
     let block = |missing: &'static str, reason: &str, blockers: &mut Vec<Blocker>| {
         blockers.push(Blocker {
@@ -357,6 +342,22 @@ fn to_marking(
         ),
     }
 
+    // The two prose fields carry over one to one, and neither stands in for
+    // the other. `reason` is the diagnosis and `suggestion` the wanted change;
+    // the change follows from the diagnosis and the diagnosis is not
+    // recoverable from the change, so a missing one is a blocker rather than a
+    // copy of its neighbour.
+    match item.get("reason") {
+        Some(v @ Value::String(_)) => {
+            out.insert(Value::String("reason".into()), v.clone());
+        }
+        _ => block(
+            "reason",
+            "no `reason`, and `suggestion` says what would fix it rather than why it does not fit",
+            blockers,
+        ),
+    }
+
     match item.get("suggestion") {
         Some(v @ Value::String(_)) => {
             out.insert(Value::String("resolved_by".into()), v.clone());
@@ -390,7 +391,7 @@ fn to_marking(
         out.insert(Value::String("accepted".into()), v.clone());
     }
 
-    (out, item.get("reason").is_some())
+    out
 }
 
 /// Build an `open_terms` item from a norm gap.
@@ -553,15 +554,37 @@ articles:
         assert!(m.yaml.contains("about: afronden op hele euro's"));
         assert!(m.yaml.contains("resolved_by: een ROUND_HALF_UP-bewerking"));
         assert!(!m.yaml.contains("untranslatables"));
-        // The diagnosis has no field in the new shape, so it is reported gone
-        // rather than quietly folded into resolved_by.
-        assert_eq!(
-            m.dropped,
-            vec![Dropped {
-                article: "1".into(),
-                field: "untranslatables.reason",
-                count: 1,
-            }]
+        // The diagnosis has a field of its own in the new shape and carries
+        // over verbatim, beside the change it yields.
+        assert!(m
+            .yaml
+            .contains("reason: de motor kent geen wettelijke afronding"));
+        assert_eq!(m.dropped, vec![]);
+    }
+
+    #[test]
+    fn an_untranslatable_without_a_reason_blocks_on_reason() {
+        // Nothing else in the item says why the construct does not fit, and a
+        // suggestion is not that: it is the change the reading yields, and the
+        // reading cannot be read back out of it. Filling this from the
+        // neighbour would make an examined gap and an unexamined one look
+        // alike, which is what the field exists against.
+        let yaml = enriched(
+            r#"      untranslatables:
+        - construct: kwantificeren over personen
+          kind: model_form
+          suggestion: een vorm voor een regel over een verzameling
+          blocks: []
+          legal_text_excerpt: een van de medebewoners
+"#,
+        );
+        let m = migrate(&yaml).expect("migrates");
+        let missing: Vec<&str> = m.blockers.iter().map(|b| b.missing).collect();
+        assert_eq!(missing, vec!["reason"]);
+        assert!(!m.yaml.contains("reason:"));
+        assert!(
+            !m.schema_errors.is_empty(),
+            "a marking without a reason must fail v0.6.0"
         );
     }
 
@@ -571,6 +594,7 @@ articles:
             r#"      untranslatables:
         - construct: kwantificeren over personen
           kind: model_form
+          reason: het model kent alleen regels over een waarde
           suggestion: een vorm voor een regel over een verzameling
           blocks: []
           legal_text_excerpt: een van de medebewoners
@@ -587,6 +611,7 @@ articles:
             r#"      untranslatables:
         - construct: kwantificeren over personen
           kind: model_form
+          reason: het model kent alleen regels over een waarde
           suggestion: een vorm voor een regel over een verzameling
           legal_text_excerpt: een van de medebewoners
 "#,
