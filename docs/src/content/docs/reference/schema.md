@@ -23,7 +23,7 @@ This table is the single source of truth for which schema version introduced whi
 
 | Version | Introduces | RFC |
 |---------|-----------|-----|
-| v0.6.0 | `placement` on articles, `norm_gaps` as a channel of its own beside `untranslatables`, and an optional `kind` on `untranslatables` | [RFC-026](/rfcs/rfc-026) |
+| v0.6.0 | `placement` on articles, `markings` replacing `untranslatables` and `norm_gaps`, `open_terms` widened to every open norm, and `voids` on an override | [RFC-031](/rfcs/rfc-031) |
 | v0.5.6 | Quantity `unit` labels (`euro`, `ratio`, `percentage`) and structured `definitions` constants carrying `type`/`type_spec` | [RFC-023](/rfcs/rfc-023) |
 | v0.5.5 | `ROUND`, `CEIL`, `FLOOR` rounding operations (explicit statutory rounding) | [RFC-024](/rfcs/rfc-024) |
 | v0.5.4 | `DATE_DIFF` operation; date operands for the comparison operators | [RFC-021](/rfcs/rfc-021) |
