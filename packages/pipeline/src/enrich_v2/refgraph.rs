@@ -125,6 +125,12 @@ pub struct Graph {
     /// than one entry maps to all of them — ambiguity that the closing pass
     /// refuses to resolve on its own.
     pub producers: BTreeMap<String, Vec<Producer>>,
+    /// References that name another statute without naming an article in it:
+    /// `(dit artikel, dat BWB-nummer)`. They are edges with no target, so the
+    /// closure cannot follow them and records them as known gaps instead. On
+    /// the Zorgverzekeringswet at depth 3 there are some three thousand of
+    /// them, so following them would mean harvesting the statute book.
+    pub outward_law_only: BTreeSet<(String, String)>,
 }
 
 impl Graph {
@@ -180,8 +186,19 @@ impl Graph {
                         .get("bwb_id")
                         .and_then(Value::as_str)
                         .unwrap_or(bwb_id.as_str());
-                    if let Some(artikel) = reference.get("artikel").and_then(Value::as_str) {
-                        targets.insert(Node::new(target_law, artikel.to_lowercase()));
+                    match reference.get("artikel").and_then(Value::as_str) {
+                        Some(artikel) => {
+                            targets.insert(Node::new(target_law, artikel.to_lowercase()));
+                        }
+                        // A reference to a whole statute, or to a chapter or
+                        // afdeling of one. It names no article, so there is
+                        // nothing to walk to.
+                        None if target_law != bwb_id => {
+                            graph
+                                .outward_law_only
+                                .insert((top.clone(), target_law.to_string()));
+                        }
+                        None => {}
                     }
                 }
             }
