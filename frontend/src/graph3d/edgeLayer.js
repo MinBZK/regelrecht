@@ -103,11 +103,17 @@ export class EdgeLayer {
     geometry.boundingSphere = null;
 
     this.material = new LineBasicMaterial({
-      color: this.perEdgeColor ? 0xffffff : palette.edgeTypes[0],
+      color: this.perEdgeColor ? 0xffffff : palette.edge,
       vertexColors: this.perEdgeColor,
       transparent: true,
       opacity,
       depthWrite: false,
+      // The scene's fog is here for the edges alone: the node and label layers
+      // are hand-written ShaderMaterials and ignore it, so this is the one
+      // place where three's own fog is the cheapest way to get a depth cue.
+      // Without it the web is a flat veil at every distance and the far side of
+      // the corpus sits on top of the near side.
+      fog: true,
     });
     this.mesh = new LineSegments(geometry, this.material);
     this.mesh.frustumCulled = false;
@@ -129,7 +135,7 @@ export class EdgeLayer {
       buildEdgeColors(this.graph, palette, attr.array);
       attr.needsUpdate = true;
     } else {
-      this.material.color = new Color(palette.edgeTypes[0]);
+      this.material.color = new Color(palette.edge);
     }
   }
 
@@ -165,6 +171,9 @@ export class ThickEdgeLayer {
       transparent: true,
       opacity: 0.95,
       depthTest: true,
+      // No fog here: this layer draws the selected subgraph, and a selection
+      // that fades with distance is a selection you cannot follow.
+      fog: false,
     });
     this.mesh = new LineSegments2(this.geometry, this.material);
     this.mesh.frustumCulled = false;

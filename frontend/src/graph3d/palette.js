@@ -37,6 +37,7 @@ const FALLBACK = {
   'paars-700': '#6e2e68',
   'geel-500': '#e2c000',
   'geel-700': '#9c8500',
+  'coolgray-300': '#9aa5b5',
   'coolgray-500': '#7b8794',
   'coolgray-700': '#4b5563',
   'rood-500': '#d64545',
@@ -173,9 +174,15 @@ export function readPalette(root = typeof document !== 'undefined' ? document.do
     clusterDeep,
     background,
     ink: parseColor(readToken('neutral-900', root), 0x14181f),
-    edge: parseColor(readToken('coolgray-500', root)),
+    // Lines are context, nodes are the thing. On a corpus that is grey by rule
+    // the two were the same token, so thirty thousand lines and four thousand
+    // nodes competed for the same attention and the lines won on sheer count:
+    // one grey mass. A weaker step on the same family keeps the distinction
+    // inside the design system's own scale, which runs from the background (0)
+    // to the ink (1000) in both light and dark mode.
+    edge: parseColor(readToken('coolgray-300', root)),
     edgeTypes: [
-      parseColor(readToken('coolgray-500', root)), // citation
+      parseColor(readToken('coolgray-300', root)), // citation
       parseColor(readToken('coolgray-700', root)), // definition
       parseColor(readToken('violet-500', root)), // delegation
       parseColor(readToken('mintgroen-500', root)), // applicability

@@ -15,6 +15,7 @@
 
 import {
   Color,
+  Fog,
   Frustum,
   Matrix4,
   PerspectiveCamera,
@@ -202,10 +203,21 @@ export class GraphScene {
     // Line strength against edge count: at thirty thousand edges 0.3 reads as
     // a web, at a million the same value is a solid fill. The exponent keeps a
     // single edge visible while a dense bundle stays a bundle.
+    //
+    // The ceiling is low on purpose. A line is context and a node is the thing,
+    // and there are seven lines per node in this corpus - at equal strength the
+    // lines win on count alone and the map becomes one grey mass. Weak lines
+    // that stack also make the alpha carry information: a dense region ends up
+    // darker than a thin one because more edges are laid over each other, which
+    // is the density of the corpus showing itself instead of being asserted.
     const edgeOpacity = Math.max(
-      0.06,
-      Math.min(0.4, 0.4 * Math.pow(30000 / Math.max(graph.edgeCount, 1), 0.35)),
+      0.03,
+      Math.min(0.16, 0.16 * Math.pow(30000 / Math.max(graph.edgeCount, 1), 0.35)),
     );
+    // Fog on the scene reaches exactly one material: the thin edges. The node
+    // and label layers shade themselves and never look at it. The range is set
+    // from the camera in `fitAll`; until then it is out of reach of everything.
+    this.scene.fog = new Fog(new Color(this.palette.background), 1e9, 1e9 + 1);
     this.edges = new EdgeLayer(graph, this.palette, { opacity: edgeOpacity });
     this.edges.mesh.userData.pickable = false;
     this.edges.addTo(this.scene);
@@ -292,7 +304,19 @@ export class GraphScene {
     // The near plane of the cue sits just in front of the graph's centre, so
     // the nearest third stays at full strength.
     this.nodes.setFogRange(Math.max(1, dist + radius * 0.1), dist + radius * 2.2);
+    // The edges get their own, tighter range through the scene fog. They are
+    // drawn far weaker than the nodes, so the same gentle fade would be
+    // invisible on them; a shorter distance to full fade is what makes the far
+    // side of the web sink behind the near side instead of lying flat over it.
+    this.setEdgeFog(Math.max(1, dist + radius * 0.15), dist + radius * 1.3);
     this.labelsDirty = true;
+  }
+
+  /** Depth-cue range for the edge layer, in view units. */
+  setEdgeFog(near, far) {
+    if (!this.scene.fog) return;
+    this.scene.fog.near = near;
+    this.scene.fog.far = far;
   }
 
   /** Fly (or jump, under reduced motion) to one node and select it. */
@@ -534,6 +558,9 @@ export class GraphScene {
   updatePalette(palette) {
     this.palette = palette;
     this.renderer.setClearColor(new Color(palette.background), 1);
+    // The fog fades towards the background, so a theme switch has to move it
+    // too; a light-mode fog over a dark page is a white haze.
+    if (this.scene.fog) this.scene.fog.color = new Color(palette.background);
     this.nodes.updatePalette(palette);
     this.edges.updatePalette(palette);
     if (this.labels) this.labels.updatePalette(palette);
