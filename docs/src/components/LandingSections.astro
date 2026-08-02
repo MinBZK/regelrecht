@@ -92,7 +92,13 @@ function exampleImage(key: string): ImageMetadata {
         {/* The panel's filled surface carries its own content color, so the
             slotted title and rich-text keep contrast without a scheme
             override, and the buttons pick it up via their inherit variants. */}
-        <nldd-hero main-width="full" padding-block="0">
+        <nldd-hero
+          main-width="full"
+          padding-bottom="0"
+          sm-padding-top="8"
+          md-padding-top="16"
+          lg-padding-top="24"
+        >
           <nldd-title size="1" color="inherit">
             <h1>RegelRecht</h1>
           </nldd-title>

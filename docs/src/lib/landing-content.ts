@@ -218,8 +218,8 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
     },
     howItWorks: {
-      title: 'Van analoog recht naar digitaal rechtsstelsel',
-      lede: 'Hoe zou de overgang van traditionele wetgeving naar een digitaal rechtsstelsel kunnen verlopen? We verkennen zeven mogelijke stappen en onderzoeken wat daardoor mogelijk zou kunnen worden:',
+      title: 'De overgang van analoog recht naar digitaal rechtsstelsel',
+      lede: 'Hoe zou dat kunnen verlopen? We verkennen 7 mogelijke stappen en onderzoeken wat daardoor mogelijk zou kunnen worden:',
       steps: [
         {
           title: 'Analoog naar digitaal',
@@ -673,8 +673,8 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
     },
     howItWorks: {
-      title: 'From analog law to a digital legal system',
-      lede: 'How might the transition from traditional legislation to a digital legal system unfold? We explore seven possible steps and what each could make possible:',
+      title: 'The transition from analog law to a digital legal system',
+      lede: 'How might that unfold? We explore 7 possible steps and what each could make possible:',
       steps: [
         {
           title: 'Analogue to digital',
