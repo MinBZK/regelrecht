@@ -18,25 +18,24 @@ Writes `machine_readable` sections for Dutch law YAML files against
 `schema/latest/schema.json`. The schema is the single source of truth and
 `just validate` is the arbiter. When in doubt, read the schema.
 
-## The rule that outranks the rest
+## Text before intent
 
 **The specification describes what the legal text says, not what the legislature
 meant.** You translate the words in the `text` field of the entry you are
 working on. Nothing else.
 
-This goes wrong through competence. You will read an article, see which outcome
-is evidently intended, and model the shortest route to that outcome. That route
-is almost always simpler than the text, and it is almost always wrong: it drops a
+The mistake comes from reading the article well. You will see which outcome is
+evidently intended, and model the shortest route to that outcome. That route is
+almost always simpler than the text, and it is almost always wrong: it drops a
 condition the text states, or supplies one the text does not, and the model then
 produces the right answer for the wrong reason until a case arrives where the
 intent and the text part ways.
 
 So no shortcuts and no repair of a provision that reads badly. When faithfulness
 to the text yields something other than what was evidently intended, that is the
-correct result, and it is the kind of finding this corpus exists to surface.
-Record it and move on. Where the text genuinely cannot be followed, say so with a
-marking or an open term, both described below, and never by quietly modelling the
-intent instead.
+correct result, and one this corpus is meant to make visible. Record it and move
+on. Where the text genuinely cannot be followed, say so with a marking or an open
+term, both described below, and never by quietly modelling the intent instead.
 
 ## Setup
 
@@ -47,13 +46,13 @@ intent instead.
 
 Do not read another corpus law as a template. The existing corpus predates
 several of the rules below and copying its habits reproduces its defects;
-`examples.md` carries the patterns that are current.
+`examples.md` has the patterns that are current.
 
 **Explicit article subset (chunked enrichment):** when the prompt supplies a list
 of article numbers, that subset is your entire scope. Leave every entry outside
 it untouched. Later runs handle the rest.
 
-## Scope covers only this provision, and all of it
+## Scope
 
 Each `machine_readable` interprets ONLY the text of its own entry.
 
@@ -64,17 +63,17 @@ entitlement and the age requirement sits in article 11 of another law, article 2
 gets a cross-law `input`, not an inline `leeftijd >= 18`.
 
 **And do not leave a condition unconnected.** This half is easier to forget, and
-it is the half this corpus actually gets wrong. If your entry produces an output
-that expresses a restriction (an age test, an asset test, an insurance
-requirement), some entry has to read it. Where the restriction belongs to the
+it is the half this corpus gets wrong. If your entry produces an output that
+expresses a restriction (an age test, an asset test, an insurance requirement),
+some entry has to read it. Where the restriction belongs to the
 entitlement in *this* entry, this model reads it. Where it belongs elsewhere, the
 entry that grants the entitlement reads it across a `source` binding, and that is
-not a scope violation: the condition it then carries is "geen aanspraak op grond
+not a scope violation: the condition it then applies is "geen aanspraak op grond
 van artikel 3", which its own text does refer to.
 
-An output that nothing consumes is not caution. It is a restriction that does not
-restrict. Measured on the zorgtoeslag in round 3: the age test of article 1 and
-the asset test of article 3 were both produced and neither was ever read. The
+An output that nothing consumes restricts nothing, however cautious it looks.
+Measured on the zorgtoeslag in round 3: the age test of article 1 and the asset
+test of article 3 were both produced and neither was ever read. The
 model granted the allowance to a sixteen-year-old and to a millionaire, and every
 individual article looked correct.
 
@@ -83,15 +82,16 @@ entry to add a binding is not editing another entry.
 
 **The law may be inefficient, redundant or circular. Model it as written.**
 
-## Aanhef and onderdelen are one norm in several entries
+## Aanhef and onderdelen
 
-The corpus splits below article level. A lid with an enumeration is stored as one
+An aanhef with its onderdelen is one norm spread over several entries. The corpus
+splits below article level. A lid with an enumeration is stored as one
 entry for the aanhef (`3.2`) and one per onderdeel (`3.2.a` to `3.2.f`), each
 with its own `text` and its own place for a `machine_readable`. Neither entry
 states a rule on its own.
 
 **The model for such a lid goes on the aanhef entry; the onderdeel entries stay
-without a `machine_readable`.** The aanhef carries the operative words ("wordt
+without a `machine_readable`.** The aanhef states the operative words ("wordt
 mede verstaan onder partner degene die ... en:"), so it is the only entry whose
 text names what is being decided. Each onderdeel then appears in that model as
 its own named parameter or intermediate output, with the onderdeel letter in its
@@ -106,13 +106,13 @@ woonadres, which makes the rule wider than the law.
 
 An onderdeel that is a self-standing definition ("Onze Minister: Onze Minister
 van Volksgezondheid, Welzijn en Sport") is the exception: it states a complete
-norm and carries its own model.
+norm and gets its own model.
 
-## The four roads at a hard spot
+## Four options at a hard spot
 
 At every place where an entry resists translation, exactly one of these applies.
-Work down the list in order and take the first that fits. Round 4 chose the
-cheapest road structurally, and the cheapest road is the last one.
+Work down the list in order and take the first that fits. Round 4 structurally
+chose the cheapest option, which is the last one in this list.
 
 **1. The value comes from another law or another article: bind to it.**
 "de schadeverzekering, bedoeld in artikel 1, onder d, van de Zorgverzekeringswet"
@@ -141,12 +141,12 @@ look procedural at first read.
 
 Two mistakes from round 4 come straight from skipping this list. "Zo spoedig
 mogelijk" and "onverwijld" were marked as untranslatable while they are open
-norms (road 2). The citeertitel was marked as untranslatable while `declares`
-exists for exactly that (road 4, see Declarations below).
+norms (option 2). The citeertitel was marked as untranslatable while `declares`
+exists for exactly that (option 4, see Declarations below).
 
-**Silence is never one of the roads.** An entry you pass over without a word is
+**Silence is never one of the options.** An entry you pass over without a word is
 indistinguishable from an entry nobody read, and a check now reports it as such.
-Look hard before concluding an entry carries nothing: going through the Awir and
+Look hard before concluding an entry states nothing: going through the Awir and
 the zorgtoeslag entry by entry turned up almost none, and every candidate turned
 out to be a kind of provision nobody had looked for. A definition by reference is
 a cross-law binding. A naming provision ("de normpremie: de aan de hand van het
@@ -162,10 +162,11 @@ five-year limitation periods that protect the administration were translated, an
 the € 24 rounding floor, the € 121 threshold, the revision limitation period and
 the hardship clause were all passed over without a word.
 
-## Markings flag an article that is otherwise worked out
+## Markings
 
-A marking says the format cannot express one construct. It names that construct
-and leaves standing everything that does fit.
+A marking flags one construct in an article that is otherwise worked out. It says
+the format cannot express that construct, it names it, and it leaves standing
+everything that does fit.
 
 ```yaml
 machine_readable:
@@ -190,10 +191,10 @@ the corpus, which is what the field is for.
 `legal_text_excerpt` is required and quotes this entry's own text. A marking that
 cannot quote the words it is about is about something else.
 
-### The test is not "can I execute this article"
+### The test for a marking
 
-The test is: **which word can I not fill in, and what is left when I leave that
-word as an open value?**
+The test is not whether you can execute the article. It is: **which word can I
+not fill in, and what is left when I leave that word as an open value?**
 
 An entry that stays empty behind a marking is a defect. You lose every rule that
 was derivable, and the marking then measures the gap far larger than it is. This
@@ -205,18 +206,19 @@ entries apart, in
   begrippenlijst and nothing else. No outputs, no actions, nothing a reader can
   do anything with.
 - Entry `1.1.c`, the definition of "verzekerde", is fully worked out: parameters,
-  four cross-law inputs, an output and the actions that compute it. It carries
-  one marking, for "vanaf de eerste dag van de kalendermaand volgende op de maand
+  four cross-law inputs, an output and the actions that compute it. It has one
+  marking, for "vanaf de eerste dag van de kalendermaand volgende op de maand
   waarin hij achttien jaar wordt", because no operation reads the month out of a
   date. The model asks for the first day of the assessed month as a parameter,
   compares the eighteenth birthday against it, and still produces `is_verzekerde`.
 
-The second is what a marking looks like. Write that one.
+Write markings like the second one.
 
-### `target` is an assertion, so it has to be true
+### The `target` list
 
-`target` lists the values in this entry that cannot be produced because of this
-marking: outputs, inputs or parameters by name.
+`target` is an assertion, so it has to be true. It lists the values in this entry
+that cannot be produced because of this marking: outputs, inputs or parameters by
+name.
 
 - **An empty list is a claim, not an omission.** It says the entry stays
   executable and only its explanation is incomplete. That is the normal case.
@@ -226,8 +228,9 @@ marking: outputs, inputs or parameters by name.
 A check enforces this: every name in `target` must be absent from the entry's
 actions. Today the predecessor field `blocks` is empty in 39 of 39 markings, and
 of the 72 values that stood marked as blocked not one is actually left out. Both
-halves of that are wrong, and both are cheap to get right: name what you really
-left out, and leave out what you really named.
+halves of that are wrong and both are cheap to get right. Name the values the
+entry genuinely does not produce, and make sure the actions really leave them
+out.
 
 Do not approximate around a marking. No ten-case `IF` tree standing in for a
 table, no arithmetic trick standing in for rounding, no pre-computed aggregate
@@ -280,7 +283,7 @@ Do not record whether the filling regulation is currently in the corpus. That is
 a state of the corpus, it is untrue by next week, and nobody cleans it up. The
 resolve step and the work queue track it (RFC-029).
 
-## Declarations, where the article fixes a property
+## Declarations
 
 Some provisions compute nothing and are not open either. They establish something
 the rest of the corpus depends on.
@@ -298,7 +301,7 @@ every execution trace that names this law is quoting that article. Article 50
 aanvangen op of na 1 januari 2006") fixes `valid_from` and, through
 `applies_from`, a floor on the berekeningsjaar that no calculation may go below.
 
-The document header already carries these values, copied there by the harvester.
+The document header already contains these values, copied there by the harvester.
 Recording the article that decides them turns a copy into a derivation, and a
 check holds the two against each other: when they disagree, the article is right
 and the header is stale.
@@ -340,17 +343,16 @@ A derogation exists only where words say so. "In afwijking van", "onverminderd",
 "blijft buiten toepassing" and "met dien verstande" are such words. A second
 sentence that adds a ground is not one, and neither is a reading that makes the
 article tidier. Quote the words you relied on in the `legal_basis.explanation` of
-the action they shaped. If you cannot quote them, the derogation is yours and not
-the law's.
+the action they shaped. If you cannot quote them, you invented the derogation.
 
 Do not let the producing article read the exclusion instead. Article 2 says
-nothing about wealth, and pulling that condition in is a scope violation dressed
-up as helpfulness.
+nothing about wealth, so pulling that condition in is a scope violation, however
+helpful it looks.
 
-## Numbers come from the text, in the unit the text writes them
+## Numbers and units
 
-Every number in a model appears literally in the text of the entry that carries
-the model. Not "derivable from", not "equal to": present.
+Every number in a model appears literally in the text of the entry the model
+belongs to. Not "derivable from", not "equal to": present.
 
 - "vier weken" is `weeks: 4`, never `days: 28`.
 - "ten minste 10 percent lager" is a comparison against 10 percent, never a
@@ -367,7 +369,7 @@ above, because `unit` is a label and never a conversion (RFC-023): a law written
 in euro and a law written in eurocent will bind to each other and the engine will
 not notice. In round 3 the Awir chose euro and the zorgtoeslag chose eurocent,
 each internally consistent, and the same person came out at € 827,63 or
-€ 1.550,46 depending on which file you believed. A file carrying `unit: euro`
+€ 1.550,46 depending on which file you believed. A file that uses `unit: euro`
 anywhere is broken even if it is consistent with itself.
 
 Rounding is not part of this. The engine has `ROUND`, `CEIL` and `FLOOR`, so
@@ -455,8 +457,8 @@ input:
 
 Omit `regulation` for a reference to another article of the same law.
 
-**A `source:` lives under `input:`, never under `parameters:`.** This is the most
-common way a binding looks real and silently does nothing. `Parameter` has no
+**A `source:` belongs under `input:`, never under `parameters:`.** This is the
+most common way a binding looks real and silently does nothing. `Parameter` has no
 `source` field, so a `source:` under `parameters:` is dropped at parse time and
 the value degrades to a plain caller-supplied parameter. It still passes any BDD
 scenario that injects the value directly, which hides the defect. The bound value
@@ -471,7 +473,7 @@ If the local name differs from the target's output name, put the target's name i
 
 Where the target law does not produce the output you need, add that output to the
 target law first, on the article that should own it, then bind to it. Do not
-leave the reference stranded in a description.
+leave the reference in a description only.
 
 ## Hooks and produces
 

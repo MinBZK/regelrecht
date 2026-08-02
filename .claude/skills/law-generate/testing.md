@@ -60,7 +60,7 @@ Useful world methods:
 - Failures: a logic bug goes in the YAML, a wrong assertion goes in the step
   code. **Never change the expected values in MvT-derived scenarios.** Those are
   the legislature's own worked examples and they are the ground truth.
-- After three iterations, stop and report what is left. Each iteration carries
+- After three iterations, stop and report what is left. Each iteration includes
   its own validate cycle. For a law over 20 articles the budget applies per
   batch of roughly 15 articles.
 
@@ -74,7 +74,7 @@ cat /tmp/eval_payload.json | ./target/release/evaluate
 ```
 
 Write the payload with the `Write` tool, never with `echo`: Dutch legal text
-carries quotes and newlines that break shell escaping.
+contains quotes and newlines that break shell escaping.
 
 ```json
 {

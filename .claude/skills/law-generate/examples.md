@@ -418,8 +418,9 @@ machine_readable:
 - `target: []` because the marking blocks nothing: `is_verzekerde` is computed.
   The comparison gives exactly what the text says as long as the parameter really
   is the first day of a month.
-- The workaround is named in the `description` of the parameter that carries it,
-  so a reader can see the marking and the model refer to the same thing.
+- The `description` of the parameter that stands in for the missing operation
+  names the workaround, so a reader can see the marking and the model refer to
+  the same thing.
 
 ---
 

@@ -139,7 +139,7 @@ procedure:
         description: Bezwaarperiode (AWB 6:4 e.v.)
 ```
 
-## Markings and Open Terms, Two Fields With Two Meanings
+## Markings and Open Terms
 
 A **marking** says the format cannot express a construct. That is a language gap,
 resolved by extending the engine (`resolution: engine`, e.g. a YEAR operation) or
@@ -324,8 +324,8 @@ precision: -2                      # Required: decimals in the value's own unit
 counts decimals in the value's **own** unit (RFC-023), so rounding a eurocent
 amount to whole euros is `precision: -2` and to whole tens of euros `-3`.
 
-Rounding is never implicit: a law that rounds says so, and a law that does not
-say so is not rounded.
+Rounding is never implicit. Model the rounding a law states and round nothing
+where it states none.
 
 ## Variable References
 
@@ -477,7 +477,7 @@ thirty-four euro and fifty-six cents, so `123456` eurocent. `€2.112` is two
 thousand one hundred twelve euro, so `211200` eurocent, not `2112`.
 
 Every monetary value in every file is `type: amount` with
-`type_spec: { unit: eurocent }`. A file carrying `unit: euro` is broken even
+`type_spec: { unit: eurocent }`. A file that uses `unit: euro` is broken even
 when it is consistent with itself, because `unit` is a label and never a
 conversion (RFC-023) and the engine will not notice the factor of a hundred at a
 law boundary.
@@ -509,9 +509,10 @@ law boundary.
 | "in afwijking van artikel X" | `overrides` declaration |
 | "bij ministeriële regeling" | `open_terms` + `implements` IoC pattern |
 
-Do not carry a stock list of input names and sources in your head. Every binding
-is to an output that the target law in this corpus really produces, found by
-reading that law. A plausible name is how a hallucinated dependency gets written.
+Do not work from a stock list of input names and sources. Every binding goes to
+an output that the target law in this corpus really produces, which you find by
+reading that law. Writing down a plausible name instead is how hallucinated
+dependencies get in.
 
 ## Debugging Tips
 
