@@ -268,7 +268,9 @@ export class GraphScene {
     this.controls.update();
     // The depth cue is scaled to the graph, not to a fixed distance: the front
     // of the cloud stays crisp and the far side sinks into the background.
-    this.nodes.setFogRange(Math.max(1, dist - radius * 1.2), dist + radius * 1.9);
+    // The near plane of the cue sits just in front of the graph's centre, so
+    // the nearest third stays at full strength.
+    this.nodes.setFogRange(Math.max(1, dist + radius * 0.1), dist + radius * 2.2);
     this.labelsDirty = true;
   }
 

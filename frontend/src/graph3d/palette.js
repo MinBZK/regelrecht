@@ -82,7 +82,40 @@ export function releasePaletteProbe() {
   probe = null;
 }
 
-/** '#rrggbb' | 'rgb(r, g, b)' | 'oklch(...)' -> 0xrrggbb, best effort. */
+/**
+ * Ask the browser what a colour string actually is.
+ *
+ * Chrome serialises a computed `color` in the notation it was written in, so
+ * an NDD token comes back as `oklch(0.563 0.04 257.4)` and not as `rgb(...)`.
+ * Reimplementing oklch here would be a colour-science project; painting one
+ * pixel and reading it back is exact, costs microseconds and handles every
+ * notation the design system may switch to later.
+ */
+let swatch = null;
+
+function resolveViaCanvas(value) {
+  if (typeof document === 'undefined') return null;
+  if (!swatch) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    swatch = canvas.getContext('2d', { willReadFrequently: true });
+    if (!swatch) return null;
+  }
+  try {
+    swatch.clearRect(0, 0, 1, 1);
+    swatch.fillStyle = '#000000';
+    swatch.fillStyle = value;
+    swatch.fillRect(0, 0, 1, 1);
+    const [r, g, b, a] = swatch.getImageData(0, 0, 1, 1).data;
+    if (a === 0) return null;
+    return (r << 16) | (g << 8) | b;
+  } catch {
+    return null;
+  }
+}
+
+/** '#rrggbb' | 'rgb(r, g, b)' | 'oklch(...)' | anything CSS -> 0xrrggbb. */
 export function parseColor(value, fallbackHex = 0x808080) {
   if (typeof value !== 'string' || !value) return fallbackHex;
   const s = value.trim();
@@ -97,10 +130,6 @@ export function parseColor(value, fallbackHex = 0x808080) {
     if (hex.length >= 6) return parseInt(hex.slice(0, 6), 16);
     return fallbackHex;
   }
-  // `color(srgb 1 0.5 0)` and `oklch(...)` never reach this function from a
-  // browser, because readToken resolves through a probe element and browsers
-  // serialise a computed colour as rgb()/rgba(). It stays a best effort for the
-  // fallback path.
   const m = s.match(/rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i);
   if (m) {
     const r = Math.round(Number(m[1])) & 0xff;
@@ -108,7 +137,9 @@ export function parseColor(value, fallbackHex = 0x808080) {
     const b = Math.round(Number(m[3])) & 0xff;
     return (r << 16) | (g << 8) | b;
   }
-  return fallbackHex;
+  // Everything else (oklch, lab, color(), a named colour) goes to the browser.
+  const resolved = resolveViaCanvas(s);
+  return resolved === null ? fallbackHex : resolved;
 }
 
 /** Linear blend of two packed colours, t in [0, 1]. */

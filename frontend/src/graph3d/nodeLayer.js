@@ -92,14 +92,20 @@ const NODE_FRAG = /* glsl */ `
     } else if (vState > 2.5) {
       c = mix(c, uBackground, 0.9);
     } else if (uDimOthers > 0.5 && vState < 0.5) {
-      c = mix(c, uBackground, 0.85);
+      // Dimmed, not erased. On a grey corpus against a white background the
+      // usual 15%-opacity dim leaves nothing at all to orient by, and losing
+      // the map is a worse trade than a slightly less loud selection.
+      c = mix(c, uBackground, 0.7);
     }
 
     // Depth cue. A field of four thousand grey nodes without it is one flat
     // cloud; fading the far side into the background gives the eye the
     // structure that colour is not allowed to give here.
+    // Capped at roughly half: a depth cue, not a veil. Beyond that the front
+    // of a grey field washes out too and the picture reads as fog instead of
+    // as a corpus.
     float fog = smoothstep(uFogRange.x, uFogRange.y, vDepth);
-    c = mix(c, uFogColor, fog * 0.85);
+    c = mix(c, uFogColor, fog * 0.55);
 
     gl_FragColor = vec4(c, 1.0);
     // three converts the working space to the output colour space only in its
