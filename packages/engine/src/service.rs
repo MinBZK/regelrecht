@@ -295,25 +295,6 @@ fn hash_value(value: &Value, hasher: &mut impl Hasher) {
     }
 }
 
-/// What a marking says has to change, as one sentence.
-///
-/// A v0.5.x `untranslatables` entry carried a free-text `reason`; a marking
-/// splits that into `resolution` (engine or model) and `resolved_by` (the
-/// change, named concretely). This puts them back together for the error
-/// message and the trace, so a reader learns which of the two has to move.
-/// `resolved_by` is required by schema v0.6.0 but optional on the model, which
-/// must also read older files; when it is absent the layer alone is the answer.
-fn marking_reason(marking: &crate::article::Marking) -> String {
-    let layer = match marking.resolution {
-        crate::article::MarkingResolution::Engine => "needs an engine operation",
-        crate::article::MarkingResolution::Model => "needs a new shape in the format",
-    };
-    match marking.resolved_by {
-        Some(ref resolved_by) => format!("{layer}: {resolved_by}"),
-        None => layer.to_string(),
-    }
-}
-
 /// Trait for resolving cross-law references.
 ///
 /// Implement this trait to provide custom law loading and resolution strategies.
@@ -1412,83 +1393,78 @@ impl LawExecutionService {
         Ok((hook_outputs, hook_provenance))
     }
 
-    /// Handle an article's markings based on the configured mode (RFC-012).
+    /// Handle untranslatable constructs based on the configured mode (RFC-012).
     ///
-    /// Called before article execution when the article carries `markings`.
+    /// Called before article execution when the article has `untranslatables` annotations.
     /// Behavior depends on `self.untranslatable_mode`:
-    /// - `Error`: hard error on unaccepted markings, accepted ones log to trace
+    /// - `Error`: hard error on unaccepted entries, accepted ones log to trace
     /// - `Propagate`: always log to trace (taint propagation happens at output level)
     /// - `Warn`: log warning to trace, continue
-    /// - `Ignore`: only error on unaccepted markings, otherwise silent
-    ///
-    /// This is the RFC-012 machinery unchanged, reading the v0.6.0 field: what
-    /// used to be `untranslatables.construct` is `markings.about`, and where an
-    /// entry gave a free-text `reason` a marking gives `resolution` plus the
-    /// change that would resolve it. What execution should do with a marked
-    /// article beyond this is a separate decision, still open.
+    /// - `Ignore`: only error on unaccepted entries, otherwise silent
     ///
     /// Returns a list of (article, construct) pairs that should taint outputs
     /// in propagate mode. Empty vec means no tainting.
-    fn handle_markings(
+    fn handle_untranslatables(
         &self,
         law_id: &str,
         article_number: &str,
-        markings: &[crate::article::Marking],
+        untranslatables: &[crate::article::UntranslatableEntry],
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<Vec<(String, String)>> {
         let mut taints = Vec::new();
 
-        for marking in markings {
-            let reason = marking_reason(marking);
+        for entry in untranslatables {
             // Always record in trace regardless of mode
-            let msg = format!("Marking: {} — {}", marking.about, reason);
+            let msg = format!("Untranslatable: {} — {}", entry.construct, entry.reason);
             {
-                let _guard = res_ctx
-                    .trace_guard(format!("marking:{}", marking.about), PathNodeType::Article);
+                let _guard = res_ctx.trace_guard(
+                    format!("untranslatable:{}", entry.construct),
+                    PathNodeType::Article,
+                );
                 res_ctx.trace_set_message(msg.clone());
             }
 
             match self.untranslatable_mode {
                 UntranslatableMode::Error => {
-                    if !marking.accepted {
+                    if !entry.accepted {
                         return Err(EngineError::Untranslatable {
                             law_id: law_id.to_string(),
                             article: article_number.to_string(),
-                            construct: marking.about.clone(),
-                            reason,
+                            construct: entry.construct.clone(),
+                            reason: entry.reason.clone(),
                         });
                     }
                     tracing::info!(
                         law_id,
                         article = article_number,
-                        construct = %marking.about,
-                        "Accepted marking, proceeding with partial logic"
+                        construct = %entry.construct,
+                        "Accepted untranslatable, proceeding with partial logic"
                     );
                 }
                 UntranslatableMode::Propagate => {
                     tracing::info!(
                         law_id,
                         article = article_number,
-                        construct = %marking.about,
-                        "Marked construct — tainting outputs (propagate mode)"
+                        construct = %entry.construct,
+                        "Untranslatable construct — tainting outputs (propagate mode)"
                     );
-                    taints.push((article_number.to_string(), marking.about.clone()));
+                    taints.push((article_number.to_string(), entry.construct.clone()));
                 }
                 UntranslatableMode::Warn => {
                     tracing::warn!(
                         law_id,
                         article = article_number,
-                        construct = %marking.about,
-                        "Marked construct — executing partial logic"
+                        construct = %entry.construct,
+                        "Untranslatable construct — executing partial logic"
                     );
                 }
                 UntranslatableMode::Ignore => {
-                    if !marking.accepted {
+                    if !entry.accepted {
                         return Err(EngineError::Untranslatable {
                             law_id: law_id.to_string(),
                             article: article_number.to_string(),
-                            construct: marking.about.clone(),
-                            reason,
+                            construct: entry.construct.clone(),
+                            reason: entry.reason.clone(),
                         });
                     }
                 }
@@ -1654,14 +1630,14 @@ impl LawExecutionService {
         stage: &str,
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<ArticleResult> {
-        // RFC-012: check the article's markings before execution
-        let taints = if let Some(markings) = article
+        // RFC-012: Check for untranslatable constructs before execution
+        let taints = if let Some(untranslatables) = article
             .machine_readable
             .as_ref()
-            .and_then(|mr| mr.markings.as_ref())
+            .and_then(|mr| mr.untranslatables.as_ref())
         {
-            if !markings.is_empty() {
-                self.handle_markings(&law.id, &article.number, markings, res_ctx)?
+            if !untranslatables.is_empty() {
+                self.handle_untranslatables(&law.id, &article.number, untranslatables, res_ctx)?
             } else {
                 Vec::new()
             }
@@ -1778,13 +1754,13 @@ impl LawExecutionService {
         // does so with an explicit ROUND/CEIL/FLOOR operation. Outputs flow
         // out as exact Decimals; `unit` is a label, never a rounding trigger (RFC-023).
 
-        // RFC-012 Propagate mode: taint all outputs from marked articles
+        // RFC-012 Propagate mode: taint all outputs from articles with untranslatables
         if !taints.is_empty() {
             if taints.len() > 1 {
                 tracing::warn!(
                     article = %taints[0].0,
                     count = taints.len(),
-                    "Article has multiple markings; combining into single taint"
+                    "Article has multiple untranslatable constructs; combining into single taint"
                 );
             }
             let taint_article = taints[0].0.clone();
@@ -5506,151 +5482,6 @@ articles:
             .expect("a loaded law must be reachable through the trait");
         assert_eq!(law.id, "base_law");
         assert!(ServiceProvider::get_law(&service, "unknown_law").is_none());
-    }
-
-    // -------------------------------------------------------------------------
-    // Markings (RFC-012)
-    // -------------------------------------------------------------------------
-
-    /// A marked article that errors must say which of the two has to move
-    /// before it can be translated: the engine's operation set, or the format.
-    /// A reader who only gets "cannot express this" learns nothing actionable.
-    #[test]
-    fn test_marking_error_names_the_layer_and_the_change() {
-        fn law_with(resolution: &str, resolved_by: Option<&str>) -> String {
-            let resolved_by_line = match resolved_by {
-                Some(text) => format!("\n          resolved_by: {text}"),
-                None => String::new(),
-            };
-            format!(
-                r#"
-$id: wet_met_markering
-regulatory_layer: WET
-publication_date: '2025-01-01'
-articles:
-  - number: '1'
-    text: Het bedrag wordt naar boven afgerond op hele euro's.
-    machine_readable:
-      markings:
-        - about: afronden op hele euro's
-          resolution: {resolution}{resolved_by_line}
-          target: []
-          legal_text_excerpt: naar boven afgerond op hele euro's
-      execution:
-        output:
-          - name: bedrag
-            type: number
-        actions:
-          - output: bedrag
-            value: 1234
-"#
-            )
-        }
-
-        let run = |yaml: String| {
-            let mut service = LawExecutionService::new();
-            service.load_law(&yaml).unwrap();
-            service
-                .evaluate_law_output("wet_met_markering", "bedrag", BTreeMap::new(), "2025-01-01")
-                .unwrap_err()
-                .to_string()
-        };
-
-        let engine_side = run(law_with("engine", Some("Een CEIL-bewerking op eurocenten")));
-        assert!(
-            engine_side.contains("needs an engine operation")
-                && engine_side.contains("Een CEIL-bewerking op eurocenten"),
-            "an engine marking must name the operation to build: {engine_side}"
-        );
-
-        let model_side = run(law_with(
-            "model",
-            Some("Een vorm voor een regel over een verzameling"),
-        ));
-        assert!(
-            model_side.contains("needs a new shape in the format")
-                && model_side.contains("Een vorm voor een regel over een verzameling"),
-            "a model marking must name the shape the format lacks: {model_side}"
-        );
-
-        // `resolved_by` is required by schema v0.6.0 but optional on the model,
-        // which also reads older files. Then the layer alone is the answer, and
-        // the message must not trail off into an empty phrase.
-        let bare = run(law_with("model", None));
-        assert!(
-            bare.contains("needs a new shape in the format") && !bare.contains(": —"),
-            "without resolved_by the layer alone must read as a sentence: {bare}"
-        );
-    }
-
-    /// An accepted marking executes; an unaccepted one does not. The default
-    /// mode is `error`, so this is what a caller gets without configuring
-    /// anything.
-    #[test]
-    fn test_accepted_marking_executes_and_unaccepted_does_not() {
-        let yaml = r#"
-$id: wet_met_twee_markeringen
-regulatory_layer: WET
-publication_date: '2025-01-01'
-articles:
-  - number: '1'
-    text: De som van alle deeltoeslagen wordt berekend.
-    machine_readable:
-      markings:
-        - about: som van alle deeltoeslagen
-          resolution: model
-          resolved_by: Een vorm voor een regel over een verzameling
-          target: []
-          legal_text_excerpt: De som van alle deeltoeslagen
-          accepted: true
-      execution:
-        output:
-          - name: som
-            type: number
-        actions:
-          - output: som
-            value: 0
-  - number: '2'
-    text: Het bedrag wordt naar boven afgerond op hele euro's.
-    machine_readable:
-      markings:
-        - about: afronden op hele euro's
-          resolution: engine
-          resolved_by: Een CEIL-bewerking op eurocenten
-          target: []
-          legal_text_excerpt: naar boven afgerond
-      execution:
-        output:
-          - name: afgerond
-            type: number
-        actions:
-          - output: afgerond
-            value: 1234
-"#;
-        let mut service = LawExecutionService::new();
-        service.load_law(yaml).unwrap();
-
-        let accepted = service
-            .evaluate_law_output(
-                "wet_met_twee_markeringen",
-                "som",
-                BTreeMap::new(),
-                "2025-01-01",
-            )
-            .expect("an accepted marking executes with partial logic");
-        assert_eq!(accepted.outputs.get("som"), Some(&Value::Int(0)));
-
-        let unaccepted = service.evaluate_law_output(
-            "wet_met_twee_markeringen",
-            "afgerond",
-            BTreeMap::new(),
-            "2025-01-01",
-        );
-        assert!(
-            matches!(unaccepted, Err(EngineError::Untranslatable { ref construct, .. })
-                if construct == "afronden op hele euro's"),
-            "an unaccepted marking must stop execution: {unaccepted:?}"
-        );
     }
 
     #[test]

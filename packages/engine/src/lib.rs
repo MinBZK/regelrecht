@@ -63,7 +63,7 @@ pub use annotation::{
 pub use article::{
     Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, Case, Execution,
     HookDeclaration, HookFilter, HookPoint, LawLoad, MachineReadable, OverrideDeclaration,
-    ProcedureDefinition, Source, Stage,
+    ProcedureDefinition, Source, Stage, UntranslatableEntry,
 };
 pub use config::{
     MAX_ARRAY_SIZE, MAX_CROSS_LAW_DEPTH, MAX_LOADED_LAWS, MAX_OPERATION_DEPTH, MAX_PROPERTY_DEPTH,

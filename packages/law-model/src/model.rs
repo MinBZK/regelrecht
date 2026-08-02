@@ -720,27 +720,32 @@ pub struct ArticleReference {
     pub afdeling: Option<String>,
 }
 
+/// A legal construct that cannot be expressed with the engine's current operation set (RFC-012)
+///
+/// Superseded by [`Marking`] in schema v0.6.0. It stays on the model because the
+/// model is one struct for every version in
+/// `regelrecht_engine::config::SUPPORTED_SCHEMAS`, and every law in the corpus
+/// is still on v0.5.x; dropping the field would silently discard what those
+/// laws declare and disable the RFC-012 taint modes that run off it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UntranslatableEntry {
+    /// The legal construct that cannot be translated
+    pub construct: String,
+    /// Why this construct is untranslatable
+    pub reason: String,
+    /// Suggested engine operation or approach to resolve this
+    #[serde(default)]
+    pub suggestion: Option<String>,
+    /// Relevant excerpt from the article's legal text
+    #[serde(default)]
+    pub legal_text_excerpt: Option<String>,
+    /// Whether a human has reviewed and acknowledged this gap
+    #[serde(default)]
+    pub accepted: bool,
+}
+
 /// Machine-readable section of an article
-///
-/// # Unknown fields are refused
-///
-/// The model is one struct for every version in
-/// `regelrecht_engine::config::SUPPORTED_SCHEMAS`, thirteen at the time of
-/// writing, and nothing runs the JSON schema over a law before the engine
-/// loads it. Without `deny_unknown_fields` a field this struct does not know
-/// is dropped in silence, and for this section that is the worst possible
-/// failure: `untranslatables` (v0.5.x) and `norm_gaps` say that an article
-/// cannot do what it appears to do. An article that says it cannot express
-/// something, read by an engine that computes anyway and says nothing, is
-/// exactly the silent gap RFC-026 is about — worse than refusing the file.
-///
-/// So a v0.5.x law carrying `untranslatables` no longer loads at all, and the
-/// error names the field. The same guard catches a typo in any other field.
-/// Measured before it was switched on: the harvested corpus (22,468 files) has
-/// no `machine_readable` section at all, and in this repository every key used
-/// under one is a field below.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct MachineReadable {
     /// Named endpoint for this article, making it callable from other regulations
     #[serde(default)]
@@ -765,10 +770,11 @@ pub struct MachineReadable {
     /// Override declarations: this article replaces another article's output (RFC-007)
     #[serde(default)]
     pub overrides: Option<Vec<OverrideDeclaration>>,
-    /// Constructs that the format itself cannot express (schema v0.6.0).
-    /// Replaces `untranslatables` from earlier schema versions; a file that
-    /// still carries that field is refused, not silently read (see the note on
-    /// this struct).
+    /// Legal constructs that cannot be expressed with the current operation set (RFC-012).
+    /// Superseded by [`MachineReadable::markings`] in schema v0.6.0.
+    #[serde(default)]
+    pub untranslatables: Option<Vec<UntranslatableEntry>>,
+    /// Constructs that the format itself cannot express (schema v0.6.0)
     #[serde(default)]
     pub markings: Option<Vec<Marking>>,
     /// Document properties this article establishes (schema v0.6.0)
