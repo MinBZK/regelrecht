@@ -165,6 +165,10 @@ always present; a check reports a term that names nobody.
 
 A value another law produces is neither. It is an `input` with a `source`.
 
+None of the three excludes the others inside one article. A marking answers one
+construct and says nothing about the rest, so an article whose remaining words
+are fully modelled still carries the marking those words do not cover.
+
 Required on a marking: `about`, `reason`, `resolution`, `resolved_by`, `target`,
 `legal_text_excerpt`. Required on an open term: `id`, `type`.
 

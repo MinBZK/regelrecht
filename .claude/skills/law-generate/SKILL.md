@@ -128,11 +128,25 @@ An onderdeel that is a self-standing definition ("Onze Minister: Onze Minister
 van Volksgezondheid, Welzijn en Sport") is the exception: it states a complete
 norm and gets its own model.
 
+**The aanhef is read for its own words too, not only as the place the onderdelen
+land.** It carries what holds for all of them at once: the reach of what is being
+defined, and the caveats that qualify every onderdeel under it. Those go first
+when the onderdelen are worked through one by one, because each onderdeel is
+answerable on its own and the sentence above them belongs to no single one. Read
+the aanhef twice: once for what it opens, and once for what it says.
+
 ## Four options at a hard spot
 
 At every place where an entry resists translation, exactly one of these applies.
 Work down the list in order and take the first that fits. Round 4 structurally
 chose the cheapest option, which is the last one in this list.
+
+**The place is the unit, not the entry.** An entry has as many of these answers
+as it has hard spots, and the four never compete for one slot. Definitions that
+all bind to another law (option 1) under a chapeau that states a reach the format
+has no field for (option 3) give you the bindings *and* the marking, and neither
+makes the other unnecessary. One answer per entry is how a construct nobody can
+express ends up unrecorded behind a model that looks finished.
 
 **1. The value comes from another law or another article: bind to it.**
 "de schadeverzekering, bedoeld in artikel 1, onder d, van de Zorgverzekeringswet"
@@ -167,6 +181,8 @@ exists for exactly that (option 4, see Declarations below).
 
 **Silence is never one of the options.** An entry you pass over without a word is
 indistinguishable from an entry nobody read, and a check now reports it as such.
+An entry can also be silent about one construct while it answers the rest, and
+that shape costs a reader more: the model beside it vouches for the omission.
 Look hard before concluding an entry states nothing: going through the Awir and
 the zorgtoeslag entry by entry turned up almost none, and every candidate turned
 out to be a kind of provision nobody had looked for. A definition by reference is
@@ -293,7 +309,10 @@ entries apart, in
 
 - Entry `1.1`, the aanhef of article 1, got one marking about the reach of a
   begrippenlijst and nothing else. No outputs, no actions, nothing a reader can
-  do anything with.
+  do anything with. **The marking was the right half.** The empty article beside
+  it was the defect, so the repair fills the article and keeps the marking. It
+  never drops the marking and fills the article. Round 5 did the second, on this
+  same article.
 - Entry `1.1.c`, the definition of "verzekerde", is fully worked out: parameters,
   four cross-law inputs, an output and the actions that compute it. It has one
   marking, for "vanaf de eerste dag van de kalendermaand volgende op de maand
@@ -309,6 +328,62 @@ That second marking is also the example of a marking that has since expired.
 that carries it today is stale. A marking states what the format cannot do at
 the moment of writing, and the operation list in `reference.md` is what that
 claim is checked against. Read it before you mark.
+
+### An article that works and still owes a marking
+
+The empty article behind a marking is one failure. Dropping the marking and
+filling the article is the other, and it is the more expensive of the two,
+because the file then looks finished. Nothing is left blank and no check reports
+a gap; the construct the format cannot hold has stopped being mentioned.
+
+Round 5 produced it on the article round 4 got wrong. Article 1 of the Wet op de
+zorgtoeslag came back fully modelled: three begripsbepalingen as `definitions`,
+an executable `is_verzekerde` with four cross-law bindings, `drempelinkomen`
+computed from the minimumloon, an action and a `legal_basis` for every onderdeel.
+Its chapeau appears nowhere in the file:
+
+> In deze wet **en de daarop berustende bepalingen** wordt, **tenzij anders is
+> geregeld**, verstaan onder: a. Onze Minister: … b. zorgverzekering: …
+
+Those words say something about the definitions under them that no onderdeel
+says about itself. **"En de daarop berustende bepalingen" gives them a reach past
+this document.** They govern the wording of every regulation that rests on this
+law, and that regulation does not have to refer to them for it to hold. What the
+corpus can express is the opposite direction: a document reads another through a
+`source` binding it writes itself. Reading is not governing, there is no field
+for the reach of a definition, and no operation supplies one. That is a marking
+with `resolution: model`.
+
+```yaml
+markings:
+  - about: het bereik van de begripsbepalingen over de daarop berustende bepalingen
+    reason: >-
+      De begrippen van dit artikel beheersen ook het woordgebruik van elke
+      regeling die op deze wet berust, zonder dat die regeling ernaar verwijst.
+      Het model kent alleen de omgekeerde richting: een document leest een ander
+      document via een source-binding die het zelf schrijft. Een bereik dat geldt
+      zonder dat de andere kant het aanroept, heeft geen veld en geen bewerking.
+    resolution: model
+    resolved_by: >-
+      Een vorm waarin de begripsbepalingen van een wet in bereik komen bij het
+      uitvoeren van een regeling die op die wet berust, afgeleid uit de
+      legal_basis die de regeling zelf declareert.
+    target: []
+    legal_text_excerpt: In deze wet en de daarop berustende bepalingen wordt, tenzij anders is geregeld, verstaan onder
+    accepted: false
+```
+
+**"Tenzij anders is geregeld" is not a second marking.** A displacement is
+declared by the regulation that departs and not by the article departed from, so
+this clause asks nothing of article 1: it permits displacement, and `overrides`
+is that mechanism already. It belongs in the `legal_basis.explanation` of the
+definitions it qualifies, in this article's own words. Two clauses in one
+sentence, two different answers, and reading them as one is how the marking
+channel fills with work that the format can already do.
+
+The chapeau of a begrippenlijst is the standard place for this, and a check
+reports an article whose chapeau reaches past the document while the model beside
+it says nothing about that reach.
 
 ### The `target` list
 

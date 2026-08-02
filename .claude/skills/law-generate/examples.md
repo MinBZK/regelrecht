@@ -341,95 +341,131 @@ machine_readable:
 
 ## Example 7. A Marking Next to a Full Model
 
-From the definition of "verzekerde" in the Wet op de zorgtoeslag. The entry
-refers four times to the Zorgverzekeringswet, and once to a boundary the format
-cannot express: "vanaf de eerste dag van de kalendermaand volgende op de maand
-waarin hij achttien jaar wordt". No operation reads the month out of a date.
+Article 1 of the Wet op de zorgtoeslag, the begrippenlijst. Its onderdelen are as
+translatable as this corpus gets: "Onze Minister" is a literal, "zorgverzekering"
+and "premie" are definitions by reference, "verzekerde" is three cross-law
+categories with a leeftijdsgrens and one exception, "drempelinkomen" is a sum
+over the minimumloon. Every one of them is modelled below.
 
-The four references are bindings, not gaps. The month boundary is one marking.
-Everything else is modelled, and the entry still produces `is_verzekerde`.
+The sentence above them is not translatable at all. "In deze wet **en de daarop
+berustende bepalingen**" gives the definitions a reach past this document: they
+govern the wording of every regulation resting on this law, whether or not that
+regulation refers to them. The format has the opposite direction only, a `source`
+binding written by the document that reads. So the entry carries the model and
+the marking, and the marking takes nothing away from the model.
 
 ```yaml
 machine_readable:
   endpoint: is_verzekerde
   markings:
-    - about: de eerste dag van de kalendermaand volgende op de maand waarin hij achttien jaar wordt
+    - about: het bereik van de begripsbepalingen over de daarop berustende bepalingen
       reason: >-
-        De grens ligt op een maandovergang, en de motor rekent met een datum als
-        geheel: er is geen bewerking die de maand uit een datum leest, dus de eerste
-        dag van de maand is niet uit de peildatum af te leiden.
-      resolution: operation
+        De begrippen van dit artikel beheersen ook het woordgebruik van elke regeling
+        die op deze wet berust, zonder dat die regeling ernaar verwijst. Het model kent
+        alleen de omgekeerde richting: een document leest een ander document via een
+        source-binding die het zelf schrijft. Een bereik dat geldt zonder dat de andere
+        kant het aanroept, heeft geen veld en geen bewerking.
+      resolution: model
       resolved_by: >-
-        Een bewerking die jaar en maand uit een datum leest, of een START_OF_MONTH,
-        zodat de maandgrens uit de peildatum zelf volgt.
+        Een vorm waarin de begripsbepalingen van een wet in bereik komen bij het
+        uitvoeren van een regeling die op die wet berust, afgeleid uit de legal_basis
+        die de regeling zelf declareert.
       target: []
-      legal_text_excerpt: >-
-        steeds vanaf de eerste dag van de kalendermaand volgende op de maand waarin hij
-        achttien jaar wordt
+      legal_text_excerpt: In deze wet en de daarop berustende bepalingen wordt, tenzij anders is geregeld, verstaan onder
       accepted: false
+  definitions:
+    zorgverzekering:
+      value: de schadeverzekering, bedoeld in artikel 1, onder d, van de Zorgverzekeringswet
+      description: >-
+        Onderdeel b. Begripsbepaling door verwijzing: waar deze wet "zorgverzekering"
+        gebruikt, geldt het begrip van de Zorgverzekeringswet. De bepaling stelt zelf
+        geen waarde vast.
   execution:
     parameters:
       - name: bsn
         type: string
         required: true
+      - name: peildatum
+        type: date
+        required: true
       - name: geboortedatum
         type: date
         required: true
-      - name: eerste_dag_van_de_maand
-        type: date
-        required: true
-        description: >-
-          De eerste dag van de beoordeelde kalendermaand. Zolang de motor de maand niet
-          uit een datum kan lezen, wordt die grens hier aangeleverd; zie de markering.
     input:
-      - name: is_verzekeringsplichtige
+      - name: is_verzekerde_zorgverzekeringswet
         type: boolean
+        description: 'Onderdeel c, eerste categorie: de persoon, bedoeld in artikel 1, onder f'
         source:
           regulation: zorgverzekeringswet
-          output: is_verzekeringsplichtige
+          output: is_verzekerde
+          parameters:
+            bsn: $bsn
+      - name: zijn_rechten_uit_zorgverzekering_opgeschort
+        type: boolean
+        description: 'Onderdeel c, uitzondering: de verzekerde, bedoeld in artikel 24, eerste of derde lid'
+        source:
+          regulation: zorgverzekeringswet
+          output: rechten_uit_zorgverzekering_opgeschort
           parameters:
             bsn: $bsn
     output:
+      - name: onze_minister
+        type: string
       - name: is_verzekerde
         type: boolean
     actions:
+      - output: onze_minister
+        value: Onze Minister van Volksgezondheid, Welzijn en Sport
+        legal_basis:
+          law: Wet op de zorgtoeslag
+          article: '1'
+          paragraph: '1'
+          explanation: >-
+            Onderdeel a wijst Onze Minister aan. De aanhef laat toe dat een andere regeling
+            dit begrip opzijzet ("tenzij anders is geregeld"); die verdringing wordt door
+            die regeling zelf als override verklaard en niet hier.
       - output: achttiende_verjaardag
         value:
           operation: DATE_ADD
           date: $geboortedatum
           years: 18
-      - output: is_achttien_geworden_voor_deze_maand
+      - output: eerste_dag_kalendermaand_verzekerde
         value:
-          operation: LESS_THAN
-          subject: $achttiende_verjaardag
-          value: $eerste_dag_van_de_maand
+          operation: DATE_ADD
+          date:
+            operation: START_OF
+            date: $achttiende_verjaardag
+            in: month
+          months: 1
       - output: is_verzekerde
         value:
           operation: AND
           conditions:
             - operation: EQUALS
-              subject: $is_verzekeringsplichtige
+              subject: $is_verzekerde_zorgverzekeringswet
               value: true
-            - operation: EQUALS
-              subject: $is_achttien_geworden_voor_deze_maand
-              value: true
+            - operation: GREATER_THAN_OR_EQUAL
+              subject: $peildatum
+              value: $eerste_dag_kalendermaand_verzekerde
+            - operation: NOT
+              value: $zijn_rechten_uit_zorgverzekering_opgeschort
 ```
 
 **Key points:**
+- The marking and the model answer different words in the same entry. Neither is
+  the price of the other, and an entry that carries only one of the two is
+  incomplete in whichever direction it left out.
+- `target: []` because the marking blocks nothing. Every output this entry
+  declares is computed; what is missing is the reach of the words, not a value.
+- `reason` names the shape that comes closest, the `source` binding, and says
+  where it falls short. Without that a reader cannot tell whether the wish in
+  `resolved_by` is earned.
+- "Tenzij anders is geregeld" gets no marking. A displacement is declared by the
+  regulation that departs, so `overrides` covers it, and the clause is recorded
+  in the `legal_basis.explanation` of the definitions it qualifies.
 - A reference to a law that has not been harvested is still a binding. Whether
   the Zorgverzekeringswet is in the corpus is a state of the corpus and does not
   belong in this file.
-- `reason` says where the format falls short and `resolved_by` names what would
-  close it. The second follows from the first: once you have read that the
-  boundary is a month transition and that a date is atomic here, the operation to
-  build is obvious. Read only the second and you cannot tell whether it is
-  earned.
-- `target: []` because the marking blocks nothing: `is_verzekerde` is computed.
-  The comparison gives exactly what the text says as long as the parameter really
-  is the first day of a month.
-- The `description` of the parameter that stands in for the missing operation
-  names the workaround, so a reader can see the marking and the model refer to
-  the same thing.
 
 ---
 
