@@ -2489,10 +2489,13 @@ fn prose_only(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for line in text.lines() {
         let trimmed = line.trim_start();
-        // `[ref1]: <target>` is a link definition and carries no prose.
+        // `[ref1]: <url>` is a link definition and carries no prose. The
+        // target has to look like one: a statutory definition renders as
+        // `[verzekerde][ref]: degene die …`, which is prose and must stay.
         if trimmed.starts_with('[') {
             if let Some(close) = trimmed.find("]:") {
-                if !trimmed[close + 2..].trim().is_empty() {
+                let target = trimmed[close + 2..].trim_start();
+                if target.starts_with("http") || target.starts_with('/') || target.contains("://") {
                     continue;
                 }
             }
@@ -3528,6 +3531,31 @@ articles:
             findings[0].detail.contains("does not appear"),
             "{findings:?}"
         );
+    }
+
+    #[test]
+    fn a_definition_that_looks_like_a_link_definition_is_still_prose() {
+        // `[verzekerde][ref]: degene die …` is a begripsbepaling, not
+        // plumbing. Only a target that looks like a URL is dropped.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '1'
+    text: |-
+      [verzekerde][ref1]: degene die verzekerd is ingevolge de Zorgverzekeringswet
+
+      [ref1]: https://wetten.overheid.nl/BWBR0018450
+    machine_readable:
+      markings:
+        - about: het begrip verzekerde
+          resolution: model
+          resolved_by: een vorm voor een verwijzend begrip
+          target: []
+          legal_text_excerpt: degene die verzekerd is ingevolge de Zorgverzekeringswet
+"#,
+        )
+        .expect("yaml");
+        assert!(marking_discipline(&doc, "").is_empty());
     }
 
     #[test]
