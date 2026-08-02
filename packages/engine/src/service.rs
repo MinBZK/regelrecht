@@ -5508,6 +5508,151 @@ articles:
         assert!(ServiceProvider::get_law(&service, "unknown_law").is_none());
     }
 
+    // -------------------------------------------------------------------------
+    // Markings (RFC-012)
+    // -------------------------------------------------------------------------
+
+    /// A marked article that errors must say which of the two has to move
+    /// before it can be translated: the engine's operation set, or the format.
+    /// A reader who only gets "cannot express this" learns nothing actionable.
+    #[test]
+    fn test_marking_error_names_the_layer_and_the_change() {
+        fn law_with(resolution: &str, resolved_by: Option<&str>) -> String {
+            let resolved_by_line = match resolved_by {
+                Some(text) => format!("\n          resolved_by: {text}"),
+                None => String::new(),
+            };
+            format!(
+                r#"
+$id: wet_met_markering
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het bedrag wordt naar boven afgerond op hele euro's.
+    machine_readable:
+      markings:
+        - about: afronden op hele euro's
+          resolution: {resolution}{resolved_by_line}
+          target: []
+          legal_text_excerpt: naar boven afgerond op hele euro's
+      execution:
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 1234
+"#
+            )
+        }
+
+        let run = |yaml: String| {
+            let mut service = LawExecutionService::new();
+            service.load_law(&yaml).unwrap();
+            service
+                .evaluate_law_output("wet_met_markering", "bedrag", BTreeMap::new(), "2025-01-01")
+                .unwrap_err()
+                .to_string()
+        };
+
+        let engine_side = run(law_with("engine", Some("Een CEIL-bewerking op eurocenten")));
+        assert!(
+            engine_side.contains("needs an engine operation")
+                && engine_side.contains("Een CEIL-bewerking op eurocenten"),
+            "an engine marking must name the operation to build: {engine_side}"
+        );
+
+        let model_side = run(law_with(
+            "model",
+            Some("Een vorm voor een regel over een verzameling"),
+        ));
+        assert!(
+            model_side.contains("needs a new shape in the format")
+                && model_side.contains("Een vorm voor een regel over een verzameling"),
+            "a model marking must name the shape the format lacks: {model_side}"
+        );
+
+        // `resolved_by` is required by schema v0.6.0 but optional on the model,
+        // which also reads older files. Then the layer alone is the answer, and
+        // the message must not trail off into an empty phrase.
+        let bare = run(law_with("model", None));
+        assert!(
+            bare.contains("needs a new shape in the format") && !bare.contains(": —"),
+            "without resolved_by the layer alone must read as a sentence: {bare}"
+        );
+    }
+
+    /// An accepted marking executes; an unaccepted one does not. The default
+    /// mode is `error`, so this is what a caller gets without configuring
+    /// anything.
+    #[test]
+    fn test_accepted_marking_executes_and_unaccepted_does_not() {
+        let yaml = r#"
+$id: wet_met_twee_markeringen
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: De som van alle deeltoeslagen wordt berekend.
+    machine_readable:
+      markings:
+        - about: som van alle deeltoeslagen
+          resolution: model
+          resolved_by: Een vorm voor een regel over een verzameling
+          target: []
+          legal_text_excerpt: De som van alle deeltoeslagen
+          accepted: true
+      execution:
+        output:
+          - name: som
+            type: number
+        actions:
+          - output: som
+            value: 0
+  - number: '2'
+    text: Het bedrag wordt naar boven afgerond op hele euro's.
+    machine_readable:
+      markings:
+        - about: afronden op hele euro's
+          resolution: engine
+          resolved_by: Een CEIL-bewerking op eurocenten
+          target: []
+          legal_text_excerpt: naar boven afgerond
+      execution:
+        output:
+          - name: afgerond
+            type: number
+        actions:
+          - output: afgerond
+            value: 1234
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+
+        let accepted = service
+            .evaluate_law_output(
+                "wet_met_twee_markeringen",
+                "som",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .expect("an accepted marking executes with partial logic");
+        assert_eq!(accepted.outputs.get("som"), Some(&Value::Int(0)));
+
+        let unaccepted = service.evaluate_law_output(
+            "wet_met_twee_markeringen",
+            "afgerond",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
+        assert!(
+            matches!(unaccepted, Err(EngineError::Untranslatable { ref construct, .. })
+                if construct == "afronden op hele euro's"),
+            "an unaccepted marking must stop execution: {unaccepted:?}"
+        );
+    }
+
     #[test]
     fn test_service_provider_resolve_external_input() {
         let mut service = LawExecutionService::new();
