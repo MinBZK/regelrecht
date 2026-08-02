@@ -272,6 +272,72 @@ const legalLinks = [
         }
       })();
     </script>
+    <script is:inline>
+      // Remembered language: seeded with the language someone starts in and
+      // overwritten only by a deliberate pick in the language menu (see the
+      // 'lang' branch of the menu handler). Applied on the two landing
+      // homepages alone, so a shared deep link never gets hijacked - the docs
+      // are English-only, and visiting them is not a language choice.
+      // Same storage pattern as the theme above: localStorage plus an
+      // in-memory fallback, re-checked on astro:after-swap because
+      // ClientRouter swaps the document without re-running head scripts.
+      (function () {
+        var KEY = 'rr-lang';
+        function read() {
+          try {
+            var v = localStorage.getItem(KEY);
+            if (v) return v;
+          } catch (e) {}
+          return window.__rrLang || null;
+        }
+        function isHome(path) {
+          return path === '/' || path === '/en' || path === '/en/';
+        }
+        function homeFor(code) {
+          return code === 'en' ? '/en/' : '/';
+        }
+        // The home and back links from the docs point at one landing hardcoded
+        // (the docs are English-only, so the server cannot know the reader's
+        // language). Retarget any of them that point at a landing homepage to
+        // the remembered one, so the click goes there directly instead of via
+        // the homepage redirect below.
+        function retargetHomeLinks(stored) {
+          var bar = document.querySelector('nldd-top-navigation-bar');
+          if (!bar) return;
+          ['logo-href', 'website-href', 'back-href'].forEach(function (attr) {
+            var v = bar.getAttribute(attr);
+            if (v && isHome(v) && v !== homeFor(stored)) {
+              bar.setAttribute(attr, homeFor(stored));
+            }
+          });
+        }
+        function apply() {
+          var stored = read();
+          var current = document.documentElement.lang || 'en';
+          if (!stored) {
+            stored = current;
+            window.__rrLang = current;
+            try {
+              localStorage.setItem(KEY, current);
+            } catch (e) {}
+          } else if (isHome(location.pathname) && stored !== current) {
+            location.replace(homeFor(stored));
+            return;
+          }
+          // In the head the body does not exist yet; the after-swap runs land
+          // after the new DOM is in place and can retarget straight away.
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function () {
+              retargetHomeLinks(stored);
+            });
+          } else {
+            retargetHomeLinks(stored);
+          }
+        }
+        apply();
+        document.addEventListener('astro:after-swap', apply);
+      })();
+    </script>
   </head>
   <body>
     <nldd-page background={isLanding ? 'base' : undefined}>
@@ -318,6 +384,7 @@ const legalLinks = [
                     {langOptions.map((opt) => (
                       <nldd-menu-item
                         data-menu="lang"
+                        data-lang={opt.code}
                         type="radio"
                         value={opt.href}
                         text={opt.label}
@@ -553,6 +620,13 @@ const legalLinks = [
           if (window.__rrApplyTheme) window.__rrApplyTheme();
           syncThemeRadios();
         } else if (kind === 'lang') {
+          var code = item.getAttribute('data-lang');
+          if (code) {
+            window.__rrLang = code;
+            try {
+              localStorage.setItem('rr-lang', code);
+            } catch (err) {}
+          }
           if (value) window.location.assign(value);
         }
       });
