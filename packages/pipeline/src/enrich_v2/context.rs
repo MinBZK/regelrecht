@@ -104,7 +104,7 @@ fn strip_reference_links(text: &str) -> String {
 /// letter-suffixed numbering the corpus uses ("artikel 3a"). The lid is
 /// dropped: the node is the article, and the address only decides which
 /// fragment is offered, which happens elsewhere.
-fn referenced_articles(sentence: &str) -> Vec<String> {
+pub fn referenced_articles(sentence: &str) -> Vec<String> {
     let lower = sentence.to_lowercase();
     let mut out = Vec::new();
     let mut rest = lower.as_str();

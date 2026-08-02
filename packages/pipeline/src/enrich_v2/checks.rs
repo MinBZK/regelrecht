@@ -938,6 +938,163 @@ fn walk_inner<'a>(
 
 /// Locate a law directory by `$id` under `corpus_root`, returning the most
 /// recent version file. The corpus lays out `<country>/<layer>/<id>/<date>.yaml`.
+/// Outputs whose own description names an article that never reads them.
+///
+/// The sharpest finding of round 4 and the one no gate had: article 1 of the
+/// zorgtoeslag computes `is_verzekerde` in full, with the three ZVW capacities,
+/// the eighteen-year threshold and the article 24 exception, and the output
+/// appears exactly once in the whole file, as the result of its own action.
+/// Article 2 does not read it and has no parameter for it, so the model grants
+/// the allowance to a sixteen-year-old and to someone whose cover is suspended.
+///
+/// What makes this catchable is that the description says so itself: "artikel
+/// 2, eerste lid, verbindt de aanspraak aan dit begrip". The text asserts a
+/// relation the file does not have, and an assertion the agent wrote is
+/// something a check can hold it to.
+///
+/// Narrow on purpose. It does not ask whether an unread output ought to be
+/// read, which is a judgement; it asks whether a promise the file makes about
+/// itself is kept.
+pub fn output_promises(doc: &Value) -> Vec<Finding> {
+    let empty = Vec::new();
+    let articles = doc
+        .get("articles")
+        .and_then(Value::as_sequence)
+        .unwrap_or(&empty);
+
+    // Which article reads which name, by any route.
+    let mut readers: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for entry in articles {
+        let Some(number) = entry.get("number").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(mr) = entry.get("machine_readable") else {
+            continue;
+        };
+        walk(mr, &mut |key, node| {
+            // An `output` declaration is not a reading of itself.
+            if matches!(key, Some("output")) {
+                return;
+            }
+            if let (Some("name" | "value" | "variable"), Value::String(s)) = (key, node) {
+                readers
+                    .entry(s.clone())
+                    .or_default()
+                    .insert(number.to_owned());
+            }
+        });
+    }
+
+    let mut findings = Vec::new();
+    for entry in articles {
+        let (Some(number), Some(mr)) = (
+            entry.get("number").and_then(Value::as_str),
+            entry.get("machine_readable"),
+        ) else {
+            continue;
+        };
+        let mut outputs: Vec<(String, String)> = Vec::new();
+        walk_outside_sources(mr, &mut |key, node| {
+            if key != Some("output") {
+                return;
+            }
+            if let Value::Sequence(seq) = node {
+                for item in seq {
+                    if let (Some(name), Some(desc)) = (
+                        item.get("name").and_then(Value::as_str),
+                        item.get("description").and_then(Value::as_str),
+                    ) {
+                        outputs.push((name.to_owned(), desc.to_owned()));
+                    }
+                }
+            }
+        });
+
+        for (name, description) in outputs {
+            // Only the articles this description names, and only those of this
+            // law: "van de Zorgverzekeringswet" points outside and the work
+            // queue owns that.
+            for cited in claiming_references(&description) {
+                let reads = readers.get(&name).is_some_and(|by| {
+                    by.iter()
+                        .any(|r| r == &cited || r.starts_with(&format!("{cited}.")))
+                });
+                if reads {
+                    continue;
+                }
+                // The naming article itself reading it proves nothing.
+                if cited == number || number.starts_with(&format!("{cited}.")) {
+                    continue;
+                }
+                if !articles.iter().any(|a| {
+                    a.get("number")
+                        .and_then(Value::as_str)
+                        .is_some_and(|n| n == cited || n.starts_with(&format!("{cited}.")))
+                }) {
+                    continue;
+                }
+                findings.push(Finding::new(
+                    "promise",
+                    Some(number),
+                    format!(
+                        "output {name} says article {cited} uses it, and article {cited} \
+                         reads nothing of the sort. Either bind it there or drop the claim"
+                    ),
+                ));
+            }
+        }
+    }
+    findings
+}
+
+/// Article references in a description that claim use rather than definition.
+///
+/// "De normpremie, bedoeld in artikel 1, onderdeel h" says where the term is
+/// defined; it does not say that article 1 reads this output. Dutch statutes
+/// mark that difference with a fixed formula, and treating every reference as
+/// a claim of use turned the check into noise: thirteen findings of which the
+/// majority were definitional.
+///
+/// This is a closed set of formulas and not an open vocabulary. Each one has a
+/// settled meaning in Dutch legislative drafting, which is why it can be
+/// enumerated without the usual objection to word lists.
+fn claiming_references(description: &str) -> Vec<String> {
+    const DEFINITIONAL: &[&str] = &[
+        "bedoeld in",
+        "genoemd in",
+        "in de zin van",
+        "als bedoeld bij",
+        "krachtens",
+        "op grond van",
+    ];
+    let lower = description.to_lowercase();
+    super::context::referenced_articles(description)
+        .into_iter()
+        .filter(|number| {
+            // Look at what sits just before each mention of this article.
+            let needle = format!("artikel {number}");
+            let mut definitional_everywhere = true;
+            let mut found = false;
+            let mut from = 0;
+            while let Some(pos) = lower[from..].find(&needle) {
+                let at = from + pos;
+                found = true;
+                // Only what precedes it in the same sentence. Looking a fixed
+                // number of characters back read "in de zin van deze wet?
+                // Artikel 2 verbindt..." as definitional, because the formula
+                // sat in the previous sentence and belonged to something else.
+                let sentence_start = lower[..at].rfind(['.', '?', ';', '!']).map_or(0, |i| i + 1);
+                let before = &lower[sentence_start..at];
+                if !DEFINITIONAL.iter().any(|d| before.contains(d)) {
+                    definitional_everywhere = false;
+                }
+                from = at + needle.len();
+            }
+            found && !definitional_everywhere
+        })
+        .collect()
+}
+
 /// What a translation attempted, counted rather than judged.
 ///
 /// The gates say whether something is wrong. Nothing said whether anything was
@@ -1812,6 +1969,7 @@ pub fn run(yaml: &str, corpus_root: Option<&Path>) -> Report {
     findings.extend(override_targets(&doc, corpus_root));
     findings.extend(every_article_accounted(&doc));
     findings.extend(cross_law_references(&doc, corpus_root));
+    findings.extend(output_promises(&doc));
     findings.extend(declaration_agrees_with_header(&doc));
     findings.extend(binding_units(&doc, corpus_root));
     findings.extend(marking_discipline(&doc, &statutory_text));
@@ -2049,6 +2207,107 @@ articles:
         )
         .expect("write");
         dir
+    }
+
+    #[test]
+    fn an_output_whose_description_names_a_reader_that_reads_nothing_is_flagged() {
+        // Round 4, the heaviest finding of the legal review. Article 1 computes
+        // `is_verzekerde` in full and article 2 never reads it, so the model
+        // grants the allowance to a sixteen-year-old. The description says
+        // article 2 does read it, and that claim is what makes it catchable.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: "1.1.c"
+    text: verzekerde
+    machine_readable:
+      execution:
+        output:
+          - name: is_verzekerde
+            type: boolean
+            description: >-
+              Is de persoon verzekerde in de zin van deze wet? Artikel 2, eerste lid,
+              verbindt de aanspraak op zorgtoeslag aan dit begrip.
+  - number: "2.1"
+    text: aanspraak
+    machine_readable:
+      execution:
+        output:
+          - name: bestaat_aanspraak
+"#,
+        )
+        .expect("yaml");
+        let f = output_promises(&doc);
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert_eq!(f[0].check, "promise");
+        assert!(f[0].detail.contains("is_verzekerde"));
+    }
+
+    #[test]
+    fn a_definitional_reference_is_not_a_claim_of_use() {
+        // "De normpremie, bedoeld in artikel 1, onderdeel h" says where the
+        // term is defined and not that article 1 reads this output. Treating
+        // every reference as a claim turned the check into noise.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: "1"
+    text: begrippen
+  - number: "2.2"
+    text: normpremie
+    machine_readable:
+      execution:
+        output:
+          - name: normpremie
+            description: De normpremie, bedoeld in artikel 1, onderdeel h.
+"#,
+        )
+        .expect("yaml");
+        assert!(output_promises(&doc).is_empty());
+    }
+
+    #[test]
+    fn a_kept_promise_is_silent() {
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: "1"
+    text: verzekerde
+    machine_readable:
+      execution:
+        output:
+          - name: is_verzekerde
+            description: Artikel 2 verbindt de aanspraak aan dit begrip.
+  - number: "2"
+    text: aanspraak
+    machine_readable:
+      execution:
+        input:
+          - name: is_verzekerde
+"#,
+        )
+        .expect("yaml");
+        assert!(output_promises(&doc).is_empty());
+    }
+
+    #[test]
+    fn a_promise_about_an_article_this_law_does_not_have_is_silent() {
+        // "Artikel 24 van de Zorgverzekeringswet" points outside this file and
+        // the work queue owns that.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: "1"
+    text: iets
+    machine_readable:
+      execution:
+        output:
+          - name: x
+            description: Artikel 24 van de Zorgverzekeringswet gebruikt dit.
+"#,
+        )
+        .expect("yaml");
+        assert!(output_promises(&doc).is_empty());
     }
 
     #[test]
