@@ -3380,7 +3380,7 @@ articles:
                             if is_repair {
                                 // The repair round drops the invented key.
                                 mr.insert(
-                                    "untranslatables".into(),
+                                    "markings".into(),
                                     serde_yaml_ng::Value::Sequence(vec![]),
                                 );
                             } else {
