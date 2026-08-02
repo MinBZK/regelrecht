@@ -43,6 +43,18 @@ pub enum OutputProvenance {
     },
     /// Produced by a lex specialis override (RFC-007).
     Override { law_id: String, article: String },
+    /// Removed by an override stating the output does not arise at all.
+    ///
+    /// The output is absent from `outputs` and present here, so a consumer can
+    /// tell "the law says this entitlement does not exist" from "nobody asked
+    /// for it". Without that distinction the absence is silence, and silence
+    /// is what this design spends most of its effort removing.
+    Voided {
+        law_id: String,
+        article: String,
+        /// The words of the overriding article that establish it, verbatim.
+        grounds: Option<String>,
+    },
 }
 
 /// Result of article execution

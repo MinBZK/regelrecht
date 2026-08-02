@@ -1527,6 +1527,35 @@ impl LawExecutionService {
             ));
 
             // Execute overriding article
+            // The declaration itself says whether this override replaces the
+            // value or removes it. Read it from the overriding article rather
+            // than from the index, which carries only the addressing.
+            let declaration = ovr_article.get_overrides().and_then(|decls| {
+                decls.iter().find(|d| {
+                    d.law == law.id && d.article == article.number && d.output == output_name
+                })
+            });
+            if let Some(decl) = declaration.filter(|d| d.voids) {
+                // "Bestaat geen aanspraak": the entitlement does not arise, so
+                // there is no value to compute or replace. The output leaves
+                // `outputs` and stays in the provenance, so an absence with a
+                // ground is distinguishable from an absence nobody asked about.
+                result.outputs.remove(&output_name);
+                result.output_provenance.insert(
+                    output_name.clone(),
+                    OutputProvenance::Voided {
+                        law_id: ovr_law_id.to_string(),
+                        article: ovr_article_number.to_string(),
+                        grounds: decl.legal_text_excerpt.clone(),
+                    },
+                );
+                res_ctx.trace_set_message(format!(
+                    "Lex specialis: {}:{} voids {}:{}.{}",
+                    ovr_law_id, ovr_article_number, law.id, article.number, output_name
+                ));
+                continue;
+            }
+
             let ovr_params = Self::filter_parameters_for_article(ovr_article, parameters);
             res_ctx.enter(ovr_key.clone());
 
@@ -4490,6 +4519,112 @@ articles:
     // -------------------------------------------------------------------------
     // Lex specialis overrides
     // -------------------------------------------------------------------------
+
+    #[test]
+    fn a_voiding_override_removes_the_output_and_records_the_ground() {
+        // The shape of Wet op de zorgtoeslag articles 2 and 3. Article 2
+        // establishes an entitlement "ter grootte van dat verschil"; article 3
+        // says "bestaat geen aanspraak" above a wealth threshold. That is not
+        // an entitlement of zero: with zero there is a decision carrying legal
+        // remedies and a ground for recovery, with none there is neither.
+        //
+        // Measured before this existed: a millionaire received both
+        // `bestaat_aanspraak = false` and an amount of € 1.550,45, and nothing
+        // obliged a consumer to read the first.
+        let entitlement = r#"
+$id: voiding_target_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '2'
+    text: Indien de normpremie lager is dan de standaardpremie, bestaat aanspraak ter grootte van dat verschil.
+    machine_readable:
+      execution:
+        output:
+          - name: aanspraak
+            type: number
+        actions:
+          - output: aanspraak
+            value: 155045
+"#;
+        let exclusion = r#"
+$id: voiding_specialis_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Vraagt de aanspraak op.
+    machine_readable:
+      execution:
+        input:
+          - name: aanspraak
+            type: number
+            source:
+              regulation: voiding_target_law
+              output: aanspraak
+        output:
+          - name: result
+            type: number
+        actions:
+          - output: result
+            value: $aanspraak
+  - number: '3'
+    text: In afwijking daarvan bestaat geen aanspraak indien het vermogen de grens overschrijdt.
+    machine_readable:
+      overrides:
+        - law: voiding_target_law
+          article: '3'
+          output: aanspraak
+          voids: true
+          legal_text_excerpt: bestaat geen aanspraak
+"#;
+        // Article 3 addresses article 2, where the entitlement is produced.
+        let addressed = exclusion.replace("article: '3'", "article: '2'");
+        let mut service = LawExecutionService::new();
+        service.load_law(entitlement).unwrap();
+        service.load_law(&addressed).unwrap();
+
+        // Asked through the law carrying the exclusion, because an override
+        // applies from the contextual law.
+        let result = service.evaluate_law_output(
+            "voiding_specialis_law",
+            "result",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
+
+        // The entitlement does not exist, so a consumer asking for it gets no
+        // number. Failing here is the point: an amount that the law does not
+        // recognise must not travel on quietly, and before this change the
+        // millionaire received € 1.550,45 without a word.
+        match result {
+            Err(EngineError::OutputNotFound { output, .. }) => {
+                assert_eq!(output, "aanspraak");
+            }
+            Ok(r) => panic!(
+                "a voided entitlement must not yield a value, got {:?}",
+                r.outputs
+            ),
+            Err(other) => panic!("expected OutputNotFound, got {other:?}"),
+        }
+
+        // Without the exclusion the same chain does produce the amount, which
+        // shows the void is doing the work rather than a broken binding.
+        let mut service = LawExecutionService::new();
+        service.load_law(entitlement).unwrap();
+        service
+            .load_law(&addressed.replace("voids: true", "voids: false"))
+            .unwrap();
+        let value = service
+            .evaluate_law_output(
+                "voiding_specialis_law",
+                "result",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .expect("without the void the chain completes");
+        assert_eq!(value.outputs.get("result"), Some(&Value::Int(155045)));
+    }
 
     #[test]
     fn test_conflicting_overrides_from_one_law_are_rejected() {

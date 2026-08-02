@@ -1661,6 +1661,43 @@ pub fn override_targets(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding>
                 continue;
             }
 
+            // A voiding override says the entitlement does not arise at all,
+            // and the ground for that has to be the words of this article. A
+            // quotation only has to be copied; a category would have to be
+            // invented, and inventing is what this format exists to prevent.
+            if entry.get("voids").and_then(Value::as_bool) == Some(true) {
+                let quote = entry
+                    .get("legal_text_excerpt")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let own_text = doc
+                    .get("articles")
+                    .and_then(Value::as_sequence)
+                    .and_then(|arts| {
+                        arts.iter().find(|a| {
+                            a.get("number").and_then(Value::as_str) == Some(article.as_str())
+                        })
+                    })
+                    .and_then(|a| a.get("text"))
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                if quote.trim().is_empty() {
+                    findings.push(Finding::new(
+                        "override",
+                        Some(&article),
+                        "voids an output without quoting the words of this article that                          establish it",
+                    ));
+                } else if !normalised(own_text).contains(&normalised(quote)) {
+                    findings.push(Finding::new(
+                        "override",
+                        Some(&article),
+                        format!(
+                            "voids an output on the ground {quote:?}, which does not appear                              in this article's own text"
+                        ),
+                    ));
+                }
+            }
+
             if let Some(output) = output {
                 if !doc_article_defines_output(&target_doc, target_article, output) {
                     findings.push(Finding::new(
@@ -1742,6 +1779,30 @@ pub fn binding_units(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding> {
         }
     }
     findings
+}
+
+/// Collapse whitespace and case so a quotation can be held against the text it
+/// came from.
+///
+/// The harvested text wraps at column boundaries and carries markdown link
+/// syntax, so a verbatim quotation rarely matches byte for byte even when it is
+/// honest.
+fn normalised(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut last_space = true;
+    for ch in text.chars() {
+        let ch = if ch == '\u{00a0}' { ' ' } else { ch };
+        if ch.is_whitespace() {
+            if !last_space {
+                out.push(' ');
+                last_space = true;
+            }
+        } else if !matches!(ch, '[' | ']' | '*' | '_') {
+            out.extend(ch.to_lowercase());
+            last_space = false;
+        }
+    }
+    out.trim().to_owned()
 }
 
 /// Article numbers this document carries, in document order.
@@ -2580,6 +2641,120 @@ articles:
         )
         .expect("yaml");
         assert!(declaration_agrees_with_header(&doc).is_empty());
+    }
+
+    #[test]
+    fn a_voiding_override_must_quote_this_articles_own_words() {
+        // The ground for "the entitlement does not arise" is in the article
+        // itself: "bestaat geen aanspraak op een zorgtoeslag". Copying is
+        // checkable; inventing a category is not.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+$id: wzt
+articles:
+  - number: "2"
+    text: Aanspraak ter grootte van dat verschil.
+    machine_readable:
+      execution:
+        output:
+          - name: aanspraak
+  - number: "3"
+    text: In afwijking daarvan bestaat geen aanspraak op een zorgtoeslag indien het vermogen te hoog is.
+    machine_readable:
+      overrides:
+        - article: "2"
+          output: aanspraak
+          voids: true
+          legal_text_excerpt: bestaat geen aanspraak op een zorgtoeslag
+"#,
+        )
+        .expect("yaml");
+        assert!(override_targets(&doc, None).is_empty());
+    }
+
+    #[test]
+    fn a_voiding_override_without_a_quotation_is_flagged() {
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+$id: wzt
+articles:
+  - number: "2"
+    text: Aanspraak.
+    machine_readable:
+      execution:
+        output:
+          - name: aanspraak
+  - number: "3"
+    text: In afwijking daarvan bestaat geen aanspraak.
+    machine_readable:
+      overrides:
+        - article: "2"
+          output: aanspraak
+          voids: true
+"#,
+        )
+        .expect("yaml");
+        let f = override_targets(&doc, None);
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert!(f[0].detail.contains("without quoting"));
+    }
+
+    #[test]
+    fn a_quotation_that_is_not_in_the_article_is_flagged() {
+        // The failure this guards against: a ground that reads plausibly and
+        // comes from nowhere.
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+$id: wzt
+articles:
+  - number: "2"
+    text: Aanspraak.
+    machine_readable:
+      execution:
+        output:
+          - name: aanspraak
+  - number: "3"
+    text: In afwijking daarvan bestaat geen aanspraak.
+    machine_readable:
+      overrides:
+        - article: "2"
+          output: aanspraak
+          voids: true
+          legal_text_excerpt: het recht vervalt van rechtswege
+"#,
+        )
+        .expect("yaml");
+        let f = override_targets(&doc, None);
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert!(f[0].detail.contains("does not appear"));
+    }
+
+    #[test]
+    fn a_quotation_survives_the_harvesters_line_wrapping_and_link_syntax() {
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+$id: wzt
+articles:
+  - number: "2"
+    text: Aanspraak.
+    machine_readable:
+      execution:
+        output:
+          - name: aanspraak
+  - number: "3"
+    text: >-
+      In afwijking van [artikel 7, derde lid][ref1], bestaat geen
+      aanspraak op een zorgtoeslag indien de rendementsgrondslag te hoog is.
+    machine_readable:
+      overrides:
+        - article: "2"
+          output: aanspraak
+          voids: true
+          legal_text_excerpt: bestaat geen aanspraak op een zorgtoeslag
+"#,
+        )
+        .expect("yaml");
+        assert!(override_targets(&doc, None).is_empty());
     }
 
     #[test]

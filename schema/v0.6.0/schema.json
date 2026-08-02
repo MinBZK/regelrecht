@@ -1751,6 +1751,14 @@
               "output": {
                 "type": "string",
                 "description": "The specific output being replaced"
+              },
+              "voids": {
+                "type": "boolean",
+                "description": "The overridden output does not arise at all, rather than being replaced by another value. \"Bestaat geen aanspraak\" is not an entitlement of zero: with an entitlement of zero there is a decision carrying legal remedies and a ground for recovery, and with no entitlement there is neither. An engine reads this flag and nothing else; it needs no knowledge of administrative law to act on it."
+              },
+              "legal_text_excerpt": {
+                "type": "string",
+                "description": "The words of this article that establish the override, quoted verbatim, as `untranslatables` and `norm_gaps` already do. A closed vocabulary was considered and rejected: it would make the agent translate the statute into a category, which is the interpretive step this format exists to avoid. A quotation only has to be copied, and a check can hold it against the article's own text."
               }
             },
             "additionalProperties": false

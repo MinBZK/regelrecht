@@ -522,6 +522,20 @@ pub struct OverrideDeclaration {
     pub article: String,
     /// The specific output being replaced
     pub output: String,
+    /// The overridden output does not arise at all, rather than taking another
+    /// value.
+    ///
+    /// "Bestaat geen aanspraak" is not an entitlement of zero. With an
+    /// entitlement of zero there is a decision carrying legal remedies and a
+    /// ground for recovery; with no entitlement there is neither. An engine
+    /// reads this flag and needs no knowledge of administrative law to act on
+    /// it, which is why the ground sits in a quotation beside it rather than in
+    /// a vocabulary the engine would have to interpret.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub voids: bool,
+    /// The words of this article that establish the override, verbatim.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legal_text_excerpt: Option<String>,
 }
 
 /// A required input for a procedure stage

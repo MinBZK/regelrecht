@@ -570,6 +570,41 @@ harvester. Recording the article that decides them turns a copy into a
 derivation, and a check holds the two against each other: when they disagree,
 the article is right and the header is stale.
 
+### Displacement — "In afwijking van"
+
+Two things go wrong here often enough to be worth stating.
+
+**The article named is not the article displaced.** "In afwijking van artikel 7,
+derde lid, van de Awir, bestaat geen aanspraak op een zorgtoeslag" names the rule
+being departed from, while the subject of the clause says what is displaced: the
+entitlement that another article of *this* law establishes. Put the override on
+the article that produces the thing, not on the article the sentence cites. An
+override addressed at the wrong article never fires, and the engine then returns
+both the displaced value and the displacing one without complaint.
+
+**"Bestaat geen aanspraak" is not an entitlement of zero.** With an entitlement
+of zero there is a decision, legal remedies and a ground for recovery; with no
+entitlement there is none of that. Article 2 of the zorgtoeslag says "aanspraak
+**ter grootte van** dat verschil": the amount is a property of the entitlement,
+so where the entitlement does not arise there is no amount to compute either.
+
+```yaml
+overrides:
+  - article: "2.1"                    # where the entitlement is produced
+    output: aanspraak_op_zorgtoeslag
+    voids: true                       # it does not arise, rather than becoming zero
+    legal_text_excerpt: bestaat geen aanspraak op een zorgtoeslag
+```
+
+`voids` is what the engine acts on. `legal_text_excerpt` is why, in the words of
+this article, quoted verbatim. Do not classify the ground into a category of
+your own; copy the statute. A check holds the quotation against this article's
+own text, exactly as it does for amounts.
+
+Do not let the producing article read the exclusion instead. Article 2 says
+nothing about wealth, and pulling that condition in would be a scope violation
+dressed up as helpfulness.
+
 ### Norm Gaps — When the Norm Is Real but Its Content Lives Elsewhere
 
 The article states a norm the engine could execute, and the content of that norm
