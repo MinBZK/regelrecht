@@ -142,9 +142,6 @@ impl LawLoad for ArticleBasedLaw {
     }
 }
 
-/// Validate that all arrays in the law are within size limits.
-///
-/// This prevents DoS attacks via YAML documents with extremely large arrays.
 /// Reject an operation that quietly became a literal.
 ///
 /// `ActionValue` is untagged with `Operation` before `Literal`, and the
@@ -215,6 +212,9 @@ fn reject_literal_operations(law: &ArticleBasedLaw) -> Result<()> {
     Ok(())
 }
 
+/// Validate that all arrays in the law are within size limits.
+///
+/// This prevents DoS attacks via YAML documents with extremely large arrays.
 fn validate_array_sizes(law: &ArticleBasedLaw) -> Result<()> {
     // Check articles array
     if law.articles.len() > config::MAX_ARRAY_SIZE {
@@ -392,6 +392,78 @@ articles:
         assert_eq!(law.articles.len(), 1);
         assert_eq!(law.articles[0].number, "1");
         assert_eq!(law.articles[0].text, "Test article text");
+    }
+
+    /// The refusal of a literal-that-was-an-operation has to reach into lists.
+    ///
+    /// A malformed operation is not always the whole value of an action: an
+    /// action that hands back a list puts one per element, and the untagged
+    /// fallback turns the broken element into an ordinary map inside an
+    /// ordinary array. Walking only maps would let exactly the same silence
+    /// through one level deeper — the engine returns the list, the comparison
+    /// that could not be read sits in it as data, and nothing says so.
+    #[test]
+    fn test_a_literal_operation_inside_a_list_is_refused() {
+        let yaml = r#"
+$id: wet_met_lijst
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: De drempels volgen uit de vergelijking, die geen waarde noemt
+    machine_readable:
+      execution:
+        parameters:
+          - name: leeftijd
+            type: number
+        output:
+          - name: drempels
+            type: array
+        actions:
+          - output: drempels
+            value:
+              - operation: GREATER_THAN_OR_EQUAL
+                subject: $leeftijd
+              - 2
+"#;
+        let err = ArticleBasedLaw::from_yaml_str(yaml)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("GREATER_THAN_OR_EQUAL") && err.contains("literal"),
+            "a broken operation inside a list must be refused by name: {err}"
+        );
+    }
+
+    /// A list of plain values is a list, not a defect. Without this the test
+    /// above would also pass on a loader that refuses every list it meets.
+    ///
+    /// Note the asymmetry it fixes in place: inside a literal list every
+    /// element is data, so even a fully written operation there is refused.
+    /// The engine has no way to execute one in that position, and returning it
+    /// as a map the caller has to recognise is the same silence in another
+    /// shape.
+    #[test]
+    fn test_a_list_of_plain_values_loads() {
+        let yaml = r#"
+$id: wet_met_gewone_lijst
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: De drempels zijn achttien en zesenzestig
+    machine_readable:
+      execution:
+        output:
+          - name: drempels
+            type: array
+        actions:
+          - output: drempels
+            value:
+              - 18
+              - 66
+"#;
+        ArticleBasedLaw::from_yaml_str(yaml).expect("a list of numbers carries no operation");
     }
 
     #[test]

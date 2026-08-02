@@ -3295,6 +3295,35 @@ articles:
         );
     }
 
+    /// A `#` with nothing behind it references nothing.
+    ///
+    /// The schema pins the two forms a `valid_from` may take, and the reference
+    /// form is `#.+`: a bare `#` names no article, so it is a typo and not a
+    /// commencement fixed elsewhere. Admitting it as a reference would carry a
+    /// typo past the load-time refusal, which is the whole point of that check,
+    /// and leave it to be re-read later as a start date the law does not give.
+    #[test]
+    fn test_a_bare_hash_valid_from_is_refused_at_load() {
+        let mut resolver = RuleResolver::new();
+        let err = resolver
+            .load_from_yaml(
+                r#"
+$id: wet_met_kaal_hekje
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '#'
+articles: []
+"#,
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("valid_from") && err.contains("internal reference"),
+            "a bare '#' is neither a date nor a reference, and the error must say so: {err}"
+        );
+        assert_eq!(resolver.law_count(), 0);
+    }
+
     /// The refusal is about this date, not about the law: a version with a real
     /// date that covers the reference date still answers, even when an older
     /// version leaves its commencement to a koninklijk besluit.
@@ -3417,6 +3446,40 @@ articles:
         assert_eq!(
             resolver.find_procedure_reported("TOETS", None),
             Err(ProcedureMiss::NoneForCharacter)
+        );
+    }
+
+    /// The third miss, and the one no law can produce: the default index names
+    /// a procedure the definition index does not hold.
+    ///
+    /// It is reported apart from a named miss on purpose. A named miss is a law
+    /// asking for something that was never written, which a corpus author fixes
+    /// in the law; a dangling default is the resolver's own two indexes
+    /// disagreeing, which no edit to a law can repair. Reading the second as
+    /// the first sends whoever debugs it to the wrong file.
+    ///
+    /// The state is built by hand because loading cannot produce it — which is
+    /// exactly why nothing else covers this arm.
+    #[test]
+    fn test_a_dangling_default_is_not_reported_as_a_named_miss() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .procedure_defaults
+            .insert("BESCHIKKING".to_string(), "beschikking".to_string());
+        // procedure_index deliberately left empty: the indexes disagree.
+
+        assert_eq!(
+            resolver.find_procedure_reported("BESCHIKKING", None),
+            Err(ProcedureMiss::DefaultDangling("beschikking".to_string())),
+            "a default that resolves to nothing is an index defect, not a law asking for a \
+             procedure by name"
+        );
+
+        // The same procedure id asked for by name is the other answer, so the
+        // two are told apart by how the id was arrived at and not by the id.
+        assert_eq!(
+            resolver.find_procedure_reported("BESCHIKKING", Some("beschikking")),
+            Err(ProcedureMiss::NamedNotFound("beschikking".to_string()))
         );
     }
 
