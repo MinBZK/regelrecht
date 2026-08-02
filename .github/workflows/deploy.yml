@@ -113,10 +113,7 @@ jobs:
       dockerfile: packages/pipeline/Dockerfile
       target: harvester-worker
       build-args: BIN=regelrecht-harvest-worker
-      # Eén scope voor de drie targets uit packages/pipeline/Dockerfile: alles
-      # boven `ARG BIN` is byte-identiek, dus met aparte scopes bouwt en bewaart
-      # elk van de drie dezelfde chef- en cook-lagen.
-      cache-scope: pipeline
+      cache-scope: harvester-worker
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   build-enrich-worker:
@@ -136,10 +133,7 @@ jobs:
       dockerfile: packages/pipeline/Dockerfile
       target: enrich-worker
       build-args: BIN=regelrecht-enrich-worker
-      # Eén scope voor de drie targets uit packages/pipeline/Dockerfile: alles
-      # boven `ARG BIN` is byte-identiek, dus met aparte scopes bouwt en bewaart
-      # elk van de drie dezelfde chef- en cook-lagen.
-      cache-scope: pipeline
+      cache-scope: enrich-worker
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   build-pipeline-api:
@@ -154,10 +148,7 @@ jobs:
       dockerfile: packages/pipeline/Dockerfile
       target: pipeline-api
       build-args: BIN=regelrecht-pipeline-api
-      # Eén scope voor de drie targets uit packages/pipeline/Dockerfile: alles
-      # boven `ARG BIN` is byte-identiek, dus met aparte scopes bouwt en bewaart
-      # elk van de drie dezelfde chef- en cook-lagen.
-      cache-scope: pipeline
+      cache-scope: pipeline-api
 
   build-grafana:
     needs: changes
