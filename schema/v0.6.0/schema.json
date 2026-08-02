@@ -1646,7 +1646,7 @@
               },
               "legal_text_excerpt": {
                 "type": "string",
-                "description": "The words of this article that establish the override, quoted verbatim, as `untranslatables` and `norm_gaps` already do. A closed vocabulary was considered and rejected: it would make the agent translate the statute into a category, which is the interpretive step this format exists to avoid. A quotation only has to be copied, and a check can hold it against the article's own text."
+                "description": "The words of this article that establish the override, quoted verbatim, as `markings` already do. A closed vocabulary was considered and rejected: it would make the agent translate the statute into a category, which is the interpretive step this format exists to avoid. A quotation only has to be copied, and a check can hold it against the article's own text."
               }
             },
             "additionalProperties": false
