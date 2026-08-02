@@ -408,6 +408,13 @@ pub fn infer_operation_unit(
             // the result never triggers a spurious unit-mismatch check.
             Ok(Unit::Unknown)
         }
+        // DATE_PART yields a bare calendar number (a year, a month number, a day
+        // number) and START_OF yields a date; neither carries a measurable unit,
+        // so both under-approximate as Unknown after recursing into the operand.
+        DatePart { date, .. } | StartOf { date, .. } => {
+            infer_unit(date, symbols)?;
+            Ok(Unit::Unknown)
+        }
     }
 }
 

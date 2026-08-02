@@ -82,6 +82,16 @@ articles:
               from: $GEBOORTEDATUM
               to: $PEILDATUM
               in: days
+          - output: berekeningsjaar
+            value:
+              operation: DATE_PART
+              date: $PEILDATUM
+              in: year
+          - output: ingang_maand
+            value:
+              operation: START_OF
+              date: $PEILDATUM
+              in: month
           - output: reeks
             value:
               operation: LIST

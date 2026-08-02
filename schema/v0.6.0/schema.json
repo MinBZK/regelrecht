@@ -1109,6 +1109,69 @@
       },
       "additionalProperties": false
     },
+    "datePartOperation": {
+      "type": "object",
+      "description": "Read one calendar component out of a date. The inverse of DATE, so 'in' ranges over exactly the components DATE takes. Returns an integer: the year number, the month number (1-12) or the day of the month (1-31). A month number is only meaningful within one year — comparing two month numbers across a year boundary is almost always wrong. For the weekday, use DAY_OF_WEEK.",
+      "required": [
+        "operation",
+        "date",
+        "in"
+      ],
+      "properties": {
+        "operation": {
+          "type": "string",
+          "const": "DATE_PART"
+        },
+        "date": {
+          "$ref": "#/definitions/operationValue",
+          "description": "Date to read a component from (ISO 8601 YYYY-MM-DD)"
+        },
+        "in": {
+          "type": "string",
+          "description": "Calendar component to read: 'year', 'month' or 'day' (singular, because the operation selects a component rather than counting units the way DATE_DIFF does)",
+          "enum": [
+            "year",
+            "month",
+            "day"
+          ]
+        },
+        "legal_basis": {
+          "$ref": "#/definitions/legalBasis"
+        }
+      },
+      "additionalProperties": false
+    },
+    "startOfOperation": {
+      "type": "object",
+      "description": "Truncate a date down to the start of the calendar unit it falls in: 1 January of its year, or the first day of its month. Returns a date (ISO 8601 YYYY-MM-DD). For 'the first day of the month following', truncate first and add afterwards — DATE_ADD over START_OF — so the day-clamping of DATE_ADD never comes into play and the first of the month yields the next first.",
+      "required": [
+        "operation",
+        "date",
+        "in"
+      ],
+      "properties": {
+        "operation": {
+          "type": "string",
+          "const": "START_OF"
+        },
+        "date": {
+          "$ref": "#/definitions/operationValue",
+          "description": "Date to truncate (ISO 8601 YYYY-MM-DD)"
+        },
+        "in": {
+          "type": "string",
+          "description": "Calendar unit to truncate to: 'year' or 'month'. 'day' is the identity and 'week' would need a convention no legal text imposes.",
+          "enum": [
+            "year",
+            "month"
+          ]
+        },
+        "legal_basis": {
+          "$ref": "#/definitions/legalBasis"
+        }
+      },
+      "additionalProperties": false
+    },
     "operationType": {
       "type": "string",
       "description": "Operation type identifier used in action definitions",
@@ -1135,6 +1198,8 @@
         "DATE",
         "DAY_OF_WEEK",
         "DATE_DIFF",
+        "DATE_PART",
+        "START_OF",
         "ROUND",
         "CEIL",
         "FLOOR"
@@ -1181,6 +1246,12 @@
         },
         {
           "$ref": "#/definitions/dateDiffOperation"
+        },
+        {
+          "$ref": "#/definitions/datePartOperation"
+        },
+        {
+          "$ref": "#/definitions/startOfOperation"
         }
       ]
     },

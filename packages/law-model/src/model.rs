@@ -370,6 +370,24 @@ pub enum ActionOperation {
         #[serde(rename = "in")]
         unit: ActionValue,
     },
+    #[serde(rename = "DATE_PART")]
+    DatePart {
+        date: ActionValue,
+        /// Calendar component to read: "year", "month" or "day".
+        ///
+        /// A plain `String` and not an `ActionValue`: the component to read is
+        /// never itself the outcome of a computation, so the schema fixes it to
+        /// an enum and the model does not widen that to a variable reference.
+        #[serde(rename = "in")]
+        part: String,
+    },
+    #[serde(rename = "START_OF")]
+    StartOf {
+        date: ActionValue,
+        /// Calendar unit to truncate to: "year" or "month".
+        #[serde(rename = "in")]
+        unit: String,
+    },
 }
 
 impl ActionOperation {
@@ -405,6 +423,8 @@ impl ActionOperation {
             ActionOperation::Date { .. } => "DATE",
             ActionOperation::DayOfWeek { .. } => "DAY_OF_WEEK",
             ActionOperation::DateDiff { .. } => "DATE_DIFF",
+            ActionOperation::DatePart { .. } => "DATE_PART",
+            ActionOperation::StartOf { .. } => "START_OF",
         }
     }
 }

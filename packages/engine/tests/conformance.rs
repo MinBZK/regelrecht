@@ -37,6 +37,8 @@ const KNOWN_GAPS: &[&str] = &[
     "missing_required_url.yaml", // schema requires top-level `url`; model treats it as optional
     "unknown_field_in_article.yaml", // article is additionalProperties:false; serde silently drops the field
     "wrong_type_publication_date.yaml", // schema wants a date string; model coerces the YAML integer
+    // Measured 2026-08-02, with DATE_PART and START_OF.
+    "date_part_plural_unit.yaml", // schema pins `in` to an enum; the model reads any string and the engine names the error at runtime
 ];
 
 /// Repo root, derived from this crate's manifest dir (`packages/engine`).
@@ -311,7 +313,7 @@ fn tier_b_fixtures() {
 /// entry means writing a fixture that uses it; the Tier-B round-trip assertion
 /// then proves the model actually carries it.
 const UNCOVERED_SCHEMA_KEYS: &[(&str, &str)] = &[
-    // The 13 operation definitions each carry an optional `legal_basis`. The
+    // The 15 operation definitions each carry an optional `legal_basis`. The
     // model's `ActionOperation` is an internally-tagged enum whose variants
     // would each need the field, forcing `..` into every pattern in the
     // evaluator. Measured, not fixed — the field is metadata, dropped silently.
@@ -324,6 +326,7 @@ const UNCOVERED_SCHEMA_KEYS: &[(&str, &str)] = &[
     ("dateAddOperation.legal_basis", "model drops it"),
     ("dateConstructOperation.legal_basis", "model drops it"),
     ("dateDiffOperation.legal_basis", "model drops it"),
+    ("datePartOperation.legal_basis", "model drops it"),
     ("dayOfWeekOperation.legal_basis", "model drops it"),
     ("ifOperation.legal_basis", "model drops it"),
     ("inOperation.legal_basis", "model drops it"),
@@ -331,6 +334,7 @@ const UNCOVERED_SCHEMA_KEYS: &[(&str, &str)] = &[
     ("logicalOperation.legal_basis", "model drops it"),
     ("notOperation.legal_basis", "model drops it"),
     ("roundingOperation.legal_basis", "model drops it"),
+    ("startOfOperation.legal_basis", "model drops it"),
 ];
 
 /// Every `(owner, property)` pair the schema defines, where `owner` is the
