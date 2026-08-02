@@ -192,14 +192,15 @@ everything that does fit.
 ```yaml
 machine_readable:
   markings:
-    - about: het jaar waarin de peildatum valt
+    - about: de week waarin de aanvraag is ingediend
       reason: >-
-        De motor rekent met een datum als geheel en leest er geen jaardeel uit;
-        het jaar is hier een zelfstandige waarde waarop de bepaling rust.
+        DATE_PART leest jaar, maand en dag uit een datum en kent geen
+        weeknummer; de week is hier een zelfstandige waarde waarop de
+        bepaling rust.
       resolution: operation       # operation | model
-      resolved_by: Een YEAR-bewerking die het jaardeel van een datum oplevert
+      resolved_by: Een weeknummer als waarde van `in` bij DATE_PART
       target: []
-      legal_text_excerpt: het kalenderjaar waarop de tegemoetkoming betrekking heeft
+      legal_text_excerpt: de week waarin de aanvraag is ingediend
       accepted: false
   execution:
     # everything that CAN be expressed, which is nearly always most of it
@@ -296,11 +297,18 @@ entries apart, in
 - Entry `1.1.c`, the definition of "verzekerde", is fully worked out: parameters,
   four cross-law inputs, an output and the actions that compute it. It has one
   marking, for "vanaf de eerste dag van de kalendermaand volgende op de maand
-  waarin hij achttien jaar wordt", because no operation reads the month out of a
-  date. The model asks for the first day of the assessed month as a parameter,
-  compares the eighteenth birthday against it, and still produces `is_verzekerde`.
+  waarin hij achttien jaar wordt", because at the time no operation read the
+  month out of a date. The model asks for the first day of the assessed month as
+  a parameter, compares the eighteenth birthday against it, and still produces
+  `is_verzekerde`.
 
 Write markings like the second one.
+
+That second marking is also the example of a marking that has since expired.
+`START_OF` and `DATE_PART` write the figure it names in two lines, so an entry
+that carries it today is stale. A marking states what the format cannot do at
+the moment of writing, and the operation list in `reference.md` is what that
+claim is checked against. Read it before you mark.
 
 ### The `target` list
 
@@ -527,7 +535,7 @@ actions:
 | Conditional | `IF` | `cases:` (each `when`/`then`) + `default:` |
 | Collection | `LIST` | `items:` array |
 | Rounding | `ROUND`, `CEIL`, `FLOOR` | `value:` + `precision:` (required) |
-| Date | `AGE` (`date_of_birth`, `reference_date`), `DATE_ADD` (`date` + `years`/`months`/`weeks`/`days`), `DATE` (`year`, `month`, `day`), `DATE_DIFF` (`from`, `to`, `in`), `DAY_OF_WEEK` (`date`) | named fields |
+| Date | `AGE` (`date_of_birth`, `reference_date`), `DATE_ADD` (`date` + `years`/`months`/`weeks`/`days`), `DATE` (`year`, `month`, `day`), `DATE_DIFF` (`from`, `to`, `in`), `DAY_OF_WEEK` (`date`), `DATE_PART` (`date`, `in`), `START_OF` (`date`, `in`) | named fields |
 
 `ROUND` is half-up (rekenkundig, the Hoge Raad default), `CEIL` rounds up,
 `FLOOR` rounds down. `precision` counts decimals in the value's own unit, so a
@@ -549,6 +557,9 @@ full shapes and `examples.md` the worked cases.
 | "afgerond op hele euro's" | `ROUND` with `precision: -2` on a eurocent value |
 | "binnen X weken na" | `DATE_ADD` with `weeks` |
 | "het aantal maanden tussen" | `DATE_DIFF` with `in: months` |
+| "het kalenderjaar waarin" / "het berekeningsjaar" | `DATE_PART` with `in: year` |
+| "de eerste dag van de kalendermaand volgende op" | `DATE_ADD` with `months: 1` over `START_OF` with `in: month`, in that order |
+| "na de eerste dag van de maand" | `GREATER_THAN` on `DATE_PART` with `in: day`, value 1 |
 | "voor zover" | a bound on an amount: `MAX`/`MIN` around the qualifying part. A boolean here loses the partial case, and always in the citizen's disfavour |
 | "dan wel" (two measures side by side) | `OR` over two comparisons, each with its own parameter. One parameter whose description covers both is not a model of the disjunction |
 | "in afwijking van artikel X" | `overrides` declaration |

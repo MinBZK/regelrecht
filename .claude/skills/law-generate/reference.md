@@ -36,13 +36,13 @@ machine_readable:
       legal_basis: artikel 4 Wet op de zorgtoeslag
 
   markings:                     # The format cannot express a construct (optional)
-    - about: het jaar waarin de peildatum valt
+    - about: de week waarin de peildatum valt
       reason: >-                # why it does not fit, in terms of what the format has
-        De motor rekent met een datum als geheel en leest er geen jaardeel uit.
+        De motor leest jaar, maand en dag uit een datum, en kent geen weeknummer.
       resolution: operation     # operation | model
-      resolved_by: Een YEAR-bewerking die het jaardeel van een datum oplevert
+      resolved_by: Een weeknummer als waarde van `in` bij DATE_PART
       target: []                # values this article therefore does not produce
-      legal_text_excerpt: het kalenderjaar waarop de tegemoetkoming betrekking heeft
+      legal_text_excerpt: de week waarin de aanvraag is ingediend
       accepted: false
 
   implements:                   # IoC fulfillment (optional)
@@ -146,9 +146,10 @@ procedure:
 ## Markings and Open Terms
 
 A **marking** says the format cannot express a construct. That is a language gap,
-resolved by building an operation (`resolution: operation`, e.g. a YEAR operation) or
-by changing the format (`resolution: model`, e.g. quantification over persons, a
-rule about a set rather than a value, a legal fiction).
+resolved by building an operation (`resolution: operation`, e.g. a weeknummer as a
+value of `in` on `DATE_PART`) or by changing the format (`resolution: model`, e.g.
+quantification over persons, a rule about a set rather than a value, a legal
+fiction).
 
 An **open term** says the law leaves the content open and a lower regulation or
 implementing policy fills it. The language expresses it fine; the content sits
@@ -333,6 +334,55 @@ in: months                         # days | months | years (or a $variable)
 
 Positive when `to` is on or after `from`. Months and years count complete
 calendar units.
+
+### DATE_PART, read one component out of a date (RFC-032)
+```yaml
+operation: DATE_PART
+date: $peildatum                   # Date (operationValue)
+in: year                           # year | month | day, singular, no $variable
+```
+
+Returns an integer: the year number, the month number (1-12) or the day of the
+month. It is the inverse of `DATE`, so `in` ranges over exactly the components
+`DATE` takes. The weekday is not one of them and stays `DAY_OF_WEEK`.
+
+The unit is singular here and plural in `DATE_DIFF`, because this reads a
+component where `DATE_DIFF` counts units. `in: months` is an error.
+
+A month number is only meaningful within one year. Comparing two month numbers
+across a year boundary is almost always wrong; compare the dates themselves.
+
+### START_OF, truncate a date to the start of its year or month (RFC-032)
+```yaml
+operation: START_OF
+date: $peildatum                   # Date (operationValue)
+in: month                          # year | month, singular, no $variable
+```
+
+Returns a date: 1 January of the year, or the first day of the month.
+
+"De eerste dag van de kalendermaand volgende op" is one legal figure that runs
+through the whole of social security law, and this is how it is written:
+
+```yaml
+operation: DATE_ADD
+date:
+  operation: START_OF
+  date: $peildatum
+  in: month
+months: 1
+```
+
+Truncate first, add afterwards. In that order the result is exact for every
+input date, including the first of the month and including 31 January, because
+the truncated date is day 1 and the day-clamping of `DATE_ADD` never comes into
+play. The reverse order lands on the same answer through the clamp, which is a
+step a reviewer has to re-check each time. Do not write it that way.
+
+When the law asks whether something happened *after* the first of the month
+(Awir art. 49), test the day number rather than the date:
+`GREATER_THAN(DATE_PART($d, in: day), 1)`. A change on the first counts in that
+month itself.
 
 ### ROUND, CEIL and FLOOR, rounding (RFC-024)
 ```yaml
@@ -525,6 +575,9 @@ law boundary.
 | "bedoeld in artikel X" | Internal reference via source.output |
 | "binnen X weken na" | `DATE_ADD`, date: ..., weeks: X |
 | "het aantal maanden tussen X en Y" | `DATE_DIFF`, from: X, to: Y, in: months |
+| "het kalenderjaar waarin" / "het berekeningsjaar" | `DATE_PART`, date: ..., in: year |
+| "de eerste dag van de kalendermaand volgende op" | `DATE_ADD` over `START_OF`, in: month, months: 1 |
+| "na de eerste dag van de maand" | `GREATER_THAN` on `DATE_PART`, in: day, value: 1 |
 | "afgerond op hele euro's" | `ROUND` with `precision: -2` on a eurocent value |
 | "voor zover" | A bound on an amount: `MAX`/`MIN` around the qualifying part. A boolean here loses the partial case, and always in the citizen's disfavour |
 | "dan wel" (two measures side by side) | `OR` over two comparisons, each with its own parameter. One parameter whose description covers both is not a model of the disjunction |
@@ -551,7 +604,9 @@ dependencies get in.
 10. `AGE` takes `date_of_birth` and `reference_date`
 11. `DATE_ADD` takes `date` plus optional `years`/`months`/`weeks`/`days`
 12. `ROUND`, `CEIL` and `FLOOR` require `precision`
-13. `$referencedate` is not a built-in and must be declared as a parameter
+13. `DATE_PART` and `START_OF` take `date` plus a singular `in`; `DATE_DIFF`
+    takes a plural one
+14. `$referencedate` is not a built-in and must be declared as a parameter
 
 ## External Resources
 

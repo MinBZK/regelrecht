@@ -14,7 +14,7 @@ If you came here expecting test cases you can run against your own engine, there
 
 ## What is enforced today
 
-Two manifests are checked in, `conformance/v0.5.0/manifest.json` and `conformance/v0.5.4/manifest.json`. Each declares a set of conformance levels and, per level, the operations that level is responsible for. The v0.5.4 manifest added `DATE_DIFF` to the temporal level alongside the [date operations](../concepts/temporal-and-dates) it belongs with.
+A manifest is checked in per schema version, up to `conformance/v0.6.0/manifest.json`. Each declares a set of conformance levels and, per level, the operations that level is responsible for. The v0.5.4 manifest added `DATE_DIFF` to the temporal level alongside the [date operations](../concepts/temporal-and-dates) it belongs with, and v0.6.0 added `DATE_PART` and `START_OF` there ([RFC-032](/rfcs/rfc-032)).
 
 What runs in CI is **operation coverage of the manifest itself**, nothing more. Three integration tests in `packages/engine/tests/conformance_coverage.rs` check each manifest's `operations` lists against the engine's own operation list:
 
@@ -39,7 +39,7 @@ The manifest groups work into conformance levels, from a minimal core outward:
 | `core` | Arithmetic, comparison, logical, conditional, and collection operations, plus variable resolution |
 | `cross_law` | Resolving a `source` reference into another law |
 | `ioc` | Open terms filled by `implements` regulations |
-| `temporal` | Date operations: `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK`, `DATE_DIFF` |
+| `temporal` | Date operations: `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK`, `DATE_DIFF`, `DATE_PART`, `START_OF` |
 | `advanced` | Hooks, overrides, untranslatables, data sources, and Awb procedures |
 
 Once the cases exist, an engine could claim a level by passing every test in it, which gives a precise vocabulary for partial support: an engine might be core-and-cross-law conformant without yet handling the advanced level. The `test_files` entries in the manifests are the planned filenames; those files are not written yet, and there is no runner that executes them against an engine.
