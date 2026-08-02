@@ -252,7 +252,8 @@ impl LlmRunner for ProcessLlmRunner {
         // A feedback pass asks for one thing and gives the agent nothing
         // else to do, so it cannot wander back into translating.
         if let Pass::Feedback(feedback) = &payload.pass {
-            let prompt = build_feedback_prompt(&payload.yaml_path, feedback);
+            let prompt =
+                build_feedback_prompt(&payload.yaml_path, feedback, vocabulary_of(yaml_abs).await);
             return run_llm_subprocess(
                 &config.provider,
                 &prompt,
@@ -988,6 +989,16 @@ pub struct EnrichResult {
     /// stored results deserializable.
     #[serde(default)]
     pub untranslatables: Vec<CapturedUntranslatable>,
+    /// Markings captured from the enriched YAML (schema v0.6.0), the channel
+    /// that replaced `untranslatables`. These ride in `jobs.result` and are
+    /// deliberately NOT mirrored into the `untranslatables` table: that table
+    /// belongs to the v1 pipeline, its `reason` column is `NOT NULL` and a
+    /// marking has no such field, so mirroring one would mean inventing the
+    /// text a reader is supposed to trust. Where markings land is decided with
+    /// the rest of the v2 persistence; until then they are visible in the job
+    /// result and counted as progress by the chunk guard.
+    #[serde(default)]
+    pub markings: Vec<CapturedMarking>,
     /// `false` when this run was a chunk that did NOT reach the end of the
     /// document: the law must stay `enriching` and the worker enqueues a
     /// continuation job. Defaults to `true` so pre-chunking `jobs.result` JSON
@@ -1018,6 +1029,27 @@ pub struct CapturedUntranslatable {
     pub reason: String,
     pub suggestion: Option<String>,
     pub legal_text_excerpt: Option<String>,
+    pub accepted: bool,
+}
+
+/// A single marking captured from an enriched article, flattened for
+/// reporting. The counterpart of [`CapturedUntranslatable`] for schema v0.6.0
+/// and later; see [`EnrichResult::markings`] for why it is not written to the
+/// `untranslatables` table.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CapturedMarking {
+    /// The owning article's number (`Article.number`).
+    pub article: String,
+    /// The construct the format cannot express, in the article's own words.
+    pub about: String,
+    /// `engine` (the operation must be built) or `model` (the format has no
+    /// shape for this construct).
+    pub resolution: String,
+    pub resolved_by: Option<String>,
+    /// The values in this article that cannot be produced. Empty says the
+    /// article stays executable.
+    pub target: Vec<String>,
+    pub legal_text_excerpt: String,
     pub accepted: bool,
 }
 
@@ -1437,6 +1469,69 @@ fn build_prompt(
     out
 }
 
+/// The names a law file may use to record what its model does not do.
+///
+/// Schema v0.6.0 folded four fields into two and set
+/// `additionalProperties: false`, so the old names are now rejected by the
+/// schema gate and the new names are rejected by every schema before it. The
+/// feedback prompt therefore cannot name one set of fields for every file: a
+/// prompt that prescribes what the file's own schema forbids turns the repair
+/// round into a loop that hands the agent the same impossible instruction
+/// every time. Which set applies is a property of the file, so it is read off
+/// the file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Vocabulary {
+    /// Schema v0.6.0 and later: `markings` and `open_terms`.
+    Markings,
+    /// Schema v0.5.6 and earlier: `untranslatables` and `norm_gaps`. Laws on
+    /// these versions stay in the corpus and are re-enriched, so the wording
+    /// they get is kept exactly as it was.
+    Legacy,
+}
+
+/// The vocabulary a law file's declared schema version allows.
+///
+/// Unreadable, unparseable or an unregistered `$schema` all fall back to
+/// [`Vocabulary::Markings`]: that is what new work targets, and a file the
+/// schema gate cannot place is a file the gate is about to fail on anyway.
+async fn vocabulary_of(yaml_abs: &Path) -> Vocabulary {
+    match tokio::fs::read_to_string(yaml_abs).await {
+        Ok(raw) => vocabulary_of_yaml(&raw),
+        Err(e) => {
+            tracing::warn!(
+                path = %yaml_abs.display(),
+                error = %e,
+                "cannot read law for its schema version; assuming the current vocabulary"
+            );
+            Vocabulary::Markings
+        }
+    }
+}
+
+/// [`vocabulary_of`] on already-read YAML text.
+fn vocabulary_of_yaml(raw: &str) -> Vocabulary {
+    let Ok(value) = serde_yaml_ng::from_str::<serde_json::Value>(raw) else {
+        return Vocabulary::Markings;
+    };
+    match regelrecht_engine::schema::detect_version(&value) {
+        Some(version) if !schema_has_markings(version) => Vocabulary::Legacy,
+        _ => Vocabulary::Markings,
+    }
+}
+
+/// Whether a `vMAJOR.MINOR.PATCH` schema version is v0.6.0 or later, the point
+/// at which `markings` replaced `untranslatables` and `norm_gaps`.
+fn schema_has_markings(version: &str) -> bool {
+    let mut parts = version.trim_start_matches('v').split('.');
+    let mut next = || parts.next().and_then(|p| p.parse::<u32>().ok());
+    match (next(), next(), next()) {
+        (Some(major), Some(minor), Some(patch)) => (major, minor, patch) >= (0, 6, 0),
+        // An unparseable version is not an old one: treat it as current
+        // rather than sending an agent back to fields the schema dropped.
+        _ => true,
+    }
+}
+
 /// Prompt for a feedback pass: the artefact exists and a gate found
 /// something.
 ///
@@ -1446,7 +1541,10 @@ fn build_prompt(
 /// problem sits. And what counts as an answer depends on the gate: a schema
 /// error must be fixed, while a question the text raises may equally be
 /// answered by recording why the model does not do what the check expected.
-fn build_feedback_prompt(yaml_path: &str, feedback: &Feedback) -> String {
+///
+/// `vocabulary` decides which field names the prompt may prescribe; see
+/// [`Vocabulary`].
+fn build_feedback_prompt(yaml_path: &str, feedback: &Feedback, vocabulary: Vocabulary) -> String {
     let list = feedback
         .findings
         .iter()
@@ -1454,30 +1552,87 @@ fn build_feedback_prompt(yaml_path: &str, feedback: &Feedback) -> String {
         .collect::<Vec<_>>()
         .join("\n");
 
-    let (what_happened, what_to_do) = match feedback.gate {
-        Gate::Schema => (
+    // The citation half of the marking gate is about evidence, not about
+    // fields, so it reads the same under either vocabulary.
+    const CITATION_RULE: &str = "**Do not cite what you were not given.** You have no network and \
+         no search. A kamerstuk, a Staatsblad number or a URL that appears in none of the text in \
+         front of you is something you recall, and a recalled citation is indistinguishable from \
+         a read one to whoever comes after. If you believe a source exists, name it as a lead in \
+         prose (\"the explanatory memorandum probably covers this\") without a number and without \
+         a link. A lead invites someone to look; a citation claims someone already did.";
+
+    let (what_happened, what_to_do) = match (feedback.gate, vocabulary) {
+        (Gate::Schema, _) => (
             "does not validate against the regelrecht JSON schema",
-            "Fix it in place so it validates. Change as little as possible.",
+            "Fix it in place so it validates. Change as little as possible.".to_string(),
         ),
-        Gate::Marking => (
+        (Gate::Marking, Vocabulary::Markings) => (
             "records things in the wrong drawer, or names a source it cannot have read",
-            "Two things, and they are about the record rather than about the translation.\n\n\
-             **Put each marking in the drawer it belongs to.** An `untranslatable` says the \
-             engine's operations cannot express a construct, and it is resolved by building \
-             the operation. A `norm_gap` says the norm is open and gets its content from a \
-             regulation or beleidsregel that is not in the corpus, and it is resolved by \
-             harvesting that source or, absent one, by the competent authority deciding per \
-             case. Recording the second as the first sends it to a queue where nobody will \
-             ever work it.\n\n\
-             **Do not cite what you were not given.** You have no network and no search. A \
-             kamerstuk, a Staatsblad number or a URL that appears in none of the text in front \
-             of you is something you recall, and a recalled citation is indistinguishable from \
-             a read one to whoever comes after. If you believe a source exists, name it as a \
-             lead in prose (\"the explanatory memorandum probably covers this\") without a \
-             number and without a link. A lead invites someone to look; a citation claims \
-             someone already did.",
+            format!(
+                "Two things, and they are about the record rather than about the translation.\n\n\
+                 **Put each marking in the drawer it belongs to.** Which drawer follows from who \
+                 resolves it, and there are three.\n\n\
+                 A value that another law produces is not a gap at all: it is an input with a \
+                 `source` naming that regulation and the output it asks for.\n\n\
+                 A norm whose content is filled in elsewhere — by a lower regulation, or, when \
+                 the law appoints nobody (\"redelijkerwijs\", \"in bijzondere gevallen\"), by the \
+                 executive policy of whichever authority applies it — is an `open_term`. The \
+                 format expresses it fine; the content lives somewhere else. Whether that \
+                 somewhere else is already in the corpus is a state of the corpus and does not \
+                 belong in the law file.\n\n\
+                 Only what the format itself cannot express is a `marking`: `resolution: engine` \
+                 when the operation does not exist and has to be built, `resolution: model` when \
+                 the operation set is not the problem and the format has no shape for the \
+                 construct. Recording an open term as a marking sends it to a queue where nobody \
+                 will ever work it.\n\n\
+                 **A marking is a flag on an article that is otherwise worked out.** It names the \
+                 one thing that does not fit and leaves everything that does fit standing; an \
+                 article whose whole model is a marking is a defect. `target` names the values in \
+                 this article that cannot be produced because of it, and an empty `target` is a \
+                 statement rather than an omission: it says the article stays executable. \
+                 `legal_text_excerpt` quotes this article's own words, because a marking that \
+                 cannot quote what it is about is about something else.\n\n\
+                 {CITATION_RULE}"
+            ),
         ),
-        Gate::Checks => (
+        (Gate::Marking, Vocabulary::Legacy) => (
+            "records things in the wrong drawer, or names a source it cannot have read",
+            format!(
+                "Two things, and they are about the record rather than about the translation.\n\n\
+                 **Put each marking in the drawer it belongs to.** An `untranslatable` says the \
+                 engine's operations cannot express a construct, and it is resolved by building \
+                 the operation. A `norm_gap` says the norm is open and gets its content from a \
+                 regulation or beleidsregel that is not in the corpus, and it is resolved by \
+                 harvesting that source or, absent one, by the competent authority deciding per \
+                 case. Recording the second as the first sends it to a queue where nobody will \
+                 ever work it.\n\n\
+                 {CITATION_RULE}"
+            ),
+        ),
+        (Gate::Checks, Vocabulary::Markings) => (
+            "raised questions that the statutory text puts to the model",
+            "Answer every one of them. There are two acceptable answers and you \
+             choose per finding.\n\n\
+             **Change the model**, when the text does say what the check \
+             expected and the model missed it. A lid that derogates from \
+             another needs a branch; an article that computes over a \
+             berekeningsjaar needs a binding that carries that period.\n\n\
+             **Record why not**, when the text does not support what the check \
+             expected. Use an `open_term` when the norm is open and its content \
+             is filled in by a lower regulation or by the executive policy of \
+             the authority that applies it, and a `marking` when the format \
+             itself cannot express the construct — `resolution: engine` for an \
+             operation that has to be built, `resolution: model` for a shape \
+             the format does not have. A value that another law produces is \
+             neither: that is an input with a `source`. Both are first-class \
+             answers and neither is an admission of failure.\n\n\
+             A marking flags the one thing that does not fit and leaves the \
+             rest of the article standing. What you may not do is leave a \
+             finding unanswered, or make it go away by removing the logic it \
+             was about."
+                .to_string(),
+        ),
+        (Gate::Checks, Vocabulary::Legacy) => (
             "raised questions that the statutory text puts to the model",
             "Answer every one of them. There are two acceptable answers and you \
              choose per finding.\n\n\
@@ -1492,16 +1647,24 @@ fn build_feedback_prompt(yaml_path: &str, feedback: &Feedback) -> String {
              is not in the corpus. Both are first-class answers and neither is \
              an admission of failure.\n\n\
              What you may not do is leave a finding unanswered, or make it go \
-             away by removing the logic it was about.",
+             away by removing the logic it was about."
+                .to_string(),
         ),
     };
 
-    let marking_note = if feedback.gate.accepts_marking() {
-        ""
-    } else {
-        "\n\nDo not delete a `machine_readable` section to make an error go \
-         away. A construct that cannot be expressed belongs in \
-         `untranslatables` with a reason."
+    let marking_note = match (feedback.gate.accepts_marking(), vocabulary) {
+        (true, _) => "",
+        (false, Vocabulary::Markings) => {
+            "\n\nDo not delete a `machine_readable` section to make an error go \
+             away. A construct the format cannot express belongs in `markings`, \
+             with the words it hangs on and the change that would resolve it; a \
+             norm whose content is filled in elsewhere belongs in `open_terms`."
+        }
+        (false, Vocabulary::Legacy) => {
+            "\n\nDo not delete a `machine_readable` section to make an error go \
+             away. A construct that cannot be expressed belongs in \
+             `untranslatables` with a reason."
+        }
     };
 
     format!(
@@ -2041,8 +2204,8 @@ pub(crate) fn normalize_yaml_path(yaml_path: &str) -> Result<String> {
 
 /// Error-message marker for a chunk that produced no reviewable output at all:
 /// no new `machine_readable` sections, no `chunk_report` in the result
-/// envelope, and no new untranslatables. This wording deliberately does NOT
-/// contain any `is_deterministic_content_failure` marker ("no machine_readable
+/// envelope, and no new marking or untranslatable. This wording deliberately
+/// does NOT contain any `is_deterministic_content_failure` marker ("no machine_readable
 /// sections" / "yaml error"): the failure must stay retryable — a healthy law
 /// whose chunk merely hiccupped must never be terminally exhausted in one
 /// step. The worker's `chunk_no_output_is_not_deterministic` test pins this.
@@ -2186,7 +2349,7 @@ pub async fn execute_enrich_with_runner(
     let digest_before = file_digest(&yaml_abs).await;
 
     // Parse the law once for the pre-run stats, the chunk window's article
-    // numbers, and the untranslatables baseline of the chunk no-op guard.
+    // numbers, and the recorded-gap baseline of the chunk no-op guard.
     let law = load_law(&yaml_abs).await?;
     let (articles_before, machine_readable_before) = article_stats(&law);
 
@@ -2337,8 +2500,10 @@ pub async fn execute_enrich_with_runner(
     // fails: absent/malformed → default (see read_enrichment_result_envelope).
     let envelope = read_enrichment_result_envelope(&yaml_abs).await;
 
-    // Capture the untranslatables the agent flagged in the enriched YAML (RFC-012).
+    // Capture what the agent flagged in the enriched YAML: untranslatables
+    // (RFC-012, schema v0.5.x) and the markings that replaced them in v0.6.0.
     let untranslatables = collect_untranslatables_from(&law_after);
+    let markings = collect_markings_from(&law_after);
 
     match &chunk_window {
         // Whole-law mode: if the LLM ran successfully but didn't enrich any
@@ -2356,10 +2521,11 @@ pub async fn execute_enrich_with_runner(
         // Chunked mode: a window may legitimately yield zero new
         // machine_readable sections (definition/transitional chapters) — but
         // only when the agent proves it reviewed the window (chunk_report) or
-        // produced new untranslatables. No output at all fails with a message
-        // that deliberately does NOT match `is_deterministic_content_failure`:
-        // the failure stays retryable and can never terminally exhaust a
-        // healthy law. The empty window skipped the LLM, so it is exempt.
+        // recorded a new gap in it (a marking or an untranslatable). No output
+        // at all fails with a message that deliberately does NOT match
+        // `is_deterministic_content_failure`: the failure stays retryable and
+        // can never terminally exhaust a healthy law. The empty window skipped
+        // the LLM, so it is exempt.
         Some((start, numbers)) if !empty_window => {
             // Progress is measured INSIDE the assigned window: an edit outside
             // `[start, end)` (a prompt violation, though it rides along in the
@@ -2367,12 +2533,14 @@ pub async fn execute_enrich_with_runner(
             // proof that this window was reviewed — otherwise the cursor
             // advances past a window nobody looked at.
             let end = start + numbers.len();
-            let (win_enriched_before, win_untranslatables_before) =
-                window_stats_before.unwrap_or((0, 0));
-            let (win_enriched_after, win_untranslatables_after) =
+            let (win_enriched_before, win_gaps_before) = window_stats_before.unwrap_or((0, 0));
+            let (win_enriched_after, win_gaps_after) =
                 window_progress_stats(&law_after, *start, end);
             let window_newly_enriched = win_enriched_after.saturating_sub(win_enriched_before);
-            let window_new_untranslatables = win_untranslatables_after > win_untranslatables_before;
+            // A window of already-modelled articles that this run only flagged
+            // is reviewed work, not a no-op: a new marking counts the same as a
+            // new untranslatable.
+            let window_new_gaps = win_gaps_after > win_gaps_before;
             // The chunk_report only counts as proof-of-review when it names at
             // least one article of THIS window: a bare `chunk_report: {}` or
             // one listing unrelated numbers must not advance the cursor past
@@ -2386,14 +2554,11 @@ pub async fn execute_enrich_with_runner(
                     .chain(report.articles_skipped.iter().map(|s| &s.number))
                     .any(|n| numbers.contains(n))
             });
-            if window_newly_enriched == 0
-                && !report_references_window
-                && !window_new_untranslatables
-            {
+            if window_newly_enriched == 0 && !report_references_window && !window_new_gaps {
                 return Err(PipelineError::Enrich(format!(
                     "{CHUNK_NO_OUTPUT_MARKER}: no new machine_readable additions in the window, \
-                     no chunk_report referencing this window, no new untranslatables in the \
-                     window (articles {}..{} of {})",
+                     no chunk_report referencing this window, no new markings or untranslatables \
+                     in the window (articles {}..{} of {})",
                     start, end, articles_before
                 )));
             }
@@ -2474,6 +2639,7 @@ pub async fn execute_enrich_with_runner(
         branch,
         related_legislation,
         untranslatables,
+        markings,
         law_complete,
         enrich_cursor: next_cursor,
     };
@@ -2560,28 +2726,38 @@ async fn collect_untranslatables(path: &Path) -> Result<Vec<CapturedUntranslatab
     Ok(collect_untranslatables_from(&law))
 }
 
-/// Flatten the untranslatables of an already-parsed law. See
-/// [`collect_untranslatables`].
 /// Window-scoped progress stats for the chunk no-op guard:
-/// `(articles_with_machine_readable, untranslatable_count)` within
+/// `(articles_with_machine_readable, recorded_gap_count)` within
 /// `[start, end)` of a parsed law. The guard measures progress inside the
 /// assigned window only — a whole-document delta would let an edit *outside*
 /// the window masquerade as progress for a window that was never reviewed.
+///
+/// The second figure counts both channels a law may use to record what its
+/// model does not do: `markings` from schema v0.6.0 and the `untranslatables`
+/// they replaced. Counting only the old one made the guard blind to the
+/// commonest legitimate outcome of a window of definition provisions —
+/// already-modelled articles that this run only flagged — and failed a window
+/// that was reviewed exactly as intended.
 fn window_progress_stats(law: &ArticleBasedLaw, start: usize, end: usize) -> (usize, usize) {
     let window = &law.articles[start..end];
     let enriched = window
         .iter()
         .filter(|a| a.machine_readable.is_some())
         .count();
-    let untranslatables = window
+    let recorded_gaps = window
         .iter()
         .filter_map(|a| a.machine_readable.as_ref())
-        .filter_map(|m| m.untranslatables.as_ref())
-        .map(|entries| entries.len())
+        .map(|m| {
+            m.untranslatables.as_ref().map_or(0, Vec::len) + m.markings.as_ref().map_or(0, Vec::len)
+        })
         .sum();
-    (enriched, untranslatables)
+    (enriched, recorded_gaps)
 }
 
+/// Flatten the untranslatables of an already-parsed law. See
+/// [`collect_untranslatables`]. The v0.6.0 channel has its own collector,
+/// [`collect_markings_from`]: the two are deliberately not merged, because
+/// only this one is mirrored into the `untranslatables` table.
 fn collect_untranslatables_from(law: &ArticleBasedLaw) -> Vec<CapturedUntranslatable> {
     let mut out = Vec::new();
     for article in &law.articles {
@@ -2597,6 +2773,32 @@ fn collect_untranslatables_from(law: &ArticleBasedLaw) -> Vec<CapturedUntranslat
                 construct: entry.construct.clone(),
                 reason: entry.reason.clone(),
                 suggestion: entry.suggestion.clone(),
+                legal_text_excerpt: entry.legal_text_excerpt.clone(),
+                accepted: entry.accepted,
+            });
+        }
+    }
+    out
+}
+
+/// Flatten the markings of an already-parsed law, with the owning article
+/// number attached. The v0.6.0 counterpart of [`collect_untranslatables_from`].
+fn collect_markings_from(law: &ArticleBasedLaw) -> Vec<CapturedMarking> {
+    let mut out = Vec::new();
+    for article in &law.articles {
+        let Some(machine_readable) = &article.machine_readable else {
+            continue;
+        };
+        let Some(entries) = &machine_readable.markings else {
+            continue;
+        };
+        for entry in entries {
+            out.push(CapturedMarking {
+                article: article.number.clone(),
+                about: entry.about.clone(),
+                resolution: entry.resolution.as_str().to_string(),
+                resolved_by: entry.resolved_by.clone(),
+                target: entry.target.clone(),
                 legal_text_excerpt: entry.legal_text_excerpt.clone(),
                 accepted: entry.accepted,
             });
@@ -2786,6 +2988,7 @@ mod tests {
             branch: "enrich/opencode".to_string(),
             related_legislation: Vec::new(),
             untranslatables: Vec::new(),
+            markings: Vec::new(),
             law_complete: true,
             enrich_cursor: 0,
         };
@@ -3270,6 +3473,10 @@ articles:
 
     #[tokio::test]
     async fn test_collect_untranslatables_none() {
+        // A law that records its gap the v0.6.0 way: the untranslatables
+        // collector must find nothing and the marking collector everything.
+        // The two channels are separate on purpose — the one the worker
+        // mirrors into the v1 table may not silently absorb the other.
         let yaml = r#"---
 $schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
 $id: test_law
@@ -3282,16 +3489,27 @@ articles:
     text: Article one.
     url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1
     machine_readable:
-      norm_gaps:
-        - norm: fixture
-          kind: delegated
-          blocks: [nothing]
+      markings:
+        - about: fixture
+          resolution: model
+          target: []
+          legal_text_excerpt: Article one.
 "#;
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("law.yaml");
         tokio::fs::write(&path, yaml).await.unwrap();
 
         assert!(collect_untranslatables(&path).await.unwrap().is_empty());
+
+        let law = load_law(&path).await.unwrap();
+        let markings = collect_markings_from(&law);
+        assert_eq!(markings.len(), 1);
+        assert_eq!(markings[0].article, "1");
+        assert_eq!(markings[0].about, "fixture");
+        assert_eq!(markings[0].resolution, "model");
+        assert_eq!(markings[0].legal_text_excerpt, "Article one.");
+        assert!(!markings[0].accepted);
+        assert!(markings[0].resolved_by.is_none());
     }
 
     #[tokio::test]
@@ -3343,10 +3561,11 @@ articles:
     text: Article one.
     url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1
     machine_readable:
-      norm_gaps:
-        - norm: fixture
-          kind: delegated
-          blocks: [nothing]
+      markings:
+        - about: fixture
+          resolution: model
+          target: []
+          legal_text_excerpt: Article one.
 "#;
 
     /// Writes something the schema rejects on the first run and repairs it
@@ -4127,6 +4346,111 @@ articles:
         assert!(prompt.contains("16, 17"));
     }
 
+    fn feedback(gate: Gate) -> Feedback {
+        Feedback {
+            gate,
+            findings: vec!["[accounted] art. 1: the article carries no outcome".to_string()],
+        }
+    }
+
+    #[test]
+    fn schema_version_decides_which_names_exist() {
+        assert!(!schema_has_markings("v0.5.6"));
+        assert!(!schema_has_markings("v0.4.0"));
+        assert!(schema_has_markings("v0.6.0"));
+        assert!(schema_has_markings("v0.6.1"));
+        assert!(schema_has_markings("v1.0.0"));
+        // Unparseable is read as current: sending an agent back to fields the
+        // schema dropped is the failure this distinction exists to avoid.
+        assert!(schema_has_markings("nonsense"));
+    }
+
+    #[test]
+    fn vocabulary_is_read_off_the_file() {
+        assert_eq!(
+            vocabulary_of_yaml(four_article_law()),
+            Vocabulary::Markings,
+            "the fixture declares v0.6.0"
+        );
+        assert_eq!(
+            vocabulary_of_yaml(&four_article_law().replace(
+                "schema-v0.6.0/schema/v0.6.0/schema.json",
+                "schema-v0.5.6/schema/v0.5.6/schema.json"
+            )),
+            Vocabulary::Legacy
+        );
+        // No `$schema` at all, and not even YAML: both fall to the current
+        // vocabulary rather than to the dropped one.
+        assert_eq!(vocabulary_of_yaml("articles: []\n"), Vocabulary::Markings);
+        assert_eq!(vocabulary_of_yaml("\tnot: [yaml"), Vocabulary::Markings);
+    }
+
+    #[test]
+    fn feedback_prompt_never_prescribes_a_field_the_schema_forbids() {
+        // The deadlock this guards against: a v0.6.0 law fails a gate, the
+        // prompt tells the agent to write `norm_gaps`, and the schema gate
+        // rejects exactly what the prompt asked for — every round, forever.
+        for gate in [Gate::Schema, Gate::Checks, Gate::Marking] {
+            let prompt = build_feedback_prompt("law.yaml", &feedback(gate), Vocabulary::Markings);
+            assert!(
+                !prompt.contains("norm_gap") && !prompt.contains("untranslatable"),
+                "{gate:?} prompt names a field v0.6.0 dropped: {prompt}"
+            );
+        }
+    }
+
+    #[test]
+    fn feedback_prompt_teaches_the_v0_6_decision_rule() {
+        let marking =
+            build_feedback_prompt("law.yaml", &feedback(Gate::Marking), Vocabulary::Markings);
+        // A value another law produces is an input, not a gap.
+        assert!(marking.contains("input with a `source`"));
+        // A norm filled in elsewhere is an open term, whoever fills it.
+        assert!(marking.contains("`open_term`"));
+        assert!(marking.contains("redelijkerwijs"));
+        // Only what the format cannot express is a marking, and it says how.
+        assert!(marking.contains("`resolution: engine`"));
+        assert!(marking.contains("`resolution: model`"));
+        // And a marking leaves the rest of the article standing.
+        assert!(marking.contains("otherwise worked out"));
+        assert!(marking.contains("`target`"));
+        // The evidence rule survives the migration.
+        assert!(marking.contains("Do not cite what you were not given"));
+
+        let checks =
+            build_feedback_prompt("law.yaml", &feedback(Gate::Checks), Vocabulary::Markings);
+        assert!(checks.contains("`open_term`"));
+        assert!(checks.contains("`marking`"));
+        assert!(checks.contains("input with a `source`"));
+
+        // The schema gate is the one that may not be answered with a marking;
+        // it still has to name the drawer a construct belongs in.
+        let schema =
+            build_feedback_prompt("law.yaml", &feedback(Gate::Schema), Vocabulary::Markings);
+        assert!(schema.contains("`markings`"));
+        assert!(schema.contains("`open_terms`"));
+    }
+
+    #[test]
+    fn feedback_prompt_keeps_the_old_names_for_laws_on_the_old_schema() {
+        // v0.5.x laws stay in the corpus and are re-enriched. Naming v0.6.0
+        // fields to them is the same deadlock in the other direction.
+        let marking =
+            build_feedback_prompt("law.yaml", &feedback(Gate::Marking), Vocabulary::Legacy);
+        assert!(marking.contains("`untranslatable`"));
+        assert!(marking.contains("`norm_gap`"));
+        assert!(!marking.contains("`marking`"));
+        assert!(marking.contains("Do not cite what you were not given"));
+
+        let checks = build_feedback_prompt("law.yaml", &feedback(Gate::Checks), Vocabulary::Legacy);
+        assert!(checks.contains("`untranslatables`"));
+        assert!(checks.contains("`norm_gaps`"));
+
+        let schema = build_feedback_prompt("law.yaml", &feedback(Gate::Schema), Vocabulary::Legacy);
+        assert!(schema.contains("`untranslatables` with a reason"));
+        assert!(!schema.contains("`markings`"));
+    }
+
     #[test]
     fn enrich_payload_chunk_fields_are_transport_only() {
         // Queue payloads never carry the chunk fields: absent when None…
@@ -4282,6 +4606,15 @@ articles:
     text: Article four.
     url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel4
 "#
+    }
+
+    /// [`four_article_law`] with the first window (articles 1-2) already
+    /// modelled: the shape a window of definition provisions has when the only
+    /// thing left to add is a flag.
+    fn four_article_law_with_models() -> String {
+        four_article_law()
+            .replace("#Artikel1\n", "#Artikel1\n    machine_readable: {}\n")
+            .replace("#Artikel2\n", "#Artikel2\n    machine_readable: {}\n")
     }
 
     fn chunk_test_payload(yaml_path: &str) -> EnrichPayload {
@@ -4444,6 +4777,117 @@ articles:
         let msg = err.to_string();
         assert!(msg.contains(CHUNK_NO_OUTPUT_MARKER), "got: {msg}");
         assert!(!msg.contains("no machine_readable sections"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn test_execute_enrich_chunk_marking_only_is_progress() {
+        // The window is two articles that already carry a model — definition
+        // provisions, typically — and the right answer is a marking on one of
+        // them: nothing new gets a machine_readable section and no
+        // untranslatable is written. The guard must read that as reviewed
+        // work. Counting only untranslatables failed this window and sent a
+        // correctly-handled chunk back around the retry loop.
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law_with_models())
+            .await
+            .unwrap();
+
+        /// Adds one marking to the first already-modelled article and nothing
+        /// else: no new sections, no chunk_report, no untranslatables.
+        struct MarkingOnlyRunner;
+        #[async_trait::async_trait]
+        impl LlmRunner for MarkingOnlyRunner {
+            async fn run(
+                &self,
+                payload: &EnrichPayload,
+                yaml_abs: &Path,
+                _repo_path: &Path,
+                _config: &EnrichConfig,
+            ) -> Result<()> {
+                if !matches!(payload.pass, Pass::Translate) {
+                    return Ok(());
+                }
+                // The prompt names this path to the agent, so a run that
+                // handed over an empty one would send it looking for nothing.
+                assert_eq!(
+                    payload.yaml_path, "regulation/nl/wet/test_law/2025-01-01.yaml",
+                    "the runner must be given the normalized law path"
+                );
+                let content = tokio::fs::read_to_string(yaml_abs).await?;
+                let updated = content.replacen(
+                    "    machine_readable: {}\n",
+                    "    machine_readable:\n      \
+                     markings:\n        \
+                     - about: elke persoon die met de aanvrager samenwoont\n          \
+                     resolution: model\n          \
+                     resolved_by: kwantificatie over personen\n          \
+                     target: []\n          \
+                     legal_text_excerpt: Article one.\n",
+                    1,
+                );
+                assert_ne!(updated, content, "fixture must contain a bare model");
+                tokio::fs::write(yaml_abs, updated).await?;
+                Ok(())
+            }
+        }
+
+        let mut config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        config.max_articles_per_run = 2;
+
+        let (result, _) = execute_enrich_with_runner(
+            &chunk_test_payload(yaml_path),
+            dir.path(),
+            &config,
+            "",
+            &MarkingOnlyRunner,
+        )
+        .await
+        .expect("a window whose only output is a marking is reviewed work");
+
+        // The cursor advanced past the reviewed window…
+        assert!(!result.law_complete);
+        assert_eq!(result.enrich_cursor, 2);
+        // …without a single new machine_readable section or untranslatable,
+        // so the marking is the only thing that can have counted.
+        assert_eq!(result.articles_with_machine_readable, 2);
+        assert!((result.coverage_score - 0.0).abs() < f64::EPSILON);
+        assert!(result.untranslatables.is_empty());
+        assert_eq!(result.markings.len(), 1);
+        assert_eq!(result.markings[0].article, "1");
+        assert_eq!(result.markings[0].resolution, "model");
+        assert!(result.markings[0].target.is_empty());
+    }
+
+    #[test]
+    fn window_progress_counts_both_gap_channels() {
+        // Same window, one marking versus one untranslatable: the guard reads
+        // one figure and both channels feed it.
+        let with_marking: ArticleBasedLaw =
+            serde_yaml_ng::from_str(&four_article_law_with_models().replace(
+                "  - number: '1'\n    text: Article one.\n    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1\n    machine_readable: {}\n",
+                "  - number: '1'\n    text: Article one.\n    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1\n    machine_readable:\n      markings:\n        - about: iets\n          resolution: engine\n          target: []\n          legal_text_excerpt: Article one.\n",
+            ))
+            .unwrap();
+        assert_eq!(window_progress_stats(&with_marking, 0, 2), (2, 1));
+
+        let with_untranslatable: ArticleBasedLaw =
+            serde_yaml_ng::from_str(&four_article_law_with_models().replace(
+                "  - number: '1'\n    text: Article one.\n    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1\n    machine_readable: {}\n",
+                "  - number: '1'\n    text: Article one.\n    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1\n    machine_readable:\n      untranslatables:\n        - construct: iets\n          reason: omdat\n",
+            ))
+            .unwrap();
+        assert_eq!(window_progress_stats(&with_untranslatable, 0, 2), (2, 1));
+
+        // And a window nobody touched still counts as nothing.
+        let untouched: ArticleBasedLaw =
+            serde_yaml_ng::from_str(&four_article_law_with_models()).unwrap();
+        assert_eq!(window_progress_stats(&untouched, 0, 2), (2, 0));
     }
 
     #[tokio::test]

@@ -47,6 +47,7 @@ fn chunk_result(provider: &str, law_complete: bool, enrich_cursor: usize) -> Enr
         branch: format!("enrich/{provider}"),
         related_legislation: Vec::new(),
         untranslatables: Vec::new(),
+        markings: Vec::new(),
         law_complete,
         enrich_cursor,
     }
