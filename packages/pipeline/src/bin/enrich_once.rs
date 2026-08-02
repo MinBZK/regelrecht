@@ -10,7 +10,9 @@
 //!
 //! ```text
 //! enrich-once --corpus <root> --law <relative/path.yaml> [--provider claude]
-//!             [--model opus] [--timeout 900] [--articles 15]
+//!             [--model opus] [--effort medium] [--timeout 900]
+//!             [--articles 15] [--rounds 2|checks=2,marking=2]
+//!             [--article 2.1.i]
 //! ```
 //!
 //! `--corpus` is the directory the law path is relative to, standing in for
@@ -18,13 +20,25 @@
 //! the law (`.enrichment.yaml`, the progress file, the result envelope)
 //! lands there, so a second run continues where the first stopped, exactly
 //! as it does in production.
+//!
+//! `--article` names one entry and enriches exactly that one: the run does
+//! not walk the document and does not move the cursor, because repairing an
+//! entry is not progress through the law. A number the law does not have
+//! fails the run rather than enriching nothing in silence.
+//!
+//! `--rounds` sets how many feedback rounds a gate may run, either one number
+//! for all three or per gate (`schema=1,checks=2`). The run prints what each
+//! round did per gate, with the marking count beside the finding count: a
+//! round can lower the findings by translating better and by declaring more
+//! of the law unmodellable, and the two must not read the same.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Duration;
 
 use regelrecht_pipeline::enrich::{
-    execute_enrich_with_runner, EnrichConfig, EnrichPayload, LlmProvider, ProcessLlmRunner,
+    execute_enrich_with_runner, EnrichConfig, EnrichPayload, FeedbackRounds, LlmProvider,
+    ProcessLlmRunner,
 };
 use regelrecht_pipeline::enrich_v2::checks;
 
@@ -33,8 +47,11 @@ struct Args {
     law: String,
     provider: String,
     model: Option<String>,
+    effort: Option<String>,
     timeout: u64,
     articles: usize,
+    article: Option<String>,
+    rounds: FeedbackRounds,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -42,8 +59,11 @@ fn parse_args() -> Result<Args, String> {
     let mut law = None;
     let mut provider = "claude".to_string();
     let mut model = None;
+    let mut effort = None;
     let mut timeout = 900u64;
     let mut articles = 15usize;
+    let mut article = None;
+    let mut rounds = FeedbackRounds::default();
 
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -55,6 +75,9 @@ fn parse_args() -> Result<Args, String> {
             "--law" => law = Some(value("--law")?),
             "--provider" => provider = value("--provider")?,
             "--model" => model = Some(value("--model")?),
+            "--effort" => effort = Some(value("--effort")?),
+            "--article" => article = Some(value("--article")?),
+            "--rounds" => rounds = FeedbackRounds::parse(&value("--rounds")?)?,
             "--timeout" => {
                 timeout = value("--timeout")?
                     .parse()
@@ -68,7 +91,8 @@ fn parse_args() -> Result<Args, String> {
             "--help" | "-h" => {
                 return Err(
                     "usage: enrich-once --corpus <root> --law <path.yaml> [--provider claude] \
-                     [--model opus] [--timeout 900] [--articles 15]"
+                     [--model opus] [--effort medium] [--timeout 900] [--articles 15] \
+                     [--rounds 2|checks=2,marking=2] [--article 2.1.i]"
                         .to_string(),
                 )
             }
@@ -81,8 +105,11 @@ fn parse_args() -> Result<Args, String> {
         law: law.ok_or("--law is required")?,
         provider,
         model,
+        effort,
         timeout,
         articles,
+        article,
+        rounds,
     })
 }
 
@@ -113,8 +140,14 @@ async fn main() -> ExitCode {
         }
     };
 
-    let config =
-        EnrichConfig::for_local_run(provider, Duration::from_secs(args.timeout), args.articles);
+    let config = EnrichConfig::for_local_run(
+        provider,
+        Duration::from_secs(args.timeout),
+        args.articles,
+        args.article.clone(),
+        args.rounds,
+        args.effort.clone(),
+    );
     let payload = EnrichPayload {
         law_id: String::new(),
         yaml_path: args.law.clone(),
@@ -151,6 +184,7 @@ async fn main() -> ExitCode {
                 println!("  untranslatables: {}", result.untranslatables.len());
             }
             println!("  files touched: {}", changed.len());
+            print_feedback(&result.feedback);
         }
         Err(e) => {
             println!("\n=== enrichment failed: {e}");
@@ -168,6 +202,54 @@ async fn main() -> ExitCode {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS
+    }
+}
+
+/// Print what every feedback round did, per gate.
+///
+/// One line per round, and each line carries both numbers: the findings the
+/// round took away and the markings the file gained while doing it. A round
+/// that halves the findings by declaring half the law unmodellable looks
+/// identical to a good one on the finding count alone, which is the exact
+/// confound this measurement has to survive.
+fn print_feedback(feedback: &[regelrecht_pipeline::enrich::GateFeedback]) {
+    if feedback.is_empty() {
+        return;
+    }
+    println!("\n=== feedback rounds (findings | markings)");
+    for gate in feedback {
+        if gate.rounds.is_empty() {
+            println!("  {:<8} no findings, no round run", gate.gate);
+            continue;
+        }
+        println!(
+            "  {:<8} {} → {} findings over {} round(s)",
+            gate.gate,
+            gate.findings_initial,
+            gate.findings_final,
+            gate.rounds.len()
+        );
+        for round in &gate.rounds {
+            let markings = |n: Option<usize>| n.map_or("?".to_string(), |n| n.to_string());
+            println!(
+                "    round {}: findings {} → {} ({:+}) | markings {} → {} | file {} | {}",
+                round.round,
+                round.findings_before,
+                round.findings_after,
+                round.findings_after as i64 - round.findings_before as i64,
+                markings(round.markings_before),
+                markings(round.markings_after),
+                if round.file_changed {
+                    "changed"
+                } else {
+                    "unchanged"
+                },
+                match round.stopped {
+                    None => "continues".to_string(),
+                    Some(stop) => format!("stopped: {stop:?}"),
+                }
+            );
+        }
     }
 }
 

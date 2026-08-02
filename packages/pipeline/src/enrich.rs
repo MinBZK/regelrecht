@@ -345,7 +345,14 @@ pub(crate) async fn run_llm_subprocess(
 ) -> Result<Option<AgentUsage>> {
     let provider_name = provider.name().to_string();
 
-    let mut cmd = build_command(provider, prompt, file_arg, cwd, allow_bash);
+    let mut cmd = build_command(
+        provider,
+        prompt,
+        file_arg,
+        cwd,
+        allow_bash,
+        config.effort.as_deref(),
+    );
 
     // Both streams are piped and drained. stdout is drained-and-discarded: a
     // verbose agent (e.g. opencode `--format json`) inlines the full body of
@@ -713,6 +720,146 @@ impl Gate {
     fn accepts_marking(self) -> bool {
         matches!(self, Gate::Checks | Gate::Marking)
     }
+
+    /// Stable lowercase name, used in logs, in the measurement record and as
+    /// the key of a per-gate round budget.
+    pub fn label(self) -> &'static str {
+        match self {
+            Gate::Schema => "schema",
+            Gate::Checks => "checks",
+            Gate::Marking => "marking",
+        }
+    }
+
+    /// The gates in the order the worker runs them.
+    pub const ALL: [Gate; 3] = [Gate::Schema, Gate::Checks, Gate::Marking];
+}
+
+/// How many feedback rounds each gate may run.
+///
+/// One per gate rather than one number for the whole chain: the open question
+/// is not whether a second round helps, it is which gate it helps at. A schema
+/// error either gets repaired or does not; a coverage question may genuinely
+/// take a second look. Defaults to one round everywhere, which is the
+/// behaviour that existed before this was settable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FeedbackRounds {
+    pub schema: usize,
+    pub checks: usize,
+    pub marking: usize,
+}
+
+impl Default for FeedbackRounds {
+    fn default() -> Self {
+        Self::uniform(1)
+    }
+}
+
+impl FeedbackRounds {
+    /// The same budget for every gate.
+    #[must_use]
+    pub fn uniform(rounds: usize) -> Self {
+        Self {
+            schema: rounds,
+            checks: rounds,
+            marking: rounds,
+        }
+    }
+
+    /// Budget for one gate.
+    #[must_use]
+    pub fn for_gate(self, gate: Gate) -> usize {
+        match gate {
+            Gate::Schema => self.schema,
+            Gate::Checks => self.checks,
+            Gate::Marking => self.marking,
+        }
+    }
+
+    /// Parse a budget spec: either a bare number for every gate (`2`) or a
+    /// comma-separated list of per-gate overrides on top of the default
+    /// (`checks=2,marking=3`). The two forms combine — `2,schema=1` gives
+    /// every gate two rounds except schema.
+    pub fn parse(spec: &str) -> std::result::Result<Self, String> {
+        let mut rounds = Self::default();
+        for part in spec.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+            match part.split_once('=') {
+                None => {
+                    let n = part
+                        .parse::<usize>()
+                        .map_err(|_| format!("not a number of rounds: {part}"))?;
+                    rounds = Self::uniform(n);
+                }
+                Some((gate, value)) => {
+                    let n = value
+                        .trim()
+                        .parse::<usize>()
+                        .map_err(|_| format!("not a number of rounds: {value}"))?;
+                    match gate.trim() {
+                        "schema" => rounds.schema = n,
+                        "checks" => rounds.checks = n,
+                        "marking" => rounds.marking = n,
+                        other => return Err(format!("unknown gate: {other}")),
+                    }
+                }
+            }
+        }
+        Ok(rounds)
+    }
+}
+
+/// Why a gate stopped running rounds. Recorded per round so the measurement
+/// says what ended the chain, not only how long it was.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RoundStop {
+    /// Nothing left to say: the gate reports no findings.
+    Cleared,
+    /// The agent left the file byte-identical, so nothing it did can have
+    /// removed a finding and nothing suggests the next round differs.
+    Unchanged,
+    /// The file changed but the finding count did not fall. Either churn or a
+    /// trade, and in both cases another round has no evidence behind it.
+    NoDecrease,
+    /// The configured number of rounds is used up.
+    Budget,
+}
+
+/// What one feedback round did to one gate.
+///
+/// Findings and markings sit side by side on purpose. A round can lower the
+/// finding count by translating better and it can lower it by declaring more
+/// of the article unmodellable, and those are opposite outcomes. Reporting
+/// only the findings would make the second look like the first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FeedbackRoundRecord {
+    /// 1-based round number within this gate.
+    pub round: usize,
+    pub findings_before: usize,
+    pub findings_after: usize,
+    /// Markings in the file before/after this round, or `None` when the law
+    /// could not be parsed at that moment (a schema round may start on a file
+    /// that does not load).
+    pub markings_before: Option<usize>,
+    pub markings_after: Option<usize>,
+    /// Whether the agent changed the file at all during this round.
+    pub file_changed: bool,
+    /// Set on the last round of the gate; `None` while more rounds follow.
+    pub stopped: Option<RoundStop>,
+}
+
+/// The feedback rounds one gate ran, in order. An empty `rounds` means the
+/// gate had nothing to say and no agent was asked.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GateFeedback {
+    /// `schema`, `checks` or `marking` — see [`Gate::label`].
+    pub gate: String,
+    /// Findings when the gate was first evaluated, before any round.
+    pub findings_initial: usize,
+    /// Findings left after the last round (equal to `findings_initial` when
+    /// no round ran).
+    pub findings_final: usize,
+    pub rounds: Vec<FeedbackRoundRecord>,
 }
 
 /// Payload for an enrich job, stored as JSON in the job queue.
@@ -1010,6 +1157,14 @@ pub struct EnrichResult {
     /// document order). 0 in whole-law mode.
     #[serde(default)]
     pub enrich_cursor: usize,
+    /// What the feedback rounds did, per gate and per round. Empty when this
+    /// run changed nothing and the gates were therefore not run. This is the
+    /// measurement: how much each gate's first round takes away and how much
+    /// a second still does, with the marking counts beside the findings so a
+    /// drop bought by marking more is not read as a drop bought by
+    /// translating better.
+    #[serde(default)]
+    pub feedback: Vec<GateFeedback>,
 }
 
 /// Serde default for [`EnrichResult::law_complete`]: results stored before
@@ -1145,6 +1300,19 @@ pub struct EnrichConfig {
     /// law-generate skill batches internally per ~15, so one chunk ≈ one
     /// skill batch.
     pub max_articles_per_run: usize,
+    /// Enrich exactly this entry, by number, instead of the window the cursor
+    /// points at. Sits beside `max_articles_per_run` because it answers the
+    /// same question — which entries this run may touch — and it wins when
+    /// set. The run fails when the law has no such entry; it leaves the
+    /// cursor where it was, because a repair is not progress through the
+    /// document.
+    pub target_article: Option<String>,
+    /// Feedback rounds per gate. Default one everywhere.
+    pub feedback_rounds: FeedbackRounds,
+    /// Reasoning effort handed to the provider (`claude --effort`: low,
+    /// medium, high, xhigh, max). `None` leaves the provider's own default,
+    /// which is what every run did before this existed.
+    pub effort: Option<String>,
     /// Pre-built provider configs keyed by name, populated at startup.
     provider_configs: std::collections::HashMap<String, LlmProvider>,
 }
@@ -1176,6 +1344,9 @@ impl EnrichConfig {
             max_rss_mb: 3500,
             // Chunking off by default in tests; chunk tests opt in explicitly.
             max_articles_per_run: 0,
+            target_article: None,
+            feedback_rounds: FeedbackRounds::default(),
+            effort: None,
             provider_configs,
         }
     }
@@ -1186,7 +1357,14 @@ impl EnrichConfig {
     /// binary, which exercises the real loop against a directory on disk.
     /// Deliberately not `from_env`: a local run should say what it does
     /// rather than inherit whatever the shell happens to carry.
-    pub fn for_local_run(provider: LlmProvider, timeout: Duration, max_articles: usize) -> Self {
+    pub fn for_local_run(
+        provider: LlmProvider,
+        timeout: Duration,
+        max_articles: usize,
+        target_article: Option<String>,
+        feedback_rounds: FeedbackRounds,
+        effort: Option<String>,
+    ) -> Self {
         let mut provider_configs = std::collections::HashMap::new();
         provider_configs.insert("claude".to_string(), provider.clone());
         Self {
@@ -1195,6 +1373,9 @@ impl EnrichConfig {
             code_commit: String::new(),
             max_rss_mb: 0,
             max_articles_per_run: max_articles,
+            target_article,
+            feedback_rounds,
+            effort,
             provider_configs,
         }
     }
@@ -1244,6 +1425,18 @@ impl EnrichConfig {
                 .ok(),
         };
 
+        // Feedback rounds per gate. A bad spec is not worth failing a worker
+        // over, but it must not silently read as something else either.
+        let feedback_rounds = match std::env::var("ENRICH_FEEDBACK_ROUNDS") {
+            Ok(spec) => FeedbackRounds::parse(&spec).unwrap_or_else(|e| {
+                tracing::warn!(spec = %spec, error = %e, "ignoring ENRICH_FEEDBACK_ROUNDS");
+                FeedbackRounds::default()
+            }),
+            Err(_) => FeedbackRounds::default(),
+        };
+
+        let effort = std::env::var("LLM_EFFORT").ok().filter(|e| !e.is_empty());
+
         let provider = match provider_name.as_str() {
             "claude" => claude_provider.clone(),
             _ => opencode_provider.clone(),
@@ -1259,6 +1452,11 @@ impl EnrichConfig {
             code_commit,
             max_rss_mb,
             max_articles_per_run,
+            // A worker walks whole laws; a named entry is a local, targeted
+            // instruction and has no env var to arrive through.
+            target_article: None,
+            feedback_rounds,
+            effort,
             provider_configs,
         }
     }
@@ -1284,6 +1482,9 @@ impl EnrichConfig {
             code_commit: self.code_commit.clone(),
             max_rss_mb: self.max_rss_mb,
             max_articles_per_run: self.max_articles_per_run,
+            target_article: self.target_article.clone(),
+            feedback_rounds: self.feedback_rounds,
+            effort: self.effort.clone(),
             provider_configs: self.provider_configs.clone(),
         }
     }
@@ -1780,6 +1981,7 @@ fn build_command(
     file_arg: Option<&Path>,
     cwd: &Path,
     allow_bash: bool,
+    effort: Option<&str>,
 ) -> tokio::process::Command {
     // Collect allowed env vars before creating the command.
     let safe_env: Vec<(String, String)> =
@@ -1808,6 +2010,7 @@ fn build_command(
     tracing::info!(
         provider = provider.name(),
         model = ?model,
+        effort = ?effort,
         prompt_chars = prompt.len(),
         claude_oauth_token_kind = ?oauth_token_kind,
         anthropic_api_key_present_in_worker_env = std::env::var_os("ANTHROPIC_API_KEY").is_some(),
@@ -1830,6 +2033,11 @@ fn build_command(
             cmd.arg("--format").arg("json").arg("--dir").arg(cwd);
             if let Some(ref m) = model {
                 cmd.arg("-m").arg(m);
+            }
+            // OpenCode has no effort flag; saying so beats passing an option
+            // it would reject and letting the run fail on a typo in config.
+            if effort.is_some() {
+                tracing::warn!("effort is not supported by opencode; ignored");
             }
             cmd
         }
@@ -1880,6 +2088,11 @@ fn build_command(
                 .current_dir(cwd);
             if let Some(ref m) = model {
                 cmd.arg("--model").arg(m);
+            }
+            // Effort rides beside the model because that is how the CLI takes
+            // it: one flag for which model, one for how hard it thinks.
+            if let Some(e) = effort {
+                cmd.arg("--effort").arg(e);
             }
             cmd
         }
@@ -2220,14 +2433,24 @@ pub(crate) fn normalize_yaml_path(yaml_path: &str) -> Result<String> {
 /// step. The worker's `chunk_no_output_is_not_deterministic` test pins this.
 pub(crate) const CHUNK_NO_OUTPUT_MARKER: &str = "enrichment chunk produced no reviewable output";
 
-/// Run one feedback round against a gate: evaluate it, and when it has
-/// something to say, give the agent one pass to answer.
+/// Run the feedback rounds one gate is allowed: evaluate it, and for as long
+/// as it has something to say and a round is still worth spending, give the
+/// agent a pass to answer.
 ///
-/// One round on purpose. A second disagreement is rarely a slip. It is either
-/// something the text genuinely leaves open, which the marking channels
-/// exist for, or a defect in the instruction, which no amount of retrying
-/// inside one law will fix.
-async fn feedback_round(
+/// The budget comes from `config.feedback_rounds` and is one per gate by
+/// default, which is what this did before it was settable. A round beyond the
+/// first only earns its place if the previous one moved something, so the
+/// chain stops on its own in three ways: the gate is clear, the agent left the
+/// file byte-identical, or the finding count did not fall. The last two are
+/// the doorbreekvoorwaarde — an unchanged file cannot have removed a finding,
+/// and a changed file that removed none is churn or a trade, neither of which
+/// gives any reason to expect the next round to do better.
+///
+/// Returns what every round did, so a run can be read per gate rather than as
+/// one number. Findings and markings are recorded side by side, because a
+/// falling finding count bought by declaring more of the law unmodellable is
+/// the opposite outcome from one bought by translating it.
+async fn run_feedback_rounds(
     gate: Gate,
     yaml_abs: &Path,
     corpus_root: &Path,
@@ -2235,34 +2458,95 @@ async fn feedback_round(
     repo_path: &Path,
     config: &EnrichConfig,
     runner: &dyn LlmRunner,
-) -> Result<()> {
-    let findings = evaluate_gate(gate, yaml_abs, corpus_root).await?;
-    if findings.is_empty() {
-        return Ok(());
+) -> Result<GateFeedback> {
+    let mut findings = evaluate_gate(gate, yaml_abs, corpus_root).await?;
+    let mut progress = GateFeedback {
+        gate: gate.label().to_string(),
+        findings_initial: findings.len(),
+        findings_final: findings.len(),
+        rounds: Vec::new(),
+    };
+    let budget = config.feedback_rounds.for_gate(gate);
+    if findings.is_empty() || budget == 0 {
+        return Ok(progress);
     }
 
-    tracing::info!(
-        gate = ?gate,
-        findings = findings.len(),
-        first = %findings.first().cloned().unwrap_or_default(),
-        "gate has findings; running one feedback round"
-    );
+    for round in 1..=budget {
+        let findings_before = findings.len();
+        let markings_before = marking_count(yaml_abs).await;
+        let digest_before = file_digest(yaml_abs).await;
 
-    let feedback_payload = EnrichPayload {
-        pass: Pass::Feedback(Feedback {
-            gate,
-            findings: findings.clone(),
-        }),
-        ..payload.clone()
-    };
-    runner
-        .run(&feedback_payload, yaml_abs, repo_path, config)
-        .await?;
+        tracing::info!(
+            gate = gate.label(),
+            round,
+            of_rounds = budget,
+            findings = findings_before,
+            markings = ?markings_before,
+            first = %findings.first().cloned().unwrap_or_default(),
+            "gate has findings; running a feedback round"
+        );
 
-    let remaining = evaluate_gate(gate, yaml_abs, corpus_root).await?;
-    if remaining.is_empty() {
-        tracing::info!(gate = ?gate, "feedback round cleared the gate");
-        return Ok(());
+        let feedback_payload = EnrichPayload {
+            pass: Pass::Feedback(Feedback {
+                gate,
+                findings: std::mem::take(&mut findings),
+            }),
+            ..payload.clone()
+        };
+        runner
+            .run(&feedback_payload, yaml_abs, repo_path, config)
+            .await?;
+
+        findings = evaluate_gate(gate, yaml_abs, corpus_root).await?;
+        let findings_after = findings.len();
+        let markings_after = marking_count(yaml_abs).await;
+        let file_changed = file_digest(yaml_abs).await != digest_before;
+
+        let stopped = if findings_after == 0 {
+            Some(RoundStop::Cleared)
+        } else if !file_changed {
+            Some(RoundStop::Unchanged)
+        } else if findings_after >= findings_before {
+            Some(RoundStop::NoDecrease)
+        } else if round == budget {
+            Some(RoundStop::Budget)
+        } else {
+            None
+        };
+
+        // Findings and markings on one line: whoever reads the log sees both
+        // sides of the trade, not only the number that went down.
+        tracing::info!(
+            gate = gate.label(),
+            round,
+            findings_before,
+            findings_after,
+            markings_before = ?markings_before,
+            markings_after = ?markings_after,
+            file_changed,
+            stopped = ?stopped,
+            "feedback round finished"
+        );
+
+        progress.rounds.push(FeedbackRoundRecord {
+            round,
+            findings_before,
+            findings_after,
+            markings_before,
+            markings_after,
+            file_changed,
+            stopped,
+        });
+        progress.findings_final = findings_after;
+
+        if stopped.is_some() {
+            break;
+        }
+    }
+
+    if findings.is_empty() {
+        tracing::info!(gate = gate.label(), "feedback cleared the gate");
+        return Ok(progress);
     }
 
     // A soft gate does not fail the job on what survives. The agent had its
@@ -2271,18 +2555,29 @@ async fn feedback_round(
     // outcome this design exists to avoid.
     if gate.accepts_marking() {
         tracing::warn!(
-            gate = ?gate,
-            remaining = remaining.len(),
-            "findings survived the feedback round; recorded, not fatal"
+            gate = gate.label(),
+            remaining = findings.len(),
+            rounds = progress.rounds.len(),
+            "findings survived the feedback rounds; recorded, not fatal"
         );
-        return Ok(());
+        return Ok(progress);
     }
 
     Err(PipelineError::Enrich(format!(
-        "enriched law still has {} schema error(s) after the feedback round: {}",
-        remaining.len(),
-        remaining.join("; ")
+        "enriched law still has {} schema error(s) after {} feedback round(s): {}",
+        findings.len(),
+        progress.rounds.len(),
+        findings.join("; ")
     )))
+}
+
+/// Markings recorded in the law as it stands, or `None` when the file does
+/// not parse into the law model. `None` rather than 0: a file that cannot be
+/// read has an unknown number of markings, and reporting zero would read as
+/// "the agent marked nothing".
+async fn marking_count(yaml_abs: &Path) -> Option<usize> {
+    let law = load_law(yaml_abs).await.ok()?;
+    Some(collect_markings_from(&law).len())
 }
 
 /// What a gate says about the law as it stands.
@@ -2365,25 +2660,69 @@ pub async fn execute_enrich_with_runner(
     // Chunk planning: the worker (not the LLM) owns the cursor, read from the
     // `.enrichment.yaml` already present on the enrich branch checkout.
     let (stored_cursor, stored_cursor_path) = read_stored_cursor(repo_path, &normalized_path).await;
-    let plan = plan_chunk(
-        config.max_articles_per_run,
-        articles_before,
-        stored_cursor,
-        &stored_cursor_path,
-        &normalized_path,
-    );
-    let (chunk_window, law_complete, next_cursor) = match plan {
-        ChunkPlan::WholeLaw => (None, true, 0),
-        ChunkPlan::Chunk {
-            start,
-            end,
-            law_complete,
-        } => {
-            let numbers: Vec<String> = law.articles[start..end]
+    // A named entry overrides the cursor: this run enriches that one entry and
+    // nothing else. Targeted work is not progress through the document, so the
+    // cursor stands still — a run that repairs one article must not push the
+    // ordinary walk past articles no agent has seen. The termination property
+    // of the cursor mode is therefore untouched: it still advances only when a
+    // window is walked, in `ceil(total / N)` successful runs.
+    let targeted = config.target_article.is_some();
+    let (chunk_window, law_complete, next_cursor) = match &config.target_article {
+        Some(number) => {
+            let index = law
+                .articles
                 .iter()
-                .map(|a| a.number.clone())
-                .collect();
-            (Some((start, numbers)), law_complete, end)
+                .position(|a| a.number == *number)
+                .ok_or_else(|| {
+                    // Loud on purpose: naming an entry that is not there is a
+                    // mistake in the caller's query, and a run that quietly
+                    // enriched nothing would look like a run that found
+                    // nothing to do.
+                    PipelineError::Enrich(format!(
+                        "law {normalized_path} has no entry {number}; it has {articles_before} \
+                         entries and this run enriches nothing else"
+                    ))
+                })?;
+            // What the ordinary walk had reached, under the same reset rule
+            // `plan_chunk` applies: a cursor recorded for another path or
+            // beyond the document does not survive into this run's metadata.
+            let cursor_now =
+                if stored_cursor_path == normalized_path && stored_cursor <= articles_before {
+                    stored_cursor
+                } else {
+                    0
+                };
+            // A targeted run claims no completion it did not achieve. It only
+            // carries forward a walk that had already finished.
+            let walk_finished = config.max_articles_per_run > 0 && cursor_now >= articles_before;
+            (
+                Some((index, vec![number.clone()])),
+                walk_finished,
+                cursor_now,
+            )
+        }
+        None => {
+            let plan = plan_chunk(
+                config.max_articles_per_run,
+                articles_before,
+                stored_cursor,
+                &stored_cursor_path,
+                &normalized_path,
+            );
+            match plan {
+                ChunkPlan::WholeLaw => (None, true, 0),
+                ChunkPlan::Chunk {
+                    start,
+                    end,
+                    law_complete,
+                } => {
+                    let numbers: Vec<String> = law.articles[start..end]
+                        .iter()
+                        .map(|a| a.number.clone())
+                        .collect();
+                    (Some((start, numbers)), law_complete, end)
+                }
+            }
         }
     };
     // Window-scoped baseline for the chunk no-op guard: progress is measured
@@ -2424,8 +2763,13 @@ pub async fn execute_enrich_with_runner(
             pass: Pass::Translate,
             yaml_path: normalized_path.clone(),
             chunk_articles: chunk_window.as_ref().map(|(_, numbers)| numbers.clone()),
-            // MvT research runs once, during the first chunk (cursor 0).
-            skip_mvt: chunk_window.as_ref().map(|(start, _)| *start > 0),
+            // MvT research runs once, during the first chunk (cursor 0). A
+            // targeted run never does it: it repairs one entry in a law the
+            // research has already been done for, and redoing it would be the
+            // most expensive part of a run meant to be cheap.
+            skip_mvt: chunk_window
+                .as_ref()
+                .map(|(start, _)| targeted || *start > 0),
             ..payload.clone()
         };
         runner
@@ -2446,42 +2790,21 @@ pub async fn execute_enrich_with_runner(
     // A run that changed nothing is not this run's business: the file was
     // already in whatever state it was in, and validating it here would
     // fail a job for someone else's defect.
+    // Per gate, in order: the hard gate first, because a law that does not
+    // validate cannot be meaningfully asked about coverage and the checks
+    // would report noise over a broken tree; the marking gate last, because
+    // the round before it produces markings and this one is about where they
+    // landed.
+    let mut feedback = Vec::new();
     if file_changed_this_run {
-        // The hard gate first: a law that does not validate cannot be
-        // meaningfully asked about coverage, and the checks would report
-        // noise over a broken tree.
-        feedback_round(
-            Gate::Schema,
-            &yaml_abs,
-            repo_path,
-            payload,
-            repo_path,
-            config,
-            runner,
-        )
-        .await?;
-        feedback_round(
-            Gate::Checks,
-            &yaml_abs,
-            repo_path,
-            payload,
-            repo_path,
-            config,
-            runner,
-        )
-        .await?;
-        // Last, because the previous round produces markings and this one
-        // is about where they landed.
-        feedback_round(
-            Gate::Marking,
-            &yaml_abs,
-            repo_path,
-            payload,
-            repo_path,
-            config,
-            runner,
-        )
-        .await?;
+        for gate in Gate::ALL {
+            feedback.push(
+                run_feedback_rounds(
+                    gate, &yaml_abs, repo_path, payload, repo_path, config, runner,
+                )
+                .await?,
+            );
+        }
     }
 
     // Count articles with machine_readable after enrichment.
@@ -2651,6 +2974,7 @@ pub async fn execute_enrich_with_runner(
         markings,
         law_complete,
         enrich_cursor: next_cursor,
+        feedback,
     };
 
     Ok((result, written_files))
@@ -3000,6 +3324,7 @@ mod tests {
             markings: Vec::new(),
             law_complete: true,
             enrich_cursor: 0,
+            feedback: Vec::new(),
         };
 
         let json = serde_json::to_value(&result).unwrap();
@@ -3519,6 +3844,329 @@ articles:
         assert_eq!(markings[0].legal_text_excerpt, "Article one.");
         assert!(!markings[0].accepted);
         assert!(markings[0].resolved_by.is_none());
+    }
+
+    // ---- feedback rounds ------------------------------------------------
+
+    /// A law whose articles carry text and nothing else. Every article is one
+    /// `accounted` finding at the marking gate, so the gate's finding count
+    /// is the number of articles still passed over in silence.
+    fn silent_law(articles: usize) -> String {
+        let mut yaml = String::from(
+            "---\n\
+             $schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json\n\
+             $id: test_law\n\
+             regulatory_layer: WET\n\
+             publication_date: '2025-01-01'\n\
+             bwb_id: BWBR0000001\n\
+             url: https://wetten.overheid.nl/BWBR0000001/2025-01-01\n\
+             valid_from: '2025-01-01'\n\
+             articles:\n",
+        );
+        for n in 1..=articles {
+            yaml.push_str(&format!(
+                "  - number: '{n}'\n    text: De raad stelt de vergoeding vast naar redelijkheid en billijkheid.\n    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel{n}\n"
+            ));
+        }
+        yaml
+    }
+
+    /// Answers a feedback round by filing one marking on the first article
+    /// that has none: the finding count falls by one and the marking count
+    /// rises by one, which is exactly the trade the measurement has to make
+    /// visible.
+    struct MarkingRunner {
+        calls: std::sync::Mutex<usize>,
+    }
+
+    #[async_trait::async_trait]
+    impl LlmRunner for MarkingRunner {
+        async fn run(
+            &self,
+            _payload: &EnrichPayload,
+            yaml_abs: &Path,
+            _repo_path: &Path,
+            _config: &EnrichConfig,
+        ) -> Result<()> {
+            #[allow(clippy::unwrap_used)]
+            {
+                *self.calls.lock().unwrap() += 1;
+            }
+            let content = tokio::fs::read_to_string(yaml_abs).await?;
+            let mut value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&content)?;
+            if let serde_yaml_ng::Value::Mapping(ref mut map) = value {
+                if let Some(serde_yaml_ng::Value::Sequence(ref mut articles)) =
+                    map.get_mut("articles")
+                {
+                    for article in articles.iter_mut() {
+                        if let serde_yaml_ng::Value::Mapping(ref mut article_map) = article {
+                            if article_map.contains_key("machine_readable") {
+                                continue;
+                            }
+                            let marking: serde_yaml_ng::Value = serde_yaml_ng::from_str(
+                                "markings:\n  - about: naar redelijkheid en billijkheid is een open norm\n    resolution: model\n    resolved_by: het formaat zou een oordeelsruimte moeten kunnen dragen die geen formule is\n    target: []\n    legal_text_excerpt: naar redelijkheid en billijkheid\n",
+                            )?;
+                            article_map.insert(
+                                serde_yaml_ng::Value::String("machine_readable".into()),
+                                marking,
+                            );
+                            break;
+                        }
+                    }
+                }
+            }
+            tokio::fs::write(yaml_abs, serde_yaml_ng::to_string(&value)?).await?;
+            Ok(())
+        }
+    }
+
+    /// Sets the law up on disk and returns `(dir, absolute yaml path)`.
+    async fn silent_law_on_disk(articles: usize) -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let path = law_dir.join("2025-01-01.yaml");
+        tokio::fs::write(&path, silent_law(articles)).await.unwrap();
+        (dir, path)
+    }
+
+    fn rounds_config(rounds: FeedbackRounds) -> EnrichConfig {
+        let mut config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        config.feedback_rounds = rounds;
+        config
+    }
+
+    #[tokio::test]
+    async fn a_second_round_runs_and_is_measured_per_round() {
+        // Three articles, three findings, two rounds allowed. Each round
+        // answers one article, so round 1 takes one finding away and round 2
+        // takes the next — the thing the whole exercise is meant to measure.
+        let (dir, path) = silent_law_on_disk(3).await;
+        let config = rounds_config(FeedbackRounds {
+            marking: 2,
+            ..FeedbackRounds::default()
+        });
+        let runner = MarkingRunner {
+            calls: std::sync::Mutex::new(0),
+        };
+        let payload = chunk_test_payload("regulation/nl/wet/test_law/2025-01-01.yaml");
+
+        let progress = run_feedback_rounds(
+            Gate::Marking,
+            &path,
+            dir.path(),
+            &payload,
+            dir.path(),
+            &config,
+            &runner,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(progress.gate, "marking");
+        assert_eq!(progress.findings_initial, 3);
+        assert_eq!(progress.findings_final, 1);
+        assert_eq!(*runner.calls.lock().unwrap(), 2, "both rounds ran");
+        assert_eq!(progress.rounds.len(), 2);
+
+        assert_eq!(progress.rounds[0].round, 1);
+        assert_eq!(progress.rounds[0].findings_before, 3);
+        assert_eq!(progress.rounds[0].findings_after, 2);
+        assert!(progress.rounds[0].file_changed);
+        assert_eq!(progress.rounds[0].stopped, None, "round 1 does not end it");
+
+        assert_eq!(progress.rounds[1].round, 2);
+        assert_eq!(progress.rounds[1].findings_before, 2);
+        assert_eq!(progress.rounds[1].findings_after, 1);
+        assert_eq!(progress.rounds[1].stopped, Some(RoundStop::Budget));
+
+        // And the counters say how the findings fell: by marking, not by
+        // modelling. Without this the two are indistinguishable.
+        assert_eq!(progress.rounds[0].markings_before, Some(0));
+        assert_eq!(progress.rounds[0].markings_after, Some(1));
+        assert_eq!(progress.rounds[1].markings_before, Some(1));
+        assert_eq!(progress.rounds[1].markings_after, Some(2));
+    }
+
+    #[tokio::test]
+    async fn a_round_that_changes_nothing_ends_the_chain() {
+        /// Answers nothing and writes nothing: the file is byte-identical
+        /// afterwards.
+        struct SilentRunner {
+            calls: std::sync::Mutex<usize>,
+        }
+
+        #[async_trait::async_trait]
+        impl LlmRunner for SilentRunner {
+            async fn run(
+                &self,
+                _payload: &EnrichPayload,
+                _yaml_abs: &Path,
+                _repo_path: &Path,
+                _config: &EnrichConfig,
+            ) -> Result<()> {
+                #[allow(clippy::unwrap_used)]
+                {
+                    *self.calls.lock().unwrap() += 1;
+                }
+                Ok(())
+            }
+        }
+
+        let (dir, path) = silent_law_on_disk(3).await;
+        let config = rounds_config(FeedbackRounds::uniform(3));
+        let runner = SilentRunner {
+            calls: std::sync::Mutex::new(0),
+        };
+        let payload = chunk_test_payload("regulation/nl/wet/test_law/2025-01-01.yaml");
+
+        let progress = run_feedback_rounds(
+            Gate::Marking,
+            &path,
+            dir.path(),
+            &payload,
+            dir.path(),
+            &config,
+            &runner,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            *runner.calls.lock().unwrap(),
+            1,
+            "three rounds were allowed; the first bought nothing, so no second"
+        );
+        assert_eq!(progress.rounds.len(), 1);
+        assert!(!progress.rounds[0].file_changed);
+        assert_eq!(progress.rounds[0].stopped, Some(RoundStop::Unchanged));
+        assert_eq!(progress.findings_final, 3);
+    }
+
+    #[tokio::test]
+    async fn a_round_that_removes_no_finding_ends_the_chain() {
+        /// Edits the file without answering anything: the bytes move, the
+        /// findings do not.
+        struct ChurningRunner {
+            calls: std::sync::Mutex<usize>,
+        }
+
+        #[async_trait::async_trait]
+        impl LlmRunner for ChurningRunner {
+            async fn run(
+                &self,
+                _payload: &EnrichPayload,
+                yaml_abs: &Path,
+                _repo_path: &Path,
+                _config: &EnrichConfig,
+            ) -> Result<()> {
+                #[allow(clippy::unwrap_used)]
+                let call = {
+                    let mut calls = self.calls.lock().unwrap();
+                    *calls += 1;
+                    *calls
+                };
+                let content = tokio::fs::read_to_string(yaml_abs).await?;
+                tokio::fs::write(yaml_abs, format!("{content}# round {call}\n")).await?;
+                Ok(())
+            }
+        }
+
+        let (dir, path) = silent_law_on_disk(3).await;
+        let config = rounds_config(FeedbackRounds::uniform(3));
+        let runner = ChurningRunner {
+            calls: std::sync::Mutex::new(0),
+        };
+        let payload = chunk_test_payload("regulation/nl/wet/test_law/2025-01-01.yaml");
+
+        let progress = run_feedback_rounds(
+            Gate::Marking,
+            &path,
+            dir.path(),
+            &payload,
+            dir.path(),
+            &config,
+            &runner,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            *runner.calls.lock().unwrap(),
+            1,
+            "a round that took no finding away buys no next round"
+        );
+        assert_eq!(progress.rounds.len(), 1);
+        assert!(progress.rounds[0].file_changed, "the bytes did move");
+        assert_eq!(progress.rounds[0].findings_after, 3);
+        assert_eq!(progress.rounds[0].stopped, Some(RoundStop::NoDecrease));
+    }
+
+    #[tokio::test]
+    async fn a_gate_with_nothing_to_say_runs_no_round() {
+        // The budget is not a quota: a clear gate spends none of it.
+        let (dir, path) = silent_law_on_disk(1).await;
+        let config = rounds_config(FeedbackRounds::uniform(3));
+        let runner = MarkingRunner {
+            calls: std::sync::Mutex::new(0),
+        };
+        let payload = chunk_test_payload("regulation/nl/wet/test_law/2025-01-01.yaml");
+
+        // Schema, not marking: this law validates, so that gate is clear.
+        let progress = run_feedback_rounds(
+            Gate::Schema,
+            &path,
+            dir.path(),
+            &payload,
+            dir.path(),
+            &config,
+            &runner,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(progress.findings_initial, 0);
+        assert!(progress.rounds.is_empty());
+        assert_eq!(*runner.calls.lock().unwrap(), 0);
+    }
+
+    #[test]
+    fn feedback_rounds_default_to_one_per_gate() {
+        let rounds = FeedbackRounds::default();
+        for gate in Gate::ALL {
+            assert_eq!(rounds.for_gate(gate), 1, "{}", gate.label());
+        }
+    }
+
+    #[test]
+    fn feedback_rounds_parse_bare_number_and_per_gate() {
+        assert_eq!(
+            FeedbackRounds::parse("2").unwrap(),
+            FeedbackRounds::uniform(2)
+        );
+        assert_eq!(
+            FeedbackRounds::parse("checks=2,marking=3").unwrap(),
+            FeedbackRounds {
+                schema: 1,
+                checks: 2,
+                marking: 3
+            }
+        );
+        // A bare number sets the floor, a named gate overrides it — order
+        // matters and the number goes first.
+        assert_eq!(
+            FeedbackRounds::parse("2, schema=1").unwrap(),
+            FeedbackRounds {
+                schema: 1,
+                checks: 2,
+                marking: 2
+            }
+        );
+        assert!(FeedbackRounds::parse("poort=2").is_err());
+        assert!(FeedbackRounds::parse("checks=veel").is_err());
     }
 
     #[tokio::test]
@@ -4700,6 +5348,102 @@ articles:
                 (vec!["1".to_string(), "2".to_string()], Some(false)),
                 (vec!["3".to_string(), "4".to_string()], Some(true)),
             ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_named_entry_is_the_only_one_enriched_and_the_cursor_stands_still() {
+        // Targeted work: article 4 is repaired, the walk through the document
+        // has not begun, and it must not look as if it had.
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+            .await
+            .unwrap();
+
+        let mut config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        config.max_articles_per_run = 2;
+        config.target_article = Some("4".into());
+        let payload = chunk_test_payload(yaml_path);
+        let runner = FakeChunkRunner::new(false);
+
+        let (result, _) =
+            execute_enrich_with_runner(&payload, dir.path(), &config, "sha1", &runner)
+                .await
+                .unwrap();
+
+        // Exactly the named entry, and the MvT research is not redone.
+        assert_eq!(
+            *runner.calls.lock().unwrap(),
+            vec![(vec!["4".to_string()], Some(true))]
+        );
+        assert_eq!(result.articles_with_machine_readable, 1);
+        // The cursor did not move: this was a repair, not progress.
+        assert_eq!(result.enrich_cursor, 0);
+        assert!(!result.law_complete);
+        let meta: EnrichmentMetadata = serde_yaml_ng::from_str(
+            &tokio::fs::read_to_string(law_dir.join(".enrichment.yaml"))
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(meta.enrich_cursor, 0);
+
+        // And the ordinary walk still starts at the beginning, which is the
+        // termination property the cursor mode may not lose.
+        config.target_article = None;
+        let (result, _) =
+            execute_enrich_with_runner(&payload, dir.path(), &config, "sha1", &runner)
+                .await
+                .unwrap();
+        assert_eq!(result.enrich_cursor, 2);
+        assert_eq!(
+            runner.calls.lock().unwrap()[1],
+            (vec!["1".to_string(), "2".to_string()], Some(false))
+        );
+    }
+
+    #[tokio::test]
+    async fn a_named_entry_the_law_does_not_have_fails_the_run() {
+        // Silence is the wrong answer: whoever names an entry that is not
+        // there has a mistake in their query, and a run that enriched nothing
+        // looks exactly like a run that found nothing to do.
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+            .await
+            .unwrap();
+
+        let mut config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        config.target_article = Some("2.1.i".into());
+        let runner = FakeChunkRunner::new(false);
+
+        let err = execute_enrich_with_runner(
+            &chunk_test_payload(yaml_path),
+            dir.path(),
+            &config,
+            "sha1",
+            &runner,
+        )
+        .await
+        .expect_err("an entry that does not exist must fail the run");
+        assert!(
+            err.to_string().contains("2.1.i"),
+            "the message must name the entry: {err}"
+        );
+        assert!(
+            runner.calls.lock().unwrap().is_empty(),
+            "no agent runs on a target that is not there"
         );
     }
 

@@ -50,6 +50,7 @@ fn chunk_result(provider: &str, law_complete: bool, enrich_cursor: usize) -> Enr
         markings: Vec::new(),
         law_complete,
         enrich_cursor,
+        feedback: Vec::new(),
     }
 }
 
