@@ -114,7 +114,7 @@ function goToLibrary() {
                   :text="person?.name || person?.email"
                   disabled
                 ></nldd-menu-item>
-                <nldd-menu-group text="Thema">
+                <nldd-menu-group text="Weergave">
                   <nldd-menu-item
                     v-for="[value, label] in colorSchemeOptions"
                     :key="`scheme-${value}`"
