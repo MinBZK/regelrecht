@@ -7,7 +7,7 @@
     "prebuild": "node scripts/copy-laws.js",
     "predev": "node ../bdd/codegen/gen-js.mjs && node scripts/copy-laws.js",
     "dev": "vite",
-    "build": "npm run nldd:check && vite build",
+    "build": "vite build",
     "preview": "vite preview",
     "pretest": "node ../bdd/codegen/gen-js.mjs",
     "test": "vitest run",

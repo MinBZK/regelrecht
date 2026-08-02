@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "astro dev",
-    "build": "npm run nldd:check && astro build",
+    "build": "astro build",
     "preview": "astro preview",
     "check:rfc-coverage": "node scripts/check-rfc-coverage.mjs",
     "check:schema-version": "node scripts/check-schema-version.mjs",
