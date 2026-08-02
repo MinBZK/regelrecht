@@ -656,6 +656,71 @@ pub fn marking_discipline(doc: &Value, text_corpus: &str) -> Vec<Finding> {
                 }
             }
 
+            // `reason` says why the construct does not fit, in terms of what
+            // the format does have. It is the half the other fields cannot
+            // restore: `resolved_by` follows from the diagnosis and not the
+            // other way round, so a marking without one reads exactly like a
+            // gap nobody examined. Three shapes are held against it, and all
+            // three are literal containment or a word count, because a
+            // diagnosis is prose and a gate that guesses at prose teaches
+            // rewording.
+            //
+            // What is deliberately *not* done: the signal scans above run on
+            // `about` and `resolved_by` and not on the diagnosis. A good
+            // diagnosis is written in the vocabulary of the format and quotes
+            // the statutory words it fails on, which is the same vocabulary
+            // those lists match. The round-4 marking on "voor zover" says the
+            // model only knows applicability of a whole law; feeding that to
+            // EXPRESSIBLE_SHAPES flags it for naming a branch in the action.
+            // Scanning the diagnosis would fire hardest on the diagnoses that
+            // do their job.
+            let reason = entry
+                .get("reason")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let reason_lower = reason.to_lowercase();
+            if !reason.trim().is_empty() {
+                if word_count(reason) < DIAGNOSIS_MIN_WORDS {
+                    findings.push(Finding::new(
+                        "marking",
+                        Some(&number),
+                        format!(
+                            "marking \"{}\" states no diagnosis; a reason names what the format \
+                             has and why it does not reach, and \"this does not fit\" is the \
+                             claim being made rather than a reason for it",
+                            truncate(about)
+                        ),
+                    ));
+                } else if !about.trim().is_empty()
+                    && (reason_lower.contains(&about_lower) || about_lower.contains(&reason_lower))
+                {
+                    findings.push(Finding::new(
+                        "marking",
+                        Some(&number),
+                        format!(
+                            "marking \"{}\" gives itself as its own reason. What does not fit is \
+                             a different sentence from why it does not fit",
+                            truncate(about)
+                        ),
+                    ));
+                } else if !resolved_by.trim().is_empty()
+                    && (reason_lower.contains(&resolved_lower)
+                        || resolved_lower.contains(&reason_lower))
+                {
+                    findings.push(Finding::new(
+                        "marking",
+                        Some(&number),
+                        format!(
+                            "marking \"{}\" states the wanted change twice, as the reason and as \
+                             the resolution. The reason is the reading of the provision the \
+                             change follows from; from the change alone that reading cannot be \
+                             recovered",
+                            truncate(about)
+                        ),
+                    ));
+                }
+            }
+
             // The excerpt is what ties the marking to this provision. A
             // marking that quotes words this article does not contain is
             // about something else, and there is then no way to tell whether
@@ -2478,6 +2543,18 @@ fn normalised(text: &str) -> String {
 /// the header without reading a word. Three words is the shortest thing that
 /// still has to be copied out of a sentence.
 const QUOTE_MIN_WORDS: usize = 3;
+
+/// The words a diagnosis has to carry before it counts as one.
+///
+/// Higher than [`QUOTE_MIN_WORDS`], for a reason about shape rather than about
+/// effort. A quotation may be a phrase, because a phrase is already something
+/// somebody copied out of a sentence. A `reason` states a relation between two
+/// things: what the construct asks for, and what the format has instead. Three
+/// words cannot hold both ("een vorm hiervoor", "past niet in het model"). Six
+/// is where the shortest honest diagnoses sit — "de motor kent geen wettelijke
+/// afronding", "het model kent alleen toepasselijkheid van een hele wet" — so
+/// the floor cuts below them rather than through them.
+const DIAGNOSIS_MIN_WORDS: usize = 6;
 
 /// Word tokens in a string: whitespace-separated runs carrying a letter.
 fn word_count(text: &str) -> usize {
@@ -4744,6 +4821,108 @@ articles:
         let findings = marking_discipline(&doc, "");
         assert_eq!(findings.len(), 1, "{findings:?}");
         assert!(findings[0].detail.contains("restates"), "{findings:?}");
+    }
+
+    /// One article with one marking, so a single field can be varied.
+    fn law_with_marking(fields: &str) -> Value {
+        serde_yaml_ng::from_str(&format!(
+            r#"
+articles:
+  - number: '3'
+    text: >-
+      Deze wet is van toepassing voor zover een oude regeling haar van
+      toepassing verklaart.
+    machine_readable:
+      execution:
+        actions:
+          - output: aanspraak
+            operation: MULTIPLY
+            values: [1, 2]
+      markings:
+        - about: de gedeeltelijke toepassing van deze wet door een oude regeling
+{fields}
+          resolution: model
+          target: []
+          legal_text_excerpt: voor zover een oude regeling haar van toepassing verklaart
+"#
+        ))
+        .expect("yaml")
+    }
+
+    #[test]
+    fn a_reason_that_only_says_it_does_not_fit_is_no_diagnosis() {
+        // The whole content of the field is the claim the marking already
+        // makes by existing. Nothing here names what the format has.
+        let doc = law_with_marking(
+            "          reason: past niet\n          \
+             resolved_by: een vorm waarin toepasselijkheid per bepaling kan worden uitgedrukt",
+        );
+        let findings = marking_discipline(&doc, "");
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(findings[0].detail.contains("no diagnosis"), "{findings:?}");
+    }
+
+    #[test]
+    fn a_reason_that_repeats_the_construct_is_no_diagnosis_either() {
+        let doc = law_with_marking(
+            "          reason: de gedeeltelijke toepassing van deze wet door een oude regeling\n          \
+             resolved_by: een vorm waarin toepasselijkheid per bepaling kan worden uitgedrukt",
+        );
+        let findings = marking_discipline(&doc, "");
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(
+            findings[0].detail.contains("its own reason"),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_reason_that_is_the_wanted_change_again_loses_the_reading() {
+        // This is the collapse the field exists against: the wish stated
+        // twice, with the reading of the provision gone. The containment runs
+        // both ways, so the padded copy is caught like the literal one.
+        let doc = law_with_marking(
+            "          reason: een vorm waarin toepasselijkheid per bepaling kan worden \
+             uitgedrukt ontbreekt in het formaat\n          \
+             resolved_by: een vorm waarin toepasselijkheid per bepaling kan worden uitgedrukt",
+        );
+        let findings = marking_discipline(&doc, "");
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(findings[0].detail.contains("twice"), "{findings:?}");
+    }
+
+    #[test]
+    fn the_round_four_diagnosis_passes_every_shape_of_this_gate() {
+        // The marking the correction was made for, verbatim in substance: the
+        // reason reads the provision and the resolution follows from it. It
+        // also proves the signal scans stay off the diagnosis — this reason
+        // is about "voor zover", which EXPRESSIBLE_SHAPES lists as a branch in
+        // the action, and a gate that read it there would flag the one
+        // marking that does the job.
+        let doc = law_with_marking(
+            "          reason: >-\n            \
+             \"Voor zover\" beperkt de toepassing per bepaling van deze wet en niet de wet als \
+             geheel; het model kent alleen toepasselijkheid van een hele wet.\n          \
+             resolved_by: >-\n            \
+             Een vorm waarin toepasselijkheid per bepaling van een wet kan worden uitgedrukt, \
+             in plaats van als een booleaanse uitkomst voor de hele wet.",
+        );
+        assert!(marking_discipline(&doc, "").is_empty());
+    }
+
+    #[test]
+    fn six_words_are_enough_for_a_diagnosis() {
+        // The threshold sits exactly here: this names the operation set and
+        // what it lacks, which is the shortest thing that still says both.
+        assert_eq!(
+            word_count("de motor kent geen wettelijke afronding"),
+            DIAGNOSIS_MIN_WORDS
+        );
+        let doc = law_with_marking(
+            "          reason: de motor kent geen wettelijke afronding\n          \
+             resolved_by: een ROUND_HALF_UP-bewerking op eurocenten",
+        );
+        assert!(marking_discipline(&doc, "").is_empty());
     }
 
     #[test]

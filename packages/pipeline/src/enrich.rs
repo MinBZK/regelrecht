@@ -1786,6 +1786,19 @@ fn build_feedback_prompt(yaml_path: &str, feedback: &Feedback, vocabulary: Vocab
                  the operation set is not the problem and the format has no shape for the \
                  construct. Recording an open term as a marking sends it to a queue where nobody \
                  will ever work it.\n\n\
+                 **A marking has three prose fields and they do different work.** `about` names \
+                 the construct in the words the article uses. `reason` says why it does not fit, \
+                 in terms of what the format does have: name the shape or the operation that \
+                 comes closest and say where it falls short. `resolved_by` names the change that \
+                 would close the gap, concretely enough to become work. The order is not free: \
+                 the change follows from the reading, and the reading cannot be recovered from \
+                 the change. \"Voor zover\" beperkt de toepassing per bepaling van deze wet en \
+                 niet de wet als geheel, en het model kent alleen toepasselijkheid van een hele \
+                 wet — that is a reason, and the form the format would need follows from it. \
+                 \"Dit past niet in het model\" is not a reason, it is the marking repeating \
+                 itself. A reason that restates `about`, or that is the wanted change said \
+                 twice, leaves a reader unable to tell a gap somebody examined from a gap \
+                 nobody opened.\n\n\
                  **A flag is a flag on an article that is otherwise worked out.** It names the \
                  one thing that does not fit and leaves everything that does fit standing; an \
                  article whose whole model is a marking, or a single open term, is a defect. \
@@ -3825,6 +3838,7 @@ articles:
     machine_readable:
       markings:
         - about: fixture
+          reason: het formaat kent hier geen vorm voor deze constructie
           resolution: model
           target: []
           legal_text_excerpt: Article one.
@@ -3904,7 +3918,7 @@ articles:
                                 continue;
                             }
                             let marking: serde_yaml_ng::Value = serde_yaml_ng::from_str(
-                                "markings:\n  - about: naar redelijkheid en billijkheid is een open norm\n    resolution: model\n    resolved_by: het formaat zou een oordeelsruimte moeten kunnen dragen die geen formule is\n    target: []\n    legal_text_excerpt: naar redelijkheid en billijkheid\n",
+                                "markings:\n  - about: naar redelijkheid en billijkheid is een open norm\n    reason: het model kent alleen formules en geen oordeelsruimte\n    resolution: model\n    resolved_by: het formaat zou een oordeelsruimte moeten kunnen dragen die geen formule is\n    target: []\n    legal_text_excerpt: naar redelijkheid en billijkheid\n",
                             )?;
                             article_map.insert(
                                 serde_yaml_ng::Value::String("machine_readable".into()),
@@ -4220,6 +4234,7 @@ articles:
     machine_readable:
       markings:
         - about: fixture
+          reason: het formaat kent hier geen vorm voor deze constructie
           resolution: model
           target: []
           legal_text_excerpt: Article one.
@@ -5575,6 +5590,8 @@ articles:
                     "    machine_readable:\n      \
                      markings:\n        \
                      - about: elke persoon die met de aanvrager samenwoont\n          \
+                     reason: het model kent alleen regels over een waarde, niet over een \
+                     verzameling personen\n          \
                      resolution: model\n          \
                      resolved_by: kwantificatie over personen\n          \
                      target: []\n          \
@@ -5624,7 +5641,7 @@ articles:
         let with_marking: ArticleBasedLaw =
             serde_yaml_ng::from_str(&four_article_law_with_models().replace(
                 "  - number: '1'\n    text: Article one.\n    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1\n    machine_readable: {}\n",
-                "  - number: '1'\n    text: Article one.\n    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1\n    machine_readable:\n      markings:\n        - about: iets\n          resolution: engine\n          target: []\n          legal_text_excerpt: Article one.\n",
+                "  - number: '1'\n    text: Article one.\n    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1\n    machine_readable:\n      markings:\n        - about: iets\n          reason: de motor kent geen wettelijke afronding op eurocenten\n          resolution: engine\n          target: []\n          legal_text_excerpt: Article one.\n",
             ))
             .unwrap();
         assert_eq!(window_progress_stats(&with_marking, 0, 2), (2, 1));
