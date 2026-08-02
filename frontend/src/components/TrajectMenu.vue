@@ -187,6 +187,7 @@ async function submitCreate() {
 
 <template>
   <nldd-button
+    data-testid="traject-menu-trigger"
     size="md"
     expandable
     :loading="menuLoading || undefined"
