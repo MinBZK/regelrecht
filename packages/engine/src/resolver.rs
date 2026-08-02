@@ -2336,6 +2336,72 @@ articles:
         assert!(find(&HashMap::new()).is_empty());
     }
 
+    /// The provincie branch, which the comment on `matches_scope` already
+    /// promised while the code did not have it: a provinciale verordening was
+    /// national as far as the resolver was concerned.
+    #[test]
+    fn test_find_implementations_filters_on_provincie_code() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(
+                r#"
+$id: kaderwet_provinciaal
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het tarief wordt vastgesteld bij provinciale verordening
+    machine_readable:
+      open_terms:
+        - id: tarief
+          type: amount
+          required: true
+          delegated_to: provinciale staten
+          delegation_type: PROVINCIALE_VERORDENING
+"#,
+            )
+            .unwrap();
+        resolver
+            .load_from_yaml(
+                r#"
+$id: verordening_pv27
+regulatory_layer: PROVINCIALE_VERORDENING
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+provincie_code: PV27
+articles:
+  - number: '1'
+    text: Het tarief bedraagt 12
+    machine_readable:
+      implements:
+        - law: kaderwet_provinciaal
+          article: '1'
+          open_term: tarief
+      execution:
+        output:
+          - name: tarief
+            type: number
+        actions:
+          - output: tarief
+            value: 12
+"#,
+            )
+            .unwrap();
+
+        let find = |scope: &HashMap<String, Value>| {
+            resolver
+                .find_implementations("kaderwet_provinciaal", "1", "tarief", None, scope)
+                .unwrap()
+        };
+
+        assert_eq!(find(&scope_of("provincie_code", "PV27")).len(), 1);
+        assert!(find(&scope_of("provincie_code", "PV26")).is_empty());
+        assert!(find(&HashMap::new()).is_empty());
+        // A gemeente in scope does not satisfy a provincie requirement.
+        assert!(find(&scope_of("gemeente_code", "PV27")).is_empty());
+    }
+
     // -------------------------------------------------------------------------
     // Index bookkeeping: hooks, overrides, procedures
     // -------------------------------------------------------------------------
