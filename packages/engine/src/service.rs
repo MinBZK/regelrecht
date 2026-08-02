@@ -140,6 +140,14 @@ fn selection_error(law_id: &str, calculation_date: &str, reason: SelectionReason
             "law '{law_id}': its valid_from is the internal reference '{reference}', so whether \
              it was in force on {calculation_date} cannot be determined from the regulation"
         )),
+        // A different fact, and it must read differently: the file carries
+        // something that is neither a date nor a reference, so there is nothing
+        // to resolve elsewhere and nothing to harvest. Saying "cannot be
+        // determined" here would dress corruption up as a known gap.
+        SelectionReason::UnreadableStart(raw) => EngineError::ResolutionError(format!(
+            "law '{law_id}': its valid_from is '{raw}', which is neither a date nor an internal \
+             reference, so this version cannot be placed in time at all"
+        )),
     }
 }
 

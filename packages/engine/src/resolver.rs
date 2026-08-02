@@ -48,7 +48,19 @@ pub enum SelectionReason {
     /// A version's `valid_from` is an internal reference (RFC-001) instead of a
     /// date, so whether it was in force on the reference date cannot be
     /// determined from the file. Carries the reference as written.
+    ///
+    /// A document state and not a defect: the law says its commencement is
+    /// fixed elsewhere, and this engine does not resolve that. It is the known
+    /// gap of RFC-026, and someone can close it by harvesting what does fix it.
     UndeterminedStart(String),
+    /// A version's `valid_from` is neither a date nor an internal reference.
+    ///
+    /// Loading refuses this, so reaching it means the value arrived another
+    /// way. Kept apart from `UndeterminedStart` because the two are not the
+    /// same thing: one is a law that says its start lies elsewhere, the other
+    /// is a file that says nothing at all. Answering both with "we cannot
+    /// determine it" reads as a known gap and hides the corruption.
+    UnreadableStart(String),
 }
 
 /// A regulation that declared it fills an open term, but was refused because
@@ -564,9 +576,9 @@ impl RuleResolver {
                 }
                 Some(raw) => {
                     // Unparseable dates are refused at load; treat a stray one
-                    // as undetermined rather than as no lower bound.
+                    // as unreadable rather than as no lower bound.
                     let Ok(valid_from) = parse_date(raw) else {
-                        return Err(SelectionReason::UndeterminedStart(raw.to_string()));
+                        return Err(SelectionReason::UnreadableStart(raw.to_string()));
                     };
                     if valid_from <= reference_date {
                         candidate = Some(version);
