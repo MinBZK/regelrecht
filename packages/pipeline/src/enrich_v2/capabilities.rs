@@ -209,15 +209,21 @@ pub fn plan_step(
 /// every entry here is a subset of the file tools: this lane's whole design is
 /// that the worker fetches and validates while the agent reads and writes.
 pub const CHAIN: &[StepSpec] = &[
-    StepSpec {
-        name: "MvT research",
-        skill: ".claude/skills/law-mvt-research/SKILL.md",
-        // Without retrieval there is nothing to read, so the step has no
-        // artefact to write. Optional: a translation without parliamentary
-        // scenarios is worse, not wrong.
-        needs: &["WebFetch"],
-        required: false,
-    },
+    // No MvT step. It was here as a retrieval step needing `WebFetch`, and this
+    // lane grants no network, so every run since round 1 has reported it
+    // skipped and none has ever run it. Reporting a skip for something that
+    // cannot happen this way is noise, and it hid that a third of the designed
+    // chain was missing from every measurement.
+    //
+    // Network is not the fix. The prompt tells the agent not to cite what it
+    // was not given, because a recalled kamerstuk reads exactly like a read
+    // one to whoever comes after, and round 2 produced precisely that. Handing
+    // it retrieval makes that likelier.
+    //
+    // The replacement is RFC-030: harvest the parliamentary history into the
+    // corpus per law version, and the agent reads it from disk the way it reads
+    // the statute. Then the step returns as a file step, and it belongs in this
+    // list again.
     StepSpec {
         name: "Generate machine_readable",
         skill: ".claude/skills/law-generate/SKILL.md",
@@ -323,22 +329,23 @@ mod tests {
     }
 
     #[test]
-    fn mvt_step_is_skipped_not_silently_run() {
-        // The measured failure: this step cannot retrieve, so it must not
-        // reach the prompt at all.
-        let spec = &CHAIN[0];
-        let plan = plan_step(
-            spec,
-            &enrich_grant(),
-            Some("---\nallowed-tools: WebFetch\n---\n"),
-        );
-        assert_eq!(
-            plan,
-            StepPlan::Skipped {
-                missing: vec!["WebFetch".to_owned()]
+    fn no_step_in_the_chain_needs_retrieval() {
+        // The MvT step used to sit here needing `WebFetch`, and this lane
+        // grants no network, so it reported a skip on every run and never
+        // ran once. A step that cannot happen does not belong in the plan.
+        //
+        // This holds the shape rather than the absence: a retrieval step
+        // added here would report a skip every run again, and the answer is
+        // to read the harvested material from disk (RFC-030).
+        for spec in CHAIN {
+            for needed in spec.needs {
+                assert!(
+                    ENRICH_GRANT.contains(needed),
+                    "{} needs {needed}, which this lane does not grant",
+                    spec.name
+                );
             }
-        );
-        assert!(!plan.is_in_prompt());
+        }
     }
 
     #[test]
@@ -397,7 +404,7 @@ mod tests {
 
     #[test]
     fn unreadable_skill_does_not_degrade_a_step() {
-        let spec = &CHAIN[2];
+        let spec = &CHAIN[1];
         assert_eq!(plan_step(spec, &enrich_grant(), None), StepPlan::Run);
     }
 
@@ -406,16 +413,16 @@ mod tests {
         let planned = vec![
             (
                 &CHAIN[0],
-                StepPlan::Skipped {
-                    missing: vec!["WebFetch".to_owned()],
+                StepPlan::Degraded {
+                    missing: vec!["Bash".to_owned()],
                 },
             ),
             (&CHAIN[1], StepPlan::Run),
         ];
         let report = plan_report(&planned);
-        assert!(report.contains("MvT research: skipped"));
-        assert!(report.contains("WebFetch"));
-        assert!(!report.contains("Generate machine_readable"));
+        assert!(report.contains("Generate machine_readable: degraded"));
+        assert!(report.contains("Bash"));
+        assert!(!report.contains("Reverse validation"));
     }
 
     #[test]
@@ -428,21 +435,15 @@ mod tests {
         let steps: Vec<(&StepSpec, Option<String>)> = vec![
             (
                 &CHAIN[0],
-                Some(
-                    "---\nallowed-tools: Read, Write, WebFetch, WebSearch, Bash\n---\n".to_owned(),
-                ),
-            ),
-            (
-                &CHAIN[1],
                 Some("---\nallowed-tools: Read, Edit, Write, Bash, Grep, Glob\n---\n".to_owned()),
             ),
             (
-                &CHAIN[2],
+                &CHAIN[1],
                 Some("---\nallowed-tools: Read, Edit, Write, Grep, Glob\n---\n".to_owned()),
             ),
         ];
         let denied = ungranted(&enrich_grant(), &steps);
-        assert_eq!(denied, vec!["Bash", "WebFetch", "WebSearch"]);
+        assert_eq!(denied, vec!["Bash"]);
 
         // The direction that matters: nothing the report calls missing may
         // still be reachable. The deny list may be wider — a skipped step
