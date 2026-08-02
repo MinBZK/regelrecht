@@ -1799,13 +1799,12 @@ fn produces(node: &Value, name: &str) -> bool {
         }
         match node {
             Value::String(s) if s == name => found = true,
-            Value::Sequence(seq) => {
+            Value::Sequence(seq)
                 if seq
                     .iter()
-                    .any(|item| item.get("name").and_then(Value::as_str) == Some(name))
-                {
-                    found = true;
-                }
+                    .any(|item| item.get("name").and_then(Value::as_str) == Some(name)) =>
+            {
+                found = true;
             }
             _ => {}
         }
