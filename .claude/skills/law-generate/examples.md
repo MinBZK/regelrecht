@@ -2,7 +2,7 @@
 
 All examples below pass `just validate` against the latest schema.
 
-## Example 1: Simple Constant (direct value assignment)
+## Example 1. Simple Constant (direct value assignment)
 
 **Legal Text:**
 ```
@@ -25,7 +25,7 @@ machine_readable:
 
 ---
 
-## Example 2: Eligibility Check (AND with comparisons)
+## Example 2. Eligibility Check (AND with comparisons)
 
 **Legal Text:**
 ```
@@ -94,10 +94,12 @@ machine_readable:
 - `AND` uses `conditions` array
 - Comparisons use `subject` (must be `$variable`) + `value`
 - Action uses `value:` pattern (not top-level `operation:`)
+- The bindings here are illustrative. Before you copy one, read the target law in
+  the corpus and check that it really produces an output by that name
 
 ---
 
-## Example 3: Internal Reference Between Articles
+## Example 3. Internal Reference Between Articles
 
 **Article 2** references article 3's output:
 ```yaml
@@ -181,7 +183,7 @@ machine_readable:
 
 ---
 
-## Example 4: Complex Nested Calculation
+## Example 4. Complex Nested Calculation
 
 From the actual zorgtoeslag law (simplified):
 
@@ -262,12 +264,12 @@ machine_readable:
 - Action uses `value:` wrapper with nested `operation: MAX` + `values: [...]`
 - Operations nest deeply: MAX → SUBTRACT → MULTIPLY → IF
 - Each nested operation is a full operation object
-- No `subject`/`value` on arithmetic — only `values` array
+- No `subject`/`value` on arithmetic, only a `values` array
 - IF uses `cases`/`default` everywhere
 
 ---
 
-## Example 5: Open Terms — Higher Law (IoC declaration)
+## Example 5. Open Terms, Higher Law (IoC declaration)
 
 When a law delegates a value to a lower regulation ("bij ministeriële regeling"),
 the higher law declares an `open_term`:
@@ -279,7 +281,7 @@ machine_readable:
     - id: standaardpremie
       type: amount
       required: true
-      delegated_to: minister
+      delegated_to: Onze Minister
       delegation_type: MINISTERIELE_REGELING
       legal_basis: artikel 4 Wet op de zorgtoeslag
   execution:
@@ -302,7 +304,7 @@ machine_readable:
 
 ---
 
-## Example 6: Open Terms — Lower Regulation (IoC implementation)
+## Example 6. Open Terms, Lower Regulation (IoC implementation)
 
 The lower regulation registers as implementing the open term:
 
@@ -337,7 +339,91 @@ machine_readable:
 
 ---
 
-## Example 7: IF with Multiple Cases (replaces SWITCH)
+## Example 7. A Marking Next to a Full Model
+
+From the definition of "verzekerde" in the Wet op de zorgtoeslag. The entry
+refers four times to the Zorgverzekeringswet, and once to a boundary the format
+cannot express: "vanaf de eerste dag van de kalendermaand volgende op de maand
+waarin hij achttien jaar wordt". No operation reads the month out of a date.
+
+The four references are bindings, not gaps. The month boundary is one marking.
+Everything else is modelled, and the entry still produces `is_verzekerde`.
+
+```yaml
+machine_readable:
+  endpoint: is_verzekerde
+  markings:
+    - about: de eerste dag van de kalendermaand volgende op de maand waarin hij achttien jaar wordt
+      resolution: engine
+      resolved_by: >-
+        Een bewerking die jaar en maand uit een datum leest, of een START_OF_MONTH,
+        zodat de maandgrens uit de peildatum zelf volgt.
+      target: []
+      legal_text_excerpt: >-
+        steeds vanaf de eerste dag van de kalendermaand volgende op de maand waarin hij
+        achttien jaar wordt
+      accepted: false
+  execution:
+    parameters:
+      - name: bsn
+        type: string
+        required: true
+      - name: geboortedatum
+        type: date
+        required: true
+      - name: eerste_dag_van_de_maand
+        type: date
+        required: true
+        description: >-
+          De eerste dag van de beoordeelde kalendermaand. Zolang de motor de maand niet
+          uit een datum kan lezen, wordt die grens hier aangeleverd; zie de markering.
+    input:
+      - name: is_verzekeringsplichtige
+        type: boolean
+        source:
+          regulation: zorgverzekeringswet
+          output: is_verzekeringsplichtige
+          parameters:
+            bsn: $bsn
+    output:
+      - name: is_verzekerde
+        type: boolean
+    actions:
+      - output: achttiende_verjaardag
+        value:
+          operation: DATE_ADD
+          date: $geboortedatum
+          years: 18
+      - output: is_achttien_geworden_voor_deze_maand
+        value:
+          operation: LESS_THAN
+          subject: $achttiende_verjaardag
+          value: $eerste_dag_van_de_maand
+      - output: is_verzekerde
+        value:
+          operation: AND
+          conditions:
+            - operation: EQUALS
+              subject: $is_verzekeringsplichtige
+              value: true
+            - operation: EQUALS
+              subject: $is_achttien_geworden_voor_deze_maand
+              value: true
+```
+
+**Key points:**
+- A reference to a law that has not been harvested is still a binding. Whether
+  the Zorgverzekeringswet is in the corpus is a state of the corpus and does not
+  belong in this file.
+- `target: []` because the marking blocks nothing: `is_verzekerde` is computed.
+  The comparison gives exactly what the text says as long as the parameter really
+  is the first day of a month.
+- The workaround is named in the `description` of the parameter that carries it,
+  so a reader can see the marking and the model refer to the same thing.
+
+---
+
+## Example 8. IF with Multiple Cases (replaces SWITCH)
 
 ```yaml
 actions:
@@ -376,9 +462,9 @@ actions:
 
 ---
 
-## Example 8: AGE Operation
+## Example 9. AGE Operation
 
-From Wet open overheid — calculating how old a document is:
+From Wet open overheid, calculating how old a document is:
 
 ```yaml
 actions:
@@ -398,13 +484,13 @@ actions:
 - AGE calculates complete years between two dates
 - Works for any "age" calculation, not just people (document age, policy age, etc.)
 - Uses `date_of_birth` and `reference_date` (not subject/value)
-- `$peildatum` must be declared as a parameter — it is NOT a built-in
+- `$peildatum` must be declared as a parameter, it is NOT a built-in
 
 ---
 
-## Example 9: DATE_ADD Operation (deadline calculations)
+## Example 10. DATE_ADD Operation (deadline calculations)
 
-From AWB article 6:8 — calculating appeal deadlines:
+From AWB article 6:8, calculating appeal deadlines:
 
 ```yaml
 machine_readable:
@@ -453,9 +539,9 @@ machine_readable:
 
 ---
 
-## Example 10: Hooks Pattern (AWB cross-cutting concern)
+## Example 11. Hooks Pattern (AWB cross-cutting concern)
 
-From AWB article 3:46 — motivation requirement:
+From AWB article 3:46, the motivation requirement:
 
 ```yaml
 machine_readable:
@@ -482,9 +568,9 @@ machine_readable:
 
 ---
 
-## Example 11: Overrides Pattern (lex specialis)
+## Example 12. Overrides Pattern (lex specialis)
 
-From Vreemdelingenwet 2000 article 69 — overriding the standard AWB appeal deadline:
+From Vreemdelingenwet 2000 article 69, overriding the standard AWB appeal deadline:
 
 ```yaml
 machine_readable:
@@ -515,7 +601,7 @@ de termijn voor het indienen van een bezwaar- of beroepschrift vier weken.
 
 ---
 
-## Example 12: NOT Operation (negation patterns)
+## Example 13. NOT Operation (negation patterns)
 
 ```yaml
 # Simple negation of a variable
@@ -562,7 +648,7 @@ actions:
 
 ---
 
-## Example 13: MvT Passage to Gherkin Scenario
+## Example 14. MvT Passage to Gherkin Scenario
 
 Shows how to convert a Memorie van Toelichting passage into a BDD scenario.
 
@@ -580,7 +666,7 @@ Zorgtoeslag = €2.112 - €379,20 = €1.732,80
 
 **Generated Gherkin scenario:**
 ```gherkin
-Feature: Zorgtoeslag — scenarios uit Memorie van Toelichting
+Feature: Zorgtoeslag, scenarios uit Memorie van Toelichting
   Testscenario's afgeleid uit de Memorie van Toelichting bij de
   Wet op de zorgtoeslag (kst-30912-3).
 
@@ -610,17 +696,17 @@ Feature: Zorgtoeslag — scenarios uit Memorie van Toelichting
 **Key points:**
 - Each scenario traces back to a specific MvT passage with `# Bron:` comment
 - Monetary inputs are in eurocent (€20.000 = 2000000)
-- Expected outputs are ALWAYS in eurocent (€1.732,80 = 173280) — never use euro with decimals
+- Expected outputs are ALWAYS in eurocent (€1.732,80 = 173280), never euro with decimals
 - When/Then steps use concrete law names (not placeholders like `{law_name}`)
 - The scenario uses existing Given/When/Then steps, not new ones
-- Do NOT invent scenarios — only use what the legislature provided
+- Do NOT invent scenarios, only use what the legislature provided
 
 ---
 
 ## Common Mistakes and Fixes
 
-### Mistake 1: Wrong IF syntax (v0.4.0 style)
-**Wrong (v0.4.0 — removed):**
+### Mistake 1. Wrong IF syntax (v0.4.0 style)
+**Wrong (v0.4.0, removed):**
 ```yaml
 operation: IF
 when:
@@ -643,7 +729,7 @@ cases:
 default: 0
 ```
 
-### Mistake 2: Using SWITCH (removed in v0.5.1)
+### Mistake 2. Using SWITCH (removed in v0.5.1)
 **Wrong:**
 ```yaml
 operation: SWITCH
@@ -662,7 +748,7 @@ cases:
 default: 0
 ```
 
-### Mistake 3: Using url instead of regulation for source
+### Mistake 3. Using url instead of regulation for source
 **Wrong:**
 ```yaml
 source:
@@ -678,7 +764,7 @@ source:
     bsn: $bsn
 ```
 
-### Mistake 4: Using subject/value for arithmetic
+### Mistake 4. Using subject/value for arithmetic
 **Wrong:**
 ```yaml
 operation: SUBTRACT
@@ -694,7 +780,7 @@ values:
   - $korting
 ```
 
-### Mistake 5: Using values for logical operations
+### Mistake 5. Using values for logical operations
 **Wrong:**
 ```yaml
 operation: AND
@@ -713,7 +799,7 @@ conditions:
     value: true
 ```
 
-### Mistake 6: Using SUBTRACT_DATE for age (removed in v0.5.1)
+### Mistake 6. Using SUBTRACT_DATE for age (removed in v0.5.1)
 **Wrong:**
 ```yaml
 operation: SUBTRACT_DATE
@@ -729,7 +815,7 @@ date_of_birth: $geboortedatum
 reference_date: $peildatum
 ```
 
-### Mistake 7: Using CONCAT (removed in v0.5.1)
+### Mistake 7. Using CONCAT (removed in v0.5.1)
 **Wrong:**
 ```yaml
 operation: CONCAT
@@ -746,7 +832,7 @@ values:
   - $wet_naam
 ```
 
-### Mistake 8: Using NOT_EQUALS, NOT_IN, NOT_NULL (removed in v0.5.1)
+### Mistake 8. Using NOT_EQUALS, NOT_IN, NOT_NULL (removed in v0.5.1)
 **Wrong:**
 ```yaml
 operation: NOT_EQUALS
@@ -763,7 +849,7 @@ value:
   value: "ACTIEF"
 ```
 
-### Mistake 9: Wrong monetary type
+### Mistake 9. Wrong monetary type
 **Wrong:**
 ```yaml
 output:
@@ -780,7 +866,7 @@ output:
       unit: eurocent
 ```
 
-### Mistake 10: Treating $referencedate as a built-in
+### Mistake 10. Treating $referencedate as a built-in
 **Wrong (not declaring it):**
 ```yaml
 execution:
@@ -808,7 +894,7 @@ execution:
         reference_date: $referencedate
 ```
 
-### Mistake 11: Missing $ prefix on variable
+### Mistake 11. Missing $ prefix on variable
 **Wrong:**
 ```yaml
 subject: toetsingsinkomen
