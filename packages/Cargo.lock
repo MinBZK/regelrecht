@@ -4189,6 +4189,7 @@ dependencies = [
  "rust_decimal_macros",
  "serde",
  "serde_json",
+ "serde_yaml_ng",
 ]
 
 [[package]]
@@ -4198,6 +4199,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "futures",
  "libc",
  "pretty_assertions",
  "regelrecht-corpus",

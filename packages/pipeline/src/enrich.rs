@@ -123,12 +123,35 @@ pub(crate) enum ChunkPlan {
 /// `machine_readable`, so an un-enriched-first window would revisit the same
 /// skipped articles forever and never terminate. A cursor guarantees
 /// termination in `ceil(total / N)` successful runs regardless of LLM behavior.
+///
+/// # Samenhang van één hoofdartikel
+///
+/// `entries` geeft de nummers in documentvolgorde. Staat het mee, dan wordt de
+/// rechterrand van het venster vooruit geschoven zolang de volgende entry tot
+/// hetzelfde hoofdartikel behoort als de laatste in het venster. Een aanhef
+/// komt daarmee altijd in één venster met zijn eigen leden en onderdelen.
+///
+/// Dat is geen esthetiek maar de grootste enkele maatregel tegen bindingen die
+/// een venster niet kan leggen. Op het corpus van ronde 4 zit **48 van de 57**
+/// vooruitwijzende intra-wet bindingen binnen één hoofdartikel; bij de
+/// venstermaat die vandaag draait daalt het aantal bindingen dat buiten zijn
+/// venster valt van 46 naar 8. Een herordening van de artikelen doet dat niet:
+/// gemeten bracht een topologische orde uit de verwijzingsgraaf die 57 juist op
+/// 69 (zie [`crate::enrich_v2::refgraph`]).
+///
+/// De terminatiegarantie blijft ongemoeid. Het opschuiven maakt een venster
+/// alleen groter, nooit kleiner, dus elke geslaagde run verzet de cursor met
+/// ten minste `max_articles_per_run` entries of bereikt het einde: nog steeds
+/// ten hoogste `ceil(total / N)` runs. Een lege `entries` betekent dat de
+/// aanroeper de nummers niet meegaf en levert precies het gedrag van vóór deze
+/// regel.
 pub(crate) fn plan_chunk(
     max_articles_per_run: usize,
     articles_total: usize,
     stored_cursor: usize,
     stored_cursor_path: &str,
     yaml_path: &str,
+    entries: &[String],
 ) -> ChunkPlan {
     if max_articles_per_run == 0 {
         return ChunkPlan::WholeLaw;
@@ -138,14 +161,245 @@ pub(crate) fn plan_chunk(
     } else {
         0
     };
-    let end = start
+    let mut end = start
         .saturating_add(max_articles_per_run)
         .min(articles_total);
+    if entries.len() == articles_total {
+        while end > start && end < articles_total {
+            let last = crate::enrich_v2::refgraph::top_article(&entries[end - 1]);
+            let next = crate::enrich_v2::refgraph::top_article(&entries[end]);
+            if last != next {
+                break;
+            }
+            end += 1;
+        }
+    }
     ChunkPlan::Chunk {
         start,
         end,
         law_complete: end >= articles_total,
     }
+}
+
+/// What a window is.
+///
+/// Today a window is "the next N entries in document order", and that is the
+/// reason an entry is visited before the value it has to bind to exists: the
+/// cut runs straight through the dependencies. The alternative is to derive
+/// the window instead of guessing it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WindowMode {
+    /// The next `ENRICH_MAX_ARTICLES_PER_RUN` entries from the cursor, with the
+    /// boundary snapped so a top-level article is never cut in half.
+    #[default]
+    Document,
+    /// One layer of the reference graph: a set of top-level articles none of
+    /// which depends on another in the same set, with the layers walked in
+    /// dependency order. Its size follows from the law rather than from a
+    /// constant, and a cycle is one honestly derived layer instead of an
+    /// arbitrary cut.
+    ///
+    /// Off by default, and the measurement is the reason. On the round-4
+    /// corpus a layer order raised the number of intra-law bindings pointing
+    /// forward from 57 to 69: document order is already a good build order,
+    /// because the legislator puts definitions first while a large share of
+    /// the reference edges ("in afwijking van artikel 8") run the other way
+    /// and carry no value at all. The mode is here so that claim can be
+    /// re-measured on other laws, not because it is the better default.
+    Layer,
+}
+
+impl WindowMode {
+    /// Parse the `ENRICH_WINDOW_MODE` spec.
+    pub fn parse(spec: &str) -> std::result::Result<Self, String> {
+        match spec.trim().to_lowercase().as_str() {
+            "document" | "" => Ok(Self::Document),
+            "layer" => Ok(Self::Layer),
+            other => Err(format!("unknown window mode: {other}")),
+        }
+    }
+
+    /// Stable name, used in logs and recorded beside the cursor.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Document => "document",
+            Self::Layer => "layer",
+        }
+    }
+}
+
+/// The entries of layer `index`, and whether it is the last one.
+///
+/// The cursor counts layers in this mode instead of entries, which keeps the
+/// termination property in the same shape: every successful run raises it by
+/// one and there is a fixed number of layers, so the walk ends in at most
+/// `layers()` runs. A layer is not contiguous in document order, which is why
+/// the window travels as a list of entry numbers and not as a range — the
+/// payload already carried it that way.
+pub(crate) fn plan_layer_window(
+    graph: &crate::enrich_v2::refgraph::Graph,
+    entries: &[String],
+    index: usize,
+) -> (Vec<String>, bool) {
+    use crate::enrich_v2::refgraph::top_article;
+
+    let layers = graph.layers();
+    let Some(layer) = layers.get(index) else {
+        return (Vec::new(), true);
+    };
+    let numbers = entries
+        .iter()
+        .filter(|entry| layer.iter().any(|a| a == top_article(entry)))
+        .cloned()
+        .collect();
+    (numbers, index + 1 >= layers.len())
+}
+
+/// Split one window over at most `concurrency` agents.
+///
+/// The split is by top-level article, never inside one: an aanhef and its
+/// leden belong to the same agent for the same reason they belong to the same
+/// window. And it only happens when no two articles in the window reference
+/// each other — two agents that both have to name the same concept will name
+/// it differently, and two independently invented names for one concept never
+/// find each other again. That is a silent hole no later pass detects, which
+/// makes it worse than the ordering problem it would be trading against.
+///
+/// `concurrency` of 1, the default, always returns the window whole: one agent
+/// pays the fixed per-session cost once.
+pub(crate) fn split_window(
+    graph: &crate::enrich_v2::refgraph::Graph,
+    numbers: &[String],
+    concurrency: usize,
+) -> Vec<Vec<String>> {
+    use crate::enrich_v2::refgraph::top_article;
+
+    if concurrency <= 1 || numbers.len() < 2 {
+        return vec![numbers.to_vec()];
+    }
+    let mut articles: Vec<&str> = Vec::new();
+    for number in numbers {
+        let top = top_article(number);
+        if !articles.contains(&top) {
+            articles.push(top);
+        }
+    }
+    if articles.len() < 2 {
+        return vec![numbers.to_vec()];
+    }
+    // One related pair is enough to keep the whole window together: splitting
+    // around it would be a judgement about which side owns the name.
+    for (i, a) in articles.iter().enumerate() {
+        for b in articles.iter().skip(i + 1) {
+            if graph.related(a, b) {
+                return vec![numbers.to_vec()];
+            }
+        }
+    }
+    let buckets = concurrency.min(articles.len());
+    let mut out: Vec<Vec<String>> = vec![Vec::new(); buckets];
+    for (index, article) in articles.iter().enumerate() {
+        let bucket = index % buckets;
+        out[bucket].extend(
+            numbers
+                .iter()
+                .filter(|n| top_article(n) == *article)
+                .cloned(),
+        );
+    }
+    out.retain(|w| !w.is_empty());
+    out
+}
+
+/// Fold the per-window copies of a law back into one file.
+///
+/// Each window worked on its own copy, so the merge is entry-wise: for every
+/// window, the entries it was assigned are taken from its copy and everything
+/// else from the base. Disjoint by construction, so there is nothing to
+/// resolve — and that is exactly what has to be proved rather than assumed.
+///
+/// The merge **refuses** rather than guesses. A window that changed an entry
+/// outside its own assignment is an error with that entry's number in it, and
+/// so is a copy that added or dropped entries. Round 3 lost four runs to two
+/// agents writing the same file; a merge that silently picked a winner would
+/// reproduce that with better manners.
+pub(crate) fn merge_windows(
+    base: &str,
+    windows: &[(Vec<String>, String)],
+) -> std::result::Result<String, String> {
+    use serde_yaml_ng::Value;
+
+    let mut merged: Value =
+        serde_yaml_ng::from_str(base).map_err(|e| format!("base law is not YAML: {e}"))?;
+    let base_articles = articles_by_number(&merged)?;
+
+    let mut taken: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    let mut replacements: std::collections::BTreeMap<String, Value> =
+        std::collections::BTreeMap::new();
+    for (index, (assigned, text)) in windows.iter().enumerate() {
+        let doc: Value = serde_yaml_ng::from_str(text)
+            .map_err(|e| format!("window {index} left a file that is not YAML: {e}"))?;
+        let theirs = articles_by_number(&doc)?;
+        if theirs.len() != base_articles.len() {
+            return Err(format!(
+                "window {index} changed the number of entries (was {}, is {})",
+                base_articles.len(),
+                theirs.len()
+            ));
+        }
+        for (number, article) in &theirs {
+            let Some(before) = base_articles.get(number) else {
+                return Err(format!("window {index} introduced entry {number}"));
+            };
+            if article == before {
+                continue;
+            }
+            if !assigned.iter().any(|a| a == number) {
+                return Err(format!(
+                    "window {index} changed entry {number}, which was not assigned to it"
+                ));
+            }
+            if let Some(other) = taken.insert(number.clone(), index) {
+                return Err(format!(
+                    "windows {other} and {index} both changed entry {number}"
+                ));
+            }
+            replacements.insert(number.clone(), article.clone());
+        }
+    }
+
+    if let Some(Value::Sequence(articles)) = merged.get_mut("articles") {
+        for article in articles.iter_mut() {
+            let Some(number) = article.get("number").and_then(Value::as_str) else {
+                continue;
+            };
+            if let Some(new) = replacements.get(number) {
+                *article = new.clone();
+            }
+        }
+    }
+    serde_yaml_ng::to_string(&merged).map_err(|e| format!("cannot serialise the merge: {e}"))
+}
+
+/// Entries keyed by number, for the merge.
+fn articles_by_number(
+    doc: &serde_yaml_ng::Value,
+) -> std::result::Result<std::collections::BTreeMap<String, serde_yaml_ng::Value>, String> {
+    let mut out = std::collections::BTreeMap::new();
+    for article in doc
+        .get("articles")
+        .and_then(serde_yaml_ng::Value::as_sequence)
+        .into_iter()
+        .flatten()
+    {
+        let number = article
+            .get("number")
+            .and_then(serde_yaml_ng::Value::as_str)
+            .ok_or_else(|| "an entry has no number".to_string())?;
+        out.insert(number.to_string(), article.clone());
+    }
+    Ok(out)
 }
 
 /// Trait abstracting the LLM invocation so `execute_enrich` can be tested
@@ -1025,12 +1279,19 @@ pub enum Gate {
     /// because a misfiled marking is still better than silence, and because
     /// failing here would punish the very behaviour this design wants.
     Marking,
+    /// The closing pass over the whole law, once the last window has been
+    /// walked. Not a window gate: it exists because a window cannot bind to an
+    /// output that did not exist while it ran, so part of what stands is a
+    /// measurement taken too early rather than a defect. Its findings are the
+    /// leads [`crate::enrich_v2::reconcile`] refuses to resolve on its own,
+    /// and the pass that answers them may connect and nothing else.
+    Reconcile,
 }
 
 impl Gate {
     /// Whether a marking is an acceptable answer instead of a change.
     fn accepts_marking(self) -> bool {
-        matches!(self, Gate::Checks | Gate::Marking)
+        matches!(self, Gate::Checks | Gate::Marking | Gate::Reconcile)
     }
 
     /// Stable lowercase name, used in logs, in the measurement record and as
@@ -1040,10 +1301,13 @@ impl Gate {
             Gate::Schema => "schema",
             Gate::Checks => "checks",
             Gate::Marking => "marking",
+            Gate::Reconcile => "reconcile",
         }
     }
 
-    /// The gates in the order the worker runs them.
+    /// The gates in the order the worker runs them for one window. The
+    /// closing gate is not among them: it runs once, over the whole law,
+    /// after the last window.
     pub const ALL: [Gate; 3] = [Gate::Schema, Gate::Checks, Gate::Marking];
 }
 
@@ -1059,6 +1323,7 @@ pub struct FeedbackRounds {
     pub schema: usize,
     pub checks: usize,
     pub marking: usize,
+    pub reconcile: usize,
 }
 
 impl Default for FeedbackRounds {
@@ -1075,6 +1340,7 @@ impl FeedbackRounds {
             schema: rounds,
             checks: rounds,
             marking: rounds,
+            reconcile: rounds,
         }
     }
 
@@ -1085,6 +1351,7 @@ impl FeedbackRounds {
             Gate::Schema => self.schema,
             Gate::Checks => self.checks,
             Gate::Marking => self.marking,
+            Gate::Reconcile => self.reconcile,
         }
     }
 
@@ -1111,6 +1378,7 @@ impl FeedbackRounds {
                         "schema" => rounds.schema = n,
                         "checks" => rounds.checks = n,
                         "marking" => rounds.marking = n,
+                        "reconcile" => rounds.reconcile = n,
                         other => return Err(format!("unknown gate: {other}")),
                     }
                 }
@@ -1576,6 +1844,12 @@ pub struct EnrichmentMetadata {
     /// version lives at a different path, which resets the cursor to 0.
     #[serde(default)]
     pub enrich_cursor_path: String,
+    /// The window mode the cursor was recorded under. In `document` mode it
+    /// counts entries, in `layer` mode it counts layers, and reading one as
+    /// the other would silently skip or repeat work — so a change of mode
+    /// resets the walk, the same way a change of path does.
+    #[serde(default)]
+    pub enrich_cursor_mode: String,
 }
 
 /// Supported LLM providers for enrichment.
@@ -1650,6 +1924,22 @@ pub struct EnrichConfig {
     pub target_article: Option<String>,
     /// Feedback rounds per gate. Default one everywhere.
     pub feedback_rounds: FeedbackRounds,
+    /// What a window is (`ENRICH_WINDOW_MODE`). See [`WindowMode`]; default
+    /// `document`, which is the behaviour every run so far has had.
+    pub window_mode: WindowMode,
+    /// How many windows one run may walk at the same time
+    /// (`ENRICH_WINDOW_CONCURRENCY`). Default 1, so nothing shifts under a
+    /// measurement that is still running.
+    ///
+    /// The knob sits between tokens and wall clock. One agent for a whole
+    /// layer pays the fixed per-session cost once — window 3 of the running
+    /// round cost $5.92 over four calls, of which 5.3 million tokens were
+    /// cache reads of the skills, the schema and the context brief. Cutting
+    /// that layer into one agent per article multiplies exactly that fixed
+    /// cost. Tokens are the scarce thing today; wall clock is the scarce
+    /// thing at four thousand laws, which is why this is a setting and not a
+    /// design choice.
+    pub window_concurrency: usize,
     /// Whether the calls in one window share a session
     /// (`ENRICH_SESSION_REUSE`). See [`SessionReuse`].
     pub session_reuse: SessionReuse,
@@ -1690,6 +1980,8 @@ impl EnrichConfig {
             max_articles_per_run: 0,
             target_article: None,
             feedback_rounds: FeedbackRounds::default(),
+            window_mode: WindowMode::default(),
+            window_concurrency: 1,
             // Tests that do not opt in run cold, so a fake runner's calls read
             // as they always did; the session tests set this themselves.
             session_reuse: SessionReuse::Off,
@@ -1723,6 +2015,8 @@ impl EnrichConfig {
             max_articles_per_run: max_articles,
             target_article,
             feedback_rounds,
+            window_mode: WindowMode::default(),
+            window_concurrency: 1,
             session_reuse,
             effort,
             provider_configs,
@@ -1795,6 +2089,24 @@ impl EnrichConfig {
             Err(_) => SessionReuse::default(),
         };
 
+        // What a window is. A bad spec must not read as the default silently:
+        // this is the setting whose whole point is being able to say which
+        // shape a run used.
+        let window_mode = match std::env::var("ENRICH_WINDOW_MODE") {
+            Ok(spec) => WindowMode::parse(&spec).unwrap_or_else(|e| {
+                tracing::warn!(spec = %spec, error = %e, "ignoring ENRICH_WINDOW_MODE");
+                WindowMode::default()
+            }),
+            Err(_) => WindowMode::default(),
+        };
+
+        // Windows in flight at once. 1 keeps today's behaviour exactly.
+        let window_concurrency = std::env::var("ENRICH_WINDOW_CONCURRENCY")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .filter(|n| *n > 0)
+            .unwrap_or(1);
+
         let effort = std::env::var("LLM_EFFORT").ok().filter(|e| !e.is_empty());
 
         let provider = match provider_name.as_str() {
@@ -1816,6 +2128,8 @@ impl EnrichConfig {
             // instruction and has no env var to arrive through.
             target_article: None,
             feedback_rounds,
+            window_mode,
+            window_concurrency,
             session_reuse,
             effort,
             provider_configs,
@@ -1845,6 +2159,8 @@ impl EnrichConfig {
             max_articles_per_run: self.max_articles_per_run,
             target_article: self.target_article.clone(),
             feedback_rounds: self.feedback_rounds,
+            window_mode: self.window_mode,
+            window_concurrency: self.window_concurrency,
             session_reuse: self.session_reuse,
             effort: self.effort.clone(),
             provider_configs: self.provider_configs.clone(),
@@ -2148,6 +2464,33 @@ fn build_feedback_prompt(yaml_path: &str, feedback: &Feedback, vocabulary: Vocab
          a link. A lead invites someone to look; a citation claims someone already did.";
 
     let (what_happened, what_to_do) = match (feedback.gate, vocabulary) {
+        // Deliberately the narrowest prompt in the chain, and mostly a list of
+        // what not to do. The law has been through every gate already; this
+        // pass exists only because the windows walked it in pieces and an
+        // early window could not bind to a name a later one had yet to invent.
+        (Gate::Reconcile, _) => (
+            "is finished, and one last question is left: a value it reads by hand may be a value \
+             it now produces somewhere else",
+            "Every entry of this law has been translated and every gate has run. You are not \
+             here to translate anything.\n\n\
+             The findings below name places where this law reads a value as a bare input, or \
+             leaves it as an open term, while another entry of this same law now declares an \
+             output for the same thing. That happens because the law was walked in windows: the \
+             entry that reads the value was written while the entry that produces it had no \
+             model yet, so the binding could not be made there.\n\n\
+             **Connect what already exists, and nothing else.** Where the finding is right, turn \
+             the input into one with a `source` that names the output and passes the parameters \
+             that entry asks for. Where it is wrong — the two names look alike but mean different \
+             things, or the law really does leave the value to somebody else — say so in one \
+             sentence and leave the file as it is.\n\n\
+             **What you may not do**, and each of these makes this pass a deterioration:\n\
+             - remodel an entry, change an `operation`, an `action` or a `condition`;\n\
+             - add a `marking`, an `open_term` or a `norm_gap`, or remove one on grounds of \
+             content;\n\
+             - rename an existing output or input so that two names match;\n\
+             - touch an entry no finding names."
+                .to_string(),
+        ),
         (Gate::Schema, _) => (
             "does not validate against the regelrecht JSON schema",
             "Fix it in place so it validates. Change as little as possible.".to_string(),
@@ -2570,23 +2913,32 @@ async fn read_stored_source_hash(repo_path: &Path, normalized_law_path: &str) ->
 /// Absent file, unparseable YAML, or missing fields all degrade to `(0, "")` —
 /// [`plan_chunk`] then resets to the start, which is the safe default for
 /// legacy metadata written before the cursor existed.
-async fn read_stored_cursor(repo_path: &Path, normalized_law_path: &str) -> (usize, String) {
+async fn read_stored_cursor(
+    repo_path: &Path,
+    normalized_law_path: &str,
+) -> (usize, String, String) {
     #[derive(serde::Deserialize, Default)]
     struct CursorFields {
         #[serde(default)]
         enrich_cursor: usize,
         #[serde(default)]
         enrich_cursor_path: String,
+        #[serde(default)]
+        enrich_cursor_mode: String,
     }
     let Some(parent) = Path::new(normalized_law_path).parent() else {
-        return (0, String::new());
+        return (0, String::new(), String::new());
     };
     let meta_rel = parent.join(".enrichment.yaml");
     let Ok(content) = tokio::fs::read_to_string(repo_path.join(meta_rel)).await else {
-        return (0, String::new());
+        return (0, String::new(), String::new());
     };
     let fields: CursorFields = serde_yaml_ng::from_str(&content).unwrap_or_default();
-    (fields.enrich_cursor, fields.enrich_cursor_path)
+    (
+        fields.enrich_cursor,
+        fields.enrich_cursor_path,
+        fields.enrich_cursor_mode,
+    )
 }
 
 /// Create a `CorpusClient` for the enrichment branch.
@@ -3048,6 +3400,173 @@ async fn run_feedback_rounds(
     )))
 }
 
+/// Run the sub-windows of one window side by side, each on its own copy of
+/// the checkout, and fold the results back into the real file.
+///
+/// A copy per agent rather than one shared file. Two agents writing the same
+/// YAML is a measurement of which nobody can say afterwards who wrote what,
+/// and round 3 lost four runs to exactly that. The copies are disjoint per
+/// entry, so the merge has nothing to resolve — and [`merge_windows`] proves
+/// that rather than assuming it: a window that touched an entry outside its
+/// own assignment fails the run with that entry's number in the message.
+async fn run_windows_concurrently(
+    sub_windows: &[Vec<String>],
+    payload: &EnrichPayload,
+    yaml_abs: &Path,
+    normalized_path: &str,
+    repo_path: &Path,
+    config: &EnrichConfig,
+    runner: &dyn LlmRunner,
+) -> Result<()> {
+    let base = tokio::fs::read_to_string(yaml_abs).await?;
+    let scratch = tempfile::tempdir()?;
+
+    tracing::info!(
+        windows = sub_windows.len(),
+        concurrency = config.window_concurrency,
+        "one window split over several agents"
+    );
+
+    let mut runs = Vec::new();
+    for (index, numbers) in sub_windows.iter().enumerate() {
+        let checkout = scratch.path().join(format!("window-{index}"));
+        copy_tree(repo_path, &checkout).await?;
+        let their_yaml = checkout.join(normalized_path);
+        let their_payload = EnrichPayload {
+            chunk_articles: Some(numbers.clone()),
+            // The research belongs to the window as a whole, not to each
+            // slice of it: only the first slice is allowed to do it.
+            skip_mvt: Some(payload.skip_mvt.unwrap_or(false) || index > 0),
+            ..payload.clone()
+        };
+        runs.push(async move {
+            runner
+                .run(&their_payload, &their_yaml, &checkout, config)
+                .await?;
+            let text = tokio::fs::read_to_string(&their_yaml).await?;
+            Ok::<_, PipelineError>(text)
+        });
+    }
+
+    let texts = futures::future::try_join_all(runs).await?;
+    let merged = merge_windows(
+        &base,
+        &sub_windows.iter().cloned().zip(texts).collect::<Vec<_>>(),
+    )
+    .map_err(PipelineError::Enrich)?;
+    tokio::fs::write(yaml_abs, merged).await?;
+    Ok(())
+}
+
+/// Recursive copy of a directory tree, for the per-window checkouts.
+fn copy_tree<'a>(
+    from: &'a Path,
+    to: &'a Path,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
+    Box::pin(async move {
+        tokio::fs::create_dir_all(to).await?;
+        let mut entries = tokio::fs::read_dir(from).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let name = entry.file_name();
+            // A checkout carries its whole history; the agent never reads it
+            // and copying it per window is the most expensive thing here.
+            if name == ".git" {
+                continue;
+            }
+            let source = entry.path();
+            let target = to.join(&name);
+            if entry.file_type().await?.is_dir() {
+                copy_tree(&source, &target).await?;
+            } else {
+                tokio::fs::copy(&source, &target).await?;
+            }
+        }
+        Ok(())
+    })
+}
+
+/// The closing pass over a law whose last window has been walked.
+///
+/// Two steps, deterministic first. The mechanical bindings —
+/// [`crate::enrich_v2::reconcile::plan`] — are written by the worker without
+/// asking anybody, because an input with no source whose name is exactly an
+/// output another entry declares is not a judgement. Whatever is left is put
+/// to one agent through [`Gate::Reconcile`], with a prompt that is mostly a
+/// list of what it may not do.
+///
+/// # Waarom dit niets kan verslechteren
+///
+/// De wet is hier al door elke poort gegaan, dus alles wat deze pass toevoegt
+/// is achteruitgang. Daarom telt de pass zichzelf na: het aantal
+/// deterministische bevindingen vóór en ná de schrijfactie. Blijft dat gelijk
+/// of loopt het op, of wordt het bestand onleesbaar, dan gaat de tekst terug
+/// naar wat er stond. Het is een telling en geen bedoeling: een pass die
+/// niets goedmaakt, verdwijnt.
+async fn run_closing_reconcile(
+    yaml_abs: &Path,
+    corpus_root: &Path,
+    payload: &EnrichPayload,
+    config: &EnrichConfig,
+    runner: &dyn LlmRunner,
+) -> Result<Vec<GateFeedback>> {
+    let before_text = tokio::fs::read_to_string(yaml_abs).await?;
+    let Ok(doc) = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&before_text) else {
+        tracing::warn!(law = %yaml_abs.display(), "closing pass skipped: the file is not YAML");
+        return Ok(Vec::new());
+    };
+    let plan = crate::enrich_v2::reconcile::plan(&doc);
+
+    if !plan.links.is_empty() {
+        let findings_before = crate::enrich_v2::checks::run(&before_text, Some(corpus_root))
+            .findings
+            .len();
+        let (after_text, written) = crate::enrich_v2::reconcile::apply(&before_text, &plan.links);
+        let after = crate::enrich_v2::checks::run(&after_text, Some(corpus_root));
+        let findings_after = after.findings.len();
+        let readable = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&after_text).is_ok();
+        if readable && after.schema.is_empty() && findings_after <= findings_before {
+            tokio::fs::write(yaml_abs, &after_text).await?;
+            tracing::info!(
+                law = %yaml_abs.display(),
+                bound = written.len(),
+                findings_before,
+                findings_after,
+                links = %written
+                    .iter()
+                    .map(crate::enrich_v2::reconcile::Link::describe)
+                    .collect::<Vec<_>>()
+                    .join("; "),
+                "closing pass connected what already existed"
+            );
+        } else {
+            tracing::warn!(
+                law = %yaml_abs.display(),
+                planned = plan.links.len(),
+                findings_before,
+                findings_after,
+                readable,
+                schema_errors = after.schema.len(),
+                "closing pass reverted: it did not improve the count"
+            );
+        }
+    }
+
+    // The leads go to an agent only when there are any; the gate evaluates
+    // them again itself, so a lead the deterministic write just resolved
+    // never reaches a prompt.
+    let progress = run_feedback_rounds(
+        Gate::Reconcile,
+        yaml_abs,
+        corpus_root,
+        payload,
+        corpus_root,
+        config,
+        runner,
+    )
+    .await?;
+    Ok(vec![progress])
+}
+
 /// Markings recorded in the law as it stands, or `None` when the file is not
 /// even YAML.
 ///
@@ -3163,6 +3682,17 @@ async fn evaluate_gate(
     let mut reading = GateReading::default();
     match gate {
         Gate::Schema => reading.answerable = crate::enrich_v2::checks::schema_errors(&raw),
+        // The closing gate reads the whole law and never the window: the
+        // whole point is that it looks at what every earlier window left.
+        Gate::Reconcile => {
+            if let Ok(doc) = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&raw) {
+                reading.answerable = crate::enrich_v2::reconcile::plan(&doc)
+                    .leads
+                    .iter()
+                    .map(crate::enrich_v2::reconcile::Lead::describe)
+                    .collect();
+            }
+        }
         Gate::Marking | Gate::Checks => {
             for finding in crate::enrich_v2::checks::run_with_companions(
                 &raw,
@@ -3264,7 +3794,23 @@ pub async fn execute_enrich_with_runner(
 
     // Chunk planning: the worker (not the LLM) owns the cursor, read from the
     // `.enrichment.yaml` already present on the enrich branch checkout.
-    let (stored_cursor, stored_cursor_path) = read_stored_cursor(repo_path, &normalized_path).await;
+    let (stored_cursor, stored_cursor_path, stored_cursor_mode) =
+        read_stored_cursor(repo_path, &normalized_path).await;
+    // A cursor recorded under another window mode counts entries where this
+    // run counts layers, or the other way round. Reading it as if it meant the
+    // same thing would silently skip or repeat work, so a mode change resets
+    // the walk — the same rule a path change already follows.
+    let stored_cursor_path =
+        if stored_cursor_mode.is_empty() || stored_cursor_mode == config.window_mode.label() {
+            stored_cursor_path
+        } else {
+            tracing::info!(
+                was = %stored_cursor_mode,
+                now = %config.window_mode.label(),
+                "window mode changed; the walk restarts at the beginning of the law"
+            );
+            String::new()
+        };
     // A named entry overrides the cursor: this run enriches that one entry and
     // nothing else. Targeted work is not progress through the document, so the
     // cursor stands still — a run that repairs one article must not push the
@@ -3272,6 +3818,9 @@ pub async fn execute_enrich_with_runner(
     // of the cursor mode is therefore untouched: it still advances only when a
     // window is walked, in `ceil(total / N)` successful runs.
     let targeted = config.target_article.is_some();
+    // Entry numbers in document order, so the window boundary can keep a
+    // top-level article together (see `plan_chunk`).
+    let entry_numbers: Vec<String> = law.articles.iter().map(|a| a.number.clone()).collect();
     let (chunk_window, law_complete, next_cursor) = match &config.target_article {
         Some(number) => {
             let index = law
@@ -3306,6 +3855,29 @@ pub async fn execute_enrich_with_runner(
                 cursor_now,
             )
         }
+        // A window derived from the law instead of counted off the document:
+        // one layer of the reference graph, whose members do not depend on one
+        // another and can therefore be translated in any order among
+        // themselves. The cursor counts layers here, so the walk still ends in
+        // a fixed number of runs.
+        None if config.window_mode == WindowMode::Layer && config.max_articles_per_run > 0 => {
+            let raw = tokio::fs::read_to_string(&yaml_abs).await?;
+            let graph = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&raw)
+                .map(|doc| crate::enrich_v2::refgraph::Graph::scan(&doc))
+                .unwrap_or_default();
+            let layer_index =
+                if stored_cursor_path == normalized_path && stored_cursor <= graph.layers().len() {
+                    stored_cursor
+                } else {
+                    0
+                };
+            let (numbers, complete) = plan_layer_window(&graph, &entry_numbers, layer_index);
+            let start = numbers
+                .first()
+                .and_then(|n| entry_numbers.iter().position(|e| e == n))
+                .unwrap_or(0);
+            (Some((start, numbers)), complete, layer_index + 1)
+        }
         None => {
             let plan = plan_chunk(
                 config.max_articles_per_run,
@@ -3313,6 +3885,7 @@ pub async fn execute_enrich_with_runner(
                 stored_cursor,
                 &stored_cursor_path,
                 &normalized_path,
+                &entry_numbers,
             );
             match plan {
                 ChunkPlan::WholeLaw => (None, true, 0),
@@ -3334,7 +3907,7 @@ pub async fn execute_enrich_with_runner(
     // inside the assigned window only.
     let window_stats_before = chunk_window
         .as_ref()
-        .map(|(start, numbers)| window_progress_stats(&law, *start, start + numbers.len()));
+        .map(|(_, numbers)| window_progress_stats(&law, numbers));
 
     let provider_name = config.provider.name().to_string();
 
@@ -3377,9 +3950,32 @@ pub async fn execute_enrich_with_runner(
                 .map(|(start, _)| targeted || *start > 0),
             ..payload.clone()
         };
-        runner
-            .run(&normalized_payload, &yaml_abs, repo_path, config)
+        let sub_windows = match (&chunk_window, config.window_concurrency) {
+            (Some((_, numbers)), n) if n > 1 => {
+                let raw = tokio::fs::read_to_string(&yaml_abs).await?;
+                let graph = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&raw)
+                    .map(|doc| crate::enrich_v2::refgraph::Graph::scan(&doc))
+                    .unwrap_or_default();
+                split_window(&graph, numbers, n)
+            }
+            _ => Vec::new(),
+        };
+        if sub_windows.len() > 1 {
+            run_windows_concurrently(
+                &sub_windows,
+                &normalized_payload,
+                &yaml_abs,
+                &normalized_path,
+                repo_path,
+                config,
+                runner,
+            )
             .await?;
+        } else {
+            runner
+                .run(&normalized_payload, &yaml_abs, repo_path, config)
+                .await?;
+        }
 
         tracing::info!(law_id = %payload.law_id, provider = %provider_name, "enrichment completed");
     }
@@ -3433,6 +4029,16 @@ pub async fn execute_enrich_with_runner(
         // which of the two found what.
         closing.gate = "schema-final".to_string();
         feedback.push(closing);
+    }
+
+    // The closing pass, once the walk has reached the end of the document.
+    //
+    // Not conditional on this run having changed anything: what it looks for
+    // was left by the windows before it, and a last window that added nothing
+    // does not make those earlier bindings any less connectable.
+    if law_complete {
+        feedback
+            .extend(run_closing_reconcile(&yaml_abs, repo_path, payload, config, runner).await?);
     }
 
     // Count articles with machine_readable after enrichment.
@@ -3492,10 +4098,8 @@ pub async fn execute_enrich_with_runner(
             // commit exactly as it would in whole-law mode) must not count as
             // proof that this window was reviewed — otherwise the cursor
             // advances past a window nobody looked at.
-            let end = start + numbers.len();
             let (win_enriched_before, win_gaps_before) = window_stats_before.unwrap_or((0, 0));
-            let (win_enriched_after, win_gaps_after) =
-                window_progress_stats(&law_after, *start, end);
+            let (win_enriched_after, win_gaps_after) = window_progress_stats(&law_after, numbers);
             let window_newly_enriched = win_enriched_after.saturating_sub(win_enriched_before);
             // A window of already-modelled articles that this run only flagged
             // is reviewed work, not a no-op: a new marking counts the same as a
@@ -3518,8 +4122,9 @@ pub async fn execute_enrich_with_runner(
                 return Err(PipelineError::Enrich(format!(
                     "{CHUNK_NO_OUTPUT_MARKER}: no new machine_readable additions in the window, \
                      no chunk_report referencing this window, no new markings or untranslatables \
-                     in the window (articles {}..{} of {})",
-                    start, end, articles_before
+                     in the window (entries {} of {})",
+                    numbers.join(", "),
+                    articles_before
                 )));
             }
         }
@@ -3540,6 +4145,7 @@ pub async fn execute_enrich_with_runner(
         source_hash: source_hash.to_string(),
         enrich_cursor: next_cursor,
         enrich_cursor_path: normalized_path.clone(),
+        enrich_cursor_mode: config.window_mode.label().to_string(),
     };
 
     let metadata_path = yaml_abs
@@ -3734,8 +4340,12 @@ async fn collect_untranslatables(path: &Path) -> Result<Vec<CapturedUntranslatab
 /// commonest legitimate outcome of a window of definition provisions —
 /// already-modelled articles that this run only flagged — and failed a window
 /// that was reviewed exactly as intended.
-fn window_progress_stats(law: &ArticleBasedLaw, start: usize, end: usize) -> (usize, usize) {
-    let window = &law.articles[start..end];
+fn window_progress_stats(law: &ArticleBasedLaw, numbers: &[String]) -> (usize, usize) {
+    let window: Vec<_> = law
+        .articles
+        .iter()
+        .filter(|a| numbers.contains(&a.number))
+        .collect();
     let enriched = window
         .iter()
         .filter(|a| a.machine_readable.is_some())
@@ -4274,6 +4884,7 @@ related_legislation:
             source_hash: String::new(),
             enrich_cursor: 0,
             enrich_cursor_path: String::new(),
+            enrich_cursor_mode: String::new(),
         };
 
         let yaml = serde_yaml_ng::to_string(&meta).unwrap();
@@ -4310,6 +4921,7 @@ related_legislation:
             source_hash: "abc123".into(),
             enrich_cursor: 30,
             enrich_cursor_path: "regulation/nl/wet/x/2026-01-01.yaml".into(),
+            enrich_cursor_mode: "document".into(),
         };
         let yaml = serde_yaml_ng::to_string(&meta).unwrap();
         let back: EnrichmentMetadata = serde_yaml_ng::from_str(&yaml).unwrap();
@@ -4514,6 +5126,181 @@ articles:
         assert_eq!(markings[0].legal_text_excerpt, "Article one.");
         assert!(!markings[0].accepted);
         assert!(markings[0].resolved_by.is_none());
+    }
+
+    // ---- the closing pass -----------------------------------------------
+
+    /// A law in the state a chunked walk leaves behind: entry 1 reads
+    /// `standaardpremie` as a bare input because entry 2, which produces it,
+    /// had no model yet when entry 1 was written.
+    const TOO_EARLY_LAW: &str = r"---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$id: test_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+bwb_id: BWBR0000001
+url: https://wetten.overheid.nl/BWBR0000001/2025-01-01
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: De hoogte is gelijk aan de standaardpremie, bedoeld in artikel 2.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1
+    machine_readable:
+      endpoint: hoogte
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            description: Het burgerservicenummer van de verzekerde.
+        input:
+          - name: standaardpremie
+            type: amount
+            description: De standaardpremie voor het berekeningsjaar.
+        output:
+          - name: hoogte
+            type: amount
+            description: De hoogte van de tegemoetkoming.
+        actions:
+          - output: hoogte
+            value: $standaardpremie
+            legal_basis:
+              law: Testwet
+              bwb_id: BWBR0000001
+              article: '1'
+              explanation: Het artikel stelt de hoogte gelijk aan de standaardpremie.
+  - number: '2'
+    text: De standaardpremie wordt jaarlijks vastgesteld.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel2
+    machine_readable:
+      endpoint: standaardpremie
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            description: Het burgerservicenummer van de verzekerde.
+        output:
+          - name: standaardpremie
+            type: amount
+            description: De jaarlijks vastgestelde standaardpremie.
+        actions:
+          - output: standaardpremie
+            value: 1000
+            legal_basis:
+              law: Testwet
+              bwb_id: BWBR0000001
+              article: '2'
+              explanation: Het artikel stelt de standaardpremie jaarlijks vast.
+";
+
+    /// The whole point: the binding entry 1 could not lay is laid by the
+    /// worker, without an agent and without anything else moving.
+    #[tokio::test]
+    async fn the_closing_pass_binds_what_the_window_could_not_see() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let path = law_dir.join("2025-01-01.yaml");
+        tokio::fs::write(&path, TOO_EARLY_LAW).await.unwrap();
+
+        let config = test_config(LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        });
+        let payload = corpus_wide_payload();
+        let runner = NoopLlmRunner;
+        let progress = run_closing_reconcile(&path, dir.path(), &payload, &config, &runner)
+            .await
+            .unwrap();
+
+        let after = tokio::fs::read_to_string(&path).await.unwrap();
+        let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(&after).unwrap();
+        let source = &doc["articles"][0]["machine_readable"]["execution"]["input"][0]["source"];
+        assert_eq!(source["output"].as_str(), Some("standaardpremie"));
+        assert_eq!(source["parameters"]["bsn"].as_str(), Some("$bsn"));
+        // Nothing else moved: the diff is the four inserted lines.
+        assert_eq!(
+            after.lines().count(),
+            TOO_EARLY_LAW.lines().count() + 4,
+            "de afrondende pass schrijft alleen het source-blok"
+        );
+        // No lead left, so no agent was asked.
+        assert_eq!(progress.len(), 1);
+        assert_eq!(progress[0].gate, "reconcile");
+        assert_eq!(progress[0].findings_initial, 0);
+        assert!(progress[0].rounds.is_empty());
+    }
+
+    /// A law with nothing to connect is left byte-identical. The pass runs on
+    /// every completed law, so "does nothing" has to mean nothing at all.
+    #[tokio::test]
+    async fn the_closing_pass_leaves_a_connected_law_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let path = law_dir.join("2025-01-01.yaml");
+        // Run it once to connect, then again over the result.
+        tokio::fs::write(&path, TOO_EARLY_LAW).await.unwrap();
+        let config = test_config(LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        });
+        let payload = corpus_wide_payload();
+        let runner = NoopLlmRunner;
+        run_closing_reconcile(&path, dir.path(), &payload, &config, &runner)
+            .await
+            .unwrap();
+        let once = tokio::fs::read_to_string(&path).await.unwrap();
+        run_closing_reconcile(&path, dir.path(), &payload, &config, &runner)
+            .await
+            .unwrap();
+        let twice = tokio::fs::read_to_string(&path).await.unwrap();
+        assert_eq!(once, twice, "de pass is idempotent");
+    }
+
+    /// The guard, not the intent: a pass that does not lower the finding count
+    /// puts the file back. Modelled by handing it a producer whose output is
+    /// declared twice — the plan then holds a lead and no link, so nothing is
+    /// written and the file stands.
+    #[tokio::test]
+    async fn the_closing_pass_refuses_to_guess_between_two_producers() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let path = law_dir.join("2025-01-01.yaml");
+        // Two entries producing `standaardpremie`: entry 2 and a copy as 3.
+        let second = TOO_EARLY_LAW
+            .split("  - number: '2'\n")
+            .nth(1)
+            .unwrap()
+            .to_string();
+        let law = format!(
+            "{TOO_EARLY_LAW}  - number: '3'\n{}",
+            second
+                .replace("article: '2'", "article: '3'")
+                .replace("#Artikel2", "#Artikel3")
+        );
+        tokio::fs::write(&path, &law).await.unwrap();
+
+        let config = test_config(LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        });
+        let payload = corpus_wide_payload();
+        let runner = NoopLlmRunner;
+        let progress = run_closing_reconcile(&path, dir.path(), &payload, &config, &runner)
+            .await
+            .unwrap();
+        let after = tokio::fs::read_to_string(&path).await.unwrap();
+        assert_eq!(after, law, "bij twijfel blijft het bestand zoals het stond");
+        assert_eq!(progress[0].findings_initial, 1, "de agent krijgt de vraag");
     }
 
     // ---- feedback rounds ------------------------------------------------
@@ -5343,7 +6130,8 @@ articles:
             FeedbackRounds {
                 schema: 1,
                 checks: 2,
-                marking: 3
+                marking: 3,
+                reconcile: 1
             }
         );
         // A bare number sets the floor, a named gate overrides it — order
@@ -5353,7 +6141,8 @@ articles:
             FeedbackRounds {
                 schema: 1,
                 checks: 2,
-                marking: 2
+                marking: 2,
+                reconcile: 2
             }
         );
         assert!(FeedbackRounds::parse("poort=2").is_err());
@@ -5541,6 +6330,7 @@ articles:
                         Gate::Schema => "schema",
                         Gate::Checks => "checks",
                         Gate::Marking => "marking",
+                        Gate::Reconcile => "reconcile",
                     },
                 });
                 if !matches!(payload.pass, Pass::Translate) {
@@ -5945,12 +6735,12 @@ articles:
     #[test]
     fn plan_chunk_zero_disables_chunking() {
         assert_eq!(
-            plan_chunk(0, 324, 0, "regulation/a.yaml", "regulation/a.yaml"),
+            plan_chunk(0, 324, 0, "regulation/a.yaml", "regulation/a.yaml", &[]),
             ChunkPlan::WholeLaw
         );
         // Even a stored cursor is ignored in whole-law mode.
         assert_eq!(
-            plan_chunk(0, 324, 100, "regulation/a.yaml", "regulation/a.yaml"),
+            plan_chunk(0, 324, 100, "regulation/a.yaml", "regulation/a.yaml", &[]),
             ChunkPlan::WholeLaw
         );
     }
@@ -5960,7 +6750,7 @@ articles:
         // Legacy metadata (no cursor fields) reads as (0, "") — path mismatch
         // resets to 0, which is also the correct start.
         assert_eq!(
-            plan_chunk(15, 324, 0, "", "regulation/a.yaml"),
+            plan_chunk(15, 324, 0, "", "regulation/a.yaml", &[]),
             ChunkPlan::Chunk {
                 start: 0,
                 end: 15,
@@ -5972,7 +6762,7 @@ articles:
     #[test]
     fn plan_chunk_resumes_from_valid_cursor() {
         assert_eq!(
-            plan_chunk(15, 324, 30, "regulation/a.yaml", "regulation/a.yaml"),
+            plan_chunk(15, 324, 30, "regulation/a.yaml", "regulation/a.yaml", &[]),
             ChunkPlan::Chunk {
                 start: 30,
                 end: 45,
@@ -5991,7 +6781,8 @@ articles:
                 324,
                 30,
                 "regulation/2025-01-01.yaml",
-                "regulation/2026-01-01.yaml"
+                "regulation/2026-01-01.yaml",
+                &[]
             ),
             ChunkPlan::Chunk {
                 start: 0,
@@ -6005,7 +6796,7 @@ articles:
     fn plan_chunk_resets_on_cursor_beyond_total() {
         // Corrupt metadata or a shrunk document: a cursor past the end resets.
         assert_eq!(
-            plan_chunk(15, 20, 25, "regulation/a.yaml", "regulation/a.yaml"),
+            plan_chunk(15, 20, 25, "regulation/a.yaml", "regulation/a.yaml", &[]),
             ChunkPlan::Chunk {
                 start: 0,
                 end: 15,
@@ -6018,7 +6809,7 @@ articles:
     fn plan_chunk_final_window_is_complete() {
         // Partial last window.
         assert_eq!(
-            plan_chunk(15, 20, 15, "regulation/a.yaml", "regulation/a.yaml"),
+            plan_chunk(15, 20, 15, "regulation/a.yaml", "regulation/a.yaml", &[]),
             ChunkPlan::Chunk {
                 start: 15,
                 end: 20,
@@ -6027,7 +6818,7 @@ articles:
         );
         // Window exactly reaching the end.
         assert_eq!(
-            plan_chunk(10, 20, 10, "regulation/a.yaml", "regulation/a.yaml"),
+            plan_chunk(10, 20, 10, "regulation/a.yaml", "regulation/a.yaml", &[]),
             ChunkPlan::Chunk {
                 start: 10,
                 end: 20,
@@ -6036,7 +6827,7 @@ articles:
         );
         // Law smaller than one window: complete in a single run.
         assert_eq!(
-            plan_chunk(15, 3, 0, "", "regulation/a.yaml"),
+            plan_chunk(15, 3, 0, "", "regulation/a.yaml", &[]),
             ChunkPlan::Chunk {
                 start: 0,
                 end: 3,
@@ -6050,7 +6841,7 @@ articles:
         // cursor == total is valid (the loop finished earlier): empty window,
         // trivially complete — execute skips the LLM run entirely.
         assert_eq!(
-            plan_chunk(15, 20, 20, "regulation/a.yaml", "regulation/a.yaml"),
+            plan_chunk(15, 20, 20, "regulation/a.yaml", "regulation/a.yaml", &[]),
             ChunkPlan::Chunk {
                 start: 20,
                 end: 20,
@@ -6062,13 +6853,322 @@ articles:
     #[test]
     fn plan_chunk_empty_law_is_complete() {
         assert_eq!(
-            plan_chunk(15, 0, 0, "", "regulation/a.yaml"),
+            plan_chunk(15, 0, 0, "", "regulation/a.yaml", &[]),
             ChunkPlan::Chunk {
                 start: 0,
                 end: 0,
                 law_complete: true
             }
         );
+    }
+
+    fn numbers(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    /// The chapeau of an article and its leden belong in one window. Without
+    /// this rule a window of two cuts article 1 after its first onderdeel, and
+    /// the entry that binds the leden together is written before they exist.
+    #[test]
+    fn plan_chunk_never_cuts_a_top_level_article_in_half() {
+        let entries = numbers(&["1", "1.1", "1.2", "1.3", "2", "2.1"]);
+        assert_eq!(
+            plan_chunk(2, entries.len(), 0, "", "regulation/a.yaml", &entries),
+            ChunkPlan::Chunk {
+                start: 0,
+                end: 4,
+                law_complete: false
+            },
+            "het venster schuift door tot artikel 1 op is"
+        );
+        // And the next window starts on the boundary the previous one left.
+        assert_eq!(
+            plan_chunk(
+                2,
+                entries.len(),
+                4,
+                "regulation/a.yaml",
+                "regulation/a.yaml",
+                &entries
+            ),
+            ChunkPlan::Chunk {
+                start: 4,
+                end: 6,
+                law_complete: true
+            }
+        );
+    }
+
+    /// The snap only ever grows a window, so a run still consumes at least
+    /// `max_articles_per_run` entries and the walk still terminates in
+    /// `ceil(total / N)` runs.
+    #[test]
+    fn plan_chunk_snapping_never_shrinks_a_window() {
+        let entries = numbers(&["1", "1.1", "1.2", "2", "2.1", "2.2", "2.3", "3", "4", "4.1"]);
+        let mut cursor = 0usize;
+        let mut runs = 0usize;
+        while cursor < entries.len() {
+            let ChunkPlan::Chunk { start, end, .. } = plan_chunk(
+                3,
+                entries.len(),
+                cursor,
+                "regulation/a.yaml",
+                "regulation/a.yaml",
+                &entries,
+            ) else {
+                unreachable!("chunking is on")
+            };
+            assert_eq!(start, cursor);
+            assert!(end - start >= 3, "een venster wordt nooit kleiner dan N");
+            cursor = end;
+            runs += 1;
+        }
+        assert!(runs <= entries.len().div_ceil(3));
+    }
+
+    /// A caller that hands no numbers gets exactly the behaviour from before
+    /// the rule existed.
+    #[test]
+    fn plan_chunk_without_numbers_is_the_old_behaviour() {
+        let entries = numbers(&["1", "1.1", "1.2", "1.3"]);
+        assert_eq!(
+            plan_chunk(2, entries.len(), 0, "", "regulation/a.yaml", &[]),
+            ChunkPlan::Chunk {
+                start: 0,
+                end: 2,
+                law_complete: false
+            }
+        );
+    }
+
+    // ---- the layer as a window, and the knob inside it -------------------
+
+    fn graph_of(yaml: &str) -> crate::enrich_v2::refgraph::Graph {
+        crate::enrich_v2::refgraph::Graph::scan(&serde_yaml_ng::from_str(yaml).unwrap())
+    }
+
+    /// A law whose article 3 is read by article 1, and whose article 2 is
+    /// unrelated to both. Three layers is the wrong answer here; two is right,
+    /// with 2 and 3 together in the first.
+    const LAYERED_LAW: &str = r"bwb_id: BWBR0000001
+articles:
+  - number: '1'
+    text: De hoogte volgt uit artikel 3.
+  - number: '1.1'
+    text: Het eerste lid geldt onverkort.
+  - number: '2'
+    text: Deze wet treedt in werking met ingang van 1 januari.
+  - number: '3'
+    text: Het bedrag is duizend euro.
+";
+
+    #[test]
+    fn a_layer_is_a_window_whose_size_follows_from_the_law() {
+        let graph = graph_of(LAYERED_LAW);
+        let entries = numbers(&["1", "1.1", "2", "3"]);
+        let (first, complete) = plan_layer_window(&graph, &entries, 0);
+        assert!(!complete);
+        assert_eq!(first, numbers(&["2", "3"]), "de producenten gaan voor");
+        let (second, complete) = plan_layer_window(&graph, &entries, 1);
+        assert!(complete, "de laatste laag sluit de wet af");
+        assert_eq!(
+            second,
+            numbers(&["1", "1.1"]),
+            "een aanhef reist met zijn eigen leden mee"
+        );
+    }
+
+    /// Every layer is walked once and the cursor counts them, so the walk ends
+    /// in a fixed number of runs — the property the entry cursor had.
+    #[test]
+    fn the_layer_walk_covers_every_entry_exactly_once_and_terminates() {
+        let graph = graph_of(LAYERED_LAW);
+        let entries = numbers(&["1", "1.1", "2", "3"]);
+        let mut seen: Vec<String> = Vec::new();
+        let mut index = 0usize;
+        loop {
+            let (window, complete) = plan_layer_window(&graph, &entries, index);
+            seen.extend(window);
+            index += 1;
+            assert!(index <= entries.len(), "de wandeling loopt niet door");
+            if complete {
+                break;
+            }
+        }
+        seen.sort();
+        let mut expected = entries.clone();
+        expected.sort();
+        assert_eq!(seen, expected);
+    }
+
+    /// Default 1: the window stays whole, whatever the graph says.
+    #[test]
+    fn one_agent_per_window_is_the_default() {
+        let graph = graph_of(LAYERED_LAW);
+        let window = numbers(&["2", "3"]);
+        assert_eq!(split_window(&graph, &window, 1), vec![window.clone()]);
+    }
+
+    /// Independent articles may be split; a related pair never is, because
+    /// two agents would each have to invent a name for the same concept.
+    #[test]
+    fn a_window_splits_only_where_nothing_references_anything() {
+        let graph = graph_of(LAYERED_LAW);
+        assert_eq!(
+            split_window(&graph, &numbers(&["2", "3"]), 2),
+            vec![numbers(&["2"]), numbers(&["3"])]
+        );
+        // Article 1 reads article 3: one agent, or the name is a guess.
+        assert_eq!(
+            split_window(&graph, &numbers(&["1", "1.1", "3"]), 2),
+            vec![numbers(&["1", "1.1", "3"])]
+        );
+        // A split never cuts inside a top-level article.
+        assert_eq!(
+            split_window(&graph, &numbers(&["1", "1.1"]), 2),
+            vec![numbers(&["1", "1.1"])]
+        );
+    }
+
+    #[test]
+    fn the_merge_takes_each_window_its_own_entries() {
+        let base = LAYERED_LAW;
+        let two = base.replace(
+            "  - number: '2'\n    text: Deze wet treedt in werking met ingang van 1 januari.\n",
+            "  - number: '2'\n    text: Deze wet treedt in werking met ingang van 1 januari.\n    machine_readable: {}\n",
+        );
+        let three = base.replace(
+            "  - number: '3'\n    text: Het bedrag is duizend euro.\n",
+            "  - number: '3'\n    text: Het bedrag is duizend euro.\n    machine_readable: {}\n",
+        );
+        let merged =
+            merge_windows(base, &[(numbers(&["2"]), two), (numbers(&["3"]), three)]).unwrap();
+        let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(&merged).unwrap();
+        assert!(doc["articles"][2].get("machine_readable").is_some());
+        assert!(doc["articles"][3].get("machine_readable").is_some());
+        assert!(doc["articles"][0].get("machine_readable").is_none());
+    }
+
+    /// The guard: a window that wrote outside its assignment fails the run
+    /// with the entry number in the message, instead of one agent silently
+    /// winning. Round 3 lost four runs to two agents in one file.
+    #[test]
+    fn the_merge_refuses_when_a_window_wrote_outside_its_assignment() {
+        let base = LAYERED_LAW;
+        let stray = base.replace(
+            "  - number: '1'\n    text: De hoogte volgt uit artikel 3.\n",
+            "  - number: '1'\n    text: De hoogte volgt uit artikel 3.\n    machine_readable: {}\n",
+        );
+        let error = merge_windows(base, &[(numbers(&["2"]), stray)]).unwrap_err();
+        assert!(error.contains("entry 1"), "{error}");
+    }
+
+    #[test]
+    fn the_merge_refuses_when_a_window_changed_the_entry_count() {
+        let base = LAYERED_LAW;
+        let extra = format!("{base}  - number: '4'\n    text: Een artikel dat er niet was.\n");
+        let error = merge_windows(base, &[(numbers(&["2"]), extra)]).unwrap_err();
+        assert!(error.contains("number of entries"), "{error}");
+    }
+
+    /// Writes an empty `machine_readable` into exactly the entries it was
+    /// assigned, and records which checkout it was handed.
+    struct WindowRunner {
+        checkouts: std::sync::Mutex<Vec<PathBuf>>,
+    }
+
+    #[async_trait::async_trait]
+    impl LlmRunner for WindowRunner {
+        async fn run(
+            &self,
+            payload: &EnrichPayload,
+            yaml_abs: &Path,
+            repo_path: &Path,
+            _config: &EnrichConfig,
+        ) -> Result<()> {
+            #[allow(clippy::unwrap_used)]
+            {
+                self.checkouts.lock().unwrap().push(repo_path.to_path_buf());
+            }
+            let mine = payload.chunk_articles.clone().unwrap_or_default();
+            let content = tokio::fs::read_to_string(yaml_abs).await?;
+            let mut doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(&content)?;
+            if let Some(serde_yaml_ng::Value::Sequence(articles)) = doc.get_mut("articles") {
+                for article in articles.iter_mut() {
+                    let is_mine = article
+                        .get("number")
+                        .and_then(serde_yaml_ng::Value::as_str)
+                        .is_some_and(|n| mine.iter().any(|m| m == n));
+                    if !is_mine {
+                        continue;
+                    }
+                    if let serde_yaml_ng::Value::Mapping(map) = article {
+                        map.insert(
+                            "machine_readable".into(),
+                            serde_yaml_ng::Value::Mapping(Default::default()),
+                        );
+                    }
+                }
+            }
+            tokio::fs::write(yaml_abs, serde_yaml_ng::to_string(&doc)?).await?;
+            Ok(())
+        }
+    }
+
+    /// Each agent works in its own checkout and the merge folds the two back
+    /// into one file. Nobody writes the file another agent is holding.
+    #[tokio::test]
+    async fn windows_run_on_their_own_copy_and_are_merged_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_rel = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        let law_abs = dir.path().join(law_rel);
+        tokio::fs::create_dir_all(law_abs.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&law_abs, LAYERED_LAW).await.unwrap();
+
+        let config = test_config(LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        });
+        let payload = corpus_wide_payload();
+        let runner = WindowRunner {
+            checkouts: std::sync::Mutex::new(Vec::new()),
+        };
+        let sub_windows = vec![numbers(&["2"]), numbers(&["3"])];
+        run_windows_concurrently(
+            &sub_windows,
+            &payload,
+            &law_abs,
+            law_rel,
+            dir.path(),
+            &config,
+            &runner,
+        )
+        .await
+        .unwrap();
+
+        let after = tokio::fs::read_to_string(&law_abs).await.unwrap();
+        let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(&after).unwrap();
+        assert!(doc["articles"][2].get("machine_readable").is_some());
+        assert!(doc["articles"][3].get("machine_readable").is_some());
+        assert!(doc["articles"][0].get("machine_readable").is_none());
+
+        let checkouts = runner.checkouts.lock().unwrap().clone();
+        assert_eq!(checkouts.len(), 2);
+        assert_ne!(
+            checkouts[0], checkouts[1],
+            "elke agent kreeg een eigen kopie"
+        );
+        assert!(checkouts.iter().all(|c| c != dir.path()));
+    }
+
+    #[test]
+    fn window_mode_parses_and_rejects_what_it_does_not_know() {
+        assert_eq!(WindowMode::parse("document").unwrap(), WindowMode::Document);
+        assert_eq!(WindowMode::parse("layer").unwrap(), WindowMode::Layer);
+        assert_eq!(WindowMode::parse("").unwrap(), WindowMode::Document);
+        assert!(WindowMode::parse("laag").is_err());
     }
 
     /// Plan with every step available, for prompt tests that are not about
@@ -6883,7 +7983,8 @@ articles:
                 "  - number: '1'\n    text: Article one.\n    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1\n    machine_readable:\n      markings:\n        - about: iets\n          reason: de motor kent geen wettelijke afronding op eurocenten\n          resolution: operation\n          target: []\n          legal_text_excerpt: Article one.\n",
             ))
             .unwrap();
-        assert_eq!(window_progress_stats(&with_marking, 0, 2), (2, 1));
+        let window = vec!["1".to_string(), "2".to_string()];
+        assert_eq!(window_progress_stats(&with_marking, &window), (2, 1));
 
         let with_untranslatable: ArticleBasedLaw =
             serde_yaml_ng::from_str(&four_article_law_with_models().replace(
@@ -6891,12 +7992,12 @@ articles:
                 "  - number: '1'\n    text: Article one.\n    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1\n    machine_readable:\n      untranslatables:\n        - construct: iets\n          reason: omdat\n",
             ))
             .unwrap();
-        assert_eq!(window_progress_stats(&with_untranslatable, 0, 2), (2, 1));
+        assert_eq!(window_progress_stats(&with_untranslatable, &window), (2, 1));
 
         // And a window nobody touched still counts as nothing.
         let untouched: ArticleBasedLaw =
             serde_yaml_ng::from_str(&four_article_law_with_models()).unwrap();
-        assert_eq!(window_progress_stats(&untouched, 0, 2), (2, 0));
+        assert_eq!(window_progress_stats(&untouched, &window), (2, 0));
     }
 
     #[tokio::test]
