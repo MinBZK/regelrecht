@@ -1,3 +1,5 @@
+import { readFile, stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
@@ -27,6 +29,33 @@ export default defineConfig({
         },
       },
     }),
+    {
+      // Serve the graph builder's payloads under /corpusgraaf during `vite
+      // dev`, from wherever the builder dropped them. Without this the two
+      // "Echt corpus" options on /graph3d.html get the HTML fallback instead of
+      // a payload, and the demo page can only ever show synthetic graphs - so
+      // every judgement about the real corpus would be made on made-up data.
+      // Dev only, and it reads nothing but `.rrgraph`-shaped filenames.
+      name: 'corpusgraaf-payloads',
+      apply: 'serve',
+      configureServer(server) {
+        server.middlewares.use('/corpusgraaf', async (req, res, next) => {
+          const name = req.url.split('?')[0].replace(/^\//, '');
+          if (!/^[\w.-]+\.rrgraph$/.test(name)) return next();
+          try {
+            const path = join(process.env.CORPUSGRAAF_DIR || '/tmp/corpusgraaf', name);
+            const info = await stat(path);
+            const body = await readFile(path);
+            res.setHeader('content-type', 'application/octet-stream');
+            res.setHeader('content-length', info.size);
+            res.end(body);
+          } catch {
+            res.statusCode = 404;
+            res.end('geen payload');
+          }
+        });
+      },
+    },
     {
       name: 'spa-fallback',
       configureServer(server) {
