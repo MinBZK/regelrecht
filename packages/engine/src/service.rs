@@ -361,22 +361,29 @@ fn flagged_constructs(machine_readable: &MachineReadable) -> Vec<FlaggedConstruc
     untranslatables.chain(markings).collect()
 }
 
-/// What a marking says has to change, as one sentence.
+/// Why a marked article stopped, as one sentence.
 ///
-/// A v0.5.x `untranslatables` entry carried a free-text `reason`; a marking
-/// splits that into `resolution` (engine or model) and `resolved_by` (the
-/// change, named concretely). This puts them back together for the error
-/// message and the trace, so a reader learns which of the two has to move.
-/// `resolved_by` is required by schema v0.6.0 but optional on the model, which
-/// must also read files written before it was; then the layer is the answer.
+/// A v0.5.x `untranslatables` entry carried a single free-text `reason`. A
+/// marking says the same thing in three fields, and the error message wants
+/// all of them: the diagnosis from `reason`, and behind it the layer that has
+/// to move (`resolution`) with the change that would move it (`resolved_by`).
+/// The diagnosis leads because it is the half that cannot be reconstructed
+/// from the other two — the change follows from the reading of the provision
+/// and never the other way round. `resolved_by` is required by schema v0.6.0
+/// but optional on the model, which must also read files written before it
+/// was; then the layer is the answer.
 fn marking_reason(marking: &crate::article::Marking) -> String {
     let layer = match marking.resolution {
         crate::article::MarkingResolution::Engine => "needs an engine operation",
         crate::article::MarkingResolution::Model => "needs a new shape in the format",
     };
-    match marking.resolved_by {
+    let change = match marking.resolved_by {
         Some(ref resolved_by) => format!("{layer}: {resolved_by}"),
         None => layer.to_string(),
+    };
+    match marking.reason.trim() {
+        "" => change,
+        diagnosis => format!("{diagnosis} ({change})"),
     }
 }
 
@@ -5866,6 +5873,7 @@ articles:
     machine_readable:
       markings:
         - about: som van alle deeltoeslagen
+          reason: het model kent alleen regels over een waarde, niet over een verzameling
           resolution: model
           resolved_by: Een vorm voor een regel over een verzameling
           target: []
@@ -5883,6 +5891,7 @@ articles:
     machine_readable:
       markings:
         - about: afronden op hele euro's
+          reason: de motor kent geen wettelijke afronding op eurocenten
           resolution: engine
           resolved_by: Een CEIL-bewerking op eurocenten
           target: []
@@ -5955,6 +5964,7 @@ articles:
     machine_readable:
       markings:
         - about: afronden op hele euro's
+          reason: de motor kent geen wettelijke afronding op eurocenten
           resolution: {resolution}{resolved_by_line}
           target: []
           legal_text_excerpt: naar boven afgerond op hele euro's
@@ -6023,6 +6033,7 @@ articles:
     machine_readable:
       markings:
         - about: afronden op hele euro's
+          reason: de motor kent geen wettelijke afronding op eurocenten
           resolution: engine
           resolved_by: Een CEIL-bewerking op eurocenten
           target: []
@@ -6075,6 +6086,7 @@ articles:
           accepted: true
       markings:
         - about: som van alle deeltoeslagen
+          reason: het model kent alleen regels over een waarde, niet over een verzameling
           resolution: model
           resolved_by: Een vorm voor een regel over een verzameling
           target: []

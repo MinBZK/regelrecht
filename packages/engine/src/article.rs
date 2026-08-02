@@ -1079,11 +1079,13 @@ articles:
           applies_from: '2026-01-01'
       markings:
         - about: het kalenderjaar waarop de tegemoetkoming betrekking heeft
+          reason: de motor leest het jaardeel niet uit een datum
           resolution: engine
           resolved_by: "Een YEAR-bewerking die het jaardeel van een datum oplevert"
           target: [berekeningsjaar]
           legal_text_excerpt: "het berekeningsjaar waarop de tegemoetkoming betrekking heeft"
         - about: kwantificatie over de leden van het huishouden
+          reason: het model kent alleen regels over een waarde, niet over een verzameling
           resolution: model
           target: []
           legal_text_excerpt: "de leden van het huishouden"
