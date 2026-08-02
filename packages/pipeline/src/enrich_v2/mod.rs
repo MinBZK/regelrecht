@@ -23,4 +23,6 @@ pub mod assemble;
 pub mod capabilities;
 pub mod checks;
 pub mod context;
+pub mod reconcile;
+pub mod refgraph;
 pub mod source_gate;
