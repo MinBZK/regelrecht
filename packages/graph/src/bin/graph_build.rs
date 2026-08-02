@@ -7,15 +7,16 @@
 //! ```
 //!
 //! Writes the payload and prints a one-screen report: counts, timings, peak
-//! memory, and the laws with the most incoming references. That last list is
-//! not decoration. It is how you check whether the framework threshold is set
-//! anywhere near right, and the design says explicitly that the threshold is a
-//! guess that has to be adjusted against real data.
+//! memory, and the laws the corpus leans on hardest. That last list is working
+//! material for whoever fills the kaderwetlijst, and nothing else. It is not a
+//! verdict and the builder does not read a qualification off it; see
+//! [`regelrecht_graph::kaderwet`] for why.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use regelrecht_graph::graph::NodeKind;
+use regelrecht_graph::kaderwet::{Kaderwetten, DEFAULT_FILE};
 use regelrecht_graph::{build, cluster, layout, metrics, payload, Options};
 
 fn main() -> ExitCode {
@@ -24,11 +25,36 @@ fn main() -> ExitCode {
         print!("{USAGE}");
         return ExitCode::SUCCESS;
     }
-    let options = match parse(&args) {
+    let mut options = match parse(&args) {
         Ok(options) => options,
         Err(message) => {
             eprintln!("fout: {message}\n\n{USAGE}");
             return ExitCode::FAILURE;
+        }
+    };
+
+    // The designation list. A missing file is not an error and not silently an
+    // empty list either: the report says which of the two happened, because
+    // "nobody has designated anything" and "the list was not found" have very
+    // different consequences for what you are looking at.
+    let list_path = options
+        .kaderwetten_path
+        .clone()
+        .unwrap_or_else(|| options.cli.build.root.join(DEFAULT_FILE));
+    let herkomst = match Kaderwetten::load(&list_path) {
+        Ok(list) => {
+            let herkomst = format!(
+                "{} ({} aangewezen, beheerder: {})",
+                list_path.display(),
+                list.len(),
+                list.beheerder.as_deref().unwrap_or("niet belegd")
+            );
+            options.cli.kaderwetten = list;
+            herkomst
+        }
+        Err(err) => {
+            eprintln!("let op: {err}. Geen enkele wet is als kaderwet aangewezen.");
+            format!("{err}; niets aangewezen")
         }
     };
 
@@ -41,7 +67,8 @@ fn main() -> ExitCode {
         graph.stats.parse_ms as f64 / 1000.0
     );
 
-    let citers = metrics::compute(&mut graph, options.cli.framework);
+    graph.stats.kaderwetlijst = herkomst;
+    let citers = metrics::compute(&mut graph, &options.cli.kaderwetten);
     if !options.cli.skip_clusters {
         let started = std::time::Instant::now();
         cluster::assign(&mut graph);
@@ -110,8 +137,24 @@ fn report(
         s.dangling_references
     );
     println!(
-        "kaderwetten       {}   gemeenschappen {}",
-        s.framework_laws, s.clusters
+        "verrijking        {} van {} wetten deels verrijkt, {} volledig; {} van {} artikelen gemodelleerd",
+        s.laws_partly_enriched,
+        s.laws,
+        s.laws_fully_enriched,
+        s.enriched_articles,
+        graph.nodes[..graph.law_node_count]
+            .iter()
+            .map(|n| n.articles as usize)
+            .sum::<usize>()
+    );
+    println!("kaderwetlijst     {}", s.kaderwetlijst);
+    println!(
+        "kaderwetten       {} ({} aangewezen, {} uit een toepasselijkheidsrelatie)   gemeenschappen {}",
+        s.framework_laws, s.designated_framework_laws, s.derived_framework_laws, s.clusters
+    );
+    println!(
+        "uitgeconvergeerd  {:.5} (verplaatsing in de laatste iteratie, als deel van de schaal)",
+        s.layout_unsettled
     );
     println!(
         "spreiding         {:.3} (gemiddelde afstand tot zwaartepunt / grootste afstand)",
@@ -141,15 +184,19 @@ fn report(
         }
     }
 
-    println!("\nzwaarste sterren (aantal wetten dat naar deze regeling verwijst):");
+    println!(
+        "\nwaar het corpus het zwaarst op leunt (aantal wetten dat ernaar verwijst).\n\
+         Werkmateriaal voor wie de kaderwetlijst vult, geen kwalificatie: een wet is een\n\
+         kaderwet omdat iemand dat vaststelt, niet omdat dit getal hoog is."
+    );
     for (ix, count) in metrics::top_by_citers(graph, citers, 15) {
         let node = graph.node(ix);
         println!(
             "  {count:>6}  {}{}  {}",
             if node.framework {
-                "[kader] "
+                "[aangewezen] "
             } else {
-                "        "
+                "             "
             },
             node.bwb_id.as_deref().unwrap_or("-"),
             node.label
@@ -161,6 +208,7 @@ struct Cli {
     cli: Options,
     out: PathBuf,
     json: bool,
+    kaderwetten_path: Option<PathBuf>,
 }
 
 fn parse(args: &[String]) -> Result<Cli, String> {
@@ -171,6 +219,7 @@ fn parse(args: &[String]) -> Result<Cli, String> {
         .unwrap_or(4);
     let mut out = PathBuf::from("corpusgraaf.rrgraph");
     let mut json = false;
+    let mut kaderwetten_path: Option<PathBuf> = None;
 
     let mut i = 0;
     while i < args.len() {
@@ -201,9 +250,7 @@ fn parse(args: &[String]) -> Result<Cli, String> {
             "--no-external" => options.build.external_nodes = false,
             "--no-clusters" => options.skip_clusters = true,
             "--no-layout" => options.skip_layout = true,
-            "--uniform-weights" => options.layout.dissuade_hubs = false,
-            "--linear-attraction" => options.layout.linlog = false,
-            "--degree-mass" => options.layout.log_mass = false,
+            "--flat-init" => options.layout.hierarchical_init = false,
             "--cluster-pull" => {
                 options.layout.cluster_pull = value()?
                     .parse()
@@ -222,16 +269,7 @@ fn parse(args: &[String]) -> Result<Cli, String> {
             "--theta" => {
                 options.layout.theta = value()?.parse().map_err(|_| "--theta verwacht een getal")?
             }
-            "--framework-fraction" => {
-                options.framework.fraction = value()?
-                    .parse()
-                    .map_err(|_| "--framework-fraction verwacht een breuk")?
-            }
-            "--framework-min" => {
-                options.framework.min_citers = value()?
-                    .parse()
-                    .map_err(|_| "--framework-min verwacht een getal")?
-            }
+            "--kaderwetten" => kaderwetten_path = Some(PathBuf::from(value()?)),
             other => return Err(format!("onbekende optie {other}")),
         }
         i += 1;
@@ -240,6 +278,7 @@ fn parse(args: &[String]) -> Result<Cli, String> {
         cli: options,
         out,
         json,
+        kaderwetten_path,
     })
 }
 
@@ -255,14 +294,13 @@ regelrecht-graph-build — corpus naar knopen, kanten en een voorberekende layou
   --no-external         geen knoop voor een BWB-nummer buiten het corpus
   --no-clusters         gemeenschapsdetectie overslaan
   --no-layout           layout overslaan
-  --uniform-weights     dissuade-hubs uit (om te laten zien wat het doet)
-  --linear-attraction   lineaire aantrekking in plaats van logaritmische
-  --degree-mass         ruwe graad als afstotingsmassa in plaats van log-graad
-  --cluster-pull <f>    veerstijfheid richting het clustermidden (standaard 0.02)
-  --framework-fraction  aandeel wetten dat naar een wet moet verwijzen voordat
-                        die als kaderwet telt (standaard 0.05)
-  --framework-min       ondergrens in aantal verwijzende wetten (standaard 25)
-  --iterations <n>      ForceAtlas2-iteraties (standaard 300)
+  --flat-init           de hele component in een keer inbedden in plaats van
+                        eerst de gemeenschappen (langzamer, zelfde eindstand)
+  --cluster-pull <f>    veerstijfheid richting het clustermidden (standaard 0,
+                        want het is een kracht die niet in de graaf zit)
+  --kaderwetten <pad>   de lijst met aangewezen kaderwetten
+                        (standaard <corpus>/kaderwetten.yaml)
+  --iterations <n>      ForceAtlas2-iteraties (standaard 1500)
   --gravity <f>         zwaartekracht naar de oorsprong (standaard 1.0)
   --repulsion <f>       afstotingssterkte (standaard 1.0)
   --theta <f>           Barnes-Hut-openingshoek (standaard 1.2)

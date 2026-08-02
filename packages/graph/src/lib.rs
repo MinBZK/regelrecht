@@ -23,6 +23,7 @@
 pub mod build;
 pub mod cluster;
 pub mod graph;
+pub mod kaderwet;
 pub mod layout;
 pub mod metrics;
 pub mod model;
@@ -31,15 +32,17 @@ pub mod testkit;
 
 pub use build::BuildOptions;
 pub use graph::{CorpusGraph, Edge, EdgeType, Node, NodeKind, RegulatoryLayer};
+pub use kaderwet::{Kaderwetkaart, Kaderwetten};
 pub use layout::LayoutOptions;
-pub use metrics::FrameworkRule;
 
 /// Everything one build needs to know.
 #[derive(Debug, Clone, Default)]
 pub struct Options {
     pub build: BuildOptions,
     pub layout: LayoutOptions,
-    pub framework: FrameworkRule,
+    /// The designation list. Empty means nothing is designated, which is a
+    /// legitimate state and not a fallback.
+    pub kaderwetten: Kaderwetten,
     /// Skip community detection. Only useful for measuring.
     pub skip_clusters: bool,
     /// Skip the layout. Only useful for measuring the read side.
@@ -48,8 +51,8 @@ pub struct Options {
 
 /// The whole pipeline: read, measure, cluster, lay out.
 ///
-/// The order is not free. The framework verdict needs the degrees, the
-/// clustering needs the framework verdict (a framework law belongs to no
+/// The order is not free. The hub damping needs the citer counts, the
+/// clustering needs the framework qualification (a framework law belongs to no
 /// community), and the layout needs both.
 pub fn build_all(options: &Options) -> CorpusGraph {
     let mut graph = build::build(&options.build);
@@ -61,7 +64,7 @@ pub fn build_all(options: &Options) -> CorpusGraph {
 /// synthetic graph.
 pub fn run_passes(graph: &mut CorpusGraph, options: &Options) {
     let started = std::time::Instant::now();
-    metrics::compute(graph, options.framework);
+    metrics::compute(graph, &options.kaderwetten);
     graph.stats.metrics_ms = started.elapsed().as_millis();
 
     let started = std::time::Instant::now();

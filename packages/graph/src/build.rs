@@ -14,7 +14,9 @@ use std::time::Instant;
 
 use walkdir::WalkDir;
 
-use crate::graph::{CorpusGraph, Edge, EdgeType, Node, NodeIx, NodeKind, RegulatoryLayer};
+use crate::graph::{
+    CorpusGraph, Edge, EdgeType, Enrichment, Node, NodeIx, NodeKind, RegulatoryLayer,
+};
 use crate::model::LawFile;
 
 /// How the corpus is read.
@@ -269,6 +271,10 @@ fn assemble(graph: &mut CorpusGraph, parsed: Vec<Parsed>, opts: &BuildOptions) {
             z: 0.0,
             in_refs: 0,
             out_refs: 0,
+            citers: 0,
+            enrichment: Enrichment::None,
+            articles: 0,
+            articles_enriched: 0,
             rank: 0.0,
             cluster: 0,
             framework: false,
@@ -281,6 +287,28 @@ fn assemble(graph: &mut CorpusGraph, parsed: Vec<Parsed>, opts: &BuildOptions) {
     }
     graph.stats.laws = graph.nodes.len();
 
+    // How much of each law is modelled. Counted from the file, always, whether
+    // or not article nodes are being built: the overview is exactly where this
+    // has to be visible, and in the first version of the map it will be almost
+    // entirely grey.
+    for (p, &law) in parsed.iter().zip(&law_ix) {
+        let total = p.law.articles.len() as u32;
+        let modelled = p
+            .law
+            .articles
+            .iter()
+            .filter(|a| {
+                a.machine_readable
+                    .as_ref()
+                    .is_some_and(|m| m.is_substantive())
+            })
+            .count() as u32;
+        let node = &mut graph.nodes[law as usize];
+        node.articles = total;
+        node.articles_enriched = modelled;
+        node.enrichment = Enrichment::of(total, modelled);
+    }
+
     // Pass two: article nodes. They are interned before any edge so that a
     // citation can point straight at the article it names.
     let mut article_ix: HashMap<(NodeIx, String), NodeIx> = HashMap::new();
@@ -292,6 +320,10 @@ fn assemble(graph: &mut CorpusGraph, parsed: Vec<Parsed>, opts: &BuildOptions) {
                 };
                 let law_id = graph.node(law).id.clone();
                 let layer = graph.node(law).layer;
+                let modelled = article
+                    .machine_readable
+                    .as_ref()
+                    .is_some_and(|m| m.is_substantive());
                 let ix = graph.intern(Node {
                     id: format!("{law_id}#{number}"),
                     label: format!("artikel {number}"),
@@ -305,6 +337,14 @@ fn assemble(graph: &mut CorpusGraph, parsed: Vec<Parsed>, opts: &BuildOptions) {
                     z: 0.0,
                     in_refs: 0,
                     out_refs: 0,
+                    citers: 0,
+                    enrichment: if modelled {
+                        Enrichment::Full
+                    } else {
+                        Enrichment::None
+                    },
+                    articles: 1,
+                    articles_enriched: u32::from(modelled),
                     rank: 0.0,
                     cluster: 0,
                     framework: false,
@@ -447,6 +487,10 @@ fn assemble(graph: &mut CorpusGraph, parsed: Vec<Parsed>, opts: &BuildOptions) {
                     z: 0.0,
                     in_refs: 0,
                     out_refs: 0,
+                    citers: 0,
+                    enrichment: Enrichment::None,
+                    articles: 0,
+                    articles_enriched: 0,
                     rank: 0.0,
                     cluster: 0,
                     framework: false,
@@ -463,6 +507,18 @@ fn assemble(graph: &mut CorpusGraph, parsed: Vec<Parsed>, opts: &BuildOptions) {
     // duplicate; the corpus is scanned first precisely so that cannot happen.
     graph.stats.raw_references = raw_refs;
     graph.stats.dangling_references = dangling;
+    graph.stats.laws_partly_enriched = graph.nodes[..graph.stats.laws]
+        .iter()
+        .filter(|n| n.enrichment != Enrichment::None)
+        .count();
+    graph.stats.laws_fully_enriched = graph.nodes[..graph.stats.laws]
+        .iter()
+        .filter(|n| n.enrichment == Enrichment::Full && n.articles > 0)
+        .count();
+    graph.stats.enriched_articles = graph.nodes[..graph.stats.laws]
+        .iter()
+        .map(|n| n.articles_enriched as usize)
+        .sum();
     graph.stats.external_nodes = graph
         .nodes
         .iter()
@@ -508,6 +564,10 @@ fn intern_external(
         z: 0.0,
         in_refs: 0,
         out_refs: 0,
+        citers: 0,
+        enrichment: Enrichment::None,
+        articles: 0,
+        articles_enriched: 0,
         rank: 0.0,
         cluster: 0,
         framework: false,

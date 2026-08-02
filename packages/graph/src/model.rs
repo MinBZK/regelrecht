@@ -83,6 +83,42 @@ pub struct MachineReadableFile {
     pub implements: Vec<ImplementsFile>,
     #[serde(default)]
     pub open_terms: Vec<OpenTermFile>,
+    /// Everything else the section carries: `definitions`, `requires`,
+    /// `markings`, `competent_authority`, and whatever a later schema version
+    /// adds. Kept as raw values because the graph does not read them; it only
+    /// needs to know whether they are there.
+    #[serde(flatten)]
+    pub overige: std::collections::BTreeMap<String, serde_yaml_ng::Value>,
+}
+
+impl MachineReadableFile {
+    /// Does this section actually say anything?
+    ///
+    /// The presence of the key is not the question. An enrichment run that
+    /// writes `machine_readable: {}` on an article, or leaves a section behind
+    /// with only empty lists in it, has modelled nothing, and counting it as
+    /// enriched turns the corpus map green while the work is still undone. The
+    /// pipeline's own coverage counter takes the looser reading
+    /// (`machine_readable.is_some()`); this is the strict one, because a map
+    /// that overstates progress is worse than no map.
+    pub fn is_substantive(&self) -> bool {
+        if self.execution.is_some() || !self.implements.is_empty() || !self.open_terms.is_empty() {
+            return true;
+        }
+        self.overige.values().any(is_meaningful)
+    }
+}
+
+/// A value counts when it carries content. Null, an empty string, an empty list
+/// and an empty mapping all mean the same thing here: nothing was written.
+fn is_meaningful(value: &serde_yaml_ng::Value) -> bool {
+    match value {
+        serde_yaml_ng::Value::Null => false,
+        serde_yaml_ng::Value::String(s) => !s.trim().is_empty(),
+        serde_yaml_ng::Value::Sequence(items) => items.iter().any(is_meaningful),
+        serde_yaml_ng::Value::Mapping(map) => map.values().any(is_meaningful),
+        _ => true,
+    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -207,6 +243,38 @@ articles:
         assert_eq!(law.articles[0].number.as_deref(), Some("4"));
         assert_eq!(law.articles[0].references[0].artikel.as_deref(), Some("12"));
         assert_eq!(law.articles[0].references[0].lid.as_deref(), Some("2"));
+    }
+
+    #[test]
+    fn an_empty_section_is_not_enrichment() {
+        let yaml = r#"
+$id: test
+articles:
+  - number: '1'
+    text: x
+    machine_readable: {}
+  - number: '2'
+    text: y
+    machine_readable:
+      implements: []
+      open_terms: []
+  - number: '3'
+    text: z
+    machine_readable:
+      definitions:
+        drempelinkomen: iets
+"#;
+        let law: LawFile = serde_yaml_ng::from_str(yaml).expect("parse");
+        let substantive: Vec<bool> = law
+            .articles
+            .iter()
+            .map(|a| {
+                a.machine_readable
+                    .as_ref()
+                    .is_some_and(|m| m.is_substantive())
+            })
+            .collect();
+        assert_eq!(substantive, vec![false, false, true]);
     }
 
     #[test]

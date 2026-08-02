@@ -1,47 +1,32 @@
-//! Centrality and the framework-law verdict.
+//! Centrality, and the two things a degree count is and is not allowed to
+//! decide.
 //!
-//! Two numbers per law-level node. `in_refs` is the honest simple one and is
-//! filled in during the build: how often is this law pointed at. `rank` is
-//! PageRank over the citation direction, so mass flows towards the law that is
-//! cited, which is the "waar hangt veel van af"-measure the design asks for.
+//! Three numbers per law-level node. `in_refs` is how often the law is pointed
+//! at and `citers` is how many distinct laws do the pointing; both are honest,
+//! explainable and go into the payload. `rank` is PageRank over the citation
+//! direction, so mass flows towards the law that is cited, which is the "waar
+//! hangt veel van af"-measure the design asks for.
+//!
+//! What these numbers do **not** decide is whether a law is a framework law.
+//! That is a legal qualification and it comes from [`crate::kaderwet`], where
+//! someone designates it. The numbers are what that someone looks at while
+//! deciding, and [`top_by_citers`] exists to put them in front of them.
+//!
+//! They do decide something else, and it is worth keeping the two apart by
+//! name: a law with a very high in-degree is damped in the layout, because a
+//! node with 867 incoming edges pushes every other structure out of the
+//! picture. That is [`crate::layout`]'s business, it has a graphical reason,
+//! and it deliberately does not have to coincide with the designation list.
 
-use crate::graph::{CorpusGraph, NodeIx};
+use crate::graph::{CorpusGraph, EdgeType, NodeIx};
+use crate::kaderwet::Kaderwetten;
 
-/// When a law stops being a law on the map and becomes background.
-#[derive(Debug, Clone, Copy)]
-pub struct FrameworkRule {
-    /// Fraction of all law-level nodes that must cite a law before it counts as
-    /// a framework law.
-    pub fraction: f32,
-    /// Absolute floor, so the rule does not fire on a corpus of twenty laws
-    /// where everything cites everything.
-    pub min_citers: usize,
-}
-
-impl Default for FrameworkRule {
-    fn default() -> Self {
-        // The design proposes 20% and calls it a guess that has to be adjusted
-        // against real data. It has now been measured, and 20% is too high: on
-        // the 4.132-law harvested corpus exactly one law clears it (the Awb,
-        // cited by 867 laws, 21%), while the next six behave like stars too and
-        // sit between 5% and 8% (BW 2, Wetboek van Strafrecht, Wet milieubeheer,
-        // Wetboek van Strafvordering, BW 7, Wet IB 2001). 5% catches those and
-        // stops well before the material laws, which is the band the design says
-        // it wants. The floor keeps the rule quiet on a corpus of twenty laws
-        // where everything cites everything.
-        Self {
-            fraction: 0.05,
-            min_citers: 25,
-        }
-    }
-}
-
-/// Fill in `rank` and `framework` for every law-level node.
+/// Fill in `citers`, `rank` and `framework` for every law-level node.
 ///
-/// Returns the distinct-citer count per law-level node, which is the number the
-/// framework verdict is made on and the number worth showing next to the
-/// verdict in the UI.
-pub fn compute(graph: &mut CorpusGraph, rule: FrameworkRule) -> Vec<u32> {
+/// Returns the distinct-citer count per law-level node. That is the number the
+/// report shows next to a law, and it is material for whoever fills the
+/// designation list; it is not itself a verdict.
+pub fn compute(graph: &mut CorpusGraph, kaderwetten: &Kaderwetten) -> Vec<u32> {
     let n = graph.law_node_count;
     let mut citers = vec![0u32; n];
     {
@@ -57,25 +42,42 @@ pub fn compute(graph: &mut CorpusGraph, rule: FrameworkRule) -> Vec<u32> {
         }
     }
 
+    // A law that declares itself applicable to another is a framework law by
+    // the nature of that relation, however few or many times it does it. The
+    // harvested reference block cannot express this, so today this finds
+    // nothing; the mechanism is here so that an enriched corpus does not need
+    // the designation list to state the obvious.
+    let mut declares_applicability = vec![false; n];
+    for edge in &graph.edges[..graph.law_edge_count] {
+        if edge.edge_type == EdgeType::Applicability && edge.source != edge.target {
+            declares_applicability[edge.source as usize] = true;
+        }
+    }
+
     let rank = pagerank(graph);
     let max = rank
         .iter()
         .copied()
         .fold(0.0f32, f32::max)
         .max(f32::EPSILON);
+
+    let mut framework = 0;
+    let mut designated = 0;
     for (ix, node) in graph.nodes[..n].iter_mut().enumerate() {
         node.rank = rank[ix] / max;
-    }
-
-    let threshold = ((n as f32 * rule.fraction) as usize).max(rule.min_citers);
-    let mut framework = 0;
-    for (ix, node) in graph.nodes[..n].iter_mut().enumerate() {
-        node.framework = citers[ix] as usize >= threshold;
+        node.citers = citers[ix];
+        let on_the_list = kaderwetten.designates(node.bwb_id.as_deref(), &node.id);
+        if on_the_list {
+            designated += 1;
+        }
+        node.framework = on_the_list || declares_applicability[ix];
         if node.framework {
             framework += 1;
         }
     }
     graph.stats.framework_laws = framework;
+    graph.stats.designated_framework_laws = designated;
+    graph.stats.derived_framework_laws = framework - designated;
     citers
 }
 
@@ -122,8 +124,13 @@ fn pagerank(graph: &CorpusGraph) -> Vec<f32> {
     rank
 }
 
-/// The heaviest stars, most-cited first. Reporting material, and the input to
-/// any manual override of the framework list.
+/// The heaviest stars, most-cited first.
+///
+/// This is the working material for whoever fills the kaderwetlijst: a ranked
+/// list of the laws the corpus leans on hardest, with the number that makes
+/// them stand out. Reading a qualification straight off it is the mistake this
+/// module exists to avoid, and the builder prints it under a heading that says
+/// so.
 pub fn top_by_citers(graph: &CorpusGraph, citers: &[u32], limit: usize) -> Vec<(NodeIx, u32)> {
     let mut ranked: Vec<(NodeIx, u32)> = citers
         .iter()
@@ -144,12 +151,24 @@ pub fn top_by_citers(graph: &CorpusGraph, citers: &[u32], limit: usize) -> Vec<(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kaderwet::{Kaderwetkaart, Kaderwetten};
     use crate::testkit::star_graph;
+
+    fn designating(law_id: &str) -> Kaderwetten {
+        Kaderwetten {
+            version: 1,
+            beheerder: Some("test".to_string()),
+            kaderwetten: vec![Kaderwetkaart {
+                law_id: Some(law_id.to_string()),
+                ..Kaderwetkaart::default()
+            }],
+        }
+    }
 
     #[test]
     fn the_star_centre_outranks_its_arms() {
         let mut graph = star_graph(60, 3);
-        let citers = compute(&mut graph, FrameworkRule::default());
+        let citers = compute(&mut graph, &Kaderwetten::default());
         let hub = graph.lookup("hub").expect("hub");
         assert_eq!(citers[hub as usize], 60);
         for node in &graph.nodes {
@@ -159,17 +178,52 @@ mod tests {
         }
     }
 
+    /// The point of the whole module: being cited by everyone is not a
+    /// qualification, however many everyone is.
     #[test]
-    fn framework_verdict_needs_both_fraction_and_floor() {
-        // Ten laws all citing one hub: the fraction is met, the floor is not,
-        // so nothing is a framework law yet.
-        let mut small = star_graph(10, 0);
-        compute(&mut small, FrameworkRule::default());
-        assert_eq!(small.stats.framework_laws, 0);
+    fn the_heaviest_star_is_not_a_framework_law_by_itself() {
+        let mut graph = star_graph(600, 0);
+        let citers = compute(&mut graph, &Kaderwetten::default());
+        let hub = graph.lookup("hub").expect("hub");
+        assert_eq!(citers[hub as usize], 600);
+        assert!(
+            !graph.node(hub).framework,
+            "een ingraad van 600 is geen juridische kwalificatie"
+        );
+        assert_eq!(graph.stats.framework_laws, 0);
+    }
 
-        let mut large = star_graph(60, 0);
-        compute(&mut large, FrameworkRule::default());
-        assert_eq!(large.stats.framework_laws, 1);
+    #[test]
+    fn designation_makes_a_framework_law_whatever_its_degree() {
+        // The designated law here is an arm with exactly one citation, not the
+        // hub: the list decides, the degree does not.
+        let mut graph = star_graph(60, 0);
+        compute(&mut graph, &designating("arm0000"));
+        let arm = graph.lookup("arm0000").expect("arm");
+        let hub = graph.lookup("hub").expect("hub");
+        assert!(graph.node(arm).framework);
+        assert!(!graph.node(hub).framework);
+        assert_eq!(graph.stats.designated_framework_laws, 1);
+        assert_eq!(graph.stats.derived_framework_laws, 0);
+    }
+
+    /// The second route, which the corpus cannot take yet.
+    #[test]
+    fn an_applicability_edge_qualifies_its_source() {
+        let mut graph = star_graph(60, 0);
+        let hub = graph.lookup("hub").expect("hub");
+        let arm = graph.lookup("arm0000").expect("arm");
+        graph.edges.push(crate::graph::Edge {
+            source: hub,
+            target: arm,
+            edge_type: EdgeType::Applicability,
+            count: 1,
+        });
+        graph.law_edge_count = graph.edges.len();
+        compute(&mut graph, &Kaderwetten::default());
+        assert!(graph.node(hub).framework);
+        assert_eq!(graph.stats.designated_framework_laws, 0);
+        assert_eq!(graph.stats.derived_framework_laws, 1);
     }
 
     #[test]
@@ -182,7 +236,7 @@ mod tests {
                 edge.count = 40;
             }
         }
-        let citers = compute(&mut graph, FrameworkRule::default());
+        let citers = compute(&mut graph, &Kaderwetten::default());
         assert_eq!(citers[hub as usize], 60);
     }
 }

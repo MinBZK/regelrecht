@@ -39,7 +39,10 @@
 //!                  "expected_delegation", "applicability", "amendment"],
 //!   "layers": ["GRONDWET", "WET", "..."],
 //!   "clusters": 14,
-//!   "framework_cluster": 65535,
+//!   "enrichment_states": ["none", "partial", "full"],
+//!   "status_built_at": "2026-08-02T12:00:00Z",
+//!   "status_sections": ["node_enrichment", "node_activity",
+//!                       "node_articles", "node_articles_enriched"],
 //!   "strings": ["Wet op de zorgtoeslag", "..."],
 //!   "sections": [{"name": "node_pos", "type": "f32", "len": 12414,
 //!                 "offset": 0, "bytes": 49656}],
@@ -61,9 +64,14 @@
 //! | `node_weight`    | f32  | N      | incoming references; what node size scales with |
 //! | `node_rank`      | f32  | N      | PageRank towards the cited law, normalised to 1.0 |
 //! | `node_out`       | u32  | N      | outgoing references |
+//! | `node_citers`    | u32  | N      | distinct laws citing this one |
 //! | `node_cluster`   | u16  | N      | community; `framework_cluster` is the framework layer |
 //! | `node_parent`    | u32  | N      | containing law, or `0xFFFFFFFF` at law level |
-//! | `node_flags`     | u8   | N      | bit 0 framework law, bit 1 node is not a held document |
+//! | `node_flags`     | u8   | N      | bit 0 framework law (designated, not measured), bit 1 node is not a held document |
+//! | `node_enrichment`| u8   | N      | index into `enrichment_states` |
+//! | `node_activity`  | u8   | N      | 0 idle, 1 the enricher is on it now (reserved) |
+//! | `node_articles`  | u32  | N      | articles in this law |
+//! | `node_articles_enriched` | u32 | N | of which modelled |
 //! | `edge_src`       | u32  | E      | node index |
 //! | `edge_dst`       | u32  | E      | node index |
 //! | `edge_type`      | u8   | E      | index into `edge_types` |
@@ -78,9 +86,8 @@
 //! ## The small readable example
 //!
 //! `--format json` writes the same graph as readable JSON. This is a real
-//! excerpt, from
-//! `regelrecht-graph-build --corpus corpus --format json` over the corpus in
-//! this repository (36 nodes, 28 edges):
+//! excerpt, from `regelrecht-graph-build --corpus corpus --format json` over
+//! the corpus in this repository (36 nodes, 28 edges, 13 communities):
 //!
 //! ```json
 //! {
@@ -90,24 +97,26 @@
 //!   "law_node_count": 36,
 //!   "law_edge_count": 28,
 //!   "nodes": [
+//!     {"id": "algemene_wet_bestuursrecht", "label": "Algemene wet bestuursrecht",
+//!      "kind": "law", "layer": "WET",
+//!      "x": 25.76, "y": 4.75, "z": -16.38,
+//!      "weight": 1, "rank": 0.360, "out": 1, "citers": 1, "cluster": 1,
+//!      "parent": null, "framework": true,
+//!      "enrichment": "full", "articles": 3, "articles_enriched": 3},
 //!     {"id": "expected:minister", "label": "minister", "kind": "expected",
 //!      "layer": "MINISTERIELE_REGELING",
-//!      "x": -28.07, "y": 43.30, "z": 22.76,
-//!      "weight": 1, "rank": 0.068, "out": 0, "cluster": 2,
-//!      "parent": null, "framework": false},
-//!     {"id": "regeling_standaardpremie", "label": "Regeling standaardpremie",
-//!      "kind": "law", "layer": "MINISTERIELE_REGELING",
-//!      "x": -18.62, "y": 41.87, "z": 22.76,
-//!      "weight": 0, "rank": 0.054, "out": 1, "cluster": 2,
-//!      "parent": null, "framework": false},
+//!      "x": -14.17, "y": 21.42, "z": 10.98,
+//!      "weight": 1, "rank": 0.068, "out": 0, "citers": 1, "cluster": 2,
+//!      "parent": null, "framework": false,
+//!      "enrichment": "none", "articles": 0, "articles_enriched": 0},
 //!     {"id": "wet_op_de_zorgtoeslag", "label": "Wet op de zorgtoeslag",
 //!      "kind": "law", "layer": "WET",
-//!      "x": -23.93, "y": 38.68, "z": 21.71,
-//!      "weight": 1, "rank": 0.100, "out": 6, "cluster": 2,
-//!      "parent": null, "framework": false}
+//!      "x": -11.09, "y": 17.53, "z": 10.11,
+//!      "weight": 1, "rank": 0.100, "out": 6, "citers": 1, "cluster": 2,
+//!      "parent": null, "framework": false,
+//!      "enrichment": "partial", "articles": 10, "articles_enriched": 6}
 //!   ],
 //!   "edges": [
-//!     {"source": 22, "target": 33, "type": "delegation", "count": 1},
 //!     {"source": 33, "target": 2,  "type": "source", "count": 3},
 //!     {"source": 33, "target": 18, "type": "expected_delegation", "count": 1},
 //!     {"source": 33, "target": 35, "type": "source", "count": 1}
@@ -115,21 +124,45 @@
 //! }
 //! ```
 //!
-//! (The `source`/`target` values are indices into the full 36-node array; the
-//! three nodes shown are 18, 22 and 33.)
+//! (`source`/`target` are indices into the full 36-node array; the three nodes
+//! shown are 1, 18 and 33.)
 //!
-//! Read it as: the Regeling standaardpremie implements the Wet op de
-//! zorgtoeslag, so there is a `delegation` edge from the regulation up to the
-//! law. The zorgtoeslag cannot be computed without the Awir and the
-//! Zorgverzekeringswet, so there are `source` edges to both, the Awir one three
-//! times over. And the zorgtoeslag names a minister who has to fill in a term,
+//! Read it as: the Wet op de zorgtoeslag cannot be computed without the Awir
+//! and the Zorgverzekeringswet, so there are `source` edges to both, the Awir
+//! one three times over. It also names a minister who has to fill in a term and
 //! for whom no regulation is held, so there is an `expected_delegation` edge to
-//! a node that stands for a document nobody has harvested yet. The three
-//! neighbours in this fragment all sit in cluster 2 and their coordinates are
-//! within a few units of one another, which is what a community looks like in
-//! the payload.
+//! a node that stands for a document nobody has harvested. Six of its ten
+//! articles are modelled, so it draws as partial. The Awb carries
+//! `"framework": true` because it is on the kaderwetlijst, and note what that
+//! does to its coordinates: nothing. It sits where its citations put it.
 //!
-//! Two things a renderer has to handle. A `source == target` edge occurs (a law
+//! ## Enrichment status, and refreshing it on its own
+//!
+//! `node_enrichment` is what the map colours by: grey for `none`, partial for
+//! `partial`, full colour for `full`. In the first version nearly every law is
+//! `none`, and that is the message rather than a defect — the map shows in one
+//! look how little is done and where it sits. `node_articles` and
+//! `node_articles_enriched` are there so a law that is 3 out of 40 can be drawn
+//! differently from one that is 39 out of 40 without a second request.
+//!
+//! A law is `full` only when every article carries a **substantive**
+//! `machine_readable` section. An empty section does not count; see
+//! [`crate::model::MachineReadableFile::is_substantive`].
+//!
+//! The four sections listed in `status_sections` are the last sections in the
+//! blob and their length depends only on the node count. That is deliberate:
+//! the status changes by the minute while the enricher runs and the layout
+//! costs seconds to recompute, so a refresh has to be able to rewrite this tail
+//! and nothing else. `snapshot_id` therefore covers the nodes, their positions
+//! and the edges, and **not** the status, so a refreshed payload keeps the same
+//! snapshot identity and the client knows its coordinates are still valid.
+//! `status_built_at` says when the tail was last written.
+//!
+//! `node_activity` is reserved and always 0 today. An enrichment run writes
+//! `.enrichment-progress.json` next to the law it is working on, so filling it
+//! in later is a matter of reading that file during the status pass.
+//!
+//! ## Two things a renderer has to handle. A `source == target` edge occurs (a law
 //! binding to its own output) and should become a counter on the node rather
 //! than a loop. And a node whose `flags` bit 1 is set is not a document we
 //! hold: it has a position and a weight like any other node, but there is no
@@ -139,7 +172,16 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 
-use crate::graph::{CorpusGraph, EdgeType, NodeKind, RegulatoryLayer};
+use crate::graph::{CorpusGraph, EdgeType, Enrichment, NodeKind, RegulatoryLayer};
+
+/// The sections that describe progress rather than structure, and that a status
+/// refresh may rewrite on its own. They are written last, in this order.
+pub const STATUS_SECTIONS: [&str; 4] = [
+    "node_enrichment",
+    "node_activity",
+    "node_articles",
+    "node_articles_enriched",
+];
 
 /// The version of the layout algorithm. Bump it whenever a change moves nodes;
 /// the client uses it to decide whether to animate from the old positions.
@@ -174,7 +216,9 @@ struct Header {
     edge_types: Vec<&'static str>,
     layers: Vec<&'static str>,
     clusters: usize,
-    framework_cluster: u16,
+    enrichment_states: Vec<&'static str>,
+    status_built_at: String,
+    status_sections: Vec<&'static str>,
     strings: Vec<String>,
     sections: Vec<Section>,
     stats: crate::graph::BuildStats,
@@ -208,9 +252,14 @@ pub fn encode_binary(graph: &CorpusGraph, built_at: &str) -> Vec<u8> {
     let mut node_weight: Vec<f32> = Vec::with_capacity(n);
     let mut node_rank: Vec<f32> = Vec::with_capacity(n);
     let mut node_out: Vec<u32> = Vec::with_capacity(n);
+    let mut node_citers: Vec<u32> = Vec::with_capacity(n);
     let mut node_cluster: Vec<u16> = Vec::with_capacity(n);
     let mut node_parent: Vec<u32> = Vec::with_capacity(n);
     let mut node_flags: Vec<u8> = Vec::with_capacity(n);
+    let mut node_enrichment: Vec<u8> = Vec::with_capacity(n);
+    let mut node_activity: Vec<u8> = Vec::with_capacity(n);
+    let mut node_articles: Vec<u32> = Vec::with_capacity(n);
+    let mut node_articles_enriched: Vec<u32> = Vec::with_capacity(n);
 
     for node in &graph.nodes {
         node_pos.extend_from_slice(&[node.x, node.y, node.z]);
@@ -221,6 +270,7 @@ pub fn encode_binary(graph: &CorpusGraph, built_at: &str) -> Vec<u8> {
         node_weight.push(node.in_refs as f32);
         node_rank.push(node.rank);
         node_out.push(node.out_refs);
+        node_citers.push(node.citers);
         node_cluster.push(node.cluster);
         node_parent.push(node.parent.unwrap_or(NO_PARENT));
         let mut flags = 0u8;
@@ -231,6 +281,11 @@ pub fn encode_binary(graph: &CorpusGraph, built_at: &str) -> Vec<u8> {
             flags |= 2;
         }
         node_flags.push(flags);
+        node_enrichment.push(enrichment_index(node.enrichment));
+        // Reserved: nothing reads `.enrichment-progress.json` yet.
+        node_activity.push(0);
+        node_articles.push(node.articles);
+        node_articles_enriched.push(node.articles_enriched);
     }
 
     let mut edge_src: Vec<u32> = Vec::with_capacity(e);
@@ -254,6 +309,7 @@ pub fn encode_binary(graph: &CorpusGraph, built_at: &str) -> Vec<u8> {
     push_f32(&mut blob, &mut sections, "node_weight", &node_weight);
     push_f32(&mut blob, &mut sections, "node_rank", &node_rank);
     push_u32(&mut blob, &mut sections, "node_out", &node_out);
+    push_u32(&mut blob, &mut sections, "node_citers", &node_citers);
     push_u16(&mut blob, &mut sections, "node_cluster", &node_cluster);
     push_u32(&mut blob, &mut sections, "node_parent", &node_parent);
     push_u8(&mut blob, &mut sections, "node_flags", &node_flags);
@@ -261,6 +317,23 @@ pub fn encode_binary(graph: &CorpusGraph, built_at: &str) -> Vec<u8> {
     push_u32(&mut blob, &mut sections, "edge_dst", &edge_dst);
     push_u8(&mut blob, &mut sections, "edge_type", &edge_type);
     push_u32(&mut blob, &mut sections, "edge_count", &edge_count);
+    // The refreshable tail. Everything above describes the graph and its
+    // layout; everything from here on describes how far the work has got, and
+    // that is the part that moves while the enricher runs.
+    push_u8(
+        &mut blob,
+        &mut sections,
+        "node_enrichment",
+        &node_enrichment,
+    );
+    push_u8(&mut blob, &mut sections, "node_activity", &node_activity);
+    push_u32(&mut blob, &mut sections, "node_articles", &node_articles);
+    push_u32(
+        &mut blob,
+        &mut sections,
+        "node_articles_enriched",
+        &node_articles_enriched,
+    );
 
     let header = Header {
         format: "rrgraph",
@@ -277,7 +350,9 @@ pub fn encode_binary(graph: &CorpusGraph, built_at: &str) -> Vec<u8> {
         edge_types: EdgeType::ALL.iter().map(|t| t.as_str()).collect(),
         layers: RegulatoryLayer::ALL.iter().map(|l| l.as_str()).collect(),
         clusters: graph.stats.clusters,
-        framework_cluster: crate::cluster::FRAMEWORK_CLUSTER,
+        enrichment_states: Enrichment::ALL.iter().map(|e| e.as_str()).collect(),
+        status_built_at: built_at.to_string(),
+        status_sections: STATUS_SECTIONS.to_vec(),
         strings,
         sections,
         stats: graph.stats.clone(),
@@ -304,12 +379,15 @@ pub fn encode_binary(graph: &CorpusGraph, built_at: &str) -> Vec<u8> {
     out
 }
 
-/// A content hash over what the graph says, not over when it was built.
+/// A content hash over the graph and its layout: the nodes, where they are, and
+/// the edges.
 ///
-/// Two builds of the same corpus produce the same snapshot id, which is exactly
-/// the property that makes it usable as a cache key and as the "did anything
-/// change" check. FNV-1a over the canonical node and edge order; this is an
-/// identifier, not a security claim.
+/// Two builds of the same corpus produce the same snapshot id, which is what
+/// makes it usable as a cache key and as the "did anything change" check.
+/// Deliberately excluded is the enrichment status, so that refreshing the
+/// status tail of a payload leaves the identity alone and a client can tell
+/// that its coordinates are still the ones it already has. FNV-1a over the
+/// canonical node and edge order; an identifier, not a security claim.
 pub fn snapshot_id(graph: &CorpusGraph) -> String {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     let feed = |bytes: &[u8], hash: &mut u64| {
@@ -346,7 +424,6 @@ pub struct JsonPayload {
     pub law_node_count: usize,
     pub law_edge_count: usize,
     pub clusters: usize,
-    pub framework_cluster: u16,
     pub stats: crate::graph::BuildStats,
     pub nodes: Vec<JsonNode>,
     pub edges: Vec<JsonEdge>,
@@ -364,9 +441,13 @@ pub struct JsonNode {
     pub weight: u32,
     pub rank: f32,
     pub out: u32,
+    pub citers: u32,
     pub cluster: u16,
     pub parent: Option<u32>,
     pub framework: bool,
+    pub enrichment: &'static str,
+    pub articles: u32,
+    pub articles_enriched: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -388,7 +469,6 @@ pub fn encode_json(graph: &CorpusGraph, built_at: &str) -> JsonPayload {
         law_node_count: graph.law_node_count,
         law_edge_count: graph.law_edge_count,
         clusters: graph.stats.clusters,
-        framework_cluster: crate::cluster::FRAMEWORK_CLUSTER,
         stats: graph.stats.clone(),
         nodes: graph
             .nodes
@@ -404,9 +484,13 @@ pub fn encode_json(graph: &CorpusGraph, built_at: &str) -> JsonPayload {
                 weight: n.in_refs,
                 rank: n.rank,
                 out: n.out_refs,
+                citers: n.citers,
                 cluster: n.cluster,
                 parent: n.parent,
                 framework: n.framework,
+                enrichment: n.enrichment.as_str(),
+                articles: n.articles,
+                articles_enriched: n.articles_enriched,
             })
             .collect(),
         edges: graph
@@ -430,6 +514,13 @@ fn type_index(edge_type: EdgeType) -> u8 {
     EdgeType::ALL
         .iter()
         .position(|&t| t == edge_type)
+        .unwrap_or(0) as u8
+}
+
+fn enrichment_index(state: Enrichment) -> u8 {
+    Enrichment::ALL
+        .iter()
+        .position(|&e| e == state)
         .unwrap_or(0) as u8
 }
 
@@ -523,7 +614,7 @@ mod tests {
     #[test]
     fn binary_payload_round_trips_its_own_description() {
         let mut graph = three_communities(6);
-        crate::metrics::compute(&mut graph, crate::metrics::FrameworkRule::default());
+        crate::metrics::compute(&mut graph, &crate::kaderwet::Kaderwetten::default());
         crate::cluster::assign(&mut graph);
         let bytes = encode_binary(&graph, "2026-01-01T00:00:00Z");
         let header = decode_header(&bytes);
@@ -579,7 +670,7 @@ mod tests {
     #[test]
     fn json_payload_carries_the_agreed_core_fields() {
         let mut graph = three_communities(6);
-        crate::metrics::compute(&mut graph, crate::metrics::FrameworkRule::default());
+        crate::metrics::compute(&mut graph, &crate::kaderwet::Kaderwetten::default());
         let payload = encode_json(&graph, "2026-01-01T00:00:00Z");
         let value = serde_json::to_value(&payload).expect("serialiseer");
         let node = &value["nodes"][0];

@@ -5,29 +5,23 @@
 //! index order, a move is only made on a strict improvement, and ties go to the
 //! lowest community index, so there is no seed to fix because there is nothing
 //! to seed. That is a deliberate downgrade and it costs Leiden's guarantee that
-//! a community is internally connected; the mitigation is that framework laws,
-//! which are exactly what produces disconnected communities in Louvain, are
-//! taken out before the run and put in their own pseudo-cluster.
+//! a community is internally connected; where that bites is recorded in the
+//! report rather than papered over.
 //!
-//! The weights are the typed layout weights, not the raw citation count. With
-//! raw counts the detector finds one community: everything that falls under the
-//! Awb.
+//! Every law takes part, including the designated kaderwetten and including the
+//! Awb. Pulling them out first would be tidier and it would be a claim: that
+//! they belong nowhere. Where the Awb lands is a finding, and a finding is only
+//! available if nobody arranged it beforehand.
 
 use std::collections::HashMap;
 
 use crate::graph::{CorpusGraph, NodeIx};
 
-/// Cluster index reserved for the framework layer. Framework laws belong to no
-/// community; Leiden or Louvain would assign them one arbitrarily.
-pub const FRAMEWORK_CLUSTER: u16 = u16::MAX;
-
 /// Assign a community to every law-level node and return the number of
-/// communities found (excluding the framework layer).
+/// communities found.
 pub fn assign(graph: &mut CorpusGraph) -> usize {
     let total = graph.law_node_count;
-    let free: Vec<NodeIx> = (0..total as NodeIx)
-        .filter(|&ix| !graph.nodes[ix as usize].framework)
-        .collect();
+    let free: Vec<NodeIx> = (0..total as NodeIx).collect();
     let slot: HashMap<NodeIx, usize> = free.iter().enumerate().map(|(i, &ix)| (ix, i)).collect();
 
     let n = free.len();
@@ -39,7 +33,7 @@ pub fn assign(graph: &mut CorpusGraph) -> usize {
         if a == b {
             continue;
         }
-        let w = (edge.edge_type.layout_weight() as f64) * (1.0 + (edge.count as f64).ln());
+        let w = graph.mechanical_weight(edge) as f64;
         edges.push((a.min(b) as u32, a.max(b) as u32, w));
     }
     edges.sort_by(|x, y| x.0.cmp(&y.0).then_with(|| x.1.cmp(&y.1)));
@@ -57,11 +51,6 @@ pub fn assign(graph: &mut CorpusGraph) -> usize {
         let next = relabel.len() as u16;
         let cluster = *relabel.entry(label).or_insert(next);
         graph.nodes[ix as usize].cluster = cluster;
-    }
-    for node in graph.nodes[..total].iter_mut() {
-        if node.framework {
-            node.cluster = FRAMEWORK_CLUSTER;
-        }
     }
     // An article belongs to whatever its law belongs to; the containment tree
     // has no say of its own here.
@@ -201,7 +190,7 @@ mod tests {
     #[test]
     fn finds_the_planted_communities() {
         let mut graph = three_communities(12);
-        crate::metrics::compute(&mut graph, crate::metrics::FrameworkRule::default());
+        crate::metrics::compute(&mut graph, &crate::kaderwet::Kaderwetten::default());
         let count = assign(&mut graph);
         assert!(
             (2..=5).contains(&count),
@@ -222,8 +211,8 @@ mod tests {
     fn clustering_is_reproducible() {
         let mut a = three_communities(12);
         let mut b = three_communities(12);
-        crate::metrics::compute(&mut a, crate::metrics::FrameworkRule::default());
-        crate::metrics::compute(&mut b, crate::metrics::FrameworkRule::default());
+        crate::metrics::compute(&mut a, &crate::kaderwet::Kaderwetten::default());
+        crate::metrics::compute(&mut b, &crate::kaderwet::Kaderwetten::default());
         assign(&mut a);
         assign(&mut b);
         let ca: Vec<u16> = a.nodes.iter().map(|n| n.cluster).collect();

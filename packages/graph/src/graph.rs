@@ -178,6 +178,53 @@ impl RegulatoryLayer {
     }
 }
 
+/// How far the enrichment has got on this node.
+///
+/// Three values and not a flag bit, because on a law it is not a yes or no. A
+/// law of forty articles with three modelled is neither enriched nor
+/// un-enriched, and collapsing that to one bit throws away exactly the thing
+/// the map is supposed to show: how much is done and where. On an article it
+/// *is* binary, and there only [`Enrichment::None`] and [`Enrichment::Full`]
+/// occur.
+///
+/// Whether the enricher is working on a law right now is deliberately not one
+/// of these values. That is orthogonal (a half-enriched law can be under way or
+/// idle) and it changes by the minute, so it lives in its own section; see
+/// [`crate::payload`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Enrichment {
+    /// No article carries a substantive `machine_readable` section. In the
+    /// first version of the map this is nearly everything, and that is the
+    /// point.
+    None,
+    /// Some articles do.
+    Partial,
+    /// Every article does.
+    Full,
+}
+
+impl Enrichment {
+    pub const ALL: [Enrichment; 3] = [Enrichment::None, Enrichment::Partial, Enrichment::Full];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Enrichment::None => "none",
+            Enrichment::Partial => "partial",
+            Enrichment::Full => "full",
+        }
+    }
+
+    /// The state of a law given how many of its articles are modelled.
+    pub fn of(articles: u32, enriched: u32) -> Enrichment {
+        match (articles, enriched) {
+            (_, 0) => Enrichment::None,
+            (a, e) if e >= a => Enrichment::Full,
+            _ => Enrichment::Partial,
+        }
+    }
+}
+
 /// Index into [`CorpusGraph::nodes`]. Stable within one build only; the stable
 /// cross-build identity is [`Node::id`].
 pub type NodeIx = u32;
@@ -208,13 +255,26 @@ pub struct Node {
     pub in_refs: u32,
     /// Number of outgoing underlying references.
     pub out_refs: u32,
+    /// How much of this node is modelled.
+    pub enrichment: Enrichment,
+    /// Articles in this law. Zero for a node that is not a held document, one
+    /// for an article node.
+    pub articles: u32,
+    /// Of which carry a substantive `machine_readable` section.
+    pub articles_enriched: u32,
+    /// Number of distinct laws that cite this one. The honest simple measure of
+    /// how much the corpus leans on it, and the working material for whoever
+    /// fills the kaderwetlijst. Never a qualification by itself.
+    pub citers: u32,
     /// Reverse PageRank, normalised so the maximum is 1.0.
     pub rank: f32,
     /// Community index from [`crate::cluster`]. Framework laws get their own
     /// pseudo-cluster.
     pub cluster: u16,
-    /// Above the framework-law degree threshold: pulled out of the force
-    /// computation and placed on its own ring.
+    /// A framework law: designated on the kaderwetlijst, or stating an
+    /// applicability relation itself. A legal qualification, never derived from
+    /// a degree. Placed on its own ring above the field and kept out of the
+    /// communities, because it belongs to none of them.
     pub framework: bool,
 }
 
@@ -268,11 +328,27 @@ pub struct BuildStats {
     pub dangling_references: u64,
     pub aggregated_edges: usize,
     pub framework_laws: usize,
+    /// Laws with at least one modelled article.
+    pub laws_partly_enriched: usize,
+    /// Laws with every article modelled.
+    pub laws_fully_enriched: usize,
+    /// Articles carrying a substantive `machine_readable` section.
+    pub enriched_articles: usize,
+    /// Of which designated on the kaderwetlijst.
+    pub designated_framework_laws: usize,
+    /// Of which derived from an applicability relation in the corpus.
+    pub derived_framework_laws: usize,
+    /// Where the kaderwetlijst came from, or why there is none.
+    pub kaderwetlijst: String,
     pub clusters: usize,
     pub parse_ms: u128,
     pub metrics_ms: u128,
     pub cluster_ms: u128,
     pub layout_ms: u128,
+    /// How far the average node still moved on the last layout iteration, as a
+    /// fraction of the layout scale. Zero is settled; anything you can see is
+    /// a picture that would still be drifting if you kept going.
+    pub layout_unsettled: f32,
     pub peak_rss_kb: u64,
 }
 
@@ -308,6 +384,30 @@ impl CorpusGraph {
     /// These are the nodes the global layout runs on.
     pub fn law_level(&self) -> Vec<NodeIx> {
         (0..self.law_node_count as NodeIx).collect()
+    }
+
+    /// How hard an edge pulls in the layout and how much it counts towards a
+    /// community.
+    ///
+    /// Two factors, and it matters that neither of them looks at how often the
+    /// *target* is cited. **The type weight** says a computed dependency means
+    /// more than a mention, which is a statement about the relation. **The
+    /// logarithm on the count** says that citing a law forty times is more than
+    /// citing it once but not forty times more, which stops a definition
+    /// article that repeats one reference in every lid from outweighing a real
+    /// structural relation; that is a statement about one article's drafting
+    /// habits, not about the law it points at.
+    ///
+    /// There is deliberately no third factor damping edges into heavily cited
+    /// laws. If the Awb ends up in the middle because 867 laws hang off it,
+    /// that is where it belongs, and a map that weakens those edges to look
+    /// tidier is lying about the shape of Dutch law. The distance to that
+    /// middle is itself the finding: private law and criminal law largely fall
+    /// outside the bestuursrecht, and where they end up relative to the Awb is
+    /// something a lawyer wants to see. Damping the pull would erase exactly
+    /// that.
+    pub fn mechanical_weight(&self, edge: &Edge) -> f32 {
+        edge.edge_type.layout_weight() * (1.0 + (edge.count as f32).ln())
     }
 
     /// Put the nodes in canonical order (law level first, then articles, each
@@ -401,6 +501,10 @@ mod tests {
             z: 0.0,
             in_refs: 0,
             out_refs: 0,
+            citers: 0,
+            enrichment: Enrichment::None,
+            articles: 0,
+            articles_enriched: 0,
             rank: 0.0,
             cluster: 0,
             framework: false,

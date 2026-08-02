@@ -14,25 +14,31 @@
 //! no hash-map iteration, no threads. Two runs over the same corpus produce
 //! bit-identical coordinates, and that is asserted in the tests.
 //!
-//! The one place the design's recipe had to be extended is
-//! [`initial_positions`]. Spectral-then-ForceAtlas2 over the whole graph in one
-//! go was measured on the harvested corpus and it does not separate the
-//! communities: three eigenvectors cannot hold fifteen groups apart, and the
-//! communities came out completely interleaved even though 71% of all citations
-//! stay inside one. The initialisation therefore runs the same two steps twice,
-//! once on the community graph and once inside each community, and composes
-//! them. That is the design's own navigation hierarchy (rechtsgebied → wet)
-//! turned into a layout order.
-//!
 //! The pipeline for one connected component:
 //!
 //! 1. [`equilibrium_scale`] — where the forces want this graph to settle.
-//! 2. [`initial_positions`] — communities placed, then laws inside them.
-//! 3. [`force_atlas2`] — refinement, with hub damping and community attraction.
+//! 2. [`spectral_init`] — starting positions from the Laplacian.
+//! 3. [`force_atlas2`] — plain ForceAtlas2, linear attraction, degree mass.
 //! 4. [`recentre`] — local frame, so components can be placed side by side.
 //!
-//! Framework laws never enter any of this; they are parked on a ring above the
-//! field by [`place_framework_ring`].
+//! Nothing is exempt from any of it. Designated kaderwetten take part like
+//! every other law, and so do the laws the corpus leans on hardest. There is no
+//! damping of edges into a heavily cited law and no separate treatment of star
+//! nodes. If the Awb comes out in the middle, that is where 867 citations put
+//! it; how far a law sits from that middle is then a real finding, and criminal
+//! law and private law sitting a long way out is the kind of thing this map
+//! exists to show. Weakening those edges would make a prettier picture of a
+//! different country.
+//!
+//! Two things are allowed to touch the arithmetic, and both had to earn it by
+//! leaving the answer alone: [`equilibrium_scale`] starts the iteration at the
+//! size the forces themselves imply, and a step is capped inside
+//! [`force_atlas2`]. Neither changes the fixed point. Two further candidates
+//! were built, measured and removed — logarithmic attraction and a
+//! logarithmically damped repulsion mass — because they moved laws relative to
+//! each other (rank correlation 0.59 against the plain model, which converges
+//! without them). A measure that changes the answer is an opinion in a
+//! numerical coat.
 
 // Three-component vector arithmetic reads better with an explicit axis index
 // than with zipped iterators: `for k in 0..3 { a[k] += b[k] }` is the standard
@@ -53,42 +59,41 @@ pub struct LayoutOptions {
     pub repulsion: f32,
     /// Pull towards the origin, keeps disconnected material from drifting off.
     pub gravity: f32,
-    /// Divide attraction by the degree of the pulling end. This is the
-    /// `dissuade hubs` mode: without it a law with a thousand citations pulls a
-    /// thousand times as hard and the picture becomes a ball around it.
-    pub dissuade_hubs: bool,
     /// Power-iteration steps per spectral eigenvector.
     pub spectral_steps: usize,
-    /// Radius multiplier for the ring the framework laws are parked on.
-    pub framework_ring: f32,
-    /// Logarithmic attraction (`w·ln(1+d)`) instead of linear (`w·d`).
-    pub linlog: bool,
-    /// Damp the repulsion mass logarithmically instead of using the raw degree.
-    pub log_mass: bool,
+    /// Place the communities first and the laws inside them, instead of
+    /// embedding the whole component in one go.
+    ///
+    /// **Off, and it stays off.** It was built as a convergence measure and it
+    /// does not qualify as one. Measured on the harvested corpus, the layout it
+    /// produces agrees with the plain one at a rank correlation of 0.35 after
+    /// three thousand iterations, so it does not merely reach the same answer
+    /// faster: it reaches a different one, in which the communities are neatly
+    /// apart because they were put there. The flag stays so the difference can
+    /// be looked at, never as a default.
+    pub hierarchical_init: bool,
     /// Spring stiffness pulling a law towards the centre of its community.
     ///
-    /// The design asks for this in so many words: the community partition goes
-    /// into the force step as an extra attraction, so laws from one community
-    /// end up spatially together without being put in a hard box. Without it
-    /// the communities are in the edges and not in the coordinates: measured on
-    /// the harvested corpus, the partition has modularity 0.61 and the layout
-    /// still interleaves it completely.
+    /// **Off by default, and it should stay off.** The design asks for it — the
+    /// community partition as an extra attraction, so laws from one community
+    /// end up together — and that is precisely the problem: it is a force that
+    /// is not in the graph. Switch it on and the map shows the communities more
+    /// crisply than the citations warrant. The knob is here because the design
+    /// names it and because it is worth being able to see the difference, not
+    /// because the default build should use it.
     pub cluster_pull: f32,
 }
 
 impl Default for LayoutOptions {
     fn default() -> Self {
         Self {
-            iterations: 300,
+            iterations: 1500,
             theta: 1.2,
             repulsion: 1.0,
             gravity: 1.0,
-            dissuade_hubs: true,
             spectral_steps: 240,
-            framework_ring: 1.15,
-            linlog: true,
-            log_mass: true,
-            cluster_pull: 0.02,
+            hierarchical_init: false,
+            cluster_pull: 0.0,
         }
     }
 }
@@ -130,16 +135,17 @@ fn layout_law_level(graph: &mut CorpusGraph, opts: &LayoutOptions) {
         return;
     }
 
-    // Framework laws are taken out of the force computation entirely. Damped
-    // edge weights and dissuade-hubs both help and neither is enough: at a
-    // thousand incoming citations the Awb still flattens the picture. They come
-    // back on their own ring afterwards.
-    let free: Vec<NodeIx> = (0..total as NodeIx)
-        .filter(|&ix| !graph.nodes[ix as usize].framework)
-        .collect();
-    let slot: HashMap<NodeIx, usize> = free.iter().enumerate().map(|(i, &ix)| (ix, i)).collect();
+    // Every law-level node takes part, including the ones the corpus leans on
+    // hardest and including the designated kaderwetten. Nothing is lifted out
+    // of the field to make the picture calmer. If the Awb ends up in the middle
+    // that is its position, and how far a law sits from that middle is a
+    // finding rather than a defect: criminal law and private law largely fall
+    // outside the bestuursrecht, and that shows up as distance only as long as
+    // nobody has intervened.
+    let all: Vec<NodeIx> = (0..total as NodeIx).collect();
+    let slot: HashMap<NodeIx, usize> = all.iter().enumerate().map(|(i, &ix)| (ix, i)).collect();
 
-    let mech = mechanical(graph, &free, &slot, opts);
+    let mech = mechanical(graph, &all, &slot);
     let components = components(&mech);
 
     // One component at a time, largest first. A component is laid out in its
@@ -147,11 +153,13 @@ fn layout_law_level(graph: &mut CorpusGraph, opts: &LayoutOptions) {
     // being flung to the far side of the universe by gravity alone.
     let mut positions = vec![[0.0f32; 3]; mech.len()];
     let mut placed: Vec<(Vec<usize>, f32)> = Vec::new();
+    let mut unsettled = 0.0f32;
     for members in &components {
         let sub = subgraph(&mech, members);
-        let scale = equilibrium_scale(&sub, opts);
+        let scale = equilibrium_scale(&sub);
         let mut pos = initial_positions(&sub, opts, scale);
-        force_atlas2(&sub, &mut pos, opts, scale);
+        let settle = force_atlas2(&sub, &mut pos, opts, scale);
+        unsettled = unsettled.max(settle);
         let radius = recentre(&mut pos);
         for (local, &global) in members.iter().enumerate() {
             positions[global] = pos[local];
@@ -176,55 +184,13 @@ fn layout_law_level(graph: &mut CorpusGraph, opts: &LayoutOptions) {
         shell += radius * 0.4;
     }
 
-    for (&ix, &pos) in free.iter().zip(positions.iter()) {
+    for (&ix, &pos) in all.iter().zip(positions.iter()) {
         let node = &mut graph.nodes[ix as usize];
         node.x = pos[0];
         node.y = pos[1];
         node.z = pos[2];
     }
-
-    place_framework_ring(graph, opts);
-}
-
-/// Framework laws go on a ring above the plane, ordered by how heavily they are
-/// cited.
-///
-/// This is not only a graphical dodge. A framework law sits above the material
-/// laws in the legal hierarchy, and a ring above the field is what that
-/// relation looks like. Whoever selects the Awb sees its edges fan downwards
-/// into the clusters underneath, which is the picture someone should carry of
-/// the Awb.
-fn place_framework_ring(graph: &mut CorpusGraph, opts: &LayoutOptions) {
-    let mut ring: Vec<NodeIx> = (0..graph.law_node_count as NodeIx)
-        .filter(|&ix| graph.nodes[ix as usize].framework)
-        .collect();
-    if ring.is_empty() {
-        return;
-    }
-    // The extent of everything already placed, so the ring clears the whole
-    // field and not just the component that happened to be laid out first.
-    let main_radius = graph.nodes[..graph.law_node_count]
-        .iter()
-        .filter(|n| !n.framework)
-        .map(|n| (n.x * n.x + n.y * n.y + n.z * n.z).sqrt())
-        .fold(1.0f32, f32::max);
-    ring.sort_by(|&a, &b| {
-        let (na, nb) = (&graph.nodes[a as usize], &graph.nodes[b as usize]);
-        nb.in_refs.cmp(&na.in_refs).then_with(|| na.id.cmp(&nb.id))
-    });
-    let radius = main_radius * opts.framework_ring;
-    // Clear of the field, not merely offset from it: the largest distance from
-    // the centroid bounds how high a law in the field can sit, so the ring goes
-    // above that.
-    let height = main_radius * 1.25;
-    let count = ring.len() as f32;
-    for (i, &ix) in ring.iter().enumerate() {
-        let angle = std::f32::consts::TAU * (i as f32) / count;
-        let node = &mut graph.nodes[ix as usize];
-        node.x = radius * angle.cos();
-        node.y = height;
-        node.z = radius * angle.sin();
-    }
+    graph.stats.layout_unsettled = unsettled;
 }
 
 /// Articles are laid out inside their own law, in local coordinates.
@@ -256,13 +222,14 @@ fn layout_articles(graph: &mut CorpusGraph) {
 /// The distance two connected nodes settle at, derived from the forces rather
 /// than guessed.
 ///
-/// Attraction on an edge is `w·d/m`, repulsion between two nodes is `m²/d`, so
-/// a connected pair balances at `d = m^1.5 / sqrt(w)`. Getting this right
-/// matters more than it looks: ForceAtlas2 started far below its own
-/// equilibrium spends its whole budget inflating, overshoots, and ends up in an
-/// oscillation that never settles. Starting the spectral embedding at the right
-/// scale turns the force step into what it should be, a refinement.
-fn equilibrium_scale(mech: &Mechanical, opts: &LayoutOptions) -> f32 {
+/// This is a numerical measure and nothing more: it changes where the iteration
+/// starts, not where it ends. It matters more than it looks, because
+/// ForceAtlas2 started far below its own equilibrium spends its whole budget
+/// inflating, overshoots, and drops into an oscillation that never settles —
+/// which is exactly what the first version of this layout did on the real
+/// corpus. Starting at the right size turns the force step into the refinement
+/// it is supposed to be.
+fn equilibrium_scale(mech: &Mechanical) -> f32 {
     let n = mech.len().max(1);
     let mean_mass = mech.mass.iter().sum::<f32>() / n as f32;
     let edges: usize = mech.adj.iter().map(|list| list.len()).sum();
@@ -275,22 +242,8 @@ fn equilibrium_scale(mech: &Mechanical, opts: &LayoutOptions) -> f32 {
             .sum::<f32>()
             / edges as f32
     };
-    let mass = if opts.dissuade_hubs { mean_mass } else { 1.0 };
-    let repel = mean_mass * mean_mass * mass / mean_weight.max(1e-3);
-    // Linear attraction balances repulsion at `d = sqrt(repel)`. Logarithmic
-    // attraction balances much further out, because `ln(1+d)` barely grows: the
-    // equation is `d·ln(1+d) = repel`, and the fixed point below is the two-step
-    // Newton solution of it. Getting this within a factor of two is enough; it
-    // only has to put the spectral embedding in the right neighbourhood.
-    let pair = if opts.linlog {
-        let mut d = repel.max(1.0);
-        for _ in 0..40 {
-            d = repel / (1.0 + d).ln().max(0.5);
-        }
-        d
-    } else {
-        repel.sqrt()
-    };
+    // Attraction `w·d` balances repulsion `m²/d` at `d = m/sqrt(w)`.
+    let pair = (mean_mass * mean_mass / mean_weight.max(1e-3)).sqrt();
     (pair * (n as f32).cbrt() * 0.5).max(1.0)
 }
 
@@ -307,19 +260,10 @@ fn fibonacci_point(i: usize, n: usize) -> [f32; 3] {
 }
 
 /// Turn the typed, directed, aggregated edge set into one undirected weighted
-/// graph.
-///
-/// Two dampings apply here and they answer different problems. The type weight
-/// says a computed dependency means more than a mention. The logarithm on the
-/// count says that citing a law forty times is more than citing it once but not
-/// forty times more, which stops a definition article that repeats one
-/// reference in every lid from outweighing a real structural relation.
-fn mechanical(
-    graph: &CorpusGraph,
-    free: &[NodeIx],
-    slot: &HashMap<NodeIx, usize>,
-    opts: &LayoutOptions,
-) -> Mechanical {
+/// graph. The weight of an edge comes from
+/// [`CorpusGraph::mechanical_weight`], so the layout and the community
+/// detection cannot drift apart on it.
+fn mechanical(graph: &CorpusGraph, free: &[NodeIx], slot: &HashMap<NodeIx, usize>) -> Mechanical {
     let n = free.len();
     let mut weights: Vec<HashMap<u32, f32>> = vec![HashMap::new(); n];
     for edge in &graph.edges[..graph.law_edge_count] {
@@ -329,7 +273,7 @@ fn mechanical(
         if a == b {
             continue;
         }
-        let w = edge.edge_type.layout_weight() * (1.0 + (edge.count as f32).ln());
+        let w = graph.mechanical_weight(edge);
         *weights[a].entry(b as u32).or_insert(0.0) += w;
         *weights[b].entry(a as u32).or_insert(0.0) += w;
     }
@@ -348,11 +292,7 @@ fn mechanical(
     for (i, map) in weights.into_iter().enumerate() {
         let mut list: Vec<(u32, f32)> = map.into_iter().collect();
         list.sort_by_key(|&(j, _)| j);
-        mass[i] = if opts.log_mass {
-            1.0 + (1.0 + list.len() as f32).ln()
-        } else {
-            1.0 + list.len() as f32
-        };
+        mass[i] = 1.0 + list.len() as f32;
         adj.push(list);
     }
     Mechanical {
@@ -443,7 +383,7 @@ fn initial_positions(mech: &Mechanical, opts: &LayoutOptions, scale: f32) -> Vec
         by_cluster.into_iter().collect()
     };
     groups.sort_by_key(|(c, _)| *c);
-    if groups.len() < 2 || n < 8 {
+    if !opts.hierarchical_init || groups.len() < 2 || n < 8 {
         return spectral_init(mech, opts.spectral_steps, scale);
     }
 
@@ -469,9 +409,7 @@ fn initial_positions(mech: &Mechanical, opts: &LayoutOptions, scale: f32) -> Vec
     for (i, map) in coarse_weights.into_iter().enumerate() {
         let mut list: Vec<(u32, f32)> = map.into_iter().collect();
         list.sort_by_key(|&(j, _)| j);
-        // Same logarithmic damping as at law level: a community of 577 laws
-        // must not repel 577 times as hard as one of five.
-        coarse_mass.push(1.0 + (1.0 + groups[i].1.len() as f32).ln());
+        coarse_mass.push(1.0 + groups[i].1.len() as f32);
         coarse_adj.push(list);
     }
     let coarse = Mechanical {
@@ -488,7 +426,7 @@ fn initial_positions(mech: &Mechanical, opts: &LayoutOptions, scale: f32) -> Vec
         cluster_pull: 0.0,
         ..opts.clone()
     };
-    let coarse_scale = equilibrium_scale(&coarse, &coarse_opts);
+    let coarse_scale = equilibrium_scale(&coarse);
     let mut centres = spectral_init(&coarse, opts.spectral_steps, coarse_scale);
     force_atlas2(&coarse, &mut centres, &coarse_opts, coarse_scale);
     recentre(&mut centres);
@@ -498,7 +436,7 @@ fn initial_positions(mech: &Mechanical, opts: &LayoutOptions, scale: f32) -> Vec
     let mut radius: Vec<f32> = Vec::with_capacity(groups.len());
     for (_, members) in &groups {
         let sub = subgraph(mech, members);
-        let sub_scale = equilibrium_scale(&sub, opts);
+        let sub_scale = equilibrium_scale(&sub);
         let mut pos = spectral_init(&sub, opts.spectral_steps, sub_scale);
         force_atlas2(&sub, &mut pos, &coarse_opts, sub_scale);
         radius.push(recentre(&mut pos));
@@ -754,15 +692,21 @@ fn recentre(pos: &mut [[f32; 3]]) -> f32 {
 
 /// ForceAtlas2 in three dimensions with Barnes-Hut repulsion and the adaptive
 /// global speed from the Gephi implementation.
-fn force_atlas2(mech: &Mechanical, pos: &mut [[f32; 3]], opts: &LayoutOptions, scale: f32) {
+///
+/// Returns how far the average node still moved on the last iteration, as a
+/// fraction of the layout's own scale. Near zero means the picture has settled;
+/// a number you can still see means it has not, and the builder prints it
+/// rather than leaving the reader to assume.
+fn force_atlas2(mech: &Mechanical, pos: &mut [[f32; 3]], opts: &LayoutOptions, scale: f32) -> f32 {
     let n = mech.len();
     if n < 2 {
-        return;
+        return 0.0;
     }
     let mut force = vec![[0.0f32; 3]; n];
     let mut previous = vec![[0.0f32; 3]; n];
     let mut speed = 1.0f32;
     let jitter = 0.05f32;
+    let mut travelled = 0.0f32;
 
     for _ in 0..opts.iterations {
         std::mem::swap(&mut force, &mut previous);
@@ -796,20 +740,15 @@ fn force_atlas2(mech: &Mechanical, pos: &mut [[f32; 3]], opts: &LayoutOptions, s
                 ];
                 let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt().max(0.01);
                 let unit = [d[0] / len, d[1] / len, d[2] / len];
-                let reach = if opts.linlog { (1.0 + len).ln() } else { len };
-                let pull_i = if opts.dissuade_hubs {
-                    w * reach / mech.mass[i]
-                } else {
-                    w * reach
-                };
-                let pull_j = if opts.dissuade_hubs {
-                    w * reach / mech.mass[j]
-                } else {
-                    w * reach
-                };
+                // Plain ForceAtlas2 attraction: linear in the distance, and
+                // the same at both ends. No division by the degree of the
+                // pulling node: that is `dissuade hubs`, and weakening the pull
+                // of a law because many laws hang off it is a claim about the
+                // law, not a numerical measure.
+                let pull = w * len;
                 for k in 0..3 {
-                    force[i][k] += unit[k] * pull_i;
-                    force[j][k] -= unit[k] * pull_j;
+                    force[i][k] += unit[k] * pull;
+                    force[j][k] -= unit[k] * pull;
                 }
             }
         }
@@ -891,6 +830,7 @@ fn force_atlas2(mech: &Mechanical, pos: &mut [[f32; 3]], opts: &LayoutOptions, s
         // than the structure it is trying to find, and once that happens the
         // layout oscillates outwards instead of settling.
         let max_step = 0.1 * scale;
+        travelled = 0.0;
         for i in 0..n {
             let factor = speed / (1.0 + (speed * swing[i]).sqrt());
             let step = [
@@ -900,11 +840,13 @@ fn force_atlas2(mech: &Mechanical, pos: &mut [[f32; 3]], opts: &LayoutOptions, s
             ];
             let len = (step[0] * step[0] + step[1] * step[1] + step[2] * step[2]).sqrt();
             let clamp = if len > max_step { max_step / len } else { 1.0 };
+            travelled += len * clamp;
             for k in 0..3 {
                 pos[i][k] += step[k] * clamp;
             }
         }
     }
+    travelled / (n as f32 * scale.max(1e-6))
 }
 
 /// Barnes-Hut octree over the current positions.
@@ -1074,13 +1016,13 @@ impl Octree {
 /// How spread out the law-level layout is: the mean distance to the centroid
 /// divided by the largest distance.
 ///
-/// A ball with everything piled around one hub scores low; a layout with
-/// separated communities scores high. Used in the tests to assert that damping
-/// the framework star actually produces structure instead of a blob.
+/// Reporting only. A number near zero says almost everything sits in one dense
+/// clump with a few far outliers; a number near 0.75 is what a filled sphere
+/// gives. It describes the result and never steers it.
 pub fn dispersion(graph: &CorpusGraph) -> f32 {
     let nodes: Vec<&crate::graph::Node> = graph.nodes[..graph.law_node_count]
         .iter()
-        .filter(|n| !n.framework && n.kind != NodeKind::Article)
+        .filter(|n| n.kind != NodeKind::Article)
         .collect();
     if nodes.len() < 2 {
         return 0.0;

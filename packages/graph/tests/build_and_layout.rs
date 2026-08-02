@@ -4,8 +4,10 @@
 
 use std::path::Path;
 
-use regelrecht_graph::graph::{EdgeType, NodeKind};
-use regelrecht_graph::{build_all, layout, run_passes, testkit, BuildOptions, Options};
+use regelrecht_graph::graph::{EdgeType, Enrichment, NodeKind};
+use regelrecht_graph::{
+    build_all, layout, run_passes, testkit, BuildOptions, LayoutOptions, Options,
+};
 
 fn options(root: &Path) -> Options {
     Options {
@@ -242,72 +244,200 @@ fn walkdir_files(root: &Path) -> Vec<std::path::PathBuf> {
     out
 }
 
-/// The framework-star problem, measured.
+/// The claim a force layout actually makes: laws that cite each other end up
+/// closer together than laws that do not.
 ///
-/// Three dense communities plus one law every single member cites. The question
-/// is whether the planted structure survives into the coordinates, so the
-/// measure is neighbourhood purity: of the thirteen nodes nearest to a law in
-/// the layout, how many belong to its own community. Perfect separation scores
-/// 1.0, a ball with everything mixed scores about a third. It is scale-free,
-/// which a raw distance ratio is not: a layout that squeezes every community
-/// into a point scores well on distance ratios and tells you nothing.
+/// This is the strong property and it holds regardless of what the community
+/// structure looks like, so it is the one worth asserting.
 #[test]
-fn the_communities_survive_into_the_coordinates() {
-    let (purity, framework_detected) = neighbourhood_purity(true);
-    assert!(framework_detected, "de kaderwet moet herkend worden");
+fn cited_laws_end_up_near_the_laws_that_cite_them() {
+    let sizes = [40usize, 14, 6];
+    let mut graph = testkit::star_dominated(&sizes);
+    run_passes(&mut graph, &Options::default());
+
+    let position = |ix: u32| {
+        let n = graph.node(ix);
+        [n.x, n.y, n.z]
+    };
+    let distance = |a: [f32; 3], b: [f32; 3]| {
+        (((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)) as f64).sqrt()
+    };
+
+    let connected: f64 = graph.edges[..graph.law_edge_count]
+        .iter()
+        .map(|e| distance(position(e.source), position(e.target)))
+        .sum::<f64>()
+        / graph.law_edge_count as f64;
+
+    let n = graph.law_node_count;
+    let mut all = 0.0f64;
+    let mut pairs = 0u32;
+    for a in 0..n as u32 {
+        for b in (a + 1)..n as u32 {
+            all += distance(position(a), position(b));
+            pairs += 1;
+        }
+    }
+    let all = all / pairs as f64;
+
     assert!(
-        purity > 0.9,
-        "de gemeenschappen zijn niet terug te zien in de layout: zuiverheid {purity:.3}"
+        connected < 0.6 * all,
+        "verbonden wetten liggen niet dichter bij elkaar: verbonden {connected:.1}, willekeurig {all:.1}"
     );
 }
 
-/// The same measurement with the machinery switched off, so the number above
-/// means something.
+/// And the weaker one, which is measured rather than demanded.
 ///
-/// Without the framework rule the star is an ordinary node with 42 incoming
-/// edges, and without dissuade-hubs it pulls proportionally to all of them. The
-/// design's claim is that this is what turns the picture into a ball; if
-/// switching it off changed nothing, the machinery would be decoration.
+/// Three communities, each a ring, plus one law that every member cites several
+/// times. Neighbourhood purity asks: of the nodes nearest to a law, how many
+/// belong to its own community, against what that number would be if the
+/// coordinates said nothing.
+///
+/// The margin is thin on purpose. Nothing lifts the heavily cited law out of
+/// the way and nothing damps the edges into it, so it pulls all three rings
+/// towards itself and they genuinely overlap. A score near 1.0 would be the
+/// alarming result: on a graph with a star in it, clean separation means
+/// somebody arranged it. Measured here at 0.59 against a chance level of 0.50.
 #[test]
-fn the_damping_is_what_keeps_the_star_from_flattening_the_picture() {
-    let (damped, _) = neighbourhood_purity(true);
-    let (naive, _) = neighbourhood_purity(false);
+fn the_communities_are_visible_but_only_just() {
+    let (purity, chance) = neighbourhood_purity(&LayoutOptions::default());
     assert!(
-        damped > naive + 0.05,
-        "demping levert geen meetbaar verschil op: gedempt {damped:.3}, naief {naive:.3}"
+        purity > chance + 0.05,
+        "de layout zegt niets over de gemeenschappen: zuiverheid {purity:.3}, kans {chance:.3}"
     );
+}
+
+/// The iteration has to settle, and that is all the numerical measures are for.
+///
+/// The raw ForceAtlas2 loop inflated monotonically and never converged on the
+/// real corpus. Two things fixed that and both are integrator measures: the
+/// spectral embedding is scaled to the size the forces themselves imply, and a
+/// step is capped so a badly conditioned moment cannot throw a node further
+/// than the structure it is looking for. Neither changes the fixed point, only
+/// the path to it, and this test is the check on that claim: run four hundred
+/// iterations and twelve hundred, and the relative positions must agree.
+///
+/// The comparison is on the rank order of pairwise distances, because the two
+/// runs may legitimately differ in overall scale and orientation. Everything
+/// about which law is near which must survive.
+///
+/// Two earlier candidates failed this standard and were removed: logarithmic
+/// attraction and a logarithmically damped repulsion mass. Both made the
+/// picture look better and both moved laws relative to each other — measured at
+/// a rank correlation of 0.59 against the plain model, which converges perfectly
+/// well without them. A measure that changes the answer is not a numerical
+/// measure.
+#[test]
+fn the_force_iteration_has_settled() {
+    let sizes = [40usize, 14, 6];
+    let short = laid_out(
+        &sizes,
+        &LayoutOptions {
+            iterations: 400,
+            ..LayoutOptions::default()
+        },
+    );
+    let long = laid_out(
+        &sizes,
+        &LayoutOptions {
+            iterations: 1200,
+            ..LayoutOptions::default()
+        },
+    );
+    let correlation = distance_rank_correlation(&short, &long);
+    assert!(
+        correlation > 0.95,
+        "de layout is niet uitgeconvergeerd: rangcorrelatie {correlation:.3} tussen 400 en 1200 iteraties"
+    );
+}
+
+/// Laid out coordinates per law id, for comparing two runs.
+fn laid_out(sizes: &[usize], layout: &LayoutOptions) -> Vec<(String, [f32; 3])> {
+    let mut graph = testkit::star_dominated(sizes);
+    run_passes(
+        &mut graph,
+        &Options {
+            layout: layout.clone(),
+            ..Options::default()
+        },
+    );
+    graph.nodes[..graph.law_node_count]
+        .iter()
+        .map(|n| (n.id.clone(), [n.x, n.y, n.z]))
+        .collect()
+}
+
+/// Spearman correlation between the pairwise distances of two layouts of the
+/// same nodes.
+fn distance_rank_correlation(a: &[(String, [f32; 3])], b: &[(String, [f32; 3])]) -> f64 {
+    assert_eq!(a.len(), b.len());
+    let dist = |p: [f32; 3], q: [f32; 3]| -> f64 {
+        (((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2) + (p[2] - q[2]).powi(2)) as f64).sqrt()
+    };
+    let mut da = Vec::new();
+    let mut db = Vec::new();
+    for i in 0..a.len() {
+        for j in (i + 1)..a.len() {
+            assert_eq!(a[i].0, b[i].0, "beide runs moeten dezelfde knopen hebben");
+            da.push(dist(a[i].1, a[j].1));
+            db.push(dist(b[i].1, b[j].1));
+        }
+    }
+    spearman(&da, &db)
+}
+
+fn spearman(x: &[f64], y: &[f64]) -> f64 {
+    let rank = |v: &[f64]| -> Vec<f64> {
+        let mut order: Vec<usize> = (0..v.len()).collect();
+        order.sort_by(|&i, &j| v[i].total_cmp(&v[j]));
+        let mut out = vec![0.0; v.len()];
+        for (r, &i) in order.iter().enumerate() {
+            out[i] = r as f64;
+        }
+        out
+    };
+    let (rx, ry) = (rank(x), rank(y));
+    let n = rx.len() as f64;
+    let mx = rx.iter().sum::<f64>() / n;
+    let my = ry.iter().sum::<f64>() / n;
+    let mut num = 0.0;
+    let mut dx = 0.0;
+    let mut dy = 0.0;
+    for i in 0..rx.len() {
+        num += (rx[i] - mx) * (ry[i] - my);
+        dx += (rx[i] - mx).powi(2);
+        dy += (ry[i] - my).powi(2);
+    }
+    if dx == 0.0 || dy == 0.0 {
+        return 0.0;
+    }
+    num / (dx * dy).sqrt()
 }
 
 /// Mean fraction of a law's nearest neighbours that share its community, and
-/// whether the framework rule fired.
-fn neighbourhood_purity(damped: bool) -> (f64, bool) {
+/// the same fraction for a layout that carries no information at all.
+fn neighbourhood_purity(layout: &LayoutOptions) -> (f64, f64) {
     let sizes = [40usize, 14, 6];
     let mut graph = testkit::star_dominated(&sizes);
-    let opts = Options {
-        layout: layout::LayoutOptions {
-            iterations: 400,
-            dissuade_hubs: damped,
-            ..layout::LayoutOptions::default()
+    run_passes(
+        &mut graph,
+        &Options {
+            layout: layout.clone(),
+            ..Options::default()
         },
-        framework: regelrecht_graph::FrameworkRule {
-            // A fraction above 1.0 can never be met, so with `damped` off no
-            // law is ever pulled out of the force computation.
-            fraction: if damped { 0.20 } else { 2.0 },
-            min_citers: if damped { 25 } else { usize::MAX },
-        },
-        ..Options::default()
-    };
-    run_passes(&mut graph, &opts);
+    );
 
     let members: Vec<&regelrecht_graph::Node> = graph.nodes[..graph.law_node_count]
         .iter()
         .filter(|n| n.id != "kaderwet")
         .collect();
     let mut total = 0.0f64;
+    let mut chance = 0.0f64;
     let mut counted = 0usize;
     for a in &members {
         let group: usize = a.id[1..2].parse().unwrap_or(0);
         let k = sizes[group] - 1;
+        chance += k as f64 / (members.len() - 1) as f64;
         let mut distances: Vec<(f64, &str)> = members
             .iter()
             .filter(|b| b.id != a.id)
@@ -325,30 +455,121 @@ fn neighbourhood_purity(damped: bool) -> (f64, bool) {
         total += same as f64 / k as f64;
         counted += 1;
     }
-    let framework = graph
-        .lookup("kaderwet")
-        .is_some_and(|ix| graph.node(ix).framework);
-    (total / counted as f64, framework)
+    (total / counted as f64, chance / counted as f64)
 }
 
-/// A framework law belongs to no community and must not be given one.
+/// Nothing is lifted out of the field.
+///
+/// A designated kaderwet is annotated, not relocated. The law the corpus leans
+/// on hardest has to end up where its edges put it, which for a node every
+/// other node cites is somewhere near the middle. A map that parks it on a ring
+/// above the field to look calmer has thrown away the one thing the distance to
+/// that law was going to tell a lawyer.
 #[test]
-fn the_framework_law_sits_outside_the_clusters_and_above_them() {
-    let mut graph = testkit::three_communities(14);
-    run_passes(&mut graph, &Options::default());
+fn a_designated_kaderwet_stays_in_the_field() {
+    let mut graph = testkit::star_dominated(&[40, 14, 6]);
+    let mut options = Options::default();
+    options
+        .kaderwetten
+        .kaderwetten
+        .push(regelrecht_graph::Kaderwetkaart {
+            law_id: Some("kaderwet".to_string()),
+            ..regelrecht_graph::Kaderwetkaart::default()
+        });
+    run_passes(&mut graph, &options);
+
     #[allow(clippy::expect_used)]
     let frame = graph.lookup("kaderwet").expect("kaderwet");
-    assert_eq!(
-        graph.node(frame).cluster,
-        regelrecht_graph::cluster::FRAMEWORK_CLUSTER
-    );
-    let highest_member = graph.nodes[..graph.law_node_count]
-        .iter()
-        .filter(|n| !n.framework)
-        .map(|n| n.y)
-        .fold(f32::MIN, f32::max);
+    assert!(graph.node(frame).framework, "de aanwijzing moet aankomen");
+
+    // It takes part in the communities like anything else.
     assert!(
-        graph.node(frame).y > highest_member,
-        "de kaderlaag hoort boven het veld te liggen"
+        graph.node(frame).cluster < u16::MAX,
+        "een aangewezen kaderwet hoort gewoon in een gemeenschap te vallen"
     );
+
+    // And it sits inside the cloud rather than above it: the law everything
+    // cites belongs near the centre of mass, not on a shelf.
+    let members: Vec<&regelrecht_graph::Node> = graph.nodes[..graph.law_node_count]
+        .iter()
+        .filter(|n| n.id != "kaderwet")
+        .collect();
+    let centre = {
+        let mut c = [0.0f32; 3];
+        for n in &members {
+            c[0] += n.x;
+            c[1] += n.y;
+            c[2] += n.z;
+        }
+        [
+            c[0] / members.len() as f32,
+            c[1] / members.len() as f32,
+            c[2] / members.len() as f32,
+        ]
+    };
+    let radius = |n: &regelrecht_graph::Node| {
+        ((n.x - centre[0]).powi(2) + (n.y - centre[1]).powi(2) + (n.z - centre[2]).powi(2)).sqrt()
+    };
+    let mut radii: Vec<f32> = members.iter().map(|n| radius(n)).collect();
+    radii.sort_by(f32::total_cmp);
+    let median = radii[radii.len() / 2];
+    assert!(
+        radius(graph.node(frame)) < median,
+        "de meest aangehaalde wet hoort binnen de mediane straal te liggen, niet erbuiten"
+    );
+}
+
+/// The enrichment status has to be readable off a node, and an empty
+/// `machine_readable` section must not colour a law in.
+#[test]
+fn enrichment_status_follows_the_substantive_sections() {
+    let dir = sample_corpus();
+    let graph = build_all(&options(dir.path()));
+
+    #[allow(clippy::expect_used)]
+    let regeling = graph.lookup("regeling_standaardpremie").expect("regeling");
+    let regeling = graph.node(regeling);
+    assert_eq!(regeling.articles, 1);
+    assert_eq!(regeling.articles_enriched, 1);
+    assert_eq!(regeling.enrichment, Enrichment::Full);
+
+    // The zorgtoeslag has two articles and only one of them is modelled.
+    #[allow(clippy::expect_used)]
+    let zorgtoeslag = graph.lookup("wet_op_de_zorgtoeslag").expect("zorgtoeslag");
+    let zorgtoeslag = graph.node(zorgtoeslag);
+    assert_eq!(zorgtoeslag.articles, 2);
+    assert_eq!(zorgtoeslag.articles_enriched, 1);
+    assert_eq!(zorgtoeslag.enrichment, Enrichment::Partial);
+
+    // The Awb article in this sample carries nothing at all.
+    #[allow(clippy::expect_used)]
+    let awb = graph.lookup("algemene_wet_bestuursrecht").expect("awb");
+    assert_eq!(graph.node(awb).enrichment, Enrichment::None);
+    assert_eq!(graph.node(awb).articles_enriched, 0);
+
+    // A node that is not a held document has nothing to enrich.
+    #[allow(clippy::expect_used)]
+    let expected = graph
+        .lookup("expected:regeling_zorgverzekering")
+        .expect("verwachte knoop");
+    assert_eq!(graph.node(expected).articles, 0);
+    assert_eq!(graph.node(expected).enrichment, Enrichment::None);
+
+    assert_eq!(graph.stats.laws_partly_enriched, 2);
+    assert_eq!(graph.stats.laws_fully_enriched, 1);
+}
+
+/// An article node carries the binary version of the same thing.
+#[test]
+fn an_article_node_is_enriched_or_it_is_not() {
+    let dir = sample_corpus();
+    let graph = build_all(&options(dir.path()));
+    #[allow(clippy::expect_used)]
+    let modelled = graph
+        .lookup("regeling_standaardpremie#1")
+        .expect("artikel 1");
+    assert_eq!(graph.node(modelled).enrichment, Enrichment::Full);
+    #[allow(clippy::expect_used)]
+    let plain = graph.lookup("wet_op_de_zorgtoeslag#1").expect("artikel 1");
+    assert_eq!(graph.node(plain).enrichment, Enrichment::None);
 }
