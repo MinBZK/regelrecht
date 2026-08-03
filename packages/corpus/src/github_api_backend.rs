@@ -195,7 +195,17 @@ impl GitHubApiBackend {
     /// when missing. Shared by `ensure_ready` (rest-token bootstrap at
     /// backend init) and `persist` (lazy bootstrap with the per-call
     /// user token, for backends that had no token at init).
-    async fn ensure_branch(
+    ///
+    /// Also reused by the editor-api create-traject flow to mint the
+    /// traject branch eagerly, while it still holds the token that just
+    /// proved push access — closing the "fresh traject is
+    /// dead-on-arrival because its branch does not exist yet" gap. The
+    /// benign-race handling below makes eager and lazy bootstrap safe to
+    /// coexist: whichever runs second sees the branch and no-ops.
+    ///
+    /// `repo` is the `owner/name` form; `token` is `None` only for
+    /// anonymous public reads (branch creation always needs one).
+    pub async fn ensure_branch(
         client: &GithubClient,
         repo: &str,
         branch: &str,
