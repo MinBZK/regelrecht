@@ -39,6 +39,20 @@ const KNOWN_GAPS: &[&str] = &[
     "wrong_type_publication_date.yaml", // schema wants a date string; model coerces the YAML integer
     // Measured 2026-08-02, with DATE_PART and START_OF.
     "date_part_plural_unit.yaml", // schema pins `in` to an enum; the model reads any string and the engine names the error at runtime
+    // Measured 2026-08-03. Both are leniency the model needs and the engine
+    // does not inherit.
+    //
+    // `resolved_by` is required by schema v0.6.0 and optional on the model,
+    // which must also read the files written before the field existed
+    // (`service.rs`, `marking_reason`, states the same reason where it uses
+    // it). Tightening the model here would move the behaviour of `load_law`,
+    // which is the last thing standing between a written law and the commit.
+    "marking_without_resolved_by.yaml",
+    // `output` is required by schema v0.6.0 and optional on the model for the
+    // same reason. The engine refuses such an action at execution time rather
+    // than skipping it, so the leniency stops at the model boundary; see
+    // `engine.rs`, `execute_actions_traced`.
+    "action_without_output.yaml",
 ];
 
 /// Repo root, derived from this crate's manifest dir (`packages/engine`).

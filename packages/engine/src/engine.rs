@@ -311,9 +311,21 @@ impl<'a> ArticleEngine<'a> {
         let tracing_active = context.has_trace();
 
         for action in actions {
-            let output_name = match &action.output {
-                Some(name) => name,
-                None => continue,
+            // An action without `output` is a computation with nowhere to
+            // land. The schema requires the field and the model has it as an
+            // `Option`, because the model must also read files written before
+            // the field was; the execution may not treat that leniency as
+            // permission. Skipping used to drop the action without a trace
+            // node, without an error, and with the declared value simply
+            // missing from `ArticleResult.outputs` — a calculation that
+            // vanished without leaving a mark, which is the failure form this
+            // project exists to make impossible.
+            let Some(output_name) = &action.output else {
+                return Err(EngineError::InvalidOperation(
+                    "action without `output`: the computation has no name to be stored under, \
+                     so its result would be dropped in silence (schema v0.6.0 requires the field)"
+                        .to_string(),
+                ));
             };
 
             if tracing_active {
@@ -702,6 +714,49 @@ articles:
             matches!(result, Err(crate::error::EngineError::UnitMismatch { .. })),
             "Expected UnitMismatch (eurocent + days), got {:?}",
             result
+        );
+    }
+
+    /// An action without `output` is a computation with nowhere to land, and
+    /// it used to be skipped: no error, no trace node, and the declared value
+    /// simply missing from `outputs`. Schema v0.6.0 requires the field; the
+    /// model has it optional because it must read older files, and the
+    /// execution may not read that leniency as permission.
+    #[test]
+    fn een_actie_zonder_output_laat_de_uitvoering_niet_stil_vallen() {
+        let yaml = r"
+$id: action_without_output_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: De actie berekent en noemt geen naam om het onder op te bergen.
+    machine_readable:
+      execution:
+        parameters:
+          - name: grondslag
+            type: number
+            required: true
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - value: $grondslag
+";
+        let law = ArticleBasedLaw::from_yaml_str(yaml).unwrap();
+        let article = law.find_article_by_number("1").unwrap();
+        let engine = ArticleEngine::new(article, &law);
+
+        let mut params = BTreeMap::new();
+        params.insert("grondslag".to_string(), Value::Int(100));
+
+        let result = engine.evaluate(params, "2025-01-01");
+        let Err(crate::error::EngineError::InvalidOperation(message)) = result else {
+            panic!("de uitvoering moet weigeren, niet stil overslaan: {result:?}");
+        };
+        assert!(
+            message.contains("output"),
+            "de melding noemt het veld dat ontbreekt: {message}"
         );
     }
 
